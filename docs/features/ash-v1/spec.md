@@ -11,7 +11,7 @@ Każde twierdzenie o obecnym kodzie dotyczy `origin/main` z 2026-11-18 (`4567178
 #752) i odczyt jego transkryptów.
 
 Issues: #765, #679, #762
-Zakres: `tools/metrics`, `.claude/skills/retro`, `.claude/agents/retro-analyst.md`, `.claude/agents/qa-adversarial.md`, `docs/adr/agentic-software-house.md`, `docs/features/metrics/spec.md`, `docs/features/retro/spec.md`, `docs/features/agentic-software-house/plan.md`, `apps/api/Makefile`, konfiguracja testów `apps/api`
+Zakres: `CLAUDE.md`, `tools/metrics`, `.claude/skills/retro`, `.claude/agents/retro-analyst.md`, `.claude/agents/qa-adversarial.md`, `docs/adr/agentic-software-house.md`, `docs/features/metrics/spec.md`, `docs/features/retro/spec.md`, `docs/features/telemetry/spec.md`, `docs/features/agentic-software-house/plan.md`, `apps/api/Makefile`, konfiguracja testów `apps/api`
 
 ## Cel i zakres
 
@@ -19,6 +19,8 @@ Zakres: `tools/metrics`, `.claude/skills/retro`, `.claude/agents/retro-analyst.m
 - `/retro` przyjmuje epik natywny i nie zmienia procesu w trakcie serii trzech epików (R).
 - Luki procesu zaobserwowane w SMALL-FIXES są zamknięte (F).
 - Przegląd całej zmiany zaczyna od sprawdzenia kryteriów akceptacji, a wynik widać w opisie końcowego PR (A).
+- Telemetria w lokalnym stosie działa także dla sesji natywnych i pozwala rozpoznać epik, zadanie, model
+  i subagenta (T).
 - Wersja 1.0 ma znacznik i regułę zamrożenia na czas serii (V).
 
 Stan wyjściowy:
@@ -42,10 +44,11 @@ Stan wyjściowy:
   zgodnie z regułą „brak źródła daje `null`, nigdy zero”. Osobnego narzędzia ani drugiego formatu nie ma.
 - **D2. Punkt odniesienia zapisuje narzędzie.** Początek i koniec epiku zapisują komendy `metrics.py start`
   i `metrics.py done`; opis PR powtarza je w formie czytelnej dla człowieka.
-- **D3. Wartość w USD z cennika w konfiguracji.** Transkrypt sesji natywnej nie ma kosztu policzonego przez CLI.
-  Wartość liczy się z tokenów ważonych istniejącymi `token_weights` i ceny wejścia modelu za milion tokenów zapisanej
-  w `tools/metrics/config.json`. Jest zawsze oznaczona jako szacunek. Model bez ceny w konfiguracji daje `null` i wpis
-  w `gaps`.
+- **D3. Wartość w USD z cennika API w konfiguracji.** Transkrypt sesji natywnej nie ma kosztu policzonego przez CLI.
+  `tools/metrics/config.json` dostaje cennik: dla każdego modelu osobna stawka za milion tokenów każdego rodzaju
+  (wejście, wyjście, odczyt cache, zapis cache 5 min, zapis cache 1 h), ze źródłem i datą odczytu. Stawki są
+  wpisywane z aktualnego cennika dostawcy przy implementacji, nie wyliczane z proporcji `token_weights`. Wartość jest
+  zawsze oznaczona jako szacunek. Model albo rodzaj tokenów bez stawki daje `null` i wpis w `gaps`.
 - **D4. Zadanie z opisu zlecenia.** Przebieg subagenta należy do zadania, którego ID (`<EPIK>-<n>`) występuje
   w `description` wywołania; rola to `agentType`. Bez ID przebieg trafia do pozycji „bez zadania”.
 - **D5. `/retro` czyta rekord i opis końcowego PR.** Incydenty epiku natywnego pochodzą z rekordu metryk i z sekcji
@@ -71,12 +74,15 @@ Stan wyjściowy:
 ### M1. Plik przebiegu
 
 `metrics.py start <EPIK>` zapisuje `<state>/runs/<EPIK>.json`: czas startu, SHA `origin/main`, gałąź epiku, numer
-draft PR, katalog roboczy sesji prowadzącej, liczbę zadań manifestu `plan.md` i odczyt limitów podany na wejściu
-(obiekt z `get_usage`, jak dziś w `night_queue.py start`). `metrics.py done <EPIK>` dopisuje czas oznaczenia PR jako
-gotowy i drugi odczyt limitów. Wznowienie epiku w innym katalogu roboczym dopisuje ten katalog (`start --resume`).
+draft PR, katalog roboczy i identyfikator sesji prowadzącej, liczbę zadań manifestu `plan.md` i odczyt limitów podany
+na wejściu (obiekt z `get_usage`, jak dziś w `night_queue.py start`). `metrics.py done <EPIK>` dopisuje czas
+oznaczenia PR jako gotowy i drugi odczyt limitów. Wznowienie epiku w nowej sesji dopisuje jej identyfikator
+i katalog (`start --resume`).
 
-Opcje `--at`, `--worktree`, `--branch`, `--pr` i `--tasks` pozwalają zapisać plik po fakcie, także gdy `plan.md` już
-nie istnieje; bez odczytu limitów koszt subskrypcji ma `null` i wpis w `gaps`.
+Identyfikator sesji prowadzącej `start` bierze z najnowszego transkryptu w katalogu sesji dla bieżącego katalogu
+roboczego; opcja `--session` podaje go wprost. Opcje `--at`, `--worktree`, `--branch`, `--pr`, `--tasks`
+i `--session` pozwalają zapisać plik po fakcie, także gdy `plan.md` już nie istnieje; bez odczytu limitów koszt
+subskrypcji ma `null` i wpis w `gaps`.
 
 ### M2. Wybór źródła
 
@@ -86,8 +92,10 @@ tylko przebiegów AO.
 
 ### M3. Pola rekordu natywnego
 
-Transkrypty epiku to pliki sesji z katalogów roboczych zapisanych w pliku przebiegu, z przedziału od startu do
-merge'u, razem z ich subagentami.
+Transkrypty epiku to pliki sesji zapisanych w pliku przebiegu, razem z ich subagentami. Inna sesja w tym samym
+katalogu roboczym nie należy do epiku. Liczą się wiadomości od startu do merge'u końcowego PR; praca tej samej sesji
+po merge'u nie wchodzi do rekordu. Każda wiadomość jest liczona raz: gdy ten sam identyfikator wiadomości występuje
+w kilku plikach (sesja wznowiona albo rozgałęziona), liczy się jego pierwsze wystąpienie.
 
 | Pole | Źródło natywne | Gdy brak |
 |---|---|---|
@@ -102,7 +110,7 @@ merge'u, razem z ich subagentami.
 | `retries` | `fix`: liczba przeglądów zadań z werdyktem blokującym; `failed_by_outcome`: przebiegi subagentów niezakończone | `repair`, `sync_prs`: `null` |
 | `reviews` (nowe) | lista przeglądów według M4 | pusta |
 | `acceptance` (nowe) | liczby z tabeli kryteriów według M5 | `null`, wpis w `gaps` |
-| `subscription` | przyrost okien między odczytami `start` i `done` | `null` bez odczytów |
+| `subscription` | przyrost każdego okna między odczytami `start` i `done`; `share`: udział tokenów epiku w tokenach wszystkich lokalnych sesji z tego przedziału, ze wszystkich projektów w `~/.claude/projects` (limity są na konto), oznaczony jako szacunek; użycia z innych urządzeń nie widać | `null` bez odczytów; okno, które odnowiło się między odczytami, ma `null` i wpis w `gaps` |
 | `ci` | przebiegi CI gałęzi epiku z pliku przebiegu; `tasks`: `null` | – |
 | `in_attempts`, `versions` | polecenia powłoki i wersja CLI z transkryptów | – |
 | `regressions`, `found_after_merge`, `bottlenecks` | jak dziś | – |
@@ -123,13 +131,19 @@ sam werdykt, bez treści raportu.
 
 ### M5. Kryteria akceptacji
 
-Rekord czyta tabelę „Kryteria akceptacji” z opisu końcowego PR (A2) i zapisuje liczby: wszystkie, sprawdzone na
-stosie, sprawdzone w CI, do sprawdzenia po wdrożeniu, niezweryfikowane.
+Rekord czyta tabelę „Kryteria akceptacji” z opisu końcowego PR (A2) przez bramkę pochodzenia i zapisuje same
+liczby: wszystkie, sprawdzone na stosie, sprawdzone w CI, do sprawdzenia po wdrożeniu, niezweryfikowane.
 
 ### M6. Trend i raport
 
 `trend` i `render` pokazują rekordy AO i natywne w jednej tabeli z oznaczeniem źródła. Kolumny bez danych w rekordzie
 natywnym mają „brak danych”, nie zero. Przed serią historię AO uzupełnia jednorazowe `metrics.py backfill`.
+
+Mediany, pozycję epiku na tle historii i wąskie gardła liczy się osobno dla każdego źródła. Między źródłami
+porównywalne są tylko pola o tej samej definicji: liczba zadań, czas do gotowego PR i do merge'u, CI końcowego PR,
+regresje. Pozostałe pola mają przy rekordzie natywnym oznaczenie, że liczy się je inaczej niż w AO: wartość w USD
+(cennik zamiast kosztu z CLI), interwencje (każda wiadomość człowieka zamiast odpowiedzi na blokadę), rozkład czasu,
+rundy przeglądu i koszt subskrypcji. Raport nie zestawia ich jako równoważnych.
 
 ### M7. Testy i dane testowe
 
@@ -168,6 +182,8 @@ i wpis w `gaps`, nie błąd.
   wprowadza dopiero po „tak” użytkownika wskazującym tę pozycję.
 - **R7. Agent i specyfikacja.** `retro-analyst` i `docs/features/retro/spec.md` opisują incydenty epiku natywnego.
   `/retro <epik>` uruchamia użytkownik po merge'u końcowego PR.
+- **R8. `/retro` nie jest skillem zamrożonym.** Główny `CLAUDE.md`, decyzja o zamrożeniu w ADR i „Status” planu ASH
+  wymieniają jako zamrożone tylko `/ao-run`, `/delivery` i `/sweep`.
 
 ## F: poprawki po SMALL-FIXES
 
@@ -200,6 +216,27 @@ specyfikacja zakłada jego merge i ich nie powtarza.
 - **A4. Otwarte kryteria.** Kryterium „niezweryfikowane” jest na początku opisu PR jako decyzja dla użytkownika.
   Kryteria „po wdrożeniu” sesja sprawdza po wdrożeniu zleconym przez użytkownika i dopisuje wynik w komentarzu PR.
 
+## T: telemetria sesji natywnej
+
+Stan: stos `agent-observability` działa, ale eksportują do niego tylko wykonawcy AO, którym wrapper ustawia
+`shop.source=ao`, `shop.epic` i `shop.task`. Sesja natywna nie eksportuje nic, bo `~/.claude/settings.json` nie ma
+zmiennych telemetrii. Subagenci działają w procesie sesji prowadzącej, więc nie da się im nadać własnych atrybutów
+zasobu. Stos ma już to, czego potrzeba do powiązania: `session_id` i `model` są etykietami metryk i polami zdarzeń,
+a zdarzenia mają `agent_id`, `agent_type` i `query_source`.
+
+- **T1. Eksport z sesji natywnych.** Włącza go istniejący blok z `python3 tools/telemetry/telemetry.py snippet`
+  w `~/.claude/settings.json` (krok użytkownika), sprawdzany przez `telemetry.py check`. Sesje mają
+  `shop.source=interactive`.
+- **T2. Epik po sesji.** Epik rozpoznaje się w stosie po `session_id` sesji zapisanych w pliku przebiegu; rekord
+  metryk je wymienia. Etykiety `shop.epic` nie ustawia się w ustawieniach użytkownika, bo objęłaby wszystkie
+  równoległe sesje.
+- **T3. Zadanie i subagent po `agent_id`.** Wpis przebiegu subagenta w rekordzie (`attempts`) ma jego identyfikator,
+  zadanie, rolę, model i effort; po `agent_id` łączy się go ze zdarzeniami w Lokim. Model jest etykietą natywną.
+- **T4. Opis.** `docs/features/telemetry/spec.md` opisuje, jak rozpoznać epik, zadanie, model i subagenta dla sesji
+  natywnej.
+
+Bez zmian w dashboardach, w konfiguracji stosu i bez eksportu rekordów do stosu (#689).
+
 ## V: wersja 1.0 i seria
 
 - **V1. Tag.** `ash-v1.0` na commicie `main` zawierającym wszystkie zmiany tej specyfikacji; zakłada go sesja na
@@ -207,7 +244,9 @@ specyfikacja zakłada jego merge i ich nie powtarza.
 - **V2. Reguła zamrożenia w ADR.** Do końca serii pliki procesu (`CLAUDE.md` w części o procesie, `.claude/`,
   „Przebieg epiku”, `tools/metrics`, `/retro`) zmienia tylko poprawka blokady albo zagrożenia, po zgodzie
   użytkownika. Pozostałe wnioski zbiera `/retro`.
-- **V3. „Status” planu ASH** pokazuje stan serii: w toku albo zakończona, i zmergowane epiki serii.
+- **V3. „Status” planu ASH** pokazuje stan serii i jej zmergowane epiki. Seria jest w toku od założenia tagu
+  `ash-v1.0` do retrospektywy trzeciego epiku. `/retro small-fixes` (odbiór) biegnie przed tagiem, więc bez
+  zamrożenia.
 - **V4. Ocena po serii.** Z rekordów: czas do gotowego PR i do merge'u, czas czekania na człowieka i liczba jego
   wiadomości, wartość na zadanie, rolę i model, koszt subskrypcji, przeglądy z werdyktem blokującym, kryteria
   akceptacji według sposobu sprawdzenia, regresje w oknie 14 dni. Z retrospektyw: incydenty i odroczone propozycje.
@@ -220,17 +259,25 @@ specyfikacja zakłada jego merge i ich nie powtarza.
    `qa-adversarial` i `general-purpose`), modele zgodne z plikami `meta.json`, wartość z oznaczeniem szacunku, siedem
    raportów `code-reviewer`, w tym dwa `CHANGES_REQUIRED` (zadania 4 i 7), koszt subskrypcji `null` z wpisem w `gaps`.
 2. `metrics.py epic <EPIK>` bez przebiegu AO i bez pliku przebiegu kończy się kodem 2 i nie zapisuje rekordu.
-3. `metrics.py trend` po `backfill` pokazuje epiki AO i SMALL-FIXES w jednej tabeli z oznaczeniem źródła.
+3. `metrics.py trend` po `backfill` pokazuje epiki AO i SMALL-FIXES w jednej tabeli z oznaczeniem źródła, z medianami
+   liczonymi osobno dla każdego źródła i z oznaczeniem pól liczonych inaczej niż w AO.
 4. Rekord zbudowany z transkryptu bez pola `usage`, bez `meta.json` albo z nieznanym modelem ma `null` i wpisy w `gaps`,
    a komenda kończy się kodem 0.
 5. `retro.py pending` wymienia `small-fixes`, a `retro.py collect small-fixes` kończy się kodem 0; `input.json` ma
    incydenty `finding` dla dwóch przeglądów blokujących i fakt braku sekcji „Luki w instrukcjach” w opisie PR #752.
 6. `retro.py collect` dla epiku bez przebiegu AO i bez pliku przebiegu kończy się kodem 2.
 7. Test regresyjny #679: `collect` z nieaktualnym głównym checkoutem i aktualnym worktree ma dane pomiaru.
-8. Skill `/retro` przy serii w toku kończy przebieg raportem i commitem „Statusu”, bez commitów pozycji `fix`.
+8. Skill `/retro` opisuje zamrożenie: przy serii w toku przebieg kończy się raportem i commitem „Statusu”, bez
+   commitów pozycji `fix`. Pierwsze sprawdzenie w praktyce to retrospektywa pierwszego epiku serii.
 9. „Przebieg epiku” w ADR zawiera F1–F4, A1–A4 i V2; `qa-adversarial.md` wymaga kryteriów akceptacji w zleceniu.
 10. `make -C apps/api test` przechodzi po usunięciu `var/cache/test*` (F5).
 11. `make check` i testy skryptów przechodzą; specyfikacje metryk i retro opisują źródło natywne.
+12. Rekord dwóch sesji z nakładającymi się wiadomościami (sesja wznowiona) liczy każdą wiadomość raz, a sesja spoza
+    pliku przebiegu w tym samym katalogu roboczym nie wchodzi do rekordu.
+13. Rekord z odczytami limitów, między którymi okno się odnowiło, ma dla tego okna `null` i wpis w `gaps`.
+14. Po włączeniu eksportu (T1) sesja prowadząca epik jest widoczna w Prometheusie pod swoim `session_id`,
+    a zdarzenia subagenta w Lokim mają `agent_id` równy identyfikatorowi z rekordu. Gdy próba pokaże inaczej, wynik
+    i ograniczenie trafiają do specyfikacji telemetrii.
 
 ## Ryzyka i ograniczenia
 
@@ -242,15 +289,13 @@ specyfikacja zakłada jego merge i ich nie powtarza.
   widać w rekordzie jako „bez zadania” albo wpis w `gaps`.
 - Pierwsze `/retro` na epiku natywnym jest zarazem pierwszym sprawdzeniem tej ścieżki na prawdziwych danych.
 
-## Decyzje do potwierdzenia
+## Decyzje użytkownika (2026-11-18)
 
-- **Ceny modeli (D3).** Wartości początkowe z cennika dostawcy, USD za milion tokenów wejścia: Fable 5.2 8, Opus 5.5
-  4, Sonnet 5.5 2, Haiku 5.5 0,10. Do potwierdzenia przy implementacji; alternatywa to rekord z samymi tokenami
-  i kosztem subskrypcji.
-- **Retro SMALL-FIXES jako odbiór.** Po wdrożeniu zmian użytkownik uruchamia `/retro small-fixes` jako sprawdzenie
-  ścieżki natywnej na prawdziwym epiku.
+- Wartość w USD według cennika API (D3), ze stawkami za wszystkie rodzaje tokenów.
+- `/retro small-fixes` jest odbiorem ścieżki natywnej: po wdrożeniu zmian uruchamia je użytkownik.
+- Uprawnienia GitHuba bez zmian, AO zamrożony, bez dodatkowych mechanizmów tam, gdzie wystarczają istniejące.
 
 ## Wymagane przed startem
 
 Pozycje użytkownika: merge PR #764 i #757; wyłączenie wtyczki Superpowers na koncie (jej hook nadal działa
-w sesjach).
+w sesjach); wklejenie bloku z `python3 tools/telemetry/telemetry.py snippet` do `~/.claude/settings.json` (T1).
