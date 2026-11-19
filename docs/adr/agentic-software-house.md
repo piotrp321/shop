@@ -79,7 +79,8 @@ Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
    Poprawki robi `developer`, po nich przegląd różnicy (DELTA). Gdy zadanie z TDD nie ma fazy RED, sesja uruchamia
    test na kodzie bazowym (ma nie przechodzić) i zapisuje wynik w opisie PR; RED nie odtwarza się po fakcie.
 5. **Merge zadania.** Sesja merguje gałąź zadania do gałęzi epiku (`git merge`), wypycha ją i wpisuje commit
-   w „Status” planu. Czerwone CI draft PR naprawia przed kolejną falą.
+   w „Status” planu. Czerwone CI draft PR naprawia przed kolejną falą. Czysty worktree zmergowanego zadania usuwa
+   (`git worktree unlock`, potem `git worktree remove`: aplikacja zostawia worktree subagenta zablokowany).
 6. **Przegląd epiku.** Po ostatnim zadaniu i zielonym CI: jeden przegląd całego diffu `origin/main...<gałąź epiku>`
    agentami dobranymi do zmiany: `architecture-reviewer` przy nowym module, migracji albo zmianie granic;
    `qa-adversarial` na działającym stosie przy zmianie zachowania aplikacji; `ux-reviewer` przy zmianie frontów.
