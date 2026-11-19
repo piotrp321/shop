@@ -208,6 +208,16 @@ class HistoryAndBottlenecksTest(SourcesEnv):
         self.assertEqual(seen, [[]])
 
 
+    def test_decide_skips_d2_for_a_native_epic_because_its_tasks_have_no_kind(self):
+        config = metrics.load_config(metrics.DEFAULT_CONFIG)
+        record = native('nat')
+        result = metrics.decide_epic(record, {'nat': record}, config)
+        skipped = [entry for entry in result['skipped'] if entry['key'].startswith('D2')]
+        self.assertEqual(len(skipped), 1, result['skipped'])
+        self.assertIn('tasks.kind', skipped[0]['reason'])
+        self.assertFalse([c for c in result['candidates'] if c['key'].startswith('D2')])
+
+
 class BreakdownFlagTest(unittest.TestCase):
     def test_a_boolean_incomplete_breakdown_of_a_native_record_makes_idle_an_upper_bound(self):
         record = native('nat')
@@ -332,10 +342,13 @@ class RenderSourcesTest(SourcesEnv):
         line = self.line(out, 'Pozycja na tle mediany')
         self.assertIn('2 epiki', line)
         self.assertIn('natywn', line)
+        self.assertIn('mediana z 2 epików natywnych', out.splitlines()[0])
+
+    def test_without_a_native_history_the_ao_history_is_not_used(self):
         out = self.native_text('report', past=ao_history(5))
         self.assertIn('brak historii', self.line(out, 'Pozycja na tle mediany'))
         self.assertIn('natywn', self.line(out, 'Pozycja na tle mediany'))
-        self.assertIn('natywnych', out.splitlines()[0])
+        self.assertIn('mediana z 0 epików natywnych', out.splitlines()[0])
 
     def test_the_ao_position_is_against_the_ao_history_only(self):
         store_records(self.state, *ao_history(5), native('nat', merged='2026-10-20T10:00:00Z'),
