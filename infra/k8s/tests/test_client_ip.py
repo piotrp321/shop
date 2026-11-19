@@ -41,7 +41,7 @@ class ClientIpHeaderTest(unittest.TestCase):
     def test_prod_takes_traffic_only_through_the_allow_list_on_every_ingress(self):
         """The header is trusted only because nothing but Cloudflare reaches any host, also api. and auth."""
         ingresses = {name(i): i for i in of_kind("prod", "Ingress")}
-        self.assertEqual({"store", "admin", "api", "auth", "img"}, set(ingresses))
+        self.assertEqual({"store", "store-api", "admin", "api", "api-upload", "auth", "img"}, set(ingresses))
         for ingress_name, ingress in ingresses.items():
             self.assertIn(IPALLOWLIST, middlewares_of(ingress), ingress_name)
         policy = [m for m in of_kind("prod", "Middleware") if name(m) == "ipallowlist"]
