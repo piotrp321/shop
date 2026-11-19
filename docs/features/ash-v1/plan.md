@@ -12,7 +12,7 @@ Epik w toku od 2026-11-19 (gałąź `feat/ash-v1`).
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | ASH-V1-1, ASH-V1-2, ASH-V1-3 | ASH-V1-2 zmergowane (6d8f002e), ASH-V1-1 zmergowane (90c30b1f); 3 w toku |
+| 1 | ASH-V1-1, ASH-V1-2, ASH-V1-3 | ASH-V1-2 zmergowane (6d8f002e), ASH-V1-1 zmergowane (90c30b1f), ASH-V1-3 zmergowane (0184ec2b) |
 | 2 | ASH-V1-4, ASH-V1-5 | ASH-V1-4 w toku |
 | 3 | ASH-V1-6 | |
 
