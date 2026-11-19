@@ -158,7 +158,8 @@ Obowiązuje autora i reviewera, w części, której dotyczy zmiana:
 - **Klawiatura, focus, etykiety:** każda kontrolka działa z klawiatury i ma etykietę; po akcji (zapis, dialog, błąd)
   focus trafia w sensowne miejsce; asynchroniczne statusy i błędy są w `aria-live`.
 - **Stany:** loading, empty i error dla każdego zapytania; ekran 375 px.
-- **Przypadki brzegowe:** wartości puste i graniczne, limity, paginacja, współbieżna zmiana.
+- **Przypadki brzegowe:** wartości puste i graniczne, limity, paginacja, współbieżna zmiana; brak, utrata
+  i uszkodzenie danych wejściowych, powtórne uruchomienie.
 
 ## Dokumentacja
 

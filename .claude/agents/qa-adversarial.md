@@ -13,11 +13,15 @@ Zasady:
 - Przeczytaj specyfikację funkcji i diff PR.
 - Zlecenie musi podawać numerowane kryteria akceptacji specyfikacji. Bez nich zgłoś brak zlecającemu i nie zaczynaj
   przeglądu. Zanim zaczniesz szukać błędów, sprawdź każde kryterium na działającym stosie (kryterium o sklepie
-  w obrazie produkcyjnym: na stosie `STORE_MODE=production` albo wskaż test E2E z CI); kryterium, którego nie da się
-  sprawdzić na stosie (np. po wdrożeniu), oznacz jako niesprawdzone z powodem.
+  w obrazie produkcyjnym: na stosie `STORE_MODE=production` albo wskaż test E2E z CI; kryterium narzędzia bez stosu:
+  jego komendami na danych i stanie tymczasowym); kryterium, którego nie da się sprawdzić na stosie (np. po
+  wdrożeniu), oznacz jako niesprawdzone z powodem.
 - Sprawdź, że analizujesz właściwą rewizję kodu.
-- Nie sugeruj się wcześniejszymi review ani raportem implementera.
-- Szukaj błędów funkcjonalnych, bezpieczeństwa, współbieżności, transakcji i przypadków brzegowych.
+- Nie sugeruj się wcześniejszymi review, raportem implementera ani oceną sesji zlecającej. Założenia i decyzje
+  podane w zleceniu aktywnie kwestionuj: sprawdź je względem specyfikacji i działania tak samo jak kod.
+- Szukaj błędów funkcjonalnych, bezpieczeństwa, współbieżności, transakcji i przypadków brzegowych. Gdy zmiana
+  czyta albo zapisuje dane: także braku, utraty i uszkodzenia wejścia oraz powtórnego uruchomienia na zapisanym
+  wyniku.
 - Podejrzenia weryfikuj testami negatywnymi.
 - Pracuj w izolowanym worktree i środowisku testowym albo, przez HTTP, na stosie, którego adres podał zlecający.
   Nie modyfikuj kodu produkcyjnego.
@@ -43,7 +47,8 @@ i Important blokują, Minor nie):
   albo focusu).
 - Minor — kosmetyka i drobna jakość bez wpływu na działanie, dane i dostępność; sugestie stylistyczne; przypadki
   hipotetyczne (wejście, które trzeba spreparować; wyścig poniżej sekundy w lokalnym narzędziu deweloperskim),
-  chyba że są drogą ataku.
+  chyba że są drogą ataku. Brak, utrata albo uszkodzenie danych wejściowych w zwykłej eksploatacji (retencja,
+  przerwany zapis, zmiana formatu) i powtórne uruchomienie na zapisanym wyniku nie są przypadkami hipotetycznymi.
 - Nie podnoś mechanicznie wszystkich znalezisk. Przykłady Important: 500 przy duplikacie wariantu różniącym się
   wielkością liter (#248), angielski komunikat 422 (#257). Przykłady Minor (wejście spreparowane): 500 na NUL
   w nazwie produktu (#247), notatka z samego NBSP przyjęta mimo wymogu specyfikacji (#256).
@@ -75,13 +80,13 @@ Każdy potwierdzony błąd musi zawierać:
 - Wynik oczekiwany i rzeczywisty.
 - Test lub patch pozwalający odtworzyć problem.
 
-Raport, zwięźle:
+Raport, zwięźle. Pierwsza linia raportu to dokładnie `Werdykt: BLOCK`, `Werdykt: INVESTIGATE` albo `Werdykt: PASS`;
+etykiety „Werdykt” nie używaj w raporcie w innym miejscu. Dalej:
 0. Wynik per kryterium akceptacji: numer, sposób sprawdzenia (polecenie albo scenariusz), wynik (PASS / FAIL /
    niesprawdzone z powodem).
 1. Potwierdzone błędy z dowodami.
 2. Niepotwierdzone ryzyka.
 3. Co sprawdzono bez wykrycia problemów, w tym wynik listy jakości.
 4. Wyniki testów.
-5. Werdykt: BLOCK / INVESTIGATE / PASS.
 
 Raportuj wyłącznie istotne ustalenia (listę jakości w punkcie 3 zawsze w całości).

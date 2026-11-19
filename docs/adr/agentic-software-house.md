@@ -84,26 +84,36 @@ Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
 4. **Przegląd zadania.** `FAST`: sesja sama sprawdza diff i wyniki testów, w tym trzy kontrole z punktu 4 agenta
    `code-reviewer` (istniejące testy, zakres, RED). `STANDARD` i `CRITICAL`: `code-reviewer` w trybie FULL; zlecenie
    podaje worktree zadania jako katalog przeglądu, `head_sha` i `base_sha` (`git merge-base task/<ID> <gałąź epiku>`).
-   Poprawki robi `developer`, po nich przegląd różnicy (DELTA). Gdy zadanie z TDD nie ma fazy RED, sesja uruchamia
-   test na kodzie bazowym (ma nie przechodzić) i zapisuje wynik w opisie PR; RED nie odtwarza się po fakcie.
+   Poprawki robi `developer`, po nich przegląd różnicy (DELTA). Zlecenie poprawek przekazuje ustalenia reviewera;
+   to, co sesja dodaje od siebie (własna reguła, zawężenie albo rozszerzenie poprawki), oznacza jako decyzję sesji
+   w zleceniu poprawek i w zleceniu przeglądu. Zlecenie przeglądu (tu i w kroku 6) podaje fakty i decyzje do oceny:
+   nie zawęża przeglądu i nie mówi, czego nie sprawdzać, a reviewer ma obowiązek aktywnie kwestionować założenia
+   i decyzje sesji tak samo jak kod. Gdy zadanie z TDD nie ma fazy RED, sesja uruchamia test na kodzie bazowym (ma
+   nie przechodzić) i zapisuje wynik w opisie PR; RED nie odtwarza się po fakcie.
 5. **Merge zadania.** Sesja merguje gałąź zadania do gałęzi epiku (`git merge`), wypycha ją i wpisuje commit
    w „Status” planu. Czerwone CI draft PR naprawia przed kolejną falą. Czysty worktree zmergowanego zadania usuwa
    (`git worktree unlock`, potem `git worktree remove`: aplikacja zostawia worktree subagenta zablokowany).
 6. **Przegląd epiku.** Po ostatnim zadaniu i zielonym CI: jeden przegląd całego diffu `origin/main...<gałąź epiku>`.
    Zaczyna się od odbioru numerowanych kryteriów akceptacji specyfikacji epiku, przed szukaniem błędów. Kryteria
-   sprawdza `qa-adversarial` na działającym stosie (dostaje je w zleceniu); epik bez QA (narzędzia, dokumentacja):
-   sesja prowadząca. Kryterium o zachowaniu sklepu w obrazie produkcyjnym sprawdza się na stosie
-   `STORE_MODE=production` albo testem E2E z CI wskazanym z nazwy. Wynik trafia do tabeli kryteriów w opisie PR
-   (krok 7). Dalej przegląd robią agenci dobrani do zmiany: `architecture-reviewer` przy nowym module, migracji albo zmianie granic;
-   `qa-adversarial` na działającym stosie przy zmianie zachowania aplikacji; `ux-reviewer` przy zmianie frontów.
+   sprawdza `qa-adversarial` (dostaje je w zleceniu) na działającym stosie, a kryteria narzędzia jego komendami na
+   danych i stanie tymczasowym; epik bez QA (dokumentacja, instrukcje, narzędzie niskiego ryzyka): sesja prowadząca.
+   Kryterium o zachowaniu sklepu w obrazie produkcyjnym sprawdza się na stosie `STORE_MODE=production` albo testem
+   E2E z CI wskazanym z nazwy. Wynik trafia do tabeli kryteriów w opisie PR (krok 7). Dalej przegląd robią agenci
+   dobrani do zmiany: `architecture-reviewer` przy nowym module, migracji albo zmianie granic; `qa-adversarial` na
+   działającym stosie przy zmianie zachowania aplikacji; `ux-reviewer` przy zmianie frontów. QA zmiany narzędzia
+   sesja dobiera proporcjonalnie do ryzyka: gdy zmiana dotyczy wyniku, który narzędzie zapisuje i który jest używany
+   dalej (rekord, raport, stan kolejnych uruchomień), albo ma zadanie `CRITICAL`, `qa-adversarial` sprawdza
+   zmienione komendy na danych i stanie tymczasowym, w zakresie zmiany, nie całego narzędzia; pozostałe zmiany
+   narzędzi to niskie ryzyko i zostają bez QA, a sesja zapisuje to z powodem w „Decyzjach bez pytania” opisu PR.
    Stos na czole gałęzi epiku podnosi sesja w swoim worktree (`make up`, `make seed`) i podaje reviewerom jego adresy;
    `ux-reviewer` dostaje też katalog stosu, `AGENT_DIR`, tryb i listę zmienionych plików frontów, a `qa-adversarial`
    (własny worktree) zaczyna od `git switch --detach origin/<gałąź epiku>`. Znaleziska blokujące naprawia jedno
    zadanie, po nim przegląd różnicy (punkt 3 decyzji).
 7. **Koniec.** Sesja aktualizuje specyfikację, usuwa `plan.md`, wpisuje w opis PR odroczone uwagi i `Closes #N` dla
-   issues z linii `Issues:` specyfikacji, oznacza PR jako gotowy, zapisuje drugi punkt odniesienia
-   (`python3 tools/metrics/metrics.py done <epik>` z drugim odczytem limitów) i pisze raport. Merge do `main` robi
-   użytkownik.
+   issues z linii `Issues:` specyfikacji, po zakończonym zielonym przebiegu CI na czole gałęzi wypełnia z niego
+   wiersze „CI” tabeli kryteriów i oznacza PR jako gotowy (po każdym późniejszym pushu aktualizuje te wiersze),
+   zapisuje drugi punkt odniesienia (`python3 tools/metrics/metrics.py done <epik>` z drugim odczytem limitów)
+   i pisze raport. Merge do `main` robi użytkownik.
 
    Opis końcowego PR ma stałe sekcje o tych nazwach, w tej kolejności: „Zakres” (zadanie, ryzyko, przegląd),
    „Kryteria akceptacji”, „Testy”, „Ujawnienie TDD”, „Odroczone uwagi”, „Decyzje bez pytania”, „Problemy i zastoje”,
