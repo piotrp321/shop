@@ -336,8 +336,10 @@ błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do plan
 ## Zamrożenie na czas serii
 
 Seria ASH v1.0 (`docs/features/ash-v1/spec.md`, D6, R6) jest w toku, gdy wiersz „Stan serii” tabeli „Seria ASH v1.0”
-w „Statusie” planu `docs/features/agentic-software-house/plan.md` (worktree `origin/main`) ma wartość „w toku”; brak
-wiersza albo wartość inna niż „przed startem” i „zakończona” sesja traktuje tak samo, z adnotacją w raporcie. Wtedy:
+w „Statusie” planu `docs/features/agentic-software-house/plan.md` (worktree `origin/main`) zaczyna się od „w toku”
+(stan to wartość, od której zaczyna się komórka: „przed startem (tag …)” to „przed startem”); brak planu, wiersza albo
+wartość, która nie zaczyna się od „przed startem”, „w toku” ani „zakończona”, sesja traktuje jak „w toku”, z adnotacją
+w raporcie. Stan odczytuje fragment w `SKILL.md` (krok 5). Wtedy:
 
 - sesja nie wprowadza pozycji `fix` (bez commitów); PR powstaje tylko przy zmianie „Statusu”, a commit „Statusu”
   i propozycje issues działają jak poza serią;

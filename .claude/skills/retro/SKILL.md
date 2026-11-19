@@ -244,17 +244,33 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    nie dubluje): dopisuje obserwacje oraz `key` i incydenty każdej pozycji `fix` i `issue` do `observations.jsonl`, a z
    `--pr` zapisuje pozycje `fix` jako pozycje PR retro, `issue` jako `decisions_open`.
 
-   **Zamrożenie na czas serii.** Przed zmianami odczytaj wiersz „Stan serii” tabeli „Seria ASH v1.0” w „Statusie” planu
-   w worktree (`grep '^| Stan serii |' "$WT/docs/features/agentic-software-house/plan.md"`). Przy „w toku” (reguła
-   zamrożenia na końcu „Przebiegu epiku” w `docs/adr/agentic-software-house.md`), a także przy braku wiersza albo innej
-   wartości niż „przed startem” i „zakończona” (z adnotacją w raporcie), nie wprowadzasz pozycji `fix` (są odroczone do
-   końca serii): bez ich commitów, a PR powstaje tylko przy zmianie „Statusu”. `observe` zapisuje je jak zawsze (`key` i
-   incydenty w `observations.jsonl`), przy PR z `--committed none`, żeby nie zostały pozycjami PR retro (`sync` nie
-   wpisze ich do `applied.jsonl`); bez PR bez `--pr`. Raport wymienia je w sekcji `## Odroczone do końca serii` (numer
-   `n`, tytuł, pliki) i przy każdej ocenia, czy jest blokadą kolejnego epiku serii albo zagrożeniem (bezpieczeństwo,
-   utrata danych), z uzasadnieniem. Commit „Statusu” i propozycje issues działają jak zawsze. Pozycję oznaczoną jako
-   blokada albo zagrożenie wprowadzasz dopiero po „tak” użytkownika wskazującym tę pozycję (krok 7); innej pozycji `fix`
-   w trakcie serii nie wprowadzasz. Przy „przed startem” i „zakończona” pozycje `fix` idą jak zawsze.
+   **Zamrożenie na czas serii.** Przed zmianami odczytaj stan serii z wiersza „Stan serii” tabeli „Seria ASH v1.0”
+   w „Statusie” planu w worktree. Stan to wartość, od której zaczyna się komórka („przed startem (tag …)” to „przed
+   startem”); brak planu, wiersza albo innej wartości to „w toku” z adnotacją w raporcie:
+
+   ```bash
+   python3 - "$WT/docs/features/agentic-software-house/plan.md" <<'PY'
+   import re, sys
+   try:
+       text = open(sys.argv[1], encoding='utf-8').read()
+   except OSError:
+       text = ''
+   row = re.search(r'^\| *Stan serii *\| *([^|\n]*?) *\|', text, re.M)
+   value = row.group(1) if row else ''
+   state = next((s for s in ('przed startem', 'w toku', 'zakończona') if value.startswith(s)), None)
+   print(state or 'w toku (nieznany stan: %s)' % (value or 'brak wiersza'))
+   PY
+   ```
+
+   Przy „w toku” (reguła zamrożenia na końcu „Przebiegu epiku” w `docs/adr/agentic-software-house.md`) nie wprowadzasz
+   pozycji `fix` (są odroczone do końca serii): bez ich commitów, a PR powstaje tylko przy zmianie „Statusu”. `observe`
+   zapisuje je jak zawsze (`key` i incydenty w `observations.jsonl`), przy PR z `--committed none`, żeby nie zostały
+   pozycjami PR retro (`sync` nie wpisze ich do `applied.jsonl`); bez PR bez `--pr`. Raport wymienia je w sekcji `##
+   Odroczone do końca serii` (numer `n`, tytuł, pliki) i przy każdej ocenia, czy jest blokadą kolejnego epiku serii albo
+   zagrożeniem (bezpieczeństwo, utrata danych), z uzasadnieniem. Commit „Statusu” i propozycje issues działają jak
+   zawsze. Pozycję oznaczoną jako blokada albo zagrożenie wprowadzasz dopiero po „tak” użytkownika wskazującym tę
+   pozycję (krok 7); innej pozycji `fix` w trakcie serii nie wprowadzasz. Przy „przed startem” i „zakończona” pozycje
+   `fix` idą jak zawsze.
 6. **Wynik.** Wywołaj `get_usage` (koniec pomiaru). Zapisz `$RUN/report.md` (po polsku): poprawki (commit, ID pozycji),
    obserwacje, propozycje issues z numerami (repo, tytuł, `existing_issue` albo nowe, dowody), `overflow`, zmiany
    „Statusu”, PR, ostrzeżenie `warning` z `lock` (jeśli było), przy serii w toku sekcja `## Odroczone do końca serii`

@@ -15,6 +15,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -3829,7 +3830,8 @@ class RetroProcessDocumentsTest(unittest.TestCase):
         """The output of the snippet of "Zamrożenie na czas serii" of SKILL.md on a plan with that text (None: no
         plan file)."""
         freeze = section(self.skill, '**Zamrożenie na czas serii.**', '6. **Wynik.**')
-        code = section(freeze, "<<'PY'\n", '\nPY\n')[len("<<'PY'\n"):]
+        lines = freeze[freeze.index("<<'PY'\n") + len("<<'PY'\n"):].split('\n')
+        code = textwrap.dedent('\n'.join(lines[:[line.strip() for line in lines].index('PY')]))
         tmp = tempfile.mkdtemp(prefix='retro-series-')
         self.addCleanup(shutil.rmtree, tmp, True)
         plan = os.path.join(tmp, 'plan.md')
