@@ -33,7 +33,7 @@
 # serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
 # nothing). The last phase runs the demo data generator through make generate PROFILE=small (docs/features/demo-scale/spec.md): it
 # waits until every StatefulSet and Deployment is rolled out and no Job runs (the upgrade before it ends on a failed job, with
-# Elasticsearch still on its way to the new image), prints the free space of the node, and runs scripts/generate.sh with the word tak
+# Elasticsearch still on its way to the new image), and runs scripts/generate.sh (it prints the free space of the node) with the word tak
 # (without a file of the photo pool and without Argo CD, as in deploy.yml; generate runs make open after the Job) while requests go
 # through the ingress without a pause (smoke/traffic.py): they must get 200 before the closing, none while the shop is closed (Z1,
 # Z2) and 200 again after the opening; then the Jobs demo-data-run and load must have completed, the numbers be those of the seed and
@@ -961,17 +961,6 @@ check_counts() {
 # mark <name>: a marker for the client of the traffic (smoke/traffic.py run), the file mark-<name> in its directory.
 mark() { : > "$generate_dir/traffic/mark-$1"; }
 
-# node_free_gb: the free space of the node in GB (10^9 bytes), as make generate reads it (the kubelet, node.fs.availableBytes).
-node_free_gb() {
-  kubectl get --raw "/api/v1/nodes/$node/proxy/stats/summary" | py -c '
-import json, sys
-value = json.load(sys.stdin).get("node", {}).get("fs", {}).get("availableBytes")
-if not isinstance(value, int) or isinstance(value, bool):
-    sys.exit("no node.fs.availableBytes")
-print("%.2f" % (value / 1e9))
-'
-}
-
 # run_demo <name> <script> [<PROFILE>]: scripts/<script> (generate.sh or open.sh) as make generate and make open run it: the script
 # itself (the guard of AO is a step of the target in the Makefile, not of the script, so the smoke test also runs from a run of AO),
 # with the word tak on its standard input (open.sh reads none), the kubeconfig of the test cluster, the node port of Traefik with the
@@ -1001,10 +990,12 @@ run_demo() {
 
 # traffic_start: the client of the traffic (smoke/traffic.py run) in a container on the Docker network of the cluster: GET /health of
 # the API through the ingress (Traefik on its node port, Host api.localhost) without a pause, over one keep-alive connection while
-# Traefik keeps it, until the marker stop; at most SMOKE_TRAFFIC_LIMIT seconds (7200). Its lines go to traffic.log.
+# Traefik keeps it, until the marker stop; at most 7200 seconds. Its lines go to traffic.log. A container of that name left by a run
+# that was killed is removed first.
 traffic_start() {
+  docker rm -f "$cluster-traffic" >/dev/null 2>&1 || true
   tools_run --name "$cluster-traffic" --network "$KUBE_NETWORK" "$PYTHON_IMAGE" python -I -u smoke/traffic.py run \
-    "$node:$traefik_port" api.localhost /health "/cache/${work##*/}/generate/traffic" "${SMOKE_TRAFFIC_LIMIT:-7200}" \
+    "$node:$traefik_port" api.localhost /health "/cache/${work##*/}/generate/traffic" 7200 \
     < /dev/null > "$generate_dir/traffic.log" 2>&1 &
   traffic_pid=$!
 }
@@ -1048,8 +1039,8 @@ check_generate_break() {
 # pause. They get 200 before the closing, none from the end of the closing (the rule shop-closed and the restart of Traefik: Z1, Z2) to
 # the end of the checks of make open, and 200 again after the opening. Then the Jobs demo-data-run and load completed, the rule is
 # gone, and the database has the products of the seed and of the profile and its orders with the one of the checkout of the Job load.
-# The free space of the node is printed before make generate starts and the time of the phase at its end. The generator replaces the
-# data of every module, so the phase runs last. SMOKE_BREAK=demo-data: check_generate_break instead.
+# make generate prints the free space of the node before tak, and the phase its time at its end. The generator replaces the data of
+# every module, so the phase runs last. SMOKE_BREAK=demo-data: check_generate_break instead.
 check_generate() {
   generate_started="$(date +%s)"
   generator="$(kc get cronjob demo-data -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].command}')"
@@ -1071,8 +1062,6 @@ check_generate() {
   [ -n "$traefik_port" ] || { echo "smoke: the service of Traefik has no node port for make generate" >&2; return 1; }
   generate_dir="$work/generate"
   mkdir -p "$generate_dir/traffic"
-  free="$(node_free_gb)" || { echo "smoke: the free space of the node $node cannot be read from its kubelet" >&2; return 1; }
-  echo "smoke: the free space of the node $node before make generate: $free GB"
   if [ "$SMOKE_BREAK" = demo-data ]; then
     check_generate_break
     return 1

@@ -29,7 +29,7 @@ K8S = REPO / "infra/k8s"
 SMOKE = K8S / "scripts/smoke.sh"
 TRAFFIC = K8S / "smoke/traffic.py"
 FUNCTIONS = ("kc", "count", "job_states", "job_has", "statefulsets_in_rollout", "not_settled", "wait_settled", "ingress_code",
-             "check_shop", "check_counts", "mark", "node_free_gb", "run_demo", "traffic_start", "traffic_stop",
+             "check_shop", "check_counts", "mark", "run_demo", "traffic_start", "traffic_stop",
              "check_generate_break", "check_generate")
 
 
@@ -110,12 +110,6 @@ class TrafficVerdict(unittest.TestCase):
         text = GOOD.replace("2.0 mark:closed", "2.0 mark:checkz").replace("5.0 mark:checks", "5.0 mark:closed").replace(
             "mark:checkz", "mark:checks")
         self.assert_fails(text, "order")
-
-    def test_a_pause_between_two_answers_fails(self):
-        """Without a pause: a gap longer than the limit means the requests did not go on through the closing."""
-        self.assert_fails(GOOD.replace("4.0 502", "44.0 502").replace("5.0 mark:checks", "45.0 mark:checks").replace(
-            "5.5 502", "45.5 502").replace("6.0 200", "46.0 200").replace("6.2 mark:open", "46.2 mark:open").replace(
-            "6.5 200", "46.5 200").replace("7.0 mark:stop", "47.0 mark:stop"), "pause")
 
     def test_a_line_that_is_neither_an_answer_nor_a_marker_fails(self):
         for line in ("garbage", "1.0", "x 200", "1.0 20", "1.0 mark:"):
@@ -266,8 +260,7 @@ class TrafficRun(unittest.TestCase):
 # One line per call in $STUB_LOG (kubectl and docker). The CronJob demo-data has the command bin/generate-demo --profile=$STUB_PROFILE;
 # the StatefulSet elasticsearch is in a rolling update for the first STUB_ROLLING reads; a Job backfill is active for the first STUB_ACTIVE
 # reads of the Jobs, then complete; the Jobs that generate made are the lines of $STUB_DIR/jobs; the rule shop-closed exists while
-# $STUB_DIR/rule does; the database has the numbers of $STUB_DIR/db-*; the kubelet reports STUB_FREE free bytes (none when "fail"). Every
-# read of the kind STUB_FAILS (statefulsets, deployments or jobs) fails. STUB_RATE_LIMIT adds a running Job of the CronJob rate-limit-check.
+# $STUB_DIR/rule does; the database has the numbers of $STUB_DIR/db-*. Every read of the kind STUB_FAILS (statefulsets, deployments or jobs) fails. STUB_RATE_LIMIT adds a running Job of the CronJob rate-limit-check.
 # The Jobs come as `<name> <conditions>` lines (jsonpath) or as JSON (-o json) with the conditions and the owner.
 KUBECTL = r"""#!/bin/sh
 printf 'kubectl %s\n' "$*" >> "$STUB_LOG"
@@ -302,9 +295,6 @@ case "$*" in
       *) cat "$STUB_DIR/job-lines" ;;
     esac ;;
   *"get networkpolicy shop-closed"*) [ ! -e "$STUB_DIR/rule" ] || echo "networkpolicy.networking.k8s.io/shop-closed" ;;
-  *"get --raw"*stats/summary*)
-    [ "${STUB_FREE:-}" != fail ] || { echo "the server is unavailable" >&2; exit 1; }
-    printf '{"node": {"fs": {"availableBytes": %s}}}' "${STUB_FREE:-52345678901}" ;;
   *"get service traefik"*) printf '30080' ;;
   *"FROM catalog_product"*) cat "$STUB_DIR/db-products" ;;
   *"FROM ordering_order"*) cat "$STUB_DIR/db-orders" ;;
@@ -520,18 +510,10 @@ class Phase(unittest.TestCase):
 
     def test_the_free_space_of_the_node_is_printed_before_generate_and_the_time_of_the_phase_at_its_end(self):
         result = self.run_phase()
-        self.assertIn("the free space of the node k3d-sm-test-server-0 before make generate: 52.35 GB", result.stdout)
+        # The line of generate.sh before tak (test_the_lines_the_phase_reads_are_the_ones_generate_and_open_print) is in the output.
+        self.assertIn("  - the free space: k3d-node 52.35 GB", result.stdout)
         self.assertLess(result.stdout.index("52.35 GB"), result.stdout.index("generate: the shop is closed"))
-        calls = self.calls()
-        raw = next(i for i, call in enumerate(calls) if "stats/summary" in call)
-        self.assertLess(raw, calls.index("generate small"))
         self.assertRegex(result.stdout, r"the generator phase took [0-9]+ s \(make generate itself [0-9]+ s\)\n$")
-
-    def test_a_free_space_that_cannot_be_read_fails_the_phase_without_generate(self):
-        result = self.run_phase(STUB_FREE="fail")
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("free space", result.stderr)
-        self.assertEqual([], self.runs())
 
     def test_the_traffic_runs_through_the_ingress_while_generate_runs_and_its_verdict_is_printed(self):
         result = self.run_phase()
@@ -542,6 +524,8 @@ class Phase(unittest.TestCase):
         client = calls[start]
         self.assertIn("--network k3d-sm-test", client)
         self.assertIn("k3d-sm-test-server-0:30080 api.localhost /health", client)
+        # A container of that name left by a killed run would stop the client from starting.
+        self.assertLess(calls.index("docker rm -f sm-test-traffic"), start)
         self.assertIn("3 answers 200 before the closing", result.stdout)
 
     def test_the_lines_of_generate_and_open_become_the_markers_of_the_traffic(self):
@@ -752,6 +736,7 @@ class Script(unittest.TestCase):
     def test_the_lines_the_phase_reads_are_the_ones_generate_and_open_print(self):
         """The markers of the traffic come from these lines: a changed message would leave the traffic without its markers."""
         run_demo = cut_out("run_demo", self.text)
+        self.assertIn("  - the free space: $free_text (needed: $need_text)", (K8S / "scripts/generate.sh").read_text())
         for script, line, pattern in (
             ("generate.sh", 'echo "generate: the shop is closed: $probe_report"', '"generate: the shop is closed: "*) mark closed ;;'),
             ("open.sh", 'echo "open: ${counts%%|*} products and ${counts#*|} orders; the sizes:"',

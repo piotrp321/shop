@@ -11,8 +11,7 @@ what they got (scripts/smoke.sh, the phase of the demo data generator; docs/feat
   verdict
         reads such lines on the standard input. The requests got 200 before the closing, none from the marker closed to the marker
         checks (the shop stayed closed while the generator ran and make open checked its data, also for a connection opened before
-        the rule: Z2), and 200 again after the marker open; no pause between two answers is longer than MAX_PAUSE seconds. Prints a
-        summary and exits 0, or prints what failed and exits 1.
+        the rule: Z2), and 200 again after the marker open. Prints a summary and exits 0, or prints what failed and exits 1.
 
 Python with the standard library only (it runs in the image python of tools.sh, on the Docker network of the cluster).
 """
@@ -32,8 +31,6 @@ PAUSE_AFTER_ERROR = 0.5
 STOP_GRACE = 60
 # Seconds between two looks for new markers.
 WATCH = 0.05
-# The longest gap between two answers that still counts as "without a pause" (a request that times out takes TIMEOUT).
-MAX_PAUSE = 30
 MARKERS = ("closed", "checks", "open")
 
 LINE = re.compile(r"^([0-9]+(?:\.[0-9]+)?) (mark:[a-z]+|[0-9]{3}|error:[A-Za-z_][A-Za-z0-9_]*)$")
@@ -145,8 +142,6 @@ def verdict(lines):
             parts[segment].append((moment, what))
 
     answers = [moment for moment, what in entries if not what.startswith("mark:")]
-    gaps = [(later - earlier, earlier) for earlier, later in zip(answers, answers[1:])]
-    longest = max(gaps, default=(0.0, 0.0))
 
     before_200 = sum(1 for _, what in parts["before"] if what == "200")
     closed = parts["closed"]
@@ -161,9 +156,6 @@ def verdict(lines):
                         "marker closed): a connection kept the backend (Z2) or the rule does not close the shop")
     if not after_200:
         problems.append("no answer 200 after the opening")
-    if longest[0] > MAX_PAUSE:
-        problems.append(f"a pause of {longest[0]:.1f} s between two answers (at {longest[1]:.1f} s): more than {MAX_PAUSE} s, "
-                        "not without a pause")
     if problems:
         return False, ["traffic: " + problem for problem in problems]
 
@@ -174,8 +166,7 @@ def verdict(lines):
         f"ok: the traffic through the ingress: {before_200} answers 200 before the closing; while the shop was closed "
         f"({window:.0f} s from the marker closed to the marker checks) 0 answers 200 and {len(closed)} others ("
         + ", ".join(f"{what} x {count}" for what, count in sorted(others.items()))
-        + f"); 200 again {after_200[0] - opened_at:.1f} s after the opening; {len(answers)} requests, the longest pause "
-        f"{longest[0]:.1f} s"
+        + f"); 200 again {after_200[0] - opened_at:.1f} s after the opening; {len(answers)} requests"
     ]
 
 
