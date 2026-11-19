@@ -81,7 +81,7 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   gdy jest choć jedno oznaczenie. `--json`: `epics[].source`, `epics[].different` (kolumny oznaczone „†”),
   `sources` (`{ao|native: {epics, median, median_estimated, median_different}}` dla źródeł z wierszami w tabeli),
   `median` i `median_estimated` (mediana źródła pozycji, `median_source`), `position.source`, `position.different`
-  i `position.median_different`; klucze `epics`, `position` i `median`, które czyta `retro.py`, zostają.
+  i `position.median_different`; klucze `epics` i `position`, które czyta `retro.py`, oraz `median` zostają.
 - `render EPIK --format report|comment`: tekst z zapisanego rekordu i historii (`<state>/epics`), bez `gh`.
   `report` (raport odbioru, przed merge'em) zaczyna się od wąskich gardeł liczonych od nowa bez `review`, potem: czas do
   `epic_done` i rozkład, czas w próbach (z możliwymi powtórzeniami testów, ponowieniami API i odmowami; przy
