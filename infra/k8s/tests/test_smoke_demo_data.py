@@ -266,9 +266,11 @@ class TrafficRun(unittest.TestCase):
 # One line per call in $STUB_LOG (kubectl and docker). The CronJob demo-data has the command bin/generate-demo --profile=$STUB_PROFILE;
 # the StatefulSet elasticsearch is in a rolling update for the first STUB_ROLLING reads; a Job backfill is active for the first STUB_ACTIVE
 # reads of the Jobs, then complete; the Jobs that generate made are the lines of $STUB_DIR/jobs; the rule shop-closed exists while
-# $STUB_DIR/rule does; the database has the numbers of $STUB_DIR/db-*; the kubelet reports STUB_FREE free bytes (none when "fail").
+# $STUB_DIR/rule does; the database has the numbers of $STUB_DIR/db-*; the kubelet reports STUB_FREE free bytes (none when "fail"). Every
+# read of the kind STUB_FAILS (statefulsets, deployments or jobs) fails.
 KUBECTL = r"""#!/bin/sh
 printf 'kubectl %s\n' "$*" >> "$STUB_LOG"
+case "$*" in *"get ${STUB_FAILS:-none} "*) echo "The connection to the server was refused" >&2; exit 1 ;; esac
 reads() { n=$(( $(cat "$STUB_DIR/$1-reads" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STUB_DIR/$1-reads"; echo "$n"; }
 case "$*" in
   *"get cronjob demo-data"*command*) printf 'bin/generate-demo --profile=%s --force-reset' "${STUB_PROFILE:-small}" ;;
@@ -608,6 +610,17 @@ class Phase(unittest.TestCase):
                 result = self.run_phase(SMOKE_TIMEOUT="0", **variables)
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn("not settled", result.stderr)
+                self.assertEqual([], self.runs())
+
+    def test_workloads_or_jobs_that_cannot_be_read_are_never_taken_for_settled(self):
+        """A failed read is never a settled cluster: make generate does not run and the phase fails."""
+        for kind, what in (("statefulsets", "StatefulSets"), ("deployments", "Deployments"), ("jobs", "Jobs")):
+            with self.subTest(kind):
+                self.fresh()
+                result = self.run_phase(STUB_FAILS=kind, SMOKE_TIMEOUT="0")
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("not settled", result.stderr)
+                self.assertIn(f"(cannot read the {what})", result.stderr)
                 self.assertEqual([], self.runs())
 
     def test_without_the_break_the_cronjob_is_not_patched(self):
