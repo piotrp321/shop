@@ -54,6 +54,9 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools.sh
 . "$here/tools.sh"
+# active_jobs: the Jobs that run, counted as make generate counts them (the phase of the generator waits for them).
+# shellcheck source=shop-closed.sh
+. "$here/shop-closed.sh"
 
 SMOKE_BREAK="${SMOKE_BREAK:-}"
 SMOKE_BUILD="${SMOKE_BUILD:-1}"
@@ -885,7 +888,8 @@ job_has() {
 }
 
 # not_settled: what make generate refuses to start on (scripts/generate.sh, step 1), one line each: a StatefulSet in its rollout, a
-# Deployment that is not rolled out, a Job that runs. A failed read is a line too: it must never pass for a settled cluster.
+# Deployment that is not rolled out, a Job that runs (active_jobs of shop-closed.sh, as make generate counts them). A failed read is a
+# line too: it must never pass for a settled cluster.
 not_settled() {
   statefulsets_in_rollout
   deployments="$(kc get deployments -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.generation}{" "}{.status.observedGeneration}{" "}{.spec.replicas}{" "}{.status.readyReplicas}{" "}{.status.updatedReplicas}{"\n"}{end}')" || {
@@ -893,11 +897,11 @@ not_settled() {
     return 0
   }
   printf '%s\n' "$deployments" | awk 'NF && (NF != 6 || $2 != $3 || $5 != $4 || $6 != $4) {print "deployment " $0}'
-  jobs="$(job_states)" || {
+  active="$(active_jobs)" || {
     echo "(cannot read the Jobs)"
     return 0
   }
-  printf '%s\n' "$jobs" | awk 'NF { done = 0; for (i = 2; i <= NF; i++) if ($i == "Complete" || $i == "Failed") done = 1; if (!done) print "job " $1 " runs" }'
+  for job in $active; do echo "job $job runs"; done
 }
 
 # wait_settled <what>: waits up to SMOKE_TIMEOUT until not_settled is empty. The upgrade r4 before the phase ends on the failed

@@ -745,6 +745,8 @@ class Script(unittest.TestCase):
         self.assertNotIn("DEMO_DATA_CONFIRM", self.text)
         self.assertNotIn("run_cronjob_job demo-data", self.text)
         self.assertNotIn("kube-jobs.sh", self.text)
+        # The tests of the phase source it as well: active_jobs, which not_settled calls, is that of make generate.
+        self.assertIn('. "$here/shop-closed.sh"', self.text)
         self.assertIn('sh "$here/$2"', cut_out("run_demo", self.text))
 
     def test_the_lines_the_phase_reads_are_the_ones_generate_and_open_print(self):
