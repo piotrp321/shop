@@ -102,9 +102,10 @@ Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
    dobrani do zmiany: `architecture-reviewer` przy nowym module, migracji albo zmianie granic; `qa-adversarial` na
    działającym stosie przy zmianie zachowania aplikacji; `ux-reviewer` przy zmianie frontów. QA zmiany narzędzia
    sesja dobiera proporcjonalnie do ryzyka: gdy zmiana dotyczy wyniku, który narzędzie zapisuje i który jest używany
-   dalej (rekord, raport, stan kolejnych uruchomień), albo ma zadanie `CRITICAL`, `qa-adversarial` sprawdza
-   zmienione komendy na danych i stanie tymczasowym, w zakresie zmiany, nie całego narzędzia; pozostałe zmiany
-   narzędzi to niskie ryzyko i zostają bez QA, a sesja zapisuje to z powodem w „Decyzjach bez pytania” opisu PR.
+   dalej (rekord, raport, stan kolejnych uruchomień), albo ma zadanie `CRITICAL`, `qa-adversarial` sprawdza na
+   danych i stanie tymczasowym komendy, których działanie zmiana zmienia (także niezmienione komendy korzystające
+   ze zmienionego kodu), kolejne uruchomienia i konsumentów zapisanego wyniku; pozostałe zmiany narzędzi to niskie
+   ryzyko i zostają bez QA, a sesja zapisuje to z powodem w „Decyzjach bez pytania” opisu PR.
    Stos na czole gałęzi epiku podnosi sesja w swoim worktree (`make up`, `make seed`) i podaje reviewerom jego adresy;
    `ux-reviewer` dostaje też katalog stosu, `AGENT_DIR`, tryb i listę zmienionych plików frontów, a `qa-adversarial`
    (własny worktree) zaczyna od `git switch --detach origin/<gałąź epiku>`. Znaleziska blokujące naprawia jedno

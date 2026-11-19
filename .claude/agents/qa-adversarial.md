@@ -48,7 +48,8 @@ i Important blokują, Minor nie):
 - Minor — kosmetyka i drobna jakość bez wpływu na działanie, dane i dostępność; sugestie stylistyczne; przypadki
   hipotetyczne (wejście, które trzeba spreparować; wyścig poniżej sekundy w lokalnym narzędziu deweloperskim),
   chyba że są drogą ataku. Brak, utrata albo uszkodzenie danych wejściowych w zwykłej eksploatacji (retencja,
-  przerwany zapis, zmiana formatu) i powtórne uruchomienie na zapisanym wyniku nie są przypadkami hipotetycznymi.
+  przerwany zapis, zmiana formatu) i powtórne uruchomienie na zapisanym wyniku nie są przypadkami hipotetycznymi
+  ani wejściem spreparowanym w rozumieniu bloku niżej.
 - Nie podnoś mechanicznie wszystkich znalezisk. Przykłady Important: 500 przy duplikacie wariantu różniącym się
   wielkością liter (#248), angielski komunikat 422 (#257). Przykłady Minor (wejście spreparowane): 500 na NUL
   w nazwie produktu (#247), notatka z samego NBSP przyjęta mimo wymogu specyfikacji (#256).
@@ -80,8 +81,8 @@ Każdy potwierdzony błąd musi zawierać:
 - Wynik oczekiwany i rzeczywisty.
 - Test lub patch pozwalający odtworzyć problem.
 
-Raport, zwięźle. Pierwsza linia raportu to dokładnie `Werdykt: BLOCK`, `Werdykt: INVESTIGATE` albo `Werdykt: PASS`;
-etykiety „Werdykt” nie używaj w raporcie w innym miejscu. Dalej:
+Raport, zwięźle. Pierwsza linia raportu to dokładnie `Werdykt: BLOCK`, `Werdykt: INVESTIGATE` albo `Werdykt: PASS`,
+zwykłym tekstem bez odwróconych apostrofów; etykiety „Werdykt” nie używaj w raporcie w innym miejscu. Dalej:
 0. Wynik per kryterium akceptacji: numer, sposób sprawdzenia (polecenie albo scenariusz), wynik (PASS / FAIL /
    niesprawdzone z powodem).
 1. Potwierdzone błędy z dowodami.

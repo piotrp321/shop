@@ -23,7 +23,8 @@ Zasady:
 - Nie wymyślaj problemów na siłę ani ulepszeń na zapas.
 
 Raport zwięzły, maksymalnie 5 istotnych uwag. Pierwsza linia raportu to dokładnie `Werdykt: KEEP`,
-`Werdykt: SIMPLIFY` albo `Werdykt: REWORK`; etykiety „Werdykt” nie używaj w raporcie w innym miejscu. Dalej:
+`Werdykt: SIMPLIFY` albo `Werdykt: REWORK`, zwykłym tekstem bez odwróconych apostrofów; etykiety „Werdykt” nie
+używaj w raporcie w innym miejscu. Dalej:
 1. Ocena architektury.
 2. Problemy — waga, plik, dowód i uzasadnienie.
 3. Proponowane uproszczenia i korzyści.
