@@ -581,6 +581,22 @@ class Run(Case):
             host = args[args.index("-H") + 1]
             self.assertEqual({"http://node-a/": "Host: api.localhost", "http://node-b/": "Host: localhost"}[args[-1]], host, args)
 
+    def test_a_failure_before_the_rule_was_made_does_not_say_the_shop_is_closed(self):
+        whole = self.cluster()
+        whole.run()
+        kubectl = [c for c in whole.calls() if c["image"] == "registry.k8s.io/kubectl"]
+        calls = [i + 1 for i, c in enumerate(kubectl) if c["args"][2:4] == ["get", "networkpolicy"] or '"NetworkPolicy"' in c["stdin"]]
+        self.assertEqual(2, len(calls), kubectl)
+        for call in calls:
+            with self.subTest(failing=kubectl[call - 1]["args"]):
+                cluster = self.cluster(trigger={"call": call, "action": "fail"})
+                result = cluster.run()
+                self.assertEqual(1, result.returncode, result.stderr)
+                self.assertIsNone(cluster.state()["netpol"])
+                self.assertEqual([], cluster.events())
+                self.assertNotIn("CLOSED", result.stderr)
+                self.assertIn("the shop is not closed", result.stderr)
+
     def test_the_rule_and_the_job_carry_no_tracking_of_argo_cd(self):
         """Argo CD 3 (argo-cd chart 10.x, no resourceTrackingMethod in argocd/install/argocd.yaml) tracks by the annotation
         argocd.argoproj.io/tracking-id: the rule has neither labels nor annotations, and the Job of the generator gets only what
