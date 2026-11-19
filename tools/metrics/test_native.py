@@ -312,9 +312,9 @@ class NativeRecordTest(NativeEnv):
         for field in ('parallel', 'gate_wait', 'waste'):
             self.assertIsNone(record[field], field)
             self.assertTrue(any(g.startswith(field + ':') for g in record['gaps']), (field, record['gaps']))
-        for field in ('breakdown', 'human', 'integration', 'retries', 'reviews', 'acceptance', 'subscription'):
-            self.assertIsNone(record[field], field)
-            self.assertTrue(any(g.startswith(field) for g in record['gaps']), (field, record['gaps']))
+        for field in ('breakdown', 'human', 'integration', 'retries', 'reviews'):
+            self.assertIsNotNone(record[field], field)       # test_native_process.py: their native source
+        self.assertFalse(any('nie liczone dla przebiegu natywnego' in g for g in record['gaps']), record['gaps'])
 
     def test_record_holds_no_text_of_messages_orders_or_paths(self):
         record = self.small_fixes()
