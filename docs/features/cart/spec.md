@@ -23,7 +23,7 @@ administracyjny, rate limiting tworzenia koszyków.
 | 2 | Koszyki gości i klientów są w PostgreSQL (nie w Redisie). |
 | 3 | Scalanie przy logowaniu sumuje ilości. Suma ponad limit ilości jest przycinana, linie gościa ponad limit liczby pozycji są pomijane, a klient widzi komunikat. Scalenie nigdy nie kończy się błędem z powodu ceny ani dostępności. |
 | 4 | Najwyżej 50 różnych pozycji (wariantów), najwyżej 99 sztuk jednej pozycji. |
-| 5 | Koszyk gościa wygasa po 30 dniach od ostatniej zmiany, koszyk klienta po 180 dniach. Wygasły koszyk zachowuje się jak pusty, fizycznie usuwa go `cart:purge-expired`. |
+| 5 | Koszyk gościa z pozycjami wygasa po 30 dniach od ostatniej zmiany, koszyk gościa bez pozycji (nowy albo po usunięciu ostatniej pozycji) po 1 dniu, koszyk klienta po 180 dniach. Wygasły koszyk zachowuje się jak pusty, fizycznie usuwa go `cart:purge-expired`. |
 | 6 | Pozycje nigdy nie znikają same. Pozycja bez ceny, niedostępna, z ilością większą niż dostępna albo z wariantem usuniętym z katalogu ma etykietę i przycisk „Usuń”. Suma obejmuje tylko pozycje możliwe do kupienia. |
 | 7 | Dostępność ogranicza ilość przy dodaniu i zwiększeniu ilości, bez rezerwacji i bez ujawniania liczby sztuk. Wiąże dopiero rezerwacja przy złożeniu zamówienia (Ordering). |
 | 8 | Sumy: wartość brutto przed kodem, rabat kodu, brutto do zapłaty i liczba sztuk, bez VAT. Licznik sztuk w nagłówku. |
@@ -85,8 +85,8 @@ Pola: `id`, `owner`, `status` (`open` | `merged`; `merged` tylko dla gościa), `
 linie unikalne po `variantId` w kolejności `addedAt`, `createdAt`, `updatedAt`, `expiresAt`. Nowy koszyk powstaje przez
 `createForGuest` i `createForCustomer`, zapisany jest odtwarzany przez `reconstitute()`.
 
-Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99`, czas życia gościa 30 dni, klienta
-180 dni.
+Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99`, czas życia gościa 30 dni (bez pozycji
+1 dzień), klienta 180 dni.
 
 | Metoda | Działanie | Błędy |
 |---|---|---|
@@ -101,7 +101,7 @@ Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99
 | `openForChange(now)` | początek każdej zmiany, idempotentne: gość sprawdza dostępność (poniżej), klient `clearIfExpired` | `GuestCartMerged`, `CartNotFound` |
 | `needsOfferToChange(variantId, quantity)` | czy zmiana ilości jest zwiększeniem istniejącej linii, więc potrzebuje `ProductOffer` | |
 | `linesAt(now)`, `itemCountAt(now)` | linie i liczba sztuk tak, jak widzi je odczyt: wygasły koszyk klienta jest pusty | gość `merged`: `GuestCartMerged`, wygasły: `CartNotFound` |
-| `touch(now)` | `expiresAt = now + 30 dni` (gość) albo `now + 180 dni` (klient), `updatedAt = now` | |
+| `touch(now)` | `expiresAt = now + 30 dni` (gość z pozycjami), `now + 1 dzień` (gość bez pozycji) albo `now + 180 dni` (klient), `updatedAt = now`; nowy koszyk dostaje czas życia tak samo | |
 | `isExpired(now)` | `expiresAt < now` | |
 
 - Każda zmiana koszyka gościa najpierw sprawdza `status = open`. Koszyk `merged` daje `GuestCartMerged`
@@ -583,7 +583,8 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 4. Scalenie sumuje ilości z przycięciem do limitów, jest idempotentne i odporne na równoległe scalenia i równoległe
    zmiany koszyka gościa. Koszyk gościa jest oznaczony `merged` tylko po udanym scaleniu i potem nie da się go zmienić.
    Wygasły koszyk klienta jest czyszczony przed scaleniem.
-5. Koszyki wygasają po 30 (gość) i 180 dniach (klient) od ostatniej zmiany; `cart:purge-expired` usuwa wygasłe.
+5. Koszyki wygasają po 30 (gość z pozycjami), 1 (gość bez pozycji) i 180 dniach (klient) od ostatniej zmiany;
+   `cart:purge-expired` usuwa wygasłe.
 6. Odpowiedzi koszyka mają `private, no-store`, strona `/cart` ma `noindex`.
 7. Od Cart zależy tylko Ordering (`Ordering_Infrastructure → Cart_Application`); Deptrac odrzuca zależności spoza
    reguł Cart.

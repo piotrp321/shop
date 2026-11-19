@@ -410,6 +410,7 @@ final class CartHandlersTest extends TestCase
     public function testAGuestCartIsExtendedByEveryChange(): void
     {
         $cart = $this->guest();
+        $this->add($cart, self::A, 1);
         $this->clock->now = $this->clock->now->modify('+29 days');
 
         $this->add($cart, self::A, 1);

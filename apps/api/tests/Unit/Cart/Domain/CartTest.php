@@ -431,6 +431,7 @@ final class CartTest extends TestCase
     public function testTouchMovesTheExpiryOfAGuestBy30AndOfACustomerBy180Days(): void
     {
         $guest = $this->guestCart();
+        $guest->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now);
         $customer = Cart::createForCustomer(CartId::generate(), 'kc-sub-1', $this->now);
         $later = new \DateTimeImmutable('2027-01-15 08:30:00+00:00');
 
@@ -441,6 +442,17 @@ final class CartTest extends TestCase
         self::assertEquals(new \DateTimeImmutable('2027-07-14 08:30:00+00:00'), $customer->expiresAt());
         self::assertEquals($later, $guest->updatedAt());
         self::assertEquals($later, $customer->updatedAt());
+    }
+
+    public function testTouchMovesTheExpiryOfAnEmptyGuestCartByOneDay(): void
+    {
+        $guest = $this->guestCart();
+        $later = new \DateTimeImmutable('2026-11-04 08:30:00+00:00');
+
+        $guest->touch($later);
+
+        self::assertEquals(new \DateTimeImmutable('2026-11-05 08:30:00+00:00'), $guest->expiresAt());
+        self::assertEquals($later, $guest->updatedAt());
     }
 
     public function testClearIfExpiredEmptiesAnExpiredCustomerCartOnly(): void
