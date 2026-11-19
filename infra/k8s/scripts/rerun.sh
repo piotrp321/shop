@@ -1,7 +1,7 @@
 #!/bin/sh
 # Runs a job of a version again under the same name: `make -C infra/k8s rerun JOB=<name>` (D11: a failed job does not
 # run again by itself; a new revision gives new jobs). The job is read from the cluster, deleted and created anew.
-# A Job of the generator of the demo data (the label app.kubernetes.io/name: demo-data) is refused, with a non-zero exit code and
+# A Job of the generator of the demo data (the label app.kubernetes.io/name: demo-data) is refused, with exit code 3 and
 # nothing deleted or created: the copy would carry DEMO_DATA_CONFIRM and replace the data of the shop without the checks of
 # `make generate`.
 #
