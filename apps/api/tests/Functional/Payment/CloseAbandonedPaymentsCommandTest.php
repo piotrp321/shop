@@ -153,6 +153,30 @@ final class CloseAbandonedPaymentsCommandTest extends KernelTestCase
         self::assertInstanceOf(\Throwable::class, $errors[0][2]['exception'] ?? null);
     }
 
+    /**
+     * The write of one payment fails in the database, which closes the entity manager; the command replaces it, so the
+     * next payment is closed.
+     */
+    public function testAFailedWriteOfOnePaymentDoesNotStopTheNext(): void
+    {
+        [$firstOrder, $first] = $this->pendingPayment();
+        [$secondOrder, $second] = $this->pendingPayment();
+        $this->cancelOrder($firstOrder);
+        $this->cancelOrder($secondOrder);
+        $failing = $firstOrder < $secondOrder ? $first : $second;
+        $closed = $failing === $first ? $second : $first;
+        $this->connection->executeStatement("CREATE FUNCTION payment_test_fail_closing() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RAISE EXCEPTION 'forced failure of a closing'; END \$\$");
+        $this->connection->executeStatement(\sprintf("CREATE TRIGGER payment_test_fail_closing BEFORE UPDATE ON payment_payment FOR EACH ROW WHEN (OLD.id = '%s'::uuid) EXECUTE FUNCTION payment_test_fail_closing()", $failing->payment->paymentId));
+        $logger = new SpyLogger();
+        $tester = new CommandTester($this->command($logger));
+
+        self::assertSame(2, $tester->execute([]), $tester->getDisplay());
+
+        self::assertSame(['pending', false], $this->payment($failing));
+        self::assertSame(['cancelled', true], $this->payment($closed));
+        self::assertSame($failing->payment->paymentId, $logger->records[0][2]['paymentId'] ?? null);
+    }
+
     public function testOrderingIsAskedOncePerBatch(): void
     {
         $payments = [];

@@ -179,6 +179,28 @@ final class ExpireOverdueOrdersCommandTest extends MessagingKernelTestCase
         self::assertInstanceOf(\Throwable::class, $errors[0][2]['exception'] ?? null);
     }
 
+    /**
+     * The write of the first order fails in the database, which closes the entity manager; the command replaces it, so
+     * the next order is expired.
+     */
+    public function testAFailedWriteOfOneOrderDoesNotStopTheNext(): void
+    {
+        [, $first] = $this->placeOrder();
+        $this->moveDeadline($first, 40);
+        [, $second] = $this->placeOrder();
+        $this->moveDeadline($second, 30);
+        $this->db->executeStatement("CREATE FUNCTION ordering_test_fail_expiry() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RAISE EXCEPTION 'forced failure of an expiry'; END \$\$");
+        $this->db->executeStatement(\sprintf("CREATE TRIGGER ordering_test_fail_expiry BEFORE UPDATE ON ordering_order FOR EACH ROW WHEN (OLD.id = '%s'::uuid) EXECUTE FUNCTION ordering_test_fail_expiry()", $first));
+        $logger = new SpyLogger();
+        $tester = new CommandTester($this->command($logger));
+
+        self::assertSame(2, $tester->execute([]), $tester->getDisplay());
+
+        self::assertSame(['new', 'cancelled'], array_column($this->orders([$first, $second]), 'status'));
+        self::assertStringContainsString('Expired 1 overdue order; 1 could not be expired', $tester->getDisplay());
+        self::assertSame($first, $logger->records[0][2]['orderId'] ?? null);
+    }
+
     public function testAnUnavailableDatabaseStopsWithTwo(): void
     {
         /** @var array{driver: 'pdo_pgsql', host: string, dbname: string, user: string, password: string} $params */
