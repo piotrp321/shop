@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Ordering\Application;
 
 use App\Ordering\Application\OrderConfirmationText;
+use App\Ordering\Application\View\OrderDeliveryView;
 use App\Ordering\Application\View\OrderDiscountView;
 use App\Ordering\Application\View\OrderLineView;
 use App\Ordering\Application\View\OrderTotalsView;
@@ -67,6 +68,41 @@ final class OrderConfirmationTextTest extends TestCase
 
             TEXT;
         self::assertStringContainsString($expected, (new OrderConfirmationText())->body($view));
+    }
+
+    public function testTheDeliveryLineIsAfterTheCodeLineAndBeforeTheTotal(): void
+    {
+        $view = self::view([
+            self::line('Buty Asfalt', '42', 2, 123_456, 12_345),
+            self::line('Czapka', '', 1, 2_000, 200),
+        ], 125_456 - 12_545 + 1_999, new OrderDiscountView('WITAJ10', 'percent', 10, 12_545), delivery: new OrderDeliveryView('Kurier standardowy', 1_999));
+
+        $expected = <<<'TEXT'
+            - Czapka × 1: 20,00 zł
+            Kod WITAJ10: −125,45 zł
+            Dostawa (Kurier standardowy): 19,99 zł
+
+            Suma brutto: 1 149,10 zł
+
+            TEXT;
+        self::assertStringContainsString($expected, (new OrderConfirmationText())->body($view));
+    }
+
+    public function testAFreeDeliveryHasItsLineOfZero(): void
+    {
+        $body = (new OrderConfirmationText())->body(self::view([self::line('Czapka', '', 1, 2_000)], 2_000, delivery: new OrderDeliveryView('Kurier ekspresowy', 0)));
+
+        self::assertStringContainsString("
+- Czapka × 1: 20,00 zł
+Dostawa (Kurier ekspresowy): 0,00 zł
+
+Suma brutto: 20,00 zł
+", $body);
+    }
+
+    public function testAnOrderWithoutAMethodHasNoDeliveryLine(): void
+    {
+        self::assertStringNotContainsString('Dostawa', (new OrderConfirmationText())->body(self::view([self::line('Czapka', '', 1, 2_000)], 2_000)));
     }
 
     public function testWithoutACodeThereIsNoCodeLine(): void
@@ -164,7 +200,7 @@ final class OrderConfirmationTextTest extends TestCase
     /**
      * @param list<OrderLineView> $lines
      */
-    private static function view(array $lines = [], int $gross = 0, ?OrderDiscountView $discount = null, ?\DateTimeImmutable $placedAt = null, ?\DateTimeImmutable $deadline = null): OrderView
+    private static function view(array $lines = [], int $gross = 0, ?OrderDiscountView $discount = null, ?\DateTimeImmutable $placedAt = null, ?\DateTimeImmutable $deadline = null, ?OrderDeliveryView $delivery = null): OrderView
     {
         return new OrderView(
             '0192f0c4-7c1a-7c4e-9a6e-0000000000aa',
@@ -176,6 +212,7 @@ final class OrderConfirmationTextTest extends TestCase
             new ShippingAddressView('Długa 1', '00-950', 'Warszawa', 'PL'),
             [] === $lines ? [self::line('Czapka', '', 1, 100)] : $lines,
             $discount,
+            $delivery,
             new OrderTotalsView(0, 0, $gross, 'PLN'),
             $placedAt ?? new \DateTimeImmutable('2026-11-05 12:00:00+00:00'),
             $deadline ?? ($placedAt ?? new \DateTimeImmutable('2026-11-05 12:00:00+00:00'))->modify('+30 minutes'),

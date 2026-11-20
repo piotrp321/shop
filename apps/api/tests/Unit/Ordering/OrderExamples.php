@@ -12,6 +12,7 @@ use App\Ordering\Domain\IdempotencyKey;
 use App\Ordering\Domain\LineAmounts;
 use App\Ordering\Domain\Order;
 use App\Ordering\Domain\OrderDelivery;
+use App\Ordering\Domain\OrderDeliveryShare;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderLine;
 use App\Ordering\Domain\OrderNumber;
@@ -32,15 +33,17 @@ final class OrderExamples
     public const string CUSTOMER = 'kc-sub-1';
     /** The gross total of placed(): 2 × 12 300 + 2 000, delivered for free. */
     public const int TOTAL = 26_600;
+    /** The cost of paidDelivery(). */
+    public const int DELIVERY_COST = 1_999;
     public const string PLACED_AT = '2026-11-05 12:00:00+00:00';
     /** PLACED_AT + 30 minutes. */
     public const string DEADLINE = '2026-11-05 12:30:00+00:00';
 
     /**
      * A placed order of two lines (one with a variant label) that has no confirmation marker, with a free delivery
-     * (so its total is the one of its lines): of a guest with the TOKEN, or of the CUSTOMER.
+     * (so its total is the one of its lines) unless another is given: of a guest with the TOKEN, or of the CUSTOMER.
      */
-    public static function placed(bool $byCustomer = false): Order
+    public static function placed(bool $byCustomer = false, ?OrderDelivery $delivery = null): Order
     {
         $address = ShippingAddress::inPoland('Długa 1', '00-950', 'Warszawa');
         $contact = Contact::of(EmailAddress::fromString('jan@example.com'), 'Jan Kowalski', '600100200');
@@ -59,7 +62,7 @@ final class OrderExamples
                 OrderLine::of(VariantId::fromString('0192f0c4-7c1a-7c4e-9a6e-000000000002'), $product, 'Czapka', '', 1, $price(2_000), self::undiscounted($price(2_000), 1), null),
             ],
             null,
-            self::freeDelivery(),
+            $delivery ?? self::freeDelivery(),
             IdempotencyKey::fromString('key-1'),
             RequestFingerprint::of('guest:cart', $contact, $address, self::TOTAL),
             new \DateTimeImmutable(self::PLACED_AT),
@@ -75,6 +78,14 @@ final class OrderExamples
     public static function freeDelivery(): OrderDelivery
     {
         return OrderDelivery::of(self::DELIVERY_METHOD, 'Kurier standardowy', 'https://tracking.example.com/{numer}', 0, [], Currency::PLN);
+    }
+
+    /**
+     * A delivery by DELIVERY_METHOD of DELIVERY_COST, all of it at the rate of the lines of placed() (0 %).
+     */
+    public static function paidDelivery(): OrderDelivery
+    {
+        return OrderDelivery::of(self::DELIVERY_METHOD, 'Kurier standardowy', 'https://tracking.example.com/{numer}', self::DELIVERY_COST, [OrderDeliveryShare::of(0, self::DELIVERY_COST, self::DELIVERY_COST, 0, Currency::PLN)], Currency::PLN);
     }
 
     /**
