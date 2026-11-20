@@ -22,7 +22,7 @@
 #                               that a creation with a lost answer made); 1 with lock_error when another holds it or it cannot be made
 #   lock_release                deletes the lock of lock_token, if any, and never the lock of another; 1 when that cannot be done
 #   lock_is <token>             0 when the lock is there with this token (make open run by make generate), else 1 with lock_error
-#   lock_message                how the lock is left and how the operator deletes it
+#   lock_message                how the lock is left and how the user deletes it
 
 # shellcheck disable=SC2034 # close_wait, open_wait and poll are read by the scripts that source this file
 read_environment() {
@@ -110,7 +110,7 @@ lock_read() {
 }
 
 lock_message() {
-  echo "it stays after a make generate or make open killed with KILL, or one that could not release it; only when neither runs, the operator deletes it: kubectl -n $namespace delete configmap $lock_name (on the server: sudo k3s kubectl -n $namespace delete configmap $lock_name; make status shows it)"
+  echo "it stays after a make generate or make open killed with KILL, or one that could not release it; only when neither runs, the user (never an agent, which stops here) deletes it: kubectl -n $namespace delete configmap $lock_name (on the server: sudo k3s kubectl -n $namespace delete configmap $lock_name; make status shows it)"
 }
 
 lock_take() {
