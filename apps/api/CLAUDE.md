@@ -364,7 +364,7 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   Dwa workery z jednego obrazu (compose i chart, komenda i healthcheck albo sonda z tej samej listy): `worker` konsumuje
   `outbox events`, `worker-commands` `payment_simulator scheduled promotions jobs` po kolei, bez RabbitMQ (webhooki
   symulatora przed anulowaniami), więc długa kolejka wcześniejszego transportu opóźnia następne w tym samym workerze
-  (`docs/features/async-reliability/spec.md`, W1). Każdy transport poza `failed` ma dokładnie jednego workera (test
+  (`docs/features/async-reliability/spec.md`, W1). Każdy transport poza `failed` konsumuje któryś z workerów (test
   chartu). Granice promocji mają osobną
   kolejkę `promotions`, bo `ordering:seed-demo` czyści całe `scheduled`. Nowy transport: compose i chart w tym samym PR
   (`infra/k8s/CLAUDE.md`).
