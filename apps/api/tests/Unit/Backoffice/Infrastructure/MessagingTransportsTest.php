@@ -37,4 +37,38 @@ final class MessagingTransportsTest extends TestCase
         self::assertEqualsCanonicalizing($doctrine, MessagingStatisticsAdapter::TRANSPORTS);
         self::assertSame($doctrine, MessagingStatisticsAdapter::TRANSPORTS, 'The order of the queues is the order of the configuration.');
     }
+
+    /**
+     * What a worker takes back is what Messenger decides by the `redeliver_timeout` of the DSN (3600 s when the DSN has
+     * none), so the statistics must count with the same number for every queue: a changed DSN without the changed
+     * parameter ends this test.
+     */
+    public function testTheRedeliveryTimeoutOfEveryQueueIsTheOneOfItsDsn(): void
+    {
+        $messenger = Yaml::parseFile(\dirname(__DIR__, 4).'/config/packages/messenger.yaml');
+        $services = Yaml::parseFile(\dirname(__DIR__, 4).'/config/services.yaml');
+        self::assertIsArray($messenger);
+        self::assertIsArray($services);
+        self::assertIsArray($messenger['framework'] ?? null);
+        self::assertIsArray($messenger['framework']['messenger'] ?? null);
+        self::assertIsArray($services['parameters'] ?? null);
+        $transports = $messenger['framework']['messenger']['transports'] ?? null;
+        $timeouts = $services['parameters']['app.messaging.redeliver_timeouts'] ?? null;
+        self::assertIsArray($transports);
+        self::assertIsArray($timeouts);
+
+        self::assertSame(MessagingStatisticsAdapter::TRANSPORTS, array_keys($timeouts), 'The timeouts are of the queues of the adapter, in its order.');
+        foreach (MessagingStatisticsAdapter::TRANSPORTS as $name) {
+            $transport = $transports[$name];
+            $dsn = \is_array($transport) ? $transport['dsn'] : $transport;
+            self::assertIsString($dsn);
+            parse_str((string) parse_url($dsn, \PHP_URL_QUERY), $options);
+
+            self::assertSame(
+                (int) ($options['redeliver_timeout'] ?? 3600),
+                $timeouts[$name],
+                \sprintf('The redeliver timeout of "%s" in services.yaml is not the one of its DSN.', $name),
+            );
+        }
+    }
 }

@@ -108,6 +108,26 @@ final class MessagingCheckCommandTest extends KernelTestCase
         self::assertSame('scheduled: ready 0', $this->lines($tester)[2]);
     }
 
+    public function testAMessageTakenByAWorkerThatDiedIsAQueueThatStandsOnceTheTimeoutHasPassed(): void
+    {
+        // Taken an hour ago by a worker that died before the acknowledgement, due for 11 minutes before that: Messenger
+        // hands it out again after `redeliver_timeout`, and nobody takes it.
+        MessengerRows::add($this->connection, 'jobs', new \DateTimeImmutable('-71 minutes'), deliveredAt: new \DateTimeImmutable('-1 hour'));
+        $tester = $this->tester();
+
+        self::assertSame(1, $tester->execute([]), $tester->getDisplay());
+        self::assertMatchesRegularExpression('/^jobs: ready 1, the oldest 4\d\d\d s, STANDS$/', $this->lines($tester)[5]);
+    }
+
+    public function testAMessageThatAWorkerHasJustTakenIsNotReady(): void
+    {
+        MessengerRows::add($this->connection, 'jobs', new \DateTimeImmutable('-71 minutes'), deliveredAt: new \DateTimeImmutable('-10 seconds'));
+        $tester = $this->tester();
+
+        self::assertSame(0, $tester->execute([]), $tester->getDisplay());
+        self::assertSame('jobs: ready 0', $this->lines($tester)[5]);
+    }
+
     public function testTheOutputHasNoContentOfTheMessages(): void
     {
         MessengerRows::add($this->connection, 'failed', body: 'O:11:"SecretOrder":1:{s:5:"email";s:21:"jan.kowalski@test.pl";}');
@@ -137,7 +157,7 @@ final class MessagingCheckCommandTest extends KernelTestCase
             self::fail('app:messaging:check must work while RabbitMQ is down.');
         });
         $tester = new CommandTester(new MessagingCheckCommand(new MessagingHealth(
-            new MessagingStatisticsAdapter($this->connection, $client, 'http://rabbitmq.invalid:15672', 'user', 'secret', 'test', new Clock()),
+            new MessagingStatisticsAdapter($this->connection, $client, 'http://rabbitmq.invalid:15672', 'user', 'secret', 'test', new Clock(), MessengerRows::redeliverTimeouts(self::getContainer())),
             600,
         )));
 
@@ -153,7 +173,7 @@ final class MessagingCheckCommandTest extends KernelTestCase
 
     private function adapter(Connection $connection): MessagingStatisticsAdapter
     {
-        return new MessagingStatisticsAdapter($connection, new MockHttpClient(), 'http://rabbitmq.invalid:15672', 'user', 'secret', 'test', new Clock());
+        return new MessagingStatisticsAdapter($connection, new MockHttpClient(), 'http://rabbitmq.invalid:15672', 'user', 'secret', 'test', new Clock(), MessengerRows::redeliverTimeouts(self::getContainer()));
     }
 
     /**

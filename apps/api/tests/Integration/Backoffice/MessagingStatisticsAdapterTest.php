@@ -9,6 +9,7 @@ use App\Backoffice\Application\Query\QueueStatus;
 use App\Backoffice\Infrastructure\MessagingStatisticsAdapter;
 use App\Catalog\Domain\Product\ProductCreated;
 use App\Tests\Integration\Shared\Messaging\MessagingKernelTestCase;
+use App\Tests\Support\MessengerRows;
 use Symfony\Component\Clock\Clock;
 use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\Messenger\Envelope;
@@ -128,6 +129,7 @@ final class MessagingStatisticsAdapterTest extends MessagingKernelTestCase
             $password ?? self::env('RABBITMQ_DEFAULT_PASS'),
             $vhost,
             new Clock(),
+            MessengerRows::redeliverTimeouts(self::getContainer()),
         );
     }
 

@@ -26,6 +26,7 @@ use App\Shared\Infrastructure\Health\Probe\PostgresProbe;
 use App\Shared\Infrastructure\Health\Probe\RabbitMqProbe;
 use App\Shared\Infrastructure\Health\Probe\RedisProbe;
 use App\Shared\Infrastructure\Health\ServiceProbe;
+use App\Tests\Support\MessengerRows;
 use App\Tests\Unit\Backoffice\Application\RecordingOrderQueues;
 use App\Tests\Unit\Backoffice\Application\RecordingSalesSummary;
 use App\Tests\Unit\Backoffice\Application\RecordingStockQueues;
@@ -61,7 +62,7 @@ final class DashboardTimingTest extends KernelTestCase
         $connection = self::getContainer()->get('doctrine.dbal.default_connection');
         self::assertInstanceOf(Connection::class, $connection);
 
-        $messaging = new MessagingStatisticsAdapter($connection, $client, $this->hangingUrl(), 'user', 'secret', 'test', new Clock());
+        $messaging = new MessagingStatisticsAdapter($connection, $client, $this->hangingUrl(), 'user', 'secret', 'test', new Clock(), MessengerRows::redeliverTimeouts(self::getContainer()));
         $handler = new GetDashboardHandler(
             $this->instantCatalog(),
             new ProbingSystemHealth([

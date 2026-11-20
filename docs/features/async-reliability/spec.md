@@ -336,8 +336,14 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
 
 - Port `MessagingStatistics` (Backoffice) dostaje odczyt kolejek Postgresa: dla `failed` liczbę wiadomości (do 1000,
   z oznaczeniem przekroczenia) i chwilę najstarszej (`created_at` jej wiersza); dla `outbox`, `scheduled`,
-  `payment_simulator`, `promotions` i `jobs` liczbę gotowych wiadomości (`delivered_at IS NULL`, `available_at` ≤ teraz,
-  do 1000) i wiek najstarszej gotowej w sekundach: teraz (UTC) − `min(available_at)` gotowych, `null` bez gotowych.
+  `payment_simulator`, `promotions` i `jobs` liczbę gotowych wiadomości (do 1000) i wiek najstarszej gotowej
+  w sekundach: teraz (UTC) − `min(available_at)` gotowych, `null` bez gotowych. Gotowa jest wiadomość, którą worker
+  odebrałby teraz według reguły transportu Doctrine: `available_at` ≤ teraz i (`delivered_at IS NULL` albo
+  `delivered_at` < teraz − `redeliver_timeout` transportu; dokładnie na granicy wiadomość jeszcze jest w rękach workera).
+  Wiadomość odebraną przez workera, który zginął przed potwierdzeniem, ma `delivered_at` ustawione na stałe, więc po
+  upływie `redeliver_timeout` liczy się jako gotowa, a jej wiek biegnie od `available_at`. `redeliver_timeout` każdej
+  kolejki to wpis parametru `app.messaging.redeliver_timeouts` (`services.yaml`), a nie stała w kodzie; test porównuje go
+  z `redeliver_timeout` w DSN transportu w `messenger.yaml` (3600 s, gdy DSN go nie podaje).
   Wiadomość opóźniona (np. `ExpireUnpaidOrder`, utworzona 35 minut wcześniej) ma wiek od chwili, w której stała się
   gotowa, nie od utworzenia. Zapytania korzystają z indeksu `(queue_name, available_at, delivered_at, id)`; czas pulpitu
   mieści się w limitach `DashboardTimingTest`.
@@ -540,7 +546,8 @@ Dokumenty, które dziś podają zachowanie zmieniane przez epik, zmienia zadanie
    jest `cancelled` w ciągu 2 minut; po przywróceniu brokera wszystkie workloady wracają do gotowości.
 4. **`failed` daje alert.** Test funkcjonalny `app:messaging:check`: puste kolejki – 0; wiadomość w `failed` – 1; gotowa
    wiadomość starsza niż próg – 1; wiadomość opóźniona, która właśnie stała się gotowa, nie stoi; wiadomość z
-   `available_at` w przyszłości nie jest gotowa; niedostępna baza – 2. `promtool test rules`: `MessagingUnhealthy`
+   `available_at` w przyszłości nie jest gotowa; wiadomość odebrana przez workera dawniej niż `redeliver_timeout` (nigdy
+   niepotwierdzona) jest gotowa i po progu stoi – 1, a odebrana przed chwilą nie jest gotowa; niedostępna baza – 2. `promtool test rules`: `MessagingUnhealthy`
    i `OrderExpiryFailed` odpalają przy nieudanym Jobie swojego CronJoba nowszym niż ostatni sukces jako jedna instancja
    także przy wielu nieudanych Jobach, milczą po udanym Jobie, nie łapią Jobów innego CronJoba; `OrderExpiryMissing`
    odpala po 30 minutach bez sukcesu i przy braku metryki, milczy przy udanych przebiegach; dotychczasowe scenariusze bez
