@@ -23,7 +23,7 @@ import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
 const auth = useAuthStore();
-const { order, loading, error, forbidden, notFound, notFoundMessage, saving, actions, canCompleteRefund, retry, changeStatus, completeRefund } = useOrderDetail(() => String(route.params.orderId));
+const { order, loading, error, forbidden, notFound, notFoundMessage, saving, actions, canCompleteRefund, canChangeTrackingNumber, retry, changeStatus, completeRefund, changeTrackingNumber } = useOrderDetail(() => String(route.params.orderId));
 // The link to the card of the customer: only for an order of a store account (a guest has no card) and for the staff who may open it.
 const showCustomerCard = computed(() => order.value?.customerId != null && canViewCustomers(auth.staff));
 
@@ -106,6 +106,9 @@ const dialogOpen = ref(false);
 const pending = ref<Pending | null>(null);
 const note = ref("");
 const noteError = ref<string | null>(null);
+// The tracking number of a shipment, the one field the window of „Oznacz jako wysłane” has besides the note.
+const trackingNumber = ref("");
+const trackingNumberError = ref<string | null>(null);
 const dialogMessage = ref<string | null>(null);
 // After a conflict the order is reloaded and the page, not the dialog, says what happened.
 const conflict = ref<string | null>(null);
@@ -116,6 +119,7 @@ let opener: HTMLElement | null = null;
 let afterClose: "done" | "conflict" | null = null;
 
 const noteInput = ref<InstanceType<typeof Input> | null>(null);
+const trackingNumberInput = ref<InstanceType<typeof Input> | null>(null);
 const changeAlert = ref<InstanceType<typeof Alert> | null>(null);
 const conflictAlert = ref<InstanceType<typeof Alert> | null>(null);
 
@@ -144,6 +148,8 @@ const dialogTitle = computed(() => {
 const submitLabel = computed(() => (pending.value?.kind === "status" ? transitionLabel(pending.value.transition) : REFUND_LABEL));
 const destructive = computed(() => pending.value?.kind === "status" && (pending.value.transition === "cancel" || pending.value.transition === "return"));
 const required = computed(() => pending.value?.kind === "status" && noteRequired(pending.value.transition));
+const shipping = computed(() => pending.value?.kind === "status" && pending.value.transition === "ship");
+const TRACKING_HINT = "Litery, cyfry i myślniki, do 40 znaków";
 
 // The screen moves to another order (Back, a link): the window and the conflict were about the one it left.
 watch(
@@ -152,6 +158,8 @@ watch(
     conflict.value = null;
     afterClose = null;
     closeDialog();
+    trackingOpener = null;
+    closeTracking();
   },
 );
 
@@ -173,6 +181,8 @@ function open(next: Pending, trigger: EventTarget | null): void {
   pending.value = next;
   note.value = "";
   noteError.value = null;
+  trackingNumber.value = "";
+  trackingNumberError.value = null;
   dialogMessage.value = null;
   dialogOpen.value = true;
 }
@@ -210,7 +220,13 @@ function focusDoneTarget(): void {
 
 async function focusProblem(): Promise<void> {
   await nextTick();
-  elementOf(noteError.value !== null ? noteInput.value : changeAlert.value)?.focus();
+  if (noteError.value !== null) {
+    elementOf(noteInput.value)?.focus();
+  } else if (trackingNumberError.value !== null) {
+    elementOf(trackingNumberInput.value)?.focus();
+  } else {
+    elementOf(changeAlert.value)?.focus();
+  }
 }
 
 async function submit(): Promise<void> {
@@ -219,9 +235,10 @@ async function submit(): Promise<void> {
     return;
   }
   noteError.value = null;
+  trackingNumberError.value = null;
   dialogMessage.value = null;
   const sentFrom = session;
-  const result = current.kind === "status" ? await changeStatus(current.transition, note.value) : await completeRefund(note.value);
+  const result = current.kind === "status" ? await changeStatus(current.transition, note.value, trackingNumber.value) : await completeRefund(note.value);
   if (sentFrom !== session) {
     return;
   }
@@ -244,6 +261,7 @@ function applyResult(result: OrderChange, sent: Pending): void {
       break;
     case "invalid":
       noteError.value = result.fields.note ?? null;
+      trackingNumberError.value = result.fields.trackingNumber ?? null;
       dialogMessage.value = result.message;
       void focusProblem();
       break;
@@ -253,6 +271,97 @@ function applyResult(result: OrderChange, sent: Pending): void {
       break;
     case "ignored":
       closeDialog();
+      break;
+  }
+}
+
+// ---- The window of the tracking number -----------------------------------------------------------------------------
+
+// Adds, corrects or removes the number of a shipped or delivered order. A refusal (422 at the field, 409, 403) stays in
+// the window, which is a live region, so that whoever corrects the number reads why it was not saved.
+const trackingOpen = ref(false);
+const trackingValue = ref("");
+const trackingError = ref<string | null>(null);
+const trackingMessage = ref<string | null>(null);
+// Whether the order had a number when the window opened: the title and the buttons keep their words while it answers.
+const trackingHadNumber = ref(false);
+let trackingSession = 0;
+let trackingOpener: HTMLElement | null = null;
+
+const trackingInput = ref<InstanceType<typeof Input> | null>(null);
+const trackingAlert = ref<InstanceType<typeof Alert> | null>(null);
+
+const hasNumber = computed(() => order.value?.shipment != null);
+const trackingActionLabel = computed(() => (hasNumber.value ? "Zmień numer przesyłki" : "Dodaj numer przesyłki"));
+const trackingTitle = computed(() => `${trackingHadNumber.value ? "Zmienić" : "Dodać"} numer przesyłki zamówienia ${order.value?.number ?? ""}?`);
+
+function closeTracking(): void {
+  trackingSession++;
+  trackingOpen.value = false;
+}
+
+function onTrackingOpenChange(open: boolean): void {
+  if (!open) {
+    closeTracking();
+  }
+}
+
+function openTracking(trigger: EventTarget | null): void {
+  trackingSession++;
+  trackingOpener = trigger instanceof HTMLElement ? trigger : null;
+  trackingHadNumber.value = hasNumber.value;
+  trackingValue.value = order.value?.shipment?.trackingNumber ?? "";
+  trackingError.value = null;
+  trackingMessage.value = null;
+  trackingOpen.value = true;
+}
+
+function focusTrackingNumber(event: Event): void {
+  event.preventDefault();
+  elementOf(trackingInput.value)?.focus();
+}
+
+// The focus goes back to the action that opened the window, and to the heading of its card when that action is gone.
+function onTrackingCloseAutoFocus(event: Event): void {
+  event.preventDefault();
+  const trigger = trackingOpener;
+  trackingOpener = null;
+  void nextTick(() => focusAfterAction(trigger, actionsCard.value?.heading ?? historyCard.value?.heading ?? null));
+}
+
+async function focusTrackingProblem(): Promise<void> {
+  await nextTick();
+  elementOf(trackingError.value !== null ? trackingInput.value : trackingAlert.value)?.focus();
+}
+
+async function submitTracking(): Promise<void> {
+  if (!trackingOpen.value || saving.value) {
+    return;
+  }
+  trackingError.value = null;
+  trackingMessage.value = null;
+  const sentFrom = trackingSession;
+  const result = await changeTrackingNumber(trackingValue.value);
+  if (sentFrom !== trackingSession) {
+    return;
+  }
+  switch (result.status) {
+    case "saved":
+      toast.success(hasNumber.value ? "Numer przesyłki zapisany." : "Numer przesyłki usunięty.");
+      closeTracking();
+      break;
+    case "invalid":
+      trackingError.value = result.fields.trackingNumber ?? null;
+      trackingMessage.value = result.message;
+      void focusTrackingProblem();
+      break;
+    case "conflict":
+    case "failed":
+      trackingMessage.value = result.message;
+      void focusTrackingProblem();
+      break;
+    case "ignored":
+      closeTracking();
       break;
   }
 }
@@ -353,7 +462,7 @@ function statusName(status: string | undefined): string {
         class="flex min-w-0 flex-col gap-6 xl:col-start-2 xl:row-start-1"
       >
         <FormSection
-          v-if="actions.length > 0 || canCompleteRefund"
+          v-if="actions.length > 0 || canCompleteRefund || canChangeTrackingNumber"
           ref="actionsCard"
           title="Akcje"
           data-testid="actions"
@@ -377,6 +486,15 @@ function statusName(status: string | undefined): string {
               @click="open({ kind: 'refund' }, $event.currentTarget)"
             >
               {{ REFUND_LABEL }}
+            </Button>
+            <Button
+              v-if="canChangeTrackingNumber"
+              type="button"
+              variant="interface"
+              data-testid="change-tracking-number"
+              @click="openTracking($event.currentTarget)"
+            >
+              {{ trackingActionLabel }}
             </Button>
           </div>
         </FormSection>
@@ -436,6 +554,34 @@ function statusName(status: string | undefined): string {
             {{ order.shippingAddress.postalCode }} {{ order.shippingAddress.city }}<br>
             {{ order.shippingAddress.country }}
           </address>
+        </FormSection>
+
+        <FormSection
+          v-if="order.shipment"
+          title="Przesyłka"
+          data-testid="shipment"
+        >
+          <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+            <dt class="text-muted-foreground">
+              Numer przesyłki
+            </dt>
+            <dd
+              data-testid="tracking-number"
+              class="min-w-0 font-mono text-xs break-all"
+            >
+              {{ order.shipment.trackingNumber }}
+            </dd>
+          </dl>
+          <a
+            v-if="order.shipment.trackingUrl"
+            data-testid="tracking-link"
+            :href="order.shipment.trackingUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="w-fit rounded-sm text-sm text-interface underline underline-offset-4"
+          >
+            Śledź przesyłkę<span class="sr-only"> (otwiera się w nowej karcie)</span>
+          </a>
         </FormSection>
 
         <FormSection title="Płatność">
@@ -644,6 +790,13 @@ function statusName(status: string | undefined): string {
           >
             Kod {{ order.discount.code }}: −{{ formatMoney(order.discount.amountGross, order.totals.currency) }}
           </p>
+          <p
+            v-if="order.delivery"
+            data-testid="delivery-line"
+            class="max-w-full self-end text-sm break-words"
+          >
+            Dostawa ({{ order.delivery.methodName }}): {{ formatMoney(order.delivery.gross, order.totals.currency) }}
+          </p>
           <dl
             class="grid grid-cols-[auto_auto] gap-x-6 gap-y-1 self-end text-sm"
             data-testid="totals"
@@ -804,6 +957,40 @@ function statusName(status: string | undefined): string {
             {{ noteError }}
           </p>
         </div>
+        <div
+          v-if="shipping"
+          class="flex flex-col gap-1.5"
+        >
+          <Label for="change-tracking-number-field">
+            Numer przesyłki (opcjonalnie)
+          </Label>
+          <Input
+            id="change-tracking-number-field"
+            ref="trackingNumberInput"
+            v-model="trackingNumber"
+            data-testid="change-tracking-number-field"
+            maxlength="100"
+            autocomplete="off"
+            :aria-invalid="trackingNumberError !== null ? 'true' : undefined"
+            :aria-describedby="trackingNumberError !== null ? 'change-tracking-number-hint change-tracking-number-field-error' : 'change-tracking-number-hint'"
+            @keydown.enter.prevent="submit()"
+          />
+          <p
+            id="change-tracking-number-hint"
+            class="text-sm text-muted-foreground"
+          >
+            {{ TRACKING_HINT }}
+          </p>
+          <p
+            v-if="trackingNumberError"
+            id="change-tracking-number-field-error"
+            data-testid="change-tracking-number-field-error"
+            data-form-error
+            class="text-sm text-status-danger"
+          >
+            {{ trackingNumberError }}
+          </p>
+        </div>
         <DialogFooter>
           <Button
             type="button"
@@ -821,6 +1008,84 @@ function statusName(status: string | undefined): string {
             @click="submit()"
           >
             {{ submitLabel }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog
+      :open="trackingOpen"
+      @update:open="onTrackingOpenChange"
+    >
+      <DialogContent
+        data-testid="tracking-dialog"
+        :class="`${DIALOG_CLASS} w-[min(28rem,calc(100vw-2rem))]`"
+        @open-auto-focus="focusTrackingNumber"
+        @close-auto-focus="onTrackingCloseAutoFocus"
+      >
+        <DialogHeader>
+          <DialogTitle>{{ trackingTitle }}</DialogTitle>
+          <DialogDescription class="font-semibold text-foreground">
+            Zamówienie {{ order?.number }}
+          </DialogDescription>
+        </DialogHeader>
+        <Alert
+          v-if="trackingMessage"
+          ref="trackingAlert"
+          data-testid="tracking-error"
+          variant="destructive"
+          tabindex="-1"
+        >
+          <AlertDescription>{{ trackingMessage }}</AlertDescription>
+        </Alert>
+        <div class="flex flex-col gap-1.5">
+          <Label for="tracking-number">
+            Numer przesyłki
+          </Label>
+          <Input
+            id="tracking-number"
+            ref="trackingInput"
+            v-model="trackingValue"
+            data-testid="tracking-number-input"
+            maxlength="100"
+            autocomplete="off"
+            :aria-invalid="trackingError !== null ? 'true' : undefined"
+            :aria-describedby="trackingError !== null ? 'tracking-number-hint tracking-number-error' : 'tracking-number-hint'"
+            @keydown.enter.prevent="submitTracking()"
+          />
+          <p
+            id="tracking-number-hint"
+            class="text-sm text-muted-foreground"
+          >
+            {{ TRACKING_HINT }}. Puste pole usuwa numer.
+          </p>
+          <p
+            v-if="trackingError"
+            id="tracking-number-error"
+            data-testid="tracking-number-error"
+            data-form-error
+            class="text-sm text-status-danger"
+          >
+            {{ trackingError }}
+          </p>
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            data-testid="tracking-cancel"
+            @click="closeTracking()"
+          >
+            Wróć
+          </Button>
+          <Button
+            type="button"
+            variant="interface"
+            data-testid="tracking-submit"
+            :disabled="saving"
+            @click="submitTracking()"
+          >
+            Zapisz numer
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -256,7 +256,7 @@ final class ChangeOrderStatusEndpointTest extends WebTestCase
      */
     public static function omittedBodyKeys(): iterable
     {
-        return self::omittedKeys(['transition', 'version', 'note']);
+        return self::omittedKeys(['transition', 'version', 'note', 'trackingNumber']);
     }
 
     /**
@@ -267,7 +267,7 @@ final class ChangeOrderStatusEndpointTest extends WebTestCase
     {
         [$orderId] = $this->paidOrder();
 
-        $problem = $this->change($orderId, self::bodyWithout(['transition' => 'ship', 'version' => 2, 'note' => null], $omitted), self::staff(['admin']));
+        $problem = $this->change($orderId, self::bodyWithout(['transition' => 'ship', 'version' => 2, 'note' => null, 'trackingNumber' => null], $omitted), self::staff(['admin']), withTrackingNumber: false);
 
         $this->assertProblem(422, $problem);
         self::assertRequiredAt($omitted, $problem['violations'] ?? null);
@@ -360,6 +360,151 @@ final class ChangeOrderStatusEndpointTest extends WebTestCase
         self::assertSame(str_repeat('ą', 500), ((array) end($order['history']))['note']);
     }
 
+    public function testAShipmentWithANumberKeepsItAndTheViewHasTheShipmentWithTheLink(): void
+    {
+        [$orderId] = $this->paidOrder();
+        $this->connection->executeStatement("UPDATE ordering_order SET delivery_tracking_url_template = 'https://tracking.example.com/{numer}' WHERE id = ?", [$orderId]);
+
+        $order = $this->change($orderId, ['transition' => 'ship', 'version' => 2, 'note' => null, 'trackingNumber' => " JJD0002-4455\u{00A0}"], self::staff(['warehouse']));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertMatchesSchema('BackofficeOrder', $order);
+        self::assertSame(['carrier' => 'Kurier testowy bez kosztu', 'trackingNumber' => 'JJD0002-4455', 'trackingUrl' => 'https://tracking.example.com/JJD0002-4455'], $order['shipment']);
+        self::assertSame(['methodName' => 'Kurier testowy bez kosztu', 'gross' => 0], $order['delivery']);
+        self::assertSame('JJD0002-4455', $this->connection->fetchOne('SELECT tracking_number FROM ordering_order WHERE id = ?', [$orderId]));
+    }
+
+    public function testAShipmentWithoutANumberHasNoShipmentButKeepsTheDelivery(): void
+    {
+        [$orderId] = $this->paidOrder();
+
+        $order = $this->change($orderId, ['transition' => 'ship', 'version' => 2, 'note' => null, 'trackingNumber' => null], self::staff(['warehouse']));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertNull($order['shipment']);
+        self::assertSame(['methodName' => 'Kurier testowy bez kosztu', 'gross' => 0], $order['delivery']);
+        self::assertNull($this->connection->fetchOne('SELECT tracking_number FROM ordering_order WHERE id = ?', [$orderId]) ?: null);
+    }
+
+    /**
+     * @return iterable<string, array{string, string}> the transition and its status before it
+     */
+    public static function everyTransition(): iterable
+    {
+        yield 'ship' => ['ship', 'paid'];
+        yield 'deliver' => ['deliver', 'shipped'];
+        yield 'cancel' => ['cancel', 'paid'];
+        yield 'return' => ['return', 'shipped'];
+    }
+
+    /**
+     * @return iterable<string, array{string|null, string, string}> the blank text, the transition and its status before it
+     */
+    public static function blankNumbersAtEveryTransition(): iterable
+    {
+        $blank = ['null' => null, 'empty' => '', 'spaces' => '   '];
+        foreach (InputValues::blankUnicodeTexts() as $name => [$text]) {
+            $blank['only '.$name] = $text;
+        }
+        foreach ($blank as $name => $text) {
+            foreach (self::everyTransition() as $transition => [$value, $before]) {
+                yield $name.', '.$transition => [$text, $value, $before];
+            }
+        }
+    }
+
+    #[DataProvider('blankNumbersAtEveryTransition')]
+    public function testNullAndNothingButWhiteSpaceAreNoNumberAtEveryTransition(?string $number, string $transition, string $before): void
+    {
+        [$orderId, $version] = $this->orderBefore($before);
+
+        $order = $this->change($orderId, ['transition' => $transition, 'version' => $version, 'note' => \in_array($transition, ['cancel', 'return'], true) ? 'Notatka' : null, 'trackingNumber' => $number], self::staff(['admin']));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertNull($order['shipment']);
+        self::assertNull($this->connection->fetchOne('SELECT tracking_number FROM ordering_order WHERE id = ?', [$orderId]) ?: null);
+    }
+
+    /**
+     * @return iterable<string, array{mixed, string}> the value of a shipment and the message at `trackingNumber`
+     */
+    public static function refusedForAShipment(): iterable
+    {
+        $format = 'Numer przesyłki może mieć 1–40 znaków: litery bez polskich znaków, cyfry i myślniki.';
+        yield 'a Polish letter' => ['PRZESYŁKA-1', $format];
+        yield 'a space inside' => ['123 456', $format];
+        yield '41 characters' => [str_repeat('a', 41), $format];
+        yield 'a NUL' => ["123\0456", $format];
+        yield 'U+2028 inside' => ["123\u{2028}456", $format];
+        yield 'a NBSP inside' => ["123\u{00A0}456", $format];
+        yield 'a number' => [123, 'Numer przesyłki musi być tekstem.'];
+        yield 'false' => [false, 'Numer przesyłki musi być tekstem.'];
+        yield 'a list' => [[], 'Numer przesyłki musi być tekstem.'];
+    }
+
+    #[DataProvider('refusedForAShipment')]
+    public function testAShipmentRefusesANumberOfAWrongShapeOrTypeAtTheFieldAndChangesNothing(mixed $value, string $message): void
+    {
+        [$orderId, $variant] = $this->paidOrder();
+
+        $problem = $this->change($orderId, ['transition' => 'ship', 'version' => 2, 'note' => null, 'trackingNumber' => $value], self::staff(['warehouse']));
+
+        self::assertSame(['trackingNumber'], $this->violationPaths(422, $problem));
+        self::assertIsArray($problem['violations']);
+        self::assertCount(1, $problem['violations']);
+        self::assertIsArray($problem['violations'][0]);
+        self::assertSame($message, $problem['violations'][0]['title'] ?? null);
+        self::assertSame(['paid', 2], $this->stored($orderId));
+        self::assertSame([5, 2], OrderingFixture::stock($this->connection, $variant), 'the reservation stays');
+    }
+
+    /**
+     * @return iterable<string, array{string, string, mixed}>
+     */
+    public static function numbersOfOtherTransitions(): iterable
+    {
+        $values = ['a good number' => 'JJD-1', 'a bad format' => 'PRZESYŁKA 1', 'too long' => str_repeat('a', 41), 'a NUL' => "1\0", 'a number' => 123, 'true' => true, 'false' => false, 'zero' => 0, 'a list' => []];
+        foreach (self::everyTransition() as $transition => [$value, $before]) {
+            if ('ship' === $value) {
+                continue;
+            }
+            foreach ($values as $name => $number) {
+                yield $name.', '.$transition => [$value, $before, $number];
+            }
+        }
+    }
+
+    #[DataProvider('numbersOfOtherTransitions')]
+    public function testOtherTransitionsTakeNoNumberOfAnyShapeAndChangeNothing(string $transition, string $before, mixed $number): void
+    {
+        [$orderId, $version] = $this->orderBefore($before);
+
+        $problem = $this->change($orderId, ['transition' => $transition, 'version' => $version, 'note' => 'deliver' === $transition ? null : 'Notatka', 'trackingNumber' => $number], self::staff(['admin']));
+
+        self::assertSame(['trackingNumber'], $this->violationPaths(422, $problem));
+        self::assertIsArray($problem['violations']);
+        self::assertCount(1, $problem['violations']);
+        self::assertIsArray($problem['violations'][0]);
+        self::assertSame('Numer przesyłki można podać tylko przy wysyłce.', $problem['violations'][0]['title'] ?? null, 'before the message of the format');
+        self::assertSame([$before, $version], $this->stored($orderId));
+    }
+
+    /**
+     * An order of a guest in the status before a transition (paid: version 2; shipped: version 3).
+     *
+     * @return array{string, int} the order and its version
+     */
+    private function orderBefore(string $status): array
+    {
+        [$orderId] = $this->paidOrder();
+        if ('shipped' === $status) {
+            $this->dispatch(new ChangeOrderStatus($orderId, StaffTransition::Ship, 2, null, 'kc-staff-1', 'marek'));
+            $this->entityManager->clear();
+        }
+
+        return [$orderId, 'shipped' === $status ? 3 : 2];
+    }
+
     public function testATokenIsRequiredAndACustomerTokenIsNotAccepted(): void
     {
         [$orderId] = $this->paidOrder();
@@ -375,8 +520,13 @@ final class ChangeOrderStatusEndpointTest extends WebTestCase
      *
      * @return array<mixed>
      */
-    private function change(string $orderId, array|string $body, ?string $token, string $contentType = 'application/json'): array
+    private function change(string $orderId, array|string $body, ?string $token, string $contentType = 'application/json', bool $withTrackingNumber = true): array
     {
+        // The key is required (W8): the bodies of the tests that are not about it say "no number" unless they set one.
+        if ($withTrackingNumber && \is_array($body)) {
+            $body += ['trackingNumber' => null];
+        }
+
         return $this->postJson('/api/v1/admin/orders/'.$orderId.'/status-changes', $body, $token, $contentType);
     }
 

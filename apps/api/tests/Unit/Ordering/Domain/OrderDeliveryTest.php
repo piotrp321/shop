@@ -231,7 +231,7 @@ final class OrderDeliveryTest extends TestCase
     {
         $order = $this->paid(self::place(self::paidDelivery()));
         $later = new \DateTimeImmutable(self::NOW)->modify('+1 day');
-        $order->ship(self::staff(), null, $later);
+        $order->ship(self::staff(), null, null, $later);
 
         $order->registerReturn(self::staff(), 'Zwrot', $later->modify('+1 day'));
 
@@ -247,7 +247,7 @@ final class OrderDeliveryTest extends TestCase
         self::assertNull($returned->delivery());
         self::assertSame([self::GOODS, self::GOODS], [$returned->totals()->gross()->amount(), $returned->totals()->goodsGross()->amount()]);
         $this->paid($returned);
-        $returned->ship(self::staff(), null, $later);
+        $returned->ship(self::staff(), null, null, $later);
         $returned->deliver(self::staff(), null, $later->modify('+1 hour'));
         $returned->registerReturn(self::staff(), 'Zwrot', $later->modify('+2 hours'));
         self::assertSame(OrderStatus::Returned, $returned->status());

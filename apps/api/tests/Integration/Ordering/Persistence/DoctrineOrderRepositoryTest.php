@@ -35,6 +35,8 @@ use App\Ordering\Domain\RequestFingerprint;
 use App\Ordering\Domain\ShippingAddress;
 use App\Ordering\Domain\StaffActor;
 use App\Ordering\Domain\StatusActor;
+use App\Ordering\Domain\TrackingNumber;
+use App\Ordering\Domain\TrackingNumberNotChangeable;
 use App\Ordering\Domain\VariantId;
 use App\Ordering\Infrastructure\Persistence\Doctrine\DbalOrderNumbers;
 use App\Ordering\Infrastructure\Persistence\Doctrine\DoctrineOrderRepository;
@@ -167,7 +169,7 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
 
         self::assertNull($stored->delivery());
         self::assertSame([1_230, 1_230], [$stored->totals()->gross()->amount(), $stored->totals()->goodsGross()->amount()]);
-        $stored->ship(StaffActor::of('kc-staff', 'magazyn'), null, new \DateTimeImmutable());
+        $stored->ship(StaffActor::of('kc-staff', 'magazyn'), null, null, new \DateTimeImmutable());
         $this->orders->save($stored);
         $this->entityManager->clear();
         self::assertSame(['shipped', null, null, 0, 0, 0], $this->connection->fetchNumeric('SELECT status, delivery_method_id, delivery_method_name, delivery_gross, delivery_net, delivery_vat FROM ordering_order WHERE id = ?', [$id]));
@@ -259,6 +261,68 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         self::assertSame(['cancelled', 'payment_timeout'], $this->connection->fetchNumeric('SELECT status, cancellation_reason FROM ordering_order WHERE id = ?', [$order->id()->toString()]));
     }
 
+    public function testTheNumberSetAtTheShipmentIsReadBackAndTheCorrectionsAreStored(): void
+    {
+        $order = $this->order('key-tracking');
+        $this->orders->add($order);
+        $id = $order->id();
+        $placedAt = $order->placedAt();
+        $anna = StaffActor::of('kc-staff-1', 'anna');
+        $this->change($id, static fn (Order $o) => $o->markPaid(PaymentId::fromString(Uuid::v7()->toRfc4122()), 77_800, 'PLN', $placedAt, $placedAt->modify('+1 minute')));
+        $this->entityManager->clear();
+        self::assertNull($this->orders->get($id)->trackingNumber());
+
+        $this->change($id, static fn (Order $o) => $o->ship($anna, null, TrackingNumber::fromString('JJD0002-4455'), $placedAt->modify('+60 minutes')));
+        $this->entityManager->clear();
+
+        $shipped = $this->orders->get($id);
+        self::assertSame('JJD0002-4455', $shipped->trackingNumber()?->toString());
+        self::assertSame('JJD0002-4455', $this->connection->fetchOne('SELECT tracking_number FROM ordering_order WHERE id = ?', [$id->toString()]));
+        self::assertSame(3, $shipped->version());
+
+        $this->change($id, static fn (Order $o) => $o->changeTrackingNumber(TrackingNumber::fromString('XY-9')));
+        $this->entityManager->clear();
+        $replaced = $this->orders->get($id);
+        self::assertSame('XY-9', $replaced->trackingNumber()?->toString());
+        self::assertSame(4, $replaced->version(), 'the correction raises the version');
+        self::assertCount(\count($shipped->history()), $replaced->history(), 'and adds no entry of the history');
+
+        $this->change($id, static fn (Order $o) => $o->changeTrackingNumber(null));
+        $this->entityManager->clear();
+        self::assertNull($this->orders->get($id)->trackingNumber());
+        self::assertNull($this->connection->fetchOne('SELECT tracking_number FROM ordering_order WHERE id = ?', [$id->toString()]) ?: null);
+    }
+
+    public function testAShipmentWithoutANumberStoresNone(): void
+    {
+        $order = $this->order('key-no-tracking');
+        $this->orders->add($order);
+        $id = $order->id();
+        $placedAt = $order->placedAt();
+        $this->change($id, static fn (Order $o) => $o->markPaid(PaymentId::fromString(Uuid::v7()->toRfc4122()), 77_800, 'PLN', $placedAt, $placedAt->modify('+1 minute')));
+        $this->change($id, static fn (Order $o) => $o->ship(StaffActor::of('kc-staff-1', 'anna'), null, null, $placedAt->modify('+60 minutes')));
+        $this->entityManager->clear();
+
+        self::assertNull($this->orders->get($id)->trackingNumber());
+        self::assertNull($this->connection->fetchOne('SELECT tracking_number FROM ordering_order WHERE id = ?', [$id->toString()]) ?: null);
+    }
+
+    public function testTheNumberOfAnOrderThatIsNotShippedIsNotChangedAndNothingIsStored(): void
+    {
+        $order = $this->order('key-not-shipped');
+        $this->orders->add($order);
+        $this->entityManager->clear();
+
+        try {
+            $this->change($order->id(), static fn (Order $o) => $o->changeTrackingNumber(TrackingNumber::fromString('AB-1')));
+            self::fail('Expected TrackingNumberNotChangeable.');
+        } catch (TrackingNumberNotChangeable) {
+            $this->addToAssertionCount(1);
+        }
+        $this->entityManager->clear();
+        self::assertNull($this->connection->fetchOne('SELECT tracking_number FROM ordering_order WHERE id = ?', [$order->id()->toString()]) ?: null);
+    }
+
     public function testSaveAppendsTheHistoryAndWritesTheLifecycleAndTheRefund(): void
     {
         $order = $this->order('key-1');
@@ -271,7 +335,7 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         $at = static fn (int $minutes): \DateTimeImmutable => $placedAt->modify(\sprintf('+%d minutes', $minutes));
 
         $this->change($id, static fn (Order $o) => $o->markPaid(PaymentId::fromString($paymentId), 77_800, 'PLN', $placedAt, $at(1)));
-        $this->change($id, static fn (Order $o) => $o->ship($anna, null, $at(60)));
+        $this->change($id, static fn (Order $o) => $o->ship($anna, null, null, $at(60)));
         $this->change($id, static fn (Order $o) => $o->deliver($anna, 'Odebrane', $at(120)));
         $this->change($id, static fn (Order $o) => $o->registerReturn($bartek, 'Paczka wróciła', $at(180)));
         $this->change($id, static fn (Order $o) => $o->completeRefund($bartek, 'Przelew', $at(240)));

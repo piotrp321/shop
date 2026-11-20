@@ -77,6 +77,7 @@ export const detail = (overrides: Partial<OrderDetail> = {}): OrderDetail => ({
   discount: null,
   // An order placed before the delivery; the totals are those of its lines.
   delivery: null,
+  shipment: null,
   totals: { net: 34145, vat: 7853, gross: 41998, currency: "PLN" },
   placedAt: "2026-11-05T12:00:00+00:00",
   paymentDeadline: "2026-11-05T12:30:00+00:00",

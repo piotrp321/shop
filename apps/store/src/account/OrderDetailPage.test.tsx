@@ -96,6 +96,79 @@ describe("the order detail", () => {
     expect(within(lines[1]).getByTestId("line-total").textContent).toMatch(/20,00/);
   });
 
+  it("shows the delivery method with its cost between the discount and the totals, and nothing for an order without one", async () => {
+    vi.mocked(loadCustomerOrder).mockResolvedValue(ok(detail({ delivery: { methodName: "Kurier standardowy", gross: 1999 }, totals: { net: 35500, vat: 8497, gross: 43997, currency: "PLN" } })));
+    await renderPage();
+
+    const row = screen.getByTestId("order-delivery");
+    expect(row.textContent).toMatch(/^Dostawa \(Kurier standardowy\)19,99/);
+    expect(screen.getByTestId("total-gross").textContent).toMatch(/439,97/);
+    cleanup();
+
+    vi.mocked(loadCustomerOrder).mockResolvedValue(ok(detail()));
+    await renderPage();
+    expect(screen.queryByTestId("order-delivery")).toBeNull();
+  });
+
+  it("says a free delivery is free", async () => {
+    vi.mocked(loadCustomerOrder).mockResolvedValue(ok(detail({ delivery: { methodName: "Kurier standardowy", gross: 0 } })));
+    await renderPage();
+
+    expect(screen.getByTestId("order-delivery").textContent).toBe("Dostawa (Kurier standardowy)Darmowa");
+  });
+
+  it("shows the tracking number and a link that opens in a new tab only for an order with a shipment", async () => {
+    vi.mocked(loadCustomerOrder).mockResolvedValue(
+      ok(
+        detail({
+          status: "shipped",
+          shippedAt: "2026-11-06T09:00:00+00:00",
+          delivery: { methodName: "Kurier standardowy", gross: 0 },
+          shipment: { carrier: "Kurier standardowy", trackingNumber: "JJD0002-4455", trackingUrl: "https://tracking.example.com/JJD0002-4455" },
+        }),
+      ),
+    );
+    await renderPage();
+
+    const shipment = screen.getByRole("group", { name: "Przesyłka" });
+    expect(within(shipment).getByTestId("tracking-number").textContent).toBe("JJD0002-4455");
+    const link = within(shipment).getByRole("link", { name: "Śledź przesyłkę (otwiera się w nowej karcie)" });
+    expect(link.getAttribute("href")).toBe("https://tracking.example.com/JJD0002-4455");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("shows the number without a link when the method has no template", async () => {
+    vi.mocked(loadCustomerOrder).mockResolvedValue(
+      ok(detail({ status: "shipped", shippedAt: "2026-11-06T09:00:00+00:00", shipment: { carrier: null, trackingNumber: "AB-12", trackingUrl: null } })),
+    );
+    await renderPage();
+
+    expect(screen.getByTestId("tracking-number").textContent).toBe("AB-12");
+    expect(screen.queryByRole("link", { name: /Śledź przesyłkę/ })).toBeNull();
+  });
+
+  it("shows no shipment for an order without a number, also when it is shipped", async () => {
+    vi.mocked(loadCustomerOrder).mockResolvedValue(ok(detail({ status: "shipped", shippedAt: "2026-11-06T09:00:00+00:00", delivery: { methodName: "Kurier standardowy", gross: 0 } })));
+    await renderPage();
+
+    expect(screen.queryByRole("group", { name: "Przesyłka" })).toBeNull();
+    expect(screen.queryByText(/Numer przesyłki/)).toBeNull();
+    expect(screen.queryByRole("link", { name: /Śledź przesyłkę/ })).toBeNull();
+  });
+
+  it("can be reached with the keyboard: the tracking link is a link in the tab order", async () => {
+    vi.mocked(loadCustomerOrder).mockResolvedValue(
+      ok(detail({ status: "shipped", shippedAt: "2026-11-06T09:00:00+00:00", shipment: { carrier: "Kurier", trackingNumber: "AB-12", trackingUrl: "https://tracking.example.com/AB-12" } })),
+    );
+    await renderPage();
+
+    const link = screen.getByRole("link", { name: /Śledź przesyłkę/ });
+    link.focus();
+    expect(document.activeElement).toBe(link);
+    expect(link.getAttribute("tabindex")).toBeNull();
+  });
+
   it("lists the dates of the statuses the order went through, in Warsaw time", async () => {
     vi.mocked(loadCustomerOrder).mockResolvedValue(
       ok(detail({ status: "delivered", shippedAt: "2026-11-06T09:00:00+00:00", deliveredAt: "2026-11-07T23:30:00+00:00" })),

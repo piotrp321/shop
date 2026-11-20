@@ -92,11 +92,31 @@ trait BackofficeOrderEndpointTestTrait
      */
     private function postJson(string $path, array|string $body, ?string $token, string $contentType = 'application/json'): array
     {
+        return $this->sendJson('POST', $path, $body, $token, $contentType);
+    }
+
+    /**
+     * @param array<mixed>|string $body an array is sent as JSON, a string as it is
+     *
+     * @return array<mixed>
+     */
+    private function putJson(string $path, array|string $body, ?string $token, string $contentType = 'application/json'): array
+    {
+        return $this->sendJson('PUT', $path, $body, $token, $contentType);
+    }
+
+    /**
+     * @param array<mixed>|string $body
+     *
+     * @return array<mixed>
+     */
+    private function sendJson(string $method, string $path, array|string $body, ?string $token, string $contentType): array
+    {
         $server = ['CONTENT_TYPE' => $contentType];
         if (null !== $token) {
             $server['HTTP_AUTHORIZATION'] = 'Bearer '.$token;
         }
-        $this->client->request('POST', $path, server: $server, content: \is_array($body) ? json_encode($body, \JSON_THROW_ON_ERROR) : $body);
+        $this->client->request($method, $path, server: $server, content: \is_array($body) ? json_encode($body, \JSON_THROW_ON_ERROR) : $body);
         $this->entityManager->clear();
 
         return $this->decoded();

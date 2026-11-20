@@ -18,7 +18,9 @@ przez port `StockReservations` (`commit`, `release`).
 - Pracownik panelu przegląda zamówienia (lista z filtrem statusu, filtrem zwrotów do wykonania i wyszukiwaniem,
   szczegóły z historią statusów) i zmienia ich status: wysłane, dostarczone, anulowanie, zwrot. Każda zmiana wskazuje
   wersję zamówienia z widoku (optimistic locking) i zapisuje pracownika z tokena.
-- Wysyłka zatwierdza rezerwację stanów (towar schodzi z magazynu), anulowanie przed wysyłką ją zwalnia.
+- Wysyłka zatwierdza rezerwację stanów (towar schodzi z magazynu), anulowanie przed wysyłką ją zwalnia. Przy wysyłce
+  pracownik może wpisać numer przesyłki; numer dodaje się, poprawia i usuwa także po wysyłce (sekcja „Numer
+  przesyłki”).
 - Anulowanie opłaconego zamówienia i zwrot towaru zakładają zwrot pieniędzy do wykonania z terminem; pracownik
   oznacza go jako wykonany (sam zwrot jest ręczny, poza systemem).
 - Klient zalogowany widzi w sklepie historię swoich zamówień i szczegóły każdego z nich.
@@ -27,7 +29,8 @@ przez port `StockReservations` (`commit`, `release`).
   wysłaniem tej samej wiadomości.
 
 Poza zakresem:
-- integracje z kurierami, numer przesyłki ze śledzeniem, faktury (`docs/vision.md`, „Poza zakresem”);
+- integracje z kurierami, statusy przesyłki ze śledzenia i etykiety, faktury (`docs/vision.md`, „Poza zakresem”);
+  numer przesyłki wpisuje pracownik ręcznie (sekcja „Numer przesyłki”, `docs/features/delivery/spec.md`);
 - zwrot pieniędzy u dostawcy płatności (dostawcy są udawani); system tylko śledzi zwrot ręczny (P3);
 - zwroty płatności oznaczane przez Payment (`payment_payment.refund_required_reason`: po terminie, po anulowaniu,
   podwójne) w panelu i wspólny przegląd wszystkich zwrotów: #221;
@@ -212,12 +215,39 @@ Klasy treści w `Ordering_Application` (jak `PaymentReceivedText`), testowane je
 trafia do e-maila.
 
 - `OrderShipped` → handler `SendOrderShipped`: „Zamówienie R-100001 wysłane”: powitanie, numer, „Zamówienie zostało
-  wysłane na adres:”, adres.
+  wysłane na adres:”, adres, a po adresie „Sposób dostawy: <nazwa>” (gdy zamówienie ma metodę dostawy, także bez numeru
+  przesyłki) oraz, tylko gdy pracownik wpisał numer, „Numer przesyłki: <numer>” i „Śledzenie przesyłki: <link>” (link
+  tylko przy metodzie z szablonem). Zdarzenie `OrderShipped` nie niesie numeru: handler czyta go z zamówienia. Poprawienie
+  numeru po wysyłce nie wysyła e-maila ponownie.
 - `OrderCancelled` → `SendOrderCancelled` wybiera treść według `cancellationReason` zamówienia:
   `payment_timeout` → „Nie otrzymaliśmy płatności w terminie, więc anulowaliśmy zamówienie.”; `staff` → „Zamówienie R-100001 anulowane”: „Anulowaliśmy Twoje zamówienie. Zwrócimy
   płatność.”.
 - `OrderReturned` → `SendReturnReceived`: „Zamówienie R-100001 wróciło do nas”: „Zamówienie R-100001 wróciło do nas.
   Zwrócimy płatność.” (P14).
+
+## Numer przesyłki
+
+Reguły i decyzje: `docs/features/delivery/spec.md` (W8, W8a, P9, P18).
+
+- `POST /api/v1/admin/orders/{orderId}/status-changes` ma wymagany klucz `trackingNumber` (brak klucza to 422 „To pole
+  jest wymagane.”). Numer przyjmuje tylko wysyłka: 1–40 znaków ASCII (litery, cyfry, myślniki) po obcięciu białych
+  znaków Unicode na brzegach; `null` i same białe znaki (także NBSP) to brak numeru przy każdym przejściu. Zły typ: 422
+  „Numer przesyłki musi być tekstem.”, zły format (polskie litery, spacja w środku, 41 znaków, NUL, U+2028): 422
+  „Numer przesyłki może mieć 1–40 znaków: litery bez polskich znaków, cyfry i myślniki.”. Przy `deliver`, `cancel` i
+  `return` każda inna wartość (także w złym formacie i złego typu): 422 „Numer przesyłki można podać tylko przy
+  wysyłce.” (pierwszeństwo przed komunikatem formatu).
+- `PUT /api/v1/admin/orders/{orderId}/tracking-number` z treścią `{trackingNumber, version}` (oba klucze wymagane) dodaje,
+  zastępuje albo usuwa (`null`, same białe znaki) numer zamówienia `shipped` albo `delivered`. Role `admin` i `warehouse`
+  (atrybut `CHANGE_TRACKING_NUMBER` w `OrderVoter`, sprawdzany przed odczytem treści: inne role 403). Inny status: 409
+  `tracking-number-not-changeable` („Numer przesyłki można zmienić tylko w zamówieniu wysłanym albo dostarczonym.”).
+  Wersja jak przy zmianie statusu (`StaffOrderLock`): inna wersja to 409 konfliktu wersji, zapis podnosi wersję. Bez
+  zdarzenia, e-maila i wpisu historii; zamówienie nie zapisuje, kto zmienił numer.
+- Widoki (klienta, gościa przy złożeniu i panelu) mają `shipment: {carrier, trackingNumber, trackingUrl} | null`: tylko
+  gdy zamówienie ma numer; `carrier` to nazwa metody dostawy z kopii zamówienia (`null` bez metody), `trackingUrl` to
+  kopia szablonu z zakodowanym numerem (`null` bez szablonu). Odpowiedź panelu ma też `canChangeTrackingNumber`: status
+  `shipped` albo `delivered` (reguła `OrderStatus::allowsTrackingNumberChange()`) i rola z uprawnieniem.
+- Persystencja: kolumna `ordering_order.tracking_number` (`VARCHAR(40)`, CHECK: tylko od wysyłki), zapis i odczyt
+  w `DoctrineOrderRepository`, value object `TrackingNumber`.
 
 ### Znaczniki wysyłki poza agregatem
 
@@ -360,7 +390,9 @@ sklepu się nie zmienia.
   to ogólny błąd niżej.
 - Strona potwierdzenia płatności (`PaymentConfirmation`) dla `cancelled`: „Zamówienie zostało anulowane.” (P12).
 - Lista: numer, data (`Europe/Warsaw`), status, kwota z API, liczba sztuk, „Pokaż więcej”; pusta: „Nie masz jeszcze
-  zamówień.”. Szczegóły: pozycje, sumy, adres, daty statusów; `new` z „Czeka na płatność do 14:35”, po terminie
+  zamówień.”. Szczegóły: pozycje, sumy, wiersz „Dostawa (<nazwa metody>)” z kosztem („Darmowa” przy 0; bez wiersza dla zamówienia
+  bez metody), adres, przesyłka (tylko z numerem: „Numer przesyłki” i link „Śledź przesyłkę (otwiera się w nowej
+  karcie)” z `target="_blank"` i `rel="noopener noreferrer"`, tylko przy `trackingUrl`), daty statusów; `new` z „Czeka na płatność do 14:35”, po terminie
   (`paymentDeadlinePassed`) „Termin płatności minął” (P8). 404: „Nie znaleźliśmy zamówienia.”. Inny błąd listy albo
   szczegółów: „Nie udało się wczytać zamówień. Spróbuj ponownie.” z przyciskiem; nieudane „Pokaż więcej” zostawia
   wczytane pozycje i pozwala ponowić.
@@ -395,3 +427,8 @@ sklepu się nie zmienia.
     ponowienia jak w „E-maile”.
 11. E2E: logowanie klienta → złożenie i opłacenie → „Moje zamówienia” pokazuje „Opłacone” → pracownik wysyła je
     w panelu → historia klienta pokazuje „Wysłane”, Mailpit ma e-mail „wysłane”.
+14. Numer przesyłki: wysyłka z numerem i bez, białe znaki i `null` jako brak numeru, zły format i inne przejścia z numerem:
+    422 z komunikatami powyżej; `shipment` tylko z numerem; e-mail z „Sposób dostawy”, numerem i linkiem tylko przy numerze;
+    `PUT …/tracking-number` ustawia, zastępuje i usuwa numer w `shipped` i `delivered` (`admin`, `warehouse`), w innych
+    statusach 409, inna wersja 409, `support` i `marketing` 403, bez tokena 401, nieznane zamówienie 404; bez zdarzenia,
+    e-maila i wpisu historii. E2E: numer i link w sklepie i w Mailpit, poprawa numeru w panelu widoczna u klienta.

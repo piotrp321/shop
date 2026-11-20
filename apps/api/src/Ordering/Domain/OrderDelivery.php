@@ -86,6 +86,15 @@ final readonly class OrderDelivery
         return $this->trackingUrlTemplate;
     }
 
+    /**
+     * The link that follows the shipment of the number: the copy of the template with the number encoded for a URL;
+     * null for a method without a template.
+     */
+    public function trackingUrlFor(TrackingNumber $number): ?string
+    {
+        return null === $this->trackingUrlTemplate ? null : str_replace('{numer}', rawurlencode($number->toString()), $this->trackingUrlTemplate);
+    }
+
     public function gross(): Money
     {
         return $this->gross;

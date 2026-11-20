@@ -67,6 +67,7 @@ final class Order
         private ?Refund $refund,
         private array $history,
         private readonly int $version,
+        private ?TrackingNumber $trackingNumber,
     ) {
     }
 
@@ -103,7 +104,7 @@ final class Order
             throw new InvalidOrder('A guest order has an access token, a customer order has none.');
         }
         $history = [new OrderStatusChange(null, OrderStatus::New, $now, StatusActor::customer(), null)];
-        $order = new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, $discount, $delivery, OrderTotals::of($lines, $delivery), OrderStatus::New, $idempotencyKey, $requestFingerprint, $now, $now->modify(self::PAYMENT_TIME), null, null, null, null, null, null, null, null, $history, 1);
+        $order = new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, $discount, $delivery, OrderTotals::of($lines, $delivery), OrderStatus::New, $idempotencyKey, $requestFingerprint, $now, $now->modify(self::PAYMENT_TIME), null, null, null, null, null, null, null, null, $history, 1, null);
         $order->events[] = new OrderPlaced($id->toString(), $now);
 
         return $order;
@@ -112,9 +113,10 @@ final class Order
     /**
      * The order as stored, without events. The lines keep their stored values; nothing is computed anew.
      *
-     * @param list<OrderLine>         $lines    in their positions
-     * @param ?OrderDelivery          $delivery null for an order placed before the delivery (P17)
-     * @param list<OrderStatusChange> $history  oldest first
+     * @param list<OrderLine>         $lines          in their positions
+     * @param ?OrderDelivery          $delivery       null for an order placed before the delivery (P17)
+     * @param list<OrderStatusChange> $history        oldest first
+     * @param ?TrackingNumber         $trackingNumber the number of the shipment, if staff wrote one
      */
     public static function reconstitute(
         OrderId $id,
@@ -141,8 +143,9 @@ final class Order
         ?Refund $refund,
         array $history,
         int $version,
+        ?TrackingNumber $trackingNumber = null,
     ): self {
-        return new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, $discount, $delivery, OrderTotals::of($lines, $delivery), $status, $idempotencyKey, $requestFingerprint, $placedAt, $paymentDeadline, $paidAt, $paymentId, $cancelledAt, $cancellationReason, $shippedAt, $deliveredAt, $returnedAt, $refund, $history, $version);
+        return new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, $discount, $delivery, OrderTotals::of($lines, $delivery), $status, $idempotencyKey, $requestFingerprint, $placedAt, $paymentDeadline, $paidAt, $paymentId, $cancelledAt, $cancellationReason, $shippedAt, $deliveredAt, $returnedAt, $refund, $history, $version, $trackingNumber);
     }
 
     /**
@@ -231,19 +234,37 @@ final class Order
     }
 
     /**
-     * A staff member shipped the paid order; records OrderShipped. The caller commits its reservation.
+     * A staff member shipped the paid order, with the tracking number of the shipment if there is one; records
+     * OrderShipped (it does not carry the number: the email reads it from the order). The caller commits its
+     * reservation.
      *
      * @throws InvalidOrderInput         the note breaks the rules of StaffNote
      * @throws OrderTransitionNotAllowed
      */
-    public function ship(StaffActor $staff, ?string $note, \DateTimeImmutable $now): void
+    public function ship(StaffActor $staff, ?string $note, ?TrackingNumber $trackingNumber, \DateTimeImmutable $now): void
     {
         $note = StaffNote::optional($note);
         $this->assertAllowed(StaffTransition::Ship);
 
         $this->changeStatus(OrderStatus::Shipped, $now, StatusActor::staff($staff), $note);
         $this->shippedAt = $now;
+        $this->trackingNumber = $trackingNumber;
         $this->events[] = new OrderShipped($this->id->toString(), $now);
+    }
+
+    /**
+     * Adds, replaces or removes (null) the tracking number of a shipped or delivered order (P18). No event, no entry
+     * of the history: the customer is not told again, and the order does not record who changed the number.
+     *
+     * @throws TrackingNumberNotChangeable the order is neither shipped nor delivered
+     */
+    public function changeTrackingNumber(?TrackingNumber $trackingNumber): void
+    {
+        if (!$this->status->allowsTrackingNumberChange()) {
+            throw new TrackingNumberNotChangeable();
+        }
+
+        $this->trackingNumber = $trackingNumber;
     }
 
     /**
@@ -449,6 +470,11 @@ final class Order
     public function refund(): ?Refund
     {
         return $this->refund;
+    }
+
+    public function trackingNumber(): ?TrackingNumber
+    {
+        return $this->trackingNumber;
     }
 
     /**

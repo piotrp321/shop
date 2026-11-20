@@ -105,6 +105,29 @@ final class OrderVoterTest extends TestCase
     /**
      * @return iterable<string, array{list<string>, int}>
      */
+    public static function trackingNumberChangers(): iterable
+    {
+        yield 'admin' => [['admin'], self::GRANTED];
+        yield 'warehouse' => [['warehouse'], self::GRANTED];
+        yield 'support' => [['support'], self::DENIED];
+        yield 'marketing' => [['marketing'], self::DENIED];
+        yield 'support and marketing' => [['support', 'marketing'], self::DENIED];
+        yield 'warehouse and marketing' => [['warehouse', 'marketing'], self::GRANTED];
+        yield 'no staff role' => [[], self::DENIED];
+    }
+
+    /**
+     * @param list<string> $roles
+     */
+    #[DataProvider('trackingNumberChangers')]
+    public function testAdminAndTheWarehouseChangeTheTrackingNumber(array $roles, int $expected): void
+    {
+        self::assertSame($expected, $this->vote($this->staff($roles), OrderVoter::CHANGE_TRACKING_NUMBER));
+    }
+
+    /**
+     * @return iterable<string, array{list<string>, int}>
+     */
     public static function pendingPaymentViewers(): iterable
     {
         yield 'admin' => [['admin'], self::GRANTED];
@@ -198,6 +221,7 @@ final class OrderVoterTest extends TestCase
 
         self::assertSame(VoterInterface::ACCESS_ABSTAIN, $this->vote($admin, OrderVoter::VIEW_ORDERS, StaffTransition::Ship));
         self::assertSame(VoterInterface::ACCESS_ABSTAIN, $this->vote($admin, OrderVoter::COMPLETE_REFUND, StaffTransition::Cancel));
+        self::assertSame(VoterInterface::ACCESS_ABSTAIN, $this->vote($admin, OrderVoter::CHANGE_TRACKING_NUMBER, StaffTransition::Ship));
     }
 
     public function testACustomerIsDeniedEverything(): void
@@ -207,6 +231,7 @@ final class OrderVoterTest extends TestCase
         self::assertSame(self::DENIED, $this->vote($customer, OrderVoter::VIEW_ORDERS));
         self::assertSame(self::DENIED, $this->vote($customer, OrderVoter::CHANGE_ORDER_STATUS, StaffTransition::Ship));
         self::assertSame(self::DENIED, $this->vote($customer, OrderVoter::COMPLETE_REFUND));
+        self::assertSame(self::DENIED, $this->vote($customer, OrderVoter::CHANGE_TRACKING_NUMBER));
     }
 
     public function testAnonymousIsDeniedEverything(): void
@@ -216,6 +241,7 @@ final class OrderVoterTest extends TestCase
         self::assertSame(self::DENIED, $voter->vote(new NullToken(), null, [OrderVoter::VIEW_ORDERS]));
         self::assertSame(self::DENIED, $voter->vote(new NullToken(), StaffTransition::Cancel, [OrderVoter::CHANGE_ORDER_STATUS]));
         self::assertSame(self::DENIED, $voter->vote(new NullToken(), null, [OrderVoter::COMPLETE_REFUND]));
+        self::assertSame(self::DENIED, $voter->vote(new NullToken(), null, [OrderVoter::CHANGE_TRACKING_NUMBER]));
     }
 
     public function testOtherAttributesAreNotVotedOn(): void

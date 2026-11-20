@@ -14,6 +14,7 @@ use App\Ordering\Domain\OrderRepository;
 use App\Ordering\Domain\OrderTransitionNotAllowed;
 use App\Ordering\Domain\StaffActor;
 use App\Ordering\Domain\StaffTransition;
+use App\Ordering\Domain\TrackingNumber;
 use App\Shared\Domain\Event\DomainEventPublisher;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -41,7 +42,7 @@ final readonly class ChangeOrderStatusHandler
      * @throws OrderNotFound             also for an id that is no UUID
      * @throws OrderModifiedConcurrently the version is not the stored one
      * @throws OrderTransitionNotAllowed
-     * @throws InvalidOrderInput         the note breaks its rules
+     * @throws InvalidOrderInput         the note or the tracking number of a shipment breaks its rules
      */
     public function __invoke(ChangeOrderStatus $command): BackofficeOrderView
     {
@@ -51,7 +52,7 @@ final readonly class ChangeOrderStatusHandler
 
         switch ($command->transition) {
             case StaffTransition::Ship:
-                $order->ship($staff, $command->note, $now);
+                $order->ship($staff, $command->note, TrackingNumber::optional($command->trackingNumber), $now);
                 $this->reservations->commit($order->id());
                 break;
             case StaffTransition::Deliver:

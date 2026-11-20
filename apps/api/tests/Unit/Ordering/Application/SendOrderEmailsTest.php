@@ -241,7 +241,7 @@ final class SendOrderEmailsTest extends TestCase
         $staff = StaffActor::of('kc-staff-1', 'anna');
         $shipped = static function (Order $order) use ($paid, $staff): void {
             $paid($order);
-            $order->ship($staff, null, new \DateTimeImmutable('2026-11-05 12:20:00+00:00'));
+            $order->ship($staff, null, null, new \DateTimeImmutable('2026-11-05 12:20:00+00:00'));
         };
         $change = match ($kind) {
             NotificationKind::PaymentReceived => $paid,

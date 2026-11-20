@@ -2855,7 +2855,7 @@
                     "Ordering"
                 ],
                 "summary": "Change the status of an order",
-                "description": "Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel and register returns. A note is required to cancel and to register a return. Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The history entry names the staff member of the token. The customer gets an email about a shipment, a cancellation and a return.",
+                "description": "Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel and register returns. A note is required to cancel and to register a return. A shipment takes an optional tracking number (`trackingNumber`, null or blank for none; the other transitions take none). Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The history entry names the staff member of the token. The customer gets an email about a shipment (with the tracking number and its link, if there is one), a cancellation and a return.",
                 "operationId": "changeOrderStatus",
                 "parameters": [
                     {
@@ -2953,6 +2953,136 @@
                     },
                     "422": {
                         "description": "The transition is unknown, the version is not an integer of at least 1, the note breaks its rules or is missing to cancel or register a return, or a key is missing or of a wrong type (problem details with Polish `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/orders/{orderId}/tracking-number": {
+            "put": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Add, replace or remove the tracking number of an order",
+                "description": "Sets the tracking number of a shipped or delivered order (1 to 40 ASCII letters, digits and hyphens), replacing the one it has; null or a text of nothing but white space removes it. Administrators and the warehouse only. Only an order that is shipped or delivered takes the change. The number is not an event of the order: no history entry is added and no email is sent (the customer sees the current number and its link in the order; the email of the shipment keeps the number it was sent with). Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed. The change raises the version.",
+                "operationId": "changeOrderTrackingNumber",
+                "parameters": [
+                    {
+                        "name": "orderId",
+                        "in": "path",
+                        "description": "Order id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChangeTrackingNumberRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The order as saved.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrder"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is neither an administrator nor in the warehouse (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such order, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The order changed since the given version, or it is neither shipped nor delivered (problem details with a stable `type`, see `BackofficeOrderConflictProblem`). Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrderConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The number is not a text or is of a wrong shape, the version is not an integer of at least 1, or a key is missing or of a wrong type (problem details with Polish `violations`).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -4679,6 +4809,7 @@
                     "lines",
                     "discount",
                     "delivery",
+                    "shipment",
                     "totals",
                     "placedAt",
                     "paymentDeadline",
@@ -4692,7 +4823,8 @@
                     "history",
                     "refund",
                     "allowedTransitions",
-                    "canCompleteRefund"
+                    "canCompleteRefund",
+                    "canChangeTrackingNumber"
                 ],
                 "properties": {
                     "orderId": {
@@ -4755,6 +4887,15 @@
                         "allOf": [
                             {
                                 "$ref": "#/components/schemas/BackofficeOrderDelivery"
+                            }
+                        ]
+                    },
+                    "shipment": {
+                        "description": "The shipment, only once a tracking number is written (at the shipment or afterwards); null without one.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BackofficeOrderShipment"
                             }
                         ]
                     },
@@ -4840,6 +4981,10 @@
                     },
                     "canCompleteRefund": {
                         "description": "The refund is to do and the staff member of the token may mark it made.",
+                        "type": "boolean"
+                    },
+                    "canChangeTrackingNumber": {
+                        "description": "The order is shipped or delivered and the staff member of the token (an administrator or the warehouse) may add, correct or remove its tracking number.",
                         "type": "boolean"
                     }
                 },
@@ -5014,6 +5159,34 @@
                 },
                 "type": "object"
             },
+            "BackofficeOrderShipment": {
+                "description": "The shipment of an order that has a tracking number. The carrier is the name of the delivery method of the placement.",
+                "required": [
+                    "carrier",
+                    "trackingNumber",
+                    "trackingUrl"
+                ],
+                "properties": {
+                    "carrier": {
+                        "description": "The name of the delivery method; null for an order placed without one.",
+                        "type": "string",
+                        "example": "Kurier standardowy",
+                        "nullable": true
+                    },
+                    "trackingNumber": {
+                        "description": "1 to 40 ASCII letters, digits and hyphens.",
+                        "type": "string",
+                        "example": "JJD0002-4455"
+                    },
+                    "trackingUrl": {
+                        "description": "The link that follows the shipment, from the copy of the template of the method with the number; null without a template.",
+                        "type": "string",
+                        "example": "https://tracking.example.com/JJD0002-4455",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
             "BackofficeOrderTotals": {
                 "description": "Sums of the lines after the discount of the code and of the delivery; net + vat = gross.",
                 "required": [
@@ -5157,7 +5330,7 @@
                 "type": "object"
             },
             "BackofficeOrderConflictProblem": {
-                "description": "A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the status of the order does not allow the change, the order has no refund to do, or (`about:blank`) the order changed since the `version` sent, also when a change that succeeded is sent again. Nothing is changed.",
+                "description": "A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the status of the order does not allow the change, the order has no refund to do, the order is neither shipped nor delivered so its tracking number cannot change, or (`about:blank`) the order changed since the `version` sent, also when a change that succeeded is sent again. Nothing is changed.",
                 "required": [
                     "type",
                     "title",
@@ -5170,6 +5343,7 @@
                         "enum": [
                             "tag:piotrp321.github.io,2026:shop/problems/order-transition-not-allowed",
                             "tag:piotrp321.github.io,2026:shop/problems/refund-not-pending",
+                            "tag:piotrp321.github.io,2026:shop/problems/tracking-number-not-changeable",
                             "about:blank"
                         ]
                     },
@@ -6198,7 +6372,8 @@
                 "required": [
                     "transition",
                     "version",
-                    "note"
+                    "note",
+                    "trackingNumber"
                 ],
                 "properties": {
                     "transition": {
@@ -6225,6 +6400,37 @@
                         "example": "Kurier DPD",
                         "nullable": true,
                         "maxLength": 500
+                    },
+                    "trackingNumber": {
+                        "description": "The tracking number of the shipment, for `ship` only: 1 to 40 ASCII letters, digits and hyphens once trimmed of white space. Null or nothing but white space is no number, for every transition; any other value of another transition is refused.",
+                        "type": "string",
+                        "example": "JJD0002-4455",
+                        "nullable": true,
+                        "maxLength": 40
+                    }
+                },
+                "type": "object"
+            },
+            "ChangeTrackingNumberRequest": {
+                "description": "The tracking number of a shipped or delivered order, based on the version of the order the staff member saw.",
+                "required": [
+                    "trackingNumber",
+                    "version"
+                ],
+                "properties": {
+                    "trackingNumber": {
+                        "description": "The tracking number: 1 to 40 ASCII letters, digits and hyphens once trimmed of white space. Null or nothing but white space removes the number.",
+                        "type": "string",
+                        "example": "JJD0002-4455",
+                        "nullable": true,
+                        "maxLength": 40
+                    },
+                    "version": {
+                        "description": "The `version` of the order the change is based on.",
+                        "type": "integer",
+                        "example": 4,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
                     }
                 },
                 "type": "object"

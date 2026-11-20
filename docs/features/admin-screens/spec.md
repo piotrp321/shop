@@ -226,10 +226,15 @@ wariantów z etykietą wariantu („Wariant domyślny” dla pustej etykiety).
     (Netto, VAT, Brutto albo „Brutto po rabacie”); poniżej 640 px widoczne Produkt, Ilość i ostatnia Wartość, a
     pozostałe kolumny są liniami komórki produktu), karta „Historia” z osią czasu i karta „Zwrot pieniędzy” (gdy
     `refund`: kwota, termin z „Po terminie”, stan „Do wykonania” albo „Wykonany”, wykonanie: data, pracownik, notatka,
-    płatność do zwrotu);
-  - kolumna boczna: karta „Akcje” (przyciski z `allowedTransitions` i „Oznacz zwrot jako wykonany” przy
-    `canCompleteRefund`; karta jest ukryta bez żadnej akcji), „Klient” (imię i nazwisko, e-mail jako `mailto:` z
-    zawijaniem w karcie, telefon, link „Inne zamówienia klienta” → `/orders?q=<e-mail>`), „Adres dostawy”, „Płatność”
+    płatność do zwrotu); nad sumami wiersz `delivery-line` „Dostawa (<nazwa metody>): 19,99 zł” (także „0,00 zł” przy
+    darmowej dostawie), gdy zamówienie ma metodę dostawy; sumy z API obejmują dostawę;
+  - kolumna boczna: karta „Akcje” (przyciski z `allowedTransitions`, „Oznacz zwrot jako wykonany” przy
+    `canCompleteRefund` i „Zmień numer przesyłki” („Dodaj numer przesyłki”, gdy numeru nie ma) przy
+    `canChangeTrackingNumber`, czyli dla `admin` i `warehouse` w zamówieniu `shipped` albo `delivered`; karta jest ukryta
+    bez żadnej akcji), „Klient” (imię i nazwisko, e-mail jako `mailto:` z
+    zawijaniem w karcie, telefon, link „Inne zamówienia klienta” → `/orders?q=<e-mail>`), „Adres dostawy”, „Przesyłka”
+    (tylko z `shipment`: „Numer przesyłki” krojem o stałej szerokości i link „Śledź przesyłkę (otwiera się w nowej
+    karcie)” z `target="_blank"` i `rel="noopener noreferrer"`, tylko przy `trackingUrl`), „Płatność”
     (data złożenia, termin płatności dla `new`, data opłacenia, daty wysłania, dostarczenia, anulowania z powodem i
     zwrócenia, identyfikator płatności `paymentId` krojem o stałej szerokości z przyciskiem „Kopiuj identyfikator
     płatności”).
@@ -239,14 +244,24 @@ wariantów z etykietą wariantu („Wariant domyślny” dla pustej etykiety).
   - **Okno zmiany statusu** (okno z polami): tytuł ze skutkiem i numerem („Anulować zamówienie R-100002?”, „Oznaczyć
     zamówienie R-100002 jako wysłane?”, „Oznaczyć zamówienie R-100002 jako dostarczone?”, „Przyjąć zwrot zamówienia
     R-100002?”, „Oznaczyć zwrot pieniędzy za R-100002 jako wykonany?”), pole „Notatka” z fokusem po otwarciu (wymagane
-    przy anulowaniu i przyjęciu zwrotu, 500 znaków), przycisk skutku (czerwony przy anulowaniu i zwrocie) i „Wróć”. 422
-    przy polu notatki, 403 i inne błędy w komunikacie okna z fokusem na nim (#260 F8), 409 zamyka okno, pokazuje
+    przy anulowaniu i przyjęciu zwrotu, 500 znaków), przy wysyłce także opcjonalne pole „Numer przesyłki (opcjonalnie)”
+    z podpowiedzią „Litery, cyfry i myślniki, do 40 znaków” (puste pole to brak numeru; żądanie niesie `trackingNumber`
+    tylko przy wysyłce, przy innych zmianach `null`), przycisk skutku (czerwony przy anulowaniu i zwrocie) i „Wróć”. 422
+    przy polu notatki albo numeru przesyłki (z fokusem w polu i `aria-describedby`), 403 i inne błędy w komunikacie okna z fokusem na nim (#260 F8), 409 zamyka okno, pokazuje
     komunikat `conflict` (`tabindex="-1"`) z fokusem na nim i wczytuje zamówienie ponownie. Po udanej akcji toast
     „Status zamówienia zmieniony: Wysłane.” (polska etykieta pola `status` z odpowiedzi API na zmianę statusu, ta sama
     co w etykiecie statusu, `statusLabel`; nigdy pusta: nieznany status pokazuje wartość z API) albo „Zwrot oznaczony
     jako wykonany.”, a fokus trafia na nagłówek karty „Akcje” (zestaw przycisków się zmienił); gdy karta „Akcje”
     zniknęła (brak dalszych akcji, np. po anulowaniu nieopłaconego zamówienia albo po wykonaniu zwrotu), na nagłówek
     karty „Historia”.
+  - **Okno numeru przesyłki** (akcja „Zmień numer przesyłki” albo „Dodaj numer przesyłki”, osobne małe okno): tytuł
+    „Zmienić numer przesyłki zamówienia R-100002?” („Dodać …”), pole „Numer przesyłki” z fokusem po otwarciu i z obecnym
+    numerem, podpowiedź „Litery, cyfry i myślniki, do 40 znaków. Puste pole usuwa numer.”, „Zapisz numer” i „Wróć”;
+    Enter w polu zapisuje. Wysyła `PUT /api/v1/admin/orders/{id}/tracking-number` z `version` widoku; pusty tekst to
+    `null` (usunięcie). Po zapisie toast „Numer przesyłki zapisany.” albo „Numer przesyłki usunięty.”, okno się zamyka
+    i fokus wraca na akcję (a gdy jej nie ma, na nagłówek karty „Akcje” albo „Historia”). Odmowy zostają w oknie:
+    422 przy polu numeru (z fokusem w polu), 409 (wersja albo status: zamówienie jest wczytywane ponownie, komunikat jak
+    w oknie zmiany statusu), 403 i inne błędy w komunikacie okna (`role="alert"`, fokus na nim).
   - 404: H1 „Nie znaleziono zamówienia” z linkiem do listy; błąd wczytania z „Spróbuj ponownie” (403 bez ponowienia).
   - Szczegóły działają przy 375 px bez przewijania strony w poziomie.
 - **Oś czasu** (`OrderTimeline`): wpisy `history` (`BackofficeOrderStatusChange`: `from`, `to`, `occurredAt`,

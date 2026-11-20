@@ -37,6 +37,7 @@ use App\Ordering\Domain\ShippingAddress;
 use App\Ordering\Domain\StaffActor;
 use App\Ordering\Domain\StatusActor;
 use App\Ordering\Domain\StatusActorType;
+use App\Ordering\Domain\TrackingNumber;
 use App\Ordering\Domain\VariantId;
 use App\Ordering\Infrastructure\Persistence\Doctrine\Record\OrderDeliveryVatRecord;
 use App\Ordering\Infrastructure\Persistence\Doctrine\Record\OrderLineRecord;
@@ -62,6 +63,7 @@ use Symfony\Component\Uid\Uuid;
  * added in their positions (rows are never changed). Lines, the shares of the delivery by VAT rate and history entries
  * are immutable, so a record of them already in the identity map is never stale. The copy of the delivery and its
  * shares are written only when the order is added; an order stored without a delivery (before it) is read with none.
+ * The tracking number of the shipment is written with the other changes (it is set by the shipment and corrected after it).
  */
 final readonly class DoctrineOrderRepository implements OrderRepository
 {
@@ -244,6 +246,7 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         $record->shippedAt = $order->shippedAt();
         $record->deliveredAt = $order->deliveredAt();
         $record->returnedAt = $order->returnedAt();
+        $record->trackingNumber = $order->trackingNumber()?->toString();
         $refund = $order->refund();
         $record->refundAmount = $refund?->amount()->amount();
         $record->refundDueAt = $refund?->dueAt();
@@ -324,6 +327,7 @@ final readonly class DoctrineOrderRepository implements OrderRepository
             refund: self::refund($record, $currency),
             history: array_values(array_map(self::statusChange(...), $record->statusChanges->toArray())),
             version: $record->version,
+            trackingNumber: null === $record->trackingNumber ? null : TrackingNumber::fromString($record->trackingNumber),
         );
     }
 

@@ -7,9 +7,10 @@ namespace App\Ordering\UI\Http;
 use App\Ordering\Application\View\OrderDeliveryView;
 use App\Ordering\Application\View\OrderDiscountView;
 use App\Ordering\Application\View\OrderLineView;
+use App\Ordering\Application\View\OrderShipmentView;
 
 /**
- * The lines, the discount code and the delivery of an order in the bodies of the store and the panel (schemas
+ * The lines, the discount code, the delivery and the shipment of an order in the bodies of the store and the panel (schemas
  * OrderLine, OrderDiscount, OrderDelivery, BackofficeOrderLine, BackofficeOrderDiscount and BackofficeOrderDelivery of
  * nelmio_api_doc.yaml); only the panel adds the promotion of a line.
  */
@@ -53,6 +54,18 @@ final class OrderLineJson
         return null === $delivery ? null : [
             'methodName' => $delivery->methodName,
             'gross' => $delivery->gross,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null null for an order without a tracking number
+     */
+    public static function shipment(?OrderShipmentView $shipment): ?array
+    {
+        return null === $shipment ? null : [
+            'carrier' => $shipment->carrier,
+            'trackingNumber' => $shipment->trackingNumber,
+            'trackingUrl' => $shipment->trackingUrl,
         ];
     }
 }
