@@ -11,6 +11,7 @@
   "resetPasswordAllowed": false,
   "rememberMe": false,
   "bruteForceProtected": true,
+  "passwordPolicy": "length(12) and maxLength(128) and notUsername and notEmail and passwordHistory(5)",
   "ssoSessionIdleTimeout": 900,
   "ssoSessionMaxLifespan": 28800,
   "internationalizationEnabled": true,

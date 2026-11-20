@@ -3,7 +3,7 @@
 The pod reaches the services by their names and the ingresses through Traefik with the Host header, so no port of
 the host is involved. Usage: python - <command> [argument]
 
-  basic         the checks of a new installation (search analysis, API, store, switches, menu of the prerendered pages,
+  basic         the checks of a new installation (search analysis, API, store, limits of the request body, switches, menu of the prerendered pages,
                 panel and its security headers, no source maps served by the store and the panel, realms, store login,
                 image, order e-mail)
   snapshot      prints a JSON snapshot of what an upgrade must not change (products, realms)
@@ -27,6 +27,7 @@ import http.client
 import json
 import os
 import re
+import socket
 import sys
 import time
 import urllib.error
@@ -235,6 +236,87 @@ def check_no_source_maps():
             status, _, body = through_ingress(path, sub)
             expect(status == 200, f"{name} serves the script {path}")
             expect(not has_source_mapping_comment(body), f"the script {parts.path} of {name} has no sourceMappingURL comment")
+
+
+MIB = 1024 * 1024
+# More stalled bodies than the PHP threads of the API (twice the CPUs of the node, the default of FrankenPHP).
+STALLED_BODIES = 128
+
+
+def open_stalled_bodies(sub, count):
+    """Opens `count` connections to the ingress that send the headers and one byte of a body of 1000 bytes, and nothing more."""
+    host, _, port = TRAEFIK.split("//", 1)[1].partition(":")
+    head = f"POST /api/v1/orders HTTP/1.1\r\nHost: {sub}.{DOMAIN}\r\nContent-Type: application/json\r\nContent-Length: 1000\r\n\r\n{{"
+    connections = []
+    try:
+        for _ in range(count):
+            connections.append(socket.create_connection((host, int(port or 80)), timeout=10))
+            connections[-1].sendall(head.encode())
+    except BaseException:
+        close_all(connections)
+        raise
+    return connections
+
+
+def post_oversized(path, sub="", size=2 * MIB):
+    """POST of `size` bytes of JSON to the ingress as exactly the path says. Returns the status. A server that answers 413 may
+    close the connection before it has read the whole body: the failed write is then no failure, the answer is read anyway."""
+    host, _, port = TRAEFIK.split("//", 1)[1].partition(":")
+    connection = http.client.HTTPConnection(host, int(port or 80), timeout=60)
+    try:
+        connection.putrequest("POST", path, skip_host=True, skip_accept_encoding=True)
+        connection.putheader("Host", f"{sub}.{DOMAIN}" if sub else DOMAIN)
+        connection.putheader("Content-Type", "application/json")
+        connection.putheader("Content-Length", str(size))
+        connection.endheaders()
+        try:
+            connection.send(b'{"x":"' + b"a" * (size - 8) + b'"}')
+        except OSError:
+            pass
+        return connection.getresponse().status
+    finally:
+        connection.close()
+
+
+def close_all(connections):
+    for connection in connections:
+        try:
+            connection.close()
+        except OSError:
+            pass
+
+
+def check_request_body_limits():
+    """L8, D10: the ingress refuses a body over 1 MiB on the host api and on /api/ of the store (also by paths that only
+    look different), and a slow body is held by the ingress, not by the threads of the API."""
+    status = post_oversized("/api/v1/orders", "api")
+    expect(status == 413, f"2 MiB to /api/v1/orders through the ingress is a 413 (got {status})")
+    status = post_oversized("/api/checkout")
+    expect(status == 413, f"2 MiB to /api/checkout of the store through the ingress is a 413 (got {status})")
+    # The ingress compares the path after the same normalization as the store does: a path that only looks different is limited.
+    for path in ("//api/checkout", "/%61pi/checkout", "/api/../api/checkout"):
+        status = post_oversized(path)
+        expect(status == 413, f"2 MiB to {path} of the store through the ingress is a 413 (got {status})")
+    # The upload path of the API: 2 MiB reach the API (its limit there is 71 MiB), which answers 401 without a token.
+    status = post_oversized("/api/v1/admin/product-images", "api")
+    expect(status == 401, f"2 MiB to the upload path of the API reach it, unauthenticated (got {status})")
+    status = post_oversized("/api/v1/admin/product-images/x", "api")
+    expect(status == 413, f"2 MiB to a longer path than the upload path is a 413 (got {status})")
+
+    connections = open_stalled_bodies("api", STALLED_BODIES)
+    try:
+        started = time.time()
+        status, _, _ = through_ingress("/health", "api")
+        seconds = time.time() - started
+        expect(
+            status == 200 and seconds < 5,
+            f"/health of the API through the ingress answers at once with {STALLED_BODIES} stalled bodies (got {status} after {seconds:.1f} s)",
+        )
+    finally:
+        close_all(connections)
+    # The pages of the store are not buffered: the stalled bodies change nothing for them.
+    status, _, _ = through_ingress("/")
+    expect(status == 200, f"the home page of the store still answers after the stalled bodies (got {status})")
 
 
 def check_store_and_api_security_headers():
@@ -641,6 +723,7 @@ def main():
     if command == "basic":
         check_search_analysis()
         check_api_and_store()
+        check_request_body_limits()
         check_store_switches()
         check_store_menu()
         check_admin_config()

@@ -45,18 +45,18 @@ describe("AddToCartButton", () => {
     expect(addCartItem).not.toHaveBeenCalled();
   });
 
-  it("is disabled while the request runs, so a second click adds nothing", async () => {
+  it("is blocked (aria-disabled) while the request runs, so a second click adds nothing", async () => {
     let finish: (value: Awaited<ReturnType<typeof addCartItem>>) => void = () => {};
     vi.mocked(addCartItem).mockReturnValue(new Promise((resolve) => (finish = resolve)));
     render(<AddToCartButton variantId={PRODUCT} />);
 
     fireEvent.click(button());
-    expect(button().disabled).toBe(true);
+    expect(button().getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(button());
     expect(addCartItem).toHaveBeenCalledTimes(1);
 
     await act(async () => finish({ status: "ok", data: cartWith(1) }));
-    expect(button().disabled).toBe(false);
+    expect(button().getAttribute("aria-disabled")).toBeNull();
   });
 
   it("says the product was added and announces the units of the cart from the answer", async () => {
@@ -88,6 +88,18 @@ describe("AddToCartButton", () => {
     fireEvent.click(button());
 
     expect(await screen.findByText("Nie udało się zapisać zmian. Spróbuj ponownie.")).toBeTruthy();
+  });
+
+  it("shows the text of the limit of cart changes as an alert after a 429, and the button works again", async () => {
+    vi.mocked(addCartItem).mockResolvedValue({ status: "rate_limited" });
+    render(<AddToCartButton variantId={PRODUCT} />);
+
+    fireEvent.click(button());
+
+    const alert = await screen.findByText("Zbyt wiele zmian koszyka. Spróbuj ponownie za kilka minut.");
+    expect(alert.getAttribute("role")).toBe("alert");
+    expect(counts).toEqual([]);
+    expect(button().disabled).toBe(false);
   });
 
   it("says the product is no longer available on a 404", async () => {
@@ -128,5 +140,27 @@ describe("AddToCartButton", () => {
 
     await screen.findByText("Dodano do koszyka");
     expect(screen.queryByText("Nie udało się zapisać zmian. Spróbuj ponownie.")).toBeNull();
+  });
+
+  it.each([
+    ["success", { status: "ok", data: cartWith(1) }],
+    ["a 429", { status: "rate_limited" }],
+    ["another error", { status: "failed" }],
+  ] as const)("keeps the focus on the button through a request that ends with %s, and a click meanwhile sends nothing", async (_name, outcome) => {
+    let finish: (value: Awaited<ReturnType<typeof addCartItem>>) => void = () => {};
+    vi.mocked(addCartItem).mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    render(<AddToCartButton variantId={PRODUCT} />);
+    button().focus();
+
+    fireEvent.click(button());
+    // A disabled button loses the focus in a browser (jsdom keeps it), so the block must not use `disabled`.
+    expect(button().disabled).toBe(false);
+    expect(button().getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(button());
+    fireEvent.click(button());
+    expect(addCartItem).toHaveBeenCalledTimes(1);
+
+    await act(async () => finish(outcome));
+    expect(document.activeElement).toBe(button());
   });
 });

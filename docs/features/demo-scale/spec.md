@@ -88,7 +88,7 @@ Przyjęte przez sesję; każde sprawdzone w kodzie albo eksperymentem na jednora
 - **Z7. Aplikacja `shop` Argo CD ma `selfHeal` i `prune`.** Zasób spoza chartu (reguła zamknięcia, Job z `create job
   --from`, sekret puli zdjęć) nie jest przez nią śledzony (bez etykiet i adnotacji śledzenia), więc synchronizacja go
   nie usuwa ani nie przywraca.
-- **Z8. Jedyne publiczne wejście to Traefik.** Chart ma pięć Ingressów (sklep, `admin.`, `api.`, `auth.`, `img.`),
+- **Z8. Jedyne publiczne wejście to Traefik.** Chart ma Ingressy tylko dla hostów sklepu, `admin.`, `api.`, `auth.` i `img.`,
   wszystkie usługi są typu ClusterIP, żaden pod nie używa sieci ani portu hosta, a firewall serwera przepuszcza
   z zewnątrz tylko SSH i API k3s (`server-bootstrap.sh`).
 - **Z9. Usunięty pod Joba nie wraca.** Po usunięciu działającego poda Joba z `backoffLimit: 0` Job dostał warunek

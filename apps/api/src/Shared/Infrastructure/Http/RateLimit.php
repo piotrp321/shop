@@ -17,9 +17,19 @@ final class RateLimit
     /** What the limit of the route counts by, one of the key constants below (by the guest address when absent). */
     public const string KEY_ROUTE_DEFAULT = '_rate_limit_key';
 
+    /**
+     * Optional: the name of a query parameter. The limit then counts only a request whose query has the parameter with
+     * a value other than the empty string, as given (spaces, white space of Unicode or an array count too: the limit
+     * trims nothing, so it never takes for empty what the controller takes for a value).
+     */
+    public const string QUERY_ROUTE_DEFAULT = '_rate_limit_query';
+
     public const string ORDER_PLACEMENT = 'order_placement';
     public const string PAYMENT_START = 'payment_start';
     public const string PAYMENT_WEBHOOK = 'payment_webhook';
+    public const string GUEST_CART_CREATE = 'guest_cart_create';
+    public const string GUEST_CART_WRITE = 'guest_cart_write';
+    public const string DISCOUNT_PREVIEW = 'discount_preview';
 
     /** `guest:<address>` (ClientIp). */
     public const string BY_GUEST = 'guest';

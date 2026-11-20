@@ -1,0 +1,18 @@
+# The locks of the rate limiters (spec: docs/features/abuse-limits/spec.md, D1), in the Redis of their counters: the
+# same DSN (parameter rate_limiter.redis_dsn of rate_limiter.yaml, with its timeouts), a lazy connection of its own.
+framework:
+    # A limiter takes a lock factory only with the Lock component enabled; the limiters use rate_limiter.lock_factory
+    # below, not the factory of this resource.
+    lock:
+        rate_limiter: 'rate_limiter.lock_connection'
+
+services:
+    rate_limiter.lock_connection:
+        class: Redis
+        factory: ['Symfony\Component\Cache\Adapter\RedisAdapter', 'createConnection']
+        arguments: ['%rate_limiter.redis_dsn%', { lazy: true }]
+
+    # Locks of 5 s, a wait of at most 300 ms, fail open with a warning of the `cache` channel (RateLimitLockFactory).
+    rate_limiter.lock_factory:
+        class: App\Shared\Infrastructure\Http\RateLimitLockFactory
+        arguments: ['@rate_limiter.lock_connection', '@monolog.logger.cache']

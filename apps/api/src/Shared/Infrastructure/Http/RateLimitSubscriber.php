@@ -21,7 +21,11 @@ use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInt
  * D4–D8): after the firewall, before the controller, so a refused request reads no body, checks no signature and
  * dispatches no command. Every request of the route uses the limit, also a repeated Idempotency-Key and one that the
  * validation refuses. Over the limit: a 429 problem with a Polish `detail`, `Retry-After` in seconds and
- * `private, no-store`.
+ * `private, no-store`. Every limiter locks its key (RateLimitLockFactory; spec: docs/features/abuse-limits/spec.md,
+ * D1): a key held by another request for the whole wait is refused the same way (`Retry-After: 1`), and a failure of
+ * Redis at the lock lets the request through without a limit (fail open, D7 of HARDENING).
+ *
+ * With RateLimit::QUERY_ROUTE_DEFAULT, only a request whose query has that parameter with a non-empty value counts.
  *
  * The key (RateLimit::KEY_ROUTE_DEFAULT): `guest:<address>`, `customer:<sub>` or `<provider>:<address>`, with the
  * address of ClientIp; the prefixes keep the spaces of guests and customers apart. A customer route without a user
@@ -30,6 +34,9 @@ use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInt
 final readonly class RateLimitSubscriber implements EventSubscriberInterface
 {
     public const string DETAIL = 'Zbyt wiele prób. Spróbuj ponownie za kilka minut.';
+
+    /** `Retry-After` of a request refused because another request held the lock of its key. */
+    private const int CONTENDED_RETRY_AFTER = 1;
 
     public function __construct(
         #[AutowireLocator('rate_limiter', indexAttribute: 'name')]
@@ -52,12 +59,26 @@ final readonly class RateLimitSubscriber implements EventSubscriberInterface
         if (!$event->isMainRequest() || !\is_string($name)) {
             return;
         }
+        $parameter = $request->attributes->get(RateLimit::QUERY_ROUTE_DEFAULT);
+        if (\is_string($parameter) && '' === ($request->query->all()[$parameter] ?? '')) {
+            return;
+        }
 
         $factory = $this->limiters->get($name);
         \assert($factory instanceof RateLimiterFactoryInterface);
-        $limit = $factory->create($this->key($request))->consume();
+        try {
+            $limit = $factory->create($this->key($request))->consume();
+        } catch (RateLimitLockContended) {
+            // Another request held the key for the whole wait: refused like a request over the limit.
+            $event->setResponse(self::tooManyRequests(self::CONTENDED_RETRY_AFTER));
+
+            return;
+        } catch (RateLimitLockUnavailable) {
+            // Redis failed (the lock logged it): no counter was called and the request passes without a limit.
+            return;
+        }
         if (!$limit->isAccepted()) {
-            $event->setResponse(self::tooManyRequests($limit));
+            $event->setResponse(self::tooManyRequests(self::secondsUntil($limit)));
         }
     }
 
@@ -77,9 +98,13 @@ final readonly class RateLimitSubscriber implements EventSubscriberInterface
         return 'guest:'.$this->clientIp->of($request);
     }
 
-    private static function tooManyRequests(Limit $limit): JsonResponse
+    private static function secondsUntil(Limit $limit): int
     {
-        $seconds = max(1, (int) ceil((float) $limit->getRetryAfter()->format('U.u') - microtime(true)));
+        return max(1, (int) ceil((float) $limit->getRetryAfter()->format('U.u') - microtime(true)));
+    }
+
+    private static function tooManyRequests(int $seconds): JsonResponse
+    {
         $status = Response::HTTP_TOO_MANY_REQUESTS;
         $response = new JsonResponse(
             ['type' => 'about:blank', 'title' => Response::$statusTexts[$status], 'status' => $status, 'detail' => self::DETAIL],

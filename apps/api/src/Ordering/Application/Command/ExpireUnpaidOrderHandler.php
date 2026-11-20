@@ -7,6 +7,7 @@ namespace App\Ordering\Application\Command;
 use App\Ordering\Application\Port\Clock;
 use App\Ordering\Application\Port\DiscountCodeRedemptions;
 use App\Ordering\Application\Port\StockReservations;
+use App\Ordering\Application\Port\UnpaidOrderClaims;
 use App\Ordering\Application\Port\UnpaidOrderExpiry;
 use App\Ordering\Domain\ExpiryResult;
 use App\Ordering\Domain\OrderId;
@@ -20,7 +21,8 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 /**
  * Cancels an unpaid order in the transaction of command.bus: the release of its reservation (Inventory, nested), the
  * release of the usage of its discount code (Pricing, nested; called for every order, without effect for one without
- * a code, decision D4), the cancelled order and OrderCancelled in the outbox together or not at all. It always decides
+ * a code, decision D4), the cancelled order, the removal of its claim of the limit of unpaid orders and OrderCancelled
+ * in the outbox together or not at all. It always decides
  * on the current state and deadline of the order, so a message delivered again changes nothing.
  *
  * The order is locked first, before the release reaches Inventory, like the changes of staff, so the expiry and a
@@ -45,6 +47,7 @@ final readonly class ExpireUnpaidOrderHandler
         private DomainEventPublisher $events,
         private Clock $clock,
         private LoggerInterface $logger,
+        private UnpaidOrderClaims $unpaidClaims,
     ) {
     }
 
@@ -69,6 +72,7 @@ final readonly class ExpireUnpaidOrderHandler
                 $this->reservations->release($order->id());
                 $this->redemptions->release($order->id());
                 $this->orders->save($order);
+                $this->unpaidClaims->remove($order->id());
                 $this->events->publish(...$order->releaseEvents());
                 break;
             case ExpiryResult::TooEarly:

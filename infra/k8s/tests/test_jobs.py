@@ -1,7 +1,8 @@
+import json
 import re
 import unittest
 
-from support import DIGEST, DIGESTS, JOBS, REVISION, by_logical, containers, env_of, logical, of_kind, pod_spec, wave
+from support import DIGEST, DIGESTS, JOBS, REPO, REVISION, by_logical, containers, env_of, logical, of_kind, pod_spec, wave
 
 
 def job_names(case):
@@ -102,7 +103,7 @@ class CronJobTest(unittest.TestCase):
         for case in ("prod-backup", "ci"):
             crons = by_logical(case, "CronJob")
             # load (tests/test_load_cronjob.py) and demo-data (tests/test_demo_data.py) are in every profile.
-            expected = {"cart-purge-expired", "backup", "backup-verify", "restore", "load", "demo-data"}
+            expected = {"cart-purge-expired", "rate-limit-check", "backup", "backup-verify", "restore", "load", "demo-data"}
             self.assertEqual(expected, set(crons), case)
             cron = crons["cart-purge-expired"]
             self.assertEqual("0 * * * *", cron["spec"]["schedule"])
@@ -112,6 +113,60 @@ class CronJobTest(unittest.TestCase):
             self.assertEqual(1, wave(cron))
             self.assertIn(f":{REVISION}", containers(cron)[0]["image"])
         self.assertTrue(containers(by_logical("prod", "CronJob")["cart-purge-expired"])[0]["image"].endswith(f":{REVISION}@{DIGESTS['api']}"))
+
+
+class RateLimitCheckTest(unittest.TestCase):
+    """L12, D16 (docs/features/abuse-limits/spec.md): the CronJob that checks the Redis of the rate limiters, whose success the alert
+    RateLimitsOff counts."""
+
+    CASES = ("prod", "prod-backup", "prod-nobackup", "prod-noinit", "ci", "load")
+
+    def cron(self, case):
+        return by_logical(case, "CronJob")["rate-limit-check"]
+
+    def test_it_is_in_every_profile_and_runs_the_command_every_five_minutes(self):
+        for case in self.CASES:
+            cron = self.cron(case)
+            self.assertEqual("*/5 * * * *", cron["spec"]["schedule"], case)
+            self.assertIn("bin/console rate-limit:check", command_line(cron), case)
+            self.assertEqual(1, wave(cron), case)
+
+    def test_it_is_never_suspended_in_prod(self):
+        for case in ("prod", "prod-backup", "prod-nobackup"):
+            self.assertIn(self.cron(case)["spec"].get("suspend", False), (False,), case)
+
+    def test_it_has_the_limits_of_a_check_that_is_not_retried(self):
+        for case in self.CASES:
+            spec = self.cron(case)["spec"]
+            self.assertEqual("Forbid", spec["concurrencyPolicy"], case)
+            self.assertEqual(240, spec["startingDeadlineSeconds"], case)
+            self.assertEqual(1, spec["successfulJobsHistoryLimit"], case)
+            self.assertEqual(3, spec["failedJobsHistoryLimit"], case)
+            self.assertEqual(0, spec["jobTemplate"]["spec"]["backoffLimit"], case)
+            self.assertEqual(60, spec["jobTemplate"]["spec"]["activeDeadlineSeconds"], case)
+            self.assertEqual("Never", pod_spec(self.cron(case))["restartPolicy"], case)
+
+    def test_it_runs_the_image_and_the_environment_of_the_api_with_the_resources_of_a_job(self):
+        for case in self.CASES:
+            # The other CronJob of the API image has the environment of shop.apiEnv, the Deployment adds its own variables to it.
+            container, api = containers(self.cron(case))[0], containers(by_logical(case, "Deployment")["api"])[0]
+            purge = containers(by_logical(case, "CronJob")["cart-purge-expired"])[0]
+            self.assertEqual(api["image"], container["image"], case)
+            self.assertEqual(purge["env"], container["env"], case)
+            self.assertEqual(purge["envFrom"], container["envFrom"], case)
+            self.assertEqual(purge["resources"], container["resources"], case)
+            self.assertEqual(env_of(container), {k: v for k, v in env_of(api).items() if k in env_of(container)}, case)
+        self.assertTrue(containers(self.cron("prod"))[0]["image"].endswith(f":{REVISION}@{DIGESTS['api']}"))
+
+    def test_the_schedule_is_a_value_of_the_chart(self):
+        values = (REPO / "infra/k8s/charts/shop/values.yaml").read_text()
+        self.assertRegex(values, r'(?m)^rateLimitCheck:\n(?:\s*#.*\n)*  schedule: "\*/5 \* \* \* \*"$')
+        schema = json.loads((REPO / "infra/k8s/charts/shop/values.schema.json").read_text())
+        self.assertIn("rateLimitCheck", schema["required"])
+        self.assertEqual(["schedule"], schema["properties"]["rateLimitCheck"]["required"])
+        template = (REPO / "infra/k8s/charts/shop/templates/rate-limit-check.yaml").read_text()
+        self.assertIn(".Values.rateLimitCheck.schedule", template)
+        self.assertNotIn("*/5", template, "the schedule is not typed into the template")
 
 
 if __name__ == "__main__":

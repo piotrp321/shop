@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Payment;
 
+use App\Payment\Domain\OrderId;
+use App\Payment\Infrastructure\Persistence\Doctrine\PostgresPaymentStartLock;
+use App\Tests\Integration\Pricing\Promotion\TestDatabase;
 use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -233,6 +236,32 @@ final class GuestPaymentEndpointTest extends WebTestCase
         self::assertIsString($first['paymentId']);
         self::assertSame('pending', $this->paymentStatus($first['paymentId']), 'the webhook confirms it');
         self::assertSame(1, $this->payments());
+    }
+
+    /**
+     * A concurrent start of the order (another transaction) holds the lock of its starts: the start is the 409 of a
+     * concurrent start at once and writes nothing; once that transaction ends, the start goes through.
+     */
+    public function testAStartWhileAConcurrentStartOfTheOrderHoldsItsLockIsAConflictAtOnce(): void
+    {
+        $order = $this->guestOrder();
+        $concurrent = TestDatabase::connect();
+        $concurrent->beginTransaction();
+        try {
+            self::assertTrue(new PostgresPaymentStartLock($concurrent)->tryAcquire(OrderId::fromString($order['orderId'])));
+
+            $started = microtime(true);
+            $problem = $this->startPayment(self::startPath($order), ['provider' => 'demo-card'], accessToken: $order['accessToken']);
+            self::assertLessThan(2.0, microtime(true) - $started, 'refused without waiting');
+            $this->assertPaymentConflict('payment-in-progress', 'Płatność za to zamówienie jest w toku. Spróbuj za chwilę.', $problem);
+            self::assertSame(0, $this->payments());
+        } finally {
+            $concurrent->rollBack();
+            $concurrent->close();
+        }
+
+        $this->assertStarted($this->startPayment(self::startPath($order), ['provider' => 'demo-card'], accessToken: $order['accessToken']), 'demo-card');
+        self::assertResponseStatusCodeSame(201);
     }
 
     public function testABodyThatIsNotJsonIsUnsupported(): void

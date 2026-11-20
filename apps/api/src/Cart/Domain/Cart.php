@@ -9,7 +9,9 @@ namespace App\Cart\Domain;
  *
  * Every change first checks that the cart may change (openForChange): a merged guest cart never changes again
  * (GuestCartMerged) and an expired guest cart does not exist (CartNotFound); an expired customer cart loses its lines
- * (clearIfExpired) and starts anew. Every successful change ends with touch(), which moves the expiry.
+ * (clearIfExpired) and starts anew. Every successful change ends with touch(), which moves the expiry: a guest cart
+ * with lines lives GUEST_LIFETIME_DAYS after its last change, a guest cart without lines (a new one, or one whose last
+ * line went) only EMPTY_GUEST_LIFETIME_DAYS, so empty carts made in bulk do not stay for a month.
  *
  * The constants are the one place of the limits and lifetimes.
  */
@@ -18,6 +20,7 @@ final class Cart
     public const int MAX_LINES = 50;
     public const int MAX_QUANTITY = 99;
     public const int GUEST_LIFETIME_DAYS = 30;
+    public const int EMPTY_GUEST_LIFETIME_DAYS = 1;
     public const int CUSTOMER_LIFETIME_DAYS = 180;
 
     /**
@@ -75,7 +78,7 @@ final class Cart
 
     private static function create(CartId $id, CartOwner $owner, \DateTimeImmutable $now): self
     {
-        return new self($id, $owner, CartStatus::Open, null, null, [], $now, $now, self::expiryOf($owner, $now));
+        return new self($id, $owner, CartStatus::Open, null, null, [], $now, $now, self::expiryOf($owner, false, $now));
     }
 
     public function id(): CartId
@@ -385,12 +388,16 @@ final class Cart
     public function touch(\DateTimeImmutable $now): void
     {
         $this->updatedAt = $now;
-        $this->expiresAt = self::expiryOf($this->owner, $now);
+        $this->expiresAt = self::expiryOf($this->owner, [] !== $this->lines, $now);
     }
 
-    private static function expiryOf(CartOwner $owner, \DateTimeImmutable $now): \DateTimeImmutable
+    private static function expiryOf(CartOwner $owner, bool $hasLines, \DateTimeImmutable $now): \DateTimeImmutable
     {
-        $days = $owner->isGuest() ? self::GUEST_LIFETIME_DAYS : self::CUSTOMER_LIFETIME_DAYS;
+        $days = match (true) {
+            !$owner->isGuest() => self::CUSTOMER_LIFETIME_DAYS,
+            $hasLines => self::GUEST_LIFETIME_DAYS,
+            default => self::EMPTY_GUEST_LIFETIME_DAYS,
+        };
 
         return $now->add(new \DateInterval('P'.$days.'D'));
     }

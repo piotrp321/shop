@@ -8,8 +8,9 @@ use App\Shared\Domain\Exception\Conflict;
 use App\Shared\Domain\Exception\TypedProblem;
 
 /**
- * Another payment of the order is under way: a concurrent start wrote its payment first, or the provider refused to
- * cancel the pending payment because it was executed (its webhook brings the confirmation). One type, two texts.
+ * Another payment of the order is under way: a concurrent start holds the lock of the starts of the order or wrote
+ * its payment first, or the provider refused to cancel the pending payment because it was executed (its webhook
+ * brings the confirmation). One type, two texts.
  */
 final class PaymentInProgress extends \DomainException implements Conflict, TypedProblem
 {

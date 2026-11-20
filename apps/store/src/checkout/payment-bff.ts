@@ -100,6 +100,9 @@ export async function runPaymentStart(request: NextRequest, cartDeps: CartDeps):
   }
   const idempotencyKey = request.headers.get("idempotency-key");
   const body = await readJsonObject(request);
+  if (body instanceof Response) {
+    return body;
+  }
   if (!idempotencyKey || !body) {
     return invalidBody();
   }

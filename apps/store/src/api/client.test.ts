@@ -153,6 +153,17 @@ describe("the cart calls", () => {
     expect(await loadCart("A".repeat(65))).toEqual({ status: "invalid", detail: "Kod rabatowy może mieć najwyżej 64 znaki." });
   });
 
+  it.each([
+    ["a read with a code", () => loadCart("ABC")],
+    ["an addition", () => addCartItem(PRODUCT, 1)],
+    ["a change", () => changeCartItemQuantity(PRODUCT, 2)],
+    ["a removal", () => removeCartItem(PRODUCT)],
+  ])("maps a 429 of %s to rate_limited", async (_name, call) => {
+    stubFetch(async () => Response.json({ detail: "Zbyt wiele prób. Spróbuj ponownie za kilka minut." }, { status: 429, headers: { "Retry-After": "60" } }));
+
+    expect(await call()).toEqual({ status: "rate_limited" });
+  });
+
   it("loads the summary from /api/cart/summary", async () => {
     const fetch = stubFetch(async () => Response.json({ itemCount: 3, notice: null }));
 
@@ -465,6 +476,7 @@ describe("placeOrder", () => {
     [422, { violations }, { status: "invalid", detail: undefined, violations }],
     [422, { detail: "Nieprawidłowe dane." }, { status: "invalid", detail: "Nieprawidłowe dane.", violations: [] }],
     [409, { type: `${PROBLEMS}cart-empty`, detail: "Koszyk jest pusty." }, { status: "conflict", reason: "cart_empty", detail: "Koszyk jest pusty." }],
+    [409, { type: `${PROBLEMS}guest-order-too-large`, detail: "x" }, { status: "conflict", reason: "guest_order_too_large", detail: "x" }],
     [409, { type: `${PROBLEMS}cart-not-orderable`, detail: "x" }, { status: "conflict", reason: "cart_not_orderable", detail: "x" }],
     [409, { type: `${PROBLEMS}insufficient-stock-for-order`, detail: "x" }, { status: "conflict", reason: "insufficient_stock", detail: "x" }],
     [409, { type: `${PROBLEMS}order-total-changed`, detail: "x" }, { status: "conflict", reason: "total_changed", detail: "x" }],

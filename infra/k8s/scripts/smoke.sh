@@ -21,12 +21,14 @@
 #   SMOKE_REUSE=1 smoke.sh         go on with the later phases on the cluster that SMOKE_KEEP=1 left (a debugging aid)
 #   SMOKE_TIMEOUT=900              seconds to wait for the cluster to settle after each install or upgrade
 #
-# Phases: install and checks (also the store and the panel in a browser, and create-admin); the backup (an S3 of its own in the
+# Phases: install and checks (also a Job from the CronJob rate-limit-check, which must succeed on the Redis of the cluster; the store and
+# the panel in a browser, and create-admin); the backup (an S3 of its own in the
 # namespace smoke-backup, a Job from the CronJob backup, the snapshot it leaves, a Job from the CronJob backup-verify; the time of the
 # phase and of the verification is printed); the restore on an empty cluster (make backups lists the snapshots, the namespace shop
 # is deleted with its volumes and the chart installed again, make restore brings back the snapshot nightly: the administrator, the
 # customer and its login, the numbers of products and orders, an image, the search, the home page, the snapshot pre-restore;
-# make restore refuses a snapshot with a migration the code does not know and the shop goes on; the time of the phase and the
+# make restore refuses a snapshot with a migration the code does not know and the shop goes on, also while a Job of the CronJob
+# rate-limit-check runs (it is no reason to refuse); the time of the phase and the
 # peak disk are printed); the later phases run on the restored cluster: upgrade with a new revision (initialize
 # and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
 # the users and their passwords stay); upgrade with an image whose migration fails (the previous api and worker keep
@@ -658,6 +660,21 @@ run_cronjob_job() {
   done
 }
 
+# The check of the Redis of the rate limiters (docs/features/abuse-limits/spec.md, L12): a Job made from the CronJob rate-limit-check, as
+# the CronJob makes it every five minutes, succeeds against the Redis of the cluster, and its log says the control key was written,
+# read and deleted. The alert RateLimitsOff counts exactly these successes. The Job is removed: it is no Job that restore waits for.
+check_rate_limit_check() {
+  run_cronjob_job rate-limit-check rate-limit-check-smoke 180
+  log_text="$(kc logs job/rate-limit-check-smoke)"
+  case "$log_text" in
+    *"accepted, returned and deleted the control key"*) ;;
+    *) echo "smoke: the log of the Job rate-limit-check-smoke does not say that the control key was written, read and deleted:" >&2; printf '%s\n' "$log_text" >&2; return 1 ;;
+  esac
+  [ "$(kc get cronjob rate-limit-check -o jsonpath='{.spec.suspend}')" != true ] || { echo "smoke: the CronJob rate-limit-check is suspended" >&2; return 1; }
+  kc delete job rate-limit-check-smoke --now > /dev/null
+  echo "ok: a Job of the CronJob rate-limit-check succeeds on the Redis of the cluster"
+}
+
 # The snapshot of the backup: the tag nightly, the host of the cluster, the dumps of both databases, the object put into the
 # bucket and a manifest with the revision, the migrations and the objects.
 check_backup_snapshot() {
@@ -805,9 +822,25 @@ SH
   [ -n "$newer" ] || { echo "smoke: could not make the snapshot with a newer migration" >&2; return 1; }
   pods_before="$(kc get pods -l 'app.kubernetes.io/name in (api,worker,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')"
   pre_restore_before="$(list_backups | awk '$4 == "pre-restore"' | wc -l | tr -d ' ')"
-  if restore_with tak "$newer" newer; then
+  # A Job of the CronJob rate-limit-check that is running (a copy of the Job of the CronJob with the command `sleep`, so that it
+  # lasts) is no reason for make restore to refuse: the refusal below comes from the snapshot, after the check of the active Jobs.
+  kc create job rate-limit-check-busy --from=cronjob/rate-limit-check --dry-run=client -o yaml \
+    | sed -e 's#^\( *\)- bin/console$#\1- sleep#' -e 's#^\( *\)- rate-limit:check$#\1- "400"#' -e 's#activeDeadlineSeconds: 60$#activeDeadlineSeconds: 600#' \
+    | kc create -f - > /dev/null
+  if [ "$(kc get job rate-limit-check-busy -o jsonpath='{.spec.template.spec.containers[0].command[0]}')" != sleep ]; then
+    kc delete job rate-limit-check-busy --now --ignore-not-found > /dev/null || true
+    echo "smoke: could not make a long Job of the CronJob rate-limit-check" >&2; return 1
+  fi
+  # The Job sleeps 400 s, far longer than the restore below takes even on a slow runner; it is read right after the restore and removed
+  # at once, whatever the restore did.
+  if restore_with tak "$newer" newer; then restore_exit=0; else restore_exit=1; fi
+  busy_state="$(kc get job rate-limit-check-busy -o jsonpath='{.metadata.name}{" "}{.status.succeeded}{.status.failed}' || true)"
+  kc delete job rate-limit-check-busy --now --ignore-not-found > /dev/null || true
+  if [ "$restore_exit" = 0 ]; then
     echo "smoke: make restore accepted a snapshot newer than the code:" >&2; cat "$work/restore-newer.log" >&2; return 1
   fi
+  [ "$busy_state" = "rate-limit-check-busy " ] \
+    || { echo "smoke: the Job rate-limit-check-busy was not running while make restore refused (state: '$busy_state')" >&2; return 1; }
   if ! grep -q 'newer than the deployed code' "$work/restore-newer.log" || ! grep -q 'nothing changed' "$work/restore-newer.log"; then
     echo "smoke: make restore of a newer snapshot failed for another reason:" >&2; cat "$work/restore-newer.log" >&2; return 1
   fi
@@ -820,7 +853,7 @@ SH
   fi
   [ "$(list_backups | awk '$4 == "pre-restore"' | wc -l | tr -d ' ')" = "$pre_restore_before" ] \
     || { echo "smoke: the refused restore made a backup pre-restore" >&2; return 1; }
-  for cronjob in backup cart-purge-expired; do
+  for cronjob in backup cart-purge-expired rate-limit-check; do
     [ "$(kc get cronjob "$cronjob" -o jsonpath='{.spec.suspend}')" != true ] || { echo "smoke: the refused restore suspended $cronjob" >&2; return 1; }
   done
   echo "ok: make restore refused the snapshot $newer with a migration the code does not know; the shop runs, the data is unchanged"
@@ -1128,6 +1161,9 @@ else
 
   log "checks of the installation"
   checks basic
+
+  log "rate-limit-check"
+  check_rate_limit_check
 
   log "the store in a browser"
   check_store_in_browser

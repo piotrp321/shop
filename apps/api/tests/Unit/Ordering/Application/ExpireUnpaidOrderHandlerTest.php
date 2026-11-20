@@ -15,6 +15,7 @@ use App\Ordering\Domain\PaymentId;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
 use App\Tests\Unit\Ordering\InMemoryDiscountCodeRedemptions;
 use App\Tests\Unit\Ordering\InMemoryStockReservations;
+use App\Tests\Unit\Ordering\InMemoryUnpaidOrderClaims;
 use App\Tests\Unit\Ordering\InMemoryUnpaidOrderExpiry;
 use App\Tests\Unit\Ordering\Journal;
 use App\Tests\Unit\Ordering\JournalingEventPublisher;
@@ -40,6 +41,7 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
     private JournalingEventPublisher $events;
     private FixedOrderingClock $clock;
     private SpyLogger $logger;
+    private InMemoryUnpaidOrderClaims $claims;
 
     protected function setUp(): void
     {
@@ -52,6 +54,8 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
         $this->events = new JournalingEventPublisher($this->journal);
         $this->clock = new FixedOrderingClock(new \DateTimeImmutable(self::EXPIRY_DUE));
         $this->logger = new SpyLogger();
+        $this->claims = new InMemoryUnpaidOrderClaims($this->journal);
+        $this->claims->claims = [OrderExamples::ORDER => ['address' => '203.0.113.7', 'identity' => 'email:jan@example.com', 'expiresAt' => new \DateTimeImmutable(self::EXPIRY_DUE)]];
     }
 
     public function testAnUnpaidOrderIsCancelledAndItsReservationReleased(): void
@@ -65,8 +69,10 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
         self::assertEquals([new OrderCancelled(OrderExamples::ORDER, 'payment_timeout', $this->clock->now)], $this->events->published);
         self::assertSame([], $this->expiry->scheduled);
         // The reservation and then the usage of a code are released before the order is written, so the flushes of the
-        // nested commands of Inventory and Pricing have nothing of Ordering to write.
-        self::assertSame(['release', 'release usage', 'publish'], $this->journal->calls);
+        // nested commands of Inventory and Pricing have nothing of Ordering to write; the claim of the unpaid order
+        // goes with the cancelled order (ABUSE-LIMITS, D7).
+        self::assertSame(['release', 'release usage', 'unclaim', 'publish'], $this->journal->calls);
+        self::assertSame([], $this->claims->claims);
         self::assertSame([OrderExamples::ORDER], $this->redemptions->released, 'released also for an order without a code (then without effect)');
         self::assertSame([OrderExamples::ORDER], $this->orders->saved);
         self::assertSame([OrderExamples::ORDER], $this->orders->locked, 'the order is locked before the release, like a change of staff');
@@ -84,6 +90,7 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
         self::assertSame([], $this->redemptions->released);
         self::assertSame([], $this->events->published);
         self::assertSame([], $this->orders->saved);
+        self::assertCount(1, $this->claims->claims, 'the order still counts');
     }
 
     public function testAPaidOrderIsNeitherCancelledNorReleased(): void
@@ -175,7 +182,7 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
 
     private function handler(): ExpireUnpaidOrderHandler
     {
-        return new ExpireUnpaidOrderHandler($this->orders, $this->stock, $this->redemptions, $this->expiry, $this->events, $this->clock, $this->logger);
+        return new ExpireUnpaidOrderHandler($this->orders, $this->stock, $this->redemptions, $this->expiry, $this->events, $this->clock, $this->logger, $this->claims);
     }
 
     private function order(): Order

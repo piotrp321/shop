@@ -44,3 +44,31 @@ spec:
   headers:
     stsSeconds: 31536000
 {{- end }}
+---
+# Body limit of the routes that answer JSON (spec: docs/features/abuse-limits/spec.md, L8 and D10): the body is read to the
+# end before the backend gets it (a slow body does not hold a thread of the API) and over 1 MiB it is refused with 413.
+# The response is buffered too, so the ingresses of pages and RSC never carry it (templates/ingress.yaml).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: buffering
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "buffering") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+spec:
+  buffering:
+    maxRequestBodyBytes: {{ mul 1 1024 1024 }}
+---
+# The same for the upload of a product photo: 71 MiB, above post_max_size (70M), as in the Caddyfile of the API.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: buffering-upload
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "buffering-upload") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+spec:
+  buffering:
+    maxRequestBodyBytes: {{ mul 71 1024 1024 }}

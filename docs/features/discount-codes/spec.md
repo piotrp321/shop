@@ -27,7 +27,6 @@ Poza zakresem:
 - łączenie kilku kodów w jednym zamówieniu;
 - kody jednorazowe generowane seriami;
 - limit użyć na klienta;
-- rate limiting sprawdzania kodów (T2 CHECKOUT, przed publicznym demo);
 - programy lojalnościowe;
 - kod zapisany w koszyku (kod istnieje tylko w kasie);
 - kod na wybrane produkty lub kategorie (kod dotyczy całego zamówienia).
@@ -44,7 +43,7 @@ Decyzje użytkownika (z przygotowania PROMOTIONS #96, opis issue #225):
 | D4 | Każde anulowanie nieopłaconego zamówienia zwraca użycie kodu, idempotentnie. |
 | D5 | E-mail z potwierdzeniem: pozycje po cenie promocyjnej (przed rabatem kodu), linia „Kod <KOD>: −X zł”, suma po rabacie. |
 | D6 | Podgląd kodu ma jeden komunikat dla kodu nieznanego, wyłączonego, jeszcze nieobowiązującego i wygasłego; osobne komunikaty „wykorzystany” i „za mała suma”. |
-| D7 | Użycie kodu zapisuje zagnieżdżona komenda Pricing w transakcji złożenia, pod blokadą wiersza kodu tylko dla kodu z limitem; kolejność blokad: koszyk → kod → stany. |
+| D7 | Użycie kodu zapisuje zagnieżdżona komenda Pricing w transakcji złożenia, pod blokadą wiersza kodu tylko dla kodu z limitem; kolejność blokad: koszyk → adres → tożsamość (limit nieopłaconych zamówień, `docs/features/abuse-limits/spec.md`, D8) → kod → stany. |
 | D8 | Netto i VAT każdej linii zamówienia (także bez kodu) są liczone z brutto linii po rabacie. Istniejące zamówienia zachowują zapisane kwoty. |
 | D9 | Widok koszyka wycenia linie i sumy jedną wyceną Pricing, tą samą co przy złożeniu. |
 
@@ -466,5 +465,7 @@ pozostali 403; odczyt: każdy pracownik):
 - Kod z limitem szereguje złożenia z tym kodem (blokada wiersza na czas transakcji złożenia). Popularny kod z limitem
   w szczycie wydłuża złożenia; kod bez limitu nie blokuje. Wydajność nie jest potwierdzona testami obciążeniowymi.
 - Liczba aktywnych użyć jest liczona zapytaniem (indeks częściowy) przy każdej wycenie kodu z limitem.
-- Bez rate limitingu (T2) kody można zgadywać przez podgląd koszyka.
+- Podgląd kodu ma limit prób na adres klienta (`discount_preview`, `docs/features/abuse-limits/spec.md`, L3): limit
+  spowalnia zgadywanie, ale kod słownikowy da się odgadnąć z wielu adresów; poufność kodu daje tylko jego losowość
+  („Zgadywanie kodów rabatowych” tamtej specyfikacji).
 - Zmiana netto linii bez kodu (D8) może różnić się o grosze od dotychczasowego „netto jednostkowe × ilość”.

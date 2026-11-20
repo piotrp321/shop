@@ -17,6 +17,7 @@ use App\Ordering\Domain\OrderStatus;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
 use App\Tests\Unit\Ordering\InMemoryCustomerSummaries;
 use App\Tests\Unit\Ordering\InMemorySalesHours;
+use App\Tests\Unit\Ordering\InMemoryUnpaidOrderClaims;
 use App\Tests\Unit\Ordering\Journal;
 use App\Tests\Unit\Ordering\JournalingEventPublisher;
 use App\Tests\Unit\Ordering\OrderExamples;
@@ -39,11 +40,14 @@ final class MarkOrderPaidHandlerTest extends TestCase
     private FixedOrderingClock $clock;
     private InMemorySalesHours $sales;
     private InMemoryCustomerSummaries $customers;
+    private InMemoryUnpaidOrderClaims $claims;
 
     protected function setUp(): void
     {
         $this->sales = new InMemorySalesHours();
         $this->customers = new InMemoryCustomerSummaries();
+        $this->claims = new InMemoryUnpaidOrderClaims();
+        $this->claims->claims = [OrderExamples::ORDER => ['address' => '203.0.113.7', 'identity' => 'email:jan@example.com', 'expiresAt' => new \DateTimeImmutable('2026-11-05 12:35:00+00:00')]];
         $this->orders = new VersionedOrders();
         $this->orders->add(OrderExamples::placed());
         $this->events = new JournalingEventPublisher(new Journal());
@@ -62,6 +66,7 @@ final class MarkOrderPaidHandlerTest extends TestCase
         self::assertEquals([new OrderPaid(OrderExamples::ORDER, $this->clock->now)], $this->events->published);
         self::assertSame([OrderExamples::ORDER], $this->orders->saved);
         self::assertEquals([['orderId' => OrderExamples::ORDER, 'paidAt' => $this->clock->now, 'gross' => OrderExamples::TOTAL]], $this->sales->added, 'the paid order is added to the sales of its hour once');
+        self::assertSame([], $this->claims->claims, 'a paid order is no unpaid order any more (ABUSE-LIMITS, D7)');
     }
 
     public function testAPaymentThatPaysAnOrderOfACustomerIsAddedToTheCustomerOnce(): void
@@ -93,6 +98,7 @@ final class MarkOrderPaidHandlerTest extends TestCase
             $test->orders->saved = [];
             $test->sales->added = [];
             $test->customers->payments = [];
+            $test->claims->claims = ['other' => ['address' => '203.0.113.7', 'identity' => 'email:jan@example.com', 'expiresAt' => new \DateTimeImmutable('2026-11-05 12:35:00+00:00')]];
         };
 
         yield 'the same payment again' => [$paid, self::command(), MarkOrderPaidResult::AlreadyPaid];
@@ -117,6 +123,7 @@ final class MarkOrderPaidHandlerTest extends TestCase
         self::assertSame([], $this->events->published);
         self::assertSame([], $this->sales->added, 'only a payment that pays the order adds to the sales');
         self::assertSame([], $this->customers->payments, 'nor to the customer');
+        self::assertCount(1, $this->claims->claims, 'nor removes a claim: a payment after the deadline leaves the order new');
     }
 
     public function testAnUnknownOrderOrAnIdThatIsNoUuidIsOrderToPayNotFound(): void
@@ -161,12 +168,13 @@ final class MarkOrderPaidHandlerTest extends TestCase
             self::assertSame([], $this->orders->saved);
             self::assertSame([], $this->events->published);
             self::assertSame([], $this->sales->added);
+            self::assertCount(1, $this->claims->claims);
         }
     }
 
     private function handle(MarkOrderPaid $command): MarkOrderPaidResult
     {
-        return new MarkOrderPaidHandler($this->orders, $this->events, $this->clock, $this->sales, $this->customers)($command);
+        return new MarkOrderPaidHandler($this->orders, $this->events, $this->clock, $this->sales, $this->customers, $this->claims)($command);
     }
 
     private static function command(

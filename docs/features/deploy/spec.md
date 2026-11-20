@@ -105,7 +105,7 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
   `users` i z podstawionymi adresami (Helm `fromJson`). Job `keycloak-config` (obraz Keycloaka, `kcadm`) zakłada realm,
   gdy go nie ma, a gdy jest, robi `partialImport` z `ifResourceExists=SKIP` (dodaje brakujące klienty, role i grupy,
   niczego nie nadpisuje). Potem zawsze ustawia wartości sterowane konfiguracją: sekret klienta `store`, `redirectUris`
-  i `webOrigins` z domeny, rejestrację, `verifyEmail`, SMTP. Nie usuwa użytkowników, haseł ani zasobów. Pliki
+  i `webOrigins` z domeny, rejestrację, `verifyEmail`, politykę haseł z pliku realmu, SMTP. Nie usuwa użytkowników, haseł ani zasobów. Pliki
   realmów w repo (publicznym) mają konta demo z hasłami i sekretami TOTP, więc w klastrze nie trafiają do realmów.
   Lokalny `--import-realm` z kontami demo działa jak w compose.
 - **D10. Ograniczenia startowe są wartościami chartu** (`environments/prod/values.yaml`): `demoNotice`, `noindex`,
@@ -363,11 +363,11 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
 - Odtworzenie: `make -C infra/k8s restore SNAPSHOT=<id> [PRE_RESTORE=skip]` (zgoda użytkownika) tworzy Joby z wstrzymanego
   CronJoba `restore` (`suspend: true`, `activeDeadlineSeconds: 10800`, `backoffLimit: 0`; obrazy i sekrety wdrożonej
   rewizji, bez tokenu API, sekret `shop-backup` tylko w kontenerze restic) i z Jobów wersji. Odmawia bez zmian: bez
-  `SNAPSHOT` (identyfikator, nigdy `latest`), przy aktywnym Jobie w przestrzeni `shop`, trwającej synchronizacji `shop` w
+  `SNAPSHOT` (identyfikator, nigdy `latest`), przy aktywnym Jobie w przestrzeni `shop` (poza Jobem CronJoba `rate-limit-check`), trwającej synchronizacji `shop` w
   Argo CD i snapshocie z migracją spoza klas migracji obrazu `api` (Job w trybie `check`, przed pytaniem). Po słowie `tak`:
   kopia `pre-restore` (Job z CronJoba `backup` z `BACKUP_TAG=pre-restore`; jej błąd kończy odtworzenie bez zmian, chyba że
   `PRE_RESTORE=skip`, który ją pomija), przy Argo CD wyłączenie automatycznej synchronizacji `root`, potem `shop`,
-  wstrzymanie CronJobów `cart-purge-expired` i `backup`, `api`, `worker`, `store` i `keycloak` do zera, Job w trybie
+  wstrzymanie CronJobów `cart-purge-expired`, `backup` i `rate-limit-check`, `api`, `worker`, `store` i `keycloak` do zera, Job w trybie
   `restore` (`restic restore` na `backup-work`, `DROP`/`CREATE` i `pg_restore` obu baz z właścicielami jak w
   `10-create-databases.sh`, `rclone sync` z usuwaniem do `product-images`, `FLUSHALL` Redisa, opróżnienie kolejek
   RabbitMQ), ponowienie `migrate`, `keycloak` i `keycloak-config`, Job w trybie `reindex` (`catalog:reindex`), powrót

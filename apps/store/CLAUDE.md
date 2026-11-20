@@ -278,7 +278,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   woła BFF przez `placeOrder(input, idempotencyKey)` w `src/api/client.ts` (wynik: `ok` z numerem i `redirectUrl`,
   `invalid` z `violations`, `conflict`, `not_found`, `unauthorized`, `rate_limited`, `failed`; funkcja nigdy nie
   odrzuca obietnicy).
-- Adres klienta: BFF kasy i płatności (`runCheckout`, `runPaymentStart`, `runPaymentStatus`) owijają klienta API
+- Adres klienta: BFF kasy, płatności i koszyka (`runCheckout`, `runPaymentStart`, `runPaymentStatus`, `runCartCommand`) owijają klienta API
   w `forwardingClientIp` (`src/checkout/client-ip.ts`), który do każdego wywołania API kopiuje nagłówek nazwany
   w `CLIENT_IP_HEADER` z żądania przeglądarki (w `prod` `CF-Connecting-IP` od Cloudflare). Bez zmiennej (compose,
   testy) albo bez nagłówka w żądaniu nic nie jest dodawane, a API liczy limity po adresie serwera sklepu. Wartość idzie

@@ -5,7 +5,7 @@ import { addCartItem, type CartFailure } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { announceCartChange } from "./events";
-import { PRODUCT_GONE, SAVE_FAILED, SessionExpired } from "./messages";
+import { CART_RATE_LIMITED, PRODUCT_GONE, SAVE_FAILED, SessionExpired } from "./messages";
 
 // `variantId`: the variant the request was for; the message is shown only while that variant is the one on the button.
 type Feedback = { kind: "added"; variantId: string } | { kind: "error"; variantId: string; failure: CartFailure; returnTo: string };
@@ -27,7 +27,7 @@ export function AddToCartButton({ variantId, size = "sm", className }: { variant
   }
 
   async function add() {
-    if (variantId === null) {
+    if (variantId === null || pending) {
       return;
     }
     setPending(true);
@@ -44,7 +44,15 @@ export function AddToCartButton({ variantId, size = "sm", className }: { variant
 
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <Button type="button" size={size} disabled={pending || variantId === null} onClick={() => void add()}>
+      {/* A running request blocks with `aria-disabled`, not `disabled`: a disabled button loses the keyboard focus. */}
+      <Button
+        type="button"
+        size={size}
+        disabled={variantId === null}
+        aria-disabled={pending ? true : undefined}
+        className={pending ? "opacity-50" : undefined}
+        onClick={() => void add()}
+      >
         Do koszyka
       </Button>
       {feedback?.kind === "added" && feedback.variantId === variantId ? (
@@ -67,6 +75,8 @@ function errorMessage({ failure, returnTo }: { failure: CartFailure; returnTo: s
       return failure.detail ?? SAVE_FAILED;
     case "not_found":
       return PRODUCT_GONE;
+    case "rate_limited":
+      return CART_RATE_LIMITED;
     case "unauthorized":
       return <SessionExpired returnTo={returnTo} />;
     case "failed":

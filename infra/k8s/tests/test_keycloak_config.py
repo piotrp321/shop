@@ -46,6 +46,13 @@ SMTP_USER = "8a1b2c001@smtp-brevo.com"
 SMTP_PASSWORD = 'xsmtpsib-"key\\0'
 
 
+# D11: the password policy of the realms (the files of the repository are the source, the job copies it).
+PASSWORD_POLICY = {
+    "shop": "length(12) and maxLength(128) and notUsername and notEmail",
+    "backoffice": "length(12) and maxLength(128) and notUsername and notEmail and passwordHistory(5)",
+}
+
+
 def realm_files(case):
     return next(d for d in of_kind(case, "ConfigMap") if name(d) == "keycloak-realms")["data"]
 
@@ -138,6 +145,18 @@ class KeycloakConfigTest(unittest.TestCase):
             for realm, index in zip(("shop", "backoffice"), made):
                 updates = [i for i, call in enumerate(calls) if call.startswith(f"update realms/{realm} ")]
                 self.assertGreater(updates[0], index, f"{realms} {realm}")
+
+    def test_the_password_policy_of_the_realm_files_is_set_in_every_run_also_in_an_existing_realm(self):
+        for case in ("ci", "prod"):
+            files = realm_files(case)
+            for realm, policy in PASSWORD_POLICY.items():
+                self.assertEqual(policy, json.loads(files[f"{realm}.json"])["passwordPolicy"], case)
+                self.assertEqual(policy, json.loads(files[f"{realm}.settings.json"])["passwordPolicy"], case)
+        for realms in ("master", "master,shop,backoffice"):
+            result, _, bodies, _ = self.run_job(realms=realms)
+            self.assertEqual(0, result.returncode, result.stderr)
+            for realm, policy in PASSWORD_POLICY.items():
+                self.assertEqual(policy, self.body(bodies, f"update realms/{realm} ")["passwordPolicy"], f"{realms} {realm}")
 
     def test_the_brevo_login_and_key_go_into_the_smtp_of_the_realms(self):
         result, _, bodies, _ = self.run_job(case="ci-keycloak-brevo", SMTP_USER=SMTP_USER, SMTP_PASSWORD=SMTP_PASSWORD)

@@ -13,7 +13,8 @@ Cena wariantu w koszyku i w ofercie listy to cena skuteczna z Pricing (w aktywne
 z jednej wyceny Pricing (`QuoteBasket`, ta sama co przy złożeniu zamówienia), a odczyt koszyka przyjmuje kod rabatowy
 do podglądu w kasie (`docs/features/discount-codes/spec.md`); kod nie jest zapisywany w koszyku. Poza zakresem:
 rezerwacja stanu (robi ją złożenie zamówienia w Ordering), płatności, koszty dostawy, strona produktu, panel
-administracyjny, rate limiting tworzenia koszyków.
+administracyjny. Zakładanie koszyków gościa, zmiany ich pozycji i podgląd kodu mają limity na adres klienta
+(`docs/features/abuse-limits/spec.md`, L2, L3).
 
 ## Decyzje biznesowe
 
@@ -23,7 +24,7 @@ administracyjny, rate limiting tworzenia koszyków.
 | 2 | Koszyki gości i klientów są w PostgreSQL (nie w Redisie). |
 | 3 | Scalanie przy logowaniu sumuje ilości. Suma ponad limit ilości jest przycinana, linie gościa ponad limit liczby pozycji są pomijane, a klient widzi komunikat. Scalenie nigdy nie kończy się błędem z powodu ceny ani dostępności. |
 | 4 | Najwyżej 50 różnych pozycji (wariantów), najwyżej 99 sztuk jednej pozycji. |
-| 5 | Koszyk gościa wygasa po 30 dniach od ostatniej zmiany, koszyk klienta po 180 dniach. Wygasły koszyk zachowuje się jak pusty, fizycznie usuwa go `cart:purge-expired`. |
+| 5 | Koszyk gościa z pozycjami wygasa po 30 dniach od ostatniej zmiany, koszyk gościa bez pozycji (nowy albo po usunięciu ostatniej pozycji) po 1 dniu, koszyk klienta po 180 dniach. Wygasły koszyk zachowuje się jak pusty, fizycznie usuwa go `cart:purge-expired`. |
 | 6 | Pozycje nigdy nie znikają same. Pozycja bez ceny, niedostępna, z ilością większą niż dostępna albo z wariantem usuniętym z katalogu ma etykietę i przycisk „Usuń”. Suma obejmuje tylko pozycje możliwe do kupienia. |
 | 7 | Dostępność ogranicza ilość przy dodaniu i zwiększeniu ilości, bez rezerwacji i bez ujawniania liczby sztuk. Wiąże dopiero rezerwacja przy złożeniu zamówienia (Ordering). |
 | 8 | Sumy: wartość brutto przed kodem, rabat kodu, brutto do zapłaty i liczba sztuk, bez VAT. Licznik sztuk w nagłówku. |
@@ -85,8 +86,8 @@ Pola: `id`, `owner`, `status` (`open` | `merged`; `merged` tylko dla gościa), `
 linie unikalne po `variantId` w kolejności `addedAt`, `createdAt`, `updatedAt`, `expiresAt`. Nowy koszyk powstaje przez
 `createForGuest` i `createForCustomer`, zapisany jest odtwarzany przez `reconstitute()`.
 
-Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99`, czas życia gościa 30 dni, klienta
-180 dni.
+Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99`, czas życia gościa 30 dni (bez pozycji
+1 dzień), klienta 180 dni.
 
 | Metoda | Działanie | Błędy |
 |---|---|---|
@@ -101,7 +102,7 @@ Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99
 | `openForChange(now)` | początek każdej zmiany, idempotentne: gość sprawdza dostępność (poniżej), klient `clearIfExpired` | `GuestCartMerged`, `CartNotFound` |
 | `needsOfferToChange(variantId, quantity)` | czy zmiana ilości jest zwiększeniem istniejącej linii, więc potrzebuje `ProductOffer` | |
 | `linesAt(now)`, `itemCountAt(now)` | linie i liczba sztuk tak, jak widzi je odczyt: wygasły koszyk klienta jest pusty | gość `merged`: `GuestCartMerged`, wygasły: `CartNotFound` |
-| `touch(now)` | `expiresAt = now + 30 dni` (gość) albo `now + 180 dni` (klient), `updatedAt = now` | |
+| `touch(now)` | `expiresAt = now + 30 dni` (gość z pozycjami), `now + 1 dzień` (gość bez pozycji) albo `now + 180 dni` (klient), `updatedAt = now`; nowy koszyk dostaje czas życia tak samo | |
 | `isExpired(now)` | `expiresAt < now` | |
 
 - Każda zmiana koszyka gościa najpierw sprawdza `status = open`. Koszyk `merged` daje `GuestCartMerged`
@@ -366,22 +367,22 @@ Gość (bez tokena; token wysłany mimo to i niepoprawny daje 401, a gdy nie da 
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
-| `POST /api/v1/guest-carts` | 201 `CartView` (pusty), nagłówek `Location`; ciało nie jest czytane | |
-| `GET /api/v1/guest-carts/{cartId}?discountCode=` | 200 `CartView` (z podglądem kodu) | 400 (kod nie jest tekstem, nie jest UTF-8 albo ma ponad 64 znaki), 404 |
+| `POST /api/v1/guest-carts` | 201 `CartView` (pusty), nagłówek `Location`; ciało nie jest czytane | 429 limit zakładania koszyków z adresu (`guest_cart_create`) |
+| `GET /api/v1/guest-carts/{cartId}?discountCode=` | 200 `CartView` (z podglądem kodu) | 400 (kod nie jest tekstem, nie jest UTF-8 albo ma ponad 64 znaki), 404; 429 limit podglądów kodu z adresu (`discount_preview`, tylko odczyt z `discountCode` innym niż pusty napis) |
 | `GET /api/v1/guest-carts/{cartId}/summary` | 200 `{itemCount}` | 404 |
-| `POST /api/v1/guest-carts/{cartId}/items`, body `{variantId: uuid, quantity: int}` | 200 `CartView` | 400 treść nie jest poprawnym JSON-em; 404 koszyk albo wariant; 409 `CartLineQuantityLimit`, `CartLineLimit`, `ProductNotPurchasable`, `InsufficientStock`; 415 treść inna niż JSON; 422 (z `violations`, komunikaty w punkcie „Komunikaty 422” niżej) |
+| `POST /api/v1/guest-carts/{cartId}/items`, body `{variantId: uuid, quantity: int}` | 200 `CartView` | 400 treść nie jest poprawnym JSON-em; 404 koszyk albo wariant; 409 `CartLineQuantityLimit`, `CartLineLimit`, `ProductNotPurchasable`, `InsufficientStock`; 415 treść inna niż JSON; 422 (z `violations`, komunikaty w punkcie „Komunikaty 422” niżej); 429 limit zmian koszyków gościa z adresu (`guest_cart_write`, wspólny dla dodania, zmiany i usunięcia) |
 | `PUT /api/v1/guest-carts/{cartId}/items/{variantId}`, body `{quantity: int}` | 200 `CartView` | jak wyżej oraz 404 `CartLineNotFound` |
-| `DELETE /api/v1/guest-carts/{cartId}/items/{variantId}` | 200 `CartView` (brak linii: bez zmian) | 404 koszyk |
+| `DELETE /api/v1/guest-carts/{cartId}/items/{variantId}` | 200 `CartView` (brak linii: bez zmian) | 404 koszyk; 429 jak wyżej |
 
 Klient (token realmu `shop`; bez tokena albo z tokenem realmu `backoffice`: 401; gdy nie da się pobrać kluczy
 wystawcy tokenu: 503):
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
-| `GET /api/v1/me/cart?discountCode=` | 200 `CartView` (bez koszyka: pusty, `id: null`; z podglądem kodu) | 400 (jak wyżej), 401 |
+| `GET /api/v1/me/cart?discountCode=` | 200 `CartView` (bez koszyka: pusty, `id: null`; z podglądem kodu) | 400 (jak wyżej), 401; 429 jak u gościa (ten sam limit adresu) |
 | `GET /api/v1/me/cart/summary` | 200 `{itemCount}` | 401 |
-| `POST /api/v1/me/cart/items` | 200 `CartView` | 401 oraz jak u gościa (404 tylko wariant) |
-| `PUT /api/v1/me/cart/items/{variantId}` | 200 `CartView` | 401 oraz jak u gościa (404 wariant albo linia) |
+| `POST /api/v1/me/cart/items` | 200 `CartView` | 401 oraz jak u gościa (404 tylko wariant, bez 429) |
+| `PUT /api/v1/me/cart/items/{variantId}` | 200 `CartView` | 401 oraz jak u gościa (404 wariant albo linia, bez 429) |
 | `DELETE /api/v1/me/cart/items/{variantId}` | 200 `CartView` | 401 |
 | `POST /api/v1/me/cart/merge`, body `{guestCartId: uuid}` | 200 `{cart: CartView, result: "merged" \| "already_merged" \| "nothing_to_merge", truncated: bool}` | 400, 401, 415, 422 (z `violations`, jak niżej) |
 
@@ -488,8 +489,12 @@ zwracana.
   `mergeGuestCart` i `applyGuestCartMerge`, tokenem z właśnie uzyskanych tokenów). Błąd scalenia nie psuje logowania;
   scalenie powtórzy pierwsze żądanie koszyka.
 - Kody BFF dla przeglądarki: 200 z `CartView` (`summary`: `{itemCount, notice}`); błędy API 404, 409 i 422 przekazywane
-  z `detail`; 401 sesji; 403 `Origin` lub `Content-Type`; 503 niedostępne zależności lub API (także 400 i 415 API, które
-  byłyby błędem BFF).
+  z `detail`; 429 limitu API (zapis, zakładanie koszyka gościa, podgląd kodu) z `detail` i `Retry-After` API; 401 sesji;
+  403 `Origin` lub `Content-Type`; 413 `{ detail }` („Treść żądania jest za duża.”), gdy treść JSON ma ponad 16 KiB
+  (sprawdzane po `Content-Length` przed odczytem i w trakcie odczytu, bez wywołania API; to samo w trasach kasy
+  i płatności); 503 niedostępne zależności lub API (także 400 i 415 API, które byłyby błędem BFF). Każde wywołanie API
+  z BFF koszyka (także założenie koszyka gościa i scalenie) niesie adres klienta z nagłówka z `CLIENT_IP_HEADER`
+  (`forwardingClientIp`), więc limity API liczą klientów, a nie sklep.
 - `src/api/client.ts` dostaje funkcje przeglądarki wołające `/api/cart/*` (`loadCart`, `loadCartSummary`, `addCartItem`,
   `changeCartItemQuantity`, `removeCartItem`; jedyne miejsce `fetch`). Zapisy idą jeden po drugim we wszystkich kartach
   sklepu w przeglądarce, żeby równoczesne pierwsze dodania gościa nie założyły kilku koszyków:
@@ -540,6 +545,8 @@ zwracana.
 | 409 przy dodaniu albo zmianie ilości | `detail` z API przy kafelku albo linii; linia pokazuje poprzednią ilość z ostatniego widoku |
 | 404 produktu przy dodaniu | „Produkt nie jest już dostępny” |
 | 404 linii przy zmianie albo usunięciu | strona wczytuje koszyk ponownie i rozstrzyga po nim (404 nie dowodzi, że linii nie ma: zmiana ilości linii `unavailable_product` też dostaje 404). Linii nie ma w koszyku: „Pozycja została już usunięta”. Linia jest w koszyku: przy linii `detail` z 404 (dla `unavailable_product` „Produkt nie jest już dostępny.”), a bez `detail` „Nie udało się zapisać zmian. Spróbuj ponownie.”; pole ilości pokazuje ilość z wczytanego koszyka, „Usuń” zostaje. Wczytanie dało 401: „Twoja sesja wygasła. Zaloguj się ponownie.”; wczytanie nie udało się inaczej: „Nie udało się zapisać zmian. Spróbuj ponownie.” przy linii. W obu ostatnich przypadkach pole ilości pokazuje ilość z ostatniego widoku |
+| 429 przy dodaniu, zmianie ilości albo usunięciu | „Zbyt wiele zmian koszyka. Spróbuj ponownie za kilka minut.” (`role="alert"`) przy kafelku albo linii; linia pokazuje poprzednią ilość z ostatniego widoku |
+| 429 podglądu kodu w kasie | „Zbyt wiele prób sprawdzenia kodu. Spróbuj ponownie za kilka minut.” przy polu kodu; kasa czyta koszyk bez kodu, formularz zostaje |
 | 403, 422, 503, 5xx, błąd sieci | „Nie udało się zapisać zmian. Spróbuj ponownie.” (bez automatycznego ponowienia) |
 | 401 (sesja wygasła), także przy wczytaniu `/cart` | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem „Zaloguj się” (`/auth/login?returnTo=…`) |
 | błąd wczytania koszyka | „Nie udało się wczytać koszyka” i przycisk „Spróbuj ponownie” |
@@ -583,7 +590,8 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 4. Scalenie sumuje ilości z przycięciem do limitów, jest idempotentne i odporne na równoległe scalenia i równoległe
    zmiany koszyka gościa. Koszyk gościa jest oznaczony `merged` tylko po udanym scaleniu i potem nie da się go zmienić.
    Wygasły koszyk klienta jest czyszczony przed scaleniem.
-5. Koszyki wygasają po 30 (gość) i 180 dniach (klient) od ostatniej zmiany; `cart:purge-expired` usuwa wygasłe.
+5. Koszyki wygasają po 30 (gość z pozycjami), 1 (gość bez pozycji) i 180 dniach (klient) od ostatniej zmiany;
+   `cart:purge-expired` usuwa wygasłe.
 6. Odpowiedzi koszyka mają `private, no-store`, strona `/cart` ma `noindex`.
 7. Od Cart zależy tylko Ordering (`Ordering_Infrastructure → Cart_Application`); Deptrac odrzuca zależności spoza
    reguł Cart.
@@ -725,12 +733,13 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
 
 ## Ryzyka i ograniczenia
 
-- Tworzenie koszyka gościa jest publiczne, bez rate limitu; tabelę można zaśmiecić pustymi koszykami do czasu ich
-  wygaśnięcia.
+- Tworzenie koszyka gościa jest publiczne z limitem na adres klienta (L2 ABUSE-LIMITS); atakujący z wieloma adresami
+  zaśmieca tabelę pustymi koszykami, które wygasają po 1 dniu.
 - Identyfikator koszyka gościa jest w ścieżce URL API, więc trafia do logów API. Koszyk nie zawiera danych osobowych.
 - Licznik w nagłówku to jedno zapytanie do PostgreSQL na odsłonę strony, widok koszyka z linią możliwą do kupienia to
   koszyk, Catalog, Pricing (ceny i promocje), Inventory i wycena Pricing (ceny, promocje, kod i liczba użyć kodu
-  z limitem). Bez rate limitingu kody można zgadywać przez podgląd koszyka. Wydajność przy 60 tys. aktywnych użytkowników nie jest potwierdzona testami
+  z limitem). Podgląd kodu ma limit prób na adres klienta (L3 ABUSE-LIMITS), więc zgadywanie kodów jest wolne, ale
+  możliwe z wielu adresów. Wydajność przy 60 tys. aktywnych użytkowników nie jest potwierdzona testami
   obciążeniowymi.
 - Dodanie powtórzone po zgubionej odpowiedzi może zwiększyć ilość dwa razy (bez `Idempotency-Key`), a zmiana ilości
   z nieaktualnej karty nadpisuje nowszą. Obie konsekwencje są świadome.

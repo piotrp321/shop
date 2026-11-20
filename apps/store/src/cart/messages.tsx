@@ -1,4 +1,6 @@
 export const SAVE_FAILED = "Nie udało się zapisać zmian. Spróbuj ponownie.";
+/** The limit of cart changes of the API (429 of a write): the cart page and the add button. */
+export const CART_RATE_LIMITED = "Zbyt wiele zmian koszyka. Spróbuj ponownie za kilka minut.";
 export const PRODUCT_GONE = "Produkt nie jest już dostępny";
 export const MERGE_TRUNCATED = "Część produktów z koszyka gościa nie zmieściła się w koszyku";
 

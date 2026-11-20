@@ -110,7 +110,7 @@ final class OrderStepsTest extends KernelTestCase
         $first = $this->orderChecksums();
         $secrets = $this->secrets();
 
-        $this->connection()->executeStatement('TRUNCATE ordering_order_notification, ordering_order_status_change, ordering_order_line, ordering_order, payment_payment, pricing_discount_code_usage, inventory_reservation_line, inventory_reservation, inventory_stock_movement, inventory_stock_item');
+        $this->connection()->executeStatement('TRUNCATE ordering_unpaid_order_claim, ordering_order_notification, ordering_order_status_change, ordering_order_line, ordering_order, payment_payment, pricing_discount_code_usage, inventory_reservation_line, inventory_reservation, inventory_stock_movement, inventory_stock_item');
         $this->orderSteps();
 
         self::assertSame($first, $this->orderChecksums());

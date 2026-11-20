@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { revalidateTag } from "next/cache";
 import { isProductSlug } from "@/catalog/load-product";
+import { BODY_TOO_LARGE, readBodyText } from "@/cart/json-body";
 
 /**
  * On-demand revalidation of the ISR pages, called by the API worker after it purged Varnish (StorefrontCache in the
@@ -11,6 +12,8 @@ import { isProductSlug } from "@/catalog/load-product";
  */
 
 const MAX_TAGS = 100;
+/** 100 tags of the longest format (`product-slug-` and 200 characters) are about 22 KiB. */
+const MAX_BODY_BYTES = 32 * 1024;
 const TAG = /^(catalog|product-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 const SLUG_TAG_PREFIX = "product-slug-";
 
@@ -45,9 +48,12 @@ export async function POST(request: Request): Promise<Response> {
   if (!isSecret(request.headers.get("authorization"), secret)) return answer(401, { detail: "Unauthorized." });
   if (!isJson(request.headers.get("content-type"))) return answer(400, { detail: "The body must be JSON." });
 
+  const read = await readBodyText(request, MAX_BODY_BYTES);
+  if (read.kind === "too_large") return answer(413, { detail: BODY_TOO_LARGE });
   let body: unknown;
   try {
-    body = await request.json();
+    if (read.kind === "unreadable") throw new Error("The body could not be read.");
+    body = JSON.parse(read.text);
   } catch {
     return answer(400, { detail: "The body must be JSON." });
   }
