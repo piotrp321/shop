@@ -6,13 +6,16 @@ import { closePanelContexts, go, inState, newPanelPage, type PanelState, signInP
 // The list and the detail of the orders of the panel (docs/features/admin-screens/spec.md, „Zamówienia”): the look and the
 // accessibility of the list (a table, cards on a phone), of the refunds to do and of the detail with its window of a
 // change, the number in one line (#261), the date as a line of the cell of the number, the timeline and the copying of the
-// payment id. The orders of the tests are the ones the stack has: a stack without a paid order or without a refund to do
-// gets one from the customer and the panel. The tests change nothing; the changes of an order are in order-management.spec.ts.
+// payment id, and the shipment of a shipped order (the card „Przesyłka”, the field of the number in the window of a
+// shipment, the window of the number). The orders of the tests are the ones the stack has: a stack without a paid order,
+// without a refund to do or without a shipped order with a number gets one from the customer and the panel. The tests change
+// nothing; the changes of an order are in order-management.spec.ts and delivery-tracking.spec.ts.
 
 const SEARCH = "Szukaj po numerze zamówienia lub e-mailu";
 
 let paidOrderId = "";
 let refundOrderId = "";
+let shippedOrderId = "";
 
 /** The id of the order of the first row of a list at `address`, the list being the one that has rows (the caller made sure). */
 async function firstOrderOf(page: Page, address: string): Promise<{ id: string; number: string }> {
@@ -41,6 +44,27 @@ test.beforeAll(async ({ browser }) => {
       await confirmWithNote(page, "E2E: zwrot do wykonania");
     }
     refundOrderId = (await firstOrderOf(page, "/orders?refund=pending")).id;
+
+    // A shipped order with a number: the shipment is the card „Przesyłka” and the number the window of the correction.
+    if (!(await listHasRows(page, "/orders?status=shipped"))) {
+      const number = await placeOrderAsJan(browser, ORDERED_PRODUCT);
+      await go(page, `/orders?q=${encodeURIComponent(number)}`);
+      await page.getByTestId("order-row").getByTestId("number").click();
+      await expect(page.getByRole("heading", { level: 1, name: `Zamówienie ${number}` })).toBeVisible();
+      await page.getByTestId("action-ship").click();
+      await confirmWithNote(page, "E2E: wysłane do przeglądu szczegółów");
+    }
+    shippedOrderId = (await firstOrderOf(page, "/orders?status=shipped")).id;
+    await go(page, `/orders/${shippedOrderId}`);
+    await expect(page.getByTestId("status")).toHaveText("Wysłane");
+    if ((await page.getByTestId("shipment").count()) === 0) {
+      await page.getByTestId("change-tracking-number").click();
+      const window = page.getByTestId("tracking-dialog");
+      await window.getByTestId("tracking-number-input").fill(`E2E-${Date.now()}`);
+      await window.getByTestId("tracking-submit").click();
+      await expect(window).toBeHidden();
+      await expect(page.getByTestId("shipment")).toBeVisible();
+    }
   } finally {
     await page.close();
   }
@@ -93,6 +117,28 @@ const states: PanelState[] = [
       return null;
     },
   },
+  {
+    name: "the detail of a shipped order with its shipment and the delivery",
+    role: "admin",
+    open: async (page) => {
+      await go(page, `/orders/${shippedOrderId}`);
+      await expect(page.getByTestId("shipment").getByTestId("tracking-number")).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: "the detail of a shipped order with the window of the tracking number",
+    role: "admin",
+    overlay: true,
+    open: async (page) => {
+      await go(page, `/orders/${shippedOrderId}`);
+      await expect(page.getByTestId("status")).toHaveText("Wysłane");
+      await page.getByTestId("change-tracking-number").click();
+      const dialog = page.getByTestId("tracking-dialog");
+      await expect(dialog).toBeVisible();
+      return dialog;
+    },
+  },
 ];
 
 test.describe("axe with the rules of WCAG 2.2 AA", () => {
@@ -129,6 +175,28 @@ test.describe("at 375 px", () => {
     await inState(states[2]!, viewports.phone, async (page, overlay) => {
       await expectWithinWidth(overlay!, viewports.phone.width, "the window of a change of the status");
       await expect.poll(async () => (await documentWidths(page)).scrollWidth).toBeLessThanOrEqual(viewports.phone.width);
+    });
+  });
+
+  test("the window of the tracking number and the field of a shipment lie in the screen", async () => {
+    test.setTimeout(60_000);
+    await inState(states[5]!, viewports.phone, async (page, overlay) => {
+      await expectWithinWidth(overlay!, viewports.phone.width, "the window of the tracking number");
+      await expect.poll(async () => (await documentWidths(page)).scrollWidth).toBeLessThanOrEqual(viewports.phone.width);
+    });
+    await inState(states[2]!, viewports.phone, async (page, overlay) => {
+      await expect(overlay!.getByLabel("Numer przesyłki (opcjonalnie)")).toBeVisible();
+      await expectWithinWidth(overlay!.getByLabel("Numer przesyłki (opcjonalnie)"), viewports.phone.width, "the field of the number of a shipment");
+    });
+  });
+
+  test("the shipment and the delivery of a shipped order do not scroll the detail sideways at 375 px", async () => {
+    test.setTimeout(60_000);
+    await inState(states[4]!, viewports.phone, async (page) => {
+      await expect(page.getByTestId("delivery-line")).toBeVisible();
+      await expectWithinWidth(page.getByTestId("shipment"), viewports.phone.width, "the card of the shipment");
+      const widths = await documentWidths(page);
+      expect(widths.scrollWidth, "the detail does not scroll sideways").toBeLessThanOrEqual(viewports.phone.width);
     });
   });
 
