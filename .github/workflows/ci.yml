@@ -443,7 +443,8 @@ jobs:
 
       # An app image the registry does not have is built from the GitHub Actions cache that the `apps` part of `checks-part` writes
       # (same contexts, targets and scopes), so this job only reads it. `make up` then finds the images and builds only
-      # garage-init. The worker runs the api image (same context and target), hence the second tag.
+      # garage-init. Both workers (`worker` and `worker-commands`) run one image of the api (same context and target) tagged
+      # `shop-worker` (infra/docker-compose.yml), hence the second tag; no third image is built.
       # `missing` lists the images the registry does not have: the steps below build and push them.
       - name: Wait for the prebuilt images
         id: missing
@@ -517,7 +518,7 @@ jobs:
         if: env.FULL_CI == 'true'
         run: touch -d '2000-01-01T00:00:00Z' apps/store/package-lock.json apps/admin/package-lock.json
 
-      # Starts every service, runs the migrations and starts the worker (`exec` needs -T), in the background while
+      # Starts every service, runs the migrations and starts the workers (`exec` needs -T), in the background while
       # the e2e image is built and the tests are type-checked.
       - name: Start the stack in the background
         if: env.FULL_CI == 'true'
