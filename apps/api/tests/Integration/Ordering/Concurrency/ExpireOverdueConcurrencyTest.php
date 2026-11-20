@@ -115,7 +115,39 @@ final class ExpireOverdueConcurrencyTest extends KernelTestCase
                 self::assertSame('released', $reservation, $message);
                 self::assertSame([10, 0], OrderingFixture::stock($this->control, $variant), $message);
             }
-            self::assertSame(1, OrderingFixture::count($this->control, 'SELECT COUNT(*) FROM ordering_order_status_change WHERE order_id = ?', [$orderId]), $message.': one change of the status');
+            self::assertSame(2, OrderingFixture::count($this->control, 'SELECT COUNT(*) FROM ordering_order_status_change WHERE order_id = ?', [$orderId]), $message.': the placement and one change of the status');
+        }
+    }
+
+    /**
+     * The payment has written the paid order and holds its row until the command waits for the lock of it: the command
+     * then reads the order as the payment committed it and leaves it paid.
+     */
+    public function testTheCommandWaitsForAPaymentThatHoldsTheOrderAndLeavesItPaid(): void
+    {
+        for ($round = 1; $round <= self::ROUNDS; ++$round) {
+            $variant = $this->variant(10);
+            $orderId = $this->overdueOrder($variant);
+
+            $flag = sys_get_temp_dir().'/expire-overdue-'.bin2hex(random_bytes(8));
+
+            try {
+                $outcomes = ParallelProcesses::run($this->control, [
+                    self::expireOverdue(afterFlag: $flag),
+                    self::payInTime($orderId, holdUntilAnotherWaits: true, flag: $flag),
+                ]);
+            } finally {
+                if (is_file($flag)) {
+                    unlink($flag);
+                }
+            }
+
+            $message = 'round '.$round.': '.implode('; ', $outcomes);
+            self::assertSame('Paid, another waited', $outcomes[1], $message);
+            self::assertSame('exit 0: [OK] Expired 0 overdue orders.', $outcomes[0], $message);
+            self::assertSame('paid', $this->control->fetchOne('SELECT status FROM ordering_order WHERE id = ?', [$orderId]), $message);
+            self::assertSame('active', $this->control->fetchOne('SELECT status FROM inventory_reservation WHERE reservation_key = ?', [$orderId]), $message);
+            self::assertSame([10, 2], OrderingFixture::stock($this->control, $variant), $message);
         }
     }
 
@@ -138,7 +170,7 @@ final class ExpireOverdueConcurrencyTest extends KernelTestCase
             self::assertSame(['cancelled', 'payment_timeout'], $this->control->fetchNumeric('SELECT status, cancellation_reason FROM ordering_order WHERE id = ?', [$orderId]), $message);
             self::assertSame('released', $this->control->fetchOne('SELECT status FROM inventory_reservation WHERE reservation_key = ?', [$orderId]), $message);
             self::assertSame([10, 0], OrderingFixture::stock($this->control, $variant), $message.': released once');
-            self::assertSame(1, OrderingFixture::count($this->control, 'SELECT COUNT(*) FROM ordering_order_status_change WHERE order_id = ?', [$orderId]), $message.': cancelled once');
+            self::assertSame(2, OrderingFixture::count($this->control, 'SELECT COUNT(*) FROM ordering_order_status_change WHERE order_id = ?', [$orderId]), $message.': the placement and one cancellation');
             self::assertSame(2, OrderingFixture::count($this->control, 'SELECT version FROM ordering_order WHERE id = ?', [$orderId]), $message);
         }
     }
@@ -146,14 +178,17 @@ final class ExpireOverdueConcurrencyTest extends KernelTestCase
     /**
      * @return \Closure(): (\Closure(): string) the command in a kernel of its own: "exit <code>: <output>"
      */
-    private static function expireOverdue(): \Closure
+    private static function expireOverdue(?string $afterFlag = null): \Closure
     {
-        return static function (): \Closure {
+        return static function () use ($afterFlag): \Closure {
             $kernel = new Kernel('test', false);
             $kernel->boot();
             $tester = new CommandTester((new Application($kernel))->find('ordering:expire-overdue'));
 
-            return static function () use ($tester): string {
+            return static function () use ($tester, $afterFlag): string {
+                if (null !== $afterFlag && !self::await(static fn (): bool => is_file($afterFlag))) {
+                    return 'the flag did not appear';
+                }
                 $code = $tester->execute([]);
 
                 return \sprintf('exit %d: %s', $code, preg_replace('/\s+/', ' ', trim($tester->getDisplay())));
@@ -165,23 +200,59 @@ final class ExpireOverdueConcurrencyTest extends KernelTestCase
      * @return \Closure(): (\Closure(): string) the webhook of a payment executed before the deadline, as Payment
      *                                          dispatches it: the name of the result, or the class of the failure
      */
-    private static function payInTime(string $orderId): \Closure
+    private static function payInTime(string $orderId, bool $holdUntilAnotherWaits = false, ?string $flag = null): \Closure
     {
-        return static function () use ($orderId): \Closure {
-            $bus = self::bus();
+        return static function () use ($orderId, $holdUntilAnotherWaits, $flag): \Closure {
+            [$connection, $bus] = self::participant();
 
-            return static function () use ($bus, $orderId): string {
+            return static function () use ($connection, $bus, $orderId, $holdUntilAnotherWaits, $flag): string {
                 $executedAt = new \DateTimeImmutable('-61 minutes');
+                // An outer transaction keeps the row of the paid order locked after the command of the bus is done.
+                $connection->beginTransaction();
                 try {
                     $result = $bus->dispatch(new MarkOrderPaid($orderId, Uuid::v7()->toRfc4122(), self::GROSS * 2, 'PLN', $executedAt))->last(HandledStamp::class)?->getResult();
                 } catch (HandlerFailedException $failed) {
+                    $connection->rollBack();
+
                     return array_values($failed->getWrappedExceptions())[0]::class;
                 }
                 \assert($result instanceof MarkOrderPaidResult);
+                if (null !== $flag) {
+                    touch($flag);
+                }
+                $waited = $holdUntilAnotherWaits && self::await(static fn (): bool => self::anotherWaits($connection));
+                $connection->commit();
 
-                return $result->name;
+                return $result->name.($waited ? ', another waited' : '');
             };
         };
+    }
+
+    /**
+     * Whether a backend of shop_test other than this one waits for a lock on a row or a transaction (not the advisory
+     * lock of the start).
+     */
+    private static function anotherWaits(Connection $connection): bool
+    {
+        return true === $connection->fetchOne(
+            "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE NOT granted AND locktype <> 'advisory' AND pid <> pg_backend_pid())",
+        );
+    }
+
+    /**
+     * @param \Closure(): bool $condition
+     */
+    private static function await(\Closure $condition): bool
+    {
+        $deadline = microtime(true) + 10.0;
+        while (!$condition()) {
+            if (microtime(true) > $deadline) {
+                return false;
+            }
+            usleep(5000);
+        }
+
+        return true;
     }
 
     /**
@@ -190,7 +261,7 @@ final class ExpireOverdueConcurrencyTest extends KernelTestCase
     private static function deliverExpiry(string $orderId): \Closure
     {
         return static function () use ($orderId): \Closure {
-            $bus = self::bus();
+            [, $bus] = self::participant();
 
             return static function () use ($bus, $orderId): string {
                 $bus->dispatch(new Envelope(new ExpireUnpaidOrder($orderId), [new ReceivedStamp('scheduled')]));
@@ -200,16 +271,20 @@ final class ExpireOverdueConcurrencyTest extends KernelTestCase
         };
     }
 
-    private static function bus(): MessageBusInterface
+    /**
+     * @return array{Connection, MessageBusInterface} of a kernel booted in the process of the participant
+     */
+    private static function participant(): array
     {
         $kernel = new Kernel('test', false);
         $kernel->boot();
         $container = $kernel->getContainer()->get('test.service_container');
         \assert($container instanceof ContainerInterface);
+        $connection = $container->get('doctrine.dbal.default_connection');
         $bus = $container->get('command.bus');
-        \assert($bus instanceof MessageBusInterface);
+        \assert($connection instanceof Connection && $bus instanceof MessageBusInterface);
 
-        return $bus;
+        return [$connection, $bus];
     }
 
     /**

@@ -71,7 +71,7 @@ final class ExpireOverdueOrdersCommandTest extends MessagingKernelTestCase
         self::assertSame(['cancelled', 'payment_timeout'], $this->db->fetchNumeric('SELECT status, cancellation_reason FROM ordering_order WHERE id = ?', [$orderId]));
         self::assertSame([5, 0], OrderingFixture::stock($this->db, $shoes), 'the reservation is released');
         self::assertSame('released', $this->db->fetchOne('SELECT status FROM inventory_reservation WHERE reservation_key = ?', [$orderId]));
-        self::assertSame(true, $this->db->fetchOne('SELECT released_at IS NOT NULL FROM pricing_discount_code_usage WHERE order_id = ?', [$orderId]), 'the usage of the code is released');
+        self::assertTrue($this->db->fetchOne('SELECT released_at IS NOT NULL FROM pricing_discount_code_usage WHERE order_id = ?', [$orderId]), 'the usage of the code is released');
         self::assertSame(1, $this->cancelledEvents($orderId));
         self::assertSame($outboxBefore + 1, $this->rows('outbox'), 'only OrderCancelled');
         self::assertSame(0, $this->rows('scheduled'));
@@ -238,7 +238,7 @@ final class ExpireOverdueOrdersCommandTest extends MessagingKernelTestCase
     private function moveDeadline(string $orderId, int $minutesAgo): void
     {
         $this->db->executeStatement(
-            "UPDATE ordering_order SET placed_at = now() - make_interval(mins => ?), payment_deadline = now() - make_interval(mins => ?) WHERE id = ?",
+            'UPDATE ordering_order SET placed_at = now() - make_interval(mins => ?), payment_deadline = now() - make_interval(mins => ?) WHERE id = ?',
             [$minutesAgo + 30, $minutesAgo, $orderId],
         );
     }
