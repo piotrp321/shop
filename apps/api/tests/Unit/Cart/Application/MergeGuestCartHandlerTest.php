@@ -17,6 +17,7 @@ use App\Cart\Domain\CartOwner;
 use App\Cart\Domain\CartStatus;
 use App\Cart\Domain\Quantity;
 use App\Cart\Domain\VariantId;
+use App\Tests\Unit\Cart\FakeCartDelivery;
 use App\Tests\Unit\Cart\FixedClock;
 use App\Tests\Unit\Cart\InMemoryCarts;
 use App\Tests\Unit\Cart\InMemoryProducts;
@@ -210,7 +211,7 @@ final class MergeGuestCartHandlerTest extends TestCase
 
     public function merge(string $guestCartId): MergeResult
     {
-        $handler = new MergeGuestCartHandler($this->carts, $this->carts, new ProductDataLoader($this->products, $this->products, $this->products), new CartViewBuilder($this->products), $this->clock);
+        $handler = new MergeGuestCartHandler($this->carts, $this->carts, new ProductDataLoader($this->products, $this->products, $this->products), new CartViewBuilder($this->products, new FakeCartDelivery()), $this->clock);
 
         return $handler(new MergeGuestCart(self::CUSTOMER, $guestCartId));
     }
