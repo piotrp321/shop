@@ -8,6 +8,7 @@ use App\Payment\Application\OrderNotFound;
 use App\Payment\Application\PaymentAccess;
 use App\Payment\Application\PaymentProviders;
 use App\Payment\Application\PaymentProviderUnavailable;
+use App\Payment\Application\PendingPaymentClosing;
 use App\Payment\Application\Port\Clock;
 use App\Payment\Application\Port\PayableOrders;
 use App\Payment\Application\Port\PaymentStartLock;
@@ -42,9 +43,9 @@ use Symfony\Component\Uid\Uuid;
  *    step 2 and step 3, and step 6 would cancel its session at the provider (no rollback undoes that); the same
  *    rules as in step 2;
  * 5. the state of the order: paid, cancelled or past the deadline is a 409;
- * 6. the pending payment of the order, under the lock of its row, is cancelled at its provider first: cancelled
- *    there → cancelled here; rejected there → failed here; paid there → 409, nothing changes (the webhook confirms
- *    it); the provider unavailable → 503, nothing changes;
+ * 6. the pending payment of the order, under the lock of its row, is cancelled at its provider first
+ *    (PendingPaymentClosing): cancelled there → cancelled here; rejected there → failed here; paid there → 409,
+ *    nothing changes (the webhook confirms it); the provider unavailable → 503, nothing changes;
  * 7. the order is read anew and its state checked again as in step 5: a webhook of the earlier payment that held the
  *    lock of step 6 has committed the order paid meanwhile, and no pending payment is left to stop the start;
  * 8. the new payment is written (the unique indexes still refuse a start that lost the race to a committed one),
@@ -59,6 +60,8 @@ final readonly class StartPaymentHandler
 {
     private const string RETURN_PATH = '/checkout/confirmation';
 
+    private PendingPaymentClosing $closing;
+
     public function __construct(
         private PaymentRepository $payments,
         private PayableOrders $orders,
@@ -68,6 +71,7 @@ final readonly class StartPaymentHandler
         #[Autowire(env: 'STORE_URL')]
         private string $storeUrl,
     ) {
+        $this->closing = new PendingPaymentClosing($providers, $clock);
     }
 
     /**
@@ -151,15 +155,9 @@ final readonly class StartPaymentHandler
         if (null === $pending) {
             return;
         }
-        $session = $pending->providerPaymentId();
-        // A payment gets its session in the transaction that writes it, so a stored pending one has one; without it
-        // there is nothing to cancel at the provider.
-        $cancellation = null === $session ? SessionCancellation::Cancelled : $this->providers->get($pending->provider())->cancelSession($session);
-        match ($cancellation) {
-            SessionCancellation::Cancelled => $pending->cancel($this->clock->now()),
-            SessionCancellation::AlreadyRejected => $pending->fail($this->clock->now()),
-            SessionCancellation::AlreadyPaid => throw PaymentInProgress::alreadyExecuted(),
-        };
+        if (SessionCancellation::AlreadyPaid === $this->closing->close($pending)) {
+            throw PaymentInProgress::alreadyExecuted();
+        }
         $this->payments->save($pending);
     }
 }

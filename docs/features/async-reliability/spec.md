@@ -309,7 +309,9 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
 
 - Nowe zapytanie Ordering `GetOrderPayability(orderIds)` (`query.bus`, do 100 identyfikatorów) zwraca dla każdego
   zamówienia tylko to, czy jest płatne (`new` przed terminem) i jego status dla Payment (`new`, `paid`, `cancelled`), bez
-  numeru, kwoty i danych osobowych; nie ma kontroli właściciela, bo nic nie ujawnia. Payment dostaje osobną metodę portu
+  numeru, kwoty i danych osobowych; nie ma kontroli właściciela, bo nic nie ujawnia. Pomija tylko identyfikator, który
+  nie jest UUID, i zamówienie, którego nie ma; zamówienie istniejące, którego nie da się odczytać (dane łamiące
+  niezmiennik domeny), zwraca osobno z przyczyną, a błąd bazy przerywa zapytanie. Payment dostaje osobną metodę portu
   (adapter w `Payment_Infrastructure`, Deptrac bez zmian). `PayableOrders::find` i `GetOrderForPayment` z kontrolą dostępu
   zostają bez zmian.
 - Mapowanie wyniku anulowania sesji u dostawcy (`SessionCancellation` → `cancel`, `fail` albo „opłacona”) jest w jednym
@@ -324,8 +326,9 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   (`succeed` z `cancelled` i `failed`, jak dziś), z oznaczeniem zwrotu, gdy zamówienie jest anulowane.
 - Płatność „opłacona u dostawcy”, której webhook nie dotrze (np. usunięty z `failed`), zostaje `pending`; każdy
   przebieg pyta o nią dostawcę i zapisuje ostrzeżenie. Runbook: takiej wiadomości webhooka nie usuwa się, tylko ponawia.
-- Dostawca niedostępny: ta płatność zostaje, błąd w logu, komenda idzie dalej. Kod wyjścia jak w W5 (2, gdy któraś
-  płatność się nie udała).
+- Dostawca niedostępny albo zamówienie, którego Ordering nie odczytało: ta płatność zostaje `pending` (przy
+  nieodczytanym zamówieniu bez wywołania dostawcy), błąd w logu z identyfikatorami płatności i zamówienia, komenda idzie
+  dalej. Kod wyjścia jak w W5 (2, gdy któraś płatność się nie udała).
 - Dane sprzed epiku (`pending` porzucone wcześniej) zamyka pierwsze uruchomienie; gdy zaległość nie zmieści się w limicie
   czasu Joba, Job kończy się błędem (`OrderExpiryFailed`), a kolejne przebiegi kończą pracę (komenda jest idempotentna).
 
@@ -552,8 +555,9 @@ Dokumenty, które dziś podają zachowanie zmieniane przez epik, zmienia zadanie
 6. **Płatności `pending` (B3).** Test funkcjonalny `payment:close-abandoned`: `pending` zamówienia anulowanego albo
    przeterminowanego → `cancelled`; dostawca „odrzucona” → `failed`; dostawca „opłacona” → zostaje `pending`; zamówienie
    płatne → bez zmian; późny webhook sukcesu po zamknięciu → `succeeded` z oznaczeniem zwrotu; niedostępny dostawca →
-   kod 2, pozostałe płatności zamknięte; test planu zapytania `pending`; `GetOrderPayability` nie zwraca danych zamówienia
-   poza płatnością i statusem.
+   kod 2, pozostałe płatności zamknięte; zamówienie istniejące, którego nie da się odczytać → płatność zostaje `pending`,
+   dostawca niewołany, kod 2, pozostałe zamknięte; test planu zapytania `pending`; `GetOrderPayability` nie zwraca danych
+   zamówienia poza płatnością i statusem.
 7. **Ponowienia.** `EventsRetryStrategyTest` z wartościami W3; test konfiguracji outboxa (200 prób, `max_delay` 60 s);
    test integracyjny: odbiorca `events` z błędem przejściowym jest ponawiany 10 razy, potem wiadomość jest w `failed`;
    błąd nieodwracalny od razu w `failed`.
