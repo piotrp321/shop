@@ -132,15 +132,17 @@ restore:
 # Replaces the data of the shop with the demo data of a profile, or with the seed again (docs/features/demo-scale/spec.md):
 # make -C infra/k8s generate PROFILE=<seed|profile of the CronJob demo-data> GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...']
 # KUBE_DIR=<directory>. Only after the consent of the user in the conversation that names the operation, the host and the profile. Checks
-# without changes, says what it will do and asks for the word tak; then closes the shop, runs the Job demo-data-run and, after it
-# completed, make open. A failure leaves the shop closed (exit 1; 2 for wrong arguments). The variables: the header of scripts/generate.sh.
+# without changes, says what it will do and asks for the word tak; then takes the lock demo-data-lock (make generate and make open run
+# one at a time), closes the shop, runs the Job demo-data-run and, after it completed, make open under its lock. A failure leaves the
+# shop closed (exit 1; 2 for wrong arguments). The variables: the header of scripts/generate.sh.
 generate:
 	@sh scripts/ao-guard.sh generate
 	PROFILE="$(PROFILE)" sh scripts/generate.sh
 
 # Checks the data of the Job demo-data-run of make generate (that completed) and opens the shop; make generate runs it, by hand after a
 # run that stopped: make -C infra/k8s open GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...'] KUBE_DIR=<directory>.
-# Idempotent; refuses while a Job runs. Exit 1 when a check fails (the shop stays closed). The variables: the header of scripts/open.sh.
+# Idempotent; holds the lock demo-data-lock to its end and refuses while another make generate or make open holds it, or a Job runs.
+# Exit 1 when a check fails (the shop stays closed). The variables: the header of scripts/open.sh.
 open:
 	@sh scripts/ao-guard.sh open
 	sh scripts/open.sh
@@ -175,8 +177,9 @@ kubeconfig:
 	sh scripts/kubeconfig.sh "$(HOST)"
 
 # The applications of Argo CD, the pods and the jobs of the shop, the logs of the failed jobs and the state of the demo data (whether
-# the shop is closed, the Job demo-data-run and its state, the active Jobs, whether the Secret of the photo pool is left, the last log
-# line of the newest job initialize), read over SSH: make -C infra/k8s status HOST=<user>@<address>.
+# the shop is closed, the lock demo-data-lock and its holder, the Job demo-data-run and its state, the active Jobs, whether the Secret
+# of the photo pool is left, the last log line of the newest job initialize), read over SSH:
+# make -C infra/k8s status HOST=<user>@<address>.
 status:
 	sh scripts/status.sh "$(HOST)"
 
