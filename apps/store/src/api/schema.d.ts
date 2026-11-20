@@ -765,6 +765,52 @@ export interface components {
             hasExcludedLines: boolean;
             /** @description The discount code of the read (`discountCode`), applied or rejected; null without a code, for a blank one and for a cart without a purchasable line (no quote). Changes of the cart answer without a code. */
             discount: components["schemas"]["AppliedCartDiscount"] | components["schemas"]["RejectedCartDiscount"] | (never | null);
+            /** @description The delivery of the cart, computed from the goods after the discount code of the read; null for a cart without a purchasable line. Where the customer picks a method is the checkout. */
+            delivery: components["schemas"]["CartDelivery"] | null;
+        };
+        /** @description The delivery of a cart with a purchasable line, in grosze. Without active delivery methods `options` is empty and both amounts are null. */
+        CartDelivery: {
+            /**
+             * @description The cheapest cost of an option ("Dostawa od"); 0 when an option is free.
+             * @example 1999
+             */
+            fromGross: number | null;
+            /**
+             * @description The smallest amount missing to make an option free; null when an option is free already, no option has a threshold or there is no option.
+             * @example 5001
+             */
+            missingToFreeGross: number | null;
+            /** @description The active delivery methods by position, then by name. */
+            options: components["schemas"]["CartDeliveryOption"][];
+        };
+        /** @description A delivery method with its cost for the goods of the cart. The tracking link template is never part of it. */
+        CartDeliveryOption: {
+            /** Format: uuid */
+            methodId: string;
+            /** @example Kurier */
+            name: string;
+            /** @description Empty without a description. */
+            description: string;
+            /**
+             * @description The cost of the delivery in grosze; 0 from the threshold of free delivery (inclusive) or for a free method.
+             * @example 1999
+             */
+            costGross: number;
+            /**
+             * @description The threshold of free delivery (the goods after discounts); null without one.
+             * @example 29900
+             */
+            freeFromGross: number | null;
+            /**
+             * @description The amount missing to the threshold; null when the cost is 0 or the method has no threshold.
+             * @example 5001
+             */
+            missingToFreeGross: number | null;
+            /**
+             * @description The total of the cart with this method in grosze, `totals.gross` plus `costGross`. To show; the placement of an order checks the total again.
+             * @example 41989
+             */
+            totalGross: number;
         };
         /** @description A code the quote applied to the purchasable lines. */
         AppliedCartDiscount: {

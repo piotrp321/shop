@@ -55,14 +55,11 @@ final class CartDeliveryEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
         self::assertMatchesSchema('CartView', $view);
-        self::assertIsArray($view['delivery']);
-        self::assertMatchesSchema('CartDelivery', $view['delivery']);
-        self::assertSame(999, $view['delivery']['fromGross']);
-        self::assertSame(19_900, $view['delivery']['missingToFreeGross']);
-        self::assertIsArray($view['delivery']['options']);
-        self::assertCount(2, $view['delivery']['options']);
-        foreach ($view['delivery']['options'] as $option) {
-            self::assertIsArray($option);
+        $delivery = $this->delivery($view);
+        self::assertMatchesSchema('CartDelivery', $delivery);
+        self::assertSame([999, 19_900], [$delivery['fromGross'], $delivery['missingToFreeGross']]);
+        self::assertCount(2, $delivery['options']);
+        foreach ($delivery['options'] as $option) {
             self::assertMatchesSchema('CartDeliveryOption', $option);
         }
         self::assertSame(
@@ -70,11 +67,11 @@ final class CartDeliveryEndpointTest extends WebTestCase
                 ['name' => 'Kurier', 'description' => '', 'costGross' => 1_999, 'freeFromGross' => 29_900, 'missingToFreeGross' => 19_900, 'totalGross' => 11_999],
                 ['name' => 'Odbiór w sklepie', 'description' => 'Wtorek–piątek', 'costGross' => 999, 'freeFromGross' => null, 'missingToFreeGross' => null, 'totalGross' => 10_999],
             ],
-            array_map(static fn (array $o): array => array_diff_key($o, ['methodId' => true]), $view['delivery']['options']),
+            array_map(static fn (array $o): array => array_diff_key($o, ['methodId' => true]), $delivery['options']),
             'by position; the total is the goods of the cart plus the cost',
         );
-        self::assertSame($view['totals']['gross'] + 1_999, $view['delivery']['options'][0]['totalGross']);
-        self::assertTrue(Uuid::isValid((string) $view['delivery']['options'][0]['methodId']));
+        self::assertSame($this->gross($view) + 1_999, $delivery['options'][0]['totalGross']);
+        self::assertTrue(Uuid::isValid($delivery['options'][0]['methodId']));
     }
 
     public function testFromTheThresholdTheCostIsZero(): void
@@ -84,34 +81,25 @@ final class CartDeliveryEndpointTest extends WebTestCase
 
         $view = $this->request('GET', $cart);
 
-        self::assertIsArray($view['delivery']);
-        self::assertSame(0, $view['delivery']['fromGross']);
-        self::assertNull($view['delivery']['missingToFreeGross']);
-        self::assertSame(
-            ['costGross' => 0, 'missingToFreeGross' => null, 'totalGross' => 10_000],
-            array_intersect_key($view['delivery']['options'][0], ['costGross' => true, 'missingToFreeGross' => true, 'totalGross' => true]),
-        );
+        $delivery = $this->delivery($view);
+        self::assertSame([0, null], [$delivery['fromGross'], $delivery['missingToFreeGross']]);
+        self::assertSame([0, null, 10_000], [$delivery['options'][0]['costGross'], $delivery['options'][0]['missingToFreeGross'], $delivery['options'][0]['totalGross']]);
     }
 
     public function testACodeThatLowersTheGoodsBelowTheThresholdMakesTheDeliveryPaidAgain(): void
     {
         $this->methods([['Kurier', 1_999, 40_000]]);
         $cart = $this->guestCartWith(44_988);
-        $this->code(['code' => 'MINUS50', 'kind' => DiscountKind::Amount, 'value' => 5_000]);
+        $this->code(['code' => 'MINUS50', 'kind' => DiscountKind::Amount, 'value' => 5_000, 'minimumOrderGross' => 10_000]);
 
         $without = $this->request('GET', $cart);
         $with = $this->request('GET', $cart.'?discountCode=minus50');
 
-        self::assertIsArray($without['delivery']);
-        self::assertSame(0, $without['delivery']['fromGross'], 'above the threshold without the code');
-        self::assertIsArray($with['delivery']);
-        self::assertSame(39_988, $with['totals']['gross']);
-        self::assertSame(1_999, $with['delivery']['fromGross']);
-        self::assertSame(12, $with['delivery']['missingToFreeGross']);
-        self::assertSame(
-            ['costGross' => 1_999, 'missingToFreeGross' => 12, 'totalGross' => 41_987],
-            array_intersect_key($with['delivery']['options'][0], ['costGross' => true, 'missingToFreeGross' => true, 'totalGross' => true]),
-        );
+        self::assertSame(0, $this->delivery($without)['fromGross'], 'above the threshold without the code');
+        $delivery = $this->delivery($with);
+        self::assertSame(39_988, $this->gross($with));
+        self::assertSame([1_999, 12], [$delivery['fromGross'], $delivery['missingToFreeGross']]);
+        self::assertSame([1_999, 12, 41_987], [$delivery['options'][0]['costGross'], $delivery['options'][0]['missingToFreeGross'], $delivery['options'][0]['totalGross']]);
     }
 
     public function testWithoutActiveMethodsTheOptionsAreEmpty(): void
@@ -145,10 +133,8 @@ final class CartDeliveryEndpointTest extends WebTestCase
         $added = $this->request('POST', $cart.'/items', json_encode(['variantId' => $variant, 'quantity' => 1], \JSON_THROW_ON_ERROR));
         $changed = $this->request('PUT', $cart.'/items/'.$variant, json_encode(['quantity' => 2], \JSON_THROW_ON_ERROR));
 
-        self::assertIsArray($added['delivery']);
-        self::assertSame([1_999, 5_000], [$added['delivery']['fromGross'], $added['delivery']['missingToFreeGross']]);
-        self::assertIsArray($changed['delivery']);
-        self::assertSame([0, null], [$changed['delivery']['fromGross'], $changed['delivery']['missingToFreeGross']]);
+        self::assertSame([1_999, 5_000], [$this->delivery($added)['fromGross'], $this->delivery($added)['missingToFreeGross']]);
+        self::assertSame([0, null], [$this->delivery($changed)['fromGross'], $this->delivery($changed)['missingToFreeGross']]);
     }
 
     public function testTheCustomerCartHasTheDeliveryWithAndWithoutACode(): void
@@ -165,12 +151,36 @@ final class CartDeliveryEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
         self::assertMatchesSchema('CartView', $with);
-        self::assertIsArray($without['delivery']);
-        self::assertSame([1_999, 1], [$without['delivery']['fromGross'], $without['delivery']['missingToFreeGross']]);
-        self::assertIsArray($with['delivery']);
-        self::assertSame(18_000, $with['totals']['gross']);
-        self::assertSame([1_999, 2_000], [$with['delivery']['fromGross'], $with['delivery']['missingToFreeGross']]);
-        self::assertSame(19_999, $with['delivery']['options'][0]['totalGross']);
+        self::assertSame([1_999, 1], [$this->delivery($without)['fromGross'], $this->delivery($without)['missingToFreeGross']]);
+        $delivery = $this->delivery($with);
+        self::assertSame(18_000, $this->gross($with));
+        self::assertSame([1_999, 2_000], [$delivery['fromGross'], $delivery['missingToFreeGross']]);
+        self::assertSame(19_999, $delivery['options'][0]['totalGross']);
+    }
+
+    /**
+     * @param array<mixed> $view
+     *
+     * @return array{fromGross: ?int, missingToFreeGross: ?int, options: list<array{methodId: string, name: string, description: string, costGross: int, freeFromGross: ?int, missingToFreeGross: ?int, totalGross: int}>}
+     */
+    private function delivery(array $view): array
+    {
+        self::assertIsArray($view['delivery']);
+        /** @var array{fromGross: ?int, missingToFreeGross: ?int, options: list<array{methodId: string, name: string, description: string, costGross: int, freeFromGross: ?int, missingToFreeGross: ?int, totalGross: int}>} $delivery */
+        $delivery = $view['delivery'];
+
+        return $delivery;
+    }
+
+    /**
+     * @param array<mixed> $view
+     */
+    private function gross(array $view): int
+    {
+        self::assertIsArray($view['totals']);
+        self::assertIsInt($view['totals']['gross']);
+
+        return $view['totals']['gross'];
     }
 
     /**

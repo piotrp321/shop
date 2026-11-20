@@ -304,7 +304,7 @@ nelmio_api_doc:
                         CartView:
                             type: object
                             description: A cart with everything the store shows, computed by the API. The number of available units is never part of it.
-                            required: [id, lines, totals, hasExcludedLines, discount]
+                            required: [id, lines, totals, hasExcludedLines, discount, delivery]
                             properties:
                                 id:
                                     type: string
@@ -335,6 +335,69 @@ nelmio_api_doc:
                                         mapping:
                                             applied: '#/components/schemas/AppliedCartDiscount'
                                             rejected: '#/components/schemas/RejectedCartDiscount'
+                                delivery:
+                                    nullable: true
+                                    description: >-
+                                        The delivery of the cart, computed from the goods after the discount code of the read; null
+                                        for a cart without a purchasable line. Where the customer picks a method is the checkout.
+                                    allOf:
+                                        - $ref: '#/components/schemas/CartDelivery'
+                        CartDelivery:
+                            type: object
+                            description: >-
+                                The delivery of a cart with a purchasable line, in grosze. Without active delivery methods `options`
+                                is empty and both amounts are null.
+                            required: [fromGross, missingToFreeGross, options]
+                            properties:
+                                fromGross:
+                                    type: integer
+                                    nullable: true
+                                    description: The cheapest cost of an option ("Dostawa od"); 0 when an option is free.
+                                    example: 1999
+                                missingToFreeGross:
+                                    type: integer
+                                    nullable: true
+                                    description: >-
+                                        The smallest amount missing to make an option free; null when an option is free already,
+                                        no option has a threshold or there is no option.
+                                    example: 5001
+                                options:
+                                    type: array
+                                    description: The active delivery methods by position, then by name.
+                                    items:
+                                        $ref: '#/components/schemas/CartDeliveryOption'
+                        CartDeliveryOption:
+                            type: object
+                            description: A delivery method with its cost for the goods of the cart. The tracking link template is never part of it.
+                            required: [methodId, name, description, costGross, freeFromGross, missingToFreeGross, totalGross]
+                            properties:
+                                methodId:
+                                    type: string
+                                    format: uuid
+                                name:
+                                    type: string
+                                    example: Kurier
+                                description:
+                                    type: string
+                                    description: Empty without a description.
+                                costGross:
+                                    type: integer
+                                    description: The cost of the delivery in grosze; 0 from the threshold of free delivery (inclusive) or for a free method.
+                                    example: 1999
+                                freeFromGross:
+                                    type: integer
+                                    nullable: true
+                                    description: The threshold of free delivery (the goods after discounts); null without one.
+                                    example: 29900
+                                missingToFreeGross:
+                                    type: integer
+                                    nullable: true
+                                    description: The amount missing to the threshold; null when the cost is 0 or the method has no threshold.
+                                    example: 5001
+                                totalGross:
+                                    type: integer
+                                    description: The total of the cart with this method in grosze, `totals.gross` plus `costGross`. To show; the placement of an order checks the total again.
+                                    example: 41989
                         AppliedCartDiscount:
                             type: object
                             description: A code the quote applied to the purchasable lines.

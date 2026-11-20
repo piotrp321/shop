@@ -3202,7 +3202,8 @@
                     "lines",
                     "totals",
                     "hasExcludedLines",
-                    "discount"
+                    "discount",
+                    "delivery"
                 ],
                 "properties": {
                     "id": {
@@ -3249,6 +3250,94 @@
                                 ]
                             }
                         ]
+                    },
+                    "delivery": {
+                        "description": "The delivery of the cart, computed from the goods after the discount code of the read; null for a cart without a purchasable line. Where the customer picks a method is the checkout.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/CartDelivery"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "CartDelivery": {
+                "description": "The delivery of a cart with a purchasable line, in grosze. Without active delivery methods `options` is empty and both amounts are null.",
+                "required": [
+                    "fromGross",
+                    "missingToFreeGross",
+                    "options"
+                ],
+                "properties": {
+                    "fromGross": {
+                        "description": "The cheapest cost of an option (\"Dostawa od\"); 0 when an option is free.",
+                        "type": "integer",
+                        "example": 1999,
+                        "nullable": true
+                    },
+                    "missingToFreeGross": {
+                        "description": "The smallest amount missing to make an option free; null when an option is free already, no option has a threshold or there is no option.",
+                        "type": "integer",
+                        "example": 5001,
+                        "nullable": true
+                    },
+                    "options": {
+                        "description": "The active delivery methods by position, then by name.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/CartDeliveryOption"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "CartDeliveryOption": {
+                "description": "A delivery method with its cost for the goods of the cart. The tracking link template is never part of it.",
+                "required": [
+                    "methodId",
+                    "name",
+                    "description",
+                    "costGross",
+                    "freeFromGross",
+                    "missingToFreeGross",
+                    "totalGross"
+                ],
+                "properties": {
+                    "methodId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Kurier"
+                    },
+                    "description": {
+                        "description": "Empty without a description.",
+                        "type": "string"
+                    },
+                    "costGross": {
+                        "description": "The cost of the delivery in grosze; 0 from the threshold of free delivery (inclusive) or for a free method.",
+                        "type": "integer",
+                        "example": 1999
+                    },
+                    "freeFromGross": {
+                        "description": "The threshold of free delivery (the goods after discounts); null without one.",
+                        "type": "integer",
+                        "example": 29900,
+                        "nullable": true
+                    },
+                    "missingToFreeGross": {
+                        "description": "The amount missing to the threshold; null when the cost is 0 or the method has no threshold.",
+                        "type": "integer",
+                        "example": 5001,
+                        "nullable": true
+                    },
+                    "totalGross": {
+                        "description": "The total of the cart with this method in grosze, `totals.gross` plus `costGross`. To show; the placement of an order checks the total again.",
+                        "type": "integer",
+                        "example": 41989
                     }
                 },
                 "type": "object"
