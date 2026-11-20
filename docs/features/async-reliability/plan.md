@@ -9,8 +9,8 @@ PR-ów. Plan jest dokumentem roboczym: po ukończeniu epica usuń go.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | ASYNC-RELIABILITY-1, ASYNC-RELIABILITY-2, ASYNC-RELIABILITY-3, ASYNC-RELIABILITY-4, ASYNC-RELIABILITY-6 | 6 scalone (przegląd PASS); w toku: 1, 2, 4; 3 po scaleniu 1, 2 i 4 (wspólne pliki) |
-| 2 | ASYNC-RELIABILITY-5, ASYNC-RELIABILITY-7 | |
+| 1 | ASYNC-RELIABILITY-1, ASYNC-RELIABILITY-2, ASYNC-RELIABILITY-3, ASYNC-RELIABILITY-4, ASYNC-RELIABILITY-6 | 2 i 6 scalone (przegląd PASS); 4 w przeglądzie; w toku: 1; 3 po scaleniu 1, 2 i 4 (wspólne pliki) |
+| 2 | ASYNC-RELIABILITY-5, ASYNC-RELIABILITY-7 | 5 w toku (od gałęzi zadania 4) |
 | 3 | ASYNC-RELIABILITY-8 | |
 
 Stan zadań prowadzi sesja orkiestrująca w kolumnie „Status”.
