@@ -14,13 +14,19 @@ use App\Backoffice\Application\Port\StockQueueCounts;
 use App\Backoffice\Application\Port\StockQueues;
 use App\Backoffice\Application\Port\SystemHealth;
 use App\Backoffice\Application\Query\CatalogSection;
+use App\Backoffice\Application\Query\DatabaseQueues;
+use App\Backoffice\Application\Query\FailedMessages;
 use App\Backoffice\Application\Query\GetDashboard;
 use App\Backoffice\Application\Query\GetDashboardHandler;
+use App\Backoffice\Application\Query\MessagingHealth;
+use App\Backoffice\Application\Query\MessagingSection;
 use App\Backoffice\Application\Query\QueueAccess;
 use App\Backoffice\Application\Query\QueuesSection;
 use App\Backoffice\Application\Query\QueueStatus;
 use App\Backoffice\Application\Query\SearchIndexStatus;
 use App\Backoffice\Application\Query\ServiceStatus;
+use App\Backoffice\Application\Query\TransportBacklog;
+use App\Backoffice\Application\Query\TransportStatus;
 use App\Shared\Domain\BoundedCount;
 use PHPUnit\Framework\TestCase;
 
@@ -74,6 +80,22 @@ final class GetDashboardHandlerTest extends TestCase
         self::assertNotNull($dashboard->system);
         self::assertSame(7, $dashboard->system->outboxPending);
         self::assertEquals($queues, $dashboard->system->queues);
+    }
+
+    public function testTheMessagesOfTheDatabaseComeFromTheHealthAssessmentOfMessagingStatistics(): void
+    {
+        $database = new DatabaseQueues(
+            new FailedMessages(new BoundedCount(2, false), new \DateTimeImmutable('2026-11-20T10:00:00+00:00')),
+            [new TransportBacklog('jobs', new BoundedCount(1, false), 601)],
+        );
+
+        $dashboard = $this->handler(new CatalogCounts(1, 1, null, 1), new RecordingSystemHealth([]), new FakeMessagingStatistics(0, [], $database))(new GetDashboard(true, QueueAccess::none()));
+
+        self::assertNotNull($dashboard->system);
+        self::assertEquals(
+            new MessagingSection($database->failed, [new TransportStatus('jobs', new BoundedCount(1, false), 601, true)], false),
+            $dashboard->system->messages,
+        );
     }
 
     public function testUnavailableQueueStatisticsGiveNullQueues(): void
@@ -230,6 +252,7 @@ final class GetDashboardHandlerTest extends TestCase
             $statistics instanceof CatalogStatistics ? $statistics : new RecordingCatalogStatistics($statistics),
             $health,
             $messaging,
+            new MessagingHealth($messaging, 600),
             $orders ?? new RecordingOrderQueues(new OrderQueueCounts(null, null, null, null)),
             $stock ?? new RecordingStockQueues(new StockQueueCounts(new BoundedCount(0, false), new BoundedCount(0, false))),
             $sales ?? new RecordingSalesSummary(),

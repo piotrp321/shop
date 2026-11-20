@@ -1605,6 +1605,64 @@ export interface components {
              */
             inSync: boolean | null;
         };
+        /** @description Messages that failed all their attempts and wait in the `failed` transport for a decision of the operator. */
+        DashboardFailedMessagesResponse: {
+            /**
+             * @description Messages in `failed`, counted up to 1000.
+             * @example 0
+             */
+            count: number;
+            /**
+             * @description More than 1000 messages: `count` is 1000.
+             * @example false
+             */
+            capped: boolean;
+            /**
+             * Format: date-time
+             * @description When the oldest of them was written to `failed`, RFC 3339 in UTC. Null without any.
+             * @example 2026-11-20T10:15:00+00:00
+             */
+            oldestAt: string | null;
+        };
+        /** @description A queue of the database that a worker takes messages from. */
+        DashboardTransportResponse: {
+            /**
+             * @description The name of the transport: outbox, scheduled, payment_simulator, promotions or jobs.
+             * @example outbox
+             */
+            name: string;
+            /**
+             * @description Messages that a worker could take now (not handed to a worker, due), counted up to 1000.
+             * @example 0
+             */
+            ready: number;
+            /**
+             * @description More than 1000 ready messages: `ready` is 1000.
+             * @example false
+             */
+            capped: boolean;
+            /**
+             * @description How long the oldest ready message has been ready, in seconds (a delayed message from the moment it became due). Null without a ready message.
+             * @example 3
+             */
+            oldestReadyAgeSeconds: number | null;
+            /**
+             * @description Whether the oldest ready message waits longer than the limit of the API (600 s): nothing takes the messages of the queue.
+             * @example false
+             */
+            stalled: boolean;
+        };
+        /** @description The messages of the queues in the database (the outbox and the commands), judged by the API. */
+        DashboardMessagesResponse: {
+            /**
+             * @description Nothing is in `failed` and no queue stands.
+             * @example true
+             */
+            healthy: boolean;
+            failed: components["schemas"]["DashboardFailedMessagesResponse"];
+            /** @description Always in this order: outbox, scheduled, payment_simulator, promotions, jobs. */
+            transports: components["schemas"]["DashboardTransportResponse"][];
+        };
         /** @description The state of the system, for administrators. */
         DashboardSystemResponse: {
             /** @description Always in this order: postgres, redis, elasticsearch, rabbitmq, keycloak, garage, imgproxy, mailpit. A service that does not answer within 1 s is down. */
@@ -1613,6 +1671,7 @@ export interface components {
             /** @description Queues of the broker. Null when its management API does not answer. */
             queues: components["schemas"]["DashboardQueueResponse"][] | null;
             searchIndex: components["schemas"]["DashboardSearchIndexResponse"];
+            messages: components["schemas"]["DashboardMessagesResponse"];
         };
         /** @description What the admin dashboard shows. */
         DashboardResponse: {

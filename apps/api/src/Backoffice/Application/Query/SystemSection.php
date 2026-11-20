@@ -15,6 +15,7 @@ final readonly class SystemSection
         public int $outboxPending,
         public ?array $queues,
         public SearchIndexStatus $searchIndex,
+        public MessagingSection $messages,
     ) {
     }
 }
