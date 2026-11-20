@@ -1,4 +1,4 @@
-"""The alert rules in the render (docs/features/deploy-ops/spec.md, O6): one PrometheusRule with eight alerts where `alerts.enabled`,
+"""The alert rules in the render (docs/features/deploy-ops/spec.md, O6): one PrometheusRule with eleven alerts where `alerts.enabled`,
 and the rule WorkloadNotReady that looks for every Deployment and StatefulSet that the chart renders. What the expressions do is
 tested by promtool on the rules of this render (tests/alerts/alerts.test.yml, step alerts of scripts/check.sh)."""
 
@@ -7,8 +7,10 @@ import unittest
 
 from support import REPO, docs, name, of_kind
 
-ALERTS = ["BackupFailed", "BackupMissing", "BackupVerifyFailed", "BackupVerifyMissing", "RateLimitsOff", "NodeDiskFull", "ClusterSilent", "WorkloadNotReady"]
+ALERTS = ["BackupFailed", "BackupMissing", "BackupVerifyFailed", "BackupVerifyMissing", "RateLimitsOff", "MessagingUnhealthy", "OrderExpiryFailed", "OrderExpiryMissing",
+          "NodeDiskFull", "ClusterSilent", "WorkloadNotReady"]
 BACKUP_ALERTS = ALERTS[:4]
+ORDER_EXPIRY_MISSING = "30 * 60"  # seconds: six periods of the schedule of order-expiry (docs/features/async-reliability/spec.md, W9)
 RATE_LIMITS_OFF = "17 * 60"  # seconds: three periods of the schedule of rate-limit-check and two minutes (docs/features/abuse-limits/spec.md, L12)
 
 
@@ -35,7 +37,7 @@ def absent_of(expr):
 
 
 class RenderTest(unittest.TestCase):
-    def test_prod_has_one_prometheus_rule_with_the_eight_alerts(self):
+    def test_prod_has_one_prometheus_rule_with_the_eleven_alerts(self):
         found = of_kind("prod-backup", "PrometheusRule")
         self.assertEqual(1, len(found))
         self.assertEqual("monitoring.coreos.com/v1", found[0]["apiVersion"])
@@ -66,7 +68,7 @@ class RenderTest(unittest.TestCase):
     def test_the_alerts_of_missing_data_have_an_absent(self):
         # A server or Alloy that does not work sends no metric: the rule that waits for a metric to be too old must also fire
         # when there is none (the ruler of Grafana Cloud still evaluates it).
-        for alert in ("BackupMissing", "BackupVerifyMissing", "RateLimitsOff"):
+        for alert in ("BackupMissing", "BackupVerifyMissing", "RateLimitsOff", "OrderExpiryMissing"):
             self.assertRegex(rules()[alert]["expr"], r"absent(_over_time)?\(", alert)
         self.assertRegex(rules()["ClusterSilent"]["expr"], r"absent\(\s*kube_node_info\s*\)")
         self.assertIn("26 * 3600", rules()["BackupMissing"]["expr"])
@@ -91,6 +93,51 @@ class RenderTest(unittest.TestCase):
     def test_rate_limits_off_is_in_every_render_that_has_the_alerts_with_or_without_the_backup(self):
         for case in ("prod-backup", "prod-nobackup", "prod-noinit", "ci-alerts"):
             self.assertIn("RateLimitsOff", rules(case), case)
+
+    def test_the_messaging_alerts_are_in_their_own_group_in_every_render_with_the_alerts_with_or_without_the_backup(self):
+        for case in ("prod-backup", "prod-nobackup", "prod-noinit", "ci-alerts"):
+            groups = {group["name"]: [rule["alert"] for rule in group["rules"]] for group in of_kind(case, "PrometheusRule")[0]["spec"]["groups"]}
+            self.assertEqual(["MessagingUnhealthy", "OrderExpiryFailed", "OrderExpiryMissing"], groups["shop-messaging"], case)
+
+    def test_the_failed_alerts_count_the_failed_jobs_of_their_own_cronjob_as_one_instance(self):
+        # One instance per CronJob however many Jobs failed (a persistent failed message gives a new failed Job every five minutes):
+        # the expression aggregates the Jobs away; the labels of the alert are the namespace and the CronJob.
+        for alert, cronjob, severity in (("MessagingUnhealthy", "queue-check", "warning"), ("OrderExpiryFailed", "order-expiry", "critical")):
+            rule = rules()[alert]
+            expr = rule["expr"]
+            self.assertEqual(severity, rule["labels"]["severity"], alert)
+            self.assertNotIn("for", rule, f"{alert}: the alert goes out at the next success")
+            self.assertIn(f'owner_name="{cronjob}"', expr, alert)
+            self.assertNotRegex(expr, r'(cronjob|owner_name|job_name)=~', alert)
+            self.assertIn("kube_job_status_condition", expr, alert)
+            self.assertIn("kube_job_owner", expr, alert)
+            self.assertIn("kube_cronjob_status_last_successful_time", expr, alert)
+            self.assertRegex(expr, r"^max by \(namespace\) \(", alert)
+            self.assertIn(f'cronjob="{cronjob}"', expr, alert)
+            self.assertIn("Runbook: Eksploatacja", rule["annotations"]["description"], alert)
+            self.assertIn("Alert znika po następnym udanym Jobie", rule["annotations"]["description"], alert)
+        self.assertNotIn("queue-check", rules()["OrderExpiryFailed"]["expr"])
+        self.assertNotIn("order-expiry", rules()["MessagingUnhealthy"]["expr"])
+        self.assertIn("make -C infra/k8s failed", rules()["MessagingUnhealthy"]["annotations"]["description"])
+
+    def test_the_backup_alerts_still_have_one_instance_per_failed_job(self):
+        self.assertIn("by (namespace, job_name)", rules()["BackupFailed"]["expr"])
+        self.assertNotRegex(rules()["BackupFailed"]["expr"], r"^max by \(namespace\) \(")
+
+    def test_order_expiry_missing_counts_the_successes_of_order_expiry_with_its_own_threshold(self):
+        rule = rules()["OrderExpiryMissing"]
+        self.assertEqual("critical", rule["labels"]["severity"])
+        self.assertNotIn("for", rule)
+        expr = rule["expr"]
+        self.assertIn('cronjob="order-expiry"', expr)
+        self.assertNotRegex(expr, r'(cronjob|owner_name)=~')
+        self.assertIn(f"> {ORDER_EXPIRY_MISSING}", expr)
+        self.assertNotIn("kube_job", expr)
+        self.assertIn("absent_over_time(kube_cronjob_status_last_successful_time{namespace=\"shop\", cronjob=\"order-expiry\"}[30m])", expr)
+        self.assertIn("Runbook: Eksploatacja", rule["annotations"]["description"])
+        # The thresholds of the others stay as they were.
+        self.assertIn("26 * 3600", rules()["BackupMissing"]["expr"])
+        self.assertIn(f"> {RATE_LIMITS_OFF}", rules()["RateLimitsOff"]["expr"])
 
     def test_the_disk_alert_leaves_out_the_temporary_file_systems(self):
         expr = rules()["NodeDiskFull"]["expr"]

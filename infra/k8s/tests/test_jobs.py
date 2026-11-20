@@ -1,5 +1,8 @@
 import json
+import pathlib
 import re
+import subprocess
+import tempfile
 import unittest
 
 from support import DIGEST, DIGESTS, JOBS, REPO, REVISION, by_logical, containers, env_of, logical, of_kind, pod_spec, wave
@@ -103,7 +106,7 @@ class CronJobTest(unittest.TestCase):
     def test_cart_purge(self):
         for case in ("prod-backup", "ci"):
             crons = by_logical(case, "CronJob")
-            expected = {"cart-purge-expired", "rate-limit-check", "backup", "backup-verify", "restore"}
+            expected = {"cart-purge-expired", "rate-limit-check", "queue-check", "order-expiry", "backup", "backup-verify", "restore"}
             # demo-data (tests/test_demo_data.py) is in ci and not in prod.
             self.assertEqual(expected | {"demo-data"} if case == "ci" else expected, set(crons), case)
             cron = crons["cart-purge-expired"]
@@ -168,6 +171,125 @@ class RateLimitCheckTest(unittest.TestCase):
         template = (REPO / "infra/k8s/charts/shop/templates/rate-limit-check.yaml").read_text()
         self.assertIn(".Values.rateLimitCheck.schedule", template)
         self.assertNotIn("*/5", template, "the schedule is not typed into the template")
+
+
+class MessagingCronJobsTest(unittest.TestCase):
+    """W9 (docs/features/async-reliability/spec.md): the CronJobs queue-check (app:messaging:check) and order-expiry
+    (ordering:expire-overdue, then payment:close-abandoned), whose failed Jobs and missing successes the alerts of the group
+    shop-messaging count."""
+
+    CASES = ("prod", "prod-backup", "prod-nobackup", "prod-noinit", "ci", "load")
+    SPECS = {
+        # name: (schedule, backoffLimit, activeDeadlineSeconds)
+        "queue-check": ("*/5 * * * *", 0, 120),
+        "order-expiry": ("2-59/5 * * * *", 1, 600),
+    }
+
+    def cron(self, case, name):
+        return by_logical(case, "CronJob")[name]
+
+    def test_both_are_in_every_profile_with_the_schedule_of_the_values_and_the_zone(self):
+        for case in self.CASES:
+            for name, (schedule, _, _) in self.SPECS.items():
+                cron = self.cron(case, name)
+                self.assertEqual(schedule, cron["spec"]["schedule"], f"{case} {name}")
+                self.assertEqual("Europe/Warsaw", cron["spec"]["timeZone"], f"{case} {name}")
+                self.assertEqual(1, wave(cron), f"{case} {name}")
+
+    def test_order_expiry_is_shifted_against_queue_check(self):
+        """Both are every five minutes, but not in the same minute: two pods of the image of the API do not start together."""
+        queue, expiry = (self.SPECS[n][0] for n in ("queue-check", "order-expiry"))
+        self.assertNotEqual(queue.split()[0], expiry.split()[0])
+        self.assertTrue(expiry.startswith("2-59/5 "))
+
+    def test_they_are_never_suspended_in_prod(self):
+        for case in ("prod", "prod-backup", "prod-nobackup"):
+            for name in self.SPECS:
+                self.assertFalse(self.cron(case, name)["spec"].get("suspend", False), f"{case} {name}")
+
+    def test_the_limits_of_the_runs(self):
+        for case in self.CASES:
+            for name, (_, backoff, deadline) in self.SPECS.items():
+                spec = self.cron(case, name)["spec"]
+                self.assertEqual("Forbid", spec["concurrencyPolicy"], f"{case} {name}")
+                self.assertEqual(240, spec["startingDeadlineSeconds"], f"{case} {name}")
+                self.assertEqual(1, spec["successfulJobsHistoryLimit"], f"{case} {name}")
+                self.assertEqual(3, spec["failedJobsHistoryLimit"], f"{case} {name}")
+                self.assertEqual(backoff, spec["jobTemplate"]["spec"]["backoffLimit"], f"{case} {name}")
+                self.assertEqual(deadline, spec["jobTemplate"]["spec"]["activeDeadlineSeconds"], f"{case} {name}")
+                self.assertEqual("Never", pod_spec(self.cron(case, name))["restartPolicy"], f"{case} {name}")
+
+    def test_they_run_the_image_and_the_environment_of_the_api_with_the_resources_of_a_job(self):
+        for case in self.CASES:
+            api = containers(by_logical(case, "Deployment")["api"])[0]
+            purge = containers(by_logical(case, "CronJob")["cart-purge-expired"])[0]
+            for name in self.SPECS:
+                container = containers(self.cron(case, name))[0]
+                self.assertEqual(api["image"], container["image"], f"{case} {name}")
+                self.assertEqual(purge["env"], container["env"], f"{case} {name}")
+                self.assertEqual(purge["envFrom"], container["envFrom"], f"{case} {name}")
+                self.assertEqual(purge["resources"], container["resources"], f"{case} {name}")
+                self.assertEqual(name, container["name"], case)
+        for name in self.SPECS:
+            self.assertTrue(containers(self.cron("prod", name))[0]["image"].endswith(f":{REVISION}@{DIGESTS['api']}"), name)
+
+    def test_queue_check_runs_the_check_of_the_messages(self):
+        for case in self.CASES:
+            self.assertEqual(["bin/console", "app:messaging:check"], containers(self.cron(case, "queue-check"))[0]["command"], case)
+
+    def test_the_schedules_are_values_of_the_chart(self):
+        values = (REPO / "infra/k8s/charts/shop/values.yaml").read_text()
+        schema = json.loads((REPO / "infra/k8s/charts/shop/values.schema.json").read_text())
+        for key, name, (schedule, _, _) in (("queueCheck", "queue-check", self.SPECS["queue-check"]), ("orderExpiry", "order-expiry", self.SPECS["order-expiry"])):
+            self.assertRegex(values, rf'(?m)^{key}:\n(?:\s*#.*\n)*  schedule: "{re.escape(schedule)}"\n  timeZone: Europe/Warsaw$')
+            self.assertIn(key, schema["required"])
+            self.assertEqual(["schedule", "timeZone"], schema["properties"][key]["required"])
+            template = (REPO / f"infra/k8s/charts/shop/templates/{name}.yaml").read_text()
+            self.assertIn(f".Values.{key}.schedule", template)
+            self.assertIn(f".Values.{key}.timeZone", template)
+            self.assertNotIn("*/5", template, "the schedule is not typed into the template")
+
+
+class OrderExpiryScriptTest(unittest.TestCase):
+    """The container of order-expiry runs both commands, always both, and fails when either did: the script of the rendered
+    CronJob runs against a stub of bin/console that logs its calls and fails the commands it is told to."""
+
+    STUB = """#!/bin/sh
+echo "$1" >> "$STUB_LOG"
+case " $STUB_FAIL " in *" $1 "*) exit "${STUB_CODE:-2}" ;; esac
+exit 0
+"""
+
+    def run_script(self, fail=""):
+        command = containers(by_logical("prod", "CronJob")["order-expiry"])[0]["command"]
+        self.assertEqual(["sh", "-c"], command[:2], command)
+        with tempfile.TemporaryDirectory() as tmp:
+            (pathlib.Path(tmp) / "bin").mkdir()
+            console = pathlib.Path(tmp) / "bin/console"
+            console.write_text(self.STUB)
+            console.chmod(0o755)
+            log = pathlib.Path(tmp) / "log"
+            result = subprocess.run(command, cwd=tmp, capture_output=True, text=True, timeout=30,
+                                    env={"PATH": "/usr/bin:/bin", "STUB_LOG": str(log), "STUB_FAIL": fail})
+            return result.returncode, (log.read_text().split() if log.exists() else [])
+
+    def test_both_commands_run_in_order_and_success_is_exit_0(self):
+        self.assertEqual((0, ["ordering:expire-overdue", "payment:close-abandoned"]), self.run_script())
+
+    def test_when_the_first_fails_the_second_still_runs_and_the_container_fails(self):
+        code, calls = self.run_script("ordering:expire-overdue")
+        self.assertNotEqual(0, code)
+        self.assertEqual(["ordering:expire-overdue", "payment:close-abandoned"], calls)
+
+    def test_when_the_second_fails_the_container_fails(self):
+        code, calls = self.run_script("payment:close-abandoned")
+        self.assertNotEqual(0, code)
+        self.assertEqual(["ordering:expire-overdue", "payment:close-abandoned"], calls)
+
+    def test_when_both_fail_the_container_fails(self):
+        code, calls = self.run_script("ordering:expire-overdue payment:close-abandoned")
+        self.assertNotEqual(0, code)
+        self.assertEqual(2, len(calls))
 
 
 if __name__ == "__main__":
