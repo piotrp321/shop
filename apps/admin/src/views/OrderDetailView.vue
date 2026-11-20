@@ -123,33 +123,40 @@ const trackingNumberInput = ref<InstanceType<typeof Input> | null>(null);
 const changeAlert = ref<InstanceType<typeof Alert> | null>(null);
 const conflictAlert = ref<InstanceType<typeof Alert> | null>(null);
 
-const dialogTitle = computed(() => {
+// A window title is the text around the order number, so that the template keeps the number in one unbreakable element.
+interface TitleParts {
+  before: string;
+  after: string;
+}
+
+const dialogTitle = computed<TitleParts>(() => {
   const current = pending.value;
-  const number = order.value?.number ?? "";
   if (current === null) {
-    return "";
+    return { before: "", after: "" };
   }
   if (current.kind === "refund") {
-    return `Oznaczyć zwrot pieniędzy za ${number} jako wykonany?`;
+    return { before: "Oznaczyć zwrot pieniędzy za ", after: " jako wykonany?" };
   }
   switch (current.transition) {
     case "cancel":
-      return `Anulować zamówienie ${number}?`;
+      return { before: "Anulować zamówienie ", after: "?" };
     case "ship":
-      return `Oznaczyć zamówienie ${number} jako wysłane?`;
+      return { before: "Oznaczyć zamówienie ", after: " jako wysłane?" };
     case "deliver":
-      return `Oznaczyć zamówienie ${number} jako dostarczone?`;
+      return { before: "Oznaczyć zamówienie ", after: " jako dostarczone?" };
     case "return":
-      return `Przyjąć zwrot zamówienia ${number}?`;
+      return { before: "Przyjąć zwrot zamówienia ", after: "?" };
     default:
-      return `${transitionLabel(current.transition)}: ${number}?`;
+      return { before: `${transitionLabel(current.transition)}: `, after: "?" };
   }
 });
 const submitLabel = computed(() => (pending.value?.kind === "status" ? transitionLabel(pending.value.transition) : REFUND_LABEL));
 const destructive = computed(() => pending.value?.kind === "status" && (pending.value.transition === "cancel" || pending.value.transition === "return"));
 const required = computed(() => pending.value?.kind === "status" && noteRequired(pending.value.transition));
 const shipping = computed(() => pending.value?.kind === "status" && pending.value.transition === "ship");
-const TRACKING_HINT = "Litery, cyfry i myślniki, do 40 znaków";
+// The limit of the API; the hint and both fields take it from here.
+const TRACKING_MAX_LENGTH = 40;
+const TRACKING_HINT = `Litery, cyfry i myślniki, do ${TRACKING_MAX_LENGTH} znaków`;
 
 // The screen moves to another order (Back, a link): the window and the conflict were about the one it left.
 watch(
@@ -293,7 +300,7 @@ const trackingAlert = ref<InstanceType<typeof Alert> | null>(null);
 
 const hasNumber = computed(() => order.value?.shipment != null);
 const trackingActionLabel = computed(() => (hasNumber.value ? "Zmień numer przesyłki" : "Dodaj numer przesyłki"));
-const trackingTitle = computed(() => `${trackingHadNumber.value ? "Zmienić" : "Dodać"} numer przesyłki zamówienia ${order.value?.number ?? ""}?`);
+const trackingTitle = computed<TitleParts>(() => ({ before: `${trackingHadNumber.value ? "Zmienić" : "Dodać"} numer przesyłki zamówienia `, after: "?" }));
 
 function closeTracking(): void {
   trackingSession++;
@@ -918,7 +925,7 @@ function statusName(status: string | undefined): string {
         @close-auto-focus="onCloseAutoFocus"
       >
         <DialogHeader>
-          <DialogTitle>{{ dialogTitle }}</DialogTitle>
+          <DialogTitle>{{ dialogTitle.before }}<span class="whitespace-nowrap">{{ order?.number }}</span>{{ dialogTitle.after }}</DialogTitle>
           <DialogDescription class="font-semibold text-foreground">
             Zamówienie {{ order?.number }}
           </DialogDescription>
@@ -969,7 +976,7 @@ function statusName(status: string | undefined): string {
             ref="trackingNumberInput"
             v-model="trackingNumber"
             data-testid="change-tracking-number-field"
-            maxlength="100"
+            :maxlength="TRACKING_MAX_LENGTH"
             autocomplete="off"
             :aria-invalid="trackingNumberError !== null ? 'true' : undefined"
             :aria-describedby="trackingNumberError !== null ? 'change-tracking-number-hint change-tracking-number-field-error' : 'change-tracking-number-hint'"
@@ -1024,7 +1031,7 @@ function statusName(status: string | undefined): string {
         @close-auto-focus="onTrackingCloseAutoFocus"
       >
         <DialogHeader>
-          <DialogTitle>{{ trackingTitle }}</DialogTitle>
+          <DialogTitle>{{ trackingTitle.before }}<span class="whitespace-nowrap">{{ order?.number }}</span>{{ trackingTitle.after }}</DialogTitle>
           <DialogDescription class="font-semibold text-foreground">
             Zamówienie {{ order?.number }}
           </DialogDescription>
@@ -1047,7 +1054,7 @@ function statusName(status: string | undefined): string {
             ref="trackingInput"
             v-model="trackingValue"
             data-testid="tracking-number-input"
-            maxlength="100"
+            :maxlength="TRACKING_MAX_LENGTH"
             autocomplete="off"
             :aria-invalid="trackingError !== null ? 'true' : undefined"
             :aria-describedby="trackingError !== null ? 'tracking-number-hint tracking-number-error' : 'tracking-number-hint'"

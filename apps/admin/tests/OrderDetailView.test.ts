@@ -542,6 +542,26 @@ describe("OrderDetailView", () => {
       expect(page().find("[data-testid=change-tracking-number-field]").exists()).toBe(false);
     });
 
+    it("limits the tracking number field of the shipping window to 40 characters, as the API does", async () => {
+      serve(order({ allowedTransitions: ["ship", "cancel"] }));
+      wrapper = await mountView();
+
+      await open("action-ship");
+
+      expect(dialog("change-tracking-number-field").attributes("maxlength")).toBe("40");
+    });
+
+    it("keeps the order number of the window titles in one unbreakable element", async () => {
+      serve(order({ allowedTransitions: ["ship", "cancel"] }));
+      wrapper = await mountView();
+
+      await open("action-ship");
+
+      const nowrap = page().findAll("[role=dialog] h2 .whitespace-nowrap");
+      expect(nowrap.map((element) => element.text())).toEqual(["R-100001"]);
+      expect(page().get("[role=dialog] h2").text()).toBe("Oznaczyć zamówienie R-100001 jako wysłane?");
+    });
+
     it("ships with the number, shows the shipment of the order the API answers with, and has no number in the field next time", async () => {
       serve(order());
       wrapper = await mountView();
@@ -589,6 +609,16 @@ describe("OrderDetailView", () => {
       expect(document.activeElement).toBe(dialog("change-tracking-number-field").element);
       expect(page().find("[data-testid=change-dialog]").exists()).toBe(true);
       expect(successToast).not.toHaveBeenCalled();
+    });
+
+    it("limits the field of the number to 40 characters and keeps the order number of the title unbreakable", async () => {
+      serve(shipped({ shipment: numbered }));
+      wrapper = await mountView();
+
+      await open("change-tracking-number");
+
+      expect(tracking("tracking-number-input").attributes("maxlength")).toBe("40");
+      expect(page().findAll("[role=dialog] h2 .whitespace-nowrap").map((element) => element.text())).toEqual(["R-100001"]);
     });
 
     it("opens the window of the number on its field, with the number there is, the title of the change and a hint", async () => {
