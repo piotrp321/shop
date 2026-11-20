@@ -433,25 +433,38 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
 - **Zachowanie po nieudanej próbie.** Wiadomość odebrana z `failed`, której obsługa zawiodła, zostaje w `failed`:
   - błąd, którego Symfony nie ponawia (strategia `failed` z `max_retries: 0`, `UnrecoverableMessageHandlingException`,
     `HandlerFailedException` z samymi wyjątkami nieodwracalnymi): listener `WorkerMessageFailedEvent`
-    (`Shared\Infrastructure\Messaging`) zapisuje kopię koperty do `failed` od razu dostępną (pierwotny
-    `SentToFailureTransportStamp`, świeży `ErrorDetailsStamp`, nowe ID) i loguje stare i nowe ID; dopiero potem worker
-    usuwa oryginał;
+    `KeepFailedMessageListener` (`Shared\Infrastructure\Messaging`, priorytet -50, czyli po listenerze ponowień Symfony
+    z priorytetem 100, który ustawia `willRetry()`) zapisuje kopię koperty do `failed` od razu dostępną (pierwotny
+    `SentToFailureTransportStamp`, nowe ID) i loguje w kanale `messenger` stare i nowe ID; dopiero potem worker usuwa
+    oryginał. `ErrorDetailsStamp` dokłada Symfony tylko wtedy, gdy błąd różni się od poprzedniego (klasa, kod, plik,
+    wiersz), więc ten sam błąd powtórzony zostawia szczegóły pierwszej próby. Listener Symfony tuż przed nim loguje
+    „Removing from transport after 0 retries”: przy wiadomości z `failed` rozstrzyga następny wpis o zachowaniu;
   - błąd wymuszający ponowienie (`RecoverableExceptionInterface`): Symfony sam odsyła kopertę do `failed` z opóźnieniem
     i licznikiem ponowień; listener jej nie kopiuje (jedna kopia, nie dwie). Do końca opóźnienia wiadomość nie jest
     widoczna w `failed:show`, a pulpit ją liczy.
-  - Nieudany zapis kopii kończy obsługę błędem przed usunięciem oryginału: oryginał zostaje (po `redeliver_timeout`
-    znów dostępny). Przerwanie procesu między zapisem kopii a usunięciem oryginału zostawia dwie wiadomości (duplikat);
-    obsługa jest idempotentna, a operator usuwa nadmiarową przez `failed-remove`.
+  - Nieudany zapis kopii kończy obsługę błędem przed usunięciem oryginału: oryginał zostaje i można go od razu ponowić
+    z ID (`messenger:failed:retry <id>` nie oznacza wiadomości jako pobranej). Przerwanie procesu między zapisem kopii
+    a usunięciem oryginału zostawia dwie wiadomości (duplikat); obsługa jest idempotentna, a operator usuwa nadmiarową
+    przez `failed-remove`.
 - **Udana obsługa** usuwa wiadomość jak dotąd.
-- **Ponowienie zbiorcze `app:messaging:failed-retry [--max=200]`** (`--force` bez pytania): zapamiętuje na starcie ID
-  najwyżej `max` najstarszych wiadomości `failed` i ponawia tylko je (`messenger:failed:retry <id…>`), więc kopie
-  zachowane w trakcie czekają na kolejny przebieg. Raport: ile wybrano, ile obsłużono (usunięte), ile zachowano po
-  błędzie (z nowymi ID), ile wiadomości zostało w `failed` po przebiegu i czy są poza wybraną listą („zostały
-  kolejne: uruchom ponownie”); zakończenie przebiegu nie oznacza pustej kolejki. Kod 0, gdy przebieg się odbył (także
-  z wiadomościami zachowanymi po błędzie), 2 przy błędzie odczytu.
-- **Blokada zbiorczego `messenger:failed:retry` bez ID**: listener `ConsoleEvents::COMMAND` wyłącza komendę bez
-  argumentu `id` (kod 113) z komunikatem wskazującym `app:messaging:failed-retry` albo ponowienie z `ID`; z ID komenda
-  działa bez zmian.
+- **Ponowienie zbiorcze `app:messaging:failed-retry [--max=200]`** (`Shared\UI\Console`, bez pytania): zapamiętuje na
+  starcie ID najwyżej `max` (1–1000) najstarszych wiadomości `failed` dostępnych teraz (kolejność `available_at`, potem
+  ID; wiadomość czekająca na opóźnione ponowienie Symfony nie jest wybierana) i ponawia każdą raz, po kolei
+  (`messenger:failed:retry <id> --force`), więc kopie zachowane w trakcie czekają na kolejny przebieg. Wynik każdej
+  wiadomości komenda bierze ze zdarzeń workera. Raport: ile wybrano, ile obsłużono (usunięte), ile zachowano po błędzie
+  (stare i nowe ID, z dopiskiem przy opóźnionym ponowieniu Symfony), ile zniknęło przed ponowieniem (usunięte w tym
+  czasie przez kogoś innego), ile wiadomości zostało w `failed` po przebiegu (wszystkie, także opóźnione) i, gdy
+  jakieś zostały, że żadna z nich nie była ponawiana w tym przebiegu („uruchom ponownie albo usuń”); zakończenie
+  przebiegu nie oznacza pustej kolejki. Kod 0, gdy przebieg się odbył (także z wiadomościami zachowanymi po błędzie),
+  1 przy złym `--max` (nic nie ponawia), 2 przy błędzie odczytu kolejki albo błędzie ponowienia poza handlerem (np.
+  nieudany zapis kopii): komenda wypisuje raport do tej chwili i przekazuje błąd konsoli. Dwa przebiegi naraz mogą
+  ponowić tę samą wiadomość (handler działa dwa razy).
+- **Blokada zbiorczego `messenger:failed:retry` bez ID**: listener `ConsoleEvents::COMMAND`
+  (`DisableBulkFailedRetryListener`) wyłącza w konsoli komendę bez argumentu `id`, także pod skróconą nazwą, z innymi
+  opcjami i w trybie interaktywnym (kod 113), z komunikatem wskazującym `app:messaging:failed-retry` albo ponowienie
+  z `ID`; z ID komenda działa bez zmian. `messenger:consume failed` (nie używa go stos, chart ani cele make) nie jest
+  zablokowane: wiadomość zachowaną po błędzie bierze znów od razu, więc kończy się dopiero na limicie workera; nie jest
+  sposobem ponawiania `failed`.
 
 ## Zgodność wersji przy wdrożeniu epiku
 

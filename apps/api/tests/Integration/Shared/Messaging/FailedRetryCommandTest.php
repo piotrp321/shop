@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Shared\Messaging;
 
 use App\Shared\Infrastructure\Messaging\FailedMessageQueue;
+use App\Shared\Infrastructure\Messaging\KeepFailedMessageListener;
 use App\Shared\UI\Console\FailedRetryCommand;
 use App\Tests\Support\Messaging\ScriptedOutcome;
 use App\Tests\Support\Messaging\ScriptedOutcomeHandler;
@@ -19,7 +20,6 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Stamp\BusNameStamp;
 use Symfony\Component\Messenger\Stamp\RedeliveryStamp;
 use Symfony\Component\Messenger\Stamp\SentToFailureTransportStamp;
-use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
 
 /**
  * app:messaging:failed-retry (spec: docs/features/async-reliability/spec.md, W12, criterion 14): the bulk retry of the
@@ -163,10 +163,10 @@ final class FailedRetryCommandTest extends MessagingKernelTestCase
             new SentToFailureTransportStamp('scheduled'),
             new RedeliveryStamp(0),
         ]));
-        $id = $sent->last(TransportMessageIdStamp::class)?->getId();
+        $id = KeepFailedMessageListener::idOf($sent);
         self::assertNotNull($id);
 
-        return (string) $id;
+        return $id;
     }
 
     /**
@@ -189,7 +189,7 @@ final class FailedRetryCommandTest extends MessagingKernelTestCase
     private function failedIds(): array
     {
         return array_map(
-            'strval',
+            static fn (mixed $id): string => \is_int($id) || \is_string($id) ? (string) $id : self::fail('An id that is not a number.'),
             $this->connection()->fetchFirstColumn("SELECT id FROM messenger_messages WHERE queue_name = 'failed' ORDER BY id"),
         );
     }

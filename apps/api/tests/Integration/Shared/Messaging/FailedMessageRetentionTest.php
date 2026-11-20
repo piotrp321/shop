@@ -18,7 +18,6 @@ use Symfony\Component\Messenger\Stamp\BusNameStamp;
 use Symfony\Component\Messenger\Stamp\ErrorDetailsStamp;
 use Symfony\Component\Messenger\Stamp\RedeliveryStamp;
 use Symfony\Component\Messenger\Stamp\SentToFailureTransportStamp;
-use Symfony\Component\Messenger\Stamp\TransportMessageIdStamp;
 use Symfony\Component\Messenger\Transport\Receiver\ListableReceiverInterface;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
 
@@ -39,7 +38,10 @@ final class FailedMessageRetentionTest extends MessagingKernelTestCase
     public function testEveryFailedRetryKeepsTheMessageAsOneRowWithTheSameContentAndANewId(): void
     {
         $logs = $this->messengerLogs();
-        ScriptedOutcomeHandler::script('a', ScriptedOutcomeHandler::ERROR);
+        // Alternating errors: Messenger adds an error details stamp only when the error differs from the last one
+        // (another class, code, file or line), so the same error repeated keeps the stamp of its first attempt.
+        $outcomes = [ScriptedOutcomeHandler::ERROR, ScriptedOutcomeHandler::UNRECOVERABLE, ScriptedOutcomeHandler::ERROR, ScriptedOutcomeHandler::UNRECOVERABLE];
+        ScriptedOutcomeHandler::script('a', ...$outcomes);
         $id = $this->putInFailed('a');
         $ids = [$id];
 
@@ -54,7 +56,7 @@ final class FailedMessageRetentionTest extends MessagingKernelTestCase
             self::assertEquals(new ScriptedOutcome('a'), $kept->getMessage(), 'the same content');
             self::assertSame('scheduled', $kept->last(SentToFailureTransportStamp::class)?->getOriginalReceiverName());
             self::assertSame(
-                \sprintf('Scripted error of "a", attempt %d.', $attempt),
+                \sprintf('Scripted %s of "a", attempt %d.', $outcomes[$attempt - 1], $attempt),
                 $kept->last(ErrorDetailsStamp::class)?->getExceptionMessage(),
                 'the error of this attempt',
             );
@@ -146,6 +148,8 @@ final class FailedMessageRetentionTest extends MessagingKernelTestCase
         self::assertStringContainsString('The database refused the copy.', $tester->getDisplay());
         self::assertSame(1, ScriptedOutcomeHandler::attempts('f'));
         self::assertSame([$id], $this->failedIds(), 'the original is still there');
+        self::assertTrue($this->isAvailable($id));
+        self::assertNull($this->connection()->fetchOne('SELECT delivered_at FROM messenger_messages WHERE id = ?', [$id]), 'not taken, so it can be retried at once');
     }
 
     public function testTheBulkRetryWithoutAnIdIsDisabledAndProcessesNothing(): void
@@ -195,10 +199,10 @@ final class FailedMessageRetentionTest extends MessagingKernelTestCase
             new SentToFailureTransportStamp('scheduled'),
             new RedeliveryStamp(0),
         ]));
-        $id = $sent->last(TransportMessageIdStamp::class)?->getId();
+        $id = KeepFailedMessageListener::idOf($sent);
         self::assertNotNull($id);
 
-        return (string) $id;
+        return $id;
     }
 
     private function retry(string $id): ApplicationTester
@@ -226,7 +230,7 @@ final class FailedMessageRetentionTest extends MessagingKernelTestCase
     private function failedIds(): array
     {
         return array_map(
-            'strval',
+            static fn (mixed $id): string => \is_int($id) || \is_string($id) ? (string) $id : self::fail('An id that is not a number.'),
             $this->connection()->fetchFirstColumn("SELECT id FROM messenger_messages WHERE queue_name = 'failed' ORDER BY id"),
         );
     }
@@ -278,7 +282,7 @@ final class FailedMessageRetentionTest extends MessagingKernelTestCase
     private function loggedKept(TestHandler $logs, string $oldId, string $newId): bool
     {
         foreach ($logs->getRecords() as $record) {
-            if ($oldId === (string) ($record->context['message_id'] ?? '') && $newId === (string) ($record->context['new_message_id'] ?? '')) {
+            if ($oldId === ($record->context['message_id'] ?? null) && $newId === ($record->context['new_message_id'] ?? null)) {
                 return true;
             }
         }
