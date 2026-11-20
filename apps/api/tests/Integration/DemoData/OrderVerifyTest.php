@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\DemoData;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Command\Command;
 
@@ -63,7 +64,45 @@ final class OrderVerifyTest extends KernelTestCase
         $number = $this->text($this->connection()->fetchOne('SELECT number FROM ordering_order ORDER BY number LIMIT 1 OFFSET 10'));
         $this->connection()->executeStatement('UPDATE ordering_order SET total_gross = total_gross + 1, total_net = total_net + 1 WHERE number = ?', [$number]);
 
-        $this->assertViolation('The lines of an order less its discount are not its total: '.$number);
+        $this->assertViolation('The lines of an order less its discount and with its delivery are not its total: '.$number);
+    }
+
+    public function testAnOrderWithItsDeliveryInItsTotalsPasses(): void
+    {
+        $this->allSteps();
+        $number = $this->unpaidOrder();
+        $this->connection()->executeStatement("UPDATE ordering_order SET delivery_method_id = gen_random_uuid(), delivery_method_name = 'Kurier', delivery_gross = 1999, delivery_net = 1625, delivery_vat = 374, total_net = total_net + 1625, total_vat = total_vat + 374, total_gross = total_gross + 1999 WHERE number = ?", [$number]);
+
+        $tester = $this->verify();
+
+        self::assertSame(Command::SUCCESS, $tester->getStatusCode(), $tester->getDisplay());
+    }
+
+    /**
+     * @return iterable<string, array{string}> the change of an order with a delivery that its totals do not follow
+     */
+    public static function deliveriesNotInTheTotals(): iterable
+    {
+        yield 'a delivery not added' => ["UPDATE ordering_order SET delivery_method_id = gen_random_uuid(), delivery_method_name = 'Kurier', delivery_gross = 1999, delivery_net = 1625, delivery_vat = 374 WHERE number = ?"];
+        yield 'the net and the VAT of the delivery apart from the totals' => ["UPDATE ordering_order SET delivery_method_id = gen_random_uuid(), delivery_method_name = 'Kurier', delivery_gross = 1999, delivery_net = 1625, delivery_vat = 374, total_net = total_net + 1626, total_vat = total_vat + 373, total_gross = total_gross + 1999 WHERE number = ?"];
+    }
+
+    #[DataProvider('deliveriesNotInTheTotals')]
+    public function testItListsAnOrderWhoseDeliveryIsNotInItsTotals(string $sql): void
+    {
+        $this->allSteps();
+        $number = $this->unpaidOrder();
+        $this->connection()->executeStatement($sql, [$number]);
+
+        $this->assertViolation('The lines of an order less its discount and with its delivery are not its total: '.$number);
+    }
+
+    /**
+     * A generated order without a payment (whose total no payment has to match).
+     */
+    private function unpaidOrder(): string
+    {
+        return $this->text($this->connection()->fetchOne('SELECT number FROM ordering_order WHERE paid_at IS NULL ORDER BY number LIMIT 1'));
     }
 
     public function testItListsAPaidOrderWithoutAPaymentOfItsTotal(): void
