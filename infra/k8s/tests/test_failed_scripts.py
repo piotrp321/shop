@@ -140,9 +140,21 @@ class MakeTargets(FailedScripts):
     """The targets of the Makefile pass the arguments of the command line to the scripts, without a shell reading them."""
 
     def make(self, target, **variables):
-        env = {"PATH": f"{self.bin}:{os.environ['PATH']}", "HOME": self.tmp.name, "STUB_LOG": str(self.log), "STUB_DIR": str(self.stub)}
-        return subprocess.run(["make", "-C", str(REPO / "infra/k8s"), target, *[f"{k}={v}" for k, v in variables.items()]],
-                              env=env, capture_output=True, text=True, input="tak\n")
+        """The recipe of the target as make runs it: `$$` is `$`, a variable of the command line is in the environment of the shell
+        (make is not in the image of the tests)."""
+        lines = (REPO / "infra/k8s/Makefile").read_text().splitlines()
+        body = []
+        for line in lines[lines.index(target + ":") + 1:]:
+            if not line.startswith("\t"):
+                break
+            body.append(line[1:].lstrip("@").replace("$$", "$"))
+        env = {"PATH": f"{self.bin}:{os.environ['PATH']}", "HOME": self.tmp.name, "STUB_LOG": str(self.log), "STUB_DIR": str(self.stub), **variables}
+        result = None
+        for line in body:
+            result = subprocess.run(["sh", "-c", line], env=env, cwd=REPO / "infra/k8s", capture_output=True, text=True, input="tak\n")
+            if result.returncode != 0:
+                break
+        return result
 
     def test_the_targets_reach_the_scripts(self):
         self.assertEqual(0, self.make("failed", HOST=HOST).returncode)
@@ -165,6 +177,22 @@ class MakeTargets(FailedScripts):
         self.assertNotEqual(0, result.returncode)
         self.assertFalse(marker.exists())
         self.assertEqual([], self.calls())
+
+
+class Documents(unittest.TestCase):
+    def test_the_runbook_covers_the_three_alerts_and_marks_the_changing_targets_as_needing_consent(self):
+        readme = (REPO / "infra/k8s/README.md").read_text()
+        for alert in ("`MessagingUnhealthy`", "`OrderExpiryFailed`", "`OrderExpiryMissing`"):
+            self.assertIn(alert, readme)
+        for step in ("**zgoda użytkownika** – ponowienie", "**zgoda użytkownika** – usunięcie"):
+            self.assertIn(step, readme)
+        self.assertIn("Nigdy nie usuwa się wiadomości z webhookiem płatności", readme)
+
+    def test_the_instructions_for_agents_name_the_three_targets_and_the_consent(self):
+        text = (REPO / "infra/k8s/CLAUDE.md").read_text()
+        self.assertIn("Tylko po zgodzie: `failed-retry`", text)
+        self.assertIn("`failed-remove` (usuwa", text)
+        self.assertIn("`failed` (wiadomości", text)
 
 
 if __name__ == "__main__":
