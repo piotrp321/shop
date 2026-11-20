@@ -126,6 +126,65 @@ test("an administrator adds a method, changes it and switches it off; it stays i
   }
 });
 
+/** Holds the write requests (POST and PUT) to the delivery methods until `release` is called; reads pass. */
+async function holdWrites(page: Page): Promise<{ release: () => void; held: () => number }> {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let held = 0;
+  await page.route("**/api/v1/admin/delivery-methods**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fallback();
+      return;
+    }
+    held += 1;
+    await gate;
+    await route.continue();
+  });
+  return { release, held: () => held };
+}
+
+async function expectFieldsLocked(page: Page): Promise<void> {
+  for (const label of ["Nazwa", "Opis (czas dostawy)", "Cena brutto (zł)", "Darmowa od (zł, opcjonalnie)", "Kolejność", "Link śledzenia (opcjonalnie)"]) {
+    await expect(page.getByLabel(label, { exact: label === "Nazwa" }), `${label} is locked while the save runs`).toBeDisabled();
+  }
+  await expect(page.getByRole("switch", { name: "Aktywna" })).toBeDisabled();
+}
+
+test("the fields of the form are locked while a save runs, so a change typed meanwhile cannot be lost, for a new and for an existing method", async () => {
+  test.setTimeout(120_000);
+  const page = await newPanelPage("admin", viewports.desktop);
+  const name = uniqueName();
+  try {
+    // A new method: the request stays open, the fields are locked, the answer takes the administrator to the list.
+    await go(page, "/delivery/new");
+    await fillMethod(page, { name, description: "Dostawa testowa w 5 dni", price: "99,90", freeFrom: "", position: "999", tracking: "" });
+    const creating = await holdWrites(page);
+    await page.getByTestId("save").click();
+    await expect.poll(creating.held).toBe(1);
+    await expectFieldsLocked(page);
+    creating.release();
+    await expect(page.getByRole("heading", { level: 1, name: "Dostawa" })).toBeVisible();
+    await expect(rowOf(page, name).getByTestId("method-price")).toHaveText(money("99,90"));
+    await page.unroute("**/api/v1/admin/delivery-methods**");
+
+    // An existing method: the same, and the list shows the saved price.
+    await rowOf(page, name).getByTestId("method-link").click();
+    await expect(page.getByLabel("Cena brutto (zł)")).toHaveValue("99,90");
+    await page.getByLabel("Cena brutto (zł)").fill("109,50");
+    const changing = await holdWrites(page);
+    await page.getByTestId("save").click();
+    await expect.poll(changing.held).toBe(1);
+    await expectFieldsLocked(page);
+    changing.release();
+    await expect(page.getByRole("heading", { level: 1, name: "Dostawa" })).toBeVisible();
+    await expect(rowOf(page, name).getByTestId("method-price")).toHaveText(money("109,50"));
+  } finally {
+    await page.unroute("**/api/v1/admin/delivery-methods**").catch(() => undefined);
+    await switchOffOwnMethods(page).catch(() => undefined);
+    await page.close();
+  }
+});
+
 test("the form shows a rule of the API at its field with the focus on it, and a taken name above the form with the focus on the message", async () => {
   test.setTimeout(90_000);
   const page = await newPanelPage("admin", viewports.desktop);

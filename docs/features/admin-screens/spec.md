@@ -295,7 +295,10 @@ Panel tylko pokazuje i wysyła to, co API przyjmuje: długości, znaki, zakresy 
   od (zł, opcjonalnie)”, przełącznik „Aktywna”, „Kolejność” i „Link śledzenia (opcjonalnie)” z podpowiedzią „Adres
   https:// z {numer} w miejscu numeru przesyłki”. Kwoty są w złotych z przecinkiem (`parseGross`; API dostaje grosze);
   puste „Darmowa od”, opis i link idą jako `null`; tekst, którego nie da się odczytać jako kwoty albo liczby, jest błędem
-  pola bez żądania. Zapis niesie `version` odczytanej metody.
+  pola bez żądania. Zapis niesie `version` odczytanej metody. Na czas żądania zapisu wszystkie pola są zablokowane
+  (`<fieldset disabled>`, także przełącznik „Aktywna”): odpowiedź buduje formularz od nowa z odpowiedzi API, więc
+  zmiana wpisana w tym czasie zostałaby nadpisana, a powrót na listę nie ostrzegłby o niej. Po błędzie (422, 409, brak
+  połączenia) pola wracają do edycji, zanim fokus trafi w pierwsze pole z błędem albo w komunikat.
 - **Błędy zapisu**: 422 trafia do pól z komunikatami API (pierwsze pole z błędem w kolejności dokumentu dostaje fokus);
   każdy 409 (`delivery-method-name-taken`, `delivery-method-limit-reached`, `about:blank` przy innej wersji) jest
   komunikatem nad formularzem (`role="alert"`) z fokusem. Nazwa zajęta i limit zostawiają wpisane wartości; inna wersja
@@ -305,7 +308,7 @@ Panel tylko pokazuje i wysyła to, co API przyjmuje: długości, znaki, zakresy 
   da się wczytać, ma H1 „Nie udało się wczytać metody dostawy”, komunikat („Ta metoda dostawy nie istnieje.” przy 404)
   i link „Wróć do listy metod dostawy”.
 - Testy: Vitest (`DeliveryMethodsView`, `DeliveryMethodFormView`, `routerDelivery`, `AppMenu`, `noStaffRole`) i E2E
-  `e2e/tests/admin-screens-delivery.spec.ts` (dodanie, zmiana i wyłączenie własnej metody, błędy przy polach i 409,
+  `e2e/tests/admin-screens-delivery.spec.ts` (dodanie, zmiana i wyłączenie własnej metody, pola zablokowane w trakcie zapisu, błędy przy polach i 409,
   brak dostępu innej roli, wygasła sesja 401, axe i reflow ekranów).
 
 ## Toasty

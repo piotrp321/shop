@@ -114,6 +114,15 @@ describe("DeliveryMethodFormView", () => {
     return element!.htmlFor ? document.getElementById(element!.htmlFor) : null;
   };
 
+  const FIELDS = ["name-input", "description-input", "price-input", "free-from-input", "active", "position-input", "tracking-input"];
+  // Whether the browser would refuse input in each field now (a disabled field and a field inside a disabled fieldset both count).
+  const lockedFields = (wrapper: Wrapper) => FIELDS.map((testid) => wrapper.get(`[data-testid=${testid}]`).element.matches(":disabled"));
+  // A request that stays open until the test answers it.
+  function pendingRequest() {
+    let answer: (value: unknown) => void = () => {};
+    return { start: () => new Promise((resolve) => (answer = resolve)), answer: (value: unknown) => answer(value) };
+  }
+
   async function fillNew(wrapper: Wrapper) {
     await wrapper.get("[data-testid=name-input]").setValue("Paczkomat");
     await wrapper.get("[data-testid=description-input]").setValue("Dostawa w 1–2 dni");
@@ -401,6 +410,37 @@ describe("DeliveryMethodFormView", () => {
       await flushPromises();
       expect(mounted!.router.currentRoute.value.name).toBe("delivery");
     });
+
+    it("locks every field while the save runs, so that nothing typed meanwhile is lost, and goes back to the list after the answer", async () => {
+      const wrapper = await open("/delivery/new");
+      await fillNew(wrapper);
+      const request = pendingRequest();
+      mocks.post.mockImplementation(request.start);
+
+      await wrapper.get("[data-testid=save]").trigger("click");
+
+      expect(mocks.post).toHaveBeenCalledTimes(1);
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => true));
+      request.answer({ data: method(), response: { status: 201 } });
+      await flushPromises();
+      expect(mounted!.router.currentRoute.value.name).toBe("delivery");
+    });
+
+    it("unlocks the fields after a 422 and focuses the field with the error", async () => {
+      const wrapper = await open("/delivery/new");
+      await fillNew(wrapper);
+      const request = pendingRequest();
+      mocks.post.mockImplementation(request.start);
+
+      await wrapper.get("[data-testid=save]").trigger("click");
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => true));
+      request.answer(violations(["priceGross", "Cena musi wynosić od 0,00 do 999 999,99 zł."]));
+      await flushPromises();
+
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => false));
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=price-input]").element);
+      expect(mounted!.router.currentRoute.value.name).toBe("delivery-method-new");
+    });
   });
 
   describe("an existing method", () => {
@@ -564,6 +604,38 @@ describe("DeliveryMethodFormView", () => {
       await click(wrapper, "save");
 
       expect(wrapper.get("[data-testid=form-error]").text()).toBe("Ta metoda dostawy już nie istnieje.");
+    });
+
+    it("locks every field while the save runs, so that nothing typed meanwhile is overwritten by the answer", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=name-input]").setValue("Kurier DPD");
+      const request = pendingRequest();
+      mocks.put.mockImplementation(request.start);
+
+      await wrapper.get("[data-testid=save]").trigger("click");
+
+      expect(mocks.put).toHaveBeenCalledTimes(1);
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => true));
+      request.answer({ data: method({ name: "Kurier DPD", version: 4 }), response: { status: 200 } });
+      await flushPromises();
+      expect(mounted!.router.currentRoute.value.name).toBe("delivery");
+    });
+
+    it("unlocks the fields after a 422 and focuses the field with the error, keeping what was typed", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=price-input]").setValue("25,00");
+      const request = pendingRequest();
+      mocks.put.mockImplementation(request.start);
+
+      await wrapper.get("[data-testid=save]").trigger("click");
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => true));
+      request.answer(violations(["priceGross", "Cena musi wynosić od 0,00 do 999 999,99 zł."]));
+      await flushPromises();
+
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => false));
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=price-input]").element);
+      expect(input(wrapper, "price-input").value).toBe("25,00");
+      expect(mounted!.router.currentRoute.value.name).toBe("delivery-method");
     });
   });
 
