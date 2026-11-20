@@ -14,13 +14,24 @@ const SECURITY_HEADERS = [
   { key: "Content-Security-Policy", value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
 ];
 
+/**
+ * The limit of the ISR cache in the memory of the process (spec: docs/features/product-page/spec.md, "Cache ISR"):
+ * about 500 product pages or 1000 to 2000 404 pages (their size grows with the menu); the least recently used entries
+ * are evicted over it.
+ */
+const ISR_CACHE_MAX_MEMORY_BYTES = 128 * 1024 * 1024;
+
 const nextConfig: NextConfig = {
   // Only the production image build (STORE_STANDALONE=1 in the Dockerfile) emits the self-contained server that the
   // image runs with `node server.js`. `next start` (STORE_MODE=production in Compose) and `next dev` are unchanged.
   output: process.env.STORE_STANDALONE === "1" ? "standalone" : undefined,
   // Stops `next dev` from generating AGENTS.md. Its guidance lives in CLAUDE.md.
   agentRules: false,
+  // The incremental cache (pages, 404 pages included, and the fetch cache) is kept only in memory, never on the disk of
+  // the pod: unique addresses of bots and scanners would otherwise grow it on disk without a bound.
+  cacheMaxMemorySize: ISR_CACHE_MAX_MEMORY_BYTES,
   experimental: {
+    isrFlushToDisk: false,
     // `.next` lives in the bind-mounted source tree, so the Turbopack dev cache outlives the container. A dev server
     // started on a cache written for other sources (e.g. a new stack after a checkout) sends HMR `restart` in a loop.
     turbopackFileSystemCacheForDev: false,

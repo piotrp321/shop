@@ -161,13 +161,13 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   (`PayableOrders::find`, Ordering `GetOrderForPayment`) zawsze sprawdza dostęp właściciela.
 - **Nadzór.** Pulpit API zna tylko outbox (`apps/api/src/Backoffice/Infrastructure/MessagingStatisticsAdapter.php:33-40`)
   i kolejki RabbitMQ (`:42-80`); panel pokazuje je na ekranie „Stan systemu” (`apps/admin/src/dashboard/SystemStatus.vue:54-57,82`).
-  Siedem reguł alertów dotyczy kopii i klastra (`infra/k8s/charts/shop/templates/00-alerts.yaml`); `cronjobFailed`
+  Osiem reguł alertów dotyczy kopii, limiterów tras (`RateLimitsOff`) i klastra (`infra/k8s/charts/shop/templates/00-alerts.yaml`); `cronjobFailed`
   (`:15-31`) daje osobną instancję alertu na każdy nieudany Job. Ostatnia nieudana próba daje zdarzenie Sentry
   (`apps/api/config/packages/sentry.yaml:36-37`). `messenger:failed:*` nie występuje w celach make ani w runbooku;
   jedyna wzmianka to `docs/features/payment/spec.md:651-652`.
-- **Odtworzenie.** `restore.sh` odmawia, gdy w przestrzeni jest aktywny Job (`:128-135`), skaluje do zera `api worker
-  store keycloak` (`:67`) i wstrzymuje CronJoby `cart-purge-expired` i `backup`; test dymny sprawdza te CronJoby
-  (`smoke.sh:790`).
+- **Odtworzenie.** `restore.sh` odmawia, gdy w przestrzeni jest aktywny Job poza Jobem `rate-limit-check` (`:129-140`), skaluje do zera `api worker
+  store keycloak` (`:68`) i wstrzymuje CronJoby `cart-purge-expired`, `backup` i `rate-limit-check`; test dymny sprawdza te CronJoby
+  (`smoke.sh:864`).
 - **Reindeksacja przy uzgodnieniu VAT.** `ReindexProductOnPriceChange.php:47` i `InvalidateStorefrontOnPriceChange.php:43`
   pomijają tylko źródło `seed`; `pricing:reconcile-tax --apply` i zmiana klasy podatkowej (`reprice`, to samo brutto,
   źródło `tax_reconciliation`) dają po jednej reindeksacji i jednym unieważnieniu na cenę. Odpowiedzi katalogu sklepu
@@ -366,7 +366,7 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   - Opisy po polsku mówią, co sprawdzić (`make -C infra/k8s failed`, ekran „Stan systemu”, `make -C infra/k8s status`)
     i odsyłają do runbooka. Metryki są już na liście dozwolonych. `MessagingUnhealthy` i `OrderExpiryFailed` milkną po
     pierwszym udanym Jobie po naprawie.
-- Reguł jest dziesięć (w `prod` przy wyłączonych kopiach sześć).
+- Reguł jest jedenaście (w `prod` przy wyłączonych kopiach siedem).
 - Odtworzenie: `restore.sh` nie odmawia z powodu aktywnych Jobów tych dwóch CronJobów (krótkie limity czasu); wstrzymuje
   je razem z `cart-purge-expired` i `backup`, czeka na ich aktywne Joby (najwyżej ich `activeDeadlineSeconds`) przed
   skalowaniem do zera i przywraca je jak pozostałe (także po przerwanej próbie). Test dymny sprawdza je w pętli CronJobów

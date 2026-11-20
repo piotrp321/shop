@@ -461,10 +461,13 @@ jobs:
       - name: Publish deploy and deploy-images
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          META_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -n "$DEPLOY_KEY" ]; then
-            # The host keys of GitHub, from its API over TLS (the key never leaves this step).
-            curl -fsS https://api.github.com/meta \
+            # The host keys of GitHub, from its API over TLS (the key never leaves this step). The request carries the
+            # token of the job and is retried: an anonymous one shares the rate limit of the runner's address and gets 403.
+            curl -fsS --retry 3 --retry-all-errors --retry-delay 5 -H "Authorization: Bearer $META_TOKEN" \
+              https://api.github.com/meta \
               | python3 -c 'import json, sys; [print("github.com " + key) for key in json.load(sys.stdin)["ssh_keys"]]' \
               > "$RUNNER_TEMP/known_hosts"
             export DEPLOY_KNOWN_HOSTS="$RUNNER_TEMP/known_hosts"

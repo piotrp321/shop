@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { announceCartChange } from "./events";
-import { SAVE_FAILED, SessionExpired } from "./messages";
+import { CART_RATE_LIMITED, SAVE_FAILED, SessionExpired } from "./messages";
 
 type CartLine = CartView["lines"][number];
 
@@ -43,7 +43,7 @@ export function CartPage() {
   const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
-  // Bumped after a refused change, so that the quantity field shows the quantity of the last view again.
+  // Bumped after every answer, so that the quantity field shows the quantity of the last view (also after a refused change).
   const [resets, setResets] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -78,6 +78,8 @@ export function CartPage() {
     const result = await run();
     if (result.status === "ok") {
       show(result.data);
+      // The field shows the quantity the API answered with, also when it is not the one typed.
+      resetQuantityField(variantId);
     } else if (result.status === "not_found") {
       // A 404 does not prove the line is gone (an unavailable product answers 404 to a change), so the reloaded cart decides.
       const reloaded = await loadCart();
@@ -97,6 +99,8 @@ export function CartPage() {
     } else {
       if (result.status === "unauthorized") {
         setSessionExpired(true);
+      } else if (result.status === "rate_limited") {
+        setLineErrors({ [variantId]: CART_RATE_LIMITED });
       } else {
         setLineErrors({ [variantId]: (result.status === "conflict" && result.detail) || SAVE_FAILED });
       }
@@ -257,10 +261,10 @@ function CartLineRow({
         </div>
         <div className="flex flex-col items-end gap-2">
           <QuantityField
-            key={`${line.quantity}:${resetKey}`}
             label={name ? `Ilość: ${variantLabel ? `${name}, ${variantLabel}` : name}` : "Ilość"}
             quantity={line.quantity}
-            disabled={busy}
+            resetKey={resetKey}
+            busy={busy}
             onCommit={onChangeQuantity}
           />
           {line.lineTotal ? (
@@ -268,7 +272,18 @@ function CartLineRow({
               {formatPrice(line.lineTotal.gross, line.lineTotal.currency)}
             </p>
           ) : null}
-          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={onRemove} aria-label={name ? `Usuń: ${name}` : "Usuń"}>
+          {/* aria-disabled, not disabled: a disabled button would drop the keyboard focus for the time of the save. */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-disabled={busy || undefined}
+            className="aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground"
+            onClick={() => {
+              if (!busy) onRemove();
+            }}
+            aria-label={name ? `Usuń: ${name}` : "Usuń"}
+          >
             Usuń
           </Button>
         </div>
@@ -282,22 +297,36 @@ function CartLineRow({
   );
 }
 
-/** Commits a changed number on blur or Enter; anything but a whole number from 1 to 99 goes back to the quantity. */
+/**
+ * Commits a changed number on blur or Enter; anything but a whole number from 1 to 99 goes back to the quantity.
+ * It is the same element for the whole life of the line, so the keyboard focus stays where the customer put it: while a
+ * change is saved the field is `aria-disabled` and read-only (not `disabled`, which would drop the focus) and ignores
+ * every commit. `resetKey` brings the quantity back after a refused change.
+ */
 function QuantityField({
   label,
   quantity,
-  disabled,
+  resetKey,
+  busy,
   onCommit,
 }: {
   label: string;
   quantity: number;
-  disabled: boolean;
+  resetKey: number;
+  busy: boolean;
   onCommit: (quantity: number) => void;
 }): ReactNode {
   const [draft, setDraft] = useState(String(quantity));
+  const [shown, setShown] = useState({ quantity, resetKey });
+
+  // The field shows the new quantity of the line, or goes back to it after a refused change.
+  if (shown.quantity !== quantity || shown.resetKey !== resetKey) {
+    setShown({ quantity, resetKey });
+    setDraft(String(quantity));
+  }
 
   function commit() {
-    if (disabled) return;
+    if (busy) return;
     const value = draft.trim() === "" ? Number.NaN : Number(draft);
     if (!Number.isInteger(value) || value < MIN_QUANTITY || value > MAX_QUANTITY || value === quantity) {
       setDraft(String(quantity));
@@ -313,10 +342,13 @@ function QuantityField({
       min={MIN_QUANTITY}
       max={MAX_QUANTITY}
       aria-label={label}
-      className="w-20"
+      aria-disabled={busy || undefined}
+      readOnly={busy}
+      className="w-20 aria-disabled:cursor-not-allowed aria-disabled:border-border aria-disabled:bg-muted aria-disabled:text-muted-foreground"
       value={draft}
-      disabled={disabled}
-      onChange={(event) => setDraft(event.target.value)}
+      onChange={(event) => {
+        if (!busy) setDraft(event.target.value);
+      }}
       onBlur={commit}
       onKeyDown={(event) => {
         if (event.key === "Enter") {

@@ -117,6 +117,9 @@ do_schema() {
       --set backup.verifyReadData=most
     expect_failure "backup that is not a boolean" "/backup/enabled" $prod --set image.tag=$rev $digests --set-string backup.enabled=true
     expect_failure "alerts that are not a boolean" "/alerts/enabled" $prod --set image.tag=$rev $digests --set-string alerts.enabled=true
+    # The CronJob rate-limit-check (docs/features/abuse-limits/spec.md, L12): its schedule is a required value, like that of cartPurge.
+    expect_failure "rate-limit-check without a schedule" "/rateLimitCheck/schedule" $prod --set image.tag=$rev $digests --set rateLimitCheck.schedule=
+    expect_failure "rate-limit-check values missing" "missing property 'rateLimitCheck'" $prod --set image.tag=$rev $digests --set rateLimitCheck=null
     # alerts.workloads is the registry that the templates fill while rendering (after the schema is validated), not a value to set.
     expect_failure "a value of alerts that does not exist" "'workloads' not allowed" $prod --set image.tag=$rev $digests --set alerts.workloads.foo=Deployment
     # D3 (docs/features/hardening/spec.md): the header of the client address is trusted only behind the allow list,
@@ -132,6 +135,32 @@ do_schema() {
       --set 'clientIpHeader=CF Connecting IP'
     expect_failure "clientIpHeaderWithoutAllowList that is not a boolean" "/clientIpHeaderWithoutAllowList" \
       -f environments/ci/values.yaml --set image.tag=$rev --set-string clientIpHeaderWithoutAllowList=true
+    # The CronJob demo-data (docs/features/demo-scale/spec.md, "Job generatora na serwerze (chart)"): with the images of a release (the
+    # server) it runs only the steps of the server, medium or server, with a fixed anchor, the Secret of the photo pool and a floor of at
+    # least 10 GB; ci with the images of a release (requireDigests) gets the same checks. Its profile, anchor and Secret are checked values.
+    expect_failure "prod without an anchor of the generator" "/demoData/anchor" $prod --set image.tag=$rev $digests --set demoData.anchor=
+    expect_failure "prod without the Secret of the photo pool" "/demoData/photosSecretName" $prod --set image.tag=$rev $digests \
+      --set demoData.photosSecretName=
+    expect_failure "prod with the profile small" "/demoData/profile" $prod --set image.tag=$rev $digests --set demoData.profile=small
+    expect_failure "prod with the profile full" "/demoData/profile" $prod --set image.tag=$rev $digests --set demoData.profile=full
+    expect_failure "prod with a floor of the free space below 10 GB" "/demoData/minFreeGb" $prod --set image.tag=$rev $digests \
+      --set demoData.minFreeGb=9
+    expect_failure "demoData of ci with requireDigests" "/demoData" -f environments/ci/values.yaml --set image.tag=$rev $digests \
+      --set image.requireDigests=true
+    expect_failure "a floor of the free space that is not a whole number" "/demoData/minFreeGb" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set-string demoData.minFreeGb=2G
+    expect_failure "a grace period shorter than the stop of the generator" "/demoData/terminationGracePeriodSeconds" \
+      -f environments/ci/values.yaml --set image.tag=$rev --set demoData.terminationGracePeriodSeconds=30
+    expect_failure "demoData.enabled that is not a boolean" "/demoData/enabled" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set-string demoData.enabled=true
+    expect_failure "a profile of the generator that does not exist" "/demoData/profile" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set demoData.profile=huge
+    expect_failure "an anchor that is not a date" "/demoData/anchor" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set 'demoData.anchor=2026-11-01 --profile=full'
+    expect_failure "a Secret of the photo pool that is no name" "/demoData/photosSecretName" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set 'demoData.photosSecretName=Photo Pool'
+    expect_failure "a time limit that is not a number" "/demoData/activeDeadlineSeconds/small" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set-string demoData.activeDeadlineSeconds.small=soon
     # Sentry (docs/features/sentry/spec.md, D1 and D3): the sample rate is a fraction, a DSN has the shape https://<key>@<host>/<project>.
     expect_failure "sentry.tracesSampleRate above 1" "maximum: got 1.5, want 1" $prod --set image.tag=$rev $digests \
       --set-json sentry.tracesSampleRate=1.5
@@ -216,7 +245,7 @@ do_shellcheck() {
   step "shellcheck"
   # shellcheck disable=SC2046 # the file names have no spaces
   shellcheck -x -P SCRIPTDIR $(cd "$TOOLS_REPO/infra/k8s" && ls scripts/*.sh charts/shop/files/scripts/*.sh tests/bootstrap/*.sh) \
-    ../../.github/scripts/deploy-ref.sh ../../load/k6.sh ../../load/smoke.sh
+    ../../.github/scripts/deploy-ref.sh ../../load/k6.sh ../../load/smoke.sh ../../load/test/cookies.sh
 }
 
 # The workflows of the repository (deploy.yml among them), with shellcheck on their run: scripts.
@@ -240,7 +269,7 @@ do_tests() {
 }
 
 # The alert rules (docs/features/deploy-ops/spec.md, O6): promtool checks and tests the groups of the PrometheusRule of the render of
-# prod with the backup switched on (prod-backup: all seven alerts), which tests/alerts/prepare.py takes from the render (no copy of the
+# prod with the backup switched on (prod-backup: all eight alerts), which tests/alerts/prepare.py takes from the render (no copy of the
 # rules) and puts next to the scenarios of tests/alerts/alerts.test.yml.
 do_alerts() {
   [ -f "$work/prod-backup.ndjson" ] || do_render

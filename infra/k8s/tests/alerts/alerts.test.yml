@@ -267,6 +267,173 @@ tests:
         alertname: BackupVerifyMissing
         exp_alerts: []
 
+  # --- RateLimitsOff: no successful run of the CronJob rate-limit-check (every 5 min) for more than 17 min (3 periods and 2 min for
+  # the start of a pod), or its metric gone for 30 min. The value of the series is the time of the last success, so it changes at the
+  # minute of a success (a run that failed leaves it as it was). The alert is one instance however many Jobs failed.
+  # Successes every 5 minutes: silent.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="rate-limit-check"}'
+        values: '0x4 300x4 600x4 900x4 1200x4 1500x4 1800x4 2100x4 2400x4 2700x4 3000x4 3300x4'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RateLimitsOff
+        exp_alerts: []
+      - eval_time: 59m
+        alertname: RateLimitsOff
+        exp_alerts: []
+
+  # One run failed and the next succeeded (the last success is at minute 10, the run at 15 failed, the one at 20 succeeded): silent,
+  # also on the last minute before the success (9 minutes old).
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="rate-limit-check"}'
+        values: '0x4 300x4 600x9 1200x4 1500x4 1800x4 2100x4 2400x4'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="rate-limit-check-1",condition="Failed",status="true"}'
+        values: '_x15 1x30'
+    alert_rule_test:
+      - eval_time: 19m
+        alertname: RateLimitsOff
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: RateLimitsOff
+        exp_alerts: []
+      - eval_time: 44m
+        alertname: RateLimitsOff
+        exp_alerts: []
+
+  # Two runs failed (minutes 15 and 20) and the third (minute 25) succeeded 2 minutes late, at minute 27: the last success is 16
+  # minutes old at minute 26, the longest it gets. Silent all the way.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="rate-limit-check"}'
+        values: '0x4 300x4 600x16 1620x20'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="rate-limit-check-1",condition="Failed",status="true"}'
+        values: '_x15 1x30'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="rate-limit-check-2",condition="Failed",status="true"}'
+        values: '_x20 1x25'
+    alert_rule_test:
+      - eval_time: 26m
+        alertname: RateLimitsOff
+        exp_alerts: []
+      - eval_time: 27m
+        alertname: RateLimitsOff
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: RateLimitsOff
+        exp_alerts: []
+
+  # No success after minute 10 (three Jobs failed, two instances of kube-state-metrics report the CronJob): exactly 17 minutes old at
+  # minute 27 is not older than 17 minutes, a minute later the alert fires, once, and keeps firing.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="rate-limit-check",instance="ksm-a"}'
+        values: '0x4 300x4 600x119'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="rate-limit-check",instance="ksm-b"}'
+        values: '0x4 300x4 600x119'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="rate-limit-check-1",condition="Failed",status="true"}'
+        values: '_x15 1x110'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="rate-limit-check-2",condition="Failed",status="true"}'
+        values: '_x20 1x105'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="rate-limit-check-3",condition="Failed",status="true"}'
+        values: '_x25 1x100'
+    alert_rule_test:
+      - eval_time: 27m
+        alertname: RateLimitsOff
+        exp_alerts: []
+      - eval_time: 28m
+        alertname: RateLimitsOff
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: shop
+              cronjob: rate-limit-check
+            exp_annotations: &rate_limits_off
+              summary: "Limity żądań są wyłączone: Redis limiterów nie przyjmuje zapisu"
+              description: "Od 17 minut nie ma udanego sprawdzenia Redisa limiterów (CronJob rate-limit-check) albo brak jego metryki od 30 minut: limity tras przepuszczają ruch bez ograniczeń. Sprawdź log Joba (make -C infra/k8s status) oraz stan Redisa i jego wolumenu. Przy restore alert wycisz razem z WorkloadNotReady. Runbook: Eksploatacja."
+      - eval_time: 100m
+        alertname: RateLimitsOff
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: shop
+              cronjob: rate-limit-check
+            exp_annotations: *rate_limits_off
+
+  # The alert goes out at the next success (minute 40), not before.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="rate-limit-check"}'
+        values: '0x4 300x4 600x29 2400x60'
+    alert_rule_test:
+      - eval_time: 39m
+        alertname: RateLimitsOff
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: shop
+              cronjob: rate-limit-check
+            exp_annotations: *rate_limits_off
+      - eval_time: 40m
+        alertname: RateLimitsOff
+        exp_alerts: []
+      - eval_time: 44m
+        alertname: RateLimitsOff
+        exp_alerts: []
+
+  # The metric disappears after minute 10 (the CronJob is gone, or the server or Alloy does not work): silent for the first 30 min of
+  # the absence, then it fires. With no metric at all (the CronJob never ran, or is not in the chart) it fires at once.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="rate-limit-check"}'
+        values: '0x4 300x4 600'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: RateLimitsOff
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: RateLimitsOff
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: shop
+              cronjob: rate-limit-check
+            exp_annotations: *rate_limits_off
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x100'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: RateLimitsOff
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: shop
+              cronjob: rate-limit-check
+            exp_annotations: *rate_limits_off
+
+  # The thresholds are those of each alert: a backup 20 minutes old is fresh (it counts 26 hours), and a rate-limit-check of the same age
+  # is already late.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup"}'
+        values: '0x60'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="rate-limit-check"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: BackupMissing
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: RateLimitsOff
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: shop
+              cronjob: rate-limit-check
+            exp_annotations: *rate_limits_off
+
   # --- NodeDiskFull: a file system of the node used in more than 85% for 10 min, temporary file systems left out.
   - interval: 1m
     input_series:

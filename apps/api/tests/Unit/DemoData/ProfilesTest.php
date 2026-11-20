@@ -37,9 +37,11 @@ final class ProfilesTest extends TestCase
     {
         $profiles = $this->real();
 
-        self::assertSame(25, $profiles->get('medium')->diskPeakGb);
-        self::assertSame(100, $profiles->get('server')->diskPeakGb);
-        self::assertSame(225, $profiles->get('full')->diskPeakGb);
+        // medium: measured (the peak of the VM against the first reading, 20.52 GB, revision aceeab48, 2026-11-19); server and
+        // full: extrapolated from the sizes of that run, not measured (docs/features/demo-data/spec.md, "k3d").
+        self::assertSame(21, $profiles->get('medium')->diskPeakGb);
+        self::assertSame(96, $profiles->get('server')->diskPeakGb);
+        self::assertSame(250, $profiles->get('full')->diskPeakGb);
         self::assertGreaterThan(0, $profiles->get('small')->diskPeakGb);
     }
 

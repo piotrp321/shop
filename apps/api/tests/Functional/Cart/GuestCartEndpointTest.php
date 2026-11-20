@@ -31,7 +31,7 @@ final class GuestCartEndpointTest extends WebTestCase
         self::assertSame('/api/v1/guest-carts/'.$cart['id'], $this->response()->headers->get('Location'));
         $this->assertNoStore();
         self::assertMatchesSchema('CartView', $cart);
-        self::assertSame(1, $this->connection->fetchOne("SELECT COUNT(*) FROM cart_cart WHERE id = ? AND owner_type = 'guest' AND status = 'open' AND expires_at > now() + interval '29 days'", [$cart['id']]));
+        self::assertSame(1, $this->connection->fetchOne("SELECT COUNT(*) FROM cart_cart WHERE id = ? AND owner_type = 'guest' AND status = 'open' AND expires_at > now() + interval '23 hours' AND expires_at <= now() + interval '1 day'", [$cart['id']]), 'an empty guest cart lives one day');
     }
 
     public function testAGuestAddsChangesAndRemovesItems(): void

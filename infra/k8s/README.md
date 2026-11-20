@@ -9,7 +9,7 @@ Uruchomienie środowiska wdrożeniowego (`docs/features/deploy/spec.md`) po merg
   backup VPS-a); agent tego nie wykonuje i nie podejmuje tych decyzji.
 
 Agent wykonuje operacje na serwerze wyłącznie celami `make -C infra/k8s …` (`bootstrap`, `kubeconfig`, `status`, `rerun`,
-`create-admin`, `restore`, `backups`, `reinitialize`, `seal-secrets`, `cloudflare-ips`). Nie łączy się z serwerem inaczej i nie uruchamia `kubectl` ani
+`create-admin`, `restore`, `backups`, `reinitialize`, `generate`, `open`, `seal-secrets`, `cloudflare-ips`). Nie łączy się z serwerem inaczej i nie uruchamia `kubectl` ani
 `helm` na serwerze. Wszystkie cele potrzebują tylko Dockera (oraz `ssh` na komputerze użytkownika). Opcje `ssh` (klucz, port):
 `SSH_OPTS="-i ~/.ssh/shop -p 2222"`.
 
@@ -210,7 +210,9 @@ Wszystko **użytkownik**.
    `secrets` i `shop` (fale: kontroler, sekrety, sklep). Pierwsza synchronizacja na pustym klastrze trwa kilkanaście minut
    (Elasticsearch, migracje, wczytanie danych demo).
 2. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`/`Healthy`, pody `Running`, Joby `Complete`.
-   Nieudany Job wersji: log (`status`), poprawka w repo (nowa rewizja) albo `make -C infra/k8s rerun JOB=<nazwa>`. Job
+   Nieudany Job wersji: log (`status`), poprawka w repo (nowa rewizja) albo `make -C infra/k8s rerun JOB=<nazwa>`.
+   `rerun` służy tylko Jobom wersji (`<job>-<hash>`): Joba `restore-run-*` nie ponawia się nim nigdy, bo powtórzyłby
+   odtworzenie bez pytania o `tak` i bez kopii `pre-restore` (odtworzenie ponawia `make restore`, sekcja 8). Job
    `initialize` z błędem „mixed state” (przerwane wczytanie): **zgoda użytkownika**, potem
    `make -C infra/k8s reinitialize HOST=<user>@<adres>` (kasuje dane sklepu i wczytuje dane demo od nowa; wymaga słowa `tak`).
    Pod usługi stale `0/1` mimo działającej usługi: sonda (np. AppArmor, sekcja 2, krok 3), poprawka przez PR; po niej
@@ -267,7 +269,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 | `https://auth.<domena>/realms/master/` | użytkownik | niedostępny (404); dostępne tylko `/realms/shop/`, `/realms/backoffice/`, `/resources/` |
 | Próby rulesetów (1.5) | użytkownik | zgodnie z tabelą |
 | `make -C infra/k8s status HOST=…` | agent | wszystko `Synced`, `Healthy`, Joby `Complete` |
-| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, konto serwisowe i punkt kontaktowy: użytkownik | siedem reguł zarządzanych przez Grafanę w folderze `agent/shop/…` (trzy przy wyłączonych kopiach), alert z reguły dochodzi e-mailem; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
+| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, konto serwisowe i punkt kontaktowy: użytkownik | osiem reguł zarządzanych przez Grafanę w folderze `agent/shop/…` (cztery przy wyłączonych kopiach), alert z reguły dochodzi e-mailem; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
 | Grafana Cloud (9.) | agent | metryki klastra i logi `namespace="shop"` są, logów `mailpit` nie ma, przegląd próbki logów bez sekretów i danych klientów |
 | Sentry (10.): po wpisaniu DSN-ów i wdrożeniu | użytkownik | zdarzenia i trace'y w projektach `api`, `store` i `admin` z wersją (rewizja obrazu) i środowiskiem `demo`; przegląd próbki zdarzeń bez danych osobowych |
 | AppArmor (sekcja 2, krok 3): na serwerze `sudo dmesg \| grep 'apparmor="DENIED"' \| grep -c cri-containerd` po `reinitialize` i `create-admin` | użytkownik | wpisy `signal` są oczekiwane (szum); oba cele kończą się sukcesem, a pody nie restartują się przez sondy |
@@ -313,6 +315,19 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   udanej kopii i gasi `*Failed` i `*Missing`; `make rerun` tu nie pasuje (odtwarza Job bez właściciela, którego alert nie widzi).
   `*Missing` bez nieudanego Joba to CronJob, który się nie uruchomił (węzeł wyłączony), albo brak metryk (serwer albo Alloy nie
   działa; razem z nim odpala `ClusterSilent`).
+- **`RateLimitsOff`** (`warning`; od 12 do 17 minut od początku awarii i czas ewaluacji reguły): limity tras przepuszczają ruch
+  bez ograniczeń, bo Redis limiterów nie przyjmuje zapisu (odrzuca zapisy, np. `MISCONF` po pełnym wolumenie, albo pod API go
+  nie sięga; sonda Redisa i `/health` tego nie widzą) albo CronJob `rate-limit-check` nie działa (wstrzymany, usunięty, brak
+  metryki). **Agent** czyta log ostatniego Joba `rate-limit-check` w sekcji „logs of the failed jobs” wyniku
+  `make -C infra/k8s status HOST=…` (komunikat „The Redis of the rate limiters failed: …” podaje przyczynę: odmowa
+  połączenia, limit czasu, błąd odpowiedzi Redisa, inna wartość) oraz stan poda i wolumenu Redisa (`status`: zdarzenia, miejsce
+  na dysku węzła z Grafana Cloud). Wolumen pełny: miejsce zwalnia **użytkownik** (jak przy `NodeDiskFull`). CronJob wstrzymany
+  po przerwanym `restore`: „Odtworzenie przerwane w trakcie” niżej (`restore` ponowiony przywraca `suspend: false`). Alert
+  gaśnie po następnym udanym przebiegu (do 5 minut od naprawy). Po pierwszym wdrożeniu chartu z tym CronJobem metryki jeszcze
+  nie ma (`absent_over_time` bez `for`, jak przy `BackupMissing`): alert odpala do pierwszego udanego przebiegu, najwyżej kilka
+  minut, i to nie jest awaria. Awaria krótsza niż ok. 10 minut (mniej niż trzy przebiegi)
+  nie wywołuje alertu; ostrzeżenia kanału `cache` w logach `api` pokazują pojedyncze błędy. Wyciszenie na czas `restore` i
+  prac: 9. w sekcji 9.
 - **Pozostałe alerty**: `NodeDiskFull` (system plików węzła zajęty w ponad 85% przez 10 minut: miejsce zwalnia albo dysk powiększa
   **użytkownik**), `ClusterSilent` (brak metryk klastra przez 15 minut: serwer, k3s albo Alloy; `status` i panel OVH),
   `WorkloadNotReady` (Deployment albo StatefulSet w `shop`, w tym Redis, ma mniej gotowych replik niż oczekiwane albo go nie ma
@@ -363,10 +378,10 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
   make -C infra/k8s restore SNAPSHOT=<identyfikator świeżego snapshotu nightly tego serwera> KUBE_DIR=<katalog>
   ```
 
-  `restore` sprawdza (bez zmian) brak aktywnych Jobów, brak trwającej synchronizacji `shop` w Argo CD i zgodność migracji
+  `restore` sprawdza (bez zmian) brak aktywnych Jobów (poza Jobem CronJoba `rate-limit-check`, który trwa najwyżej 60 s i nie jest powodem odmowy), brak trwającej synchronizacji `shop` w Argo CD i zgodność migracji
   snapshotu z wdrożonym kodem, wypisuje snapshot i skutki i czeka na słowo `tak` (wpisuje je agent dopiero po zgodzie). Potem:
   kopia `pre-restore`, wyłączenie automatycznej synchronizacji `root`, potem `shop` (przejdzie też, gdy jej już nie ma),
-  wstrzymanie CronJobów, ponowne sprawdzenie Jobów (nocna kopia mogła wystartować po pierwszym sprawdzeniu: `restore` czeka
+  wstrzymanie CronJobów (`cart-purge-expired`, `backup`, `rate-limit-check`), ponowne sprawdzenie Jobów, także Joba `rate-limit-check` (nocna kopia mogła wystartować po pierwszym sprawdzeniu: `restore` czeka
   na nią do 2 godzin, `RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, a potem kończy się błędem z działającymi aplikacjami), `api`, `worker`,
   `store` i `keycloak` do zera, odtworzenie danych, `migrate`, `keycloak-config`, reindeks, powrót aplikacji, `purge-caches` i
   włączenie synchronizacji `root` (ten przywraca `shop`). Kończy się wierszem `restore: done` z identyfikatorem snapshotu
@@ -380,7 +395,7 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
   odtworzonych danych), przy Argo CD synchronizacja `root` i `shop` zostaje wyłączona; komunikat podaje krok, log Joba i
   snapshot `pre-restore`. Agent czyta przyczynę (komunikat, `status`), po usunięciu jej (np. poprawka w repo, dostęp do R2) i
   po **zgodzie użytkownika** uruchamia `restore` ponownie z tym samym `SNAPSHOT` i `PRE_RESTORE=skip` (kopia stanu sprzed
-  pierwszej próby już jest; aplikacje na zerze wracają z jedną repliką, a wstrzymane `cart-purge-expired` i `backup` z `suspend: false`) albo wraca do stanu sprzed odtworzenia:
+  pierwszej próby już jest; aplikacje na zerze wracają z jedną repliką, a wstrzymane `cart-purge-expired`, `backup` i `rate-limit-check` z `suspend: false`) albo wraca do stanu sprzed odtworzenia:
   `restore SNAPSHOT=<pre-restore>`. Ponowne uruchomienie przy wyłączonej synchronizacji `root` jej nie włącza: włącza ją
   **użytkownik** w Argo CD (z `prune` i `selfHeal`, jak w `argocd/root.yaml`).
 - **Utrata serwera** – **zgoda użytkownika** przy każdym kroku z niej: nowy VPS (**użytkownik**, 0.), `bootstrap` z kopią
@@ -401,13 +416,14 @@ Alloy czyta z klastra tylko sekret `grafana-cloud` z przestrzeni `shop`, a Alloy
 bez ClusterRoli; RBAC operatora i kolektora jest w `extraObjects` manifestu, nie w chartach. Polityki dopuszczania z tego samego
 manifestu odrzucają w `monitoring` pody z dostępem do hosta (poza node-exporterem) albo z klasą priorytetu `system-*`, Service
 inne niż `ClusterIP` albo z `externalIPs` i sekrety z tokenami kont, także żądania administratora; `kubectl debug` poda
-node-exportera też jest odrzucany. Klaster nie ma NetworkPolicy, a Redis (sesje klientów) i Elasticsearch działają bez
+node-exportera też jest odrzucany. Klaster nie ma stałej NetworkPolicy (jedyna, tymczasowa `shop-closed` zamyka sklep
+na czas generowania danych: sekcja 11), a Redis (sesje klientów) i Elasticsearch działają bez
 uwierzytelnienia: każdy pod klastra, także w `monitoring`, sięga do nich po sieci (ryzyko opisane w
 `docs/adr/backups-observability.md`).
 
 Alerty to `PrometheusRule` `shop-alerts` chartu `shop` (`alerts.enabled: true` w `prod`; `docs/features/deploy-ops/spec.md`, O6):
-`BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `NodeDiskFull` (ponad 85% przez 10 minut),
-`ClusterSilent` (brak metryk klastra przez 15 minut) i `WorkloadNotReady` (Deployment albo StatefulSet w `shop` niegotowy albo
+`BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `RateLimitsOff` (brak udanego sprawdzenia Redisa
+limiterów od 17 minut), `NodeDiskFull` (ponad 85% przez 10 minut), `ClusterSilent` (brak metryk klastra przez 15 minut) i `WorkloadNotReady` (Deployment albo StatefulSet w `shop` niegotowy albo
 usunięty przez 10 minut). Alloy synchronizuje je przez API importu Grafany stosu (`/api/convert`, cel `grafana-alerting`) jako
 reguły zarządzane przez Grafanę; ewaluuje je Grafana Cloud poza serwerem, więc alert przychodzi także wtedy, gdy serwer albo Alloy
 nie żyje, a powiadomienia idą przez Alertmanager Grafany. Ruler metryk stosu nie ma Alertmanagera (nowe stosy Grafana Cloud go nie
@@ -441,8 +457,8 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
 7. **użytkownik** – w Grafana Cloud (Alerting → Contact points) dodaje punkt kontaktowy e-mail i ustawia go jako domyślny w drzewie
    powiadomień Alertmanagera Grafany. Alerty to `NodeDiskFull` z `severity: warning` i reszta z `critical`; że alerty reguł trafiają
    do tego punktu kontaktowego, potwierdza dopiero krok 8.
-8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać siedem reguł grupy `shop-backup` i `shop-cluster`
-   (przy kopiach wyłączonych w `prod`, 3.: trzy reguły `shop-cluster`)
+8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać osiem reguł grup `shop-backup`, `shop-rate-limits` i `shop-cluster`
+   (przy kopiach wyłączonych w `prod`, 3.: cztery reguły grup `shop-rate-limits` i `shop-cluster`)
    w folderze `agent/shop/shop-alerts/…`, oznaczonych jako provisioned (źródło: `PrometheusRule` `shop-alerts` w przestrzeni
    `shop`, synchronizowany przez Alloy przez API importu Grafany; zmiana reguły to zmiana chartu, nie edycja w UI). Brak reguł
    po 10 minutach od wdrożenia: log Alloy (`mimir.rules.kubernetes`, np. 401 przy złym tokenie konta serwisowego). **`BackupMissing` i
@@ -457,8 +473,10 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
    (`agent/shop/delivery-test`), sprawdza odbiorcę `email` i próbę wysyłki bez błędu, a potem usuwa regułę i folder; e-mail
    potwierdza użytkownik.
 9. **użytkownik** – przed świadomym `restore` i planowanymi pracami (restart serwera, aktualizacja k3s, ćwiczenie odtworzenia)
-   wycisza alerty w Grafana Cloud (Alerting → Silences): dla `restore` dopasowanie `alertname=~"WorkloadNotReady|Backup.*"`, dla
-   innych prac `alertname="WorkloadNotReady"` (przy wyłączeniu całego serwera także `ClusterSilent`), na czas prac z zapasem.
+   wycisza alerty w Grafana Cloud (Alerting → Silences): dla `restore` dopasowanie `alertname=~"WorkloadNotReady|Backup.*|RateLimitsOff"` (`restore` wstrzymuje CronJob
+   `rate-limit-check`, więc po 17 minutach alert odpaliłby bez awarii), dla innych prac `alertname=~"WorkloadNotReady|RateLimitsOff"`
+   (Redis wyłączony razem z serwerem albo restartem k3s kończy sprawdzenie błędem; przy wyłączeniu całego serwera także
+   `ClusterSilent`), na czas prac z zapasem.
    Wyciszenia nie zakłada automat. Po pracach sprawdza, że wyciszenie wygasło, albo je usuwa. Brak CRD `PrometheusRule`
    (aplikacja `prometheus-crds` niezsynchronizowana) kończy synchronizację `shop` błędem (operacja sync nieudana, aplikacja `OutOfSync`), a nie
    cichym brakiem reguł.
@@ -513,3 +531,234 @@ organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem
    repozytorium.
 
 Gdy klaster dostanie NetworkPolicy dla ruchu wychodzącego, trzeba dopuścić ruch do `*.ingest.de.sentry.io`.
+
+## 11. Pomiar obciążenia na k3d i dane demo w skali
+
+Pomiar `make -C infra/k8s load` działa na jednorazowym klastrze k3d na komputerze użytkownika, nie na serwerze
+(`docs/features/hardening/spec.md`, „Testy obciążeniowe”; dane: `docs/features/demo-data/spec.md`, „k3d”). Opcje, pliki
+wyniku i kody wyjścia: komentarz celu w `Makefile` i nagłówek `scripts/load.sh`. Dane w skali na serwerze generuje
+osobne cele `generate` i `open` (od „Generowanie danych na serwerze” niżej); pomiaru k6 na serwerze jeszcze nie ma.
+
+Profile `prod`, `ci` i `load` chartu mają zawieszony CronJob `demo-data` (`suspend: true`), który sam nigdy się nie
+uruchamia, a każdy profil ma zawieszony CronJob `load` (k6, `load/smoke.js` na usługach klastra, bez sekretów). Job
+z `demo-data` kasuje dane każdego modułu i generuje profil `demoData.profile` (`bin/generate-demo --force-reset`; dla
+`seed` `bin/seed-demo`) z limitem czasu `demoData.activeDeadlineSeconds` profilu, bez ponowień, a jego skrypt
+(`files/scripts/demo-data.sh`) odmawia kodem 64, gdy `DEMO_DATA_CONFIRM` nie jest nazwą profilu ani słowem `seed`:
+Job utworzony ręcznie (`kubectl create job --from=cronjob/demo-data`) niczego nie kasuje. `DEMO_DATA_CONFIRM` ustawiają
+tylko `generate` (serwer), `load` (jeden Job na przebieg) i test dymny (przez `generate` z profilem `small`);
+`concurrencyPolicy` nie chroni przed dwoma Jobami utworzonymi ręcznie. Profile inne niż `small` czytają zdjęcia
+z prywatnego bucketu puli przez sekret wskazany w `demoData.photosSecretName` (klucze `DEMO_PHOTOS_ENDPOINT`,
+`DEMO_PHOTOS_BUCKET`, `DEMO_PHOTOS_ACCESS_KEY_ID`, `DEMO_PHOTOS_SECRET_ACCESS_KEY`); chart go nie tworzy, w klastrze
+pomiaru zakłada go `load`, a na serwerze `generate` na czas przebiegu.
+
+1. **użytkownik** – zakłada prywatny bucket puli zdjęć, tokeny i plik `~/.config/shop/demo-photos.env`
+   (`docs/features/demo-data/spec.md`, „Wymagane przed startem”); wartości nie przechodzą przez rozmowę, a agent nie czyta
+   tego pliku.
+2. **agent** – pomiar na danych z seeda: `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (`LOAD_DATA=seed`,
+   domyślnie; dziesiątki minut, VM Dockera co najmniej 10 CPU i 20 GiB).
+   `LOAD_OUT` musi być katalogiem, który Docker może zamontować do zapisu (Docker Desktop: udostępniony w Settings →
+   Resources → File Sharing); cel sprawdza to przed budowaniem obrazów i inaczej kończy się kodem 2.
+3. **zgoda użytkownika** – pomiar na danych z generatora: `make -C infra/k8s load LOAD_OUT=<katalog poza repo>
+   LOAD_DATA=medium` (albo `server`, `full`; inny plik puli: `DEMO_PHOTOS_ENV_FILE=<plik>`). Generator działa godzinami
+   i zajmuje dziesiątki do setek GB dysku (szacunki w specyfikacji DEMO-DATA, „Środowiska”). Cel sprawdza plik puli przed
+   utworzeniem klastra (brak pliku albo zmiennej odczytu: kod 2), sprawdza zapas miejsca (niżej), zakłada sekret
+   `demo-photos` tylko z czterema zmiennymi odczytu (token zapisu `DEMO_PHOTOS_WRITE_*` nie trafia do klastra), czeka na
+   Job generatora (`LOAD_DATA_TIMEOUT`, domyślnie limit Joba i 10 minut; błąd albo przekroczenie czasu: kod 2 z logiem
+   Joba), podnosi stany tylko wariantów z losowych porcji mapy strony i przekazuje ich klucze k6. Klaster z danymi
+   i sekretem jest usuwany przy każdym wyjściu.
+
+   **Zapas miejsca** (`medium`, `server`, `full`; `seed` go nie sprawdza). `diskPeakGb` profilu
+   (`apps/api/fixtures/demo-data/profiles.yaml`) to szacunek szczytowego zużycia dysku całego stosu. Przed zbudowaniem
+   obrazów i utworzeniem klastra cel czyta wolne miejsce w dwóch miejscach: w VM Dockera (`df -Pk /` w kontenerze, którego
+   system plików leży na dysku z danymi Dockera) i na dysku hosta, na którym leży dysk VM (`df -Pk` katalogu z opcji
+   `LOAD_DISK_PATH`, domyślnie katalog domowy; dysk VM Dockera Desktop rośnie w miarę zapisu, więc granicą jest host).
+   Oba muszą mieć co najmniej 1,25 × `diskPeakGb` (1 GB to 10^9 bajtów); inaczej cel kończy się kodem 2 bez budowania
+   i bez klastra, podając wymagane i dostępne miejsce obu dysków. Gdy obraz VM leży poza katalogiem domowym, ustaw
+   `LOAD_DISK_PATH` na katalog z tego samego dysku. Od początku przebiegu (przed budowaniem obrazów) co
+   `LOAD_SPACE_POLL` sekund (domyślnie 30) cel czyta oba miejsca ponownie; spadek któregokolwiek poniżej 10% `diskPeakGb`
+   zatrzymuje Job generatora i k6, usuwa klaster i kończy cel kodem 2 z przyczyną. Wolnego miejsca ani `diskPeakGb` nie da
+   się odczytać (polecenie zawodzi albo odpowiada czymś innym niż liczba): kod 2, nigdy „wystarczy miejsca”. Cel
+   reaguje na spadek dopiero po zakończeniu bieżącego polecenia pierwszego planu (budowanie obrazu, import, `helm`,
+   zapytania SQL); w czasie czekania na Job generatora i na k6 reaguje od razu. Każdy odczyt (także ten sprzed startu,
+   jako pierwszy wiersz) trafia do `LOAD_OUT/space.log` (czas, wolne KiB w VM i na hoście); na końcu przebiegu, także
+   nieudanego, plik dostaje podsumowanie: najmniejsze wolne miejsce obu dysków i zużycie względem pierwszego odczytu
+   w GB, z którego uaktualnia się `diskPeakGb`. Plik, którego nie da się zapisać, to ostrzeżenie, nie koniec przebiegu.
+
+   **Uśpienie komputera.** Usypiający się komputer zatrzymuje VM Dockera i unieważnia czasy, więc na macOS cel przez cały
+   przebieg blokuje uśpienie z bezczynności, a na zasilaniu sieciowym także systemowe (`caffeinate -ims -w <pid>`).
+   Nie chroni przed zamkniętą klapą ani uśpieniem ręcznym: przy pomiarze klapa ma zostać otwarta, a komputer podłączony
+   do prądu. Gdzie indziej cel nic nie blokuje, a `environment.txt` ma w linii `sleep lock:` wzmiankę, że nic nie
+   blokuje uśpienia. Na końcu cel szuka przerw w odczytach (`space.log`,
+   `node-stats.log`, koniec przebiegu): odstęp dłuższy niż 3 × `LOAD_SPACE_POLL` i co najmniej 120 s to uśpienie. Zapisuje
+   je w `space.log` (linia `#`) i w `environment.txt` (`host sleep:`), ostrzega na standardowym wyjściu błędów i kończy
+   przebieg kodem 1 zamiast 0: wyniki są w `LOAD_OUT`, ale czasów ani przepustowości z takiego przebiegu nie podajemy.
+4. **agent** – raport z wyników w `LOAD_OUT`: `environment.txt` (w nim `LOAD_DATA` i porcje), `sizes.txt` (rozmiary baz,
+   tabel i indeksów Postgresa i indeksów Elasticsearcha), `top.log` i `node-stats.log` (próbkowane co 10 s od chwili, gdy
+   klaster jest gotowy, więc obejmują także Job generatora i fazę danych: stąd szczyt pamięci Postgresa i Joba), przy danych
+   z generatora `demo-data.log` (log Joba z czasem każdej linii), `demo-data-steps.txt` (czasy kroków generatora)
+   i `space.log` (wolne miejsce w czasie przebiegu i szczytowe zużycie dysku). Wynik `medium` i ekstrapolacja nie są pomiarem pełnej
+   skali; `server` i `full` uznaje się za zweryfikowane dopiero po ich własnym przebiegu
+   (`docs/features/demo-data/spec.md`, W3).
+
+### Generowanie danych na serwerze (`generate` i `open`)
+
+`make -C infra/k8s generate` zastępuje dane sklepu na serwerze danymi profilu `medium` albo `server` (generator
+`docs/features/demo-data/spec.md`) albo wraca do seeda; po udanym Jobie woła `make -C infra/k8s open`, który sprawdza
+dane i otwiera sklep. Sklep jest od startu do udanego `open` zamknięty (wszystkie hosty odpowiadają 502), a nieudany
+albo przerwany przebieg zostawia go zamkniętego. Odzyskiwanie po awarii jest ręczne: ponowny `generate`, powrót do
+seeda albo `open`. Opis rozwiązania i ochron: `docs/features/demo-scale/spec.md`; zmienne i kody wyjścia: nagłówki
+`scripts/generate.sh` i `scripts/open.sh`.
+
+**Warunek wstępny.** `generate` z profilem `medium` albo `server` na worf.pl dopiero po wdrożeniu i weryfikacji na
+serwerze poprawki L9 (cache ISR sklepu w pamięci; `docs/features/product-page/spec.md`, „Cache ISR”) oraz po **zgodzie użytkownika**
+w rozmowie, która nazywa operację (`generate`), host (worf.pl) i profil. Zgoda na `generate` nie zastępuje weryfikacji
+L9, a zakończenie ASH-V1 ani ABUSE-LIMITS nie jest warunkiem. Powrót do seeda (`PROFILE=seed`) też wymaga zgody, ale nie
+czeka na L9. `open` zmienia serwer (otwiera sklep), więc też wymaga zgody, która nazywa operację, host i profil.
+
+**Przygotowanie.**
+
+1. **użytkownik** – plik `~/.config/shop/demo-photos.env` z czterema zmiennymi odczytu puli zdjęć na komputerze, z którego
+   idzie `generate` (inny plik: `DEMO_PHOTOS_ENV_FILE=<plik>`). Wartości nie przechodzą przez rozmowę, a agent nie czyta
+   pliku. Do klastra trafiają tylko cztery zmienne odczytu, nigdy token zapisu (`DEMO_PHOTOS_WRITE_*`), jako sekret
+   `demo-photos` na czas przebiegu (usuwany przy każdym wyjściu `generate`, także po błędzie; po jego zabiciu usuwa go
+   `open`). Profil `seed` pliku nie potrzebuje.
+2. **agent** – wdrożona rewizja ma ten profil: `generate` przyjmuje `seed` albo `demoData.profile` CronJoba
+   (`environments/prod/values.yaml`; `medium`, a `server` po zmianie wartości w PR i zwykłym wdrożeniu). Wdrożenie:
+   sekcja 7 (zgoda użytkownika); nie w trakcie generowania, bo restartuje pody, których generator potrzebuje.
+3. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: sklep otwarty, bez blokady `demo-data-lock`, Job
+   `demo-data-run` (poprzedniego przebiegu), aktywne Joby, aplikacje `Synced` i `Healthy`, wszystkie Deploymenty
+   i StatefulSety gotowe (generator potrzebuje Elasticsearcha, Postgresa, Keycloaka, `worker`, Varnisha i sklepu), żaden
+   Job nie jest aktywny.
+4. **agent** – wolne miejsce: `medium` wymaga co najmniej 32 GB (`demoData.minFreeGb`; 1,25 × `diskPeakGb` `medium`, czyli
+   26,25 GB, jest mniejsze), `server` co najmniej 120 GB (1,25 × `diskPeakGb` 96 GB; to szacunek z ekstrapolacji, nie
+   pomiar). Odczytem miejsca jest kubelet; `generate` sam odmawia bez zapasu. Strażnik w Jobie zatrzymuje generator, gdy
+   wolne miejsce spadnie poniżej 32 GB.
+5. **agent** – adresy sondy: `generate` i `open` pytają z komputera operatora o `https://api.worf.pl/` i
+   `https://worf.pl/` przez Cloudflare (502, 503 i 504 to „zamknięty”, kod poniżej 500 „otwarty”, każdy inny kod i brak
+   odpowiedzi to odczyt nieudany, ponawiany do limitu czasu). **Uwaga:** sonda liczy każdy kod poniżej 500 jako
+   „otwarty”, więc odpowiedź 403 z wyzwania Cloudflare (Bot Fight Mode, reguła WAF) dla curla operatora wygląda jak
+   otwarty sklep: zamknięcia sonda nigdy nie potwierdzi, a `generate` kończy się po `GENERATE_CLOSE_WAIT` kodem 1 ze
+   sklepem zamkniętym i danymi bez zmian. Adresów sondy nie da się obejść adresem origin: `ipAllowList` odpowiada 403
+   każdemu adresowi spoza Cloudflare (`GENERATE_PROBE_HOST` służy klastrowi testowemu, w którym adresem jest węzeł).
+   Przed uruchomieniem sprawdź, że żądanie z komputera operatora dostaje odpowiedź sklepu, a nie wyzwanie:
+   `curl -sSI https://worf.pl/` i `curl -sSI https://api.worf.pl/` bez nagłówka `cf-mitigated`. Wyjątek od wyzwania dla
+   adresu operatora albo dla tych dwóch adresów ustawia w Cloudflare **użytkownik**.
+6. **agent** – `KUBE_DIR`: jak w sekcji 2, krok 6 (`kubeconfig`), ale katalog zostaje do końca przebiegu i ewentualnego
+   `open` (przebieg trwa godziny), a potem `rm -rf "$KUBE_DIR"`. Cele wołają `scripts/ao-guard.sh` i odmawiają, gdy
+   działa AO albo jego wykonawca.
+7. Stan kopii: kopie restic w klastrze są w `prod` wyłączone (`backup.enabled: false`). Nie zakładamy, że automatyczny
+   backup VPS-a od OVH jest włączony, dopóki **użytkownik** tego nie potwierdzi; zabezpieczenia generowania na nim nie
+   polegają: dane generatora odtwarza ponowne generowanie tego samego profilu, a zamówienia złożone po generowaniu
+   i zmiany z panelu nie mają kopii w klastrze.
+
+**Uruchomienie** (po zgodzie użytkownika; przebieg trwa godziny i wymaga komputera, który nie śpi):
+
+```sh
+KUBE_DIR="$(mktemp -d)"
+make -C infra/k8s kubeconfig HOST=<user>@<adres> KUBE_DIR="$KUBE_DIR"
+make -C infra/k8s generate PROFILE=medium \
+  GENERATE_PROBE_URL='https://api.worf.pl/ https://worf.pl/' KUBE_DIR="$KUBE_DIR"
+```
+
+- `PROFILE` to `seed` albo profil CronJoba (`server` po `medium`: wdrożona rewizja musi mieć wtedy
+  `demoData.profile: server`).
+- `GENERATE_PROBE_HOST='<host> ...'` (po jednym nagłówku `Host` na adres) tylko w klastrze testowym.
+- Cel wypisuje host klastra, liczby produktów i zamówień w bazie, profil docelowy, wolne miejsce i że sklep będzie
+  niedostępny, i czeka na słowo `tak` na standardowym wejściu; agent podaje je dopiero po zgodzie użytkownika
+  (`printf 'tak\n' | make … generate …`).
+- Zmienne dodatkowe (wartości domyślne): `GENERATE_CLOSE_WAIT` 120 s (czas, w którym sonda ma podać „zamknięty” po regule
+  i restarcie Traefika), `GENERATE_OPEN_WAIT` 300 s (czas, w którym ma podać „otwarty” po usunięciu reguły),
+  `GENERATE_POLL` 30 s (odstęp odczytów Joba), `GENERATE_PROBE_POLL` 5 s (odstęp rund sondy). Wartością jest liczba
+  całkowita sekund; inna to kod 2.
+- `generate` i `open` działają pojedynczo: blokadą jest ConfigMap `demo-data-lock` (kto ją trzyma: polecenie, profil,
+  host operatora, pid, czas startu; `status` ją pokazuje). `generate` zakłada ją po `tak` i trzyma do końca, razem
+  z `open`, który woła; `open` uruchomiony ręcznie zakłada ją na starcie. Drugi `generate` albo `open` odmawia w tym
+  czasie bez zmian i podaje posiadacza. Oba cele zwalniają ją przy każdym wyjściu poza zabiciem sygnałem KILL (i utratą
+  połączenia przy zwalnianiu): ręczne usunięcie w „Po błędzie albo przerwaniu”.
+- Przebieg `generate`: sprawdzenia bez zmian, pytanie, blokada, reguła `shop-closed`, restart podów Traefika, sonda
+  „zamknięty”, sekret puli zdjęć, usunięcie Joba `demo-data-run` poprzedniego przebiegu, generowanie (nowy Job
+  `demo-data-run`; skrypt tylko czeka), `open`. `open`: wyczyszczona pula `cache.sitemap`, indeksy Postgresa, alias wyszukiwarki, Job `load` ze ścieżkami
+  sklepu (strona główna, listing, produkt, wyszukiwarka, koszyk i checkout gościa), liczby produktów i zamówień
+  (obejmują zamówienie checkoutu gościa `load-<n>@example.com`, które wygasa jak każde nieopłacone) i rozmiary, usunięcie
+  reguły, sonda „otwarty”. `status` w tym czasie pokazuje zamknięcie i stan Joba.
+- `open` ręcznie, po przebiegu przerwanym przed otwarciem (Job `demo-data-run` jest `Complete`; po zgodzie):
+
+  ```sh
+  make -C infra/k8s open GENERATE_PROBE_URL='https://api.worf.pl/ https://worf.pl/' KUBE_DIR="$KUBE_DIR"
+  ```
+
+  `open` odmawia przy blokadzie innego przebiegu, przy aktywnym Jobie, bez Joba `demo-data-run` i z Jobem innym niż
+  `Complete`; `generate` usuwa Job poprzedniego przebiegu tuż przed nowym (po zamknięciu), więc sukces poprzedniego
+  przebiegu nie otworzy sklepu po przerwanym nowym. Gdy `generate` skończył się przed tym usunięciem (np. sonda nie
+  potwierdziła zamknięcia), dane są nietknięte, a `open` otwiera sklep na Jobie poprzedniego przebiegu, jeśli jest
+  `Complete`.
+
+**Kody wyjścia.** `generate`: `0` dane wygenerowane, sprawdzone, sklep otwarty; `1` odmowa bez zmian, brak `tak` albo
+błąd (komunikat mówi, czy sklep jest zamknięty); `2` złe argumenty albo środowisko (`PROFILE`, `GENERATE_PROBE_URL`,
+`GENERATE_PROBE_HOST`, `KUBE_DIR`, zmienna czasu, brak pliku puli zdjęć albo zmiennej odczytu, `diskPeakGb`). `open`:
+`0` sprawdzone, sklep otwarty; `1` odmowa, nieudane sprawdzenie (sklep zostaje zamknięty) albo sonda bez „otwarty”
+(reguła już usunięta, ponowne `open` kończy); `2` złe argumenty. Job generatora kończy się kodem `64` (odmowa bez zmian:
+brak albo zły `DEMO_DATA_CONFIRM`), `74` (za mało wolnego miejsca albo nieczytelny odczyt przed startem, nic nie ruszyło;
+`seed` nie ma progu, tylko wymóg liczbowego odczytu) albo `75` (strażnik albo TERM zatrzymał generator: dane niepełne);
+inny kod to kod generatora. Powód z Joba (`/dev/termination-log`) jest w komunikacie celu. `rerun` nie ponawia Joba
+generatora: odmawia kodem 3 i wskazuje `generate`.
+
+**Po błędzie albo przerwaniu.** `make status`, potem:
+
+- Job `demo-data-run` nadal aktywny: czekać (strażnik i zbieranie logów działają w klastrze); po `Complete` `open`.
+- Job `Failed` (także bez poda, po czasie `demoData.activeDeadlineSeconds`: `medium` 6 h, `server` 24 h, albo po kodzie
+  75), brak Joba albo nieudane sprawdzenie w `open`: sklep zostaje zamknięty, a dane są niepełne. Dwie drogi:
+  - ponowienie: `generate PROFILE=<profil>` (po zatrzymaniu przez strażnika miejsca skończy się tak samo, więc najpierw
+    decyzja użytkownika: inny profil albo zwolnienie miejsca);
+  - powrót do seeda: `generate PROFILE=seed`. Ten sam przebieg i ten sam Job (zamknięcie, `bin/seed-demo`, `open`),
+    minuty, bez pliku puli zdjęć i bez progu wolnego miejsca (po zatrzymaniu przez strażnika miejsce zostaje poniżej
+    progu, a seed zaczyna od `TRUNCATE` i zwalnia je od razu). Przy wysokim zapełnieniu dysku (powyżej 90%, na serwerze
+    około 20,7 GB wolnego) nowy indeks seeda może nie dostać shardu, dopóki Elasticsearch nie odświeży informacji
+    o dysku (około 30 s): ta próba kończy się błędem, a ponowienie przechodzi. Konta generatora w Keycloaku zostają
+    (wyłączone, bez poświadczeń).
+- Sonda zamknięcia bez „zamknięty” (np. wyzwanie Cloudflare): sklep zamknięty, dane i Job poprzedniego przebiegu bez
+  zmian; `make open` otwiera sklep na tym Jobie, jeśli jest `Complete`, a po poprawie adresów sondy można ponowić
+  `generate`.
+- Pozostawiony sekret `demo-photos` (zabity skrypt; `status` go pokazuje): usuwa go `open`, gdy żaden Job nie działa.
+- Pozostawiona blokada `demo-data-lock` (`status`: `lock demo-data-lock: HELD by …`; `generate` i `open` odmawiają z jej
+  posiadaczem) po `generate` albo `open` zabitym sygnałem KILL albo bez połączenia przy zwalnianiu: **użytkownik**
+  sprawdza, że żaden `generate` ani `open` nie działa (komputer i proces z danych posiadacza), i usuwa ją na serwerze:
+
+  ```sh
+  ssh <user>@<adres> sudo k3s kubectl -n shop delete configmap demo-data-lock
+  ```
+
+  Usunięcie blokady działającego przebiegu pozwala drugiemu `generate` albo `open` działać równolegle z nim. Potem jak
+  w punktach wyżej (`status`, `open` albo ponowny `generate`).
+- Log Joba po restarcie serwera albo usunięciu poda: Grafana Cloud (Explore, przestrzeń `shop`).
+
+Po błędzie wymagającym poprawki kodu kolejność to: powrót do seeda (sklep otwarty na seedzie), wdrożenie poprawki,
+ponowne generowanie. Wdrożenie przy zamkniętym sklepie jest możliwe (reguła zostaje), ale Job `initialize` może skończyć
+się błędem stanu mieszanego i zatrzymać synchronizację przed `purge-caches` i `backfill`; po udanym generowaniu albo
+powrocie do seeda domyka ją kolejne wdrożenie albo ręczna synchronizacja aplikacji `shop` w Argo CD (**użytkownik**).
+
+**Powrót do `medium` z `server`.** PR z `demoData.profile: medium`, wdrożenie, potem `generate PROFILE=medium`. Krok kont
+usuwa wtedy do 900 tys. kont pojedynczymi wywołaniami, a jego czas jest niezmierzony. `make -C infra/k8s reinitialize`
+odmawia kodem 1 przed pytaniem, dopóki sklep jest zamknięty (reguła `shop-closed`); wraca się wtedy przez
+`generate PROFILE=seed`.
+
+W trakcie zamknięcia pody działają, więc alert `WorkloadNotReady` się nie odzywa, a strażnik zatrzymuje generator tuż
+przed progiem alertu `NodeDiskFull` (85% zajętego miejsca). Ewentualne wyciszenie alertów na czas przebiegu robi ręcznie
+**użytkownik** (sekcja 9).
+
+**Wdrożenie po generowaniu.** Pierwsze zwykłe wdrożenie po `medium` i po `server` (zgoda użytkownika, sekcja 7) nie rusza
+wygenerowanych danych (`initialize` kończy się bez zmian przy niepustych produktach, cenach i stanach). **Agent**
+sprawdza po nim `status`: aplikacje `Synced` i `Healthy`, Joby wersji `Complete`, czas Joba `initialize` z kolumny
+`DURATION` listy Jobów, liczby z ostatniej linii jego logu równe liczbom produktów i zamówień z wyniku `open` (plus
+zamówienia złożone od tamtej pory) i sklep otwarty. Czas `initialize` dłuższy niż 5 minut na danych `server` to
+zgłoszenie do backlogu (limit Joba to 30 minut; `initialize` liczy `count(*)` czterech tabel przy każdym wdrożeniu).
+Wynik trafia do raportu. Migracja na tabeli z milionami wierszy musi zmieścić się w limicie Joba `migrate` (30 minut).
+
+**Logi i metryki.** Pełny log Joba i metryki zbiera Alloy do Grafana Cloud (retencja logów 14 dni; kopia nie zależy
+od rotacji logu kontenera ani od istnienia poda, a po restarcie serwera w trakcie przebiegu jest jedyną kopią logu).
+**Agent** w ciągu retencji eksportuje z Grafana Cloud (Explore: logi przestrzeni `shop` poda Joba `demo-data-run`;
+metryki węzła, pamięć i CPU kontenerów, restarty) pełny log i szczyty (dysk, pamięć i CPU Postgresa i Elasticsearcha,
+restarty kontenerów) i zapisuje raport w `docs/reports/` (czasy kroków z linii `[OK]` generatora, rozmiary, szczyt
+dysku, wynik sprawdzenia). Liczby z raportu opisują ten serwer i ten profil; liczby `server` przed jego przebiegiem
+i wszystkie liczby `full` to ekstrapolacja z `medium`, a pełna skala (10 mln produktów, 50 mln zamówień) nie jest
+zweryfikowana.

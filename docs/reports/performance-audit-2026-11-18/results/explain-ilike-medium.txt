@@ -1,0 +1,79 @@
+===== name ILIKE '%dorakos%' (matches: 2501)
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=770.04..770.17 rows=51 width=71) (actual time=7.407..7.416 rows=51.00 loops=1)
+   Buffers: shared hit=2722
+   ->  Sort  (cost=770.04..770.29 rows=100 width=71) (actual time=7.406..7.408 rows=51.00 loops=1)
+         Sort Key: name, id
+         Sort Method: top-N heapsort  Memory: 36kB
+         Buffers: shared hit=2722
+         ->  Bitmap Heap Scan on catalog_product p  (cost=373.94..766.72 rows=100 width=71) (actual time=1.863..6.795 rows=2501.00 loops=1)
+               Recheck Cond: ((name)::text ~~* '%dorakos%'::text)
+               Heap Blocks: exact=2467
+               Buffers: shared hit=2716
+               ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..373.91 rows=100 width=0) (actual time=1.687..1.687 rows=2501.00 loops=1)
+                     Index Cond: ((name)::text ~~* '%dorakos%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=249
+ Planning:
+   Buffers: shared hit=277
+ Planning Time: 0.710 ms
+ Execution Time: 7.485 ms
+(18 rows)
+
+===== name ILIKE '%butów%' (matches: 4433)
+                                                                               QUERY PLAN                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..2903.61 rows=51 width=71) (actual time=2945.398..2945.532 rows=51.00 loops=1)
+   Buffers: shared hit=102353 read=461892 written=5716
+   I/O Timings: shared read=2235.842 write=25.176
+   ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..575742.44 rows=10114 width=71) (actual time=2945.397..2945.524 rows=51.00 loops=1)
+         Filter: ((name)::text ~~* '%butów%'::text)
+         Rows Removed by Filter: 556516
+         Index Searches: 1
+         Buffers: shared hit=102353 read=461892 written=5716
+         I/O Timings: shared read=2235.842 write=25.176
+ Planning:
+   Buffers: shared hit=277
+ Planning Time: 0.713 ms
+ Execution Time: 2945.552 ms
+(13 rows)
+
+===== name ILIKE '%sportowe%' (matches: 8603)
+                                                                               QUERY PLAN                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..2903.61 rows=51 width=71) (actual time=2563.681..2563.835 rows=51.00 loops=1)
+   Buffers: shared hit=152071 read=674386 written=721
+   I/O Timings: shared read=1720.403 write=7.529
+   ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..575742.44 rows=10114 width=71) (actual time=2563.679..2563.824 rows=51.00 loops=1)
+         Filter: ((name)::text ~~* '%sportowe%'::text)
+         Rows Removed by Filter: 815146
+         Index Searches: 1
+         Buffers: shared hit=152071 read=674386 written=721
+         I/O Timings: shared read=1720.403 write=7.529
+ Planning:
+   Buffers: shared hit=266 read=11
+   I/O Timings: shared read=0.055
+ Planning Time: 0.966 ms
+ Execution Time: 2563.861 ms
+(14 rows)
+
+===== name ILIKE '%buty%' (matches: 107742)
+                                                                               QUERY PLAN                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..290.75 rows=51 width=71) (actual time=256.641..256.811 rows=51.00 loops=1)
+   Buffers: shared hit=13121 read=66102 written=78
+   I/O Timings: shared read=172.253 write=0.709
+   ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..575742.44 rows=101137 width=71) (actual time=256.640..256.798 rows=51.00 loops=1)
+         Filter: ((name)::text ~~* '%buty%'::text)
+         Rows Removed by Filter: 78066
+         Index Searches: 1
+         Buffers: shared hit=13121 read=66102 written=78
+         I/O Timings: shared read=172.253 write=0.709
+ Planning:
+   Buffers: shared hit=268 read=9
+   I/O Timings: shared read=0.059
+ Planning Time: 0.775 ms
+ Execution Time: 256.831 ms
+(14 rows)
+

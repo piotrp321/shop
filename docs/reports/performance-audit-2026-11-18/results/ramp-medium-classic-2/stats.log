@@ -1,0 +1,665 @@
+T 19:02:29
+shop-perfaudit-api-prodp 0.00% 180.2MiB / 31.29GiB
+shop-perfaudit-worker-1 8.98% 50.76MiB / 31.29GiB
+shop-perfaudit-api-1 2.00% 124.3MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 146.6MiB / 31.29GiB
+shop-perfaudit-varnish-1 0.02% 127.2MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.37% 65.25MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.74% 77.52MiB / 31.29GiB
+shop-perfaudit-store-1 0.00% 308.5MiB / 31.29GiB
+shop-perfaudit-keycloak-1 1.21% 599.2MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874.9MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.40% 50.29MiB / 31.29GiB
+shop-perfaudit-postgres-1 18.60% 366.9MiB / 31.29GiB
+shop-perfaudit-redis-1 0.08% 16.55MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 100.54% 1.99GiB / 31.29GiB
+shop-perfaudit-garage-1 0.02% 16.98MiB / 31.29GiB
+k6-ramp 0.49% 66.84MiB / 31.29GiB
+FOREIGN_TOTAL 128.87
+T 19:02:36
+k6-ramp 8.11% 75.29MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 180.2MiB / 31.29GiB
+shop-perfaudit-worker-1 10.68% 50.27MiB / 31.29GiB
+shop-perfaudit-api-1 12.82% 126.5MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 146.6MiB / 31.29GiB
+shop-perfaudit-varnish-1 0.23% 128.7MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 6.74% 78.05MiB / 31.29GiB
+shop-perfaudit-store-1 1.04% 309.6MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.12% 598.9MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 873.9MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.46% 50.53MiB / 31.29GiB
+shop-perfaudit-postgres-1 27.05% 365.5MiB / 31.29GiB
+shop-perfaudit-redis-1 0.10% 16.56MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 67.50% 2.097GiB / 31.29GiB
+shop-perfaudit-garage-1 0.01% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 128.83
+T 19:02:44
+k6-ramp 7.34% 173.2MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 180.2MiB / 31.29GiB
+shop-perfaudit-worker-1 9.23% 50.27MiB / 31.29GiB
+shop-perfaudit-api-1 28.62% 137MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 146.6MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.58% 129.5MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 23.00% 77.35MiB / 31.29GiB
+shop-perfaudit-store-1 60.55% 536.7MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.09% 598.9MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 873.9MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.35% 50.29MiB / 31.29GiB
+shop-perfaudit-postgres-1 51.42% 415.2MiB / 31.29GiB
+shop-perfaudit-redis-1 1.05% 16.81MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 41.20% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 1.16% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 303.61
+T 19:02:51
+k6-ramp 4.02% 163MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 180.2MiB / 31.29GiB
+shop-perfaudit-worker-1 7.99% 50.27MiB / 31.29GiB
+shop-perfaudit-api-1 22.84% 136.2MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 146.6MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.35% 130.5MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.62% 77.64MiB / 31.29GiB
+shop-perfaudit-store-1 54.32% 541.2MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.10% 598.9MiB / 31.29GiB
+shop-perfaudit-admin-1 0.90% 875.1MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.15% 50.54MiB / 31.29GiB
+shop-perfaudit-postgres-1 23.80% 369.7MiB / 31.29GiB
+shop-perfaudit-redis-1 0.11% 16.8MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 28.33% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 0.01% 17.13MiB / 31.29GiB
+FOREIGN_TOTAL 105.89
+T 19:02:58
+k6-ramp 4.51% 163.6MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 180.2MiB / 31.29GiB
+shop-perfaudit-worker-1 9.69% 50.52MiB / 31.29GiB
+shop-perfaudit-api-1 29.98% 138.2MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 146.6MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.61% 131.6MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.57% 77.41MiB / 31.29GiB
+shop-perfaudit-store-1 53.45% 559.8MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.10% 598.9MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 873.9MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.36% 50.79MiB / 31.29GiB
+shop-perfaudit-postgres-1 27.85% 368.2MiB / 31.29GiB
+shop-perfaudit-redis-1 0.09% 16.8MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 42.91% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 1.23% 17.07MiB / 31.29GiB
+FOREIGN_TOTAL 107.61
+T 19:03:05
+k6-ramp 4.46% 166.2MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 9.05% 50.52MiB / 31.29GiB
+shop-perfaudit-api-1 24.92% 138.9MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 146.6MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.55% 132.1MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.64% 77.8MiB / 31.29GiB
+shop-perfaudit-store-1 62.73% 545.5MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.09% 598.9MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 873.9MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.49% 50.54MiB / 31.29GiB
+shop-perfaudit-postgres-1 33.16% 367.8MiB / 31.29GiB
+shop-perfaudit-redis-1 0.09% 16.25MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 22.64% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 110.94
+T 19:03:12
+k6-ramp 7.57% 165.3MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 9.25% 50.52MiB / 31.29GiB
+shop-perfaudit-api-1 18.22% 142.8MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 146.6MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.13% 132.3MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.68% 77.72MiB / 31.29GiB
+shop-perfaudit-store-1 49.27% 573.6MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.10% 598.9MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 873.9MiB / 31.29GiB
+shop-perfaudit-mailpit-1 2.54% 51.04MiB / 31.29GiB
+shop-perfaudit-postgres-1 22.24% 366.5MiB / 31.29GiB
+shop-perfaudit-redis-1 0.09% 16.74MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 17.86% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 118.52
+T 19:03:20
+k6-ramp 7.27% 165.8MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 6.94% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 29.02% 140.1MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 146.6MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.29% 133.7MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 2.84% 65.8MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.06% 77.73MiB / 31.29GiB
+shop-perfaudit-store-1 50.40% 587.1MiB / 31.29GiB
+shop-perfaudit-keycloak-1 1.07% 598.9MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 873.9MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.20% 51.04MiB / 31.29GiB
+shop-perfaudit-postgres-1 24.32% 366.1MiB / 31.29GiB
+shop-perfaudit-redis-1 0.07% 16.5MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 38.69% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 0.02% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 103.13
+T 19:03:27
+k6-ramp 3.81% 165.8MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 7.42% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 18.88% 141.9MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.32% 133.5MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.02% 77.16MiB / 31.29GiB
+shop-perfaudit-store-1 51.99% 588.5MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.08% 598.9MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 873.9MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.38% 50.8MiB / 31.29GiB
+shop-perfaudit-postgres-1 19.93% 367.3MiB / 31.29GiB
+shop-perfaudit-redis-1 0.09% 16.75MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 36.20% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 0.01% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 117.82
+T 19:03:34
+k6-ramp 4.74% 166.4MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 8.30% 50.52MiB / 31.29GiB
+shop-perfaudit-api-1 25.89% 144.2MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.24% 133.9MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 14.88% 223.3MiB / 31.29GiB
+shop-perfaudit-store-1 66.60% 578.7MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.09% 598.9MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 873.9MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.34% 50.8MiB / 31.29GiB
+shop-perfaudit-postgres-1 28.86% 366.5MiB / 31.29GiB
+shop-perfaudit-redis-1 0.95% 16.49MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 31.90% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 0.25% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 155.55
+T 19:03:41
+k6-ramp 5.64% 166.8MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 8.53% 50.76MiB / 31.29GiB
+shop-perfaudit-api-1 35.42% 137.8MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 2.10% 135.1MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 3.19% 77.92MiB / 31.29GiB
+shop-perfaudit-store-1 72.57% 597.8MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.09% 598.9MiB / 31.29GiB
+shop-perfaudit-admin-1 0.89% 873.9MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.29% 50.79MiB / 31.29GiB
+shop-perfaudit-postgres-1 33.55% 366.2MiB / 31.29GiB
+shop-perfaudit-redis-1 0.09% 16.5MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 31.14% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 0.01% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 106.82
+T 19:03:48
+k6-ramp 7.99% 166.4MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 7.72% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 26.98% 141.9MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 2.24% 136.4MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.54% 77.55MiB / 31.29GiB
+shop-perfaudit-store-1 68.32% 593.5MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.10% 598.9MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 873.9MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.22% 50.3MiB / 31.29GiB
+shop-perfaudit-postgres-1 25.08% 369.5MiB / 31.29GiB
+shop-perfaudit-redis-1 0.85% 16.83MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 39.42% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 1.20% 17.12MiB / 31.29GiB
+FOREIGN_TOTAL 20.7
+T 19:03:55
+k6-ramp 5.59% 169.2MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 7.34% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 23.66% 139.1MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.50% 136MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 79.79% 76.96MiB / 31.29GiB
+shop-perfaudit-store-1 57.17% 594.6MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.08% 598.9MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.25% 51.04MiB / 31.29GiB
+shop-perfaudit-postgres-1 24.01% 366.5MiB / 31.29GiB
+shop-perfaudit-redis-1 0.08% 16.49MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 39.90% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 17.08MiB / 31.29GiB
+FOREIGN_TOTAL 185.96
+T 19:04:03
+k6-ramp 9.12% 168.6MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 7.52% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 41.60% 139MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.87% 137.2MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.28% 77.32MiB / 31.29GiB
+shop-perfaudit-store-1 69.37% 603.6MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.09% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 2.17% 50.55MiB / 31.29GiB
+shop-perfaudit-postgres-1 43.61% 368.6MiB / 31.29GiB
+shop-perfaudit-redis-1 0.08% 16.49MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 26.20% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 111.23
+T 19:04:10
+k6-ramp 9.18% 170.2MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 7.68% 50.76MiB / 31.29GiB
+shop-perfaudit-api-1 38.33% 137.9MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.87% 137.4MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 3.44% 65.62MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.24% 77.84MiB / 31.29GiB
+shop-perfaudit-store-1 81.54% 576.9MiB / 31.29GiB
+shop-perfaudit-keycloak-1 1.08% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.34% 50.31MiB / 31.29GiB
+shop-perfaudit-postgres-1 37.05% 367.5MiB / 31.29GiB
+shop-perfaudit-redis-1 0.08% 16.5MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 49.33% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 0.02% 16.99MiB / 31.29GiB
+FOREIGN_TOTAL 108.87
+T 19:04:17
+k6-ramp 4.86% 169.9MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 7.22% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 27.22% 138.9MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.47% 138.6MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.23% 77.63MiB / 31.29GiB
+shop-perfaudit-store-1 77.45% 584.9MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.08% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.25% 50.55MiB / 31.29GiB
+shop-perfaudit-postgres-1 25.78% 370.1MiB / 31.29GiB
+shop-perfaudit-redis-1 0.08% 16.24MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 22.91% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 0.01% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 118.29
+T 19:04:24
+k6-ramp 8.76% 170.4MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 7.00% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 25.96% 139.7MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 190.4MiB / 31.29GiB
+shop-perfaudit-api-prod 1.09% 145MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.65% 138.6MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.16% 77.86MiB / 31.29GiB
+shop-perfaudit-store-1 68.07% 604.3MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.09% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.25% 51.52MiB / 31.29GiB
+shop-perfaudit-postgres-1 27.11% 369.6MiB / 31.29GiB
+shop-perfaudit-redis-1 0.99% 16.5MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 21.68% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 1.13% 16.99MiB / 31.29GiB
+FOREIGN_TOTAL 109.78
+T 19:04:31
+k6-ramp 13.10% 170.2MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 9.75% 50.52MiB / 31.29GiB
+shop-perfaudit-api-1 39.07% 137.7MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.06% 185.9MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 2.36% 139MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 3.14% 77.91MiB / 31.29GiB
+shop-perfaudit-store-1 106.46% 581.8MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.12% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.89% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.42% 50.3MiB / 31.29GiB
+shop-perfaudit-postgres-1 35.61% 368.1MiB / 31.29GiB
+shop-perfaudit-redis-1 0.10% 16.24MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 30.04% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 0.01% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 512.97
+T 19:04:39
+k6-ramp 5.56% 172.5MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 9.06% 50.76MiB / 31.29GiB
+shop-perfaudit-api-1 28.74% 141.6MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.9MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.92% 140.1MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.77% 78.88MiB / 31.29GiB
+shop-perfaudit-store-1 86.95% 600.2MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.10% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.54% 50.55MiB / 31.29GiB
+shop-perfaudit-postgres-1 38.60% 368MiB / 31.29GiB
+shop-perfaudit-redis-1 1.02% 16.25MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 74.65% 2.191GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 6.8
+T 19:04:46
+k6-ramp 7.16% 172.4MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 8.81% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 23.61% 139.1MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.9MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.93% 140.5MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.85% 77.17MiB / 31.29GiB
+shop-perfaudit-store-1 103.86% 578.3MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.08% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.42% 50.8MiB / 31.29GiB
+shop-perfaudit-postgres-1 24.61% 367.3MiB / 31.29GiB
+shop-perfaudit-redis-1 0.10% 16.24MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 14.76% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 16.99MiB / 31.29GiB
+FOREIGN_TOTAL 164.08
+T 19:04:53
+k6-ramp 6.98% 174.1MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 9.04% 50.27MiB / 31.29GiB
+shop-perfaudit-api-1 38.45% 140MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.9MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 2.30% 141.3MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.47% 77.45MiB / 31.29GiB
+shop-perfaudit-store-1 86.77% 602MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.09% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.31% 50.32MiB / 31.29GiB
+shop-perfaudit-postgres-1 33.29% 373.3MiB / 31.29GiB
+shop-perfaudit-redis-1 0.09% 16.74MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 39.57% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 17.13MiB / 31.29GiB
+FOREIGN_TOTAL 180.61
+T 19:05:00
+k6-ramp 10.52% 174.1MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 8.00% 50.27MiB / 31.29GiB
+shop-perfaudit-api-1 36.80% 142.5MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.9MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 2.09% 141MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 2.86% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.27% 77.54MiB / 31.29GiB
+shop-perfaudit-store-1 104.59% 573MiB / 31.29GiB
+shop-perfaudit-keycloak-1 1.09% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.40% 50.8MiB / 31.29GiB
+shop-perfaudit-postgres-1 34.57% 369.8MiB / 31.29GiB
+shop-perfaudit-redis-1 0.08% 16.24MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 47.73% 2.194GiB / 31.29GiB
+shop-perfaudit-garage-1 1.14% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 105.06
+T 19:05:07
+k6-ramp 7.83% 176.6MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 8.66% 50.27MiB / 31.29GiB
+shop-perfaudit-api-1 38.97% 140.6MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.9MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 144.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 2.85% 143MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 35.28% 245.9MiB / 31.29GiB
+shop-perfaudit-store-1 110.61% 587.8MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.11% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.39% 50.31MiB / 31.29GiB
+shop-perfaudit-postgres-1 33.68% 368.5MiB / 31.29GiB
+shop-perfaudit-redis-1 0.11% 16.24MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 39.06% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 0.02% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 152.5
+T 19:05:14
+k6-ramp 8.46% 178.2MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 8.87% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 42.51% 139.3MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.9MiB / 31.29GiB
+shop-perfaudit-api-prod 0.09% 141.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 2.51% 142.5MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.67% 78.64MiB / 31.29GiB
+shop-perfaudit-store-1 115.52% 586.7MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.10% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.39% 50.31MiB / 31.29GiB
+shop-perfaudit-postgres-1 46.67% 372.5MiB / 31.29GiB
+shop-perfaudit-redis-1 1.02% 16.25MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 46.23% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 1.35% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 14.45
+T 19:05:22
+k6-ramp 13.29% 178.7MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 9.18% 50.52MiB / 31.29GiB
+shop-perfaudit-api-1 52.88% 141.9MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.9MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 141.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 3.07% 146.6MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 3.32% 78.03MiB / 31.29GiB
+shop-perfaudit-store-1 114.24% 598MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.11% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.95% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.49% 50.56MiB / 31.29GiB
+shop-perfaudit-postgres-1 43.21% 369.1MiB / 31.29GiB
+shop-perfaudit-redis-1 0.11% 16.49MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 44.06% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 132.86
+T 19:05:29
+k6-ramp 12.17% 179MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 9.11% 50.27MiB / 31.29GiB
+shop-perfaudit-api-1 36.46% 141.4MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.9MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 141.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 2.41% 143.3MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.41% 66.7MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 58.77% 77.58MiB / 31.29GiB
+shop-perfaudit-store-1 119.26% 597.8MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.09% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.42% 50.8MiB / 31.29GiB
+shop-perfaudit-postgres-1 37.38% 367.7MiB / 31.29GiB
+shop-perfaudit-redis-1 0.98% 16.18MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 27.01% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 180.94
+T 19:05:36
+k6-ramp 6.28% 178.7MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 7.50% 51MiB / 31.29GiB
+shop-perfaudit-api-1 32.23% 143.7MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.1MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 141.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.89% 144MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.45% 78.65MiB / 31.29GiB
+shop-perfaudit-store-1 91.39% 590.9MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.09% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.25% 50.56MiB / 31.29GiB
+shop-perfaudit-postgres-1 29.95% 373.4MiB / 31.29GiB
+shop-perfaudit-redis-1 0.08% 16.18MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 42.82% 2.193GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 7.73
+T 19:05:43
+k6-ramp 10.69% 178.8MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 7.35% 50.76MiB / 31.29GiB
+shop-perfaudit-api-1 36.32% 142.1MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.1MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 141.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 1.90% 144.7MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.36% 77.93MiB / 31.29GiB
+shop-perfaudit-store-1 105.23% 585.5MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.09% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874.1MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.35% 50.56MiB / 31.29GiB
+shop-perfaudit-postgres-1 38.14% 401.8MiB / 31.29GiB
+shop-perfaudit-redis-1 0.08% 16.43MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 18.70% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 8.67
+T 19:05:50
+k6-ramp 13.34% 177.6MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 9.82% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 48.02% 144.9MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.1MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 141.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 3.04% 145.7MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 2.93% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 3.13% 77.97MiB / 31.29GiB
+shop-perfaudit-store-1 124.39% 595.2MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.10% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874.1MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.34% 50.31MiB / 31.29GiB
+shop-perfaudit-postgres-1 41.65% 367.6MiB / 31.29GiB
+shop-perfaudit-redis-1 0.09% 16.18MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 51.13% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 1.24% 17.12MiB / 31.29GiB
+FOREIGN_TOTAL 36.34
+T 19:05:58
+k6-ramp 12.69% 184.8MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 172.9MiB / 31.29GiB
+shop-perfaudit-worker-1 10.57% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 43.02% 146.9MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.1MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 141.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 3.27% 147MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 3.21% 77.87MiB / 31.29GiB
+shop-perfaudit-store-1 113.43% 637.6MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.11% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874.1MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.36% 50.56MiB / 31.29GiB
+shop-perfaudit-postgres-1 35.11% 368.2MiB / 31.29GiB
+shop-perfaudit-redis-1 0.09% 16.43MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 24.17% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 0.01% 17.07MiB / 31.29GiB
+FOREIGN_TOTAL 35.71
+T 19:06:05
+k6-ramp 10.29% 191.8MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 171.6MiB / 31.29GiB
+shop-perfaudit-worker-1 9.46% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 81.10% 147.1MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.1MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 141.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 3.76% 148.3MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 3.56% 77.67MiB / 31.29GiB
+shop-perfaudit-store-1 123.60% 683.8MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.12% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874.1MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.19% 50.32MiB / 31.29GiB
+shop-perfaudit-postgres-1 50.23% 371.1MiB / 31.29GiB
+shop-perfaudit-redis-1 0.09% 16.43MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 64.04% 2.193GiB / 31.29GiB
+shop-perfaudit-garage-1 1.35% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 59.45
+T 19:06:13
+k6-ramp 15.46% 215.3MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 171.6MiB / 31.29GiB
+shop-perfaudit-worker-1 9.46% 50.51MiB / 31.29GiB
+shop-perfaudit-api-1 45.58% 146.8MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.1MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 141.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 3.80% 149.7MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 3.50% 77.73MiB / 31.29GiB
+shop-perfaudit-store-1 131.04% 692.3MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.13% 599MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874.1MiB / 31.29GiB
+shop-perfaudit-mailpit-1 2.69% 50.57MiB / 31.29GiB
+shop-perfaudit-postgres-1 33.72% 366.9MiB / 31.29GiB
+shop-perfaudit-redis-1 0.11% 16.43MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 41.38% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 16.97MiB / 31.29GiB
+FOREIGN_TOTAL 105.98
+T 19:06:20
+k6-ramp 11.34% 253.3MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 171.6MiB / 31.29GiB
+shop-perfaudit-worker-1 9.49% 50.27MiB / 31.29GiB
+shop-perfaudit-api-1 65.69% 147.3MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.1MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 141.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 3.77% 149.5MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.50% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.79% 77.84MiB / 31.29GiB
+shop-perfaudit-store-1 121.81% 707.4MiB / 31.29GiB
+shop-perfaudit-keycloak-1 1.18% 599.1MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874.1MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.57% 50.8MiB / 31.29GiB
+shop-perfaudit-postgres-1 38.12% 368MiB / 31.29GiB
+shop-perfaudit-redis-1 0.98% 16.18MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 49.85% 2.193GiB / 31.29GiB
+shop-perfaudit-garage-1 0.02% 16.97MiB / 31.29GiB
+FOREIGN_TOTAL 120.92
+T 19:06:27
+k6-ramp 10.78% 317.2MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 171.6MiB / 31.29GiB
+shop-perfaudit-worker-1 9.60% 50.27MiB / 31.29GiB
+shop-perfaudit-api-1 66.52% 145.3MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.1MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 141.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 4.24% 150.4MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.81% 77.97MiB / 31.29GiB
+shop-perfaudit-store-1 136.61% 716.8MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.11% 599.1MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874.1MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.44% 50.32MiB / 31.29GiB
+shop-perfaudit-postgres-1 35.95% 366.4MiB / 31.29GiB
+shop-perfaudit-redis-1 0.08% 16.43MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 61.07% 2.192GiB / 31.29GiB
+shop-perfaudit-garage-1 0.01% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 115.61
+T 19:06:35
+k6-ramp 9.83% 358.9MiB / 31.29GiB
+shop-perfaudit-api-prodp 0.00% 171.6MiB / 31.29GiB
+shop-perfaudit-worker-1 9.50% 50.52MiB / 31.29GiB
+shop-perfaudit-api-1 94.47% 148.8MiB / 31.29GiB
+shop-perfaudit-api-prodw 0.00% 185.1MiB / 31.29GiB
+shop-perfaudit-api-prod 0.00% 141.3MiB / 31.29GiB
+shop-perfaudit-varnish-1 3.75% 152.6MiB / 31.29GiB
+shop-perfaudit-imgproxy-1 0.00% 65.27MiB / 31.29GiB
+shop-perfaudit-rabbitmq-1 2.87% 78.32MiB / 31.29GiB
+shop-perfaudit-store-1 152.65% 713.7MiB / 31.29GiB
+shop-perfaudit-keycloak-1 0.09% 599.1MiB / 31.29GiB
+shop-perfaudit-admin-1 0.00% 874.1MiB / 31.29GiB
+shop-perfaudit-mailpit-1 1.38% 50.32MiB / 31.29GiB
+shop-perfaudit-postgres-1 41.98% 367.2MiB / 31.29GiB
+shop-perfaudit-redis-1 0.08% 16.43MiB / 31.29GiB
+shop-perfaudit-elasticsearch-1 37.73% 2.193GiB / 31.29GiB
+shop-perfaudit-garage-1 0.00% 16.98MiB / 31.29GiB
+FOREIGN_TOTAL 121.48

@@ -119,7 +119,7 @@ export interface paths {
         put?: never;
         /**
          * Create a guest cart
-         * @description A new, empty cart with a random id, which is also the key to it. It expires 30 days after its last change. No body is read.
+         * @description A new, empty cart with a random id, which is also the key to it. A cart without lines expires 1 day after its last change, a cart with lines 30 days after it. No body is read.
          */
         post: operations["createGuestCart"];
         delete?: never;
@@ -281,7 +281,7 @@ export interface paths {
         };
         /**
          * Product list
-         * @description A page of products, optionally searched by a phrase and narrowed by filters, with the counts that go with it (`facets`). The category filter includes the products of all its subcategories; an unknown category gives 404, an existing category without products an empty list. A page past the end gives an empty list with the real total. Without `sort` the list is by relevance with `q` and by name otherwise. The conditions on variants (`option`, `priceMin`, `priceMax`, `available`) all hold for one and the same variant of a product: `option=Kolor:czarne&option=Rozmiar:42` finds products with a black variant in size 42, not a black one and a different one in size 42. Prices and availability count only variants that can be bought now. Several values of one axis mean "any of them", different axes mean "all". Send `option` as a repeated key (`?option=Kolor:czarne&option=Kolor:biały`); the `option[]` form is not accepted. The response is public, kept for 60 s and tagged for purging, so a new price or stock level can show in the filters after up to a minute.
+         * @description A page of products, optionally searched by a phrase and narrowed by filters, with the counts that go with it (`facets`). The category filter includes the products of all its subcategories; an unknown category gives 404, an existing category without products an empty list. A page past the end gives an empty list with the real total; `pageCount` is the number of pages that can be read (the search reads only the first part of a very large result, so it can be lower than `total` suggests). Without `sort` the list is by relevance with `q` and by name otherwise. The conditions on variants (`option`, `priceMin`, `priceMax`, `available`) all hold for one and the same variant of a product: `option=Kolor:czarne&option=Rozmiar:42` finds products with a black variant in size 42, not a black one and a different one in size 42. Prices and availability count only variants that can be bought now. Several values of one axis mean "any of them", different axes mean "all". Send `option` as a repeated key (`?option=Kolor:czarne&option=Kolor:biały`); the `option[]` form is not accepted. The response is public, kept for 60 s and tagged for purging, so a new price or stock level can show in the filters after up to a minute.
          */
         get: operations["listProducts"];
         put?: never;
@@ -577,6 +577,11 @@ export interface components {
              * @example 412
              */
             total: number;
+            /**
+             * @description The pages of `perPage` products that can be read for the filter, 0 without results. The search reads only the first part of the results, so for a large result this is fewer pages than `total` would suggest; a page past it is empty.
+             * @example 18
+             */
+            pageCount: number;
             facets: components["schemas"]["ProductFacets"];
         };
         /** @description Counts for the filters of the list. Each one is computed with every condition of the search except its own. The count of an axis value is the number of products that have a variant with that value meeting the other variant conditions (other axes, price, availability). For an axis without a selection it is the `total` the search would return after adding that value; for an axis with a selection it is the result of selecting only that value of the axis. */
@@ -1202,10 +1207,10 @@ export interface components {
                 title: string;
             }[];
         };
-        /** @description A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, the `Idempotency-Key` was used by another request, or the discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`), its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the rejected code in the cart. */
+        /** @description A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, the `Idempotency-Key` was used by another request, or the discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`), its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the rejected code in the cart. Only the order of a guest can be too large (`guest-order-too-large`: more than 10 lines or 10 units of a line), checked before anything else about the cart. Too many orders wait for their payment (`too-many-unpaid-orders`): from the address of the client, of the email of a guest or of the account, with the same `detail` for all of them; a repeated request with the same `Idempotency-Key` and content still answers 200 with its order. */
         OrderConflictProblem: {
             /** @enum {string} */
-            type: "tag:piotrp321.github.io,2026:shop/problems/cart-empty" | "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable" | "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order" | "tag:piotrp321.github.io,2026:shop/problems/order-total-changed" | "tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum";
+            type: "tag:piotrp321.github.io,2026:shop/problems/cart-empty" | "tag:piotrp321.github.io,2026:shop/problems/guest-order-too-large" | "tag:piotrp321.github.io,2026:shop/problems/too-many-unpaid-orders" | "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable" | "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order" | "tag:piotrp321.github.io,2026:shop/problems/order-total-changed" | "tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum";
             /** @example Conflict */
             title: string;
             /** @enum {integer} */
@@ -1565,6 +1570,17 @@ export interface operations {
             /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
             401: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many previews of a discount code from the address of the client (the guest and the customer cart together; every read with a `discountCode` other than the empty string counts, also one refused with 400): the rate limit of the preview, before the cart is priced. A read without the code is not limited. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -1945,6 +1961,17 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too many new guest carts from the address of the client: the rate limit of the creation. No cart is made. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
@@ -2001,6 +2028,17 @@ export interface operations {
             /** @description No such cart: unknown, expired or merged, or the id is not a UUID (problem details). */
             404: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many previews of a discount code from the address of the client (the guest and the customer cart together; every read with a `discountCode` other than the empty string counts, also one refused with 400): the rate limit of the preview, before the cart is priced. A read without the code is not limited. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -2147,6 +2185,17 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too many changes of guest carts from the address of the client (all its guest carts, add, change and remove together): the rate limit of the changes, before the cart is read. Nothing changes. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
@@ -2239,6 +2288,17 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too many changes of guest carts from the address of the client (all its guest carts, add, change and remove together): the rate limit of the changes, before the cart is read. Nothing changes. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
@@ -2285,6 +2345,17 @@ export interface operations {
             /** @description No such cart: unknown, expired or merged, or an id is not a UUID (problem details). */
             404: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many changes of guest carts from the address of the client (all its guest carts, add, change and remove together): the rate limit of the changes, before the cart is read. Nothing changes. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -2804,7 +2875,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
+            /** @description The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), too many orders waiting for their payment from the address of the client or of the account (the same answer for both), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2964,7 +3035,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The cart is empty, has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
+            /** @description The cart is empty, has more than 10 lines or more than 10 units of a line (a guest order is limited so that it cannot reserve much stock), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), too many orders waiting for their payment from the address of the client or of the email (the same answer for both), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
             409: {
                 headers: {
                     [name: string]: unknown;

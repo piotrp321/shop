@@ -86,5 +86,14 @@
   "ci_workflow": "ci.yml",
   "ci_jobs": ["checks", "e2e"],
   "trend_last": 10,
-  "weekly_window_label": "Weekly \u00b7 all models"
+  "weekly_window_label": "Weekly \u00b7 all models",
+  "pricing": {
+    "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+    "read_at": "2026-11-19",
+    "models": {
+      "claude-fable-5-2": {"input": 8, "output": 40, "cache_read": 0.2, "cache_write_5m": 10, "cache_write_1h": 16},
+      "claude-opus-5-5": {"input": 4, "output": 20, "cache_read": 0.2, "cache_write_5m": 5, "cache_write_1h": 8},
+      "claude-sonnet-5-5": {"input": 2, "output": 10, "cache_read": 0.1, "cache_write_5m": 2.5, "cache_write_1h": 4}
+    }
+  }
 }

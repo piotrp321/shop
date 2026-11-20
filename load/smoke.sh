@@ -20,5 +20,13 @@ network="$(docker inspect --format '{{range $name, $_ := .NetworkSettings.Networ
 origin="$(docker compose exec -T store printenv STORE_URL | tr -d '\r\n')"
 [ -n "$origin" ] || fail "the store container has no STORE_URL"
 
+# The options of the choice of data (load/README.md) that the caller set are passed on to k6.
+discover_options=""
+for name in DISCOVER_CHUNKS DISCOVER_CHUNK_COUNT DISCOVER_PRODUCTS; do
+  value="$(printenv "$name" || true)"
+  [ -z "$value" ] || discover_options="$discover_options -e $name=$value"
+done
+
 echo "load-smoke: k6 on the network $network, store http://store:3000 (public address $origin), api http://api"
-k6_run "$network" "" smoke.js -e STORE_URL=http://store:3000 -e API_URL=http://api -e "STORE_ORIGIN=$origin"
+# shellcheck disable=SC2086 # the options of k6 are separate words (the keys of the chunks have no spaces)
+k6_run "$network" "" smoke.js -e STORE_URL=http://store:3000 -e API_URL=http://api -e "STORE_ORIGIN=$origin" $discover_options

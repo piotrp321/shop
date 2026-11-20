@@ -10,6 +10,7 @@ use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Tester\ApplicationTester;
 use Symfony\Component\Console\Tester\CommandTester;
 
 /**
@@ -72,9 +73,9 @@ final class RebuildReadModelsCommandTest extends KernelTestCase
         $this->connection->executeStatement("CREATE FUNCTION pg_temp.fail_customers() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RAISE EXCEPTION 'forced failure of the customers'; END \$\$");
         $this->connection->executeStatement('CREATE TRIGGER fail_customers BEFORE INSERT ON ordering_customer FOR EACH ROW EXECUTE FUNCTION pg_temp.fail_customers()');
 
-        $tester = $this->tester();
+        $tester = $this->applicationTester();
 
-        self::assertSame(Command::FAILURE, $tester->execute([]));
+        self::assertSame(Command::FAILURE, $tester->run(['command' => 'ordering:read-models:rebuild']));
         // The error block wraps the message: compared with its lines joined.
         self::assertStringContainsString('forced failure of the customers', (string) preg_replace('/\s+/', ' ', $tester->getDisplay()));
     }
@@ -101,9 +102,10 @@ final class RebuildReadModelsCommandTest extends KernelTestCase
         $this->connection->executeStatement("CREATE FUNCTION pg_temp.fail_sales() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RAISE EXCEPTION 'forced failure of the sales'; END \$\$");
         $this->connection->executeStatement('CREATE TRIGGER fail_sales BEFORE INSERT ON ordering_sales_hour FOR EACH ROW EXECUTE FUNCTION pg_temp.fail_sales()');
 
-        $tester = $this->tester();
+        $tester = $this->applicationTester();
 
-        self::assertSame(Command::FAILURE, $tester->execute([]));
+        // The command hands the error on to the console, which ends with 1 (a CommandTester would not catch it).
+        self::assertSame(Command::FAILURE, $tester->run(['command' => 'ordering:read-models:rebuild']));
         self::assertStringContainsString('forced failure of the sales', $tester->getDisplay());
     }
 
@@ -121,6 +123,14 @@ final class RebuildReadModelsCommandTest extends KernelTestCase
         self::assertSame('ordering:read-models:rebuild:sales', $step->name());
         self::assertSame(['sales: 1 hours rebuilt, 1 orders, 1230 grosze'], $lines);
         self::assertSame(1, OrderingFixture::count($this->connection, 'SELECT CAST(SUM(order_count) AS int) FROM ordering_sales_hour'));
+    }
+
+    private function applicationTester(): ApplicationTester
+    {
+        $application = new Application(self::$kernel ?? self::bootKernel());
+        $application->setAutoExit(false);
+
+        return new ApplicationTester($application);
     }
 
     private function tester(): CommandTester

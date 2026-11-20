@@ -75,7 +75,9 @@ def job_doc(name):
     job = state["jobs"][name]
     conditions = [] if job["state"] == "Running" else [{"type": job["state"], "status": "True"}]
     return {"apiVersion": "batch/v1", "kind": "Job",
-            "metadata": {"name": name, "namespace": "shop", "uid": "u-" + name, "resourceVersion": "1", "labels": job["labels"]},
+            "metadata": {"name": name, "namespace": "shop", "uid": "u-" + name, "resourceVersion": "1", "labels": job["labels"],
+                         **({"ownerReferences": [{"apiVersion": "batch/v1", "kind": "CronJob", "name": job["owner"], "uid": "c-" + job["owner"]}]}
+                            if job.get("owner") else {})},
             "spec": {"activeDeadlineSeconds": job["deadline"], "selector": {"matchLabels": {"controller-uid": "u"}},
                      "template": {"metadata": {"labels": dict(job["labels"], **{"controller-uid": "u", "batch.kubernetes.io/job-name": name})},
                                   "spec": {"containers": [{"name": "c", "env": [{"name": k, "value": v} for k, v in job["env"].items()]}]}}},
@@ -140,7 +142,10 @@ elif verb == "create" and rest[1] == "job":
     if source not in state["cronjobs"]:
         fail(f'Error from server (NotFound): cronjobs.batch "{source}" not found')
     cron = state["cronjobs"][source]
-    print(json.dumps({"apiVersion": "batch/v1", "kind": "Job", "metadata": {"name": name, "labels": {"app.kubernetes.io/name": source}},
+    # As kubectl create job --from: the Job is owned by the CronJob.
+    print(json.dumps({"apiVersion": "batch/v1", "kind": "Job",
+                      "metadata": {"name": name, "labels": {"app.kubernetes.io/name": source},
+                                   "ownerReferences": [{"apiVersion": "batch/v1", "kind": "CronJob", "name": source, "uid": "c-" + source}]},
                       "spec": {"activeDeadlineSeconds": cron["deadline"],
                                "template": {"spec": {"containers": [{"name": "c", "env": [{"name": k, "value": v} for k, v in cron["env"].items()]}]}}}}))
 elif verb == "set":
@@ -161,7 +166,8 @@ elif verb == "create":
         fail(f'Error from server (AlreadyExists): jobs.batch "{name}" already exists')
     result, log = outcome(name)
     env = {e["name"]: e["value"] for e in doc["spec"]["template"]["spec"]["containers"][0]["env"]}
-    state["jobs"][name] = {"labels": doc["metadata"].get("labels", {}), "state": result, "log": log, "env": env,
+    owners = doc["metadata"].get("ownerReferences") or [{}]
+    state["jobs"][name] = {"labels": doc["metadata"].get("labels", {}), "state": result, "log": log, "env": env, "owner": owners[0].get("name"),
                            "deadline": doc["spec"].get("activeDeadlineSeconds", 1800)}
     state["created"].append(name)
     save()
@@ -222,6 +228,7 @@ def initial_state(argocd=False):
             "restore": {"suspend": True, "deadline": 10800, "env": {"RESTORE_MODE": "list", "RESTORE_SNAPSHOT": ""}},
             "backup": {"suspend": False, "deadline": 7200, "env": {}},
             "cart-purge-expired": {"suspend": False, "deadline": None, "env": {}},
+            "rate-limit-check": {"suspend": False, "deadline": 60, "env": {}},
         },
         "outcomes": [["restore-check-", "Complete", CHECK_LOG], ["restore-list-", "Complete", LIST_LOG],
                      ["backup-pre-restore-", "Complete", f"backup: snapshot with the tag pre-restore\nsnapshot {PRE_RESTORE} saved\nbackup: done\n"]],
@@ -297,6 +304,12 @@ class RestoreScriptTest(unittest.TestCase):
         for call in cluster.calls():
             self.assertNotIn(strip_namespace(call)[0], ("scale", "patch", "rollout"), call)
 
+    def assert_nothing_changed(self, cluster):
+        """For a cluster with Jobs of its own: no Job created or deleted, no change of a CronJob, a Deployment or Argo CD."""
+        self.assertEqual([], cluster.state()["created"])
+        self.assertEqual([], cluster.state()["deleted"])
+        self.assertEqual([], [c for c in map(strip_namespace, cluster.calls()) if c[0] in ("scale", "patch", "rollout")])
+
     def changing_calls(self, cluster):
         """The kubectl calls that change something, without the namespace option, as short strings."""
         found = []
@@ -345,7 +358,7 @@ class RestoreScriptTest(unittest.TestCase):
         before = result.stdout.split("type tak")[0]
         for part in ("9e050a3d569735e3", "2026-11-11T03:00:05+01:00", "host 0b6f1d9e-4c3a", "nightly", "revision 0123abcd", "28 migrations",
                      "12 objects", "pre-restore", "shop", "keycloak", "product-images", "Redis", "RabbitMQ", "api, worker, store and keycloak",
-                     "cart-purge-expired", "migrate", "keycloak-config", "catalog:reindex", "purge-caches"):
+                     "cart-purge-expired", "rate-limit-check", "migrate", "keycloak-config", "catalog:reindex", "purge-caches"):
             self.assertIn(part, before)
 
     def test_the_check_job_is_from_the_cronjob_restore_in_the_mode_check_and_is_removed(self):
@@ -376,6 +389,64 @@ class RestoreScriptTest(unittest.TestCase):
         self.assertEqual([], cluster.state()["created"])
         self.assertEqual([], cluster.state()["deleted"])
         self.assertEqual(initial_state()["deployments"], cluster.state()["deployments"])
+
+    @staticmethod
+    def running(logical, owner, **changes):
+        return dict({"labels": {"app.kubernetes.io/name": logical}, "state": "Running", "log": "", "env": {}, "deadline": 60, "owner": owner}, **changes)
+
+    def test_an_active_job_of_the_cronjob_rate_limit_check_is_no_reason_to_refuse_and_is_waited_for_before_the_applications_stop(self):
+        """The check of Redis runs every five minutes for at most 60 s: refusing for it would make restore a matter of luck."""
+        for argocd in (False, True):
+            jobs = initial_state()["jobs"]
+            jobs["rate-limit-check-29341234"] = self.running("rate-limit-check", "rate-limit-check", complete_after_lists=8)  # read by step 1 and the three Jobs of the version first
+            cluster = self.stub(argocd=argocd, jobs=jobs)
+            result = self.restore(cluster)
+            self.assertEqual(0, result.returncode, (argocd, result.stderr))
+            self.assertIn("type tak", result.stdout)
+            self.assertIn("rate-limit-check-29341234", result.stdout, "it says it waits for the Job")
+            calls = list(map(strip_namespace, cluster.calls()))
+            suspend = next(i for i, c in enumerate(calls) if c[:3] == ["patch", "cronjob", "rate-limit-check"])
+            lists = [i for i, c in enumerate(calls) if c[:2] == ["get", "jobs"] and i > suspend]
+            scale = next(i for i, c in enumerate(calls) if c[0] == "scale")
+            self.assertGreaterEqual(len(lists), 3, "the Jobs are read after the suspension until the Job of the check ends")
+            self.assertLess(max(lists), scale)
+            # It is in the cluster as the chart has it again.
+            self.assertFalse(cluster.state()["cronjobs"]["rate-limit-check"]["suspend"])
+
+    def test_a_job_of_the_check_that_does_not_end_stops_the_restore_before_the_applications_with_the_cronjob_suspended(self):
+        jobs = initial_state()["jobs"]
+        jobs["rate-limit-check-29341234"] = self.running("rate-limit-check", "rate-limit-check")
+        cluster = self.stub(jobs=jobs)
+        result = self.restore(cluster, RESTORE_ACTIVE_JOBS_WAIT_SECONDS="0")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("rate-limit-check-29341234", result.stderr)
+        self.assertIn("step 4", result.stderr)
+        state = cluster.state()
+        self.assertTrue(state["cronjobs"]["rate-limit-check"]["suspend"])
+        self.assertEqual(initial_state()["deployments"], state["deployments"])
+        self.assertEqual([], [c for c in map(strip_namespace, cluster.calls()) if c[0] == "scale"])
+
+    def test_an_active_job_of_another_cronjob_is_still_refused_beside_one_of_the_check(self):
+        for owner in ("backup", "cart-purge-expired", "restore", None):
+            jobs = initial_state()["jobs"]
+            jobs["rate-limit-check-29341234"] = self.running("rate-limit-check", "rate-limit-check")
+            jobs["other-29341234"] = self.running("other", owner)
+            cluster = self.stub(jobs=jobs)
+            result = self.restore(cluster)
+            self.assertEqual(1, result.returncode, owner)
+            self.assertIn("other-29341234", result.stderr, owner)
+            self.assertNotIn("type tak", result.stdout, owner)
+            self.assert_nothing_changed(cluster)
+
+    def test_an_active_job_that_only_has_the_name_of_the_check_is_refused(self):
+        """What makes a Job the check's is its CronJob as owner, not its name: a Job someone made by hand is a Job like any other."""
+        jobs = initial_state()["jobs"]
+        jobs["rate-limit-check-by-hand"] = self.running("rate-limit-check", None)
+        cluster = self.stub(jobs=jobs)
+        result = self.restore(cluster)
+        self.assertEqual(1, result.returncode)
+        self.assertIn("rate-limit-check-by-hand", result.stderr)
+        self.assert_nothing_changed(cluster)
 
     def test_a_synchronization_of_shop_in_progress_is_refused(self):
         for app in ({"automated": dict(AUTOMATED), "phase": "Running"}, {"automated": dict(AUTOMATED), "operation": True}):
@@ -469,14 +540,14 @@ class RestoreScriptTest(unittest.TestCase):
         result = self.restore(cluster)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(deployments, cluster.state()["deployments"])
-        self.assertEqual({"restore": True, "backup": False, "cart-purge-expired": False},
+        self.assertEqual({"restore": True, "backup": False, "cart-purge-expired": False, "rate-limit-check": False},
                          {n: c["suspend"] for n, c in cluster.state()["cronjobs"].items()})
         self.assertEqual([
-            "patch cronjob cart-purge-expired", "patch cronjob backup",
+            "patch cronjob cart-purge-expired", "patch cronjob backup", "patch cronjob rate-limit-check",
             "scale deployment api", "scale deployment worker", "scale deployment store", "scale deployment keycloak",
             "scale deployment keycloak", "rollout status deployment/keycloak",
             "scale deployment api", "scale deployment worker", "scale deployment store",
-            "patch cronjob cart-purge-expired", "patch cronjob backup",
+            "patch cronjob cart-purge-expired", "patch cronjob backup", "patch cronjob rate-limit-check",
             "rollout status deployment/api", "rollout status deployment/worker", "rollout status deployment/store",
         ], self.changing_calls(cluster))
         self.assertEqual([], [c for c in cluster.calls() if "argocd" in c and c[2] == "patch"])
@@ -495,10 +566,11 @@ class RestoreScriptTest(unittest.TestCase):
         state = cluster.state()
         state["cronjobs"]["backup"]["suspend"] = True
         state["cronjobs"]["cart-purge-expired"]["suspend"] = True
+        state["cronjobs"]["rate-limit-check"]["suspend"] = True
         (cluster.root / "state.json").write_text(json.dumps(state))
         result = self.restore(cluster, PRE_RESTORE="skip")
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual({"restore": True, "backup": False, "cart-purge-expired": False},
+        self.assertEqual({"restore": True, "backup": False, "cart-purge-expired": False, "rate-limit-check": False},
                          {n: c["suspend"] for n, c in cluster.state()["cronjobs"].items()})
 
     def test_the_jobs_run_in_order_and_the_jobs_of_the_version_under_their_names(self):
@@ -599,6 +671,7 @@ class RestoreScriptTest(unittest.TestCase):
             self.assertEqual({"api": 0, "worker": 0, "store": 0, "keycloak": 0}, cluster.state()["deployments"], argocd)
             self.assertTrue(cluster.state()["cronjobs"]["backup"]["suspend"])
             self.assertTrue(cluster.state()["cronjobs"]["cart-purge-expired"]["suspend"])
+            self.assertTrue(cluster.state()["cronjobs"]["rate-limit-check"]["suspend"])
             created = cluster.state()["created"]
             self.assertEqual([], [n for n in created if n.startswith(("migrate", "keycloak-config", "purge-caches", "restore-reindex"))])
             if argocd:

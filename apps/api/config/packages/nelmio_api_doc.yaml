@@ -20,7 +20,7 @@ nelmio_api_doc:
                         # Application layer stays free of OpenAPI; ProductsEndpointTest checks them against real responses.
                         ProductPage:
                             type: object
-                            required: [items, page, perPage, total, facets]
+                            required: [items, page, perPage, total, pageCount, facets]
                             properties:
                                 items:
                                     type: array
@@ -38,6 +38,14 @@ nelmio_api_doc:
                                     type: integer
                                     description: All products matching the filter, not only this page.
                                     example: 412
+                                pageCount:
+                                    type: integer
+                                    minimum: 0
+                                    description: >-
+                                        The pages of `perPage` products that can be read for the filter, 0 without results. The
+                                        search reads only the first part of the results, so for a large result this is fewer
+                                        pages than `total` would suggest; a page past it is empty.
+                                    example: 18
                                 facets:
                                     $ref: '#/components/schemas/ProductFacets'
                         ProductFacets:
@@ -901,13 +909,19 @@ nelmio_api_doc:
                                 discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`),
                                 its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum
                                 (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the
-                                rejected code in the cart.
+                                rejected code in the cart. Only the order of a guest can be too large (`guest-order-too-large`: more
+                                than 10 lines or 10 units of a line), checked before anything else about the cart. Too many
+                                orders wait for their payment (`too-many-unpaid-orders`): from the address of the client, of the
+                                email of a guest or of the account, with the same `detail` for all of them; a repeated request with
+                                the same `Idempotency-Key` and content still answers 200 with its order.
                             required: [type, title, status, detail]
                             properties:
                                 type:
                                     type: string
                                     enum:
                                         - 'tag:piotrp321.github.io,2026:shop/problems/cart-empty'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/guest-order-too-large'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/too-many-unpaid-orders'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/order-total-changed'

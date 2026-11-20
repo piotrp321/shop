@@ -5,6 +5,10 @@
 #   smoke.sh                       the whole test
 #   SMOKE_BREAK=migration smoke.sh the api image gets a migration that fails: the test must fail
 #   SMOKE_BREAK=image smoke.sh     the store image is unable to start: the test must fail
+#   SMOKE_BREAK=demo-data smoke.sh the CronJob demo-data gets a profile the generator refuses: in the last phase, after all the
+#                                  others passed, make generate with it must end with 1 and leave the shop closed (502, the Job
+#                                  demo-data-run failed), make open must refuse, and make generate PROFILE=seed must open the shop
+#                                  on the seed; then the test fails on purpose (exit 1, the message says the break behaved as expected)
 #   SMOKE_BUILD=0 smoke.sh         use the images shop-smoke-<cluster>/<app>:r1 that are already there
 #   SMOKE_VALUES=<file> smoke.sh   install r1 with the images values file of the deployment (scripts/images-values.sh: the
 #                                  revision and the digests) instead of the local images: the cluster pulls
@@ -17,18 +21,28 @@
 #   SMOKE_REUSE=1 smoke.sh         go on with the later phases on the cluster that SMOKE_KEEP=1 left (a debugging aid)
 #   SMOKE_TIMEOUT=900              seconds to wait for the cluster to settle after each install or upgrade
 #
-# Phases: install and checks (also the store and the panel in a browser, and create-admin); the backup (an S3 of its own in the
+# Phases: install and checks (also a Job from the CronJob rate-limit-check, which must succeed on the Redis of the cluster; the store and
+# the panel in a browser, and create-admin); the backup (an S3 of its own in the
 # namespace smoke-backup, a Job from the CronJob backup, the snapshot it leaves, a Job from the CronJob backup-verify; the time of the
 # phase and of the verification is printed); the restore on an empty cluster (make backups lists the snapshots, the namespace shop
 # is deleted with its volumes and the chart installed again, make restore brings back the snapshot nightly: the administrator, the
 # customer and its login, the numbers of products and orders, an image, the search, the home page, the snapshot pre-restore;
-# make restore refuses a snapshot with a migration the code does not know and the shop goes on; the time of the phase and the
+# make restore refuses a snapshot with a migration the code does not know and the shop goes on, also while a Job of the CronJob
+# rate-limit-check runs (it is no reason to refuse); the time of the phase and the
 # peak disk are printed); the later phases run on the restored cluster: upgrade with a new revision (initialize
 # and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
 # the users and their passwords stay); upgrade with an image whose migration fails (the previous api and worker keep
 # serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
-# nothing). The peak memory and disk of the cluster are printed at the end. The cluster is deleted on every exit
-# (success, error, interrupt).
+# nothing). The last phase runs the demo data generator through make generate PROFILE=small (docs/features/demo-scale/spec.md): it
+# waits until every StatefulSet and Deployment is rolled out and no Job runs (the upgrade before it ends on a failed job, with
+# Elasticsearch still on its way to the new image), and runs scripts/generate.sh (it prints the free space of the node) with the word tak
+# (without a file of the photo pool and without Argo CD, as in deploy.yml; generate runs make open after the Job) while requests go
+# through the ingress without a pause (smoke/traffic.py): they must get 200 before the closing, none while the shop is closed (Z1,
+# Z2) and 200 again after the opening; then the Jobs demo-data-run and load must have completed, the numbers be those of the seed and
+# of the profile, and the rule shop-closed be gone. The generator deletes the data of every module and generates its own, so it comes
+# after every phase that reads the seed, the backups and the restore (they count products and orders) and nothing runs on the data
+# after it. The time of the phase is printed. The peak memory and disk of the cluster are printed at the end. The cluster is deleted
+# on every exit (success, error, interrupt).
 #
 # The images (api, store, admin and elasticsearch from infra/elasticsearch/Dockerfile) are tagged
 # shop-smoke-<cluster>/<app>:r1..r4 (a registry name of their own per cluster) and removed at the end, so runs from
@@ -42,14 +56,17 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools.sh
 . "$here/tools.sh"
+# active_jobs: the Jobs that run, counted as make generate counts them (the phase of the generator waits for them).
+# shellcheck source=shop-closed.sh
+. "$here/shop-closed.sh"
 
 SMOKE_BREAK="${SMOKE_BREAK:-}"
 SMOKE_BUILD="${SMOKE_BUILD:-1}"
 SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-900}"
 SMOKE_VALUES="${SMOKE_VALUES:-}"
 case "$SMOKE_BREAK" in
-  "" | migration | image) ;;
-  *) echo "smoke: SMOKE_BREAK must be empty, migration or image, got '$SMOKE_BREAK'" >&2; exit 2 ;;
+  "" | migration | image | demo-data) ;;
+  *) echo "smoke: SMOKE_BREAK must be empty, migration, image or demo-data, got '$SMOKE_BREAK'" >&2; exit 2 ;;
 esac
 if [ -n "$SMOKE_VALUES" ]; then
   [ -f "$SMOKE_VALUES" ] || { echo "smoke: SMOKE_VALUES '$SMOKE_VALUES' is not a file" >&2; exit 2; }
@@ -107,6 +124,8 @@ if [ -n "$SMOKE_VALUES" ]; then
 fi
 unset SMOKE_GHCR_TOKEN
 sampler_pid=""
+# The client of the traffic of the phase of the generator (traffic_start), a container named after the cluster.
+traffic_pid=""
 # The images built here: the production stage of each application and Elasticsearch with its plugin.
 apps="api store admin elasticsearch"
 # The password of the customer the checks create in the realm shop and log in with (before and after an upgrade).
@@ -120,6 +139,10 @@ cleanup() {
   status=$?
   trap - EXIT INT TERM
   [ -z "$sampler_pid" ] || kill "$sampler_pid" 2>/dev/null || true
+  if [ -n "$traffic_pid" ]; then
+    docker rm -f "$cluster-traffic" >/dev/null 2>&1 || true
+    kill "$traffic_pid" 2>/dev/null || true
+  fi
   if [ "${SMOKE_KEEP:-}" = 1 ] && [ "$status" -ne 0 ]; then
     # For debugging a failure only; never in CI.
     echo "smoke: SMOKE_KEEP=1, the failed cluster $cluster stays: k3d cluster delete $cluster" >&2
@@ -270,6 +293,18 @@ check_failures() {
   fi
 }
 
+# The StatefulSets whose rolling update has not ended, one line each (nothing when every one is rolled out): the controller has seen
+# the last spec, every replica runs the update revision (currentRevision = updateRevision) and is ready.
+# name generation observedGeneration replicas readyReplicas updatedReplicas currentRevision updateRevision
+# A failed read is a line too: it must never pass for a rolled-out cluster.
+statefulsets_in_rollout() {
+  statefulsets="$(kc get statefulsets -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.generation}{" "}{.status.observedGeneration}{" "}{.spec.replicas}{" "}{.status.readyReplicas}{" "}{.status.updatedReplicas}{" "}{.status.currentRevision}{" "}{.status.updateRevision}{"\n"}{end}')" || {
+    echo "(cannot read the StatefulSets)"
+    return 0
+  }
+  printf '%s\n' "$statefulsets" | awk 'NF && (NF != 8 || $2 != $3 || $5 != $4 || $6 != $4 || $7 != $8) {print}'
+}
+
 # Every version job complete (there must be six, backfill among them; a running job has no succeeded, and its line must
 # count), all deployments and statefulsets rolled out with the new pods ready.
 all_ready() {
@@ -281,8 +316,7 @@ all_ready() {
   not_ready="$(kc get deployments -o jsonpath='{range .items[*]}{.metadata.generation}{" "}{.status.observedGeneration}{" "}{.status.replicas}{" "}{.status.updatedReplicas}{" "}{.status.readyReplicas}{" "}{.status.availableReplicas}{"\n"}{end}' \
     | awk 'NF != 6 || $1 != $2 || $3 != 1 || $4 != 1 || $5 != 1 || $6 != 1 {print}')"
   [ -z "$not_ready" ] || return 1
-  not_ready="$(kc get statefulsets -o jsonpath='{range .items[*]}{.status.readyReplicas}{" "}{.status.updatedReplicas}{"\n"}{end}' | awk '$1 != 1 || $2 != 1 {print}')"
-  [ -z "$not_ready" ]
+  [ -z "$(statefulsets_in_rollout)" ]
 }
 
 wait_ready() {
@@ -601,11 +635,12 @@ YAML
   kc wait --for=condition=Ready pod/smoke-backup-tools --timeout=300s > /dev/null
 }
 
-# run_cronjob_job <cronjob> <job>: a Job from a CronJob of the backups, waited for up to 900 s; a failure prints the logs of all
-# its containers.
+# run_cronjob_job <cronjob> <job> [seconds]: a Job from a CronJob, waited for up to 900 s (or the seconds given; SMOKE_POLL, 5, is the
+# time between two readings); a failure prints the logs of all its containers.
 run_cronjob_job() {
   kc create job "$2" --from="cronjob/$1" > /dev/null
-  deadline=$(( $(date +%s) + 900 ))
+  limit="${3:-900}"
+  deadline=$(( $(date +%s) + limit ))
   while :; do
     state="$(kc get job "$2" -o jsonpath='{.status.succeeded}{" "}{.status.conditions[?(@.type=="Failed")].status}')"
     case "$state" in
@@ -616,13 +651,28 @@ run_cronjob_job() {
         return 1 ;;
     esac
     if [ "$(date +%s)" -ge "$deadline" ]; then
-      echo "smoke: the Job $2 of the CronJob $1 did not finish in 900 s" >&2
+      echo "smoke: the Job $2 of the CronJob $1 did not finish in $limit s" >&2
       kc get pods >&2 || true
       kc logs "job/$2" --all-containers --prefix --tail=40 >&2 || true
       return 1
     fi
-    sleep 5
+    sleep "${SMOKE_POLL:-5}"
   done
+}
+
+# The check of the Redis of the rate limiters (docs/features/abuse-limits/spec.md, L12): a Job made from the CronJob rate-limit-check, as
+# the CronJob makes it every five minutes, succeeds against the Redis of the cluster, and its log says the control key was written,
+# read and deleted. The alert RateLimitsOff counts exactly these successes. The Job is removed: it is no Job that restore waits for.
+check_rate_limit_check() {
+  run_cronjob_job rate-limit-check rate-limit-check-smoke 180
+  log_text="$(kc logs job/rate-limit-check-smoke)"
+  case "$log_text" in
+    *"accepted, returned and deleted the control key"*) ;;
+    *) echo "smoke: the log of the Job rate-limit-check-smoke does not say that the control key was written, read and deleted:" >&2; printf '%s\n' "$log_text" >&2; return 1 ;;
+  esac
+  [ "$(kc get cronjob rate-limit-check -o jsonpath='{.spec.suspend}')" != true ] || { echo "smoke: the CronJob rate-limit-check is suspended" >&2; return 1; }
+  kc delete job rate-limit-check-smoke --now > /dev/null
+  echo "ok: a Job of the CronJob rate-limit-check succeeds on the Redis of the cluster"
 }
 
 # The snapshot of the backup: the tag nightly, the host of the cluster, the dumps of both databases, the object put into the
@@ -772,9 +822,25 @@ SH
   [ -n "$newer" ] || { echo "smoke: could not make the snapshot with a newer migration" >&2; return 1; }
   pods_before="$(kc get pods -l 'app.kubernetes.io/name in (api,worker,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')"
   pre_restore_before="$(list_backups | awk '$4 == "pre-restore"' | wc -l | tr -d ' ')"
-  if restore_with tak "$newer" newer; then
+  # A Job of the CronJob rate-limit-check that is running (a copy of the Job of the CronJob with the command `sleep`, so that it
+  # lasts) is no reason for make restore to refuse: the refusal below comes from the snapshot, after the check of the active Jobs.
+  kc create job rate-limit-check-busy --from=cronjob/rate-limit-check --dry-run=client -o yaml \
+    | sed -e 's#^\( *\)- bin/console$#\1- sleep#' -e 's#^\( *\)- rate-limit:check$#\1- "400"#' -e 's#activeDeadlineSeconds: 60$#activeDeadlineSeconds: 600#' \
+    | kc create -f - > /dev/null
+  if [ "$(kc get job rate-limit-check-busy -o jsonpath='{.spec.template.spec.containers[0].command[0]}')" != sleep ]; then
+    kc delete job rate-limit-check-busy --now --ignore-not-found > /dev/null || true
+    echo "smoke: could not make a long Job of the CronJob rate-limit-check" >&2; return 1
+  fi
+  # The Job sleeps 400 s, far longer than the restore below takes even on a slow runner; it is read right after the restore and removed
+  # at once, whatever the restore did.
+  if restore_with tak "$newer" newer; then restore_exit=0; else restore_exit=1; fi
+  busy_state="$(kc get job rate-limit-check-busy -o jsonpath='{.metadata.name}{" "}{.status.succeeded}{.status.failed}' || true)"
+  kc delete job rate-limit-check-busy --now --ignore-not-found > /dev/null || true
+  if [ "$restore_exit" = 0 ]; then
     echo "smoke: make restore accepted a snapshot newer than the code:" >&2; cat "$work/restore-newer.log" >&2; return 1
   fi
+  [ "$busy_state" = "rate-limit-check-busy " ] \
+    || { echo "smoke: the Job rate-limit-check-busy was not running while make restore refused (state: '$busy_state')" >&2; return 1; }
   if ! grep -q 'newer than the deployed code' "$work/restore-newer.log" || ! grep -q 'nothing changed' "$work/restore-newer.log"; then
     echo "smoke: make restore of a newer snapshot failed for another reason:" >&2; cat "$work/restore-newer.log" >&2; return 1
   fi
@@ -787,7 +853,7 @@ SH
   fi
   [ "$(list_backups | awk '$4 == "pre-restore"' | wc -l | tr -d ' ')" = "$pre_restore_before" ] \
     || { echo "smoke: the refused restore made a backup pre-restore" >&2; return 1; }
-  for cronjob in backup cart-purge-expired; do
+  for cronjob in backup cart-purge-expired rate-limit-check; do
     [ "$(kc get cronjob "$cronjob" -o jsonpath='{.spec.suspend}')" != true ] || { echo "smoke: the refused restore suspended $cronjob" >&2; return 1; }
   done
   echo "ok: make restore refused the snapshot $newer with a migration the code does not know; the shop runs, the data is unchanged"
@@ -842,6 +908,225 @@ spec:
 YAML
 }
 
+# ---------------------------------------------------------------------------------------------------------------
+# The demo data generator through make generate and make open (docs/features/demo-scale/spec.md)
+# ---------------------------------------------------------------------------------------------------------------
+# job_states: one line per Job of the namespace, its name and the types of its conditions that are True.
+job_states() { kc get jobs -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.conditions[?(@.status=="True")].type}{"\n"}{end}'; }
+
+# job_has <name> <condition>: exactly one Job of the namespace has a name that matches the awk pattern <name>, and it has the
+# condition <condition> among its True ones (Kubernetes sets SuccessCriteriaMet and FailureTarget next to Complete and Failed).
+job_has() {
+  job_states | awk -v name="$1" -v want="$2" '$1 ~ name { all++; for (i = 2; i <= NF; i++) if ($i == want) n++ } END { exit !(all == 1 && n == 1) }'
+}
+
+# not_settled: what make generate refuses to start on (scripts/generate.sh, step 1), one line each: a StatefulSet in its rollout, a
+# Deployment that is not rolled out, a Job that runs (active_jobs of shop-closed.sh, as make generate counts them). A failed read is a
+# line too: it must never pass for a settled cluster.
+not_settled() {
+  statefulsets_in_rollout
+  deployments="$(kc get deployments -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.generation}{" "}{.status.observedGeneration}{" "}{.spec.replicas}{" "}{.status.readyReplicas}{" "}{.status.updatedReplicas}{"\n"}{end}')" || {
+    echo "(cannot read the Deployments)"
+    return 0
+  }
+  printf '%s\n' "$deployments" | awk 'NF && (NF != 6 || $2 != $3 || $5 != $4 || $6 != $4) {print "deployment " $0}'
+  active="$(active_jobs)" || {
+    echo "(cannot read the Jobs)"
+    return 0
+  }
+  for job in $active; do echo "job $job runs"; done
+}
+
+# wait_settled <what>: waits up to SMOKE_TIMEOUT until not_settled is empty. The upgrade r4 before the phase ends on the failed
+# initialize, not on a settled cluster: Elasticsearch is still replacing its pod (the tag of its image is the revision) and the other
+# Jobs of the revision may still run.
+wait_settled() {
+  deadline=$(( $(date +%s) + ${SMOKE_TIMEOUT:-900} ))
+  while :; do
+    unsettled="$(not_settled)"
+    if [ -z "$unsettled" ]; then
+      echo "smoke: every StatefulSet and Deployment rolled out, no Job runs ($1)"
+      return 0
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "smoke: the cluster is not settled in ${SMOKE_TIMEOUT:-900} s ($1):" >&2
+      echo "$unsettled" >&2
+      return 1
+    fi
+    echo "smoke: waiting for $(echo "$unsettled" | awk '{ print ($1 == "job" || $1 == "deployment") ? $2 : $1 }' | tr '\n' ' ')($1)"
+    sleep "${SMOKE_POLL:-5}"
+  done
+}
+
+# ingress_code <host> <path>: the HTTP status of one request through the ingress (Traefik on its node port, from a container on the
+# Docker network of the cluster, as the probe of make generate asks); 000 when there is no answer.
+ingress_code() {
+  docker run --rm --network "$KUBE_NETWORK" "$CURL_IMAGE" -sS -o /dev/null -w '%{http_code}' --max-time 15 -H "Host: $1" \
+    "http://$node:$traefik_port$2" 2>/dev/null || true
+}
+
+# check_shop <closed|open> <when>: closed is the rule shop-closed there and 502 for the API and the store through the ingress, open
+# no rule and 200 for both. Either way make generate and make open have ended, so their lock demo-data-lock is gone.
+check_shop() {
+  lock_left="$(kc get configmap demo-data-lock --ignore-not-found -o name)"
+  [ -z "$lock_left" ] ||
+    { echo "smoke: $2: the ConfigMap demo-data-lock is still there (make generate and make open release it on every exit)" >&2; return 1; }
+  rule="$(kc get networkpolicy shop-closed --ignore-not-found -o name)"
+  if [ "$1" = closed ]; then
+    want=502
+    [ -n "$rule" ] || { echo "smoke: $2: there is no NetworkPolicy shop-closed" >&2; return 1; }
+  else
+    want=200
+    [ -z "$rule" ] || { echo "smoke: $2: the NetworkPolicy shop-closed is still there" >&2; return 1; }
+  fi
+  for target in "api.localhost /health" "localhost /"; do
+    code="$(ingress_code "${target% *}" "${target#* }")"
+    [ "$code" = "$want" ] || { echo "smoke: $2: http://${target% *}${target#* } answers ${code:-nothing} through the ingress, not $want" >&2; return 1; }
+  done
+}
+
+# check_counts <products> <orders> <when>: the database has exactly those numbers (an empty <products>: any number of products).
+check_counts() {
+  products="$(count catalog_product)" orders="$(count ordering_order)"
+  if { [ -n "$1" ] && [ "$products" != "$1" ]; } || [ "$orders" != "$2" ]; then
+    echo "smoke: $3: $products products and $orders orders in the database, not ${1:-any number of products} and $2" >&2
+    return 1
+  fi
+}
+
+# mark <name>: a marker for the client of the traffic (smoke/traffic.py run), the file mark-<name> in its directory.
+mark() { : > "$generate_dir/traffic/mark-$1"; }
+
+# run_demo <name> <script> [<PROFILE>]: scripts/<script> (generate.sh or open.sh) as make generate and make open run it: the script
+# itself (the guard of AO is a step of the target in the Makefile, not of the script, so the smoke test also runs from a run of AO),
+# with the word tak on its standard input (open.sh reads none), the kubeconfig of the test cluster, the node port of Traefik with the
+# hosts of the API and of the store for its probe, and no file of the photo pool (DEMO_PHOTOS_ENV_FILE names one that is not there;
+# the CronJob of the profile ci reads no Secret of the pool, as in CI and in deploy.yml). The cluster has no Argo CD. The output goes
+# to the log of the test; the lines that end the closing of generate, the checks of open and the opening of open become the markers
+# closed, checks and open of the traffic. demo_status: the exit code.
+run_demo() {
+  rm -f "$generate_dir/$1.status"
+  {
+    demo_exit=0
+    printf 'tak\n' | PROFILE="${3:-}" KUBE_DIR="$KUBE_DIR" KUBE_NETWORK="$KUBE_NETWORK" KUBE_NAMESPACE="$namespace" \
+      GENERATE_PROBE_URL="http://$node:$traefik_port/ http://$node:$traefik_port/" GENERATE_PROBE_HOST="api.localhost localhost" \
+      DEMO_PHOTOS_ENV_FILE="$generate_dir/no-photo-pool.env" GENERATE_POLL="${SMOKE_POLL:-5}" GENERATE_PROBE_POLL=2 \
+      sh "$here/$2" 2>&1 || demo_exit=$?
+    echo "$demo_exit" > "$generate_dir/$1.status"
+  } | while IFS= read -r line; do
+    printf '%s\n' "$line"
+    case "$line" in
+      "generate: the shop is closed: "*) mark closed ;;
+      "open: "*" products and "*" orders; the sizes:") mark checks ;;
+      "open: the shop is open: "*) mark open ;;
+    esac
+  done
+  demo_status="$(cat "$generate_dir/$1.status" 2>/dev/null || echo unknown)"
+}
+
+# traffic_start: the client of the traffic (smoke/traffic.py run) in a container on the Docker network of the cluster: GET /health of
+# the API through the ingress (Traefik on its node port, Host api.localhost) without a pause, over one keep-alive connection while
+# Traefik keeps it, until the marker stop; at most 7200 seconds. Its lines go to traffic.log. A container of that name left by a run
+# that was killed is removed first.
+traffic_start() {
+  docker rm -f "$cluster-traffic" >/dev/null 2>&1 || true
+  tools_run --name "$cluster-traffic" --network "$KUBE_NETWORK" "$PYTHON_IMAGE" python -I -u smoke/traffic.py run \
+    "$node:$traefik_port" api.localhost /health "/cache/${work##*/}/generate/traffic" 7200 \
+    < /dev/null > "$generate_dir/traffic.log" 2>&1 &
+  traffic_pid=$!
+}
+
+# traffic_stop: the marker stop; the client ends with its first 200 after the marker open (at most a minute later) and is waited for.
+traffic_stop() {
+  mark stop
+  wait "$traffic_pid" || true
+  traffic_pid=""
+}
+
+# SMOKE_BREAK=demo-data: the CronJob gives the generator a profile it refuses, so make generate with that profile must end with 1 and
+# leave the shop closed (the rule, 502 through the ingress) with the Job demo-data-run failed; make open must then refuse and leave it
+# closed; make generate PROFILE=seed must end with 0 and open the shop on the seed (no rule, 200, the products of the seed and the one
+# order of the checkout of the Job load). The test then fails on purpose, as it does with every SMOKE_BREAK (exit 1; the last message
+# says that the break behaved as expected).
+check_generate_break() {
+  run_demo broken generate.sh "$generate_profile"
+  [ "$demo_status" = 1 ] || { echo "smoke: SMOKE_BREAK=demo-data: make generate PROFILE=$generate_profile ended with $demo_status, not 1" >&2; return 1; }
+  check_shop closed "SMOKE_BREAK=demo-data: after the failed make generate"
+  job_has '^demo-data-run$' Failed || { echo "smoke: SMOKE_BREAK=demo-data: after the failed make generate the Job demo-data-run is not Failed: $(job_states | awk '$1 == "demo-data-run"')" >&2; return 1; }
+  echo "ok: make generate with a profile the generator refuses ended with 1: the Job demo-data-run failed, the shop is closed (502 for the API and the store through the ingress, the rule shop-closed)"
+
+  run_demo refused open.sh
+  [ "$demo_status" != 0 ] || { echo "smoke: SMOKE_BREAK=demo-data: make open ended with 0 after the failed make generate, it must refuse" >&2; return 1; }
+  check_shop closed "SMOKE_BREAK=demo-data: after make open refused"
+  echo "ok: make open refused (exit $demo_status) and the shop stays closed"
+
+  run_demo seed generate.sh seed
+  [ "$demo_status" = 0 ] || { echo "smoke: SMOKE_BREAK=demo-data: make generate PROFILE=seed ended with $demo_status, not 0 (its output is above)" >&2; return 1; }
+  check_shop open "SMOKE_BREAK=demo-data: after make generate PROFILE=seed"
+  check_counts "${products_at_backup:-}" 1 "SMOKE_BREAK=demo-data: after make generate PROFILE=seed (the products of the seed and the order of the Job load)"
+  echo "ok: make generate PROFILE=seed ended with 0: the shop is open (200 for the API and the store through the ingress, no rule), $products products of the seed and the order of the Job load"
+  echo "smoke: the generator phase took $(( $(date +%s) - generate_started )) s"
+  echo "smoke: SMOKE_BREAK=demo-data: make generate failed and left the shop closed, make open refused, and make generate PROFILE=seed opened it on the seed, as expected; the test fails on purpose" >&2
+  return 1
+}
+
+# The demo data generator: make generate PROFILE=small (run_demo; it runs make open after its Job) on the cluster without Argo CD and
+# without a file of the photo pool, as in deploy.yml, while the client of the traffic sends requests through the ingress without a
+# pause. They get 200 before the closing, none from the end of the closing (the rule shop-closed and the restart of Traefik: Z1, Z2) to
+# the end of the checks of make open, and 200 again after the opening. Then the Jobs demo-data-run and load completed, the rule is
+# gone, and the database has the products of the seed and of the profile and its orders with the one of the checkout of the Job load.
+# make generate prints the free space of the node before tak, and the phase its time at its end. The generator replaces the data of
+# every module, so the phase runs last. SMOKE_BREAK=demo-data: check_generate_break instead.
+check_generate() {
+  generate_started="$(date +%s)"
+  generator="$(kc get cronjob demo-data -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].command}')"
+  case "$generator" in
+    *--profile=small*) ;;
+    *) echo "smoke: the CronJob demo-data does not run the profile small (--profile=small): $generator" >&2; return 1 ;;
+  esac
+  generate_profile=small
+  if [ "$SMOKE_BREAK" = demo-data ]; then
+    generate_profile=smoke-unknown
+    # The command is sh /scripts/demo-data.sh --profile=small ... (tests/test_demo_data.py checks the index). make generate takes the
+    # profile of the CronJob, and the Job confirms it, so that the generator itself refuses it (not the script, with 64).
+    generator_arg=/spec/jobTemplate/spec/template/spec/containers/0/command/2
+    kc patch cronjob demo-data --type=json \
+      -p "[{\"op\": \"test\", \"path\": \"$generator_arg\", \"value\": \"--profile=small\"}, {\"op\": \"replace\", \"path\": \"$generator_arg\", \"value\": \"--profile=$generate_profile\"}]" > /dev/null
+  fi
+  wait_settled "before make generate"
+  traefik_port="$(kubectl -n kube-system get service traefik -o jsonpath='{.spec.ports[?(@.name=="web")].nodePort}')"
+  [ -n "$traefik_port" ] || { echo "smoke: the service of Traefik has no node port for make generate" >&2; return 1; }
+  generate_dir="$work/generate"
+  mkdir -p "$generate_dir/traffic"
+  if [ "$SMOKE_BREAK" = demo-data ]; then
+    check_generate_break
+    return 1
+  fi
+
+  traffic_start
+  generate_run_started="$(date +%s)"
+  run_demo small generate.sh small
+  generate_seconds=$(( $(date +%s) - generate_run_started ))
+  traffic_stop
+  [ "$demo_status" = 0 ] || { echo "smoke: make generate PROFILE=small ended with $demo_status, not 0 (its output is above)" >&2; return 1; }
+  py smoke/traffic.py verdict < "$generate_dir/traffic.log" || {
+    echo "smoke: the requests through the ingress during make generate (the end of their log):" >&2
+    tail -n 30 "$generate_dir/traffic.log" >&2
+    return 1
+  }
+  job_has '^demo-data-run$' Complete || { echo "smoke: after make generate the Job demo-data-run is not Complete: $(job_states | awk '$1 == "demo-data-run"')" >&2; return 1; }
+  job_has '^load-' Complete || { echo "smoke: after make generate not one Job of the CronJob load that is Complete: $(job_states | awk '$1 ~ /^load-/' | tr '\n' ';')" >&2; return 1; }
+  check_shop open "after make generate"
+  profile_products="$(yq '.profiles.small.products' ../../apps/api/fixtures/demo-data/profiles.yaml)"
+  profile_orders="$(yq '.profiles.small.orders' ../../apps/api/fixtures/demo-data/profiles.yaml)"
+  # The products of the seed stay and the generator adds those of the profile; the orders are those of the profile and the one of
+  # the checkout of the Job load (load/smoke.js). Without the number of the seed (SMOKE_REUSE) only the orders are compared.
+  check_counts "${products_at_backup:+$((products_at_backup + profile_products))}" $((profile_orders + 1)) \
+    "after make generate (the seed ${products_at_backup:-?} and $profile_products products of the profile small; its $profile_orders orders and the one of the Job load)"
+  echo "ok: make generate PROFILE=small ended with 0: the Jobs demo-data-run and load completed, no rule shop-closed, $products products (the seed ${products_at_backup:-?} and $profile_products of the profile small) and $orders orders ($profile_orders of the profile small and the one of the Job load)"
+  echo "smoke: the generator phase took $(( $(date +%s) - generate_started )) s (make generate itself $generate_seconds s)"
+}
+
 if [ "${SMOKE_REUSE:-}" = 1 ]; then
   # A debugging aid: go on with the phases after the upgrade on the cluster that SMOKE_KEEP=1 left after a failed run.
   log "cluster $cluster (reused, at the state after the upgrade to r2)"
@@ -879,6 +1164,9 @@ else
 
   log "checks of the installation"
   checks basic
+
+  log "rate-limit-check"
+  check_rate_limit_check
 
   log "the store in a browser"
   check_store_in_browser
@@ -973,6 +1261,9 @@ job_log "$failed_initialize" | grep -q 'mixed state' || { echo "smoke: initializ
 [ "$(count catalog_product)" = 0 ] || { echo "smoke: initialize loaded products into a database with orders" >&2; exit 1; }
 [ "$(count ordering_order)" = "$orders_before" ] || { echo "smoke: initialize changed the orders" >&2; exit 1; }
 echo "smoke: initialize refused to load the data (0 products, $orders_before orders) and changed nothing"
+
+log "demo data generator: make generate (profile small)"
+check_generate
 
 log "peaks"
 report_peaks

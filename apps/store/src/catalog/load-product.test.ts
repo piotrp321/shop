@@ -78,14 +78,16 @@ describe("loadProduct", () => {
     ["a dash at the start", "-kurtka"],
     ["two dashes", "kurtka--puchowa"],
     ["a space", "kurtka puchowa"],
+    ["a dot", "kurtka.puchowa"],
     ["a slash and a query", "a/b?c"],
+    ["an encoded character", "kurtka%2Fpuchowa"],
     ["a line break", "kurtka\npuchowa"],
     ["more than 200 characters", "a".repeat(201)],
     ["nothing", ""],
-  ])("tags the details of a slug with %s with catalog only", async (_case, slug) => {
-    const calls = stubApi(() => problem(404));
-    await loadProduct(slug);
-    expect(calls[0].init?.next?.tags).toEqual(["catalog"]);
+  ])("answers not-found for a slug with %s without calling the API", async (_case, slug) => {
+    const calls = stubApi(okApi);
+    expect(await loadProduct(slug)).toEqual({ kind: "not-found" });
+    expect(calls).toHaveLength(0);
   });
 
   it("writes the product tag with the id in lower case", async () => {
@@ -95,12 +97,6 @@ describe("loadProduct", () => {
     );
     await loadProduct("produkt-1");
     expect(calls[1].init?.next?.tags).toEqual(["catalog", `product-${id.toLowerCase()}`]);
-  });
-
-  it("encodes the slug in the address", async () => {
-    const calls = stubApi(() => problem(404));
-    await loadProduct("a/b?c");
-    expect(calls[0].url.pathname).toBe("/api/v1/products/a%2Fb%3Fc");
   });
 
   it("answers not-found for a 404 of the details, without asking for the offer", async () => {

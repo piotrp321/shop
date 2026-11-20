@@ -87,6 +87,28 @@ final class ProductSearchTest extends TestCase
         self::assertSame(3, $result->total);
     }
 
+    public function testReachableIsTheNumberOfMatchesInsideTheResultWindow(): void
+    {
+        // Three products match: below the window they are all reachable, above it only the window is.
+        self::assertSame(3, $this->searchWithResultWindow(5)->search(new ProductSearchCriteria(1, 2))->reachable);
+        self::assertSame(3, $this->searchWithResultWindow(3)->search(new ProductSearchCriteria(1, 2))->reachable);
+
+        $above = $this->searchWithResultWindow(2)->search(new ProductSearchCriteria(1, 2));
+        self::assertSame(2, $above->reachable);
+        self::assertSame(3, $above->total);
+
+        // A page beyond the window still reports the window, not an empty reach.
+        self::assertSame(2, $this->searchWithResultWindow(2)->search(new ProductSearchCriteria(9, 2))->reachable);
+    }
+
+    public function testReachableIsZeroWithoutResults(): void
+    {
+        $result = $this->searchWithResultWindow(2)->search(new ProductSearchCriteria(1, 2, phrase: 'nieistniejacyprodukt'));
+
+        self::assertSame(0, $result->total);
+        self::assertSame(0, $result->reachable);
+    }
+
     private function search(): ElasticsearchProductSearch
     {
         return new ElasticsearchProductSearch(self::clientFactory()->create(2.0), $this->alias());

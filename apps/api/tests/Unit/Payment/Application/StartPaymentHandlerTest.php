@@ -33,14 +33,16 @@ use App\Tests\Unit\Payment\FakePaymentProvider;
 use App\Tests\Unit\Payment\FixedPaymentClock;
 use App\Tests\Unit\Payment\InMemoryPayableOrders;
 use App\Tests\Unit\Payment\InMemoryPayments;
+use App\Tests\Unit\Payment\InMemoryPaymentStartLocks;
 use App\Tests\Unit\Payment\PaymentExamples;
 use App\Tests\Unit\Payment\RefusingPayments;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * StartPayment: the access to the order before anything else, then the replay, the state of the order, the
- * cancellation of the pending payment at its provider and the new payment with its session.
+ * StartPayment: the access to the order before anything else, then the replay, the lock of the starts of the order,
+ * the state of the order, the cancellation of the pending payment at its provider and the new payment with its
+ * session.
  */
 final class StartPaymentHandlerTest extends TestCase
 {
@@ -54,10 +56,12 @@ final class StartPaymentHandlerTest extends TestCase
     private FakePaymentProvider $transfer;
     private FakePaymentProvider $card;
     private FixedPaymentClock $clock;
+    private InMemoryPaymentStartLocks $locks;
 
     protected function setUp(): void
     {
         $this->payments = new InMemoryPayments();
+        $this->locks = new InMemoryPaymentStartLocks();
         $this->orders = new InMemoryPayableOrders();
         $this->orders->add(self::order(), PaymentAccess::guest(self::TOKEN));
         $this->transfer = new FakePaymentProvider(ProviderCode::DemoTransfer);
@@ -90,6 +94,7 @@ final class StartPaymentHandlerTest extends TestCase
         self::assertSame('demo_transfer_1', $stored->providerPaymentId()?->toString());
         self::assertEquals(new \DateTimeImmutable(self::NOW), $stored->createdAt());
         self::assertSame(['lock '.PaymentExamples::ORDER, 'add '.$payment->paymentId, 'save '.$payment->paymentId.' pending'], $this->payments->journal, 'stored before the call to the provider, then with its session');
+        self::assertSame([PaymentExamples::ORDER], $this->locks->tried, 'the lock of the starts of the order');
     }
 
     public function testACustomerStartsAPaymentOfOwnOrder(): void
@@ -335,6 +340,85 @@ final class StartPaymentHandlerTest extends TestCase
     }
 
     /**
+     * A concurrent start of the order holds the lock of its starts (it is cancelling the pending payment or opening
+     * its session at the provider): this one ends at once with the 409 of a concurrent start, before it touches the
+     * pending payment, whatever its key and provider.
+     *
+     * @return iterable<string, array{string, string}>
+     */
+    public static function concurrentStarts(): iterable
+    {
+        yield 'another key, the same provider' => ['demo-transfer', 'second'];
+        yield 'another key, another provider' => ['demo-card', 'second'];
+        yield 'the key of the start in flight, not committed yet' => ['demo-transfer', 'in-flight'];
+    }
+
+    #[DataProvider('concurrentStarts')]
+    public function testWhileAConcurrentStartOfTheOrderHoldsItsLockTheStartIsInProgressAtOnce(string $provider, string $key): void
+    {
+        $first = $this->start(key: 'first');
+        $journal = $this->payments->journal;
+        $this->locks->heldElsewhere = [PaymentExamples::ORDER];
+
+        try {
+            $this->start(provider: $provider, key: $key);
+            self::fail('A start went on while a concurrent one held the lock of the order.');
+        } catch (PaymentInProgress $inProgress) {
+            $this->assertConflict('payment-in-progress', 'Płatność za to zamówienie jest w toku. Spróbuj za chwilę.', $inProgress);
+        }
+
+        self::assertSame($journal, $this->payments->journal, 'the pending payment is neither locked nor changed');
+        self::assertSame(PaymentStatus::Pending, $this->payments->get($first->payment->paymentId)->status());
+        self::assertCount(1, $this->payments->all());
+        self::assertSame([], $this->transfer->cancelled, 'the provider is not called');
+        self::assertCount(1, $this->transfer->created);
+        self::assertSame([], $this->card->created);
+    }
+
+    public function testTheLockOfAnotherOrderDoesNotStopTheStart(): void
+    {
+        $this->locks->heldElsewhere = ['0192f0c4-7c1a-7c4e-9a6e-0000000000d2'];
+
+        $started = $this->start();
+
+        self::assertSame('pending', $started->payment->status);
+        self::assertSame([PaymentExamples::ORDER], $this->locks->tried);
+    }
+
+    /**
+     * The replay comes before the lock: the start of the key committed, so its replay is given even while another
+     * start of the order holds the lock; the key of another payment is refused as reused.
+     */
+    public function testTheReplayIsCheckedBeforeTheLock(): void
+    {
+        $first = $this->start();
+        $this->locks->heldElsewhere = [PaymentExamples::ORDER];
+
+        $replay = $this->start();
+
+        self::assertTrue($replay->replayed);
+        self::assertEquals($first->payment, $replay->payment);
+        $this->expectException(PaymentIdempotencyKeyReused::class);
+        try {
+            $this->start(provider: 'demo-card');
+        } finally {
+            self::assertSame([PaymentExamples::ORDER], $this->locks->tried, 'only the first start tried the lock');
+        }
+    }
+
+    public function testWithoutAccessToTheOrderTheLockIsNotTried(): void
+    {
+        $this->locks->heldElsewhere = [PaymentExamples::ORDER];
+
+        $this->expectException(OrderNotFound::class);
+        try {
+            $this->start(PaymentAccess::guest('another-token'));
+        } finally {
+            self::assertSame([], $this->locks->tried);
+        }
+    }
+
+    /**
      * A concurrent start wrote its payment meanwhile (the same key or another pending payment of the order): the
      * unique index refuses this one.
      */
@@ -369,6 +453,7 @@ final class StartPaymentHandlerTest extends TestCase
         }
 
         self::assertSame(0, $this->orders->asked);
+        self::assertSame([], $this->locks->tried);
         $this->assertNothingStarted();
     }
 
@@ -379,7 +464,7 @@ final class StartPaymentHandlerTest extends TestCase
 
     private function handler(PaymentRepository $payments): StartPaymentHandler
     {
-        return new StartPaymentHandler($payments, $this->orders, new PaymentProviders([$this->transfer, $this->card]), $this->clock, self::STORE);
+        return new StartPaymentHandler($payments, $this->orders, new PaymentProviders([$this->transfer, $this->card]), $this->clock, $this->locks, self::STORE);
     }
 
     private static function order(OrderState $state = OrderState::New, bool $payable = true, string $orderId = PaymentExamples::ORDER): OrderToPay

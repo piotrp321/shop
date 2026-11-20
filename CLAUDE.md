@@ -39,9 +39,12 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 
 ## Serwer, GitHub i bezpieczeństwo agentów
 
-- Agent wykonuje operacje na serwerze wyłącznie celami `infra/k8s/Makefile` (`infra/k8s/CLAUDE.md`), `create-admin`
-  i `restore` tylko po zgodzie użytkownika w rozmowie, a wdrożenie (`gh workflow run deploy.yml --ref main`) tylko na
-  jego wyraźne polecenie w rozmowie; zatwierdzenia w środowisku `production` nie wykonuje. Kroki runbooka
+- Agent wykonuje operacje na serwerze wyłącznie celami `infra/k8s/Makefile`. Cele, które kasują albo zastępują dane,
+  zakładają konto albo zmieniają serwer (`reinitialize`, `restore`, `generate`, `open`, `create-admin`, `bootstrap`),
+  uruchamia tylko po zgodzie użytkownika w rozmowie, która nazywa tę operację, host i (dla `generate` i `open`) profil
+  danych. Co
+  uruchamia sam i czego nie ponawia przez `rerun`: `infra/k8s/CLAUDE.md`, „Cele Makefile”. Wdrożenie
+  (`gh workflow run deploy.yml --ref main`) uruchamia tylko na wyraźne polecenie użytkownika w rozmowie; zatwierdzenia w środowisku `production` nie wykonuje. Kroki runbooka
   `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje po zgodzie w rozmowie, oznaczone „użytkownik” nigdy.
 - Gałęzie `deploy` i `deploy-images` przesuwa wyłącznie workflow `.github/workflows/deploy.yml`; nikt ich nie edytuje
   ręcznie. Obrazów, do których odwołują się snapshoty `deploy-images`, nie wolno usuwać z GHCR.
@@ -129,7 +132,8 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 - Reviewer sprawdza zgodność ze specyfikacją, błędy logiczne, architekturę, przypadki brzegowe, testy (także przebieg
   TDD na podstawie wyników obu uruchomień) i zbędną złożoność; brak prawdziwej fazy RED w zadaniu z TDD to problem
   Important. Dodatkowych reviewerów ani modeli nie uruchamiamy bez powodu. Sesja orkiestrująca może działać na
-  najmocniejszym modelu, a subagenci na modelu z definicji albo dobranym do trudności zadania.
+  najmocniejszym modelu. Model i effort w definicji agenta to wartości domyślne: sesja prowadząca dobiera je w zleceniu
+  do trudności i ryzyka zadania.
 - Orkiestrator sam rozstrzyga szczegóły implementacji. Istotne decyzje DDD (agregaty, value objecty, granice modułów,
   persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury przedstawia użytkownikowi przed implementacją.
 - Raport po PR: zakres, subagenci i ich role, wynik review, wykryte i naprawione problemy, uruchomione testy
@@ -137,7 +141,7 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 - Stan prac jest wyłącznie w sekcji „Status” planu funkcji (`docs/features/<funkcja>/plan.md`). Lokalne ustawienia
   Claude Code są w `.claude/settings.local.json` (poza repo).
 
-Rozwój AO (Agentic Orchestrator) i skilli `/ao-run`, `/prepare-epic`, `/delivery`, `/sweep`, `/retro`, `/groom` jest
+Rozwój AO (Agentic Orchestrator) i skilli `/ao-run`, `/delivery`, `/sweep` jest
 zamrożony; AO zostaje uruchamialny jako rozwiązanie awaryjne. Sesja, która uruchamia AO albo któryś z tych skilli,
 najpierw czyta zasady AO: `docs/adr/agentic-software-house.md` („Zasady obowiązujące tylko przy uruchomieniu AO”),
 `docs/adr/agent-security.md` i `docs/features/ao-run/spec.md`.
@@ -155,7 +159,8 @@ Obowiązuje autora i reviewera, w części, której dotyczy zmiana:
 - **Klawiatura, focus, etykiety:** każda kontrolka działa z klawiatury i ma etykietę; po akcji (zapis, dialog, błąd)
   focus trafia w sensowne miejsce; asynchroniczne statusy i błędy są w `aria-live`.
 - **Stany:** loading, empty i error dla każdego zapytania; ekran 375 px.
-- **Przypadki brzegowe:** wartości puste i graniczne, limity, paginacja, współbieżna zmiana.
+- **Przypadki brzegowe:** wartości puste i graniczne, limity, paginacja, współbieżna zmiana; brak, utrata
+  i uszkodzenie danych wejściowych, powtórne uruchomienie.
 
 ## Dokumentacja
 

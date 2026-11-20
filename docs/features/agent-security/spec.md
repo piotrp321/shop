@@ -11,7 +11,7 @@ Bash), ale **nie chroni przed celowym obejściem** przez kontener Dockera ani pr
 sandboxem (luka P11). Pełną izolację wykonawców i lifecycle AO opisuje osobny epik AGENT-ISOLATION (#498).
 
 Issues: #494
-Zakres: `tools/agent-security`, `.claude/skills/groom`, `.claude/agents/backlog-groomer.md`, `.claude/skills/prepare-epic/SKILL.md`, `.claude/agents/spec-critic.md`, `.claude/skills/sweep/SKILL.md`, `.claude/agents/tester.md`, `.claude/agents/ux-reviewer.md`, `.claude/skills/retro`, `.claude/agents/retro-analyst.md`, `.claude/skills/integration/SKILL.md`, `.claude/skills/ao-run`, `.github/workflows/deploy.yml`, `infra/k8s/Makefile`, `infra/k8s/scripts`, `infra/k8s/tests`, `infra/k8s/README.md`, `infra/k8s/CLAUDE.md`, `CLAUDE.md`, `docs/adr/agentic-software-house.md`, `docs/features/groom/spec.md`, `docs/features/prepare-epic/spec.md`, `docs/features/agent-tester-ux/spec.md`, `docs/features/retro/spec.md`, `docs/features/ao-run/spec.md`, `docs/features/deploy/spec.md`
+Zakres: `tools/agent-security`, `.claude/skills/sweep/SKILL.md`, `.claude/agents/tester.md`, `.claude/agents/ux-reviewer.md`, `.claude/skills/retro`, `.claude/agents/retro-analyst.md`, `.claude/skills/integration/SKILL.md`, `.claude/skills/ao-run`, `.github/workflows/deploy.yml`, `infra/k8s/Makefile`, `infra/k8s/scripts`, `infra/k8s/tests`, `infra/k8s/README.md`, `infra/k8s/CLAUDE.md`, `CLAUDE.md`, `docs/adr/agentic-software-house.md`, `docs/features/agent-tester-ux/spec.md`, `docs/features/retro/spec.md`, `docs/features/ao-run/spec.md`, `docs/features/deploy/spec.md`
 
 ## Cel i zakres
 
@@ -43,7 +43,7 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
   `POST …/actions/runs/{id}/pending_deployments` wymaga uprawnienia Deployments: write, którego token nie ma.
 - P4. Wykonawcy AO dostają fine-grained PAT tylko dla `shop`, bez administracji i zatwierdzania wdrożeń (tożsamość
   użytkownika; osobna tożsamość agentów, GitHub App, poza zakresem).
-- P5. Zgłoszenia zewnętrzne `/groom` pokazuje jako numer, autora i link; użytkownik, który chce się nimi zająć,
+- P5. Zgłoszenia zewnętrzne agenci i użytkownik widzą jako numer, autora i link; użytkownik, który chce się nimi zająć,
   przepisuje je we własne issue (bez nowego mechanizmu przejęcia).
 - P6. Wykonawcy AO nie mają WebFetch ani WebSearch; Bash ma sieć tylko do GitHuba i do lokalnego stosu.
 - P7. Potwierdzenie `tak` celów `create-admin`, `restore`, `reinitialize` zostaje na stdin (bez `/dev/tty`); cele
@@ -76,8 +76,7 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
 
 - Evale prób prompt injection (krok 17) i bezpieczeństwo funkcji AI w sklepie (krok 20).
 - Zmiany w AO (repozytorium `piotrp321/agentic-orchestrator`, zamrożone). Skutki: „Model zagrożeń”, luki.
-- Sandbox sesji interaktywnych w aplikacji Claude (`/ao-run`, `/groom` z zadania zaplanowanego, `/sweep` i `/retro`
-  w sesji `/ao-run`, `/prepare-epic`) (P10).
+- Sandbox sesji interaktywnych w aplikacji Claude (`/ao-run`, `/sweep` i `/retro` w sesji `/ao-run`) (P10).
 - Łańcuch dostaw (zależności npm i Composer, obrazy Dockera, wtyczki Claude Code).
 - Zakres tokenu `gh` użytkownika w sesjach interaktywnych (dziś `repo`, `admin:public_key`, `gist`, `project`,
   `read:org`) i hasło do klucza `~/.ssh/id_rsa`: zalecenia w ADR, bez zmian w repo.
@@ -110,7 +109,7 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
   zatwierdzenia, gdy ma działać bez niego) z sekretem środowiska i wpisem w `MAIN_ONLY_ENVIRONMENTS` testu
   workflowów (R5). Źródło: użytkownik (runbook).
 - Rulesety z R8 w GitHubie zgodne z `tools/rulesets/`: cztery rulesety bez aktora bypass (aktora z `main-merge`
-  i `epic-merge` usuwa użytkownik przez `-X PUT` z plików). Po co: przypadek sondy R8 i odbiór (kryterium 11); bez
+  i `epic-merge` usuwa użytkownik przez `-X PUT` z plików). Po co: przypadek sondy R8 i odbiór (kryterium 9); bez
   rulesetów sonda nie przepuści startu AO. Źródło: użytkownik (wymaga uprawnień admina repozytorium).
 - Wersja Claude Code przypięta przez AO obsługuje ustawienia sandboxa z profilu (2.1.311; `denyRead`/`allowRead`,
   `allowWrite`, `allowUnixSockets`, `allowLocalBinding`, `enableWeakerNetworkIsolation` przez `--settings`); sonda
@@ -142,8 +141,7 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
 
 **Drogi w zakresie** (każda z kryterium, które ją zamyka, i sprawdzeniem):
 
-1. Treść issue, PR lub komentarza od S1 w danych `/groom` (`groom.py collect`, `backlog-groomer`), `/prepare-epic`
-   (issue epiku, issues epiku poprawek, `spec-critic`), `/sweep` (`open-issues.json`, `tester`, `ux-reviewer`),
+1. Treść issue, PR lub komentarza od S1 w danych `/sweep` (`open-issues.json`, `tester`, `ux-reviewer`),
    `/retro` (komentarze issues epików, PR do `epic/*`, issues AO), `/integration` (opisy PR zadań), `/ao-run`
    (`next_epic.py`, `night_queue.py`: issues `epic`) → bramka pochodzenia (R1). Sprawdzenie: testy bramki z atrapą
    `gh` i testy każdego skryptu, który jej używa: treść autora bez prawa zapisu nie występuje w wyniku, są numer,
@@ -239,7 +237,7 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
 - Merge do `main` przez wykonawcę po zielonym CI jest technicznie możliwy (ruleset `main-merge` bez zatwierdzeń,
   tożsamość tokenu to użytkownik); wdrożenie zatrzymuje R5. Osobna tożsamość agentów (GitHub App z wymaganym
   zatwierdzeniem w `main`) to propozycja zgłoszenia.
-- Sesje interaktywne (`/ao-run`, `/prepare-epic`, `/groom`, `/retro`) i proces AO mają token użytkownika z rolą admin,
+- Sesje interaktywne (`/ao-run`, `/retro`) i proces AO mają token użytkownika z rolą admin,
   więc technicznie mogą zmienić rulesety (dodać aktora bypass) albo zatwierdzić wdrożenie. Chroni zasada w `CLAUDE.md`
   (agent nie zmienia rulesetów); to granica promptu jak P10. Zamyka ją dopiero osobna tożsamość dla wszystkich
   agentów, z której token użytkownika nie trafia do ich środowiska (#498 albo osobne zgłoszenie).
@@ -304,14 +302,12 @@ miejsce, w którym skrypty i skille pobierają treść issues, PR i komentarzy d
 - Interfejs: podkomendy `issues` (lista z `--state`, `--label`, `--limit`, `--json`), `issue <nr>`, `prs` (lista
   z `--state`, `--base`, `--head`, `--limit`, `--json`), `comments <nr>`, każda z `--repo` (domyślnie
   `piotrp321/shop`), wynik JSON w jednej linii na stdout; moduł do importu w skryptach Pythona (klasa `Gate`:
-  `groom.py`, `retro.py`, `next_epic.py`, `night_queue.py`).
+  `retro.py`, `next_epic.py`, `night_queue.py`).
 
 Użycie (zamiast bezpośredniego `gh … --json body,title,comments` w miejscach, które podają treść agentom):
 
 | Miejsce | Działanie |
 |---|---|
-| `/groom`: `groom.py collect`, `SKILL.md`, `backlog-groomer` | `input.json` z rekordami bramki; agent nie proponuje niczego dla rekordów niezaufanych; `groom.py` wypisuje je użytkownikowi osobno jako „Zgłoszenia zewnętrzne: #N od @autor, link” (P5) i odrzuca propozycję z numerem niezaufanego issue (także w epiku poprawek) |
-| `/prepare-epic`: `SKILL.md`, `spec-critic` | issue epiku od niezaufanego autora: odmowa startu z powodem „przepisz zgłoszenie”; niezaufane issue w epiku poprawek trafia do „Poza zakresem” z powodem; `spec-critic` czyta issues przez bramkę |
 | `/sweep`: `SKILL.md`, `tester`, `ux-reviewer` | `open-issues.json` z bramki; zapas w agentach przez bramkę |
 | `/retro`: `retro.py`, `SKILL.md`, `retro-analyst` | komentarze z pomiarem tylko od zaufanych autorów; PR do `epic/*` i issues AO przez bramkę (issues AO z uprawnieniami w `piotrp321/agentic-orchestrator`); agent czyta issues i PR przez bramkę |
 | `/integration`: `SKILL.md` | opisy PR zadań przez bramkę |
@@ -819,7 +815,7 @@ wymagań merge'a. Żaden z nich nie ma aktora bypass:
 
 | Sytuacja | Zachowanie |
 |---|---|
-| `gh` w bramce zwraca błąd albo limit API | wywołanie kończy się błędem; `/groom`, `/sweep`, `/retro` zgłaszają błąd jak dziś przy błędzie `gh`, bez treści |
+| `gh` w bramce zwraca błąd albo limit API | wywołanie kończy się błędem; `/sweep`, `/retro` zgłaszają błąd jak dziś przy błędzie `gh`, bez treści |
 | Autor issue zmienił login albo usunął konto (`ghost`) | rekord niezaufany |
 | Brak tokenu wykonawcy w Keychain | wrapper i sonda kończą się błędem z instrukcją (sonda kod 2); AO nie startuje |
 | Token wygasł albo został odwołany | przypadki warstwy `token` i pracy z `gh` nie przechodzą (np. `gh_ao_repository`: `401` zamiast `404`): sonda kod 1 z przyczyną; AO nie startuje; użytkownik odnawia token |
@@ -849,7 +845,6 @@ wymagań merge'a. Żaden z nich nie ma aktora bypass:
   mówi wprost, że sandbox nie chroni przed celowym obejściem przez Dockera i lifecycle AO. Zawiera drogę 15, P13
   (rulesety bez bypassu) i lukę sesji interaktywnych z tokenem użytkownika.
 - `docs/adr/agentic-software-house.md`: wiersz „Bezpieczeństwo agentów” wskazuje ADR.
-- `docs/features/groom/spec.md`, `docs/features/prepare-epic/spec.md`: bramka i zgłoszenia zewnętrzne.
 - `docs/features/agent-tester-ux/spec.md`, `docs/features/retro/spec.md`: bramka.
 - `infra/k8s/README.md`, `infra/k8s/CLAUDE.md`, `docs/features/deploy/spec.md`: środowiska `production` i `sentry`,
   zasada sekretów w środowiskach, cele produkcyjne niedostępne w trakcie przebiegu AO, `KUBE_DIR` tymczasowy, usunięcie
@@ -865,33 +860,29 @@ wymagań merge'a. Żaden z nich nie ma aktora bypass:
 1. Bramka: dla autora z `write`/`maintain`/`admin` rekord pełny, dla `read`, `triage`, `404`, bota i `ghost` tylko
    `number`, `author`, `url`, `trusted: false`; komentarze oceniane osobno; błąd API kończy się kodem różnym od 0 bez
    wyniku. Testy z atrapą `gh`.
-2. `/groom`: `input.json` bez tytułu i treści niezaufanych issues; użytkownik widzi je jako „Zgłoszenia zewnętrzne”;
-   `groom.py` odrzuca propozycję i epik poprawek z niezaufanym numerem. Testy `groom.py`.
-3. `/prepare-epic` odmawia startu dla issue epiku niezaufanego autora; niezaufane issue epiku poprawek trafia do
-   „Poza zakresem”; `spec-critic` czyta issues przez bramkę.
-4. `/sweep`, `/retro`, `/integration`, `next_epic.py`, `night_queue.py` pobierają treść tylko przez bramkę; komentarz
+2. `/sweep`, `/retro`, `/integration`, `next_epic.py`, `night_queue.py` pobierają treść tylko przez bramkę; komentarz
    z pomiarem od niezaufanego autora nie zmienia pomiaru `/retro`; issue `epic` niezaufanego autora nie wchodzi do
    kolejki. Testy `retro.py`, `next_epic.py`, `night_queue.py`.
-5. Wrapper i profil: testy bez modelu z R6 przechodzą, w tym `--version` i `auth status` bez `AO_TASK_ID` (preflight AO
+3. Wrapper i profil: testy bez modelu z R6 przechodzą, w tym `--version` i `auth status` bez `AO_TASK_ID` (preflight AO
    z wrapperem jako `--claude-bin` przechodzi).
-6. Sonda na hoście z pozycjami użytkownika (odbiór: sesja `/ao-run` przed merge'em końcowego PR): kod 0 w przebiegu domyślnym i `--mode ao`; wynik, czas i koszt
+4. Sonda na hoście z pozycjami użytkownika (odbiór: sesja `/ao-run` przed merge'em końcowego PR): kod 0 w przebiegu domyślnym i `--mode ao`; wynik, czas i koszt
    w raporcie; po przebiegu i po przerwaniu (`SIGINT` w trakcie) brak procesów, kontenerów, worktree i plików
    przebiegu (także `.agent-tmp/run.*` i katalogu tymczasowego Claude Code w `/private/tmp`). Ścieżki błędu: sonda z szablonem testowym bez obu warstw blokady odczytu (`denyRead` sandboxa
    i `blockReadsOutsideWorkingDirectories`; profil produkcyjny bez zmian) kończy się kodem 1 z nazwą przypadku
    kanarka; bez tokenu kodem 2; przypadek `docker` z katalogiem kanarka w katalogu udostępnionym (atrapa złego
    ustawienia Dockera) kończy się kodem 1.
-7. Workflowy: test potwierdza `environment: production` w jobie `deploy` i brak kontekstu `secrets` poza
+5. Workflowy: test potwierdza `environment: production` w jobie `deploy` i brak kontekstu `secrets` poza
    `secrets.GITHUB_TOKEN` w jobach bez środowiska ograniczonego do `main`; test nie przechodzi na kopii `deploy.yml`
    bez środowiska ani na atrapach z `env:` workflowu, `secrets['X']`, `toJSON(secrets)` i `secrets: inherit`.
-8. Cele produkcyjne: przy atrapie działającego procesu AO albo wykonawcy `kubeconfig`, `rerun`, `create-admin`,
+6. Cele produkcyjne: przy atrapie działającego procesu AO albo wykonawcy `kubeconfig`, `rerun`, `create-admin`,
    `restore` i `backups` odmawiają bez zmian; `kubeconfig` dopisuje `KUBE_DIR` do rejestru; bez niego działają jak dziś (test dymny i selftest bez zmian).
-9. `ao-prepare`: kopia sześciu plików (z `probe.py` i `bin/mktemp`) z `main` na GitHubie (nie z drzewa roboczego) w
+7. `ao-prepare`: kopia sześciu plików (z `probe.py` i `bin/mktemp`) z `main` na GitHubie (nie z drzewa roboczego) w
    `$AO_HOME/agent-security/`, sonda uruchomiona z kopii, odmowa przy istniejącym
    `KUBE_DIR` z rejestru, sonda na kopii, wynik z `--claude-bin` i zmiennymi; sonda
    z kodem różnym od 0, limit czasu albo brak wyniku kończy go błędem z przyczyną (fail-closed). Testy z atrapą sondy i `claude_pin.py`. `/ao-run` startuje AO z jego wyniku
    i wysyła push przy błędzie.
-10. `make check` i testy skryptów (`.github/scripts/script-tests.sh`) przechodzą; `make -C infra/k8s check` przechodzi.
-11. Rulesety (R8): test struktury przechodzi. Odbiór: `current_user_can_bypass` rulesetów `main-merge`
+8. `make check` i testy skryptów (`.github/scripts/script-tests.sh`) przechodzą; `make -C infra/k8s check` przechodzi.
+9. Rulesety (R8): test struktury przechodzi. Odbiór: `current_user_can_bypass` rulesetów `main-merge`
     i `epic-merge` to `never` z tokenem wykonawcy i z tokenem użytkownika, a `bypass_actors` obu rulesetów merge'a
     w GitHubie jest puste; wynik w raporcie odbioru.
 

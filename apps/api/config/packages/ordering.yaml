@@ -1,0 +1,22 @@
+# The limit of unpaid orders of a placement (UnpaidOrderLimit; spec: docs/features/abuse-limits/spec.md, L6, D6): at
+# most so many orders waiting for their payment (until their expiry, 35 minutes) from one address of the client, and of
+# one email of a guest or one account.
+parameters:
+    app.ordering.unpaid_orders_per_address: 5
+    app.ordering.unpaid_orders_per_identity: 3
+
+# The compose stack and E2E have one address of the store and few emails.
+when@dev:
+    parameters:
+        app.ordering.unpaid_orders_per_address: 10000
+        app.ordering.unpaid_orders_per_identity: 10000
+
+# Above the 10 concurrent placements with one email of PlaceOrderConcurrencyTest; the tests of the limit place 21.
+when@test: &test
+    parameters:
+        app.ordering.unpaid_orders_per_address: 20
+        app.ordering.unpaid_orders_per_identity: 20
+
+when@test_messaging: *test
+
+when@test_oidc: *test

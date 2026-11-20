@@ -19,7 +19,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * Exit codes: 0 every price is consistent or was fixed, 1 discrepancies remain (found without --apply, or not fixed
  * with --apply: changed concurrently twice, or a class without a rate), 2 the run stopped on an error (e.g. the
- * database is unavailable); the prices fixed until then keep their change.
+ * database is unavailable; the command prints a message and hands the error on to the console, which ends with 2); the
+ * prices fixed until then keep their change.
  */
 #[AsCommand(name: 'pricing:reconcile-tax', description: 'Finds prices with an outdated VAT rate or a tax class other than in Catalog; --apply reprices them.')]
 final readonly class ReconcileTaxCommand
@@ -51,7 +52,8 @@ final readonly class ReconcileTaxCommand
         } catch (\Throwable $e) {
             $io->error(\sprintf('The reconciliation stopped: %s The prices fixed so far keep their change; run the command again.', rtrim($e->getMessage(), '.').'.'));
 
-            return self::ERROR;
+            // Handed on, not swallowed: the console reports it (a log with the exception, an event of Sentry) and ends with this code.
+            throw new \RuntimeException($e->getMessage(), self::ERROR, $e);
         }
 
         if (0 === $found) {

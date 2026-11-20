@@ -26,9 +26,9 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
 ## Decyzje użytkownika
 
 - Storage S3 to Cloudflare R2 (osobny dostawca niż VPS, 10 GB bez opłat, bez opłat za transfer wychodzący).
-- Alerty: cztery alerty kopii oraz zajęty dysk węzła powyżej 85%, brak sygnału z klastra przez 15 minut i
-  `WorkloadNotReady` (Deploymenty i StatefulSety w `shop`, w tym Redis, niedostępne repliki albo brak workloadu przez
-  10 minut). Alerty z treści logów są poza zakresem. Świadomy `restore` i planowane prace: ręczne wyciszenie w Grafana
+- Alerty: cztery alerty kopii oraz `RateLimitsOff` (limitery tras wyłączone przy nieużywalnym Redisie), zajęty dysk węzła
+  powyżej 85%, brak sygnału z klastra przez 15 minut i `WorkloadNotReady` (Deploymenty i StatefulSety w `shop`, w tym Redis,
+  niedostępne repliki albo brak workloadu przez 10 minut). Alerty z treści logów są poza zakresem. Świadomy `restore` i planowane prace: ręczne wyciszenie w Grafana
   Cloud według runbooka, bez automatycznego mechanizmu.
 - Logi wszystkich podów trafiają do Grafana Cloud (stos w regionie UE, 14 dni retencji), ale bez haseł, tokenów,
   nagłówków `Authorization`, ciasteczek sesyjnych i danych klientów: maskowanie albo wyłączenie źródła (O7).
@@ -114,7 +114,8 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   bez dodatkowych obiektów. Skrypt czeka na każdy Job najwyżej tyle, ile jego `activeDeadlineSeconds`. Kroki:
   1. sprawdzenia bez zmian: `SNAPSHOT` jest wymagany (identyfikator z listy), bez `latest`; odmowa, gdy w przestrzeni
      `shop` jest aktywny dowolny Job (`backup`, `migrate`, `initialize`, `keycloak-config`, `purge-caches`, czyszczenie
-     koszyków, inny `restore`) albo, przy Argo CD, aplikacja `shop` ma trwającą operację synchronizacji; Job w trybie
+     koszyków, inny `restore`) poza Jobem CronJoba `rate-limit-check` (sprawdzenie Redisa limiterów trwa najwyżej 60 s;
+     Job jest jego, gdy ma go za właściciela, nie po nazwie) albo, przy Argo CD, aplikacja `shop` ma trwającą operację synchronizacji; Job w trybie
      `check` odmawia, gdy manifest ma migrację spoza listy klas migracji w obrazie `api` (snapshot nowszy niż wdrożona
      wersja);
   2. wypisuje snapshot (czas, host, tag, rewizja, liczby z manifestu) i skutki (w tym to, czy kopia `pre-restore` będzie
@@ -123,7 +124,8 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
      podał `PRE_RESTORE=skip` (wypisane w kroku 2);
   4. gdy w klastrze jest Argo CD (CRD `Application` i aplikacja `shop`), wyłącza automatyczną synchronizację `root`,
      potem `shop` (kolejność jak w runbooku cofnięcia wersji); zapamiętuje liczby replik, wstrzymuje CronJoby
-     `cart-purge-expired` i `backup`, czeka na Job, który wystartował po sprawdzeniu z kroku 1 (nocna kopia:
+     `cart-purge-expired`, `backup` i `rate-limit-check`, czeka na Job, który wystartował po sprawdzeniu z kroku 1,
+     także na Job `rate-limit-check` (nocna kopia:
      `RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, domyślnie 7200 s; potem błąd, aplikacje działają), i skaluje do zera `api`, `worker`,
      `store`, `keycloak`;
   5. Job w trybie `restore` (tylko operacje na danych): `restic restore` snapshotu na PVC `backup-work` (lustro obiektów
@@ -223,6 +225,12 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   - `BackupMissing`: ostatnia udana kopia starsza niż 26 h albo brak metryki przez 30 min (`absent`; reguły ewaluuje
     Grafana Cloud, więc alert przychodzi także, gdy serwer albo Alloy nie żyje);
   - `BackupVerifyFailed`, `BackupVerifyMissing`: to samo dla `backup-verify`;
+  - `RateLimitsOff` (`warning`, grupa `shop-rate-limits`; docs/features/abuse-limits/spec.md, L12 i D16): brak udanego
+    przebiegu CronJoba `rate-limit-check` (co 5 minut: komenda API zapisuje, odczytuje i usuwa klucz kontrolny
+    połączeniem limiterów) od 17 minut, czyli trzech okresów i 2 minut na start poda, albo brak jego metryki przez 30 min
+    (`cronjobMissing` z progiem jako parametrem; alerty kopii zostają przy 26 h). Jedna instancja alertu bez względu na
+    liczbę nieudanych Jobów; gaśnie po następnym udanym przebiegu. `restore` wstrzymuje CronJob, więc na czas
+    odtworzenia alert się wycisza razem z `WorkloadNotReady`;
   - `NodeDiskFull`: system plików węzła (node-exporter, `node_filesystem_avail_bytes` i `node_filesystem_size_bytes`,
     bez systemów tymczasowych) zajęty w ponad 85% przez 10 min;
   - `ClusterSilent`: brak metryk z klastra przez 15 min (`absent` metryki, którą kube-state-metrics wysyła zawsze, np.
@@ -240,9 +248,15 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   prace wyciszamy ręcznie w Grafana Cloud (silence na czas prac, procedura w runbooku), bez automatycznego mechanizmu.
   Reguły mają testy `promtool test rules` (obraz `prom/prometheus` przypięty digestem) w `check`: każdy alert odpala
   w swoim scenariuszu i milczy, gdy wszystko jest zdrowe; alerty kopii milczą też, gdy ponowienie po nieudanym podzie się
-  udało i gdy po wczorajszym błędzie dziś jest sukces; `NodeDiskFull` milczy przy 85% i krótkim skoku;
+  udało i gdy po wczorajszym błędzie dziś jest sukces; `RateLimitsOff` milczy przy sukcesach co 5 minut, po jednym
+  nieudanym przebiegu i po dwóch, gdy trzeci kończy się sukcesem z opóźnieniem do 2 minut, a odpala jedną instancją po
+  17 minutach bez sukcesu i przy braku metryki przez 30 minut; `NodeDiskFull` milczy przy 85% i krótkim skoku;
   `WorkloadNotReady` odpala przy niedostępnej replice i przy zniknięciu workloadu, milczy przy niedostępności krótszej niż
   10 min, przy workloadzie zeskalowanym do zera i przy ciszy całego klastra.
+  Sklep zamknięty na czas generowania danych (`make -C infra/k8s generate`, NetworkPolicy `shop-closed`) nie odpala
+  `WorkloadNotReady`: pody działają i są gotowe, a reguła odcina tylko ruch z Traefika (hosty odpowiadają 502). Strażnik
+  Joba generatora zatrzymuje generator przy 32 GB wolnego, tuż przed progiem `NodeDiskFull` (85% zajętego miejsca), więc
+  generowanie normalnie go nie wywołuje; ewentualne wyciszenie alertów na czas przebiegu robi ręcznie użytkownik.
 - **O7. Logi bez sekretów i danych klientów.** Alloy przetwarza każdą linię przed wysłaniem: te same etapy
   (`extraLogProcessingStages`) dla logów podów i zdarzeń klastra (`clusterEvents`), reguły odkrywania
   (`extraDiscoveryRules`) w `valuesObject` aplikacji `monitoring`, jedno źródło reguł. Zasady:
@@ -309,7 +323,7 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
   skrypt kopii idący dalej po błędzie albo inicjujący repozytorium po każdym błędzie dostępu, skrypt weryfikacji idący dalej po
   błędzie, przyjmujący snapshot w dowolnym wieku, z tymczasowym Postgresem, który nie jest sidecarem, bez certyfikatów CA restic
   albo czytający produkcyjny Postgres, `seal-secrets` pytający ponownie o hasło restic,
-  `BackupMissing` bez `absent`, `NodeDiskFull` odpalający przy dokładnie 85% i regułę ze składnią, której PromQL nie przyjmuje, `restore` bez potwierdzenia, usunięcie reguły maskowania e-maili, Role Alloy na wszystkie
+  `BackupMissing` i `RateLimitsOff` bez `absent`, `NodeDiskFull` odpalający przy dokładnie 85% i regułę ze składnią, której PromQL nie przyjmuje, `restore` bez potwierdzenia, usunięcie reguły maskowania e-maili, Role Alloy na wszystkie
   sekrety, przywrócony RBAC chartu operatora (ClusterRole), Role operatora ze zmianą obiektów RBAC, operator obserwujący cały
   klaster, zasób `Alloy` z własnym RBAC, usunięcie polityki dostępu do hosta albo powiązania polityki tokenów, polityka tylko
   ostrzegająca (`Warn`) albo przepuszczająca przy błędzie (`Ignore`), polityki w fali workloadów, wyjątek node-exportera po
@@ -347,9 +361,10 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
      klienta `store` po `keycloak-config`), liczby produktów i zamówień jak przed kopią, zdjęcie produktu przez imgproxy,
      produkt w wyszukiwarce (reindeks), strona główna sklepu, snapshot `pre-restore` w repozytorium;
   5. `restore` ze snapshotem z migracją nieznaną kodowi (snapshot z manifestem z dodatkową wersją) kończy się odmową bez
-     zmian danych i bez wyłączania aplikacji.
+     zmian danych i bez wyłączania aplikacji, także gdy trwa Job CronJoba `rate-limit-check`; wcześniej, po instalacji,
+     Job z CronJoba `rate-limit-check` kończy się sukcesem na Redisie klastra.
 
-  Dalsze fazy (r2–r4) działają na odtworzonym klastrze. Smoke test wypisuje czas faz kopii i odtworzenia oraz szczytowe
+  Dalsze fazy (r2–r4 i generator danych demo na końcu) działają na odtworzonym klastrze. Smoke test wypisuje czas faz kopii i odtworzenia oraz szczytowe
   zużycie dysku.
 - Alloy i Grafana Cloud nie działają w smoke teście (brak kont w CI); sprawdza je `check` (render, maskowanie, reguły)
   i runbook (serwer).
@@ -370,7 +385,7 @@ Kroki w sekcjach 3, 7, 8 i 9, z oznaczeniami jak w DEPLOY:
 - **agent**: po wdrożeniu przegląd próbki logów w Grafana Cloud pod kątem sekretów i danych klientów; znalezisko to
   nowa reguła maskowania albo wyłączenie źródła (O7).
 - **użytkownik**: przed świadomym `restore` albo planowanymi pracami wycisza alerty w Grafana Cloud (silence z
-  dopasowaniem do reguł `WorkloadNotReady`, a przy `restore` także alertów kopii, na czas prac z zapasem); po pracach
+  dopasowaniem do reguł `WorkloadNotReady` i `RateLimitsOff`, a przy `restore` także alertów kopii, na czas prac z zapasem); po pracach
   sprawdza, że wyciszenie wygasło albo je usuwa.
 - **zgoda użytkownika**: ćwiczenie odtworzenia na serwerze (`make restore` z identyfikatorem świeżego snapshotu), wynik
   w komentarzu do zgłoszenia; scenariusz utraty serwera: nowy VPS, `bootstrap` z kopią klucza Sealed Secrets,
@@ -395,13 +410,14 @@ Kroki w sekcjach 3, 7, 8 i 9, z oznaczeniami jak w DEPLOY:
 | Dump nie odtwarza się | `backup-verify` kończy się błędem z wyjściem `pg_restore` |
 | Nowy serwer po awarii robi nocne kopie danych demo | snapshoty mają inny host, retencja nowego klastra nie usuwa kopii starego |
 | `restore` bez `tak` albo bez `SNAPSHOT` | nic się nie zmienia, kod różny od 0 |
-| `restore` przy aktywnym Jobie w `shop` albo trwającej synchronizacji `shop` | odmowa bez zmian |
+| `restore` przy aktywnym Jobie w `shop` (poza Jobem `rate-limit-check`) albo trwającej synchronizacji `shop` | odmowa bez zmian |
 | Snapshot nowszy niż wdrożony kod | odmowa przed potwierdzeniem, kopią `pre-restore` i skalowaniem; aplikacje działają |
 | Nieudana kopia `pre-restore` | `restore` kończy się bez zmian, chyba że `PRE_RESTORE=skip` |
 | Błąd w trakcie odtwarzania | aplikacje zostają wyłączone, komunikat z krokiem i snapshotem `pre-restore`; runbook |
 | Utrata hasła restic | kopie nie do odczytania; dlatego hasło jest też u użytkownika |
 | Dysk węzła zajęty w ponad 85% przez 10 min | `NodeDiskFull` |
 | Redis, API albo inny workload `shop` niegotowy albo usunięty przez 10 min | `WorkloadNotReady` |
+| Redis gotowy, ale nieużywalny dla API (limitery tras przepuszczają ruch) albo CronJob `rate-limit-check` wstrzymany lub usunięty | `RateLimitsOff` po 12–17 min |
 | Świadomy `restore` albo prace | alerty wyciszone ręcznie w Grafana Cloud (runbook) |
 | Linia logu z hasłem, tokenem, e-mailem albo IP | wartość zamaskowana w Alloy przed wysłaniem; linie Mailpita i `DETAIL` Postgresa nie wychodzą |
 | Brak kont albo błędny token Grafana Cloud | aplikacja `monitoring` `Degraded` (fala 1, po `shop`); sklep działa i się wdraża |
@@ -414,7 +430,7 @@ Kroki w sekcjach 3, 7, 8 i 9, z oznaczeniami jak w DEPLOY:
 2. `make -C infra/k8s smoke` przechodzi lokalnie i na `ubuntu-latest`: kopia, weryfikacja, odtworzenie na pustym
    klastrze z wynikami jak przed kopią (także logowanie klienta), odmowa snapshotu nowszego niż kod bez wyłączania
    aplikacji; z zapisanym czasem i zużyciem dysku.
-3. `promtool test rules`: każdy z siedmiu alertów odpala w swoim scenariuszu i milczy, gdy wszystko jest zdrowe; alerty
+3. `promtool test rules`: każdy z ośmiu alertów odpala w swoim scenariuszu i milczy, gdy wszystko jest zdrowe; alerty
    kopii milczą przy udanym ponowieniu i po powrocie do zdrowia; `WorkloadNotReady` odpala przy niedostępnej replice
    i brakującym workloadzie, a milczy przy krótkiej niedostępności, zeskalowaniu do zera i ciszy klastra; reguła ma
    `absent` dla każdego Deploymentu i StatefulSetu z renderu `prod`.
@@ -456,7 +472,8 @@ Kroki w sekcjach 3, 7, 8 i 9, z oznaczeniami jak w DEPLOY:
   klastra oraz token `grafana-cloud`, z kontem kube-state-metrics listę obiektów klastra (bez sekretów i ConfigMap); może też
   zatrzymać zbieranie (zmienić albo usunąć Alloy) i bez limitów przestrzeni zająć zasoby węzła. Istniejących Deploymentów
   kube-state-metrics i swojego ani DaemonSetu `monitoring-node-exporter` nie zmieni.
-- **Sieć klastra jest otwarta.** Klaster nie ma żadnej NetworkPolicy, Redis działa bez hasła i trzyma sesje sklepu z tokenami
+- **Sieć klastra jest otwarta.** Klaster nie ma stałej NetworkPolicy (jedyna, tymczasowa `shop-closed` zamyka sklep na czas
+  generowania danych: `docs/features/demo-scale/spec.md`, i nie ogranicza ruchu między podami), Redis działa bez hasła i trzyma sesje sklepu z tokenami
   OIDC klientów, a Elasticsearch działa bez security. Każdy pod w `monitoring`, także przejęty operator bez tworzenia
   czegokolwiek, sięga po sieci do `redis.shop:6379` (sesje klientów, podszycie się pod klienta) i do Elasticsearcha, tak samo
   jak każdy pod w `shop` i każdy obcy obraz tam (Keycloak, Varnish, imgproxy, Elasticsearch). Polityki dopuszczania i RBAC

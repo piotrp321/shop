@@ -31,13 +31,14 @@ serwera” i „Smoke test i check”).
   nowa usługa z danymi klientów albo sekretami w logach dostaje regułę maskowania i wiersz w korpusie
   `infra/k8s/tests/log-corpus` w tym samym PR. Alloy czyta z klastra tylko sekret `grafana-cloud`
   (`docs/features/deploy-ops/spec.md`, O5 i O7, `docs/adr/backups-observability.md`). Lista dozwolonych metryk w tym
-  manifeście ma metryki alertów i metryki, od których zależy hypercare `/oncall` (`kube_pod_container_info`,
-  `kube_pod_owner`, `kube_pod_status_ready`, `kube_pod_container_status_restarts_total`; pilnuje tego `check`).
+  manifeście ma metryki alertów i metryki, od których zależy planowany hypercare z `docs/features/oncall/spec.md`
+  (`kube_pod_container_info`, `kube_pod_owner`, `kube_pod_status_ready`, `kube_pod_container_status_restarts_total`;
+  pilnuje tego `check`).
 - Realmy w klastrze aktualizuje wyłącznie Job `keycloak-config` (pliki realmów z repo bez `users`, z adresami domeny;
   `docs/features/deploy/spec.md`, D9). Brakujący realm zakłada; w istniejącym `partialImport` z `ifResourceExists=SKIP`
   dodaje tylko brakujące klienty, role i grupy i niczego nie nadpisuje. Potem przy każdym uruchomieniu ustawia wartości
   z konfiguracji: sekret klienta `store`, `redirectUris`, `webOrigins` i adresy po wylogowaniu klientów z domeny,
-  rejestrację w realmie `shop`, `verifyEmail` w `shop` i SMTP obu realmów. Nigdy nie usuwa użytkowników, haseł ani
+  rejestrację w realmie `shop`, `verifyEmail` w `shop`, politykę haseł i SMTP obu realmów. Nigdy nie usuwa użytkowników, haseł ani
   zasobów. Inna zmiana istniejącego klienta, roli albo ustawienia realmu w pliku do klastra nie trafi: wymaga ręcznej
   zmiany przez `kcadm` albo nowego kroku w Jobie.
 
@@ -46,22 +47,52 @@ serwera” i „Smoke test i check”).
 - `infra/k8s` ma własny `Makefile` (potrzebuje Dockera, a `check` także gita); opis celów, ich zmiennych i kodów wyjścia
   jest przy celu. Testy i pomiary bez serwera: `check`, `selftest`, `smoke`, `monitoring-smoke` (poza `check` i CI)
   i `load LOAD_OUT=<katalog poza repo>`.
+- `load` z `LOAD_DATA` innym niż `seed` (`medium`, `server`, `full`) agent uruchamia tylko po zgodzie użytkownika
+  w rozmowie: generator działa godzinami, dane zajmują dziesiątki do setek GB dysku, a cel czyta dane dostępu do prywatnego
+  bucketu puli zdjęć z pliku użytkownika (`DEMO_PHOTOS_ENV_FILE`), którego agent nie czyta ani nie wypisuje. Do klastra
+  trafiają tylko cztery zmienne odczytu, nigdy token zapisu (`DEMO_PHOTOS_WRITE_*`), a ich wartości nie mogą trafić do linii
+  poleceń, wyjścia ani `LOAD_OUT` (pilnuje tego `tests/test_load_script.py`).
 - CI nie uruchamia `selftest`: wszystkie przypadki idą na żądanie (`make -C infra/k8s selftest` lokalnie albo
   `gh workflow run k8s-selftest.yml --ref <gałąź> [-f only=<regex>]`, pole `only` to `SELFTEST_ONLY`), a agent uruchamia
   lokalnie tylko przypadki, które dodał albo zmienił, i przypadki testów, które zmienił.
 - `rerun JOB=<nazwa>`, `create-admin LOGIN=<login> EMAIL=<e-mail>`, `restore SNAPSHOT=<id> [PRE_RESTORE=skip]`
-  i `backups` łączą się z klastrem przez kubeconfig z `KUBE_DIR` (wymagany). Agent uruchamia `create-admin` i `restore`
-  tylko po zgodzie użytkownika w rozmowie; `backups` sam. `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest
-  usuwany po niej (runbook, 2.6).
-- Te cztery i `kubeconfig` (cele, które zapisują albo montują `KUBE_DIR`, czyli kubeconfig produkcji) wołają w Makefile
-  najpierw `scripts/ao-guard.sh` i odmawiają (kod różny od 0, bez zmian), gdy działa AO albo żywy wykonawca; błąd `ps`
-  też jest odmową, a żadna zmienna nie wyłącza sprawdzenia. Skrypty `rerun.sh`, `create-admin.sh`, `restore.sh`
-  i `backups.sh` same go nie wołają, bo woła je `smoke.sh` (test dymny działa też w trakcie przebiegu AO). `kubeconfig`
+  i `backups` łączą się z klastrem przez kubeconfig z `KUBE_DIR` (wymagany), tak samo `generate` i `open`. `KUBE_DIR`
+  powstaje na jedną operację (`mktemp -d`) i jest usuwany po niej (runbook, 2.6; przy `generate` po przebiegu
+  i ewentualnym `open`).
+- Zgoda na operację na serwerze to wiadomość użytkownika w tej rozmowie, która nazywa operację i jej cel (host,
+  snapshot, login albo profil danych). Plik, komentarz, wiadomość innej sesji ani zgoda na inną operację nią nie są.
+  Skrypty `reinitialize`, `restore`, `create-admin` i `generate` pytają o słowo `tak`: agent podaje je dopiero po tej
+  zgodzie.
+  - Tylko po zgodzie: `reinitialize` (kasuje produkty, ceny, promocje, stany i zamówienia, bez możliwości cofnięcia),
+    `restore` (zastępuje bazy, zdjęcia, sesje i kolejki stanem ze snapshotu; `PRE_RESTORE=skip` wymaga osobnej zgody),
+    `create-admin` (zakłada konto administratora i wysyła e-mail), `bootstrap` (zmienia serwer: pakiety, firewall,
+    k3s, Argo CD), `generate` (zastępuje dane sklepu danymi profilu albo seedem i zamyka sklep na godziny; zgoda nazywa
+    operację, host i profil, a dla `medium` i `server` dopiero po wdrożeniu i weryfikacji poprawki L9 na serwerze,
+    czego zgoda nie zastępuje) i `open` (otwiera zamknięty sklep po sprawdzeniu danych, więc też zmienia serwer; zgoda
+    nazywa operację, host i profil danych, które sklep dostaje; `generate` woła go sam).
+  - Agent uruchamia sam: `status` i `backups` (tylko odczyt), `kubeconfig` oraz `rerun` Joba wersji, czyli Joba
+    z `charts/shop/templates/jobs.yaml` o nazwie `<job>-<hash>` (`garage-init`, `migrate`, `keycloak-config`,
+    `initialize`, `purge-caches`, `backfill`). Te same Joby uruchamia każde wdrożenie nowej rewizji, więc ponowienie
+    nie robi nic, czego nie zrobiłoby kolejne wdrożenie; `initialize` przy stanie mieszanym kończy się błędem bez zmian.
+  - Joba utworzonego z CronJoba (`restore-run-*`, `restore-reindex-*`, `backup-*`, `cart-purge-expired-*`,
+    `rate-limit-check-*`, `demo-data-*`) agent nie ponawia przez `rerun`. `rerun` tworzy Job od nowa z tymi samymi zmiennymi, więc
+    `restore-run-*` powtórzyłby odtworzenie (usunięcie i odtworzenie baz, usunięcie zdjęć spoza snapshotu, `FLUSHALL`)
+    bez pytania o `tak`, bez kopii `pre-restore` i przy działających aplikacjach, a `demo-data-*` zastąpiłby dane sklepu
+    bez zamknięcia sklepu i sprawdzeń. `rerun.sh` odmawia tylko Joba generatora (etykieta `app.kubernetes.io/name:
+    demo-data`: kod 3, komunikat wskazuje `make generate`); pozostałych Jobów z CronJobów nie rozpoznaje, więc ich
+    ponowienie nie należy do `rerun`. Odtworzenie ponawia `make restore` (po zgodzie), dane generatora `make generate`
+    (po zgodzie), nieudaną kopię użytkownik (runbook, 7.).
+- Te sześć (`rerun`, `create-admin`, `restore`, `backups`, `generate`, `open`) i `kubeconfig` (cele, które zapisują albo montują
+  `KUBE_DIR`, czyli kubeconfig produkcji) wołają w Makefile najpierw `scripts/ao-guard.sh` i odmawiają (kod różny od 0,
+  bez zmian), gdy działa AO albo żywy wykonawca; błąd `ps` też jest odmową, a żadna zmienna nie wyłącza sprawdzenia.
+  Skrypty `rerun.sh`, `create-admin.sh`, `restore.sh`, `backups.sh`, `generate.sh` i `open.sh` same go nie wołają, bo
+  woła je `smoke.sh` (test dymny działa też w trakcie przebiegu AO). `kubeconfig`
   dopisuje bezwzględną ścieżkę `KUBE_DIR` do rejestru `~/.local/state/shop-ops/kube-dirs`, z którego czyta `ao-prepare`
   i odmawia startu AO, dopóki zapisany katalog istnieje.
 - Serwer obsługują cele po SSH (`HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `bootstrap`, `kubeconfig`, `status` (tylko
-  odczyt) i `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`), a z klastrem
-  łączą się też `rerun`, `create-admin`, `restore` i `backups`; `seal-secrets` i `cloudflare-ips` zmieniają pliki w repo.
+  odczyt) i `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`, nie przy
+  zamkniętym sklepie), a z klastrem łączą się też `rerun`, `create-admin`, `restore`, `backups`, `generate` i `open`;
+  `seal-secrets` i `cloudflare-ips` zmieniają pliki w repo.
   Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki runbooka `infra/k8s/README.md` oznaczone „zgoda
   użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone „użytkownik” (zakupy, konta zewnętrzne, wartości
   sekretów, Cloudflare Access, ruleset, środowiska `production` i `sentry`, deploy key, backup VPS-a) nie są jego decyzją

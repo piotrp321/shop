@@ -1,6 +1,6 @@
 ---
 name: retro
-description: Retrospektywa po epiku. Skill zbiera dane przebiegów AO, agent retro-analyst szuka przyczyn problemów, które się powtarzają albo wymagały interwencji naprawczej, a wynik to jeden PR z poprawkami procesu i aktualnym „Statusem” planu oraz propozycje issues zakładane po „tak” użytkownika.
+description: Retrospektywa po epiku. Skill zbiera dane przebiegów AO i epików natywnych, agent retro-analyst szuka przyczyn problemów, które się powtarzają albo wymagały interwencji naprawczej, a wynik to jeden PR z poprawkami procesu i aktualnym „Statusem” planu oraz propozycje issues zakładane po „tak” użytkownika.
 argument-hint: "[epik]"
 disable-model-invocation: true
 ---
@@ -31,6 +31,7 @@ SKILL_ROOT="$(git rev-parse --show-toplevel)"
 SHOP="$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 RETRO_HOME="${SHOP_RETRO_HOME:-$HOME/.local/state/shop-retro}"
 AO_HOME="${AO_STATE_HOME:-$HOME/.local/state}"
+METRICS_STATE="${SHOP_METRICS_STATE:-$HOME/.local/state/shop-metrics}"
 R="$SKILL_ROOT/.claude/skills/retro/retro.py"
 GT="$SKILL_ROOT/tools/agent-security/github_trust.py"
 NQ="$SKILL_ROOT/.claude/skills/ao-run/night_queue.py"
@@ -42,7 +43,7 @@ export RETRO_RUN_ID="<run-id>"
 
 Skrypty wywołuj zawsze jako `python3 "$R" …` i `python3 "$NQ" …`. `SHOP` to główny klon (tam działają `gh` i `git`):
 komendy `retro.py` dostają `--repo "$SHOP"` (wyjątek: `validate`, sekcja „Przebieg”, krok 4). Przed wyborem epiku
-(bez argumentu) użyj tylko pierwszych pięciu linii.
+(bez argumentu) użyj tylko pierwszych sześciu linii.
 
 Powiadomienie push to `PushNotification` (do 200 znaków). Limit i procesy sprawdzasz na komputerze sesji.
 
@@ -55,6 +56,9 @@ Powiadomienie push to `PushNotification` (do 200 znaków). Limit i procesy spraw
   (`--repo`) stoją po nazwie komendy.
 - **Z `/ao-run`** (kolejka przeglądów po `/sweep`): to samo wejście z argumentem `<epik>`; sesja przeczytała ten
   skill i wykonuje go od „Warunków przed startem”.
+- **Epik natywny:** (prowadzony przez główną sesję według „Przebiegu epiku” w `docs/adr/agentic-software-house.md`,
+  z plikiem przebiegu `metrics.py start`): `/retro <epik>` uruchamia użytkownik po merge'u końcowego PR; sesja
+  prowadząca epik go nie uruchamia. `pending` wymienia taki epik po merge'u jego końcowego PR.
 - **Nierozstrzygnięte decyzje** (krok 7) to `decisions_open` (propozycje issues) i pozycje PR retro bez `outcome` w
   `$RETRO_HOME/*/state.json`. Pokaż je tylko do odczytu (opcjonalny drugi argument to epik pomijany, bo jego pozycje są
   w propozycjach bieżącego przebiegu, krok 6):
@@ -90,19 +94,21 @@ Sprawdzaj po kolei. Pierwsze niespełnione kończy skill: bez worktree i bez zmi
 **1. Odmowa bez zapisu** (komunikat w rozmowie; `$RUN` i state.json bez zmian):
 - nazwa `<epik>` nie pasuje do `^[a-z0-9][a-z0-9-]*$`;
 - `"$RETRO_HOME/<epik>/state.json"` ma `state` `done` albo `skipped` (brak pliku: dalej);
-- epik nie jest zmergowany: brak końcowego PR, PR `OPEN` albo epik w toku (nie `DONE`);
-- brak katalogu `ao-<epik>`, `orchestrator.db` albo wiersza epiku w bazie (wyniki `absent` i `none` niżej): „epik nie
-  jest przebiegiem AO albo jeszcze nie ruszył”. To odmowa, nie `skip`: `skipped` jest nieodwracalne, a epik
+- epik nie jest zmergowany: brak końcowego PR, PR `OPEN` albo epik w toku (nie `DONE`, plik przebiegu bez numeru PR);
+- brak przebiegu AO (katalog `ao-<epik>`, `orchestrator.db` albo wiersz epiku w bazie) i brak pliku przebiegu epiku
+  natywnego `$METRICS_STATE/runs/<epik>.json` (wyniki `absent` i `none` niżej): „epik nie jest przebiegiem AO ani
+  epikiem natywnym albo jeszcze nie ruszył”. To odmowa, nie `skip`: `skipped` jest nieodwracalne, a epik
   przygotowany, ale nieuruchomiony, straciłby retro.
 
 Przebieg epiku rozpoznaj krótkim fragmentem tylko do odczytu; nigdy nie uruchamiaj `ao` (każda komenda `ao` w
 katalogu bez bazy zakłada nową, a `ao report` nadpisuje raport). Nazwa epiku jest porównywana dokładnie jak w
-`retro.py` (`epic_id` w bazie musi być równe nazwie katalogu bez `ao-`, bez zmiany wielkości liter):
+`retro.py` (`epic_id` w bazie musi być równe nazwie katalogu bez `ao-`, bez zmiany wielkości liter). Epik bez
+katalogu `ao-<epik>` jest natywny, gdy ma plik przebiegu (jak w `metrics.py epic`):
 
 ```bash
-python3 - "$AO_HOME" "<epik>" <<'PY'
+python3 - "$AO_HOME" "<epik>" "$METRICS_STATE" <<'PY'
 import json, os, sqlite3, sys, urllib.request
-home, epic = sys.argv[1:3]
+home, epic, metrics_state = sys.argv[1:4]
 db = os.path.join(home, 'ao-' + epic, 'orchestrator.db')
 out = {'run': 'absent'}
 if os.path.isfile(db):
@@ -119,22 +125,39 @@ if os.path.isfile(db):
             out = {'run': 'done' if done else 'in_progress', 'pr': data.get('final_pr_number')}
     except sqlite3.Error as e:
         out = {'run': 'none'} if 'no such table' in str(e) else {'run': 'error', 'message': str(e)}
+runs = os.path.join(metrics_state, 'runs')
+try:
+    listed = os.listdir(runs)   # the listing, not isfile: on APFS runs/x.json also opens runs/X.json
+except OSError:
+    listed = []
+if not os.path.isdir(os.path.join(home, 'ao-' + epic)) and epic + '.json' in listed:
+    try:
+        data = json.load(open(os.path.join(runs, epic + '.json'), encoding='utf-8'))
+        pr = data.get('pr') if isinstance(data, dict) else None
+        ok = isinstance(pr, int) and not isinstance(pr, bool) and pr > 0
+        out = {'run': 'native', 'pr': pr} if ok else {'run': 'native_in_progress'}
+    except (OSError, ValueError) as e:
+        out = {'run': 'error', 'message': str(e)}
 print(json.dumps(out))
 PY
 ```
 
-- `absent` (brak katalogu `ao-<epik>` albo bazy): odmowa bez zapisu (punkt 1);
+- `absent` (brak katalogu `ao-<epik>` albo bazy i brak pliku przebiegu natywnego o nazwie dokładnie `<epik>.json`;
+  plik z inną wielkością liter, np. `SMALL-FIXES.json`, nie jest epikiem, jak w `retro.py`): odmowa bez zapisu (punkt
+  1);
 - `none` (baza istnieje, ale bez tabeli `epics`, bez kolumny `epic_id` albo `status`, albo bez wiersza tego epiku, np.
   `ao-night`; tak samo jak `discover_runs` w `retro.py`): odmowa bez zapisu jak przy `absent` (punkt 1): epik nie jest
   przebiegiem AO albo jeszcze nie ruszył, więc jego retro nie może przepaść;
 - `in_progress` (wiersz z `status` nie `DONE`, w tym NULL, albo bez `final_pr_number`): odmowa „epik w toku”;
-- `error` (baza nieczytelna): odmowa z komunikatem, bez zapisu;
+- `error` (baza albo plik przebiegu nieczytelny): odmowa z komunikatem, bez zapisu;
 - `done`: `cd "$SHOP" && gh pr view <pr> --json state,mergedAt` (`gh` zawiedzie: odroczenie, punkt 3):
-  `OPEN` odmowa; `CLOSED` trwałe pominięcie; `MERGED` dalej.
+  `OPEN` odmowa; `CLOSED` trwałe pominięcie; `MERGED` dalej;
+- `native` (epik natywny: plik przebiegu z numerem końcowego PR): jak `done`;
+- `native_in_progress` (plik przebiegu bez numeru PR): odmowa „epik w toku”.
 
 **2. Trwałe pominięcie:** `python3 "$R" skip <epik> --reason "<powód>" --repo "$SHOP"` i push „Retro `<epik>`
 pominięte trwale: <powód>”. Powody: końcowy PR `CLOSED` bez merge'u albo decyzja użytkownika w rozmowie („pomiń retro X: <powód>”). Nic
-innego nie pomija retro trwale (brak przebiegu AO w katalogu `ao-<epik>` to odmowa, nie `skip`). Komenda odmówi (kod 2) dla stanu `done` albo `skipped`.
+innego nie pomija retro trwale (brak przebiegu AO i pliku przebiegu natywnego to odmowa, nie `skip`). Komenda odmówi (kod 2) dla stanu `done` albo `skipped`.
 
 **3. Odroczenie:** `python3 "$R" defer <epik> --reason "<powód>" --repo "$SHOP"` (powód do 200 znaków: próba i
 powód zapisują się w state.json, epik zostaje w `pending`) i push „Retro `<epik>` odroczone: <powód>”. Powody:
@@ -180,7 +203,7 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    ```bash
    cd "$SHOP" && { git worktree remove --force "$WT" 2>/dev/null; git worktree prune; } &&
    git fetch origin main && git worktree add --detach "$WT" origin/main &&
-   python3 "$R" collect "$EPIC" --out "$RUN" --repo "$SHOP"
+   python3 "$R" collect "$EPIC" --out "$RUN" --worktree "$WT" --repo "$SHOP"
    ```
 
    Pierwsza linia usuwa resztkę po zabitej sesji; blokada tego przebiegu gwarantuje, że `$WT` nie jest cudzy.
@@ -190,7 +213,12 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    `external` niezaufanych autorów: tylko numer, autor i link) oraz pomiar z `tools/metrics/metrics.py`: incydenty
    rodzaju `optimization` (kandydaci reguł D1–D4 z `decide --history`), fakty `<epik>/measurement/*`
    i `optimization_effects` (wynik `metrics.py effect` dla kluczy z `applied.jsonl`). Brak pomiaru (brak skryptu, błąd
-   wywołania) to fakt „brak danych pomiaru” z kategorią błędu (bez tekstu skryptu), nie błąd `collect`.
+   wywołania) to fakt „brak danych pomiaru” z kategorią błędu (bez tekstu skryptu), nie błąd `collect`. Skrypt pomiaru
+   jest z `$WT` (`origin/main`, `--worktree`), a działa w `$SHOP` na dotychczasowym stanie pomiaru (`$METRICS_STATE`).
+   Dla epiku natywnego `collect` najpierw odświeża jego rekord (`metrics.py epic <epik>`), a incydenty bierze z rekordu
+   (czekanie na człowieka, przeglądy blokujące, niezakończone przebiegi subagentów, zgłoszenia `bug` z okna regresji)
+   i z opisu końcowego PR przez bramkę pochodzenia („Decyzje bez pytania”, „Problemy i zastoje”, „Luki w
+   instrukcjach”); brak sekcji albo pola to fakt braku danych.
 3. **Agent `retro-analyst`** (narzędzie Agent, na pierwszym planie). Zlecenie:
 
    ```text
@@ -215,10 +243,39 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    zawsze, z `--pr` zaraz po `gh pr create` (przerwanie między nimi opisuje sekcja „PR”; powtórzone `observe` niczego
    nie dubluje): dopisuje obserwacje oraz `key` i incydenty każdej pozycji `fix` i `issue` do `observations.jsonl`, a z
    `--pr` zapisuje pozycje `fix` jako pozycje PR retro, `issue` jako `decisions_open`.
-6. **Wynik.** Wywołaj `get_usage` (koniec pomiaru). Zapisz `$RUN/report.md` (po polsku): poprawki (commit, ID
-   pozycji), obserwacje, propozycje issues z numerami (repo, tytuł, `existing_issue` albo nowe, dowody), `overflow`,
-   zmiany „Statusu”, PR, ostrzeżenie `warning` z `lock` (jeśli było), nierozstrzygnięte decyzje poprzednich
-   przebiegów (niżej), sekcja `## Zużycie` (krok 8) i na samym końcu sekcja `## Decyzje optymalizacyjne` (niżej).
+
+   **Zamrożenie na czas serii.** Przed zmianami odczytaj stan serii z wiersza „Stan serii” tabeli „Seria ASH v1.0”
+   w „Statusie” planu w worktree. Stan to wartość, od której zaczyna się komórka („przed startem (tag …)” to „przed
+   startem”); brak planu, wiersza albo innej wartości to „w toku” z adnotacją w raporcie:
+
+   ```bash
+   python3 - "$WT/docs/features/agentic-software-house/plan.md" <<'PY'
+   import re, sys
+   try:
+       text = open(sys.argv[1], encoding='utf-8').read()
+   except OSError:
+       text = ''
+   row = re.search(r'^\| *Stan serii *\| *([^|\n]*?) *\|', text, re.M)
+   value = row.group(1) if row else ''
+   state = next((s for s in ('przed startem', 'w toku', 'zakończona') if value.startswith(s)), None)
+   print(state or 'w toku (nieznany stan: %s)' % (value or 'brak wiersza'))
+   PY
+   ```
+
+   Przy „w toku” (reguła zamrożenia na końcu „Przebiegu epiku” w `docs/adr/agentic-software-house.md`) nie wprowadzasz
+   pozycji `fix` (są odroczone do końca serii): bez ich commitów, a PR powstaje tylko przy zmianie „Statusu”. `observe`
+   zapisuje je jak zawsze (`key` i incydenty w `observations.jsonl`), przy PR z `--committed none`, żeby nie zostały
+   pozycjami PR retro (`sync` nie wpisze ich do `applied.jsonl`); bez PR bez `--pr`. Raport wymienia je w sekcji `##
+   Odroczone do końca serii` (numer `n`, tytuł, pliki) i przy każdej ocenia, czy jest blokadą kolejnego epiku serii albo
+   zagrożeniem (bezpieczeństwo, utrata danych), z uzasadnieniem. Commit „Statusu” i propozycje issues działają jak
+   zawsze. Pozycję oznaczoną jako blokada albo zagrożenie wprowadzasz dopiero po „tak” użytkownika wskazującym tę
+   pozycję (krok 7); innej pozycji `fix` w trakcie serii nie wprowadzasz. Przy „przed startem” i „zakończona” pozycje
+   `fix` idą jak zawsze.
+6. **Wynik.** Wywołaj `get_usage` (koniec pomiaru). Zapisz `$RUN/report.md` (po polsku): poprawki (commit, ID pozycji),
+   obserwacje, propozycje issues z numerami (repo, tytuł, `existing_issue` albo nowe, dowody), `overflow`, zmiany
+   „Statusu”, PR, ostrzeżenie `warning` z `lock` (jeśli było), przy serii w toku sekcja `## Odroczone do końca serii`
+   (krok 5), nierozstrzygnięte decyzje poprzednich przebiegów (niżej), sekcja `## Zużycie` (krok 8) i
+   na samym końcu sekcja `## Decyzje optymalizacyjne` (niżej).
    Numery to
    `n` z `proposals.json` (wspólna numeracja pozycji `fix`,
    `issue` i `status`, bez przenumerowania); `issues --approve` i decyzje używają tych `n`. Nierozstrzygnięte decyzje
@@ -266,6 +323,11 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
      PR retro jest wspólny dla kilku epików, a `--epic` zawęziłby odrzucenie do jednego, więc pozycje starszych epików
      poszłyby po zamknięciu PR do `carried.jsonl`. Potem `gh pr close <nr> --comment "<powód>"`. Obejmuje pozycje PR;
      propozycje issues (`decisions_open`) wymagają osobnej decyzji (przypomnij o nich jednym zdaniem);
+   - pozycja odroczona przy serii w toku, oznaczona w raporcie jako blokada albo zagrożenie: „tak <n>” wskazujące tę
+     pozycję → wprowadź ją według sekcji „PR” (gałąź retro, commit z `Retro-item:`, push, nowy PR albo opis
+     istniejącego) i `python3 "$R" observe "$RUN" --pr <nr> --branch <gałąź> --committed <n…> --repo "$SHOP"`
+     z numerami wszystkich wprowadzonych pozycji tego przebiegu. Ogólne „tak” bez numeru dotyczy propozycji issues,
+     nie pozycji odroczonych; pozycji bez takiego oznaczenia nie wprowadzasz;
    - merge PR robi użytkownik.
 8. **Zużycie.** Czas od startu (krok 2) do końca (krok 6) i przyrost procentu każdego okna z `get_usage` (okno z innym
    `resetsAt` niż na starcie: „odnowione w trakcie”, bez przyrostu; stan inny niż `ok` albo brak narzędzia: „brak
@@ -317,7 +379,8 @@ Jeden otwarty PR retro naraz; retro idą po kolei (blokada), więc dwa nie pisz�
 - Nie uruchamiasz `ao` ani niczego w katalogach `~/.local/state/ao-*` poza odczytem (`sqlite3` w trybie `mode=ro`,
   pliki tekstowe).
 - Nie zmieniasz kodu, konfiguracji ani plików spoza listy dozwolonej (`CLAUDE.md`, `apps/*/CLAUDE.md`, skille, agenci,
-  `docs/features/{ao-run,prepare-epic,groom,agent-tester-ux,retro}/spec.md`) i „Statusu” planu bez manifestu; reszta
+  `docs/features/{ao-run,agent-tester-ux,retro}/spec.md`, `docs/adr/agentic-software-house.md` z „Przebiegiem
+  epiku”) i „Statusu” planu bez manifestu; reszta
   to propozycja `issue`, nie poprawka.
 - Nie zakładasz issues ani komentarzy bez „tak” użytkownika w rozmowie i nie ponad jego wybór; nie zamykasz ani nie
   etykietujesz istniejących issues.

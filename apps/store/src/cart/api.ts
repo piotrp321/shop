@@ -6,7 +6,7 @@ export type CartSummary = components["schemas"]["CartSummary"];
 export type MergeResult = components["schemas"]["MergeResult"];
 
 /** An answer of the API: its data, or the status (and the `detail` of its problem document) of a refusal. */
-export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; detail?: string; violation?: string };
+export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; detail?: string; violation?: string; retryAfter?: string };
 
 /** The cart operations the BFF needs, the same for a guest cart and for the cart of the signed-in customer. */
 export type CartApi = {
@@ -29,9 +29,11 @@ function result<T>({ data, error, response }: Answer<T>): ApiResult<T> {
   }
   const problem = typeof error === "object" && error !== null ? (error as { detail?: unknown; violations?: unknown }) : {};
   const first = Array.isArray(problem.violations) ? (problem.violations[0] as { title?: unknown } | undefined) : undefined;
+  const retryAfter = response.status === 429 ? response.headers.get("retry-after") : null;
   return {
     ok: false,
     status: response.status,
+    ...(retryAfter === null ? {} : { retryAfter }),
     detail: typeof problem.detail === "string" ? problem.detail : undefined,
     violation: typeof first?.title === "string" ? first.title : undefined,
   };

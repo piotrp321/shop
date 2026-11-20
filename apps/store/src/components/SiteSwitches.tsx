@@ -35,14 +35,44 @@ export function SiteSwitchesProvider({ children }: { children: ReactNode }) {
 
 export const useSiteSwitches = () => useContext(SiteSwitchesContext);
 
-/** The bar above the header of a demo store. */
+/** The custom property that holds the height of the demo bar while it is shown; the layout and `globals.css` read it. */
+const NOTICE_HEIGHT_PROPERTY = "--demo-notice-height";
+
+/**
+ * The bar of a demo store, pinned to the bottom of the window and out of the flow, so its late appearance (the switches
+ * are read in the browser) moves nothing. While it is shown it publishes its measured height (it is 2 to 3 lines on a
+ * phone) in `--demo-notice-height`: the layout leaves that much room at the end of the page and the document gets that
+ * much `scroll-padding-bottom`, so neither the footer nor a focused element stays under it. It lies under the dialogs
+ * of the store (`z-50`).
+ */
 export function DemoNotice() {
   const { demoNotice } = useSiteSwitches();
+  const [bar, setBar] = useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!bar) {
+      return;
+    }
+    const root = document.documentElement;
+    const publish = () => root.style.setProperty(NOTICE_HEIGHT_PROPERTY, `${bar.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(bar);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty(NOTICE_HEIGHT_PROPERTY);
+    };
+  }, [bar]);
+
   if (!demoNotice) {
     return null;
   }
   return (
-    <div role="note" className="bg-foreground px-4 py-2 text-center text-sm text-background">
+    <div
+      ref={setBar}
+      role="note"
+      className="fixed inset-x-0 bottom-0 z-40 bg-foreground px-4 py-2 text-center text-sm text-background"
+    >
       Sklep demonstracyjny: płatności i zamówienia są symulowane, nic nie zostanie wysłane ani pobrane.
     </div>
   );

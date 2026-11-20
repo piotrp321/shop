@@ -80,8 +80,6 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
 - `Product::create(..., status)`: panel tworzy `Draft`, loader danych demo `Published` (z `firstPublishedAt`).
   `create` nie sprawdza reguły K2 (dane demo mają produkty bez zdjęć). Zapisuje `ProductCreated` (nie
   `ProductChanged`); `IndexProduct` obsługuje je, więc nowy szkic trafia do indeksu od utworzenia (dokument `draft`).
-  `CreateProduct` publikuje w tej wersji oba `ProductCreated`: domenowe dla poprzedniej wersji workera w trakcie
-  wymiany podów i integracyjne (zgodność wersji, `apps/api/CLAUDE.md`).
 - `edit(name, slug, shortDescription, categories, taxClass, images, variants)`: zastępuje dane produktu. Zmiana
   sluga produktu z `firstPublishedAt ≠ null` → `SlugLocked` (`Conflict`). Opublikowany produkt, który miał zdjęcia,
   a nowa lista jest pusta → `ProductNotPublishable` (`Conflict`); opublikowany produkt bez zdjęć zapisuje się bez
@@ -158,9 +156,8 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   (ze statusem `draft`), z wersją `external_gte` jak w SEARCH. Dokumentów się nie usuwa, więc wersja szkicu chroni
   przed spóźnionym zapisem starszego stanu bez limitu czasu (bez zależności od `index.gc_deletes`). `catalog:reindex`
   indeksuje wszystkie produkty. `IndexProduct` obsługuje oba integracyjne zdarzenia Catalog: `ProductCreated`
-  i `ProductChanged`, a w tej wersji także domenowe `ProductCreated` z outboxa poprzedniej wersji; wszystkie prowadzą
-  do `ProductIndexing::reindex`. Każde zapytanie sklepu (`ProductSearch`: wyniki, `total`, fasety, `availableCount`,
-  `price`) ma filtr `term status: published` w `query`, więc działa też w agregacjach.
+  i `ProductChanged`; oba prowadzą do `ProductIndexing::reindex`. Każde zapytanie sklepu (`ProductSearch`: wyniki,
+  `total`, fasety, `availableCount`, `price`) ma filtr `term status: published` w `query`, więc działa też w agregacjach.
 - Statystyki katalogu (dashboard): indeks ma dokument każdego produktu, także szkicu, więc zgodność
   indeksu (`inSync`: liczba dokumentów = liczba produktów) zostaje poprawna, a liczba produktów obejmuje szkice.
 
@@ -241,8 +238,9 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 - Nieznany `taxClass` → 422. Kategoria nieistniejąca → 422 (pole kategorii), nie 404.
 - Upload: PHP `upload_max_filesize = 64M`, `post_max_size = 70M` (`apps/api/docker/php/conf.d/app.ini`). Plik ponad
   `upload_max_filesize` (błąd uploadu PHP) albo żądanie z `Content-Length` ponad `post_max_size` (PHP odrzuca wtedy
-  całe ciało, więc kontroler sprawdza nagłówek przed szukaniem pliku) → 422 „Plik jest za duży.”. Caddy bez własnego
-  limitu ciała poniżej 70 MB. Limity PHP nie działają w kernelu testów funkcjonalnych, więc te dwie ścieżki sprawdza
+  całe ciało, więc kontroler sprawdza nagłówek przed szukaniem pliku) → 422 „Plik jest za duży.”. Caddy przyjmuje
+  `POST` tej ścieżki do 71 MiB, powyżej `post_max_size` (`docs/features/abuse-limits/spec.md`, D10); większe ciało to 413
+  z Caddy bez nagłówków CORS. Limity PHP nie działają w kernelu testów funkcjonalnych, więc te dwie ścieżki sprawdza
   test HTTP na działającym stosie (E2E `catalog-admin.spec.ts`).
 - `ImageSize::Thumbnail` (1:1, szerokości 96 i 192, WebP) na liście rozmiarów; jedyny rozmiar odpowiedzi panelu.
 - OpenAPI w `openapi-admin.json`, klient panelu wygenerowany; `openapi.json` sklepu nie zawiera endpointów panelu.

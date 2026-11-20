@@ -13,6 +13,9 @@ Projekt ma dwa cele:
    zasady projektu, niezależne review i CI. Zasady pracy z agentami (`CLAUDE.md`, `.claude/`) są równie ważnym
    rezultatem jak sam kod.
 
+Zakres MVP (sekcja niżej) jest zrealizowany. Kolejny cel to pełnoprawny sklep komercyjny: stan, w którym rzeczywisty
+polski sprzedawca może uruchomić sklep i prowadzić sprzedaż produkcyjną (sekcja „Zakres po MVP”).
+
 ## Aplikacje
 
 | Aplikacja | Stos | Rola |
@@ -231,7 +234,15 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
   nie uruchamiamy lokalnie ani w środowisku demo.
 - Testy obciążeniowe (k6, skrypty w `load/`) mierzą krytyczne ścieżki: katalog, stronę produktu, wyszukiwarkę, koszyk
   i checkout gościa, przez sklep, na klastrze k3d z obrazami produkcyjnymi (`make -C infra/k8s load`). Wynik opisuje
-  tę maszynę i to demo (mały katalog), nie skalę docelową. Raport pomiaru jest w `docs/reports/`. `make load-smoke` uruchamia skrypty z jednym użytkownikiem w CI, żeby nie przestały działać.
+  tę maszynę i dane, na których go wykonano, nie skalę docelową. Raport pomiaru jest w `docs/reports/`. `make load-smoke` uruchamia skrypty z jednym użytkownikiem w CI, żeby nie przestały działać.
+- Pomiar na danych w skali (`LOAD_DATA=medium|server|full`, generator `docs/features/demo-data/spec.md`): wykonany
+  został tylko `medium` (1 mln produktów, 1 mln zamówień; 2026-11-19, rewizja `aceeab48`) i opisuje wyłącznie `medium`.
+  Rozmiary i czasy `server` i `full` (10 mln produktów, 5 i 50 mln zamówień) to ekstrapolacja z `medium`,
+  niezweryfikowana pomiarem.
+- Dane w skali trafiają też na serwer demo (worf.pl): ręcznie, celem `make -C infra/k8s generate`, najpierw `medium`,
+  po analizie jego wyników i osobnej zgodzie `server`, przy zamkniętym sklepie do udanego sprawdzenia danych
+  (`docs/features/demo-scale/spec.md`). Wynik opisuje ten serwer i ten profil. Pomiar `full` na k3d jest odłożony,
+  więc pełna skala (10 mln produktów, 50 mln zamówień) nie jest zweryfikowana.
 
 **Spójność i współbieżność**
 - Optimistic locking (wersja) dla edycji z widoku: zmiana agregatu edytowanego równolegle (zamówienie, cena, korekta
@@ -311,12 +322,17 @@ idempotencji), a `demo-data:verify` sprawdza spójność na końcu. Profile (`ap
 | Profil | Pracownicy | Klienci | Produkty (ogon) | Zamówienia | Gdzie |
 |---|---|---|---|---|---|
 | `small` | 20 | 1 000 | 2 000 | 5 000 | testy API, lokalnie |
-| `medium` | 50 | 100 000 | 1 000 000 | 1 000 000 | k3d, lokalnie |
-| `server` | 500 | 1 000 000 | 10 000 000 | 5 000 000 | k3d (później serwer demo) |
+| `medium` | 50 | 100 000 | 1 000 000 | 1 000 000 | k3d, lokalnie, serwer demo |
+| `server` | 500 | 1 000 000 | 10 000 000 | 5 000 000 | serwer demo, k3d |
 | `full` | 500 | 1 000 000 | 10 000 000 | 50 000 000 | k3d |
 
 Profile inne niż `small` biorą zdjęcia z prywatnej puli w R2 (dane dostępu w pliku użytkownika poza repo). `make seed`
 po generatorze przywraca dane E2E (konta generatora w Keycloak zostają).
+
+Na serwerze demo generator uruchamia wyłącznie `make -C infra/k8s generate` po zgodzie użytkownika (zawieszony CronJob
+`demo-data`, strażnik wolnego miejsca, sklep zamknięty do sprawdzenia danych przez `make -C infra/k8s open`; po błędzie
+sklep zostaje zamknięty do ponownego generowania albo powrotu do seeda; runbook `infra/k8s/README.md`, sekcja 11). Dane w skali na serwerze nie są resetowane co noc: zastępuje je tylko
+świadome ponowne generowanie albo powrót do seeda.
 
 ## Zakres MVP
 
@@ -335,6 +351,23 @@ po generatorze przywraca dane E2E (konta generatora w Keycloak zostają).
 8. Płatności: dwóch udawanych dostawców za jednym interfejsem, webhooki z podpisem.
 9. Rezerwacja stanów bez sprzedaży ponad stan przy równoległych zakupach.
 10. Promocje i kody rabatowe, z ceną Omnibus.
+
+## Zakres po MVP
+
+Cel: sprzedaż produkcyjna. Epiki i ich kolejność są na tablicy „Backlog sklepu”; tu jest tylko zakres.
+
+1. Odporność i niezawodność: limity nadużyć oraz przetwarzanie w tle, które domyka zamówienia i płatności niezależnie
+   od zaległości kolejki.
+2. Ścieżka sprzedaży: dostawa (metody, koszt, numer przesyłki, potem punkty odbioru), prawdziwy operator płatności ze
+   zwrotami, strony prawne i zgody, obsługa żądań RODO, zakup na firmę i faktury, pełne dane produktu z importem
+   i eksportem.
+3. Przed danymi prawdziwych klientów: kopie zapasowe i osłony operacji na produkcji, izolacja sekretów i sieci
+   w klastrze, utwardzenie Keycloaka, bezpieczniki operacyjne i sygnały bezpieczeństwa.
+4. Operacje sprzedawcy i konto klienta: narzędzia panelu, książka adresowa, edycja i usunięcie konta.
+
+Tam, gdzie istnieje dojrzałe rozwiązanie zewnętrzne (operator płatności, przewoźnik albo broker, system faktur,
+dostawca poczty), specyfikacja epiku zaczyna od porównania integracji z własną budową. Wymagania wydajności i dużych
+wolumenów z sekcji „Wymagania niefunkcjonalne” pozostają celem; prace nad nimi są w backlogu.
 
 ## Środowisko wdrożeniowe
 
@@ -367,22 +400,22 @@ Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra
   zdarzenia klastra i metryki z listy dozwolonych. Logi są maskowane w Alloy przed wysłaniem (hasła, tokeny, nagłówki
   `Authorization` i ciasteczka, adresy e-mail i IP, parametry zapytań Doctrine; linie `DETAIL` i `STATEMENT` Postgresa
   odrzucone), a Mailpit nie jest zbierany. Alloy czyta z klastra tylko sekret z tokenami Grafana Cloud.
-- **Alerty**: siedem reguł `PrometheusRule` w chartcie (tylko `prod`), które Alloy synchronizuje do Grafana Cloud jako reguły
+- **Alerty**: osiem reguł `PrometheusRule` w chartcie (tylko `prod`), które Alloy synchronizuje do Grafana Cloud jako reguły
   zarządzane przez Grafanę (powiadomienia e-mailem):
-  nieudana albo brakująca kopia, nieudana albo brakująca weryfikacja kopii, zajęty dysk węzła, brak sygnału z klastra i
-  niegotowy workload sklepu. Kopie są codziennie weryfikowane, a odtworzenie sprawdza test dymny; prawdziwe dane
+  nieudana albo brakująca kopia, nieudana albo brakująca weryfikacja kopii, wyłączone limitery tras (Redis, który nie przyjmuje
+  zapisu), zajęty dysk węzła, brak sygnału z klastra i niegotowy workload sklepu. Kopie są codziennie weryfikowane, a odtworzenie sprawdza test dymny; prawdziwe dane
   i publiczny start dopiero po ćwiczeniu odtworzenia z runbooka na serwerze.
 - **Poczta**: Brevo SMTP dla Keycloaka i (za przełącznikiem) potwierdzeń zamówień; SPF, DKIM, DMARC w Cloudflare.
 - **Świadomie bez Ranchera**: przy jednym klastrze to narzut bez korzyści.
 
 Kolejne kroki, osobne zgłoszenia:
 
-- **Tryb publicznego demo** (#179): dane resetowane co noc z danych demo, konta demo podane na stronie logowania, limity
-  uploadów.
+- **Tryb publicznego demo** (#179): publiczny dostęp i konta demo podane na stronie logowania, limity uploadów; bez
+  nocnego resetu danych.
 
 ## Poza zakresem (na razie)
 
-Wiele walut, wiele języków, prawdziwi dostawcy płatności, integracje z kurierami, faktury, funkcje marketplace.
+Wiele walut, wiele języków, funkcje marketplace.
 
 ## Decyzje architektoniczne (docs/adr/)
 

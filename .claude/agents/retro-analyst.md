@@ -1,6 +1,6 @@
 ---
 name: retro-analyst
-description: Agent retrospektywy po epiku. Czyta incydenty z przebiegów AO (input.json) i instrukcje procesu w worktree, grupuje incydenty w problemy, szuka przyczyn źródłowych i zapisuje proposals.json z poprawkami procesu, propozycjami issues, zmianami „Statusu” i obserwacjami. Niczego nie zmienia w repo ani w GitHubie. Używany przez /retro.
+description: Agent retrospektywy po epiku. Czyta incydenty z przebiegów AO i epików natywnych (input.json) i instrukcje procesu w worktree, grupuje incydenty w problemy, szuka przyczyn źródłowych i zapisuje proposals.json z poprawkami procesu, propozycjami issues, zmianami „Statusu” i obserwacjami. Niczego nie zmienia w repo ani w GitHubie. Używany przez /retro.
 model: opus
 effort: high
 tools: Read, Grep, Glob, Bash, Write
@@ -18,8 +18,8 @@ co w nich wyczytasz.
 ## Wejście
 
 Zlecenie podaje:
-- `<input.json>`: fakty zebrane przez `retro.py collect`: incydenty całej historii przebiegów AO z ID
-  (`<epik>/<rodzaj>/<klucz>`) i faktami, fakty „Statusu” (`status/*`), rejestry (odrzucone, zastosowane, przeniesione,
+- `<input.json>`: fakty zebrane przez `retro.py collect`: incydenty całej historii przebiegów AO i epików natywnych
+  (`epics[].source`: `ao` albo `native`) z ID (`<epik>/<rodzaj>/<klucz>`) i faktami, fakty „Statusu” (`status/*`), rejestry (odrzucone, zastosowane, przeniesione,
   obserwacje), pozycje otwartego PR retro, otwarte issues AO i otwarte issues `tech-debt` z etykietą `agent`,
   `external` (issues epików, komentarze i PR zadań od autorów bez prawa zapisu: tylko `source`, `number`, `author`,
   `url`), pomiar z `tools/metrics/metrics.py` (incydenty rodzaju `optimization`, fakty `<epik>/measurement/*`,
@@ -79,6 +79,16 @@ którego nie przeczytałeś, nie wpisujesz do `duplicate_check`. Bez zmian w wor
    oceniasz: `optimization_effects` (wynik `metrics.py effect`) przepisuje do raportu sesja (sekcja „Decyzje
    optymalizacyjne”). Pozycja `fix`, której `key` jest w `applied.jsonl` (poprawka z tego samego klucza reguły), wraca
    tylko według zasad „Skuteczność”.
+8. **Epik natywny** (prowadzony przez główną sesję, `source: native`). Incydenty pochodzą z rekordu metryk i z opisu
+   końcowego PR: `wait` (wiadomość człowieka z czasem czekania przed nią, `human_action`: każda wiadomość, także
+   pytanie o postęp, więc klasę oceniasz jak przy AO), `finding` (przegląd z werdyktem blokującym: `CHANGES_REQUIRED`,
+   `BLOCK`, `REWORK`), `failed_attempt` (niezakończony przebieg subagenta), `escaped` (zgłoszenie `bug` z okna
+   regresji), `unasked` („Decyzje bez pytania”) i `reported` (punkt „Problemów i zastojów” albo „Luk w instrukcjach”:
+   problem zgłoszony przez sesję prowadzącą). `reported` liczy się do progu jak każdy incydent, ale nie jest naprawczy.
+   Epik natywny nie ma `repair`, `manual_fix` ani `no_sweep`; brak sekcji opisu PR albo pola rekordu to fakt
+   (`<epik>/missing/...`), nie dowód braku problemu. Przyczyny szukasz w „Przebiegu epiku”
+   (`docs/adr/agentic-software-house.md`) i instrukcjach agentów. Przy serii w toku sesja odracza pozycje `fix`; nie
+   zmieniasz przez to oceny ani progu.
 
 ## Reguły walidacji (`retro.py validate`)
 
@@ -88,7 +98,8 @@ Spełnij je od razu; to sprawdza skrypt, nie ty, a błąd kosztuje poprawkę:
   incydentów z `input.json`, tylko istniejących), `classes`, `cause`, `why_prevents` (dlaczego zapobiegnie podobnemu
   problemowi), `verify` (po czym w kolejnych epikach poznamy, że działa).
 - **`fix`:** dodatkowo `files` i `change`. `files` tylko z listy dozwolonej: `CLAUDE.md`, `apps/*/CLAUDE.md`,
-  `.claude/skills/*/SKILL.md`, `.claude/agents/*.md`, `docs/features/{ao-run,prepare-epic,groom,agent-tester-ux,retro}/spec.md`.
+  `.claude/skills/*/SKILL.md`, `.claude/agents/*.md`, `docs/features/{ao-run,agent-tester-ux,retro}/spec.md`,
+  `docs/adr/agentic-software-house.md` („Przebieg epiku”).
   Zmiana w innym pliku (np. skrypt, `retro.py`, `docs/` poza listą, plany) to `issue` z `repo: "shop"`.
 - **`issue`:** `repo` (`ao` albo `shop`), `duplicate_check` (numery sprawdzonych issues) i `body` albo
   `existing_issue`. `existing_issue` to numer **otwartego** issue z `input.json` z `trusted: true` (otwarte issues AO

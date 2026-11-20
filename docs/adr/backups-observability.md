@@ -46,7 +46,7 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   odmawia snapshotu nowszego niż wdrożony kod przed jakąkolwiek zmianą; starszy snapshot doprowadzają do bieżącej wersji
   ponowione Joby `migrate` i `keycloak-config`. Przed odtworzeniem powstaje snapshot `pre-restore` stanu bieżącego (jego
   błąd zatrzymuje odtworzenie, chyba że `PRE_RESTORE=skip`), a na czas odtworzenia wyłączona jest automatyczna
-  synchronizacja Argo CD (`root`, potem `shop`), wstrzymane CronJoby `cart-purge-expired` i `backup` (potem odtworzenie czeka na Job, który zdążył wystartować po
+  synchronizacja Argo CD (`root`, potem `shop`), wstrzymane CronJoby `cart-purge-expired`, `backup` i `rate-limit-check` (potem odtworzenie czeka na Job, który zdążył wystartować po
   pierwszym sprawdzeniu, bo działałby na tym samym wolumenie `backup-work`), a `api`, `worker`, `store` i `keycloak`
   zeskalowane do zera. Odtworzenie danych: `restic restore` na wolumen `backup-work` (`--delete`: lustro
   obiektów staje się stanem snapshotu), `DROP DATABASE … WITH (FORCE)` i `CREATE DATABASE` z właścicielami jak w
@@ -104,8 +104,11 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   Ruler metryk stosu odpada: nowe stosy Grafana Cloud nie mają Alertmanagera dla reguł źródła danych, więc jego alerty nie
   trafiały do nikogo. Import wymaga osobnego tokenu konta serwisowego Grafany (`shop-alloy-rules`, tylko reguły, foldery
   i odczyt źródeł danych), bo token access policy Grafana Cloud nie działa w API Grafany.
-  Siedem reguł: `BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `NodeDiskFull`, `ClusterSilent`,
-  `WorkloadNotReady`. Alerty kopii patrzą na Job z `kube_job_owner` o dokładnej nazwie CronJoba (`backup` nie łapie
+  Osiem reguł: `BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `RateLimitsOff`, `NodeDiskFull`,
+  `ClusterSilent`, `WorkloadNotReady`. `RateLimitsOff` liczy udane przebiegi CronJoba `rate-limit-check` (co 5 minut: komenda API
+  zapisuje, odczytuje i usuwa klucz kontrolny w Redisie limiterów; próg 17 minut, brak metryki przez 30 minut), bo limitery tras
+  przepuszczają ruch przy nieużywalnym Redisie, którego ani sonda `ping`, ani `/health` nie widzą; `restore` wstrzymuje ten CronJob.
+  Alerty kopii patrzą na Job z `kube_job_owner` o dokładnej nazwie CronJoba (`backup` nie łapie
   `backup-verify`) i na `kube_cronjob_status_last_successful_time` (26 godzin); `BackupFailed` odpala dla Joba `Failed` nowszego niż
   ostatnia udana kopia, więc nieudany pod z udanym ponowieniem go nie wywołuje, a sukces gasi alert. `WorkloadNotReady` ma `absent`
   dla każdego Deploymentu i StatefulSetu renderu (lista z tego samego renderu, więc nowy workload dostaje regułę sam), tylko gdy
@@ -188,7 +191,11 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   bez uprawnień do DaemonSetów). Nie dostanie się do hosta ani do tokenów kont przez sekrety, nie otworzy portu węzła, nie
   przejmie ruchu przez `externalIPs` i nie wywłaszczy podów sklepu klasą priorytetu systemu (polityki dopuszczania) i nie
   czyta sekretów `shop-backup` ani `shop-secrets` (RBAC); kolektor też nie.
-- Klaster nie ma żadnej NetworkPolicy, więc każdy pod sięga po sieci do każdej usługi każdej przestrzeni. Redis działa bez
+- Klaster nie ma stałej NetworkPolicy, więc każdy pod sięga po sieci do każdej usługi każdej przestrzeni. Jedyna reguła to
+  tymczasowa `shop-closed` w przestrzeni `shop`, którą zakłada `make -C infra/k8s generate`, a usuwa `make -C infra/k8s open`, żeby
+  zamknąć sklep na czas generowania danych (ruch przychodzący do podów tylko z podów przestrzeni; poza chartem, bez
+  śledzenia Argo CD; `docs/features/demo-scale/spec.md`); istnieje tylko przy zamkniętym sklepie i nie jest
+  zabezpieczeniem sieci. Redis działa bez
   hasła i trzyma sesje sklepu z tokenami OIDC klientów, a Elasticsearch działa bez security (`xpack.security.enabled: false`).
   Każdy pod w `monitoring`, także przejęty operator bez tworzenia czegokolwiek, czyta i zmienia sesje klientów przez
   `redis.shop:6379` (podszycie się pod klienta) i indeks wyszukiwarki przez Elasticsearch, tak samo jak każdy pod w `shop` i każdy obcy obraz tam

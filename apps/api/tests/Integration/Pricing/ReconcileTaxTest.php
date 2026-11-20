@@ -37,6 +37,7 @@ use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Application as ConsoleApplication;
+use Symfony\Component\Console\Tester\ApplicationTester;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Uid\Uuid;
@@ -170,9 +171,12 @@ final class ReconcileTaxTest extends KernelTestCase
         // Nothing listens there: every statement fails to connect, as when PostgreSQL is down. A plain DBAL
         // configuration, so the DAMA static connection is not used.
         $unreachable = DriverManager::getConnection(['host' => '127.0.0.1', 'port' => 1] + $params, new DbalConfiguration());
-        $tester = $this->tester(new DoctrineVariantPriceRepository(new EntityManager($unreachable, $this->entityManager->getConfiguration()), new RecordingDomainEventPublisher()), []);
+        $application = $this->application(new DoctrineVariantPriceRepository(new EntityManager($unreachable, $this->entityManager->getConfiguration()), new RecordingDomainEventPublisher()), []);
+        $application->setAutoExit(false);
+        $tester = new ApplicationTester($application);
 
-        self::assertSame(2, $tester->execute(['--apply' => true]), $tester->getDisplay());
+        // The command hands the error on to the console, which ends with 2 (a CommandTester would not catch it).
+        self::assertSame(2, $tester->run(['command' => 'pricing:reconcile-tax', '--apply' => true]), $tester->getDisplay());
 
         $display = $this->display($tester);
         self::assertStringContainsString('The reconciliation stopped:', $display);
@@ -191,6 +195,14 @@ final class ReconcileTaxTest extends KernelTestCase
      * @param array<string, int> $competingChanges variant id => number of saves preceded by a staff change
      */
     private function tester(VariantPriceRepository $prices, array $competingChanges): CommandTester
+    {
+        return new CommandTester($this->application($prices, $competingChanges)->find('pricing:reconcile-tax'));
+    }
+
+    /**
+     * @param array<string, int> $competingChanges variant id => number of saves preceded by a staff change
+     */
+    private function application(VariantPriceRepository $prices, array $competingChanges): ConsoleApplication
     {
         $commandBus = self::getContainer()->get('command.bus');
         $queryBus = self::getContainer()->get('query.bus');
@@ -246,7 +258,7 @@ final class ReconcileTaxTest extends KernelTestCase
             new DoctrinePersistenceSession($registry),
         )));
 
-        return new CommandTester($application->find('pricing:reconcile-tax'));
+        return $application;
     }
 
     /**
@@ -277,7 +289,7 @@ final class ReconcileTaxTest extends KernelTestCase
         return $row;
     }
 
-    private function display(CommandTester $tester): string
+    private function display(CommandTester|ApplicationTester $tester): string
     {
         return preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
     }

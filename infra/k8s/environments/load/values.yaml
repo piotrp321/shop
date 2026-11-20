@@ -12,6 +12,11 @@
 clientIpHeader: CF-Connecting-IP
 clientIpHeaderWithoutAllowList: true
 
+# No backups: the cluster has no repository to take them to (the profile ci takes them into a Garage of its own, which the smoke test
+# starts), and the measurement never restores. The CronJobs backup, backup-verify and restore are not rendered.
+backup:
+  enabled: false
+
 # The heaps of the prod profile (they size the pods together with the resources below).
 elasticsearch:
   javaOpts: -Xms2g -Xmx2g
@@ -30,9 +35,14 @@ resources:
   mailpit: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 256Mi } }
   api: { requests: { cpu: "1", memory: 512Mi }, limits: { memory: 2Gi } }
   worker: { requests: { cpu: 500m, memory: 512Mi }, limits: { memory: 1Gi } }
-  store: { requests: { cpu: 500m, memory: 512Mi }, limits: { memory: 1536Mi } }
+  # ephemeral-storage guards the disk of the node against writes to the writable layer (the ISR cache stays in memory);
+  # over the limit the pod is evicted (small-fixes spec, D4).
+  store: { requests: { cpu: 500m, memory: 512Mi, ephemeral-storage: 256Mi }, limits: { memory: 1536Mi, ephemeral-storage: 2Gi } }
   admin: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 128Mi } }
   imgproxy: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }
   varnish: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
   backup: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
   job: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
+  # The generator of the demo data (CronJob demo-data, enabled by the profile ci): not a pod of prod. The run of the profile medium
+  # used 187 MiB of the 4 GiB limit; the limit stays as a reserve for server and full, whose memory use has not been measured.
+  demoData: { requests: { cpu: "1", memory: 1Gi }, limits: { memory: 4Gi } }

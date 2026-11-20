@@ -48,6 +48,8 @@ render() {
   render prod-accounts prod --set image.tag=$rev1 $digests --set customerAccounts=true
   render prod-nodemo prod --set image.tag=$rev1 $digests --set demoNotice=false
   render prod-order-brevo prod --set image.tag=$rev1 $digests --set orderMail=brevo
+  # The second step of the generator on the server (tests/test_demo_data.py): the profile server, its time limit.
+  render prod-demo-data-server prod --set image.tag=$rev1 $digests --set demoData.profile=server
 }
 # Argo CD renders prod from the two values files only: the profile and the images file of the branch deploy-images,
 # which scripts/images-values.sh writes (no --set). The file is in the output directory, which the helm container
@@ -66,6 +68,13 @@ render ci-accounts ci --set image.tag=$rev1 --set customerAccounts=true
 render ci-keycloak-brevo ci --set image.tag=$rev1 --set keycloak.mail=brevo --set brevo.secretName=smoke-brevo
 # The header of the client address without the allow list, confirmed (the profile of the measurement, tests/test_client_ip.py).
 render ci-client-ip ci --set image.tag=$rev1 --set clientIpHeader=CF-Connecting-IP --set clientIpHeaderWithoutAllowList=true
+# The CronJob demo-data (tests/test_demo_data.py): ci with the switch off, the profile medium with an anchor, the secret of the photo
+# pool and other resources, and the profiles with the longer time limits.
+render ci-no-demo-data ci --set image.tag=$rev1 --set demoData.enabled=false
+render ci-demo-data-medium ci --set image.tag=$rev1 --set demoData.profile=medium --set demoData.anchor=2026-11-01 \
+  --set demoData.photosSecretName=demo-photos --set resources.demoData.requests.memory=777Mi
+render ci-demo-data-server ci --set image.tag=$rev1 --set demoData.profile=server
+render ci-demo-data-full ci --set image.tag=$rev1 --set demoData.profile=full
 # Sentry (tests/test_sentry.py): one application with a DSN at a time, all three, prod with all three, a rate and an environment
 # without a DSN, and the default rate. The DSNs differ in the key and the project, so the test sees which one went where.
 sentry_api=https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@o1.ingest.de.sentry.io/1

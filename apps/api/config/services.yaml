@@ -36,6 +36,13 @@ parameters:
     app.sentry.traces_sample_rate: '0'
     # Keycloak of the steps of the demo data accounts without DEMO_DATA_KEYCLOAK_URL (KeycloakAdminFactory).
     app.demo_data.keycloak_url: 'http://keycloak:8080'
+    # Limits of time of the requests of those steps to Keycloak (seconds). A `partialImport` of a batch of 2000 accounts is
+    # one transaction of Keycloak and answers nothing until it ends: on the k3d cluster with the resources of prod (500m
+    # CPU) and 4 batches at once it outlasted the 5 s of the shared client. Idle: the longest silence of one request, so
+    # the whole batch (measured at tens of seconds there) fits with a margin. Total: the longest of one request, so a
+    # Keycloak that hangs still fails the step.
+    app.demo_data.keycloak_idle_timeout: 120
+    app.demo_data.keycloak_max_duration: 300
 
 services:
     _defaults:
@@ -71,6 +78,22 @@ services:
                 # No limit of the whole request; a request that gets no data for a minute fails.
                 timeout: 60
                 max_duration: 0
+
+    # The admin API of Keycloak for the steps of the accounts of the demo data: not the shared client, which gives every
+    # request 5 s in all, and no logger of requests. The limits are the parameters above.
+    app.demo_data_keycloak_http_client:
+        class: Symfony\Contracts\HttpClient\HttpClientInterface
+        factory: ['Symfony\Component\HttpClient\HttpClient', 'create']
+        autowire: false
+        autoconfigure: false
+        arguments:
+            -
+                timeout: '%app.demo_data.keycloak_idle_timeout%'
+                max_duration: '%app.demo_data.keycloak_max_duration%'
+
+    App\DemoData\Accounts\KeycloakAdminFactory:
+        arguments:
+            $http: '@app.demo_data_keycloak_http_client'
 
     app.demo_photos_s3_client:
         class: AsyncAws\S3\S3Client
@@ -166,6 +189,22 @@ services:
     App\Catalog\Infrastructure\Persistence\Doctrine\CachingSitemapProductSource:
         arguments:
             $inner: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalSitemapProductSource'
+
+    # The logs of a token that cannot be verified (an error each, from the caller's input) go to the `security` channel,
+    # which neither the Sentry handler nor the `fingers_crossed` buffer of `prod` takes (config/packages/monolog.yaml;
+    # spec docs/features/abuse-limits/spec.md, D13). The abstract parent of the handlers of both firewalls, as the
+    # security bundle defines it, with the logger changed (arguments 0-3 are set by each firewall).
+    security.access_token_handler.oidc:
+        class: Symfony\Component\Security\Http\AccessToken\Oidc\OidcTokenHandler
+        abstract: true
+        arguments:
+            - ~
+            - ~
+            - ~
+            - ~
+            - 'sub'
+            - '@monolog.logger.security'
+            - '@clock'
 
     # A key source that cannot be read is a 503, not a 401 (see the class).
     app.security.shop_token_handler:
@@ -326,6 +365,10 @@ when@test: &test
         # Public, so a test can check how the private bucket of the photo pool is wired.
         test.demo_photos.storage:
             alias: demo_photos.storage
+            public: true
+        # Public, so a test can check the limits of time of the client that reaches the admin API of Keycloak.
+        test.App\DemoData\Accounts\KeycloakAdminFactory:
+            alias: App\DemoData\Accounts\KeycloakAdminFactory
             public: true
         # Public, so a test can set the identifier like the request subscriber does and read it back.
         App\Shared\Infrastructure\Observability\CorrelationId:

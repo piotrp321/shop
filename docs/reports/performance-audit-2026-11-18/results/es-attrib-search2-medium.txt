@@ -1,0 +1,10 @@
+A full (as sent by the API)                          took median=   31.0 ms  min=  30.0 max=  35.0  total={'value': 5105, 'relation': 'eq'}
+B no aggregations, exact total                       took median=   12.0 ms  min=   9.0 max=  23.0  total={'value': 5105, 'relation': 'eq'}
+C no aggregations, track_total_hits=10000            took median=   14.0 ms  min=  11.0 max=  16.0  total={'value': 5105, 'relation': 'eq'}
+D full aggregations, track_total_hits=10000          took median=   28.0 ms  min=  28.0 max=  35.0  total={'value': 5105, 'relation': 'eq'}
+E without 'free' (option facets)                     took median=   23.0 ms  min=  23.0 max=  34.0  total={'value': 5105, 'relation': 'eq'}
+F only 'free' (option facets)                        took median=   30.0 ms  min=  22.0 max=  38.0  total={'value': 5105, 'relation': 'eq'}
+G only 'categories'                                  took median=   20.0 ms  min=  19.0 max=  21.0  total={'value': 5105, 'relation': 'eq'}
+H only 'available'                                   took median=   10.0 ms  min=   9.0 max=  24.0  total={'value': 5105, 'relation': 'eq'}
+I only 'price'                                       took median=   10.0 ms  min=  10.0 max=  11.0  total={'value': 5105, 'relation': 'eq'}
+J size=0 (aggregations only, no hits)                took median=   31.0 ms  min=  15.0 max=  39.0  total={'value': 5105, 'relation': 'eq'}

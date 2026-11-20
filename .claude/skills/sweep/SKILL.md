@@ -260,4 +260,4 @@ linki do założonych issues.
 - Nie przekraczasz pięciu propozycji na przebieg i nie zgłaszasz hipotez.
 - Nie uruchamiasz agentów równolegle ani bez stosu.
 - Nie dotykasz kontenerów, worktree ani portów spoza projektu `sweep-<sha7><-epik>`.
-- Nie naprawiasz znalezionych problemów i nie uruchamiasz `/prepare-epic`, `/delivery` ani AO.
+- Nie naprawiasz znalezionych problemów i nie uruchamiasz `/delivery` ani AO.

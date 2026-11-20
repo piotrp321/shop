@@ -20,9 +20,12 @@
     "brevo",
     "initialize",
     "jobs",
+    "demoData",
+    "load",
     "backup",
     "alerts",
     "cartPurge",
+    "rateLimitCheck",
     "storage",
     "elasticsearch",
     "keycloak",
@@ -160,7 +163,8 @@
         "alpine",
         "kubectl",
         "restic",
-        "rclone"
+        "rclone",
+        "k6"
       ]
     },
     "ingress": {
@@ -276,21 +280,21 @@
             "admin"
           ],
           "properties": {
-        "api": {
-          "type": "string",
-          "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
-          "description": "DSN of the api, the worker and the jobs: https://<key>@<host>/<project id>; empty: Sentry off."
-        },
-        "store": {
-          "type": "string",
-          "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
-          "description": "DSN of the store (its server and its browser); empty: Sentry off."
-        },
-        "admin": {
-          "type": "string",
-          "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
-          "description": "DSN of the admin panel; empty: Sentry off."
-        }
+            "api": {
+              "type": "string",
+              "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
+              "description": "DSN of the api, the worker and the jobs: https://<key>@<host>/<project id>; empty: Sentry off."
+            },
+            "store": {
+              "type": "string",
+              "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
+              "description": "DSN of the store (its server and its browser); empty: Sentry off."
+            },
+            "admin": {
+              "type": "string",
+              "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
+              "description": "DSN of the admin panel; empty: Sentry off."
+            }
           }
         }
       }
@@ -443,6 +447,99 @@
         }
       }
     },
+    "load": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activeDeadlineSeconds"
+      ],
+      "properties": {
+        "activeDeadlineSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "The time limit of a Job of the CronJob load, in seconds."
+        }
+      }
+    },
+    "demoData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "profile",
+        "anchor",
+        "activeDeadlineSeconds",
+        "photosSecretName",
+        "minFreeGb",
+        "terminationGracePeriodSeconds"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Render the suspended CronJob demo-data (the profiles prod, ci and load)."
+        },
+        "profile": {
+          "type": "string",
+          "enum": [
+            "small",
+            "medium",
+            "server",
+            "full"
+          ],
+          "description": "The profile of the generator (apps/api/fixtures/demo-data/profiles.yaml)."
+        },
+        "anchor": {
+          "type": "string",
+          "pattern": "^([0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?)?$",
+          "description": "--anchor of the generator: a date or a UTC moment; empty: the start of the current UTC day."
+        },
+        "activeDeadlineSeconds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "small",
+            "medium",
+            "server",
+            "full"
+          ],
+          "properties": {
+            "small": {
+              "type": "integer",
+              "minimum": 60
+            },
+            "medium": {
+              "type": "integer",
+              "minimum": 60
+            },
+            "server": {
+              "type": "integer",
+              "minimum": 60
+            },
+            "full": {
+              "type": "integer",
+              "minimum": 60
+            }
+          },
+          "description": "The time limit of a Job in seconds, per profile of the generator."
+        },
+        "photosSecretName": {
+          "type": "string",
+          "pattern": "^([a-z0-9]([-a-z0-9.]*[a-z0-9])?)?$",
+          "maxLength": 253,
+          "description": "The Secret with the four DEMO_PHOTOS_* read variables of the photo pool, created outside the chart; empty: none."
+        },
+        "minFreeGb": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The floor of the free space of the node in GB: the script does not start below it and stops the generator under it."
+        },
+        "terminationGracePeriodSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "The seconds after TERM in which the script stops the generator (TERM, KILL after 30 s) and writes its summary."
+        }
+      }
+    },
     "backup": {
       "type": "object",
       "required": [
@@ -542,6 +639,18 @@
         }
       }
     },
+    "rateLimitCheck": {
+      "type": "object",
+      "required": [
+        "schedule"
+      ],
+      "properties": {
+        "schedule": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "storage": {
       "type": "object",
       "required": [
@@ -614,7 +723,9 @@
         "imgproxy",
         "varnish",
         "backup",
-        "job"
+        "job",
+        "demoData",
+        "k6"
       ],
       "properties": {
         "postgres": {
@@ -886,6 +997,42 @@
               "type": "object"
             }
           }
+        },
+        "demoData": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "k6": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
         }
       }
     }
@@ -1001,6 +1148,64 @@
           "clientIpHeaderWithoutAllowList": {
             "const": false,
             "description": "Never with the images of a release (image.requireDigests)."
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "image",
+          "demoData"
+        ],
+        "properties": {
+          "image": {
+            "required": [
+              "requireDigests"
+            ],
+            "properties": {
+              "requireDigests": {
+                "const": true
+              }
+            }
+          },
+          "demoData": {
+            "required": [
+              "enabled"
+            ],
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "demoData": {
+            "description": "With the images of a release (the server): the generator of the steps of docs/features/demo-scale/spec.md.",
+            "properties": {
+              "profile": {
+                "enum": [
+                  "medium",
+                  "server"
+                ],
+                "description": "With the images of a release only medium or server (docs/features/demo-scale/spec.md, U2)."
+              },
+              "anchor": {
+                "minLength": 1,
+                "description": "With the images of a release a fixed anchor, so that a run again gives the same data."
+              },
+              "photosSecretName": {
+                "minLength": 1,
+                "description": "With the images of a release the Secret of the photo pool (the profiles medium and server need it)."
+              },
+              "minFreeGb": {
+                "minimum": 10,
+                "description": "With the images of a release a floor of at least 10 GB of the free space of the node."
+              }
+            }
           }
         }
       }

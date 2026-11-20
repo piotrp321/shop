@@ -135,7 +135,8 @@ async function discardChanges(): Promise<void> {
   header.value?.focus();
 }
 
-const { open: leaveOpen, leave } = useUnsavedChangesGuard(() => dirty.value);
+// An upload that is waiting or running is an unsaved change too: its answer would otherwise come after the form moved on.
+const { open: leaveOpen, leave } = useUnsavedChangesGuard(() => dirty.value || upload.uploading.value);
 
 const { nodes: categories, error: categoriesError } = useCategoryTree();
 

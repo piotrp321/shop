@@ -9,7 +9,11 @@ WORKDIR /app
 
 # Production build: dependencies of the lock file and `next build` with output "standalone", switched on by
 # STORE_STANDALONE only here (next.config.ts), so `STORE_MODE=production` in Compose builds as before. The build calls
-# no service: it prerenders without API_CATALOG_URL and its pages fall back (see CLAUDE.md).
+# no service: API_CATALOG_URL is a placeholder that refuses connections at once (port 9 of the loopback), set for
+# `next build` only (not an ENV of any stage, so the stage prod has no such variable). Without it the read of the
+# category tree would fail before its fetch, and the pages prerendered here (/cart, /konto/zamowienia, the 404) would
+# get no `catalog` tag: the failed tagged fetch gives them the tag, so the revalidation of the tag after a deployment
+# (the job purge-caches) renders them again with the menu. Until then their header has no menu (see CLAUDE.md).
 #
 # Source maps (next.config.ts): the deploy workflow builds with SENTRY_UPLOAD=true when it has the Sentry token, which
 # it passes as the build secret `sentry_auth_token` (a secret mount: never an argument, never in a layer or the log).
@@ -35,10 +39,10 @@ RUN --mount=type=secret,id=sentry_auth_token \
     && if [ "$SENTRY_UPLOAD" = true ]; then \
       SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token)" && export SENTRY_AUTH_TOKEN || exit 1; \
     fi; \
-    STORE_STANDALONE=1 npm run build && find .next -name '*.map' -delete
+    API_CATALOG_URL=http://127.0.0.1:9 STORE_STANDALONE=1 npm run build && find .next -name '*.map' -delete
 
-# Production image: the standalone server only (traced dependencies, no npm, no sources). `.next/cache` (ISR) is
-# written at run time, so `.next` belongs to the unprivileged user.
+# Production image: the standalone server only (traced dependencies, no npm, no sources), run by the unprivileged user.
+# The ISR cache stays in memory (next.config.ts), so nothing grows on the writable layer at run time.
 FROM node AS prod
 
 ENV NODE_ENV=production \

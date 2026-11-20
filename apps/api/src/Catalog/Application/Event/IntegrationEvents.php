@@ -11,10 +11,6 @@ use App\Shared\Domain\Event\DomainEvent;
 /**
  * The events of the product aggregate as Catalog publishes them: its ProductCreated and ProductChanged as the
  * integration contracts of this namespace, any other event as it is.
- *
- * Version compatibility: the aggregate's ProductCreated is published as it is too, before its contract. The previous
- * version indexes a created product from that event only, and its outbox may still hold it for the new IndexProduct.
- * Remove it, and its type in IndexProduct, in the next version.
  */
 final class IntegrationEvents
 {
@@ -27,9 +23,6 @@ final class IntegrationEvents
     {
         $published = [];
         foreach ($events as $event) {
-            if ($event instanceof ProductCreatedInCatalog) {
-                $published[] = $event;
-            }
             $published[] = match (true) {
                 $event instanceof ProductCreatedInCatalog => ProductCreated::from($event),
                 $event instanceof ProductChangedInCatalog => ProductChanged::from($event),

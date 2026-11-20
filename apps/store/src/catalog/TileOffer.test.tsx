@@ -149,11 +149,11 @@ describe("TileOffer", () => {
     fireEvent.click(choose());
     fireEvent.click(radio("zielony"));
     fireEvent.click(screen.getByRole("button", { name: "Do koszyka" }));
-    expect((screen.getByRole("button", { name: "Do koszyka" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Do koszyka" }).getAttribute("aria-disabled")).toBe("true");
 
     fireEvent.click(radio("niebieski"));
 
-    expect((screen.getByRole("button", { name: "Do koszyka" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Do koszyka" }).getAttribute("aria-disabled")).toBe("true");
     await act(async () => finish({ status: "ok", data: { id: "c", lines: [], totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN", itemCount: 1 }, hasExcludedLines: false, discount: null } }));
     expect((screen.getByRole("button", { name: "Do koszyka" }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByText("Dodano do koszyka")).toBeNull();

@@ -30,9 +30,9 @@ dymny na k3d (`smoke.sh`). Funkcja nie zależy od wyglądu sklepu.
 - Sentry i trace'y (#180), tryb publicznego demo (#179), monitoring i kopie zapasowe (DEPLOY-OPS, #178).
 - Pozostałe punkty #181: blokowanie stanów fikcyjnymi zamówieniami poza samym limitem liczby zamówień (D16), polityka
   prywatności, włączenie rejestracji (`customerAccounts`) i wysyłki przez Brevo (`orderMail`).
-- RODO i anonimizacja zamówień (#119) oraz limit rezerwowanego towaru na zamówienie gościa (D11, D16): blokery trybu publicznego demo (D19).
-- Limity na koszyku gościa (zakładanie koszyków, dodawanie linii) i na pozostałych publicznych endpointach: przegląd
-  bezpieczeństwa ocenia ich ryzyko i ewentualnie proponuje zgłoszenie.
+- RODO i anonimizacja zamówień (#119): bloker trybu publicznego demo (D19).
+- Limity na koszyku gościa i podglądzie kodu rabatowego: `docs/features/abuse-limits/spec.md` (L2, L3). Pozostałe
+  publiczne endpointy: przegląd bezpieczeństwa ocenia ich ryzyko i ewentualnie proponuje zgłoszenie.
 - Przeniesienie symulatora płatności do osobnej usługi (D14).
 - Reguły rate limiting w Cloudflare (konfiguracja konta poza repo).
 - Zmiana ustawień ochrony przed zgadywaniem haseł w Keycloaku (D17).
@@ -41,13 +41,13 @@ dymny na k3d (`smoke.sh`). Funkcja nie zależy od wyglądu sklepu.
 
 | ID | Decyzja |
 |---|---|
-| D1 | Limity liczy Symfony RateLimiter (`symfony/rate-limiter`) na puli cache `cache.rate_limiter` w Redisie (`REDIS_HOST`, rozszerzenie `redis` jest już w obrazie; DSN z limitami czasu połączenia i odczytu 1 s). Bez `symfony/lock` (`lock_factory: null`): przy równoległych żądaniach limit może zostać przekroczony o liczbę żądań w locie, co wystarcza do ochrony przed nadużyciem. |
+| D1 | Limity liczy Symfony RateLimiter (`symfony/rate-limiter`) na puli cache `cache.rate_limiter` w Redisie (`REDIS_HOST`, rozszerzenie `redis` jest już w obrazie; DSN z limitami czasu połączenia i odczytu 1 s). Klucz każdego limitera blokuje `symfony/lock` w tym samym Redisie (`docs/features/abuse-limits/spec.md`, D1), więc równoległe żądania nie przekraczają limitu. |
 | D2 | Adres IP klienta (`ClientIp`, `Shared\Infrastructure\Http`): gdy zmienna `CLIENT_IP_HEADER` jest ustawiona, adres z tego nagłówka, jeśli jest jednym poprawnym adresem IP; inaczej `Request::getClientIp()` (adres połączenia, bez `trusted_proxies`). W profilu `prod` nagłówek to `CF-Connecting-IP`: Cloudflare ustawia go sam, a żądanie, w którym klient podał go sam, odrzuca (403, błąd 1000), a ingress przyjmuje ruch tylko z adresów Cloudflare (`ipAllowList`), więc z zewnątrz nie da się go podrobić. Sklep kopiuje ten sam nagłówek z żądania przeglądarki do wywołań API. Ufamy wywołującym wewnątrz klastra. Bez wspólnego sekretu sklep–API (decyzja użytkownika). Odporność na podrobienie sprawdzają testy renderu (D3), testy API i przegląd (punkt 1); próbę ominięcia Cloudflare na serwerze opisuje runbook i jest blokerem trybu publicznego demo (D19). |
 | D3 | Chart: wartość `clientIpHeader` (domyślnie pusta) trafia jako `CLIENT_IP_HEADER` do `api` i `store`. Render kończy się błędem, gdy `clientIpHeader` jest ustawione przy `ipAllowList.enabled: false`, chyba że profil jawnie ustawia `clientIpHeaderWithoutAllowList: true` (tylko profil pomiaru `load`). `clientIpHeaderWithoutAllowList: true` razem z `image.requireDigests: true` (obrazy wdrożenia) też kończy render błędem, więc w produkcji nie jest dopuszczalne. Testy renderu: `prod` ma `CF-Connecting-IP` i `ipAllowList` na każdym ingressie (także `api` i `auth`), `ci` nie ma nagłówka, `prod` z `clientIpHeaderWithoutAllowList: true` się nie renderuje. |
 | D4 | Klucz limitu: adres IPv4 albo prefiks /64 adresu IPv6 (gość, webhook, logowanie w sklepie); `sub` z tokena dla endpointów klienta (`/api/v1/me/...`). Osobne przestrzenie kluczy limitera (`guest:`, `customer:`). |
 | D5 | Wartości limitów, okno przesuwne (decyzja użytkownika): złożenie zamówienia 10 na 15 min (gość na adres, klient na konto); rozpoczęcie płatności 20 na 15 min (tak samo); webhook 300 na minutę na parę (dostawca, adres); `/auth/login` w sklepie 30 na 10 min na adres (okno stałe). Wartości API są w `config/packages/rate_limiter.yaml`: domyślne (produkcja), `when@dev` wysokie (stos compose i E2E: wszystkie żądania sklepu mają tam jeden adres kontenera), `when@test` małe dla testów limitów. Limit sklepu w zmiennej `STORE_LOGIN_RATE_LIMIT` (domyślnie 30; compose wysoki; chart jej nie ustawia, więc obowiązuje domyślna). |
 | D6 | Każde żądanie limitowanego endpointu zużywa limit, także powtórzenie z tym samym `Idempotency-Key` i żądanie odrzucone walidacją. Limit jest sprawdzany przed kontrolerem, po firewallu. 429 przy złożeniu zamówienia nie zakłada zamówienia, więc przeglądarka zachowuje swój `Idempotency-Key` do ponowienia. |
-| D7 | Redis niedostępny: żądanie przechodzi bez limitu (fail open; decyzja użytkownika), ale awaria nie jest cicha. Fail open daje adapter cache Symfony: przy błędzie Redisa zwraca brak wpisu i zapisuje `warning` w kanale Monologa `cache`. Monolog w `prod` ma dla kanału `cache` osobny handler JSON na stderr od poziomu `warning`, poza `fingers_crossed`, więc każdy błąd puli limitera trafia do logu także przy udanym żądaniu. Health check API (`RedisProbe`) zgłasza Redisa jako niedostępnego. Na serwerze awarię widać w Grafana Cloud: alert `WorkloadNotReady` (StatefulSet `redis` ma mniej gotowych replik niż oczekiwane przez 10 minut; `infra/k8s`, `docs/features/deploy-ops/spec.md`, O6) oraz ostrzeżenia kanału `cache` w logach, bez alertu na ich treść: alerty z treści logów są poza zakresem. |
+| D7 | Redis niedostępny: żądanie przechodzi bez limitu (fail open; decyzja użytkownika), ale awaria nie jest cicha. Fail open daje adapter cache Symfony: przy błędzie Redisa zwraca brak wpisu i zapisuje `warning` w kanale Monologa `cache`. Monolog w `prod` ma dla kanału `cache` osobny handler JSON na stderr od poziomu `warning`, poza `fingers_crossed`, więc każdy błąd puli limitera trafia do logu także przy udanym żądaniu. Health check API (`RedisProbe`) zgłasza Redisa jako niedostępnego. Na serwerze awarię widać w Grafana Cloud: alert `WorkloadNotReady` (StatefulSet `redis` ma mniej gotowych replik niż oczekiwane przez 10 minut; `infra/k8s`, `docs/features/deploy-ops/spec.md`, O6), alert `RateLimitsOff` (Redis nieużywalny dla API, także gdy jego pod jest gotowy; `docs/features/abuse-limits/spec.md`, L12) oraz ostrzeżenia kanału `cache` w logach, bez alertu na ich treść: alerty z treści logów są poza zakresem. Błąd Redisa przy blokadzie klucza działa tak samo (`docs/features/abuse-limits/spec.md`, D1). |
 | D8 | 429: problem details (`type` `about:blank`, `title` „Too Many Requests”, `detail` „Zbyt wiele prób. Spróbuj ponownie za kilka minut.”), nagłówek `Retry-After` w sekundach, `Cache-Control: private, no-store`. OpenAPI opisuje 429 na limitowanych endpointach. |
 | D9 | Correlation ID: API zawsze nadaje własny (UUIDv7) i ignoruje nagłówek z żądania. Odpowiedź ma `X-Correlation-ID`; Varnish usuwa go z odpowiedzi, które zapisuje w cache, żeby trafienie nie zwracało cudzego identyfikatora. Komenda konsoli ma jeden identyfikator na uruchomienie, wiadomość Messengera niesie `CorrelationIdStamp`, a obsługa wiadomości ustawia identyfikator ze stempla (wiadomość bez stempla: nowy). Jedno wejście HTTP to jeden identyfikator: złożenie zamówienia, płatność i webhook mają różne. Cel w wizji: „jedno żądanie da się prześledzić przez wszystkie procesy, które uruchomiło” (decyzja użytkownika). |
 | D10 | Nagłówki bezpieczeństwa (w zakresie, decyzja użytkownika): sklep i panel `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, CSP `frame-ancestors 'none'; object-src 'none'; base-uri 'self'`; panel dodatkowo `script-src 'self'`. Sklep bez ograniczenia `script-src`: CSP z nonce wymusza renderowanie dynamiczne, co wyłączyłoby ISR stron produktów. API: `X-Content-Type-Options: nosniff` na każdej odpowiedzi. HSTS (`max-age=31536000`, bez `includeSubDomains` i `preload`) w middleware Traefika tylko przy `ingress.tls`. |
@@ -56,10 +56,10 @@ dymny na k3d (`smoke.sh`). Funkcja nie zależy od wyglądu sklepu.
 | D13 | Raporty (przeglądu i pomiaru) są przypięte do rewizji jak w `docs/experiments/`: nagłówek z datą i SHA, po zapisaniu się nie zmieniają; kolejny pomiar to nowy plik. Miejsce: `docs/reports/` z `README.md` jak w `docs/experiments/` (decyzja użytkownika). |
 | D14 | Testy obciążeniowe: k6 (obraz `grafana/k6` przypięty tagiem i digestem, uruchamiany w kontenerze, bez instalacji na hoście ani w zależnościach aplikacji). Skrypty w `load/`. |
 | D15 | Środowisko pomiaru (decyzja użytkownika): klaster k3d jak w teście dymnym, z obrazami produkcyjnymi zbudowanymi lokalnie i profilem `environments/load` (`ci` plus zasoby podów z `prod`, sterty JVM Elasticsearcha i Keycloaka jak w `prod`, `clientIpHeader: CF-Connecting-IP`, `clientIpHeaderWithoutAllowList: true`); `make -C infra/k8s load`. Stos deweloperski (`APP_ENV=dev`) nie nadaje się do pomiaru. Inne stosy na tej samej maszynie zaszumiają wynik, więc przed pomiarem stos compose jest zatrzymany, a pomiar zapisuje obciążenie hosta (inne kontenery, średnie obciążenie; `environment.txt`). Pomiar można powtórzyć tą samą komendą (nowy raport, D13). Raport: `docs/reports/load-test-2026-11-10.md`. |
-| D16 | Blokowanie stanów fikcyjnymi zamówieniami: limity (D5) ograniczają tylko liczbę zamówień. Jedno zamówienie gościa może zarezerwować do 50 linii po 99 sztuk (`Order::MAX_LINES`, `OrderLine::MAX_QUANTITY`) na 35 min. Limit sztuk albo linii na zamówienie gościa zmienia reguły Cart i Ordering, więc jest osobnym zgłoszeniem (#332), będącym blokerem trybu publicznego demo (D19): publiczne demo nie może pozwalać na masowe blokowanie stanów. |
+| D16 | Blokowanie stanów fikcyjnymi zamówieniami: limity (D5) liczą tylko złożenia, nie nieopłacone zamówienia ani ich wielkość. Te ogranicza `docs/features/abuse-limits/spec.md`: nieopłaconych zamówień najwyżej 5 z adresu, 3 na e-mail gościa i 3 na konto (L6, 409 `too-many-unpaid-orders`), zamówienie gościa najwyżej 10 linii po 10 sztuk (L5, reguła `GuestOrderSize`, 409 `guest-order-too-large`), a zamówienie klienta nadal do 50 linii po 99 sztuk (`Order::MAX_LINES`, `OrderLine::MAX_QUANTITY`), rezerwowanych na 35 min. |
 | D17 | Logowanie hasłem odbywa się w Keycloaku. Oba realmy mają `bruteForceProtected: true` z wartościami domyślnymi Keycloaka (blokada konta po 30 nieudanych próbach, czas rosnący do 15 min). Funkcja ich nie zmienia (decyzja użytkownika); `docs/features/deploy/spec.md` („Keycloak i konta”) to odnotowuje. |
 | D18 | Checkout w teście obciążeniowym przechodzi przez `POST /api/checkout` sklepu, czyli złożenie zamówienia i rozpoczęcie płatności w symulatorze, który działa w kontenerze API (ryzyko samoblokady wątków FrankenPHP). Scenariusz checkoutu ma równoległość ograniczoną poniżej połowy wątków API, a raport to opisuje (decyzja użytkownika). Wynik checkoutu przy tej równoległości nie jest benchmarkiem checkoutu ani przepustowości systemu (sekcja „Testy obciążeniowe”). |
-| D19 | Blokery trybu publicznego demo (#179): RODO dla danych gości (#119); limit rezerwowanego towaru na zamówienie gościa (#332, D16); weryfikacja na serwerze, że origin odrzuca ruch z pominięciem Cloudflare (runbook `infra/k8s/README.md`); zgłoszenia znalezisk `Critical` i `High` z raportu przeglądu (sekcja „Blokery publicznego demo”; zgłoszenia zakłada użytkownik). Funkcja niczego z tej listy nie implementuje. |
+| D19 | Blokery trybu publicznego demo (#179): RODO dla danych gości (#119); weryfikacja na serwerze, że origin odrzuca ruch z pominięciem Cloudflare (runbook `infra/k8s/README.md`); zgłoszenia znalezisk `Critical` i `High` z raportu przeglądu (sekcja „Blokery publicznego demo”; zgłoszenia zakłada użytkownik). Funkcja niczego z tej listy nie implementuje. |
 
 ## Adres IP klienta
 
@@ -68,7 +68,7 @@ dymny na k3d (`smoke.sh`). Funkcja nie zależy od wyglądu sklepu.
   jego IPv4, a żądanie bez żadnego adresu ma wspólny klucz `unknown`.
 - Zmienna `CLIENT_IP_HEADER`: compose jej nie ustawia, chart według D3. Domyślna wartość w API przez
   `%env(default::CLIENT_IP_HEADER)%`.
-- Sklep: wywołania API z BFF kasy i płatności (`src/checkout/`) dostają nagłówek `CLIENT_IP_HEADER` skopiowany
+- Sklep: wywołania API z BFF kasy, płatności i koszyka (`src/checkout/`, `src/cart/`) dostają nagłówek `CLIENT_IP_HEADER` skopiowany
   z żądania przeglądarki (gdy zmienna jest ustawiona i nagłówek jest w żądaniu). Logowanie w sklepie (`/auth/login`)
   bierze adres z tego samego nagłówka; bez niego wszystkie żądania mają wspólny klucz.
 
@@ -85,6 +85,7 @@ Subscriber `kernel.request` w `Shared\Infrastructure\Http` po firewallu czyta z 
 | `order_placement` | `POST /api/v1/orders` (gość), `POST /api/v1/me/orders` (klient) | `guest:<adres>` albo `customer:<sub>` |
 | `payment_start` | `POST /api/v1/orders/{id}/payments`, `POST /api/v1/me/orders/{id}/payments` | jak wyżej |
 | `payment_webhook` | `POST /api/v1/payments/webhooks/{provider}` | `<provider>:<adres>` |
+| `guest_cart_create`, `guest_cart_write`, `discount_preview` | koszyk gościa i podgląd kodu rabatowego (`docs/features/abuse-limits/spec.md`, L2, L3) | `guest:<adres>` |
 
 - Przekroczenie: 429 (D8) przed kontrolerem, więc bez odczytu treści, sprawdzenia podpisu ani komendy.
 - Redis niedostępny: D7.
@@ -179,17 +180,32 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
   limity działają na adres klienta jak w produkcji, a pomiar nie trafia w limit jednego adresu. 429 jest liczony
   osobno; każdy 429 w pomiarze to znalezisko raportu.
 - Checkout: losowy wariant możliwy do kupienia, ilość 1; 409 braku stanu liczony osobno jako wynik biznesowy.
-  Przed pomiarem `make -C infra/k8s load` podnosi stan fizyczny każdego wariantu ze stanem > 0 o 100 000 sztuk
+  Przed pomiarem `make -C infra/k8s load` podnosi stan fizyczny wariantów ze stanem > 0 o 100 000 sztuk
   bezpośrednim SQL w bazie klastra pomiaru (klaster jednorazowy, usuwany po pomiarze; wyjątek od zapisu przez
-  komendy Inventory tylko dla danych pomiaru), więc checkout nie wyczerpuje stanów. Raport podaje udział 409.
-  Równoległość checkoutu według D18.
+  komendy Inventory tylko dla danych pomiaru), więc checkout nie wyczerpuje stanów: na danych z seeda każdego takiego
+  wariantu, na danych z generatora tylko wariantów produktów z porcji mapy strony, z których k6 bierze produkty.
+  Raport podaje udział 409. Równoległość checkoutu według D18.
 - `make -C infra/k8s load` (D15): klaster, dane demo, podniesienie stanów, rozgrzanie, przebieg stopniowo
   rosnącego obciążenia do nasycenia (p95 powyżej 2 s albo błędy 5xx i sieci powyżej 1%) i przebieg stały na 70%
   nasycenia, zbiór wyników do katalogu poza repo (`LOAD_OUT`, wymagany), usunięcie klastra przy każdym wyjściu. Kod
-  wyjścia: 0 – pomiar wykonany (bez progów zaliczenia), 2 – błąd środowiska z komunikatem (brak `LOAD_OUT`, za mało
-  zasobów VM Dockera, obrazy nieobecne w węźle po trzech importach, pody niegotowe, dane demo albo stany niegotowe, nieudane rozgrzanie), 1 – inny błąd (nieudany
-  przebieg k6, budowa obrazów). VM Dockera ma mieć co najmniej 10 vCPU i 20 GiB RAM (`LOAD_MIN_CPUS`,
-  `LOAD_MIN_MEM_GIB`; pody `prod` żądają około 5 vCPU i 8,5 GiB).
+  wyjścia: 0 – pomiar wykonany (bez progów zaliczenia), 2 – błąd środowiska z komunikatem (brak `LOAD_OUT`, nieznane
+  `LOAD_DATA`, brak pliku puli zdjęć albo zmiennej odczytu, za mało zasobów VM Dockera, obrazy nieobecne w węźle po
+  trzech importach, pody niegotowe, generator zakończony błędem albo po czasie, brak porcji mapy strony, dane demo albo
+  stany niegotowe, nieudane rozgrzanie, za mało miejsca na dysku VM albo hosta, `LOAD_OUT` niemontowalny przez Docker),
+  1 – inny błąd (nieudany przebieg k6, budowa obrazów) albo przebieg doprowadzony do końca, podczas którego komputer
+  spał (wyniki są w `LOAD_OUT`, ale czasów nie wolno używać; szczegóły: `docs/features/demo-data/spec.md`, „k3d”),
+  130 po INT i 143 po TERM (klaster usunięty w obu przypadkach). VM Dockera ma mieć co
+  najmniej 10 vCPU i 20 GiB RAM (`LOAD_MIN_CPUS`, `LOAD_MIN_MEM_GIB`; pody `prod` żądają około 5 vCPU i 8,5 GiB).
+- Dane pomiaru wybiera `LOAD_DATA` (`docs/features/demo-data/spec.md`, „k3d”): `seed` (domyślnie) – dane demo Joba
+  `initialize`; `medium`, `server`, `full` – po gotowości klastra jeden Job z zawieszonego CronJoba `demo-data`
+  (`bin/generate-demo` z tym profilem, osobny limit czasu `LOAD_DATA_TIMEOUT`, domyślnie limit Joba z chartu i 10 minut),
+  potem pomiar jak wyżej na losowych porcjach mapy strony (`DISCOVER_CHUNKS` przekazane k6). Te profile biorą zdjęcia
+  z prywatnego bucketu puli: cztery zmienne odczytu z pliku użytkownika (`DEMO_PHOTOS_ENV_FILE`, domyślnie
+  `~/.config/shop/demo-photos.env`) trafiają do sekretu `demo-photos` klastra przez standardowe wejście `kubectl`, bez
+  wartości w linii poleceń, w wyjściu i w `LOAD_OUT`; token zapisu nie trafia do klastra. Wynik zawiera wtedy też log
+  Joba z czasami linii, czasy kroków generatora (`demo-data-steps.txt`) i rozmiary baz, tabel i indeksów Postgresa oraz
+  indeksów Elasticsearcha (`sizes.txt`, przy każdym `LOAD_DATA`). Pełna skala (`server`, `full`) nie jest
+  zweryfikowana pomiarem (`docs/features/demo-data/spec.md`, W3).
 - Przebieg rosnący do nasycenia obejmuje scenariusze odczytu i koszyka, bez checkoutu: to jest maksymalna zmierzona
   przepustowość systemu. Checkout biegnie osobno, ze stałą, ograniczoną równoległością (D18), równolegle do ruchu
   odczytu na 70% nasycenia.
@@ -220,6 +236,8 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
 | `/auth/login` ponad limit | 429, bez stanu w Redisie |
 | `clientIpHeader` bez `ipAllowList` i bez potwierdzenia | render chartu kończy się błędem |
 | `make -C infra/k8s load` bez `LOAD_OUT` albo z podami w `Pending` | kod 2 z komunikatem, klaster usunięty |
+| `make -C infra/k8s load` z nieznanym `LOAD_DATA` albo bez pliku puli zdjęć | kod 2 przed utworzeniem klastra |
+| Job generatora (`LOAD_DATA` inne niż `seed`) zakończony błędem albo po czasie | kod 2 z logiem Joba, klaster usunięty |
 
 ## Kryteria akceptacji
 
@@ -261,8 +279,8 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
 
 - Adres klienta wewnątrz klastra jest zaufany: pod w klastrze może podać dowolny `CF-Connecting-IP`.
 - Klienci za wspólnym NAT (firma, operator komórkowy) dzielą limit gościa.
-- Fail open (D7) wyłącza limity na czas awarii Redisa; widać to w logu i health checku, a na serwerze alert `WorkloadNotReady` zgłasza niegotowego Redisa po 10 minutach (nie ostrzeżenia w logu).
-- Limit liczby zamówień nie chroni przed rezerwacją dużych ilości jednym zamówieniem (D16).
+- Fail open (D7) wyłącza limity na czas awarii Redisa; widać to w logu i health checku, a na serwerze alert `WorkloadNotReady` zgłasza niegotowego Redisa po 10 minutach, a alert `RateLimitsOff` Redisa nieużywalnego dla API (`docs/features/abuse-limits/spec.md`, L12; nie ostrzeżenia w logu).
+- Limit liczby zamówień nie chroni przed rezerwacją dużych ilości jednym zamówieniem klienta (D16); zamówienie gościa ma limit wielkości.
 - W `prod` logi udanych żądań nie są zapisywane, więc correlation ID pomaga tylko przy błędach.
 - `CorrelationIdStamp` jest nadawany od wersji, która go wprowadza, wbrew zasadzie „Zgodność wersji”
   w `apps/api/CLAUDE.md`, bo przed tą wersją nie było wdrożenia. Gdyby przy wymianie podów działał worker bez tej klasy,

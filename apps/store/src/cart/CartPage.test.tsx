@@ -233,17 +233,102 @@ describe("CartPage changing the quantity", () => {
     expect(qty("Produkt A").value).toBe("2");
   });
 
-  it("disables the controls while the request runs", async () => {
+  it("keeps the quantity field and Usuń focusable but inactive while the request runs", async () => {
     await renderWith(before());
     let finish: (value: Awaited<ReturnType<typeof changeCartItemQuantity>>) => void = () => {};
     vi.mocked(changeCartItemQuantity).mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const field = qty("Produkt A");
+    const remove = screen.getByRole("button", { name: /Usuń/ }) as HTMLButtonElement;
+    field.focus();
 
-    setQuantity("Produkt A", "3");
+    fireEvent.change(field, { target: { value: "3" } });
+    fireEvent.keyDown(field, { key: "Enter" });
 
-    expect(qty("Produkt A").disabled).toBe(true);
-    expect((screen.getByRole("button", { name: /Usuń/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(field.getAttribute("aria-disabled")).toBe("true");
+    expect(remove.getAttribute("aria-disabled")).toBe("true");
+    expect(field.disabled).toBe(false);
+    expect(remove.disabled).toBe(false);
+    expect(field.readOnly).toBe(true);
+    expect(document.activeElement).toBe(field);
+
+    // Typing, the arrow keys, another commit and a click on Usuń change nothing and send nothing.
+    fireEvent.change(field, { target: { value: "7" } });
+    fireEvent.keyDown(field, { key: "ArrowUp" });
+    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.blur(field);
+    fireEvent.click(remove);
+    expect(field.value).toBe("3");
+    expect(changeCartItemQuantity).toHaveBeenCalledExactlyOnceWith(A, 3);
+    expect(removeCartItem).not.toHaveBeenCalled();
+
     await act(async () => finish(ok(before())));
-    expect(qty("Produkt A").disabled).toBe(false);
+    expect(field.hasAttribute("aria-disabled")).toBe(false);
+    expect(remove.hasAttribute("aria-disabled")).toBe(false);
+    expect(field.readOnly).toBe(false);
+  });
+
+  it("keeps the focus in the same quantity field after Enter with the new quantity once the change is saved", async () => {
+    await renderWith(before());
+    vi.mocked(changeCartItemQuantity).mockResolvedValue(ok(view([line(A, "Produkt A", 3, { lineTotal: { gross: 3000, currency: "PLN" } })], { gross: 3000, itemCount: 3 })));
+    const field = qty("Produkt A");
+    field.focus();
+
+    fireEvent.change(field, { target: { value: "3" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    await vi.waitFor(() => expect(screen.getByTestId("cart-total").textContent).toBe(price(3000)));
+    expect(qty("Produkt A")).toBe(field);
+    expect(document.activeElement).toBe(field);
+    expect(field.value).toBe("3");
+  });
+
+  it.each([
+    ["a 409", { status: "conflict" as const, detail: "Nie mamy tylu sztuk tego produktu." }],
+    ["a failure", { status: "failed" as const }],
+  ])("keeps the focus in the same quantity field showing the last quantity after %s", async (_name, answer) => {
+    await renderWith(before());
+    vi.mocked(changeCartItemQuantity).mockResolvedValue(answer);
+    const field = qty("Produkt A");
+    field.focus();
+
+    fireEvent.change(field, { target: { value: "9" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(qty("Produkt A")).toBe(field);
+    expect(document.activeElement).toBe(field);
+    expect(field.value).toBe("2");
+  });
+
+  it("keeps the focus in the same quantity field showing the last quantity after Enter with a value out of 1-99", async () => {
+    await renderWith(before());
+    const field = qty("Produkt A");
+    field.focus();
+
+    fireEvent.change(field, { target: { value: "100" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    await act(async () => {});
+    expect(changeCartItemQuantity).not.toHaveBeenCalled();
+    expect(qty("Produkt A")).toBe(field);
+    expect(document.activeElement).toBe(field);
+    expect(field.value).toBe("2");
+  });
+
+  it("lets the focus move to Usuń with Tab while the request runs and keeps it there after a refused change", async () => {
+    await renderWith(before());
+    let finish: (value: Awaited<ReturnType<typeof changeCartItemQuantity>>) => void = () => {};
+    vi.mocked(changeCartItemQuantity).mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const remove = screen.getByRole("button", { name: /Usuń/ });
+
+    fireEvent.change(qty("Produkt A"), { target: { value: "9" } });
+    fireEvent.keyDown(qty("Produkt A"), { key: "Enter" });
+    remove.focus();
+
+    expect(document.activeElement).toBe(remove);
+    await act(async () => finish({ status: "conflict", detail: "Nie mamy tylu sztuk tego produktu." }));
+    expect(document.activeElement).toBe(remove);
+    expect(qty("Produkt A").value).toBe("2");
   });
 
   it("shows the detail of a 409 at the line and the quantity of the last view", async () => {
@@ -265,6 +350,23 @@ describe("CartPage changing the quantity", () => {
     setQuantity("Produkt A", "9");
 
     expect(await screen.findByText("Nie udało się zapisać zmian. Spróbuj ponownie.")).toBeTruthy();
+  });
+
+  it.each([
+    ["a change", () => vi.mocked(changeCartItemQuantity)],
+    ["a removal", () => vi.mocked(removeCartItem)],
+  ])("shows the text of the limit of cart changes at the line after a 429 of %s, and keeps the last view", async (_name, mocked) => {
+    await renderWith(before());
+    mocked().mockResolvedValue({ status: "rate_limited" });
+
+    if (_name === "a change") setQuantity("Produkt A", "9");
+    else fireEvent.click(screen.getByRole("button", { name: "Usuń: Produkt A" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Zbyt wiele zmian koszyka. Spróbuj ponownie za kilka minut.");
+    expect(qty("Produkt A").value).toBe("2");
+    expect(screen.getByTestId("cart-total").textContent).toBe(price(2000));
+    expect(announced).toEqual([]);
   });
 
   it("shows the general message once for a failure and does not retry", async () => {

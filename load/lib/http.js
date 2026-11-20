@@ -9,6 +9,8 @@ export const baseOptions = {
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max', 'count'],
   noConnectionReuse: false,
   userAgent: 'shop-load-k6',
+  // The setup of a run reads the products one by one, which on a big catalog takes longer than the default 60 s.
+  setupTimeout: '5m',
 };
 
 // 409 and 429 are answers of the shop that the report counts apart: they are no failed requests. What stays failed
@@ -32,6 +34,29 @@ export function newContext(pool, step) {
   return { ip: nextIp(pool), jar: new http.CookieJar(), step };
 }
 
+// The store behind a TLS-terminating ingress (its public address is https) that k6 calls over plain HTTP, as the cluster does
+// (http://store:3000): the store sets its cookies with Secure, which k6 never sends back over HTTP, so the cart and the checkout would
+// fail. The browser sends them back, since it talks to the public address.
+const secureCookiesOverPlainHttp = storeUrl.startsWith('http:') && storeOrigin.startsWith('https:');
+
+// Puts the cookies of an answer of the store into the jar of the iteration without Secure, so that the next request sends them back.
+function keepSecureCookies(res, jar) {
+  if (!secureCookiesOverPlainHttp) {
+    return;
+  }
+  for (const cookies of Object.values(res.cookies)) {
+    for (const cookie of cookies) {
+      if (cookie.secure) {
+        const options = { path: cookie.path, http_only: cookie.http_only, secure: false };
+        if (cookie.max_age > 0) {
+          options.max_age = cookie.max_age;
+        }
+        jar.set(storeUrl, cookie.name, cookie.value, options);
+      }
+    }
+  }
+}
+
 function tagsOf(ctx, flow, kind) {
   const tags = { flow, kind };
   if (ctx.step !== undefined) {
@@ -49,6 +74,7 @@ function send(method, base, host, ctx, path, flow, kind, body, extra) {
   const params = { headers, jar: ctx.jar, tags: { ...tags, name: `${flow}` }, timeout: '60s' };
   const res = method === 'GET' ? http.get(base + path, params) : http.post(base + path, body, params);
   record(res, tags);
+  keepSecureCookies(res, ctx.jar);
   return res;
 }
 
@@ -63,10 +89,26 @@ export function storePost(ctx, path, flow, kind, payload, extra) {
   return send('POST', storeUrl, storeHost, ctx, path, flow, kind, JSON.stringify(payload), headers);
 }
 
+function apiRequest(path) {
+  const headers = apiHost === '' ? {} : { Host: apiHost };
+  return http.get(apiUrl + path, { headers, tags: { name: 'setup' }, timeout: '60s' });
+}
+
 // The public API, for the data of the run (setup).
 export function apiGet(path) {
-  const headers = apiHost === '' ? {} : { Host: apiHost };
-  const res = http.get(apiUrl + path, { headers, tags: { name: 'setup' }, timeout: '60s' });
+  const res = apiRequest(path);
+  if (res.status !== 200) {
+    throw new Error(`setup: GET ${path} answered ${res.status}`);
+  }
+  return res.json();
+}
+
+// Like apiGet, but a missing resource (404) is null.
+export function apiGetOrNull(path) {
+  const res = apiRequest(path);
+  if (res.status === 404) {
+    return null;
+  }
   if (res.status !== 200) {
     throw new Error(`setup: GET ${path} answered ${res.status}`);
   }

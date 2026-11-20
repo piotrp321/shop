@@ -14,13 +14,31 @@ przede wszystkim czas zegarowy epiku, pilnując jakości, liczby napraw, interwe
 
 ## Status
 
-Od 2026-11-18 obowiązuje moratorium na rozwój AO, skilli istniejących tylko dla niego (`/ao-run`, `/prepare-epic`,
-`/delivery`, `/sweep`, `/retro`, `/groom`) i narzędzi z nimi związanych (decyzja w ADR, podstawa w
+Od 2026-11-18 obowiązuje moratorium na rozwój AO, skilli istniejących tylko dla niego (`/ao-run`, `/delivery`,
+`/sweep`) i narzędzi z nimi związanych (decyzja w ADR, podstawa w
 `docs/reports/agentic-software-house-audit-2026-11-18.md`). Wstrzymane są niedokończone kroki 17–22 i epik ONCALL
 (krok 11, `docs/features/oncall/`). Kolejność epików jest na tablicy „Backlog sklepu”.
 
 Ostatni epik prowadzony przez AO: DEMO-DATA (#482), zakończony w AO 2026-11-18 (końcowy PR #744; integracja przeszła
 w pierwszej rundzie).
+
+W toku: ASYNC-RELIABILITY (#768, końcowy PR #811 otwarty). Przygotowane: DEMO-SCALE (#484). Blokery: brak.
+Ostatni zmergowany epik: ABUSE-LIMITS (#181, końcowy PR #802; interwencje, czekania na użytkownika i ręczne poprawki:
+brak danych pomiaru). Retro do zrobienia: brak (retro ABUSE-LIMITS w tym PR). Otwartych issues z etykietą `agent`
+jest 122, zamkniętych 75.
+
+Seria ASH v1.0 (specyfikacja `docs/features/ash-v1/spec.md`): trzy epiki prowadzone natywnie według „Przebiegu epiku”
+w ADR, ocenianie metrykami i retrospektywami `/retro`. Seria jest w toku od założenia tagu `ash-v1.0` do retrospektywy
+trzeciego epiku; w tym czasie pliki procesu zmienia tylko poprawka blokady albo zagrożenia, po zgodzie użytkownika
+(reguła w ADR, koniec „Przebiegu epiku”).
+
+| Seria ASH v1.0 | Stan |
+|---|---|
+| Stan serii | w toku (tag `ash-v1.0` założony 2026-11-19; ABUSE-LIMITS zmergowany, ASYNC-RELIABILITY w toku) |
+| Epiki serii | ABUSE-LIMITS (#181), ASYNC-RELIABILITY (#768), DELIVERY etap 1 (#120), w tej kolejności |
+| Zmergowane epiki serii | ABUSE-LIMITS (#181, końcowy PR #802) |
+
+Stan serii przyjmuje jedną z wartości: „przed startem”, „w toku”, „zakończona”.
 
 Kroki przejścia na pracę natywną (obowiązują teraz, w tej kolejności):
 
@@ -30,7 +48,7 @@ Kroki przejścia na pracę natywną (obowiązują teraz, w tej kolejności):
 | P2 | Pilne porządki z raportu audytu | w toku (pozostałości na dysku czekają na decyzję użytkownika) |
 | P3 | DEMO-DATA kończy się w AO, ze skróconym `apps/api/CLAUDE.md` i nową polityką przeglądu | zrobione |
 | P4 | Uproszczenie instrukcji i konfiguracji: `CLAUDE.md` główny i obszarów, agenci, `/planner`, `/brainstorm`, konfiguracja | zrobione |
-| P5 | Trzy epiki natywnie: SMALL-FIXES → ABUSE-LIMITS → ASYNC-RELIABILITY, każdy z punktem odniesienia przed i krótkim raportem po | do zrobienia |
+| P5 | Seria ASH v1.0: trzy epiki natywnie (ABUSE-LIMITS → ASYNC-RELIABILITY → DELIVERY etap 1), każdy z punktem odniesienia i opisem końcowego PR | seria w toku (stan w tabeli „Seria ASH v1.0” wyżej) |
 | P6 | Decyzja o archiwizacji AO i usunięciu jego narzędzi | do zrobienia (po P5) |
 
 Tabela niżej to stan kroków wdrożenia AO; role i proces w kolejnych sekcjach opisują drogę AO.
@@ -42,16 +60,13 @@ Tabela niżej to stan kroków wdrożenia AO; role i proces w kolejnych sekcjach 
 | 3 | Poprawki procesu w `shop` | zrobione |
 | 4 | Backlog w GitHub Issues | zrobione |
 | 5 | Powiadomienia i kolejka epików przez aplikację Claude | zrobione (sprawdzenie w kroku 7) |
-| 6 | Przygotowanie epiku jednym skillem `/prepare-epic` | zrobione |
 | 7 | Pierwszy epik przez cały proces | zrobione |
 | 8 | Nocna kolejka kilku epików | zrobione (sprawdzenie: pierwsza noc) |
 | 9 | Agent tester i agent UX | zrobione |
 | 10 | Przed publicznym demo: bezpieczeństwo i wydajność | zrobione (epik HARDENING #267, końcowy PR #402 zmergowany) |
 | 11 | Po MVP: release, monitoring i dyżur agenta | wstrzymane (moratorium; epik SENTRY zmergowany, końcowy PR #539; dyżur i hypercare, epik ONCALL, wstrzymane) |
 | 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione; kryterium 7 potwierdzone: `/sweep` po merge'u LIGHTHOUSE i HARDENING (raporty z nazwą epiku); kryteria 8–9 bez dowodu w przebiegach |
-| 13 | Agent porządkujący backlog (`/groom`) | zrobione (zadanie zaplanowane o 8:00 w aplikacji Claude; pierwsza lista z 2026-11-09 wykonana po decyzji użytkownika) |
-| 14 | Epik poprawek przygotowany bez użytkownika aż do pytań | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy epik `-FIXES` po QUALITY-FIXES) |
-| 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy merge epiku po merge'u RETRO i pierwszy przebieg `/retro visual-design`) |
+| 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | zrobione; zweryfikowane: pełne przebiegi `/retro` po epikach natywnych SMALL-FIXES (#799) i ASH-V1 (#801) |
 | 16 | Bezpieczeństwo agentów | zrobione (epik AGENT-SECURITY #494, końcowy PR #548 zmergowany); sonda przed startem AO bez dowodu z kolejnego przebiegu |
 | 17 | Evale agentów i workflowów | wstrzymane (moratorium) |
 | 18 | Pomiar, koszty i optymalizacja | wstrzymane (moratorium; epik METRICS #496 zrobiony, końcowy PR #674 zmergowany: pomiar epiku, `tools/metrics`; epik TELEMETRY #577 zrobiony, końcowy PR #721 zmergowany: telemetria Claude Code do lokalnego stosu) |
@@ -67,12 +82,10 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | Dział | Rola | Kto | Stan |
 |---|---|---|---|
 | Produkt | Właściciel produktu: co budujemy, kolejność, triage, odbiór | użytkownik | działa |
-| Analiza i projekt | Analityk: specyfikacja | `/brainstorm` z użytkownikiem, w `/prepare-epic` | działa |
-| | Krytyk specyfikacji: braki, sprzeczności, przypadki brzegowe | `spec-critic` w `/prepare-epic` | działa |
-| | Architekt: review specyfikacji | `architecture-reviewer` w `/prepare-epic` | działa |
+| Analiza i projekt | Analityk: specyfikacja | `/brainstorm` z użytkownikiem | działa |
 | | Architekt: ADR, review architektury epiku | `architecture-reviewer` w `/integration` | działa |
 | | UX: ekrany, wersja mobilna, dostępność | `ux-reviewer` w `/sweep` i w `/integration` | działa |
-| Planowanie | Plan i zadania | `/planner`, w `/prepare-epic` | działa |
+| Planowanie | Plan i zadania | `/planner` | działa |
 | | Koordynacja: przebieg nocny, stan, PR | AO | działa |
 | | Kolejka epików: następny epik po merge'u i lista na noc | `/ao-run` w sesji z Remote Control | działa, lista na noc do sprawdzenia w pierwszej nocy |
 | | Praca równoległa: epiki naraz i zadania fali naraz, bramka ryzyka | `/ao-run` z bramką `night_queue.py gate` (19a), AO `--max-parallel` (19b) | 19a działa, pomiar par trwa; 19b w toku |
@@ -83,8 +96,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | | Bezpieczeństwo i wydajność | ustalane w kroku 10 | krok 10 |
 | | Bezpieczeństwo agentów: niezaufane wejścia, izolacja uprawnień i sekretów, testy obejścia | sandbox i reguły w `shop` | krok 16 |
 | | Evale agentów na prawdziwych zadaniach i porównanie wariantów agenta | EVALS 2.0: `tools/evals-pilot` (`code-reviewer`), uruchamiane ręcznie za zgodą właściciela | krok 17 |
-| Backlog i proces | Porządkowanie backlogu: duplikaty, nieaktualne zgłoszenia, propozycje epików poprawek | `/groom` z agentem `backlog-groomer`, codziennie o 8:00 | działa |
-| | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` z agentem `retro-analyst`, uruchamiany przez `/ao-run` po `/sweep` | działa, niezweryfikowane na prawdziwym epiku |
+| Backlog i proces | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` z agentem `retro-analyst`, uruchamiany przez `/ao-run` po `/sweep` | działa, niezweryfikowane na prawdziwym epiku |
 | | Pomiar czasu, kosztu i jakości z decyzjami optymalizacyjnymi | `tools/metrics` (`tools/metrics/README.md`), uruchamiany przez `/ao-run`; telemetria Claude Code w lokalnym stosie na Macu (TELEMETRY #577) | krok 18 |
 | Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 11 |
 | | Monitoring → issues, dyżur i hypercare | agent dyżurny: Sentry i Grafana Cloud przez MCP, tylko odczyt | krok 11 |
@@ -98,7 +110,7 @@ które jeszcze nie działają, mają w nawiasie numer kroku wdrożenia.
 flowchart TB
     issues[GitHub Issues<br/>epic, bug, ux, tech-debt]
     triage{Triage i kolejność<br/>użytkownik}
-    prep["/prepare-epic<br/>analityk, krytyk, architekt, planner<br/>epik albo epik poprawek"]
+    prep["Przygotowanie<br/>specyfikacja i plan<br/>epik albo epik poprawek"]
     accept{"Akceptacja specyfikacji<br/>końcowy PR do przejrzenia w jednym posiedzeniu?"}
     onmain[main: spec.md i plan.md]
     start{"Zacząć epik? albo lista na noc<br/>push w aplikacji Claude"}
@@ -109,11 +121,9 @@ flowchart TB
     review{Odbiór według ryzyka<br/>użytkownik}
     merge[Merge i zamknięcie issue]
     sweep["Agent tester i agent UX<br/>cały sklep na main (12: po merge'u sam)"]
-    groom["/groom codziennie<br/>duplikaty, nieaktualne, propozycja epiku poprawek"]
     retro["/retro (15)<br/>PR z poprawkami procesu i Statusem"]
     oncall["Agent dyżurny (11)<br/>Sentry i Grafana, tylko odczyt"]
 
-    issues --> groom --> triage
     issues --> triage --> prep --> accept
     merge --> retro
     accept -- za duży, podział --> prep
@@ -131,8 +141,12 @@ flowchart TB
 ```
 
 1. **Backlog: GitHub Issues** w `piotrp321/shop`.
-   - Etykieta `epic` to funkcja z „Zakresu MVP”, `bug` to błąd, `ux` to problem użyteczności albo wyglądu,
-     `tech-debt` to porządki w kodzie, bazie albo dokumentacji bez zmiany zachowania.
+   - Etykieta `epic` to epik z roadmapy (spójna grupa zmian z własną specyfikacją), `bug` to błąd, `ux` to problem
+     użyteczności albo wyglądu, `tech-debt` to porządki w kodzie, bazie albo dokumentacji bez zmiany zachowania.
+   - Każde zgłoszenie należy do jednego backlogu: `app` (sklep, API, panel i ich infrastruktura), `ash` (proces,
+     agenci, skille, narzędzia i CI repozytorium) albo `ao-frozen` (AO i skille istniejące tylko dla niego, bez
+     priorytetu do decyzji o archiwizacji). Zgłoszenie epiku zawiera listę swoich pozycji i identyfikatory znalezisk
+     z raportów w `docs/reports/`.
    - Zgłaszają: użytkownik, agent tester i agent UX. Zgłoszenia agentów mają etykietę `agent` i limit
      na jeden przebieg. Do backlogu trafiają dopiero po triage użytkownika.
    - Zgłoszenia `bug`, `ux` i `tech-debt` mają pola: środowisko, kroki odtworzenia (jeden krok w linii), wynik
@@ -140,24 +154,16 @@ flowchart TB
      w `.github/ISSUE_TEMPLATE/`, agenci wypełniają te same pola. Zgłoszenie z brakami dostaje etykietę
      `needs-info` i nie idzie do przygotowania.
    - Kolejność ustala użytkownik na tablicy GitHub Projects
-     [„Backlog sklepu”](https://github.com/users/piotrp321/projects/1): epik na górze idzie pierwszy.
-   - `/groom` codziennie o 8:00 (zadanie zaplanowane w aplikacji Claude) albo ręcznie przegląda otwarte zgłoszenia
-     i daje użytkownikowi jedną listę propozycji: duplikaty, zgłoszenia nieaktualne wobec kodu na `main` (z dowodem),
-     braki, etykiety i jeden epik poprawek. Zmiany w GitHubie wykonuje dopiero po „tak” użytkownika
-     (`docs/features/groom/spec.md`).
+     [„Backlog sklepu”](https://github.com/users/piotrp321/projects/1): epik na górze idzie pierwszy. Na tablicy są
+     tylko epiki i pozycje do zrobienia przed nimi; pole „Backlog” odróżnia aplikację od ASH.
 2. **Przygotowanie (użytkownik, w dzień).**
-   - Issue z góry listy → `/prepare-epic` → `spec.md` i `plan.md`.
-   - `/prepare-epic` prowadzi kolejno:
-     - analityka według zasad `/brainstorm`: discovery i szkic specyfikacji;
-     - krytyka i `architecture-reviewer`: sprawdzają szkic, nie użytkownika;
-     - poprawki techniczne w szkicu;
-     - `/planner`.
+   - Issue z góry listy → `/brainstorm` → `spec.md`, `/planner` → `plan.md`.
    - Decyzje produktowe (zakres, reguły, limity, zachowanie klienta) podejmuje wyłącznie użytkownik. Agenci ich
      nie rozstrzygają między sobą. Zbierają je w jedną listę pytań, każde z rekomendacją. Użytkownik dostaje
      pytania raz, przed akceptacją.
    - Akceptacja jest jedna: specyfikacja z pozycjami użytkownika z „Wymaganych przed startem” i jedno pytanie, czy
-     końcowy PR da się przejrzeć w jednym posiedzeniu.
-     Skill podaje do tego liczbę zadań i dotknięte aplikacje. Jeśli PR jest za duży, epik dzielimy na dwa,
+     końcowy PR da się przejrzeć w jednym posiedzeniu, z liczbą zadań i dotkniętymi aplikacjami. Jeśli PR jest
+     za duży, epik dzielimy na dwa,
      mergowane po kolei. Rozmiar pojedynczych zadań zostaje bez zmian. Podziału na zadania użytkownik nie
      akceptuje: `plan.md` musi przejść walidator manifestu.
    - Przygotowujemy tyle epików do przodu, ile mieści noc: aż `night_queue.py ahead` pokaże pełną noc (suma
@@ -168,14 +174,9 @@ flowchart TB
    - Specyfikacja ma sekcję „Wymagane przed startem”: sekrety, konta, usługi zewnętrzne, uprawnienia i decyzje
      infrastrukturalne potrzebne zadaniom. Przy akceptacji użytkownik potwierdza, że jego pozycje są gotowe albo
      będą przed `/ao-run`, żeby taki bloker nie wyszedł dopiero w trakcie zadania.
-   - Zgłoszenie `ux` zawsze idzie przez `/prepare-epic`. Drobne zgłoszenia `bug`
+   - Zgłoszenie `ux` zawsze idzie przez przygotowanie epiku. Drobne zgłoszenia `bug`
      i `tech-debt` trafiają razem do jednego epiku poprawek: krótka specyfikacja, jedno zadanie na issue.
-   - Epik poprawek zatwierdzony z listy `/groom` sesja `/groom` przygotowuje bez użytkownika aż do pytań: analityk
-     i planner (podagent na Opusie), krytyk i architekt. Użytkownik dostaje jedno powiadomienie push z pytaniami
-     (każde z rekomendacją) i akceptacją. „Tak” akceptuje rekomendacje i specyfikację tylko przy spełnionej bramce
-     `groom.py gate` (review poprawne, bez otwartego `Critical`, walidator, bez zmian na `main` w zakresie epiku);
-     zasady merge'u PR ze specyfikacją się nie zmieniają.
-   - Zaakceptowane `spec.md` i `plan.md` trafiają do `main` przez PR, który `/prepare-epic` merguje po zielonym CI.
+   - Zaakceptowane `spec.md` i `plan.md` trafiają do `main` przez PR.
 3. **Wykonanie (AO, w nocy).**
    - Start epiku: sesja z Remote Control bierze następny epik z tablicy, który ma zaakceptowane `spec.md`
      i `plan.md` na `main`, i pyta w powiadomieniu push „Zacząć epik X?”. Pyta po merge'u poprzedniego epiku, na
@@ -279,22 +280,16 @@ flowchart TB
    pierwszy przebieg (krok 7). Przebieg epiku prowadzi skill `/ao-run <epik>` (`docs/features/ao-run/spec.md`).
    Kolejkę prowadzi ten sam skill (sekcja „Następny epik”, bramka `night_queue.py gate`): `/ao-run` bez argumentu
    wybiera następny przygotowany epik z tablicy.
-6. **Przygotowanie epiku jednym skillem.** Skill `.claude/skills/prepare-epic/` i agent krytyka `spec-critic`
-   w `shop`, bez zmian w AO (specyfikacja: `docs/features/prepare-epic/spec.md`):
-   - kolejność i podział ról jak w punkcie 2 procesu, zasady analityka i podziału na zadania brane z `/brainstorm`
-     i `/planner`; oba skille zostają do pracy poza epikami;
-   - jedna lista pytań produktowych do użytkownika i jedna akceptacja specyfikacji z pytaniem o rozmiar PR;
-   - PR ze `spec.md` i `plan.md` merguje skill po akceptacji i zielonym CI; wyjątki merge'ów w `CLAUDE.md` i ADR.
-7. **Pierwszy epik.** Issue z góry backlogu przechodzi cały proces, od `/prepare-epic` do odbioru, razem z pomiarem
+7. **Pierwszy epik.** Issue z góry backlogu przechodzi cały proces, od przygotowania do odbioru, razem z pomiarem
    z punktu 5 procesu. Każdy kolejny epik idzie tym samym procesem.
 8. **Nocna kolejka kilku epików.** Przed snem użytkownik jedną zgodą zatwierdza listę przygotowanych epików na noc
    (`/ao-run --noc`, punkt 3 procesu). Każdy epik listy rusza przez bramkę: równolegle z trwającym albo po `epic_done`
    poprzedniego, bez czekania na merge. Rano użytkownik odbiera kilka raportów. Opis jest
    w `docs/features/ao-run/spec.md` (sekcja „Noc”), kod w `.claude/skills/ao-run/night_queue.py`, bez zmian w AO:
    - na jedną noc trafiają tylko epiki bez wspólnego kodu aplikacji (reguła plików bramki, krok 19a), bo każdy
-     startuje z `main` bez poprzednich, a pozostałe wspólne pliki łączy REPAIR; `/prepare-epic` zapisuje zakres epiku w linii `Zakres:`
+     startuje z `main` bez poprzednich, a pozostałe wspólne pliki łączy REPAIR; zakres epiku jest w linii `Zakres:`
      specyfikacji, a lista porównuje z niej pliki epików;
-   - `/prepare-epic` przygotowuje tyle epików do przodu, ile mieści noc (`night_queue.py ahead`, punkt 2 procesu);
+   - przygotowanych jest tyle epików do przodu, ile mieści noc (`night_queue.py ahead`, punkt 2 procesu);
    - następny epik nie rusza, gdy jego szacunek nie mieści się do rana albo limit subskrypcji nie wystarczy na cały
      jego przebieg;
    - szacunki i liczba epików na noc wynikają z pomiaru każdego epiku prowadzonego przez `/ao-run`, nie z założenia.
@@ -318,24 +313,14 @@ flowchart TB
    - po wdrożeniu epiku prowadzi hypercare: porównuje błędy nowego wydania z poprzednim i wysyła push z rekomendacją;
    - nie wykonuje rollbacku ani innych operacji produkcyjnych: robi je wyłącznie użytkownik.
 
-Kroki 12–15 domykają pętlę „zgłoszenia agentów → poprawki” i poprawiają proces z danych przebiegów. Wszystkie są
-skillami w `shop`, bez zmian w AO. Każdy zużywa limit subskrypcji, więc działa po epiku albo raz na dobę, nigdy
+Kroki 12 i 15 domykają pętlę „zgłoszenia agentów → poprawki” i poprawiają proces z danych przebiegów. Oba są
+skillami w `shop`, bez zmian w AO. Każdy zużywa limit subskrypcji, więc działa po epiku, nigdy
 równolegle z przebiegiem AO, a jego czas i zużycie limitu są mierzone jak przebieg epiku (format ustala specyfikacja kroku).
 
 12. **`/sweep` po merge'u epiku.** Trzy ręczne przebiegi (2026-11-04, 2026-11-07, 2026-11-09) dały 6 przyjętych
    zgłoszeń i 1 odrzucone, więc warunek z kroku 9 jest spełniony. `/ao-run` uruchamia `/sweep <epik>` po merge'u
    końcowego PR (kolejka przeglądów, następny epik rusza po niej) i wysyła push z liczbą propozycji. Triage zostaje
    u użytkownika. Opis: sekcja „Przegląd po merge'u” w `docs/features/ao-run/spec.md`.
-13. **`/groom`.** Skill `/groom`, agent `backlog-groomer` (Sonnet) i skrypt `groom.py`: codziennie o 8:00 z zadania
-   zaplanowanego w aplikacji Claude albo ręcznie. Agent proponuje, skrypt sprawdza listę i po „tak” użytkownika
-   wykonuje tylko zatwierdzone pozycje. Jeden epik poprawek naraz, do 8 issues; issues otwartych epików bez
-   propozycji. Opis: `docs/features/groom/spec.md`.
-14. **Epik poprawek bez użytkownika aż do pytań.** Sesja `/groom` po utworzeniu zatwierdzonego epiku poprawek
-   prowadzi `/prepare-epic` w trybie po `/groom`: kroki 1–3 i 5 bez rozmowy, kroki 4 i 6 jedną wiadomością z pushem.
-   „Tak” akceptuje rekomendacje i specyfikację tylko przy spełnionej bramce `groom.py gate`; inna odpowiedź wraca do
-   zwykłego przebiegu. Ręczne `/prepare-epic <nr>` wznawia przerwane przygotowanie bez powtarzania ukończonych
-   etapów. Opis: sekcja „Tryb po `/groom`” w `docs/features/prepare-epic/spec.md`. Prawdziwy przebieg sprawdza
-   pierwszy epik `-FIXES` po QUALITY-FIXES.
 15. **`/retro` i „Status”.** Skill `/retro` i agent `retro-analyst` (Opus) oraz skrypt `retro.py`: `/ao-run` uruchamia
    go po merge'u epiku w kolejce po `/sweep` (punkt 7 procesu). Zastępuje ręczne aktualizowanie sekcji „Status”
    i ręczne zbieranie wniosków z przebiegów. Opis: `docs/features/retro/spec.md`. Prawdziwy przebieg sprawdza
@@ -399,7 +384,7 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
      konflikt, którego sync i REPAIR nie rozwiązały bez ręcznej poprawki, przebieg przerwany przez brak zasobów albo
      limitu, albo więcej ręcznych poprawek lub interwencji niż w porównywalnych epikach szeregowych; REPAIR i sync
      automatyczny się nie liczą) wstrzymuje równoległe epiki do decyzji użytkownika.
-20. **Asystent zakupowy i serwer MCP katalogu.** Osobny, niezależny epik przez `/prepare-epic`, poza „Zakresem MVP”,
+20. **Asystent zakupowy i serwer MCP katalogu.** Osobny, niezależny epik poza „Zakresem MVP”,
    który nie blokuje MVP (zmianę `docs/vision.md` robi przygotowanie epiku). Asystent w sklepie sięga do wyszukiwarki
    i karty produktu przez tool calling i nasz serwer MCP katalogu (tylko odczyt); serwer jest jedyną drogą asystenta
    do katalogu i może z niego korzystać każdy zewnętrzny agent. Epik pokazuje tool calling, bezpieczeństwo (prompt
@@ -449,19 +434,16 @@ Styk backlog → `/planner` → AO → `/delivery`. Format manifestu i jego wali
 
 ## Punkty zatrzymania
 
-- **Każdy epik:** przed `ao submit-plan` użytkownik akceptuje w `/prepare-epic` specyfikację i rozmiar końcowego PR,
+- **Każdy epik:** przed `ao submit-plan` użytkownik akceptuje specyfikację i rozmiar końcowego PR,
   a `plan.md` przechodzi walidator manifestu.
 - **Start epiku:** AO rusza z epikiem dopiero po „tak” użytkownika na pytanie „Zacząć epik X?” albo na listę nocy.
   Kolejny epik listy rusza bez pytania tylko przy spełnionych warunkach sekcji „Noc” z `docs/features/ao-run/spec.md`.
   Start mimo niespełnionej bramki ryzyka i przejęcie epiku innej sesji: tylko w dzień, po osobnym „tak”.
 - **Merge do `main`:** końcowy PR epiku merguje użytkownik albo sesja `/ao-run` na jego polecenie w rozmowie (także
-  z telefonu), po zielonym CI. Wyjątek bez osobnego polecenia: PR ze `spec.md` i `plan.md` z `/prepare-epic`, który
-  skill merguje po akceptacji użytkownika i zielonym CI. Każde rozszerzenie
-  autonomii wymaga jego jawnej zgody.
+  z telefonu), po zielonym CI. Każde rozszerzenie autonomii wymaga jego jawnej zgody.
 - **Zmiana AO:** tylko przy zablokowanym prawdziwym przebiegu, za zgodą użytkownika (moratorium od 2026-11-18).
 - **Produkcja:** rollback i inne operacje produkcyjne wykonuje wyłącznie użytkownik; agenci mają do produkcji dostęp
   tylko do odczytu.
 - **Krok 4:** issues epików powstają dopiero po akceptacji listy.
 - **Kroki 8–22:** specyfikacja każdego kroku zaakceptowana przed implementacją.
-- **`/groom`:** zamknięcie issue, nowe issue epiku i zmiana tablicy dopiero po „tak” użytkownika na listę propozycji.
 - **Zgłoszenia agentów:** trafiają do backlogu dopiero po triage użytkownika.

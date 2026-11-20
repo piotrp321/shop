@@ -44,7 +44,7 @@ final readonly class ElasticsearchProductSearch implements ProductSearch
             $items[] = ProductIndexDefinition::document(\is_array($hit) ? ($hit['_source'] ?? null) : null);
         }
 
-        return new SearchResult($items, $total, self::facets($criteria, $total, self::map($response['aggregations'] ?? null)));
+        return new SearchResult($items, $total, min($total, $this->maxResultWindow), self::facets($criteria, $total, self::map($response['aggregations'] ?? null)));
     }
 
     /**
