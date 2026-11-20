@@ -471,8 +471,18 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
   dostawy odczytałby z sumą bez dostawy (e-mail z potwierdzeniem, kwota płatności, zwrot, suma klienta). Takie
   zamówienie nie może powstać w oknie wymiany podów, bo na serwerze po wdrożeniu nie ma żadnej metody dostawy, a bez
   aktywnej metody nowe API nie składa zamówień (W5). Dlatego administrator dodaje metody w panelu „Dostawa” dopiero
-  po zakończeniu rolloutu fali 1 (Argo `Synced` i `Healthy`, żaden pod poprzedniej wersji nie działa). Ta kolejność
-  dotyczy tylko wydania tego epiku: kolejne wersje znają dostawę.
+  po zakończeniu rolloutu, gdy jednocześnie: przebieg `deploy.yml` się zakończył; aplikacja Argo `shop` ma
+  `operationState.phase` `Succeeded`, a `syncResult.revision` i `sync.revision` są równe nowemu snapshotowi
+  `deploy-images` (polecenie w runbooku `infra/k8s/README.md`, sekcja 7, „Sprawdzenie”); aplikacje są `Synced`
+  i `Healthy`; pody `api`, `worker` i `worker-commands` należą wyłącznie do nowych ReplicaSetów i żaden nie jest
+  `Terminating` (`sudo k3s kubectl -n shop get pods -l 'app.kubernetes.io/name in (api,worker,worker-commands)'
+  -o custom-columns=POD:.metadata.name,IMAGE:.spec.containers[0].image,DELETING:.metadata.deletionTimestamp`: każdy
+  obraz z nowego snapshotu, kolumna `DELETING` pusta). Ta chwila jest też `:koniec_wdrozenia` w zapytaniu kontrolnym niżej. W trakcie rolloutu nie biegnie żaden
+  seed (`make -C infra/k8s generate`, `make -C infra/k8s reinitialize`). Ta kolejność dotyczy tylko wydania tego
+  epiku: kolejne wersje znają dostawę.
+- Cofnięcie do wersji sprzed epiku (runbook, sekcja 7, „Cofnięcie wersji”) jest bezpieczne tylko przed dodaniem metod.
+  Po ich dodaniu najpierw wyłącza się wszystkie metody w panelu i rozlicza nieopłacone zamówienia z kosztem dostawy,
+  bo stary kod liczy ich sumy bez dostawy.
 - Zamówienie bez metody tylko w oknie wymiany wersji (P19): nowe API odrzuca złożenie bez `deliveryMethodId` (422,
   W5), a `Order::place` wymaga dostawy (W6), więc gdy działają już tylko nowe pody `api`, takie zamówienie nie może
   powstać. Bez metody zostają zamówienia sprzed epiku i wygenerowana historia demo (P17).
@@ -483,8 +493,8 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
 - Kształt wiadomości i zdarzeń się nie zmienia (`OrderShipped` bez zmian), więc test kształtu zdarzeń
   ASYNC-RELIABILITY przechodzi bez nowych zapisów.
 - Po wdrożeniu na serwer bez metod dostawy kasa nie przyjmuje zamówień, dopóki administrator nie doda aktywnej metody
-  w panelu „Dostawa” (krok użytkownika, dopiero po zakończeniu rolloutu; `delivery:seed-demo` na serwerze wymagałby
-  `--force-reset`, a Job danych demo nie może biec w trakcie rolloutu tego wydania).
+  w panelu „Dostawa” (krok użytkownika, dopiero po zakończeniu rolloutu opisanym wyżej; `delivery:seed-demo` na serwerze
+  wymagałby `--force-reset`).
 
 ## Scenariusze błędów
 
