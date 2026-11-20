@@ -483,7 +483,8 @@ uwierzytelnienia: każdy pod klastra, także w `monitoring`, sięga do nich po s
 
 Alerty to `PrometheusRule` `shop-alerts` chartu `shop` (`alerts.enabled: true` w `prod`; `docs/features/deploy-ops/spec.md`, O6):
 `BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `RateLimitsOff` (brak udanego sprawdzenia Redisa
-limiterów od 17 minut), `NodeDiskFull` (ponad 85% przez 10 minut), `ClusterSilent` (brak metryk klastra przez 15 minut) i `WorkloadNotReady` (Deployment albo StatefulSet w `shop` niegotowy albo
+limiterów od 17 minut), `MessagingUnhealthy` (nieudany Job `queue-check`: wiadomość w `failed` albo kolejka stoi),
+`OrderExpiryFailed` (nieudany Job `order-expiry`), `OrderExpiryMissing` (brak udanego `order-expiry` od 30 minut), `NodeDiskFull` (ponad 85% przez 10 minut), `ClusterSilent` (brak metryk klastra przez 15 minut) i `WorkloadNotReady` (Deployment albo StatefulSet w `shop` niegotowy albo
 usunięty przez 10 minut). Alloy synchronizuje je przez API importu Grafany stosu (`/api/convert`, cel `grafana-alerting`) jako
 reguły zarządzane przez Grafanę; ewaluuje je Grafana Cloud poza serwerem, więc alert przychodzi także wtedy, gdy serwer albo Alloy
 nie żyje, a powiadomienia idą przez Alertmanager Grafany. Ruler metryk stosu nie ma Alertmanagera (nowe stosy Grafana Cloud go nie
@@ -515,7 +516,7 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
 6. **agent** – po wdrożeniu sprawdza w Grafana Cloud liczbę aktywnych serii (darmowy plan: 10 tys.); przy przekroczeniu Grafana Cloud
    odrzuca nadmiar, a agent zawęża listę metryk w manifeście.
 7. **użytkownik** – w Grafana Cloud (Alerting → Contact points) dodaje punkt kontaktowy e-mail i ustawia go jako domyślny w drzewie
-   powiadomień Alertmanagera Grafany. Alerty to `NodeDiskFull` z `severity: warning` i reszta z `critical`; że alerty reguł trafiają
+   powiadomień Alertmanagera Grafany. Alerty `NodeDiskFull`, `RateLimitsOff` i `MessagingUnhealthy` mają `severity: warning`, reszta `critical`; że alerty reguł trafiają
    do tego punktu kontaktowego, potwierdza dopiero krok 8.
 8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać jedenaście reguł grup `shop-backup`, `shop-rate-limits`, `shop-messaging` i `shop-cluster`
    (przy kopiach wyłączonych w `prod`, 3.: siedem reguł grup `shop-rate-limits`, `shop-messaging` i `shop-cluster`)
@@ -523,7 +524,8 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
    `shop`, synchronizowany przez Alloy przez API importu Grafany; zmiana reguły to zmiana chartu, nie edycja w UI). Brak reguł
    po 10 minutach od wdrożenia: log Alloy (`mimir.rules.kubernetes`, np. 401 przy złym tokenie konta serwisowego). **`BackupMissing` i
    `BackupVerifyMissing` odpalają od startu aż do pierwszej udanej kopii i weryfikacji (metryki jeszcze nie ma, reguła ma
-   `absent`): to oczekiwane, nie awaria.** Po pierwszej nocnej kopii i weryfikacji gasną.
+   `absent`): to oczekiwane, nie awaria.** Po pierwszej nocnej kopii i weryfikacji gasną. Tak samo `OrderExpiryMissing` (i
+   `RateLimitsOff`) po pierwszym wdrożeniu z regułą odpala, dopóki CronJob nie ma pierwszego udanego Joba (kilka minut).
    To też sprawdzenie od końca do końca, które wykonuje **użytkownik** (agent nie ma dostępu do jego skrzynki): jeśli Grafana
    Cloud powstała przed pierwszą udaną kopią, `BackupMissing` odpala zaraz po załadowaniu reguły (`absent_over_time` bez `for`),
    więc e-mail o nim powinien przyjść wkrótce po synchronizacji reguły. Agent widzi stronę alertu: w Alertmanagerze Grafany
@@ -534,7 +536,7 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
    potwierdza użytkownik.
 9. **użytkownik** – przed świadomym `restore` i planowanymi pracami (restart serwera, aktualizacja k3s, ćwiczenie odtworzenia)
    wycisza alerty w Grafana Cloud (Alerting → Silences): dla `restore` dopasowanie `alertname=~"WorkloadNotReady|Backup.*|RateLimitsOff|OrderExpiryMissing"` (`restore` wstrzymuje CronJoby
-   `rate-limit-check` i `order-expiry`, więc po 17 i po 30 minutach alerty odpaliłyby bez awarii), dla innych prac `alertname=~"WorkloadNotReady|RateLimitsOff"`
+   `rate-limit-check` i `order-expiry`, więc po 17 i po 30 minutach alerty odpaliłyby bez awarii), dla innych prac `alertname=~"WorkloadNotReady|RateLimitsOff|OrderExpiryMissing"`
    (Redis wyłączony razem z serwerem albo restartem k3s kończy sprawdzenie błędem; przy wyłączeniu całego serwera także
    `ClusterSilent`), na czas prac z zapasem.
    Wyciszenia nie zakłada automat. Po pracach sprawdza, że wyciszenie wygasło, albo je usuwa. Brak CRD `PrometheusRule`

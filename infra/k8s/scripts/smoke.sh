@@ -818,7 +818,9 @@ check_messaging_failures() {
   echo "ok: with RabbitMQ stopped worker-commands cancelled the order $order_number past its deadline"
   kc scale statefulset/rabbitmq --replicas=1 > /dev/null
   kc rollout status statefulset/rabbitmq --timeout=300s > /dev/null
-  kc delete pod -l app.kubernetes.io/name=worker --wait=false > /dev/null
+  # The pod of worker restarted in a loop while the broker was down: replace it and wait until the old one is gone, so that
+  # check_failures does not see the restarts of a pod that is terminating.
+  kc delete pod -l app.kubernetes.io/name=worker --wait=true --timeout=120s > /dev/null
   wait_ready "RabbitMQ is back"
 
   new_order smoke-failed-message@example.com
