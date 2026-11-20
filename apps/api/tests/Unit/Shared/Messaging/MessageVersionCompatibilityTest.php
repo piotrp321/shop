@@ -83,6 +83,8 @@ final class MessageVersionCompatibilityTest extends KernelTestCase
             $encoded = $serializer->encode($envelope);
             $label = \sprintf('%s, %s record "%s"', $class, $record['serializer'], $record['variant']);
 
+            self::assertInstanceOf($class, $envelope->getMessage(), $label.': the message does not decode to the class');
+
             if ('php' === $record['serializer']) {
                 $golden = stripslashes($record['encoded']['body']);
                 foreach (self::objectsOf($envelope) as $object) {
