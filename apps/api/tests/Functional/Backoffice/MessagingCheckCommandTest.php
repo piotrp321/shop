@@ -157,7 +157,7 @@ final class MessagingCheckCommandTest extends KernelTestCase
             self::fail('app:messaging:check must work while RabbitMQ is down.');
         });
         $tester = new CommandTester(new MessagingCheckCommand(new MessagingHealth(
-            new MessagingStatisticsAdapter($this->connection, $client, 'http://rabbitmq.invalid:15672', 'user', 'secret', 'test', new Clock()),
+            new MessagingStatisticsAdapter($this->connection, $client, 'http://rabbitmq.invalid:15672', 'user', 'secret', 'test', new Clock(), MessengerRows::redeliverTimeouts(self::getContainer())),
             600,
         )));
 
@@ -173,7 +173,7 @@ final class MessagingCheckCommandTest extends KernelTestCase
 
     private function adapter(Connection $connection): MessagingStatisticsAdapter
     {
-        return new MessagingStatisticsAdapter($connection, new MockHttpClient(), 'http://rabbitmq.invalid:15672', 'user', 'secret', 'test', new Clock());
+        return new MessagingStatisticsAdapter($connection, new MockHttpClient(), 'http://rabbitmq.invalid:15672', 'user', 'secret', 'test', new Clock(), MessengerRows::redeliverTimeouts(self::getContainer()));
     }
 
     /**

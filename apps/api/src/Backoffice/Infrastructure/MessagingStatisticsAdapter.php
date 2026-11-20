@@ -24,6 +24,11 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * The other queues of the database are the Doctrine transports of messenger.yaml (`TRANSPORTS`, pinned to the
  * configuration by a test) and `failed`. Their times are the UTC moments Messenger writes to TIMESTAMP columns without
  * a time zone, so they are compared with the clock in UTC.
+ *
+ * What is ready is what a worker would take now, by the rule of the Doctrine transport: due (`available_at` not after now)
+ * and not handed to a worker, or handed to one more than `redeliver_timeout` ago (a worker that died before the
+ * acknowledgement). The timeout is the one of each transport in messenger.yaml (`$redeliverTimeouts`, pinned to the
+ * configuration by a test), as the same message left behind by a dead worker has `delivered_at` set for good.
  */
 final readonly class MessagingStatisticsAdapter implements MessagingStatistics
 {
@@ -44,7 +49,14 @@ final readonly class MessagingStatisticsAdapter implements MessagingStatistics
         #[\SensitiveParameter] private string $password,
         private string $vhost,
         private ClockInterface $clock,
+        /** @var array<string, int> `redeliver_timeout` in seconds of every transport of TRANSPORTS (messenger.yaml) */
+        private array $redeliverTimeouts,
     ) {
+        foreach (self::TRANSPORTS as $transport) {
+            if (!\is_int($this->redeliverTimeouts[$transport] ?? null) || $this->redeliverTimeouts[$transport] < 1) {
+                throw new \InvalidArgumentException(\sprintf('The redeliver timeout of the transport "%s" is missing or not a positive number of seconds.', $transport));
+            }
+        }
     }
 
     public function outboxPending(): int
@@ -117,18 +129,25 @@ final readonly class MessagingStatisticsAdapter implements MessagingStatistics
     }
 
     /**
-     * The messages that are ready now: not handed to a worker (a message handed to a worker and not acknowledged is
-     * taken back only after `redeliver_timeout`) and due. The oldest of the first 1001 by `available_at` is the oldest
-     * of all, and the index (queue_name, available_at, delivered_at, id) delivers them in that order.
+     * The messages that are ready now, as Doctrine's `Connection::createAvailableMessagesQueryBuilder` takes them: due
+     * and either not handed to a worker or handed to one before `now - redeliver_timeout` (strictly: exactly at the
+     * limit it is still a worker's). The age counts from `available_at`, so a message left behind by a dead worker is as
+     * old as it has been due. The oldest of the first 1001 by `available_at` is the oldest of all, and the index
+     * (queue_name, available_at, delivered_at, id) delivers them in that order.
      */
     private function backlog(string $queue, \DateTimeImmutable $now): TransportBacklog
     {
         $row = $this->connection->fetchAssociative(
             'SELECT count(*) AS ready, min(available_at) AS oldest FROM ('
-            .'SELECT available_at FROM messenger_messages WHERE queue_name = :queue AND delivered_at IS NULL AND available_at <= :now '
+            .'SELECT available_at FROM messenger_messages WHERE queue_name = :queue AND available_at <= :now '
+            .'AND (delivered_at IS NULL OR delivered_at < :redeliver) '
             .'ORDER BY available_at LIMIT '.(self::COUNT_LIMIT + 1)
             .') AS ready',
-            ['queue' => $queue, 'now' => $now->format('Y-m-d H:i:s')],
+            [
+                'queue' => $queue,
+                'now' => $now->format('Y-m-d H:i:s'),
+                'redeliver' => $now->modify(\sprintf('-%d seconds', $this->redeliverTimeouts[$queue]))->format('Y-m-d H:i:s'),
+            ],
         );
         \assert(\is_array($row) && (\is_int($row['ready']) || \is_string($row['ready'])) && (null === $row['oldest'] || \is_string($row['oldest'])));
 

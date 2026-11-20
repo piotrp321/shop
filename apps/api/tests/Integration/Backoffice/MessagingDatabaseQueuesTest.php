@@ -147,6 +147,27 @@ final class MessagingDatabaseQueuesTest extends KernelTestCase
         self::assertEquals(new TransportBacklog('scheduled', new BoundedCount(0, false), null), $this->transport('scheduled'));
     }
 
+    public function testTheRedeliveryTimeoutIsTheOneOfTheTransport(): void
+    {
+        $timeouts = ['outbox' => 300, 'scheduled' => 300, 'payment_simulator' => 300, 'promotions' => 300, 'jobs' => 900];
+        // Taken 10 minutes ago: back at a worker of `outbox` (300 s), still with one of `jobs` (900 s).
+        MessengerRows::add($this->connection, 'outbox', $this->at('-1 hour'), deliveredAt: $this->at('-10 minutes'));
+        MessengerRows::add($this->connection, 'jobs', $this->at('-1 hour'), deliveredAt: $this->at('-10 minutes'));
+
+        $transports = $this->adapter($this->connection, $timeouts)->databaseQueues()->transports;
+
+        self::assertEquals(new TransportBacklog('outbox', new BoundedCount(1, false), 3600), $transports[0]);
+        self::assertEquals(new TransportBacklog('jobs', new BoundedCount(0, false), null), $transports[4]);
+    }
+
+    public function testATransportWithoutARedeliveryTimeoutIsRefused(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('"jobs"');
+
+        $this->adapter($this->connection, ['outbox' => 300, 'scheduled' => 300, 'payment_simulator' => 300, 'promotions' => 300]);
+    }
+
     public function testEveryQueueCountsOnlyItsOwnMessages(): void
     {
         MessengerRows::add($this->connection, 'outbox', $this->at('-5 seconds'), times: 2);
@@ -228,13 +249,16 @@ final class MessagingDatabaseQueuesTest extends KernelTestCase
         return (new \DateTimeImmutable(self::NOW, new \DateTimeZone('UTC')))->modify($modifier);
     }
 
-    private function adapter(Connection $connection): MessagingStatisticsAdapter
+    /**
+     * @param array<string, int>|null $timeouts the redeliver timeouts; those of the configuration when null
+     */
+    private function adapter(Connection $connection, ?array $timeouts = null): MessagingStatisticsAdapter
     {
         $client = new MockHttpClient(function (): never {
             ++$this->httpRequests;
             self::fail('The broker must not be called.');
         });
 
-        return new MessagingStatisticsAdapter($connection, $client, 'http://rabbitmq.invalid:15672', 'user', 'secret', 'test', new MockClock(new \DateTimeImmutable(self::NOW, new \DateTimeZone('UTC'))));
+        return new MessagingStatisticsAdapter($connection, $client, 'http://rabbitmq.invalid:15672', 'user', 'secret', 'test', new MockClock(new \DateTimeImmutable(self::NOW, new \DateTimeZone('UTC'))), $timeouts ?? MessengerRows::redeliverTimeouts(self::getContainer()));
     }
 }

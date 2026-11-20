@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Support;
 
 use Doctrine\DBAL\Connection;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
  * Rows of the Doctrine transport table written straight into it (UTC, as Messenger writes them), for the tests of the
@@ -13,6 +14,20 @@ use Doctrine\DBAL\Connection;
 final class MessengerRows
 {
     private const string FORMAT = 'Y-m-d H:i:s';
+
+    /**
+     * The `redeliver_timeout` of every transport as the application is configured (`app.messaging.redeliver_timeouts`).
+     *
+     * @return array<string, int>
+     */
+    public static function redeliverTimeouts(ContainerInterface $container): array
+    {
+        $timeouts = $container->getParameter('app.messaging.redeliver_timeouts');
+        \assert(\is_array($timeouts));
+
+        /** @var array<string, int> $timeouts */
+        return $timeouts;
+    }
 
     /**
      * Empties the table, so that the rows left by other tests do not count.
