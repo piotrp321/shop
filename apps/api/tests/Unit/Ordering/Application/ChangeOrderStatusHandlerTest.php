@@ -6,6 +6,8 @@ namespace App\Tests\Unit\Ordering\Application;
 
 use App\Ordering\Application\Command\ChangeOrderStatus;
 use App\Ordering\Application\Command\ChangeOrderStatusHandler;
+use App\Ordering\Application\Command\ChangeTrackingNumber;
+use App\Ordering\Application\Command\ChangeTrackingNumberHandler;
 use App\Ordering\Application\Command\CompleteRefund;
 use App\Ordering\Application\Command\CompleteRefundHandler;
 use App\Ordering\Application\Port\DiscountCodeRedemptions;
@@ -25,6 +27,7 @@ use App\Ordering\Domain\OrderTransitionNotAllowed;
 use App\Ordering\Domain\PaymentId;
 use App\Ordering\Domain\RefundNotPending;
 use App\Ordering\Domain\StaffTransition;
+use App\Ordering\Domain\TrackingNumberNotChangeable;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
 use App\Tests\Unit\Ordering\InMemoryStockReservations;
 use App\Tests\Unit\Ordering\Journal;
@@ -83,6 +86,111 @@ final class ChangeOrderStatusHandlerTest extends TestCase
         self::assertEquals(new StatusChangeView('paid', 'shipped', $this->clock->now, 'staff', 'kc-staff-1', 'anna', 'Kurier'), $view->history[2]);
         self::assertCount(3, $view->history);
         self::assertNull($view->refund);
+    }
+
+    public function testShipWithANumberSavesItAndTrimsIt(): void
+    {
+        $view = $this->changeHandler()(new ChangeOrderStatus(OrderExamples::ORDER, StaffTransition::Ship, self::PAID_VERSION, null, 'kc-staff-1', 'anna', " JJD-0002\u{00A0}"));
+
+        self::assertSame('JJD-0002', $this->order()->trackingNumber()?->toString());
+        self::assertSame('JJD-0002', $view->shipment?->trackingNumber);
+        self::assertEquals([new OrderShipped(OrderExamples::ORDER, $this->clock->now)], $this->events->published, 'the event is the same with a number');
+    }
+
+    public function testShipWithoutANumberOrWithBlankOneHasNone(): void
+    {
+        foreach ([null, '', "\u{00A0}"] as $blank) {
+            $this->setUp();
+            $view = $this->changeHandler()(new ChangeOrderStatus(OrderExamples::ORDER, StaffTransition::Ship, self::PAID_VERSION, null, 'kc-staff-1', 'anna', $blank));
+
+            self::assertNull($this->order()->trackingNumber());
+            self::assertNull($view->shipment);
+        }
+    }
+
+    public function testShipWithANumberOfAWrongShapeChangesNothing(): void
+    {
+        try {
+            $this->changeHandler()(new ChangeOrderStatus(OrderExamples::ORDER, StaffTransition::Ship, self::PAID_VERSION, null, 'kc-staff-1', 'anna', 'Żółć 1'));
+            self::fail('Expected InvalidOrderInput.');
+        } catch (InvalidOrderInput) {
+            $this->addToAssertionCount(1);
+        }
+        $this->assertNothingChanged();
+    }
+
+    public function testChangeTrackingNumberLocksChecksTheVersionAndSavesWithoutEventOrHistory(): void
+    {
+        $this->change(StaffTransition::Ship, self::PAID_VERSION, null);
+        $this->orders->locked = [];
+        $this->orders->saved = [];
+        $this->events->published = [];
+        $this->stock->committed = [];
+
+        $view = $this->trackingHandler()(new ChangeTrackingNumber(OrderExamples::ORDER, self::PAID_VERSION + 1, ' AAA-1 '));
+
+        self::assertSame([OrderExamples::ORDER], $this->orders->locked);
+        self::assertSame([OrderExamples::ORDER], $this->orders->saved);
+        self::assertSame([], $this->events->published);
+        self::assertSame([], $this->stock->committed);
+        self::assertSame([], $this->stock->released);
+        self::assertSame('AAA-1', $view->shipment?->trackingNumber);
+        self::assertSame(self::PAID_VERSION + 2, $view->version);
+        self::assertCount(3, $view->history, 'no history entry');
+    }
+
+    public function testChangeTrackingNumberReplacesAndRemovesTheNumber(): void
+    {
+        $this->changeHandler()(new ChangeOrderStatus(OrderExamples::ORDER, StaffTransition::Ship, self::PAID_VERSION, null, 'kc-staff-1', 'anna', 'AAA-1'));
+
+        $replaced = $this->trackingHandler()(new ChangeTrackingNumber(OrderExamples::ORDER, self::PAID_VERSION + 1, 'BBB-2'));
+        self::assertSame('BBB-2', $replaced->shipment?->trackingNumber);
+
+        $removed = $this->trackingHandler()(new ChangeTrackingNumber(OrderExamples::ORDER, self::PAID_VERSION + 2, "\u{00A0} "));
+        self::assertNull($removed->shipment);
+        self::assertNull($this->order()->trackingNumber());
+    }
+
+    public function testChangeTrackingNumberOfAnOrderThatIsNotShippedChangesNothing(): void
+    {
+        try {
+            $this->trackingHandler()(new ChangeTrackingNumber(OrderExamples::ORDER, self::PAID_VERSION, 'AAA-1'));
+            self::fail('Expected TrackingNumberNotChangeable.');
+        } catch (TrackingNumberNotChangeable) {
+            $this->addToAssertionCount(1);
+        }
+        $this->assertNothingChanged();
+    }
+
+    public function testChangeTrackingNumberWithAStaleVersionIsAConflict(): void
+    {
+        $this->change(StaffTransition::Ship, self::PAID_VERSION, null);
+        $this->orders->saved = [];
+
+        try {
+            $this->trackingHandler()(new ChangeTrackingNumber(OrderExamples::ORDER, self::PAID_VERSION, 'AAA-1'));
+            self::fail('Expected OrderModifiedConcurrently.');
+        } catch (OrderModifiedConcurrently) {
+            $this->addToAssertionCount(1);
+        }
+        self::assertSame([], $this->orders->saved);
+        self::assertNull($this->order()->trackingNumber());
+    }
+
+    public function testChangeTrackingNumberWithAWrongShapeOrAnUnknownOrderChangesNothing(): void
+    {
+        $this->change(StaffTransition::Ship, self::PAID_VERSION, null);
+        $this->orders->saved = [];
+
+        foreach ([[OrderExamples::ORDER, 'Żółć', InvalidOrderInput::class], ['not-a-uuid', 'AAA-1', OrderNotFound::class], ['0192f0c4-7c1a-7c4e-9a6e-0000000000ff', 'AAA-1', OrderNotFound::class]] as [$id, $number, $expected]) {
+            try {
+                $this->trackingHandler()(new ChangeTrackingNumber($id, self::PAID_VERSION + 1, $number));
+                self::fail('Expected '.$expected.'.');
+            } catch (\Throwable $thrown) {
+                self::assertInstanceOf($expected, $thrown);
+            }
+        }
+        self::assertSame([], $this->orders->saved);
     }
 
     public function testCancelReleasesTheReservationAndCreatesTheRefund(): void
@@ -270,6 +378,11 @@ final class ChangeOrderStatusHandlerTest extends TestCase
     private function changeHandler(): ChangeOrderStatusHandler
     {
         return new ChangeOrderStatusHandler($this->orders, $this->stock, $this->events, $this->clock);
+    }
+
+    private function trackingHandler(): ChangeTrackingNumberHandler
+    {
+        return new ChangeTrackingNumberHandler($this->orders, $this->clock);
     }
 
     private function refundHandler(): CompleteRefundHandler
