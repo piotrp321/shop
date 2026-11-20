@@ -267,8 +267,8 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
   - `fromGross` > 0: „Dostawa od 19,99 zł”; `fromGross` = 0: „Darmowa dostawa”; `fromGross` `null` albo `delivery`
     `null`: bez wiersza dostawy;
   - `missingToFreeGross` nie `null`: „Do darmowej dostawy brakuje 50,01 zł”.
-  - Kwoty w formacie cen sklepu; wiersze aktualizują się po każdej zmianie koszyka (odczyt z API), w regionie
-    ogłaszanym jak dziś zmiana sumy koszyka.
+  - Kwoty w formacie cen sklepu; wiersze aktualizują się po każdej zmianie koszyka (odczyt z API), w stałym regionie
+    `aria-live="polite"` podsumowania koszyka.
 
 ## W5. Złożenie zamówienia
 
