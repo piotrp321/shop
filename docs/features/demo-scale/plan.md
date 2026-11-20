@@ -15,6 +15,7 @@ roboczym: po ukończeniu epiku usuń go.
 | 3 | DEMO-SCALE-8 | zmergowane `47dbab53` |
 | 4 | DEMO-SCALE-9 | zmergowane `e9252415` |
 | 5 | DEMO-SCALE-10, DEMO-SCALE-11 | zmergowane: DEMO-SCALE-10 `40edbde2`, DEMO-SCALE-11 `13fa3a9a` |
+| 6 | DEMO-SCALE-12 (blokada `demo-data-lock`: jeden `generate` albo `open` naraz; poprawka z review) | zmergowane `06251b22` |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 Numery 5–7 nie są używane.
