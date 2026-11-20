@@ -29,7 +29,7 @@ image:
 # multi-arch index of that tag (`docker buildx imagetools inspect <name:tag>`); `make check` compares the tags with
 # compose and requires the digests.
 # `kubectl` is the image of the initContainers of the jobs initialize, purge-caches and backfill that wait for the rollout of the
-# deployments they need (api, varnish, store, worker), and of the one that reads the identifier of the cluster for the backup.
+# deployments they need (api, varnish, store, worker, worker-commands), and of the one that reads the identifier of the cluster for the backup.
 # `restic` and `rclone` are the tools of the backup.
 images:
   postgres: postgres:18.6@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
@@ -63,7 +63,7 @@ demoNotice: false
 # customerAccounts: registration in the realm shop (set by the job keycloak-config) and the login link of the store
 # (STORE_CUSTOMER_ACCOUNTS of the store).
 customerAccounts: true
-# orderMail: where the API sends its mail (the order confirmations; MAILER_DSN of the api, the worker and the jobs):
+# orderMail: where the API sends its mail (the order confirmations; MAILER_DSN of the api, the workers and the jobs):
 # mailpit (the Mailpit of the cluster, nothing leaves it) or brevo (Brevo SMTP, real mail; needs brevo.secretName).
 orderMail: mailpit
 
@@ -82,7 +82,7 @@ clientIpHeaderWithoutAllowList: false
 
 # Sentry (docs/features/sentry/spec.md, D1 and D3). An application gets SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE (image.tag) and
 # SENTRY_TRACES_SAMPLE_RATE only when its DSN is not empty; without one its SDK stays off. The DSN is public (it is in the browser), so it is
-# a plain value of environments/<env>/values.yaml, not a secret. dsn.api serves the api, the worker and the jobs, dsn.store the server of
+# a plain value of environments/<env>/values.yaml, not a secret. dsn.api serves the api, the workers and the jobs, dsn.store the server of
 # the store (and its browser), dsn.admin the panel. Format: https://<key>@<host>/<project id>.
 sentry:
   environment: ""
@@ -218,7 +218,9 @@ resources:
   keycloak: { requests: { cpu: 250m, memory: 768Mi }, limits: { memory: 1280Mi } }
   mailpit: { requests: { cpu: 20m, memory: 32Mi }, limits: { memory: 128Mi } }
   api: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }
-  worker: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 768Mi } }
+  # The workers (docs/features/async-reliability/spec.md, W1): `worker` the events, `workerCommands` the commands.
+  worker: { requests: { cpu: 100m, memory: 192Mi }, limits: { memory: 640Mi } }
+  workerCommands: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 384Mi } }
   store: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }
   admin: { requests: { cpu: 20m, memory: 32Mi }, limits: { memory: 128Mi } }
   imgproxy: { requests: { cpu: 100m, memory: 128Mi }, limits: { memory: 768Mi } }

@@ -223,7 +223,7 @@ def initial_state(argocd=False):
             for name, logical in (("garage-init-1a", "garage-init"), ("migrate-2b", "migrate"), ("keycloak-config-3c", "keycloak-config"),
                                   ("initialize-4d", "initialize"), ("purge-caches-5e", "purge-caches"))
         },
-        "deployments": {"api": 1, "worker": 1, "store": 1, "keycloak": 1},
+        "deployments": {"api": 1, "worker": 1, "worker-commands": 1, "store": 1, "keycloak": 1},
         "cronjobs": {
             "restore": {"suspend": True, "deadline": 10800, "env": {"RESTORE_MODE": "list", "RESTORE_SNAPSHOT": ""}},
             "backup": {"suspend": False, "deadline": 7200, "env": {}},
@@ -357,7 +357,7 @@ class RestoreScriptTest(unittest.TestCase):
         result = cluster.run(RESTORE, answer="nie\n", SNAPSHOT=SNAPSHOT)
         before = result.stdout.split("type tak")[0]
         for part in ("9e050a3d569735e3", "2026-11-11T03:00:05+01:00", "host 0b6f1d9e-4c3a", "nightly", "revision 0123abcd", "28 migrations",
-                     "12 objects", "pre-restore", "shop", "keycloak", "product-images", "Redis", "RabbitMQ", "api, worker, store and keycloak",
+                     "12 objects", "pre-restore", "shop", "keycloak", "product-images", "Redis", "RabbitMQ", "api, worker, worker-commands, store and keycloak",
                      "cart-purge-expired", "rate-limit-check", "migrate", "keycloak-config", "catalog:reindex", "purge-caches"):
             self.assertIn(part, before)
 
@@ -535,7 +535,7 @@ class RestoreScriptTest(unittest.TestCase):
     # The order of the steps
 
     def test_without_argo_cd_the_order_and_the_replicas_it_remembered(self):
-        deployments = {"api": 1, "worker": 2, "store": 1, "keycloak": 1}
+        deployments = {"api": 1, "worker": 2, "worker-commands": 1, "store": 1, "keycloak": 1}
         cluster = self.stub(deployments=deployments)
         result = self.restore(cluster)
         self.assertEqual(0, result.returncode, result.stderr)
@@ -544,25 +544,26 @@ class RestoreScriptTest(unittest.TestCase):
                          {n: c["suspend"] for n, c in cluster.state()["cronjobs"].items()})
         self.assertEqual([
             "patch cronjob cart-purge-expired", "patch cronjob backup", "patch cronjob rate-limit-check",
-            "scale deployment api", "scale deployment worker", "scale deployment store", "scale deployment keycloak",
+            "scale deployment api", "scale deployment worker", "scale deployment worker-commands", "scale deployment store", "scale deployment keycloak",
             "scale deployment keycloak", "rollout status deployment/keycloak",
-            "scale deployment api", "scale deployment worker", "scale deployment store",
+            "scale deployment api", "scale deployment worker", "scale deployment worker-commands", "scale deployment store",
             "patch cronjob cart-purge-expired", "patch cronjob backup", "patch cronjob rate-limit-check",
-            "rollout status deployment/api", "rollout status deployment/worker", "rollout status deployment/store",
+            "rollout status deployment/api", "rollout status deployment/worker", "rollout status deployment/worker-commands",
+            "rollout status deployment/store",
         ], self.changing_calls(cluster))
         self.assertEqual([], [c for c in cluster.calls() if "argocd" in c and c[2] == "patch"])
 
     def test_after_a_restore_that_stopped_the_applications_at_zero_come_back_with_one_replica(self):
         """A restore run again after one that failed finds the applications at zero: they come back as the chart has them."""
-        cluster = self.stub(deployments={"api": 0, "worker": 0, "store": 0, "keycloak": 0})
+        cluster = self.stub(deployments={"api": 0, "worker": 0, "worker-commands": 0, "store": 0, "keycloak": 0})
         result = self.restore(cluster)
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual({"api": 1, "worker": 1, "store": 1, "keycloak": 1}, cluster.state()["deployments"])
+        self.assertEqual({"api": 1, "worker": 1, "worker-commands": 1, "store": 1, "keycloak": 1}, cluster.state()["deployments"])
 
     def test_after_a_restore_that_failed_the_cronjobs_it_left_suspended_come_back_as_the_chart_has_them(self):
         """The rerun with PRE_RESTORE=skip that README recommends finds cart-purge-expired and backup suspended: the chart never
         suspends them (Argo CD would not undo it), so they must not stay suspended for good."""
-        cluster = self.stub(deployments={"api": 0, "worker": 0, "store": 0, "keycloak": 0})
+        cluster = self.stub(deployments={"api": 0, "worker": 0, "worker-commands": 0, "store": 0, "keycloak": 0})
         state = cluster.state()
         state["cronjobs"]["backup"]["suspend"] = True
         state["cronjobs"]["cart-purge-expired"]["suspend"] = True
@@ -668,7 +669,7 @@ class RestoreScriptTest(unittest.TestCase):
             self.assertIn(PRE_RESTORE, result.stderr)
             self.assertIn("pg_restore of the dump of shop failed", result.stderr)
             self.assertIn("README.md", result.stderr)
-            self.assertEqual({"api": 0, "worker": 0, "store": 0, "keycloak": 0}, cluster.state()["deployments"], argocd)
+            self.assertEqual({"api": 0, "worker": 0, "worker-commands": 0, "store": 0, "keycloak": 0}, cluster.state()["deployments"], argocd)
             self.assertTrue(cluster.state()["cronjobs"]["backup"]["suspend"])
             self.assertTrue(cluster.state()["cronjobs"]["cart-purge-expired"]["suspend"])
             self.assertTrue(cluster.state()["cronjobs"]["rate-limit-check"]["suspend"])
@@ -686,7 +687,7 @@ class RestoreScriptTest(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("no pre-restore snapshot", result.stderr)
 
-    def test_a_failed_migration_leaves_the_api_worker_and_store_off(self):
+    def test_a_failed_migration_leaves_the_api_the_workers_and_store_off(self):
         outcomes = initial_state()["outcomes"] + [["migrate-", "Failed", "migration failed\n"]]
         cluster = self.stub(outcomes=outcomes)
         result = self.restore(cluster)
@@ -694,7 +695,7 @@ class RestoreScriptTest(unittest.TestCase):
         self.assertIn("step 6", result.stderr)
         self.assertIn("migrate", result.stderr)
         deployments = cluster.state()["deployments"]
-        self.assertEqual((0, 0, 0), (deployments["api"], deployments["worker"], deployments["store"]))
+        self.assertEqual((0, 0, 0, 0), (deployments["api"], deployments["worker"], deployments["worker-commands"], deployments["store"]))
 
     def test_a_job_is_waited_for_at_most_its_active_deadline(self):
         outcomes = initial_state()["outcomes"] + [["restore-run-", "Running", ""]]

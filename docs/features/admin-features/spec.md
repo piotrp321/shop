@@ -35,7 +35,7 @@ pamięci.
   próbie), więc ponowienie Joba `migrate` przechodzi. Zasada jest w `apps/api/CLAUDE.md`. Migracje nie wołają kodu
   aplikacji i nie aktualizują dużych tabel.
 - Pierwsze wypełnienie danych (rekordy stanów z `product_id`, szacunek liczby produktów, modele odczytu sprzedaży
-  i klientów) robi komenda `app:backfill` (Shared UI), uruchamiana **po rolloucie** `api` i `worker`: w klastrze Job
+  i klientów) robi komenda `app:backfill` (Shared UI), uruchamiana **po rolloucie** `api` i obu workerów (`worker`, `worker-commands`): w klastrze Job
   `backfill` w fali po `waitRollout` (jak `purge-caches`; własny limit czasu `jobs.backfillActiveDeadlineSeconds`,
   21 600 s), lokalnie na końcu `bin/seed-demo` (z `--force`). Komenda uruchamia po kolei zarejestrowane kroki
   (`BackfillStep`, kolejność z priorytetu): `inventory:stock-records:sync`, `catalog:analyze-products`
@@ -339,7 +339,7 @@ Parametr `sort=<klucz>` z zamkniętą listą na endpoint; każdy klucz ma indeks
     naprawia `catalog:reindex` (zapisane w `apps/api/CLAUDE.md`);
   - `catalog:seed-demo` czyści `catalog_category_redirect`, `catalog_category_reindex` i kolejkę `jobs` (`DELETE FROM
     messenger_messages WHERE queue_name IN ('outbox', 'jobs')`), jak inne seedy swoje kolejki;
-  - transport `jobs` (Doctrine, `queue_name=jobs`) konsumuje worker w compose i chartcie razem z pozostałymi; wzorzec
+  - transport `jobs` (Doctrine, `queue_name=jobs`) konsumuje `worker-commands` w compose i chartcie razem z `payment_simulator`, `scheduled` i `promotions`; wzorzec
     łańcucha (blokada przebiegu, numer partii, kolejna wiadomość w tej samej transakcji) jest opisany
     w `apps/api/CLAUDE.md` jako sposób zadań wywołanych zmianą w domenie i wykonywanych przez workera (komendy
     uruchamiane świadomie, jak `catalog:reindex` i `cart:purge-expired`, zostają przy swoich wzorcach).
@@ -471,7 +471,7 @@ części 2 (ADMIN-TOOLS).
 Kryteria akceptacji sprawdzają testy automatyczne w CI: `make check`, testy `apps/api` (jednostkowe, integracyjne
 z PostgreSQL i procesami równoległymi, funkcjonalne po trasach z routera), `apps/admin`, `apps/store` i E2E. Spójność
 całości ze specyfikacją i regresje istniejących funkcji sprawdza przegląd gałęzi przed merge'em, w tym wdrożenie:
-kolejność migracji, migracje tylko schematu, Job `backfill` po rolloucie, transport `jobs` w workerze compose i chartu.
+kolejność migracji, migracje tylko schematu, Job `backfill` po rolloucie, transport `jobs` w `worker-commands` compose i chartu.
 
 ## Dokumenty opisujące funkcję
 
@@ -479,7 +479,7 @@ kolejność migracji, migracje tylko schematu, Job `backfill` po rolloucie, tran
   kolejność kategorii w mega menu ustawiana przez pracownika i przekierowanie 308 starych adresów kategorii (sekcja
   SEO i „Przyjazne adresy”).
 - `docs/features/deploy/spec.md` („Chart `shop`”): Job `backfill` po rolloucie. `infra/k8s/CLAUDE.md` („Chart
-  a compose”): transport `jobs` w workerze chartu jak w compose.
+  a compose”): transport `jobs` w `worker-commands` chartu jak w compose.
 - `apps/api/CLAUDE.md`: wyjątki DBAL (sprzedaż, klienci, ścieżki poddrzewa, rekordy stanów), migracje
   `CONCURRENTLY`, transport `jobs` i łańcuch partii, reguły liczników ograniczonych, szacunku `reltuples` i sortowania,
   `app:backfill` i zasady jego kroków.

@@ -383,7 +383,7 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
   kopia `pre-restore`, wyłączenie automatycznej synchronizacji `root`, potem `shop` (przejdzie też, gdy jej już nie ma),
   wstrzymanie CronJobów (`cart-purge-expired`, `backup`, `rate-limit-check`), ponowne sprawdzenie Jobów, także Joba `rate-limit-check` (nocna kopia mogła wystartować po pierwszym sprawdzeniu: `restore` czeka
   na nią do 2 godzin, `RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, a potem kończy się błędem z działającymi aplikacjami), `api`, `worker`,
-  `store` i `keycloak` do zera, odtworzenie danych, `migrate`, `keycloak-config`, reindeks, powrót aplikacji, `purge-caches` i
+  `worker-commands`, `store` i `keycloak` do zera, odtworzenie danych, `migrate`, `keycloak-config`, reindeks, powrót aplikacji, `purge-caches` i
   włączenie synchronizacji `root` (ten przywraca `shop`). Kończy się wierszem `restore: done` z identyfikatorem snapshotu
   `pre-restore`. Sprawdzenie: `make -C infra/k8s status HOST=…` (aplikacje `Synced`/`Healthy`, pody `Running`), sklep i
   panel w przeglądarce (**użytkownik**: logowanie do panelu). Wynik (czas, snapshot, `pre-restore`) w komentarzu do #178.
@@ -446,7 +446,7 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
    `Healthy`. Brak konta albo zły token zostawia `Degraded` tylko `monitoring` (log Alloy w przestrzeni `monitoring`); sklep działa i
    się wdraża. W Grafana Cloud widać metryki klastra (np. `up`, `kube_node_info`) i logi (`namespace="shop"`), a logów podów
    `mailpit` nie ma.
-5. **agent** – po wdrożeniu przegląd próbki logów w Grafana Cloud (Explore, logi każdego źródła: `api`, `worker`, `store`, `admin`,
+5. **agent** – po wdrożeniu przegląd próbki logów w Grafana Cloud (Explore, logi każdego źródła: `api`, `worker`, `worker-commands`, `store`, `admin`,
    `keycloak`, `postgres`, `imgproxy` i zdarzenia klastra) pod kątem sekretów i danych klientów: haseł, tokenów, nagłówków,
    ciasteczek, adresów e-mail i IP, imion i adresów w treści wyjątków. Znalezisko to nowa reguła maskowania w
    `extraLogProcessingStages` manifestu `monitoring` z wierszem w korpusie `infra/k8s/tests/log-corpus` albo wyłączenie źródła w
@@ -490,7 +490,7 @@ poszerzenia wyjątku node-exportera albo usunięcia polityki.
 
 ## 10. Błędy i trace'y: Sentry
 
-Błędy i trace'y api (z workerem i Jobami), serwera i przeglądarki sklepu oraz przeglądarki panelu idą do Sentry SaaS
+Błędy i trace'y api (z workerami i Jobami), serwera i przeglądarki sklepu oraz przeglądarki panelu idą do Sentry SaaS
 (`docs/features/sentry/spec.md`, `docs/adr/backups-observability.md`). Każda aplikacja włącza SDK tylko przy swoim DSN: chart
 przekazuje go jako `SENTRY_DSN` razem z `SENTRY_ENVIRONMENT` (`sentry.environment`, w `prod` `demo`), `SENTRY_RELEASE` (rewizja
 obrazów, `image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` (`sentry.tracesSampleRate`, w `prod` 0,1). `prod` ma DSN-y trzech projektów
@@ -499,7 +499,7 @@ organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem
 (`https://<klucz>@<host>/<id projektu>`) i `tracesSampleRate` (0 do 1).
 
 1. **użytkownik** – zakłada konto Sentry (darmowy plan) i organizację w regionie UE (adresy `*.ingest.de.sentry.io`) oraz trzy projekty:
-   `api` (PHP/Symfony; obejmuje api, worker i Joby), `store` (Next.js) i `admin` (Vue). Z każdego bierze DSN (Settings → Client Keys)
+   `api` (PHP/Symfony; obejmuje api, oba workery i Joby), `store` (Next.js) i `admin` (Vue). Z każdego bierze DSN (Settings → Client Keys)
    i podaje go agentowi (DSN nie jest tajny).
 2. **użytkownik** – w ustawieniach Sentry (limity darmowego planu są małe, a DSN jawny, więc każdy może wysyłać zdarzenia do
    projektu): włącza ochronę przed skokami (Spike Protection) dla organizacji i ustawia limit zdarzeń na każdym projekcie
@@ -517,7 +517,7 @@ organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem
    budowanie błędem, a brak którejś z trzech zmiennych kończy job `images` błędem z jej nazwą, przed budowaniem. Mapy
    nie zostają w obrazach (etapy `prod` nie mają plików `.map`).
 5. **agent** – po pierwszym wdrożeniu z DSN-ami (`make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`, `Healthy`) sprawdza, że
-   kontenery `api`, `worker`, `store` i `admin` mają `SENTRY_*` (`SENTRY_DSN`, `SENTRY_ENVIRONMENT=demo`, `SENTRY_RELEASE` równe
+   kontenery `api`, `worker`, `worker-commands`, `store` i `admin` mają `SENTRY_*` (`SENTRY_DSN`, `SENTRY_ENVIRONMENT=demo`, `SENTRY_RELEASE` równe
    rewizji `image.tag`), a **użytkownik** w Sentry, że w trzech projektach pojawiają się zdarzenia z tą wersją i środowiskiem `demo`
    oraz trace'y (próbkowanie 0,1, więc widać je po pewnym ruchu).
 6. **użytkownik** (z agentem) – po wdrożeniu przegląd próbki zdarzeń w Sentry (Issues i Performance każdego z trzech projektów,

@@ -117,7 +117,7 @@ create-admin:
 # SNAPSHOT is an identifier from make backups (never latest). Refuses without changes when a Job of the namespace is active, Argo CD
 # is synchronizing shop, or the snapshot has a migration that the deployed code does not know; says what it will do and asks for
 # the word tak; makes a backup pre-restore first (its failure stops it without changes; PRE_RESTORE=skip makes none), stops
-# Argo CD (root, then shop), the CronJobs and api, worker, store and keycloak, restores the data, runs migrate, keycloak-config,
+# Argo CD (root, then shop), the CronJobs and api, worker, worker-commands, store and keycloak, restores the data, runs migrate, keycloak-config,
 # the reindex and purge-caches again and brings everything back. A failure leaves the applications off and says at which step
 # and which pre-restore snapshot (infra/k8s/README.md). KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
 restore:

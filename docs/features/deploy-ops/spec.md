@@ -127,7 +127,7 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
      `cart-purge-expired`, `backup` i `rate-limit-check`, czeka na Job, który wystartował po sprawdzeniu z kroku 1,
      także na Job `rate-limit-check` (nocna kopia:
      `RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, domyślnie 7200 s; potem błąd, aplikacje działają), i skaluje do zera `api`, `worker`,
-     `store`, `keycloak`;
+     `worker-commands`, `store`, `keycloak`;
   5. Job w trybie `restore` (tylko operacje na danych): `restic restore` snapshotu na PVC `backup-work` (lustro obiektów
      staje się stanem snapshotu); `DROP DATABASE` i `CREATE DATABASE` `shop` i `keycloak` (zakończenie połączeń,
      właściciele jak w `10-create-databases.sh`), `pg_restore`; `rclone sync` z powrotem do bucketu `product-images`
@@ -136,7 +136,7 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   6. ponawia istniejące Joby bieżącej rewizji tym samym mechanizmem co `rerun`: `migrate` (snapshot starszy niż kod),
      przywraca `keycloak` i ponawia `keycloak-config` (odtworzona baza cofa sekret klienta `store`, adresy, rejestrację,
      `verifyEmail` i SMTP do stanu snapshotu), potem `catalog:reindex` (Job z CronJoba `restore` w trybie `reindex`,
-     obraz `api`); przywraca `api`, `worker`, `store` i CronJoby (`suspend: false` jak w chartcie, który ich nie wstrzymuje, także po
+     obraz `api`); przywraca `api`, `worker`, `worker-commands`, `store` i CronJoby (`suspend: false` jak w chartcie, który ich nie wstrzymuje, także po
      poprzedniej próbie, która je zostawiła wstrzymane), czeka na rollout, ponawia `purge-caches`, a przy Argo CD
      przywraca automatyczną synchronizację `root` w postaci sprzed odtworzenia (ten przywraca `shop`; gdy `root` jej nie
      miał, zostaje wyłączona). Joba `backfill` nie ponawia;

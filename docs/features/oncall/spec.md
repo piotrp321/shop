@@ -126,7 +126,7 @@ limit uniemożliwia sesję, zaległy punkt liczy następny przebieg.
 
 ## Hypercare
 
-**Workloady wdrażane** to zamknięta lista z `cluster.json`: Deploymenty `api`, `worker`, `store` i `admin` oraz
+**Workloady wdrażane** to zamknięta lista z `cluster.json`: Deploymenty `api`, `worker`, `worker-commands`, `store` i `admin` oraz
 StatefulSet `elasticsearch`. Wszystkie dostają przy wdrożeniu obraz z nowym tagiem.
 - Przynależność poda ustala `kube_pod_owner` (ReplicaSet `<deployment>-<hash>` albo StatefulSet).
 - Pody Jobów i usług bez naszego kodu się nie liczą.
