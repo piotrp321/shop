@@ -524,7 +524,8 @@ Zmienia ją zadanie, które zmienia opisane zachowanie:
 
 1. **Metody (API panelu).** Testy funkcjonalne: dodanie, lista w kolejności z W1, odczyt, zmiana z wersją; każde
    naruszenie z tabeli W1 przy właściwym polu z polskim komunikatem (brak klucza, zły typ, za długi tekst, znaki
-   sterujące, NUL, U+2028, sam NBSP, niepoprawny UTF-8, szablon bez `{numer}`, z dwoma `{numer}`, `http://`); 409
+   sterujące, NUL, U+2028, sam NBSP, szablon bez `{numer}`, z dwoma `{numer}`, `http://`); niepoprawny UTF-8 w treści
+   odrzuca dekoder JSON (400 bez zapisu, jak w innych endpointach; value objecty też go odrzucają); 409
    nazwy (także „KURIER” wobec „kurier” i „Ł” wobec „ł”), 409 limitu przy 21. aktywnej (także przez aktywację
    istniejącej), 409 wersji; 404 nieznanego i nie-UUID; 403 dla ról innych niż `admin`, 401 bez tokena; ekran
    panelu przy 401 i 403 zachowuje się jak inne ekrany tylko dla `admin`.
