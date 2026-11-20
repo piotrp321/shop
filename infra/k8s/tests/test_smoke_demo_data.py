@@ -260,7 +260,7 @@ class TrafficRun(unittest.TestCase):
 # One line per call in $STUB_LOG (kubectl and docker). The CronJob demo-data has the command bin/generate-demo --profile=$STUB_PROFILE;
 # the StatefulSet elasticsearch is in a rolling update for the first STUB_ROLLING reads; a Job backfill is active for the first STUB_ACTIVE
 # reads of the Jobs, then complete; the Jobs that generate made are the lines of $STUB_DIR/jobs; the rule shop-closed exists while
-# $STUB_DIR/rule does; the database has the numbers of $STUB_DIR/db-*. Every read of the kind STUB_FAILS (statefulsets, deployments or jobs) fails. STUB_RATE_LIMIT adds a running Job of the CronJob rate-limit-check.
+# $STUB_DIR/rule does, the lock demo-data-lock while STUB_LOCK_LEFT is set; the database has the numbers of $STUB_DIR/db-*. Every read of the kind STUB_FAILS (statefulsets, deployments or jobs) fails. STUB_RATE_LIMIT adds a running Job of the CronJob rate-limit-check.
 # The Jobs come as `<name> <conditions>` lines (jsonpath) or as JSON (-o json) with the conditions and the owner.
 KUBECTL = r"""#!/bin/sh
 printf 'kubectl %s\n' "$*" >> "$STUB_LOG"
@@ -295,6 +295,7 @@ case "$*" in
       *) cat "$STUB_DIR/job-lines" ;;
     esac ;;
   *"get networkpolicy shop-closed"*) [ ! -e "$STUB_DIR/rule" ] || echo "networkpolicy.networking.k8s.io/shop-closed" ;;
+  *"get configmap demo-data-lock"*) [ -z "${STUB_LOCK_LEFT:-}" ] || echo "configmap/demo-data-lock" ;;
   *"get service traefik"*) printf '30080' ;;
   *"FROM catalog_product"*) cat "$STUB_DIR/db-products" ;;
   *"FROM ordering_order"*) cat "$STUB_DIR/db-orders" ;;
@@ -583,6 +584,17 @@ class Phase(unittest.TestCase):
         result = self.run_phase(STUB_RULE_STAYS="1")
         self.assertNotEqual(0, result.returncode)
         self.assertIn("shop-closed is still there", result.stderr)
+
+    def test_the_lock_that_stays_after_generate_fails_the_phase_and_the_break(self):
+        """make generate and make open release the lock demo-data-lock on every exit they catch: after the phase, and after each run
+        of the break, there is none."""
+        result = self.run_phase(STUB_LOCK_LEFT="1")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("the ConfigMap demo-data-lock is still there", result.stderr)
+        self.fresh()
+        result = self.run_break(STUB_LOCK_LEFT="1")
+        self.assertIn("the ConfigMap demo-data-lock is still there", result.stderr)
+        self.assertEqual(["generate smoke-unknown"], self.runs(), self.calls())
 
     def test_no_generate_for_another_profile_of_the_cronjob_than_small(self):
         result = self.run_phase(STUB_PROFILE="medium")
