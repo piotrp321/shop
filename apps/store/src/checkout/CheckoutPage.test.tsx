@@ -850,7 +850,7 @@ describe("CheckoutPage delivery states", () => {
     expect(label).not.toContain("Darmowa");
     expect(within(summary()).getByTestId("checkout-delivery").textContent).toBe(price(1999));
     expect(within(summary()).getByTestId("checkout-total").textContent).toBe(price(26999));
-    expect(live().textContent).toBe(`Kurier standardowy nie jest już darmowy, kosztuje ${price(1999)}. Do darmowej dostawy brakuje ${price(5000)}.`);
+    expect(live().textContent).toBe(`Dostawa „Kurier standardowy” nie jest już darmowa, kosztuje ${price(1999)}. Do darmowej dostawy brakuje ${price(5000)}.`);
   });
 
   it("announces that a method became free again when the code is taken off", async () => {
@@ -860,7 +860,7 @@ describe("CheckoutPage delivery states", () => {
     await removeCode(above());
 
     expect(within(summary()).getByTestId("checkout-delivery").textContent).toBe("Darmowa");
-    expect(live().textContent).toBe("Kurier standardowy jest teraz darmowy.");
+    expect(live().textContent).toBe("Dostawa „Kurier standardowy” jest teraz darmowa.");
   });
 
   it("says nothing in the live region when the delivery of the chosen method did not change", async () => {
@@ -878,7 +878,7 @@ describe("CheckoutPage delivery states", () => {
     vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: below() });
     await submit({ status: "conflict", reason: "total_changed", detail: "Cena w koszyku zmieniła się." });
 
-    expect(live().textContent).toContain("Kurier standardowy nie jest już darmowy");
+    expect(live().textContent).toContain("Dostawa „Kurier standardowy” nie jest już darmowa");
     expect(within(summary()).getByTestId("checkout-total").textContent).toBe(price(26999));
   });
 
