@@ -68,7 +68,7 @@ Decyzje właściciela:
 | P1 | Zamówienie ma jeden status jak dziś (`new`, `paid`, `shipped`, `delivered`, `cancelled`, `returned`). Dane przesyłki (numer) są zapisane w zamówieniu; nie ma osobnego stanu przesyłki. Rozdzielenie stanów zamówienia, płatności i przesyłki jest poza zakresem i wraca z etapem 2 (webhooki przewoźnika) albo z PAYMENT-OPERATOR (#769). |
 | P2 | Nowy moduł (bounded context) `Delivery`: metody dostawy, cennik, próg darmowej dostawy, wycena. Dopisany do `docs/vision.md`. |
 | P3 | Etap 1 ma tylko dostawę pod adres (kurier); metody definiuje administrator. Paczkomaty, punkty odbioru, odbiór osobisty, etykiety i integracja z przewoźnikiem albo brokerem to etap 2: osobny epik bez ustalonego terminu, w kolejności priorytetów właściciela. Brak Paczkomatów nie blokuje startu sprzedaży. |
-| P4 | VAT od dostawy: brutto dostawy dzieli się proporcjonalnie do wartości towarów zamówienia w poszczególnych stawkach VAT (ustawa o VAT, art. 29a ust. 6). Regułę właściciel potwierdza z księgową przed implementacją DELIVERY-2 („Wymagane przed startem”). |
+| P4 | VAT od dostawy: brutto dostawy dzieli się proporcjonalnie do brutto towarów zamówienia po rabatach w poszczególnych stawkach VAT, a każdy udział dostaje stawkę swoich towarów (nie 23% z urzędu ani stawkę z faktury przewoźnika). Podstawa: art. 29a ust. 6 pkt 2 ustawy o VAT (Dz.U. 2025 poz. 775) i interpretacje indywidualne Dyrektora KIS: z 4.02.2022, 0114-KDIP4-2.4012.862.2021.1.MC (stanowisko z kluczem opartym o ceny brutto towarów uznane za prawidłowe), oraz z 18.03.2024, 0114-KDIP4-1.4012.66.2024.2.DP (stawki towarów i podział proporcjonalny). Reguła dotyczy modelu: krajowa sprzedaż towarów opodatkowanych VAT, dostawę organizuje sprzedawca jako element sprzedaży, jedna stała cena brutto metody. Właściciel nie ma księgowej; regułę przyjął na podstawie tych źródeł. |
 | P5 | Jedna stała cena brutto na metodę. Bez cen zależnych od wagi i gabarytu. |
 | P6 | Darmowa dostawa: opcjonalny próg na metodę, porównywany z wartością towarów po rabatach. Kod rabatowy nigdy nie obniża samego kosztu dostawy, ale może obniżyć wartość towarów poniżej progu i wtedy klient traci darmową dostawę. Odczyt koszyka z kodem (podgląd koszyka w kasie) i podsumowanie kasy pokazują to od razu po zastosowaniu kodu (koszt dostawy, „Do darmowej dostawy brakuje Y zł”); strona koszyka nie ma pola kodu. Kryterium akceptacji: koszyk powyżej progu spada poniżej niego po wpisaniu kodu, a dostawa staje się płatna w odczycie koszyka z kodem (podgląd koszyka w kasie), w podsumowaniu kasy i w zamówieniu. |
 | P7 | Ekran panelu „Dostawa” dla roli `admin`: nazwa, opis (czas dostawy), cena brutto, próg „darmowa od”, aktywność, kolejność wyświetlania, szablon linku śledzenia. |
@@ -101,8 +101,7 @@ Założenia architektoniczne:
 
 ## Wymagane przed startem
 
-- **Księgowa (P4).** Właściciel potwierdza z księgową regułę podziału VAT od dostawy (proporcjonalnie do wartości
-  towarów w stawkach, P4) przed startem DELIVERY-2. Inna reguła to zmiana specyfikacji przed zadaniem.
+- **Reguła VAT (P4).** Przyjęta przez właściciela na podstawie źródeł z P4; DELIVERY-2 nie czeka na konsultację.
 - **ASYNC-RELIABILITY na `main` (P12).** Gałąź epiku powstaje od `origin/main` po scaleniu `feat/async-reliability`.
   Orkiestrator sprawdza przed startem, czy pliki i wiersze, na które powołuje się ta specyfikacja, i `paths` planu
   zgadzają się z `main` (ASYNC-RELIABILITY zmienia m.in. `Ordering/Application`, `messenger.yaml` i dodaje test
@@ -158,7 +157,7 @@ Założenia architektoniczne:
   wymaga sumy zamówienia = suma linii − rabat. `make seed` uruchamia `bin/seed-demo`; reset Ordering:
   `Ordering/Infrastructure/Demo/DbalOrderingReset.php:23`.
 - **Wdrożenie.** `api`, `worker` (z `worker-commands` po ASYNC-RELIABILITY), `admin` i `store` są w fali Argo 1
-  (`infra/k8s/charts/shop/templates/api.yaml:152,156`, `admin.yaml:30`, `store.yaml:49`); migracje biegną przed nią.
+  (`infra/k8s/charts/shop/templates/api.yaml:156,161,168`, `admin.yaml:30`, `store.yaml:49`); migracje biegną przed nią.
   PostgreSQL 18 (`infra/docker-compose.yml:13`).
 
 ## Moduł Delivery
@@ -250,6 +249,10 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
   przez nową metodę portu `OrderPrices` (A3).
 - Przykład do testu: koszt 1999, towary 23% = 10 000, 8% = 5 000 → udziały 1333 (23%: netto 1084, VAT 249) i 666
   (8%: netto 617, VAT 49).
+- Groszowe zaokrąglenia, remis reszt, netto `HALF_UP` i VAT = brutto − netto to decyzja techniczna, która zapewnia zgodność
+  sum, a nie wymóg interpretacji. Organ w obu pismach z P4 pisze o proporcji do „podstawy opodatkowania” towarów; klucz
+  brutto przyjmujemy za interpretacją z 2022 r. Przy towarach w jednej stawce oba klucze dają ten sam wynik. Darmowa
+  dostawa: koszt 0, brak udziałów, VAT 0.
 
 ## W4. Koszyk
 
@@ -583,8 +586,13 @@ Zmienia ją zadanie, które zmienia opisane zachowanie:
 
 ## Ryzyka i ograniczenia
 
-- **Reguła VAT od dostawy** czeka na potwierdzenie księgowej (P4). Do faktur (INVOICING #771) potrzebne są udziały
-  w `ordering_order_delivery_vat`; zamówienia sprzed epiku ich nie mają (dostawa 0).
+- **Reguła VAT od dostawy** (P4) opiera się na interpretacjach wydanych innym podatnikom: nie dają one sklepowi ochrony
+  i nie obejmują zwolnienia z VAT, OSS ani pełnomocnictwa pocztowego. Inny model sprzedaży wymaga nowej oceny reguły.
+- **Faktury i paragony (INVOICING #771).** Interpretacja z 18.03.2024 (P4) uznaje za nieprawidłowe wykazywanie dostawy
+  jako osobnej pozycji w zasadniczej części faktury albo paragonu: koszt dostawy wchodzi w wartość pozycji towarów,
+  a rozbicie może być w części informacyjnej. Koszyk, podsumowanie zamówienia i e-maile nie są fakturą, więc osobny wiersz
+  dostawy w nich zostaje. Do faktur potrzebne są udziały w `ordering_order_delivery_vat`; zamówienia sprzed epiku ich
+  nie mają (dostawa 0).
 - **Okno wdrożenia.** Przez czas wymiany podów fali 1 część klientów dostaje 422 albo 409 i odświeża stronę, tracąc
   wpisane dane i kod (sekcja „Wdrożenie i zgodność wersji”); zaakceptowane (P15).
 - **Serwer bez metod po wdrożeniu** nie przyjmuje zamówień do czasu dodania metody w panelu.

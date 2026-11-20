@@ -11,7 +11,7 @@ z listą `parallel_with` mogą iść naraz. Plan jest dokumentem roboczym: po uk
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | DELIVERY-1, DELIVERY-2 | |
+| 1 | DELIVERY-1, DELIVERY-2 | w toku |
 | 2 | DELIVERY-3, DELIVERY-5 | |
 | 3 | DELIVERY-4 | |
 | 4 | DELIVERY-6, DELIVERY-7 | |
@@ -19,8 +19,8 @@ z listą `parallel_with` mogą iść naraz. Plan jest dokumentem roboczym: po uk
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
 Warunki przed startem (specyfikacja, „Wymagane przed startem”): `feat/async-reliability` zmergowany do `main`
-(gałąź epiku powstaje od `origin/main` po tym merge'u), `paths` zadań i odwołania specyfikacji sprawdzone na `main`;
-DELIVERY-2 rusza dopiero po potwierdzeniu reguły VAT przez księgową (P4).
+(gałąź epiku powstaje od `origin/main` po tym merge'u), `paths` zadań i odwołania specyfikacji sprawdzone na `main`.
+Reguła VAT od dostawy (P4) jest przyjęta, DELIVERY-2 nie czeka na konsultację.
 
 Łańcuchy zależności:
 - moduł Delivery z `QuoteDelivery` (1) → koszyk (3), złożenie zamówienia (4), ekran panelu (5);
@@ -83,7 +83,7 @@ i okno numeru przesyłki w panelu).
     {
       "id": "DELIVERY-2",
       "title": "Podział kosztu dostawy na stawki VAT w Pricing",
-      "scope": "Spec: W3, A3, decyzja P4, kryterium 3. Pricing: czysta funkcja `Pricing/Domain/Basket/DeliveryCostSplit::of(cost, goodsByRate)` (stawki malejąco, `BasketQuote::allocate`, `PriceBreakdown::ofLineGross` na udział, pominięte udziały 0), dokumentacja `BasketQuote::allocate` dopuszczająca D ≥ S bez zmiany zachowania, zapytanie `Pricing\\Application\\Query\\SplitDeliveryCost` z handlerem. Dokumentacja: `docs/features/pricing/spec.md` (podział kosztu dostawy i zapytanie). Zadanie rusza po potwierdzeniu reguły przez księgową (P4). Nie obejmuje: portu `OrderPrices` i użycia w Ordering (4).",
+      "scope": "Spec: W3, A3, decyzja P4, kryterium 3. Pricing: czysta funkcja `Pricing/Domain/Basket/DeliveryCostSplit::of(cost, goodsByRate)` (stawki malejąco, `BasketQuote::allocate`, `PriceBreakdown::ofLineGross` na udział, pominięte udziały 0), dokumentacja `BasketQuote::allocate` dopuszczająca D ≥ S bez zmiany zachowania, zapytanie `Pricing\\Application\\Query\\SplitDeliveryCost` z handlerem. Dokumentacja: `docs/features/pricing/spec.md` (podział kosztu dostawy i zapytanie). Nie obejmuje: portu `OrderPrices` i użycia w Ordering (4).",
       "acceptance_criteria": [
         "TDD: testy `DeliveryCostSplit` i handlera `SplitDeliveryCost` uruchomione przed implementacją nie przechodzą, po niej przechodzą; raport zawiera komendy i wyniki obu uruchomień.",
         "Testy jednostkowe: przykład z W3 (1999 przy 23% = 10 000 i 8% = 5 000 → 1333 z netto 1084 i VAT 249 oraz 666 z netto 617 i VAT 49); jedna stawka dostaje cały koszt; grupa o wartości 0 dostaje 0 i nie ma udziału; koszt 0 → brak udziałów; koszt większy niż wartość towarów; remis reszt na korzyść wyższej stawki; na losowych danych Σ udziałów = koszt, netto + VAT = brutto w każdym udziale i każdy udział > 0; pusta mapa albo Σ wartości 0 → `InvalidArgumentException`.",
