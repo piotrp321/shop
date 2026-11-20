@@ -53,6 +53,14 @@ function createTestRouter() {
           { path: ":customerId", name: "customer", component: empty },
         ],
       },
+      {
+        path: "/delivery",
+        children: [
+          { path: "", name: "delivery", component: empty },
+          { path: "new", name: "delivery-method-new", component: empty },
+          { path: ":id", name: "delivery-method", component: empty },
+        ],
+      },
     ],
   });
 }
@@ -99,11 +107,13 @@ const ADMIN_LINKS = [
   ["Lista zamówień", "/orders"],
   ["Zwroty do wykonania", "/orders?refund=pending"],
   ["Klienci", "/customers"],
+  ["Dostawa", "/delivery"],
   ["Promocje", "/promotions"],
   ["Kody rabatowe", "/discount-codes"],
   ["Stan systemu", "/system"],
 ];
-const WITHOUT_SYSTEM = ADMIN_LINKS.filter(([label]) => label !== "Stan systemu");
+// What only the administrators see: the system status and the delivery methods.
+const WITHOUT_SYSTEM = ADMIN_LINKS.filter(([label]) => label !== "Stan systemu" && label !== "Dostawa");
 
 describe("AppMenu: structure and roles", () => {
   it("is the navigation „Menu główne” with the sections Główne, Sklep, Marketing and System", async () => {
@@ -134,6 +144,19 @@ describe("AppMenu: structure and roles", () => {
 
     const { wrapper: unknown } = await mountMenu("/", null);
     expect(unknown.text()).not.toContain("Stan systemu");
+  });
+
+  it("links Dostawa for admin, also among other roles, and for no other role nor while the staff member is unknown", async () => {
+    for (const roles of [["admin"], ["support", "admin"]] as Role[][]) {
+      const { wrapper: menu } = await mountMenu("/", roles);
+      expect(links(menu)).toContainEqual(["Dostawa", "/delivery"]);
+      menu.unmount();
+    }
+    for (const roles of [["marketing"], ["support"], ["warehouse"], ["support", "warehouse"], [], null] as (Role[] | null)[]) {
+      const { wrapper: menu } = await mountMenu("/", roles);
+      expect(menu.text()).not.toContain("Dostawa");
+      menu.unmount();
+    }
   });
 
   it("links the products, the new product and no orders for marketing", async () => {
@@ -223,6 +246,9 @@ describe("AppMenu: the current item", () => {
     ["/customers", "Klienci"],
     ["/customers?sort=name", "Klienci"],
     ["/customers/c-1", "Klienci"],
+    ["/delivery", "Dostawa"],
+    ["/delivery/new", "Dostawa"],
+    ["/delivery/0192f0c4", "Dostawa"],
     ["/system", "Stan systemu"],
   ])("marks only %s as current: %s", async (path, label) => {
     const { wrapper: menu } = await mountMenu(path, ["admin"]);
