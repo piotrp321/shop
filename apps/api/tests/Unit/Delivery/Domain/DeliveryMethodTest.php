@@ -42,7 +42,6 @@ final class DeliveryMethodTest extends TestCase
         self::assertSame(1, $method->version());
         self::assertEquals($now, $method->createdAt());
         self::assertEquals($now, $method->updatedAt());
-        self::assertSame(20, DeliveryMethod::MAX_ACTIVE);
     }
 
     public function testATwentyFirstActiveMethodIsNotCreated(): void

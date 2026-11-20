@@ -20,7 +20,6 @@ final class QuoteDeliveryHandlerTest extends TestCase
 {
     private const string STANDARD = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c8a01';
     private const string EXPRESS = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c8a02';
-    private const string PICKUP = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c8a03';
 
     private InMemoryDeliveryMethodRepository $methods;
 
