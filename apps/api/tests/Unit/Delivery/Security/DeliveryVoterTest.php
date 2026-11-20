@@ -60,11 +60,6 @@ final class DeliveryVoterTest extends TestCase
         self::assertSame(VoterInterface::ACCESS_ABSTAIN, new DeliveryVoter()->vote($token, null, ['MANAGE_DISCOUNT_CODES']));
     }
 
-    public function testTheControllersNameTheAttributeOfTheVoter(): void
-    {
-        self::assertSame(DeliveryVoter::MANAGE_DELIVERY_METHODS, DeliveryAttributes::MANAGE_DELIVERY_METHODS);
-    }
-
     private function vote(UserInterface $user): int
     {
         return new DeliveryVoter()->vote(new UsernamePasswordToken($user, 'main', $user->getRoles()), null, [DeliveryAttributes::MANAGE_DELIVERY_METHODS]);

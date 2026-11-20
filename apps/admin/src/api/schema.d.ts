@@ -240,6 +240,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/delivery-methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The delivery methods
+         * @description Every delivery method, without pages: the active ones (at most 20) by position, then by name; then the inactive ones by name (a method is never deleted, only disabled). Administrators only.
+         */
+        get: operations["listDeliveryMethods"];
+        put?: never;
+        /**
+         * Create a delivery method
+         * @description Administrators only. The name is unique among all methods (also the inactive ones) without regard to case; at most 20 methods are active. A method is never deleted; it is disabled with `active` false.
+         */
+        post: operations["createDeliveryMethod"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/delivery-methods/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A delivery method
+         * @description Administrators only.
+         */
+        get: operations["getDeliveryMethod"];
+        /**
+         * Change a delivery method
+         * @description Sends the whole method as it should be, based on the `version` seen. Administrators only. Activating a method when 20 are active is a 409; a change that does not activate the method is never refused for the limit. Placed orders keep their copy of the method. An unknown method is a 404 before the body is read.
+         */
+        put: operations["reviseDeliveryMethod"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/stock": {
         parameters: {
             query?: never;
@@ -962,6 +1010,17 @@ export interface components {
             /** @description Only with `promotion-overlap`. The variants of the request that are in another promotion of an overlapping period, ordered by id. */
             conflictingVariantIds?: string[];
         };
+        /** @description A 409 of the delivery methods of the panel. `type` names the cause (the `detail` is Polish text for people and may change): another method has the name without regard to case (also an inactive one), the method would be one active method more than 20, or (`about:blank`) the method changed since the `version` sent. Nothing is changed. */
+        DeliveryConflictProblem: {
+            /** @enum {string} */
+            type: "tag:piotrp321.github.io,2026:shop/problems/delivery-method-name-taken" | "tag:piotrp321.github.io,2026:shop/problems/delivery-method-limit-reached" | "about:blank";
+            /** @example Conflict */
+            title: string;
+            /** @enum {integer} */
+            status: 409;
+            /** @description Polish text for the staff member. */
+            detail: string;
+        };
         /** @description A 409 of the category endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the category changed since the `version` sent, a sibling has the slug, the tree would have more than 4 levels, the new parent is the category or one of its descendants, or the category has subcategories or products (counted in `subcategoryCount` and `productCount`). Nothing is changed. */
         CategoryConflictProblem: {
             /** @enum {string} */
@@ -1209,6 +1268,87 @@ export interface components {
              * @example 3
              */
             version: number | null;
+        };
+        /** @description A new delivery method. */
+        CreateDeliveryMethodRequest: {
+            /**
+             * @description 1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.
+             * @example Kurier standardowy
+             */
+            name: string;
+            /**
+             * @description The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.
+             * @example Dostawa w 2–3 dni robocze
+             */
+            description: string | null;
+            /**
+             * @description Gross price in grosze.
+             * @example 1999
+             */
+            priceGross: number;
+            /**
+             * @description The method is free for goods (gross after discounts, grosze) of at least this value. Null: no threshold.
+             * @example 29900
+             */
+            freeFromGross: number | null;
+            /**
+             * @description Offered in the cart and the checkout. At most 20 methods are active.
+             * @example true
+             */
+            active: boolean;
+            /**
+             * @description Ascending position among the active methods; one position is ordered by name.
+             * @example 10
+             */
+            position: number;
+            /**
+             * @description The tracking address of the carrier: https:// with a host name, `{numer}` exactly once in place of the tracking number, without white space, up to 500 characters. Null or white space only: no template.
+             * @example https://tracking.example.com/{numer}
+             */
+            trackingUrlTemplate: string | null;
+        };
+        /** @description A delivery method as it should be. */
+        ReviseDeliveryMethodRequest: {
+            /**
+             * @description 1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.
+             * @example Kurier standardowy
+             */
+            name: string;
+            /**
+             * @description The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.
+             * @example Dostawa w 2–3 dni robocze
+             */
+            description: string | null;
+            /**
+             * @description Gross price in grosze.
+             * @example 1999
+             */
+            priceGross: number;
+            /**
+             * @description The method is free for goods (gross after discounts, grosze) of at least this value. Null: no threshold.
+             * @example 29900
+             */
+            freeFromGross: number | null;
+            /**
+             * @description Offered in the cart and the checkout. At most 20 methods are active; activating one more is a 409.
+             * @example true
+             */
+            active: boolean;
+            /**
+             * @description Ascending position among the active methods; one position is ordered by name.
+             * @example 10
+             */
+            position: number;
+            /**
+             * @description The tracking address of the carrier: https:// with a host name, `{numer}` exactly once in place of the tracking number, without white space, up to 500 characters. Null or white space only: no template.
+             * @example https://tracking.example.com/{numer}
+             */
+            trackingUrlTemplate: string | null;
+            /**
+             * @description The `version` of the method the change is based on.
+             * @example 1
+             */
+            version: number;
         };
         BackofficeStockQuery: {
             /** @default null */
@@ -1902,6 +2042,49 @@ export interface components {
              */
             key: string;
             preview: components["schemas"]["ImagePreviewResponse"];
+        };
+        /** @description A delivery method of the panel. Amounts in grosze. */
+        DeliveryMethodResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @example Kurier standardowy */
+            name: string;
+            /**
+             * @description Empty without a description.
+             * @example Dostawa w 2–3 dni robocze
+             */
+            description: string;
+            /**
+             * @description Gross price.
+             * @example 1999
+             */
+            priceGross: number;
+            /**
+             * @description Free from this value of the goods after discounts (gross); null without a threshold.
+             * @example 29900
+             */
+            freeFromGross: number | null;
+            /** @example true */
+            active: boolean;
+            /**
+             * @description Ascending position among the active methods.
+             * @example 10
+             */
+            position: number;
+            /**
+             * @description Null without a template.
+             * @example https://tracking.example.com/{numer}
+             */
+            trackingUrlTemplate: string | null;
+            /**
+             * @description Version of the method, for the optimistic locking of changes.
+             * @example 1
+             */
+            version: number;
+        };
+        /** @description Every delivery method, without pages: the active ones by position, then by name; then the inactive ones by name. */
+        DeliveryMethodListResponse: {
+            items: components["schemas"]["DeliveryMethodResponse"][];
         };
         /** @description The stored stock of a product variant, in whole units; all computed by the API. */
         ListedStockResponse: {
@@ -3690,6 +3873,298 @@ export interface operations {
                 };
             };
             /** @description The image storage (Garage) is unavailable, or the keys of the token issuer cannot be fetched (problem details without detail). Nothing was stored; the upload can be repeated. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listDeliveryMethods: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The methods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMethodListResponse"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is no administrator (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createDeliveryMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDeliveryMethodRequest"];
+            };
+        };
+        responses: {
+            /** @description The created method (`Location` names it). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMethodResponse"];
+                };
+            };
+            /** @description The body is not valid JSON, also a text that is not valid UTF-8 (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is no administrator (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Another method has the name (`delivery-method-name-taken`) or an active method would be the 21st (`delivery-method-limit-reached`); see `DeliveryConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["DeliveryConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type (problem details with `violations`, each at its field, with a Polish `title`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getDeliveryMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Delivery method id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The method. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMethodResponse"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is no administrator (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such method, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reviseDeliveryMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Delivery method id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseDeliveryMethodRequest"];
+            };
+        };
+        responses: {
+            /** @description The method as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMethodResponse"];
+                };
+            };
+            /** @description The body is not valid JSON, also a text that is not valid UTF-8 (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is no administrator (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such method, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The method changed since the given version (`about:blank`), another method has the name (`delivery-method-name-taken`) or the method would be the 21st active one (`delivery-method-limit-reached`); see `DeliveryConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["DeliveryConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type (problem details with `violations`, each at its field, with a Polish `title`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
                     [name: string]: unknown;

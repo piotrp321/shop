@@ -381,7 +381,8 @@ final class DeliveryMethodsEndpointTest extends WebTestCase
         yield 'a null price' => [['priceGross' => null], 'priceGross', 'Cena jest wymagana.'];
         yield 'a price in a string' => [['priceGross' => '1999'], 'priceGross', $price];
         yield 'a fractional price' => [['priceGross' => 19.99], 'priceGross', $price];
-        yield 'a price as a whole float' => [['priceGross' => 1999.0], 'priceGross', $price];
+        // json_encode() writes 1999.0 as 1999, so the body is written by hand.
+        yield 'a price as a whole float' => ['{"name": "Kurier", "description": null, "priceGross": 1999.0, "freeFromGross": null, "active": true, "position": 10, "trackingUrlTemplate": null, "version": 1}', 'priceGross', $price];
         yield 'a price that is a boolean' => [['priceGross' => true], 'priceGross', $price];
         yield 'a negative price' => [['priceGross' => -1], 'priceGross', $priceRange];
         yield 'a price of a million zloty' => [['priceGross' => 100_000_000], 'priceGross', $priceRange];
@@ -487,7 +488,9 @@ final class DeliveryMethodsEndpointTest extends WebTestCase
                 ['name', 'description', 'priceGross', 'freeFromGross', 'active', 'position', 'trackingUrlTemplate', ...$extra],
                 array_column($problem['violations'], 'propertyPath'),
             );
-            self::assertSame([self::REQUIRED], array_values(array_unique(array_column($problem['violations'], 'title'))));
+            foreach (array_column($problem['violations'], 'title') as $title) {
+                self::assertSame(self::REQUIRED, $title);
+            }
         }
     }
 

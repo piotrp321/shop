@@ -202,6 +202,7 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 | Cart | Pozycje koszyka, podgląd sum, koszyki gości i zalogowanych w PostgreSQL |
 | Ordering | Checkout, cykl życia zamówienia (przejścia jako metody agregatu `Order`), historia zamówień, modele odczytu z zamówień (sprzedaż godzinowa, klienci w panelu) |
 | Payment | Dostawcy płatności za jednym portem, status płatności, webhooki dostawców |
+| Delivery | Metody dostawy kurierem (cena, próg darmowej dostawy, kolejność, szablon linku śledzenia) i wycena dostawy dla wartości towarów (`docs/features/delivery/spec.md`) |
 | Inventory | Stany magazynowe, rezerwacja przy zamówieniu, zwolnienie przy anulowaniu |
 | Customer | Profil klienta, adresy; sama tożsamość jest w Keycloak (klient to tożsamość z tokenu, a klientów w panelu daje model odczytu Ordering) |
 
@@ -358,7 +359,9 @@ Cel: sprzedaż produkcyjna. Epiki i ich kolejność są na tablicy „Backlog sk
 
 1. Odporność i niezawodność: limity nadużyć oraz przetwarzanie w tle, które domyka zamówienia i płatności niezależnie
    od zaległości kolejki.
-2. Ścieżka sprzedaży: dostawa (metody, koszt, numer przesyłki, potem punkty odbioru), prawdziwy operator płatności ze
+2. Ścieżka sprzedaży: dostawa etapu 2 (punkty odbioru i Paczkomaty, etykiety i statusy przesyłek przez integrację
+   z przewoźnikiem albo brokerem; etap 1, metody kurierskie z kosztem i numerem przesyłki, opisuje
+   `docs/features/delivery/spec.md`), prawdziwy operator płatności ze
    zwrotami, strony prawne i zgody, obsługa żądań RODO, zakup na firmę i faktury, pełne dane produktu z importem
    i eksportem.
 3. Przed danymi prawdziwych klientów: kopie zapasowe i osłony operacji na produkcji, izolacja sekretów i sieci

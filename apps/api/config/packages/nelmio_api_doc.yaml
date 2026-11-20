@@ -1393,6 +1393,30 @@ nelmio_api_doc:
                                     items:
                                         type: string
                                         format: uuid
+                        DeliveryConflictProblem:
+                            type: object
+                            description: >-
+                                A 409 of the delivery methods of the panel. `type` names the cause (the `detail` is Polish text
+                                for people and may change): another method has the name without regard to case (also an
+                                inactive one), the method would be one active method more than 20, or (`about:blank`) the
+                                method changed since the `version` sent. Nothing is changed.
+                            required: [type, title, status, detail]
+                            properties:
+                                type:
+                                    type: string
+                                    enum:
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/delivery-method-name-taken'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/delivery-method-limit-reached'
+                                        - about:blank
+                                title:
+                                    type: string
+                                    example: Conflict
+                                status:
+                                    type: integer
+                                    enum: [409]
+                                detail:
+                                    type: string
+                                    description: Polish text for the staff member.
                         CategoryConflictProblem:
                             type: object
                             description: >-
