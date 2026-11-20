@@ -22,11 +22,11 @@ Od 2026-11-18 obowiązuje moratorium na rozwój AO, skilli istniejących tylko d
 Ostatni epik prowadzony przez AO: DEMO-DATA (#482), zakończony w AO 2026-11-18 (końcowy PR #744; integracja przeszła
 w pierwszej rundzie).
 
-W toku: brak epiku. Przygotowane: DELIVERY etap 1 (#120). Blokery: brak.
-Ostatni zmergowany epik: ASYNC-RELIABILITY (#768, końcowy PR #811, zmergowany 2026-11-20; epik natywny serii z danymi
-pomiaru; 12 wiadomości właściciela, 4 oczekiwania, łącznie 46 min czekania). Jest też ostatnim zmergowanym epikiem
-serii. Retro do zrobienia: brak (retro ASYNC-RELIABILITY: ten PR). Otwartych issues z etykietą `agent` jest 125,
-zamkniętych 75.
+W toku: brak epiku. Blokery: brak.
+Ostatni zmergowany epik: DELIVERY etap 1 (#120, końcowy PR #819, zmergowany 2026-11-20; epik natywny serii z danymi
+pomiaru; 8 wiadomości właściciela, 4 oczekiwania, łącznie 150 min czekania, w tym przerwa hosta 15:25–17:43Z). Jest też
+ostatnim zmergowanym epikiem serii. Retro do zrobienia: brak (retro DELIVERY: ten PR). Otwartych issues z etykietą
+`agent` jest 128, zamkniętych 75.
 
 Seria ASH v1.0 (specyfikacja `docs/features/ash-v1/spec.md`): trzy epiki prowadzone natywnie według „Przebiegu epiku”
 w ADR, ocenianie metrykami i retrospektywami `/retro`. Seria jest w toku od założenia tagu `ash-v1.0` do retrospektywy
@@ -35,9 +35,9 @@ trzeciego epiku; w tym czasie pliki procesu zmienia tylko poprawka blokady albo 
 
 | Seria ASH v1.0 | Stan |
 |---|---|
-| Stan serii | w toku (tag `ash-v1.0` założony 2026-11-19; ABUSE-LIMITS i ASYNC-RELIABILITY zmergowane, DELIVERY etap 1 przygotowany) |
+| Stan serii | zakończona (tag `ash-v1.0` założony 2026-11-19; trzy epiki zmergowane; retrospektywa trzeciego epiku: ten PR) |
 | Epiki serii | ABUSE-LIMITS (#181), ASYNC-RELIABILITY (#768), DELIVERY etap 1 (#120), w tej kolejności |
-| Zmergowane epiki serii | ABUSE-LIMITS (#181, końcowy PR #802), ASYNC-RELIABILITY (#768, końcowy PR #811) |
+| Zmergowane epiki serii | ABUSE-LIMITS (#181, końcowy PR #802), ASYNC-RELIABILITY (#768, końcowy PR #811), DELIVERY etap 1 (#120, końcowy PR #819) |
 
 Stan serii przyjmuje jedną z wartości: „przed startem”, „w toku”, „zakończona”.
 
@@ -49,7 +49,7 @@ Kroki przejścia na pracę natywną (obowiązują teraz, w tej kolejności):
 | P2 | Pilne porządki z raportu audytu | w toku (pozostałości na dysku czekają na decyzję użytkownika) |
 | P3 | DEMO-DATA kończy się w AO, ze skróconym `apps/api/CLAUDE.md` i nową polityką przeglądu | zrobione |
 | P4 | Uproszczenie instrukcji i konfiguracji: `CLAUDE.md` główny i obszarów, agenci, `/planner`, `/brainstorm`, konfiguracja | zrobione |
-| P5 | Seria ASH v1.0: trzy epiki natywnie (ABUSE-LIMITS → ASYNC-RELIABILITY → DELIVERY etap 1), każdy z punktem odniesienia i opisem końcowego PR | seria w toku (stan w tabeli „Seria ASH v1.0” wyżej) |
+| P5 | Seria ASH v1.0: trzy epiki natywnie (ABUSE-LIMITS → ASYNC-RELIABILITY → DELIVERY etap 1), każdy z punktem odniesienia i opisem końcowego PR | zrobione: trzy epiki serii zmergowane natywnie (ABUSE-LIMITS, końcowy PR #802; ASYNC-RELIABILITY, #811; DELIVERY etap 1, #819); seria zakończona retrospektywą DELIVERY (ten PR) |
 | P6 | Decyzja o archiwizacji AO i usunięciu jego narzędzi | do zrobienia (po P5) |
 
 Tabela niżej to stan kroków wdrożenia AO; role i proces w kolejnych sekcjach opisują drogę AO.
