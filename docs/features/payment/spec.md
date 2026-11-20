@@ -132,7 +132,8 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 - `GetOrderPayability(orderIds)` (`query.bus`, najwyżej 100 identyfikatorów) → lista `OrderPayability {orderId,
   payable, statusForPayment}` dla `payment:close-abandoned`: tylko to, czy zamówienie jest płatne (`isPayable`), i jego
   status dla Payment, bez numeru, kwoty i danych osobowych, więc bez kontroli dostępu; nieznane zamówienie i
-  identyfikator, który nie jest UUID, pomija (`docs/features/async-reliability/spec.md`, W6).
+  identyfikator, który nie jest UUID, pomija, a zamówienie istniejące, którego nie da się odczytać, zwraca osobno
+  z przyczyną (`docs/features/async-reliability/spec.md`, W6).
 - `ExpireUnpaidOrder(orderId)` (`command.bus`, wiadomość asynchroniczna na transporcie `scheduled`) i
   `ExpireOverdueOrder(orderId)` (`command.bus`, synchroniczna, bez trasy; wysyła ją `ordering:expire-overdue`) używają
   tej samej logiki wygaśnięcia (`UnpaidOrderExpiration`). Zaczyna ona od blokady wiersza zamówienia
@@ -351,7 +352,8 @@ Komenda konsoli `payment:close-abandoned [--batch-size=1..100]` (w klastrze Cron
    rozliczy ją webhook (także ponowiony z `failed`). Późny webhook sukcesu po zamknięciu daje `succeeded`, przy
    anulowanym zamówieniu z oznaczeniem zwrotu (`order_cancelled`).
 4. Błąd jednej płatności (np. dostawca niedostępny) jest w logu (`error`, z identyfikatorami płatności i zamówienia),
-   płatność zostaje `pending`, a komenda idzie dalej. Kod wyjścia: 0 gotowe, 1 zła `--batch-size` (bez zmian), 2
+   płatność zostaje `pending`, a komenda idzie dalej; tak samo płatność zamówienia, którego Ordering nie odczytało, ale
+   ta bez wywołania dostawcy. Kod wyjścia: 0 gotowe, 1 zła `--batch-size` (bez zmian), 2
    co najmniej jedna płatność się nie udała albo przerwanie błędem (np. niedostępna baza).
 
 ### Status płatności (`GetPaymentStatus`)

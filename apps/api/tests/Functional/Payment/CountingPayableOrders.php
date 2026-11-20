@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Payment;
 
+use App\Payment\Application\OrderPayabilities;
 use App\Payment\Application\PaymentAccess;
 use App\Payment\Application\Port\PayableOrders;
 use App\Payment\Domain\OrderId;
@@ -25,7 +26,7 @@ final class CountingPayableOrders implements PayableOrders
         throw new \LogicException('payment:close-abandoned never reads an order with an access.');
     }
 
-    public function payabilityOf(array $orderIds): array
+    public function payabilityOf(array $orderIds): OrderPayabilities
     {
         $this->asked[] = \count($orderIds);
 

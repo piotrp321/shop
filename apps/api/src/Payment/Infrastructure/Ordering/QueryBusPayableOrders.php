@@ -8,7 +8,8 @@ use App\Ordering\Application\OrderAccess;
 use App\Ordering\Application\Query\GetOrderForPayment;
 use App\Ordering\Application\Query\GetOrderPayability;
 use App\Ordering\Application\Query\OrderForPayment;
-use App\Ordering\Application\Query\OrderPayability as OrderingPayability;
+use App\Ordering\Application\Query\OrderPayabilities as OrderingPayabilities;
+use App\Payment\Application\OrderPayabilities;
 use App\Payment\Application\OrderPayability;
 use App\Payment\Application\PaymentAccess;
 use App\Payment\Application\Port\PayableOrders;
@@ -55,17 +56,16 @@ final class QueryBusPayableOrders implements PayableOrders
         );
     }
 
-    public function payabilityOf(array $orderIds): array
+    public function payabilityOf(array $orderIds): OrderPayabilities
     {
         $answer = $this->ask(new GetOrderPayability(array_map(static fn (OrderId $id): string => $id->toString(), $orderIds)));
-        \assert(\is_array($answer));
+        \assert($answer instanceof OrderingPayabilities);
         $payability = [];
-        foreach ($answer as $order) {
-            \assert($order instanceof OrderingPayability);
+        foreach ($answer->orders as $order) {
             $payability[$order->orderId] = new OrderPayability(OrderId::fromString($order->orderId), OrderState::from($order->statusForPayment), $order->payable);
         }
 
-        return $payability;
+        return new OrderPayabilities($payability, $answer->unreadable);
     }
 
     private function ask(object $query): mixed

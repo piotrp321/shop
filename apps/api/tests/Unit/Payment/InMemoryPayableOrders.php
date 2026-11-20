@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Payment;
 
+use App\Payment\Application\OrderPayabilities;
 use App\Payment\Application\OrderPayability;
 use App\Payment\Application\PaymentAccess;
 use App\Payment\Application\Port\PayableOrders;
@@ -23,6 +24,8 @@ final class InMemoryPayableOrders implements PayableOrders
     public ?\Closure $afterRead = null;
     /** @var array<string, OrderPayability> by order id */
     public array $payability = [];
+    /** @var array<string, string> the reason by id of an order that exists but Ordering could not read */
+    public array $unreadable = [];
     /** @var list<list<string>> the order ids of every question about the payability */
     public array $payabilityAsked = [];
 
@@ -43,11 +46,11 @@ final class InMemoryPayableOrders implements PayableOrders
         return $found;
     }
 
-    public function payabilityOf(array $orderIds): array
+    public function payabilityOf(array $orderIds): OrderPayabilities
     {
         $ids = array_map(static fn (OrderId $id): string => $id->toString(), $orderIds);
         $this->payabilityAsked[] = $ids;
 
-        return array_intersect_key($this->payability, array_flip($ids));
+        return new OrderPayabilities(array_intersect_key($this->payability, array_flip($ids)), array_intersect_key($this->unreadable, array_flip($ids)));
     }
 }

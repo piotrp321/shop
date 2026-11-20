@@ -45,7 +45,7 @@ final class AbandonedPaymentsTest extends TestCase
         $paid = $this->pending(4, OrderState::Paid, false);
         $unknown = $this->pending(5, null, false);
 
-        $batches = iterator_to_array(new AbandonedPayments($this->payments, $this->orders)->batches(100), false);
+        $batches = $this->abandoned(100);
 
         self::assertEquals([[$pastDeadline, $cancelled, $paid, $unknown]], $batches);
         self::assertNotContains($payable, $batches[0]);
@@ -57,7 +57,7 @@ final class AbandonedPaymentsTest extends TestCase
         $second = $this->pending(2, OrderState::New, true);
         $third = $this->pending(3, OrderState::Cancelled, false);
 
-        $batches = iterator_to_array(new AbandonedPayments($this->payments, $this->orders)->batches(2), false);
+        $batches = $this->abandoned(2);
 
         self::assertEquals([[$first], [$third]], $batches);
         self::assertSame([
@@ -72,9 +72,22 @@ final class AbandonedPaymentsTest extends TestCase
         $this->pending(1, OrderState::New, true);
         $abandoned = $this->pending(2, OrderState::Cancelled, false);
 
-        $batches = iterator_to_array(new AbandonedPayments($this->payments, $this->orders)->batches(1), false);
+        $batches = $this->abandoned(1);
 
         self::assertEquals([[], [$abandoned]], $batches);
+    }
+
+    public function testThePaymentOfAnOrderOrderingCouldNotReadIsReportedApartAndNotAbandoned(): void
+    {
+        $abandoned = $this->pending(1, OrderState::Cancelled, false);
+        $unreadable = $this->pending(2, null, false);
+        $this->orders->unreadable[self::orderId(2)] = 'InvalidArgumentException: A tax class has 1 to 20 characters.';
+
+        $batches = iterator_to_array(new AbandonedPayments($this->payments, $this->orders)->batches(100), false);
+
+        self::assertCount(1, $batches);
+        self::assertEquals([$abandoned], $batches[0]->abandoned);
+        self::assertEquals([[$unreadable, 'InvalidArgumentException: A tax class has 1 to 20 characters.']], $batches[0]->unreadable);
     }
 
     public function testNoPendingPaymentAsksOrderingNothing(): void
@@ -83,8 +96,22 @@ final class AbandonedPaymentsTest extends TestCase
         $payment->cancel(new \DateTimeImmutable('2026-11-05 12:40:00+00:00'));
         $this->payments->add($payment);
 
-        self::assertSame([], iterator_to_array(new AbandonedPayments($this->payments, $this->orders)->batches(100), false));
+        self::assertSame([], $this->abandoned(100));
         self::assertSame([], $this->orders->payabilityAsked);
+    }
+
+    /**
+     * @return list<list<PendingPayment>> the abandoned payments of each batch
+     */
+    private function abandoned(int $batchSize): array
+    {
+        $batches = [];
+        foreach (new AbandonedPayments($this->payments, $this->orders)->batches($batchSize) as $batch) {
+            self::assertSame([], $batch->unreadable);
+            $batches[] = $batch->abandoned;
+        }
+
+        return $batches;
     }
 
     /**

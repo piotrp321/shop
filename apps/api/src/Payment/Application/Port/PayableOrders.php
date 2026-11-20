@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Payment\Application\Port;
 
-use App\Payment\Application\OrderPayability;
+use App\Payment\Application\OrderPayabilities;
 use App\Payment\Application\PaymentAccess;
 use App\Payment\Domain\OrderId;
 use App\Payment\Domain\OrderToPay;
@@ -26,7 +26,7 @@ interface PayableOrders
      *
      * @param list<OrderId> $orderIds at most 100
      *
-     * @return array<string, OrderPayability> by order id; an order Ordering does not know is left out
+     * @return OrderPayabilities an order Ordering does not know is left out; one it could not read is apart
      */
-    public function payabilityOf(array $orderIds): array;
+    public function payabilityOf(array $orderIds): OrderPayabilities;
 }

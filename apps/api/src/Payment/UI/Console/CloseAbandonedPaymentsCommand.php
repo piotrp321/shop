@@ -29,7 +29,8 @@ use Symfony\Component\Messenger\Stamp\HandledStamp;
  * before it. Idempotent: a closed payment is no longer pending.
  *
  * The failure of one payment (e.g. its provider is unavailable) is logged as an error with the ids of the payment and
- * of its order and the exception (so it reaches Sentry), and the others go on.
+ * of its order and the exception (so it reaches Sentry), and the others go on. So is a payment whose order exists but
+ * Ordering could not read: it is not closed in this run and counts as a failure.
  *
  * Exit codes: 0 done (also when nothing was abandoned), 1 the batch size is not an integer from 1 to 100 (nothing was
  * changed), 2 at least one payment could not be closed, or the run stopped on an error (e.g. the database is
@@ -66,8 +67,17 @@ final readonly class CloseAbandonedPaymentsCommand
         $failed = 0;
         $outcomes = array_fill_keys(array_map(static fn (AbandonedPaymentOutcome $outcome): string => $outcome->name, AbandonedPaymentOutcome::cases()), 0);
         try {
-            foreach ($this->abandoned->batches((int) $batchSize) as $payments) {
-                foreach ($payments as $payment) {
+            foreach ($this->abandoned->batches((int) $batchSize) as $batch) {
+                foreach ($batch->unreadable as [$payment, $reason]) {
+                    ++$found;
+                    ++$failed;
+                    $this->logger->error('payment:close-abandoned: the order of the payment could not be read; the payment is left pending.', [
+                        'paymentId' => $payment->paymentId->toString(),
+                        'orderId' => $payment->orderId->toString(),
+                        'reason' => $reason,
+                    ]);
+                }
+                foreach ($batch->abandoned as $payment) {
                     ++$found;
                     try {
                         ++$outcomes[$this->close($payment)->name];
