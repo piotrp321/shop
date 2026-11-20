@@ -194,7 +194,7 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
    Odcisk żądania (`requestFingerprint`): SHA-256 znormalizowanych `cartRef` (`guest:<cartId>` albo
    `customer:<sub>`), danych kontaktowych, adresu i `expectedTotalGross` (po przycięciu i normalizacji telefonu),
    znormalizowanego kodu rabatowego, dopisanego tylko wtedy, gdy jest, i `delivery:<deliveryMethodId>` (UUID małymi
-   literami) po nim; odcisk żądania bez kodu jest taki sam jak przed kodami rabatowymi. Ten sam klucz z inną metodą
+   literami) po nim; kod rabatowy nie zmienia odcisku żądania bez kodu. Ten sam klucz z inną metodą
    dostawy to inne żądanie (`IdempotencyKeyReused`).
    Koszyk jest częścią odcisku, więc dwa koszyki gości z tym samym kluczem i tymi samymi danymi dostają 409, a nie
    cudze zamówienie.

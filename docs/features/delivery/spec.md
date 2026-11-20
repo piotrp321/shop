@@ -108,7 +108,7 @@ Założenia architektoniczne:
   kształtu zdarzeń); rozbieżność to poprawka planu przed startem zadań.
 - **Zasoby spoza repo: brak.** Rola `admin` istnieje (`StaffUser.php:20`, `infra/keycloak/realms/backoffice.json:92`),
   więc bez zmian w Keycloaku i w chartcie.
-- **użytkownik, po wdrożeniu na serwer:** dodanie aktywnych metod dostawy w panelu „Dostawa” (sekcja „Wdrożenie”);
+- **użytkownik, po zakończeniu rolloutu na serwerze:** dodanie aktywnych metod dostawy w panelu „Dostawa” (sekcja „Wdrożenie i zgodność wersji”);
   do tego czasu kasa na serwerze nie przyjmuje zamówień.
 
 ## Stan obecny
@@ -467,6 +467,12 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
     sumy towarów daje 409 `OrderTotalChanged`, więc nie powstaje zamówienie z kwotą inną niż widziana. Przy
     darmowej dostawie (suma z dostawą = suma towarów) stare API przyjmuje zamówienie bez metody, z kosztem dostawy 0;
   - stara karta panelu: wysyłka dostaje 422 przy `trackingNumber` do przeładowania karty (P15).
+- Stary kod (poprzednia wersja `api`, `worker`, `worker-commands`) nie zna kolumn dostawy: zamówienie z kosztem
+  dostawy odczytałby z sumą bez dostawy (e-mail z potwierdzeniem, kwota płatności, zwrot, suma klienta). Takie
+  zamówienie nie może powstać w oknie wymiany podów, bo na serwerze po wdrożeniu nie ma żadnej metody dostawy, a bez
+  aktywnej metody nowe API nie składa zamówień (W5). Dlatego administrator dodaje metody w panelu „Dostawa” dopiero
+  po zakończeniu rolloutu fali 1 (Argo `Synced` i `Healthy`, żaden pod poprzedniej wersji nie działa). Ta kolejność
+  dotyczy tylko wydania tego epiku: kolejne wersje znają dostawę.
 - Zamówienie bez metody tylko w oknie wymiany wersji (P19): nowe API odrzuca złożenie bez `deliveryMethodId` (422,
   W5), a `Order::place` wymaga dostawy (W6), więc gdy działają już tylko nowe pody `api`, takie zamówienie nie może
   powstać. Bez metody zostają zamówienia sprzed epiku i wygenerowana historia demo (P17).
@@ -477,7 +483,8 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
 - Kształt wiadomości i zdarzeń się nie zmienia (`OrderShipped` bez zmian), więc test kształtu zdarzeń
   ASYNC-RELIABILITY przechodzi bez nowych zapisów.
 - Po wdrożeniu na serwer bez metod dostawy kasa nie przyjmuje zamówień, dopóki administrator nie doda aktywnej metody
-  w panelu „Dostawa” (krok użytkownika; `delivery:seed-demo` na serwerze wymagałby `--force-reset`).
+  w panelu „Dostawa” (krok użytkownika, dopiero po zakończeniu rolloutu; `delivery:seed-demo` na serwerze wymagałby
+  `--force-reset`, a Job danych demo nie może biec w trakcie rolloutu tego wydania).
 
 ## Scenariusze błędów
 
