@@ -112,7 +112,7 @@ class RenderTest(unittest.TestCase):
             self.assertIn("kube_job_status_condition", expr, alert)
             self.assertIn("kube_job_owner", expr, alert)
             self.assertIn("kube_cronjob_status_last_successful_time", expr, alert)
-            self.assertRegex(expr, r"^max by \(namespace\) \(", alert)
+            self.assertRegex(expr, r"^label_replace\(\s*max by \(namespace\) \(", alert)
             self.assertIn(f'cronjob="{cronjob}"', expr, alert)
             self.assertIn("Runbook: Eksploatacja", rule["annotations"]["description"], alert)
             self.assertIn("Alert znika po następnym udanym Jobie", rule["annotations"]["description"], alert)
