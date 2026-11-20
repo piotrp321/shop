@@ -474,8 +474,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   ilość, wartość; wiersz „Dostawa” z kosztem wybranej metody albo „Darmowa”; „Do zapłaty” = `totalGross` wybranej
   opcji, bez wyboru zamiast obu kwot „Wybierz sposób dostawy”), formularz (P4, P5), grupa radiowa „Sposób dostawy”
   (`fieldset` z `legend`, opcje `cart.delivery.options`: nazwa, opis, koszt albo „Darmowa”, „Do darmowej dostawy
-  brakuje Y zł”; wymagany wybór, bez domyślnego, bez sekcji przy `delivery: null`; szczegóły:
-  `docs/features/delivery/spec.md`, W10), grupa radiowa „Sposób płatności” (dostawcy z API, wymagany wybór, bez domyślnego), przycisk
+  brakuje Y zł”, nigdy razem z „Darmowa”; wymagany wybór; bez sekcji przy `delivery: null`; szczegóły:
+  `docs/features/delivery/spec.md`, W10; stany: akapit „Dostawa w kasie” niżej), grupa radiowa „Sposób płatności” (dostawcy z API, wymagany wybór, bez domyślnego), przycisk
   „Zamawiam z obowiązkiem zapłaty” (P9). Gość: pole
   e-mail i link „Zaloguj się” (`/auth/login?returnTo=/checkout`). Klient: e-mail z `/auth/session` jako tekst,
   imię i nazwisko wstępnie wypełnione z sesji (konto bez imienia ma w sesji e-mail jako nazwę: pole zostaje puste).
@@ -493,6 +493,26 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   ogłasza obszar `role="status"`. Złożenie wysyła `discountCode` zastosowanego kodu (bez kodu: bez klucza)
   i `expectedTotalGross` z podsumowania po rabacie. Kod nie przeżywa przeładowania strony (stan tylko w pamięci
   strony).
+- Dostawa w kasie (stany; `CheckoutPage.tsx`):
+  - Wstępnie zaznaczona jest metoda tylko wtedy, gdy przy wczytaniu kasy (wejście, „Spróbuj ponownie”) koszyk ma
+    dokładnie jedną opcję; przy kilku nie ma wyboru domyślnego.
+  - Wybór zostaje po każdym ponownym odczycie podsumowania (zastosowanie i usunięcie kodu, odrzucony kod, 409), jeśli
+    metoda jest dalej wśród opcji; inaczej wybór znika (też wtedy, gdy jedyna pozostała opcja jest inna) i nie wraca,
+    gdy metoda pojawi się później. Do czasu nowego wyboru „Dostawa” i „Do zapłaty” mówią „Wybierz sposób dostawy”.
+  - Kod rabatowy nie obniża kosztu dostawy, ale może obniżyć wartość towarów poniżej progu: po odczycie z kodem opcje
+    i podsumowanie od razu pokazują koszt, „Do darmowej dostawy brakuje Y zł” i „Do zapłaty” z nowej `totalGross`. Zmianę
+    ogłasza obszar `role="status"` podsumowania (`data-testid="checkout-summary-status"`, obecny w stronie przed zmianą):
+    „Dostawa „<nazwa>” nie jest już darmowa, kosztuje X zł. Do darmowej dostawy brakuje Y zł.”, „Dostawa „<nazwa>” jest
+    teraz darmowa.” albo przy zmianie samej brakującej kwoty „Dostawa „<nazwa>”: Do darmowej dostawy brakuje Y zł.”.
+    Mowa o wybranej metodzie, a bez wyboru o każdej, której dotyczy zmiana; przy zmianie, która niczego takiego nie
+    zmienia, obszar jest pusty. Kwoty są z API.
+  - Opcja z kosztem 0 pokazuje „Darmowa” i nie pokazuje „Do darmowej dostawy brakuje”, nawet gdy API poda brakującą kwotę.
+  - Brak aktywnych metod (`options` puste) albo odczyt koszyka bez `delivery` (API sprzed dostawy): zamiast grupy
+    `Alert` („Nie możemy teraz przyjąć zamówienia: brak dostępnych sposobów dostawy. Spróbuj później.”,
+    `role="status"`), nieaktywny przycisk złożenia, bez wiersza „Dostawa”. `delivery: null` (nic do kupienia) to dzisiejsze
+    zachowanie pustego koszyka.
+  - 409 `delivery-method-unavailable`: komunikat API nad formularzem z fokusem, nowy `Idempotency-Key`, ponowny odczyt
+    podsumowania z zastosowanym kodem, wybór usunięty, gdy metody nie ma wśród opcji.
 - `Idempotency-Key`: UUID (`crypto.randomUUID`) tworzony przy wejściu na `/checkout` i używany ponownie przy
   ponowieniu niepewnego wyniku (błąd sieci, 403, 5xx, 503). Klucz należy do jednej logicznej próby: nowy powstaje
   po zmianie danych formularza, po zastosowaniu i usunięciu kodu rabatowego (żądanie niesie inny kod i kwotę), po 409
