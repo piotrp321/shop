@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { addVariantOf, chooseProvider, fillAddress, tileNamed } from "../support/shop";
+import { addVariantOf, chooseDelivery, chooseProvider, fillAddress, tileNamed } from "../support/shop";
 
 // The size of an order of a guest (docs/features/abuse-limits/spec.md, L5, D5): at most 10 lines of 10 units. The cart of a
 // guest takes more (50 lines of 99 units), the checkout refuses the order with the message of the API and nothing is
@@ -25,6 +25,7 @@ async function fillGuestForm(page: Page): Promise<void> {
   await page.getByLabel("E-mail").fill(`e2e-limit+${Date.now()}@example.com`);
   await page.getByLabel("Imię i nazwisko").fill("Anna Testowa");
   await fillAddress(page);
+  await chooseDelivery(page);
   await chooseProvider(page, "Szybki przelew (demo)");
 }
 
