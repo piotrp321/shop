@@ -49,6 +49,18 @@ test("admin sees the dashboard and opens „Stan systemu” from the menu", asyn
   }
   await expect(page.getByRole("heading", { level: 2, name: "Zdarzenia czekające na wysłanie" })).toBeVisible();
   await expect(page.getByTestId("outbox-pending")).toHaveText(/^\d+$/);
+  // Structure only: what is in `failed` depends on the tests that ran before in the shard.
+  await expect(page.getByRole("heading", { level: 2, name: "Wiadomości" })).toBeVisible();
+  await expect(page.getByTestId("failed-count")).toHaveText(/^(\d+|1000\+|Brak)$/);
+  const transports = page.getByRole("region", { name: "Kolejki w bazie danych" }).getByRole("row");
+  await expect(transports).toHaveCount(6);
+  await expect(page.getByTestId("transport-name")).toHaveText([
+    "Zdarzenia do wysłania",
+    "Komendy opóźnione",
+    "Webhooki symulatora płatności",
+    "Granice promocji",
+    "Zadania w tle",
+  ]);
   await expect(page.getByTestId("updated-at")).toContainText("Dane z");
 });
 
