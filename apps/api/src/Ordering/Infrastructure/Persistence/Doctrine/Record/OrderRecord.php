@@ -17,7 +17,10 @@ use Doctrine\ORM\Mapping as ORM;
  * cancelled by staff), cancelled_at and cancellation_reason exactly for a cancelled one, shipped_at exactly from
  * shipped on, delivered_at only for delivered and returned, returned_at exactly for returned, the refund (amount and
  * due date) exactly for returned and cancelled by staff, its completion (moment, staff id and name together, the note
- * only with them) only with a refund, the copy of the discount code (code, kind, value, amount) together or not at all.
+ * only with them) only with a refund, the copy of the discount code (code, kind, value, amount) together or not at all,
+ * and (added NOT VALID, validated by a later migration, apps/api/CLAUDE.md) the delivery: the id and the name of the
+ * method together, the tracking template only with a method, delivery_net + delivery_vat = delivery_gross (none
+ * negative), a cost only with a method, the tracking number only from the shipping on.
  * No foreign key to the tables of other modules: the order keeps copies
  * (payment_id too).
  */
@@ -106,6 +109,35 @@ class OrderRecord
     #[ORM\Column(type: Types::BIGINT, nullable: true)]
     public ?int $discountGross = null;
 
+    /**
+     * The copy of the delivery method of the order (docs/features/delivery/spec.md, W11); none for an order placed
+     * before the delivery (P17), whose delivery costs 0.
+     */
+    #[ORM\Column(type: 'guid', nullable: true)]
+    public ?string $deliveryMethodId = null;
+
+    #[ORM\Column(length: 100, nullable: true)]
+    public ?string $deliveryMethodName = null;
+
+    #[ORM\Column(length: 500, nullable: true)]
+    public ?string $deliveryTrackingUrlTemplate = null;
+
+    #[ORM\Column(type: Types::BIGINT, options: ['default' => 0])]
+    public int $deliveryGross = 0;
+
+    #[ORM\Column(type: Types::BIGINT, options: ['default' => 0])]
+    public int $deliveryNet = 0;
+
+    #[ORM\Column(type: Types::BIGINT, options: ['default' => 0])]
+    public int $deliveryVat = 0;
+
+    /**
+     * The tracking number of the shipment. Only the column so far (the mapping equals the migrated schema): the domain
+     * does not keep a number yet, so nothing writes it and an order is read without it.
+     */
+    #[ORM\Column(length: 40, nullable: true)]
+    public ?string $trackingNumber = null;
+
     #[ORM\Column(length: 100)]
     public string $idempotencyKey;
 
@@ -167,6 +199,11 @@ class OrderRecord
     #[ORM\OrderBy(['position' => 'ASC'])]
     public Collection $lines;
 
+    /** @var Collection<int, OrderDeliveryVatRecord> the shares of the cost of the delivery by VAT rate, written with the order */
+    #[ORM\OneToMany(targetEntity: OrderDeliveryVatRecord::class, mappedBy: 'order', cascade: ['persist'])]
+    #[ORM\OrderBy(['vatRateBp' => 'DESC'])]
+    public Collection $deliveryShares;
+
     /** @var Collection<int, OrderStatusChangeRecord> by position */
     #[ORM\OneToMany(targetEntity: OrderStatusChangeRecord::class, mappedBy: 'order', cascade: ['persist'])]
     #[ORM\OrderBy(['position' => 'ASC'])]
@@ -178,6 +215,7 @@ class OrderRecord
         public readonly string $id,
     ) {
         $this->lines = new ArrayCollection();
+        $this->deliveryShares = new ArrayCollection();
         $this->statusChanges = new ArrayCollection();
     }
 }
