@@ -834,7 +834,7 @@ describe("CheckoutPage payment provider", () => {
 
     expect(screen.getByText(CHOOSE).id).toBe(group().getAttribute("aria-describedby"));
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(document.activeElement).toBe(screen.getAllByRole("radio")[0]);
+    expect(document.activeElement).toBe(within(group()).getAllByRole("radio")[0]);
   });
 
   it.each([

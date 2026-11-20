@@ -235,8 +235,13 @@ export type PlaceOrderInput = {
   street: string;
   postalCode: string;
   city: string;
-  /** `totals.gross` of the cart the customer saw; the API only compares it with the total it computes. */
+  /**
+   * `totalGross` of the chosen option of `delivery.options` of the cart the customer saw (the goods after the code with
+   * the delivery); the API only compares it with the total it computes.
+   */
   expectedTotalGross: number;
+  /** `methodId` of the delivery option the customer chose; the API checks that it is still available. */
+  deliveryMethodId: string;
   /** Code of the payment provider chosen from `GET /api/v1/payment-providers`; the BFF checks it. */
   provider: string;
   /** The discount code the customer applied in the checkout, as typed; the API judges it. Absent without a code. */

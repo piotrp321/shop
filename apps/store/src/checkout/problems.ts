@@ -13,6 +13,7 @@ export type OrderConflictReason =
   | "total_changed"
   | "key_reused"
   | "discount_code_rejected"
+  | "delivery_method_unavailable"
   | "unknown";
 
 /** The own 409 of the BFF: no cart to order. */
@@ -30,6 +31,7 @@ const REASONS = {
   "tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid": "discount_code_rejected",
   "tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up": "discount_code_rejected",
   "tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum": "discount_code_rejected",
+  "tag:piotrp321.github.io,2026:shop/problems/delivery-method-unavailable": "delivery_method_unavailable",
 } as const satisfies Record<OrderConflictType, Exclude<OrderConflictReason, "unknown">>;
 
 /** The reason for the `type` of a 409; only the `type` decides, never the `detail`. */

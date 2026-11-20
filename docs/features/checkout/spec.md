@@ -27,8 +27,8 @@ Poza zakresem:
 - płatność, statusy `paid` i `cancelled`, anulowanie nieopłaconych zamówień ze zwolnieniem rezerwacji (PAYMENT #91,
   `docs/features/payment/spec.md`);
 - statusy po opłaceniu, anulowanie z panelu, zamówienia w panelu, historia zamówień klienta (ORDER-MANAGEMENT #92);
-- metody i koszty dostawy (decyzja P3, #120), adresy zapisane na koncie klienta (decyzja P5, #117), faktury i dane
-  firmy, kraje inne niż Polska;
+- paczkomaty, punkty odbioru i integracja z przewoźnikiem (etap 2 dostawy, `docs/features/delivery/spec.md`), adresy
+  zapisane na koncie klienta (decyzja P5, #117), faktury i dane firmy, kraje inne niż Polska;
 - powiązanie zamówienia gościa z kontem o tym samym adresie e-mail (#118), anonimizacja danych zamówień (RODO, #119).
 
 ## Decyzje
@@ -39,12 +39,12 @@ Decyzje użytkownika:
 |---|---|
 | P1 | Zamówienie obejmuje cały koszyk. Koszyk z pozycją, której nie da się kupić (`hasExcludedLines`), blokuje złożenie: klient najpierw usuwa pozycję albo zmniejsza ilość. |
 | P2 | Żądanie złożenia niesie oczekiwaną kwotę brutto z podsumowania, które widział klient. Inna kwota w chwili złożenia: 409, bez zamówienia; sklep pokazuje nowe podsumowanie. |
-| P3 | Bez wyboru metody dostawy i bez kosztu dostawy: suma zamówienia = suma pozycji. |
+| P3 | Klient wybiera w kasie metodę dostawy (kurier), a zamówienie ma jej kopię i koszt: suma zamówienia = suma pozycji po rabacie + koszt dostawy (`docs/features/delivery/spec.md`, W5, W6). Zamówienia sprzed dostawy nie mają metody i kosztują tyle, co ich pozycje. |
 | P4 | Dane: e-mail, imię i nazwisko, telefon (wymagany), adres w Polsce: ulica i numer, kod pocztowy `NN-NNN`, miejscowość. |
 | P5 | Klient zalogowany: e-mail z konta (bez edycji), imię i nazwisko wstępnie z konta, adres wpisywany przy każdym zamówieniu (bez zapisywania na koncie). |
 | P6 | Numer zamówienia: `R-` i kolejny numer z sekwencji od 100001 (np. `R-100001`). |
 | P7 | Strona potwierdzenia: numer zamówienia, kwota brutto i status płatności; adres e-mail po opłaceniu; szczegóły pozycji w e-mailu. Gość nie czyta zamówienia, tylko status jego płatności: tokenem dostępu (`accessToken`) z ciasteczka potwierdzenia (`docs/features/payment/spec.md`, decyzja A5), klient sesją. |
-| P8 | E-mail: tekstowy, po polsku, z numerem, pozycjami (nazwa, wariant, ilość, wartość), sumą i adresem dostawy. |
+| P8 | E-mail: tekstowy, po polsku, z numerem, pozycjami (nazwa, wariant, ilość, wartość), wierszem „Dostawa (<nazwa metody>): X zł” (także 0,00 zł), sumą i adresem dostawy. |
 | P9 | Przycisk złożenia: „Zamawiam z obowiązkiem zapłaty”. Bez akceptacji regulaminu (sklep nie ma regulaminu). |
 | P10 | Gość na stronie kasy widzi link „Zaloguj się” (powrót do kasy, scalenie koszyka jak dziś). Zamówienie gościa nie jest wiązane z kontem o tym samym e-mailu. |
 | A1 | Nowy bounded context Ordering z agregatem `Order` (pozycje i adres jako kopie, nie referencje), zapis przez rekordy Doctrine według ogólnej zasady. |
@@ -173,7 +173,7 @@ serwowane.
 
 ## Złożenie zamówienia (`PlaceOrder`)
 
-Komenda `PlaceOrder(cartRef, contact, address, expectedTotalGross, idempotencyKey, discountCode | null, clientAddress)` na
+Komenda `PlaceOrder(cartRef, contact, address, deliveryMethodId, expectedTotalGross, idempotencyKey, discountCode | null, clientAddress)` na
 `command.bus` (kod normalizuje `DiscountCodeText`; pusty albo biały to brak kodu), gdzie `cartRef`
 to `guest(cartId)` albo `customer(customerId)`; wynik `PlacedOrder {order: OrderView, replayed: bool}`. Jedna
 transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
@@ -192,9 +192,10 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
      zmiany (koszyk nie jest opróżniany, więc pozycje dodane po pierwszym złożeniu zostają);
    - zamówienie istnieje z innym odciskiem (inny koszyk, inny klient albo inna treść): `IdempotencyKeyReused` (409).
    Odcisk żądania (`requestFingerprint`): SHA-256 znormalizowanych `cartRef` (`guest:<cartId>` albo
-   `customer:<sub>`), danych kontaktowych, adresu i `expectedTotalGross` (po przycięciu i normalizacji telefonu) oraz
-   znormalizowanego kodu rabatowego, dopisanego tylko wtedy, gdy jest; odcisk żądania bez kodu jest taki sam jak przed
-   kodami rabatowymi.
+   `customer:<sub>`), danych kontaktowych, adresu i `expectedTotalGross` (po przycięciu i normalizacji telefonu),
+   znormalizowanego kodu rabatowego, dopisanego tylko wtedy, gdy jest, i `delivery:<deliveryMethodId>` (UUID małymi
+   literami) po nim; odcisk żądania bez kodu jest taki sam jak przed kodami rabatowymi. Ten sam klucz z inną metodą
+   dostawy to inne żądanie (`IdempotencyKeyReused`).
    Koszyk jest częścią odcisku, więc dwa koszyki gości z tym samym kluczem i tymi samymi danymi dostają 409, a nie
    cudze zamówienie.
 3. Brak linii: `CartEmpty` (409). Zamówienie gościa większe niż 10 linii albo 10 sztuk jednej linii: `GuestOrderTooLarge` (409, reguła domeny `GuestOrderSize`), zaraz po `CartEmpty`, przed wyceną, kodem, numerem i rezerwacją, więc przed `CartNotOrderable`, `DiscountCodeRejected`, `OrderTotalChanged` i niedoborem. Zamówienie klienta nie podlega tej regule (do 50 linii po 99 sztuk, jak koszyk).
@@ -208,8 +209,13 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
    i `OrderCatalog::variants(variantIds)` (Catalog `GetVariantSummaries`), po jednym wywołaniu. Wariant bez aktualnej
    ceny albo nieznany Catalogowi: `CartNotOrderable` (409, decyzja P1). Kod odrzucony w wycenie:
    `DiscountCodeRejected` (409 z typem i `detail` odrzucenia Pricing), przed porównaniem kwoty.
-5. **Kwota.** Linie z wartościami wyceny i sumy w domenie (`OrderLine`, `OrderTotals`). `totals.gross` (po rabacie)
-   `≠ expectedTotalGross`: `OrderTotalChanged` (409, decyzja P2), przed rezerwacją.
+4a. **Dostawa** (`docs/features/delivery/spec.md`, W5; odczyty bez blokad). Port `OrderDeliveryQuotes` (Delivery
+   `QuoteDelivery` dla wartości towarów po rabacie) wybiera metodę `deliveryMethodId`; metoda nieznana albo nieaktywna:
+   `DeliveryMethodUnavailable` (409 `delivery-method-unavailable`), po odrzuceniu kodu. Koszt metody dzieli na stawki
+   VAT linii port `OrderPrices` (Pricing `SplitDeliveryCost`; darmowa dostawa nie ma udziałów).
+5. **Kwota.** Linie z wartościami wyceny, dostawa i sumy w domenie (`OrderLine`, `OrderDelivery`, `OrderTotals`).
+   `totals.gross` (po rabacie, z dostawą) `≠ expectedTotalGross`: `OrderTotalChanged` (409, decyzja P2), przed
+   rezerwacją.
 5a. **Użycie kodu** (gdy wycena zastosowała kod). `orderId` (UUID v7) jest nadawany przed tym krokiem. Port
    `DiscountCodeRedemptions::redeem(codeId, orderId, subtotalGross)` (Pricing `RedeemDiscountCode`, zagnieżdżony
    dispatch): kod czytany od nowa, kod z limitem pod blokadą wiersza, reguły kodu jeszcze raz; odrzucenie adapter
@@ -259,9 +265,9 @@ Idempotencja a dane innych klientów:
   działa bez koszyka, ale tylko z tym samym `cartId` i tą samą treścią.
 
 Ceny i kwoty liczy wyłącznie serwer:
-- Żądanie nie niesie cen, ilości ani pozycji (tylko opcjonalny tekst kodu). Linie i ilości pochodzą z zablokowanego
-  koszyka, ceny, rabat i wartości linii z wyceny Pricing w chwili złożenia (krok 4), a sumy liczy domena
-  (`OrderTotals`).
+- Żądanie nie niesie cen, ilości ani pozycji (tylko opcjonalny tekst kodu i identyfikator metody dostawy). Linie
+  i ilości pochodzą z zablokowanego koszyka, ceny, rabat i wartości linii z wyceny Pricing w chwili złożenia (krok 4),
+  koszt dostawy z wyceny Delivery i podziału Pricing (krok 4a), a sumy liczy domena (`OrderTotals`).
 - `expectedTotalGross` służy wyłącznie do porównania (P2) i nie trafia do zamówienia. Kwota niższa albo wyższa od
   sumy liczonej przez serwer daje 409 bez zamówienia.
 - Nieznane pola treści żądania są ignorowane (jak w koszyku, `MapRequestPayload`): pola typu `lines`, `totals`,
@@ -363,8 +369,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
-| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross, discountCode?}` | 201 `OrderView`, nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią (bez drugiego użycia kodu) | 400 brak lub zły klucz, zły JSON; 401 niepoprawny token; 404 koszyk; 409 z `type` przyczyny (`CartEmpty`, `GuestOrderTooLarge` tylko dla gościa, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`, `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` z rozszerzeniem `minimumOrderGross`; schemat OpenAPI `OrderConflictProblem` z `enum` wartości `type`); 415; 422; 503 (token wysłany, klucze wystawcy niedostępne) |
-| `POST /api/v1/me/orders` (klient), nagłówek `Idempotency-Key`, body `{fullName, phone, street, postalCode, city, expectedTotalGross, discountCode?}` | jak wyżej; e-mail z tokena | 401 (bez tokena, token `backoffice`), 503 (klucze wystawcy niedostępne), pozostałe jak wyżej bez 404 |
+| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross, deliveryMethodId, discountCode?}` | 201 `OrderView` (z `delivery: {methodName, gross}`), nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią (bez drugiego użycia kodu) | 400 brak lub zły klucz, zły JSON; 401 niepoprawny token; 404 koszyk; 409 z `type` przyczyny (`CartEmpty`, `GuestOrderTooLarge` tylko dla gościa, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`, `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` z rozszerzeniem `minimumOrderGross`, `delivery-method-unavailable`; schemat OpenAPI `OrderConflictProblem` z `enum` wartości `type`); 415; 422; 503 (token wysłany, klucze wystawcy niedostępne) |
+| `POST /api/v1/me/orders` (klient), nagłówek `Idempotency-Key`, body `{fullName, phone, street, postalCode, city, expectedTotalGross, deliveryMethodId, discountCode?}` | jak wyżej; e-mail z tokena | 401 (bez tokena, token `backoffice`), 503 (klucze wystawcy niedostępne), pozostałe jak wyżej bez 404 |
 
 `OrderView`:
 
@@ -409,6 +415,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | `postalCode` | brak, pusty / zły format (także ze znakiem niedozwolonym) | Kod pocztowy jest wymagany. / Podaj kod pocztowy w formacie 00-000. |
 | `city` | brak, pusty / > 60 / znak niedozwolony | Miejscowość jest wymagana. / Miejscowość może mieć najwyżej 60 znaków. / Miejscowość zawiera niedozwolone znaki. |
 | `expectedTotalGross` | brak, `null` / nie liczba całkowita / ujemna | Kwota zamówienia jest wymagana. / Kwota zamówienia musi być liczbą całkowitą. / Kwota zamówienia nie może być ujemna. |
+| `deliveryMethodId` | brak, `null` / nie tekst, pusty albo nie UUID (8-4-4-4-12 cyfr szesnastkowych, dowolna wielkość liter) | Kasa została zaktualizowana. Odśwież stronę i wybierz sposób dostawy. / Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie. |
 | `discountCode` | nie tekst (liczba, tablica, `true`) / > 64 znaki | Kod rabatowy musi być tekstem. / Kod rabatowy może mieć najwyżej 64 znaki. |
 
 - `discountCode` jest opcjonalny: brak klucza, `null`, `""` i same białe znaki to złożenie bez kodu.
@@ -464,7 +471,11 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   `hasExcludedLines`; przy `hasExcludedLines` nieaktywny z tekstem „Usuń albo popraw oznaczone pozycje, żeby złożyć
   zamówienie.”.
 - `/checkout` (`noindex, nofollow`, Client Component): podsumowanie z `/api/cart` (linie: nazwa, etykieta wariantu,
-  ilość, wartość; suma brutto), formularz (P4, P5), grupa radiowa „Sposób płatności” (dostawcy z API, wymagany wybór, bez domyślnego), przycisk
+  ilość, wartość; wiersz „Dostawa” z kosztem wybranej metody albo „Darmowa”; „Do zapłaty” = `totalGross` wybranej
+  opcji, bez wyboru zamiast obu kwot „Wybierz sposób dostawy”), formularz (P4, P5), grupa radiowa „Sposób dostawy”
+  (`fieldset` z `legend`, opcje `cart.delivery.options`: nazwa, opis, koszt albo „Darmowa”, „Do darmowej dostawy
+  brakuje Y zł”; wymagany wybór, bez domyślnego, bez sekcji przy `delivery: null`; szczegóły:
+  `docs/features/delivery/spec.md`, W10), grupa radiowa „Sposób płatności” (dostawcy z API, wymagany wybór, bez domyślnego), przycisk
   „Zamawiam z obowiązkiem zapłaty” (P9). Gość: pole
   e-mail i link „Zaloguj się” (`/auth/login?returnTo=/checkout`). Klient: e-mail z `/auth/session` jako tekst,
   imię i nazwisko wstępnie wypełnione z sesji (konto bez imienia ma w sesji e-mail jako nazwę: pole zostaje puste).
@@ -493,8 +504,11 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   Znany skutek reguły „zmiana danych = nowy klucz”: gdy wynik poprzedniej próby był niepewny (błąd sieci, 5xx, 503,
   403), a zamówienie jednak powstało, zmiana pola i ponowne kliknięcie dają 409 `CartEmpty` (pusty koszyk), a nie
   potwierdzenie. Drugiego zamówienia nie ma, bo koszyk jest pusty.
-- `expectedTotalGross` = `totals.gross` z ostatnio wczytanego podsumowania. Na czas żądania przycisk jest
-  zablokowany.
+- `expectedTotalGross` = `totalGross` wybranej opcji dostawy z ostatnio wczytanego podsumowania, `deliveryMethodId` =
+  jej `methodId`. Bez wybranej metody (także gdy wybranej nie ma już wśród opcji podsumowania) żądania nie ma:
+  „Wybierz sposób dostawy.” przy grupie i fokus na jej pierwszej opcji. Zmiana metody daje nowy klucz (inna treść
+  żądania); po 409 `delivery-method-unavailable` komunikat jest nad formularzem, podsumowanie wczytuje się od nowa
+  i powstaje nowy klucz. Na czas żądania przycisk jest zablokowany.
 - Sukces: licznik koszyka 0 (zdarzenie `src/cart/events.ts`), przejście na stronę dostawcy (`redirectUrl`) albo,
   bez niego, na `/checkout/confirmation`.
 - `/checkout/confirmation` (`noindex, nofollow`, Server Component czytający podpisane `store_order_confirmation`
