@@ -48,9 +48,9 @@ final class OutboxRelayTest extends MessagingKernelTestCase
         $this->breakBroker();
 
         // Every failed attempt replaces the row with a copy delayed by the retry strategy: 1, 2, 4 … 32 s, then
-        // 60 s, about 25 minutes in all, so a broker restart does not push events to `failed`. Each delay has ±10 %
+        // 60 s, about 3 hours (200 tries) in all, so a broker restart does not push events to `failed`. Each delay has ±10 %
         // jitter; available_at is rounded up to the second, created_at truncated.
-        for ($retry = 1; $retry <= 30; ++$retry) {
+        for ($retry = 1; $retry <= 200; ++$retry) {
             $delay = min(2 ** ($retry - 1), 60);
             $this->consume('outbox');
 
@@ -61,7 +61,7 @@ final class OutboxRelayTest extends MessagingKernelTestCase
             $this->elapseOutboxDelay();
         }
 
-        // The 31st failure exhausts the retries: the event moves to `failed` instead of being lost.
+        // The 201st failure exhausts the retries: the event moves to `failed` instead of being lost.
         $this->consume('outbox');
         self::assertSame(0, $this->rows('outbox'));
         self::assertSame(1, $this->rows('failed'));

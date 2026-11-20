@@ -21,7 +21,8 @@ use Symfony\Component\Messenger\MessageBusInterface;
  * only refresh it from the current data, however often they run.
  *
  * A change from the demo seed is acked without any request: `make seed` ends with storefront:cache:purge-all, and an
- * invalidation per seeded price would hold up the queue of the worker.
+ * invalidation per seeded price would hold up the queue of the worker. So is a tax reconciliation: it keeps the gross
+ * price and the history, and the pages hold neither the rate nor the net.
  */
 #[AsMessageHandler(bus: 'event.bus', fromTransport: 'events')]
 final class InvalidateStorefrontOnPriceChange
@@ -40,7 +41,7 @@ final class InvalidateStorefrontOnPriceChange
      */
     public function __invoke(VariantPriceChanged $event): void
     {
-        if (PriceChangeSource::Seed === $event->source) {
+        if (PriceChangeSource::Seed === $event->source || PriceChangeSource::TaxReconciliation === $event->source) {
             return;
         }
         $variant = $this->handle(new GetVariant($event->variantId));

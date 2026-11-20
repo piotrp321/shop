@@ -165,7 +165,7 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
     {
         $this->transport('events')->send(new Envelope($event, [new BusNameStamp('event.bus')]));
         $this->consume('events');
-        // A failed handler would put the message back through the retry delay (100 ms ±10 %), so wait it out.
+        // A failed handler would put the message back through the retry delay (2 ms ±10 %), so wait it out.
         usleep(300_000);
     }
 

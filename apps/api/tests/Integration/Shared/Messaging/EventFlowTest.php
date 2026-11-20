@@ -86,7 +86,7 @@ final class EventFlowTest extends MessagingKernelTestCase
 
         $this->consume('events');
 
-        // A failed handler would put the message back through the retry delay (100 ms ±10 %), so wait it out.
+        // A failed handler would put the message back through the retry delay (2 ms ±10 %), so wait it out.
         usleep(300_000);
         self::assertSame(0, $this->eventsInQueue());
         self::assertSame(0, $this->rows('failed'));
@@ -211,7 +211,7 @@ final class EventFlowTest extends MessagingKernelTestCase
         self::assertSame($requestId, $byMessage['{class} was handled successfully (acknowledging to transport).'] ?? null, 'the identifier of the entry of the worker');
         self::assertNull($correlationId->current(), 'the worker is left without an identifier');
 
-        // The retry of the ProductCreated comes back to the queue after its delay (100 ms ±10 %); it must not reach a
+        // The retry of the ProductCreated comes back to the queue after its delay (2 ms ±10 %); it must not reach a
         // later test.
         $this->awaitEventsInQueue(1);
         self::assertCount(1, $this->drainEvents());

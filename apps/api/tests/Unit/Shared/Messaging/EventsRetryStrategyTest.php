@@ -36,7 +36,6 @@ final class EventsRetryStrategyTest extends TestCase
     public function testTheTestMessagingKernelExhaustsTheRetriesInAFewSeconds(): void
     {
         $test = self::strategy('test_messaging/messenger.yaml', 'events');
-        \assert(\is_int($test['delay']) && \is_int($test['multiplier']) && \is_int($test['max_delay']) && \is_int($test['max_retries']));
 
         $total = 0;
         for ($retry = 0; $retry < $test['max_retries']; ++$retry) {
@@ -55,11 +54,11 @@ final class EventsRetryStrategyTest extends TestCase
     }
 
     /**
-     * @return array<mixed>
+     * @return array<string, int>
      */
     private static function strategy(string $file, string $transport): array
     {
-        /** @var array{framework?: array{messenger?: array{transports?: array<string, array{retry_strategy?: array<mixed>}>}}} $config */
+        /** @var array{framework?: array{messenger?: array{transports?: array<string, array{retry_strategy?: array<string, int>}>}}} $config */
         $config = Yaml::parseFile(\dirname(__DIR__, 4).'/config/packages/'.$file);
         $strategy = $config['framework']['messenger']['transports'][$transport]['retry_strategy'] ?? null;
         self::assertIsArray($strategy, $file.' sets the retry strategy of '.$transport);

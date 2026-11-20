@@ -10,7 +10,6 @@ use App\Pricing\Infrastructure\Storefront\InvalidateStorefrontOnPriceChange;
 use App\Shared\Infrastructure\Http\Cache\StorefrontCacheFailure;
 use App\Tests\Support\InMemory\InMemoryCatalogVariants;
 use App\Tests\Support\InMemory\SpyStorefrontCache;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class InvalidateStorefrontOnPriceChangeTest extends TestCase

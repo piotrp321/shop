@@ -24,7 +24,8 @@ use Symfony\Component\Messenger\MessageBusInterface;
  * query.bus). Independent of the invalidation of the store's cache; idempotent, because the index keeps the document
  * of the newest read.
  *
- * A change from the demo seed is acked without reindexing: `make seed` rebuilds the index after all the seeds.
+ * A change from the demo seed is acked without reindexing: `make seed` rebuilds the index after all the seeds. So is
+ * a tax reconciliation: it keeps the gross price and the history, and the index holds neither the rate nor the net.
  */
 #[AsMessageHandler(bus: 'event.bus', fromTransport: 'events')]
 final class ReindexProductOnPriceChange
@@ -44,7 +45,7 @@ final class ReindexProductOnPriceChange
      */
     public function __invoke(VariantPriceChanged $event): void
     {
-        if (PriceChangeSource::Seed === $event->source) {
+        if (PriceChangeSource::Seed === $event->source || PriceChangeSource::TaxReconciliation === $event->source) {
             return;
         }
         $variant = $this->handle(new GetVariant($event->variantId));
