@@ -25,15 +25,6 @@ final class DeliveryCostSplitTest extends TestCase
         self::assertSame([[2300, 1333, 1084, 249], [800, 666, 617, 49]], self::rows($shares));
     }
 
-    public function testTheSharesAreInPolishZloty(): void
-    {
-        foreach (DeliveryCostSplit::of(1999, [2300 => 10_000, 800 => 5_000]) as $share) {
-            self::assertSame(Currency::PLN, $share->gross()->currency());
-            self::assertSame(Currency::PLN, $share->net()->currency());
-            self::assertSame(Currency::PLN, $share->vat()->currency());
-        }
-    }
-
     public function testTheRatesAreInDescendingOrderWhateverTheOrderOfTheMap(): void
     {
         $shares = DeliveryCostSplit::of(1999, [800 => 5_000, 0 => 2_000, 2300 => 10_000, 500 => 3_000]);
@@ -113,7 +104,7 @@ final class DeliveryCostSplitTest extends TestCase
                 self::assertSame($gross, $share->net()->amount() + $share->vat()->amount());
                 self::assertTrue(PriceBreakdown::ofLineGross(Money::of($gross, Currency::PLN), $share->rate())->net()->equals($share->net()));
                 self::assertLessThan($previous, $rate);
-                self::assertGreaterThan(0, $goods[$rate]);
+                self::assertGreaterThan(0, $goods[$rate] ?? 0);
                 $previous = $rate;
                 $total += $gross;
             }

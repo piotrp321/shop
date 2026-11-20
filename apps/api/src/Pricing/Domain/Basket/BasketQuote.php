@@ -213,12 +213,15 @@ final readonly class BasketQuote
     }
 
     /**
-     * The largest-remainder allocation of the discount over the line values (see the class). Public for the demo data
-     * generator, which splits the discount of a generated order by this rule (docs/features/demo-data/spec.md, P1a).
+     * The largest-remainder allocation of an amount D over values g_i of sum S (see the class): Σ d_i = D, the earlier
+     * value first on a tie of remainders; with D < S (a discount) also d_i ≤ g_i. Correct for any D ≥ 0 at S > 0, also
+     * D ≥ S: the split of the cost of a delivery (DeliveryCostSplit), which may exceed the goods, uses it too. Public
+     * also for the demo data generator, which splits the discount of a generated order by this rule
+     * (docs/features/demo-data/spec.md, P1a).
      *
-     * @param list<int> $values   g_i
-     * @param int       $subtotal S, their sum
-     * @param int       $discount D, 0 ≤ D < S (0: nothing to allocate)
+     * @param list<int> $values   g_i, each ≥ 0
+     * @param int       $subtotal S > 0, their sum
+     * @param int       $discount D ≥ 0 (0: nothing to allocate)
      *
      * @return list<int> d_i, in the order of the values
      */
@@ -233,7 +236,7 @@ final readonly class BasketQuote
         foreach ($values as $value) {
             [$quotient, $remainder] = gmp_div_qr(gmp_mul($value, $discount), $subtotal);
             \assert($quotient instanceof \GMP && $remainder instanceof \GMP);
-            // At most g_i and below S, so both are ints.
+            // The quotient is at most D and the remainder below S, so both are ints.
             $shares[] = gmp_intval($quotient);
             $remainders[] = gmp_intval($remainder);
         }
