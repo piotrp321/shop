@@ -82,33 +82,48 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   brokera, ale nie obsłużyłby zaległych `pending` sprzed epiku ani płatności zamówień `new` po terminie, których nikt
   jeszcze nie anulował; komenda obsługuje wszystkie przypadki jednym mechanizmem.
 
+- **D6. Ponowienia transportu `failed` (wynik E5).** Domyślnie transport `failed` ma 3 ponowienia: wiadomość, która
+  przy `failed:retry` zawiedzie czwarty raz, znika bez śladu poza logiem, także webhook płatności.
+  - (a) Transport `failed` z jawną strategią bez limitu w praktyce (`max_retries` bardzo duże, stałe opóźnienie
+    60 s; rekomendacja): każda nieudana próba zostawia wiadomość w `failed` pod nowym ID, a `failed:retry` bez ID
+    kończy się, bo ponowione wiadomości czekają na swoje opóźnienie. Wiadomość znika tylko przez `failed-remove`.
+    Zmiana jednej sekcji `messenger.yaml` w zadaniu 7, test ścieżki „trzy nieudane próby i czwarta” w zadaniu 7.
+  - (b) Bez zmiany konfiguracji: runbook i cel `failed-retry` ostrzegają, że czwarta nieudana próba usuwa wiadomość.
+    Zostaje ryzyko utraty webhooka płatności przez pomyłkę operatora.
+
 ## Wymagane przed startem
 
 - **Zasoby spoza repo: brak.** Epik nie potrzebuje sekretów, kont ani uprawnień: CronJoby i reguły używają istniejących
   metryk z listy dozwolonych (`kube_job_status_condition`, `kube_job_owner`, `kube_cronjob_status_last_successful_time`),
   synchronizacja reguł do Grafana Cloud już działa.
 - **Issue epiku:** #768 (etykieta `epic`), w linii `Issues:`.
-- **Eksperymenty na wersjach epiku** (`symfony/messenger` v8.1.9 z `apps/api/composer.lock`, PHP 8.5, k3s z
-  `infra/k8s/scripts/tools.sh`). Szkic powstał bez uruchamiania Dockera (na maszynie trwał przebieg orkiestratora),
-  więc wyniki wpisuje orkiestrator epiku przed startem zadań; każde założenie potwierdza też test zadania, które na nim
-  stoi. Wynik inny niż oczekiwany to pytanie do użytkownika przed startem, nie odkrycie w trakcie zadania.
-  - E1, odbiór bez brokera (D2, W1, zadanie 1): `RABBITMQ_HOST` na zamknięty port,
-    `docker compose exec api bin/console messenger:consume payment_simulator scheduled promotions jobs --limit=1
-    --time-limit=10 -vv`; oczekiwane: kod 0, bez próby połączenia AMQP. Przesłanka z kodu: `RoutedAmqpTransportFactory`
-    tworzy tylko `Connection::fromDsn`, który się nie łączy, a zdarzenia trasuje `DomainEvent: outbox`.
-  - E2, kolejność odbiorców (D2): `grep -n "break" vendor/symfony/messenger/Worker.php` w kontenerze `api`; oczekiwane:
-    po obsłużonej kopercie pętla odbiorców przerywa się i zaczyna od pierwszego.
-  - E3, limity (W2): `messenger:consume jobs --memory-limit=1M --limit=1` i `--time-limit=1`; oczekiwane: łagodne
-    zakończenie z kodem 0 po wiadomości.
-  - E4, `unserialize` klasy `final readonly` (D3, W11): skrypt `php -r` z klasą z dodanym i usuniętym polem;
-    oczekiwane: niezainicjalizowana właściwość, błąd przy nadmiarowej.
-  - E5, `messenger:failed:retry` (W10): wiadomość, która znów zawodzi, wraca do `failed`; wiadomość przeniesiona do
-    `failed` zapytaniem SQL (bez `SentToFailureTransportStamp`, test dymny) da się usunąć `messenger:failed:remove`.
-  - E6, pobieranie z transportu Doctrine (W1): `grep -n "SKIP LOCKED\|FOR UPDATE" vendor/symfony/doctrine-messenger/Transport/Connection.php`;
-    oczekiwane: blokada wiersza, więc dwa procesy nie biorą tej samej wiadomości.
-  - E7, Job z CronJoba (W9, test dymny): `kubectl create job x --from=cronjob/cart-purge-expired` na k3d testu dymnego,
-    potem `kubectl get job x -o jsonpath='{.metadata.ownerReferences}'`; oczekiwane: właściciel `CronJob`, więc
-    `kube_job_owner` łączy taki Job z regułą.
+- **Eksperymenty na wersjach epiku** (`symfony/messenger` v8.1.11 z `apps/api/composer.lock`, PHP 8.5.12, k3s
+  v1.36.6 z `infra/k8s/scripts/tools.sh`), wykonane 2026-11-20 przez orkiestratora epiku na stosie compose i na
+  tymczasowym klastrze k3d. Każde założenie potwierdza też test zadania, które na nim stoi.
+  - E1, odbiór bez brokera (D2, W1, zadanie 1). Potwierdzone: `messenger:consume payment_simulator scheduled promotions
+    jobs --limit=1 --time-limit=10` z `RABBITMQ_HOST=127.0.0.1` (port zamknięty) kończy się kodem 0, w logu nie ma próby
+    połączenia AMQP. `messenger:consume outbox events` z tym samym adresem kończy się kodem 1 („Could not connect to the
+    AMQP server”).
+  - E2, kolejność odbiorców (D2). Potwierdzone: w `Worker::run()` po obsłudze koperty z danego odbiorcy pętla
+    odbiorców przerywa się (`if ($envelopeHandled) { break; }`) i zaczyna od pierwszego na liście.
+  - E3, limity (W2). Potwierdzone: `--memory-limit=1M` i `--time-limit=1` kończą worker łagodnie z kodem 0
+    („Worker stopped due to …”). Warunek stopu sprawdza `WorkerRunningEvent` po obsłużonej wiadomości, przed
+    pobraniem następnej, więc limit nie przerywa wiadomości w trakcie.
+  - E4, `unserialize` klasy `final readonly` (D3, W11). Potwierdzone: dodane pole zostaje niezainicjalizowane
+    (`Error: Typed property … must not be accessed before initialization` przy odczycie), nadmiarowe pole kończy
+    `unserialize` błędem `Cannot create dynamic property`.
+  - E5, `messenger:failed:retry` (W10). Wynik inny niż oczekiwany. Wiadomość z `failed`, która przy `failed:retry`
+    znów zawodzi, wraca do `failed` jako nowy wiersz (nowe ID) tylko przez pierwsze trzy próby: decyduje o tym
+    domyślna strategia ponowień transportu `failed` (3 ponowienia), bo listener `SendFailedMessageToFailureTransportListener`
+    nie odsyła do transportu awarii wiadomości odebranej z niego samego. Czwarta nieudana próba usuwa wiadomość na
+    stałe („Removing from transport after 3 retries”). Druga część potwierdzona: wiadomość przeniesiona do `failed`
+    zapytaniem SQL (bez `SentToFailureTransportStamp`) usuwa `messenger:failed:remove <id> --force`. Decyzja: D6.
+  - E6, pobieranie z transportu Doctrine (W1). Potwierdzone: `Connection::get()` blokuje wiersz
+    (`forUpdate(ConflictResolutionMode::SKIP_LOCKED)`, a bez obsługi `SKIP LOCKED` zwykłe `FOR UPDATE`), więc dwa
+    procesy nie biorą tej samej wiadomości.
+  - E7, Job z CronJoba (W9, test dymny). Potwierdzone: `kubectl create job x --from=cronjob/cart-purge-expired` daje Job
+    z `ownerReferences` `[{"apiVersion":"batch/v1","controller":true,"kind":"CronJob","name":"cart-purge-expired",…}]`,
+    więc `kube_job_owner` łączy taki Job z regułą.
 
 ## Poza zakresem
 

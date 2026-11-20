@@ -9,7 +9,7 @@ PR-ów. Plan jest dokumentem roboczym: po ukończeniu epica usuń go.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | ASYNC-RELIABILITY-1, ASYNC-RELIABILITY-2, ASYNC-RELIABILITY-3, ASYNC-RELIABILITY-4, ASYNC-RELIABILITY-6 | |
+| 1 | ASYNC-RELIABILITY-1, ASYNC-RELIABILITY-2, ASYNC-RELIABILITY-3, ASYNC-RELIABILITY-4, ASYNC-RELIABILITY-6 | w toku: 1, 2, 4, 6; 3 po scaleniu 1, 2 i 4 (wspólne pliki) |
 | 2 | ASYNC-RELIABILITY-5, ASYNC-RELIABILITY-7 | |
 | 3 | ASYNC-RELIABILITY-8 | |
 
@@ -267,7 +267,7 @@ zachowanie, które zadanie zmienia.
         "Testy renderu: oba CronJoby z harmonogramami z wartości, `concurrencyPolicy: Forbid`, `startingDeadlineSeconds: 240`, `backoffLimit` 0 i 1, `activeDeadlineSeconds` 120 i 600, zasobami `job` i `shop.apiEnv`; kontener `order-expiry` uruchamia obie komendy i kończy się błędem, gdy którakolwiek się nie udała (test skryptu, także ścieżka błędu pierwszej komendy).",
         "Testy `restore.sh` na atrapach: aktywny Job `queue-check` albo `order-expiry` nie daje odmowy, a odtworzenie czeka na jego koniec przed skalowaniem do zera; oba CronJoby wstrzymane przed odtworzeniem i przywrócone, także po przerwanej próbie; inny aktywny Job dalej daje odmowę.",
         "`make -C infra/k8s smoke`: przy RabbitMQ zeskalowanym do zera i wstrzymanym `order-expiry` zamówienie po terminie z gotową wiadomością jest `cancelled` w ciągu 2 minut, a po powrocie brokera wszystkie workloady są gotowe; z wiadomością w `failed` Job z `queue-check` kończy się `Failed`, Job z `order-expiry` zmienia zamówienie `new` po terminie na `cancelled`, po ponowieniu albo usunięciu wiadomości następny Job z `queue-check` kończy się sukcesem; odmowa odtworzenia nie wstrzymuje żadnego z czterech CronJobów; pozostałe fazy przechodzą.",
-        "`make -C infra/k8s check` przechodzi; dokumenty z zakresu podają dziesięć reguł (sześć w `prod` przy wyłączonych kopiach) i oba CronJoby."
+        "`make -C infra/k8s check` przechodzi; dokumenty z zakresu podają jedenaście reguł (siedem w `prod` przy wyłączonych kopiach) i oba CronJoby."
       ],
       "risk": "STANDARD",
       "depends_on": [
