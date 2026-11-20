@@ -54,7 +54,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   i `docs/features/admin-features/spec.md` (sekcja 2); zapis, błędy 409/422 i role: `src/products/useProductForm.ts`.
 - `src/orders/` – zamówienia (widoki `OrdersView` pod `/orders` i `OrderDetailView` pod `/orders/:orderId`, dwie trasy
   jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach). `useOrderDetail(orderId)`: szczegóły z `GET /api/v1/admin/orders/{id}`;
-  przyciski to wyłącznie `allowedTransitions` (`actions`) i `canCompleteRefund` z API, panel nie liczy statusów ani ról.
+  przyciski to wyłącznie `allowedTransitions` (`actions`), `canCompleteRefund` i `canChangeTrackingNumber` z API, panel nie
+  liczy statusów ani ról.
   Opis: `docs/features/admin-screens/spec.md` („Zamówienia”) i `docs/features/order-management/spec.md`.
 - `src/customers/` – klienci (menu Sklep › Klienci, trasy `/customers` i `/customers/:customerId`: dwie trasy jednej ścieżki
   `customers`, więc pozycja menu zostaje aktywna na karcie). Klient to konto sklepu z co najmniej jednym
