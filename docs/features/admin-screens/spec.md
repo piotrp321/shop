@@ -20,6 +20,7 @@ W zakresie:
 - Ceny (`/prices`) i Stany magazynowe (`/inventory`) z oknami zmiany ceny, przyjęcia, korekty i historii.
 - Promocje (`/promotions`, `/promotions/new`, `/promotions/:id`) z wyborem wariantów, i kody rabatowe
   (`/discount-codes`, `/discount-codes/new`, `/discount-codes/:id`).
+- Dostawa: lista i formularz metod dostawy (`/delivery`, `/delivery/new`, `/delivery/:id`; sekcja „Dostawa”).
 - Zamówienia: lista (`/orders`, także „Zwroty do wykonania” `?refund=pending`) i szczegóły (`/orders/:id`) z osią czasu.
 - Panel bez PrimeVue, bez listy `LEGACY_FILES` w konfiguracji ESLint i bez mostu „starych list” w menu (sekcja
   „Usunięcie PrimeVue”).
@@ -255,6 +256,42 @@ wariantów z etykietą wariantu („Wariant domyślny” dla pustej etykiety).
   null` sam status docelowy), aktor (`history-actor`: `staff` to `staffUsername`, a bez loginu „Pracownik” w
   `actorLabel`; `customer` „Klient”; `system` „System”, z etykietą „Kto:”) i notatka (`history-note`). Lista `<ol>`, bez
   sortowania i bez dokładania zdarzeń z innych pól; zwrot nie jest wpisem osi (karta „Zwrot pieniędzy”).
+
+## Dostawa
+
+Ekran metod dostawy (`/delivery`, `/delivery/new`, `/delivery/:id`; jedna ścieżka `delivery`, więc pozycja menu zostaje
+aktywna na formularzu), dla roli `admin`; opis metod, API i reguł: `docs/features/delivery/spec.md` (W1, W9, P7, P16).
+Panel tylko pokazuje i wysyła to, co API przyjmuje: długości, znaki, zakresy kwot, kolejności i formę linku sprawdza API
+(422 trafia do pola).
+
+- **Dostęp**: pozycja menu „Dostawa” (Sklep, po „Klientach”) jest tylko dla roli `admin` (`canManageDelivery`), a trasy
+  mają strażnika jak „Stan systemu” i „Klienci”: inna rola na każdym z trzech adresów trafia na pulpit z komunikatem „Nie
+  masz dostępu do tej strony.”. Gdy nie da się odczytać `/me`, trasa jest przepuszczana, a widok pokazuje 403 z API
+  („Nie masz dostępu do metod dostawy.”, bez „Spróbuj ponownie”).
+- **Lista** (H1 „Dostawa”, okruszki „Pulpit › Sklep › Dostawa”; bez stronicowania, wyszukiwania i filtrów): tabela
+  w kolejności API (aktywne po kolejności, pod nimi nieaktywne) z kolumnami Nazwa (link do formularza), Cena, Darmowa od
+  („—” bez progu), Kolejność, Status i Akcje („Edytuj: <nazwa>”); status jako `Badge` „Aktywna” albo „Nieaktywna”,
+  a wiersz nieaktywnej metody w wyciszonym tonie. Poniżej 1024 px Darmowa od i Kolejność są liniami komórki nazwy. Nad
+  tabelą „Aktywne: N z 20” (N to liczba aktywnych wierszy listy, limit 20 sprawdza API) i „Dodaj metodę”. Stany:
+  ładowanie (szkielet), błąd z „Spróbuj ponownie” (`role="alert"`), pusta lista „Brak metod dostawy. Dodaj pierwszą, żeby
+  sklep przyjmował zamówienia.” z przyciskiem „Dodaj metodę”.
+- **Formularz** (standard formularza, jedna kolumna; H1 „Nowa metoda dostawy” albo nazwa metody; karty „Metoda
+  dostawy”, „Cena”, „Dostępność”, „Śledzenie przesyłki”): „Nazwa”, „Opis (czas dostawy)”, „Cena brutto (zł)”, „Darmowa
+  od (zł, opcjonalnie)”, przełącznik „Aktywna”, „Kolejność” i „Link śledzenia (opcjonalnie)” z podpowiedzią „Adres
+  https:// z {numer} w miejscu numeru przesyłki”. Kwoty są w złotych z przecinkiem (`parseGross`; API dostaje grosze);
+  puste „Darmowa od”, opis i link idą jako `null`; tekst, którego nie da się odczytać jako kwoty albo liczby, jest błędem
+  pola bez żądania. Zapis niesie `version` odczytanej metody.
+- **Błędy zapisu**: 422 trafia do pól z komunikatami API (pierwsze pole z błędem w kolejności dokumentu dostaje fokus);
+  każdy 409 (`delivery-method-name-taken`, `delivery-method-limit-reached`, `about:blank` przy innej wersji) jest
+  komunikatem nad formularzem (`role="alert"`) z fokusem. Nazwa zajęta i limit zostawiają wpisane wartości; inna wersja
+  odczytuje metodę ponownie (formularz pokazuje jej aktualny stan, komunikat zostaje). 403, 404, 503 i brak połączenia
+  to komunikaty nad formularzem.
+- **Po zapisie** toast „Metoda dostawy zapisana.” i powrót na listę (fokus na H1 listy daje powłoka). Metoda, której nie
+  da się wczytać, ma H1 „Nie udało się wczytać metody dostawy”, komunikat („Ta metoda dostawy nie istnieje.” przy 404)
+  i link „Wróć do listy metod dostawy”.
+- Testy: Vitest (`DeliveryMethodsView`, `DeliveryMethodFormView`, `routerDelivery`, `AppMenu`, `noStaffRole`) i E2E
+  `e2e/tests/admin-screens-delivery.spec.ts` (dodanie, zmiana i wyłączenie własnej metody, błędy przy polach i 409,
+  brak dostępu innej roli, wygasła sesja 401, axe i reflow ekranów).
 
 ## Toasty
 

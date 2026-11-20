@@ -70,6 +70,9 @@ describe("a staff member without a staff role", () => {
     "/discount-codes",
     "/discount-codes/new",
     `/discount-codes/${ID}`,
+    "/delivery",
+    "/delivery/new",
+    `/delivery/${ID}`,
     "/inventory",
     "/orders",
     `/orders/${ID}`,
@@ -115,7 +118,7 @@ describe("a staff member without a staff role", () => {
     expect(document.activeElement).toBe(app.get("main h1").element);
   });
 
-  it.each(["/orders", "/system", "/products/new", "/promotions/new", "/discount-codes/new"])(
+  it.each(["/orders", "/system", "/delivery", "/products/new", "/promotions/new", "/discount-codes/new"])(
     "puts the focus on the heading of the message on a deep link to the guarded %s, whose guard read /me before the layout mounted",
     async (path) => {
       const { wrapper: app } = await open(path);
