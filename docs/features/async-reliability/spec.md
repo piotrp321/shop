@@ -82,31 +82,21 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   brokera, ale nie obsłużyłby zaległych `pending` sprzed epiku ani płatności zamówień `new` po terminie, których nikt
   jeszcze nie anulował; komenda obsługuje wszystkie przypadki jednym mechanizmem.
 
-- **D6. Wiadomość w `failed` znika tylko przez świadome usunięcie (wynik E5; kierunek (a) wybrany przez użytkownika
-  2026-11-20, zakres poniżej czeka na akceptację).** Nieudane ręczne ponowienie zachowuje wiadomość w `failed`,
-  także przy błędzie nieodwracalnym; udana obsługa ją usuwa; usunięcie to osobna operacja (`failed-remove`).
+- **D6. Wiadomość w `failed` znika tylko przez świadome usunięcie (wynik E5; decyzja użytkownika 2026-11-20:
+  kierunek (a), zakres i warunki poniżej, zadanie ASYNC-RELIABILITY-9).** Nieudane ręczne ponowienie zachowuje
+  wiadomość w `failed`, także przy błędzie nieodwracalnym; udana obsługa ją usuwa; usunięcie to osobna operacja
+  (`failed-remove`). Lista wiadomości ponawianych zbiorczo jest ustalona na początku przebiegu. Bez gwarancji
+  „dokładnie raz” przy awariach i równoległych uruchomieniach: możliwy jest duplikat, a obsługa wiadomości jest
+  idempotentna (zasada odbiorców w `apps/api/CLAUDE.md`).
   - Dlaczego konfiguracja nie wystarcza (Symfony Messenger v8.1.11, sprawdzone w kodzie): domyślna strategia `failed`
     ma 3 ponowienia; `SendFailedMessageForRetryListener::shouldRetry()` odrzuca `UnrecoverableExceptionInterface`
-    (także `HandlerFailedException` z samymi takimi wyjątkami) przed strategią, a `SendFailedMessageToFailureTransportListener`
-    pomija wiadomości odebrane z transportu awarii, więc worker robi `reject` (usunięcie wiersza) przy pierwszej
-    nieudanej próbie, niezależnie od `max_retries`. `messenger:failed:retry` bez ID bierze w pętli dowolną dostępną
-    wiadomość, aż żadnej nie ma: wiadomość zachowana jako dostępna od razu zapętla przebieg, a zachowana z opóźnieniem
-    znika na ten czas z `failed:show` i przy dużym przebiegu wraca do niego drugi raz.
-  - Zakres (proponowany): (1) listener `WorkerMessageFailedEvent` w `Shared\Infrastructure\Messaging`: wiadomość
-    odebrana z `failed`, która zawiodła i nie idzie do ponowienia, wraca do `failed` od razu (ta sama koperta,
-    pierwotny `SentToFailureTransportStamp`, świeży `ErrorDetailsStamp`, nowe ID), z logiem starego i nowego ID;
-    `failed` dostaje `retry_strategy.max_retries: 0`, więc błąd odwracalny i nieodwracalny idą tą jedną ścieżką.
-    (2) Komenda `app:messaging:failed-retry [--max=200]`: zapamiętuje ID wiadomości `failed` na starcie i ponawia
-    tylko je (`messenger:failed:retry <id…> --force`), więc każda wiadomość jest przetwarzana najwyżej raz w jednym
-    uruchomieniu, a kopie zachowane w trakcie czekają na kolejne. (3) Cel `failed-retry HOST` bez `ID` woła tę
-    komendę, z `ID` `messenger:failed:retry <ID> --force`; runbook: ID zachowanej wiadomości zmienia się po nieudanej
-    próbie, a `messenger:failed:retry` bez ID nie jest używane. (1) i (2) to nowe zadanie API (ASYNC-RELIABILITY-9,
-    przed zadaniem 7); (3) zostaje w zadaniu 7.
-  - Testy (zadanie 9, transport Doctrine w kernelu `test_messaging`): kilka kolejnych nieudanych ponowień zostawia
-    wiadomość (nowe ID za każdym razem, ta sama treść); `UnrecoverableMessageHandlingException` i
-    `HandlerFailedException` z samymi wyjątkami nieodwracalnymi zostawiają wiadomość; udana obsługa ją usuwa;
-    `failed:remove` ją usuwa; `app:messaging:failed-retry` na kilku wiadomościach (część zawodzi) kończy się,
-    a handler każdej wiadomości jest wywołany dokładnie raz.
+    (także `HandlerFailedException` z samymi takimi wyjątkami) przed strategią, a dla `RecoverableExceptionInterface`
+    (np. `RecoverableMessageHandlingException` z `NotificationSender`) zwraca „ponów” także przed strategią, więc
+    `max_retries: 0` nie wyłącza tej ścieżki; `SendFailedMessageToFailureTransportListener` pomija wiadomości odebrane
+    z transportu awarii, a worker po nieudanej próbie robi `reject` (usunięcie wiersza). `messenger:failed:retry` bez ID
+    bierze w pętli dowolną dostępną wiadomość, aż żadnej nie ma, więc wiadomość zachowana jako dostępna od razu
+    zapętla przebieg.
+  - Szczegóły zachowania: W12.
 
 ## Wymagane przed startem
 
@@ -408,9 +398,10 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
 
 - `make -C infra/k8s failed HOST=…` (tylko odczyt): `messenger:failed:show --stats`, potem lista (identyfikator, klasa,
   błąd, data) z `--max=200`, przez `kubectl exec` w `deploy/worker-commands`.
-- `make -C infra/k8s failed-retry HOST=… [ID=…]`: ponowienie jednej albo wszystkich (`messenger:failed:retry --force`)
-  w procesie uruchomionym w podzie `worker-commands` z `php -d memory_limit=128M`, żeby drugi proces PHP nie przekroczył
-  limitu kontenera obok workera.
+- `make -C infra/k8s failed-retry HOST=… [ID=…]`: z `ID` ponowienie jednej wiadomości (`messenger:failed:retry <ID>
+  --force`), bez `ID` ponowienie zbiorcze `app:messaging:failed-retry` (W12), w procesie uruchomionym w podzie
+  `worker-commands` z `php -d memory_limit=128M`, żeby drugi proces PHP nie przekroczył limitu kontenera obok workera.
+  Wypisuje raport komendy; ID wiadomości zachowanej po nieudanej próbie jest nowe.
 - `make -C infra/k8s failed-remove HOST=… ID=…`: usunięcie jednej wiadomości; wypisuje ją i działa dopiero po słowie `tak`
   (jak `reinitialize`).
 - `failed-retry` i `failed-remove` to w runbooku kroki „zgoda użytkownika”. Cele kończą się błędem bez `HOST`, bez `ID`
@@ -436,6 +427,31 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   zapis klasy usuniętej z kodu znika dopiero w wersji, w której znika jej handler.
 - `apps/api/CLAUDE.md`, „Zgodność wersji”: zasada z D3 i odwołanie do testu; zasada „pola opcjonalne” zostaje tylko jako
   własność JSON, nie jako zgoda na zmianę pól.
+
+### W12. Ręczne ponowienie zachowuje wiadomość w `failed` (D6)
+
+- **Zachowanie po nieudanej próbie.** Wiadomość odebrana z `failed`, której obsługa zawiodła, zostaje w `failed`:
+  - błąd, którego Symfony nie ponawia (strategia `failed` z `max_retries: 0`, `UnrecoverableMessageHandlingException`,
+    `HandlerFailedException` z samymi wyjątkami nieodwracalnymi): listener `WorkerMessageFailedEvent`
+    (`Shared\Infrastructure\Messaging`) zapisuje kopię koperty do `failed` od razu dostępną (pierwotny
+    `SentToFailureTransportStamp`, świeży `ErrorDetailsStamp`, nowe ID) i loguje stare i nowe ID; dopiero potem worker
+    usuwa oryginał;
+  - błąd wymuszający ponowienie (`RecoverableExceptionInterface`): Symfony sam odsyła kopertę do `failed` z opóźnieniem
+    i licznikiem ponowień; listener jej nie kopiuje (jedna kopia, nie dwie). Do końca opóźnienia wiadomość nie jest
+    widoczna w `failed:show`, a pulpit ją liczy.
+  - Nieudany zapis kopii kończy obsługę błędem przed usunięciem oryginału: oryginał zostaje (po `redeliver_timeout`
+    znów dostępny). Przerwanie procesu między zapisem kopii a usunięciem oryginału zostawia dwie wiadomości (duplikat);
+    obsługa jest idempotentna, a operator usuwa nadmiarową przez `failed-remove`.
+- **Udana obsługa** usuwa wiadomość jak dotąd.
+- **Ponowienie zbiorcze `app:messaging:failed-retry [--max=200]`** (`--force` bez pytania): zapamiętuje na starcie ID
+  najwyżej `max` najstarszych wiadomości `failed` i ponawia tylko je (`messenger:failed:retry <id…>`), więc kopie
+  zachowane w trakcie czekają na kolejny przebieg. Raport: ile wybrano, ile obsłużono (usunięte), ile zachowano po
+  błędzie (z nowymi ID), ile wiadomości zostało w `failed` po przebiegu i czy są poza wybraną listą („zostały
+  kolejne: uruchom ponownie”); zakończenie przebiegu nie oznacza pustej kolejki. Kod 0, gdy przebieg się odbył (także
+  z wiadomościami zachowanymi po błędzie), 2 przy błędzie odczytu.
+- **Blokada zbiorczego `messenger:failed:retry` bez ID**: listener `ConsoleEvents::COMMAND` wyłącza komendę bez
+  argumentu `id` (kod 113) z komunikatem wskazującym `app:messaging:failed-retry` albo ponowienie z `ID`; z ID komenda
+  działa bez zmian.
 
 ## Zgodność wersji przy wdrożeniu epiku
 
@@ -535,6 +551,14 @@ Dokumenty, które dziś podają zachowanie zmieniane przez epik, zmienia zadanie
 12. **Cele `failed*`.** Testy na atrapach: `failed` tylko czyta; `failed-retry` z `ID` i bez; `failed-remove` bez `tak`,
     bez `ID`, bez `HOST` i przy błędzie `ssh`/`kubectl` niczego nie zmienia.
 13. **Całość.** `make check`, `make test` i `make e2e` przechodzą na stosie compose z dwoma workerami.
+14. **Ręczne ponowienie (W12).** Testy integracyjne na transporcie Doctrine (kernel `test_messaging`): kilka kolejnych
+    nieudanych ponowień zostawia wiadomość (nowe ID, ta sama treść, dokładnie jeden wiersz); błąd nieodwracalny
+    (`UnrecoverableMessageHandlingException` i `HandlerFailedException` z samymi takimi wyjątkami) zostawia ją;
+    `RecoverableMessageHandlingException` zostawia ją jako jeden wiersz z opóźnieniem (bez kopii listenera); udana
+    obsługa ją usuwa; `failed:remove` ją usuwa; nieudany zapis kopii nie usuwa oryginału; `app:messaging:failed-retry`
+    na kilku wiadomościach (część zawodzi) kończy się, handler każdej wybranej jest wywołany dokładnie raz, raport podaje
+    wybrane, obsłużone, zachowane i pozostałe (także przy `--max` mniejszym niż kolejka); `messenger:failed:retry` bez
+    ID kończy się kodem 113 z komunikatem i nie przetwarza niczego, z ID działa.
 
 ## Ryzyka i ograniczenia
 

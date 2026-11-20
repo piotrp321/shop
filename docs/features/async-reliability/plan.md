@@ -12,6 +12,7 @@ PR-ów. Plan jest dokumentem roboczym: po ukończeniu epica usuń go.
 | 1 | ASYNC-RELIABILITY-1, ASYNC-RELIABILITY-2, ASYNC-RELIABILITY-3, ASYNC-RELIABILITY-4, ASYNC-RELIABILITY-6 | 2, 4 i 6 scalone (przegląd PASS); w toku: 1, 3 (3 przed scaleniem 1: wspólne zdania specyfikacji płatności rozwiązuje sesja) |
 | 2 | ASYNC-RELIABILITY-5, ASYNC-RELIABILITY-7 | 5 scalone (przegląd PASS); 7 po zadaniu 1 i decyzji o zakresie D6 |
 | 3 | ASYNC-RELIABILITY-8 | |
+| 2a | ASYNC-RELIABILITY-9 (D6, dodane 2026-11-20 po decyzji użytkownika) | w toku |
 
 Stan zadań prowadzi sesja orkiestrująca w kolumnie „Status”.
 
@@ -20,6 +21,7 @@ specyfikacji; wynik inny niż oczekiwany to pytanie do użytkownika.
 
 Łańcuchy zależności:
 - dwa workery w compose i chartcie (1) → cele `failed*` (7), działające w `worker-commands`;
+- zachowanie wiadomości i komenda zbiorcza (9) → cele `failed*` (7);
 - kontrakt pulpitu z klientem (4) → panel (5);
 - workery (1), wygaszanie i zamykanie płatności (3), komenda sprawdzająca (4) i cele `failed*` (7, nazwy celów w opisach
   alertów i runbooku) → CronJoby, alerty i faza awarii testu dymnego (8).
@@ -34,6 +36,7 @@ zachowanie, które zadanie zmienia.
 - ASYNC-RELIABILITY-1, ASYNC-RELIABILITY-3: `docs/features/payment/spec.md`; oba zmieniają te same zdania sekcji „Ryzyka i ograniczenia” specyfikacji płatności (worker i `ExpireUnpaidOrder` w `failed`)
 - ASYNC-RELIABILITY-2, ASYNC-RELIABILITY-3: `apps/api/config/packages/messenger.yaml`; oba zmieniają konfigurację transportów (ponowienia i komentarz `scheduled`)
 - ASYNC-RELIABILITY-3, ASYNC-RELIABILITY-4: `apps/api/config/services.yaml`; oba dodają parametry do jednego pliku definicji usług
+- ASYNC-RELIABILITY-3, ASYNC-RELIABILITY-9: `apps/api/config/packages/messenger.yaml` i `apps/api/config/services.yaml`; 9 zmienia tylko sekcję transportu `failed` i dopisuje swoje definicje, konflikt przy scaleniu rozwiązuje sesja
 
 ## Zadania
 
@@ -232,16 +235,17 @@ zachowanie, które zadanie zmienia.
     {
       "id": "ASYNC-RELIABILITY-7",
       "title": "Cele make `failed`, `failed-retry`, `failed-remove` i runbook",
-      "scope": "Spec: W10, kryterium 12, eksperyment E5. `infra/k8s`: cele `failed HOST=…` (`--stats` i lista `--max=200`), `failed-retry HOST=… [ID=…]` (`php -d memory_limit=128M`) i `failed-remove HOST=… ID=…` (słowo `tak`) przez `kubectl exec` w `deploy/worker-commands` na serwerze (jak `status`), skrypty w `infra/k8s/scripts`, testy na atrapach `ssh` i `docker`. Runbook `infra/k8s/README.md`, „Eksploatacja”: przegląd i ponowienie albo usunięcie (kroki „zgoda użytkownika”), reakcja na `MessagingUnhealthy`, `OrderExpiryFailed` i `OrderExpiryMissing` (nazwy reguł ze specyfikacji), w tym sprawdzenie zamówień anulowanych z płatnością do zwrotu po zatorze `worker-commands` i zakaz usuwania webhooków płatności. Polecenia dla agentów (jedyna zmiana `infra/k8s/CLAUDE.md` w epiku): nowe cele w „Cele Makefile”, którymi agent może operować na serwerze, `failed-retry` i `failed-remove` tylko po zgodzie użytkownika. Zależność od 1: cele działają w Deploymencie `worker-commands`. Nie obejmuje: CronJobów i reguł (8).",
+      "scope": "Spec: W10, kryterium 12, eksperyment E5. `infra/k8s`: cele `failed HOST=…` (`--stats` i lista `--max=200`), `failed-retry HOST=… [ID=…]` (`php -d memory_limit=128M`; z `ID` `messenger:failed:retry <ID> --force`, bez `ID` `app:messaging:failed-retry` z zadania 9, W12) i `failed-remove HOST=… ID=…` (słowo `tak`) przez `kubectl exec` w `deploy/worker-commands` na serwerze (jak `status`), skrypty w `infra/k8s/scripts`, testy na atrapach `ssh` i `docker`. Runbook `infra/k8s/README.md`, „Eksploatacja”: przegląd i ponowienie albo usunięcie (kroki „zgoda użytkownika”), reakcja na `MessagingUnhealthy`, `OrderExpiryFailed` i `OrderExpiryMissing` (nazwy reguł ze specyfikacji), w tym sprawdzenie zamówień anulowanych z płatnością do zwrotu po zatorze `worker-commands` i zakaz usuwania webhooków płatności. Polecenia dla agentów (jedyna zmiana `infra/k8s/CLAUDE.md` w epiku): nowe cele w „Cele Makefile”, którymi agent może operować na serwerze, `failed-retry` i `failed-remove` tylko po zgodzie użytkownika. Zależność od 1: cele działają w Deploymencie `worker-commands`; od 9: komenda ponowienia zbiorczego i zachowanie wiadomości (runbook: ID zachowanej wiadomości zmienia się po nieudanej próbie, zbiorcze `messenger:failed:retry` bez ID jest zablokowane). Nie obejmuje: CronJobów i reguł (8).",
       "acceptance_criteria": [
-        "Testy na atrapach: `failed` wywołuje tylko `messenger:failed:show` (`--stats` i `--max=200`) w `deploy/worker-commands` i niczego nie zmienia; `failed-retry` z `ID` ponawia jedną wiadomość, bez `ID` wszystkie (`--force`), w procesie z `memory_limit=128M`.",
+        "Testy na atrapach: `failed` wywołuje tylko `messenger:failed:show` (`--stats` i `--max=200`) w `deploy/worker-commands` i niczego nie zmienia; `failed-retry` z `ID` wywołuje `messenger:failed:retry <ID> --force`, bez `ID` `app:messaging:failed-retry`, w procesie z `memory_limit=128M`, i wypisuje raport komendy.",
         "`failed-remove` bez słowa `tak`, bez `ID`, bez `HOST` i przy błędzie `ssh` albo `kubectl` kończy się błędem bez wywołania usunięcia; z `tak` usuwa wskazaną wiadomość.",
         "`failed` i `failed-retry` bez `HOST` oraz przy błędzie `ssh` albo `kubectl` kończą się niezerowym kodem z komunikatem.",
         "Runbook opisuje reakcję na trzy alerty i oznacza `failed-retry` i `failed-remove` jako „zgoda użytkownika”; `infra/k8s/CLAUDE.md` wymienia trzy cele i zgodę; `make -C infra/k8s check` (shellcheck i testy) przechodzi."
       ],
       "risk": "STANDARD",
       "depends_on": [
-        "ASYNC-RELIABILITY-1"
+        "ASYNC-RELIABILITY-1",
+        "ASYNC-RELIABILITY-9"
       ],
       "paths": [
         "infra/k8s/Makefile",
@@ -291,6 +295,36 @@ zachowanie, które zadanie zmienia.
         "ASYNC-RELIABILITY-2",
         "ASYNC-RELIABILITY-5",
         "ASYNC-RELIABILITY-6"
+      ]
+    },
+    {
+      "id": "ASYNC-RELIABILITY-9",
+      "title": "Ręczne ponowienie zachowuje wiadomość w `failed`: listener, komenda zbiorcza i blokada zbiorczego `failed:retry`",
+      "scope": "Spec: D6, W12, kryterium 14, eksperyment E5. API: listener `WorkerMessageFailedEvent` w `Shared\\Infrastructure\\Messaging` (wiadomość odebrana z `failed`, której Symfony nie ponawia, wraca do `failed` jako kopia od razu dostępna, przed usunięciem oryginału; przy `willRetry()` listener nic nie robi); `failed` z `retry_strategy.max_retries: 0` w `messenger.yaml`; komenda `app:messaging:failed-retry [--max=200]` (lista ID na starcie, ponowienie tylko ich przez `messenger:failed:retry <id…> --force`, raport: wybrane, obsłużone, zachowane z nowymi ID, pozostałe w `failed` i czy są poza listą; kod 0, 2 przy błędzie odczytu); listener `ConsoleEvents::COMMAND` blokujący `messenger:failed:retry` bez argumentu `id` (kod 113, komunikat ze wskazaniem bezpiecznej komendy). Bez gwarancji „dokładnie raz”: duplikat po przerwaniu między zapisem kopii a usunięciem oryginału opisany w specyfikacji. Bez zmian w `CLAUDE.md`. Nie obejmuje: celów make i runbooka (7).",
+      "acceptance_criteria": [
+        "Test integracyjny (transport Doctrine, kernel `test_messaging`): trzy i więcej kolejnych nieudanych ponowień tej samej wiadomości zostawia w `failed` dokładnie jeden wiersz z tą samą treścią i nowym ID po każdej próbie.",
+        "Test integracyjny: `UnrecoverableMessageHandlingException` oraz `HandlerFailedException` z samymi wyjątkami nieodwracalnymi zostawiają wiadomość w `failed` (jeden wiersz).",
+        "Test integracyjny: `RecoverableMessageHandlingException` (jak w `NotificationSender`) zostawia wiadomość w `failed` jako jeden wiersz z opóźnieniem i licznikiem ponowień Symfony, bez dodatkowej kopii listenera.",
+        "Test integracyjny: udana obsługa usuwa wiadomość z `failed`; `messenger:failed:remove` ją usuwa.",
+        "Test: nieudany zapis kopii do `failed` (transport zgłasza błąd) kończy obsługę błędem i nie usuwa oryginału.",
+        "Test komendy `app:messaging:failed-retry`: na kilku wiadomościach, z których część zawodzi, kończy się kodem 0, handler każdej wybranej wiadomości jest wywołany dokładnie raz w przebiegu, kopie zachowane w trakcie nie są przetwarzane ponownie, a raport podaje wybrane, obsłużone, zachowane i pozostałe; z `--max` mniejszym niż liczba wiadomości raport mówi, że zostały kolejne; błąd odczytu daje kod 2.",
+        "Test: `messenger:failed:retry --force` bez ID kończy się kodem 113 z komunikatem wskazującym `app:messaging:failed-retry` i niczego nie przetwarza; z ID ponawia wskazaną wiadomość.",
+        "`make -C apps/api check` i testy API (unit, integration, functional) przechodzą."
+      ],
+      "risk": "CRITICAL",
+      "depends_on": [],
+      "paths": [
+        "apps/api/src/Shared/Infrastructure/Messaging/",
+        "apps/api/src/Shared/UI/Console/",
+        "apps/api/config/packages/messenger.yaml",
+        "apps/api/config/services.yaml",
+        "apps/api/tests/",
+        "docs/features/async-reliability/spec.md"
+      ],
+      "parallel_with": [
+        "ASYNC-RELIABILITY-1",
+        "ASYNC-RELIABILITY-3",
+        "ASYNC-RELIABILITY-5"
       ]
     }
   ]
