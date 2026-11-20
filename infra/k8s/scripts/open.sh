@@ -1,12 +1,14 @@
 #!/bin/sh
 # Checks the data that the Job demo-data-run of make generate gave and opens the shop: make -C infra/k8s open GENERATE_PROBE_URL='<url>
-# ...' KUBE_DIR=<directory>; make generate runs it after a Job that completed. Idempotent. It refuses while a Job runs and without a Job
-# demo-data-run that completed (make generate deletes the one of the run before right before its new Job); a Secret of the photo pool that is
-# left (make generate killed) is deleted once no Job runs. The checks and the opening: docs/features/demo-scale/spec.md, "Cel make -C
-# infra/k8s open".
+# ...' KUBE_DIR=<directory>; make generate runs it after a Job that completed. Idempotent. Run by hand, it takes the lock demo-data-lock
+# (scripts/shop-closed.sh) before its first change, holds it to its end and releases it on every exit (HUP, INT and TERM too; a KILL
+# leaves it); run by make generate, it goes on only while the lock of make generate is there (DEMO_DATA_LOCK_TOKEN). It refuses while
+# another holds the lock, while a Job runs and without a Job demo-data-run that completed (make generate deletes the one of the run before
+# right before its new Job); a Secret of the photo pool that is left (make generate killed) is deleted once no Job runs. The checks and
+# the opening: docs/features/demo-scale/spec.md, "Cel make -C infra/k8s open".
 #
 # Environment: GENERATE_PROBE_URL, GENERATE_PROBE_HOST, KUBE_DIR (required), KUBE_NETWORK, KUBE_NAMESPACE, GENERATE_OPEN_WAIT (300),
-# GENERATE_POLL (30), GENERATE_PROBE_POLL (5), as for make generate.
+# GENERATE_POLL (30), GENERATE_PROBE_POLL (5), as for make generate; DEMO_DATA_LOCK_TOKEN is set only by make generate.
 #
 # Exit codes: 0 checked and open; 1 refused or a check failed (the shop stays closed) or the probe does not say open; 2 wrong arguments.
 set -eu
@@ -42,6 +44,24 @@ fail() {
 read_environment
 exec < /dev/null
 job=demo-data-run
+
+# The lock, before the first change: run by make generate, the one of make generate (it releases it); by hand, its own to its end.
+if [ -n "${DEMO_DATA_LOCK_TOKEN:-}" ]; then
+  lock_is "$DEMO_DATA_LOCK_TOKEN" || refuse "$lock_error"
+else
+  cleanup() {
+    status=$?
+    trap '' HUP INT TERM
+    trap - EXIT
+    lock_release || echo "open: the lock $lock_name could not be released: $(lock_message)" >&2
+    exit "$status"
+  }
+  trap cleanup EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  lock_take open || refuse "$lock_error"
+fi
 
 active="$(active_jobs)" || refuse "cannot read the Jobs of the namespace $namespace"
 [ -z "$active" ] || refuse "Jobs are active in the namespace $namespace: $active (make open runs after them)"

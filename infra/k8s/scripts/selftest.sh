@@ -457,6 +457,10 @@ demo_data_script_stops_only_the_generator() {
 generate_keeps_the_previous_run() { replace infra/k8s/scripts/generate.sh 'kc delete job "$job" --cascade' ': kc delete job "$job" --cascade'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts
 open_without_the_check_of_the_run() { replace infra/k8s/scripts/open.sh '[ "${run_state%% *}" = Complete ] ||' ': ||'; }
+# make open run by hand takes the lock demo-data-lock (here: it takes none), so a make generate started meanwhile cannot replace the Job
+# that make open checked before it deletes the rule shop-closed.
+# shellcheck disable=SC2016 # the texts are lines of the scripts
+open_without_the_lock() { replace infra/k8s/scripts/open.sh 'lock_take open || refuse "$lock_error"' ':'; }
 # The CronJob load (docs/features/demo-scale/spec.md): a Job of it checkouts an order in the data, so a CronJob that is not suspended
 # would run on its schedule; the k6 image of the chart is the one of load/k6.sh (a new k6 is changed in both places).
 load_not_suspended() { replace_after infra/k8s/charts/shop/templates/load.yaml 'schedule: "0 0 1 1 *"' 'suspend: true' 'suspend: false'; }
@@ -575,6 +579,8 @@ run_case "make generate that keeps the Job demo-data-run of the run before" "tes
   "tests" generate_keeps_the_previous_run
 run_case "make open after a Job demo-data-run that did not complete" "test_without_a_job_demo_data_run_that_completed_it_refuses" "tests" \
   open_without_the_check_of_the_run
+run_case "make open without the lock of make generate and make open" "test_make_open_keeps_the_rule_while_another_make_generate_would_replace_the_job" \
+  "tests" open_without_the_lock
 run_case "load CronJob that is not suspended" "test_the_load_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" load_not_suspended
 run_case "k6 image of the chart with another digest than load/k6.sh" "test_the_values_pin_the_image_of_the_runner_of_the_scripts" "tests" load_k6_digest_differs
 run_case "BackupMissing without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" backup_missing_without_absent

@@ -57,6 +57,20 @@ class StatusDemoData(ServerScripts):
         self.assertIn("shop-closed", result.stdout)
         self.assertNotIn("shop: open", result.stdout)
 
+    def test_it_shows_the_lock_of_make_generate_and_make_open_with_its_holder(self):
+        holder = "generate PROFILE=medium on operator-laptop, pid 4242, since 2026-11-20T08:00:00Z"
+        result = self.status(STUB_LOCK=f"demo-data-lock/{holder}")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn(f"lock demo-data-lock: HELD by {holder}", result.stdout)
+        self.assertIn("sudo k3s kubectl -n shop delete configmap demo-data-lock", result.stdout)
+        (read,) = [call for call in self.calls() if "get configmap demo-data-lock" in call]
+        self.assertIn("--ignore-not-found", read)
+        result = self.status()
+        self.assertIn("lock demo-data-lock: none", result.stdout)
+        # A holder with control characters is printed without them.
+        result = self.status(STUB_LOCK="demo-data-lock/open on a\033[2Jb, pid 1")
+        self.assertIn("HELD by open on a[2Jb, pid 1", result.stdout)
+
     def test_it_prints_the_last_line_of_the_log_of_the_newest_job_initialize(self):
         result = self.status(STUB_INIT_JOBS="initialize-1111111111\ninitialize-2222222222\n", STUB_INIT_LOG="initialize: 10000000 products, 50 orders")
         self.assertEqual(0, result.returncode, result.stderr)
@@ -90,12 +104,13 @@ class StatusDemoData(ServerScripts):
     def test_a_failing_read_of_any_of_them_is_exit_code_1_and_the_others_still_run(self):
         # The calls before the demo data: the applications, the pods, the jobs, the failed jobs (no failed job, so no log): 4.
         for match, message, calls in (
-            ("get networkpolicy shop-closed", "could not read the rule shop-closed", 10),
-            (".type}", "could not read the states of the jobs", 10),
-            ("get cronjob demo-data", "could not read the Secret of the photo pool", 9),
-            ("get secret ", "could not read the Secret of the photo pool", 10),
-            ("get jobs -l app.kubernetes.io/name=initialize", "could not read the jobs initialize", 9),
-            ("--container=initialize", "could not read the log of the job initialize-3fa9c1d2e4", 10),
+            ("get networkpolicy shop-closed", "could not read the rule shop-closed", 11),
+            ("get configmap demo-data-lock", "could not read the lock demo-data-lock", 11),
+            (".type}", "could not read the states of the jobs", 11),
+            ("get cronjob demo-data", "could not read the Secret of the photo pool", 10),
+            ("get secret ", "could not read the Secret of the photo pool", 11),
+            ("get jobs -l app.kubernetes.io/name=initialize", "could not read the jobs initialize", 10),
+            ("--container=initialize", "could not read the log of the job initialize-3fa9c1d2e4", 11),
         ):
             with self.subTest(match=match):
                 self.log.write_text("")
@@ -106,11 +121,13 @@ class StatusDemoData(ServerScripts):
                 # a failed read does not print a state it did not read as if it were one
                 if "networkpolicy" in match:
                     self.assertNotIn("shop: open", result.stdout)
+                if "configmap" in match:
+                    self.assertNotIn("lock demo-data-lock: none", result.stdout)
 
     def test_the_reads_only_read(self):
         self.status(STUB_CLOSED=CLOSED)
         reads = self.calls()[4:]
-        self.assertEqual(6, len(reads), reads)
+        self.assertEqual(7, len(reads), reads)
         for call in reads:
             call = call.split("k3s kubectl", 1)[1]
             self.assertRegex(call, r" (get|logs) ")

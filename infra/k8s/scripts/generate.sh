@@ -13,6 +13,10 @@
 #   GENERATE_PROFILES_FILE  diskPeakGb of the profiles (apps/api/fixtures/demo-data/profiles.yaml)
 #   GENERATE_CLOSE_WAIT (120), GENERATE_OPEN_WAIT (300), GENERATE_POLL (30), GENERATE_PROBE_POLL (5)   seconds
 #
+# make generate and make open run one at a time (scripts/shop-closed.sh, the lock): the lock demo-data-lock is checked before the
+# question, taken right after tak, before any change, and held to the end, with the wait for the Job and the make open this target runs
+# (DEMO_DATA_LOCK_TOKEN gives it the token); it is released on every exit (HUP, INT and TERM too) and stays after a KILL.
+#
 # Only the new Job changes the data: until it is made the data is untouched and the Job demo-data-run of the run before describes it
 # (make open may open the shop on it again). Right before the new Job, after the closing and the Secret, the active Jobs are read again
 # and the Job of the run before is deleted with its pod, so make open never takes its success for that of this run. The Secret of
@@ -69,12 +73,15 @@ job=demo-data-run
 secret_made=0 job_made=0
 cleanup() {
   status=$?
+  # A second signal does not cut the cleaning short (the lock would stay).
+  trap '' HUP INT TERM
   trap - EXIT
   if [ "$secret_made" = 1 ] && ! kc delete secret "$cron_secret" --ignore-not-found > /dev/null 2>&1; then
     echo "generate: the Secret $cron_secret of the photo pool could not be deleted: make open deletes it (make status shows it)" >&2
   fi
   [ "$status" -lt 128 ] || [ "$job_made" = 0 ] ||
     echo "generate: stopped; the Job $job may run on and the shop stays closed: make status, then make open once it completed" >&2
+  lock_release || echo "generate: the lock $lock_name could not be released: $(lock_message)" >&2
   exit "$status"
 }
 trap cleanup EXIT
@@ -86,7 +93,9 @@ trap 'exit 143' TERM
 rule_manifest='{"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"name":"shop-closed"},"spec":{"podSelector":{},"policyTypes":["Ingress"],"ingress":[{"from":[{"podSelector":{}}]}]}}'
 counts_sql="SELECT (SELECT count(*) FROM catalog_product), (SELECT count(*) FROM ordering_order)"
 
-# 1. Checks, without changes.
+# 1. Checks, without changes. The lock first: another make generate or make open runs.
+lock_read || refuse "cannot read the lock $lock_name"
+[ -z "$lock_held_token" ] || refuse "the lock $lock_name is held by $lock_holder: make generate and make open run one at a time; $(lock_message)"
 cron_json="$(kc get cronjob demo-data --ignore-not-found -o json)" || refuse "cannot read the CronJob demo-data"
 [ -n "$cron_json" ] || refuse "there is no CronJob demo-data in the namespace $namespace (demoData.enabled of the deployed values)"
 cron_fields="$(printf '%s' "$cron_json" | py -c '
@@ -171,6 +180,8 @@ answer=""
 IFS= read -r answer <&3 || answer=""
 echo
 [ "$answer" = tak ] || refuse "not confirmed (no 'tak')"
+# The lock, held to the end of this run and of its make open (the trap releases it).
+lock_take generate "$profile" || refuse "$lock_error"
 
 # 3. The closing: the rule, Traefik restarted (its pods deleted: the connections opened before the rule end), the probe.
 rule="$(kc get networkpolicy shop-closed --ignore-not-found -o name)" || fail "cannot read the NetworkPolicy shop-closed"
@@ -187,10 +198,10 @@ if [ "$photos_needed" = 1 ]; then
   kc delete secret "$cron_secret" --ignore-not-found > /dev/null || fail "the Secret $cron_secret could not be deleted"
   create_photo_secret "$cron_secret" || fail "$demo_data_error"
 fi
-# Another copy of make generate may run its Job now; the Job of the run before goes with its pod, and from now on make open refuses until
-# the new Job completed.
+# A Job may have started since the checks (not one of another make generate: that one waits on the lock); the Job of the run before goes
+# with its pod, and from now on make open refuses until the new Job completed.
 active="$(active_jobs)" || fail "cannot read the Jobs of the namespace $namespace"
-[ -z "$active" ] || fail "Jobs are active in the namespace $namespace: $active (another make generate?); no Job is deleted"
+[ -z "$active" ] || fail "Jobs are active in the namespace $namespace: $active; no Job is deleted"
 stage=replacing
 kc delete job "$job" --cascade=foreground --wait=true --ignore-not-found > /dev/null || fail "the Job $job of the run before could not be deleted"
 job_made=1
@@ -203,4 +214,4 @@ if [ "$job_ok" = 0 ]; then
   fail "the Job $job did not complete: ${reason:-no reason in the termination log of its pod (the log is in Grafana Cloud)}"
 fi
 echo "generate: the Job $job completed"
-sh "$here/open.sh"
+DEMO_DATA_LOCK_TOKEN="$lock_token" sh "$here/open.sh"

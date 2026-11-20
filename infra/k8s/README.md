@@ -625,9 +625,10 @@ czeka na L9. `open` zmienia serwer (otwiera sklep), więc też wymaga zgody, kt�
 2. **agent** – wdrożona rewizja ma ten profil: `generate` przyjmuje `seed` albo `demoData.profile` CronJoba
    (`environments/prod/values.yaml`; `medium`, a `server` po zmianie wartości w PR i zwykłym wdrożeniu). Wdrożenie:
    sekcja 7 (zgoda użytkownika); nie w trakcie generowania, bo restartuje pody, których generator potrzebuje.
-3. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: sklep otwarty, Job `demo-data-run` (poprzedniego
-   przebiegu), aktywne Joby, aplikacje `Synced` i `Healthy`, wszystkie Deploymenty i StatefulSety gotowe (generator
-   potrzebuje Elasticsearcha, Postgresa, Keycloaka, `worker`, Varnisha i sklepu), żaden Job nie jest aktywny.
+3. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: sklep otwarty, bez blokady `demo-data-lock`, Job
+   `demo-data-run` (poprzedniego przebiegu), aktywne Joby, aplikacje `Synced` i `Healthy`, wszystkie Deploymenty
+   i StatefulSety gotowe (generator potrzebuje Elasticsearcha, Postgresa, Keycloaka, `worker`, Varnisha i sklepu), żaden
+   Job nie jest aktywny.
 4. **agent** – wolne miejsce: `medium` wymaga co najmniej 32 GB (`demoData.minFreeGb`; 1,25 × `diskPeakGb` `medium`, czyli
    26,25 GB, jest mniejsze), `server` co najmniej 120 GB (1,25 × `diskPeakGb` 96 GB; to szacunek z ekstrapolacji, nie
    pomiar). Odczytem miejsca jest kubelet; `generate` sam odmawia bez zapasu. Strażnik w Jobie zatrzymuje generator, gdy
@@ -669,7 +670,12 @@ make -C infra/k8s generate PROFILE=medium \
   i restarcie Traefika), `GENERATE_OPEN_WAIT` 300 s (czas, w którym ma podać „otwarty” po usunięciu reguły),
   `GENERATE_POLL` 30 s (odstęp odczytów Joba), `GENERATE_PROBE_POLL` 5 s (odstęp rund sondy). Wartością jest liczba
   całkowita sekund; inna to kod 2.
-- Przebieg `generate`: sprawdzenia bez zmian, pytanie, reguła `shop-closed`, restart podów Traefika, sonda
+- `generate` i `open` działają pojedynczo: blokadą jest ConfigMap `demo-data-lock` (kto ją trzyma: polecenie, profil,
+  host operatora, pid, czas startu; `status` ją pokazuje). `generate` zakłada ją po `tak` i trzyma do końca, razem
+  z `open`, który woła; `open` uruchomiony ręcznie zakłada ją na starcie. Drugi `generate` albo `open` odmawia w tym
+  czasie bez zmian i podaje posiadacza. Oba cele zwalniają ją przy każdym wyjściu poza zabiciem sygnałem KILL (i utratą
+  połączenia przy zwalnianiu): ręczne usunięcie w „Po błędzie albo przerwaniu”.
+- Przebieg `generate`: sprawdzenia bez zmian, pytanie, blokada, reguła `shop-closed`, restart podów Traefika, sonda
   „zamknięty”, sekret puli zdjęć, usunięcie Joba `demo-data-run` poprzedniego przebiegu, generowanie (nowy Job
   `demo-data-run`; skrypt tylko czeka), `open`. `open`: wyczyszczona pula `cache.sitemap`, indeksy Postgresa, alias wyszukiwarki, Job `load` ze ścieżkami
   sklepu (strona główna, listing, produkt, wyszukiwarka, koszyk i checkout gościa), liczby produktów i zamówień
@@ -681,10 +687,11 @@ make -C infra/k8s generate PROFILE=medium \
   make -C infra/k8s open GENERATE_PROBE_URL='https://api.worf.pl/ https://worf.pl/' KUBE_DIR="$KUBE_DIR"
   ```
 
-  `open` odmawia przy aktywnym Jobie, bez Joba `demo-data-run` i z Jobem innym niż `Complete`; `generate` usuwa Job
-  poprzedniego przebiegu tuż przed nowym (po zamknięciu), więc sukces poprzedniego przebiegu nie otworzy sklepu po
-  przerwanym nowym. Gdy `generate` skończył się przed tym usunięciem (np. sonda nie potwierdziła zamknięcia), dane są
-  nietknięte, a `open` otwiera sklep na Jobie poprzedniego przebiegu, jeśli jest `Complete`.
+  `open` odmawia przy blokadzie innego przebiegu, przy aktywnym Jobie, bez Joba `demo-data-run` i z Jobem innym niż
+  `Complete`; `generate` usuwa Job poprzedniego przebiegu tuż przed nowym (po zamknięciu), więc sukces poprzedniego
+  przebiegu nie otworzy sklepu po przerwanym nowym. Gdy `generate` skończył się przed tym usunięciem (np. sonda nie
+  potwierdziła zamknięcia), dane są nietknięte, a `open` otwiera sklep na Jobie poprzedniego przebiegu, jeśli jest
+  `Complete`.
 
 **Kody wyjścia.** `generate`: `0` dane wygenerowane, sprawdzone, sklep otwarty; `1` odmowa bez zmian, brak `tak` albo
 błąd (komunikat mówi, czy sklep jest zamknięty); `2` złe argumenty albo środowisko (`PROFILE`, `GENERATE_PROBE_URL`,
@@ -713,6 +720,16 @@ generatora: odmawia kodem 3 i wskazuje `generate`.
   zmian; `make open` otwiera sklep na tym Jobie, jeśli jest `Complete`, a po poprawie adresów sondy można ponowić
   `generate`.
 - Pozostawiony sekret `demo-photos` (zabity skrypt; `status` go pokazuje): usuwa go `open`, gdy żaden Job nie działa.
+- Pozostawiona blokada `demo-data-lock` (`status`: `lock demo-data-lock: HELD by …`; `generate` i `open` odmawiają z jej
+  posiadaczem) po `generate` albo `open` zabitym sygnałem KILL albo bez połączenia przy zwalnianiu: **użytkownik**
+  sprawdza, że żaden `generate` ani `open` nie działa (komputer i proces z danych posiadacza), i usuwa ją na serwerze:
+
+  ```sh
+  ssh <user>@<adres> sudo k3s kubectl -n shop delete configmap demo-data-lock
+  ```
+
+  Usunięcie blokady działającego przebiegu pozwala drugiemu `generate` albo `open` działać równolegle z nim. Potem jak
+  w punktach wyżej (`status`, `open` albo ponowny `generate`).
 - Log Joba po restarcie serwera albo usunięciu poda: Grafana Cloud (Explore, przestrzeń `shop`).
 
 Po błędzie wymagającym poprawki kodu kolejność to: powrót do seeda (sklep otwarty na seedzie), wdrożenie poprawki,

@@ -113,7 +113,20 @@ Stan nie jest zapisywany w osobnym obiekcie; wynika z obiektów klastra:
   Pody działają, więc alert `WorkloadNotReady` się nie odzywa. Regułę zakłada `generate`, usuwa wyłącznie `open`; nie
   jest częścią chartu i nie ma etykiet ani adnotacji śledzenia Argo CD, więc wdrożenie ani synchronizacja jej nie
   usuną (Z7). Cel `status` pokazuje, czy reguła istnieje.
-- **Blokadą i śladem przebiegu jest Job `demo-data-run`** (stała nazwa, tworzony z CronJoba `demo-data` przez
+- **Blokada `demo-data-lock`.** `generate` i `open` działają pojedynczo. Blokadą jest ConfigMap `demo-data-lock`
+  w przestrzeni `shop` z dwoma polami: `holder` (polecenie, profil, host operatora, pid i czas UTC startu) i `token`
+  (losowy). Nie ma etykiet ani adnotacji śledzenia Argo CD (jak reguła). Zakłada ją `kubectl create`, który przy
+  istniejącej blokadzie kończy się błędem `AlreadyExists`, więc dostaje ją tylko jeden przebieg. `generate` sprawdza ją
+  przed pytaniem, zakłada zaraz po `tak`, przed pierwszą zmianą, i trzyma do końca, razem z czekaniem na Job i z `open`,
+  które sam woła. `open` uruchomiony ręcznie zakłada ją na starcie, przed pierwszą zmianą (także przed usunięciem
+  pozostawionego sekretu), i trzyma do końca. `open` wołany przez `generate` własnej nie zakłada: dostaje token
+  `generate` w zmiennej `DEMO_DATA_LOCK_TOKEN` i odmawia bez zmian, gdy blokady nie ma albo ma inny token (ręcznie
+  ustawiona zmienna jej nie omija). Odmowa z powodu blokady podaje jej posiadacza. Każdy cel zwalnia blokadę przy każdym
+  wyjściu, które przechwytuje (koniec, błąd, odmowa, HUP, INT, TERM), i tylko wtedy, gdy token w niej jest jego. Po
+  zabiciu sygnałem KILL albo utracie połączenia przy zwalnianiu blokada zostaje: oba cele odmawiają, a usuwa ją ręcznie
+  użytkownik, gdy żaden `generate` ani `open` nie działa (runbook). Decyzje `open` (stan Joba, sprawdzenia) i usunięcie
+  reguły zapadają pod blokadą, więc w tym czasie żaden `generate` nie usunie Joba ani nie zmieni danych.
+- **Śladem przebiegu jest Job `demo-data-run`** (stała nazwa, tworzony z CronJoba `demo-data` przez
   `kubectl create job --from`, poza chartem, bez śledzenia Argo CD). Dane zmienia wyłącznie nowy Job, a ten nie powstanie,
   dopóki istnieje stary o tej samej nazwie. `generate` usuwa Job poprzedniego przebiegu (razem z podem) tuż przed
   utworzeniem nowego: do tej chwili dane są nietknięte i stary Job je opisuje, a od niej do sukcesu nowego Joba nie ma
@@ -132,8 +145,8 @@ Stan nie jest zapisywany w osobnym obiekcie; wynika z obiektów klastra:
   Cloudflare: API i strony głównej sklepu. Cache Varnisha i sklepu czyści generator (`storefront:cache:purge-all`).
   Pula `cache.sitemap` (mapa strony, ważna godzinę) jest plikowa, osobna w każdym podzie `api`, więc czyści ją `open`
   w każdym z nich przed sprawdzeniem; bez tego `load/smoke.js` czytałby produkty starego katalogu.
-- `make -C infra/k8s status` pokazuje, czy sklep jest zamknięty, Job `demo-data-run` i jego stan, aktywne Joby i to,
-  czy sekret puli zdjęć został.
+- `make -C infra/k8s status` pokazuje, czy sklep jest zamknięty, blokadę i jej posiadacza, Job `demo-data-run` i jego
+  stan, aktywne Joby i to, czy sekret puli zdjęć został.
 
 ### Cel `make -C infra/k8s generate`
 
@@ -158,6 +171,7 @@ i należy do użytkownika. Runbook ma sprawdzenie przed uruchomieniem.
 Przebieg:
 
 1. **Sprawdzenia bez zmian** (odmowa kodem 1 albo 2, nic nie jest zmienione):
+   - blokady `demo-data-lock` nie ma (odmowa podaje jej posiadacza);
    - `PROFILE` to `seed` albo profil wpisany w CronJobie `demo-data` wdrożonej rewizji (`demoData.profile`); inny
      profil wymaga zmiany wartości i wdrożenia;
    - CronJob `demo-data` istnieje i jest zawieszony; żaden Job przestrzeni nie jest aktywny; każdy Deployment
@@ -172,6 +186,7 @@ Przebieg:
      miejsce jest poniżej `minFreeGb`, a powrót do seeda (zaczyna od `TRUNCATE`) to jedyna droga naprawy.
 2. **Pytanie.** Skrypt wypisuje host klastra, liczby produktów i zamówień w bazie teraz, profil docelowy, wolne miejsce
    węzłów, że sklep będzie niedostępny do udanego `make open`, i czeka na `tak` (bez `tak` odmowa, nic bez zmian).
+   Po `tak` zakłada blokadę; gdy w międzyczasie założył ją inny przebieg, odmawia kodem 1 bez zmian.
 3. **Zamknięcie.** Zakłada regułę `shop-closed` (jeśli jej nie ma), usuwa pody Traefika (`kube-system`) i czeka, aż
    sonda poda „zamknięty” (`GENERATE_CLOSE_WAIT` sekund, 120). Bez potwierdzenia: kod 1, dane bez zmian, sklep
    zamknięty, Job poprzedniego przebiegu bez zmian (`make open` otwiera sklep na nim, jeśli jest `Complete`).
@@ -182,20 +197,21 @@ Przebieg:
    `DEMO_DATA_CONFIRM=<PROFILE>` (także dla `seed`: ten sam Job uruchamia wtedy `bin/seed-demo`) i czeka na jego
    koniec (`GENERATE_POLL` sekund, 30; do `activeDeadlineSeconds` Joba). Skrypt tylko czeka: niczego, co ma zostać po
    przebiegu, nie zbiera (zapis logów i metryk nie zależy od komputera operatora, „Logi i metryki”).
-5. **Po Jobie.** Job `Complete`: uruchamia `open.sh` (niżej). Job nieudany albo po czasie: kod 1, sklep zamknięty,
-   komunikat z powodem z logu zakończenia poda (`/dev/termination-log`; bez poda: log w Grafana Cloud).
+5. **Po Jobie.** Job `Complete`: uruchamia `open.sh` (niżej) pod swoją blokadą (`DEMO_DATA_LOCK_TOKEN`). Job nieudany
+   albo po czasie: kod 1, sklep zamknięty, komunikat z powodem z logu zakończenia poda (`/dev/termination-log`; bez poda:
+   log w Grafana Cloud).
 
-Sekret `demo-photos` jest usuwany przy każdym wyjściu celu (także po błędzie, HUP, INT i TERM); po zabiciu skryptu
-sygnałem KILL usuwa go `open` (bez aktywnego Joba), a `status` go pokazuje. Każdy błąd po zamknięciu zostawia sklep
-zamknięty; komunikat mówi, czy dane są jeszcze nietknięte (wtedy także `make open`), i podaje dwie drogi: ponowić
-`generate PROFILE=<profil>` albo wrócić do seeda (`PROFILE=seed`).
+Sekret `demo-photos` i blokada są usuwane przy każdym wyjściu celu (także po błędzie, HUP, INT i TERM). Po zabiciu
+skryptu sygnałem KILL sekret usuwa `open` (bez aktywnego Joba), a blokadę użytkownik; `status` pokazuje oba. Każdy
+błąd po zamknięciu zostawia sklep zamknięty; komunikat mówi, czy dane są jeszcze nietknięte (wtedy także `make open`),
+i podaje dwie drogi: ponowić `generate PROFILE=<profil>` albo wrócić do seeda (`PROFILE=seed`).
 
 Kody wyjścia: 0 dane wygenerowane, sprawdzone, sklep otwarty; 1 odmowa, brak `tak` albo błąd (komunikat mówi, czy sklep
 jest zamknięty); 2 złe argumenty albo środowisko.
 
-Przerwany skrypt (sygnał, utrata połączenia, uśpiony komputer) niczego nie sprząta poza sekretem: jeśli Job działa dalej,
-`make status` pokazuje go jako aktywny, a po jego końcu (`Complete`) sklep otwiera ręcznie `make open`; po `Failed`
-albo gdy Jobu nie ma, wraca się do `generate`. Przerwanie przed usunięciem Joba poprzedniego przebiegu zostawia dane
+Przerwany skrypt (sygnał, utrata połączenia, uśpiony komputer) niczego nie sprząta poza sekretem i blokadą: jeśli Job
+działa dalej, `make status` pokazuje go jako aktywny, a po jego końcu (`Complete`) sklep otwiera ręcznie `make open`;
+po `Failed` albo gdy Jobu nie ma, wraca się do `generate`. Przerwanie przed usunięciem Joba poprzedniego przebiegu zostawia dane
 nietknięte i ten Job (`open` otwiera sklep na nim); po usunięciu `open` odmawia do sukcesu nowego Joba.
 
 CronJob `cart-purge-expired` działa w trakcie bez zmian: usuwa tylko wygasłe koszyki, których generator nie pisze.
@@ -207,7 +223,9 @@ CronJob `cart-purge-expired` działa w trakcie bez zmian: usuwa tylko wygasłe k
 przebiegu przerwanym przed otwarciem. Zmienia serwer (otwiera sklep), więc agent uruchamia go po zgodzie, która nazywa
 operację, host i profil, tak jak `generate`. Jest idempotentny. Przebieg:
 
-1. **Odmowa przy aktywnym Jobie** przestrzeni, bez zmian.
+1. **Blokada, potem odmowa przy aktywnym Jobie** przestrzeni, bez zmian. Uruchomiony ręcznie zakłada blokadę
+   `demo-data-lock` (zajęta: odmowa bez zmian z jej posiadaczem) i trzyma ją do końca; wołany przez `generate`
+   sprawdza, że blokada istnieje z tokenem `DEMO_DATA_LOCK_TOKEN`.
 2. **Sekret puli zdjęć** pozostawiony (zabity `generate`) jest usuwany, gdy żaden Job nie działa.
 3. **Odmowy bez dalszych zmian:** brak Joba `demo-data-run` albo Job inny niż `Complete` (np. po nowym `generate`,
    który przerwano po usunięciu Joba poprzedniego przebiegu).
@@ -320,6 +338,7 @@ używanym przez `load.sh`, `generate.sh` i `open.sh`.
 - `make -C infra/k8s rerun` odmawia Joba z etykietą generatora `app.kubernetes.io/name: demo-data` kodem 3 i wskazuje
   `make generate` (`rerun` odtworzyłby Job razem z `DEMO_DATA_CONFIRM`).
 - Cele `generate` i `open` wołają `ao-guard.sh` jak pozostałe cele z kubeconfigiem produkcji.
+- `generate` i `open` działają pojedynczo (blokada `demo-data-lock`, „Stan sklepu i blokada”).
 
 ### Kolejne wdrożenia
 
@@ -348,6 +367,8 @@ Odzyskiwanie jest ręczne (U8): `make status`, potem ponowny `generate`, powrót
 | Zdarzenie | Co się dzieje | Dalsze kroki |
 |---|---|---|
 | Przerwany skrypt, utrata połączenia albo uśpienie komputera operatora | Job działa dalej, strażnik i zbieranie logów działają w klastrze; sklep zamknięty | Po końcu Joba `Complete`: `make open`; `Failed`: ponowny `generate` albo seed |
+| Drugi `generate` albo `open` w trakcie przebiegu | Odmowa bez zmian z posiadaczem blokady | Poczekać na koniec przebiegu (`make status`) |
+| `generate` albo `open` zabity sygnałem KILL albo bez połączenia przy zwalnianiu blokady | Blokada `demo-data-lock` zostaje; `generate` i `open` odmawiają z jej posiadaczem | Gdy żaden `generate` ani `open` nie działa, użytkownik usuwa blokadę (runbook), potem jak w pozostałych wierszach |
 | `generate` przerwany po `tak`, przed usunięciem Joba poprzedniego przebiegu | Dane nietknięte, Job poprzedniego przebiegu zostaje, sklep może być zamknięty | `make open` (jeśli ten Job jest `Complete`) albo ponowny `generate` |
 | `generate` przerwany po usunięciu Joba poprzedniego przebiegu, przed końcem nowego | Joba `Complete` nie ma | `open` odmawia (brak Joba albo Job niezakończony); ponowny `generate` |
 | Usunięty albo zabity pod Joba (brak pamięci, eksmisja, limit czasu) | Job kończy się błędem i nie startuje ponownie (Z9); przy TERM skrypt zatrzymuje generator; sesje bazy generatora kończą się same także po zabiciu bez sygnału (Z11) | Dane niepełne, sklep zamknięty; ponowny `generate` albo seed; log z Grafana Cloud |
@@ -385,8 +406,9 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
     Job bez `DEMO_DATA_CONFIRM` (kod 64, dane bez zmian), `generate` bez `tak`, `rerun` Joba generatora;
   - sklep otwarty na niepełnych danych: reguła poza chartem, restart Traefika, sonda przed zastąpieniem danych,
     otwarcie tylko przez `open` po Jobie `Complete` i udanych sprawdzeniach, a Job poprzedniego przebiegu usuwany
-    tuż przed nowym; test dymny z ciągłym ruchem przez ingress w trakcie zamykania, testy nieudanego Joba, przerwanego
-    generowania (`open` odmawia) i nieudanego sprawdzenia (sklep zamknięty), brak śledzenia Argo CD na obiektach celu;
+    tuż przed nowym, `generate` i `open` pojedynczo pod blokadą; test dymny z ciągłym ruchem przez ingress w trakcie
+    zamykania, testy nieudanego Joba, przerwanego generowania (`open` odmawia), nieudanego sprawdzenia (sklep
+    zamknięty) i `generate` w trakcie `open` (odmawia przy blokadzie), brak śledzenia Argo CD na obiektach celu;
   - zapełnienie dysku: strażnik w podzie niezależny od komputera operatora, zatrzymanie całej grupy procesów,
     sesje bazy kończone przez serwer po zniknięciu klienta; testy skryptu z podstawionym `df` (próg, odczyt nieudany,
     odczyt nieliczbowy), z poleceniem generatora na pierwszym planie i z sygnałem TERM;
@@ -429,7 +451,8 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
    w CronJobie, brak `tak`, aktywny Job (poza Jobami `rate-limit-check`), niegotowy Deployment albo StatefulSet, brak
    pliku puli zdjęć albo zmiennej odczytu (tylko gdy CronJob ma sekret puli i profil nie jest `seed`), za mało
    wolnego miejsca (próg `minFreeGb` dla każdego profilu poza `seed`, próg `diskPeakGb` tylko dla `medium` i `server`;
-   `seed` odmawia tylko przy nieczytelnym odczycie), nieczytelny odczyt miejsca, brak `KUBE_DIR`.
+   `seed` odmawia tylko przy nieczytelnym odczycie), nieczytelny odczyt miejsca, brak `KUBE_DIR`, blokada innego
+   przebiegu (przed `tak` i przy zakładaniu po `tak`).
 4. `generate` na ścieżce poprawnej (profil i `seed`): po `tak` zakłada regułę, usuwa pody Traefika, czeka na
    „zamknięty” od każdego adresu sondy, tworzy sekret (gdy wymagany), usuwa poprzedni Job `demo-data-run` i tworzy Job
    z `DEMO_DATA_CONFIRM`, czeka na niego, woła `open` i usuwa sekret przy wyjściu; kod 0. Sonda bez „zamknięty”
@@ -442,19 +465,24 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
    pozostawiony sekret puli zdjęć; po nieudanym sprawdzeniu (nieważny indeks, alias na zero albo wiele indeksów, stan
    `red`, indeks bez aliasu, nieudany Job `load`) kończy się kodem 1 z regułą na miejscu; po udanych sprawdzeniach
    czyści pulę `cache.sitemap` w każdym podzie `api` przed Jobem `load`, usuwa regułę i kończy kodem 0 po „otwarty”
-   od każdego adresu sondy; sonda bez „otwarty” to kod 1, a ponowne `open` kończy otwarcie.
+   od każdego adresu sondy; sonda bez „otwarty” to kod 1, a ponowne `open` kończy otwarcie. `open` odmawia bez zmian
+   także przy blokadzie innego przebiegu i, wołany z `DEMO_DATA_LOCK_TOKEN`, bez blokady z tym tokenem.
+   Blokada: `generate` zakłada ją po `tak` przed pierwszą zmianą i trzyma razem z `open`, który woła, a `open` ręczny
+   na starcie; oba zwalniają ją przy każdym przechwyconym wyjściu (sukces, błąd, odmowa, HUP, INT, TERM) i nigdy nie
+   usuwają blokady innego przebiegu; po KILL zostaje, a oba cele odmawiają do jej ręcznego usunięcia. `generate`
+   uruchomiony w trakcie `open` odmawia przy blokadzie, więc `open` nie usuwa reguły na Jobie innym niż sprawdzony.
 6. Wartości `DEMO_PHOTOS_*` nie pojawiają się w wyjściu (także z `sh -x`) ani linii poleceń; token zapisu nie trafia
-   do klastra (testy jak dla `load`). Reguła `shop-closed`, Job `demo-data-run` i sekret nie mają etykiet ani adnotacji
-   śledzenia Argo CD.
+   do klastra (testy jak dla `load`). Reguła `shop-closed`, blokada `demo-data-lock`, Job `demo-data-run` i sekret nie
+   mają etykiet ani adnotacji śledzenia Argo CD.
 7. Test dymny k3d (`make -C infra/k8s smoke`, także w `deploy.yml`, bez pliku puli zdjęć) w ostatniej fazie uruchamia
    `generate PROFILE=small` i `open` zamiast samego Joba, z ruchem przez ingress bez przerwy: żądania przestają dostawać
    200 po zamknięciu (Z2), a po przebiegu sklep odpowiada. `SMOKE_BREAK=demo-data` (nieudany generator): `generate`
    kończy się kodem 1, sklep jest zamknięty, `open` odmawia, a `generate PROFILE=seed` kończy się kodem 0 i otwiera
-   sklep. Raport zawiera wynik obu ścieżek.
+   sklep. Po każdym z tych przebiegów nie ma blokady `demo-data-lock`. Raport zawiera wynik obu ścieżek.
 8. `rerun` odmawia Joba generatora (kod 3, komunikat wskazuje `make generate`); `reinitialize` odmawia przy regule
    `shop-closed`; oba bez zmian w klastrze (testy).
-9. `status` pokazuje, czy sklep jest zamknięty, Job `demo-data-run` i jego stan, aktywne Joby, pozostawiony sekret puli
-   zdjęć i linię `initialize`.
+9. `status` pokazuje, czy sklep jest zamknięty, blokadę `demo-data-lock` i jej posiadacza, Job `demo-data-run` i jego
+   stan, aktywne Joby, pozostawiony sekret puli zdjęć i linię `initialize`.
 10. `load` z `LOAD_DATA` działa jak przed wydzieleniem wspólnego pliku (istniejące testy `test_load_script.py`
     przechodzą bez zmiany asercji poza utworzeniem Joba z `DEMO_DATA_CONFIRM`).
 11. `make -C infra/k8s check` przechodzi; nowe przypadki selftestu kończą `check` błędem (wynik obu uruchomień
@@ -504,8 +532,8 @@ Utrzymywana razem z kodem. Dokumenty, które opisują tę funkcję albo jej zasa
   nieudanym, więc awaria Cloudflare zatrzymuje cel, a nie otwiera ani nie zamyka sklepu. Wyzwanie Cloudflare (403)
   jest dla niej kodem poniżej 500, czyli „otwarte”: skutki w „Cel `make -C infra/k8s generate`”; ochroną jest
   sprawdzenie adresów przed uruchomieniem (runbook).
-- Dwa równoległe `generate` chroni tylko kontrola aktywnych Jobów i stała nazwa Joba; w oknie kilku sekund przed
-  utworzeniem Joba drugi `generate` usunąłby Job pierwszego. Operator uruchamia jeden.
+- Blokadę pozostawioną po zabitym `generate` albo `open` usuwa ręcznie użytkownik; jej usunięcie w trakcie działającego
+  przebiegu znosi ochronę przed drugim `generate` albo `open`, więc przed usunięciem sprawdza, że żaden nie działa.
 - Konta generatora zostają w Keycloaku po powrocie do seeda; przejście z `server` do `medium` usuwa je pojedynczo.
 - Retencja Grafana Cloud (14 dni) ogranicza czas na eksport pełnego logu i odczyt szczytów do raportu; po restarcie
   serwera w trakcie przebiegu to jedyna kopia logu. Kompletność logu `medium` nie dowodzi kompletności przy wielkości

@@ -4,7 +4,8 @@
 # condition; the reaction to the alerts BackupFailed and BackupVerifyFailed): of all the pods of the job, so of every attempt
 # (backoffLimit), while they exist; the containers whose log cannot be read (the ones after a failed init container never
 # started) are skipped, the log of the others is printed. Last, the state of the demo data (docs/features/demo-scale/spec.md):
-# whether the shop is closed (the NetworkPolicy shop-closed exists), the Job demo-data-run of make generate and its state, the active
+# whether the shop is closed (the NetworkPolicy shop-closed exists), the lock demo-data-lock of make generate and make open and its
+# holder, the Job demo-data-run of make generate and its state, the active
 # Jobs (make generate and make open refuse while one runs), whether the Secret of the photo pool is left (make open deletes it) and the
 # last line of the log of the newest Job initialize (its row counts; it says so when no pod of the Job is left). Changes nothing. Exit
 # code 1 when any read failed.
@@ -64,7 +65,7 @@ else
   failed=1
 fi
 
-printf '\n== demo data (rule shop-closed, job demo-data-run, active jobs, secret of the photo pool, job initialize)\n'
+printf '\n== demo data (rule shop-closed, lock demo-data-lock, job demo-data-run, active jobs, secret of the photo pool, job initialize)\n'
 if closed="$(remote_root k3s kubectl -n shop get networkpolicy shop-closed --ignore-not-found -o name)"; then
   if [ -n "$closed" ]; then
     echo "shop: closed (NetworkPolicy shop-closed exists; every host answers 502)"
@@ -73,6 +74,18 @@ if closed="$(remote_root k3s kubectl -n shop get networkpolicy shop-closed --ign
   fi
 else
   echo "status: could not read the rule shop-closed" >&2
+  failed=1
+fi
+lock_path='{.metadata.name}{"/"}{.data.holder}'
+if lock="$(remote_root k3s kubectl -n shop get configmap demo-data-lock --ignore-not-found -o "jsonpath='$lock_path'")"; then
+  if [ -n "$lock" ]; then
+    lock="$(printf '%s' "${lock#*/}" | tr -d '\000-\037\177')"
+    echo "lock demo-data-lock: HELD by ${lock:-(no holder written)} (make generate and make open refuse while it is there; left by one killed with KILL, it is deleted only when neither runs: sudo k3s kubectl -n shop delete configmap demo-data-lock)"
+  else
+    echo "lock demo-data-lock: none"
+  fi
+else
+  echo "status: could not read the lock demo-data-lock" >&2
   failed=1
 fi
 # Every Job with the types of its true conditions (Complete, Failed; none while it runs), one per line.
