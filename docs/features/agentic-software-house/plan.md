@@ -22,10 +22,10 @@ Od 2026-11-18 obowiązuje moratorium na rozwój AO, skilli istniejących tylko d
 Ostatni epik prowadzony przez AO: DEMO-DATA (#482), zakończony w AO 2026-11-18 (końcowy PR #744; integracja przeszła
 w pierwszej rundzie).
 
-W toku: brak. Przygotowane: ABUSE-LIMITS (#181), ASYNC-RELIABILITY (#768), DEMO-SCALE (#484). Blokery: brak.
-Ostatni zmergowany epik: ASH-V1 (końcowy PR #785; 6 interwencji, 2 czekania na użytkownika, razem 18 min, ręczne
-poprawki: brak danych). Retro do zrobienia: brak (retro ASH-V1 w tym PR). Otwartych issues z etykietą `agent`
-jest 122, zamkniętych 72.
+W toku: ASYNC-RELIABILITY (#768, końcowy PR #811 otwarty). Przygotowane: DEMO-SCALE (#484). Blokery: brak.
+Ostatni zmergowany epik: ABUSE-LIMITS (#181, końcowy PR #802; interwencje, czekania na użytkownika i ręczne poprawki:
+brak danych pomiaru). Retro do zrobienia: brak (retro ABUSE-LIMITS w tym PR). Otwartych issues z etykietą `agent`
+jest 122, zamkniętych 75.
 
 Seria ASH v1.0 (specyfikacja `docs/features/ash-v1/spec.md`): trzy epiki prowadzone natywnie według „Przebiegu epiku”
 w ADR, ocenianie metrykami i retrospektywami `/retro`. Seria jest w toku od założenia tagu `ash-v1.0` do retrospektywy
@@ -34,9 +34,9 @@ trzeciego epiku; w tym czasie pliki procesu zmienia tylko poprawka blokady albo 
 
 | Seria ASH v1.0 | Stan |
 |---|---|
-| Stan serii | w toku (tag `ash-v1.0` założony 2026-11-19; żaden epik serii jeszcze nie ruszył) |
+| Stan serii | w toku (tag `ash-v1.0` założony 2026-11-19; ABUSE-LIMITS zmergowany, ASYNC-RELIABILITY w toku) |
 | Epiki serii | ABUSE-LIMITS (#181), ASYNC-RELIABILITY (#768), DELIVERY etap 1 (#120), w tej kolejności |
-| Zmergowane epiki serii | brak |
+| Zmergowane epiki serii | ABUSE-LIMITS (#181, końcowy PR #802) |
 
 Stan serii przyjmuje jedną z wartości: „przed startem”, „w toku”, „zakończona”.
 
