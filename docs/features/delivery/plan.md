@@ -14,7 +14,7 @@ z listą `parallel_with` mogą iść naraz. Plan jest dokumentem roboczym: po uk
 | 1 | DELIVERY-1, DELIVERY-2 | DELIVERY-2: `a823dfc4`; DELIVERY-1: `3cdb00d8` |
 | 2 | DELIVERY-3, DELIVERY-5 | DELIVERY-5: `e6115953`; DELIVERY-3: `0e34ee14` |
 | 3 | DELIVERY-4 | DELIVERY-4: `0ffc69f8` (przerwane 15:25Z, wznowione 17:43Z) |
-| 4 | DELIVERY-6, DELIVERY-7 | w toku |
+| 4 | DELIVERY-6, DELIVERY-7 | DELIVERY-6: `63740c9c`; DELIVERY-7 w toku |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
