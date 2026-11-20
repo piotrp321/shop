@@ -262,7 +262,9 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   jedno naruszenie „To pole jest wymagane.” przy kluczu; klasa żądania wtedy nie powstaje. Każde pole klasy żądania ma
   `Assert\Sequentially`, żeby dawało najwyżej jedno polskie naruszenie. Treść jest czytana późno, po `#[IsGranted]`,
   więc 403 atrybutu poprzedza 400, 415 i 422 treści (`docs/features/quality-fixes/spec.md`). Wyjątek: kody rabatowe
-  (`DiscountCodeBodyReader`), bo kontroler czyta tam treść sam, po sprawdzeniu 404.
+  (`DiscountCodeBodyReader`), bo kontroler czyta tam treść sam, po sprawdzeniu 404, i metody dostawy
+  (`#[ExistingDeliveryMethod]`: `DeliveryMethodExistenceListener` między `#[IsGranted]` a odczytem treści daje 404 przed
+  400, 415 i 422, `docs/features/delivery/spec.md`, W1).
 - Dokumentacja OpenAPI z kodu (NelmioApiDocBundle). Każdy endpoint ma opisane żądanie, odpowiedzi i błędy.
 - Autoryzacja: JWT z Keycloak, walidowany w authenticatorze Symfony. Dwa firewalle:
   `/api/v1/admin/...` przyjmuje tylko tokeny z realmu `backoffice` (pracownicy, `Staff`),

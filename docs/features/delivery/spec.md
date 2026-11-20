@@ -364,7 +364,7 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
   (styl `OrderTransitionNotAllowed`). Nic się nie zmienia.
 - Współbieżność: ten sam mechanizm co zmiana statusu (`ChangeOrderStatusHandler.php:48`): `StaffOrderLock::lock`
   blokuje wiersz zamówienia i porównuje wersję; inna wersja to dzisiejsze 409 konfliktu wersji („Zamówienie zostało
-  w międzyczasie zmienione.”). Zapis zwiększa wersję zamówienia.
+  w międzyczasie zmienione.”). Zapis zmieniający numer zwiększa wersję zamówienia; zapis bez zmiany niczego nie zapisuje.
 - Domena: `Order::changeTrackingNumber(?TrackingNumber)` ze strażnikiem statusu; bez zdarzenia domenowego, e-maila,
   powiadomienia, wpisu w historii statusów i nowego przepływu. Zapis przez `writeChanges()`.
 - Klient widzi bieżący numer i link na stronie zamówienia (W10). E-mail „wysłane”, który już wyszedł, nie jest
@@ -481,8 +481,8 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
   seed (`make -C infra/k8s generate`, `make -C infra/k8s reinitialize`). Ta kolejność dotyczy tylko wydania tego
   epiku: kolejne wersje znają dostawę.
 - Cofnięcie do wersji sprzed epiku (runbook, sekcja 7, „Cofnięcie wersji”) jest bezpieczne tylko przed dodaniem metod.
-  Po ich dodaniu najpierw wyłącza się wszystkie metody w panelu i rozlicza nieopłacone zamówienia z kosztem dostawy,
-  bo stary kod liczy ich sumy bez dostawy.
+  Po ich dodaniu nie jest wspierane: stary kod liczy bez dostawy sumy, kwotę płatności i zwrot każdego zamówienia
+  z kosztem dostawy, także opłaconego. Zostaje poprawka w przód albo odtworzenie kopii zapasowej.
 - Zamówienie bez metody tylko w oknie wymiany wersji (P19): nowe API odrzuca złożenie bez `deliveryMethodId` (422,
   W5), a `Order::place` wymaga dostawy (W6), więc gdy działają już tylko nowe pody `api`, takie zamówienie nie może
   powstać. Bez metody zostają zamówienia sprzed epiku i wygenerowana historia demo (P17).
