@@ -356,7 +356,7 @@ Tabela serii bez zmian.
 
 ## Zużycie
 
-Sesja retro: 2026-11-20 ok. 13:45 → ok. 14:40 CET, Opus 5.5. Bez odczytu `get_usage` na starcie, więc bez przyrostu
+Sesja retro: 2026-11-20 ok. 13:44 → 14:00 CET (ok. 16 min), Opus 5.5. Bez odczytu `get_usage` na starcie, więc bez przyrostu
 procentu limitów.
 
 ## Decyzje optymalizacyjne
