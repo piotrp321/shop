@@ -11,7 +11,7 @@ z listą `parallel_with` mogą iść naraz. Plan jest dokumentem roboczym: po uk
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | DELIVERY-1, DELIVERY-2 | w toku |
+| 1 | DELIVERY-1, DELIVERY-2 | DELIVERY-2: `a823dfc4`; DELIVERY-1 w toku |
 | 2 | DELIVERY-3, DELIVERY-5 | |
 | 3 | DELIVERY-4 | |
 | 4 | DELIVERY-6, DELIVERY-7 | |
