@@ -132,8 +132,8 @@ class OrderRecord
     public int $deliveryVat = 0;
 
     /**
-     * The tracking number of the shipment. Only the column so far (the mapping equals the migrated schema): the domain
-     * does not keep a number yet, so nothing writes it and an order is read without it.
+     * The tracking number of the shipment (W8): written when staff ship the order and when they correct it, null
+     * without one; the CHECK of the table allows it only from the shipment on.
      */
     #[ORM\Column(length: 40, nullable: true)]
     public ?string $trackingNumber = null;

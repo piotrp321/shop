@@ -213,6 +213,7 @@ Suma brutto: 20,00 zł
             [] === $lines ? [self::line('Czapka', '', 1, 100)] : $lines,
             $discount,
             $delivery,
+            null,
             new OrderTotalsView(0, 0, $gross, 'PLN'),
             $placedAt ?? new \DateTimeImmutable('2026-11-05 12:00:00+00:00'),
             $deadline ?? ($placedAt ?? new \DateTimeImmutable('2026-11-05 12:00:00+00:00'))->modify('+30 minutes'),

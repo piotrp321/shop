@@ -12,7 +12,7 @@ use App\Ordering\Domain\StaffTransition;
  * An order as the panel shows it: the customer (null for a guest), the contact, the address, the lines and totals, the moments of the statuses, the
  * payment, the version the next change of staff refers to, the history (oldest first), the refund and the transitions
  * the status allows (statusTransitions, OrderStatus::allowedStaffTransitions(); which of them the staff member may
- * make is for the voter). Amounts are in grosze.
+ * make is for the voter) and whether the status allows the tracking number to be changed. Amounts are in grosze.
  */
 final readonly class BackofficeOrderView
 {
@@ -33,6 +33,7 @@ final readonly class BackofficeOrderView
         public array $lines,
         public ?OrderDiscountView $discount,
         public ?OrderDeliveryView $delivery,
+        public ?OrderShipmentView $shipment,
         public OrderTotalsView $totals,
         public \DateTimeImmutable $placedAt,
         public \DateTimeImmutable $paymentDeadline,
@@ -47,6 +48,7 @@ final readonly class BackofficeOrderView
         public ?RefundView $refund,
         public array $statusTransitions,
         public ?string $customerId,
+        public bool $trackingNumberChangeable,
     ) {
     }
 
@@ -70,6 +72,7 @@ final readonly class BackofficeOrderView
             $base->lines,
             $base->discount,
             $base->delivery,
+            $base->shipment,
             $base->totals,
             $order->placedAt(),
             $order->paymentDeadline(),
@@ -104,6 +107,7 @@ final readonly class BackofficeOrderView
             ),
             array_map(static fn (StaffTransition $transition): string => $transition->value, $order->status()->allowedStaffTransitions()),
             $order->owner()->customerId(),
+            $order->status()->allowsTrackingNumberChange(),
         );
     }
 }

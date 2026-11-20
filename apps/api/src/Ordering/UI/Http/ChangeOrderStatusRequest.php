@@ -13,9 +13,11 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 /**
  * Body of POST /api/v1/admin/orders/{orderId}/status-changes. All keys are required. The values are taken as JSON
  * gives them and validated, never cast; the rules of the note are the ones of StaffNote, with its messages, so a
- * staff member sees them at the field. The staff member is never part of the body, it comes from the token.
+ * staff member sees them at the field. The tracking number is taken by a shipment only (W8 of
+ * docs/features/delivery/spec.md); the key is required for every transition. The staff member is never part of the
+ * body, it comes from the token.
  */
-#[OA\Schema(description: 'A change of the status of an order, based on the version of the order the staff member saw.', required: ['transition', 'version', 'note'])]
+#[OA\Schema(description: 'A change of the status of an order, based on the version of the order the staff member saw.', required: ['transition', 'version', 'note', 'trackingNumber'])]
 final readonly class ChangeOrderStatusRequest
 {
     /** The values of StaffTransition. */
@@ -45,7 +47,27 @@ final readonly class ChangeOrderStatusRequest
             new Assert\Length(max: StaffNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', charsetMessage: 'Notatka zawiera niedozwolone znaki.', normalizer: StaffNote::class.'::trim'),
         ])]
         public mixed $note,
+        #[OA\Property(type: 'string', description: 'The tracking number of the shipment, for `ship` only: 1 to 40 ASCII letters, digits and hyphens once trimmed of white space. Null or nothing but white space is no number, for every transition; any other value of another transition is refused.', maxLength: 40, nullable: true, example: 'JJD0002-4455')]
+        public mixed $trackingNumber,
     ) {
+    }
+
+    /**
+     * Only a shipment takes a number, and then of the shape of TrackingNumber; any other value of another transition,
+     * of any type or format, gets the message of the transition first. An unknown transition has its own violation.
+     */
+    #[Assert\Callback]
+    public function validateTrackingNumber(ExecutionContextInterface $context): void
+    {
+        if (!\in_array($this->transition, self::TRANSITIONS, true)) {
+            return;
+        }
+        $violation = 'ship' === $this->transition
+            ? TrackingNumberInput::violation($this->trackingNumber)
+            : (TrackingNumberInput::isNone($this->trackingNumber) ? null : TrackingNumberInput::ONLY_WITH_SHIPMENT);
+        if (null !== $violation) {
+            $context->buildViolation($violation)->atPath('trackingNumber')->addViolation();
+        }
     }
 
     /**

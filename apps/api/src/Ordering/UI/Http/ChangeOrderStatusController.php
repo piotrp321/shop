@@ -48,10 +48,10 @@ final class ChangeOrderStatusController
         description: 'Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and '
             .'a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is '
             .'due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel '
-            .'and register returns. A note is required to cancel and to register a return. Send the `version` of the order you saw: '
+            .'and register returns. A note is required to cancel and to register a return. A shipment takes an optional tracking number (`trackingNumber`, null or blank for none; the other transitions take none). Send the `version` of the order you saw: '
             .'an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The '
-            .'history entry names the staff member of the token. The customer gets an email about a shipment, a cancellation and '
-            .'a return.',
+            .'history entry names the staff member of the token. The customer gets an email about a shipment (with the tracking number and its link, '
+            .'if there is one), a cancellation and a return.',
         tags: ['Ordering'],
         parameters: [
             new OA\Parameter(name: 'orderId', in: 'path', required: true, description: 'Order id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
@@ -77,13 +77,13 @@ final class ChangeOrderStatusController
         ChangeOrderStatusRequest $change,
     ): JsonResponse {
         // Validated by the payload mapping: a transition, an integer and a string or null.
-        \assert(\is_string($change->transition) && \is_int($change->version) && (null === $change->note || \is_string($change->note)));
+        \assert(\is_string($change->transition) && \is_int($change->version) && (null === $change->note || \is_string($change->note)) && (null === $change->trackingNumber || \is_string($change->trackingNumber)));
         $transition = StaffTransition::from($change->transition);
         if (!$this->authorization->isGranted(BackofficeOrderAttributes::CHANGE_ORDER_STATUS, $transition)) {
             throw new AccessDeniedException();
         }
 
-        $order = $this->handle(new ChangeOrderStatus($orderId, $transition, $change->version, $change->note, $staffMember->id(), $staffMember->username()));
+        $order = $this->handle(new ChangeOrderStatus($orderId, $transition, $change->version, $change->note, $staffMember->id(), $staffMember->username(), $change->trackingNumber));
         \assert($order instanceof BackofficeOrderView);
 
         return $this->responder->respond($order);

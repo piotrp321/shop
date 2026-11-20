@@ -22,7 +22,7 @@ final class BackofficeOrderJson
      *
      * @return array<string, mixed>
      */
-    public static function order(BackofficeOrderView $order, array $allowedTransitions, bool $canCompleteRefund): array
+    public static function order(BackofficeOrderView $order, array $allowedTransitions, bool $canCompleteRefund, bool $canChangeTrackingNumber): array
     {
         $refund = $order->refund;
 
@@ -51,6 +51,7 @@ final class BackofficeOrderJson
             ], $order->lines),
             'discount' => OrderLineJson::discount($order->discount),
             'delivery' => OrderLineJson::delivery($order->delivery),
+            'shipment' => OrderLineJson::shipment($order->shipment),
             'totals' => [
                 'net' => $order->totals->net,
                 'vat' => $order->totals->vat,
@@ -87,6 +88,7 @@ final class BackofficeOrderJson
             ],
             'allowedTransitions' => $allowedTransitions,
             'canCompleteRefund' => $canCompleteRefund,
+            'canChangeTrackingNumber' => $canChangeTrackingNumber,
         ];
     }
 

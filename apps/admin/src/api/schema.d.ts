@@ -459,9 +459,29 @@ export interface paths {
         put?: never;
         /**
          * Change the status of an order
-         * @description Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel and register returns. A note is required to cancel and to register a return. Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The history entry names the staff member of the token. The customer gets an email about a shipment, a cancellation and a return.
+         * @description Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel and register returns. A note is required to cancel and to register a return. A shipment takes an optional tracking number (`trackingNumber`, null or blank for none; the other transitions take none). Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The history entry names the staff member of the token. The customer gets an email about a shipment (with the tracking number and its link, if there is one), a cancellation and a return.
          */
         post: operations["changeOrderStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{orderId}/tracking-number": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add, replace or remove the tracking number of an order
+         * @description Sets the tracking number of a shipped or delivered order (1 to 40 ASCII letters, digits and hyphens), replacing the one it has; null or a text of nothing but white space removes it. Administrators and the warehouse only. Only an order that is shipped or delivered takes the change. The number is not an event of the order: no history entry is added and no email is sent (the customer sees the current number and its link in the order; the email of the shipment keeps the number it was sent with). Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed. The change raises the version.
+         */
+        put: operations["changeOrderTrackingNumber"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -807,6 +827,8 @@ export interface components {
             discount: components["schemas"]["BackofficeOrderDiscount"] | null;
             /** @description The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery). */
             delivery: components["schemas"]["BackofficeOrderDelivery"] | null;
+            /** @description The shipment, only once a tracking number is written (at the shipment or afterwards); null without one. */
+            shipment: components["schemas"]["BackofficeOrderShipment"] | null;
             totals: components["schemas"]["BackofficeOrderTotals"];
             /**
              * Format: date-time
@@ -853,6 +875,8 @@ export interface components {
             allowedTransitions: components["schemas"]["BackofficeOrderTransition"][];
             /** @description The refund is to do and the staff member of the token may mark it made. */
             canCompleteRefund: boolean;
+            /** @description The order is shipped or delivered and the staff member of the token (an administrator or the warehouse) may add, correct or remove its tracking number. */
+            canChangeTrackingNumber: boolean;
         };
         BackofficeOrderAddress: {
             /** @example ul. Długa 5/3 */
@@ -938,6 +962,24 @@ export interface components {
              */
             gross: number;
         };
+        /** @description The shipment of an order that has a tracking number. The carrier is the name of the delivery method of the placement. */
+        BackofficeOrderShipment: {
+            /**
+             * @description The name of the delivery method; null for an order placed without one.
+             * @example Kurier standardowy
+             */
+            carrier: string | null;
+            /**
+             * @description 1 to 40 ASCII letters, digits and hyphens.
+             * @example JJD0002-4455
+             */
+            trackingNumber: string;
+            /**
+             * @description The link that follows the shipment, from the copy of the template of the method with the number; null without a template.
+             * @example https://tracking.example.com/JJD0002-4455
+             */
+            trackingUrl: string | null;
+        };
         /** @description Sums of the lines after the discount of the code and of the delivery; net + vat = gross. */
         BackofficeOrderTotals: {
             /** @example 32519 */
@@ -998,10 +1040,10 @@ export interface components {
             /** @example Przelew wysłany */
             note: string | null;
         };
-        /** @description A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the status of the order does not allow the change, the order has no refund to do, or (`about:blank`) the order changed since the `version` sent, also when a change that succeeded is sent again. Nothing is changed. */
+        /** @description A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the status of the order does not allow the change, the order has no refund to do, the order is neither shipped nor delivered so its tracking number cannot change, or (`about:blank`) the order changed since the `version` sent, also when a change that succeeded is sent again. Nothing is changed. */
         BackofficeOrderConflictProblem: {
             /** @enum {string} */
-            type: "tag:piotrp321.github.io,2026:shop/problems/order-transition-not-allowed" | "tag:piotrp321.github.io,2026:shop/problems/refund-not-pending" | "about:blank";
+            type: "tag:piotrp321.github.io,2026:shop/problems/order-transition-not-allowed" | "tag:piotrp321.github.io,2026:shop/problems/refund-not-pending" | "tag:piotrp321.github.io,2026:shop/problems/tracking-number-not-changeable" | "about:blank";
             /** @example Conflict */
             title: string;
             /** @enum {integer} */
@@ -1493,6 +1535,24 @@ export interface components {
              * @example Kurier DPD
              */
             note: string | null;
+            /**
+             * @description The tracking number of the shipment, for `ship` only: 1 to 40 ASCII letters, digits and hyphens once trimmed of white space. Null or nothing but white space is no number, for every transition; any other value of another transition is refused.
+             * @example JJD0002-4455
+             */
+            trackingNumber: string | null;
+        };
+        /** @description The tracking number of a shipped or delivered order, based on the version of the order the staff member saw. */
+        ChangeTrackingNumberRequest: {
+            /**
+             * @description The tracking number: 1 to 40 ASCII letters, digits and hyphens once trimmed of white space. Null or nothing but white space removes the number.
+             * @example JJD0002-4455
+             */
+            trackingNumber: string | null;
+            /**
+             * @description The `version` of the order the change is based on.
+             * @example 4
+             */
+            version: number;
         };
         /** @description The refund of an order marked made, based on the version of the order the staff member saw. */
         CompleteRefundRequest: {
@@ -4870,6 +4930,105 @@ export interface operations {
                 };
             };
             /** @description The transition is unknown, the version is not an integer of at least 1, the note breaks its rules or is missing to cancel or register a return, or a key is missing or of a wrong type (problem details with Polish `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    changeOrderTrackingNumber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Order id (UUID). */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeTrackingNumberRequest"];
+            };
+        };
+        responses: {
+            /** @description The order as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeOrder"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is neither an administrator nor in the warehouse (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The order changed since the given version, or it is neither shipped nor delivered (problem details with a stable `type`, see `BackofficeOrderConflictProblem`). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["BackofficeOrderConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The number is not a text or is of a wrong shape, the version is not an integer of at least 1, or a key is missing or of a wrong type (problem details with Polish `violations`). */
             422: {
                 headers: {
                     [name: string]: unknown;

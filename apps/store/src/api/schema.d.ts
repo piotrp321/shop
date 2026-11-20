@@ -982,6 +982,8 @@ export interface components {
             discount: components["schemas"]["OrderDiscount"] | null;
             /** @description The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery). */
             delivery: components["schemas"]["OrderDelivery"] | null;
+            /** @description The shipment, only once staff wrote a tracking number (at the shipment or afterwards); null without one. */
+            shipment: components["schemas"]["OrderShipment"] | null;
             totals: components["schemas"]["OrderTotals"];
             /**
              * Format: date-time
@@ -1073,6 +1075,24 @@ export interface components {
              */
             gross: number;
         };
+        /** @description The shipment of an order that has a tracking number. The carrier is the name of the delivery method of the placement. */
+        OrderShipment: {
+            /**
+             * @description The name of the delivery method; null for an order placed without one.
+             * @example Kurier standardowy
+             */
+            carrier: string | null;
+            /**
+             * @description 1 to 40 ASCII letters, digits and hyphens.
+             * @example JJD0002-4455
+             */
+            trackingNumber: string;
+            /**
+             * @description The link that follows the shipment, from the copy of the template of the method with the number; null without a template.
+             * @example https://tracking.example.com/JJD0002-4455
+             */
+            trackingUrl: string | null;
+        };
         /** @description Sums of the lines after the discount of the code and of the delivery; net + vat = gross. */
         OrderTotals: {
             /** @example 32519 */
@@ -1142,6 +1162,8 @@ export interface components {
             discount: components["schemas"]["OrderDiscount"] | null;
             /** @description The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery). */
             delivery: components["schemas"]["OrderDelivery"] | null;
+            /** @description The shipment, only once staff wrote a tracking number (at the shipment or afterwards); null without one. */
+            shipment: components["schemas"]["OrderShipment"] | null;
             totals: components["schemas"]["OrderTotals"];
             /**
              * Format: date-time

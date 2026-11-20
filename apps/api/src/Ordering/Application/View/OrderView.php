@@ -9,7 +9,7 @@ use App\Ordering\Domain\OrderLine;
 
 /**
  * An order as the customer gets it after placing it and in the emails about it. Amounts are in grosze; the totals are
- * after the discount of the code, with the delivery (null for an order placed without a method). The access token goes only to the guest who placed the order (null for a customer);
+ * after the discount of the code, with the delivery (null for an order placed without a method). The shipment is there only with a tracking number. The access token goes only to the guest who placed the order (null for a customer);
  * the emails never show it.
  */
 final readonly class OrderView
@@ -28,6 +28,7 @@ final readonly class OrderView
         public array $lines,
         public ?OrderDiscountView $discount,
         public ?OrderDeliveryView $delivery,
+        public ?OrderShipmentView $shipment,
         public OrderTotalsView $totals,
         public \DateTimeImmutable $placedAt,
         public \DateTimeImmutable $paymentDeadline,
@@ -42,6 +43,7 @@ final readonly class OrderView
         $totals = $order->totals();
         $discount = $order->discount();
         $delivery = $order->delivery();
+        $trackingNumber = $order->trackingNumber();
 
         return new self(
             $order->id()->toString(),
@@ -67,6 +69,7 @@ final readonly class OrderView
             ),
             null === $discount ? null : new OrderDiscountView($discount->code(), $discount->kind()->value, $discount->value(), $discount->amount()->amount()),
             null === $delivery ? null : new OrderDeliveryView($delivery->methodName(), $delivery->gross()->amount()),
+            null === $trackingNumber ? null : new OrderShipmentView($delivery?->methodName(), $trackingNumber->toString(), $delivery?->trackingUrlFor($trackingNumber)),
             new OrderTotalsView($totals->net()->amount(), $totals->vat()->amount(), $totals->gross()->amount(), $totals->currency()->value),
             $order->placedAt(),
             $order->paymentDeadline(),

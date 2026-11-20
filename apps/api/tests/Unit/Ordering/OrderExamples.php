@@ -127,6 +127,7 @@ final class OrderExamples
             refund: $order->refund(),
             history: $order->history(),
             version: $version ?? $order->version(),
+            trackingNumber: $order->trackingNumber(),
         );
     }
 }

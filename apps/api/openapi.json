@@ -3635,6 +3635,7 @@
                     "lines",
                     "discount",
                     "delivery",
+                    "shipment",
                     "totals",
                     "placedAt",
                     "paymentDeadline",
@@ -3692,6 +3693,15 @@
                         "allOf": [
                             {
                                 "$ref": "#/components/schemas/OrderDelivery"
+                            }
+                        ]
+                    },
+                    "shipment": {
+                        "description": "The shipment, only once staff wrote a tracking number (at the shipment or afterwards); null without one.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/OrderShipment"
                             }
                         ]
                     },
@@ -3859,6 +3869,34 @@
                 },
                 "type": "object"
             },
+            "OrderShipment": {
+                "description": "The shipment of an order that has a tracking number. The carrier is the name of the delivery method of the placement.",
+                "required": [
+                    "carrier",
+                    "trackingNumber",
+                    "trackingUrl"
+                ],
+                "properties": {
+                    "carrier": {
+                        "description": "The name of the delivery method; null for an order placed without one.",
+                        "type": "string",
+                        "example": "Kurier standardowy",
+                        "nullable": true
+                    },
+                    "trackingNumber": {
+                        "description": "1 to 40 ASCII letters, digits and hyphens.",
+                        "type": "string",
+                        "example": "JJD0002-4455"
+                    },
+                    "trackingUrl": {
+                        "description": "The link that follows the shipment, from the copy of the template of the method with the number; null without a template.",
+                        "type": "string",
+                        "example": "https://tracking.example.com/JJD0002-4455",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
             "OrderTotals": {
                 "description": "Sums of the lines after the discount of the code and of the delivery; net + vat = gross.",
                 "required": [
@@ -3992,6 +4030,7 @@
                     "lines",
                     "discount",
                     "delivery",
+                    "shipment",
                     "totals",
                     "placedAt",
                     "paymentDeadline",
@@ -4038,6 +4077,15 @@
                         "allOf": [
                             {
                                 "$ref": "#/components/schemas/OrderDelivery"
+                            }
+                        ]
+                    },
+                    "shipment": {
+                        "description": "The shipment, only once staff wrote a tracking number (at the shipment or afterwards); null without one.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/OrderShipment"
                             }
                         ]
                     },

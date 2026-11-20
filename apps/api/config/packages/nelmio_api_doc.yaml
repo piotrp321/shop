@@ -561,7 +561,7 @@ nelmio_api_doc:
                         OrderView:
                             type: object
                             description: An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze; the totals are after the discount of the code, with the delivery.
-                            required: [orderId, number, status, email, fullName, phone, shippingAddress, lines, discount, delivery, totals, placedAt, paymentDeadline, accessToken]
+                            required: [orderId, number, status, email, fullName, phone, shippingAddress, lines, discount, delivery, shipment, totals, placedAt, paymentDeadline, accessToken]
                             properties:
                                 orderId:
                                     type: string
@@ -600,6 +600,11 @@ nelmio_api_doc:
                                         - $ref: '#/components/schemas/OrderDelivery'
                                     nullable: true
                                     description: The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery).
+                                shipment:
+                                    allOf:
+                                        - $ref: '#/components/schemas/OrderShipment'
+                                    nullable: true
+                                    description: The shipment, only once staff wrote a tracking number (at the shipment or afterwards); null without one.
                                 totals:
                                     $ref: '#/components/schemas/OrderTotals'
                                 placedAt:
@@ -707,6 +712,25 @@ nelmio_api_doc:
                                     minimum: 0
                                     description: The gross cost of the delivery in grosze, part of the totals; 0 for a free delivery.
                                     example: 1999
+                        OrderShipment:
+                            type: object
+                            description: The shipment of an order that has a tracking number. The carrier is the name of the delivery method of the placement.
+                            required: [carrier, trackingNumber, trackingUrl]
+                            properties:
+                                carrier:
+                                    type: string
+                                    nullable: true
+                                    description: The name of the delivery method; null for an order placed without one.
+                                    example: Kurier standardowy
+                                trackingNumber:
+                                    type: string
+                                    description: 1 to 40 ASCII letters, digits and hyphens.
+                                    example: JJD0002-4455
+                                trackingUrl:
+                                    type: string
+                                    nullable: true
+                                    description: The link that follows the shipment, from the copy of the template of the method with the number; null without a template.
+                                    example: https://tracking.example.com/JJD0002-4455
                         OrderTotals:
                             type: object
                             description: Sums of the lines after the discount of the code and of the delivery; net + vat = gross.
@@ -786,7 +810,7 @@ nelmio_api_doc:
                             description: >-
                                 An order of the customer with copies of the names and prices of the placement. Amounts in grosze.
                                 No history of changes, notes, data of staff, refund or payment.
-                            required: [orderId, number, status, shippingAddress, lines, discount, delivery, totals, placedAt, paymentDeadline, paymentDeadlinePassed, paidAt, shippedAt, deliveredAt, cancelledAt, returnedAt]
+                            required: [orderId, number, status, shippingAddress, lines, discount, delivery, shipment, totals, placedAt, paymentDeadline, paymentDeadlinePassed, paidAt, shippedAt, deliveredAt, cancelledAt, returnedAt]
                             properties:
                                 orderId:
                                     type: string
@@ -812,6 +836,11 @@ nelmio_api_doc:
                                         - $ref: '#/components/schemas/OrderDelivery'
                                     nullable: true
                                     description: The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery).
+                                shipment:
+                                    allOf:
+                                        - $ref: '#/components/schemas/OrderShipment'
+                                    nullable: true
+                                    description: The shipment, only once staff wrote a tracking number (at the shipment or afterwards); null without one.
                                 totals:
                                     $ref: '#/components/schemas/OrderTotals'
                                 placedAt:
@@ -1145,7 +1174,7 @@ nelmio_api_doc:
                             description: >-
                                 An order with everything the panel shows of it, copies of the names and prices of its placement included.
                                 Amounts in grosze; moments in RFC 3339 and UTC, null until the status they belong to.
-                            required: [orderId, number, status, version, customerId, email, fullName, phone, shippingAddress, lines, discount, delivery, totals, placedAt, paymentDeadline, paidAt, paymentId, shippedAt, deliveredAt, cancelledAt, cancellationReason, returnedAt, history, refund, allowedTransitions, canCompleteRefund]
+                            required: [orderId, number, status, version, customerId, email, fullName, phone, shippingAddress, lines, discount, delivery, shipment, totals, placedAt, paymentDeadline, paidAt, paymentId, shippedAt, deliveredAt, cancelledAt, cancellationReason, returnedAt, history, refund, allowedTransitions, canCompleteRefund, canChangeTrackingNumber]
                             properties:
                                 orderId:
                                     type: string
@@ -1191,6 +1220,11 @@ nelmio_api_doc:
                                         - $ref: '#/components/schemas/BackofficeOrderDelivery'
                                     nullable: true
                                     description: The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery).
+                                shipment:
+                                    allOf:
+                                        - $ref: '#/components/schemas/BackofficeOrderShipment'
+                                    nullable: true
+                                    description: The shipment, only once a tracking number is written (at the shipment or afterwards); null without one.
                                 totals:
                                     $ref: '#/components/schemas/BackofficeOrderTotals'
                                 placedAt:
@@ -1252,6 +1286,9 @@ nelmio_api_doc:
                                 canCompleteRefund:
                                     type: boolean
                                     description: The refund is to do and the staff member of the token may mark it made.
+                                canChangeTrackingNumber:
+                                    type: boolean
+                                    description: The order is shipped or delivered and the staff member of the token (an administrator or the warehouse) may add, correct or remove its tracking number.
                         BackofficeOrderAddress:
                             type: object
                             required: [street, postalCode, city, country]
@@ -1354,6 +1391,25 @@ nelmio_api_doc:
                                     minimum: 0
                                     description: The gross cost of the delivery in grosze, part of the totals; 0 for a free delivery.
                                     example: 1999
+                        BackofficeOrderShipment:
+                            type: object
+                            description: The shipment of an order that has a tracking number. The carrier is the name of the delivery method of the placement.
+                            required: [carrier, trackingNumber, trackingUrl]
+                            properties:
+                                carrier:
+                                    type: string
+                                    nullable: true
+                                    description: The name of the delivery method; null for an order placed without one.
+                                    example: Kurier standardowy
+                                trackingNumber:
+                                    type: string
+                                    description: 1 to 40 ASCII letters, digits and hyphens.
+                                    example: JJD0002-4455
+                                trackingUrl:
+                                    type: string
+                                    nullable: true
+                                    description: The link that follows the shipment, from the copy of the template of the method with the number; null without a template.
+                                    example: https://tracking.example.com/JJD0002-4455
                         BackofficeOrderTotals:
                             type: object
                             description: Sums of the lines after the discount of the code and of the delivery; net + vat = gross.
@@ -1444,7 +1500,7 @@ nelmio_api_doc:
                             description: >-
                                 A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for
                                 people and may change): the status of the order does not allow the change, the order has no
-                                refund to do, or (`about:blank`) the order changed since the `version` sent, also when a change
+                                refund to do, the order is neither shipped nor delivered so its tracking number cannot change, or (`about:blank`) the order changed since the `version` sent, also when a change
                                 that succeeded is sent again. Nothing is changed.
                             required: [type, title, status, detail]
                             properties:
@@ -1453,6 +1509,7 @@ nelmio_api_doc:
                                     enum:
                                         - 'tag:piotrp321.github.io,2026:shop/problems/order-transition-not-allowed'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/refund-not-pending'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/tracking-number-not-changeable'
                                         - about:blank
                                 title:
                                     type: string
