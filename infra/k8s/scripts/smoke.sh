@@ -29,7 +29,7 @@
 # rate-limit-check runs (it is no reason to refuse); the time of the phase and the
 # peak disk are printed); the later phases run on the restored cluster: upgrade with a new revision (initialize
 # and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
-# the users and their passwords stay); upgrade with an image whose migration fails (the previous api and worker keep
+# the users and their passwords stay); upgrade with an image whose migration fails (the previous api and both workers keep
 # serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
 # nothing). The last phase runs the demo data generator (docs/features/demo-data/spec.md): it waits until every StatefulSet is rolled
 # out (the upgrade before it ends on a failed job, with Elasticsearch still on its way to the new image), then ONE Job from the
@@ -828,7 +828,7 @@ restic backup --tag smoke-newer --host smoke-newer /work/dumps /work/objects /wo
 SH
 )"
   [ -n "$newer" ] || { echo "smoke: could not make the snapshot with a newer migration" >&2; return 1; }
-  pods_before="$(kc get pods -l 'app.kubernetes.io/name in (api,worker,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')"
+  pods_before="$(kc get pods -l 'app.kubernetes.io/name in (api,worker,worker-commands,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')"
   pre_restore_before="$(list_backups | awk '$4 == "pre-restore"' | wc -l | tr -d ' ')"
   # A Job of the CronJob rate-limit-check that is running (a copy of the Job of the CronJob with the command `sleep`, so that it
   # lasts) is no reason for make restore to refuse: the refusal below comes from the snapshot, after the check of the active Jobs.
@@ -854,7 +854,7 @@ SH
   fi
   if grep -q 'type tak' "$work/restore-newer.log"; then echo "smoke: make restore asked before it refused the newer snapshot" >&2; return 1; fi
   all_ready || { echo "smoke: the shop is not running after the refused restore" >&2; dump_state; return 1; }
-  [ "$(kc get pods -l 'app.kubernetes.io/name in (api,worker,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')" = "$pods_before" ] \
+  [ "$(kc get pods -l 'app.kubernetes.io/name in (api,worker,worker-commands,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')" = "$pods_before" ] \
     || { echo "smoke: the refused restore restarted the applications" >&2; return 1; }
   if [ "$(count catalog_product)" != "$products_at_backup" ] || [ "$(count ordering_order)" != "$orders_at_backup" ]; then
     echo "smoke: the refused restore changed the data" >&2; return 1
@@ -1067,7 +1067,7 @@ install r3
 failed_migrate="$(wait_job_failed migrate)"
 echo "smoke: the job $failed_migrate failed, as it must"
 job_log "$failed_migrate" | grep -q 'broken on purpose' || { echo "smoke: the migration failed for another reason:" >&2; job_log "$failed_migrate" >&2; exit 1; }
-for app in api worker; do
+for app in api worker worker-commands; do
   serving="$(kc get pods -l "app.kubernetes.io/name=$app" -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.spec.containers[0].image}{" "}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}')"
   echo "$serving" | grep -q "$registry/api:r2 True" || { echo "smoke: the previous $app pod does not serve:" >&2; echo "$serving" >&2; exit 1; }
   if echo "$serving" | grep -q "$registry/api:r3 True"; then echo "smoke: the new $app pod became ready on the failed migration" >&2; exit 1; fi
@@ -1077,7 +1077,7 @@ import urllib.request
 r = urllib.request.Request('http://traefik.kube-system.svc.cluster.local/health', headers={'Host': 'api.localhost'})
 print(urllib.request.urlopen(r, timeout=30).read().decode())")"
 echo "$status" | grep -q '"status":"ok"' || { echo "smoke: the previous api does not answer /health: $status" >&2; exit 1; }
-echo "smoke: the previous api and worker keep serving, the new ones are not ready"
+echo "smoke: the previous api and both workers keep serving, the new ones are not ready"
 
 log "upgrade r4: a good revision on a database with orders and without products"
 retag r2 r4

@@ -281,7 +281,7 @@
             "api": {
               "type": "string",
               "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
-              "description": "DSN of the api, the worker and the jobs: https://<key>@<host>/<project id>; empty: Sentry off."
+              "description": "DSN of the api, the workers and the jobs: https://<key>@<host>/<project id>; empty: Sentry off."
             },
             "store": {
               "type": "string",
@@ -690,6 +690,7 @@
         "mailpit",
         "api",
         "worker",
+        "workerCommands",
         "store",
         "admin",
         "imgproxy",
@@ -844,6 +845,24 @@
           }
         },
         "worker": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "workerCommands": {
           "type": "object",
           "required": [
             "requests"

@@ -5,7 +5,7 @@ from support import WORKLOADS, by_logical, docs, logical, of_kind, wave, waits_f
 EXPECTED_WAVES = {
     "postgres": -1, "elasticsearch": -1, "rabbitmq": -1, "redis": -1, "garage": -1, "keycloak": -1, "mailpit": -1,
     "garage-init": 0, "migrate": 0, "keycloak-config": 0,
-    "api": 1, "worker": 1, "store": 1, "admin": 1, "imgproxy": 1, "varnish": 1,
+    "api": 1, "worker": 1, "worker-commands": 1, "store": 1, "admin": 1, "imgproxy": 1, "varnish": 1,
     "initialize": 2, "purge-caches": 3, "backfill": 3,
 }
 
@@ -16,11 +16,12 @@ EXPECTED_WAITS = {
     "migrate": {"postgres", "elasticsearch"},
     "keycloak-config": {"keycloak"},
     "api": {"migrate"},
-    "worker": {"migrate"},
+    "worker": {"migrate", "rabbitmq"},
+    "worker-commands": {"migrate"},
     "imgproxy": {"garage-init"},
-    "initialize": {"api", "worker", "varnish", "store"},
+    "initialize": {"api", "worker", "worker-commands", "varnish", "store"},
     "purge-caches": {"api", "varnish", "store"},
-    "backfill": {"api", "worker"},
+    "backfill": {"api", "worker", "worker-commands"},
 }
 
 

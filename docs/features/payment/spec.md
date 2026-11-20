@@ -238,11 +238,11 @@ płatność bez zmian.
   (UTC), w `demo-card` sekundy uniksowe.
 - Porównanie podpisu `hash_equals`. Sekrety i klucze API z env (`PAYMENT_DEMO_TRANSFER_API_KEY`,
   `PAYMENT_DEMO_TRANSFER_WEBHOOK_SECRET`, `PAYMENT_DEMO_CARD_API_KEY`, `PAYMENT_DEMO_CARD_WEBHOOK_SECRET`; T1).
-- Adresy (nie sekrety, w `infra/docker-compose.yml` dla `api` i `worker`, w `phpunit.dist.xml` dla testów):
+- Adresy (nie sekrety, w `infra/docker-compose.yml` dla `api` i obu workerów, w `phpunit.dist.xml` dla testów):
   - `PAYMENT_PROVIDER_BASE_URL=http://api`: API symulatora wołane przez adaptery (sieć compose);
   - `PAYMENT_SIMULATOR_PUBLIC_URL=http://localhost:${API_PORT:-8000}`: adres strony płatności dla przeglądarki,
     z którego symulator buduje `paymentUrl` / `url`;
-  - `PAYMENT_WEBHOOK_BASE_URL=http://api`: dokąd symulator (worker) wysyła webhooki
+  - `PAYMENT_WEBHOOK_BASE_URL=http://api`: dokąd symulator (`worker-commands`) wysyła webhooki
     (`<base>/api/v1/payments/webhooks/<provider>`).
 - `returnUrl` (i `successUrl`, `cancelUrl`) buduje API: `STORE_URL` + `/checkout/confirmation`. Sklep nie podaje
   adresu powrotu (brak open redirect).
@@ -394,11 +394,13 @@ formularz płatności i przestaje odświeżać).
   `…queue_name=payment_simulator…`, `use_notify: false`, `redeliver_timeout=300` (jak `outbox`: wiadomość
   pobrana przez worker, który padł przed potwierdzeniem, wraca po 5 minutach, nie po domyślnej godzinie),
   w istniejącej tabeli `messenger_messages` (jak `outbox` i `failed`); `DelayStamp` zapisuje `available_at`.
-  Wiadomość czeka w bazie, więc restart albo przestój workera przed terminem tylko opóźnia anulowanie.
+  Wiadomość czeka w bazie, więc restart albo przestój workera `worker-commands` przed terminem tylko opóźnia anulowanie.
 - Routing: `ExpireUnpaidOrder` → `scheduled` (ponowienia: 5 prób, 1 s, ×3); `DeliverSimulatedWebhook` →
   `payment_simulator` (ponowienia: 5 prób, 1 s, ×3, około 2 minut, potem `failed`).
-- Worker: `messenger:consume outbox events scheduled payment_simulator promotions jobs` (`infra/docker-compose.yml`, także
-  healthcheck z linią komendy; CI uruchamia stos przez compose).
+- Workery (`infra/docker-compose.yml`, także healthcheck z linią komendy; CI uruchamia stos przez compose): `worker`
+  (`messenger:consume outbox events`) i `worker-commands` (`messenger:consume payment_simulator scheduled promotions
+  jobs`), oba z `--time-limit=86400 --memory-limit=192M`. Komendy w Postgresie nie zależą od RabbitMQ, a po każdej
+  wiadomości worker wraca na początek listy, więc dostępne webhooki symulatora idą przed dostępnymi anulowaniami.
 
 ## Testy wywołań HTTP dostawców
 
@@ -669,8 +671,9 @@ przekierowanie, link „Opłać zamówienie” przy pustym koszyku i ciasteczku)
   rozpoczęcie drugiego dostaje 409, a ponowienie przechodzi.
 - `ExpireUnpaidOrder` po wyczerpaniu ponowień trafia do `failed`: zamówienie zostaje `new`, a rezerwacja aktywna, aż
   ktoś ponowi wiadomość (`bin/console messenger:failed:retry`).
-- Worker obsługuje transporty po kolei (`outbox events scheduled payment_simulator promotions jobs`): długa kolejka zdarzeń opóźnia
-  webhooki symulatora, a sklep po 30 s pokazuje „Nie mamy jeszcze potwierdzenia płatności.”.
+- `worker-commands` obsługuje transporty po kolei (`payment_simulator scheduled promotions jobs`): długa kolejka webhooków
+  symulatora opóźnia anulowania, a sklep po 30 s pokazuje „Nie mamy jeszcze potwierdzenia płatności.”. Zdarzenia
+  (`worker`) nie opóźniają ani webhooków, ani anulowań.
 - Gość traci możliwość zapłaty po utracie ciasteczka potwierdzenia (inne urządzenie, wylogowanie); zamówienie
   wygasa.
 - Klient może zarezerwować stan na 35 minut bez płatności.

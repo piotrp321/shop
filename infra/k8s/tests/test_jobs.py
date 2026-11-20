@@ -67,14 +67,15 @@ class JobCommandsTest(unittest.TestCase):
         self.assertIn("storefront:cache:purge-all", command_line(by_logical("prod", "Job")["purge-caches"]))
 
     def test_backfill_runs_the_steps_after_the_rollout_with_a_deadline_of_its_own(self):
-        """Migrations change the schema only; app:backfill fills the data once api and worker run the new version."""
+        """Migrations change the schema only; app:backfill fills the data once api and both workers run the new version."""
         for case in ("prod", "ci"):
             jobs = by_logical(case, "Job")
             job = jobs["backfill"]
             self.assertEqual(["bin/console", "app:backfill"], containers(job)[0]["command"], case)
             self.assertNotIn("--force", command_line(job), case)
             self.assertEqual("prod", env_of(containers(job)[0])["APP_ENV"], case)
-            self.assertGreater(wave(job), wave(by_logical(case, "Deployment")["worker"]), case)
+            for worker in ("worker", "worker-commands"):
+                self.assertGreater(wave(job), wave(by_logical(case, "Deployment")[worker]), f"{case} {worker}")
             self.assertEqual(21600, job["spec"]["activeDeadlineSeconds"], case)
             self.assertEqual(1800, jobs["purge-caches"]["spec"]["activeDeadlineSeconds"], case)
 
