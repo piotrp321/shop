@@ -48,6 +48,10 @@ final class AdminRouteAccessTest extends WebTestCase
             'PUT /api/v1/admin/products/{id}',
             'DELETE /api/v1/admin/promotions/{id}',
             'GET /api/v1/admin/variants/{variantId}/stock-history',
+            'GET /api/v1/admin/delivery-methods',
+            'POST /api/v1/admin/delivery-methods',
+            'GET /api/v1/admin/delivery-methods/{id}',
+            'PUT /api/v1/admin/delivery-methods/{id}',
         ] as $known) {
             self::assertContains($known, $endpoints);
         }

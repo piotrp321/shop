@@ -13,9 +13,9 @@ if [ "${APP_ENV:-}" = "prod" ]; then
 fi
 
 # Resets the catalog and loads the demo products; waits (60 s) until the worker has indexed every product.
-# Then the prices, the payment simulator transactions, the payments, the orders (before the stocks: the reservations
-# they hold go with the stocks) and the stocks. Each seed fails when a product has no price or stock pattern.
-for seed in catalog pricing payment-simulator payment ordering inventory; do
+# Then the prices, the delivery methods, the payment simulator transactions, the payments, the orders (before the
+# stocks: the reservations they hold go with the stocks) and the stocks. Each seed fails when a product has no price or stock pattern.
+for seed in catalog pricing delivery payment-simulator payment ordering inventory; do
   # shellcheck disable=SC2086 # force_reset is empty or one flag
   "$console" "$seed:seed-demo" $force_reset
 done
