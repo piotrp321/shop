@@ -212,13 +212,24 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   wartością `clientIpHeaderWithoutAllowList: true` (tylko pomiar na lokalnym klastrze); to potwierdzenie razem
   z `image.requireDigests: true` (obrazy wydania) też kończy render błędem.
 - CronJob `cart:purge-expired` (co godzinę, `concurrencyPolicy: Forbid`, strefa `Europe/Warsaw`).
+- CronJob `demo-data` (profile `prod`, `ci` i `load`; `demoData.enabled`): zawieszony (`suspend: true`), jego Job zastępuje
+  dane sklepu danymi profilu generatora albo seedem, więc sam się nie uruchamia, a skrypt `files/scripts/demo-data.sh`
+  odmawia bez `DEMO_DATA_CONFIRM` (kod 64). W `prod` (`medium`, po zgodzie `server`) Job powstaje wyłącznie z celu
+  `make -C infra/k8s generate` po zgodzie użytkownika: zamyka sklep NetworkPolicy `shop-closed` (jedyna, tymczasowa;
+  poza chartem), a po udanym Jobie `make -C infra/k8s open` sprawdza dane i otwiera go; nieudany przebieg zostawia
+  sklep zamknięty. Strażnik wolnego miejsca
+  zatrzymuje generator tuż przed progiem alertu `NodeDiskFull`. Opis: `docs/features/demo-scale/spec.md`,
+  `docs/features/demo-data/spec.md`.
+- CronJob `load` (każdy profil): zawieszony, obraz k6 z digestem w `images.k6`, Job uruchamia `load/smoke.js` na usługach
+  klastra bez sekretów (sprawdzenie ścieżek sklepu po generowaniu danych przez `generate`).
 - `rabbitmq-init` (vhost testów) nie istnieje.
 - Profile wartości:
   - `values.yaml` – wspólne; wymagane wartości walidowane schematem (`values.schema.json`), więc brak np. sekretu SMTP
     przy `orderMail: brevo` kończy render (i synchronizację Argo) błędem z nazwą wartości;
   - `environments/prod/values.yaml` – domena, przełączniki D10, `clientIpHeader: CF-Connecting-IP`, zasoby na serwer
     docelowy (8 vCore, 24 GB RAM): suma requestów CPU do 7 vCPU (limity CPU mogą je przekraczać), suma limitów pamięci
-    do 20 GB;
+    do 20 GB; `demoData` (profil, chwila odniesienia, sekret puli zdjęć, `minFreeGb`, limity czasu `medium` 6 h i `server`
+    24 h) z zasobami Joba poza tym budżetem;
   - `environments/ci/values.yaml` – odchudzony profil smoke testu: hosty `*.localhost`, zwykłe sekrety, bez
     `ipAllowList` i bez `clientIpHeader`, minimalne requesty, sterta ES 512 MB, mniejsza sterta Keycloaka, poczta do Mailpita; mieści się na `ubuntu-latest` (16 GB RAM, 4 vCPU, 14 GB SSD).
 
@@ -369,7 +380,8 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   zmienia). Smoke test uruchamia kopię i jej weryfikację na osobnej instancji S3 (przestrzeń `smoke-backup`), sprawdza snapshot,
   a potem odtwarza go na pustym klastrze (przestrzeń `shop` usunięta z wolumenami, chart zainstalowany od nowa) i sprawdza
   odmowę snapshotu nowszego niż kod.
-- Automatyczny backup VPS-a od OVH (runbook: włączenie) zostaje dodatkową kopią całego serwera. Alerty kopii (`BackupFailed`, `BackupMissing`) są w Grafana Cloud (`docs/features/deploy-ops/spec.md`, O6).
+- Automatyczny backup VPS-a od OVH (runbook: włączenie przez użytkownika) byłby dodatkową kopią całego serwera; repo nie zna
+  jego stanu, więc nic w chartcie ani w zabezpieczeniach generowania danych na nim nie polega. Alerty kopii (`BackupFailed`, `BackupMissing`) są w Grafana Cloud (`docs/features/deploy-ops/spec.md`, O6).
 
 ## Sekrety
 
@@ -467,8 +479,11 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   z nową rewizją (`initialize` i `keycloak-config` nie zmieniają danych ani realmów), upgrade z klientem dodanym do pliku
   realmu `shop` (`keycloak-config` dodaje go, użytkownicy zostają), `rerun` zakończonego Joba, upgrade ze zepsutą
   migracją (poprzednie `api` i `worker` działają) i upgrade na bazie z zamówieniami bez produktów (`initialize` kończy
-  się błędem stanu mieszanego bez zmian). Ostatnia faza uruchamia Job z CronJoba `demo-data` (generator, profil `small`;
-  `docs/features/demo-data/spec.md`) i sprawdza kod 0 oraz zastąpienie danych; `SMOKE_BREAK=demo-data` psuje ją celowo.
+  się błędem stanu mieszanego bez zmian). Ostatnia faza uruchamia `generate PROFILE=small` i `open` (zamknięcie sklepu, Job `demo-data-run`
+  z CronJoba `demo-data`, sprawdzenie danych, Job `load`, otwarcie; `docs/features/demo-scale/spec.md`, kryterium 7),
+  z żądaniami przez ingress wysyłanymi bez przerwy: przestają dostawać 200 po zamknięciu, a po przebiegu sklep
+  odpowiada. `SMOKE_BREAK=demo-data` psuje generator celowo: `generate` kończy się kodem 1, sklep jest zamknięty,
+  `open` odmawia, a `generate PROFILE=seed` kończy się kodem 0 i otwiera sklep na danych seeda.
   Wypisuje szczytowe zużycie pamięci i dysku. Na koniec usuwa klaster (także po
   błędzie). Z `SMOKE_VALUES=<values-images.yaml>` (workflow na `main`) pierwsza instalacja używa tego
   pliku zamiast obrazów lokalnych: k3d pobiera `ghcr.io/piotrp321/shop/<app>:<sha>@<digest>` z GHCR (uwierzytelnienie
@@ -551,7 +566,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
 - **Odtworzenie ćwiczone przed serwerem tylko w smoke teście.** Nocna kopia do R2 jest codziennie weryfikowana
   (alerty na jej wynik i brak), a smoke test odtwarza ją na pustym klastrze, ale bez Argo CD: wyłączanie synchronizacji
   sprawdzają testy na atrapie `kubectl`, a serwer dopiero ćwiczenie odtworzenia z runbooka (zgoda użytkownika). Backup VPS-a
-  od OVH działa od pierwszego dnia. Prawdziwe dane i publiczny start dopiero po ćwiczeniu odtworzenia z runbooka na serwerze (zgoda użytkownika). Klucz R2 w klastrze pozwala usunąć kopie (token tylko do jednego
+  od OVH jest dodatkiem, którego stanu repo nie zna (włącza go użytkownik). Prawdziwe dane i publiczny start dopiero po ćwiczeniu odtworzenia z runbooka na serwerze (zgoda użytkownika). Klucz R2 w klastrze pozwala usunąć kopie (token tylko do jednego
   bucketu; kopie niezmienne poza zakresem demo).
 - **AppArmor containerd na Ubuntu 26.04.** k3s v1.36 oficjalnie wspiera Ubuntu 26.04 (matryca SUSE), ale przy nakładaniu
   profili (profile stacking) profil `cri-containerd.apparmor.d` blokuje sygnały między

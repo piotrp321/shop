@@ -95,12 +95,12 @@ class CronJobTest(unittest.TestCase):
     def test_without_backup_enabled_nothing_of_it_is_rendered(self):
         for doc in of_kind("prod-nobackup", "CronJob", "PersistentVolumeClaim", "ServiceAccount", "ClusterRole", "ClusterRoleBinding", "Secret"):
             self.assertNotIn("backup", name(doc))
-        self.assertEqual(["cart-purge-expired", "rate-limit-check"], sorted(logical(d) for d in of_kind("prod-nobackup", "CronJob")))
+        self.assertEqual(["cart-purge-expired", "demo-data", "load", "rate-limit-check"], sorted(logical(d) for d in of_kind("prod-nobackup", "CronJob")))
 
     def test_it_is_off_in_prod_until_its_repository_and_secret_exist(self):
         """environments/prod/secrets has no shop-backup and the repository is an example: switched on, the backup would fail
         every night and fire its alerts (README.md, section 2, step 3 switches it on)."""
-        self.assertEqual(["cart-purge-expired", "rate-limit-check"], sorted(logical(d) for d in of_kind("prod", "CronJob")))
+        self.assertEqual(["cart-purge-expired", "demo-data", "load", "rate-limit-check"], sorted(logical(d) for d in of_kind("prod", "CronJob")))
         self.assertEqual([], [name(d) for d in of_kind("prod", "PersistentVolumeClaim")])
 
 

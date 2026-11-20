@@ -45,6 +45,9 @@ images:
   # The tools of the backup (CronJob backup); compose has no counterpart, the backup is a function of the server.
   restic: restic/restic:0.19.1@sha256:136600b6ff6843d61d355f7f71f460a166429f35de6fd11b568fece3c9a4d510
   rclone: rclone/rclone:1.75.2@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5
+  # The runner of the scripts of load/ (CronJob load); the same tag and digest as K6_IMAGE in load/k6.sh (tests/test_load_cronjob.py
+  # compares them). A new version: docker buildx imagetools inspect grafana/k6:<tag>, in both places.
+  k6: grafana/k6:2.3.0@sha256:2dd4756ec6e14e62778916e1eb850108e4b499304c02df56760fa0bdb0fba0b8
 
 ingress:
   className: traefik
@@ -134,9 +137,10 @@ cartPurge:
 rateLimitCheck:
   schedule: "*/5 * * * *"
 
-# The demo data generator (docs/features/demo-data/spec.md, "k3d (chart w profilach ci i load; część 2)"): the suspended CronJob
-# demo-data, whose Jobs run bin/generate-demo and so DELETE the data of every module. Only the profiles ci and load switch it on; the
-# schema refuses it with the images of a release (image.requireDigests, prod).
+# The demo data generator (docs/features/demo-scale/spec.md, "Job generatora na serwerze (chart)"; docs/features/demo-data/spec.md,
+# "k3d"): the suspended CronJob demo-data, whose Jobs run files/scripts/demo-data.sh, which runs bin/generate-demo and so DELETES the
+# data of every module. The profiles prod, ci and load switch it on; with the images of a release (image.requireDigests) the schema
+# requires the profile medium or server, an anchor, the Secret of the photo pool and a floor of at least 10 GB.
 demoData:
   enabled: false
   # The profile of apps/api/fixtures/demo-data/profiles.yaml: small, medium, server or full.
@@ -152,9 +156,14 @@ demoData:
     server: 32400
     full: 72000
   # The Secret with the read access to the private bucket of the photo pool (DEMO_PHOTOS_ENDPOINT, DEMO_PHOTOS_BUCKET,
-  # DEMO_PHOTOS_ACCESS_KEY_ID, DEMO_PHOTOS_SECRET_ACCESS_KEY), created outside the chart; only the container of the CronJob reads it.
-  # The profiles other than small need it; empty: no reference to it.
+  # DEMO_PHOTOS_ACCESS_KEY_ID, DEMO_PHOTOS_SECRET_ACCESS_KEY), created outside the chart; only the container of the CronJob reads it,
+  # and its references are optional (a Job of the seed starts without it). The profiles other than small need it; empty: no reference.
   photosSecretName: ""
+  # The floor of the free space of the node, in GB (10^9 bytes): the script refuses to start below it (exit 74) and stops the generator
+  # when the space falls below it during the run (exit 75).
+  minFreeGb: 32
+  # The seconds the pod has after TERM (the time limit, a deleted pod) to stop the generator and write its summary.
+  terminationGracePeriodSeconds: 120
 
 # The nightly backup (docs/features/deploy-ops/spec.md, O1 and O2): the databases and the product images, encrypted by restic
 # into a repository in S3 (Cloudflare R2 in prod). The repository is created by the first backup.
@@ -208,6 +217,13 @@ keycloak:
   mailFrom: ""
   mailFromName: Worf
 
+# The suspended CronJob load (docs/features/demo-scale/spec.md, "Cel make -C infra/k8s open"): its Jobs run load/smoke.js of k6 against
+# the services of the cluster (http://store:3000, http://api) once the demo data is generated, and the measurement of the load can use
+# it too. Every profile has it, it never runs by itself and has no secret.
+load:
+  # The time limit of a Job, in seconds: the smoke run has a limit of 30 s of its own, a longer script needs a longer one.
+  activeDeadlineSeconds: 900
+
 # Requests and limits per service; the profiles override them as a whole.
 resources:
   postgres: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }
@@ -229,3 +245,5 @@ resources:
   job: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 1Gi } }
   # The generator of the demo data (CronJob demo-data): several PHP processes at once, each with the memory limit of the api.
   demoData: { requests: { cpu: 500m, memory: 512Mi }, limits: { memory: 2Gi } }
+  # k6 of the CronJob load (the same in every profile: the measurement of the load runs on the resources of prod).
+  k6: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }

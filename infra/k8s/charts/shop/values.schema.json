@@ -21,6 +21,7 @@
     "initialize",
     "jobs",
     "demoData",
+    "load",
     "backup",
     "alerts",
     "cartPurge",
@@ -162,7 +163,8 @@
         "alpine",
         "kubectl",
         "restic",
-        "rclone"
+        "rclone",
+        "k6"
       ]
     },
     "ingress": {
@@ -445,6 +447,20 @@
         }
       }
     },
+    "load": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activeDeadlineSeconds"
+      ],
+      "properties": {
+        "activeDeadlineSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "The time limit of a Job of the CronJob load, in seconds."
+        }
+      }
+    },
     "demoData": {
       "type": "object",
       "additionalProperties": false,
@@ -453,12 +469,14 @@
         "profile",
         "anchor",
         "activeDeadlineSeconds",
-        "photosSecretName"
+        "photosSecretName",
+        "minFreeGb",
+        "terminationGracePeriodSeconds"
       ],
       "properties": {
         "enabled": {
           "type": "boolean",
-          "description": "Render the suspended CronJob demo-data (the profiles ci and load); never with image.requireDigests."
+          "description": "Render the suspended CronJob demo-data (the profiles prod, ci and load)."
         },
         "profile": {
           "type": "string",
@@ -509,6 +527,16 @@
           "pattern": "^([a-z0-9]([-a-z0-9.]*[a-z0-9])?)?$",
           "maxLength": 253,
           "description": "The Secret with the four DEMO_PHOTOS_* read variables of the photo pool, created outside the chart; empty: none."
+        },
+        "minFreeGb": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The floor of the free space of the node in GB: the script does not start below it and stops the generator under it."
+        },
+        "terminationGracePeriodSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "The seconds after TERM in which the script stops the generator (TERM, KILL after 30 s) and writes its summary."
         }
       }
     },
@@ -696,7 +724,8 @@
         "varnish",
         "backup",
         "job",
-        "demoData"
+        "demoData",
+        "k6"
       ],
       "properties": {
         "postgres": {
@@ -986,6 +1015,24 @@
               "type": "object"
             }
           }
+        },
+        "k6": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
         }
       }
     }
@@ -1108,7 +1155,8 @@
     {
       "if": {
         "required": [
-          "image"
+          "image",
+          "demoData"
         ],
         "properties": {
           "image": {
@@ -1120,16 +1168,42 @@
                 "const": true
               }
             }
+          },
+          "demoData": {
+            "required": [
+              "enabled"
+            ],
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
           }
         }
       },
       "then": {
         "properties": {
           "demoData": {
+            "description": "With the images of a release (the server): the generator of the steps of docs/features/demo-scale/spec.md.",
             "properties": {
-              "enabled": {
-                "const": false,
-                "description": "Never with the images of a release (image.requireDigests): the generator deletes the data of every module."
+              "profile": {
+                "enum": [
+                  "medium",
+                  "server"
+                ],
+                "description": "With the images of a release only medium or server (docs/features/demo-scale/spec.md, U2)."
+              },
+              "anchor": {
+                "minLength": 1,
+                "description": "With the images of a release a fixed anchor, so that a run again gives the same data."
+              },
+              "photosSecretName": {
+                "minLength": 1,
+                "description": "With the images of a release the Secret of the photo pool (the profiles medium and server need it)."
+              },
+              "minFreeGb": {
+                "minimum": 10,
+                "description": "With the images of a release a floor of at least 10 GB of the free space of the node."
               }
             }
           }

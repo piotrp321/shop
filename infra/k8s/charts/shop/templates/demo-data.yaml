@@ -1,14 +1,20 @@
 {{- /*
-The demo data generator (docs/features/demo-data/spec.md, "k3d (chart w profilach ci i load; część 2)"): a CronJob that never runs by
-itself (suspend: true) and exists only where demoData.enabled is true (the profiles ci and load; the schema refuses it with the images
-of a release). The Jobs of the smoke test and of make -C infra/k8s load are created from it (kubectl create job --from=cronjob/demo-data),
-so a run uses the image and the secrets of the deployed revision. Its Job runs bin/generate-demo, which DELETES the data of every module
-(bin/seed-demo) and generates the profile demoData.profile on top of the seed; the image is a production image (APP_ENV=prod), so the
-script needs --force-reset. The time limit is that of the profile (demoData.activeDeadlineSeconds), a failed run is never repeated.
+The demo data generator (docs/features/demo-scale/spec.md, "Job generatora na serwerze (chart)"; docs/features/demo-data/spec.md, "k3d"):
+a CronJob that never runs by itself (suspend: true) and exists where demoData.enabled is true (the profiles prod, ci and load). Its Jobs
+are created from it by make -C infra/k8s generate (the server), make -C infra/k8s load and the smoke test, with the variable
+DEMO_DATA_CONFIRM (scripts/kube-jobs.sh, cronjob_job), so a run uses the image, the script and the secrets of the deployed revision.
+The container runs the script of the chart files/scripts/demo-data.sh (ConfigMap shop-scripts): without DEMO_DATA_CONFIRM, which the
+template never sets, it refuses and deletes nothing; with the profile demoData.profile it runs bin/generate-demo, which DELETES the data
+of every module (bin/seed-demo) and generates the profile on top of the seed (the image is a production image, APP_ENV=prod, so with
+--force-reset); with `seed` it runs bin/seed-demo. A guard stops the generator before the free space of the node falls below
+demoData.minFreeGb, and TERM (the time limit of the profile, demoData.activeDeadlineSeconds) stops it within
+demoData.terminationGracePeriodSeconds. A failed run is never repeated. PGOPTIONS makes Postgres end a session of the generator a few
+seconds after its client is gone (a container killed without a signal).
 The container has the secret of the stack (as every Job of the api: its KC_BOOTSTRAP_ADMIN_PASSWORD is the password of the administrator
 of Keycloak, which the step of the accounts logs in with) and the login admin of the Job keycloak-config. When demoData.photosSecretName
 names a Secret, only this container reads from it the four variables of the read access to the private bucket of the photo pool
-(the profiles other than small need them); the chart never creates that Secret and it has no key that writes.
+(the profiles other than small need them); the references are optional, so that a Job of the seed starts when the Secret is not there
+(make generate creates it for a run). The chart never creates that Secret and it has no key that writes.
 No container has a token of the Kubernetes API.
 */ -}}
 {{- if .Values.demoData.enabled }}
@@ -22,13 +28,17 @@ metadata:
   annotations:
     {{- include "shop.wave" "1" | nindent 4 }}
 spec:
-  # Never by itself: the smoke test and make -C infra/k8s load create its Jobs. The schedule is required, not used.
+  # Never by itself: make generate, make load and the smoke test create its Jobs. The schedule is required, not used.
   schedule: "0 0 1 1 *"
   suspend: true
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 3
   jobTemplate:
+    metadata:
+      # On the Job itself: make rerun refuses a Job with app.kubernetes.io/name demo-data (it would repeat DEMO_DATA_CONFIRM).
+      labels:
+        {{- include "shop.labels" (dict "root" . "name" "demo-data") | nindent 8 }}
     spec:
       # A failed run is reported, never repeated: the generator deletes the data first, so a second run would hide where the first stopped.
       backoffLimit: 0
@@ -41,17 +51,20 @@ spec:
           restartPolicy: Never
           enableServiceLinks: false
           automountServiceAccountToken: false
+          # The time the script has after TERM to stop the group of the generator (TERM, KILL after 30 s) and to write the line of its reason.
+          terminationGracePeriodSeconds: {{ .Values.demoData.terminationGracePeriodSeconds }}
           containers:
             - name: demo-data
               image: {{ include "shop.appImage" (dict "root" . "app" "api") }}
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               command:
-                - bin/generate-demo
+                - sh
+                - /scripts/demo-data.sh
                 - --profile={{ $profile }}
                 {{- if .Values.demoData.anchor }}
                 - --anchor={{ .Values.demoData.anchor }}
                 {{- end }}
-                - --force-reset
+                - --min-free-gb={{ .Values.demoData.minFreeGb }}
               env:
                 {{- include "shop.apiEnv" . | nindent 16 }}
                 # The administrator of Keycloak for the accounts: the login of the Job keycloak-config (the generator's default is the same)
@@ -60,17 +73,31 @@ spec:
                   value: admin
                 - name: DEMO_DATA_KEYCLOAK_URL
                   value: http://keycloak:8080
+                # libpq of every process of the generator: Postgres checks every 10 s that the client is still there and ends the
+                # session (and its query) of one that is gone, also when the container is killed without a signal.
+                - name: PGOPTIONS
+                  value: "-c client_connection_check_interval=10s"
                 {{- if .Values.demoData.photosSecretName }}
-                # The read access to the private bucket of the photo pool: the keys of the Secret, one by one (never envFrom).
+                # The read access to the private bucket of the photo pool: the keys of the Secret, one by one (never envFrom); optional, so
+                # that a Job of the seed starts without the Secret (bin/generate-demo refuses a profile with photos without them).
                 {{- range $key := list "DEMO_PHOTOS_ENDPOINT" "DEMO_PHOTOS_BUCKET" "DEMO_PHOTOS_ACCESS_KEY_ID" "DEMO_PHOTOS_SECRET_ACCESS_KEY" }}
                 - name: {{ $key }}
                   valueFrom:
                     secretKeyRef:
                       name: {{ $.Values.demoData.photosSecretName }}
                       key: {{ $key }}
+                      optional: true
                 {{- end }}
                 {{- end }}
               {{- include "shop.envFromSecret" . | nindent 14 }}
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
               resources:
                 {{- include "shop.resources" (dict "root" . "resources" "demoData") | nindent 16 }}
+          volumes:
+            - name: scripts
+              configMap:
+                name: shop-scripts
 {{- end }}

@@ -396,3 +396,11 @@ environment (sentry.environment, when set), the release (image.tag, the revision
   value: {{ .root.Values.sentry.tracesSampleRate | quote }}
 {{- end }}
 {{- end }}
+
+{{- /* The paths under load/ of the scripts of the ConfigMap load-scripts and the CronJob load (configmaps.yaml, load.yaml), as a JSON list: the files of load/ and of load/lib/. The argument is the root context. */ -}}
+{{- define "shop.load.scripts" -}}
+{{- $paths := list -}}
+{{- range $path, $_ := .Files.Glob "files/load/*.js" }}{{ $paths = append $paths (trimPrefix "files/load/" $path) }}{{ end -}}
+{{- range $path, $_ := .Files.Glob "files/load/lib/*.js" }}{{ $paths = append $paths (trimPrefix "files/load/" $path) }}{{ end -}}
+{{- $paths | sortAlpha | toJson -}}
+{{- end }}

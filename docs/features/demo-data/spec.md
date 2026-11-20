@@ -2,12 +2,12 @@
 
 Deterministyczny generator, który wypełnia sklep danymi w skali docelowej z `docs/vision.md` (10 mln produktów)
 i realistycznymi danymi operacyjnymi (klienci, pracownicy, zamówienia), oraz pomiar obciążenia na tych danych na
-klastrze k3d. Raport z pomiaru pokazuje, jak sklep działa przy tej skali, i wskazuje wąskie gardła do poprawy przed
-wdrożeniem danych na serwer demo (worf.pl).
+klastrze k3d. Raport z pomiaru pokazuje, jak sklep działa przy tej skali, i wskazuje wąskie gardła do poprawy. Dane w skali trafiają
+także na serwer demo (worf.pl): `docs/features/demo-scale/spec.md`.
 
 Epik ma dwie części z osobnymi końcowymi PR, mergowane po kolei (P11): część 1 (#482) to generator i jego testy,
 zaimplementowane, część 2 (#486, DEMO-LOAD) to integracja z k3d i k6 oraz przebieg `medium`: zaimplementowana, a przebieg
-`medium` wykonany 2026-11-19 (raport `docs/reports/demo-load-medium-2026-11-19.md`, kalibracja w sekcji „Wyniki przebiegu `medium`”). Pomiar `full` (W3) jeszcze się nie odbył.
+`medium` wykonany 2026-11-19 (raport `docs/reports/demo-load-medium-2026-11-19.md`, kalibracja w sekcji „Wyniki przebiegu `medium`”). Pomiar `full` (W3) jest odłożony (DEMO-SCALE, U1): nie odbył się.
 Ta specyfikacja opisuje obie; sekcje i kryteria części 2 są oznaczone „część 2”.
 
 Issues: #486
@@ -56,12 +56,14 @@ Przyjęte przez użytkownika 2026-11-13 (rekomendacje z przygotowania epiku):
   zależy). Generator woła istniejące reguły i value objecty dla wartości (`PriceBreakdown`, `PromotionalPrice`,
   `LineAmounts`, `OrderNumber`, `Slug`), nigdy agregatów ani repozytoriów. Testy kontraktu zostają tylko dla reguł
   spoza Domain (klucz zdjęcia, `values_key`, ścieżka kategorii).
-- **P2. Kolejność prac.**
-  1. Ten epik (części 1 i 2, P11): generator, pomiar na k3d i przebudowa indeksu odporna na błędy. Po nim
-     obowiązkowy pomiar `full` na k3d i raport (W3).
-  2. Epik poprawek wąskich gardeł na podstawie raportu (ryzyka H1–H4 niżej to hipotezy do sprawdzenia).
-  3. Epik wdrożenia danych na serwer demo z pomiarem na serwerze i kopiami przy dużej bazie: #484.
-  Ten epik nie zmienia profilu `prod` chartu.
+- **P2. Kolejność prac** (decyzja użytkownika z 2026-11-19, DEMO-SCALE U1).
+  1. Ten epik (części 1 i 2, P11): generator, pomiar `medium` na k3d i przebudowa indeksu odporna na błędy.
+  2. Dane w skali na serwerze demo: `medium`, po analizie jego wyników i osobnej zgodzie `server`
+     (`docs/features/demo-scale/spec.md`, #786). Wynik jest pomiarem tego serwera i tego profilu.
+  3. Epiki poprawek wąskich gardeł na podstawie raportów (ryzyka H1–H4 niżej to hipotezy do sprawdzenia) oraz
+     reszta wdrożenia danych na serwerze (pomiar k6 na serwerze, kopie przy dużej bazie): #484.
+  4. Pomiar `full` na k3d jest odłożony (W3).
+  Ten epik nie zmienia profilu `prod` chartu; CronJob `demo-data` w `prod` opisuje DEMO-SCALE.
 - **P3. Warianty na produkt.** Średnio około 3 warianty na produkt w ogonie (około 40% produktów z jednym wariantem:
   mapy, książki, żywność, akcesoria; pozostałe 2–8).
 - **P4. Historia stanów magazynowych.** Ruchy stanów i rekordy rezerwacji zakończonych tylko dla zamówień
@@ -107,20 +109,21 @@ Wymagania dodatkowe użytkownika (2026-11-13):
 - **W2. Zapas miejsca (część 2).** Przed generowaniem w profilach `medium`, `server` i `full` na k3d cel wymaga wolnego miejsca
   co najmniej 25% ponad przewidywane szczytowe zużycie i odmawia startu bez niego; w trakcie przerywa pracę, zanim
   dysk się zapełni (sekcja „k3d”).
-- **W3. Pełna skala dopiero po pomiarze.** Przebieg `medium` i ekstrapolacja nie zastępują pomiaru `full`. Po epiku
-  obowiązkowo wykonujemy pomiar na 10 mln produktów i 50 mln zamówień na k3d, zanim zaczną się optymalizacje
-  (P2, krok 2) i przygotowanie wdrożenia na worf.pl (#484). Do tego czasu ani dokumentacja, ani PR, ani raport nie
-  przedstawiają pełnej skali jako zweryfikowanej: wyniki `medium` są opisane jako `medium`, a ekstrapolacja jako
-  niezweryfikowana.
+- **W3. Pełna skala jest niezweryfikowana.** Przebieg `medium`, przebieg na serwerze i ekstrapolacja nie zastępują
+  pomiaru `full` (10 mln produktów, 50 mln zamówień na k3d), który jest odłożony (DEMO-SCALE, U1). Ani dokumentacja,
+  ani PR, ani raport nie przedstawiają pełnej skali jako zweryfikowanej: wyniki `medium` są opisane jako `medium`,
+  przebieg `server` na worf.pl jako pomiar tego serwera, a rozmiary i czasy `server` na innym sprzęcie i `full`
+  jako ekstrapolacja niezweryfikowana.
 
 ## Poza zakresem
 
 - Dostęp do demo (rezygnacja z nocnego resetu w #179, rola tylko do odczytu, konta dla rekruterów, Cloudflare
   Access przed panelem, #119, #332): osobny epik.
-- Poprawki wąskich gardeł wykrytych pomiarem (P2, krok 2): osobny epik z raportu pomiaru `full`.
-- Dane w skali na serwerze demo, pomiar na serwerze, kopie zapasowe przy dużej bazie i sekret odczytu puli zdjęć
-  w klastrze serwera (P2, krok 3): #484.
-- Profil `prod` chartu: bez zmian w tym epiku.
+- Poprawki wąskich gardeł wykrytych pomiarami (P2, krok 3): osobne epiki z raportów.
+- Generowanie danych w skali na serwerze demo i sekret odczytu puli zdjęć w klastrze serwera: DEMO-SCALE
+  (`docs/features/demo-scale/spec.md`). Pomiar k6 na serwerze i kopie zapasowe przy dużej bazie: #484.
+- Pomiar `full` na k3d: odłożony (P2, W3).
+- Profil `prod` chartu poza CronJobem `demo-data` z DEMO-SCALE: bez zmian w tym epiku.
 - Obciążenie 60 tys. jednocześnie aktywnych użytkowników.
 - Koszyki (dane przejściowe), kolejki Messengera i powiadomienia e-mail zamówień: generator ich nie tworzy.
 - Ochrona przed dwoma równoległymi przebiegami generatora (lokalnie uruchamia go jedna osoba, na k3d cel tworzy
@@ -152,7 +155,7 @@ Rozmiary `server` i `full` to ekstrapolacja liniowa z tych liczb, niezweryfikowa
 | `server` | około 73 GB | około 10,6 GB | około 1,5 GB |
 | `full` | około 227 GB | około 10,6 GB | około 1,5 GB |
 
-Rzeczywiste rozmiary `server` i `full` poda raport pomiaru `full` (po epiku).
+Rzeczywiste rozmiary `server` na serwerze demo poda raport z jego przebiegu (DEMO-SCALE); `full` nie ma pomiaru.
 
 ### Realizm
 
@@ -416,11 +419,17 @@ Opis szczegółowy: `docs/features/search/spec.md`.
 
 ### k3d (chart w profilach `ci` i `load`; część 2)
 
-- Zawieszony CronJob `demo-data` (wzorzec CronJoba `restore`) tylko gdy `demoData.enabled` (profile `ci` i `load`;
-  `prod` bez zmian): obraz api, `bin/generate-demo` z profilem i chwilą odniesienia z wartości, sekret stosu,
+- Zawieszony CronJob `demo-data` (wzorzec CronJoba `restore`) tylko gdy `demoData.enabled` (profile `ci`, `load` i
+  `prod`; na serwerze Job powstaje wyłącznie z celu `make -C infra/k8s generate`, który zamyka sklep, a po Jobie
+  `make -C infra/k8s open` sprawdza dane i otwiera go: `docs/features/demo-scale/spec.md`): obraz api, skrypt chartu `files/scripts/demo-data.sh`, który
+  uruchamia `bin/generate-demo` z profilem i chwilą odniesienia z wartości (dla `seed` `bin/seed-demo`) i odmawia
+  (kod 64) bez zmiennej `DEMO_DATA_CONFIRM` równej profilowi albo `seed` (ustawiają ją tylko `generate`, `load`
+  i test dymny, więc Job utworzony ręcznie niczego nie kasuje), z strażnikiem wolnego miejsca (`demoData.minFreeGb`:
+  kod 74 przed startem, 75 po zatrzymaniu generatora; `seed` bez progu), sekret stosu,
   login administratora Keycloaka jak w Jobie `keycloak-config`, zasoby `resources.demoData`, limit czasu z wartości
   per profil (`small` 30 min, `medium` 1 h, `server` 9 h, `full` 20 h: około dwukrotność czasu generatora, w górę do
-  pełnej godziny; `medium` z pomiaru, `server` i `full` z ekstrapolacji, niezweryfikowanej), bez ponowień.
+  pełnej godziny; `medium` z pomiaru, `server` i `full` z ekstrapolacji, niezweryfikowanej; w `prod` `medium` 6 h
+  i `server` 24 h, bez pomiaru na tym serwerze), bez ponowień.
 - Test dymny (`make -C infra/k8s smoke`, w CI w `deploy.yml`) uruchamia Job z tego CronJoba z profilem `small`
   i sprawdza kod 0. Job powstaje dopiero, gdy wszystkie StatefulSety zakończą rollout: poprzednia faza (upgrade r4)
   kończy się celowo nieudanym `initialize`, a nowa rewizja zmienia obraz Elasticsearcha, więc jego pod jest wtedy
@@ -509,8 +518,10 @@ rzędu kilku GB, w granicach zapasu 1,25.
     nie dają sesji ani e-maila);
   - wysyłka e-maili do prawdziwych osób: adresy wyłącznie w domenach zarezerwowanych, generator nie publikuje
     zdarzeń; sprawdzenie: test generatora (każdy e-mail kończy się `@example.(com|net|org)`) i pusty outbox po `small`;
-  - przypadkowe zastąpienie danych: CronJob `demo-data` zawieszony i tylko w profilach `ci` i `load`; sprawdzenie:
-    test renderu (`suspend: true`, brak w `prod`);
+  - przypadkowe zastąpienie danych: CronJob `demo-data` zawieszony we wszystkich profilach, które go mają (`ci`,
+    `load`, `prod`), a jego skrypt odmawia bez `DEMO_DATA_CONFIRM` (kod 64); sprawdzenie: test renderu
+    (`suspend: true`) i test skryptu; na serwerze Job powstaje tylko z celu `generate` po zgodzie użytkownika
+    (`docs/features/demo-scale/spec.md`, „Ochrona przed przypadkowym uruchomieniem”);
   - podmiana zdjęć puli: SHA-256 każdego pliku w repo; sprawdzenie: test kroku zdjęć z niezgodną sumą pliku
     i z brakującym plikiem (błąd bez zmian);
   - wyciek danych dostępu do bucketu puli: tylko w pliku użytkownika poza repo i w sekrecie jednorazowego klastra k3d,
@@ -557,8 +568,8 @@ rzędu kilku GB, w granicach zapasu 1,25.
 8. Przebudowa indeksu ponawia przejściowe błędy (pozycje partii i całe żądanie) i kończy się sukcesem po kilku
    nieudanych próbach; trwały błąd i wyczerpane próby kończą przebudowę błędem (nowy indeks usunięty, alias bez zmian).
 9. (część 2) Chart: CronJob `demo-data` zawieszony, tylko z `demoData.enabled`, z zasobami i limitem czasu z wartości; profil
-   `load` bez kopii; profil `prod` renderuje się tak jak przed epikiem; `make -C infra/k8s check` przechodzi,
-   a selftest łapie brak `suspend`.
+   `load` bez kopii; `make -C infra/k8s check` przechodzi, a selftest łapie brak `suspend` (CronJob w `prod`:
+   DEMO-SCALE, kryterium 1).
 10. (część 2) Test dymny k3d uruchamia Job generatora z profilem `small` i kończy się sukcesem.
 11. (część 2) `make -C infra/k8s load` z `LOAD_DATA`: ścieżki błędu (nieznany profil, Job generatora zakończony błędem albo
     po czasie) testowane jak istniejące ścieżki `load`; bez opcji działa jak dziś. Zapas miejsca (W2): test skryptu
@@ -571,8 +582,8 @@ rzędu kilku GB, w granicach zapasu 1,25.
 13. (część 2) `load/lib/data.js` działa na danych z seeda jak dziś (`make load-smoke` w CI).
 14. Dokumentacja części 1: `docs/vision.md` („Dane demo”: generator i profile), `apps/api/CLAUDE.md` (moduł
     `DemoData`, wyjątki persystencji i outboxu, komendy, sposób testów), `docs/features/search/spec.md`. Część 2:
-    `docs/vision.md` („Skala docelowa”: pomiar na danych w skali i obowiązkowy pomiar `full` przed optymalizacjami
-    i wdrożeniem na serwer; bez twierdzenia, że pełna skala jest zweryfikowana, W3), runbook `infra/k8s/README.md`
+    `docs/vision.md` („Skala docelowa”: pomiar na danych w skali, pomiar `full` odłożony; bez twierdzenia, że pełna
+    skala jest zweryfikowana, W3), runbook `infra/k8s/README.md`
     i komentarz przy celu make (opis `LOAD_DATA` i CronJoba `demo-data`), `infra/k8s/CLAUDE.md` (tylko zasada, np.
     wymóg zgody użytkownika), `docs/features/hardening/spec.md` (opis `load`), `load/README.md`.
 15. `make seed-scale PROFILE=small` na stosie kończy się kodem 0 (cały skrypt na prawdziwych usługach), a `make seed`
@@ -601,7 +612,8 @@ Hipotezy z analizy kodu do sprawdzenia pomiarem (P2), z miejscami w kodzie:
 - Brak `statement_timeout` na połączeniu bazy; czyszczenie całego cache sklepu przy każdym wydaniu; `count(*)` na
   pełnych tabelach w Jobie `initialize` przy każdym wdrożeniu.
 - Rozmiary i czasy `server` i `full` to ekstrapolacja z przebiegu `medium` (sekcja „Wyniki przebiegu `medium`”), nie
-  pomiar; weryfikuje je dopiero pomiar `full` (W3).
+  pomiar; `server` zmierzy dopiero przebieg na serwerze demo (DEMO-SCALE, jako pomiar tego serwera), a `full` nie ma
+  pomiaru (odłożony, W3).
 - Usuwanie kont generatora po zmianie przestrzeni nazw albo słowników to do miliona pojedynczych wywołań REST
   Keycloaka, a każdy przebieg kroku kont przegląda pełną listę członków grupy. Dla 100 tys. kont krok kont trwał
   162 s; czasu dla miliona kont nie zmierzono.
@@ -621,9 +633,10 @@ Hipotezy z analizy kodu do sprawdzenia pomiarem (P2), z miejscami w kodzie:
 
 ## Po epiku
 
-Kroki sesji za zgodą użytkownika po części 2, nie zadania AO:
-1. Obowiązkowy pomiar `full` (W3) na k3d: `make -C infra/k8s load LOAD_DATA=full` na komputerze użytkownika, raport
-   w `docs/reports/`, zgłoszenia wąskich gardeł do epiku poprawek (P2, krok 2). Dopiero po nim zaczynają się
-   optymalizacje i przygotowanie #484. Cel sam odmówi startu bez zapasu miejsca (W2): przy `diskPeakGb` `full` równym
-   250 GB (ekstrapolacja) potrzeba około 313 GB wolnego na dysku komputera, a przy przebiegu `medium` 2026-11-19 wolne
-   było około 185 GB, więc przed pomiarem `full` trzeba zwolnić miejsce albo wskazać inny dysk.
+Kroki sesji za zgodą użytkownika, nie zadania AO:
+1. Dane w skali na serwerze demo: `generate PROFILE=medium`, po analizie `PROFILE=server`
+   (`docs/features/demo-scale/spec.md`, „Przebieg na serwerze”).
+2. Pomiar `full` (W3) na k3d jest odłożony: `make -C infra/k8s load LOAD_DATA=full` na komputerze użytkownika, raport
+   w `docs/reports/`. Cel sam odmówi startu bez zapasu miejsca (W2): przy `diskPeakGb` `full` równym 250 GB
+   (ekstrapolacja) potrzeba około 313 GB wolnego na dysku komputera, a przy przebiegu `medium` 2026-11-19 wolne było
+   około 185 GB, więc przed pomiarem `full` trzeba zwolnić miejsce albo wskazać inny dysk.
