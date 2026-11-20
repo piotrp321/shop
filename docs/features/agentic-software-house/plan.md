@@ -22,10 +22,11 @@ Od 2026-11-18 obowiązuje moratorium na rozwój AO, skilli istniejących tylko d
 Ostatni epik prowadzony przez AO: DEMO-DATA (#482), zakończony w AO 2026-11-18 (końcowy PR #744; integracja przeszła
 w pierwszej rundzie).
 
-W toku: ASYNC-RELIABILITY (#768, końcowy PR #811 otwarty). Przygotowane: DEMO-SCALE (#484). Blokery: brak.
-Ostatni zmergowany epik: ABUSE-LIMITS (#181, końcowy PR #802; interwencje, czekania na użytkownika i ręczne poprawki:
-brak danych pomiaru). Retro do zrobienia: brak (retro ABUSE-LIMITS w tym PR). Otwartych issues z etykietą `agent`
-jest 122, zamkniętych 75.
+W toku: ASYNC-RELIABILITY (#768, końcowy PR #811 otwarty). Przygotowane: DELIVERY etap 1 (#120). Blokery: brak.
+Ostatni zmergowany epik: DEMO-SCALE etap 1 (#786, końcowy PR #788; epik natywny spoza serii, bez punktu odniesienia,
+więc bez danych pomiaru). Ostatni zmergowany epik serii: ABUSE-LIMITS (#181, końcowy PR #802; brak danych pomiaru).
+Retro do zrobienia: brak (retro DEMO-SCALE w `docs/reports/retro-demo-scale-2026-11-20.md`). Otwartych issues
+z etykietą `agent` jest 123, zamkniętych 75.
 
 Seria ASH v1.0 (specyfikacja `docs/features/ash-v1/spec.md`): trzy epiki prowadzone natywnie według „Przebiegu epiku”
 w ADR, ocenianie metrykami i retrospektywami `/retro`. Seria jest w toku od założenia tagu `ash-v1.0` do retrospektywy
