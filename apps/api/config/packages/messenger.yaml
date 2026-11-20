@@ -106,7 +106,8 @@ framework:
             # docs/features/async-reliability/spec.md, D6, W12): no retry of this strategy, so the listener writes it
             # back at once under a new id. An error that forces a retry (RecoverableExceptionInterface) is sent back by
             # Messenger with its delay whatever max_retries says. A bulk retry: app:messaging:failed-retry, never
-            # messenger:failed:retry without an id (disabled, DisableBulkFailedRetryListener).
+            # messenger:failed:retry without an id or messenger:consume of this transport (both disabled in the
+            # console, DisableBulkFailedRetryListener).
             failed:
                 dsn: 'doctrine://default?queue_name=failed&auto_setup=false'
                 options:

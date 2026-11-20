@@ -459,12 +459,20 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   1 przy złym `--max` (nic nie ponawia), 2 przy błędzie odczytu kolejki albo błędzie ponowienia poza handlerem (np.
   nieudany zapis kopii): komenda wypisuje raport do tej chwili i przekazuje błąd konsoli. Dwa przebiegi naraz mogą
   ponowić tę samą wiadomość (handler działa dwa razy).
-- **Blokada zbiorczego `messenger:failed:retry` bez ID**: listener `ConsoleEvents::COMMAND`
-  (`DisableBulkFailedRetryListener`) wyłącza w konsoli komendę bez argumentu `id`, także pod skróconą nazwą, z innymi
-  opcjami i w trybie interaktywnym (kod 113), z komunikatem wskazującym `app:messaging:failed-retry` albo ponowienie
-  z `ID`; z ID komenda działa bez zmian. `messenger:consume failed` (nie używa go stos, chart ani cele make) nie jest
-  zablokowane: wiadomość zachowaną po błędzie bierze znów od razu, więc kończy się dopiero na limicie workera; nie jest
-  sposobem ponawiania `failed`.
+- **Blokada zbiorczego ponawiania bez końca**: listener `ConsoleEvents::COMMAND` (`DisableBulkFailedRetryListener`,
+  `Shared\UI\Console`) wyłącza w konsoli (kod 113, także pod skróconą nazwą komendy) komendy, które brałyby z `failed`
+  wiadomość po wiadomości, aż żadnej nie ma; wiadomość zachowana po błędzie jest od razu dostępna, więc przebieg by się
+  nie skończył, a handler działałby w kółko do limitu workera. Komunikat na stderr wskazuje `app:messaging:failed-retry`
+  albo ponowienie z `ID`. Wyłączone są:
+  - `messenger:failed:retry` bez argumentu `id` (z innymi opcjami i w trybie interaktywnym); z ID komenda działa bez
+    zmian;
+  - `messenger:consume`, które może konsumować `failed`, odczytane tak jak Symfony Messenger v8.1.11: odbiorca to wzorzec
+    `{^odbiorca$}` na nazwach transportów (więc też `fail.*`, `f[a]iled`), a odbiorca bez dopasowania to klucz lokatora
+    odbiorców, który zna też ID usługi `messenger.transport.failed`; `--all` bierze wszystkie transporty bez względu na
+    podanych odbiorców, minus dokładne nazwy z `--exclude-receivers` (Symfony nie czyta ich jako wzorców), więc `--all`
+    jest dozwolone tylko z `--exclude-receivers=failed`; bez odbiorców i bez `--all` komenda pyta o nich dopiero po
+    zdarzeniu, więc też jest wyłączona (odbiorców trzeba podać jawnie). Lista odbiorców bez `failed`, jak w workerach
+    compose i chartu, działa bez zmian.
 
 ## Zgodność wersji przy wdrożeniu epiku
 
@@ -571,7 +579,9 @@ Dokumenty, które dziś podają zachowanie zmieniane przez epik, zmienia zadanie
     obsługa ją usuwa; `failed:remove` ją usuwa; nieudany zapis kopii nie usuwa oryginału; `app:messaging:failed-retry`
     na kilku wiadomościach (część zawodzi) kończy się, handler każdej wybranej jest wywołany dokładnie raz, raport podaje
     wybrane, obsłużone, zachowane i pozostałe (także przy `--max` mniejszym niż kolejka); `messenger:failed:retry` bez
-    ID kończy się kodem 113 z komunikatem i nie przetwarza niczego, z ID działa.
+    ID oraz `messenger:consume`, które może konsumować `failed` (nazwa, wzorzec, ID usługi, `--all` bez wykluczenia
+    `failed`, brak odbiorców), kończą się kodem 113 z komunikatem i nie przetwarzają niczego; `failed:retry` z ID działa,
+    a komendy workerów z compose i chartu oraz `--all --exclude-receivers=failed` nie są wyłączone.
 
 ## Ryzyka i ograniczenia
 
