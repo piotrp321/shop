@@ -7,7 +7,7 @@ zamówienie może nigdy nie wygasnąć, wiadomości w `failed` są niewidoczne, 
 nie ma limitów czasu i pamięci. Epik rozdziela workery, dodaje siatkę bezpieczeństwa dla wygaszania zamówień, nadzór
 nad kolejkami z alertem i procedurą oraz test zgodności wersji wiadomości.
 
-Issues: brak (epik z raportu audytu; issue `epic` zakłada użytkownik, patrz „Wymagane przed startem”)
+Issues: #768
 Zakres: `apps/api`, `apps/admin`, `infra/docker-compose.yml`, `Makefile`, `.github/workflows/ci.yml`, `.github/scripts`,
 `infra/k8s`, `e2e/tests/staff-dashboard.spec.ts`, `docs/vision.md`, `docs/adr/backups-observability.md`,
 `docs/features/payment/spec.md`, `docs/features/product-page/spec.md`, `docs/features/pricing/spec.md`,
@@ -87,8 +87,7 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
 - **Zasoby spoza repo: brak.** Epik nie potrzebuje sekretów, kont ani uprawnień: CronJoby i reguły używają istniejących
   metryk z listy dozwolonych (`kube_job_status_condition`, `kube_job_owner`, `kube_cronjob_status_last_successful_time`),
   synchronizacja reguł do Grafana Cloud już działa.
-- **użytkownik:** issue z etykietą `epic` dla ASYNC-RELIABILITY wpisane do linii `Issues:` (potrzebne, gdy epik idzie
-  przez `/ao-run`, który dopisuje `Closes #N` z tej linii; przy realizacji w sesji głównej opcjonalne).
+- **Issue epiku:** #768 (etykieta `epic`), w linii `Issues:`.
 - **Eksperymenty na wersjach epiku** (`symfony/messenger` v8.1.9 z `apps/api/composer.lock`, PHP 8.5, k3s z
   `infra/k8s/scripts/tools.sh`). Szkic powstał bez uruchamiania Dockera (na maszynie trwał przebieg orkiestratora),
   więc wyniki wpisuje orkiestrator epiku przed startem zadań; każde założenie potwierdza też test zadania, które na nim
