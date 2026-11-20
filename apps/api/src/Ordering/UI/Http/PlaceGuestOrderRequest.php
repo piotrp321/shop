@@ -21,7 +21,7 @@ use Symfony\Component\Validator\Constraints as Assert;
  * so a field gives at most one, in Polish; the domain checks the same rules again. Names, street, city and email
  * refuse control characters, in the value as it came (before any trim).
  */
-#[OA\Schema(description: 'The guest cart, the contact and the address of an order, the total the guest saw and the discount code applied.', required: ['cartId', 'email', 'fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross'])]
+#[OA\Schema(description: 'The guest cart, the contact and the address of an order, the total the guest saw, the delivery method chosen and the discount code applied.', required: ['cartId', 'email', 'fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross', 'deliveryMethodId'])]
 final readonly class PlaceGuestOrderRequest
 {
     /**
@@ -101,13 +101,21 @@ final readonly class PlaceGuestOrderRequest
             new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Miejscowość zawiera niedozwolone znaki.'),
         ])]
         public mixed $city,
-        #[OA\Property(type: 'integer', minimum: 0, description: 'The gross total of the cart the guest saw, in grosze (`totals.gross` of the cart). Only compared with the total the API computes; another one is a 409.', example: 39998)]
+        #[OA\Property(type: 'integer', minimum: 0, description: 'The gross total the guest saw, in grosze, with the delivery: `totalGross` of the chosen option of `delivery.options` of the cart. Only compared with the total the API computes; another one is a 409.', example: 39998)]
         #[Assert\Sequentially([
             new Assert\NotNull(message: 'Kwota zamówienia jest wymagana.'),
             new Assert\Type('integer', message: 'Kwota zamówienia musi być liczbą całkowitą.'),
             new Assert\PositiveOrZero(message: 'Kwota zamówienia nie może być ujemna.'),
         ])]
         public mixed $expectedTotalGross,
+        #[OA\Property(type: 'string', format: 'uuid', description: 'Id of the delivery method the guest chose in the checkout (`methodId` of an option of `delivery.options` of the cart): a UUID in any letter case. Required: a request without it (a checkout from before the delivery) is a 422 asking to refresh the page. A method that is unknown or no longer active is a 409 `delivery-method-unavailable`; its cost is part of the total compared with `expectedTotalGross`.')]
+        #[Assert\Sequentially([
+            new Assert\NotNull(message: 'Kasa została zaktualizowana. Odśwież stronę i wybierz sposób dostawy.'),
+            new Assert\Type('string', message: 'Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie.'),
+            new Assert\NotBlank(message: 'Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie.'),
+            new Assert\Regex(pattern: self::CART_ID_PATTERN, message: 'Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie.'),
+        ])]
+        public mixed $deliveryMethodId,
         #[OA\Property(type: 'string', nullable: true, maxLength: DiscountCodeText::MAX_LENGTH, description: 'The discount code the customer applied in the checkout, optional: a missing key, `null`, an empty text or one of white space only is no code. Compared without letter case. A code that gives no discount is a 409 with its own `type`; the order is not placed.', example: 'WITAJ10')]
         #[Assert\Sequentially([
             new Assert\Type('string', message: 'Kod rabatowy musi być tekstem.'),

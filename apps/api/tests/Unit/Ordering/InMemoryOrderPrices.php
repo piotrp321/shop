@@ -125,9 +125,19 @@ final class InMemoryOrderPrices implements OrderPrices
         $this->journal->record('delivery-shares');
         $this->askedShares[] = [$costGross, $goodsByRate];
         krsort($goodsByRate);
-        $total = array_sum($goodsByRate);
-        $amounts = array_map(static fn (int $goods): int => intdiv($costGross * $goods, $total), $goodsByRate);
-        $amounts[array_key_first($amounts)] += $costGross - array_sum($amounts);
+        $total = 0;
+        foreach ($goodsByRate as $goods) {
+            $total += $goods;
+        }
+        $amounts = [];
+        $given = 0;
+        foreach ($goodsByRate as $rateBp => $goods) {
+            $given += $amounts[$rateBp] = intdiv($costGross * $goods, $total);
+        }
+        foreach ($amounts as $rateBp => $amount) {
+            $amounts[$rateBp] = $amount + $costGross - $given;
+            break;
+        }
 
         $shares = [];
         foreach ($amounts as $rateBp => $gross) {

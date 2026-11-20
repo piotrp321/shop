@@ -387,7 +387,7 @@ export interface paths {
         put?: never;
         /**
          * Place an order of the cart of the customer
-         * @description Orders every line of the cart of the customer in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied. The email is the one of the token (an `email` key is ignored); the body carries no lines, quantities or prices, unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The optional `discountCode` (the code of the checkout) discounts the order: its gross total is after the discount and the usage of the code is recorded with the order (once, also on a replay). The `Idempotency-Key` identifies the request: sending it again with the same content answers 200 with the same order and changes nothing; the same key used by another customer, a guest or with other content is a 409 that tells nothing about the order.
+         * @description Orders every line of the cart of the customer in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied. The email is the one of the token (an `email` key is ignored); the body carries no lines, quantities or prices, unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The optional `discountCode` (the code of the checkout) discounts the order: its gross total is after the discount and the usage of the code is recorded with the order (once, also on a replay). The required `deliveryMethodId` is the delivery method chosen in the checkout: the order keeps a copy of it and its cost (Delivery quotes it for the goods after the discount, Pricing splits it over their VAT rates), and the gross total includes it. The `Idempotency-Key` identifies the request: sending it again with the same content answers 200 with the same order and changes nothing; the same key used by another customer, a guest or with other content is a 409 that tells nothing about the order.
          */
         post: operations["placeCustomerOrder"];
         delete?: never;
@@ -427,7 +427,7 @@ export interface paths {
         put?: never;
         /**
          * Place an order of a guest cart
-         * @description Orders every line of the guest cart in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied (it stays open). The body carries no lines, quantities or prices; unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The optional `discountCode` (the code of the checkout) discounts the order: its gross total is after the discount and the usage of the code is recorded with the order (once, also on a replay). The `Idempotency-Key` identifies the request: sending it again with the same cart and content answers 200 with the same order and changes nothing, also once the cart expired or was merged; the same key with another cart or other content is a 409 that tells nothing about the order. The order cannot be read later, so there is no `Location`.
+         * @description Orders every line of the guest cart in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied (it stays open). The body carries no lines, quantities or prices; unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The optional `discountCode` (the code of the checkout) discounts the order: its gross total is after the discount and the usage of the code is recorded with the order (once, also on a replay). The required `deliveryMethodId` is the delivery method chosen in the checkout: the order keeps a copy of it and its cost (Delivery quotes it for the goods after the discount, Pricing splits it over their VAT rates), and the gross total includes it. The `Idempotency-Key` identifies the request: sending it again with the same cart and content answers 200 with the same order and changes nothing, also once the cart expired or was merged; the same key with another cart or other content is a 409 that tells nothing about the order. The order cannot be read later, so there is no `Location`.
          */
         post: operations["placeGuestOrder"];
         delete?: never;
@@ -953,7 +953,7 @@ export interface components {
              */
             itemCount: number;
         };
-        /** @description An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze; the totals are after the discount of the code. */
+        /** @description An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze; the totals are after the discount of the code, with the delivery. */
         OrderView: {
             /** Format: uuid */
             orderId: string;
@@ -980,6 +980,8 @@ export interface components {
             lines: components["schemas"]["OrderLine"][];
             /** @description The discount code the order was placed with; null without one. */
             discount: components["schemas"]["OrderDiscount"] | null;
+            /** @description The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery). */
+            delivery: components["schemas"]["OrderDelivery"] | null;
             totals: components["schemas"]["OrderTotals"];
             /**
              * Format: date-time
@@ -1061,7 +1063,17 @@ export interface components {
              */
             amountGross: number;
         };
-        /** @description Sums of the lines after the discount of the code; net + vat = gross. */
+        /** @description The delivery of an order, a copy of the method as it was when the order was placed. */
+        OrderDelivery: {
+            /** @example Kurier standardowy */
+            methodName: string;
+            /**
+             * @description The gross cost of the delivery in grosze, part of the totals; 0 for a free delivery.
+             * @example 1999
+             */
+            gross: number;
+        };
+        /** @description Sums of the lines after the discount of the code and of the delivery; net + vat = gross. */
         OrderTotals: {
             /** @example 32519 */
             net: number;
@@ -1128,6 +1140,8 @@ export interface components {
             lines: components["schemas"]["OrderLine"][];
             /** @description The discount code the order was placed with; null without one. */
             discount: components["schemas"]["OrderDiscount"] | null;
+            /** @description The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery). */
+            delivery: components["schemas"]["OrderDelivery"] | null;
             totals: components["schemas"]["OrderTotals"];
             /**
              * Format: date-time
@@ -1253,10 +1267,10 @@ export interface components {
                 title: string;
             }[];
         };
-        /** @description A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, the `Idempotency-Key` was used by another request, or the discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`), its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the rejected code in the cart. Only the order of a guest can be too large (`guest-order-too-large`: more than 10 lines or 10 units of a line), checked before anything else about the cart. Too many orders wait for their payment (`too-many-unpaid-orders`): from the address of the client, of the email of a guest or of the account, with the same `detail` for all of them; a repeated request with the same `Idempotency-Key` and content still answers 200 with its order. */
+        /** @description A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, the `Idempotency-Key` was used by another request, or the delivery method chosen is unknown or no longer active (`delivery-method-unavailable`, checked after the discount code and before the total), or the discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`), its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the rejected code in the cart. Only the order of a guest can be too large (`guest-order-too-large`: more than 10 lines or 10 units of a line), checked before anything else about the cart. Too many orders wait for their payment (`too-many-unpaid-orders`): from the address of the client, of the email of a guest or of the account, with the same `detail` for all of them; a repeated request with the same `Idempotency-Key` and content still answers 200 with its order. */
         OrderConflictProblem: {
             /** @enum {string} */
-            type: "tag:piotrp321.github.io,2026:shop/problems/cart-empty" | "tag:piotrp321.github.io,2026:shop/problems/guest-order-too-large" | "tag:piotrp321.github.io,2026:shop/problems/too-many-unpaid-orders" | "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable" | "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order" | "tag:piotrp321.github.io,2026:shop/problems/order-total-changed" | "tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum";
+            type: "tag:piotrp321.github.io,2026:shop/problems/cart-empty" | "tag:piotrp321.github.io,2026:shop/problems/guest-order-too-large" | "tag:piotrp321.github.io,2026:shop/problems/too-many-unpaid-orders" | "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable" | "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order" | "tag:piotrp321.github.io,2026:shop/problems/order-total-changed" | "tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum" | "tag:piotrp321.github.io,2026:shop/problems/delivery-method-unavailable";
             /** @example Conflict */
             title: string;
             /** @enum {integer} */
@@ -1326,7 +1340,7 @@ export interface components {
             /** @default 24 */
             perPage: number;
         };
-        /** @description The contact and the address of an order of the cart of the customer, the total the customer saw and the discount code applied. */
+        /** @description The contact and the address of an order of the cart of the customer, the total the customer saw, the delivery method chosen and the discount code applied. */
         PlaceCustomerOrderRequest: {
             /**
              * @description Full name, 1 to 100 characters once trimmed.
@@ -1354,10 +1368,15 @@ export interface components {
              */
             city: string;
             /**
-             * @description The gross total of the cart the customer saw, in grosze (`totals.gross` of the cart). Only compared with the total the API computes; another one is a 409.
+             * @description The gross total the customer saw, in grosze, with the delivery: `totalGross` of the chosen option of `delivery.options` of the cart. Only compared with the total the API computes; another one is a 409.
              * @example 39998
              */
             expectedTotalGross: number;
+            /**
+             * Format: uuid
+             * @description Id of the delivery method the customer chose in the checkout (`methodId` of an option of `delivery.options` of the cart): a UUID in any letter case. Required: a request without it (a checkout from before the delivery) is a 422 asking to refresh the page. A method that is unknown or no longer active is a 409 `delivery-method-unavailable`; its cost is part of the total compared with `expectedTotalGross`.
+             */
+            deliveryMethodId: string;
             /**
              * @description The discount code the customer applied in the checkout, optional: a missing key, `null`, an empty text or one of white space only is no code. Compared without letter case. A code that gives no discount is a 409 with its own `type`; the order is not placed.
              * @default null
@@ -1371,7 +1390,7 @@ export interface components {
             /** @default 10 */
             perPage: number;
         };
-        /** @description The guest cart, the contact and the address of an order, the total the guest saw and the discount code applied. */
+        /** @description The guest cart, the contact and the address of an order, the total the guest saw, the delivery method chosen and the discount code applied. */
         PlaceGuestOrderRequest: {
             /**
              * Format: uuid
@@ -1410,10 +1429,15 @@ export interface components {
              */
             city: string;
             /**
-             * @description The gross total of the cart the guest saw, in grosze (`totals.gross` of the cart). Only compared with the total the API computes; another one is a 409.
+             * @description The gross total the guest saw, in grosze, with the delivery: `totalGross` of the chosen option of `delivery.options` of the cart. Only compared with the total the API computes; another one is a 409.
              * @example 39998
              */
             expectedTotalGross: number;
+            /**
+             * Format: uuid
+             * @description Id of the delivery method the guest chose in the checkout (`methodId` of an option of `delivery.options` of the cart): a UUID in any letter case. Required: a request without it (a checkout from before the delivery) is a 422 asking to refresh the page. A method that is unknown or no longer active is a 409 `delivery-method-unavailable`; its cost is part of the total compared with `expectedTotalGross`.
+             */
+            deliveryMethodId: string;
             /**
              * @description The discount code the customer applied in the checkout, optional: a missing key, `null`, an empty text or one of white space only is no code. Compared without letter case. A code that gives no discount is a 409 with its own `type`; the order is not placed.
              * @default null
@@ -2921,7 +2945,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), too many orders waiting for their payment from the address of the client or of the account (the same answer for both), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
+            /** @description The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a delivery method that is unknown or no longer active, a gross total other than `expectedTotalGross` (after the discount of the code, with the delivery), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), too many orders waiting for their payment from the address of the client or of the account (the same answer for both), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2939,7 +2963,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field). */
+            /** @description A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field); a request without `deliveryMethodId` (a checkout from before the delivery) asks to refresh the page. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -3081,7 +3105,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The cart is empty, has more than 10 lines or more than 10 units of a line (a guest order is limited so that it cannot reserve much stock), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), too many orders waiting for their payment from the address of the client or of the email (the same answer for both), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
+            /** @description The cart is empty, has more than 10 lines or more than 10 units of a line (a guest order is limited so that it cannot reserve much stock), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a delivery method that is unknown or no longer active, a gross total other than `expectedTotalGross` (after the discount of the code, with the delivery), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), too many orders waiting for their payment from the address of the client or of the email (the same answer for both), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3099,7 +3123,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field). */
+            /** @description A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field); a request without `deliveryMethodId` (a checkout from before the delivery) asks to refresh the page. */
             422: {
                 headers: {
                     [name: string]: unknown;

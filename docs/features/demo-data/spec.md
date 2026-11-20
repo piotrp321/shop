@@ -290,8 +290,10 @@ Krok 6 to SQL po załadowaniu zamówień (`INSERT … SELECT` z sumami narastaj�
 - opublikowany produkt nie ma wariantu albo wariant nie ma ceny lub rekordu stanu;
 - `reserved` wariantu różni się od sumy aktywnych linii rezerwacji, ostatni ruch wariantu nie zgadza się ze stanem
   albo zamówienie `paid` nie ma aktywnej rezerwacji;
-- suma linii zamówienia minus rabat różni się od sumy zamówienia, opłacone zamówienie nie ma płatności z tą kwotą
-  albo zamówienie z kodem nie ma użycia kodu;
+- suma linii zamówienia minus rabat plus koszt dostawy (`delivery_gross`) różni się od sumy zamówienia, sumy netto,
+  VAT i brutto linii z `delivery_net`, `delivery_vat` i `delivery_gross` różnią się od sum zamówienia, opłacone
+  zamówienie nie ma płatności z tą kwotą albo zamówienie z kodem nie ma użycia kodu (wygenerowane zamówienia nie mają
+  metody dostawy, ich dostawa to 0);
 - cena jednostkowa linii różni się od ceny skutecznej wariantu w chwili złożenia albo linia w okresie promocji nie ma
   jej kopii;
 - zamówienie klienta wskazuje klienta spoza wygenerowanych kont;

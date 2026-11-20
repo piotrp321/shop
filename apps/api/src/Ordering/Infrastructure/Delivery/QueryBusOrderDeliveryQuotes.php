@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Ordering\Infrastructure\Delivery;
 
-use App\Delivery\Application\Query\DeliveryOptionView;
 use App\Delivery\Application\Query\DeliveryQuoteView;
 use App\Delivery\Application\Query\QuoteDelivery;
 use App\Ordering\Application\Port\OrderDeliveryQuotes;
@@ -39,7 +38,6 @@ final class QueryBusOrderDeliveryQuotes implements OrderDeliveryQuotes
         \assert($quote instanceof DeliveryQuoteView);
 
         foreach ($quote->options as $option) {
-            \assert($option instanceof DeliveryOptionView);
             if (strtolower($option->methodId) === $methodId) {
                 return new QuotedDeliveryMethod($methodId, $option->name, $option->trackingUrlTemplate, $option->costGross);
             }

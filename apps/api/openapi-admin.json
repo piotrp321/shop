@@ -4678,6 +4678,7 @@
                     "shippingAddress",
                     "lines",
                     "discount",
+                    "delivery",
                     "totals",
                     "placedAt",
                     "paymentDeadline",
@@ -4745,6 +4746,15 @@
                         "allOf": [
                             {
                                 "$ref": "#/components/schemas/BackofficeOrderDiscount"
+                            }
+                        ]
+                    },
+                    "delivery": {
+                        "description": "The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery).",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BackofficeOrderDelivery"
                             }
                         ]
                     },
@@ -4984,8 +4994,28 @@
                 },
                 "type": "object"
             },
+            "BackofficeOrderDelivery": {
+                "description": "The delivery of an order, a copy of the method as it was when the order was placed.",
+                "required": [
+                    "methodName",
+                    "gross"
+                ],
+                "properties": {
+                    "methodName": {
+                        "type": "string",
+                        "example": "Kurier standardowy"
+                    },
+                    "gross": {
+                        "description": "The gross cost of the delivery in grosze, part of the totals; 0 for a free delivery.",
+                        "type": "integer",
+                        "example": 1999,
+                        "minimum": 0
+                    }
+                },
+                "type": "object"
+            },
             "BackofficeOrderTotals": {
-                "description": "Sums of the lines after the discount of the code; net + vat = gross.",
+                "description": "Sums of the lines after the discount of the code and of the delivery; net + vat = gross.",
                 "required": [
                     "net",
                     "vat",

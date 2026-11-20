@@ -92,12 +92,12 @@ final class OrderConfirmationTextTest extends TestCase
     {
         $body = (new OrderConfirmationText())->body(self::view([self::line('Czapka', '', 1, 2_000)], 2_000, delivery: new OrderDeliveryView('Kurier ekspresowy', 0)));
 
-        self::assertStringContainsString("
+        self::assertStringContainsString('
 - Czapka × 1: 20,00 zł
 Dostawa (Kurier ekspresowy): 0,00 zł
 
 Suma brutto: 20,00 zł
-", $body);
+', $body);
     }
 
     public function testAnOrderWithoutAMethodHasNoDeliveryLine(): void

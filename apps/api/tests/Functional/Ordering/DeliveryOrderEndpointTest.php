@@ -52,6 +52,7 @@ final class DeliveryOrderEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(201);
         $this->assertOrderView($order);
+        self::assertSame(self::CONTACT, array_intersect_key($order, self::CONTACT));
         self::assertSame(['methodName' => 'Kurier standardowy', 'gross' => self::COST], $order['delivery']);
         // 19,99 zł at 23 %: net 16,25 zł half up, VAT 3,74 zł.
         self::assertSame(['net' => 20_000 + 1_625, 'vat' => 4_600 + 374, 'gross' => self::GOODS + self::COST, 'currency' => 'PLN'], $order['totals']);

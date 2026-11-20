@@ -33,6 +33,8 @@ function order(overrides: Partial<BackofficeOrder> = {}): BackofficeOrder {
       { variantId: "v-2", productName: "Bidon", variantLabel: "", quantity: 1, unitGross: 2500, grossBeforeDiscount: 2500, discountGross: 0, lineGross: 2500, promotion: null },
     ],
     discount: null,
+    // An order placed before the delivery; the totals are those of its lines.
+    delivery: null,
     totals: { net: 32519, vat: 7479, gross: 39998, currency: "PLN" },
     placedAt: "2026-11-05T12:30:00+00:00",
     paymentDeadline: "2026-11-05T13:00:00+00:00",

@@ -31,6 +31,7 @@ final class CustomerOrderJson
             ],
             'lines' => array_map(OrderLineJson::line(...), $order->lines),
             'discount' => OrderLineJson::discount($order->discount),
+            'delivery' => OrderLineJson::delivery($order->delivery),
             'totals' => [
                 'net' => $order->totals->net,
                 'vat' => $order->totals->vat,

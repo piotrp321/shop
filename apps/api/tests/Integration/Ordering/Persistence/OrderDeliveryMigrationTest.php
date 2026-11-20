@@ -113,7 +113,12 @@ final class OrderDeliveryMigrationTest extends KernelTestCase
             [\Doctrine\DBAL\ArrayParameterType::STRING],
         );
 
-        return array_map(static fn (mixed $valid): bool => true === $valid, $rows);
+        $validated = [];
+        foreach ($rows as $name => $valid) {
+            $validated[(string) $name] = true === $valid;
+        }
+
+        return $validated;
     }
 
     private function runMigration(string $file, string $direction): void

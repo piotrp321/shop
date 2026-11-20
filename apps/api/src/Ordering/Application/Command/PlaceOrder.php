@@ -17,11 +17,11 @@ final readonly class PlaceOrder
     /**
      * @param string      $email            from the request of a guest, from the token of a customer
      * @param string      $deliveryMethodId a UUID in any letter case
-     * @param string      $idempotencyKey 1 to 100 characters [A-Za-z0-9._:-]
-     * @param string|null $discountCode   as typed; null, empty or only white space is no code; at most 64 characters
-     * @param string      $clientAddress  the address of the client as the limits count it (ClientIp, from the controller;
-     *                                    `unknown` without one, like ClientIp): only for the limit of unpaid orders,
-     *                                    not part of the request fingerprint, so a replay from another network works
+     * @param string      $idempotencyKey   1 to 100 characters [A-Za-z0-9._:-]
+     * @param string|null $discountCode     as typed; null, empty or only white space is no code; at most 64 characters
+     * @param string      $clientAddress    the address of the client as the limits count it (ClientIp, from the controller;
+     *                                      `unknown` without one, like ClientIp): only for the limit of unpaid orders,
+     *                                      not part of the request fingerprint, so a replay from another network works
      */
     public function __construct(
         public CartReference $cart,
