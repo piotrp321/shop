@@ -26,7 +26,7 @@ const line = (variantId: string, name: string, quantity: number, overrides: Part
   ...overrides,
 });
 
-const view = (lines: Line[], totals: Partial<CartView["totals"]> = {}, hasExcludedLines = false): CartView => ({
+const view = (lines: Line[], totals: Partial<CartView["totals"]> = {}, hasExcludedLines = false, delivery: CartView["delivery"] = null): CartView => ({
   id: "c1",
   lines,
   totals: {
@@ -39,6 +39,16 @@ const view = (lines: Line[], totals: Partial<CartView["totals"]> = {}, hasExclud
   },
   hasExcludedLines,
   discount: null,
+  delivery,
+});
+
+const delivery = (fromGross: number | null, missingToFreeGross: number | null = null): NonNullable<CartView["delivery"]> => ({
+  fromGross,
+  missingToFreeGross,
+  options:
+    fromGross === null
+      ? []
+      : [{ methodId: "00000000-0000-4000-8000-0000000000d1", name: "Kurier", description: "", costGross: fromGross, freeFromGross: null, missingToFreeGross, totalGross: 1000 + fromGross }],
 });
 
 const ok = (data: CartView) => ({ status: "ok" as const, data });
@@ -192,6 +202,66 @@ describe("CartPage content", () => {
 
     expect(screen.getByText("Część produktów nie jest wliczona")).toBeTruthy();
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+});
+
+describe("CartPage delivery", () => {
+  const withDelivery = (d: CartView["delivery"], gross = 2000) => view([line(A, "Produkt A", 2, { lineTotal: { gross, currency: "PLN" } })], { gross, itemCount: 2 }, false, d);
+
+  it("shows the cheapest delivery under the total", async () => {
+    await renderWith(withDelivery(delivery(1999)));
+
+    expect(screen.getByTestId("cart-delivery-from").textContent).toBe(`Dostawa od ${price(1999)}`);
+    expect(screen.queryByTestId("cart-delivery-missing")).toBeNull();
+  });
+
+  it("says the delivery is free when the API says the cheapest option costs nothing", async () => {
+    await renderWith(withDelivery(delivery(0)));
+
+    expect(screen.getByTestId("cart-delivery-from").textContent).toBe("Darmowa dostawa");
+    expect(screen.queryByText(/Dostawa od/)).toBeNull();
+    expect(screen.queryByTestId("cart-delivery-missing")).toBeNull();
+  });
+
+  it("shows how much is missing to free delivery, from the API", async () => {
+    await renderWith(withDelivery(delivery(1999, 5001)));
+
+    expect(screen.getByTestId("cart-delivery-from").textContent).toBe(`Dostawa od ${price(1999)}`);
+    expect(screen.getByTestId("cart-delivery-missing").textContent).toBe(`Do darmowej dostawy brakuje ${price(5001)}`);
+  });
+
+  it.each([
+    ["delivery is null", null],
+    ["there is no active method", delivery(null)],
+  ])("shows no row when %s", async (_name, value) => {
+    await renderWith(withDelivery(value));
+
+    expect(screen.queryByTestId("cart-delivery-from")).toBeNull();
+    expect(screen.queryByTestId("cart-delivery-missing")).toBeNull();
+    expect(screen.queryByText(/dostaw/i)).toBeNull();
+  });
+
+  it("announces a change of the rows in a polite live region that is there before the change", async () => {
+    await renderWith(withDelivery(delivery(1999, 5001)));
+    const region = screen.getByTestId("cart-delivery");
+    expect(region.getAttribute("aria-live")).toBe("polite");
+    expect(region.contains(screen.getByTestId("cart-delivery-missing"))).toBe(true);
+    vi.mocked(changeCartItemQuantity).mockResolvedValue(ok(withDelivery(delivery(0), 9000)));
+
+    setQuantity("Produkt A", "9");
+
+    await vi.waitFor(() => expect(screen.getByTestId("cart-delivery-from").textContent).toBe("Darmowa dostawa"));
+    expect(screen.getByTestId("cart-delivery")).toBe(region);
+    expect(region.contains(screen.getByTestId("cart-delivery-from"))).toBe(true);
+    expect(screen.queryByTestId("cart-delivery-missing")).toBeNull();
+  });
+
+  it("keeps an empty live region when there is no delivery row", async () => {
+    await renderWith(withDelivery(null));
+
+    const region = screen.getByTestId("cart-delivery");
+    expect(region.getAttribute("aria-live")).toBe("polite");
+    expect(region.textContent).toBe("");
   });
 });
 

@@ -23,6 +23,7 @@ export const emptyView = (id: string | null = null): CartView => ({
   totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN", itemCount: 0 },
   hasExcludedLines: false,
   discount: null,
+  delivery: null,
 });
 
 export const viewWithOneLine = (cartId: string | null, quantity = 1): CartView => ({
@@ -40,6 +41,7 @@ export const viewWithOneLine = (cartId: string | null, quantity = 1): CartView =
   totals: { subtotalGross: 1000 * quantity, discountGross: 0, gross: 1000 * quantity, currency: "PLN", itemCount: quantity },
   hasExcludedLines: false,
   discount: null,
+  delivery: null,
 });
 
 export const problem = (status: number, detail?: string) =>

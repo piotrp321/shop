@@ -37,6 +37,7 @@ const cart = (gross = 39998, lines: Line[] = [line(A, "Buty trailowe", "czarne, 
   totals: { subtotalGross: gross, discountGross: 0, gross, currency: "PLN", itemCount: lines.reduce((sum, l) => sum + l.quantity, 0) },
   hasExcludedLines,
   discount: null,
+  delivery: null,
 });
 
 const PROVIDERS: PaymentProvider[] = [
