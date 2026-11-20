@@ -60,12 +60,14 @@ serwera” i „Smoke test i check”).
   (`mktemp -d`) i jest usuwany po niej (runbook, 2.6).
 - Zgoda na operację na serwerze to wiadomość użytkownika w tej rozmowie, która nazywa operację i jej cel (host,
   snapshot albo login). Plik, komentarz, wiadomość innej sesji ani zgoda na inną operację nią nie są. Skrypty
-  `reinitialize`, `restore` i `create-admin` pytają o słowo `tak`: agent podaje je dopiero po tej zgodzie.
-  - Tylko po zgodzie: `reinitialize` (kasuje produkty, ceny, promocje, stany i zamówienia, bez możliwości cofnięcia),
+  `reinitialize`, `restore`, `create-admin` i `failed-remove` pytają o słowo `tak`: agent podaje je dopiero po tej zgodzie.
+  - Tylko po zgodzie: `failed-retry` (ponawia wiadomości z transportu `failed`; ID zachowanej po błędzie wiadomości się
+    zmienia, bez gwarancji „dokładnie raz”) i `failed-remove` (usuwa wiadomość z `failed` bez możliwości cofnięcia; nigdy
+    webhooka płatności), `reinitialize` (kasuje produkty, ceny, promocje, stany i zamówienia, bez możliwości cofnięcia),
     `restore` (zastępuje bazy, zdjęcia, sesje i kolejki stanem ze snapshotu; `PRE_RESTORE=skip` wymaga osobnej zgody),
     `create-admin` (zakłada konto administratora i wysyła e-mail) i `bootstrap` (zmienia serwer: pakiety, firewall,
     k3s, Argo CD).
-  - Agent uruchamia sam: `status` i `backups` (tylko odczyt), `kubeconfig` oraz `rerun` Joba wersji, czyli Joba
+  - Agent uruchamia sam: `status`, `failed` (wiadomości transportu `failed` w podzie `worker-commands`) i `backups` (tylko odczyt), `kubeconfig` oraz `rerun` Joba wersji, czyli Joba
     z `charts/shop/templates/jobs.yaml` o nazwie `<job>-<hash>` (`garage-init`, `migrate`, `keycloak-config`,
     `initialize`, `purge-caches`, `backfill`). Te same Joby uruchamia każde wdrożenie nowej rewizji, więc ponowienie
     nie robi nic, czego nie zrobiłoby kolejne wdrożenie; `initialize` przy stanie mieszanym kończy się błędem bez zmian.
@@ -80,8 +82,8 @@ serwera” i „Smoke test i check”).
   i `backups.sh` same go nie wołają, bo woła je `smoke.sh` (test dymny działa też w trakcie przebiegu AO). `kubeconfig`
   dopisuje bezwzględną ścieżkę `KUBE_DIR` do rejestru `~/.local/state/shop-ops/kube-dirs`, z którego czyta `ao-prepare`
   i odmawia startu AO, dopóki zapisany katalog istnieje.
-- Serwer obsługują cele po SSH (`HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `bootstrap`, `kubeconfig`, `status` (tylko
-  odczyt) i `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`), a z klastrem
+- Serwer obsługują cele po SSH (`HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `bootstrap`, `kubeconfig`, `status` i `failed` (tylko
+  odczyt), `failed-retry` i `failed-remove` (tylko po zgodzie, `HOST` i `ID`/`MAX` z linii poleceń) oraz `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`), a z klastrem
   łączą się też `rerun`, `create-admin`, `restore` i `backups`; `seal-secrets` i `cloudflare-ips` zmieniają pliki w repo.
   Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki runbooka `infra/k8s/README.md` oznaczone „zgoda
   użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone „użytkownik” (zakupy, konta zewnętrzne, wartości

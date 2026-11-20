@@ -9,7 +9,7 @@ Uruchomienie środowiska wdrożeniowego (`docs/features/deploy/spec.md`) po merg
   backup VPS-a); agent tego nie wykonuje i nie podejmuje tych decyzji.
 
 Agent wykonuje operacje na serwerze wyłącznie celami `make -C infra/k8s …` (`bootstrap`, `kubeconfig`, `status`, `rerun`,
-`create-admin`, `restore`, `backups`, `reinitialize`, `seal-secrets`, `cloudflare-ips`). Nie łączy się z serwerem inaczej i nie uruchamia `kubectl` ani
+`create-admin`, `restore`, `backups`, `failed`, `failed-retry`, `failed-remove`, `reinitialize`, `seal-secrets`, `cloudflare-ips`). Nie łączy się z serwerem inaczej i nie uruchamia `kubectl` ani
 `helm` na serwerze. Wszystkie cele potrzebują tylko Dockera (oraz `ssh` na komputerze użytkownika). Opcje `ssh` (klucz, port):
 `SSH_OPTS="-i ~/.ssh/shop -p 2222"`.
 
@@ -328,6 +328,62 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   minut, i to nie jest awaria. Awaria krótsza niż ok. 10 minut (mniej niż trzy przebiegi)
   nie wywołuje alertu; ostrzeżenia kanału `cache` w logach `api` pokazują pojedyncze błędy. Wyciszenie na czas `restore` i
   prac: 9. w sekcji 9.
+- **`MessagingUnhealthy`** (`warning`, CronJob `queue-check`; odpala do ok. 15 minut od zdarzenia, gaśnie po następnym udanym
+  przebiegu): w `failed` leży wiadomość albo najstarsza gotowa wiadomość jakiejś kolejki jest starsza niż 10 minut (worker stoi,
+  zawisł albo nie nadąża). Log nieudanego Joba `queue-check` ma sekcja „logs of the failed jobs” wyniku
+  `make -C infra/k8s status HOST=…` (bez treści wiadomości); ekran „Stan systemu” w panelu pokazuje, które kolejki stoją.
+  1. **agent** – przegląd, tylko odczyt: `make -C infra/k8s failed HOST=…` (statystyki i do 200 najstarszych wiadomości: ID,
+     klasa, błąd, data) i `status` (pody `worker` i `worker-commands`, restarty, zdarzenia). Stoi kolejka bez wiadomości
+     w `failed`: worker nie działa (`WorkloadNotReady`, log poda w Grafana Cloud), a nie wiadomość.
+  2. **agent** – ustala przyczynę z błędu przy wiadomości (`failed` pokazuje go przy każdej) i logu `worker` w Grafana Cloud.
+     Poprawka w kodzie albo konfiguracji idzie normalnym PR i wdrożeniem (**zgoda użytkownika**); ponawianie przed nią tylko
+     zużywa wiadomości na ten sam błąd.
+  3. **zgoda użytkownika** – ponowienie po usunięciu przyczyny: `make -C infra/k8s failed-retry HOST=… ID=<id>` (jedna
+     wiadomość: `messenger:failed:retry <id> --force`) albo bez `ID` ponowienie zbiorcze (`app:messaging:failed-retry`,
+     najstarsze `MAX` wiadomości, domyślnie 200, najwyżej 1000; raport mówi, ile obsłużono, ile zachowano po błędzie i czy
+     „zostały kolejne”: wtedy to samo polecenie jeszcze raz). Zbiorczego `messenger:failed:retry` bez ID ani
+     `messenger:consume failed` aplikacja nie przepuszcza (kod 113), a cele ich nie wołają. Co trzeba wiedzieć:
+     - **ID się zmienia.** Wiadomość, której ponowienie zawiodło, zostaje w `failed` pod nowym ID (raport podaje stare i nowe),
+       więc kolejne ponowienie albo usunięcie bierze ID z `make failed`, nie z poprzedniego wyniku. Ponowienie z błędem,
+       który Symfony każe ponowić (`Recoverable…`), zostawia wiadomość z opóźnieniem: przez chwilę nie ma jej na liście
+       `failed`, choć pulpit ją liczy.
+     - **Bez gwarancji „dokładnie raz”.** Przerwanie procesu (restart poda, `Ctrl-C`, utrata połączenia SSH) może zostawić
+       duplikat wiadomości: obsługa jest idempotentna, a nadmiarową kopię usuwa `failed-remove`.
+     - Proces ponowienia uruchamia się w podzie `worker-commands` z `php -d memory_limit=128M`, a przebieg nie kończy się
+       sam: sprawdź wynik `make failed` po nim.
+  4. **zgoda użytkownika** – usunięcie wiadomości, której nie da się ani nie warto obsłużyć (np. zamówienie już nie istnieje,
+     duplikat): `make -C infra/k8s failed-remove HOST=… ID=<id>` pokazuje wiadomość i usuwa ją dopiero po słowie `tak`;
+     nie do cofnięcia. **Nigdy nie usuwa się wiadomości z webhookiem płatności** (np. o opłaceniu): jej utrata zostawia
+     opłacone zamówienie jako nieopłacone, a dostawca nie wyśle jej drugi raz. Takie wiadomości tylko ponawia się po
+     naprawie przyczyny; gdy nie da się jej naprawić, decyzję podejmuje właściciel.
+  5. **agent** – sprawdza wynik: `make failed` pokazuje pusty `failed`, ekran „Stan systemu” jest zdrowy, a następny Job
+     `queue-check` kończy się sukcesem i alert gaśnie.
+  - **Zator `worker-commands` dłuższy niż karencja wygaszania** (alert po 10 minutach zatoru): `order-expiry` anuluje
+    wtedy zamówienia po terminie także wtedy, gdy webhook ich opłacenia czeka jeszcze w kolejce `payment_simulator`
+    (obsługa komend stoi). Po przywróceniu workera i opróżnieniu kolejki **agent** sprawdza w logach `api` w Grafana Cloud
+    z okresu zatoru wpisy poziomu `error` z komunikatem
+    „Payment webhook: the payment cannot pay its order and requires a manual refund.” (webhook opłacenia zamówienia, które już anulowano; pola `orderId`, `paymentId`, `reason`, czyli
+    `order_cancelled`, `paid_after_deadline` albo `duplicate`). Ten sam powód zapisuje kolumna `refund_required_reason`
+    płatności `succeeded` w bazie (do odczytu zleca **użytkownikowi**, agent nie sięga do bazy). Zgłasza zamówienia
+    użytkownikowi do zwrotu (rejestru zwrotów nie ma); sam zwrotów nie wykonuje. Wiadomości z webhookami płatności ze stojącej kolejki się nie usuwa.
+- **`OrderExpiryFailed`** (`critical`, CronJob `order-expiry`; do ok. 15 minut): Job wygaszania zamówień po terminie i zamykania
+  porzuconych płatności (`ordering:expire-overdue`, potem `payment:close-abandoned`, zawsze obie) kończy się błędem.
+  **Agent** czyta log nieudanego Joba `order-expiry` w sekcji „logs of the failed jobs” wyniku `status`: log wskazuje
+  identyfikator zamówienia albo płatności, której przebieg nie obsłużył (błąd stanu rezerwacji, niedostępny dostawca płatności,
+  baza), albo przekroczony limit czasu (duża zaległość: kolejne przebiegi ją nadrabiają i kończą pracę, bo komendy są
+  idempotentne). Pojedyncze zamówienie z błędem zostaje `new` do poprawki, a reszta jest wygaszona. Przyczynę usuwa poprawka
+  w kodzie (PR, wdrożenie: **zgoda użytkownika**) albo decyzja właściciela co do zamówienia lub płatności (**użytkownik**:
+  ręczne anulowanie, zwrot). Wiadomość `ExpireUnpaidOrder` w `failed` wygasza CronJob, więc jej ponawianie nie jest
+  potrzebne; `MessagingUnhealthy` z tego powodu można zamknąć usunięciem wiadomości (4.), jeśli zamówienie jest już
+  `cancelled`. Alert gaśnie po następnym udanym Jobie.
+- **`OrderExpiryMissing`** (`critical`; brak udanego przebiegu `order-expiry` od 30 minut albo brak jego metryki): CronJob
+  jest wstrzymany (`suspend: true`) po przerwanym `restore` albo ręcznie, usunięty albo Joby nie startują (węzeł wyłączony,
+  Alloy bez metryk: razem z nim `ClusterSilent`). **Agent** czyta stan (`status`: Joby i zdarzenia) i wynik
+  `ssh <user>@<adres> 'sudo k3s kubectl -n shop get cronjob order-expiry queue-check -o wide'` zleca **użytkownikowi** (agent nie
+  uruchamia `kubectl` na serwerze). `suspend: true` po przerwanym odtworzeniu: „Odtworzenie przerwane w trakcie” w 8.
+  (`restore` ponowiony przywraca `suspend: false`), a po ręcznym wstrzymaniu zdejmuje je **użytkownik**:
+  `ssh <user>@<adres> 'sudo k3s kubectl -n shop patch cronjob order-expiry -p "{\"spec\":{\"suspend\":false}}"'`. Zaległe
+  zamówienia i płatności nadrabia pierwszy udany przebieg. Alert gaśnie po nim.
 - **Pozostałe alerty**: `NodeDiskFull` (system plików węzła zajęty w ponad 85% przez 10 minut: miejsce zwalnia albo dysk powiększa
   **użytkownik**), `ClusterSilent` (brak metryk klastra przez 15 minut: serwer, k3s albo Alloy; `status` i panel OVH),
   `WorkloadNotReady` (Deployment albo StatefulSet w `shop`, w tym Redis, ma mniej gotowych replik niż oczekiwane albo go nie ma
