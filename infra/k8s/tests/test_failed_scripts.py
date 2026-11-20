@@ -3,6 +3,7 @@ transport `failed`, in the pod of worker-commands over SSH) against the stub of 
 what is refused before anything runs, and that nothing but `failed-retry` and `failed-remove` ever changes a message."""
 
 import os
+import re
 import subprocess
 import unittest
 
@@ -187,6 +188,16 @@ class Documents(unittest.TestCase):
         for step in ("**zgoda użytkownika** – ponowienie", "**zgoda użytkownika** – usunięcie"):
             self.assertIn(step, readme)
         self.assertIn("Nigdy nie usuwa się wiadomości z webhookiem płatności", readme)
+
+    def test_the_runbook_names_the_log_line_of_the_refund_as_the_code_writes_it(self):
+        handler = (REPO / "apps/api/src/Payment/Application/Command/HandleProviderWebhookHandler.php").read_text()
+        match = re.search(r"error\('Payment webhook: (.*?requires a manual refund)\.'", handler)
+        self.assertIsNotNone(match, "the log of the refund is gone from the handler: update the runbook and this test")
+        readme = (REPO / "infra/k8s/README.md").read_text()
+        self.assertIn(match.group(1), readme)
+        for field in ("orderId", "paymentId", "reason"):
+            self.assertIn(f"`{field}`", readme)
+        self.assertNotIn("wymaga ręcznego zwrotu", readme)
 
     def test_the_instructions_for_agents_name_the_three_targets_and_the_consent(self):
         text = (REPO / "infra/k8s/CLAUDE.md").read_text()
