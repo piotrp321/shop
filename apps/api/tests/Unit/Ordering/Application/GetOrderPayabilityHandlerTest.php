@@ -7,8 +7,10 @@ namespace App\Tests\Unit\Ordering\Application;
 use App\Ordering\Application\Query\GetOrderPayability;
 use App\Ordering\Application\Query\GetOrderPayabilityHandler;
 use App\Ordering\Application\Query\OrderPayability;
+use App\Ordering\Domain\IdempotencyKey;
 use App\Ordering\Domain\Order;
 use App\Ordering\Domain\OrderId;
+use App\Ordering\Domain\OrderRepository;
 use App\Ordering\Domain\PaymentId;
 use App\Ordering\Domain\StaffActor;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
@@ -86,6 +88,33 @@ final class GetOrderPayabilityHandlerTest extends TestCase
         self::assertSame(['orderId', 'payable', 'statusForPayment'], array_keys(get_object_vars($result[0])));
     }
 
+    /**
+     * An order that exists but cannot be read (its stored data breaks an invariant of the domain made stricter later)
+     * is not an unknown order: it is reported apart with the reason, so its payment is not closed as abandoned.
+     */
+    public function testAnOrderThatCannotBeReadIsReportedApartFromTheUnknownOnes(): void
+    {
+        $orders = $this->failingOn(self::PAID, new \InvalidArgumentException('A tax class has 1 to 20 characters.'));
+
+        $answer = new GetOrderPayabilityHandler($orders, $this->clock)(new GetOrderPayability([OrderExamples::ORDER, self::PAID, '0192f0c4-7c1a-7c4e-9a6e-0000000000ff']));
+
+        self::assertEquals([new OrderPayability(OrderExamples::ORDER, true, 'new')], $answer->orders);
+        self::assertSame([self::PAID => 'InvalidArgumentException: A tax class has 1 to 20 characters.'], $answer->unreadable);
+    }
+
+    public function testAFailureOfTheDatabaseIsThrown(): void
+    {
+        $failure = new \RuntimeException('connection refused');
+        $orders = $this->failingOn(self::PAID, $failure);
+
+        try {
+            new GetOrderPayabilityHandler($orders, $this->clock)(new GetOrderPayability([OrderExamples::ORDER, self::PAID]));
+            self::fail('Expected the failure of the database.');
+        } catch (\RuntimeException $thrown) {
+            self::assertSame($failure, $thrown);
+        }
+    }
+
     public function testMoreThan100OrdersAreRefused(): void
     {
         $ids = array_map(static fn (int $i): string => \sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $i), range(1, 101));
@@ -110,7 +139,47 @@ final class GetOrderPayabilityHandlerTest extends TestCase
      */
     private function ask(array $orderIds): array
     {
-        return new GetOrderPayabilityHandler($this->orders, $this->clock)(new GetOrderPayability($orderIds));
+        $answer = new GetOrderPayabilityHandler($this->orders, $this->clock)(new GetOrderPayability($orderIds));
+        self::assertSame([], $answer->unreadable);
+
+        return $answer->orders;
+    }
+
+    /**
+     * The orders of the test, of which reading the order $orderId throws $failure.
+     */
+    private function failingOn(string $orderId, \Throwable $failure): OrderRepository
+    {
+        return new readonly class($this->orders, $orderId, $failure) implements OrderRepository {
+            public function __construct(private VersionedOrders $orders, private string $failing, private \Throwable $failure)
+            {
+            }
+
+            public function add(Order $order): void
+            {
+                $this->orders->add($order);
+            }
+
+            public function save(Order $order): void
+            {
+                $this->orders->save($order);
+            }
+
+            public function get(OrderId $id): Order
+            {
+                return $id->toString() === $this->failing ? throw $this->failure : $this->orders->get($id);
+            }
+
+            public function lock(OrderId $id): Order
+            {
+                return $this->get($id);
+            }
+
+            public function findByIdempotencyKey(IdempotencyKey $key): ?Order
+            {
+                return null;
+            }
+        };
     }
 
     /**
