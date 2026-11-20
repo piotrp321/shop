@@ -94,6 +94,10 @@ class Phase(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_phase(self, **env):
+        # A fresh cluster for every run (the subtests of a test run the phase more than once).
+        for name in ("broker-down", "failed-count", "orders"):
+            (self.base / name).unlink(missing_ok=True)
+        self.log.write_text("")
         text = SMOKE.read_text()
         script = "\n".join(["set -eu", "namespace=shop", STUBS] + [cut_out(n, text) for n in FUNCTIONS] + ["check_messaging_failures"])
         variables = {"PATH": f"{self.base / 'bin'}:{os.environ['PATH']}", "STUB_LOG": str(self.log), "STUB_DIR": str(self.base), "SMOKE_POLL": "1", **env}

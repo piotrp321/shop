@@ -1,0 +1,53 @@
+{{- /*
+The safety net of the expiry of unpaid orders (docs/features/async-reliability/spec.md, W5, W6, W9, D1, D5): a CronJob that runs, in the
+image and the environment of the API every five minutes, `ordering:expire-overdue` (cancels the new orders past their deadline, the window of
+the webhooks and the grace, whose delayed ExpireUnpaidOrder did not come) and then `payment:close-abandoned` (closes the pending payments of
+orders that can no longer be paid). Always both: a failure of the first does not skip the second, and the Job fails when either failed. Neither
+command needs RabbitMQ. The alert OrderExpiryFailed fires for a failed Job of this CronJob newer than its last success, OrderExpiryMissing when
+no run has succeeded for 30 minutes. It is in every profile and never suspended; restore.sh suspends it while it works and brings it back.
+*/ -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: order-expiry
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "order-expiry") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "1" | nindent 4 }}
+spec:
+  schedule: {{ .Values.orderExpiry.schedule | quote }}
+  timeZone: {{ .Values.orderExpiry.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 240
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # One more try of the whole Job (both commands are idempotent); the deadline ends a run that is far behind, the next one goes on.
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            {{- include "shop.labels" (dict "root" . "name" "order-expiry") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          containers:
+            - name: order-expiry
+              image: {{ include "shop.appImage" (dict "root" . "app" "api") }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - sh
+                - -c
+                - |
+                  failed=0
+                  bin/console ordering:expire-overdue || failed=1
+                  bin/console payment:close-abandoned || failed=1
+                  exit "$failed"
+              env:
+                {{- include "shop.apiEnv" . | nindent 16 }}
+              {{- include "shop.envFromSecret" . | nindent 14 }}
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "job") | nindent 18 }}

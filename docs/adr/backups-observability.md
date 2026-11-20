@@ -46,7 +46,7 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   odmawia snapshotu nowszego niż wdrożony kod przed jakąkolwiek zmianą; starszy snapshot doprowadzają do bieżącej wersji
   ponowione Joby `migrate` i `keycloak-config`. Przed odtworzeniem powstaje snapshot `pre-restore` stanu bieżącego (jego
   błąd zatrzymuje odtworzenie, chyba że `PRE_RESTORE=skip`), a na czas odtworzenia wyłączona jest automatyczna
-  synchronizacja Argo CD (`root`, potem `shop`), wstrzymane CronJoby `cart-purge-expired`, `backup` i `rate-limit-check` (potem odtworzenie czeka na Job, który zdążył wystartować po
+  synchronizacja Argo CD (`root`, potem `shop`), wstrzymane CronJoby `cart-purge-expired`, `backup`, `rate-limit-check`, `queue-check` i `order-expiry` (potem odtworzenie czeka na Job, który zdążył wystartować po
   pierwszym sprawdzeniu, bo działałby na tym samym wolumenie `backup-work`), a `api`, `worker`, `worker-commands`, `store` i `keycloak`
   zeskalowane do zera. Odtworzenie danych: `restic restore` na wolumen `backup-work` (`--delete`: lustro
   obiektów staje się stanem snapshotu), `DROP DATABASE … WITH (FORCE)` i `CREATE DATABASE` z właścicielami jak w
@@ -104,10 +104,16 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   Ruler metryk stosu odpada: nowe stosy Grafana Cloud nie mają Alertmanagera dla reguł źródła danych, więc jego alerty nie
   trafiały do nikogo. Import wymaga osobnego tokenu konta serwisowego Grafany (`shop-alloy-rules`, tylko reguły, foldery
   i odczyt źródeł danych), bo token access policy Grafana Cloud nie działa w API Grafany.
-  Osiem reguł: `BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `RateLimitsOff`, `NodeDiskFull`,
+  Jedenaście reguł (siedem w `prod` przy wyłączonych kopiach): `BackupFailed`, `BackupMissing`, `BackupVerifyFailed`,
+  `BackupVerifyMissing`, `RateLimitsOff`, `MessagingUnhealthy`, `OrderExpiryFailed`, `OrderExpiryMissing`, `NodeDiskFull`,
   `ClusterSilent`, `WorkloadNotReady`. `RateLimitsOff` liczy udane przebiegi CronJoba `rate-limit-check` (co 5 minut: komenda API
   zapisuje, odczytuje i usuwa klucz kontrolny w Redisie limiterów; próg 17 minut, brak metryki przez 30 minut), bo limitery tras
   przepuszczają ruch przy nieużywalnym Redisie, którego ani sonda `ping`, ani `/health` nie widzą; `restore` wstrzymuje ten CronJob.
+  Grupa `shop-messaging` (docs/features/async-reliability/spec.md, W9, D4) widzi to, czego nie widzą metryki klastra: CronJob
+  `queue-check` (co 5 minut, `app:messaging:check`: wiadomość w `failed` albo kolejka stojąca ponad 10 minut kończy Job błędem)
+  daje `MessagingUnhealthy`, a CronJob `order-expiry` (`ordering:expire-overdue`, potem `payment:close-abandoned`, obie zawsze)
+  daje `OrderExpiryFailed` i `OrderExpiryMissing` (30 minut bez udanego przebiegu). Alerty o nieudanym Jobie mają jedną instancję
+  na CronJob bez względu na liczbę nieudanych Jobów, a gasną po następnym udanym; `restore` wstrzymuje oba CronJoby i czeka na ich Joby.
   Alerty kopii patrzą na Job z `kube_job_owner` o dokładnej nazwie CronJoba (`backup` nie łapie
   `backup-verify`) i na `kube_cronjob_status_last_successful_time` (26 godzin); `BackupFailed` odpala dla Joba `Failed` nowszego niż
   ostatnia udana kopia, więc nieudany pod z udanym ponowieniem go nie wywołuje, a sukces gasi alert. `WorkloadNotReady` ma `absent`

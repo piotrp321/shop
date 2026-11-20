@@ -134,6 +134,18 @@ cartPurge:
 rateLimitCheck:
   schedule: "*/5 * * * *"
 
+# The CronJobs of the messages (docs/features/async-reliability/spec.md, W9), every five minutes, `order-expiry` two minutes after `queue-check`
+# so that the two pods of the image of the API do not start together. queue-check runs app:messaging:check (a message in `failed` or a queue
+# that stands fail the Job; the alert MessagingUnhealthy counts the failed Jobs). order-expiry runs ordering:expire-overdue and then
+# payment:close-abandoned (the alert OrderExpiryFailed counts its failed Jobs, OrderExpiryMissing fires when no run has succeeded for 30
+# minutes: six periods of this schedule, so a longer period needs a longer threshold in templates/00-alerts.yaml).
+queueCheck:
+  schedule: "*/5 * * * *"
+  timeZone: Europe/Warsaw
+orderExpiry:
+  schedule: "2-59/5 * * * *"
+  timeZone: Europe/Warsaw
+
 # The demo data generator (docs/features/demo-data/spec.md, "k3d (chart w profilach ci i load; część 2)"): the suspended CronJob
 # demo-data, whose Jobs run bin/generate-demo and so DELETE the data of every module. Only the profiles ci and load switch it on; the
 # schema refuses it with the images of a release (image.requireDigests, prod).

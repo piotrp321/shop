@@ -25,6 +25,8 @@
     "alerts",
     "cartPurge",
     "rateLimitCheck",
+    "queueCheck",
+    "orderExpiry",
     "storage",
     "elasticsearch",
     "keycloak",
@@ -618,6 +620,40 @@
       ],
       "properties": {
         "schedule": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "queueCheck": {
+      "type": "object",
+      "required": [
+        "schedule",
+        "timeZone"
+      ],
+      "properties": {
+        "schedule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeZone": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "orderExpiry": {
+      "type": "object",
+      "required": [
+        "schedule",
+        "timeZone"
+      ],
+      "properties": {
+        "schedule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeZone": {
           "type": "string",
           "minLength": 1
         }

@@ -199,6 +199,20 @@ class Documents(unittest.TestCase):
             self.assertIn(f"`{field}`", readme)
         self.assertNotIn("wymaga ręcznego zwrotu", readme)
 
+    def test_the_runbook_names_the_log_line_of_an_order_that_cannot_be_read_as_the_command_writes_it(self):
+        """payment:close-abandoned leaves the payment of an order Ordering cannot read pending and ends with 2 on every run, so
+        OrderExpiryFailed burns until the data is mended: the runbook of the alert says which log line to look for."""
+        command = (REPO / "apps/api/src/Payment/UI/Console/CloseAbandonedPaymentsCommand.php").read_text()
+        match = re.search(r"error\('(payment:close-abandoned: the order of the payment could not be read)[;.]", command)
+        self.assertIsNotNone(match, "the log of an unreadable order is gone from the command: update the runbook and this test")
+        runbook = (REPO / "infra/k8s/README.md").read_text()
+        section = runbook[runbook.index("- **`OrderExpiryFailed`**"):runbook.index("- **`OrderExpiryMissing`**")]
+        self.assertIn(match.group(1), section)
+        for field in ("paymentId", "orderId", "reason"):
+            self.assertIn(f"`{field}`", section)
+            self.assertRegex(command, rf"'{field}' =>")
+        self.assertIn("decyzji **właściciela**", section)
+
     def test_the_instructions_for_agents_name_the_three_targets_and_the_consent(self):
         text = (REPO / "infra/k8s/CLAUDE.md").read_text()
         self.assertIn("Tylko po zgodzie: `failed-retry`", text)
