@@ -176,7 +176,9 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
 - Payment (jedyny context zależny od Ordering) sięga do Ordering tylko przez swoje porty z adapterami na `query.bus`
   i `command.bus` i ma własne value objecty. Deptrac: tylko `Payment_Infrastructure → Ordering_Application`; Ordering
   ani żaden inny context nie zależy od Payment. Payment nie zna statusów panelu.
-- Wywołania HTTP do dostawcy płatności są w transakcji: każdy błąd wycofuje całość.
+- Wywołania HTTP do dostawcy płatności są w transakcji, ale rollback cofa tylko stan lokalny, nie skutek u dostawcy.
+  Nieodwracalne wywołanie (założenie albo anulowanie sesji, zwrot) następuje po wszystkich sprawdzeniach, które mogą
+  odrzucić żądanie, pod tą samą blokadą, albo ma kompensację.
 
 ### Moduły poza contextami
 
@@ -443,6 +445,9 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
 - Każdy endpoint: co najmniej jeden test funkcjonalny, w tym przypadek bez autoryzacji i z błędnymi danymi.
 - Dane testowe przez fabryki (Foundry), a nie tablice budowane ręcznie w każdym teście.
 - Poprawka błędu zaczyna się od testu, który ten błąd odtwarza i nie przechodzi.
+- Handler, który po sprawdzeniu woła port zewnętrzny (dostawca płatności, mailer, kolejka), ma test deterministycznego
+  przeplotu: konkurent zatwierdza między sprawdzeniem a blokadą (wzór `StartPaymentReplayRaceTest`), a asercja dotyczy
+  wywołań fałszywego portu, nie tylko stanu bazy.
 - Testy współbieżności forkują uczestników (`ConcurrentCommands`, `ParallelProcesses`, webhook w
   `StartPaymentConcurrencyTest`). Rodzic woła przed forkiem `gc_collect_cycles()`: niezebrane cykle (np. połączenie AMQP po
   teście z kernelem `test_messaging`) dziecko odziedziczyłoby, a `Kernel::shutdown()` w jego procesie uruchomiłby ich
