@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore backups seal-secrets bootstrap kubeconfig status failed failed-retry failed-remove reinitialize cloudflare-ips
+.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore generate open backups seal-secrets bootstrap kubeconfig status failed failed-retry failed-remove reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render; git does not ignore the certificate of Sealed Secrets). The render also covers the application monitoring: the chart
@@ -29,7 +29,9 @@ check:
 # host or the binding of the policy on the tokens, a policy that only warns or fails open, the policies in the wave of the workloads,
 # node-exporter known by its labels, the operator with DaemonSets or changing the Deployment of kube-state-metrics, Alloy with the proxy
 # of the nodes, the token of Alloy given to a group of service accounts, BackupMissing and RateLimitsOff without the absent for a metric that is gone, NodeDiskFull
-# firing at exactly 85 percent, an alert rule that PromQL cannot parse, a demo-data CronJob that is not suspended).
+# firing at exactly 85 percent, an alert rule that PromQL cannot parse, a demo-data CronJob that is not suspended (also only in prod),
+# its script without the check of DEMO_DATA_CONFIRM, without the space guard or stopping only the generator and not its process group,
+# a load CronJob that is not suspended, a k6 image of the chart with another digest than load/k6.sh).
 # Cases run in parallel (SELFTEST_JOBS=<n>, default the CPUs of the Docker daemon; SELFTEST_ONLY='<regex>' picks cases). On demand
 # only: CI does not run it (workflow k8s-selftest.yml, started by hand).
 selftest:
@@ -42,8 +44,10 @@ selftest:
 # checked; the time of that phase is printed. Then the restore on an empty cluster: the namespace shop is deleted with its volumes,
 # the chart installed again and make restore brings the snapshot back (checked: the administrator, the customer, the numbers of
 # products and orders, an image, the search, the snapshot pre-restore), and refuses a snapshot newer than the code; the later
-# phases run on the restored cluster. The last phase runs a Job from the CronJob demo-data (the generator, profile small) and checks that
-# it ended with 0 and replaced the data. SMOKE_BREAK=migration|image|demo-data makes it fail on purpose. Needs only Docker.
+# phases run on the restored cluster. The last phase runs scripts/generate.sh PROFILE=small (make generate with tak, then make open; no
+# photo pool, no Argo CD) under traffic through the ingress (200 before, none while closed, 200 after) and checks the Jobs demo-data-run
+# and load, the numbers and that the rule shop-closed is gone. SMOKE_BREAK=migration|image|demo-data makes it fail on purpose. Needs
+# only Docker.
 smoke:
 	sh scripts/smoke.sh
 
@@ -69,10 +73,10 @@ monitoring-smoke:
 # must be able to mount it for writing, on Docker Desktop it must be shared in Settings > Resources > File Sharing, which is
 # tried before any image is built: exit 2)
 # [LOAD_DATA=seed|medium|server|full]. LOAD_DATA=seed (the default) measures on the demo data of the Job initialize and raises
-# the stock of every variant. medium, server and full first run one Job of the suspended CronJob demo-data (bin/generate-demo
-# with that profile; it deletes the seed; hours for server and full, LOAD_DATA_TIMEOUT), then raise the stock of the variants
-# of a few random chunks of the sitemap only and give their keys to k6 (DISCOVER_CHUNKS); they read the four read variables of
-# the private bucket of the photo pool from DEMO_PHOTOS_ENV_FILE (default ~/.config/shop/demo-photos.env; the token that writes
+# the stock of every variant. medium, server and full first run one Job of the suspended CronJob demo-data with DEMO_DATA_CONFIRM of
+# that profile (its script runs bin/generate-demo with it; it deletes the seed; hours for server and full, LOAD_DATA_TIMEOUT), then
+# raise the stock of the variants of a few random chunks of the sitemap only and give their keys to k6 (DISCOVER_CHUNKS); they read
+# the four read variables of the private bucket of the photo pool from DEMO_PHOTOS_ENV_FILE (default ~/.config/shop/demo-photos.env; the token that writes
 # never goes to the cluster) into the Secret demo-photos, without a value in a command line, the output or LOAD_OUT.
 # Exit code 0: measured; 1: anything else that went wrong, also a run done while the host slept (below); 2: the environment is not fit (no LOAD_OUT, an unknown LOAD_DATA, the photo file missing or without
 # a read variable: before any cluster is made; too few CPUs or too little memory in the Docker VM, images missing in the node
@@ -98,7 +102,8 @@ monitoring-smoke:
 load:
 	sh scripts/load.sh
 
-# Runs a job of a version again under its name (a finished or failed one): make -C infra/k8s rerun JOB=<name>.
+# Runs a job of a version again under its name (a finished or failed one): make -C infra/k8s rerun JOB=<name>. A Job of the
+# generator of the demo data (label app.kubernetes.io/name: demo-data) is refused (exit 3): the data are replaced by make generate.
 # KUBE_DIR is the directory with the kubeconfig of the cluster (required), KUBE_NETWORK the Docker network of kubectl.
 rerun:
 	@sh scripts/ao-guard.sh rerun
@@ -123,6 +128,24 @@ create-admin:
 restore:
 	@sh scripts/ao-guard.sh restore
 	SNAPSHOT="$(SNAPSHOT)" PRE_RESTORE="$(PRE_RESTORE)" sh scripts/restore.sh
+
+# Replaces the data of the shop with the demo data of a profile, or with the seed again (docs/features/demo-scale/spec.md):
+# make -C infra/k8s generate PROFILE=<seed|profile of the CronJob demo-data> GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...']
+# KUBE_DIR=<directory>. Only after the consent of the user in the conversation that names the operation, the host and the profile. Checks
+# without changes, says what it will do and asks for the word tak; then takes the lock demo-data-lock (make generate and make open run
+# one at a time), closes the shop, runs the Job demo-data-run and, after it completed, make open under its lock. A failure leaves the
+# shop closed (exit 1; 2 for wrong arguments). The variables: the header of scripts/generate.sh.
+generate:
+	@sh scripts/ao-guard.sh generate
+	PROFILE="$(PROFILE)" sh scripts/generate.sh
+
+# Checks the data of the Job demo-data-run of make generate (that completed) and opens the shop; make generate runs it, by hand after a
+# run that stopped: make -C infra/k8s open GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...'] KUBE_DIR=<directory>.
+# Idempotent; holds the lock demo-data-lock to its end and refuses while another make generate or make open holds it, or a Job runs.
+# Exit 1 when a check fails (the shop stays closed). The variables: the header of scripts/open.sh.
+open:
+	@sh scripts/ao-guard.sh open
+	sh scripts/open.sh
 
 # The snapshots of the repository of the backups (identifier, time, host, tags, revision), the oldest first; only reads:
 # make -C infra/k8s backups. KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
@@ -153,7 +176,10 @@ kubeconfig:
 	@sh scripts/ao-guard.sh kubeconfig
 	sh scripts/kubeconfig.sh "$(HOST)"
 
-# The applications of Argo CD, the pods and the jobs of the shop, and the logs of the failed jobs, read over SSH: make -C infra/k8s status HOST=<user>@<address>.
+# The applications of Argo CD, the pods and the jobs of the shop, the logs of the failed jobs and the state of the demo data (whether
+# the shop is closed, the lock demo-data-lock and its holder, the Job demo-data-run and its state, the active Jobs, whether the Secret
+# of the photo pool is left, the last log line of the newest job initialize), read over SSH:
+# make -C infra/k8s status HOST=<user>@<address>.
 status:
 	sh scripts/status.sh "$(HOST)"
 
@@ -173,7 +199,8 @@ failed-retry:
 failed-remove:
 	@sh scripts/failed-remove.sh "$$HOST" "$$ID"
 
-# Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak.
+# Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak. Refuses with exit 1 before the
+# question while the shop is closed (the NetworkPolicy shop-closed of make generate; make generate PROFILE=seed goes back to the seed).
 # make -C infra/k8s reinitialize HOST=<user>@<address>
 reinitialize:
 	sh scripts/reinitialize.sh "$(HOST)"

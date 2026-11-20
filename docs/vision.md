@@ -238,8 +238,11 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 - Pomiar na danych w skali (`LOAD_DATA=medium|server|full`, generator `docs/features/demo-data/spec.md`): wykonany
   został tylko `medium` (1 mln produktów, 1 mln zamówień; 2026-11-19, rewizja `aceeab48`) i opisuje wyłącznie `medium`.
   Rozmiary i czasy `server` i `full` (10 mln produktów, 5 i 50 mln zamówień) to ekstrapolacja z `medium`,
-  niezweryfikowana pomiarem. Pełna skala nie jest zweryfikowana: obowiązkowy pomiar `full` na k3d poprzedza
-  optymalizacje wąskich gardeł i wdrożenie danych w skali na serwer.
+  niezweryfikowana pomiarem.
+- Dane w skali trafiają też na serwer demo (worf.pl): ręcznie, celem `make -C infra/k8s generate`, najpierw `medium`,
+  po analizie jego wyników i osobnej zgodzie `server`, przy zamkniętym sklepie do udanego sprawdzenia danych
+  (`docs/features/demo-scale/spec.md`). Wynik opisuje ten serwer i ten profil. Pomiar `full` na k3d jest odłożony,
+  więc pełna skala (10 mln produktów, 50 mln zamówień) nie jest zweryfikowana.
 
 **Spójność i współbieżność**
 - Optimistic locking (wersja) dla edycji z widoku: zmiana agregatu edytowanego równolegle (zamówienie, cena, korekta
@@ -319,12 +322,17 @@ idempotencji), a `demo-data:verify` sprawdza spójność na końcu. Profile (`ap
 | Profil | Pracownicy | Klienci | Produkty (ogon) | Zamówienia | Gdzie |
 |---|---|---|---|---|---|
 | `small` | 20 | 1 000 | 2 000 | 5 000 | testy API, lokalnie |
-| `medium` | 50 | 100 000 | 1 000 000 | 1 000 000 | k3d, lokalnie |
-| `server` | 500 | 1 000 000 | 10 000 000 | 5 000 000 | k3d (później serwer demo) |
+| `medium` | 50 | 100 000 | 1 000 000 | 1 000 000 | k3d, lokalnie, serwer demo |
+| `server` | 500 | 1 000 000 | 10 000 000 | 5 000 000 | serwer demo, k3d |
 | `full` | 500 | 1 000 000 | 10 000 000 | 50 000 000 | k3d |
 
 Profile inne niż `small` biorą zdjęcia z prywatnej puli w R2 (dane dostępu w pliku użytkownika poza repo). `make seed`
 po generatorze przywraca dane E2E (konta generatora w Keycloak zostają).
+
+Na serwerze demo generator uruchamia wyłącznie `make -C infra/k8s generate` po zgodzie użytkownika (zawieszony CronJob
+`demo-data`, strażnik wolnego miejsca, sklep zamknięty do sprawdzenia danych przez `make -C infra/k8s open`; po błędzie
+sklep zostaje zamknięty do ponownego generowania albo powrotu do seeda; runbook `infra/k8s/README.md`, sekcja 11). Dane w skali na serwerze nie są resetowane co noc: zastępuje je tylko
+świadome ponowne generowanie albo powrót do seeda.
 
 ## Zakres MVP
 

@@ -25,7 +25,11 @@ KUBECONFIG = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0
 # by the command: the bootstrap (status STUB_BOOTSTRAP_STATUS), the certificate, the kubeconfig, kubectl (the read of the jobs
 # with their Failed condition answers with STUB_JOBS, the read of the logs of the pods of a job by its label prints a line per
 # pod of two (and exits with 1 after them with STUB_LOGS_PARTIAL_FAIL, like kubectl when a container of the pods cannot be read),
-# or nothing with STUB_NO_PODS, a call matching STUB_FAIL_MATCH fails with no output).
+# or nothing with STUB_NO_PODS, a call matching STUB_FAIL_MATCH fails with no output). The reads of the state of the demo data:
+# the NetworkPolicy shop-closed answers with STUB_CLOSED, the lock demo-data-lock with STUB_LOCK, the Jobs initialize with STUB_INIT_JOBS (one name per line, the newest last) and their log with STUB_INIT_LOG
+# (nothing with STUB_INIT_NO_PODS), the Jobs with the types of their true conditions with STUB_JOB_STATES ("<name> <types>" lines),
+# the Secret of the photo pool that the CronJob demo-data reads with STUB_PHOTO_SECRET (demo-photos) and that Secret with
+# STUB_SECRET.
 SSH = r"""#!/bin/sh
 printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$STUB_LOG"
 n="$(wc -l < "$STUB_LOG" | tr -d ' ')"
@@ -37,6 +41,15 @@ case "$*" in
   *kubectl*)
     case "$*" in *"${STUB_FAIL_MATCH:-@@never@@}"*) echo "stub: failing" >&2; exit 1 ;; esac
     case "$*" in
+      *"get networkpolicy shop-closed"*) printf '%s' "${STUB_CLOSED:-}" ;;
+      *"get configmap demo-data-lock"*) printf '%s' "${STUB_LOCK:-}" ;;
+      *"get jobs -l app.kubernetes.io/name=initialize"*) printf '%s' "${STUB_INIT_JOBS-initialize-3fa9c1d2e4
+}" ;;
+      *" logs -l job-name="*"--container=initialize"*)
+        [ -n "${STUB_INIT_NO_PODS:-}" ] || printf '%s\n' "${STUB_INIT_LOG:-initialize: 120 products, 40 orders}" ;;
+      *"get jobs -o jsonpath"*".type}"*) printf '%s' "${STUB_JOB_STATES:-}" ;;
+      *"get cronjob demo-data"*) printf '%s' "${STUB_PHOTO_SECRET-demo-photos}" ;;
+      *"get secret "*) printf '%s' "${STUB_SECRET:-}" ;;
       *"get jobs -o jsonpath"*) printf '%s' "${STUB_JOBS:-}" ;;
       *" logs -l job-name="*)
         [ -n "${STUB_NO_PODS:-}" ] || printf '%s\n' "[pod/first/main] stub log line of the failed job" "[pod/second/main] stub log line of the failed job"
@@ -295,13 +308,18 @@ class KubeDirRegistry(ServerScripts):
 
 
 class Status(ServerScripts):
+    # The reads of the state of the demo data that follow the logs of the failed jobs: the rule, the lock, the states of the Jobs, the
+    # Secret of the photo pool (its name in the CronJob, then the Secret), the Jobs initialize and the log of the newest one
+    # (tests/test_demo_data_state.py has their results).
+    DEMO_READS = 7
+
     FAILED_JOBS = "backup-29000000 True\nbackup-verify-29000001 \nbackup-verify-29000002 True\n"
 
     def test_it_only_reads(self):
         result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS=self.FAILED_JOBS)
         self.assertEqual(0, result.returncode, result.stderr)
         calls = self.calls()
-        self.assertEqual(6, len(calls))
+        self.assertEqual(2 + 4 + self.DEMO_READS, len(calls))
         for call in calls:
             self.assertRegex(call, r" (get|logs) ")
             call = call.split("k3s kubectl", 1)[1]
@@ -314,7 +332,7 @@ class Status(ServerScripts):
     def test_a_failed_job_has_its_log_printed(self):
         result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS=self.FAILED_JOBS)
         self.assertEqual(0, result.returncode, result.stderr)
-        logs = [call for call in self.calls() if " logs " in call]
+        logs = [call for call in self.calls() if " logs " in call and "--all-containers" in call]
         self.assertEqual(2, len(logs), logs)
         for call, name in zip(logs, ("backup-29000000", "backup-verify-29000002")):
             self.assertIn(f"-n shop logs -l job-name={name} --all-containers --prefix --ignore-errors --tail=", call)
@@ -327,7 +345,7 @@ class Status(ServerScripts):
     def test_a_failed_job_without_pods_says_so_and_points_to_grafana_cloud(self):
         result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS="backup-29000000 True\n", STUB_NO_PODS="1")
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(5, len(self.calls()))
+        self.assertEqual(5 + self.DEMO_READS, len(self.calls()))
         self.assertIn("log of the failed job backup-29000000", result.stdout)
         self.assertIn("no pods of the job backup-29000000 left", result.stdout)
         self.assertIn("Grafana Cloud", result.stdout)
@@ -337,26 +355,26 @@ class Status(ServerScripts):
         result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS="bad;name True\n$(id) True\n")
         self.assertEqual(1, result.returncode)
         self.assertIn("unexpected name", result.stderr)
-        self.assertEqual(4, len(self.calls()))
+        self.assertEqual(4 + self.DEMO_READS, len(self.calls()))
 
     def test_without_failed_jobs_it_says_so_and_reads_no_log(self):
         result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS="backup-1 \nbackup-2 \n")
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(4, len(self.calls()))
-        self.assertFalse([call for call in self.calls() if " logs " in call])
+        self.assertEqual(4 + self.DEMO_READS, len(self.calls()))
+        self.assertFalse([call for call in self.calls() if "--all-containers" in call])
         self.assertIn("no failed jobs", result.stdout)
 
     def test_a_failing_read_is_reported_and_the_others_still_run(self):
         result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_FAIL_MATCH="get pods")
         self.assertEqual(1, result.returncode)
-        self.assertEqual(4, len(self.calls()))
+        self.assertEqual(4 + self.DEMO_READS, len(self.calls()))
         self.assertIn("could not read pods", result.stderr)
 
     def test_a_failing_read_of_the_jobs_or_of_a_log_ends_with_exit_code_1(self):
         result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS=self.FAILED_JOBS, STUB_FAIL_MATCH="get jobs -o jsonpath")
         self.assertEqual(1, result.returncode)
         self.assertIn("could not read the failed jobs", result.stderr)
-        self.assertFalse([call for call in self.calls() if " logs " in call])
+        self.assertFalse([call for call in self.calls() if "--all-containers" in call])
         self.log.write_text("")
         result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS=self.FAILED_JOBS, STUB_FAIL_MATCH=" logs -l job-name=backup-29000000 ")
         self.assertEqual(1, result.returncode)
@@ -371,7 +389,7 @@ class Status(ServerScripts):
         self.assertEqual(4, result.stdout.count("stub log line of the failed job"))
         self.assertIn("could not read log of the failed job backup-29000000", result.stderr)
         self.assertIn("could not read log of the failed job backup-verify-29000002", result.stderr)
-        self.assertEqual(2, len([call for call in self.calls() if " logs " in call]))
+        self.assertEqual(2, len([call for call in self.calls() if "--all-containers" in call]))
 
     def test_bad_hosts_are_refused(self):
         for host in self.BAD_HOSTS:
@@ -380,19 +398,22 @@ class Status(ServerScripts):
 
 
 class Reinitialize(ServerScripts):
+    def execs(self):
+        return [call for call in self.calls() if "exec deploy/api" in call]
+
     def test_without_the_word_tak_nothing_runs(self):
         for answer in ("", "nie\n", "TAK\n", "tak tak\n", "yes\n"):
             with self.subTest(answer=answer):
                 result = self.run_script("reinitialize.sh", "deploy@203.0.113.7", stdin=answer)
                 self.assertEqual(1, result.returncode)
                 self.assertIn("nothing changed", result.stderr)
-                self.assertEqual([], self.calls())
+                self.assertEqual([], self.execs())
                 self.assertIn("WIPES", result.stdout)
 
     def test_with_tak_it_runs_the_seed_in_the_api_pod_once(self):
         result = self.run_script("reinitialize.sh", "deploy@203.0.113.7", stdin="tak\n")
         self.assertEqual(0, result.returncode, result.stderr)
-        calls = self.calls()
+        calls = self.execs()
         self.assertEqual(1, len(calls))
         self.assertIn("kubectl -n shop exec deploy/api -- bin/seed-demo", calls[0])
 

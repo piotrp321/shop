@@ -84,7 +84,11 @@ Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
 4. **Przegląd zadania.** `FAST`: sesja sama sprawdza diff i wyniki testów, w tym trzy kontrole z punktu 4 agenta
    `code-reviewer` (istniejące testy, zakres, RED). `STANDARD` i `CRITICAL`: `code-reviewer` w trybie FULL; zlecenie
    podaje worktree zadania jako katalog przeglądu, `head_sha` i `base_sha` (`git merge-base task/<ID> <gałąź epiku>`).
-   Poprawki robi `developer`, po nich przegląd różnicy (DELTA). Zlecenie poprawek przekazuje ustalenia reviewera;
+   Poprawki robi `developer`, po nich przegląd różnicy (DELTA). Uwagę `SUGGESTION` albo `Minor` o błędnym działaniu
+   (nie styl), która opisuje skutek poza bazą (pieniądze, operator, wysłana wiadomość, stan widoczny dla klienta), sesja
+   przed odroczeniem ocenia według definicji `IMPORTANT` agenta `code-reviewer`: gdy ją spełnia, zleca poprawkę; ocenę
+   z powodem zapisuje w „Decyzjach bez pytania”, a odroczoną taką uwagę podaje w zleceniu przeglądu epiku (krok 6) do
+   ponownej oceny. Zlecenie poprawek przekazuje ustalenia reviewera;
    to, co sesja dodaje od siebie (własna reguła, zawężenie albo rozszerzenie poprawki), oznacza jako decyzję sesji
    w zleceniu poprawek i w zleceniu przeglądu. Zlecenie przeglądu (tu i w kroku 6) podaje fakty i decyzje do oceny:
    nie zawęża przeglądu i nie mówi, czego nie sprawdzać, a reviewer ma obowiązek aktywnie kwestionować założenia

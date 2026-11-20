@@ -135,11 +135,22 @@ do_schema() {
       --set 'clientIpHeader=CF Connecting IP'
     expect_failure "clientIpHeaderWithoutAllowList that is not a boolean" "/clientIpHeaderWithoutAllowList" \
       -f environments/ci/values.yaml --set image.tag=$rev --set-string clientIpHeaderWithoutAllowList=true
-    # The CronJob demo-data (docs/features/demo-data/spec.md, "Model zagrożeń"): its Jobs delete the data of every module, so no
-    # deployment with the images of a release may switch it on, and its profile, anchor and Secret are checked values.
-    expect_failure "prod with demoData.enabled" "/demoData/enabled" $prod --set image.tag=$rev $digests --set demoData.enabled=true
-    expect_failure "demoData.enabled with requireDigests" "/demoData/enabled" -f environments/ci/values.yaml --set image.tag=$rev $digests \
+    # The CronJob demo-data (docs/features/demo-scale/spec.md, "Job generatora na serwerze (chart)"): with the images of a release (the
+    # server) it runs only the steps of the server, medium or server, with a fixed anchor, the Secret of the photo pool and a floor of at
+    # least 10 GB; ci with the images of a release (requireDigests) gets the same checks. Its profile, anchor and Secret are checked values.
+    expect_failure "prod without an anchor of the generator" "/demoData/anchor" $prod --set image.tag=$rev $digests --set demoData.anchor=
+    expect_failure "prod without the Secret of the photo pool" "/demoData/photosSecretName" $prod --set image.tag=$rev $digests \
+      --set demoData.photosSecretName=
+    expect_failure "prod with the profile small" "/demoData/profile" $prod --set image.tag=$rev $digests --set demoData.profile=small
+    expect_failure "prod with the profile full" "/demoData/profile" $prod --set image.tag=$rev $digests --set demoData.profile=full
+    expect_failure "prod with a floor of the free space below 10 GB" "/demoData/minFreeGb" $prod --set image.tag=$rev $digests \
+      --set demoData.minFreeGb=9
+    expect_failure "demoData of ci with requireDigests" "/demoData" -f environments/ci/values.yaml --set image.tag=$rev $digests \
       --set image.requireDigests=true
+    expect_failure "a floor of the free space that is not a whole number" "/demoData/minFreeGb" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set-string demoData.minFreeGb=2G
+    expect_failure "a grace period shorter than the stop of the generator" "/demoData/terminationGracePeriodSeconds" \
+      -f environments/ci/values.yaml --set image.tag=$rev --set demoData.terminationGracePeriodSeconds=30
     expect_failure "demoData.enabled that is not a boolean" "/demoData/enabled" -f environments/ci/values.yaml --set image.tag=$rev \
       --set-string demoData.enabled=true
     expect_failure "a profile of the generator that does not exist" "/demoData/profile" -f environments/ci/values.yaml --set image.tag=$rev \
@@ -234,7 +245,7 @@ do_shellcheck() {
   step "shellcheck"
   # shellcheck disable=SC2046 # the file names have no spaces
   shellcheck -x -P SCRIPTDIR $(cd "$TOOLS_REPO/infra/k8s" && ls scripts/*.sh charts/shop/files/scripts/*.sh tests/bootstrap/*.sh) \
-    ../../.github/scripts/deploy-ref.sh ../../load/k6.sh ../../load/smoke.sh
+    ../../.github/scripts/deploy-ref.sh ../../load/k6.sh ../../load/smoke.sh ../../load/test/cookies.sh
 }
 
 # The workflows of the repository (deploy.yml among them), with shellcheck on their run: scripts.
