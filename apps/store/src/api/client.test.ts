@@ -439,6 +439,7 @@ describe("placeOrder", () => {
     city: "Warszawa",
     expectedTotalGross: 39998,
     provider: "demo-transfer",
+    deliveryMethodId: "00000000-0000-4000-8000-0000000000d1",
   };
   const REDIRECT_URL = "http://localhost:8000/payment-simulator/demo-transfer/pay/7d3f0a8e-4a1b-4c55-9f1e-2b3c4d5e6f70";
 
@@ -484,6 +485,7 @@ describe("placeOrder", () => {
     [409, { type: `${PROBLEMS}discount-code-invalid`, detail: "x" }, { status: "conflict", reason: "discount_code_rejected", detail: "x" }],
     [409, { type: `${PROBLEMS}discount-code-used-up`, detail: "x" }, { status: "conflict", reason: "discount_code_rejected", detail: "x" }],
     [409, { type: `${PROBLEMS}discount-code-below-minimum`, detail: "x", minimumOrderGross: 30000 }, { status: "conflict", reason: "discount_code_rejected", detail: "x" }],
+    [409, { type: `${PROBLEMS}delivery-method-unavailable`, detail: "x" }, { status: "conflict", reason: "delivery_method_unavailable", detail: "x" }],
     [409, { type: "about:blank", detail: "Koszyk jest pusty." }, { status: "conflict", reason: "unknown", detail: "Koszyk jest pusty." }],
     [409, { type: `${PROBLEMS}something-new`, detail: "x" }, { status: "conflict", reason: "unknown", detail: "x" }],
     [409, { type: 42, detail: "x" }, { status: "conflict", reason: "unknown", detail: "x" }],

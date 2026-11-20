@@ -12,8 +12,9 @@ Cena wariantu w koszyku i w ofercie listy to cena skuteczna z Pricing (w aktywne
 `docs/features/promotions/spec.md`); koszyk nie oznacza promocji. Ceny i sumy linii możliwych do kupienia pochodzą
 z jednej wyceny Pricing (`QuoteBasket`, ta sama co przy złożeniu zamówienia), a odczyt koszyka przyjmuje kod rabatowy
 do podglądu w kasie (`docs/features/discount-codes/spec.md`); kod nie jest zapisywany w koszyku. Poza zakresem:
-rezerwacja stanu (robi ją złożenie zamówienia w Ordering), płatności, koszty dostawy, strona produktu, panel
-administracyjny. Zakładanie koszyków gościa, zmiany ich pozycji i podgląd kodu mają limity na adres klienta
+rezerwacja stanu (robi ją złożenie zamówienia w Ordering), płatności, strona produktu, panel administracyjny. Odczyt
+koszyka pokazuje też koszt dostawy, próg darmowej dostawy i opcje (metody dostawy z Delivery, `delivery`;
+`docs/features/delivery/spec.md`, W4); metodę wybiera klient dopiero w kasie. Zakładanie koszyków gościa, zmiany ich pozycji i podgląd kodu mają limity na adres klienta
 (`docs/features/abuse-limits/spec.md`, L2, L3).
 
 ## Decyzje biznesowe
@@ -39,6 +40,7 @@ administracyjny. Zakładanie koszyków gościa, zmiany ich pozycji i podgląd ko
 | Catalog | `GetVariantSummaries` (produkt, nazwa produktu, etykieta wariantu i zdjęcie produktu dla linii koszyka), `ListProductVariants` (osie i warianty produktów listy dla oferty) |
 | Pricing | `GetCurrentPrices` (autorytatywna cena aktualna wariantu: kupowalność i oferta listy), `QuoteBasket` (wycena linii możliwych do kupienia z kodem rabatowym) |
 | Inventory | `GetStockLevels` (dostępna liczba sztuk wariantu i jej poziom, tylko w procesie API) |
+| Delivery | `QuoteDelivery` (aktywne metody dostawy z kosztem dla wartości towarów po rabatach, progiem darmowej dostawy i brakującą kwotą) |
 | Customer | `AuthenticatedCustomer::id()` (`sub` z tokena realmu `shop`) |
 | Ordering | składa zamówienie z koszyka: blokuje go i czyta jego linie (`LockCartForOrder`), po złożeniu opróżnia (`ClearCartAfterOrder`) |
 | Sklep | BFF koszyka i wyświetlanie wartości z API; żadnych obliczeń |
@@ -50,7 +52,7 @@ w żadnej warstwie):
 |---|---|
 | `Cart_Domain` | `Native`, `Shared_Domain` |
 | `Cart_Application` | `Native`, `Cart_Domain`, `Shared_Domain`, `Vendor` |
-| `Cart_Infrastructure` | `Native`, `Cart_Application`, `Cart_Domain`, `Shared_Domain`, `Shared_Infrastructure`, `Vendor`, `Catalog_Application`, `Pricing_Application`, `Inventory_Application` |
+| `Cart_Infrastructure` | `Native`, `Cart_Application`, `Cart_Domain`, `Shared_Domain`, `Shared_Infrastructure`, `Vendor`, `Catalog_Application`, `Pricing_Application`, `Inventory_Application`, `Delivery_Application` |
 | `Cart_UI` | `Native`, `Cart_Application`, `Cart_Domain`, `Shared_Domain`, `Shared_Infrastructure`, `Vendor`, `Customer_Application` |
 
 - Adaptery portów Cart w `Cart_Infrastructure` wołają zapytania innych contextów przez `query.bus`, jak
@@ -165,6 +167,15 @@ Stan linii, w kolejności priorytetu:
   wykluczone) nie ma wyceny: sumy 0 i `discount = null`, także gdy przyszedł kod. Koszyk z liniami wykluczonymi
   i kupowalnymi dostaje wycenę kodu z linii kupowalnych.
 - `totals.itemCount` = suma ilości wszystkich linii (licznik w nagłówku).
+- `delivery` (`docs/features/delivery/spec.md`, W4): `null`, gdy nie ma wyceny (żadnej linii `purchasable`); inaczej
+  `{fromGross, missingToFreeGross, options}` z portu `CartDelivery` (adapter `QueryBusCartDelivery`, zapytanie Delivery
+  `QuoteDelivery`) policzone od `totals.gross`, czyli od wartości towarów po promocjach i po kodzie z odczytu: kod,
+  który obniża towary poniżej progu darmowej dostawy, przywraca koszt i brakującą kwotę, a sam koszt dostawy nigdy
+  nie jest obniżany. Każda opcja ma `methodId`, `name`, `description`, `costGross`, `freeFromGross`,
+  `missingToFreeGross` i `totalGross` = `totals.gross` + `costGross` (liczy API); szablonu linku śledzenia widok nie
+  ma. Bez aktywnych metod `options` jest puste, a `fromGross` i `missingToFreeGross` to `null`. `totalGross` służy do
+  wyświetlenia; złożenie zamówienia sprawdza sumę ponownie wobec `expectedTotalGross`. Komendy odpowiadają widokiem
+  z `delivery` jak odczyt bez kodu.
 - `discount`: kod odczytu zastosowany `{status: applied, code, amountGross, kind, value}` albo odrzucony `{status:
   rejected, code, reason, detail, minimumOrderGross | null}` (`reason`: `invalid`, `used_up`, `below_minimum`; `detail`
   po polsku z Pricing, ten sam co w 409 złożenia), `null` bez kodu. Komendy (dodanie, zmiana, usunięcie, scalenie)
@@ -330,6 +341,7 @@ Porty (`Cart_Application/Port`) i adaptery (`Cart_Infrastructure`):
 | `ProductCatalog::variantsOf(productIds)` → `ProductVariants {productId, variantAxes, variants: [{variantId, label}]}` | `QueryBusProductCatalog` | Catalog `ListProductVariants` |
 | `CartPrices::current(variantIds, withLowestPriorPrice = false)` → `CartPrice {variantId, gross: Money, regularGross: Money, promotion: VariantPromotion {endsAt, lowestPriorGross: Money\|null}\|null}` | `QueryBusCartPrices` | Pricing `GetCurrentPrices` |
 | `CartQuote::quote(lines {variantId, quantity}, discountCode)` → `CartQuoteResult {lines: {unitGross, grossBeforeDiscount} po wariancie, subtotalGross, discountGross, gross, discount}` (1–50 linii `purchasable`) | `QueryBusCartQuote` | Pricing `QuoteBasket` |
+| `CartDelivery::quote(goodsGross)` → `CartDeliveryQuote {fromGross, missingToFreeGross, options: [CartDeliveryOption {methodId, name, description, costGross, freeFromGross, missingToFreeGross}]}` (bez szablonu linku śledzenia) | `QueryBusCartDelivery` | Delivery `QuoteDelivery` |
 | `StockAvailability::of(variantIds)` → `VariantAvailability {variantId, available, level}` | `QueryBusStockAvailability` | Inventory `GetStockLevels` |
 | `CartReader::find(id)`, `findForCustomer(customerId)` | `DbalCartReader` | odczyt DBAL |
 | `ExpiredCarts::purgeBatch(now, limit)` | `DbalExpiredCarts` | usunięcie partii DBAL |
@@ -428,7 +440,12 @@ wystawcy tokenu: 503):
   discount: { status: "applied", code: string, amountGross: int, kind: "percent" | "amount", value: int }
           | { status: "rejected", code: string, reason: "invalid" | "used_up" | "below_minimum", detail: string,
               minimumOrderGross: int | null }
-          | null
+          | null,
+  delivery: {
+    fromGross: int | null, missingToFreeGross: int | null,
+    options: [{ methodId: uuid, name: string, description: string, costGross: int, freeFromGross: int | null,
+                missingToFreeGross: int | null, totalGross: int }]
+  } | null
 }
 ```
 
@@ -533,10 +550,14 @@ zwracana.
   zdjęcie (`ProductPhoto`), nazwa, pod nią etykieta wariantu (pusta dla wariantu domyślnego), cena jednostkowa, ilość
   (pole 1–99 opisane nazwą i etykietą wariantu, zatwierdzane po opuszczeniu pola lub Enterem;
   wartość niebędąca liczbą całkowitą 1–99 albo bez zmiany wraca do bieżącej ilości bez żądania), wartość linii, „Usuń”;
-  podsumowanie: wartość brutto i liczba sztuk; pod nim przycisk „Przejdź do kasy” (link do `/checkout`,
+  podsumowanie: wartość brutto i liczba sztuk, pod nimi wiersze dostawy z `delivery` w regionie `aria-live="polite"`
+  (jest w DOM przed zmianą, więc każda zmiana koszyka jest ogłaszana): „Dostawa od 19,99 zł” przy `fromGross` > 0,
+  „Darmowa dostawa” przy 0, „Do darmowej dostawy brakuje 50,01 zł” przy `missingToFreeGross` różnym od `null`; bez
+  wiersza przy `fromGross` `null` i przy `delivery: null`; pod nim przycisk „Przejdź do kasy” (link do `/checkout`,
   `docs/features/checkout/spec.md`). Przy `hasExcludedLines` przycisk jest nieaktywny, a pod nim tekst „Usuń albo popraw
   oznaczone pozycje, żeby złożyć zamówienie.”. Pusty koszyk: „Twój koszyk jest pusty” i link „Zobacz produkty”, bez
   przycisku.
+- Pusty koszyk BFF (`emptyCart` w `src/cart/bff.ts`) ma `delivery: null`.
 - Kwoty przez `formatPrice`. Front niczego nie liczy: każdy widok pochodzi z ostatniej odpowiedzi API.
 
 | Sytuacja | UI |
@@ -616,6 +637,8 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
   linii `purchasable` z wyceny (inne niż z `CartPrices`), wycena tylko linii `purchasable` w kolejności koszyka z kodem,
   linie wykluczone z `lineTotal = null`, bez linii `purchasable` brak wyceny, sumy 0 i `discount = null` także z kodem,
   linia pominięta przez wycenę jako `no_price` (wszystkie pominięte: sumy 0 i `discount = null` także z kodem), `itemCount` ze wszystkich linii, `hasExcludedLines`, pusty koszyk.
+  Dostawa (z `FakeCartDelivery`): `null` i brak zapytania bez linii `purchasable` (także gdy wycena pominęła wszystkie),
+  zapytanie o `totals.gross` po kodzie, `totalGross` opcji = towary + koszt, puste opcje bez aktywnych metod.
 - `GetCart` przekazuje kod do wyceny; komendy wyceniają bez kodu.
 - Handlery: 404 dla gościa nieznanego, wygasłego i scalonego; `ProductNotFound`; `nothing_to_merge` dla nieznanego,
   wygasłego i klienckiego `guestCartId`; `GetCart` klienta bez koszyka nic nie zakłada.
@@ -688,6 +711,10 @@ minimum), każdy powód odrzucenia z `detail` i `minimumOrderGross` (nieznany, w
 format, znak sterujący, 64 znaki, wykorzystany, poniżej minimum), kod pusty i z samych białych znaków jak brak kodu,
 400 z polskim naruszeniem (65 znaków, także polskich liter, tablica, bajty spoza UTF-8), koszyk bez linii możliwych do
 kupienia bez wyceny, odpowiedź komendy bez kodu. Pozostałe testy koszyka sprawdzają nowe pola sum i `discount: null`.
+`CartDeliveryEndpointTest`: koszyk gościa i klienta, `delivery` `null` bez linii do kupienia (pusty, same wykluczone,
+klient bez koszyka), koszt metody i `missingToFreeGross` poniżej progu, koszt 0 od progu, kod obniżający towary poniżej
+progu przywraca koszt płatny (P6), `totalGross` = `totals.gross` + `costGross`, kolejność po `position`, brak aktywnych
+metod, brak szablonu linku śledzenia w odpowiedzi, odpowiedź komendy z `delivery`; adapter w `QueryBusAdaptersTest`.
 
 ### Architektura
 
@@ -710,7 +737,7 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   „od”, produkt niedostępny bez ceny, listy i przycisku, błąd wywołania ofert; `load-catalog.test.ts`: jedno wywołanie
   ofert dla strony i lista bez ofert przy błędzie.
 - `AddToCartButton` (`AddToCartButton.test.tsx`): blokada na czas żądania, sukces, 409 z `detail`, 404, błąd sieci.
-- `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, przycisk „Przejdź do kasy” (aktywny, nieaktywny, brak przy pustym koszyku), pusty koszyk, zmiana ilości z błędem 409
+- `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, przycisk „Przejdź do kasy” (aktywny, nieaktywny, brak przy pustym koszyku), wiersze dostawy (od, darmowa, brakująca kwota, brak wiersza, region `aria-live` obecny przed zmianą), pusty koszyk, zmiana ilości z błędem 409
   (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem.
 - `CartBadge` (`CartBadge.test.tsx`, `events.test.ts`): liczba sztuk, aktualizacja po zmianie, ukrycie przy błędzie,
   komunikat scalenia.

@@ -612,12 +612,13 @@ def check_image():
 
 
 def place_order(email):
-    """Places an order of one unit of the first product that can be bought, as a guest with the address <email>; returns its number."""
+    """Places an order of one unit of the first product that can be bought, as a guest with the address <email> and the first
+    delivery method the cart offers; returns its number."""
     status, _, text = through_ingress("/api/v1/guest-carts", "api", method="POST")
     expect(status == 201, "a guest cart is created")
     cart = json.loads(text)["id"]
     status, _, text = through_ingress("/api/v1/products?perPage=10", "api")
-    total = None
+    delivery = None
     for item in json.loads(text)["items"]:
         status, _, detail = through_ingress(f"/api/v1/products/{item['slug']}", "api")
         for variant in json.loads(detail)["variants"]:
@@ -625,11 +626,13 @@ def place_order(email):
                 f"/api/v1/guest-carts/{cart}/items", "api", method="POST", body={"variantId": variant["variantId"], "quantity": 1}
             )
             if status == 200:
-                total = json.loads(text)["totals"]["gross"]
+                delivery = json.loads(text)["delivery"]
                 break
-        if total is not None:
+        if delivery is not None:
             break
-    expect(total is not None, "a product is added to the cart")
+    expect(delivery is not None, "a product is added to the cart")
+    expect(bool(delivery["options"]), "the cart offers a delivery method of the seed")
+    option = delivery["options"][0]
     order = {
         "cartId": cart,
         "email": email,
@@ -638,7 +641,8 @@ def place_order(email):
         "street": "ul. Testowa 1",
         "postalCode": "00-950",
         "city": "Warszawa",
-        "expectedTotalGross": total,
+        "deliveryMethodId": option["methodId"],
+        "expectedTotalGross": option["totalGross"],
     }
     status, _, text = through_ingress(
         "/api/v1/orders", "api", method="POST", body=order, headers={"Idempotency-Key": f"smoke-{time.time_ns()}"}

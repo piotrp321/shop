@@ -205,7 +205,7 @@ final class OrderDiscountTest extends TestCase
     {
         $order = OrderExamples::placed();
 
-        return Order::place($order->id(), $order->number(), $order->owner(), $order->accessToken(), $order->contact(), $order->shippingAddress(), $lines, $discount, $order->idempotencyKey(), $order->requestFingerprint(), $order->placedAt());
+        return Order::place($order->id(), $order->number(), $order->owner(), $order->accessToken(), $order->contact(), $order->shippingAddress(), $lines, $discount, OrderExamples::freeDelivery(), $order->idempotencyKey(), $order->requestFingerprint(), $order->placedAt());
     }
 
     private static function line(int $variant, int $quantity, PriceCopy $price, LineAmounts $amounts, ?PromotionCopy $promotion = null): OrderLine

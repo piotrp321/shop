@@ -75,14 +75,20 @@ export function cart(ctx, data) {
 
 let counter = 0;
 
-// The guest checkout through POST /api/checkout of the store: one unit of a purchasable variant, then the order and the
-// start of its payment at a provider. The cart steps carry the kind checkout too, so the checkout scenario is one set of
+// The guest checkout through POST /api/checkout of the store: one unit of a purchasable variant, then the order with the
+// first delivery method of the cart and the start of its payment at a provider. The cart steps carry the kind checkout too, so the checkout scenario is one set of
 // numbers. Returns true when the order was placed.
 export function checkout(ctx, data) {
   const added = addToCart(ctx, data, 'checkout_cart', 'checkout');
   const cart = storeGet(ctx, '/api/cart', 'checkout_cart', 'checkout');
   ok(cart, 'checkout_cart', 'checkout');
   if (!added || cart.status !== 200) {
+    return false;
+  }
+  // The first delivery method the cart offers (the seed has two); its total with the delivery is the expected total.
+  const option = (cart.json('delivery.options') || [])[0];
+  const offered = check(option, { 'checkout_cart offers a delivery method': (o) => o !== undefined }, { flow: 'checkout_cart', kind: 'checkout' });
+  if (!offered) {
     return false;
   }
   counter += 1;
@@ -100,7 +106,8 @@ export function checkout(ctx, data) {
       street: 'Długa 5/3',
       postalCode: '00-950',
       city: 'Warszawa',
-      expectedTotalGross: cart.json('totals.gross'),
+      deliveryMethodId: option.methodId,
+      expectedTotalGross: option.totalGross,
       provider: pick(data.providers),
     },
     { 'Idempotency-Key': key },

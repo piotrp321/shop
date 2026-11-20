@@ -191,9 +191,30 @@ function CartSummary({ cart }: { cart: CartView }) {
             <span data-testid="cart-item-count">{cart.totals.itemCount}</span>
           </p>
           {cart.hasExcludedLines ? <p className="text-sm text-destructive">Część produktów nie jest wliczona</p> : null}
+          <CartDelivery delivery={cart.delivery} currency={cart.totals.currency} />
         </CardContent>
       </Card>
     </section>
+  );
+}
+
+/**
+ * The delivery rows under the total, as the API computed them: the cheapest cost ("Dostawa od", or "Darmowa dostawa"
+ * when it is 0) and what is missing to free delivery. The method is chosen in the checkout. The region is there
+ * before the rows change, so a screen reader announces the change after every edit of the cart.
+ */
+function CartDelivery({ delivery, currency }: { delivery: CartView["delivery"]; currency: string }) {
+  const fromGross = delivery?.fromGross ?? null;
+  const missingToFreeGross = delivery?.missingToFreeGross ?? null;
+  return (
+    <div data-testid="cart-delivery" aria-live="polite" aria-atomic="true" className="flex flex-col gap-1 text-sm text-muted-foreground">
+      {fromGross === null ? null : (
+        <p data-testid="cart-delivery-from">{fromGross === 0 ? "Darmowa dostawa" : `Dostawa od ${formatPrice(fromGross, currency)}`}</p>
+      )}
+      {missingToFreeGross === null ? null : (
+        <p data-testid="cart-delivery-missing">Do darmowej dostawy brakuje {formatPrice(missingToFreeGross, currency)}</p>
+      )}
+    </div>
   );
 }
 

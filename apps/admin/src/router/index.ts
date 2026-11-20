@@ -4,6 +4,7 @@ import { LOGIN_SERVER_MESSAGE, reportLoginProblem } from "@/auth/loginProblem";
 import { getUserManager } from "@/auth/userManager";
 import { canViewCustomers } from "@/customers/permissions";
 import { canViewSystem } from "@/dashboard/permissions";
+import { canManageDelivery } from "@/delivery/permissions";
 import { canManageDiscountCodes } from "@/discount-codes/permissions";
 import AppLayout from "@/layout/AppLayout.vue";
 import { canViewOrders } from "@/orders/permissions";
@@ -15,6 +16,8 @@ import CategoriesView from "@/views/CategoriesView.vue";
 import CustomerDetailView from "@/views/CustomerDetailView.vue";
 import CustomersView from "@/views/CustomersView.vue";
 import DashboardView from "@/views/DashboardView.vue";
+import DeliveryMethodFormView from "@/views/DeliveryMethodFormView.vue";
+import DeliveryMethodsView from "@/views/DeliveryMethodsView.vue";
 import DiscountCodeFormView from "@/views/DiscountCodeFormView.vue";
 import DiscountCodesView from "@/views/DiscountCodesView.vue";
 import InventoryView from "@/views/InventoryView.vue";
@@ -147,6 +150,24 @@ export function createAppRouter(userManager: SessionManager = getUserManager(), 
             children: [
               { path: "", name: "customers", component: CustomersView },
               { path: ":customerId", name: "customer", component: CustomerDetailView },
+            ],
+          },
+          {
+            // One path for the list and the form, so the menu item of the delivery stays active on a method.
+            path: "delivery",
+            // Only the administrators open the delivery methods; the others land on the dashboard with a message. When /me
+            // cannot be read the route is let through: the API checks the access and the view shows the 403.
+            beforeEnter: async () => {
+              const auth = useAuthStore();
+              if (auth.staff === null) {
+                await auth.load();
+              }
+              return auth.staff === null || canManageDelivery(auth.staff) ? true : { name: "dashboard", state: { denied: true } };
+            },
+            children: [
+              { path: "", name: "delivery", component: DeliveryMethodsView },
+              { path: "new", name: "delivery-method-new", component: DeliveryMethodFormView },
+              { path: ":id", name: "delivery-method", component: DeliveryMethodFormView },
             ],
           },
           { path: ":pathMatch(.*)*", redirect: "/" },

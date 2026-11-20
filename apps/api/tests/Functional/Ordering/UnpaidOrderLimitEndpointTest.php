@@ -251,6 +251,7 @@ final class UnpaidOrderLimitEndpointTest extends WebTestCase
                 'Długa 1',
                 '00-950',
                 'Warszawa',
+                OrderingFixture::freeDeliveryMethod($this->connection),
                 self::GROSS,
                 'earlier-'.Uuid::v7()->toRfc4122(),
                 null,
@@ -272,7 +273,7 @@ final class UnpaidOrderLimitEndpointTest extends WebTestCase
     {
         for ($i = 0; $i < $count; ++$i) {
             $this->refillCustomerCart();
-            $result = $this->dispatch(new PlaceOrder(CartReference::customer(TestTokenFactory::CUSTOMER_ID), self::CUSTOMER_EMAIL, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', self::GROSS, 'earlier-'.Uuid::v7()->toRfc4122(), null, \sprintf('192.0.2.%d', 100 + $i)));
+            $result = $this->dispatch(new PlaceOrder(CartReference::customer(TestTokenFactory::CUSTOMER_ID), self::CUSTOMER_EMAIL, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->connection), self::GROSS, 'earlier-'.Uuid::v7()->toRfc4122(), null, \sprintf('192.0.2.%d', 100 + $i)));
             self::assertInstanceOf(PlacedOrder::class, $result);
         }
         $this->entityManager->clear();

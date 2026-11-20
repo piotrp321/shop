@@ -120,7 +120,7 @@ final class OrderLifecycleTest extends TestCase
         $order = self::orderIn('paid');
         $now = new \DateTimeImmutable(self::SHIPPED_AT);
 
-        $order->ship(self::staff(), null, $now);
+        $order->ship(self::staff(), null, null, $now);
 
         self::assertSame(OrderStatus::Shipped, $order->status());
         self::assertEquals($now, $order->shippedAt());
@@ -478,7 +478,7 @@ final class OrderLifecycleTest extends TestCase
     {
         $order = self::orderIn('paid');
 
-        $order->ship(self::staff(), $note, new \DateTimeImmutable(self::SHIPPED_AT));
+        $order->ship(self::staff(), $note, null, new \DateTimeImmutable(self::SHIPPED_AT));
         $order->deliver(self::staff(), $note, new \DateTimeImmutable(self::DELIVERED_AT));
 
         $history = $order->history();
@@ -543,7 +543,7 @@ final class OrderLifecycleTest extends TestCase
             $order->cancel(self::staff(), 'Klient zrezygnował', new \DateTimeImmutable(self::NOW));
         }
         if (\in_array($state, ['shipped', 'delivered', 'returned'], true)) {
-            $order->ship(self::staff(), null, new \DateTimeImmutable(self::SHIPPED_AT));
+            $order->ship(self::staff(), null, null, new \DateTimeImmutable(self::SHIPPED_AT));
         }
         if (\in_array($state, ['delivered', 'returned'], true)) {
             $order->deliver(self::staff(), null, new \DateTimeImmutable(self::DELIVERED_AT));
@@ -559,7 +559,7 @@ final class OrderLifecycleTest extends TestCase
     private static function apply(Order $order, StaffTransition $transition, ?string $note, \DateTimeImmutable $now): void
     {
         match ($transition) {
-            StaffTransition::Ship => $order->ship(self::staff(), $note, $now),
+            StaffTransition::Ship => $order->ship(self::staff(), $note, null, $now),
             StaffTransition::Deliver => $order->deliver(self::staff(), $note, $now),
             StaffTransition::Cancel => $order->cancel(self::staff(), $note, $now),
             StaffTransition::Return => $order->registerReturn(self::staff(), $note, $now),

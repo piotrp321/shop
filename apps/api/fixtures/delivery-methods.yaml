@@ -1,0 +1,22 @@
+# Demo delivery methods created by `delivery:seed-demo` (`make seed`), all active, in the order of this file. Each method
+# has a `name` (1 to 100 characters, unique without regard to case), an optional `description` (the time of the delivery,
+# up to 200 characters, one line), a `priceGross` (grosze, 0 to 99999999), an optional `freeFromGross` (grosze: free from
+# this value of the goods after discounts), a `position` (0 to 999, ascending in the cart and the checkout) and an
+# optional `trackingUrlTemplate` (https:// with a host name and `{numer}` exactly once). A method the domain would refuse
+# (or a repeated name) stops the seed with an error and nothing is changed.
+#
+# E2E tests assume these methods without counting them; the tests of the panel create their own methods (unique names,
+# dearer than these, position 999) and leave them inactive.
+
+- name: "Kurier standardowy"
+  description: "Dostawa w 2–3 dni robocze"
+  priceGross: 1999
+  freeFromGross: 29900
+  position: 10
+  trackingUrlTemplate: "https://tracking.example.com/{numer}"
+
+- name: "Kurier ekspresowy"
+  description: "Dostawa następnego dnia roboczego"
+  priceGross: 3999
+  freeFromGross: 99900
+  position: 20

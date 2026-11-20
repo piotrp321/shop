@@ -195,13 +195,14 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
   | Sklep | Katalog | Produkty (Lista produktów `/products`, Dodaj produkt `/products/new`), Ceny `/prices`, Stany magazynowe `/inventory` | wszyscy; „Dodaj produkt” tylko `admin` i `marketing` |
   | Sklep | Zamówienia | Lista zamówień `/orders` (`admin`, `support`, `warehouse`), Zwroty do wykonania `/orders?refund=pending` (`admin`, `support`: tylko oni wykonują zwroty) | `admin`, `support`, `warehouse` |
   | Sklep | Klienci `/customers` | — | `admin`, `support` |
+  | Sklep | Dostawa `/delivery` | — | `admin` |
   | Marketing | Promocje `/promotions`, Kody rabatowe `/discount-codes` | — | wszyscy |
   | System | Stan systemu `/system` | — | `admin` |
 
   Grupa (Katalog, Zamówienia, Produkty) to przycisk z `aria-expanded` i strzałką; grupa z bieżącą trasą jest rozwinięta
   przy wejściu i przy każdej zmianie trasy (zamyka ją tylko jej przycisk). Bieżąca pozycja ma `aria-current="page"` i tylko ona jest wyróżniona: „Pulpit” jest aktywny wyłącznie
   na `/` (#251 F15). Formularze i szczegóły podświetlają pozycję listy (`/products/:id` → „Lista produktów”,
-  `/orders/:id` → „Lista zamówień”, `/promotions/:id` → „Promocje”, `/customers/:id` → „Klienci”); `/orders?refund=pending` podświetla „Zwroty do
+  `/orders/:id` → „Lista zamówień”, `/promotions/:id` → „Promocje”, `/customers/:id` → „Klienci”, `/delivery/new` i `/delivery/:id` → „Dostawa”); `/orders?refund=pending` podświetla „Zwroty do
   wykonania”, a nie „Lista zamówień” (rola bez tej pozycji ma podświetloną „Listę zamówień”). Pozycje do czasu wczytania `/me` wymagające roli są ukryte.
 - **Topbar**: na początku przycisk „Menu” (tylko poniżej 1024 px, otwiera szufladę); pole „Szukaj produktu…”
   (`role="search"`, `searchbox` z etykietą). Enter z frazą, która po przycięciu ma 2–100 znaków (punkty kodowe, jak

@@ -25,7 +25,7 @@ final class CustomerCartEndpointTest extends WebTestCase
         $view = $this->request('GET', '/api/v1/me/cart', token: TestTokenFactory::customer());
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
-        self::assertSame(['id' => null, 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null], $view);
+        self::assertSame(['id' => null, 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null, 'delivery' => null], $view);
         self::assertMatchesSchema('CartView', $view);
 
         self::assertSame(['itemCount' => 0], $this->request('GET', '/api/v1/me/cart/summary', token: TestTokenFactory::customer()));

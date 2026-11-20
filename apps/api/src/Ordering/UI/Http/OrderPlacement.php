@@ -24,6 +24,7 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
 
 /**
  * What both order endpoints do once they know the cart and the email: read the Idempotency-Key, dispatch PlaceOrder
+ * (with the chosen delivery method)
  * with the address of the client (ClientIp, as the rate limits count it, for the limit of unpaid orders) and answer
  * with the order, 201 for a new one and 200 for the order of an earlier request with the same key and
  * content. A failure of the handler passes on wrapped (ProblemDetailsSubscriber unwraps it).
@@ -46,11 +47,12 @@ final readonly class OrderPlacement
         // Validated by the payload mapping: strings, an integer and an optional string.
         \assert(\is_string($details->fullName) && \is_string($details->phone) && \is_string($details->street));
         \assert(\is_string($details->postalCode) && \is_string($details->city) && \is_int($details->expectedTotalGross));
+        \assert(\is_string($details->deliveryMethodId));
         \assert(null === $details->discountCode || \is_string($details->discountCode));
         $key = self::idempotencyKey($request);
 
         $placed = $this->commandBus
-            ->dispatch(new PlaceOrder($cart, $email, $details->fullName, $details->phone, $details->street, $details->postalCode, $details->city, $details->expectedTotalGross, $key, $details->discountCode, $this->clientIp->of($request)))
+            ->dispatch(new PlaceOrder($cart, $email, $details->fullName, $details->phone, $details->street, $details->postalCode, $details->city, $details->deliveryMethodId, $details->expectedTotalGross, $key, $details->discountCode, $this->clientIp->of($request)))
             ->last(HandledStamp::class)?->getResult();
         \assert($placed instanceof PlacedOrder);
 
@@ -103,6 +105,8 @@ final readonly class OrderPlacement
             ],
             'lines' => array_map(OrderLineJson::line(...), $order->lines),
             'discount' => OrderLineJson::discount($order->discount),
+            'delivery' => OrderLineJson::delivery($order->delivery),
+            'shipment' => OrderLineJson::shipment($order->shipment),
             'totals' => [
                 'net' => $order->totals->net,
                 'vat' => $order->totals->vat,

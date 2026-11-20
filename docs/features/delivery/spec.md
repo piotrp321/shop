@@ -68,7 +68,7 @@ Decyzje właściciela:
 | P1 | Zamówienie ma jeden status jak dziś (`new`, `paid`, `shipped`, `delivered`, `cancelled`, `returned`). Dane przesyłki (numer) są zapisane w zamówieniu; nie ma osobnego stanu przesyłki. Rozdzielenie stanów zamówienia, płatności i przesyłki jest poza zakresem i wraca z etapem 2 (webhooki przewoźnika) albo z PAYMENT-OPERATOR (#769). |
 | P2 | Nowy moduł (bounded context) `Delivery`: metody dostawy, cennik, próg darmowej dostawy, wycena. Dopisany do `docs/vision.md`. |
 | P3 | Etap 1 ma tylko dostawę pod adres (kurier); metody definiuje administrator. Paczkomaty, punkty odbioru, odbiór osobisty, etykiety i integracja z przewoźnikiem albo brokerem to etap 2: osobny epik bez ustalonego terminu, w kolejności priorytetów właściciela. Brak Paczkomatów nie blokuje startu sprzedaży. |
-| P4 | VAT od dostawy: brutto dostawy dzieli się proporcjonalnie do wartości towarów zamówienia w poszczególnych stawkach VAT (ustawa o VAT, art. 29a ust. 6). Regułę właściciel potwierdza z księgową przed implementacją DELIVERY-2 („Wymagane przed startem”). |
+| P4 | VAT od dostawy: brutto dostawy dzieli się proporcjonalnie do brutto towarów zamówienia po rabatach w poszczególnych stawkach VAT, a każdy udział dostaje stawkę swoich towarów (nie 23% z urzędu ani stawkę z faktury przewoźnika). Podstawa: art. 29a ust. 6 pkt 2 ustawy o VAT (Dz.U. 2025 poz. 775) i interpretacje indywidualne Dyrektora KIS: z 4.02.2022, 0114-KDIP4-2.4012.862.2021.1.MC (stanowisko z kluczem opartym o ceny brutto towarów uznane za prawidłowe), oraz z 18.03.2024, 0114-KDIP4-1.4012.66.2024.2.DP (stawki towarów i podział proporcjonalny). Reguła dotyczy modelu: krajowa sprzedaż towarów opodatkowanych VAT, dostawę organizuje sprzedawca jako element sprzedaży, jedna stała cena brutto metody. Właściciel nie ma księgowej; regułę przyjął na podstawie tych źródeł. |
 | P5 | Jedna stała cena brutto na metodę. Bez cen zależnych od wagi i gabarytu. |
 | P6 | Darmowa dostawa: opcjonalny próg na metodę, porównywany z wartością towarów po rabatach. Kod rabatowy nigdy nie obniża samego kosztu dostawy, ale może obniżyć wartość towarów poniżej progu i wtedy klient traci darmową dostawę. Odczyt koszyka z kodem (podgląd koszyka w kasie) i podsumowanie kasy pokazują to od razu po zastosowaniu kodu (koszt dostawy, „Do darmowej dostawy brakuje Y zł”); strona koszyka nie ma pola kodu. Kryterium akceptacji: koszyk powyżej progu spada poniżej niego po wpisaniu kodu, a dostawa staje się płatna w odczycie koszyka z kodem (podgląd koszyka w kasie), w podsumowaniu kasy i w zamówieniu. |
 | P7 | Ekran panelu „Dostawa” dla roli `admin`: nazwa, opis (czas dostawy), cena brutto, próg „darmowa od”, aktywność, kolejność wyświetlania, szablon linku śledzenia. |
@@ -101,15 +101,14 @@ Założenia architektoniczne:
 
 ## Wymagane przed startem
 
-- **Księgowa (P4).** Właściciel potwierdza z księgową regułę podziału VAT od dostawy (proporcjonalnie do wartości
-  towarów w stawkach, P4) przed startem DELIVERY-2. Inna reguła to zmiana specyfikacji przed zadaniem.
+- **Reguła VAT (P4).** Przyjęta przez właściciela na podstawie źródeł z P4; DELIVERY-2 nie czeka na konsultację.
 - **ASYNC-RELIABILITY na `main` (P12).** Gałąź epiku powstaje od `origin/main` po scaleniu `feat/async-reliability`.
   Orkiestrator sprawdza przed startem, czy pliki i wiersze, na które powołuje się ta specyfikacja, i `paths` planu
   zgadzają się z `main` (ASYNC-RELIABILITY zmienia m.in. `Ordering/Application`, `messenger.yaml` i dodaje test
   kształtu zdarzeń); rozbieżność to poprawka planu przed startem zadań.
 - **Zasoby spoza repo: brak.** Rola `admin` istnieje (`StaffUser.php:20`, `infra/keycloak/realms/backoffice.json:92`),
   więc bez zmian w Keycloaku i w chartcie.
-- **użytkownik, po wdrożeniu na serwer:** dodanie aktywnych metod dostawy w panelu „Dostawa” (sekcja „Wdrożenie”);
+- **użytkownik, po zakończeniu rolloutu na serwerze:** dodanie aktywnych metod dostawy w panelu „Dostawa” (sekcja „Wdrożenie i zgodność wersji”);
   do tego czasu kasa na serwerze nie przyjmuje zamówień.
 
 ## Stan obecny
@@ -158,7 +157,7 @@ Założenia architektoniczne:
   wymaga sumy zamówienia = suma linii − rabat. `make seed` uruchamia `bin/seed-demo`; reset Ordering:
   `Ordering/Infrastructure/Demo/DbalOrderingReset.php:23`.
 - **Wdrożenie.** `api`, `worker` (z `worker-commands` po ASYNC-RELIABILITY), `admin` i `store` są w fali Argo 1
-  (`infra/k8s/charts/shop/templates/api.yaml:152,156`, `admin.yaml:30`, `store.yaml:49`); migracje biegną przed nią.
+  (`infra/k8s/charts/shop/templates/api.yaml:156,161,168`, `admin.yaml:30`, `store.yaml:49`); migracje biegną przed nią.
   PostgreSQL 18 (`infra/docker-compose.yml:13`).
 
 ## Moduł Delivery
@@ -250,6 +249,10 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
   przez nową metodę portu `OrderPrices` (A3).
 - Przykład do testu: koszt 1999, towary 23% = 10 000, 8% = 5 000 → udziały 1333 (23%: netto 1084, VAT 249) i 666
   (8%: netto 617, VAT 49).
+- Groszowe zaokrąglenia, remis reszt, netto `HALF_UP` i VAT = brutto − netto to decyzja techniczna, która zapewnia zgodność
+  sum, a nie wymóg interpretacji. Organ w obu pismach z P4 pisze o proporcji do „podstawy opodatkowania” towarów; klucz
+  brutto przyjmujemy za interpretacją z 2022 r. Przy towarach w jednej stawce oba klucze dają ten sam wynik. Darmowa
+  dostawa: koszt 0, brak udziałów, VAT 0.
 
 ## W4. Koszyk
 
@@ -264,8 +267,8 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
   - `fromGross` > 0: „Dostawa od 19,99 zł”; `fromGross` = 0: „Darmowa dostawa”; `fromGross` `null` albo `delivery`
     `null`: bez wiersza dostawy;
   - `missingToFreeGross` nie `null`: „Do darmowej dostawy brakuje 50,01 zł”.
-  - Kwoty w formacie cen sklepu; wiersze aktualizują się po każdej zmianie koszyka (odczyt z API), w regionie
-    ogłaszanym jak dziś zmiana sumy koszyka.
+  - Kwoty w formacie cen sklepu; wiersze aktualizują się po każdej zmianie koszyka (odczyt z API), w stałym regionie
+    `aria-live="polite"` podsumowania koszyka.
 
 ## W5. Złożenie zamówienia
 
@@ -361,7 +364,7 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
   (styl `OrderTransitionNotAllowed`). Nic się nie zmienia.
 - Współbieżność: ten sam mechanizm co zmiana statusu (`ChangeOrderStatusHandler.php:48`): `StaffOrderLock::lock`
   blokuje wiersz zamówienia i porównuje wersję; inna wersja to dzisiejsze 409 konfliktu wersji („Zamówienie zostało
-  w międzyczasie zmienione.”). Zapis zwiększa wersję zamówienia.
+  w międzyczasie zmienione.”). Zapis zmieniający numer zwiększa wersję zamówienia; zapis bez zmiany niczego nie zapisuje.
 - Domena: `Order::changeTrackingNumber(?TrackingNumber)` ze strażnikiem statusu; bez zdarzenia domenowego, e-maila,
   powiadomienia, wpisu w historii statusów i nowego przepływu. Zapis przez `writeChanges()`.
 - Klient widzi bieżący numer i link na stronie zamówienia (W10). E-mail „wysłane”, który już wyszedł, nie jest
@@ -464,6 +467,22 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
     sumy towarów daje 409 `OrderTotalChanged`, więc nie powstaje zamówienie z kwotą inną niż widziana. Przy
     darmowej dostawie (suma z dostawą = suma towarów) stare API przyjmuje zamówienie bez metody, z kosztem dostawy 0;
   - stara karta panelu: wysyłka dostaje 422 przy `trackingNumber` do przeładowania karty (P15).
+- Stary kod (poprzednia wersja `api`, `worker`, `worker-commands`) nie zna kolumn dostawy: zamówienie z kosztem
+  dostawy odczytałby z sumą bez dostawy (e-mail z potwierdzeniem, kwota płatności, zwrot, suma klienta). Takie
+  zamówienie nie może powstać w oknie wymiany podów, bo na serwerze po wdrożeniu nie ma żadnej metody dostawy, a bez
+  aktywnej metody nowe API nie składa zamówień (W5). Dlatego administrator dodaje metody w panelu „Dostawa” dopiero
+  po zakończeniu rolloutu, gdy jednocześnie: przebieg `deploy.yml` się zakończył; aplikacja Argo `shop` ma
+  `operationState.phase` `Succeeded`, a `syncResult.revision` i `sync.revision` są równe nowemu snapshotowi
+  `deploy-images` (polecenie w runbooku `infra/k8s/README.md`, sekcja 7, „Sprawdzenie”); aplikacje są `Synced`
+  i `Healthy`; pody `api`, `worker` i `worker-commands` należą wyłącznie do nowych ReplicaSetów i żaden nie jest
+  `Terminating` (`ssh <user>@<adres> 'sudo k3s kubectl -n shop get pods -l "app.kubernetes.io/name in
+  (api,worker,worker-commands)" -o custom-columns=POD:.metadata.name,IMAGE:.spec.containers[0].image,DELETING:.metadata.deletionTimestamp'`:
+  każdy obraz to digest `api` z `values-images.yaml` nowego snapshotu, a `DELETING` to `<none>`). Ta chwila jest też `:koniec_wdrozenia` w zapytaniu kontrolnym niżej. W trakcie rolloutu nie biegnie żaden
+  seed (`make -C infra/k8s generate`, `make -C infra/k8s reinitialize`). Ta kolejność dotyczy tylko wydania tego
+  epiku: kolejne wersje znają dostawę.
+- Cofnięcie do wersji sprzed epiku (runbook, sekcja 7, „Cofnięcie wersji”) jest bezpieczne tylko przed dodaniem metod.
+  Po ich dodaniu nie jest wspierane: stary kod liczy bez dostawy sumy, kwotę płatności i zwrot każdego zamówienia
+  z kosztem dostawy, także opłaconego. Zostaje poprawka w przód albo odtworzenie kopii zapasowej.
 - Zamówienie bez metody tylko w oknie wymiany wersji (P19): nowe API odrzuca złożenie bez `deliveryMethodId` (422,
   W5), a `Order::place` wymaga dostawy (W6), więc gdy działają już tylko nowe pody `api`, takie zamówienie nie może
   powstać. Bez metody zostają zamówienia sprzed epiku i wygenerowana historia demo (P17).
@@ -474,7 +493,8 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
 - Kształt wiadomości i zdarzeń się nie zmienia (`OrderShipped` bez zmian), więc test kształtu zdarzeń
   ASYNC-RELIABILITY przechodzi bez nowych zapisów.
 - Po wdrożeniu na serwer bez metod dostawy kasa nie przyjmuje zamówień, dopóki administrator nie doda aktywnej metody
-  w panelu „Dostawa” (krok użytkownika; `delivery:seed-demo` na serwerze wymagałby `--force-reset`).
+  w panelu „Dostawa” (krok użytkownika, dopiero po zakończeniu rolloutu opisanym wyżej; `delivery:seed-demo` na serwerze
+  wymagałby `--force-reset`).
 
 ## Scenariusze błędów
 
@@ -521,7 +541,8 @@ Zmienia ją zadanie, które zmienia opisane zachowanie:
 
 1. **Metody (API panelu).** Testy funkcjonalne: dodanie, lista w kolejności z W1, odczyt, zmiana z wersją; każde
    naruszenie z tabeli W1 przy właściwym polu z polskim komunikatem (brak klucza, zły typ, za długi tekst, znaki
-   sterujące, NUL, U+2028, sam NBSP, niepoprawny UTF-8, szablon bez `{numer}`, z dwoma `{numer}`, `http://`); 409
+   sterujące, NUL, U+2028, sam NBSP, szablon bez `{numer}`, z dwoma `{numer}`, `http://`); niepoprawny UTF-8 w treści
+   odrzuca dekoder JSON (400 bez zapisu, jak w innych endpointach; value objecty też go odrzucają); 409
    nazwy (także „KURIER” wobec „kurier” i „Ł” wobec „ł”), 409 limitu przy 21. aktywnej (także przez aktywację
    istniejącej), 409 wersji; 404 nieznanego i nie-UUID; 403 dla ról innych niż `admin`, 401 bez tokena; ekran
    panelu przy 401 i 403 zachowuje się jak inne ekrany tylko dla `admin`.
@@ -583,8 +604,13 @@ Zmienia ją zadanie, które zmienia opisane zachowanie:
 
 ## Ryzyka i ograniczenia
 
-- **Reguła VAT od dostawy** czeka na potwierdzenie księgowej (P4). Do faktur (INVOICING #771) potrzebne są udziały
-  w `ordering_order_delivery_vat`; zamówienia sprzed epiku ich nie mają (dostawa 0).
+- **Reguła VAT od dostawy** (P4) opiera się na interpretacjach wydanych innym podatnikom: nie dają one sklepowi ochrony
+  i nie obejmują zwolnienia z VAT, OSS ani pełnomocnictwa pocztowego. Inny model sprzedaży wymaga nowej oceny reguły.
+- **Faktury i paragony (INVOICING #771).** Interpretacja z 18.03.2024 (P4) uznaje za nieprawidłowe wykazywanie dostawy
+  jako osobnej pozycji w zasadniczej części faktury albo paragonu: koszt dostawy wchodzi w wartość pozycji towarów,
+  a rozbicie może być w części informacyjnej. Koszyk, podsumowanie zamówienia i e-maile nie są fakturą, więc osobny wiersz
+  dostawy w nich zostaje. Do faktur potrzebne są udziały w `ordering_order_delivery_vat`; zamówienia sprzed epiku ich
+  nie mają (dostawa 0).
 - **Okno wdrożenia.** Przez czas wymiany podów fali 1 część klientów dostaje 422 albo 409 i odświeża stronę, tracąc
   wpisane dane i kod (sekcja „Wdrożenie i zgodność wersji”); zaakceptowane (P15).
 - **Serwer bez metod po wdrożeniu** nie przyjmuje zamówień do czasu dodania metody w panelu.

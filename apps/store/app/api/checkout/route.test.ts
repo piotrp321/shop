@@ -62,8 +62,9 @@ const GUEST_CONFIRMATION = {
 };
 const CONTACT = { fullName: "Anna Nowak", phone: "600 100 200", street: "ul. Długa 5/3", postalCode: "00-950", city: "Warszawa" };
 /** What the API receives of the form: the provider is the BFF's business. */
-const GUEST_ORDER = { email: "anna.nowak@example.com", ...CONTACT, expectedTotalGross: 39998 };
-const CUSTOMER_ORDER = { ...CONTACT, expectedTotalGross: 39998 };
+const DELIVERY_METHOD = "00000000-0000-4000-8000-0000000000d1";
+const GUEST_ORDER = { email: "anna.nowak@example.com", ...CONTACT, expectedTotalGross: 39998, deliveryMethodId: DELIVERY_METHOD };
+const CUSTOMER_ORDER = { ...CONTACT, expectedTotalGross: 39998, deliveryMethodId: DELIVERY_METHOD };
 const GUEST_FORM = { ...GUEST_ORDER, provider: PROVIDER };
 const CUSTOMER_FORM = { ...CUSTOMER_ORDER, provider: PROVIDER };
 
@@ -88,6 +89,8 @@ const orderView = (overrides: Partial<components["schemas"]["OrderView"]> = {}):
   shippingAddress: { street: "ul. Długa 5/3", postalCode: "00-950", city: "Warszawa", country: "PL" },
   lines: [{ variantId: VARIANT_ID, productName: "Produkt 1", variantLabel: "", quantity: 2, unitGross: 19999, grossBeforeDiscount: 39998, discountGross: 0, lineGross: 39998 }],
   discount: null,
+  delivery: { methodName: "Kurier standardowy", gross: 0 },
+  shipment: null,
   totals: { net: 32519, vat: 7479, gross: 39998, currency: "PLN" },
   placedAt: "2026-11-05T12:30:00+00:00",
   paymentDeadline: "2026-11-05T13:00:00+00:00",
@@ -264,7 +267,24 @@ describe("POST /api/checkout as a guest", () => {
     ]);
   });
 
+  it("passes the delivery method to the API for a guest and for a customer and drops the other unknown keys", async () => {
+    setup.answer("POST", GUEST_ORDERS, () => Response.json(orderView(), { status: 201 }));
+    setup.answer("POST", GUEST_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+    await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body: { ...GUEST_FORM, deliveryMethodId: "Kurier", deliveryGross: 0 } });
+    const { cookie } = await signedIn();
+    setup.answer("POST", CUSTOMER_ORDERS, () => Response.json(orderView({ accessToken: null }), { status: 201 }));
+    setup.answer("POST", CUSTOMER_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+    await checkout({ cookie, body: { ...CUSTOMER_FORM, deliveryCostGross: 0, delivery: { methodId: DELIVERY_METHOD } } });
+
+    const orders = orderCalls().filter((call) => call.path === GUEST_ORDERS || call.path === CUSTOMER_ORDERS);
+    expect(orders.map((call) => call.body)).toEqual([
+      { cartId: GUEST_CART_ID, ...GUEST_ORDER, deliveryMethodId: "Kurier" },
+      { ...CUSTOMER_ORDER },
+    ]);
+  });
+
   it.each([
+    ["delivery-method-unavailable", "Wybrany sposób dostawy jest niedostępny. Wybierz inny."],
     ["discount-code-invalid", "Ten kod jest nieprawidłowy albo nieaktywny."],
     ["discount-code-used-up", "Ten kod został już wykorzystany."],
     ["discount-code-below-minimum", "Ten kod działa przy zamówieniu od 300,00 zł."],

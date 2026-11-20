@@ -35,6 +35,8 @@ trait OrderRequestViolationCases
     private const string TOTAL_NEGATIVE = 'Kwota zamówienia nie może być ujemna.';
     private const string CODE_TEXT = 'Kod rabatowy musi być tekstem.';
     private const string CODE_TOO_LONG = 'Kod rabatowy może mieć najwyżej 64 znaki.';
+    private const string DELIVERY_REQUIRED = 'Kasa została zaktualizowana. Odśwież stronę i wybierz sposób dostawy.';
+    private const string DELIVERY_INVALID = 'Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie.';
 
     /**
      * The fields both endpoints take: contact (without the email) and address, and the expected total.
@@ -110,6 +112,25 @@ trait OrderRequestViolationCases
         yield 'discountCode a boolean' => [['discountCode' => true], [['discountCode', self::CODE_TEXT]]];
         yield 'discountCode an array' => [['discountCode' => ['WITAJ10']], [['discountCode', self::CODE_TEXT]]];
         yield 'discountCode of 65 characters' => [['discountCode' => str_repeat('Ą', 65)], [['discountCode', self::CODE_TOO_LONG]]];
+        // The delivery method (docs/features/delivery/spec.md, W5 and P15): a request of a checkout from before the
+        // delivery has no key.
+        yield 'no deliveryMethodId' => [['deliveryMethodId' => self::MISSING], [['deliveryMethodId', self::DELIVERY_REQUIRED]]];
+        yield 'null deliveryMethodId' => [['deliveryMethodId' => null], [['deliveryMethodId', self::DELIVERY_REQUIRED]]];
+        yield 'deliveryMethodId a number' => [['deliveryMethodId' => 5], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId a boolean' => [['deliveryMethodId' => true], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId an array' => [['deliveryMethodId' => ['0192f0c4-7c1a-7c4e-9a6e-00000000de10']], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId an object' => [['deliveryMethodId' => ['id' => '0192f0c4-7c1a-7c4e-9a6e-00000000de10']], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId empty' => [['deliveryMethodId' => ''], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId of spaces' => [['deliveryMethodId' => '   '], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId of a no-break space' => [['deliveryMethodId' => "\u{00A0}"], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId not a uuid' => [['deliveryMethodId' => 'kurier'], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId without hyphens' => [['deliveryMethodId' => '0192f0c47c1a7c4e9a6e00000000de10'], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId in braces' => [['deliveryMethodId' => '{0192f0c4-7c1a-7c4e-9a6e-00000000de10}'], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId with a leading space' => [['deliveryMethodId' => ' 0192f0c4-7c1a-7c4e-9a6e-00000000de10'], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId with a trailing line break' => [['deliveryMethodId' => "0192f0c4-7c1a-7c4e-9a6e-00000000de10\n"], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId with a NUL' => [['deliveryMethodId' => "0192f0c4-7c1a-7c4e-9a6e-00000000de10\0"], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId with U+2028' => [['deliveryMethodId' => "0192f0c4-7c1a-7c4e-9a6e-00000000de10\u{2028}"], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield 'deliveryMethodId of 37 characters' => [['deliveryMethodId' => '0192f0c4-7c1a-7c4e-9a6e-00000000de100'], [['deliveryMethodId', self::DELIVERY_INVALID]]];
         yield 'several fields wrong' => [
             ['fullName' => '', 'phone' => '123', 'expectedTotalGross' => '1', 'discountCode' => str_repeat('A', 65)],
             [['fullName', self::NAME_REQUIRED], ['phone', self::PHONE_INVALID], ['expectedTotalGross', self::TOTAL_INTEGER], ['discountCode', self::CODE_TOO_LONG]],
@@ -155,7 +176,7 @@ trait OrderRequestViolationCases
         yield 'email an array' => [['email' => ['anna@example.com']], [['email', self::EMAIL_INVALID]]];
         yield from self::invalidDetails();
         yield 'every field missing' => [
-            array_fill_keys(['cartId', 'email', 'fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross'], self::MISSING),
+            array_fill_keys(['cartId', 'email', 'fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross', 'deliveryMethodId'], self::MISSING),
             [
                 ['cartId', self::CART_REQUIRED],
                 ['email', self::EMAIL_REQUIRED],
@@ -165,6 +186,7 @@ trait OrderRequestViolationCases
                 ['postalCode', self::POSTAL_CODE_REQUIRED],
                 ['city', self::CITY_REQUIRED],
                 ['expectedTotalGross', self::TOTAL_REQUIRED],
+                ['deliveryMethodId', self::DELIVERY_REQUIRED],
             ],
         ];
     }
@@ -176,7 +198,7 @@ trait OrderRequestViolationCases
     {
         yield from self::invalidDetails();
         yield 'every field missing' => [
-            array_fill_keys(['fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross'], self::MISSING),
+            array_fill_keys(['fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross', 'deliveryMethodId'], self::MISSING),
             [
                 ['fullName', self::NAME_REQUIRED],
                 ['phone', self::PHONE_REQUIRED],
@@ -184,6 +206,7 @@ trait OrderRequestViolationCases
                 ['postalCode', self::POSTAL_CODE_REQUIRED],
                 ['city', self::CITY_REQUIRED],
                 ['expectedTotalGross', self::TOTAL_REQUIRED],
+                ['deliveryMethodId', self::DELIVERY_REQUIRED],
             ],
         ];
     }

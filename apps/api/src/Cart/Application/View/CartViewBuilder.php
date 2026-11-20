@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Cart\Application\View;
 
+use App\Cart\Application\Port\CartDelivery;
+use App\Cart\Application\Port\CartDeliveryOption;
 use App\Cart\Application\Port\CartQuote;
 use App\Cart\Application\Port\CartQuoteLine;
 use App\Cart\Application\ProductData;
@@ -17,10 +19,11 @@ use App\Cart\Domain\Purchasability;
  * is only in ProductOffer::purchasability(), with the prices of CartPrices; a variant unknown to Catalog is the only
  * state decided here. The unit prices, line values and totals of the purchasable lines come only from Pricing's quote
  * of those lines (decision D9), with the code when one is given; a cart without a purchasable line is not quoted.
+ * The delivery is asked about the total of that quote (the goods after the code) and has no verdict for such a cart.
  */
 final readonly class CartViewBuilder
 {
-    public function __construct(private CartQuote $quote)
+    public function __construct(private CartQuote $quote, private CartDelivery $delivery)
     {
     }
 
@@ -90,6 +93,8 @@ final readonly class CartViewBuilder
             $quote = null;
         }
 
+        $delivery = null === $quote ? null : $this->deliveryOf($quote->gross->amount());
+
         return new CartView(
             $id?->toString(),
             $views,
@@ -102,11 +107,37 @@ final readonly class CartViewBuilder
             ),
             $excluded,
             $quote?->discount,
+            $delivery,
         );
     }
 
     public function empty(?CartId $id): CartView
     {
         return $this->build($id, [], new ProductData([], [], []));
+    }
+
+    /**
+     * Every option with the total of the cart with it: the goods after the code plus the cost of the method.
+     */
+    private function deliveryOf(int $goodsGross): CartDeliveryView
+    {
+        $quote = $this->delivery->quote($goodsGross);
+
+        return new CartDeliveryView(
+            $quote->fromGross,
+            $quote->missingToFreeGross,
+            array_map(
+                static fn (CartDeliveryOption $option): CartDeliveryOptionView => new CartDeliveryOptionView(
+                    $option->methodId,
+                    $option->name,
+                    $option->description,
+                    $option->costGross,
+                    $option->freeFromGross,
+                    $option->missingToFreeGross,
+                    $goodsGross + $option->costGross,
+                ),
+                $quote->options,
+            ),
+        );
     }
 }

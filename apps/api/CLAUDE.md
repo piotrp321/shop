@@ -262,7 +262,9 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   jedno naruszenie „To pole jest wymagane.” przy kluczu; klasa żądania wtedy nie powstaje. Każde pole klasy żądania ma
   `Assert\Sequentially`, żeby dawało najwyżej jedno polskie naruszenie. Treść jest czytana późno, po `#[IsGranted]`,
   więc 403 atrybutu poprzedza 400, 415 i 422 treści (`docs/features/quality-fixes/spec.md`). Wyjątek: kody rabatowe
-  (`DiscountCodeBodyReader`), bo kontroler czyta tam treść sam, po sprawdzeniu 404.
+  (`DiscountCodeBodyReader`), bo kontroler czyta tam treść sam, po sprawdzeniu 404, i metody dostawy
+  (`#[ExistingDeliveryMethod]`: `DeliveryMethodExistenceListener` między `#[IsGranted]` a odczytem treści daje 404 przed
+  400, 415 i 422, `docs/features/delivery/spec.md`, W1).
 - Dokumentacja OpenAPI z kodu (NelmioApiDocBundle). Każdy endpoint ma opisane żądanie, odpowiedzi i błędy.
 - Autoryzacja: JWT z Keycloak, walidowany w authenticatorze Symfony. Dwa firewalle:
   `/api/v1/admin/...` przyjmuje tylko tokeny z realmu `backoffice` (pracownicy, `Staff`),
@@ -391,6 +393,10 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   `CREATE INDEX CONCURRENTLY IF NOT EXISTS`. Poprawny indeks zostaje, więc ponowiony Job `migrate` przechodzi. Pozostałe
   zmiany schematu idą w zwykłej, transakcyjnej migracji obok. Wzór: `Version20261115120100IndexStockLevels`, test:
   `StockLevelIndexMigrationTest`.
+- Ograniczenie CHECK na dużej tabeli migracja dodaje jako `NOT VALID` (bez skanu tabeli pod blokadą `ACCESS EXCLUSIVE`
+  migracji; nowe i zmieniane wiersze są sprawdzane od razu), a osobna, późniejsza migracja robi `VALIDATE CONSTRAINT`
+  (skan pod `SHARE UPDATE EXCLUSIVE`, odczyty i zapisy trwają). Wzór: `Version20261121100000AddOrderDelivery`
+  i `Version20261121100100ValidateOrderDeliveryChecks`, test: `OrderDeliveryMigrationTest`.
 - Mapowanie jest równe schematowi po migracjach: indeks częściowy ma w `#[ORM\Index]` warunek zapisany tak, jak zwraca
   go PostgreSQL; indeksy na wyrażeniach (mapowanie ich nie zna) narzędzia schematu pomijają. Zgodności pilnują testy
   schematu modułów (np. `OrderingSchemaTest`).

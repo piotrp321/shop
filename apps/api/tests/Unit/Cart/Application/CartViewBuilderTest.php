@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Cart\Application;
 
+use App\Cart\Application\Port\CartDeliveryOption;
 use App\Cart\Application\Port\CartPrice;
 use App\Cart\Application\Port\ProductImage;
 use App\Cart\Application\Port\VariantAvailability;
 use App\Cart\Application\Port\VariantSummary;
 use App\Cart\Application\ProductData;
 use App\Cart\Application\View\AppliedCartDiscount;
+use App\Cart\Application\View\CartDeliveryOptionView;
+use App\Cart\Application\View\CartDeliveryView;
 use App\Cart\Application\View\CartLineState;
 use App\Cart\Application\View\CartLineView;
 use App\Cart\Application\View\CartViewBuilder;
@@ -23,6 +26,7 @@ use App\Cart\Domain\ProductId;
 use App\Cart\Domain\Quantity;
 use App\Cart\Domain\StockLevel;
 use App\Cart\Domain\VariantId;
+use App\Tests\Unit\Cart\FakeCartDelivery;
 use App\Tests\Unit\Cart\FakeCartQuote;
 use PHPUnit\Framework\TestCase;
 
@@ -36,10 +40,12 @@ final class CartViewBuilderTest extends TestCase
     private const string E = '0192f0c4-7c1a-7c4e-9a6e-00000000000e';
 
     private FakeCartQuote $quote;
+    private FakeCartDelivery $delivery;
 
     protected function setUp(): void
     {
         $this->quote = new FakeCartQuote();
+        $this->delivery = new FakeCartDelivery();
     }
 
     public function testEmptyCartHasZeroTotalsInPlnWithoutAQuote(): void
@@ -237,9 +243,73 @@ final class CartViewBuilderTest extends TestCase
         self::assertStringNotContainsString('7357', json_encode($view, \JSON_THROW_ON_ERROR));
     }
 
+    public function testACartWithoutPurchasableLinesHasNoDeliveryAndAsksNone(): void
+    {
+        $this->delivery->answers(1_999, null, [new CartDeliveryOption('m1', 'Kurier', '', 1_999, null, null)]);
+        $data = new ProductData([self::summary(self::A, 'Brak', null)], [self::price(self::A, 300)], [self::stock(self::A, 0)]);
+
+        self::assertNull($this->builder()->build(null, [self::line(self::A, 1)], $data)->delivery, 'only an excluded line');
+        self::assertNull($this->builder()->build(null, [], new ProductData([], [], []))->delivery, 'no line');
+        self::assertNull($this->builder()->empty(null)->delivery);
+        self::assertSame([], $this->delivery->calls);
+    }
+
+    public function testDeliveryIsAskedAboutTheGoodsAfterTheCodeAndEveryOptionCarriesTheTotalToPay(): void
+    {
+        $data = new ProductData([self::summary(self::A, 'Buty', null)], [self::price(self::A, 20_000)], [self::stock(self::A, 5)]);
+        $this->quote->price(self::A, 20_000)->discount(new AppliedCartDiscount('MINUS50', 5_000, 'amount', 5_000), 5_000);
+        $this->delivery->answers(0, 12, [
+            new CartDeliveryOption('m1', 'Kurier', 'W 2 dni', 1_999, 40_000, 12),
+            new CartDeliveryOption('m2', 'Paczkomat', '', 0, null, null),
+        ]);
+
+        $delivery = $this->builder()->build(null, [self::line(self::A, 2)], $data, 'minus50')->delivery;
+
+        self::assertSame([35_000], $this->delivery->calls, 'the value of the goods after the code, not before it');
+        self::assertNotNull($delivery);
+        self::assertSame([0, 12], [$delivery->fromGross, $delivery->missingToFreeGross]);
+        self::assertSame(['m1', 'm2'], array_map(static fn (CartDeliveryOptionView $o): string => $o->methodId, $delivery->options));
+        self::assertEquals(new CartDeliveryOptionView('m1', 'Kurier', 'W 2 dni', 1_999, 40_000, 12, 36_999), $delivery->options[0]);
+        self::assertEquals(new CartDeliveryOptionView('m2', 'Paczkomat', '', 0, null, null, 35_000), $delivery->options[1]);
+    }
+
+    public function testWithoutOptionsTheDeliveryIsEmptyNotNull(): void
+    {
+        $data = new ProductData([self::summary(self::A, 'Buty', null)], [self::price(self::A, 1_000)], [self::stock(self::A, 5)]);
+        $this->quote->price(self::A, 1_000);
+
+        $delivery = $this->builder()->build(null, [self::line(self::A, 1)], $data)->delivery;
+
+        self::assertEquals(new CartDeliveryView(null, null, []), $delivery);
+        self::assertSame([1_000], $this->delivery->calls);
+    }
+
+    public function testADeliveryIsNotAskedWhenTheQuoteLeftOutEveryPurchasableLine(): void
+    {
+        $data = new ProductData([self::summary(self::A, 'Buty', null)], [self::price(self::A, 1_000)], [self::stock(self::A, 5)]);
+        $this->delivery->answers(1_999, null, [new CartDeliveryOption('m1', 'Kurier', '', 1_999, null, null)]);
+
+        $view = $this->builder()->build(null, [self::line(self::A, 1)], $data);
+
+        self::assertSame('no_price', $view->lines[0]->state);
+        self::assertNull($view->delivery);
+        self::assertSame([], $this->delivery->calls);
+    }
+
+    public function testTheViewNeverCarriesATrackingTemplate(): void
+    {
+        $data = new ProductData([self::summary(self::A, 'Buty', null)], [self::price(self::A, 1_000)], [self::stock(self::A, 5)]);
+        $this->quote->price(self::A, 1_000);
+        $this->delivery->answers(1_999, null, [new CartDeliveryOption('m1', 'Kurier', '', 1_999, null, null)]);
+
+        $json = json_encode($this->builder()->build(null, [self::line(self::A, 1)], $data), \JSON_THROW_ON_ERROR);
+
+        self::assertStringNotContainsStringIgnoringCase('tracking', $json);
+    }
+
     private function builder(): CartViewBuilder
     {
-        return new CartViewBuilder($this->quote);
+        return new CartViewBuilder($this->quote, $this->delivery);
     }
 
     private static function id(string $id): VariantId

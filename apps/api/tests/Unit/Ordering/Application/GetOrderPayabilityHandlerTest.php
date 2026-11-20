@@ -44,7 +44,7 @@ final class GetOrderPayabilityHandlerTest extends TestCase
         $this->orders->add($paid);
         $shipped = self::placedAs(self::SHIPPED);
         $shipped->markPaid(PaymentId::fromString('0192f0c4-7c1a-7c4e-9a6e-0000000000c2'), OrderExamples::TOTAL, 'PLN', new \DateTimeImmutable('2026-11-05 12:05:00+00:00'), new \DateTimeImmutable('2026-11-05 12:05:01+00:00'));
-        $shipped->ship(StaffActor::of('kc-staff-1', 'anna'), null, new \DateTimeImmutable('2026-11-05 12:06:00+00:00'));
+        $shipped->ship(StaffActor::of('kc-staff-1', 'anna'), null, null, new \DateTimeImmutable('2026-11-05 12:06:00+00:00'));
         $this->orders->add($shipped);
         $cancelled = self::placedAs(self::CANCELLED, '-1 hour');
         $cancelled->expireUnpaid(new \DateTimeImmutable('2026-11-05 12:00:00+00:00'));
@@ -198,6 +198,7 @@ final class GetOrderPayabilityHandlerTest extends TestCase
             shippingAddress: $order->shippingAddress(),
             lines: $order->lines(),
             discount: null,
+            delivery: $order->delivery(),
             status: $order->status(),
             idempotencyKey: $order->idempotencyKey(),
             requestFingerprint: $order->requestFingerprint(),

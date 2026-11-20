@@ -61,7 +61,9 @@ final readonly class MarkOrderPaidHandler
             $paidAt = $order->paidAt();
             \assert(null !== $paidAt);
             $this->unpaidClaims->remove($order->id());
-            $this->sales->add($order->id(), $paidAt, $order->totals()->gross()->amount());
+            // The sales count the goods after the discounts without the delivery, the customer the whole total (P14 of
+            // docs/features/delivery/spec.md).
+            $this->sales->add($order->id(), $paidAt, $order->totals()->goodsGross()->amount());
             $customerId = $order->owner()->customerId();
             if (null !== $customerId) {
                 $this->customers->addPayment($customerId, $order->id(), $order->totals()->gross()->amount());

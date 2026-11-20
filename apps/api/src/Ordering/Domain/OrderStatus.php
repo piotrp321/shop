@@ -39,6 +39,15 @@ enum OrderStatus: string
     }
 
     /**
+     * Whether the tracking number of the shipment may be added, corrected or removed: while the order is shipped or
+     * delivered (P18 of docs/features/delivery/spec.md), the only place of the rule.
+     */
+    public function allowsTrackingNumberChange(): bool
+    {
+        return self::Shipped === $this || self::Delivered === $this;
+    }
+
+    /**
      * Whether a payment paid the order and it went on from there without a cancellation: paid, shipped, delivered
      * or returned.
      */

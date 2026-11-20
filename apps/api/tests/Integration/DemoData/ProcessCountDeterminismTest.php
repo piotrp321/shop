@@ -152,7 +152,7 @@ final class ProcessCountDeterminismTest extends KernelTestCase
     private function empty(): void
     {
         $this->control->executeStatement('TRUNCATE catalog_product_category, catalog_product_variant, catalog_product, catalog_category_redirect, catalog_category, pricing_variant_price, pricing_price_history, pricing_promotion_variant, pricing_promotion, pricing_discount_code_usage, pricing_discount_code,
-            ordering_unpaid_order_claim, ordering_order_notification, ordering_order_status_change, ordering_order_line, ordering_order, payment_payment, inventory_reservation_line, inventory_reservation, inventory_stock_movement, inventory_stock_item');
+            ordering_unpaid_order_claim, ordering_order_notification, ordering_order_status_change, ordering_order_line, ordering_order_delivery_vat, ordering_order, payment_payment, inventory_reservation_line, inventory_reservation, inventory_stock_movement, inventory_stock_item');
     }
 
     /**

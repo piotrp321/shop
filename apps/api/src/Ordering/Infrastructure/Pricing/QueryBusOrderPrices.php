@@ -12,15 +12,19 @@ use App\Ordering\Application\Port\QuotedOrderLine;
 use App\Ordering\Domain\Currency;
 use App\Ordering\Domain\LineAmounts;
 use App\Ordering\Domain\Money;
+use App\Ordering\Domain\OrderDeliveryShare;
 use App\Ordering\Domain\OrderDiscount;
 use App\Ordering\Domain\OrderDiscountKind;
 use App\Ordering\Domain\PriceCopy;
 use App\Ordering\Domain\PromotionCopy;
 use App\Ordering\Domain\VariantId;
 use App\Ordering\Infrastructure\BusFailure;
+use App\Pricing\Application\Query\DeliveryCostShare;
+use App\Pricing\Application\Query\DeliveryCostShares;
 use App\Pricing\Application\Query\QuoteBasket;
 use App\Pricing\Application\Query\QuoteBasketLine;
 use App\Pricing\Application\Query\QuotedBasket;
+use App\Pricing\Application\Query\SplitDeliveryCost;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Messenger\HandleTrait;
@@ -29,7 +33,8 @@ use Symfony\Component\Messenger\MessageBusInterface;
 /**
  * The quote of an order through Pricing's QuoteBasket on the query bus (read from the Pricing tables, in the
  * transaction of the placement), copied into Ordering's values. A quote in a currency an order is not placed in has no
- * line, so the cart is not orderable. The rejection of a code keeps Pricing's type and detail.
+ * line, so the cart is not orderable. The rejection of a code keeps Pricing's type and detail. The split of the cost of
+ * a delivery through Pricing's SplitDeliveryCost, in the currency an order is placed in (PLN, the only one of Pricing).
  */
 final class QueryBusOrderPrices implements OrderPrices
 {
@@ -76,6 +81,21 @@ final class QueryBusOrderPrices implements OrderPrices
             null === $discount ? null : OrderDiscount::of($discount->code, OrderDiscountKind::from($discount->kind), $discount->value, Money::of($discount->amountGross, $currency)),
             $discount?->codeId,
             null === $rejection ? null : new QuotedCodeRejection($rejection->type, $rejection->detail, $rejection->minimumOrderGross),
+        );
+    }
+
+    public function deliveryShares(int $costGross, array $goodsByRate): array
+    {
+        try {
+            $split = $this->handle(new SplitDeliveryCost($costGross, $goodsByRate));
+        } catch (HandlerFailedException $failure) {
+            throw BusFailure::cause($failure);
+        }
+        \assert($split instanceof DeliveryCostShares);
+
+        return array_map(
+            static fn (DeliveryCostShare $share): OrderDeliveryShare => OrderDeliveryShare::of($share->rateBp, $share->gross, $share->net, $share->vat, Currency::PLN),
+            $split->shares,
         );
     }
 }

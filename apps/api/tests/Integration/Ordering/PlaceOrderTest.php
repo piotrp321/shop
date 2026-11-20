@@ -33,6 +33,7 @@ final class PlaceOrderTest extends MessagingKernelTestCase
     {
         parent::setUp();
         $this->db = $this->connection();
+        OrderingFixture::freeDeliveryMethod($this->db);
     }
 
     public function testASuccessfulPlacementWritesTheOrderTheReservationTheEmptyCartAndTheOutboxRow(): void
@@ -198,7 +199,7 @@ final class PlaceOrderTest extends MessagingKernelTestCase
 
     private static function command(string $cart, int $expectedTotalGross): PlaceOrder
     {
-        return new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', $expectedTotalGross, 'key-'.$cart);
+        return new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::FREE_DELIVERY_METHOD, $expectedTotalGross, 'key-'.$cart);
     }
 
     /**

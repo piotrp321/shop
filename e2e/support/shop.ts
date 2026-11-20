@@ -56,6 +56,18 @@ export async function fillAddress(page: Page): Promise<void> {
   await page.getByLabel("Miejscowość").fill("Warszawa");
 }
 
+/** The delivery method of the demo data (apps/api/fixtures/delivery-methods.yaml) the tests order with. */
+export const STANDARD_DELIVERY = "Kurier standardowy";
+
+/**
+ * Chooses the delivery method in the checkout by its name (the label of its radio starts with it) and waits for the
+ * summary to show its cost; without a choice nothing is ordered.
+ */
+export async function chooseDelivery(page: Page, name: string = STANDARD_DELIVERY): Promise<void> {
+  await page.getByRole("group", { name: "Sposób dostawy" }).getByRole("radio", { name: new RegExp(`^${name}`) }).check();
+  await expect(page.getByTestId("checkout-delivery")).not.toHaveText("Wybierz sposób dostawy");
+}
+
 /** Chooses a payment provider by the name the customer sees, on the checkout page or on the confirmation page. */
 export async function chooseProvider(page: Page, name: string): Promise<void> {
   await page.getByRole("radio", { name }).check();

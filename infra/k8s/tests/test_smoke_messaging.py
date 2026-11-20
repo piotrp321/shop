@@ -283,8 +283,10 @@ class PlaceOrder(unittest.TestCase):
     checks = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(checks)
 
-    def fake(self, order_status=201):
+    def fake(self, order_status=201, options=None):
         calls = []
+        if options is None:
+            options = [{"methodId": "method-1", "totalGross": 14299}, {"methodId": "method-2", "totalGross": 16299}]
 
         def through_ingress(path, sub="", **kwargs):
             calls.append((path, kwargs))
@@ -295,7 +297,7 @@ class PlaceOrder(unittest.TestCase):
             if path == "/api/v1/products/shirt":
                 return 200, {}, json.dumps({"variants": [{"variantId": "v-1"}]})
             if path.endswith("/items"):
-                return 200, {}, json.dumps({"totals": {"gross": 12300}})
+                return 200, {}, json.dumps({"totals": {"gross": 12300}, "delivery": {"options": options}})
             if path == "/api/v1/orders":
                 return order_status, {}, json.dumps({"number": "ZAM-0042"})
             raise AssertionError(path)
@@ -313,9 +315,21 @@ class PlaceOrder(unittest.TestCase):
         self.assertEqual("ZAM-0042", number)
         (order,) = [kwargs for path, kwargs in calls if path == "/api/v1/orders"]
         self.assertEqual("smoke-expiry@example.com", order["body"]["email"])
-        self.assertEqual(12300, order["body"]["expectedTotalGross"])
+        self.assertEqual("method-1", order["body"]["deliveryMethodId"])
+        self.assertEqual(14299, order["body"]["expectedTotalGross"])
         self.assertEqual("cart-1", order["body"]["cartId"])
         self.assertTrue(order["headers"]["Idempotency-Key"])
+
+    def test_a_cart_without_a_delivery_method_fails_the_check_before_the_order(self):
+        fake, calls = self.fake(options=[])
+        original = self.checks.through_ingress
+        self.checks.through_ingress = fake
+        try:
+            with self.assertRaises(BaseException):
+                self.checks.place_order("smoke-expiry@example.com")
+        finally:
+            self.checks.through_ingress = original
+        self.assertFalse([path for path, _ in calls if path == "/api/v1/orders"])
 
     def test_an_order_that_is_not_placed_fails_the_check(self):
         fake, _ = self.fake(order_status=429)

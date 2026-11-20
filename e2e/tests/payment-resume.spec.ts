@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { decideAtSimulator, expectSimulatorPage, WEBHOOK_TIMEOUT_MS } from "../support/payment";
-import { addVariantOf, chooseProvider, fillAddress, tileNamed } from "../support/shop";
+import { addVariantOf, chooseDelivery, chooseProvider, fillAddress, tileNamed } from "../support/shop";
 
 // Every variant of it has 50 units (fixtures/stock.yaml): each run reserves 1 for the order that is paid in the end,
 // and that reservation stays until the order is shipped (ORDER-MANAGEMENT).
@@ -19,6 +19,7 @@ test("a guest who went back from the page of the provider finds the unpaid order
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Imię i nazwisko").fill("Anna Testowa");
   await fillAddress(page);
+  await chooseDelivery(page);
   await chooseProvider(page, "Szybki przelew (demo)");
   await page.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" }).click();
   await expectSimulatorPage(page, "demo-transfer");

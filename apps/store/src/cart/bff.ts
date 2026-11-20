@@ -33,6 +33,7 @@ const emptyCart: CartView = {
   totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN", itemCount: 0 },
   hasExcludedLines: false,
   discount: null,
+  delivery: null,
 };
 const emptySummary: CartSummaryBody = { itemCount: 0, notice: null };
 

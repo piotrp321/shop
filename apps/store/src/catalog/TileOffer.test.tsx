@@ -122,7 +122,7 @@ describe("TileOffer", () => {
   });
 
   it("chooses a variant of two axes and adds it", async () => {
-    vi.mocked(addCartItem).mockResolvedValue({ status: "ok", data: { id: "c", lines: [], totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN", itemCount: 1 }, hasExcludedLines: false, discount: null } });
+    vi.mocked(addCartItem).mockResolvedValue({ status: "ok", data: { id: "c", lines: [], totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN", itemCount: 1 }, hasExcludedLines: false, discount: null, delivery: null } });
     renderOffer(COLOUR_SIZES);
     fireEvent.click(choose());
 
@@ -154,7 +154,7 @@ describe("TileOffer", () => {
     fireEvent.click(radio("niebieski"));
 
     expect(screen.getByRole("button", { name: "Do koszyka" }).getAttribute("aria-disabled")).toBe("true");
-    await act(async () => finish({ status: "ok", data: { id: "c", lines: [], totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN", itemCount: 1 }, hasExcludedLines: false, discount: null } }));
+    await act(async () => finish({ status: "ok", data: { id: "c", lines: [], totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN", itemCount: 1 }, hasExcludedLines: false, discount: null, delivery: null } }));
     expect((screen.getByRole("button", { name: "Do koszyka" }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByText("Dodano do koszyka")).toBeNull();
     expect(addCartItem).toHaveBeenCalledExactlyOnceWith(COLOURS.variants[1].variantId, 1);

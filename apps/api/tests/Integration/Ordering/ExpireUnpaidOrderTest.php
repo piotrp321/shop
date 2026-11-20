@@ -151,7 +151,7 @@ final class ExpireUnpaidOrderTest extends MessagingKernelTestCase
     {
         [$shoes] = OrderingFixture::variant($this->db, 10_000, 5);
         $cart = CartFixture::cart($this->db, expiresAt: '+3 days', lines: [[$shoes, 2]]);
-        $command = new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', 2 * 12_300, 'key-'.$cart);
+        $command = new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->db), 2 * 12_300, 'key-'.$cart);
         $placed = $this->bus()->dispatch($command)->last(HandledStamp::class)?->getResult();
         self::assertInstanceOf(PlacedOrder::class, $placed);
 

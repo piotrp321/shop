@@ -41,6 +41,11 @@ doctrine:
                 is_bundle: false
                 dir: '%kernel.project_dir%/src/Payment/Infrastructure/Persistence/Doctrine/Record'
                 prefix: 'App\Payment\Infrastructure\Persistence\Doctrine\Record'
+            Delivery:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/Delivery/Infrastructure/Persistence/Doctrine/Record'
+                prefix: 'App\Delivery\Infrastructure\Persistence\Doctrine\Record'
             # Shared: the completed steps of app:backfill (app_backfill).
             Shared:
                 type: attribute

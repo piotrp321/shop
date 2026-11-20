@@ -6,7 +6,8 @@ namespace App\Cart\Application\View;
 
 /**
  * A cart with everything the store shows, computed by the API. `id` is null for a customer without a cart.
- * `discount` is the code of the view (applied or rejected), null without a code or without a purchasable line.
+ * `discount` is the code of the view (applied or rejected), null without a code or without a purchasable line;
+ * `delivery` is null without a purchasable line.
  */
 final readonly class CartView
 {
@@ -19,6 +20,7 @@ final readonly class CartView
         public CartTotals $totals,
         public bool $hasExcludedLines,
         public AppliedCartDiscount|RejectedCartDiscount|null $discount,
+        public ?CartDeliveryView $delivery,
     ) {
     }
 }
