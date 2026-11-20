@@ -387,7 +387,7 @@ final class GuestOrderEndpointTest extends WebTestCase
 
         $this->assertProblem(422, null, $problem);
         self::assertIsArray($problem['violations'] ?? null);
-        self::assertSame(['cartId', 'email', 'fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross'], array_column($problem['violations'], 'propertyPath'));
+        self::assertSame(['cartId', 'email', 'fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross', 'deliveryMethodId'], array_column($problem['violations'], 'propertyPath'));
     }
 
     public function testTheLongestValidValuesAreAccepted(): void

@@ -17,6 +17,9 @@ use Symfony\Component\Uid\Uuid;
  */
 final class OrderingFixture
 {
+    /** The id of freeDeliveryMethod(). */
+    public const string FREE_DELIVERY_METHOD = '0192f0c4-7c1a-7c4e-9a6e-00000000de10';
+
     /**
      * The default variant of a new Catalog product with a current price (gross = net + 23 % VAT) and a stock.
      *
@@ -52,6 +55,24 @@ final class OrderingFixture
         );
 
         return $id;
+    }
+
+    /**
+     * The one active delivery method that costs nothing, with a fixed id, created when missing (so also by tests whose
+     * rows commit, which then leave this one row; tests of the set of methods delete them first): a placement with it
+     * has the totals of its goods.
+     *
+     * @return string the id of the method
+     */
+    public static function freeDeliveryMethod(Connection $connection): string
+    {
+        $connection->executeStatement(
+            "INSERT INTO delivery_method (id, name, description, price_gross, free_from_gross, active, position, tracking_url_template, created_at, updated_at, version)
+             VALUES (?, 'Kurier testowy bez kosztu', '', 0, NULL, true, 999, NULL, now(), now(), 1) ON CONFLICT (id) DO NOTHING",
+            [self::FREE_DELIVERY_METHOD],
+        );
+
+        return self::FREE_DELIVERY_METHOD;
     }
 
     /**

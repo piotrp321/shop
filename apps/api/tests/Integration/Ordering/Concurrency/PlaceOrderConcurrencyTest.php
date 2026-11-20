@@ -29,13 +29,18 @@ use Symfony\Component\Uid\Uuid;
  * a process of its own dispatching PlaceOrder (or MergeGuestCart) on command.bus (ConcurrentCommands of the Inventory
  * tests), all start at once. Each scenario runs 5 rounds on fresh variants, carts and keys; after every round the
  * reserved units of every variant of the test are the sum of its active reservations, and every order of the test
- * has a reservation with its id as the key and the same lines. The rows commit, so they are deleted after the test.
+ * has a reservation with its id as the key and the same lines, and the delivery method of the test with its cost
+ * (docs/features/delivery/spec.md, W5). The rows commit, so they are deleted after the test.
  */
 final class PlaceOrderConcurrencyTest extends KernelTestCase
 {
     private const int ROUNDS = 5;
     /** 1 000 net + 23 % VAT, the price of every variant of the test. */
     private const int GROSS = 1_230;
+    /** The cost of the delivery method of every placement, below any threshold (it has none). */
+    private const int DELIVERY = 1_999;
+
+    private string $deliveryMethod;
 
     private Connection $control;
     /** @var list<string> */
@@ -58,6 +63,7 @@ final class PlaceOrderConcurrencyTest extends KernelTestCase
         $params = $kernelConnection->getParams();
         $this->control = DriverManager::getConnection($params, new DbalConfiguration());
         $this->control->executeStatement("SET lock_timeout = '10s'");
+        $this->deliveryMethod = OrderingFixture::deliveryMethod($this->control, self::DELIVERY);
     }
 
     protected function tearDown(): void
@@ -72,6 +78,7 @@ final class PlaceOrderConcurrencyTest extends KernelTestCase
         }
         StockFixture::delete($this->control, $this->variants, []);
         CatalogFixture::delete($this->control, $this->products);
+        OrderingFixture::deleteDeliveryMethods($this->control, [$this->deliveryMethod]);
         $this->control->close();
         parent::tearDown();
     }
@@ -283,12 +290,17 @@ final class PlaceOrderConcurrencyTest extends KernelTestCase
             \assert(\is_string($orderId));
             self::assertSame('active', $this->control->fetchOne('SELECT status FROM inventory_reservation WHERE reservation_key = ?', [$orderId]), $message.': order '.$orderId.' has its reservation');
             self::assertSame(OrderingFixture::orderLines($this->control, $orderId), OrderingFixture::reservation($this->control, $orderId), $message.': with the lines of the order');
+            self::assertSame([$this->deliveryMethod, self::DELIVERY], $this->control->fetchNumeric('SELECT delivery_method_id, delivery_gross FROM ordering_order WHERE id = ?', [$orderId]), $message.': order '.$orderId.' has the method and its cost');
+            self::assertSame(self::DELIVERY, $this->control->fetchOne('SELECT SUM(gross)::int FROM ordering_order_delivery_vat WHERE order_id = ?', [$orderId]), $message.': split over the VAT rates');
         }
     }
 
+    /**
+     * @param int $expectedTotalGross of the goods; the cost of the delivery is added
+     */
     private function place(CartReference $cart, int $expectedTotalGross, ?string $key = null): PlaceOrder
     {
-        return new PlaceOrder($cart, 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', $expectedTotalGross, $key ?? $this->key());
+        return new PlaceOrder($cart, 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', $this->deliveryMethod, $expectedTotalGross + self::DELIVERY, $key ?? $this->key());
     }
 
     private function key(): string
