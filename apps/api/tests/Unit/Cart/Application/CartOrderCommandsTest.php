@@ -116,7 +116,7 @@ final class CartOrderCommandsTest extends TestCase
         self::assertNotNull($stored);
         self::assertSame([], $stored->lines());
         self::assertSame(CartStatus::Open, $stored->status());
-        self::assertEquals($this->clock->now->modify('+30 days'), $stored->expiresAt());
+        self::assertEquals($this->clock->now->modify('+1 day'), $stored->expiresAt(), 'an empty guest cart lives one day');
     }
 
     public function testClearEmptiesACustomerCart(): void

@@ -46,7 +46,7 @@ Decyzje użytkownika:
 | P7 | Powrót ze strony dostawcy bez decyzji: link „Wróć do sklepu” na stronie symulatora, a pusta kasa z ciasteczkiem potwierdzenia pokazuje link „Opłać zamówienie R-…” na stronę potwierdzenia. |
 | A1 | Nowy bounded context Payment z agregatem `Payment` (jedna próba płatności zamówienia), zapis przez rekordy Doctrine według ogólnej zasady. Ordering pozostaje właścicielem statusu zamówienia. |
 | A2 | Payment zależy od Ordering przez jawne porty w jednym kierunku: zapytanie `GetOrderForPayment` przy rozpoczęciu płatności i odczycie statusu oraz komenda `MarkOrderPaid` w transakcji webhooka (zagnieżdżony dispatch, jak `PlaceOrder` → Cart i Inventory). Bez zdarzeń między Payment i Ordering: opłacenie i zmiana statusu zamówienia są atomowe. Opłacenie i anulowanie szereguje wersja agregatu `Order` (optimistic locking, przegrany jest ponawiany): nie ma przejścia `cancelled → paid` ani zwolnienia rezerwacji opłaconego zamówienia. Potwierdzona płatność anulowanego zamówienia jest zapisana z oznaczeniem do zwrotu i kończy dostawę webhooka (bez ponowień). |
-| A3 | Symulator dostawców jako osobny moduł `PaymentSimulator` w `apps/api` (poza `/api/v1`, bez zależności od contextów i odwrotnie). Payment rozmawia z nim wyłącznie przez HTTP (`symfony/http-client`, już w zależnościach), jak z zewnętrznym dostawcą. Symulator zostaje w kontenerze API mimo ryzyka samoblokady wątków przy wielu równoległych rozpoczęciach płatności (opisanego w „Ryzykach”); przed testami obciążeniowymi płatności przechodzi do osobnej usługi. |
+| A3 | Symulator dostawców jako osobny moduł `PaymentSimulator` w `apps/api` (poza `/api/v1`, bez zależności od contextów i odwrotnie). Payment rozmawia z nim wyłącznie przez HTTP (`symfony/http-client`, już w zależnościach), jak z zewnętrznym dostawcą. Symulator zostaje w kontenerze API mimo ryzyka samoblokady wątków przy wielu równoległych rozpoczęciach płatności różnych zamówień (opisanego w „Ryzykach”; równoległe rozpoczęcia jednego zamówienia kończą się od razu 409); przed testami obciążeniowymi płatności przechodzi do osobnej usługi. |
 | A4 | Anulowanie nieopłaconego zamówienia przez opóźnioną wiadomość `ExpireUnpaidOrder` (`DelayStamp`) na nowym transporcie Doctrine `scheduled`, zapisaną atomowo z zamówieniem w transakcji złożenia, na tym samym połączeniu. Handler jest idempotentny i zawsze sprawdza aktualny stan i termin zamówienia. Bez nowej zależności (Symfony Scheduler) i bez crona. Dostawy webhooków symulatora idą osobnym transportem Doctrine `payment_simulator`. |
 | A5 | Gość ma dostęp do swojego zamówienia (rozpoczęcie płatności, odczyt statusu) przez losowy token dostępu zwracany przy złożeniu (`accessToken`), jak id koszyka gościa; klient zalogowany przez `sub` z tokena. Regułę dostępu sprawdza Ordering (`GetOrderForPayment` z danymi dostępu zwraca `null` przy braku dostępu); token nie opuszcza Ordering. |
 | A6 | Przejścia statusu zamówienia (`new → paid`, `new → cancelled` i przejścia pracownika z ORDER-MANAGEMENT) jako metody agregatu `Order` z tabelą dozwolonych przejść w czystym PHP, bez Symfony Workflow (`docs/features/order-management/spec.md`, A1). |
@@ -259,26 +259,38 @@ Komenda `StartPayment(orderId, access, provider, idempotencyKey)` (`access` jak 
    jest sprawdzany przed powtórzeniem: sam klucz nigdy nie zwraca płatności (jak w CHECKOUT).
 2. `PaymentRepository::findByIdempotencyKey`: płatność istnieje i `isReplayOf` → wynik z `replayed = true`;
    istnieje z innym odciskiem → `PaymentIdempotencyKeyReused` (409).
-3. Zamówienie `paid`: `OrderAlreadyPaid` (409). `cancelled` albo po terminie: `PaymentDeadlinePassed` (409).
-4. Oczekująca płatność zamówienia (najwyżej jedna): blokada jej wiersza (`PESSIMISTIC_WRITE`, jak w webhooku), potem
+3. Port `PaymentStartLock`: blokada doradcza transakcji na zamówienie (`pg_try_advisory_xact_lock(int, int)`: stała
+   przestrzeń Payment i skrót identyfikatora zamówienia), bez czekania. Trzyma ją równoległe rozpoczęcie tego
+   zamówienia (u dostawcy albo przed zatwierdzeniem swojej płatności, także z tym samym kluczem) →
+   `PaymentInProgress` (409, „Płatność za to zamówienie jest w toku. Spróbuj za chwilę.”) od razu, bez czekania na
+   unikalnym indeksie z wątkiem i połączeniem. Zwalnia ją koniec transakcji. Jawny wyjątek DBAL od persystencji przez
+   rekordy (tylko blokada, jak `PostgresPromotionWriteLock` w Pricing). Rozpoczęcia różnych zamówień nie czekają na
+   siebie; dwa zamówienia o tym samym skrócie dzielą blokadę (409, ponowienie przechodzi).
+4. Powtórzenie jeszcze raz, pod blokadą, tymi samymi regułami co krok 2: rozpoczęcie z tym samym kluczem mogło
+   zatwierdzić płatność i zwolnić blokadę między krokiem 2 a 3, a krok 6 anulowałby wtedy u dostawcy sesję tej
+   płatności (anulowania nie cofa żaden rollback, a unikalny indeks klucza odrzuciłby dopiero zapis kroku 8). Powtórzenie
+   z kroku 2 zostaje przed blokadą: zakończone rozpoczęcie nie potrzebuje blokady.
+5. Zamówienie `paid`: `OrderAlreadyPaid` (409). `cancelled` albo po terminie: `PaymentDeadlinePassed` (409).
+6. Oczekująca płatność zamówienia (najwyżej jedna): blokada jej wiersza (`PESSIMISTIC_WRITE`, jak w webhooku), potem
    `PaymentProvider::cancelSession` u jej dostawcy (P5):
-   - `cancelled` → `Payment::cancel`, zapis, dalej krok 5;
+   - `cancelled` → `Payment::cancel`, zapis, dalej krok 7;
    - `alreadyRejected` → `Payment::fail` (webhook odmowy przyjdzie albo przyszedł i trafi na deduplikację albo
-     bez zmian), zapis, dalej krok 5;
+     bez zmian), zapis, dalej krok 7;
    - `alreadyPaid` → `PaymentInProgress` (409, „Płatność została już wykonana. Czekamy na jej potwierdzenie.”),
      bez zmian; potwierdzenie przyniesie webhook;
    - błąd dostawcy → `PaymentProviderUnavailable` (503), bez zmian.
-5. Stan zamówienia z kroku 3 jest sprawdzany ponownie na świeżym odczycie `PayableOrders::find` (po blokadzie
-   z kroku 4): webhook poprzedniej płatności, który trzymał blokadę jej wiersza, mógł w tym czasie zatwierdzić
-   płatność `succeeded` i zamówienie `paid`, a wtedy krok 4 nie znajduje oczekującej płatności. Zamówienie `paid`:
+7. Stan zamówienia z kroku 5 jest sprawdzany ponownie na świeżym odczycie `PayableOrders::find` (po blokadzie
+   z kroku 6): webhook poprzedniej płatności, który trzymał blokadę jej wiersza, mógł w tym czasie zatwierdzić
+   płatność `succeeded` i zamówienie `paid`, a wtedy krok 6 nie znajduje oczekującej płatności. Zamówienie `paid`:
    `OrderAlreadyPaid` (409), `cancelled` albo po terminie: `PaymentDeadlinePassed` (409), bez zmian.
-6. `Payment::start(…)`, zapis (`add`), potem `PaymentProvider::createSession(…, expiresAt = paymentDeadline)`
+8. `Payment::start(…)`, zapis (`add`), potem `PaymentProvider::createSession(…, expiresAt = paymentDeadline)`
    i `attachProviderSession`, zapis. Wywołania HTTP są w transakcji (5 s limit każde): błąd dostawcy wycofuje całość
    (także lokalne anulowanie poprzedniej płatności). Sesja anulowana u dostawcy zostaje anulowana, a anulowanie
-   u dostawcy jest idempotentne (anulowana sesja: znów `200`), więc ponowienie przechodzi krok 4 tak samo.
-   Równoległe rozpoczęcia: unikalny indeks `idempotency_key` (ten sam klucz) i częściowy unikalny indeks „jedna
-   płatność `pending` na zamówienie” (różne klucze, dwie karty) → `PaymentInProgress` (409); ponowienie z tym samym
-   kluczem dostaje powtórzenie.
+   u dostawcy jest idempotentne (anulowana sesja: znów `200`), więc ponowienie przechodzi krok 6 tak samo.
+   Równoległe rozpoczęcia jednego zamówienia odrzuca od razu blokada z kroku 3, póki pierwsze trwa; po jego
+   zatwierdzeniu ten sam klucz dostaje powtórzenie (krok 2, a gdy zatwierdziło się po nim: krok 4). Unikalny indeks `idempotency_key` i częściowy unikalny
+   indeks „jedna płatność `pending` na zamówienie” zostają ostatnim zabezpieczeniem (naruszenie →
+   `PaymentInProgress`, 409).
 
 ### Webhook (`HandleProviderWebhook`)
 
@@ -315,7 +327,7 @@ Zapytanie `GetPaymentStatus(orderId, access)` → `PaymentStatusView {orderNumbe
 paymentDeadline, totalGross, currency, canStartPayment, latestPayment: {provider, status, resumeUrl} | null}`.
 `orderStatus` to `statusForPayment` zamówienia (wysłane, dostarczone i zwrócone są `paid`). Dostęp przez
 `PayableOrders` jak w `StartPayment` krok 1. `canStartPayment` = zamówienie płatne (`payable`);
-przy oczekującej płatności nowa próba najpierw anuluje ją u dostawcy (`StartPayment` krok 4). `resumeUrl` =
+przy oczekującej płatności nowa próba najpierw anuluje ją u dostawcy (`StartPayment` krok 6). `resumeUrl` =
 `Payment::resumeUrl(payable)`.
 Odczyty idą bez transakcji, więc najpierw czytana jest najnowsza płatność, dopiero potem zamówienie: webhook zmienia
 płatność i zamówienie w jednej transakcji, więc zamówienie odczytane po płatności uwzględnia już każdy webhook, który tę
@@ -516,7 +528,8 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 | Klient wraca przed webhookiem | „Czekamy na potwierdzenie…”, potem `paid` |
 | Klient zamyka stronę dostawcy, odświeża stronę potwierdzenia | „Wróć do płatności” prowadzi do tej samej sesji; „Zapłać innym sposobem” anuluje ją u dostawcy i zaczyna nową (P5) |
 | Nowa próba, a poprzednia sesja już opłacona u dostawcy | 409 `PaymentInProgress`, bez nowej płatności; webhook opłaca zamówienie |
-| Dwie równoległe próby z różnymi kluczami (dwie karty) | jedna płatność `pending`, druga 409 `PaymentInProgress` |
+| Dwie równoległe próby z różnymi kluczami (dwie karty) | jedna płatność `pending`, druga od razu 409 `PaymentInProgress` |
+| Podwójne kliknięcie „Zapłać” (ten sam klucz, pierwsze żądanie trwa) | drugie od razu 409 `PaymentInProgress`; po zakończeniu pierwszego ten sam klucz dostaje powtórzenie |
 | Płatność udana po anulowaniu zamówienia | płatność `succeeded` z oznaczeniem `order_cancelled`, zamówienie `cancelled`, webhook 204 bez ponowień |
 | Druga udana płatność zamówienia (tylko u prawdziwego dostawcy; symulator nie opłaca anulowanej sesji) | zamówienie opłacone pierwszą, druga `succeeded` z oznaczeniem `duplicate` |
 | Opłacenie równolegle z anulowaniem | jedno wygrywa (wersja zamówienia); anulowanie ponowione widzi `paid`; webhook ponowiony widzi `cancelled` i oznacza płatność do zwrotu |
@@ -585,10 +598,12 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 | W1 | to samo zdarzenie sukcesu 10 razy równolegle | jedna zmiana płatności, jedno `OrderPaid`, jeden wiersz deduplikacji, pozostałe 204 |
 | W2 | dwa różne zdarzenia tej samej płatności równolegle (sukces i odmowa) | płatność `succeeded`, zamówienie `paid` raz |
 | W3 | webhook sukcesu równolegle z `ExpireUnpaidOrder` (termin + 5 min minął) | dokładnie jeden status końcowy; rezerwacja zwolniona wtedy i tylko wtedy, gdy `cancelled`; przy `cancelled` płatność oznaczona do zwrotu po ponowieniu |
-| W4 | 10 równoległych `StartPayment` z tym samym kluczem | jedna płatność, pozostałe powtórzenia albo 409 |
+| W4 | 10 równoległych `StartPayment` z tym samym kluczem | jedna płatność, pozostałe powtórzenia albo 409 (blokada z kroku 3, póki pierwsze trwa) |
 | W5 | 2 równoległe `StartPayment` z różnymi kluczami | jedna płatność `pending`, drugie 409 `PaymentInProgress` |
 | W6 | nowa próba (anulowanie sesji) równolegle z decyzją „Zapłać” w symulatorze | albo sesja anulowana i nowa płatność, albo 409 i zamówienie opłacone przez webhook; nigdy obie płatności udane |
 | W7 | webhook sukcesu poprzedniej płatności trzyma blokadę jej wiersza (płatność `succeeded` i zamówienie `paid` zapisane, transakcja otwarta), `StartPayment` z nowym kluczem czeka na blokadę, webhook zatwierdza | `OrderAlreadyPaid` (409), żadna nowa płatność, zamówienie `paid` |
+| W8 | `StartPayment` czeka u wstrzymanego dostawcy (blokada tabeli symulatora, najwyżej 5 s); 10 równoległych `StartPayment` tego zamówienia (inne klucze, obaj dostawcy, klucz pierwszego) | wszystkie 409 `PaymentInProgress` w czasie dużo krótszym niż limit dostawcy (pomiar w teście), gdy pierwsze nadal czeka; jedna płatność `pending`; kolejne rozpoczęcie po pierwszym anuluje jej sesję i zaczyna nową |
+| W9 | `StartPayment` dwóch zamówień przy wstrzymanym dostawcy | oba dochodzą do dostawcy, po wznowieniu każde zamówienie ma płatność `pending` |
 
 - E-maile `SendPaymentReceived`, `SendOrderCancelled` w Mailpit; zdarzenie dostarczone drugi raz po kolei: jeden
   e-mail, wersja zamówienia bez zmian; dwie równoległe dostawy `OrderPaid`: jeden e-mail.
@@ -645,9 +660,13 @@ przekierowanie, link „Opłać zamówienie” przy pustym koszyku i ciasteczku)
 - Limit webhooków liczy się na adres nadawcy (D9): prawdziwy dostawca wysyłający z wielu adresów ma kilka limitów,
   a symulator ponawia dostawę po 429 najwyżej pięć razy (około 2 minut), potem wiadomość trafia do `failed`.
 - Symulator działa w tym samym kontenerze co API, a `StartPayment` woła go przez HTTP z transakcji: gdy równoległych
-  rozpoczęć płatności jest tyle, ile wątków FrankenPHP, wszystkie czekają na wolny wątek symulatora, kończą się po 5 s
-  odpowiedzią 503 i przez ten czas trzymają połączenia z bazą. Lokalnie i w demo bez znaczenia; przed testami
-  obciążeniowymi płatności symulator trzeba uruchomić jako osobną usługę (decyzja A3).
+  rozpoczęć płatności różnych zamówień jest tyle, ile wątków FrankenPHP, wszystkie czekają na wolny wątek symulatora,
+  kończą się po 5 s odpowiedzią 503 i przez ten czas trzymają połączenia z bazą. Równoległe rozpoczęcia jednego
+  zamówienia tego nie robią: kończą się od razu 409 (blokada z kroku 3), więc do symulatora dochodzi najwyżej jedno
+  rozpoczęcie na zamówienie. Lokalnie i w demo bez znaczenia; przed testami obciążeniowymi płatności symulator trzeba
+  uruchomić jako osobną usługę (decyzja A3).
+- Dwa zamówienia o tym samym skrócie identyfikatora w blokadzie rozpoczęć (32 bity) dzielą ją: równoległe
+  rozpoczęcie drugiego dostaje 409, a ponowienie przechodzi.
 - `ExpireUnpaidOrder` po wyczerpaniu ponowień trafia do `failed`: zamówienie zostaje `new`, a rezerwacja aktywna, aż
   ktoś ponowi wiadomość (`bin/console messenger:failed:retry`).
 - Worker obsługuje transporty po kolei (`outbox events scheduled payment_simulator promotions jobs`): długa kolejka zdarzeń opóźnia

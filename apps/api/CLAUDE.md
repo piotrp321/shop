@@ -96,6 +96,7 @@ używa `ApplicationTester` (`setAutoExit(false)`), bo `CommandTester` wyjątku n
 ### Jawne wyjątki od persystencji przez rekordy ORM
 
 Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj z powodem.
+- Blokada doradcza transakcji przez DBAL (`pg_advisory_xact_lock`, `pg_try_advisory_xact_lock`) do szeregowania jest dozwolonym wyjątkiem od persystencji przez rekordy ORM w każdym module; liczenie i zapis idą przez repozytorium.
 - Inventory: stan, rezerwacje, historię i rekordy stanów wariantów z produktem zapisuje i czyta przez DBAL na
   połączeniu Doctrine, w transakcji `command.bus` (jawne `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING`,
   `UPDATE` z wersją). Rekordy Doctrine Inventory są tylko definicją schematu dla `doctrine:schema` i migracji,
@@ -128,6 +129,13 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   (`FOR UPDATE`) i dopiero potem liczy, więc żadne zamówienie nie ginie ani nie liczy się dwa razy (testy
   `SalesRebuildConcurrencyTest`, `CustomerSummariesConcurrencyTest`). Decyzje A2, A4 w
   `docs/features/admin-features/spec.md`.
+- Ordering, limit nieopłaconych zamówień: `PostgresUnpaidOrderLock` (`pg_advisory_xact_lock(int, int)`, pierwszy klucz
+  `0x4F41` dla adresu i `0x4F49` dla tożsamości, drugi `crc32` klucza) szereguje złożenia jednego adresu i jednej
+  tożsamości; roszczenia (`ordering_unpaid_order_claim`) liczy i zapisuje rekord przez `DoctrineUnpaidOrderClaims`
+  (`docs/features/abuse-limits/spec.md`, D7, D8).
+- Payment, rozpoczęcie płatności: `PostgresPaymentStartLock` (`pg_try_advisory_xact_lock(int, int)`, pierwszy klucz
+  `0x5041`, drugi `crc32` id zamówienia) bez czekania; zajęta blokada to 409 `PaymentInProgress`
+  (`docs/features/abuse-limits/spec.md`, D9).
 - Payment: obsłużone zdarzenie webhooka (`payment_webhook_event`) przez DBAL `INSERT … ON CONFLICT DO NOTHING`:
   powtórzenie nie jest naruszeniem unikalności, a wiersz wycofanej transakcji nie zostaje w identity map jako
   „już obsłużony” (`docs/features/payment/spec.md`).
@@ -154,8 +162,9 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
     i odrzucenie kodu Pricing na wyjątki Ordering i rzucają je dalej, inne wyjątki przekazują bez zmian;
   - zamówienie zapisuje się na końcu (po rezerwacji), więc `flush` komend zagnieżdżonych nie zapisuje niczego
     z Ordering;
-  - kolejność blokad: wiersz koszyka, potem wiersz kodu rabatowego (tylko kod z limitem), potem wiersze stanów
-    (rosnąco po `variant_id`). Inne komendy Cart blokują tylko koszyki, Inventory tylko stany i rezerwacje, zmiana kodu
+  - kolejność blokad: wiersz koszyka, blokada doradcza adresu, blokada doradcza tożsamości (limit nieopłaconych
+    zamówień), potem wiersz kodu rabatowego (tylko kod z limitem), potem wiersze stanów (rosnąco po `variant_id`).
+    Blokady adresu i tożsamości bierze tylko złożenie, zawsze w tej kolejności i pod nimi liczy roszczenia. Inne komendy Cart blokują tylko koszyki, Inventory tylko stany i rezerwacje, zmiana kodu
     tylko wiersz kodu, a zwolnienie użycia nie blokuje kodu, więc nie ma cyklu;
   - odcisk żądania złożenia się nie zmienia dla żądań, które już istnieją: nowe pole dopisuje się do odcisku tylko
     wtedy, gdy jest w żądaniu.
@@ -292,11 +301,14 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   użyty dla innego koszyka, zamówienia lub dostawcy (przy dostępie do zasobu żądania) to 409 bez danych zasobu, który
   go użył. Klucze są zapisane na
   zawsze (unikalny indeks). Szczegóły: specyfikacje `inventory`, `checkout`, `payment`.
-- Rate limiting (`docs/features/hardening/spec.md`, D1–D8, `config/packages/rate_limiter.yaml`): bez `symfony/lock`
-  (równoległe żądania mogą przekroczyć limit o liczbę żądań w locie). Trasa wskazuje limiter domyślną wartością
-  `RateLimit::ROUTE_DEFAULT`, a klucz `RateLimit::KEY_ROUTE_DEFAULT`; nowa trasa z limitem ma 429 w OpenAPI. Redis
-  niedostępny: żądanie przechodzi bez limitu (fail open, D7). Adres klienta bierze wyłącznie `ClientIp::of(Request)`.
+- Rate limiting (`docs/features/hardening/spec.md`, D1–D8, `docs/features/abuse-limits/spec.md`, D1–D3,
+  `config/packages/rate_limiter.yaml`): każdy limiter w `prod` i `dev` ma `lock_factory: rate_limiter.lock_factory`
+  (`symfony/lock` w Redisie liczników, `config/packages/lock.yaml`), `when@test` bez blokady. Trasa wskazuje limiter
+  domyślną wartością `RateLimit::ROUTE_DEFAULT`, a klucz `RateLimit::KEY_ROUTE_DEFAULT`; nowa trasa z limitem ma 429
+  w OpenAPI. Redis niedostępny: żądanie przechodzi bez limitu (fail open, D7). Adres klienta bierze wyłącznie
+  `ClientIp::of(Request)`.
   Kontener testów ma `APP_DEBUG=0`, więc po zmianie konfiguracji lokalnie usuń `var/cache/test*`.
+- Każda nowa publiczna trasa zapisu bez logowania dostaje limiter (`RateLimit::ROUTE_DEFAULT`, wartości `prod`, `dev` i `test`) i test prób obejścia.
 - Nagłówki bezpieczeństwa API ustawia `SecurityHeadersSubscriber` na każdej odpowiedzi; HSTS należy do ingressu
   (`docs/features/hardening/spec.md`, D10).
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.

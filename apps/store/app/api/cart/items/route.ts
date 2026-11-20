@@ -8,6 +8,9 @@ export const POST = withCartDeps(async (request, deps) => {
     return refused;
   }
   const body = await readJsonObject(request);
+  if (body instanceof Response) {
+    return body;
+  }
   if (!body || typeof body.variantId !== "string" || typeof body.quantity !== "number") {
     return invalidBody();
   }

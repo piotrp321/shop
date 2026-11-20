@@ -1,6 +1,14 @@
 {{- /*
 One ingress per host. Keycloak is exposed only at the paths of the realms of the shop and of the panel and at its
 static resources: the realm master and the administration console are not reachable from outside.
+
+Request bodies (docs/features/abuse-limits/spec.md, L8 and D10): the middleware `buffering` of Traefik reads the whole
+body before it reaches the backend, so a slow body holds a connection of Traefik and not a thread of the API, and it
+refuses a body over the limit with 413. It buffers the response too (E4), so it is only on the routes that answer JSON:
+the host `api` (1 MiB) and `/api/` of the store (the routes of the BFF, 1 MiB), never on the pages and the RSC
+responses of the store, which are streamed. The photo upload has its own ingress with the larger limit: the path is
+`Exact`, so a longer path, another case and a different prefix get the limit of the host. Every ingress has the middlewares
+of the policy of every host (allow list, HSTS, noindex): a path with its own ingress is not a way around them.
 */ -}}
 {{- $middlewares := list }}
 {{- if .Values.ipAllowList.enabled }}{{- $middlewares = append $middlewares (printf "%s-ipallowlist@kubernetescrd" .Release.Namespace) }}{{- end }}
@@ -8,11 +16,15 @@ static resources: the realm master and the administration console are not reacha
 {{- if .Values.noindex }}{{- $middlewares = append $middlewares (printf "%s-noindex@kubernetescrd" .Release.Namespace) }}{{- end }}
 {{- $hosts := list
   (dict "name" "store" "sub" "" "service" "store" "port" 3000 "paths" (list "/"))
+  (dict "name" "store-api" "sub" "" "service" "store" "port" 3000 "paths" (list "/api/") "buffering" "buffering")
   (dict "name" "admin" "sub" "admin" "service" "admin" "port" 8080 "paths" (list "/"))
-  (dict "name" "api" "sub" "api" "service" "api" "port" 80 "paths" (list "/"))
+  (dict "name" "api" "sub" "api" "service" "api" "port" 80 "paths" (list "/") "buffering" "buffering")
+  (dict "name" "api-upload" "sub" "api" "service" "api" "port" 80 "paths" (list "/api/v1/admin/product-images") "pathType" "Exact" "buffering" "buffering-upload")
   (dict "name" "auth" "sub" "auth" "service" "keycloak" "port" 8080 "paths" (list "/realms/shop/" "/realms/backoffice/" "/resources/"))
   (dict "name" "img" "sub" "img" "service" "imgproxy" "port" 8080 "paths" (list "/")) }}
 {{- range $index, $host := $hosts }}
+{{- $hostMiddlewares := $middlewares }}
+{{- if $host.buffering }}{{- $hostMiddlewares = append $hostMiddlewares (printf "%s-%s@kubernetescrd" $.Release.Namespace $host.buffering) }}{{- end }}
 {{- if $index }}
 ---
 {{- end }}
@@ -28,8 +40,8 @@ metadata:
     {{- if $.Values.ingress.tls }}
     traefik.ingress.kubernetes.io/router.tls: "true"
     {{- end }}
-    {{- if $middlewares }}
-    traefik.ingress.kubernetes.io/router.middlewares: {{ join "," $middlewares | quote }}
+    {{- if $hostMiddlewares }}
+    traefik.ingress.kubernetes.io/router.middlewares: {{ join "," $hostMiddlewares | quote }}
     {{- end }}
 spec:
   ingressClassName: {{ $.Values.ingress.className }}
@@ -45,7 +57,7 @@ spec:
         paths:
           {{- range $host.paths }}
           - path: {{ . }}
-            pathType: Prefix
+            pathType: {{ $host.pathType | default "Prefix" }}
             backend:
               service:
                 name: {{ $host.service }}

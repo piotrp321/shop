@@ -269,7 +269,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 | `https://auth.<domena>/realms/master/` | użytkownik | niedostępny (404); dostępne tylko `/realms/shop/`, `/realms/backoffice/`, `/resources/` |
 | Próby rulesetów (1.5) | użytkownik | zgodnie z tabelą |
 | `make -C infra/k8s status HOST=…` | agent | wszystko `Synced`, `Healthy`, Joby `Complete` |
-| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, konto serwisowe i punkt kontaktowy: użytkownik | siedem reguł zarządzanych przez Grafanę w folderze `agent/shop/…` (trzy przy wyłączonych kopiach), alert z reguły dochodzi e-mailem; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
+| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, konto serwisowe i punkt kontaktowy: użytkownik | osiem reguł zarządzanych przez Grafanę w folderze `agent/shop/…` (cztery przy wyłączonych kopiach), alert z reguły dochodzi e-mailem; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
 | Grafana Cloud (9.) | agent | metryki klastra i logi `namespace="shop"` są, logów `mailpit` nie ma, przegląd próbki logów bez sekretów i danych klientów |
 | Sentry (10.): po wpisaniu DSN-ów i wdrożeniu | użytkownik | zdarzenia i trace'y w projektach `api`, `store` i `admin` z wersją (rewizja obrazu) i środowiskiem `demo`; przegląd próbki zdarzeń bez danych osobowych |
 | AppArmor (sekcja 2, krok 3): na serwerze `sudo dmesg \| grep 'apparmor="DENIED"' \| grep -c cri-containerd` po `reinitialize` i `create-admin` | użytkownik | wpisy `signal` są oczekiwane (szum); oba cele kończą się sukcesem, a pody nie restartują się przez sondy |
@@ -315,6 +315,19 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   udanej kopii i gasi `*Failed` i `*Missing`; `make rerun` tu nie pasuje (odtwarza Job bez właściciela, którego alert nie widzi).
   `*Missing` bez nieudanego Joba to CronJob, który się nie uruchomił (węzeł wyłączony), albo brak metryk (serwer albo Alloy nie
   działa; razem z nim odpala `ClusterSilent`).
+- **`RateLimitsOff`** (`warning`; od 12 do 17 minut od początku awarii i czas ewaluacji reguły): limity tras przepuszczają ruch
+  bez ograniczeń, bo Redis limiterów nie przyjmuje zapisu (odrzuca zapisy, np. `MISCONF` po pełnym wolumenie, albo pod API go
+  nie sięga; sonda Redisa i `/health` tego nie widzą) albo CronJob `rate-limit-check` nie działa (wstrzymany, usunięty, brak
+  metryki). **Agent** czyta log ostatniego Joba `rate-limit-check` w sekcji „logs of the failed jobs” wyniku
+  `make -C infra/k8s status HOST=…` (komunikat „The Redis of the rate limiters failed: …” podaje przyczynę: odmowa
+  połączenia, limit czasu, błąd odpowiedzi Redisa, inna wartość) oraz stan poda i wolumenu Redisa (`status`: zdarzenia, miejsce
+  na dysku węzła z Grafana Cloud). Wolumen pełny: miejsce zwalnia **użytkownik** (jak przy `NodeDiskFull`). CronJob wstrzymany
+  po przerwanym `restore`: „Odtworzenie przerwane w trakcie” niżej (`restore` ponowiony przywraca `suspend: false`). Alert
+  gaśnie po następnym udanym przebiegu (do 5 minut od naprawy). Po pierwszym wdrożeniu chartu z tym CronJobem metryki jeszcze
+  nie ma (`absent_over_time` bez `for`, jak przy `BackupMissing`): alert odpala do pierwszego udanego przebiegu, najwyżej kilka
+  minut, i to nie jest awaria. Awaria krótsza niż ok. 10 minut (mniej niż trzy przebiegi)
+  nie wywołuje alertu; ostrzeżenia kanału `cache` w logach `api` pokazują pojedyncze błędy. Wyciszenie na czas `restore` i
+  prac: 9. w sekcji 9.
 - **Pozostałe alerty**: `NodeDiskFull` (system plików węzła zajęty w ponad 85% przez 10 minut: miejsce zwalnia albo dysk powiększa
   **użytkownik**), `ClusterSilent` (brak metryk klastra przez 15 minut: serwer, k3s albo Alloy; `status` i panel OVH),
   `WorkloadNotReady` (Deployment albo StatefulSet w `shop`, w tym Redis, ma mniej gotowych replik niż oczekiwane albo go nie ma
@@ -365,10 +378,10 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
   make -C infra/k8s restore SNAPSHOT=<identyfikator świeżego snapshotu nightly tego serwera> KUBE_DIR=<katalog>
   ```
 
-  `restore` sprawdza (bez zmian) brak aktywnych Jobów, brak trwającej synchronizacji `shop` w Argo CD i zgodność migracji
+  `restore` sprawdza (bez zmian) brak aktywnych Jobów (poza Jobem CronJoba `rate-limit-check`, który trwa najwyżej 60 s i nie jest powodem odmowy), brak trwającej synchronizacji `shop` w Argo CD i zgodność migracji
   snapshotu z wdrożonym kodem, wypisuje snapshot i skutki i czeka na słowo `tak` (wpisuje je agent dopiero po zgodzie). Potem:
   kopia `pre-restore`, wyłączenie automatycznej synchronizacji `root`, potem `shop` (przejdzie też, gdy jej już nie ma),
-  wstrzymanie CronJobów, ponowne sprawdzenie Jobów (nocna kopia mogła wystartować po pierwszym sprawdzeniu: `restore` czeka
+  wstrzymanie CronJobów (`cart-purge-expired`, `backup`, `rate-limit-check`), ponowne sprawdzenie Jobów, także Joba `rate-limit-check` (nocna kopia mogła wystartować po pierwszym sprawdzeniu: `restore` czeka
   na nią do 2 godzin, `RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, a potem kończy się błędem z działającymi aplikacjami), `api`, `worker`,
   `store` i `keycloak` do zera, odtworzenie danych, `migrate`, `keycloak-config`, reindeks, powrót aplikacji, `purge-caches` i
   włączenie synchronizacji `root` (ten przywraca `shop`). Kończy się wierszem `restore: done` z identyfikatorem snapshotu
@@ -382,7 +395,7 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
   odtworzonych danych), przy Argo CD synchronizacja `root` i `shop` zostaje wyłączona; komunikat podaje krok, log Joba i
   snapshot `pre-restore`. Agent czyta przyczynę (komunikat, `status`), po usunięciu jej (np. poprawka w repo, dostęp do R2) i
   po **zgodzie użytkownika** uruchamia `restore` ponownie z tym samym `SNAPSHOT` i `PRE_RESTORE=skip` (kopia stanu sprzed
-  pierwszej próby już jest; aplikacje na zerze wracają z jedną repliką, a wstrzymane `cart-purge-expired` i `backup` z `suspend: false`) albo wraca do stanu sprzed odtworzenia:
+  pierwszej próby już jest; aplikacje na zerze wracają z jedną repliką, a wstrzymane `cart-purge-expired`, `backup` i `rate-limit-check` z `suspend: false`) albo wraca do stanu sprzed odtworzenia:
   `restore SNAPSHOT=<pre-restore>`. Ponowne uruchomienie przy wyłączonej synchronizacji `root` jej nie włącza: włącza ją
   **użytkownik** w Argo CD (z `prune` i `selfHeal`, jak w `argocd/root.yaml`).
 - **Utrata serwera** – **zgoda użytkownika** przy każdym kroku z niej: nowy VPS (**użytkownik**, 0.), `bootstrap` z kopią
@@ -408,8 +421,8 @@ uwierzytelnienia: każdy pod klastra, także w `monitoring`, sięga do nich po s
 `docs/adr/backups-observability.md`).
 
 Alerty to `PrometheusRule` `shop-alerts` chartu `shop` (`alerts.enabled: true` w `prod`; `docs/features/deploy-ops/spec.md`, O6):
-`BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `NodeDiskFull` (ponad 85% przez 10 minut),
-`ClusterSilent` (brak metryk klastra przez 15 minut) i `WorkloadNotReady` (Deployment albo StatefulSet w `shop` niegotowy albo
+`BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `RateLimitsOff` (brak udanego sprawdzenia Redisa
+limiterów od 17 minut), `NodeDiskFull` (ponad 85% przez 10 minut), `ClusterSilent` (brak metryk klastra przez 15 minut) i `WorkloadNotReady` (Deployment albo StatefulSet w `shop` niegotowy albo
 usunięty przez 10 minut). Alloy synchronizuje je przez API importu Grafany stosu (`/api/convert`, cel `grafana-alerting`) jako
 reguły zarządzane przez Grafanę; ewaluuje je Grafana Cloud poza serwerem, więc alert przychodzi także wtedy, gdy serwer albo Alloy
 nie żyje, a powiadomienia idą przez Alertmanager Grafany. Ruler metryk stosu nie ma Alertmanagera (nowe stosy Grafana Cloud go nie
@@ -443,8 +456,8 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
 7. **użytkownik** – w Grafana Cloud (Alerting → Contact points) dodaje punkt kontaktowy e-mail i ustawia go jako domyślny w drzewie
    powiadomień Alertmanagera Grafany. Alerty to `NodeDiskFull` z `severity: warning` i reszta z `critical`; że alerty reguł trafiają
    do tego punktu kontaktowego, potwierdza dopiero krok 8.
-8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać siedem reguł grupy `shop-backup` i `shop-cluster`
-   (przy kopiach wyłączonych w `prod`, 3.: trzy reguły `shop-cluster`)
+8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać osiem reguł grup `shop-backup`, `shop-rate-limits` i `shop-cluster`
+   (przy kopiach wyłączonych w `prod`, 3.: cztery reguły grup `shop-rate-limits` i `shop-cluster`)
    w folderze `agent/shop/shop-alerts/…`, oznaczonych jako provisioned (źródło: `PrometheusRule` `shop-alerts` w przestrzeni
    `shop`, synchronizowany przez Alloy przez API importu Grafany; zmiana reguły to zmiana chartu, nie edycja w UI). Brak reguł
    po 10 minutach od wdrożenia: log Alloy (`mimir.rules.kubernetes`, np. 401 przy złym tokenie konta serwisowego). **`BackupMissing` i
@@ -459,8 +472,10 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
    (`agent/shop/delivery-test`), sprawdza odbiorcę `email` i próbę wysyłki bez błędu, a potem usuwa regułę i folder; e-mail
    potwierdza użytkownik.
 9. **użytkownik** – przed świadomym `restore` i planowanymi pracami (restart serwera, aktualizacja k3s, ćwiczenie odtworzenia)
-   wycisza alerty w Grafana Cloud (Alerting → Silences): dla `restore` dopasowanie `alertname=~"WorkloadNotReady|Backup.*"`, dla
-   innych prac `alertname="WorkloadNotReady"` (przy wyłączeniu całego serwera także `ClusterSilent`), na czas prac z zapasem.
+   wycisza alerty w Grafana Cloud (Alerting → Silences): dla `restore` dopasowanie `alertname=~"WorkloadNotReady|Backup.*|RateLimitsOff"` (`restore` wstrzymuje CronJob
+   `rate-limit-check`, więc po 17 minutach alert odpaliłby bez awarii), dla innych prac `alertname=~"WorkloadNotReady|RateLimitsOff"`
+   (Redis wyłączony razem z serwerem albo restartem k3s kończy sprawdzenie błędem; przy wyłączeniu całego serwera także
+   `ClusterSilent`), na czas prac z zapasem.
    Wyciszenia nie zakłada automat. Po pracach sprawdza, że wyciszenie wygasło, albo je usuwa. Brak CRD `PrometheusRule`
    (aplikacja `prometheus-crds` niezsynchronizowana) kończy synchronizację `shop` błędem (operacja sync nieudana, aplikacja `OutOfSync`), a nie
    cichym brakiem reguł.

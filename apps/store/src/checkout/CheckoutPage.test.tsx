@@ -392,8 +392,9 @@ describe("CheckoutPage placing the order", () => {
     expect(screen.getAllByRole("link", { name: /koszyka/ })).toHaveLength(1);
   });
 
-  it.each<[string, "cart_empty" | "cart_not_orderable" | "insufficient_stock", string]>([
+  it.each<[string, "cart_empty" | "guest_order_too_large" | "cart_not_orderable" | "insufficient_stock", string]>([
     ["CartEmpty", "cart_empty", "Koszyk jest pusty."],
+    ["GuestOrderTooLarge", "guest_order_too_large", "Zamówienie bez konta może mieć najwyżej 10 różnych produktów, po 10 sztuk każdego. Zmniejsz ilości w koszyku."],
     ["CartNotOrderable", "cart_not_orderable", "Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk."],
     ["InsufficientStockForOrder", "insufficient_stock", "Nie mamy już tylu sztuk części produktów. Sprawdź koszyk."],
   ])("on a 409 %s shows the detail with a link back to the cart, keeps the form and the key, and does not order again by itself", async (_name, reason, detail) => {
@@ -463,6 +464,29 @@ describe("CheckoutPage placing the order", () => {
     expect(second[1]).not.toBe(first[1]);
     expect(second[0]).toEqual(first[0]);
     expect(push).toHaveBeenCalledWith("/checkout/confirmation");
+  });
+
+  it("on a 409 of too many unpaid orders shows the detail without a link, keeps the form and the key, and does not order again by itself", async () => {
+    const detail = "Nie możemy teraz przyjąć kolejnego zamówienia, bo z tych danych albo z tej sieci czeka już kilka nieopłaconych. Spróbuj ponownie za ok. 35 minut.";
+    await renderCheckout();
+    fillGuestForm();
+    const used = key(keys);
+    const reads = vi.mocked(loadCart).mock.calls.length;
+    await submit({ status: "conflict", reason: "too_many_unpaid_orders", detail });
+    await act(async () => {});
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe(detail);
+    expect(within(alert).queryByRole("link")).toBeNull();
+    expect(document.activeElement).toBe(alert);
+    expect(field("E-mail").value).toBe("anna.nowak@example.com");
+    expect(screen.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeTruthy();
+    expect(vi.mocked(loadCart).mock.calls.length).toBe(reads);
+    expect(push).not.toHaveBeenCalled();
+    expect(placeOrder).toHaveBeenCalledTimes(1);
+
+    await submit({ status: "failed" });
+    expect(vi.mocked(placeOrder).mock.calls.map((call) => call[1])).toEqual([used, used]);
   });
 
   it.each<[string, string | undefined, string]>([
@@ -810,6 +834,20 @@ describe("CheckoutPage discount code", () => {
     expect(total()).toBe(price(39998));
     // The summary is read again without the code, so it is the summary of no code whatever it was before.
     expect(loadCart).toHaveBeenLastCalledWith();
+  });
+
+  it("shows the text of the limit of code checks at the field after a 429, reads the summary without the code and keeps the form", async () => {
+    await renderCheckout();
+    await apply("lato15", { status: "rate_limited" });
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("Zbyt wiele prób sprawdzenia kodu. Spróbuj ponownie za kilka minut.");
+    expect(codeField().getAttribute("aria-describedby")).toBe(alert.id);
+    expect(codeField().value).toBe("lato15");
+    expect(document.activeElement).toBe(codeField());
+    expect(loadCart).toHaveBeenLastCalledWith();
+    expect(screen.queryByTestId("checkout-discount")).toBeNull();
+    expect(total()).toBe(price(39998));
   });
 
   it("says the code could not be checked when the API is down, and keeps the summary", async () => {

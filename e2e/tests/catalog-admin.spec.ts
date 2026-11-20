@@ -151,8 +151,9 @@ test("the upload of an image refuses a file over upload_max_filesize and a reque
   expect(fileTooLarge.status()).toBe(422);
   expect(await fileTooLarge.json()).toMatchObject({ detail: "Plik jest za duży." });
 
-  // A request over post_max_size: PHP drops the whole body, so the controller reads the Content-Length instead.
-  const requestTooLarge = await upload({ name: "enormous.png", mimeType: "image/png", buffer: new Uint8Array(71 * MIB) });
+  // A request over post_max_size: PHP drops the whole body, so the controller reads the Content-Length instead. The file is
+  // 70 MiB, so the body is just over post_max_size and under the 71 MiB that Caddy allows (request-body-limit.spec.ts).
+  const requestTooLarge = await upload({ name: "enormous.png", mimeType: "image/png", buffer: new Uint8Array(70 * MIB) });
   expect(requestTooLarge.status()).toBe(422);
   expect(await requestTooLarge.json()).toMatchObject({ detail: "Plik jest za duży." });
 });

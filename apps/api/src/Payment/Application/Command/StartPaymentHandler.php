@@ -10,6 +10,7 @@ use App\Payment\Application\PaymentProviders;
 use App\Payment\Application\PaymentProviderUnavailable;
 use App\Payment\Application\Port\Clock;
 use App\Payment\Application\Port\PayableOrders;
+use App\Payment\Application\Port\PaymentStartLock;
 use App\Payment\Application\SessionCancellation;
 use App\Payment\Application\View\PaymentView;
 use App\Payment\Domain\IdempotencyKey;
@@ -34,18 +35,24 @@ use Symfony\Component\Uid\Uuid;
  *
  * 1. the access to the order (Ordering GetOrderForPayment), before the replay, so a key alone never gives a payment;
  * 2. the replay: the payment of the key, when it was started for the same order and provider; another one is a 409;
- * 3. the state of the order: paid, cancelled or past the deadline is a 409;
- * 4. the pending payment of the order, under the lock of its row, is cancelled at its provider first: cancelled
+ * 3. the lock of the starts of the order, without waiting: a concurrent start holds it (it is at the provider, or
+ *    its payment is not committed yet, also one with the same key) → 409 at once, instead of waiting on the unique
+ *    indexes of step 8 with the thread and the connection; the end of the transaction releases it;
+ * 4. the replay again, under the lock: a start with the same key may have committed and released the lock between
+ *    step 2 and step 3, and step 6 would cancel its session at the provider (no rollback undoes that); the same
+ *    rules as in step 2;
+ * 5. the state of the order: paid, cancelled or past the deadline is a 409;
+ * 6. the pending payment of the order, under the lock of its row, is cancelled at its provider first: cancelled
  *    there → cancelled here; rejected there → failed here; paid there → 409, nothing changes (the webhook confirms
  *    it); the provider unavailable → 503, nothing changes;
- * 5. the order is read anew and its state checked again as in step 3: a webhook of the earlier payment that held the
- *    lock of step 4 has committed the order paid meanwhile, and no pending payment is left to stop the start;
- * 6. the new payment is written (the unique indexes refuse a concurrent start before the provider is called), then
- *    the provider opens its session until the deadline of the order and the payment keeps it.
+ * 7. the order is read anew and its state checked again as in step 5: a webhook of the earlier payment that held the
+ *    lock of step 6 has committed the order paid meanwhile, and no pending payment is left to stop the start;
+ * 8. the new payment is written (the unique indexes still refuse a start that lost the race to a committed one),
+ *    then the provider opens its session until the deadline of the order and the payment keeps it.
  *
  * The calls of the providers run in the transaction (5 s each): any failure rolls back everything, also the local
  * cancellation of the earlier payment. A session cancelled at its provider stays cancelled, and cancelling it again
- * succeeds, so a retry takes step 4 the same way.
+ * succeeds, so a retry takes step 6 the same way.
  */
 #[AsMessageHandler(bus: 'command.bus')]
 final readonly class StartPaymentHandler
@@ -57,6 +64,7 @@ final readonly class StartPaymentHandler
         private PayableOrders $orders,
         private PaymentProviders $providers,
         private Clock $clock,
+        private PaymentStartLock $startLock,
         #[Autowire(env: 'STORE_URL')]
         private string $storeUrl,
     ) {
@@ -78,13 +86,18 @@ final readonly class StartPaymentHandler
         $order = $this->order($command->orderId, $command->access);
         $fingerprint = RequestFingerprint::of($order->orderId, $provider);
 
-        $earlier = $this->payments->findByIdempotencyKey($key);
-        if (null !== $earlier) {
-            if (!$earlier->isReplayOf($fingerprint)) {
-                throw new PaymentIdempotencyKeyReused();
-            }
-
-            return new StartedPayment(PaymentView::of($earlier), true);
+        $replay = $this->replayOf($key, $fingerprint);
+        if (null !== $replay) {
+            return $replay;
+        }
+        if (!$this->startLock->tryAcquire($order->orderId)) {
+            throw PaymentInProgress::concurrentStart();
+        }
+        // A start with this key may have committed between the lookup above and the lock: it must not be cancelled at
+        // its provider below, where no rollback would undo it.
+        $replay = $this->replayOf($key, $fingerprint);
+        if (null !== $replay) {
+            return $replay;
         }
 
         $order->ensurePaymentCanStart();
@@ -99,6 +112,22 @@ final readonly class StartPaymentHandler
         $this->payments->save($payment);
 
         return new StartedPayment(PaymentView::of($payment), false);
+    }
+
+    /**
+     * @throws PaymentIdempotencyKeyReused the key started another payment (another order or provider)
+     */
+    private function replayOf(IdempotencyKey $key, RequestFingerprint $fingerprint): ?StartedPayment
+    {
+        $earlier = $this->payments->findByIdempotencyKey($key);
+        if (null === $earlier) {
+            return null;
+        }
+        if (!$earlier->isReplayOf($fingerprint)) {
+            throw new PaymentIdempotencyKeyReused();
+        }
+
+        return new StartedPayment(PaymentView::of($earlier), true);
     }
 
     private function order(string $orderId, PaymentAccess $access): OrderToPay

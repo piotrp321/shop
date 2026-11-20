@@ -65,6 +65,8 @@ const CODE_ERROR_ID = "checkout-discount-code-error";
 const CODE_REMOVE_ID = "checkout-discount-remove";
 const CODE_MAX_LENGTH = 64;
 const CODE_BLANK = "Wpisz kod rabatowy.";
+/** The limit of code checks of the API (429 of the preview of a code). */
+const CODE_RATE_LIMITED = "Zbyt wiele prób sprawdzenia kodu. Spróbuj ponownie za kilka minut.";
 const CODE_NOT_CHECKED = "Nie udało się sprawdzić kodu. Spróbuj ponownie.";
 const CODE_NOT_REMOVED = "Nie udało się odświeżyć podsumowania. Spróbuj ponownie.";
 
@@ -298,6 +300,11 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           setCodeError(`${detail} ${CODE_NOT_REMOVED}`);
           return CODE_REMOVE_ID;
         }
+        if (result.reason === "too_many_unpaid_orders") {
+          // Nothing was placed and the cart is fine: the customer tries again later with the same request.
+          setFailure({ kind: "conflict", detail, offersCart: false });
+          return FAILURE_ID;
+        }
         if (result.reason === "key_reused") {
           // The key belongs to another request: the form is fine, the next click is a new attempt.
           setIdempotencyKey(newIdempotencyKey());
@@ -385,18 +392,18 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
 
 /**
  * The summary with the preview of `code` (none: the plain summary). A code the API refuses outright (400) leaves the
- * plain summary and the API's text for the field; a rejected one gives the summary without a discount and its `detail`.
+ * plain summary and the API's text for the field, a 429 of the limit of code checks the plain summary and the text of
+ * the limit; a rejected one gives the summary without a discount and its `detail`.
  * Nothing is computed here: whether a code applies, and what it takes off, is the API's.
  */
 async function loadPreview(code: string | null): Promise<Preview> {
   const result = await loadCart(...(code === null ? [] : [code]));
   if (result.status === "unauthorized") return { status: "unauthorized" };
-  if (result.status === "invalid") {
+  if (result.status === "invalid" || result.status === "rate_limited") {
     const plain = await loadCart();
     if (plain.status === "unauthorized") return { status: "unauthorized" };
-    return plain.status === "ok"
-      ? { status: "ok", cart: plain.data, appliedCode: null, codeError: result.detail ?? CODE_NOT_CHECKED }
-      : { status: "failed" };
+    const codeError = result.status === "rate_limited" ? CODE_RATE_LIMITED : (result.detail ?? CODE_NOT_CHECKED);
+    return plain.status === "ok" ? { status: "ok", cart: plain.data, appliedCode: null, codeError } : { status: "failed" };
   }
   if (result.status !== "ok") return { status: "failed" };
   if (code === null) return { status: "ok", cart: result.data, appliedCode: null, codeError: null };

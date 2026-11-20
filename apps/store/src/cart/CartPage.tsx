@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { announceCartChange } from "./events";
-import { SAVE_FAILED, SessionExpired } from "./messages";
+import { CART_RATE_LIMITED, SAVE_FAILED, SessionExpired } from "./messages";
 
 type CartLine = CartView["lines"][number];
 
@@ -99,6 +99,8 @@ export function CartPage() {
     } else {
       if (result.status === "unauthorized") {
         setSessionExpired(true);
+      } else if (result.status === "rate_limited") {
+        setLineErrors({ [variantId]: CART_RATE_LIMITED });
       } else {
         setLineErrors({ [variantId]: (result.status === "conflict" && result.detail) || SAVE_FAILED });
       }

@@ -157,13 +157,15 @@ Komunikaty `detail` (po polsku, bez danych wejściowych) i `type` problemu (RFC 
 | Wyjątek | Rodzaj | `detail` | `type` (prefiks `tag:piotrp321.github.io,2026:shop/problems/`) |
 |---|---|---|---|
 | `CartEmpty` | `Conflict` (409) | „Koszyk jest pusty.” | `…/cart-empty` |
+| `GuestOrderTooLarge` | `Conflict` (409) | „Zamówienie bez konta może mieć najwyżej 10 różnych produktów, po 10 sztuk każdego. Zmniejsz ilości w koszyku.” | `…/guest-order-too-large` |
+| `TooManyUnpaidOrders` | `Conflict` (409) | „Nie możemy teraz przyjąć kolejnego zamówienia, bo z tych danych albo z tej sieci czeka już kilka nieopłaconych. Spróbuj ponownie za ok. 35 minut.” (ten sam dla limitu adresu, e-maila i konta) | `…/too-many-unpaid-orders` |
 | `CartNotOrderable` | `Conflict` (409) | „Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.” | `…/cart-not-orderable` |
 | `InsufficientStockForOrder` | `Conflict` (409) | „Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.” | `…/insufficient-stock-for-order` |
 | `OrderTotalChanged` | `Conflict` (409) | „Kwota zamówienia się zmieniła. Sprawdź podsumowanie.” | `…/order-total-changed` |
 | `IdempotencyKeyReused` | `Conflict` (409) | „Ten klucz żądania był już użyty dla innego zamówienia.” | `…/idempotency-key-reused` |
 | `CartNotFound` (z Cart) | `NotFound` (404) | „Koszyk nie jest już dostępny.” (bez zmian) | `about:blank` |
 
-Pięć wyjątków Ordering implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType(): string`) i trzyma
+Wyjątki Ordering z tabeli (bez `CartNotFound`) implementują `App\Shared\Domain\Exception\TypedProblem` (`problemType(): string`) i trzymają
 swój `type` w stałej `TYPE`; `ProblemDetailsSubscriber` wpisuje go do odpowiedzi. Wyjątki bez tego interfejsu i każda
 inna odpowiedź błędu mają `type: about:blank`. Klient rozróżnia przyczyny 409 wyłącznie po `type`; `detail` jest
 tekstem dla człowieka i może się zmienić. `type` to identyfikator (URI `tag:`), nie adres, pod którym coś jest
@@ -171,7 +173,7 @@ serwowane.
 
 ## Złożenie zamówienia (`PlaceOrder`)
 
-Komenda `PlaceOrder(cartRef, contact, address, expectedTotalGross, idempotencyKey, discountCode | null)` na
+Komenda `PlaceOrder(cartRef, contact, address, expectedTotalGross, idempotencyKey, discountCode | null, clientAddress)` na
 `command.bus` (kod normalizuje `DiscountCodeText`; pusty albo biały to brak kodu), gdzie `cartRef`
 to `guest(cartId)` albo `customer(customerId)`; wynik `PlacedOrder {order: OrderView, replayed: bool}`. Jedna
 transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
@@ -195,7 +197,12 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
    kodami rabatowymi.
    Koszyk jest częścią odcisku, więc dwa koszyki gości z tym samym kluczem i tymi samymi danymi dostają 409, a nie
    cudze zamówienie.
-3. Brak linii: `CartEmpty` (409).
+3. Brak linii: `CartEmpty` (409). Zamówienie gościa większe niż 10 linii albo 10 sztuk jednej linii: `GuestOrderTooLarge` (409, reguła domeny `GuestOrderSize`), zaraz po `CartEmpty`, przed wyceną, kodem, numerem i rezerwacją, więc przed `CartNotOrderable`, `DiscountCodeRejected`, `OrderTotalChanged` i niedoborem. Zamówienie klienta nie podlega tej regule (do 50 linii po 99 sztuk, jak koszyk).
+3a. **Limit nieopłaconych zamówień** (`docs/features/abuse-limits/spec.md`, L6, D6–D8; `UnpaidOrderLimit`). Blokady
+   doradcze transakcji na adres klienta (`ClientIp`, z kontrolera w komendzie, poza odciskiem żądania), potem na
+   tożsamość (`email:<klucz>` gościa albo `customer:<sub>`), i pod nimi liczenie roszczeń z `expires_at` po teraz:
+   co najmniej 5 z adresu albo 3 tej tożsamości (`config/packages/ordering.yaml`): `TooManyUnpaidOrders` (409), przed
+   wyceną, kodem, numerem i rezerwacją. Powtórzenie (kroki 0 i 2) wraca przed limitem.
 4. **Kopie danych.** Porty `OrderPrices::quote(lines, discountCode)` (Pricing `QuoteBasket`: ceny skuteczne bez ceny
    Omnibus, promocje, rabat kodu rozłożony na linie, netto i VAT linii z brutto po rabacie; tylko w PLN)
    i `OrderCatalog::variants(variantIds)` (Catalog `GetVariantSummaries`), po jednym wywołaniu. Wariant bez aktualnej
@@ -217,8 +224,9 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
    z Inventory): `InsufficientStockForOrder` (409) bez liczby sztuk, cała transakcja wycofana. Rezerwacja jest
    ostatnią operacją przed zapisem zamówienia, więc wiersze stanów (najbardziej obciążone przy popularnym wariancie)
    są zablokowane możliwie krótko.
-9. **Zapis.** `Order::place(…)`, `OrderRepository::add(order)` i zdarzenie `OrderPlaced` w outboxie
-   (`DomainEventPublisher`), w tej samej transakcji. Zapis zamówienia jest ostatnim krokiem, więc `flush` komend
+9. **Zapis.** `Order::place(…)`, `OrderRepository::add(order)`, roszczenie nieopłaconego zamówienia (adres, tożsamość,
+   `expires_at` = wygaszenie zamówienia) i zdarzenie `OrderPlaced` w outboxie (`DomainEventPublisher`), w tej samej
+   transakcji. Zapis zamówienia jest ostatnim krokiem, więc `flush` komend
    zagnieżdżonych nie zapisuje niczego z Ordering.
 
 Zasady transakcji (zapisywane w `apps/api/CLAUDE.md`):
@@ -229,8 +237,9 @@ Zasady transakcji (zapisywane w `apps/api/CLAUDE.md`):
   bazę jak przed żądaniem. Koszyk ma te same linie, `reserved` żadnego wariantu się nie zmienia (Inventory
   rezerwuje „wszystko albo nic”, a wycofanie transakcji cofa każdy zapis), nie ma zamówienia, linii ani wiersza
   outboxa. Jedyny ślad to luka w numeracji.
-- Kolejność blokad: wiersz koszyka, potem wiersz kodu rabatowego (tylko kod z limitem, `RedeemDiscountCode`), potem
-  wiersze stanów (rosnąco po `variant_id`, `lockMany` Inventory). Inne komendy Cart blokują tylko koszyki (scalenie:
+- Kolejność blokad: wiersz koszyka, blokada doradcza adresu, blokada doradcza tożsamości (limit nieopłaconych
+  zamówień), potem wiersz kodu rabatowego (tylko kod z limitem, `RedeemDiscountCode`), potem
+  wiersze stanów (rosnąco po `variant_id`, `lockMany` Inventory). Blokady adresu i tożsamości bierze tylko złożenie. Inne komendy Cart blokują tylko koszyki (scalenie:
   gość, potem klient), Inventory tylko stany i rezerwacje, a zwolnienie użycia przy wygaśnięciu nie blokuje kodu, więc
   nie ma cyklu blokad. Złożenie klienta blokuje tylko koszyk klienta. Dwa złożenia z ostatnim wolnym użyciem kodu
   z limitem szereguje blokada kodu: drugie dostaje 409 `discount-code-used-up`. Kod bez limitu nie jest blokowany;
@@ -354,7 +363,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
-| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross, discountCode?}` | 201 `OrderView`, nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią (bez drugiego użycia kodu) | 400 brak lub zły klucz, zły JSON; 401 niepoprawny token; 404 koszyk; 409 z `type` przyczyny (`CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`, `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` z rozszerzeniem `minimumOrderGross`; schemat OpenAPI `OrderConflictProblem` z `enum` wartości `type`); 415; 422; 503 (token wysłany, klucze wystawcy niedostępne) |
+| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross, discountCode?}` | 201 `OrderView`, nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią (bez drugiego użycia kodu) | 400 brak lub zły klucz, zły JSON; 401 niepoprawny token; 404 koszyk; 409 z `type` przyczyny (`CartEmpty`, `GuestOrderTooLarge` tylko dla gościa, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`, `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` z rozszerzeniem `minimumOrderGross`; schemat OpenAPI `OrderConflictProblem` z `enum` wartości `type`); 415; 422; 503 (token wysłany, klucze wystawcy niedostępne) |
 | `POST /api/v1/me/orders` (klient), nagłówek `Idempotency-Key`, body `{fullName, phone, street, postalCode, city, expectedTotalGross, discountCode?}` | jak wyżej; e-mail z tokena | 401 (bez tokena, token `backoffice`), 503 (klucze wystawcy niedostępne), pozostałe jak wyżej bez 404 |
 
 `OrderView`:
@@ -501,7 +510,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | 422 | komunikaty przy polach (`violations`) |
 | 409 `OrderTotalChanged` | `detail`, ponowne wczytanie podsumowania z tym samym kodem (nowa kwota), formularz zostaje, nowy klucz, bez linku do koszyka (pusty koszyk albo `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem) |
 | 409 `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` (Q6) | `detail` przy polu kodu, kod zdjęty, podsumowanie wczytane bez kodu (nowa kwota), nowy klucz, nic nie składa się samo: zamówienie składa dopiero kolejne kliknięcie; gdy podsumowania nie da się wczytać, ekran zostaje taki jak był (kod zastosowany, „Usuń kod” z fokusem) z `detail` i komunikatem o odświeżeniu, a 401 pokazuje komunikat sesji |
-| 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka”, ponowne wczytanie podsumowania, klucz zostaje; gdy przeładowane podsumowanie zastępuje formularz komunikatem z własnym linkiem, bez drugiego linku |
+| 409 `CartEmpty`, `GuestOrderTooLarge`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka”, ponowne wczytanie podsumowania, klucz zostaje; gdy przeładowane podsumowanie zastępuje formularz komunikatem z własnym linkiem, bez drugiego linku |
 | 409 `IdempotencyKeyReused` | `detail`, nowy klucz, formularz zostaje, bez linku do koszyka (kolejne kliknięcie składa zamówienie z nowym kluczem) |
 | 409 nieznany (inny `type` albo brak) | `detail` (bez niego „Nie udało się złożyć zamówienia. Spróbuj ponownie.”) i link „Wróć do koszyka”, klucz zostaje, bez automatycznego ponawiania |
 | 404 koszyka | „Koszyk nie jest już dostępny.” i link do sklepu |
