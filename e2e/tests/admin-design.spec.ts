@@ -25,6 +25,7 @@ let productId = "";
 let orderId = "";
 let promotionId = "";
 let discountCodeId = "";
+let deliveryMethodId = "";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Places one order as Jan in the store, in a browser context of its own. */
@@ -79,6 +80,13 @@ test.beforeAll(async ({ browser }) => {
     await expect(code, "the list of discount codes has a row").toBeVisible();
     discountCodeId = (await code.getAttribute("href"))!.split("/").pop()!;
     expect(discountCodeId, "the id of a discount code").toMatch(UUID);
+
+    // The page of a delivery method: the first row of the list (a demo method, only the admin opens the screen).
+    await go(page, "/delivery");
+    const method = page.getByTestId("method-link").first();
+    await expect(method, "the list of delivery methods has a row").toBeVisible();
+    deliveryMethodId = (await method.getAttribute("href"))!.split("/").pop()!;
+    expect(deliveryMethodId, "the id of a delivery method").toMatch(UUID);
   } finally {
     await page.close();
   }
@@ -299,6 +307,9 @@ function routes(): { path: string; current: string }[] {
     { path: "/discount-codes", current: "Kody rabatowe" },
     { path: "/discount-codes/new", current: "Kody rabatowe" },
     { path: `/discount-codes/${discountCodeId}`, current: "Kody rabatowe" },
+    { path: "/delivery", current: "Dostawa" },
+    { path: "/delivery/new", current: "Dostawa" },
+    { path: `/delivery/${deliveryMethodId}`, current: "Dostawa" },
     { path: "/system", current: "Stan systemu" },
   ];
 }
