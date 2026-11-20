@@ -38,6 +38,7 @@ use App\Cart\Domain\ProductNotFound;
 use App\Cart\Domain\ProductNotPurchasable;
 use App\Cart\Domain\Quantity;
 use App\Cart\Domain\VariantId;
+use App\Tests\Unit\Cart\FakeCartDelivery;
 use App\Tests\Unit\Cart\FixedClock;
 use App\Tests\Unit\Cart\InMemoryCarts;
 use App\Tests\Unit\Cart\InMemoryProducts;
@@ -451,27 +452,27 @@ final class CartHandlersTest extends TestCase
 
     public function createGuestCart(): CartView
     {
-        return new CreateGuestCartHandler($this->carts, new CartViewBuilder($this->products), $this->clock)(new CreateGuestCart());
+        return new CreateGuestCartHandler($this->carts, new CartViewBuilder($this->products, new FakeCartDelivery()), $this->clock)(new CreateGuestCart());
     }
 
     public function add(CartRef $cart, string $variantId, int $quantity): CartView
     {
-        return new AddCartItemHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder($this->products), $this->clock)(new AddCartItem($cart, $variantId, $quantity));
+        return new AddCartItemHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder($this->products, new FakeCartDelivery()), $this->clock)(new AddCartItem($cart, $variantId, $quantity));
     }
 
     public function change(CartRef $cart, string $variantId, int $quantity): CartView
     {
-        return new ChangeCartItemQuantityHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder($this->products), $this->clock)(new ChangeCartItemQuantity($cart, $variantId, $quantity));
+        return new ChangeCartItemQuantityHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder($this->products, new FakeCartDelivery()), $this->clock)(new ChangeCartItemQuantity($cart, $variantId, $quantity));
     }
 
     public function remove(CartRef $cart, string $variantId): CartView
     {
-        return new RemoveCartItemHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder($this->products), $this->clock)(new RemoveCartItem($cart, $variantId));
+        return new RemoveCartItemHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder($this->products, new FakeCartDelivery()), $this->clock)(new RemoveCartItem($cart, $variantId));
     }
 
     public function getCart(CartRef $cart, ?string $discountCode = null): CartView
     {
-        return new GetCartHandler($this->carts, $this->loader(), new CartViewBuilder($this->products), $this->clock)(new GetCart($cart, $discountCode));
+        return new GetCartHandler($this->carts, $this->loader(), new CartViewBuilder($this->products, new FakeCartDelivery()), $this->clock)(new GetCart($cart, $discountCode));
     }
 
     public function summary(CartRef $cart): \App\Cart\Application\Query\CartSummary

@@ -120,7 +120,7 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
     {
         $token = TestTokenFactory::customer();
         $variant = $this->variant();
-        $empty = ['cart' => ['id' => null, 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null], 'result' => 'nothing_to_merge', 'truncated' => false];
+        $empty = ['cart' => ['id' => null, 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null, 'delivery' => null], 'result' => 'nothing_to_merge', 'truncated' => false];
         $expired = CartFixture::cart($this->connection, expiresAt: '-1 second', lines: [[$variant, 1]]);
         $other = CartFixture::cart($this->connection, customerId: 'another-customer', lines: [[$variant, 1]]);
 
