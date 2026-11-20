@@ -27,22 +27,23 @@ final class InvalidateStorefrontOnPriceChangeTest extends TestCase
         $this->cache = new SpyStorefrontCache();
     }
 
-    /**
-     * @return iterable<string, array{PriceChangeSource}>
-     */
-    public static function invalidatingSources(): iterable
+    public function testInvalidatesTheProductOfTheVariant(): void
     {
-        yield 'staff' => [PriceChangeSource::Staff];
-        yield 'tax reconciliation' => [PriceChangeSource::TaxReconciliation];
-    }
-
-    #[DataProvider('invalidatingSources')]
-    public function testInvalidatesTheProductOfTheVariant(PriceChangeSource $source): void
-    {
-        $this->consumer()(new VariantPriceChanged(self::VARIANT, $source, new \DateTimeImmutable()));
+        $this->consumer()(new VariantPriceChanged(self::VARIANT, PriceChangeSource::Staff, new \DateTimeImmutable()));
 
         self::assertSame([self::VARIANT], $this->catalog->asked);
         self::assertSame(['product:'.self::PRODUCT], $this->cache->calls);
+    }
+
+    /**
+     * The gross price and the history do not change in a reconciliation, and the pages hold neither the rate nor the net.
+     */
+    public function testATaxReconciliationIsHandledWithoutAskingCatalogOrInvalidating(): void
+    {
+        $this->consumer()(new VariantPriceChanged(self::VARIANT, PriceChangeSource::TaxReconciliation, new \DateTimeImmutable()));
+
+        self::assertSame([], $this->catalog->asked);
+        self::assertSame([], $this->cache->calls);
     }
 
     public function testAVariantUnknownToCatalogIsHandledWithoutInvalidation(): void
