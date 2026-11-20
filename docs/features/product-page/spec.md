@@ -159,10 +159,10 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
     wywołań HTTP po każdym `make seed` opóźniałoby zdarzenia testów E2E w kolejce jednego workera.
 - Dostarczenie: istniejący outbox. Wiersz outboxu powstaje w transakcji zapisu ceny albo stanu i jest widoczny dla
   workera dopiero po jej commicie; wycofana transakcja nie zostawia zdarzenia. Worker przekazuje go do RabbitMQ
-  (ponowienia transportu `outbox`), a konsument czyta z transportu `events`. Unieważnienie nigdy nie startuje przed
+  (ponowienia transportu `outbox`: 200 prób, najwyżej co 60 s, około 3 godzin), a konsument czyta z transportu `events`. Unieważnienie nigdy nie startuje przed
   commitem zmiany, więc regenerowana strona czyta już nowe dane.
 - Ponowienia: wyjątek konsumenta (Varnish albo sklep niedostępny, status inny niż 200, timeout) to ponowienie
-  Messengera (transport `events`: 3 próby po 1, 3 i 9 s), potem `failed` (`messenger:failed:retry`). Do udanego
+  Messengera (transport `events`: 10 prób po 1, 3, 9, 27, 81 i 243 s, potem cztery razy po 300 s, razem około 26 minut), potem `failed` (`messenger:failed:retry`). Do udanego
   ponowienia dane są najwyżej tak stare jak siatka bezpieczeństwa (`s-maxage` i `revalidate` 3600 s).
 - Idempotencja: purge tagu i rewalidacja tagu nie zależą od stanu ani od liczby powtórzeń. Powtórzone, spóźnione albo
   przestawione zdarzenie powoduje najwyżej dodatkowe odświeżenie z bieżących danych (wyjątek: wyścig w „Ryzykach”).

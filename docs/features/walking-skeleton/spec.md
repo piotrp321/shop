@@ -357,8 +357,8 @@ Przepływ:
    a odbiorcy nigdy przy konsumpcji z `outbox`, więc nie ma pętli ani podwójnej obsługi.
 5. Ponowienia (z domyślnym jitterem ±10 %), potem transport `failed`, gdzie zdarzenie czeka na
    `messenger:failed:retry`:
-   - `events`: 3 próby z opóźnieniem 1 s i mnożnikiem 3,
-   - `outbox`: 30 prób z opóźnieniem 1 s, mnożnikiem 2 i najwyżej 60 s, razem około 25 minut. Błąd przekaźnika to
+   - `events`: 10 prób z opóźnieniem 1 s, mnożnikiem 3 i najwyżej 300 s, razem około 26 minut,
+   - `outbox`: 200 prób z opóźnieniem 1 s, mnożnikiem 2 i najwyżej 60 s, razem około 3 godzin. Błąd przekaźnika to
      zawsze niedostępny, odrzucający albo niemający trasy broker, więc restart RabbitMQ nie przenosi zdarzeń do
      `failed`.
      Ponowienie to nowy wiersz z późniejszym `available_at`.

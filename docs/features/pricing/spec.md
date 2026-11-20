@@ -41,9 +41,11 @@ a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie k
 - Odczyt cen (`GetCurrentPrices`) czyta wyłącznie tabele Pricing (ceny, promocje, historia), bez odczytu z Catalog.
 - Każdy zapis zmiany ceny (panel, seed, `pricing:reconcile-tax`, przeliczenie po zmianie klasy) publikuje `VariantPriceChanged {variantId, source,
   occurredAt}`: `DoctrineVariantPriceRepository::save` wpisuje je do outboxu w transakcji zapisu ceny i historii, więc
-  zapis odrzucony albo wycofany nie zostawia zdarzenia. Jedyny konsument (`Pricing_Infrastructure`) unieważnia cache
-  sklepu produktu wariantu (`docs/features/product-page/spec.md`, „Unieważnianie”); zdarzenie ze źródła `seed`
-  potwierdza bez unieważnienia.
+  zapis odrzucony albo wycofany nie zostawia zdarzenia. Konsumenci (`Pricing_Infrastructure`, transport `events`)
+  reindeksują produkt wariantu (`ReindexProductOnPriceChange`) i unieważniają jego cache sklepu
+  (`InvalidateStorefrontOnPriceChange`, `docs/features/product-page/spec.md`, „Unieważnianie”); zdarzenia ze źródeł `seed`
+  i `tax_reconciliation` (brutto, historia i oferta się nie zmieniają, a cache i indeks nie zawierają stawki ani netto)
+  potwierdza bez unieważnienia i bez reindeksacji.
 - Granice okresów promocji publikują `PromotionPricesChanged {productId, source, occurredAt}`, jedno na produkt
   promocji (niżej, „Granice promocji”). Konsumenci w `Pricing_Infrastructure` (transport `events`):
   `ReindexProductOnPromotionChange` (reindeksacja produktu) i `InvalidateStorefrontOnPromotionChange` (unieważnienie

@@ -29,10 +29,10 @@ framework:
                 dsn: 'doctrine://default?queue_name=outbox&auto_setup=false&redeliver_timeout=300'
                 options:
                     use_notify: false
-                # Relaying fails only when RabbitMQ does, so it keeps trying for about 25 minutes (1, 2, 4 … 32 s,
+                # Relaying fails only when RabbitMQ does, so it keeps trying for about 3 hours (1, 2, 4 … 32 s,
                 # then every 60 s) before the event goes to `failed`.
                 retry_strategy:
-                    max_retries: 30
+                    max_retries: 200
                     delay: 1000
                     multiplier: 2
                     max_delay: 60000
@@ -44,10 +44,14 @@ framework:
                     # RabbitMQ has the message. That it routed the message to a queue is checked by
                     # RoutedAmqpTransport (mandatory publish), which every AMQP transport is.
                     confirm_timeout: 5
+                # The consumers are idempotent and read the current state, so a failure of a service they call (the
+                # index, Varnish, the mail server) is retried for about 26 minutes: after 1, 3, 9, 27, 81 and 243 s,
+                # then four times after 300 s; then `failed`.
                 retry_strategy:
-                    max_retries: 3
+                    max_retries: 10
                     delay: 1000
                     multiplier: 3
+                    max_delay: 300000
             # Delayed commands (DelayStamp sets available_at): ExpireUnpaidOrder, written in the transaction of the
             # placement on the same connection, waits in the table through any restart or outage of the worker. A row
             # taken by a worker that died before the ack is retaken after redeliver_timeout, as in `outbox`.
