@@ -29,3 +29,22 @@ remote() {
 remote_root() {
   remote "sh -c 'if [ \"\$(id -u)\" -eq 0 ]; then exec \"\$@\"; else exec sudo -n \"\$@\"; fi' sh $*"
 }
+
+# worker_console <arguments...>: runs bin/console of the api in the pod of worker-commands (the Deployment that consumes the
+# transports of the commands) in a PHP process of its own with 128 MB, so that it does not exceed the limit of the container
+# next to the worker. The arguments are fixed words of our scripts or digits checked by the caller. The standard input of ssh
+# is closed: it must not take the answer that the script reads afterwards.
+worker_console() {
+  remote_root k3s kubectl -n shop exec deploy/worker-commands -- php -d memory_limit=128M bin/console "$@" < /dev/null
+}
+
+# check_number <script name> <name> <value> <largest>: a positive integer without a leading zero, at most the largest (exit 2).
+check_number() {
+  case "$3" in
+    "" | *[!0-9]* | 0*) echo "$1: $2 '$3' is not a positive integer" >&2; exit 2 ;;
+  esac
+  if [ "${#3}" -gt "${#4}" ] || { [ "${#3}" -eq "${#4}" ] && [ "$3" -gt "$4" ]; }; then
+    echo "$1: $2 '$3' is above $4" >&2
+    exit 2
+  fi
+}

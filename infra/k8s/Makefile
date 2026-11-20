@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore backups seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
+.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore backups seal-secrets bootstrap kubeconfig status failed failed-retry failed-remove reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render; git does not ignore the certificate of Sealed Secrets). The render also covers the application monitoring: the chart
@@ -156,6 +156,22 @@ kubeconfig:
 # The applications of Argo CD, the pods and the jobs of the shop, and the logs of the failed jobs, read over SSH: make -C infra/k8s status HOST=<user>@<address>.
 status:
 	sh scripts/status.sh "$(HOST)"
+
+# The messages of the transport failed (the statistics and the first 200: id, class, error, date), read in the pod of worker-commands
+# over SSH; only reads: make -C infra/k8s failed HOST=<user>@<address>.
+failed:
+	@sh scripts/failed.sh "$$HOST"
+
+# Retries the messages of the transport failed in the pod of worker-commands (php -d memory_limit=128M): with ID one message, without it
+# app:messaging:failed-retry (the oldest MAX, 1 to 1000, 200 by default; prints its report): make -C infra/k8s failed-retry
+# HOST=<user>@<address> [ID=<id> | MAX=<n>]. A message kept after a failed attempt has a new id. Needs the consent of the user.
+failed-retry:
+	@sh scripts/failed-retry.sh "$$HOST" "$$ID" "$$MAX"
+
+# Removes one message of the transport failed after the word tak (shows it first; never a webhook of a payment):
+# make -C infra/k8s failed-remove HOST=<user>@<address> ID=<id>. Needs the consent of the user.
+failed-remove:
+	@sh scripts/failed-remove.sh "$$HOST" "$$ID"
 
 # Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak.
 # make -C infra/k8s reinitialize HOST=<user>@<address>
