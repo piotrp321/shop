@@ -137,7 +137,11 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
         <AlertDescription>{{ error }}</AlertDescription>
       </Alert>
 
-      <div class="flex max-w-3xl min-w-0 flex-col gap-6">
+      <!-- While the request runs nothing can be typed: the answer rebuilds the form from the API and would overwrite it. -->
+      <fieldset
+        :disabled="busy"
+        class="flex max-w-3xl min-w-0 flex-col gap-6"
+      >
         <FormSection title="Metoda dostawy">
           <FormField
             :control-id="ids.name"
@@ -293,7 +297,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
             </template>
           </FormField>
         </FormSection>
-      </div>
+      </fieldset>
 
       <SaveBar
         v-if="dirty || !isExisting"
