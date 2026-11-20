@@ -78,8 +78,9 @@ założone w sklepie i zmiany z konsoli Keycloak).
 
 ### Zmiana kodu handlerów
 
-`worker` (konsument kolejek) ładuje kod i konfigurację handlerów przy starcie. Po zmianie kodu handlerów albo
-ich konfiguracji uruchom go od nowa: `docker compose restart worker` (`make up` też tworzy go od nowa).
+Oba workery (konsumenci kolejek: `worker` obsługuje zdarzenia, `worker-commands` komendy czekające w Postgresie) ładują
+kod i konfigurację handlerów przy starcie. Po zmianie kodu handlerów albo ich konfiguracji uruchom je od nowa:
+`docker compose restart worker worker-commands` (`make up` też tworzy je od nowa).
 
 ## Konta demo
 

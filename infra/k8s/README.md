@@ -9,7 +9,7 @@ Uruchomienie środowiska wdrożeniowego (`docs/features/deploy/spec.md`) po merg
   backup VPS-a); agent tego nie wykonuje i nie podejmuje tych decyzji.
 
 Agent wykonuje operacje na serwerze wyłącznie celami `make -C infra/k8s …` (`bootstrap`, `kubeconfig`, `status`, `rerun`,
-`create-admin`, `restore`, `backups`, `reinitialize`, `generate`, `open`, `seal-secrets`, `cloudflare-ips`). Nie łączy się z serwerem inaczej i nie uruchamia `kubectl` ani
+`create-admin`, `restore`, `backups`, `failed`, `failed-retry`, `failed-remove`, `reinitialize`, `generate`, `open`, `seal-secrets`, `cloudflare-ips`). Nie łączy się z serwerem inaczej i nie uruchamia `kubectl` ani
 `helm` na serwerze. Wszystkie cele potrzebują tylko Dockera (oraz `ssh` na komputerze użytkownika). Opcje `ssh` (klucz, port):
 `SSH_OPTS="-i ~/.ssh/shop -p 2222"`.
 
@@ -269,7 +269,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 | `https://auth.<domena>/realms/master/` | użytkownik | niedostępny (404); dostępne tylko `/realms/shop/`, `/realms/backoffice/`, `/resources/` |
 | Próby rulesetów (1.5) | użytkownik | zgodnie z tabelą |
 | `make -C infra/k8s status HOST=…` | agent | wszystko `Synced`, `Healthy`, Joby `Complete` |
-| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, konto serwisowe i punkt kontaktowy: użytkownik | osiem reguł zarządzanych przez Grafanę w folderze `agent/shop/…` (cztery przy wyłączonych kopiach), alert z reguły dochodzi e-mailem; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
+| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, konto serwisowe i punkt kontaktowy: użytkownik | jedenaście reguł zarządzanych przez Grafanę w folderze `agent/shop/…` (siedem przy wyłączonych kopiach), alert z reguły dochodzi e-mailem; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
 | Grafana Cloud (9.) | agent | metryki klastra i logi `namespace="shop"` są, logów `mailpit` nie ma, przegląd próbki logów bez sekretów i danych klientów |
 | Sentry (10.): po wpisaniu DSN-ów i wdrożeniu | użytkownik | zdarzenia i trace'y w projektach `api`, `store` i `admin` z wersją (rewizja obrazu) i środowiskiem `demo`; przegląd próbki zdarzeń bez danych osobowych |
 | AppArmor (sekcja 2, krok 3): na serwerze `sudo dmesg \| grep 'apparmor="DENIED"' \| grep -c cri-containerd` po `reinitialize` i `create-admin` | użytkownik | wpisy `signal` są oczekiwane (szum); oba cele kończą się sukcesem, a pody nie restartują się przez sondy |
@@ -328,6 +328,67 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   minut, i to nie jest awaria. Awaria krótsza niż ok. 10 minut (mniej niż trzy przebiegi)
   nie wywołuje alertu; ostrzeżenia kanału `cache` w logach `api` pokazują pojedyncze błędy. Wyciszenie na czas `restore` i
   prac: 9. w sekcji 9.
+- **`MessagingUnhealthy`** (`warning`, CronJob `queue-check`; odpala do ok. 15 minut od zdarzenia, gaśnie po następnym udanym
+  przebiegu): w `failed` leży wiadomość albo najstarsza gotowa wiadomość jakiejś kolejki jest starsza niż 10 minut (worker stoi,
+  zawisł albo nie nadąża). Log nieudanego Joba `queue-check` ma sekcja „logs of the failed jobs” wyniku
+  `make -C infra/k8s status HOST=…` (bez treści wiadomości); ekran „Stan systemu” w panelu pokazuje, które kolejki stoją.
+  1. **agent** – przegląd, tylko odczyt: `make -C infra/k8s failed HOST=…` (statystyki i do 200 najstarszych wiadomości: ID,
+     klasa, błąd, data) i `status` (pody `worker` i `worker-commands`, restarty, zdarzenia). Stoi kolejka bez wiadomości
+     w `failed`: worker nie działa (`WorkloadNotReady`, log poda w Grafana Cloud), a nie wiadomość.
+  2. **agent** – ustala przyczynę z błędu przy wiadomości (`failed` pokazuje go przy każdej) i logu `worker` w Grafana Cloud.
+     Poprawka w kodzie albo konfiguracji idzie normalnym PR i wdrożeniem (**zgoda użytkownika**); ponawianie przed nią tylko
+     zużywa wiadomości na ten sam błąd.
+  3. **zgoda użytkownika** – ponowienie po usunięciu przyczyny: `make -C infra/k8s failed-retry HOST=… ID=<id>` (jedna
+     wiadomość: `messenger:failed:retry <id> --force`) albo bez `ID` ponowienie zbiorcze (`app:messaging:failed-retry`,
+     najstarsze `MAX` wiadomości, domyślnie 200, najwyżej 1000; raport mówi, ile obsłużono, ile zachowano po błędzie i czy
+     „zostały kolejne”: wtedy to samo polecenie jeszcze raz). Zbiorczego `messenger:failed:retry` bez ID ani
+     `messenger:consume failed` aplikacja nie przepuszcza (kod 113), a cele ich nie wołają. Co trzeba wiedzieć:
+     - **ID się zmienia.** Wiadomość, której ponowienie zawiodło, zostaje w `failed` pod nowym ID (raport podaje stare i nowe),
+       więc kolejne ponowienie albo usunięcie bierze ID z `make failed`, nie z poprzedniego wyniku. Ponowienie z błędem,
+       który Symfony każe ponowić (`Recoverable…`), zostawia wiadomość z opóźnieniem: przez chwilę nie ma jej na liście
+       `failed`, choć pulpit ją liczy.
+     - **Bez gwarancji „dokładnie raz”.** Przerwanie procesu (restart poda, `Ctrl-C`, utrata połączenia SSH) może zostawić
+       duplikat wiadomości: obsługa jest idempotentna, a nadmiarową kopię usuwa `failed-remove`.
+     - Proces ponowienia uruchamia się w podzie `worker-commands` z `php -d memory_limit=128M`, a przebieg nie kończy się
+       sam: sprawdź wynik `make failed` po nim.
+  4. **zgoda użytkownika** – usunięcie wiadomości, której nie da się ani nie warto obsłużyć (np. zamówienie już nie istnieje,
+     duplikat): `make -C infra/k8s failed-remove HOST=… ID=<id>` pokazuje wiadomość i usuwa ją dopiero po słowie `tak`;
+     nie do cofnięcia. **Nigdy nie usuwa się wiadomości z webhookiem płatności** (np. o opłaceniu): jej utrata zostawia
+     opłacone zamówienie jako nieopłacone, a dostawca nie wyśle jej drugi raz. Takie wiadomości tylko ponawia się po
+     naprawie przyczyny; gdy nie da się jej naprawić, decyzję podejmuje właściciel.
+  5. **agent** – sprawdza wynik: `make failed` pokazuje pusty `failed`, ekran „Stan systemu” jest zdrowy, a następny Job
+     `queue-check` kończy się sukcesem i alert gaśnie.
+  - **Zator `worker-commands` dłuższy niż karencja wygaszania** (alert po 10 minutach zatoru): `order-expiry` anuluje
+    wtedy zamówienia po terminie także wtedy, gdy webhook ich opłacenia czeka jeszcze w kolejce `payment_simulator`
+    (obsługa komend stoi). Po przywróceniu workera i opróżnieniu kolejki **agent** sprawdza w logach `api` w Grafana Cloud
+    z okresu zatoru wpisy poziomu `error` z komunikatem
+    „Payment webhook: the payment cannot pay its order and requires a manual refund.” (webhook opłacenia zamówienia, które już anulowano; pola `orderId`, `paymentId`, `reason`, czyli
+    `order_cancelled`, `paid_after_deadline` albo `duplicate`). Ten sam powód zapisuje kolumna `refund_required_reason`
+    płatności `succeeded` w bazie (do odczytu zleca **użytkownikowi**, agent nie sięga do bazy). Zgłasza zamówienia
+    użytkownikowi do zwrotu (rejestru zwrotów nie ma); sam zwrotów nie wykonuje. Wiadomości z webhookami płatności ze stojącej kolejki się nie usuwa.
+- **`OrderExpiryFailed`** (`critical`, CronJob `order-expiry`; do ok. 15 minut): Job wygaszania zamówień po terminie i zamykania
+  porzuconych płatności (`ordering:expire-overdue`, potem `payment:close-abandoned`, zawsze obie) kończy się błędem.
+  **Agent** czyta log nieudanego Joba `order-expiry` w sekcji „logs of the failed jobs” wyniku `status`: log wskazuje
+  identyfikator zamówienia albo płatności, której przebieg nie obsłużył (błąd stanu rezerwacji, niedostępny dostawca płatności,
+  baza), albo przekroczony limit czasu (duża zaległość: kolejne przebiegi ją nadrabiają i kończą pracę, bo komendy są
+  idempotentne). Jedna z przyczyn to wpis `payment:close-abandoned: the order of the payment could not be read` (pola
+  `paymentId`, `orderId`, `reason`; szukaj go w logu Joba i w logach `api` w Grafana Cloud): zamówienie płatności `pending`,
+  którego Ordering nie potrafi odczytać (brak zamówienia, uszkodzone dane). Płatność zostaje `pending`, a każdy kolejny
+  przebieg kończy się tym samym błędem (kod 2), więc alert pali się stale, dopóki dane się nie zmienią; to błąd danych do
+  decyzji **właściciela** (naprawa albo zamknięcie płatności), nie coś, co naprawi ponowienie. Pojedyncze zamówienie z błędem
+  zostaje `new` do poprawki, a reszta jest wygaszona. Przyczynę usuwa poprawka
+  w kodzie (PR, wdrożenie: **zgoda użytkownika**) albo decyzja właściciela co do zamówienia lub płatności (**użytkownik**:
+  ręczne anulowanie, zwrot). Wiadomość `ExpireUnpaidOrder` w `failed` wygasza CronJob, więc jej ponawianie nie jest
+  potrzebne; `MessagingUnhealthy` z tego powodu można zamknąć usunięciem wiadomości (4.), jeśli zamówienie jest już
+  `cancelled`. Alert gaśnie po następnym udanym Jobie.
+- **`OrderExpiryMissing`** (`critical`; brak udanego przebiegu `order-expiry` od 30 minut albo brak jego metryki): CronJob
+  jest wstrzymany (`suspend: true`) po przerwanym `restore` albo ręcznie, usunięty albo Joby nie startują (węzeł wyłączony,
+  Alloy bez metryk: razem z nim `ClusterSilent`). **Agent** czyta stan (`status`: Joby i zdarzenia) i wynik
+  `ssh <user>@<adres> 'sudo k3s kubectl -n shop get cronjob order-expiry queue-check -o wide'` zleca **użytkownikowi** (agent nie
+  uruchamia `kubectl` na serwerze). `suspend: true` po przerwanym odtworzeniu: „Odtworzenie przerwane w trakcie” w 8.
+  (`restore` ponowiony przywraca `suspend: false`), a po ręcznym wstrzymaniu zdejmuje je **użytkownik**:
+  `ssh <user>@<adres> 'sudo k3s kubectl -n shop patch cronjob order-expiry -p "{\"spec\":{\"suspend\":false}}"'`. Zaległe
+  zamówienia i płatności nadrabia pierwszy udany przebieg. Alert gaśnie po nim.
 - **Pozostałe alerty**: `NodeDiskFull` (system plików węzła zajęty w ponad 85% przez 10 minut: miejsce zwalnia albo dysk powiększa
   **użytkownik**), `ClusterSilent` (brak metryk klastra przez 15 minut: serwer, k3s albo Alloy; `status` i panel OVH),
   `WorkloadNotReady` (Deployment albo StatefulSet w `shop`, w tym Redis, ma mniej gotowych replik niż oczekiwane albo go nie ma
@@ -378,12 +439,12 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
   make -C infra/k8s restore SNAPSHOT=<identyfikator świeżego snapshotu nightly tego serwera> KUBE_DIR=<katalog>
   ```
 
-  `restore` sprawdza (bez zmian) brak aktywnych Jobów (poza Jobem CronJoba `rate-limit-check`, który trwa najwyżej 60 s i nie jest powodem odmowy), brak trwającej synchronizacji `shop` w Argo CD i zgodność migracji
+  `restore` sprawdza (bez zmian) brak aktywnych Jobów (poza Jobami CronJobów `rate-limit-check`, `queue-check` i `order-expiry`, które trwają najwyżej 60, 120 i 600 s i nie są powodem odmowy), brak trwającej synchronizacji `shop` w Argo CD i zgodność migracji
   snapshotu z wdrożonym kodem, wypisuje snapshot i skutki i czeka na słowo `tak` (wpisuje je agent dopiero po zgodzie). Potem:
   kopia `pre-restore`, wyłączenie automatycznej synchronizacji `root`, potem `shop` (przejdzie też, gdy jej już nie ma),
-  wstrzymanie CronJobów (`cart-purge-expired`, `backup`, `rate-limit-check`), ponowne sprawdzenie Jobów, także Joba `rate-limit-check` (nocna kopia mogła wystartować po pierwszym sprawdzeniu: `restore` czeka
+  wstrzymanie CronJobów (`cart-purge-expired`, `backup`, `rate-limit-check`, `queue-check`, `order-expiry`), ponowne sprawdzenie Jobów, także Jobów trzech ostatnich (nocna kopia mogła wystartować po pierwszym sprawdzeniu: `restore` czeka
   na nią do 2 godzin, `RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, a potem kończy się błędem z działającymi aplikacjami), `api`, `worker`,
-  `store` i `keycloak` do zera, odtworzenie danych, `migrate`, `keycloak-config`, reindeks, powrót aplikacji, `purge-caches` i
+  `worker-commands`, `store` i `keycloak` do zera, odtworzenie danych, `migrate`, `keycloak-config`, reindeks, powrót aplikacji, `purge-caches` i
   włączenie synchronizacji `root` (ten przywraca `shop`). Kończy się wierszem `restore: done` z identyfikatorem snapshotu
   `pre-restore`. Sprawdzenie: `make -C infra/k8s status HOST=…` (aplikacje `Synced`/`Healthy`, pody `Running`), sklep i
   panel w przeglądarce (**użytkownik**: logowanie do panelu). Wynik (czas, snapshot, `pre-restore`) w komentarzu do #178.
@@ -395,7 +456,7 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
   odtworzonych danych), przy Argo CD synchronizacja `root` i `shop` zostaje wyłączona; komunikat podaje krok, log Joba i
   snapshot `pre-restore`. Agent czyta przyczynę (komunikat, `status`), po usunięciu jej (np. poprawka w repo, dostęp do R2) i
   po **zgodzie użytkownika** uruchamia `restore` ponownie z tym samym `SNAPSHOT` i `PRE_RESTORE=skip` (kopia stanu sprzed
-  pierwszej próby już jest; aplikacje na zerze wracają z jedną repliką, a wstrzymane `cart-purge-expired`, `backup` i `rate-limit-check` z `suspend: false`) albo wraca do stanu sprzed odtworzenia:
+  pierwszej próby już jest; aplikacje na zerze wracają z jedną repliką, a wstrzymane `cart-purge-expired`, `backup`, `rate-limit-check`, `queue-check` i `order-expiry` z `suspend: false`) albo wraca do stanu sprzed odtworzenia:
   `restore SNAPSHOT=<pre-restore>`. Ponowne uruchomienie przy wyłączonej synchronizacji `root` jej nie włącza: włącza ją
   **użytkownik** w Argo CD (z `prune` i `selfHeal`, jak w `argocd/root.yaml`).
 - **Utrata serwera** – **zgoda użytkownika** przy każdym kroku z niej: nowy VPS (**użytkownik**, 0.), `bootstrap` z kopią
@@ -423,7 +484,8 @@ uwierzytelnienia: każdy pod klastra, także w `monitoring`, sięga do nich po s
 
 Alerty to `PrometheusRule` `shop-alerts` chartu `shop` (`alerts.enabled: true` w `prod`; `docs/features/deploy-ops/spec.md`, O6):
 `BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `RateLimitsOff` (brak udanego sprawdzenia Redisa
-limiterów od 17 minut), `NodeDiskFull` (ponad 85% przez 10 minut), `ClusterSilent` (brak metryk klastra przez 15 minut) i `WorkloadNotReady` (Deployment albo StatefulSet w `shop` niegotowy albo
+limiterów od 17 minut), `MessagingUnhealthy` (nieudany Job `queue-check`: wiadomość w `failed` albo kolejka stoi),
+`OrderExpiryFailed` (nieudany Job `order-expiry`), `OrderExpiryMissing` (brak udanego `order-expiry` od 30 minut), `NodeDiskFull` (ponad 85% przez 10 minut), `ClusterSilent` (brak metryk klastra przez 15 minut) i `WorkloadNotReady` (Deployment albo StatefulSet w `shop` niegotowy albo
 usunięty przez 10 minut). Alloy synchronizuje je przez API importu Grafany stosu (`/api/convert`, cel `grafana-alerting`) jako
 reguły zarządzane przez Grafanę; ewaluuje je Grafana Cloud poza serwerem, więc alert przychodzi także wtedy, gdy serwer albo Alloy
 nie żyje, a powiadomienia idą przez Alertmanager Grafany. Ruler metryk stosu nie ma Alertmanagera (nowe stosy Grafana Cloud go nie
@@ -447,7 +509,7 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
    `Healthy`. Brak konta albo zły token zostawia `Degraded` tylko `monitoring` (log Alloy w przestrzeni `monitoring`); sklep działa i
    się wdraża. W Grafana Cloud widać metryki klastra (np. `up`, `kube_node_info`) i logi (`namespace="shop"`), a logów podów
    `mailpit` nie ma.
-5. **agent** – po wdrożeniu przegląd próbki logów w Grafana Cloud (Explore, logi każdego źródła: `api`, `worker`, `store`, `admin`,
+5. **agent** – po wdrożeniu przegląd próbki logów w Grafana Cloud (Explore, logi każdego źródła: `api`, `worker`, `worker-commands`, `store`, `admin`,
    `keycloak`, `postgres`, `imgproxy` i zdarzenia klastra) pod kątem sekretów i danych klientów: haseł, tokenów, nagłówków,
    ciasteczek, adresów e-mail i IP, imion i adresów w treści wyjątków. Znalezisko to nowa reguła maskowania w
    `extraLogProcessingStages` manifestu `monitoring` z wierszem w korpusie `infra/k8s/tests/log-corpus` albo wyłączenie źródła w
@@ -455,15 +517,16 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
 6. **agent** – po wdrożeniu sprawdza w Grafana Cloud liczbę aktywnych serii (darmowy plan: 10 tys.); przy przekroczeniu Grafana Cloud
    odrzuca nadmiar, a agent zawęża listę metryk w manifeście.
 7. **użytkownik** – w Grafana Cloud (Alerting → Contact points) dodaje punkt kontaktowy e-mail i ustawia go jako domyślny w drzewie
-   powiadomień Alertmanagera Grafany. Alerty to `NodeDiskFull` z `severity: warning` i reszta z `critical`; że alerty reguł trafiają
+   powiadomień Alertmanagera Grafany. Alerty `NodeDiskFull`, `RateLimitsOff` i `MessagingUnhealthy` mają `severity: warning`, reszta `critical`; że alerty reguł trafiają
    do tego punktu kontaktowego, potwierdza dopiero krok 8.
-8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać osiem reguł grup `shop-backup`, `shop-rate-limits` i `shop-cluster`
-   (przy kopiach wyłączonych w `prod`, 3.: cztery reguły grup `shop-rate-limits` i `shop-cluster`)
+8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać jedenaście reguł grup `shop-backup`, `shop-rate-limits`, `shop-messaging` i `shop-cluster`
+   (przy kopiach wyłączonych w `prod`, 3.: siedem reguł grup `shop-rate-limits`, `shop-messaging` i `shop-cluster`)
    w folderze `agent/shop/shop-alerts/…`, oznaczonych jako provisioned (źródło: `PrometheusRule` `shop-alerts` w przestrzeni
    `shop`, synchronizowany przez Alloy przez API importu Grafany; zmiana reguły to zmiana chartu, nie edycja w UI). Brak reguł
    po 10 minutach od wdrożenia: log Alloy (`mimir.rules.kubernetes`, np. 401 przy złym tokenie konta serwisowego). **`BackupMissing` i
    `BackupVerifyMissing` odpalają od startu aż do pierwszej udanej kopii i weryfikacji (metryki jeszcze nie ma, reguła ma
-   `absent`): to oczekiwane, nie awaria.** Po pierwszej nocnej kopii i weryfikacji gasną.
+   `absent`): to oczekiwane, nie awaria.** Po pierwszej nocnej kopii i weryfikacji gasną. Tak samo `OrderExpiryMissing` (i
+   `RateLimitsOff`) po pierwszym wdrożeniu z regułą odpala, dopóki CronJob nie ma pierwszego udanego Joba (kilka minut).
    To też sprawdzenie od końca do końca, które wykonuje **użytkownik** (agent nie ma dostępu do jego skrzynki): jeśli Grafana
    Cloud powstała przed pierwszą udaną kopią, `BackupMissing` odpala zaraz po załadowaniu reguły (`absent_over_time` bez `for`),
    więc e-mail o nim powinien przyjść wkrótce po synchronizacji reguły. Agent widzi stronę alertu: w Alertmanagerze Grafany
@@ -473,8 +536,8 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
    (`agent/shop/delivery-test`), sprawdza odbiorcę `email` i próbę wysyłki bez błędu, a potem usuwa regułę i folder; e-mail
    potwierdza użytkownik.
 9. **użytkownik** – przed świadomym `restore` i planowanymi pracami (restart serwera, aktualizacja k3s, ćwiczenie odtworzenia)
-   wycisza alerty w Grafana Cloud (Alerting → Silences): dla `restore` dopasowanie `alertname=~"WorkloadNotReady|Backup.*|RateLimitsOff"` (`restore` wstrzymuje CronJob
-   `rate-limit-check`, więc po 17 minutach alert odpaliłby bez awarii), dla innych prac `alertname=~"WorkloadNotReady|RateLimitsOff"`
+   wycisza alerty w Grafana Cloud (Alerting → Silences): dla `restore` dopasowanie `alertname=~"WorkloadNotReady|Backup.*|RateLimitsOff|OrderExpiryMissing"` (`restore` wstrzymuje CronJoby
+   `rate-limit-check` i `order-expiry`, więc po 17 i po 30 minutach alerty odpaliłyby bez awarii), dla innych prac `alertname=~"WorkloadNotReady|RateLimitsOff|OrderExpiryMissing"`
    (Redis wyłączony razem z serwerem albo restartem k3s kończy sprawdzenie błędem; przy wyłączeniu całego serwera także
    `ClusterSilent`), na czas prac z zapasem.
    Wyciszenia nie zakłada automat. Po pracach sprawdza, że wyciszenie wygasło, albo je usuwa. Brak CRD `PrometheusRule`
@@ -491,7 +554,7 @@ poszerzenia wyjątku node-exportera albo usunięcia polityki.
 
 ## 10. Błędy i trace'y: Sentry
 
-Błędy i trace'y api (z workerem i Jobami), serwera i przeglądarki sklepu oraz przeglądarki panelu idą do Sentry SaaS
+Błędy i trace'y api (z workerami i Jobami), serwera i przeglądarki sklepu oraz przeglądarki panelu idą do Sentry SaaS
 (`docs/features/sentry/spec.md`, `docs/adr/backups-observability.md`). Każda aplikacja włącza SDK tylko przy swoim DSN: chart
 przekazuje go jako `SENTRY_DSN` razem z `SENTRY_ENVIRONMENT` (`sentry.environment`, w `prod` `demo`), `SENTRY_RELEASE` (rewizja
 obrazów, `image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` (`sentry.tracesSampleRate`, w `prod` 0,1). `prod` ma DSN-y trzech projektów
@@ -500,7 +563,7 @@ organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem
 (`https://<klucz>@<host>/<id projektu>`) i `tracesSampleRate` (0 do 1).
 
 1. **użytkownik** – zakłada konto Sentry (darmowy plan) i organizację w regionie UE (adresy `*.ingest.de.sentry.io`) oraz trzy projekty:
-   `api` (PHP/Symfony; obejmuje api, worker i Joby), `store` (Next.js) i `admin` (Vue). Z każdego bierze DSN (Settings → Client Keys)
+   `api` (PHP/Symfony; obejmuje api, oba workery i Joby), `store` (Next.js) i `admin` (Vue). Z każdego bierze DSN (Settings → Client Keys)
    i podaje go agentowi (DSN nie jest tajny).
 2. **użytkownik** – w ustawieniach Sentry (limity darmowego planu są małe, a DSN jawny, więc każdy może wysyłać zdarzenia do
    projektu): włącza ochronę przed skokami (Spike Protection) dla organizacji i ustawia limit zdarzeń na każdym projekcie
@@ -518,7 +581,7 @@ organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem
    budowanie błędem, a brak którejś z trzech zmiennych kończy job `images` błędem z jej nazwą, przed budowaniem. Mapy
    nie zostają w obrazach (etapy `prod` nie mają plików `.map`).
 5. **agent** – po pierwszym wdrożeniu z DSN-ami (`make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`, `Healthy`) sprawdza, że
-   kontenery `api`, `worker`, `store` i `admin` mają `SENTRY_*` (`SENTRY_DSN`, `SENTRY_ENVIRONMENT=demo`, `SENTRY_RELEASE` równe
+   kontenery `api`, `worker`, `worker-commands`, `store` i `admin` mają `SENTRY_*` (`SENTRY_DSN`, `SENTRY_ENVIRONMENT=demo`, `SENTRY_RELEASE` równe
    rewizji `image.tag`), a **użytkownik** w Sentry, że w trzech projektach pojawiają się zdarzenia z tą wersją i środowiskiem `demo`
    oraz trace'y (próbkowanie 0,1, więc widać je po pewnym ruchu).
 6. **użytkownik** (z agentem) – po wdrożeniu przegląd próbki zdarzeń w Sentry (Issues i Performance każdego z trzech projektów,

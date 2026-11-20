@@ -53,12 +53,13 @@ są przypięte w pliku compose, a wersja Elasticsearch w `infra/elasticsearch/Do
 | `imgproxy` | imgproxy 3, źródło S3 → Garage | przetwarzanie obrazów na żądanie | `imgproxy health` |
 | `mailpit` | Mailpit | SMTP dla realmu `shop` (weryfikacja e-mail, reset hasła) | `/readyz` |
 | `api` | własny obraz FrankenPHP, PHP 8.5, target `dev` (z SPX) | HTTP API | `GET /health` |
-| `worker` | obraz z tego samego Dockerfile i targetu co `api`, własny katalog cache (`APP_CACHE_DIR=/tmp/cache`) | `messenger:consume outbox events scheduled payment_simulator promotions jobs` | proces konsumenta działa |
+| `worker` | obraz z tego samego Dockerfile i targetu co `api`, własny katalog cache (`APP_CACHE_DIR=/tmp/cache`) | `messenger:consume outbox events --time-limit=86400 --memory-limit=192M`: relay outboxa i zdarzenia RabbitMQ | proces konsumenta działa |
+| `worker-commands` | ten sam obraz co `worker` i `api`, własny katalog cache, zależy tylko od `api` (nie czeka na RabbitMQ) | `messenger:consume payment_simulator scheduled promotions jobs --time-limit=86400 --memory-limit=192M`: komendy czekające w Postgresie | proces konsumenta działa |
 | `store` | Node 24, `next dev` | sklep | `GET /` |
 | `admin` | Node 24, `vite dev` | panel | `GET /` |
 | `e2e` | obraz Playwright, profil `e2e` | testy E2E i pomiar Lighthouse, uruchamiany tylko przez `make e2e` i `make lighthouse` | — |
 
-Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait` dla wszystkich usług poza `rabbitmq-init` i `worker`. Potem uruchamia `rabbitmq-init` przez `docker compose run --rm` (`up --wait` traktuje zakończoną usługę jednorazową, na którą nic nie czeka, jako błąd), krok inicjalizacji (niżej) i dopiero na końcu `worker`, bo bez migracji nie ma tabel transportu `outbox`. `worker` jest tworzony od nowa przy każdym `make up` (`--force-recreate`), więc działa na kodzie i konfiguracji skompilowanych przez `init`. Ma własny katalog cache poza bind mountem: gdy `api` przebudowuje kontener DI we wspólnym `var/cache` (po zmianie kodu), usuwa pliki, które długo działający worker wczytuje leniwie, a worker kończy się błędem na pierwszej wiadomości, której nie przetworzy przed `redeliver_timeout` (300 s).
+Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait` dla wszystkich usług poza `rabbitmq-init`, `worker` i `worker-commands`. Potem uruchamia `rabbitmq-init` przez `docker compose run --rm` (`up --wait` traktuje zakończoną usługę jednorazową, na którą nic nie czeka, jako błąd), krok inicjalizacji (niżej) i dopiero na końcu `worker` i `worker-commands`, bo bez migracji nie ma tabel transportów. Workery są tworzone od nowa przy każdym `make up` (`--force-recreate`), więc działają na kodzie i konfiguracji skompilowanych przez `init`. Każdy ma własny katalog cache poza bind mountem: gdy `api` przebudowuje kontener DI we wspólnym `var/cache` (po zmianie kodu), usuwa pliki, które długo działający worker wczytuje leniwie, a worker kończy się błędem na pierwszej wiadomości, której nie przetworzy przed `redeliver_timeout` (300 s).
 
 Obraz API zawiera rozszerzenia `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, `pcntl` (worker kończy bieżącą
 wiadomość i zatrzymuje się na SIGTERM), a target `dev` dodatkowo SPX.
@@ -66,12 +67,12 @@ Entrypoint `api` w trybie dev instaluje tylko zależności, jeśli zmienił się
 
 ### Inicjalizacja bazy i indeksu
 
-Migracje i indeks Elasticsearch nie powstają przy starcie kontenera (`api` ani `worker`). Robi to osobny,
+Migracje i indeks Elasticsearch nie powstają przy starcie kontenera (`api` ani workery). Robi to osobny,
 idempotentny krok, uruchamiany jawnie:
 
 | Gdzie | Krok |
 |---|---|
-| lokalnie | `make up` po starcie usług, a przed startem `worker`, wywołuje `make -C apps/api init`: `doctrine:migrations:migrate` i `catalog:search-index:setup` |
+| lokalnie | `make up` po starcie usług, a przed startem workerów, wywołuje `make -C apps/api init`: `doctrine:migrations:migrate` i `catalog:search-index:setup` |
 | testy na usługach stosu | `make -C apps/api init-test`: te same komendy w środowisku `test` (baza `shop_test`, alias `test_products`), przy czym indeks testowy powstaje od nowa (`catalog:search-index:setup --recreate`); cel `test` api wywołuje go przed testami |
 | CI | usługi potrzebne testom startują przed `make -C apps/api test`, który sam wywołuje `init-test` |
 | wdrożenie (Kubernetes) | osobny Job z tymi samymi komendami co `init`, przed wdrożeniem nowej wersji aplikacji |
@@ -332,7 +333,7 @@ Transporty:
 `outbox` i `failed` dzielą tabelę `messenger_messages`, którą tworzy migracja (`auto_setup=false`). Worker odpytuje
 je co sekundę (`use_notify: false`, migracja nie tworzy wyzwalacza NOTIFY). Połączenie
 z RabbitMQ składa się ze zmiennych `RABBITMQ_HOST`, `RABBITMQ_USER`, `RABBITMQ_VHOST` (jawne, w `environment`
-usług `api` i `worker`) oraz `RABBITMQ_DEFAULT_PASS` (`.env.local`).
+usług `api` i obu workerów) oraz `RABBITMQ_DEFAULT_PASS` (`.env.local`).
 
 Przepływ:
 
@@ -357,8 +358,8 @@ Przepływ:
    a odbiorcy nigdy przy konsumpcji z `outbox`, więc nie ma pętli ani podwójnej obsługi.
 5. Ponowienia (z domyślnym jitterem ±10 %), potem transport `failed`, gdzie zdarzenie czeka na
    `messenger:failed:retry`:
-   - `events`: 3 próby z opóźnieniem 1 s i mnożnikiem 3,
-   - `outbox`: 30 prób z opóźnieniem 1 s, mnożnikiem 2 i najwyżej 60 s, razem około 25 minut. Błąd przekaźnika to
+   - `events`: 10 prób z opóźnieniem 1 s, mnożnikiem 3 i najwyżej 300 s, razem około 26 minut,
+   - `outbox`: 200 prób z opóźnieniem 1 s, mnożnikiem 2 i najwyżej 60 s, razem około 3 godzin. Błąd przekaźnika to
      zawsze niedostępny, odrzucający albo niemający trasy broker, więc restart RabbitMQ nie przenosi zdarzeń do
      `failed`.
      Ponowienie to nowy wiersz z późniejszym `available_at`.

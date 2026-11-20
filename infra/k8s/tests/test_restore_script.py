@@ -211,6 +211,10 @@ else:
 '''
 
 AUTOMATED = {"prune": True, "selfHeal": True}
+# The CronJobs of short checks (the Redis of the limiters: 60 s, the queues of messages: 120 s, the expiry of orders: 600 s): an active Job of
+# theirs is no reason for restore to refuse (it waits for it before it scales the applications down). Every other Job is.
+CHECKS = ("rate-limit-check", "queue-check", "order-expiry")
+CRONJOBS = ("cart-purge-expired", "backup", "rate-limit-check", "queue-check", "order-expiry")
 
 
 def initial_state(argocd=False):
@@ -223,12 +227,14 @@ def initial_state(argocd=False):
             for name, logical in (("garage-init-1a", "garage-init"), ("migrate-2b", "migrate"), ("keycloak-config-3c", "keycloak-config"),
                                   ("initialize-4d", "initialize"), ("purge-caches-5e", "purge-caches"))
         },
-        "deployments": {"api": 1, "worker": 1, "store": 1, "keycloak": 1},
+        "deployments": {"api": 1, "worker": 1, "worker-commands": 1, "store": 1, "keycloak": 1},
         "cronjobs": {
             "restore": {"suspend": True, "deadline": 10800, "env": {"RESTORE_MODE": "list", "RESTORE_SNAPSHOT": ""}},
             "backup": {"suspend": False, "deadline": 7200, "env": {}},
             "cart-purge-expired": {"suspend": False, "deadline": None, "env": {}},
             "rate-limit-check": {"suspend": False, "deadline": 60, "env": {}},
+            "queue-check": {"suspend": False, "deadline": 120, "env": {}},
+            "order-expiry": {"suspend": False, "deadline": 600, "env": {}},
         },
         "outcomes": [["restore-check-", "Complete", CHECK_LOG], ["restore-list-", "Complete", LIST_LOG],
                      ["backup-pre-restore-", "Complete", f"backup: snapshot with the tag pre-restore\nsnapshot {PRE_RESTORE} saved\nbackup: done\n"]],
@@ -357,8 +363,8 @@ class RestoreScriptTest(unittest.TestCase):
         result = cluster.run(RESTORE, answer="nie\n", SNAPSHOT=SNAPSHOT)
         before = result.stdout.split("type tak")[0]
         for part in ("9e050a3d569735e3", "2026-11-11T03:00:05+01:00", "host 0b6f1d9e-4c3a", "nightly", "revision 0123abcd", "28 migrations",
-                     "12 objects", "pre-restore", "shop", "keycloak", "product-images", "Redis", "RabbitMQ", "api, worker, store and keycloak",
-                     "cart-purge-expired", "rate-limit-check", "migrate", "keycloak-config", "catalog:reindex", "purge-caches"):
+                     "12 objects", "pre-restore", "shop", "keycloak", "product-images", "Redis", "RabbitMQ", "api, worker, worker-commands, store and keycloak",
+                     "cart-purge-expired", "rate-limit-check", "queue-check", "order-expiry", "migrate", "keycloak-config", "catalog:reindex", "purge-caches"):
             self.assertIn(part, before)
 
     def test_the_check_job_is_from_the_cronjob_restore_in_the_mode_check_and_is_removed(self):
@@ -394,42 +400,56 @@ class RestoreScriptTest(unittest.TestCase):
     def running(logical, owner, **changes):
         return dict({"labels": {"app.kubernetes.io/name": logical}, "state": "Running", "log": "", "env": {}, "deadline": 60, "owner": owner}, **changes)
 
-    def test_an_active_job_of_the_cronjob_rate_limit_check_is_no_reason_to_refuse_and_is_waited_for_before_the_applications_stop(self):
-        """The check of Redis runs every five minutes for at most 60 s: refusing for it would make restore a matter of luck."""
-        for argocd in (False, True):
-            jobs = initial_state()["jobs"]
-            jobs["rate-limit-check-29341234"] = self.running("rate-limit-check", "rate-limit-check", complete_after_lists=8)  # read by step 1 and the three Jobs of the version first
-            cluster = self.stub(argocd=argocd, jobs=jobs)
-            result = self.restore(cluster)
-            self.assertEqual(0, result.returncode, (argocd, result.stderr))
-            self.assertIn("type tak", result.stdout)
-            self.assertIn("rate-limit-check-29341234", result.stdout, "it says it waits for the Job")
-            calls = list(map(strip_namespace, cluster.calls()))
-            suspend = next(i for i, c in enumerate(calls) if c[:3] == ["patch", "cronjob", "rate-limit-check"])
-            lists = [i for i, c in enumerate(calls) if c[:2] == ["get", "jobs"] and i > suspend]
-            scale = next(i for i, c in enumerate(calls) if c[0] == "scale")
-            self.assertGreaterEqual(len(lists), 3, "the Jobs are read after the suspension until the Job of the check ends")
-            self.assertLess(max(lists), scale)
-            # It is in the cluster as the chart has it again.
-            self.assertFalse(cluster.state()["cronjobs"]["rate-limit-check"]["suspend"])
+    def test_an_active_job_of_a_cronjob_of_a_check_is_no_reason_to_refuse_and_is_waited_for_before_the_applications_stop(self):
+        """The checks run every five minutes for at most 60 to 600 s: refusing for them would make restore a matter of luck."""
+        for name in CHECKS:
+            for argocd in (False, True):
+                jobs = initial_state()["jobs"]
+                job = f"{name}-29341234"
+                jobs[job] = self.running(name, name, complete_after_lists=8)  # read by step 1 and the three Jobs of the version first
+                cluster = self.stub(argocd=argocd, jobs=jobs)
+                result = self.restore(cluster)
+                self.assertEqual(0, result.returncode, (name, argocd, result.stderr))
+                self.assertIn("type tak", result.stdout)
+                self.assertIn(job, result.stdout, "it says it waits for the Job")
+                calls = list(map(strip_namespace, cluster.calls()))
+                suspend = next(i for i, c in enumerate(calls) if c[:3] == ["patch", "cronjob", name])
+                lists = [i for i, c in enumerate(calls) if c[:2] == ["get", "jobs"] and i > suspend]
+                scale = next(i for i, c in enumerate(calls) if c[0] == "scale")
+                self.assertGreaterEqual(len(lists), 3, "the Jobs are read after the suspension until the Job of the check ends")
+                self.assertLess(max(lists), scale)
+                # It is in the cluster as the chart has it again.
+                self.assertFalse(cluster.state()["cronjobs"][name]["suspend"])
 
-    def test_a_job_of_the_check_that_does_not_end_stops_the_restore_before_the_applications_with_the_cronjob_suspended(self):
+    def test_active_jobs_of_all_the_checks_together_are_no_reason_to_refuse_either(self):
         jobs = initial_state()["jobs"]
-        jobs["rate-limit-check-29341234"] = self.running("rate-limit-check", "rate-limit-check")
+        for name in CHECKS:
+            jobs[f"{name}-29341234"] = self.running(name, name, complete_after_lists=8)
         cluster = self.stub(jobs=jobs)
-        result = self.restore(cluster, RESTORE_ACTIVE_JOBS_WAIT_SECONDS="0")
-        self.assertEqual(1, result.returncode)
-        self.assertIn("rate-limit-check-29341234", result.stderr)
-        self.assertIn("step 4", result.stderr)
-        state = cluster.state()
-        self.assertTrue(state["cronjobs"]["rate-limit-check"]["suspend"])
-        self.assertEqual(initial_state()["deployments"], state["deployments"])
-        self.assertEqual([], [c for c in map(strip_namespace, cluster.calls()) if c[0] == "scale"])
+        result = self.restore(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        for name in CHECKS:
+            self.assertIn(f"{name}-29341234", result.stdout)
 
-    def test_an_active_job_of_another_cronjob_is_still_refused_beside_one_of_the_check(self):
+    def test_a_job_of_a_check_that_does_not_end_stops_the_restore_before_the_applications_with_the_cronjobs_suspended(self):
+        for name in CHECKS:
+            jobs = initial_state()["jobs"]
+            jobs[f"{name}-29341234"] = self.running(name, name)
+            cluster = self.stub(jobs=jobs)
+            result = self.restore(cluster, RESTORE_ACTIVE_JOBS_WAIT_SECONDS="0")
+            self.assertEqual(1, result.returncode, name)
+            self.assertIn(f"{name}-29341234", result.stderr)
+            self.assertIn("step 4", result.stderr)
+            state = cluster.state()
+            self.assertEqual({c: True for c in CRONJOBS}, {c: state["cronjobs"][c]["suspend"] for c in CRONJOBS}, name)
+            self.assertEqual(initial_state()["deployments"], state["deployments"])
+            self.assertEqual([], [c for c in map(strip_namespace, cluster.calls()) if c[0] == "scale"])
+
+    def test_an_active_job_of_another_cronjob_is_still_refused_beside_ones_of_the_checks(self):
         for owner in ("backup", "cart-purge-expired", "restore", None):
             jobs = initial_state()["jobs"]
-            jobs["rate-limit-check-29341234"] = self.running("rate-limit-check", "rate-limit-check")
+            for name in CHECKS:
+                jobs[f"{name}-29341234"] = self.running(name, name)
             jobs["other-29341234"] = self.running("other", owner)
             cluster = self.stub(jobs=jobs)
             result = self.restore(cluster)
@@ -438,15 +458,18 @@ class RestoreScriptTest(unittest.TestCase):
             self.assertNotIn("type tak", result.stdout, owner)
             self.assert_nothing_changed(cluster)
 
-    def test_an_active_job_that_only_has_the_name_of_the_check_is_refused(self):
-        """What makes a Job the check's is its CronJob as owner, not its name: a Job someone made by hand is a Job like any other."""
-        jobs = initial_state()["jobs"]
-        jobs["rate-limit-check-by-hand"] = self.running("rate-limit-check", None)
-        cluster = self.stub(jobs=jobs)
-        result = self.restore(cluster)
-        self.assertEqual(1, result.returncode)
-        self.assertIn("rate-limit-check-by-hand", result.stderr)
-        self.assert_nothing_changed(cluster)
+    def test_an_active_job_that_only_has_the_name_of_a_check_is_refused(self):
+        """What makes a Job the check's is its CronJob as owner, not its name: a Job someone made by hand is a Job like any other. And a Job
+        of one check owned by the CronJob of another is no Job of a check by its name either: the owner counts."""
+        for name in CHECKS:
+            for owner in (None, "backup"):
+                jobs = initial_state()["jobs"]
+                jobs[f"{name}-by-hand"] = self.running(name, owner)
+                cluster = self.stub(jobs=jobs)
+                result = self.restore(cluster)
+                self.assertEqual(1, result.returncode, (name, owner))
+                self.assertIn(f"{name}-by-hand", result.stderr)
+                self.assert_nothing_changed(cluster)
 
     def test_a_synchronization_of_shop_in_progress_is_refused(self):
         for app in ({"automated": dict(AUTOMATED), "phase": "Running"}, {"automated": dict(AUTOMATED), "operation": True}):
@@ -535,43 +558,65 @@ class RestoreScriptTest(unittest.TestCase):
     # The order of the steps
 
     def test_without_argo_cd_the_order_and_the_replicas_it_remembered(self):
-        deployments = {"api": 1, "worker": 2, "store": 1, "keycloak": 1}
+        deployments = {"api": 1, "worker": 2, "worker-commands": 1, "store": 1, "keycloak": 1}
         cluster = self.stub(deployments=deployments)
         result = self.restore(cluster)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(deployments, cluster.state()["deployments"])
-        self.assertEqual({"restore": True, "backup": False, "cart-purge-expired": False, "rate-limit-check": False},
+        self.assertEqual({"restore": True, **{name: False for name in CRONJOBS}},
                          {n: c["suspend"] for n, c in cluster.state()["cronjobs"].items()})
         self.assertEqual([
             "patch cronjob cart-purge-expired", "patch cronjob backup", "patch cronjob rate-limit-check",
-            "scale deployment api", "scale deployment worker", "scale deployment store", "scale deployment keycloak",
+            "patch cronjob queue-check", "patch cronjob order-expiry",
+            "scale deployment api", "scale deployment worker", "scale deployment worker-commands", "scale deployment store", "scale deployment keycloak",
             "scale deployment keycloak", "rollout status deployment/keycloak",
-            "scale deployment api", "scale deployment worker", "scale deployment store",
+            "scale deployment api", "scale deployment worker", "scale deployment worker-commands", "scale deployment store",
             "patch cronjob cart-purge-expired", "patch cronjob backup", "patch cronjob rate-limit-check",
-            "rollout status deployment/api", "rollout status deployment/worker", "rollout status deployment/store",
+            "patch cronjob queue-check", "patch cronjob order-expiry",
+            "rollout status deployment/api", "rollout status deployment/worker", "rollout status deployment/worker-commands",
+            "rollout status deployment/store",
         ], self.changing_calls(cluster))
         self.assertEqual([], [c for c in cluster.calls() if "argocd" in c and c[2] == "patch"])
 
     def test_after_a_restore_that_stopped_the_applications_at_zero_come_back_with_one_replica(self):
         """A restore run again after one that failed finds the applications at zero: they come back as the chart has them."""
-        cluster = self.stub(deployments={"api": 0, "worker": 0, "store": 0, "keycloak": 0})
+        cluster = self.stub(deployments={"api": 0, "worker": 0, "worker-commands": 0, "store": 0, "keycloak": 0})
         result = self.restore(cluster)
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual({"api": 1, "worker": 1, "store": 1, "keycloak": 1}, cluster.state()["deployments"])
+        self.assertEqual({"api": 1, "worker": 1, "worker-commands": 1, "store": 1, "keycloak": 1}, cluster.state()["deployments"])
 
     def test_after_a_restore_that_failed_the_cronjobs_it_left_suspended_come_back_as_the_chart_has_them(self):
         """The rerun with PRE_RESTORE=skip that README recommends finds cart-purge-expired and backup suspended: the chart never
         suspends them (Argo CD would not undo it), so they must not stay suspended for good."""
-        cluster = self.stub(deployments={"api": 0, "worker": 0, "store": 0, "keycloak": 0})
+        cluster = self.stub(deployments={"api": 0, "worker": 0, "worker-commands": 0, "store": 0, "keycloak": 0})
         state = cluster.state()
         state["cronjobs"]["backup"]["suspend"] = True
         state["cronjobs"]["cart-purge-expired"]["suspend"] = True
-        state["cronjobs"]["rate-limit-check"]["suspend"] = True
+        for name in CHECKS:
+            state["cronjobs"][name]["suspend"] = True
         (cluster.root / "state.json").write_text(json.dumps(state))
         result = self.restore(cluster, PRE_RESTORE="skip")
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual({"restore": True, "backup": False, "cart-purge-expired": False, "rate-limit-check": False},
+        self.assertEqual({"restore": True, **{name: False for name in CRONJOBS}},
                          {n: c["suspend"] for n, c in cluster.state()["cronjobs"].items()})
+
+    def test_a_cronjob_that_the_deployed_chart_does_not_have_stops_the_restore_before_the_applications_are_touched(self):
+        """The chart of a revision before the CronJobs queue-check and order-expiry: kubectl fails on the first patch that finds none, the
+        applications are not scaled down, the CronJobs that were patched stay suspended and the message says where it stopped."""
+        for missing in ("queue-check", "order-expiry"):
+            cluster = self.stub()
+            state = cluster.state()
+            del state["cronjobs"][missing]
+            (cluster.root / "state.json").write_text(json.dumps(state))
+            result = self.restore(cluster)
+            self.assertEqual(1, result.returncode, missing)
+            self.assertIn("step 4", result.stderr)
+            self.assertIn("were not scaled down yet", result.stderr)
+            self.assertIn("queue-check and order-expiry", result.stderr)
+            after = cluster.state()
+            self.assertEqual(initial_state()["deployments"], after["deployments"], missing)
+            self.assertEqual([], [c for c in map(strip_namespace, cluster.calls()) if c[0] == "scale"], missing)
+            self.assertEqual([], [n for n in after["created"] if n.startswith(("restore-run-", "restore-reindex-", "migrate"))], missing)
 
     def test_the_jobs_run_in_order_and_the_jobs_of_the_version_under_their_names(self):
         cluster = self.stub()
@@ -668,10 +713,11 @@ class RestoreScriptTest(unittest.TestCase):
             self.assertIn(PRE_RESTORE, result.stderr)
             self.assertIn("pg_restore of the dump of shop failed", result.stderr)
             self.assertIn("README.md", result.stderr)
-            self.assertEqual({"api": 0, "worker": 0, "store": 0, "keycloak": 0}, cluster.state()["deployments"], argocd)
+            self.assertEqual({"api": 0, "worker": 0, "worker-commands": 0, "store": 0, "keycloak": 0}, cluster.state()["deployments"], argocd)
             self.assertTrue(cluster.state()["cronjobs"]["backup"]["suspend"])
             self.assertTrue(cluster.state()["cronjobs"]["cart-purge-expired"]["suspend"])
-            self.assertTrue(cluster.state()["cronjobs"]["rate-limit-check"]["suspend"])
+            for name in CHECKS:
+                self.assertTrue(cluster.state()["cronjobs"][name]["suspend"], name)
             created = cluster.state()["created"]
             self.assertEqual([], [n for n in created if n.startswith(("migrate", "keycloak-config", "purge-caches", "restore-reindex"))])
             if argocd:
@@ -686,7 +732,7 @@ class RestoreScriptTest(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("no pre-restore snapshot", result.stderr)
 
-    def test_a_failed_migration_leaves_the_api_worker_and_store_off(self):
+    def test_a_failed_migration_leaves_the_api_the_workers_and_store_off(self):
         outcomes = initial_state()["outcomes"] + [["migrate-", "Failed", "migration failed\n"]]
         cluster = self.stub(outcomes=outcomes)
         result = self.restore(cluster)
@@ -694,7 +740,7 @@ class RestoreScriptTest(unittest.TestCase):
         self.assertIn("step 6", result.stderr)
         self.assertIn("migrate", result.stderr)
         deployments = cluster.state()["deployments"]
-        self.assertEqual((0, 0, 0), (deployments["api"], deployments["worker"], deployments["store"]))
+        self.assertEqual((0, 0, 0, 0), (deployments["api"], deployments["worker"], deployments["worker-commands"], deployments["store"]))
 
     def test_a_job_is_waited_for_at_most_its_active_deadline(self):
         outcomes = initial_state()["outcomes"] + [["restore-run-", "Running", ""]]

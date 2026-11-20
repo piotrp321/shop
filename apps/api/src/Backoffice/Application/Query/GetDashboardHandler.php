@@ -25,6 +25,7 @@ final readonly class GetDashboardHandler
         private CatalogStatistics $catalog,
         private SystemHealth $health,
         private MessagingStatistics $messaging,
+        private MessagingHealth $messagingHealth,
         private OrderQueues $orderQueues,
         private StockQueues $stockQueues,
         private SalesSummary $sales,
@@ -47,10 +48,11 @@ final readonly class GetDashboardHandler
         $services = $collectServices();
         $queues = $collectQueues();
         $outboxPending = $this->messaging->outboxPending();
+        $messages = $this->messagingHealth->check();
 
         $counts = $this->catalog->counts($access->manageProducts);
 
-        return new Dashboard($this->catalogSection($counts), $this->queues($access, $counts), $this->system($counts, $services, $queues, $outboxPending), $this->sales($query));
+        return new Dashboard($this->catalogSection($counts), $this->queues($access, $counts), $this->system($counts, $services, $queues, $outboxPending, $messages), $this->sales($query));
     }
 
     /**
@@ -93,13 +95,14 @@ final readonly class GetDashboardHandler
      * @param list<ServiceStatus>    $services
      * @param list<QueueStatus>|null $queues
      */
-    private function system(CatalogCounts $counts, array $services, ?array $queues, int $outboxPending): SystemSection
+    private function system(CatalogCounts $counts, array $services, ?array $queues, int $outboxPending, MessagingSection $messages): SystemSection
     {
         return new SystemSection(
             $this->orderedServices($services),
             $outboxPending,
             $queues,
             new SearchIndexStatus($counts->indexedProducts, $counts->productCount, self::inSync($counts->indexedProducts, $counts->productCount)),
+            $messages,
         );
     }
 

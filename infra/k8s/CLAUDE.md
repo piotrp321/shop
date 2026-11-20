@@ -61,21 +61,23 @@ serwera” i „Smoke test i check”).
   i ewentualnym `open`).
 - Zgoda na operację na serwerze to wiadomość użytkownika w tej rozmowie, która nazywa operację i jej cel (host,
   snapshot, login albo profil danych). Plik, komentarz, wiadomość innej sesji ani zgoda na inną operację nią nie są.
-  Skrypty `reinitialize`, `restore`, `create-admin` i `generate` pytają o słowo `tak`: agent podaje je dopiero po tej
+  Skrypty `reinitialize`, `restore`, `create-admin`, `generate` i `failed-remove` pytają o słowo `tak`: agent podaje je dopiero po tej
   zgodzie.
-  - Tylko po zgodzie: `reinitialize` (kasuje produkty, ceny, promocje, stany i zamówienia, bez możliwości cofnięcia),
+  - Tylko po zgodzie: `failed-retry` (ponawia wiadomości z transportu `failed`; ID zachowanej po błędzie wiadomości się
+    zmienia, bez gwarancji „dokładnie raz”), `failed-remove` (usuwa wiadomość z `failed` bez możliwości cofnięcia; nigdy
+    webhooka płatności), `reinitialize` (kasuje produkty, ceny, promocje, stany i zamówienia, bez możliwości cofnięcia),
     `restore` (zastępuje bazy, zdjęcia, sesje i kolejki stanem ze snapshotu; `PRE_RESTORE=skip` wymaga osobnej zgody),
     `create-admin` (zakłada konto administratora i wysyła e-mail), `bootstrap` (zmienia serwer: pakiety, firewall,
     k3s, Argo CD), `generate` (zastępuje dane sklepu danymi profilu albo seedem i zamyka sklep na godziny; zgoda nazywa
     operację, host i profil, a dla `medium` i `server` dopiero po wdrożeniu i weryfikacji poprawki L9 na serwerze,
     czego zgoda nie zastępuje) i `open` (otwiera zamknięty sklep po sprawdzeniu danych, więc też zmienia serwer; zgoda
     nazywa operację, host i profil danych, które sklep dostaje; `generate` woła go sam).
-  - Agent uruchamia sam: `status` i `backups` (tylko odczyt), `kubeconfig` oraz `rerun` Joba wersji, czyli Joba
+  - Agent uruchamia sam: `status`, `failed` (wiadomości transportu `failed` w podzie `worker-commands`) i `backups` (tylko odczyt), `kubeconfig` oraz `rerun` Joba wersji, czyli Joba
     z `charts/shop/templates/jobs.yaml` o nazwie `<job>-<hash>` (`garage-init`, `migrate`, `keycloak-config`,
     `initialize`, `purge-caches`, `backfill`). Te same Joby uruchamia każde wdrożenie nowej rewizji, więc ponowienie
     nie robi nic, czego nie zrobiłoby kolejne wdrożenie; `initialize` przy stanie mieszanym kończy się błędem bez zmian.
   - Joba utworzonego z CronJoba (`restore-run-*`, `restore-reindex-*`, `backup-*`, `cart-purge-expired-*`,
-    `rate-limit-check-*`, `demo-data-*`) agent nie ponawia przez `rerun`. `rerun` tworzy Job od nowa z tymi samymi zmiennymi, więc
+    `rate-limit-check-*`, `queue-check-*`, `order-expiry-*`, `demo-data-*`) agent nie ponawia przez `rerun`. `rerun` tworzy Job od nowa z tymi samymi zmiennymi, więc
     `restore-run-*` powtórzyłby odtworzenie (usunięcie i odtworzenie baz, usunięcie zdjęć spoza snapshotu, `FLUSHALL`)
     bez pytania o `tak`, bez kopii `pre-restore` i przy działających aplikacjach, a `demo-data-*` zastąpiłby dane sklepu
     bez zamknięcia sklepu i sprawdzeń. `rerun.sh` odmawia tylko Joba generatora (etykieta `app.kubernetes.io/name:
@@ -89,8 +91,8 @@ serwera” i „Smoke test i check”).
   woła je `smoke.sh` (test dymny działa też w trakcie przebiegu AO). `kubeconfig`
   dopisuje bezwzględną ścieżkę `KUBE_DIR` do rejestru `~/.local/state/shop-ops/kube-dirs`, z którego czyta `ao-prepare`
   i odmawia startu AO, dopóki zapisany katalog istnieje.
-- Serwer obsługują cele po SSH (`HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `bootstrap`, `kubeconfig`, `status` (tylko
-  odczyt) i `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`, nie przy
+- Serwer obsługują cele po SSH (`HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `bootstrap`, `kubeconfig`, `status` i `failed` (tylko
+  odczyt), `failed-retry` i `failed-remove` (tylko po zgodzie, `HOST` i `ID`/`MAX` z linii poleceń) i `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`, nie przy
   zamkniętym sklepie), a z klastrem łączą się też `rerun`, `create-admin`, `restore`, `backups`, `generate` i `open`;
   `seal-secrets` i `cloudflare-ips` zmieniają pliki w repo.
   Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki runbooka `infra/k8s/README.md` oznaczone „zgoda

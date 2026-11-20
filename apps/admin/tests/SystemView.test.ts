@@ -1,7 +1,7 @@
 import type { VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SystemView from "@/views/SystemView.vue";
-import { dashboard, describeFreshness, mocks, mountScreen, serve, serviceNames, system } from "./dashboardSupport";
+import { dashboard, describeFreshness, messages, mocks, mountScreen, serve, serviceNames, system, transport, transportNames } from "./dashboardSupport";
 
 vi.mock("@/api/client", async () => {
   const { mocks: shared } = await import("./dashboardMocks");
@@ -87,7 +87,7 @@ describe("SystemView", () => {
     serve(dashboard({ system: system({ queues: [{ name: "events", messages: 7, consumers: 1 }, { name: "failed", messages: 0, consumers: 0 }] }) }));
     wrapper = await mountSystem();
 
-    const region = wrapper.get("[role=region]");
+    const region = wrapper.get("[role=region][aria-label=Kolejki]");
     expect(region.attributes("aria-label")).toBe("Kolejki");
     expect(region.attributes("tabindex")).toBe("0");
     expect(region.classes()).toContain("overflow-x-auto");
@@ -158,6 +158,148 @@ describe("SystemView", () => {
 
     expect(wrapper.get("[data-testid=system-unavailable]").text()).toContain("Brak danych o stanie systemu");
     expect(wrapper.findAll("[data-testid=service]")).toHaveLength(0);
+  });
+
+  describe("messages", () => {
+    const mountMessages = async (overrides: Parameters<typeof messages>[0] = {}) => {
+      serve(dashboard({ system: system({ messages: messages(overrides) }) }));
+      wrapper = await mountSystem();
+      return wrapper;
+    };
+
+    it("has a „Wiadomości” section with a heading", async () => {
+      const view = await mountMessages();
+
+      const section = view.get("[data-testid=messages]");
+      expect(section.get("h2").text()).toBe("Wiadomości");
+      expect(section.attributes("aria-labelledby")).toBe(section.get("h2").attributes("id"));
+    });
+
+    it("says „Brak” for no failed messages, in no danger tone", async () => {
+      const view = await mountMessages();
+
+      const count = view.get("[data-testid=failed-count]");
+      expect(count.text()).toBe("Brak");
+      expect(count.classes()).not.toContain("text-status-danger");
+      expect(view.find("[data-testid=failed-oldest]").exists()).toBe(false);
+    });
+
+    it("shows the number of failed messages in the danger tone, with the date of the oldest in the time zone of the browser", async () => {
+      const oldestAt = "2026-11-18T09:05:07+00:00";
+      const view = await mountMessages({ healthy: false, failed: { count: 12, capped: false, oldestAt } });
+
+      const count = view.get("[data-testid=failed-count]");
+      expect(count.text()).toBe("12");
+      expect(count.classes()).toContain("text-status-danger");
+      const date = new Date(oldestAt);
+      const two = (value: number) => String(value).padStart(2, "0");
+      expect(view.get("[data-testid=failed-oldest]").text()).toBe(
+        `Najstarsza: ${two(date.getDate())}.${two(date.getMonth() + 1)}.${date.getFullYear()}, ${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`,
+      );
+    });
+
+    it("shows „1000+” when the failed messages are capped", async () => {
+      const view = await mountMessages({ healthy: false, failed: { count: 1000, capped: true, oldestAt: "2026-11-18T09:05:07+00:00" } });
+
+      const count = view.get("[data-testid=failed-count]");
+      expect(count.text()).toBe("1000+");
+      expect(count.classes()).toContain("text-status-danger");
+    });
+
+    it("labels the failed number so that it reads as „Nieudane wiadomości”", async () => {
+      const view = await mountMessages();
+
+      expect(view.get("[data-testid=messages]").text()).toContain("Nieudane wiadomości");
+    });
+
+    it("has a row for every queue of the database in the API order, named in Polish", async () => {
+      const view = await mountMessages();
+
+      const rows = view.get("[data-testid=transports]").findAll("tbody tr");
+      expect(rows.map((row) => row.get("[data-testid=transport-name]").text())).toEqual([
+        "Zdarzenia do wysłania",
+        "Komendy opóźnione",
+        "Webhooki symulatora płatności",
+        "Granice promocji",
+        "Zadania w tle",
+      ]);
+      expect(rows).toHaveLength(transportNames.length);
+    });
+
+    it("shows a queue the panel does not know under the name the API sent", async () => {
+      const view = await mountMessages({ transports: [transport("reports")] });
+
+      expect(view.get("[data-testid=transport-name]").text()).toBe("reports");
+    });
+
+    it("puts the queues in a named, focusable region that scrolls, apart from the queues of RabbitMQ", async () => {
+      const view = await mountMessages();
+
+      const region = view.get("[role=region][aria-label='Kolejki w bazie danych']");
+      expect(region.attributes("tabindex")).toBe("0");
+      expect(region.classes()).toContain("overflow-x-auto");
+      expect(region.find("[data-testid=transports]").exists()).toBe(true);
+      expect(region.find("[data-testid=queues]").exists()).toBe(false);
+      expect(region.findAll("th").map((cell) => cell.text())).toEqual(["Kolejka", "Gotowe", "Najstarsza gotowa", "Stan"]);
+    });
+
+    it("shows the ready messages, „1000+” when capped, and the age of the oldest", async () => {
+      const view = await mountMessages({
+        transports: [
+          transport("outbox"),
+          transport("scheduled", { ready: 5, oldestReadyAgeSeconds: 42 }),
+          transport("jobs", { ready: 1000, capped: true, oldestReadyAgeSeconds: 7260 }),
+        ],
+      });
+
+      const rows = view.get("[data-testid=transports]").findAll("tbody tr");
+      expect(rows.map((row) => [row.get("[data-testid=transport-ready]").text(), row.get("[data-testid=transport-age]").text()])).toEqual([
+        ["0", "—"],
+        ["5", "42 s"],
+        ["1000+", "2 h"],
+      ]);
+    });
+
+    it("says „W normie” in the success tone and „Zator” in the danger tone as the API says with stalled", async () => {
+      const view = await mountMessages({
+        healthy: false,
+        transports: [transport("outbox"), transport("jobs", { ready: 3, oldestReadyAgeSeconds: 900, stalled: true })],
+      });
+
+      const states = view.findAll("[data-testid=transport-state]");
+      expect(states.map((state) => state.text())).toEqual(["W normie", "Zator"]);
+      expect(states[0]?.classes()).toContain("text-status-success");
+      expect(states[1]?.classes()).toContain("text-status-danger");
+    });
+
+    it("does not judge a queue by its age: a long wait without stalled is „W normie”", async () => {
+      const view = await mountMessages({ transports: [transport("outbox", { ready: 1, oldestReadyAgeSeconds: 100000 })] });
+
+      expect(view.get("[data-testid=transport-state]").text()).toBe("W normie");
+    });
+
+    it("says there are no queues when the list is empty", async () => {
+      const view = await mountMessages({ transports: [] });
+
+      expect(view.get("[data-testid=transports]").text()).toContain("Brak kolejek.");
+    });
+
+    it("says „Kolejki działają” when healthy, in a status the screen reader announces", async () => {
+      const view = await mountMessages();
+
+      const summary = view.get("[data-testid=messages-summary]");
+      expect(summary.text()).toBe("Kolejki działają");
+      expect(summary.attributes("role")).toBe("status");
+      expect(summary.classes()).toContain("text-status-success");
+    });
+
+    it("says „Wymaga uwagi” when not healthy, even with no queue stalled", async () => {
+      const view = await mountMessages({ healthy: false, failed: { count: 1, capped: false, oldestAt: "2026-11-18T09:05:07+00:00" } });
+
+      const summary = view.get("[data-testid=messages-summary]");
+      expect(summary.text()).toBe("Wymaga uwagi");
+      expect(summary.classes()).toContain("text-status-warning");
+    });
   });
 
   it("does not ask for the orders", async () => {

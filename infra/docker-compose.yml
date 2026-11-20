@@ -324,12 +324,18 @@ services:
       timeout: 5s
       retries: 10
 
-  # Consumes the outbox (relay to RabbitMQ) before events. `make up` starts it last, once the migrations have
-  # created the outbox table.
-  worker:
+  # The two workers run the same image and differ in the transports they consume (docs/features/async-reliability/spec.md,
+  # W1 and W2). `make up` starts both last, once the migrations have created the tables, and recreates them every time,
+  # so that they always run the code (and handler wiring) as of that moment. `worker-commands` repeats `build` and
+  # `image` of this definition: both services use one image, built once (the second build is a cache hit, and CI
+  # preloads the image as `shop-worker`, so it builds nothing).
+  # The events: the relay of the outbox to RabbitMQ and the events of RabbitMQ; the outbox goes first. The only one that
+  # needs the broker.
+  worker: &worker
     build:
       context: ./apps/api
       target: dev
+    image: ${COMPOSE_PROJECT_NAME:-shop}-worker
     depends_on:
       # The api entrypoint installs the shared vendor volume; the worker must not race it.
       api:
@@ -343,18 +349,39 @@ services:
       <<: *api-environment
       # Its own compiled container: with the cache on the shared bind mount, a rebuild by the api (after a code
       # change) deletes the container files this long-running process still loads lazily, and the worker crashes.
+      # Each worker has a directory of its own: they never share a cache, and neither shares it with the api.
       APP_CACHE_DIR: /tmp/cache
-    # The transports one after another: the outbox relay, the events of RabbitMQ, the delayed commands
-    # (ExpireUnpaidOrder) whose moment has come, the webhook deliveries of the payment simulator, the boundaries
-    # of the promotion periods and the batches of background jobs (the reindexing of category subtrees).
-    command: ["bin/console", "messenger:consume", "outbox", "events", "scheduled", "payment_simulator", "promotions", "jobs"]
+    # A worker ends by itself after a day or at 192 MB (75% of the memory_limit of PHP), after the message it is
+    # handling, with exit code 0; restart brings it back.
+    command: ["bin/console", "messenger:consume", "outbox", "events", "--time-limit=86400", "--memory-limit=192M"]
     restart: unless-stopped
     volumes:
       - ./apps/api:/app
       - api-vendor:/app/vendor
     healthcheck:
       # Healthy once PID 1 is the consumer itself, not the entrypoint that may still be installing dependencies.
-      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events scheduled payment_simulator promotions jobs'"]
+      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events --time-limit=86400 --memory-limit=192M'"]
+      interval: 10s
+      start_interval: 1s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # The commands that wait in Postgres: the webhook deliveries of the payment simulator (before the cancellations of
+  # unpaid orders: the worker starts from the first transport after every message), the delayed ExpireUnpaidOrder, the
+  # boundaries of the promotion periods and the batches of background jobs (the reindexing of category subtrees). It
+  # does not need RabbitMQ and does not wait for it.
+  worker-commands:
+    <<: *worker
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      <<: *api-environment
+      APP_CACHE_DIR: /tmp/cache-commands
+    command: ["bin/console", "messenger:consume", "payment_simulator", "scheduled", "promotions", "jobs", "--time-limit=86400", "--memory-limit=192M"]
+    healthcheck:
+      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume payment_simulator scheduled promotions jobs --time-limit=86400 --memory-limit=192M'"]
       interval: 10s
       start_interval: 1s
       timeout: 3s

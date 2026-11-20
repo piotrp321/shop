@@ -11,6 +11,7 @@ the host is involved. Usage: python - <command> [argument]
   users         prints a JSON of the users of the realms and of their credentials (ids and dates, no secrets)
   client-added  after the upgrade that added the client smoke-extra to the realm file: the client is there, the users
                 and their credentials are those of the argument (the output of `users`), the customer logs in again
+  place-order   <email>: places an order of one product as a guest with that address and prints its number (the last line)
   admin-absent  <login> <email>: no user <login> in backoffice and no e-mail to <email> (create-admin without `tak`)
   admin-mail    <login> <email>: the user of create-admin and its one e-mail with the actions in Mailpit
   restored      <login> <slug> <phrase>: after make restore on a reinstalled cluster: the administrator <login> of create-admin is
@@ -610,7 +611,8 @@ def check_image():
     expect(status == 200 and headers.get("Content-Type", "").startswith("image/"), "imgproxy serves the product image")
 
 
-def check_order_mail():
+def place_order(email):
+    """Places an order of one unit of the first product that can be bought, as a guest with the address <email>; returns its number."""
     status, _, text = through_ingress("/api/v1/guest-carts", "api", method="POST")
     expect(status == 201, "a guest cart is created")
     cart = json.loads(text)["id"]
@@ -630,7 +632,7 @@ def check_order_mail():
     expect(total is not None, "a product is added to the cart")
     order = {
         "cartId": cart,
-        "email": "smoke@example.com",
+        "email": email,
         "fullName": "Smoke Test",
         "phone": "600100200",
         "street": "ul. Testowa 1",
@@ -639,10 +641,14 @@ def check_order_mail():
         "expectedTotalGross": total,
     }
     status, _, text = through_ingress(
-        "/api/v1/orders", "api", method="POST", body=order, headers={"Idempotency-Key": f"smoke-{int(time.time())}"}
+        "/api/v1/orders", "api", method="POST", body=order, headers={"Idempotency-Key": f"smoke-{time.time_ns()}"}
     )
     expect(status == 201, f"the order is placed (got {status}: {text[:200]})")
-    number = json.loads(text)["number"]
+    return json.loads(text)["number"]
+
+
+def check_order_mail():
+    number = place_order("smoke@example.com")
 
     def confirmation():
         status, _, text = request("GET", f"{MAILPIT}/api/v1/search?query=" + urllib.parse.quote(f'to:"smoke@example.com" subject:"{number}"'))
@@ -734,6 +740,8 @@ def main():
         check_store_login()
         check_image()
         check_order_mail()
+    elif command == "place-order":
+        print(place_order(sys.argv[2]))
     elif command == "snapshot":
         print(json.dumps(snapshot(), sort_keys=True))
     elif command == "users":

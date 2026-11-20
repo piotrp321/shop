@@ -114,8 +114,9 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   bez dodatkowych obiektów. Skrypt czeka na każdy Job najwyżej tyle, ile jego `activeDeadlineSeconds`. Kroki:
   1. sprawdzenia bez zmian: `SNAPSHOT` jest wymagany (identyfikator z listy), bez `latest`; odmowa, gdy w przestrzeni
      `shop` jest aktywny dowolny Job (`backup`, `migrate`, `initialize`, `keycloak-config`, `purge-caches`, czyszczenie
-     koszyków, inny `restore`) poza Jobem CronJoba `rate-limit-check` (sprawdzenie Redisa limiterów trwa najwyżej 60 s;
-     Job jest jego, gdy ma go za właściciela, nie po nazwie) albo, przy Argo CD, aplikacja `shop` ma trwającą operację synchronizacji; Job w trybie
+     koszyków, inny `restore`) poza Jobem CronJoba `rate-limit-check` (sprawdzenie Redisa limiterów trwa najwyżej 60 s),
+     `queue-check` (sprawdzenie kolejek wiadomości, najwyżej 120 s) albo `order-expiry` (wygaszanie zamówień po terminie,
+     najwyżej 600 s; Job jest ich, gdy ma któryś z tych CronJobów za właściciela, nie po nazwie) albo, przy Argo CD, aplikacja `shop` ma trwającą operację synchronizacji; Job w trybie
      `check` odmawia, gdy manifest ma migrację spoza listy klas migracji w obrazie `api` (snapshot nowszy niż wdrożona
      wersja);
   2. wypisuje snapshot (czas, host, tag, rewizja, liczby z manifestu) i skutki (w tym to, czy kopia `pre-restore` będzie
@@ -124,10 +125,10 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
      podał `PRE_RESTORE=skip` (wypisane w kroku 2);
   4. gdy w klastrze jest Argo CD (CRD `Application` i aplikacja `shop`), wyłącza automatyczną synchronizację `root`,
      potem `shop` (kolejność jak w runbooku cofnięcia wersji); zapamiętuje liczby replik, wstrzymuje CronJoby
-     `cart-purge-expired`, `backup` i `rate-limit-check`, czeka na Job, który wystartował po sprawdzeniu z kroku 1,
-     także na Job `rate-limit-check` (nocna kopia:
+     `cart-purge-expired`, `backup`, `rate-limit-check`, `queue-check` i `order-expiry`, czeka na Job, który wystartował po
+     sprawdzeniu z kroku 1, także na Job któregoś z trzech ostatnich (nocna kopia:
      `RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, domyślnie 7200 s; potem błąd, aplikacje działają), i skaluje do zera `api`, `worker`,
-     `store`, `keycloak`;
+     `worker-commands`, `store`, `keycloak`;
   5. Job w trybie `restore` (tylko operacje na danych): `restic restore` snapshotu na PVC `backup-work` (lustro obiektów
      staje się stanem snapshotu); `DROP DATABASE` i `CREATE DATABASE` `shop` i `keycloak` (zakończenie połączeń,
      właściciele jak w `10-create-databases.sh`), `pg_restore`; `rclone sync` z powrotem do bucketu `product-images`
@@ -136,7 +137,7 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   6. ponawia istniejące Joby bieżącej rewizji tym samym mechanizmem co `rerun`: `migrate` (snapshot starszy niż kod),
      przywraca `keycloak` i ponawia `keycloak-config` (odtworzona baza cofa sekret klienta `store`, adresy, rejestrację,
      `verifyEmail` i SMTP do stanu snapshotu), potem `catalog:reindex` (Job z CronJoba `restore` w trybie `reindex`,
-     obraz `api`); przywraca `api`, `worker`, `store` i CronJoby (`suspend: false` jak w chartcie, który ich nie wstrzymuje, także po
+     obraz `api`); przywraca `api`, `worker`, `worker-commands`, `store` i CronJoby (`suspend: false` jak w chartcie, który ich nie wstrzymuje, także po
      poprzedniej próbie, która je zostawiła wstrzymane), czeka na rollout, ponawia `purge-caches`, a przy Argo CD
      przywraca automatyczną synchronizację `root` w postaci sprzed odtworzenia (ten przywraca `shop`; gdy `root` jej nie
      miał, zostaje wyłączona). Joba `backfill` nie ponawia;
@@ -231,6 +232,14 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
     (`cronjobMissing` z progiem jako parametrem; alerty kopii zostają przy 26 h). Jedna instancja alertu bez względu na
     liczbę nieudanych Jobów; gaśnie po następnym udanym przebiegu. `restore` wstrzymuje CronJob, więc na czas
     odtworzenia alert się wycisza razem z `WorkloadNotReady`;
+  - `MessagingUnhealthy` (`warning`), `OrderExpiryFailed` (`critical`) i `OrderExpiryMissing` (`critical`), grupa
+    `shop-messaging` (docs/features/async-reliability/spec.md, W9 i D4): pierwsze dwa to Job CronJoba `queue-check`
+    (`app:messaging:check`: wiadomość w `failed` albo kolejka stojąca ponad 10 minut) albo `order-expiry` (wygaszanie zamówień
+    po terminie i zamykanie porzuconych płatności) z warunkiem `Failed`, nowszy niż ostatni sukces tego CronJoba, jak
+    `BackupFailed`, ale jedna instancja alertu na CronJob bez względu na liczbę nieudanych Jobów (agregacja bez `job_name`,
+    CronJob jako etykieta); gasną po następnym udanym Jobie. `OrderExpiryMissing`: brak udanego przebiegu `order-expiry` od
+    30 minut albo brak jego metryki przez 30 min (`cronjobMissing` z progiem jako parametrem). `restore` wstrzymuje oba
+    CronJoby i czeka na ich Joby;
   - `NodeDiskFull`: system plików węzła (node-exporter, `node_filesystem_avail_bytes` i `node_filesystem_size_bytes`,
     bez systemów tymczasowych) zajęty w ponad 85% przez 10 min;
   - `ClusterSilent`: brak metryk z klastra przez 15 min (`absent` metryki, którą kube-state-metrics wysyła zawsze, np.
@@ -361,8 +370,9 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
      klienta `store` po `keycloak-config`), liczby produktów i zamówień jak przed kopią, zdjęcie produktu przez imgproxy,
      produkt w wyszukiwarce (reindeks), strona główna sklepu, snapshot `pre-restore` w repozytorium;
   5. `restore` ze snapshotem z migracją nieznaną kodowi (snapshot z manifestem z dodatkową wersją) kończy się odmową bez
-     zmian danych i bez wyłączania aplikacji, także gdy trwa Job CronJoba `rate-limit-check`; wcześniej, po instalacji,
-     Job z CronJoba `rate-limit-check` kończy się sukcesem na Redisie klastra.
+     zmian danych i bez wyłączania aplikacji, także gdy trwa Job CronJoba `rate-limit-check`, a odmowa nie wstrzymuje żadnego
+     z pięciu CronJobów (`backup`, `cart-purge-expired`, `rate-limit-check`, `queue-check`, `order-expiry`); wcześniej, po
+     instalacji, Job z CronJoba `rate-limit-check` kończy się sukcesem na Redisie klastra.
 
   Dalsze fazy (r2–r4 i generator danych demo na końcu) działają na odtworzonym klastrze. Smoke test wypisuje czas faz kopii i odtworzenia oraz szczytowe
   zużycie dysku.
@@ -410,7 +420,7 @@ Kroki w sekcjach 3, 7, 8 i 9, z oznaczeniami jak w DEPLOY:
 | Dump nie odtwarza się | `backup-verify` kończy się błędem z wyjściem `pg_restore` |
 | Nowy serwer po awarii robi nocne kopie danych demo | snapshoty mają inny host, retencja nowego klastra nie usuwa kopii starego |
 | `restore` bez `tak` albo bez `SNAPSHOT` | nic się nie zmienia, kod różny od 0 |
-| `restore` przy aktywnym Jobie w `shop` (poza Jobem `rate-limit-check`) albo trwającej synchronizacji `shop` | odmowa bez zmian |
+| `restore` przy aktywnym Jobie w `shop` (poza Jobami `rate-limit-check`, `queue-check` i `order-expiry`) albo trwającej synchronizacji `shop` | odmowa bez zmian |
 | Snapshot nowszy niż wdrożony kod | odmowa przed potwierdzeniem, kopią `pre-restore` i skalowaniem; aplikacje działają |
 | Nieudana kopia `pre-restore` | `restore` kończy się bez zmian, chyba że `PRE_RESTORE=skip` |
 | Błąd w trakcie odtwarzania | aplikacje zostają wyłączone, komunikat z krokiem i snapshotem `pre-restore`; runbook |
@@ -430,7 +440,7 @@ Kroki w sekcjach 3, 7, 8 i 9, z oznaczeniami jak w DEPLOY:
 2. `make -C infra/k8s smoke` przechodzi lokalnie i na `ubuntu-latest`: kopia, weryfikacja, odtworzenie na pustym
    klastrze z wynikami jak przed kopią (także logowanie klienta), odmowa snapshotu nowszego niż kod bez wyłączania
    aplikacji; z zapisanym czasem i zużyciem dysku.
-3. `promtool test rules`: każdy z ośmiu alertów odpala w swoim scenariuszu i milczy, gdy wszystko jest zdrowe; alerty
+3. `promtool test rules`: każdy z jedenastu alertów (siedmiu przy wyłączonych kopiach) odpala w swoim scenariuszu i milczy, gdy wszystko jest zdrowe; alerty
    kopii milczą przy udanym ponowieniu i po powrocie do zdrowia; `WorkloadNotReady` odpala przy niedostępnej replice
    i brakującym workloadzie, a milczy przy krótkiej niedostępności, zeskalowaniu do zera i ciszy klastra; reguła ma
    `absent` dla każdego Deploymentu i StatefulSetu z renderu `prod`.

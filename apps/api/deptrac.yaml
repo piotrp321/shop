@@ -407,9 +407,9 @@ deptrac:
       # free of Backoffice.
       - Backoffice_Application
     # Only Payment depends on Ordering, one way (Payment_Infrastructure → Ordering_Application: the query
-    # GetOrderForPayment and the command MarkOrderPaid); Ordering depends on Payment in no layer, and no other
-    # module depends on Payment. Payment_Domain and Payment_Application never see another module: the ports speak
-    # Payment's own OrderId, Amount and order data.
+    # GetOrderForPayment, the query GetOrderPayability and the command MarkOrderPaid); Ordering depends on Payment in
+    # no layer, and no other module depends on Payment. Payment_Domain and Payment_Application never see another
+    # module: the ports speak Payment's own OrderId, Amount and order data.
     Payment_Domain:
       - Native
       - Shared_Domain
@@ -425,8 +425,8 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
-      # PayableOrders asks Ordering through GetOrderForPayment on query.bus, OrderPayments pays orders through
-      # MarkOrderPaid on command.bus. Only its Application layer, never its Domain or Infrastructure.
+      # PayableOrders asks Ordering through GetOrderForPayment and GetOrderPayability on query.bus, OrderPayments pays
+      # orders through MarkOrderPaid on command.bus. Only its Application layer, never its Domain or Infrastructure.
       - Ordering_Application
     Payment_UI:
       - Native

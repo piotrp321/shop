@@ -51,7 +51,7 @@ Narzędzia uruchamiane świadomie (nie wywołuje ich `make init`, `make up` ani 
 cały katalog w Varnishu i w sklepie. `ordering:read-models:rebuild` i `inventory:stock-records:sync` są krokami
 `app:backfill` (niżej).
 
-`app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
+`app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api`, `worker` i `worker-commands`, lokalnie koniec
 `bin/seed-demo`) wypełnia dane, dla których migracje dodały tylko schemat (`docs/features/admin-features/spec.md`,
 „Wdrożenie: schemat w migracjach, wypełnienie po rolloucie”). Nowy krok implementuje `Shared\Infrastructure\Backfill\BackfillStep` w warstwie Infrastructure modułu
 (rejestracja tagiem z interfejsu, kolejność `#[AsTaggedItem(priority: …)]` malejąco), jest idempotentny, działa
@@ -363,8 +363,11 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
 - Transporty Messengera na Doctrine (`scheduled`, `payment_simulator`, `promotions`, `jobs`; ta sama tabela
   `messenger_messages` i to samo połączenie co `outbox`) trzymają wiadomości zapisane w transakcji wywołującego, więc
   przestój workera tylko opóźnia ich obsługę. W `test` są w pamięci (jak `outbox`), w `test_messaging` prawdziwe.
-  Worker konsumuje `outbox events scheduled payment_simulator promotions jobs` po kolei (compose i chart, komenda
-  i healthcheck albo sonda), więc długa kolejka wcześniejszego transportu opóźnia następne. Granice promocji mają osobną
+  Dwa workery z jednego obrazu (compose i chart, komenda i healthcheck albo sonda z tej samej listy): `worker` konsumuje
+  `outbox events`, `worker-commands` `payment_simulator scheduled promotions jobs` po kolei, bez RabbitMQ (webhooki
+  symulatora przed anulowaniami), więc długa kolejka wcześniejszego transportu opóźnia następne w tym samym workerze
+  (`docs/features/async-reliability/spec.md`, W1). Każdy transport poza `failed` konsumuje któryś z workerów (test
+  chartu). Granice promocji mają osobną
   kolejkę `promotions`, bo `ordering:seed-demo` czyści całe `scheduled`. Nowy transport: compose i chart w tym samym PR
   (`infra/k8s/CLAUDE.md`).
 - **Wzorzec łańcucha partii** (transport `jobs`) to sposób zadań wywołanych zmianą w domenie i wykonywanych przez
@@ -430,12 +433,20 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   niezgodną (usunięcie lub zmiana nazwy kolumny albo tabeli, nowe ograniczenie `NOT NULL` bez wartości domyślnej,
   zmiana typu) rozbij na dwie wersje: najpierw dodaj nowe i zacznij je zapisywać, w kolejnej wersji usuń stare.
   Schemat jest zgodny wstecz tylko z poprzednią wersją: cofnięcie o więcej wersji wymaga kopii zapasowej.
-- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator`, `promotions` i `jobs`) są zgodne w obie
-  strony między kolejnymi wersjami: nowa wersja czyta wiadomości zapisane przez poprzednią (kolejka może je jeszcze
-  mieć) i poprzednia czyta wiadomości nowej (stary worker działa do końca wymiany). Pola dodawaj jako opcjonalne
-  z wartością domyślną, nie usuwaj i nie zmieniaj znaczenia pól w jednej wersji, nie zmieniaj nazw klas wiadomości
-  i nazw transportów. Poprzednia wersja nie zdekoduje wiadomości ze stemplem nieznanej jej klasy: nową klasę stempla
-  dodaj w jednej wersji, a nadawaj ją dopiero w kolejnej.
+- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator`, `promotions` i `jobs`)
+  są zgodne w obie strony między kolejnymi wersjami: nowa wersja czyta wiadomości zapisane przez poprzednią (kolejka
+  może je jeszcze mieć) i poprzednia czyta wiadomości nowej (stary worker działa do końca wymiany). Transporty Doctrine
+  używają serializera PHP, a `unserialize` nie woła konstruktora: w klasie `final readonly` dodane pole zostaje
+  niezainicjalizowane, a pole, którego klasa nie ma, kończy dekodowanie błędem. Dlatego pól klasy wiadomości ani
+  zdarzenia domenowego nie dodajemy, nie usuwamy i nie zmieniamy: nowy kształt to nowa klasa, którą wersja z jej
+  handlerem tylko obsługuje, a nadawać zaczyna dopiero kolejna wersja (poprzednia nie zdekoduje wiadomości nieznanej
+  jej klasy). Nie zmieniaj nazw klas wiadomości, stempli i transportów. Zasada „pola dodawaj jako opcjonalne” jest
+  prawdziwa tylko dla JSON (`events`), nie jest zgodą na zmianę pól.
+- `MessageVersionCompatibilityTest` pilnuje tego na zapisach w `tests/Fixtures/MessageSerialization`: każda klasa
+  z `routing` w `messenger.yaml` i każda implementacja `DomainEvent` musi mieć zapis i dekodować się z zainicjalizowanymi
+  polami. Nowa klasa wiadomości lub zdarzenia dostaje zapis w tym samym PR (sposób: komentarz testu). Zapisy się
+  dopisuje, nigdy nie nadpisuje; zapis klasy usuwa się dopiero razem z jej handlerem, w wersji po tej, która przestała
+  ją nadawać.
 
 ## Testy
 
@@ -452,8 +463,9 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   `StartPaymentConcurrencyTest`). Rodzic woła przed forkiem `gc_collect_cycles()`: niezebrane cykle (np. połączenie AMQP po
   teście z kernelem `test_messaging`) dziecko odziedziczyłoby, a `Kernel::shutdown()` w jego procesie uruchomiłby ich
   destruktory na gnieździe wspólnym z rodzicem i czekał ~30 s na odpowiedź brokera.
-- Kernel `test_messaging` ma krótsze ponowienia transportu `events`: pierwsze opóźnienie 100 ms zamiast 1 s (liczba prób
-  i mnożnik jak w produkcji, pilnuje tego `EventsRetryStrategyTest`), a testy czekające na ponowienie śpią 300 ms.
+- Kernel `test_messaging` ma krótsze ponowienia transportu `events`: pierwsze opóźnienie 2 ms zamiast 1 s i `max_delay`
+  600 ms zamiast 300 s (liczba prób, mnożnik i proporcja opóźnień jak w produkcji, pilnuje tego
+  `EventsRetryStrategyTest`), a testy czekające na ponowienie śpią 300 ms.
   Worker w testach pyta o wiadomości co 50 ms (`--sleep`). Testy, które dowodzą limitów czasu z produkcji (sonda 1 s w
   `ProbesTest`, timeouty DSN Redisa, limity w `DashboardTimingTest` i podobne), czekają ich prawdziwy czas; test wolnego
   sklepu (`HttpStorefrontCacheTest`) używa klienta z pomniejszonymi limitami. Test, który czeka na powrót ponowienia do

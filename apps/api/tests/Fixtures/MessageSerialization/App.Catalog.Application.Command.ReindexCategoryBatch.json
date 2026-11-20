@@ -1,0 +1,19 @@
+{
+    "class": "App\\Catalog\\Application\\Command\\ReindexCategoryBatch",
+    "records": [
+        {
+            "serializer": "php",
+            "variant": "sent",
+            "encoded": {
+                "body": "O:36:\\\"Symfony\\\\Component\\\\Messenger\\\\Envelope\\\":2:{s:44:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Envelope\\0stamps\\\";a:2:{s:46:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\BusNameStamp\\\";a:1:{i:0;O:46:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\BusNameStamp\\\":1:{s:55:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\BusNameStamp\\0busName\\\";s:11:\\\"command.bus\\\";}}s:58:\\\"App\\\\Shared\\\\Infrastructure\\\\Observability\\\\CorrelationIdStamp\\\";a:1:{i:0;O:58:\\\"App\\\\Shared\\\\Infrastructure\\\\Observability\\\\CorrelationIdStamp\\\":1:{s:2:\\\"id\\\";s:36:\\\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a99\\\";}}}s:45:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Envelope\\0message\\\";O:52:\\\"App\\\\Catalog\\\\Application\\\\Command\\\\ReindexCategoryBatch\\\":2:{s:5:\\\"runId\\\";s:36:\\\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60\\\";s:5:\\\"batch\\\";i:3;}}"
+            }
+        },
+        {
+            "serializer": "php",
+            "variant": "retried",
+            "encoded": {
+                "body": "O:36:\\\"Symfony\\\\Component\\\\Messenger\\\\Envelope\\\":2:{s:44:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Envelope\\0stamps\\\";a:4:{s:46:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\BusNameStamp\\\";a:1:{i:0;O:46:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\BusNameStamp\\\":1:{s:55:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\BusNameStamp\\0busName\\\";s:11:\\\"command.bus\\\";}}s:58:\\\"App\\\\Shared\\\\Infrastructure\\\\Observability\\\\CorrelationIdStamp\\\";a:1:{i:0;O:58:\\\"App\\\\Shared\\\\Infrastructure\\\\Observability\\\\CorrelationIdStamp\\\":1:{s:2:\\\"id\\\";s:36:\\\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a99\\\";}}s:49:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\RedeliveryStamp\\\";a:1:{i:0;O:49:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\RedeliveryStamp\\\":2:{s:64:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\RedeliveryStamp\\0redeliveredAt\\\";O:33:\\\"Symfony\\\\Component\\\\Clock\\\\DatePoint\\\":3:{s:4:\\\"date\\\";s:26:\\\"2026-11-20 09:20:35.249573\\\";s:13:\\\"timezone_type\\\";i:3;s:8:\\\"timezone\\\";s:3:\\\"UTC\\\";}s:61:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\RedeliveryStamp\\0retryCount\\\";i:1;}}s:44:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\DelayStamp\\\";a:1:{i:0;O:44:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\DelayStamp\\\":1:{s:51:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\DelayStamp\\0delay\\\";i:3000;}}}s:45:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Envelope\\0message\\\";O:52:\\\"App\\\\Catalog\\\\Application\\\\Command\\\\ReindexCategoryBatch\\\":2:{s:5:\\\"runId\\\";s:36:\\\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60\\\";s:5:\\\"batch\\\";i:3;}}"
+            }
+        }
+    ]
+}

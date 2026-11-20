@@ -7,7 +7,7 @@ zamówienie może nigdy nie wygasnąć, wiadomości w `failed` są niewidoczne, 
 nie ma limitów czasu i pamięci. Epik rozdziela workery, dodaje siatkę bezpieczeństwa dla wygaszania zamówień, nadzór
 nad kolejkami z alertem i procedurą oraz test zgodności wersji wiadomości.
 
-Issues: brak (epik z raportu audytu; issue `epic` zakłada użytkownik, patrz „Wymagane przed startem”)
+Issues: #768
 Zakres: `apps/api`, `apps/admin`, `infra/docker-compose.yml`, `Makefile`, `.github/workflows/ci.yml`, `.github/scripts`,
 `infra/k8s`, `e2e/tests/staff-dashboard.spec.ts`, `docs/vision.md`, `docs/adr/backups-observability.md`,
 `docs/features/payment/spec.md`, `docs/features/product-page/spec.md`, `docs/features/pricing/spec.md`,
@@ -82,34 +82,55 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   brokera, ale nie obsłużyłby zaległych `pending` sprzed epiku ani płatności zamówień `new` po terminie, których nikt
   jeszcze nie anulował; komenda obsługuje wszystkie przypadki jednym mechanizmem.
 
+- **D6. Wiadomość w `failed` znika tylko przez świadome usunięcie (wynik E5; decyzja użytkownika 2026-11-20:
+  kierunek (a), zakres i warunki poniżej, zadanie ASYNC-RELIABILITY-9).** Nieudane ręczne ponowienie zachowuje
+  wiadomość w `failed`, także przy błędzie nieodwracalnym; udana obsługa ją usuwa; usunięcie to osobna operacja
+  (`failed-remove`). Lista wiadomości ponawianych zbiorczo jest ustalona na początku przebiegu. Bez gwarancji
+  „dokładnie raz” przy awariach i równoległych uruchomieniach: możliwy jest duplikat, a obsługa wiadomości jest
+  idempotentna (zasada odbiorców w `apps/api/CLAUDE.md`).
+  - Dlaczego konfiguracja nie wystarcza (Symfony Messenger v8.1.11, sprawdzone w kodzie): domyślna strategia `failed`
+    ma 3 ponowienia; `SendFailedMessageForRetryListener::shouldRetry()` odrzuca `UnrecoverableExceptionInterface`
+    (także `HandlerFailedException` z samymi takimi wyjątkami) przed strategią, a dla `RecoverableExceptionInterface`
+    (np. `RecoverableMessageHandlingException` z `NotificationSender`) zwraca „ponów” także przed strategią, więc
+    `max_retries: 0` nie wyłącza tej ścieżki; `SendFailedMessageToFailureTransportListener` pomija wiadomości odebrane
+    z transportu awarii, a worker po nieudanej próbie robi `reject` (usunięcie wiersza). `messenger:failed:retry` bez ID
+    bierze w pętli dowolną dostępną wiadomość, aż żadnej nie ma, więc wiadomość zachowana jako dostępna od razu
+    zapętla przebieg.
+  - Szczegóły zachowania: W12.
+
 ## Wymagane przed startem
 
 - **Zasoby spoza repo: brak.** Epik nie potrzebuje sekretów, kont ani uprawnień: CronJoby i reguły używają istniejących
   metryk z listy dozwolonych (`kube_job_status_condition`, `kube_job_owner`, `kube_cronjob_status_last_successful_time`),
   synchronizacja reguł do Grafana Cloud już działa.
-- **użytkownik:** issue z etykietą `epic` dla ASYNC-RELIABILITY wpisane do linii `Issues:` (potrzebne, gdy epik idzie
-  przez `/ao-run`, który dopisuje `Closes #N` z tej linii; przy realizacji w sesji głównej opcjonalne).
-- **Eksperymenty na wersjach epiku** (`symfony/messenger` v8.1.9 z `apps/api/composer.lock`, PHP 8.5, k3s z
-  `infra/k8s/scripts/tools.sh`). Szkic powstał bez uruchamiania Dockera (na maszynie trwał przebieg orkiestratora),
-  więc wyniki wpisuje orkiestrator epiku przed startem zadań; każde założenie potwierdza też test zadania, które na nim
-  stoi. Wynik inny niż oczekiwany to pytanie do użytkownika przed startem, nie odkrycie w trakcie zadania.
-  - E1, odbiór bez brokera (D2, W1, zadanie 1): `RABBITMQ_HOST` na zamknięty port,
-    `docker compose exec api bin/console messenger:consume payment_simulator scheduled promotions jobs --limit=1
-    --time-limit=10 -vv`; oczekiwane: kod 0, bez próby połączenia AMQP. Przesłanka z kodu: `RoutedAmqpTransportFactory`
-    tworzy tylko `Connection::fromDsn`, który się nie łączy, a zdarzenia trasuje `DomainEvent: outbox`.
-  - E2, kolejność odbiorców (D2): `grep -n "break" vendor/symfony/messenger/Worker.php` w kontenerze `api`; oczekiwane:
-    po obsłużonej kopercie pętla odbiorców przerywa się i zaczyna od pierwszego.
-  - E3, limity (W2): `messenger:consume jobs --memory-limit=1M --limit=1` i `--time-limit=1`; oczekiwane: łagodne
-    zakończenie z kodem 0 po wiadomości.
-  - E4, `unserialize` klasy `final readonly` (D3, W11): skrypt `php -r` z klasą z dodanym i usuniętym polem;
-    oczekiwane: niezainicjalizowana właściwość, błąd przy nadmiarowej.
-  - E5, `messenger:failed:retry` (W10): wiadomość, która znów zawodzi, wraca do `failed`; wiadomość przeniesiona do
-    `failed` zapytaniem SQL (bez `SentToFailureTransportStamp`, test dymny) da się usunąć `messenger:failed:remove`.
-  - E6, pobieranie z transportu Doctrine (W1): `grep -n "SKIP LOCKED\|FOR UPDATE" vendor/symfony/doctrine-messenger/Transport/Connection.php`;
-    oczekiwane: blokada wiersza, więc dwa procesy nie biorą tej samej wiadomości.
-  - E7, Job z CronJoba (W9, test dymny): `kubectl create job x --from=cronjob/cart-purge-expired` na k3d testu dymnego,
-    potem `kubectl get job x -o jsonpath='{.metadata.ownerReferences}'`; oczekiwane: właściciel `CronJob`, więc
-    `kube_job_owner` łączy taki Job z regułą.
+- **Issue epiku:** #768 (etykieta `epic`), w linii `Issues:`.
+- **Eksperymenty na wersjach epiku** (`symfony/messenger` v8.1.11 z `apps/api/composer.lock`, PHP 8.5.12, k3s
+  v1.36.6 z `infra/k8s/scripts/tools.sh`), wykonane 2026-11-20 przez orkiestratora epiku na stosie compose i na
+  tymczasowym klastrze k3d. Każde założenie potwierdza też test zadania, które na nim stoi.
+  - E1, odbiór bez brokera (D2, W1, zadanie 1). Potwierdzone: `messenger:consume payment_simulator scheduled promotions
+    jobs --limit=1 --time-limit=10` z `RABBITMQ_HOST=127.0.0.1` (port zamknięty) kończy się kodem 0, w logu nie ma próby
+    połączenia AMQP. `messenger:consume outbox events` z tym samym adresem kończy się kodem 1 („Could not connect to the
+    AMQP server”).
+  - E2, kolejność odbiorców (D2). Potwierdzone: w `Worker::run()` po obsłudze koperty z danego odbiorcy pętla
+    odbiorców przerywa się (`if ($envelopeHandled) { break; }`) i zaczyna od pierwszego na liście.
+  - E3, limity (W2). Potwierdzone: `--memory-limit=1M` i `--time-limit=1` kończą worker łagodnie z kodem 0
+    („Worker stopped due to …”). Warunek stopu sprawdza `WorkerRunningEvent` po obsłużonej wiadomości, przed
+    pobraniem następnej, więc limit nie przerywa wiadomości w trakcie.
+  - E4, `unserialize` klasy `final readonly` (D3, W11). Potwierdzone: dodane pole zostaje niezainicjalizowane
+    (`Error: Typed property … must not be accessed before initialization` przy odczycie), nadmiarowe pole kończy
+    `unserialize` błędem `Cannot create dynamic property`.
+  - E5, `messenger:failed:retry` (W10). Wynik inny niż oczekiwany. Wiadomość z `failed`, która przy `failed:retry`
+    znów zawodzi, wraca do `failed` jako nowy wiersz (nowe ID) tylko przez pierwsze trzy próby: decyduje o tym
+    domyślna strategia ponowień transportu `failed` (3 ponowienia), bo listener `SendFailedMessageToFailureTransportListener`
+    nie odsyła do transportu awarii wiadomości odebranej z niego samego. Czwarta nieudana próba usuwa wiadomość na
+    stałe („Removing from transport after 3 retries”). Druga część potwierdzona: wiadomość przeniesiona do `failed`
+    zapytaniem SQL (bez `SentToFailureTransportStamp`) usuwa `messenger:failed:remove <id> --force`. Decyzja: D6.
+  - E6, pobieranie z transportu Doctrine (W1). Potwierdzone: `Connection::get()` blokuje wiersz
+    (`forUpdate(ConflictResolutionMode::SKIP_LOCKED)`, a bez obsługi `SKIP LOCKED` zwykłe `FOR UPDATE`), więc dwa
+    procesy nie biorą tej samej wiadomości.
+  - E7, Job z CronJoba (W9, test dymny). Potwierdzone: `kubectl create job x --from=cronjob/cart-purge-expired` daje Job
+    z `ownerReferences` `[{"apiVersion":"batch/v1","controller":true,"kind":"CronJob","name":"cart-purge-expired",…}]`,
+    więc `kube_job_owner` łączy taki Job z regułą.
 
 ## Poza zakresem
 
@@ -288,7 +309,9 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
 
 - Nowe zapytanie Ordering `GetOrderPayability(orderIds)` (`query.bus`, do 100 identyfikatorów) zwraca dla każdego
   zamówienia tylko to, czy jest płatne (`new` przed terminem) i jego status dla Payment (`new`, `paid`, `cancelled`), bez
-  numeru, kwoty i danych osobowych; nie ma kontroli właściciela, bo nic nie ujawnia. Payment dostaje osobną metodę portu
+  numeru, kwoty i danych osobowych; nie ma kontroli właściciela, bo nic nie ujawnia. Pomija tylko identyfikator, który
+  nie jest UUID, i zamówienie, którego nie ma; zamówienie istniejące, którego nie da się odczytać (dane łamiące
+  niezmiennik domeny), zwraca osobno z przyczyną, a błąd bazy przerywa zapytanie. Payment dostaje osobną metodę portu
   (adapter w `Payment_Infrastructure`, Deptrac bez zmian). `PayableOrders::find` i `GetOrderForPayment` z kontrolą dostępu
   zostają bez zmian.
 - Mapowanie wyniku anulowania sesji u dostawcy (`SessionCancellation` → `cancel`, `fail` albo „opłacona”) jest w jednym
@@ -303,8 +326,9 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   (`succeed` z `cancelled` i `failed`, jak dziś), z oznaczeniem zwrotu, gdy zamówienie jest anulowane.
 - Płatność „opłacona u dostawcy”, której webhook nie dotrze (np. usunięty z `failed`), zostaje `pending`; każdy
   przebieg pyta o nią dostawcę i zapisuje ostrzeżenie. Runbook: takiej wiadomości webhooka nie usuwa się, tylko ponawia.
-- Dostawca niedostępny: ta płatność zostaje, błąd w logu, komenda idzie dalej. Kod wyjścia jak w W5 (2, gdy któraś
-  płatność się nie udała).
+- Dostawca niedostępny albo zamówienie, którego Ordering nie odczytało: ta płatność zostaje `pending` (przy
+  nieodczytanym zamówieniu bez wywołania dostawcy), błąd w logu z identyfikatorami płatności i zamówienia, komenda idzie
+  dalej. Kod wyjścia jak w W5 (2, gdy któraś płatność się nie udała).
 - Dane sprzed epiku (`pending` porzucone wcześniej) zamyka pierwsze uruchomienie; gdy zaległość nie zmieści się w limicie
   czasu Joba, Job kończy się błędem (`OrderExpiryFailed`), a kolejne przebiegi kończą pracę (komenda jest idempotentna).
 
@@ -312,8 +336,14 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
 
 - Port `MessagingStatistics` (Backoffice) dostaje odczyt kolejek Postgresa: dla `failed` liczbę wiadomości (do 1000,
   z oznaczeniem przekroczenia) i chwilę najstarszej (`created_at` jej wiersza); dla `outbox`, `scheduled`,
-  `payment_simulator`, `promotions` i `jobs` liczbę gotowych wiadomości (`delivered_at IS NULL`, `available_at` ≤ teraz,
-  do 1000) i wiek najstarszej gotowej w sekundach: teraz (UTC) − `min(available_at)` gotowych, `null` bez gotowych.
+  `payment_simulator`, `promotions` i `jobs` liczbę gotowych wiadomości (do 1000) i wiek najstarszej gotowej
+  w sekundach: teraz (UTC) − `min(available_at)` gotowych, `null` bez gotowych. Gotowa jest wiadomość, którą worker
+  odebrałby teraz według reguły transportu Doctrine: `available_at` ≤ teraz i (`delivered_at IS NULL` albo
+  `delivered_at` < teraz − `redeliver_timeout` transportu; dokładnie na granicy wiadomość jeszcze jest w rękach workera).
+  Wiadomość odebraną przez workera, który zginął przed potwierdzeniem, ma `delivered_at` ustawione na stałe, więc po
+  upływie `redeliver_timeout` liczy się jako gotowa, a jej wiek biegnie od `available_at`. `redeliver_timeout` każdej
+  kolejki to wpis parametru `app.messaging.redeliver_timeouts` (`services.yaml`), a nie stała w kodzie; test porównuje go
+  z `redeliver_timeout` w DSN transportu w `messenger.yaml` (3600 s, gdy DSN go nie podaje).
   Wiadomość opóźniona (np. `ExpireUnpaidOrder`, utworzona 35 minut wcześniej) ma wiek od chwili, w której stała się
   gotowa, nie od utworzenia. Zapytania korzystają z indeksu `(queue_name, available_at, delivered_at, id)`; czas pulpitu
   mieści się w limitach `DashboardTimingTest`.
@@ -377,9 +407,10 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
 
 - `make -C infra/k8s failed HOST=…` (tylko odczyt): `messenger:failed:show --stats`, potem lista (identyfikator, klasa,
   błąd, data) z `--max=200`, przez `kubectl exec` w `deploy/worker-commands`.
-- `make -C infra/k8s failed-retry HOST=… [ID=…]`: ponowienie jednej albo wszystkich (`messenger:failed:retry --force`)
-  w procesie uruchomionym w podzie `worker-commands` z `php -d memory_limit=128M`, żeby drugi proces PHP nie przekroczył
-  limitu kontenera obok workera.
+- `make -C infra/k8s failed-retry HOST=… [ID=…]`: z `ID` ponowienie jednej wiadomości (`messenger:failed:retry <ID>
+  --force`), bez `ID` ponowienie zbiorcze `app:messaging:failed-retry` (W12), w procesie uruchomionym w podzie
+  `worker-commands` z `php -d memory_limit=128M`, żeby drugi proces PHP nie przekroczył limitu kontenera obok workera.
+  Wypisuje raport komendy; ID wiadomości zachowanej po nieudanej próbie jest nowe.
 - `make -C infra/k8s failed-remove HOST=… ID=…`: usunięcie jednej wiadomości; wypisuje ją i działa dopiero po słowie `tak`
   (jak `reinitialize`).
 - `failed-retry` i `failed-remove` to w runbooku kroki „zgoda użytkownika”. Cele kończą się błędem bez `HOST`, bez `ID`
@@ -405,6 +436,52 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   zapis klasy usuniętej z kodu znika dopiero w wersji, w której znika jej handler.
 - `apps/api/CLAUDE.md`, „Zgodność wersji”: zasada z D3 i odwołanie do testu; zasada „pola opcjonalne” zostaje tylko jako
   własność JSON, nie jako zgoda na zmianę pól.
+
+### W12. Ręczne ponowienie zachowuje wiadomość w `failed` (D6)
+
+- **Zachowanie po nieudanej próbie.** Wiadomość odebrana z `failed`, której obsługa zawiodła, zostaje w `failed`:
+  - błąd, którego Symfony nie ponawia (strategia `failed` z `max_retries: 0`, `UnrecoverableMessageHandlingException`,
+    `HandlerFailedException` z samymi wyjątkami nieodwracalnymi): listener `WorkerMessageFailedEvent`
+    `KeepFailedMessageListener` (`Shared\Infrastructure\Messaging`, priorytet -50, czyli po listenerze ponowień Symfony
+    z priorytetem 100, który ustawia `willRetry()`) zapisuje kopię koperty do `failed` od razu dostępną (pierwotny
+    `SentToFailureTransportStamp`, nowe ID) i loguje w kanale `messenger` stare i nowe ID; dopiero potem worker usuwa
+    oryginał. `ErrorDetailsStamp` dokłada Symfony tylko wtedy, gdy błąd różni się od poprzedniego (klasa, kod, plik,
+    wiersz), więc ten sam błąd powtórzony zostawia szczegóły pierwszej próby. Listener Symfony tuż przed nim loguje
+    „Removing from transport after 0 retries”: przy wiadomości z `failed` rozstrzyga następny wpis o zachowaniu;
+  - błąd wymuszający ponowienie (`RecoverableExceptionInterface`): Symfony sam odsyła kopertę do `failed` z opóźnieniem
+    i licznikiem ponowień; listener jej nie kopiuje (jedna kopia, nie dwie). Do końca opóźnienia wiadomość nie jest
+    widoczna w `failed:show`, a pulpit ją liczy.
+  - Nieudany zapis kopii kończy obsługę błędem przed usunięciem oryginału: oryginał zostaje i można go od razu ponowić
+    z ID (`messenger:failed:retry <id>` nie oznacza wiadomości jako pobranej). Przerwanie procesu między zapisem kopii
+    a usunięciem oryginału zostawia dwie wiadomości (duplikat); obsługa jest idempotentna, a operator usuwa nadmiarową
+    przez `failed-remove`.
+- **Udana obsługa** usuwa wiadomość jak dotąd.
+- **Ponowienie zbiorcze `app:messaging:failed-retry [--max=200]`** (`Shared\UI\Console`, bez pytania): zapamiętuje na
+  starcie ID najwyżej `max` (1–1000) najstarszych wiadomości `failed` dostępnych teraz (kolejność `available_at`, potem
+  ID; wiadomość czekająca na opóźnione ponowienie Symfony nie jest wybierana) i ponawia każdą raz, po kolei
+  (`messenger:failed:retry <id> --force`), więc kopie zachowane w trakcie czekają na kolejny przebieg. Wynik każdej
+  wiadomości komenda bierze ze zdarzeń workera. Raport: ile wybrano, ile obsłużono (usunięte), ile zachowano po błędzie
+  (stare i nowe ID, z dopiskiem przy opóźnionym ponowieniu Symfony), ile zniknęło przed ponowieniem (usunięte w tym
+  czasie przez kogoś innego), ile wiadomości zostało w `failed` po przebiegu (wszystkie, także opóźnione) i, gdy
+  jakieś zostały, że żadna z nich nie była ponawiana w tym przebiegu („uruchom ponownie albo usuń”); zakończenie
+  przebiegu nie oznacza pustej kolejki. Kod 0, gdy przebieg się odbył (także z wiadomościami zachowanymi po błędzie),
+  1 przy złym `--max` (nic nie ponawia), 2 przy błędzie odczytu kolejki albo błędzie ponowienia poza handlerem (np.
+  nieudany zapis kopii): komenda wypisuje raport do tej chwili i przekazuje błąd konsoli. Dwa przebiegi naraz mogą
+  ponowić tę samą wiadomość (handler działa dwa razy).
+- **Blokada zbiorczego ponawiania bez końca**: listener `ConsoleEvents::COMMAND` (`DisableBulkFailedRetryListener`,
+  `Shared\UI\Console`) wyłącza w konsoli (kod 113, także pod skróconą nazwą komendy) komendy, które brałyby z `failed`
+  wiadomość po wiadomości, aż żadnej nie ma; wiadomość zachowana po błędzie jest od razu dostępna, więc przebieg by się
+  nie skończył, a handler działałby w kółko do limitu workera. Komunikat na stderr wskazuje `app:messaging:failed-retry`
+  albo ponowienie z `ID`. Wyłączone są:
+  - `messenger:failed:retry` bez argumentu `id` (z innymi opcjami i w trybie interaktywnym); z ID komenda działa bez
+    zmian;
+  - `messenger:consume`, które może konsumować `failed`, odczytane tak jak Symfony Messenger v8.1.11: odbiorca to wzorzec
+    `{^odbiorca$}` na nazwach transportów (więc też `fail.*`, `f[a]iled`), a odbiorca bez dopasowania to klucz lokatora
+    odbiorców, który zna też ID usługi `messenger.transport.failed`; `--all` bierze wszystkie transporty bez względu na
+    podanych odbiorców, minus dokładne nazwy z `--exclude-receivers` (Symfony nie czyta ich jako wzorców), więc `--all`
+    jest dozwolone tylko z `--exclude-receivers=failed`; bez odbiorców i bez `--all` komenda pyta o nich dopiero po
+    zdarzeniu, więc też jest wyłączona (odbiorców trzeba podać jawnie). Lista odbiorców bez `failed`, jak w workerach
+    compose i chartu, działa bez zmian.
 
 ## Zgodność wersji przy wdrożeniu epiku
 
@@ -469,7 +546,8 @@ Dokumenty, które dziś podają zachowanie zmieniane przez epik, zmienia zadanie
    jest `cancelled` w ciągu 2 minut; po przywróceniu brokera wszystkie workloady wracają do gotowości.
 4. **`failed` daje alert.** Test funkcjonalny `app:messaging:check`: puste kolejki – 0; wiadomość w `failed` – 1; gotowa
    wiadomość starsza niż próg – 1; wiadomość opóźniona, która właśnie stała się gotowa, nie stoi; wiadomość z
-   `available_at` w przyszłości nie jest gotowa; niedostępna baza – 2. `promtool test rules`: `MessagingUnhealthy`
+   `available_at` w przyszłości nie jest gotowa; wiadomość odebrana przez workera dawniej niż `redeliver_timeout` (nigdy
+   niepotwierdzona) jest gotowa i po progu stoi – 1, a odebrana przed chwilą nie jest gotowa; niedostępna baza – 2. `promtool test rules`: `MessagingUnhealthy`
    i `OrderExpiryFailed` odpalają przy nieudanym Jobie swojego CronJoba nowszym niż ostatni sukces jako jedna instancja
    także przy wielu nieudanych Jobach, milczą po udanym Jobie, nie łapią Jobów innego CronJoba; `OrderExpiryMissing`
    odpala po 30 minutach bez sukcesu i przy braku metryki, milczy przy udanych przebiegach; dotychczasowe scenariusze bez
@@ -484,8 +562,9 @@ Dokumenty, które dziś podają zachowanie zmieniane przez epik, zmienia zadanie
 6. **Płatności `pending` (B3).** Test funkcjonalny `payment:close-abandoned`: `pending` zamówienia anulowanego albo
    przeterminowanego → `cancelled`; dostawca „odrzucona” → `failed`; dostawca „opłacona” → zostaje `pending`; zamówienie
    płatne → bez zmian; późny webhook sukcesu po zamknięciu → `succeeded` z oznaczeniem zwrotu; niedostępny dostawca →
-   kod 2, pozostałe płatności zamknięte; test planu zapytania `pending`; `GetOrderPayability` nie zwraca danych zamówienia
-   poza płatnością i statusem.
+   kod 2, pozostałe płatności zamknięte; zamówienie istniejące, którego nie da się odczytać → płatność zostaje `pending`,
+   dostawca niewołany, kod 2, pozostałe zamknięte; test planu zapytania `pending`; `GetOrderPayability` nie zwraca danych
+   zamówienia poza płatnością i statusem.
 7. **Ponowienia.** `EventsRetryStrategyTest` z wartościami W3; test konfiguracji outboxa (200 prób, `max_delay` 60 s);
    test integracyjny: odbiorca `events` z błędem przejściowym jest ponawiany 10 razy, potem wiadomość jest w `failed`;
    błąd nieodwracalny od razu w `failed`.
@@ -504,6 +583,16 @@ Dokumenty, które dziś podają zachowanie zmieniane przez epik, zmienia zadanie
 12. **Cele `failed*`.** Testy na atrapach: `failed` tylko czyta; `failed-retry` z `ID` i bez; `failed-remove` bez `tak`,
     bez `ID`, bez `HOST` i przy błędzie `ssh`/`kubectl` niczego nie zmienia.
 13. **Całość.** `make check`, `make test` i `make e2e` przechodzą na stosie compose z dwoma workerami.
+14. **Ręczne ponowienie (W12).** Testy integracyjne na transporcie Doctrine (kernel `test_messaging`): kilka kolejnych
+    nieudanych ponowień zostawia wiadomość (nowe ID, ta sama treść, dokładnie jeden wiersz); błąd nieodwracalny
+    (`UnrecoverableMessageHandlingException` i `HandlerFailedException` z samymi takimi wyjątkami) zostawia ją;
+    `RecoverableMessageHandlingException` zostawia ją jako jeden wiersz z opóźnieniem (bez kopii listenera); udana
+    obsługa ją usuwa; `failed:remove` ją usuwa; nieudany zapis kopii nie usuwa oryginału; `app:messaging:failed-retry`
+    na kilku wiadomościach (część zawodzi) kończy się, handler każdej wybranej jest wywołany dokładnie raz, raport podaje
+    wybrane, obsłużone, zachowane i pozostałe (także przy `--max` mniejszym niż kolejka); `messenger:failed:retry` bez
+    ID oraz `messenger:consume`, które może konsumować `failed` (nazwa, wzorzec, ID usługi, `--all` bez wykluczenia
+    `failed`, brak odbiorców), kończą się kodem 113 z komunikatem i nie przetwarzają niczego; `failed:retry` z ID działa,
+    a komendy workerów z compose i chartu oraz `--all --exclude-receivers=failed` nie są wyłączone.
 
 ## Ryzyka i ograniczenia
 

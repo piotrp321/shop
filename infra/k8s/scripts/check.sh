@@ -269,7 +269,7 @@ do_tests() {
 }
 
 # The alert rules (docs/features/deploy-ops/spec.md, O6): promtool checks and tests the groups of the PrometheusRule of the render of
-# prod with the backup switched on (prod-backup: all eight alerts), which tests/alerts/prepare.py takes from the render (no copy of the
+# prod with the backup switched on (prod-backup: all eleven alerts), which tests/alerts/prepare.py takes from the render (no copy of the
 # rules) and puts next to the scenarios of tests/alerts/alerts.test.yml.
 do_alerts() {
   [ -f "$work/prod-backup.ndjson" ] || do_render

@@ -274,7 +274,7 @@ spec:
           image: {{ .image }}
           {{- .container | nindent 10 }}
           resources:
-            {{- include "shop.resources" (dict "root" .root "resources" .name) | nindent 12 }}
+            {{- include "shop.resources" (dict "root" .root "resources" (default .name .resources)) | nindent 12 }}
       {{- if .volumes }}
       volumes:
         {{- .volumes | nindent 8 }}
@@ -322,7 +322,7 @@ spec:
           image: {{ .image }}
           {{- .container | nindent 10 }}
           resources:
-            {{- include "shop.resources" (dict "root" .root "resources" .name) | nindent 12 }}
+            {{- include "shop.resources" (dict "root" .root "resources" (default .name .resources)) | nindent 12 }}
       {{- if .volumes }}
       volumes:
         {{- .volumes | nindent 8 }}

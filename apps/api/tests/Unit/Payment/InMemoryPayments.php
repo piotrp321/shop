@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Payment;
 
+use App\Payment\Application\Port\PendingPayment;
+use App\Payment\Application\Port\PendingPayments;
 use App\Payment\Domain\IdempotencyKey;
 use App\Payment\Domain\OrderId;
 use App\Payment\Domain\Payment;
@@ -17,10 +19,10 @@ use App\Payment\Domain\ProviderPaymentId;
 
 /**
  * Payments in memory, with the two unique indexes of payment_payment (the Idempotency-Key, one pending payment per
- * order), the handled webhook events and a journal of the locks and writes. Stores clones, so a change counts only
- * once saved.
+ * order), the handled webhook events and a journal of the locks and writes, and the pending ones by order id as the
+ * DBAL adapter of PendingPayments reads them. Stores clones, so a change counts only once saved.
  */
-final class InMemoryPayments implements PaymentRepository
+final class InMemoryPayments implements PaymentRepository, PendingPayments
 {
     /** @var array<string, Payment> by id, in the order they were added */
     private array $payments = [];
@@ -32,6 +34,8 @@ final class InMemoryPayments implements PaymentRepository
     public ?\Closure $whileWaitingForTheLock = null;
     /** What a concurrent transaction commits right after latestOfOrder read (e.g. a webhook). */
     public ?\Closure $afterLatestRead = null;
+    /** @var list<array{?string, int}> the order id after which and the limit of every page of pending payments */
+    public array $pendingPages = [];
 
     public function add(Payment $payment): void
     {
@@ -118,6 +122,18 @@ final class InMemoryPayments implements PaymentRepository
         }
 
         return $read;
+    }
+
+    public function page(?OrderId $after, int $limit): array
+    {
+        $this->pendingPages[] = [$after?->toString(), $limit];
+        $pending = array_values(array_filter(
+            $this->payments,
+            static fn (Payment $payment): bool => PaymentStatus::Pending === $payment->status() && (null === $after || strcmp($payment->orderId()->toString(), $after->toString()) > 0),
+        ));
+        usort($pending, static fn (Payment $a, Payment $b): int => strcmp($a->orderId()->toString(), $b->orderId()->toString()));
+
+        return array_map(static fn (Payment $payment): PendingPayment => new PendingPayment($payment->orderId(), $payment->id()), \array_slice($pending, 0, $limit));
     }
 
     public function get(string $id): Payment
