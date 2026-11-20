@@ -103,9 +103,8 @@ final class DashboardEndpointTest extends WebTestCase
         self::assertSame(['healthy', 'failed', 'transports'], array_keys($messages));
         self::assertFalse($messages['healthy']);
         self::assertSame(['count' => 2, 'capped' => false, 'oldestAt' => '2026-11-19T08:30:00+00:00'], $messages['failed']);
-        self::assertIsArray($messages['transports']);
-        self::assertSame(['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs'], array_column($messages['transports'], 'name'));
-        $byName = array_column($messages['transports'], null, 'name');
+        $byName = $this->transports($messages);
+        self::assertSame(['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs'], array_keys($byName));
         self::assertSame(['name', 'ready', 'capped', 'oldestReadyAgeSeconds', 'stalled'], array_keys($byName['outbox']));
         self::assertSame(['ready' => 2, 'capped' => false, 'stalled' => false], array_intersect_key($byName['outbox'], array_flip(['ready', 'capped', 'stalled'])));
         self::assertEqualsWithDelta(90, $byName['outbox']['oldestReadyAgeSeconds'], 5);
@@ -149,8 +148,7 @@ final class DashboardEndpointTest extends WebTestCase
         $messages = $this->messages($this->json($client->getResponse()));
         self::assertIsArray($messages['failed']);
         self::assertSame([1000, true], [$messages['failed']['count'], $messages['failed']['capped']]);
-        self::assertIsArray($messages['transports']);
-        $byName = array_column($messages['transports'], null, 'name');
+        $byName = $this->transports($messages);
         self::assertSame([1000, true], [$byName['outbox']['ready'], $byName['outbox']['capped']]);
         self::assertSame([1000, false], [$byName['jobs']['ready'], $byName['jobs']['capped']]);
     }
@@ -166,11 +164,31 @@ final class DashboardEndpointTest extends WebTestCase
         $this->get($client, TestTokenFactory::staff(['admin']));
 
         $messages = $this->messages($this->json($client->getResponse()));
-        self::assertIsArray($messages['transports']);
-        $byName = array_column($messages['transports'], null, 'name');
+        $byName = $this->transports($messages);
         self::assertFalse($byName['promotions']['stalled']);
         self::assertTrue($byName['payment_simulator']['stalled']);
         self::assertFalse($messages['healthy']);
+    }
+
+    /**
+     * The transports of the messages by name, in the order of the response.
+     *
+     * @param array<string, mixed> $messages
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function transports(array $messages): array
+    {
+        self::assertIsArray($messages['transports']);
+        $byName = [];
+        foreach ($messages['transports'] as $transport) {
+            self::assertIsArray($transport);
+            self::assertIsString($transport['name']);
+            $byName[$transport['name']] = $transport;
+        }
+
+        /** @var array<string, array<string, mixed>> $byName */
+        return $byName;
     }
 
     /**

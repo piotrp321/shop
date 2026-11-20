@@ -132,7 +132,7 @@ final class MessagingCheckCommandTest extends KernelTestCase
     {
         MessengerRows::add($this->connection, 'failed');
         $requests = 0;
-        $client = new MockHttpClient(function () use (&$requests): never {
+        $client = new MockHttpClient(static function () use (&$requests): never {
             ++$requests;
             self::fail('app:messaging:check must work while RabbitMQ is down.');
         });

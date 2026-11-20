@@ -149,7 +149,7 @@ final class MessagingDatabaseQueuesTest extends KernelTestCase
             "INSERT INTO messenger_messages (body, headers, queue_name, created_at, available_at, delivered_at)
              SELECT 'x', '{}', (ARRAY['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs'])[1 + n % 5],
                     '2026-11-20 11:00:00', timestamp '2026-11-20 11:00:00' + (n % 7000) * interval '1 second',
-                    CASE WHEN n % 50 = 0 THEN '2026-11-20 11:59:00' END
+                    CASE WHEN n % 50 = 0 THEN timestamp '2026-11-20 11:59:00' END
              FROM generate_series(1, 100000) AS n",
         );
         $this->connection->executeStatement("INSERT INTO messenger_messages (body, headers, queue_name, created_at, available_at) VALUES ('x', '{}', 'failed', '2026-11-20 11:00:00', '2026-11-20 11:00:00')");

@@ -6236,13 +6236,107 @@
                 },
                 "type": "object"
             },
+            "DashboardFailedMessagesResponse": {
+                "description": "Messages that failed all their attempts and wait in the `failed` transport for a decision of the operator.",
+                "required": [
+                    "count",
+                    "capped",
+                    "oldestAt"
+                ],
+                "properties": {
+                    "count": {
+                        "description": "Messages in `failed`, counted up to 1000.",
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "capped": {
+                        "description": "More than 1000 messages: `count` is 1000.",
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "oldestAt": {
+                        "description": "When the oldest of them was written to `failed`, RFC 3339 in UTC. Null without any.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-20T10:15:00+00:00",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardTransportResponse": {
+                "description": "A queue of the database that a worker takes messages from.",
+                "required": [
+                    "name",
+                    "ready",
+                    "capped",
+                    "oldestReadyAgeSeconds",
+                    "stalled"
+                ],
+                "properties": {
+                    "name": {
+                        "description": "The name of the transport: outbox, scheduled, payment_simulator, promotions or jobs.",
+                        "type": "string",
+                        "example": "outbox"
+                    },
+                    "ready": {
+                        "description": "Messages that a worker could take now (not handed to a worker, due), counted up to 1000.",
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "capped": {
+                        "description": "More than 1000 ready messages: `ready` is 1000.",
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "oldestReadyAgeSeconds": {
+                        "description": "How long the oldest ready message has been ready, in seconds (a delayed message from the moment it became due). Null without a ready message.",
+                        "type": "integer",
+                        "example": 3,
+                        "nullable": true
+                    },
+                    "stalled": {
+                        "description": "Whether the oldest ready message waits longer than the limit of the API (600 s): nothing takes the messages of the queue.",
+                        "type": "boolean",
+                        "example": false
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardMessagesResponse": {
+                "description": "The messages of the queues in the database (the outbox and the commands), judged by the API.",
+                "required": [
+                    "healthy",
+                    "failed",
+                    "transports"
+                ],
+                "properties": {
+                    "healthy": {
+                        "description": "Nothing is in `failed` and no queue stands.",
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "failed": {
+                        "$ref": "#/components/schemas/DashboardFailedMessagesResponse"
+                    },
+                    "transports": {
+                        "description": "Always in this order: outbox, scheduled, payment_simulator, promotions, jobs.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/DashboardTransportResponse"
+                        }
+                    }
+                },
+                "type": "object"
+            },
             "DashboardSystemResponse": {
                 "description": "The state of the system, for administrators.",
                 "required": [
                     "services",
                     "outbox",
                     "queues",
-                    "searchIndex"
+                    "searchIndex",
+                    "messages"
                 ],
                 "properties": {
                     "services": {
@@ -6265,6 +6359,9 @@
                     },
                     "searchIndex": {
                         "$ref": "#/components/schemas/DashboardSearchIndexResponse"
+                    },
+                    "messages": {
+                        "$ref": "#/components/schemas/DashboardMessagesResponse"
                     }
                 },
                 "type": "object"

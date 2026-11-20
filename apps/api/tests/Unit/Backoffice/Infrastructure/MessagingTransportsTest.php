@@ -19,6 +19,8 @@ final class MessagingTransportsTest extends TestCase
     {
         $config = Yaml::parseFile(\dirname(__DIR__, 4).'/config/packages/messenger.yaml');
         self::assertIsArray($config);
+        self::assertIsArray($config['framework'] ?? null);
+        self::assertIsArray($config['framework']['messenger'] ?? null);
         $transports = $config['framework']['messenger']['transports'] ?? null;
         self::assertIsArray($transports);
 
@@ -33,6 +35,6 @@ final class MessagingTransportsTest extends TestCase
         }
 
         self::assertEqualsCanonicalizing($doctrine, MessagingStatisticsAdapter::TRANSPORTS);
-        self::assertSame(['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs'], MessagingStatisticsAdapter::TRANSPORTS);
+        self::assertSame($doctrine, MessagingStatisticsAdapter::TRANSPORTS, 'The order of the queues is the order of the configuration.');
     }
 }

@@ -8,7 +8,7 @@ use App\Backoffice\Application\Query\SystemSection;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 
-#[OA\Schema(description: 'The state of the system, for administrators.', required: ['services', 'outbox', 'queues', 'searchIndex'])]
+#[OA\Schema(description: 'The state of the system, for administrators.', required: ['services', 'outbox', 'queues', 'searchIndex', 'messages'])]
 final readonly class DashboardSystemResponse
 {
     /**
@@ -33,6 +33,8 @@ final readonly class DashboardSystemResponse
         public ?array $queues,
         #[OA\Property(ref: new Model(type: DashboardSearchIndexResponse::class))]
         public DashboardSearchIndexResponse $searchIndex,
+        #[OA\Property(ref: new Model(type: DashboardMessagesResponse::class))]
+        public DashboardMessagesResponse $messages,
     ) {
     }
 
@@ -43,6 +45,7 @@ final readonly class DashboardSystemResponse
             new DashboardOutboxResponse($system->outboxPending),
             null === $system->queues ? null : array_map(DashboardQueueResponse::of(...), $system->queues),
             DashboardSearchIndexResponse::of($system->searchIndex),
+            DashboardMessagesResponse::of($system->messages),
         );
     }
 }
