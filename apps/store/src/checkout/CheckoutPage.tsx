@@ -58,6 +58,7 @@ const DELIVERY_ID_PREFIX = "checkout-delivery-";
 const DELIVERY_ERROR_ID = "checkout-delivery-error";
 const PROVIDER_ID_PREFIX = "checkout-provider-";
 const PROVIDER_ERROR_ID = "checkout-provider-error";
+const NO_METHODS = "Nie możemy teraz przyjąć zamówienia: brak dostępnych sposobów dostawy. Spróbuj później.";
 const SUBMIT_FAILED = "Nie udało się złożyć zamówienia. Spróbuj ponownie.";
 const RATE_LIMITED = "Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut.";
 const CART_GONE = "Koszyk nie jest już dostępny.";
@@ -112,6 +113,8 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // no longer among its options is no choice.
   const [deliveryMethodId, setDeliveryMethodId] = useState<string | null>(null);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  // What the live region of the summary says about the delivery after the summary was read again (a code, a 409).
+  const [summaryStatus, setSummaryStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // The discount code lives in this component only (D3): a reload of the page starts without one. `appliedCode` is the
   // code the summary of `loaded` was priced with; `codeInput` is what the customer types.
@@ -134,7 +137,10 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     void loadCheckout().then((result) => {
       if (!active) return;
       setLoaded(result);
-      if (result.status === "ready") setForm(prefilled(result.session));
+      if (result.status === "ready") {
+        setForm(prefilled(result.session));
+        setDeliveryMethodId(onlyMethod(result.cart));
+      }
     });
     return () => {
       active = false;
@@ -149,8 +155,21 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setLoaded({ status: "loading" });
     void loadCheckout().then((result) => {
       setLoaded(result);
-      if (result.status === "ready") setForm(prefilled(result.session));
+      if (result.status === "ready") {
+        setForm(prefilled(result.session));
+        setDeliveryMethodId(onlyMethod(result.cart));
+      }
     });
+  }
+
+  /**
+   * Shows the summary read again. The chosen delivery method stays only while the new summary offers it (a method that
+   * is gone is not chosen again when it comes back), and a changed delivery is announced in the live region.
+   */
+  function showCart(next: CartView, session: AccountSession) {
+    if (loaded.status === "ready") setSummaryStatus(deliveryAnnouncement(loaded.cart, next, deliveryMethodId));
+    setLoaded({ status: "ready", cart: next, session });
+    setDeliveryMethodId((current) => (next.delivery?.options.some((option) => option.methodId === current) ? current : null));
   }
 
   function change(name: FieldName, value: string) {
@@ -167,7 +186,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       return "unauthorized";
     }
     if (preview.status === "failed") return "failed";
-    setLoaded({ status: "ready", cart: preview.cart, session });
+    showCart(preview.cart, session);
     setAppliedCode(preview.appliedCode);
     setCodeError(preview.codeError);
     // A code that came off the order other than by „Usuń kod” must not stay announced as applied; the message at the
@@ -192,7 +211,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setCodeBusy(false);
     let target = CODE_INPUT_ID;
     if (preview.status === "ok") {
-      setLoaded({ status: "ready", cart: preview.cart, session: loaded.session });
+      showCart(preview.cart, loaded.session);
       setAppliedCode(preview.appliedCode);
       setCodeError(preview.codeError);
       if (preview.appliedCode !== null) {
@@ -218,7 +237,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setCodeBusy(false);
     let target = CODE_REMOVE_ID;
     if (preview.status === "ok") {
-      setLoaded({ status: "ready", cart: preview.cart, session: loaded.session });
+      showCart(preview.cart, loaded.session);
       setAppliedCode(null);
       setCodeInput("");
       setCodeStatus("Usunięto kod rabatowy.");
@@ -242,6 +261,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (loaded.status !== "ready" || submitting || codeBusy || providers === null || providers.length === 0) return;
+    if (offersNoMethods(loaded.cart)) return;
     const delivery = chosenOption(loaded.cart, deliveryMethodId);
     if (delivery === null) {
       setDeliveryError(CHOOSE_DELIVERY);
@@ -398,6 +418,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           providerError={providerError}
           deliveryMethodId={deliveryMethodId}
           deliveryError={deliveryError}
+          summaryStatus={summaryStatus}
           onDeliveryChange={chooseDelivery}
           pendingOrderNumber={pendingOrderNumber}
           submitting={submitting}
@@ -447,6 +468,41 @@ type DeliveryOption = NonNullable<CartView["delivery"]>["options"][number];
 /** The option of the chosen method in the summary shown; none without a choice or when the method is not offered. */
 function chosenOption(cart: CartView, methodId: string | null): DeliveryOption | null {
   return cart.delivery?.options.find((option) => option.methodId === methodId) ?? null;
+}
+
+/** The id of the method when the cart offers exactly one: the only one that is chosen for the customer. */
+function onlyMethod(cart: CartView): string | null {
+  return cart.delivery?.options.length === 1 ? cart.delivery.options[0].methodId : null;
+}
+
+/** A cart to buy that has no delivery method to choose: none is active, or the API is the one from before the delivery. */
+function offersNoMethods(cart: CartView): boolean {
+  return cart.delivery === undefined || (cart.delivery !== null && cart.delivery.options.length === 0);
+}
+
+/**
+ * What the live region says when the summary was read again: a delivery that stopped being free (with what is missing
+ * to it) or became free, and a changed amount missing to free delivery. Only the chosen method is told about when one
+ * is chosen and still offered, else every method. The amounts are the API's.
+ */
+function deliveryAnnouncement(before: CartView, after: CartView, chosenId: string | null): string {
+  const options = after.delivery?.options ?? [];
+  const relevant = options.some((option) => option.methodId === chosenId) ? options.filter((option) => option.methodId === chosenId) : options;
+  const currency = after.totals.currency;
+  const sentences: string[] = [];
+  for (const option of relevant) {
+    const was = before.delivery?.options.find((candidate) => candidate.methodId === option.methodId);
+    if (was === undefined) continue;
+    const missing = option.missingToFreeGross === null ? "" : ` Do darmowej dostawy brakuje ${formatPrice(option.missingToFreeGross, currency)}.`;
+    if (was.costGross === 0 && option.costGross > 0) {
+      sentences.push(`Dostawa „${option.name}” nie jest już darmowa, kosztuje ${formatPrice(option.costGross, currency)}.${missing}`);
+    } else if (was.costGross > 0 && option.costGross === 0) {
+      sentences.push(`Dostawa „${option.name}” jest teraz darmowa.`);
+    } else if (option.costGross > 0 && was.missingToFreeGross !== option.missingToFreeGross && option.missingToFreeGross !== null) {
+      sentences.push(`Dostawa „${option.name}”:${missing}`);
+    }
+  }
+  return sentences.join(" ");
 }
 
 async function loadCheckout(): Promise<Loaded> {
@@ -500,6 +556,7 @@ function CheckoutContent({
   providerError,
   deliveryMethodId,
   deliveryError,
+  summaryStatus,
   onDeliveryChange,
   pendingOrderNumber,
   submitting,
@@ -520,6 +577,7 @@ function CheckoutContent({
   providerError: string | null;
   deliveryMethodId: string | null;
   deliveryError: string | null;
+  summaryStatus: string;
   onDeliveryChange: (methodId: string) => void;
   pendingOrderNumber: string | null;
   submitting: boolean;
@@ -553,7 +611,7 @@ function CheckoutContent({
 
   return (
     <>
-      <OrderSummary cart={cart} delivery={chosenOption(cart, deliveryMethodId)} />
+      <OrderSummary cart={cart} delivery={chosenOption(cart, deliveryMethodId)} status={summaryStatus} />
       <DiscountCode
         state={code}
         disabled={submitting}
@@ -577,7 +635,11 @@ function CheckoutContent({
         {FIELDS.filter((field) => field.name !== "email" || session === null).map((field) => (
           <FormField key={field.name} {...field} value={form[field.name]} error={fieldErrors[field.name]} onChange={onChange} />
         ))}
-        {cart.delivery ? (
+        {offersNoMethods(cart) ? (
+          <Alert role="status">
+            <AlertDescription>{NO_METHODS}</AlertDescription>
+          </Alert>
+        ) : cart.delivery ? (
           <DeliveryChoice
             options={cart.delivery.options}
             value={chosenOption(cart, deliveryMethodId)?.methodId ?? null}
@@ -593,7 +655,7 @@ function CheckoutContent({
         ) : (
           <>
             <ProviderChoice providers={providers} value={provider} error={providerError} onChange={onProviderChange} />
-            <Button type="submit" className="self-end" disabled={submitting || code.busy}>
+            <Button type="submit" className="self-end" disabled={submitting || code.busy || offersNoMethods(cart)}>
               Zamawiam z obowiązkiem zapłaty
             </Button>
           </>
@@ -691,7 +753,7 @@ function DeliveryChoice({
               <span>{option.costGross === 0 ? "Darmowa" : formatPrice(option.costGross, currency)}</span>
             </span>
             {option.description ? <span className="text-sm text-muted-foreground break-words">{option.description}</span> : null}
-            {option.missingToFreeGross !== null ? (
+            {option.costGross !== 0 && option.missingToFreeGross !== null ? (
               <span className="text-sm text-muted-foreground">Do darmowej dostawy brakuje {formatPrice(option.missingToFreeGross, currency)}</span>
             ) : null}
           </span>
@@ -812,10 +874,13 @@ function DiscountCode({
  * Lines, the delivery and the total exactly as the API gave them; nothing is computed here. With delivery methods the
  * total to pay is `totalGross` of the chosen option, and without a choice the summary asks for one instead.
  */
-function OrderSummary({ cart, delivery }: { cart: CartView; delivery: DeliveryOption | null }) {
-  const offersDelivery = cart.delivery !== null && cart.delivery !== undefined;
+function OrderSummary({ cart, delivery, status }: { cart: CartView; delivery: DeliveryOption | null; status: string }) {
+  const offersDelivery = (cart.delivery?.options.length ?? 0) > 0;
   return (
     <section aria-label="Podsumowanie zamówienia">
+      <div data-testid="checkout-summary-status" role="status" className="sr-only">
+        {status}
+      </div>
       <Card>
         <CardContent className="flex flex-col gap-3">
           <ul className="flex flex-col divide-y divide-border">
