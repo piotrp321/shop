@@ -22,11 +22,11 @@ Od 2026-11-18 obowiązuje moratorium na rozwój AO, skilli istniejących tylko d
 Ostatni epik prowadzony przez AO: DEMO-DATA (#482), zakończony w AO 2026-11-18 (końcowy PR #744; integracja przeszła
 w pierwszej rundzie).
 
-W toku: ASYNC-RELIABILITY (#768, końcowy PR #811 otwarty). Przygotowane: DELIVERY etap 1 (#120). Blokery: brak.
-Ostatni zmergowany epik: DEMO-SCALE etap 1 (#786, końcowy PR #788; epik natywny spoza serii, bez punktu odniesienia,
-więc bez danych pomiaru). Ostatni zmergowany epik serii: ABUSE-LIMITS (#181, końcowy PR #802; brak danych pomiaru).
-Retro do zrobienia: brak (retro DEMO-SCALE w `docs/reports/retro-demo-scale-2026-11-20.md`). Otwartych issues
-z etykietą `agent` jest 123, zamkniętych 75.
+W toku: brak epiku. Przygotowane: DELIVERY etap 1 (#120). Blokery: brak.
+Ostatni zmergowany epik: ASYNC-RELIABILITY (#768, końcowy PR #811, zmergowany 2026-11-20; epik natywny serii z danymi
+pomiaru; 12 wiadomości właściciela, 4 oczekiwania, łącznie 46 min czekania). Jest też ostatnim zmergowanym epikiem
+serii. Retro do zrobienia: brak (retro ASYNC-RELIABILITY: ten PR). Otwartych issues z etykietą `agent` jest 125,
+zamkniętych 75.
 
 Seria ASH v1.0 (specyfikacja `docs/features/ash-v1/spec.md`): trzy epiki prowadzone natywnie według „Przebiegu epiku”
 w ADR, ocenianie metrykami i retrospektywami `/retro`. Seria jest w toku od założenia tagu `ash-v1.0` do retrospektywy
@@ -35,9 +35,9 @@ trzeciego epiku; w tym czasie pliki procesu zmienia tylko poprawka blokady albo 
 
 | Seria ASH v1.0 | Stan |
 |---|---|
-| Stan serii | w toku (tag `ash-v1.0` założony 2026-11-19; ABUSE-LIMITS zmergowany, ASYNC-RELIABILITY w toku) |
+| Stan serii | w toku (tag `ash-v1.0` założony 2026-11-19; ABUSE-LIMITS i ASYNC-RELIABILITY zmergowane, DELIVERY etap 1 przygotowany) |
 | Epiki serii | ABUSE-LIMITS (#181), ASYNC-RELIABILITY (#768), DELIVERY etap 1 (#120), w tej kolejności |
-| Zmergowane epiki serii | ABUSE-LIMITS (#181, końcowy PR #802) |
+| Zmergowane epiki serii | ABUSE-LIMITS (#181, końcowy PR #802), ASYNC-RELIABILITY (#768, końcowy PR #811) |
 
 Stan serii przyjmuje jedną z wartości: „przed startem”, „w toku”, „zakończona”.
 
