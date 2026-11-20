@@ -11,6 +11,7 @@ use App\Ordering\Domain\EmailAddress;
 use App\Ordering\Domain\IdempotencyKey;
 use App\Ordering\Domain\LineAmounts;
 use App\Ordering\Domain\Order;
+use App\Ordering\Domain\OrderDelivery;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderLine;
 use App\Ordering\Domain\OrderNumber;
@@ -24,18 +25,20 @@ use App\Ordering\Domain\VariantId;
 final class OrderExamples
 {
     public const string ORDER = '0192f0c4-7c1a-7c4e-9a6e-0000000000aa';
+    /** The delivery method of placed(). */
+    public const string DELIVERY_METHOD = '0192f0c4-7c1a-7c4e-9a6e-0000000000d0';
     /** The access token of the guest order of placed(): 43 characters of base64url. */
     public const string TOKEN = 'dGhpcy1pcy1hLXRva2VuLW9mLXRoZS1ndWVzdC0xMjM';
     public const string CUSTOMER = 'kc-sub-1';
-    /** The gross total of placed(): 2 × 12 300 + 2 000. */
+    /** The gross total of placed(): 2 × 12 300 + 2 000, delivered for free. */
     public const int TOTAL = 26_600;
     public const string PLACED_AT = '2026-11-05 12:00:00+00:00';
     /** PLACED_AT + 30 minutes. */
     public const string DEADLINE = '2026-11-05 12:30:00+00:00';
 
     /**
-     * A placed order of two lines (one with a variant label) that has no confirmation marker: of a guest with the
-     * TOKEN, or of the CUSTOMER.
+     * A placed order of two lines (one with a variant label) that has no confirmation marker, with a free delivery
+     * (so its total is the one of its lines): of a guest with the TOKEN, or of the CUSTOMER.
      */
     public static function placed(bool $byCustomer = false): Order
     {
@@ -56,6 +59,7 @@ final class OrderExamples
                 OrderLine::of(VariantId::fromString('0192f0c4-7c1a-7c4e-9a6e-000000000002'), $product, 'Czapka', '', 1, $price(2_000), self::undiscounted($price(2_000), 1), null),
             ],
             null,
+            self::freeDelivery(),
             IdempotencyKey::fromString('key-1'),
             RequestFingerprint::of('guest:cart', $contact, $address, self::TOTAL),
             new \DateTimeImmutable(self::PLACED_AT),
@@ -63,6 +67,14 @@ final class OrderExamples
         $order->releaseEvents();
 
         return $order;
+    }
+
+    /**
+     * A delivery by DELIVERY_METHOD that costs nothing (no share of VAT).
+     */
+    public static function freeDelivery(): OrderDelivery
+    {
+        return OrderDelivery::of(self::DELIVERY_METHOD, 'Kurier standardowy', 'https://tracking.example.com/{numer}', 0, [], Currency::PLN);
     }
 
     /**
@@ -74,9 +86,10 @@ final class OrderExamples
     }
 
     /**
-     * A copy of the order with the same state at the given version, as a repository reads it back.
+     * A copy of the order with the same state at the given version, as a repository reads it back; without its
+     * delivery, as an order placed before the delivery is read.
      */
-    public static function copy(Order $order, ?int $version = null): Order
+    public static function copy(Order $order, ?int $version = null, bool $withoutDelivery = false): Order
     {
         return Order::reconstitute(
             id: $order->id(),
@@ -87,6 +100,7 @@ final class OrderExamples
             shippingAddress: $order->shippingAddress(),
             lines: $order->lines(),
             discount: $order->discount(),
+            delivery: $withoutDelivery ? null : $order->delivery(),
             status: $order->status(),
             idempotencyKey: $order->idempotencyKey(),
             requestFingerprint: $order->requestFingerprint(),

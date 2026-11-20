@@ -198,6 +198,7 @@ final class GetOrderPayabilityHandlerTest extends TestCase
             shippingAddress: $order->shippingAddress(),
             lines: $order->lines(),
             discount: null,
+            delivery: $order->delivery(),
             status: $order->status(),
             idempotencyKey: $order->idempotencyKey(),
             requestFingerprint: $order->requestFingerprint(),

@@ -9,8 +9,10 @@ use App\Shared\Domain\Event\DomainEvent;
 /**
  * An order placed from a cart: copies of the lines (names, labels, unit prices), the contact and the shipping
  * address as they were at the moment of placement, never references. The totals are computed from the lines (after
- * the discount). An order placed with a discount code keeps a copy of it (OrderDiscount); the discounts of its lines add
- * up to the amount of that copy, and to 0 without a code.
+ * the discount) and the delivery. An order placed with a discount code keeps a copy of it (OrderDiscount); the discounts
+ * of its lines add up to the amount of that copy, and to 0 without a code. Every new order has a delivery (the copy of
+ * the method and its cost split over the VAT rates of the lines, OrderDelivery); an order stored before the delivery
+ * has none and costs only its lines (docs/features/delivery/spec.md, P17, P19).
  *
  * The Idempotency-Key and the fingerprint of the request tell a repeated placement (isReplayOf()) from another one.
  * The version is the stored version the state is based on (optimistic locking): paying and cancelling an order
@@ -22,7 +24,7 @@ use App\Shared\Domain\Event\DomainEvent;
  * order by its access token, a customer by the id.
  *
  * Staff take a paid order on (ship, deliver, cancel, registerReturn) only as the table of OrderStatus allows. A
- * cancellation by staff and a return create the refund of the gross total, due REFUND_TIME later, which staff then
+ * cancellation by staff and a return create the refund of the gross total with the delivery (P13), due REFUND_TIME later, which staff then
  * mark completed. Every change of the status appends an entry to the history, which is never rewritten.
  */
 final class Order
@@ -48,6 +50,7 @@ final class Order
         private readonly ShippingAddress $shippingAddress,
         private readonly array $lines,
         private readonly ?OrderDiscount $discount,
+        private readonly ?OrderDelivery $delivery,
         private readonly OrderTotals $totals,
         private OrderStatus $status,
         private readonly IdempotencyKey $idempotencyKey,
@@ -73,9 +76,11 @@ final class Order
      * @param ?AccessToken    $accessToken of a guest order; a customer order has none
      * @param list<OrderLine> $lines       in the order of the cart
      * @param ?OrderDiscount  $discount    the code the order was placed with, if any
+     * @param OrderDelivery   $delivery    the chosen method and its cost; every new order has one (P19)
      *
      * @throws InvalidOrder no line, more than MAX_LINES, a variant twice, a guest order without a token or
-     *                      a customer order with one, line discounts that do not add up to the discount
+     *                      a customer order with one, line discounts that do not add up to the discount, a share
+     *                      of the delivery at a VAT rate no line has
      */
     public static function place(
         OrderId $id,
@@ -86,17 +91,19 @@ final class Order
         ShippingAddress $shippingAddress,
         array $lines,
         ?OrderDiscount $discount,
+        OrderDelivery $delivery,
         IdempotencyKey $idempotencyKey,
         RequestFingerprint $requestFingerprint,
         \DateTimeImmutable $now,
     ): self {
         self::assertLines($lines);
         self::assertDiscount($lines, $discount);
+        self::assertDelivery($lines, $delivery);
         if ($owner->isGuest() !== (null !== $accessToken)) {
             throw new InvalidOrder('A guest order has an access token, a customer order has none.');
         }
         $history = [new OrderStatusChange(null, OrderStatus::New, $now, StatusActor::customer(), null)];
-        $order = new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, $discount, OrderTotals::of($lines), OrderStatus::New, $idempotencyKey, $requestFingerprint, $now, $now->modify(self::PAYMENT_TIME), null, null, null, null, null, null, null, null, $history, 1);
+        $order = new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, $discount, $delivery, OrderTotals::of($lines, $delivery), OrderStatus::New, $idempotencyKey, $requestFingerprint, $now, $now->modify(self::PAYMENT_TIME), null, null, null, null, null, null, null, null, $history, 1);
         $order->events[] = new OrderPlaced($id->toString(), $now);
 
         return $order;
@@ -105,8 +112,9 @@ final class Order
     /**
      * The order as stored, without events. The lines keep their stored values; nothing is computed anew.
      *
-     * @param list<OrderLine>         $lines   in their positions
-     * @param list<OrderStatusChange> $history oldest first
+     * @param list<OrderLine>         $lines    in their positions
+     * @param ?OrderDelivery          $delivery null for an order placed before the delivery (P17)
+     * @param list<OrderStatusChange> $history  oldest first
      */
     public static function reconstitute(
         OrderId $id,
@@ -117,6 +125,7 @@ final class Order
         ShippingAddress $shippingAddress,
         array $lines,
         ?OrderDiscount $discount,
+        ?OrderDelivery $delivery,
         OrderStatus $status,
         IdempotencyKey $idempotencyKey,
         RequestFingerprint $requestFingerprint,
@@ -133,7 +142,7 @@ final class Order
         array $history,
         int $version,
     ): self {
-        return new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, $discount, OrderTotals::of($lines), $status, $idempotencyKey, $requestFingerprint, $placedAt, $paymentDeadline, $paidAt, $paymentId, $cancelledAt, $cancellationReason, $shippedAt, $deliveredAt, $returnedAt, $refund, $history, $version);
+        return new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, $discount, $delivery, OrderTotals::of($lines, $delivery), $status, $idempotencyKey, $requestFingerprint, $placedAt, $paymentDeadline, $paidAt, $paymentId, $cancelledAt, $cancellationReason, $shippedAt, $deliveredAt, $returnedAt, $refund, $history, $version);
     }
 
     /**
@@ -174,7 +183,7 @@ final class Order
      * The amount is checked only when it pays the order: the payment takes it from the order, so another one is
      * a logic error.
      *
-     * @throws InvalidOrder the amount or the currency is not the gross total of the order
+     * @throws InvalidOrder the amount or the currency is not the gross total of the order (with the delivery)
      */
     public function markPaid(PaymentId $paymentId, int $amount, string $currency, \DateTimeImmutable $executedAt, \DateTimeImmutable $now): PaymentResult
     {
@@ -367,6 +376,11 @@ final class Order
         return $this->discount;
     }
 
+    public function delivery(): ?OrderDelivery
+    {
+        return $this->delivery;
+    }
+
     public function totals(): OrderTotals
     {
         return $this->totals;
@@ -476,6 +490,23 @@ final class Order
         $sum = array_sum(array_map(static fn (OrderLine $line): int => $line->discount()->amount(), $lines));
         if ($sum !== ($discount?->amount()->amount() ?? 0)) {
             throw new InvalidOrder('The discounts of the lines add up to the discount of the order.');
+        }
+    }
+
+    /**
+     * Every share of the delivery is at the VAT rate of a line: the cost is split over the goods of the order (W3).
+     *
+     * @param list<OrderLine> $lines
+     *
+     * @throws InvalidOrder
+     */
+    private static function assertDelivery(array $lines, OrderDelivery $delivery): void
+    {
+        $rates = array_map(static fn (OrderLine $line): int => $line->unitPrice()->vatRateBp(), $lines);
+        foreach ($delivery->shares() as $share) {
+            if (!\in_array($share->rateBp(), $rates, true)) {
+                throw new InvalidOrder('A share of the delivery is at the VAT rate of a line of the order.');
+            }
         }
     }
 
