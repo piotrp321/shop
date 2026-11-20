@@ -75,7 +75,7 @@ final class PlaceOrderHandlerTest extends TestCase
     private const string OTHER_DELIVERY = '0192f0c4-7c1a-7c4e-9a6e-0000000000d3';
     private const string UNKNOWN_DELIVERY = '0192f0c4-7c1a-7c4e-9a6e-0000000000d9';
     private const int COST = 1_999;
-    private const int FREE_FROM = 70_000;
+    private const int FREE_FROM = 100_000;
     private const string TEMPLATE = 'https://tracking.example.com/{numer}';
     private const string UNAVAILABLE = 'Wybrany sposób dostawy jest niedostępny. Wybierz inny.';
     private const string TOO_MANY_UNPAID = 'Nie możemy teraz przyjąć kolejnego zamówienia, bo z tych danych albo z tej sieci czeka już kilka nieopłaconych. Spróbuj ponownie za ok. 35 minut.';

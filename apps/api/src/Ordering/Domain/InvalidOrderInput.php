@@ -82,6 +82,11 @@ final class InvalidOrderInput extends \DomainException implements InvalidInput
         return new self('Miejscowość zawiera niedozwolone znaki.');
     }
 
+    public static function deliveryMethod(): self
+    {
+        return new self('Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie.');
+    }
+
     public static function idempotencyKey(): self
     {
         return new self('Nieprawidłowy klucz żądania.');

@@ -128,6 +128,7 @@ final class OrderStatusTextsTest extends TestCase
             new ShippingAddressView('Długa 1', '00-950', 'Warszawa', 'PL'),
             [new OrderLineView('0192f0c4-7c1a-7c4e-9a6e-000000000001', 'Buty Asfalt', '42', 1, 125_456, 125_456, 0, 125_456, null)],
             null,
+            null,
             new OrderTotalsView(102_000, 23_456, 125_456, 'PLN'),
             new \DateTimeImmutable('2026-11-05 12:00:00+00:00'),
             new \DateTimeImmutable('2026-11-05 12:30:00+00:00'),
