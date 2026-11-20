@@ -6,13 +6,14 @@ import { CONFLICT_MESSAGE, useOrderDetail } from "@/orders/useOrderDetail";
 
 type BackofficeOrder = components["schemas"]["BackofficeOrder"];
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
 
-vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get, POST: mocks.post }) }));
+vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get, POST: mocks.post, PUT: mocks.put }) }));
 
 const DETAIL = "/api/v1/admin/orders/{orderId}";
 const STATUS_CHANGES = "/api/v1/admin/orders/{orderId}/status-changes";
 const REFUND_COMPLETION = "/api/v1/admin/orders/{orderId}/refund-completion";
+const TRACKING_NUMBER = "/api/v1/admin/orders/{orderId}/tracking-number";
 
 function order(overrides: Partial<BackofficeOrder> = {}): BackofficeOrder {
   return {
@@ -41,8 +42,10 @@ function order(overrides: Partial<BackofficeOrder> = {}): BackofficeOrder {
     returnedAt: null,
     history: [],
     refund: null,
+    shipment: null,
     allowedTransitions: ["ship", "cancel"],
     canCompleteRefund: false,
+    canChangeTrackingNumber: false,
     ...overrides,
   };
 }
@@ -71,6 +74,7 @@ describe("useOrderDetail", () => {
   beforeEach(() => {
     mocks.get.mockReset();
     mocks.post.mockReset();
+    mocks.put.mockReset();
   });
 
   afterEach(() => {
@@ -208,12 +212,62 @@ describe("useOrderDetail", () => {
       expect(result).toEqual({ status: "saved" });
       expect(posted()).toEqual({
         path: STATUS_CHANGES,
-        options: { params: { path: { orderId: "o-1" } }, body: { transition: "ship", version: 2, note: "Kurier DPD" } },
+        options: { params: { path: { orderId: "o-1" } }, body: { transition: "ship", version: 2, note: "Kurier DPD", trackingNumber: null } },
       });
       expect(detail.order.value?.status).toBe("shipped");
       expect(detail.order.value?.version).toBe(3);
       expect(detail.actions.value.map((action) => action.transition)).toEqual(["deliver", "return"]);
       expect(detail.saving.value).toBe(false);
+    });
+
+    it("sends the tracking number the staff member typed with a shipment, as it was typed", async () => {
+      const detail = await start(order());
+      mocks.post.mockResolvedValue({ data: order({ status: "shipped", version: 3 }), response: { status: 200 } });
+
+      await detail.changeStatus("ship", null, " JJD0002-4455 ");
+
+      expect(posted().options.body).toEqual({ transition: "ship", version: 2, note: null, trackingNumber: " JJD0002-4455 " });
+    });
+
+    it.each(["", "   "])("sends no number for a blank one (%j)", async (typed) => {
+      const detail = await start(order());
+      mocks.post.mockResolvedValue({ data: order({ status: "shipped", version: 3 }), response: { status: 200 } });
+
+      await detail.changeStatus("ship", null, typed);
+
+      expect(posted().options.body).toEqual({ transition: "ship", version: 2, note: null, trackingNumber: null });
+    });
+
+    it.each(["cancel", "return", "deliver"] as const)("never sends a number with %s, whatever it was given", async (transition) => {
+      const detail = await start(order({ allowedTransitions: [transition] }));
+      mocks.post.mockResolvedValue({ data: order({ status: "cancelled", version: 3, allowedTransitions: [] }), response: { status: 200 } });
+
+      await detail.changeStatus(transition, "Powód", "JJD-1");
+
+      expect(posted().options.body).toEqual({ transition, version: 2, note: "Powód", trackingNumber: null });
+    });
+
+    it("puts a 422 of the tracking number at its field, next to one of the note", async () => {
+      const detail = await start(order());
+      mocks.post.mockResolvedValue({
+        data: undefined,
+        error: {
+          violations: [
+            { propertyPath: "trackingNumber", title: "Numer przesyłki może mieć 1–40 znaków: litery bez polskich znaków, cyfry i myślniki." },
+            { propertyPath: "note", title: "Notatka może mieć najwyżej 500 znaków." },
+          ],
+        },
+        response: { status: 422 },
+      });
+
+      const result = await detail.changeStatus("ship", "x", "Żółć");
+
+      expect(result).toEqual({
+        status: "invalid",
+        fields: { note: "Notatka może mieć najwyżej 500 znaków.", trackingNumber: "Numer przesyłki może mieć 1–40 znaków: litery bez polskich znaków, cyfry i myślniki." },
+        message: null,
+      });
+      expect(detail.order.value?.status).toBe("paid");
     });
 
     it("sends no note for a blank one where it is optional", async () => {
@@ -222,7 +276,7 @@ describe("useOrderDetail", () => {
 
       await detail.changeStatus("ship", "   ");
 
-      expect(posted().options.body).toEqual({ transition: "ship", version: 2, note: null });
+      expect(posted().options.body).toEqual({ transition: "ship", version: 2, note: null, trackingNumber: null });
     });
 
     it.each(["cancel", "return"] as const)("requires a note to %s and sends nothing without it", async (transition) => {
@@ -243,7 +297,7 @@ describe("useOrderDetail", () => {
       const result = await detail.changeStatus("cancel", "Klient zrezygnował");
 
       expect(result).toEqual({ status: "saved" });
-      expect(posted().options.body).toEqual({ transition: "cancel", version: 2, note: "Klient zrezygnował" });
+      expect(posted().options.body).toEqual({ transition: "cancel", version: 2, note: "Klient zrezygnował", trackingNumber: null });
     });
 
     it("does not send a change that allowedTransitions does not list", async () => {
@@ -449,6 +503,155 @@ describe("useOrderDetail", () => {
         message: "Nie udało się zmienić statusu zamówienia. Sprawdź połączenie z API.",
       });
       expect(detail.saving.value).toBe(false);
+    });
+  });
+
+  describe("the tracking number", () => {
+    const shipped = (overrides: Partial<BackofficeOrder> = {}) => order({ status: "shipped", version: 3, allowedTransitions: ["deliver", "return"], canChangeTrackingNumber: true, ...overrides });
+
+    it("is offered only when the API says it can be changed", async () => {
+      expect((await start(shipped())).canChangeTrackingNumber.value).toBe(true);
+      wrapper?.unmount();
+      expect((await start(order())).canChangeTrackingNumber.value).toBe(false);
+      wrapper?.unmount();
+      expect((await start(500)).canChangeTrackingNumber.value).toBe(false);
+    });
+
+    it("sends the number with the version of the view and shows the order the API answers with", async () => {
+      const detail = await start(shipped());
+      mocks.put.mockResolvedValue({ data: shipped({ version: 4, shipment: { carrier: "Kurier standardowy", trackingNumber: "JJD0002-4455", trackingUrl: null } }), response: { status: 200 } });
+
+      const result = await detail.changeTrackingNumber(" JJD0002-4455 ");
+
+      expect(result).toEqual({ status: "saved" });
+      expect(mocks.put).toHaveBeenCalledWith(TRACKING_NUMBER, { params: { path: { orderId: "o-1" } }, body: { trackingNumber: " JJD0002-4455 ", version: 3 } });
+      expect(detail.order.value?.version).toBe(4);
+      expect(detail.order.value?.shipment?.trackingNumber).toBe("JJD0002-4455");
+      expect(detail.saving.value).toBe(false);
+    });
+
+    it.each(["", "   "])("removes the number with a blank one (%j) by sending null", async (typed) => {
+      const detail = await start(shipped({ shipment: { carrier: null, trackingNumber: "AB-1", trackingUrl: null } }));
+      mocks.put.mockResolvedValue({ data: shipped({ version: 4 }), response: { status: 200 } });
+
+      const result = await detail.changeTrackingNumber(typed);
+
+      expect(result).toEqual({ status: "saved" });
+      expect(mocks.put).toHaveBeenCalledWith(TRACKING_NUMBER, { params: { path: { orderId: "o-1" } }, body: { trackingNumber: null, version: 3 } });
+      expect(detail.order.value?.shipment).toBeNull();
+    });
+
+    it("does not send a change the API does not allow now", async () => {
+      const detail = await start(order());
+
+      const result = await detail.changeTrackingNumber("AB-1");
+
+      expect(result.status).toBe("failed");
+      expect(mocks.put).not.toHaveBeenCalled();
+    });
+
+    it("fails without sending when no order is loaded", async () => {
+      const detail = await start(500);
+
+      expect((await detail.changeTrackingNumber("AB-1")).status).toBe("failed");
+      expect(mocks.put).not.toHaveBeenCalled();
+    });
+
+    it("puts a 422 of the number at its field and keeps the order as it was", async () => {
+      const detail = await start(shipped());
+      mocks.put.mockResolvedValue({
+        data: undefined,
+        error: { violations: [{ propertyPath: "trackingNumber", title: "Numer przesyłki może mieć 1–40 znaków: litery bez polskich znaków, cyfry i myślniki." }] },
+        response: { status: 422 },
+      });
+
+      const result = await detail.changeTrackingNumber("Żółć");
+
+      expect(result).toEqual({ status: "invalid", fields: { trackingNumber: "Numer przesyłki może mieć 1–40 znaków: litery bez polskich znaków, cyfry i myślniki." }, message: null });
+      expect(detail.order.value?.version).toBe(3);
+    });
+
+    it("says the API refused a 422 that points at no field, with its detail", async () => {
+      const detail = await start(shipped());
+      mocks.put.mockResolvedValue({ data: undefined, error: { detail: "Coś nie tak." }, response: { status: 422 } });
+
+      expect(await detail.changeTrackingNumber("AB-1")).toEqual({ status: "invalid", fields: {}, message: "Coś nie tak." });
+      mocks.put.mockResolvedValue({ data: undefined, error: {}, response: { status: 422 } });
+      expect(await detail.changeTrackingNumber("AB-1")).toEqual({ status: "invalid", fields: {}, message: "API odrzuciło zmianę numeru przesyłki (HTTP 422)." });
+    });
+
+    it.each([
+      ["a stale version", "about:blank"],
+      ["an order that is not shipped any more", "tag:piotrp321.github.io,2026:shop/problems/tracking-number-not-changeable"],
+    ])("reloads the order and reports the conflict on a 409 for %s", async (_name, type) => {
+      const detail = await start(shipped());
+      mocks.put.mockResolvedValue({ data: undefined, error: { type, status: 409, detail: "tekst" }, response: { status: 409 } });
+      mocks.get.mockResolvedValue({ data: order({ status: "returned", version: 5, allowedTransitions: [], canChangeTrackingNumber: false }), response: { status: 200 } });
+
+      const result = await detail.changeTrackingNumber("AB-1");
+
+      expect(result).toEqual({ status: "conflict", message: CONFLICT_MESSAGE });
+      expect(detail.order.value?.version).toBe(5);
+      expect(detail.canChangeTrackingNumber.value).toBe(false);
+    });
+
+    it.each([
+      [403, "Nie masz uprawnień do tej zmiany."],
+      [404, "Nie znaleźliśmy zamówienia."],
+      [500, "Nie udało się zapisać numeru przesyłki (HTTP 500)."],
+    ])("reports a %i", async (status, message) => {
+      const detail = await start(shipped());
+      mocks.put.mockResolvedValue({ data: undefined, response: { status } });
+
+      expect(await detail.changeTrackingNumber("AB-1")).toEqual({ status: "failed", message });
+    });
+
+    it("reports a request that did not reach the API", async () => {
+      const detail = await start(shipped());
+      mocks.put.mockRejectedValue(new TypeError("Failed to fetch"));
+
+      expect(await detail.changeTrackingNumber("AB-1")).toEqual({ status: "failed", message: "Nie udało się zapisać numeru przesyłki. Sprawdź połączenie z API." });
+      expect(detail.saving.value).toBe(false);
+    });
+
+    it("sends once when asked again while the first request is still in flight", async () => {
+      const detail = await start(shipped());
+      let answer!: () => void;
+      mocks.put.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            answer = () => resolve({ data: shipped({ version: 4 }), response: { status: 200 } });
+          }),
+      );
+
+      const first = detail.changeTrackingNumber("AB-1");
+      const second = await detail.changeTrackingNumber("AB-2");
+      answer();
+      await first;
+
+      expect(second.status).toBe("failed");
+      expect(mocks.put).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores the answer when the id changed meanwhile", async () => {
+      const id = ref("o-1");
+      const detail = await start(shipped(), id);
+      let answer!: () => void;
+      mocks.put.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            answer = () => resolve({ data: shipped({ version: 4 }), response: { status: 200 } });
+          }),
+      );
+
+      const sending = detail.changeTrackingNumber("AB-1");
+      mocks.get.mockResolvedValue({ data: order({ orderId: "o-2", number: "R-100002" }), response: { status: 200 } });
+      id.value = "o-2";
+      await flushPromises();
+      answer();
+
+      expect(await sending).toEqual({ status: "ignored" });
+      expect(detail.order.value?.orderId).toBe("o-2");
     });
   });
 
