@@ -2,12 +2,17 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { serviceLabel, serviceStatusLabel } from "./labels";
+import { formatAge, formatBrowserDateTime, serviceLabel, serviceStatusLabel, transportLabel } from "./labels";
 import type { Dashboard } from "./useDashboard";
 
 type System = NonNullable<Dashboard["system"]>;
 
 defineProps<{ system: System }>();
+
+/** A number of messages; „1000+” when the API counted up to its limit. */
+function countText(count: number, capped: boolean): string {
+  return capped ? `${count}+` : String(count);
+}
 </script>
 
 <template>
@@ -57,6 +62,125 @@ defineProps<{ system: System }>();
         <span data-testid="outbox-pending">{{ system.outbox.pending }}</span>
       </p>
     </Card>
+
+    <section
+      data-testid="messages"
+      aria-labelledby="messages-heading"
+    >
+      <Card class="gap-4 p-5">
+        <div class="flex flex-wrap items-center gap-3">
+          <h2
+            id="messages-heading"
+            class="text-base font-bold text-heading"
+          >
+            Wiadomości
+          </h2>
+          <Badge
+            data-testid="messages-summary"
+            role="status"
+            :variant="system.messages.healthy ? 'success' : 'warning'"
+          >
+            {{ system.messages.healthy ? "Kolejki działają" : "Wymaga uwagi" }}
+          </Badge>
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <h3 class="text-sm font-bold text-muted-foreground">
+            Nieudane wiadomości
+          </h3>
+          <p
+            data-testid="failed-count"
+            class="text-2xl font-bold tabular-nums"
+            :class="system.messages.failed.count > 0 ? 'text-status-danger' : 'text-heading'"
+          >
+            {{ system.messages.failed.count === 0 ? "Brak" : countText(system.messages.failed.count, system.messages.failed.capped) }}
+          </p>
+          <p
+            v-if="system.messages.failed.oldestAt !== null"
+            data-testid="failed-oldest"
+            class="text-sm text-muted-foreground"
+          >
+            Najstarsza: {{ formatBrowserDateTime(system.messages.failed.oldestAt) }}
+          </p>
+        </div>
+
+        <h3 class="text-sm font-bold text-muted-foreground">
+          Kolejki w bazie danych
+        </h3>
+        <div
+          role="region"
+          aria-label="Kolejki w bazie danych"
+          tabindex="0"
+          class="overflow-x-auto"
+        >
+          <table
+            data-testid="transports"
+            class="w-full caption-bottom text-sm"
+          >
+            <TableHeader>
+              <TableRow class="hover:bg-transparent">
+                <TableHead class="px-3 text-xs font-bold text-muted-foreground uppercase">
+                  Kolejka
+                </TableHead>
+                <TableHead class="px-3 text-right text-xs font-bold text-muted-foreground uppercase">
+                  Gotowe
+                </TableHead>
+                <TableHead class="px-3 text-right text-xs font-bold text-muted-foreground uppercase">
+                  Najstarsza gotowa
+                </TableHead>
+                <TableHead class="px-3 text-xs font-bold text-muted-foreground uppercase">
+                  Stan
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="transport in system.messages.transports"
+                :key="transport.name"
+              >
+                <TableCell
+                  data-testid="transport-name"
+                  class="px-3 font-bold"
+                >
+                  {{ transportLabel(transport.name) }}
+                </TableCell>
+                <TableCell
+                  data-testid="transport-ready"
+                  class="px-3 text-right tabular-nums"
+                >
+                  {{ countText(transport.ready, transport.capped) }}
+                </TableCell>
+                <TableCell
+                  data-testid="transport-age"
+                  class="px-3 text-right tabular-nums"
+                >
+                  {{ formatAge(transport.oldestReadyAgeSeconds) }}
+                </TableCell>
+                <TableCell class="px-3">
+                  <Badge
+                    data-testid="transport-state"
+                    :variant="transport.stalled ? 'danger' : 'success'"
+                  >
+                    {{ transport.stalled ? "Zator" : "W normie" }}
+                  </Badge>
+                </TableCell>
+              </TableRow>
+              <TableRow
+                v-if="system.messages.transports.length === 0"
+                class="hover:bg-transparent"
+              >
+                <TableCell
+                  colspan="4"
+                  class="px-3 text-muted-foreground"
+                >
+                  Brak kolejek.
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </table>
+        </div>
+      </Card>
+    </section>
 
     <Card class="gap-4 p-5">
       <h2 class="text-base font-bold text-heading">
