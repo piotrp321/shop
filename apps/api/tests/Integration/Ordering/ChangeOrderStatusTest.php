@@ -155,7 +155,7 @@ final class ChangeOrderStatusTest extends MessagingKernelTestCase
         [$shoes] = OrderingFixture::variant($this->db, 10_000, 5);
         $cart = CartFixture::cart($this->db, expiresAt: '+3 days', lines: [[$shoes, 2]]);
         $total = null === $discountCode ? 2 * 12_300 : 2 * 12_300 - 2_460;
-        $placed = $this->dispatch(new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', $total, 'key-'.$cart, $discountCode));
+        $placed = $this->dispatch(new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->db), $total, 'key-'.$cart, $discountCode));
         self::assertInstanceOf(PlacedOrder::class, $placed);
         $orderId = $placed->order->orderId;
         $this->dispatch(new MarkOrderPaid($orderId, Uuid::v7()->toRfc4122(), $total, 'PLN', new \DateTimeImmutable()));

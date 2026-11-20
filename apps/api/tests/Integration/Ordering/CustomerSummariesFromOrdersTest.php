@@ -94,7 +94,7 @@ final class CustomerSummariesFromOrdersTest extends KernelTestCase
 
     private function place(CartReference $cart, string $key): PlacedOrder
     {
-        $placed = $this->bus->dispatch(new PlaceOrder($cart, 'anna@example.com', 'Anna Nowak', '600100200', 'Długa 1', '00-950', 'Warszawa', self::GROSS, $key))->last(HandledStamp::class)?->getResult();
+        $placed = $this->bus->dispatch(new PlaceOrder($cart, 'anna@example.com', 'Anna Nowak', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->connection), self::GROSS, $key))->last(HandledStamp::class)?->getResult();
         self::assertInstanceOf(PlacedOrder::class, $placed);
 
         return $placed;

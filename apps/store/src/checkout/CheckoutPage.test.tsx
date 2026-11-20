@@ -31,13 +31,40 @@ const line = (variantId: string, name: string, variantLabel: string, quantity: n
   ...overrides,
 });
 
+type DeliveryOption = NonNullable<CartView["delivery"]>["options"][number];
+
+const STANDARD = "00000000-0000-4000-8000-0000000000d1";
+const EXPRESS = "00000000-0000-4000-8000-0000000000d2";
+
+/** A delivery option of the API; its `totalGross` is the API's, the page never adds it up. */
+const option = (methodId: string, name: string, costGross: number, totalGross: number, overrides: Partial<DeliveryOption> = {}): DeliveryOption => ({
+  methodId,
+  name,
+  description: "Dostawa w 2–3 dni robocze",
+  costGross,
+  freeFromGross: null,
+  missingToFreeGross: null,
+  totalGross,
+  ...overrides,
+});
+
+const delivery = (options: DeliveryOption[]): NonNullable<CartView["delivery"]> => ({
+  fromGross: options.length === 0 ? null : Math.min(...options.map((o) => o.costGross)),
+  missingToFreeGross: null,
+  options,
+});
+
+/**
+ * A cart of the API. With a line to buy it has one free delivery method (so the total to pay is `gross`), without one
+ * no delivery (`null`), as the API answers.
+ */
 const cart = (gross = 39998, lines: Line[] = [line(A, "Buty trailowe", "czarne, 42", 2, 39998)], hasExcludedLines = false): CartView => ({
   id: "c1",
   lines,
   totals: { subtotalGross: gross, discountGross: 0, gross, currency: "PLN", itemCount: lines.reduce((sum, l) => sum + l.quantity, 0) },
   hasExcludedLines,
   discount: null,
-  delivery: null,
+  delivery: lines.some((l) => l.state === "purchasable") ? delivery([option(STANDARD, "Kurier standardowy", 0, gross)]) : null,
 });
 
 const PROVIDERS: PaymentProvider[] = [
@@ -74,17 +101,30 @@ const key = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0"
 
 type PageProps = Parameters<typeof CheckoutPage>[0];
 
+/**
+ * Renders the checkout of `view`. Unless `chooseDelivery` is false, the customer then chooses the first delivery method
+ * of the cart, as every order needs one.
+ */
 async function renderCheckout(
   view: CartView = cart(),
   session: { name: string; email: string } | null = null,
   props: PageProps = { providers: PROVIDERS, pendingOrderNumber: null },
+  chooseDelivery = true,
 ) {
   vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: view });
   vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session });
   render(<CheckoutPage {...props} />);
   await screen.findByRole("heading", { level: 1, name: "Kasa" });
   await act(async () => {});
+  const first = view.delivery?.options[0];
+  if (chooseDelivery && first !== undefined && view.lines.length > 0 && !view.hasExcludedLines) {
+    fireEvent.click(deliveryRadio(first.name));
+  }
 }
+
+const deliveryGroup = () => screen.getByRole("group", { name: "Sposób dostawy" });
+/** The radio of a delivery method; its label starts with the name of the method. */
+const deliveryRadio = (name: string) => within(deliveryGroup()).getByRole("radio", { name: new RegExp(`^${name}`) }) as HTMLInputElement;
 
 const field = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
 const type = (label: string, value: string) => fireEvent.change(field(label), { target: { value } });
@@ -115,6 +155,7 @@ const GUEST_INPUT = {
   city: "Warszawa",
   expectedTotalGross: 39998,
   provider: "demo-transfer",
+  deliveryMethodId: STANDARD,
 };
 
 async function submit(result: PlaceOrderResult) {
@@ -253,6 +294,7 @@ describe("CheckoutPage placing the order", () => {
         city: "Warszawa",
         expectedTotalGross: 39998,
         provider: "demo-transfer",
+        deliveryMethodId: STANDARD,
       },
       expect.any(String),
     );
@@ -562,6 +604,154 @@ describe("CheckoutPage placing the order", () => {
   });
 });
 
+describe("CheckoutPage delivery method", () => {
+  const CHOOSE_DELIVERY = "Wybierz sposób dostawy.";
+  const UNAVAILABLE = "Wybrany sposób dostawy jest niedostępny. Wybierz inny.";
+  /** Two methods: a paid one with a threshold and an amount missing to it, and a free one. The totals are the API's. */
+  const twoMethods = (): CartView => ({
+    ...cart(),
+    delivery: {
+      fromGross: 0,
+      missingToFreeGross: null,
+      options: [
+        option(STANDARD, "Kurier standardowy", 1999, 41997, { freeFromGross: 50000, missingToFreeGross: 10002 }),
+        option(EXPRESS, "Kurier ekspresowy", 0, 39998, { description: "Dostawa następnego dnia roboczego" }),
+      ],
+    },
+  });
+  const summary = () => screen.getByRole("region", { name: "Podsumowanie zamówienia" });
+
+  it("offers the methods of the cart in a group „Sposób dostawy” with a label of each: name, description, cost or „Darmowa” and the amount missing to free delivery", async () => {
+    await renderCheckout(twoMethods(), null, undefined, false);
+
+    const fieldset = deliveryGroup();
+    expect(fieldset.tagName).toBe("FIELDSET");
+    expect(fieldset.querySelector("legend")?.textContent).toBe("Sposób dostawy");
+    const radios = within(fieldset).getAllByRole("radio") as HTMLInputElement[];
+    expect(radios.map((radio) => radio.checked)).toEqual([false, false]);
+    expect(new Set(radios.map((radio) => radio.name)).size).toBe(1);
+    const [paid, free] = radios.map((radio) => radio.labels?.[0]?.textContent ?? "");
+    expect(paid).toContain("Kurier standardowy");
+    expect(paid).toContain("Dostawa w 2–3 dni robocze");
+    expect(paid).toContain(price(1999));
+    expect(paid).toContain(`Do darmowej dostawy brakuje ${price(10002)}`);
+    expect(paid).not.toContain("Darmowa");
+    expect(free).toContain("Kurier ekspresowy");
+    expect(free).toContain("Dostawa następnego dnia roboczego");
+    expect(free).toContain("Darmowa");
+    expect(free).not.toContain("Do darmowej dostawy brakuje");
+  });
+
+  it("without a choice says „Wybierz sposób dostawy” in the summary instead of the delivery and of the total", async () => {
+    await renderCheckout(twoMethods(), null, undefined, false);
+
+    expect(within(summary()).getByTestId("checkout-delivery").textContent).toBe("Wybierz sposób dostawy");
+    expect(within(summary()).getByTestId("checkout-total").textContent).toBe("Wybierz sposób dostawy");
+  });
+
+  it("shows the cost of the chosen method and its total as the API gave them, „Darmowa” for a free one", async () => {
+    await renderCheckout(twoMethods(), null, undefined, false);
+
+    fireEvent.click(deliveryRadio("Kurier standardowy"));
+    expect(within(summary()).getByTestId("checkout-delivery").textContent).toBe(price(1999));
+    expect(within(summary()).getByTestId("checkout-total").textContent).toBe(price(41997));
+
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+    expect(within(summary()).getByTestId("checkout-delivery").textContent).toBe("Darmowa");
+    expect(within(summary()).getByTestId("checkout-total").textContent).toBe(price(39998));
+  });
+
+  it("does not place the order without a method: the message at the group and the focus on its first option", async () => {
+    await renderCheckout(twoMethods(), null, undefined, false);
+    fillGuestForm();
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect(placeOrder).not.toHaveBeenCalled();
+    const message = within(deliveryGroup()).getByText(CHOOSE_DELIVERY);
+    expect(deliveryGroup().getAttribute("aria-describedby")).toBe(message.id);
+    expect(document.activeElement).toBe(deliveryRadio("Kurier standardowy"));
+
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+    expect(screen.queryByText(CHOOSE_DELIVERY)).toBeNull();
+  });
+
+  it("sends the chosen method and its total as the expected total", async () => {
+    await renderCheckout(twoMethods(), null, undefined, false);
+    fillGuestForm();
+    fireEvent.click(deliveryRadio("Kurier standardowy"));
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+
+    expect(placeOrder).toHaveBeenCalledWith({ ...GUEST_INPUT, deliveryMethodId: STANDARD, expectedTotalGross: 41997 }, expect.any(String));
+  });
+
+  it("makes a new key when another method is chosen", async () => {
+    await renderCheckout(twoMethods(), null, undefined, false);
+    fillGuestForm();
+    fireEvent.click(deliveryRadio("Kurier standardowy"));
+    await submit({ status: "failed" });
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+    await submit({ status: "failed" });
+
+    const [first, second] = vi.mocked(placeOrder).mock.calls;
+    expect(second[1]).not.toBe(first[1]);
+    expect(second[0]).toMatchObject({ deliveryMethodId: EXPRESS, expectedTotalGross: 39998 });
+  });
+
+  it("works from the keyboard: the methods are radios of one group with labels", async () => {
+    await renderCheckout(twoMethods(), null, undefined, false);
+
+    for (const radio of within(deliveryGroup()).getAllByRole("radio") as HTMLInputElement[]) {
+      expect(radio.type).toBe("radio");
+      expect(radio.disabled).toBe(false);
+      expect(radio.labels).toHaveLength(1);
+    }
+  });
+
+  it("has no delivery section for a cart without anything to buy and keeps the message of the empty cart", async () => {
+    await renderCheckout(cart(0, []), null, undefined, false);
+
+    expect(screen.queryByRole("group", { name: "Sposób dostawy" })).toBeNull();
+    expect(screen.getByText("Twój koszyk jest pusty.")).toBeTruthy();
+  });
+
+  it("on a 409 of an unavailable method shows its detail above the form, reads the methods again and makes a new key; a method that is gone is no longer chosen", async () => {
+    await renderCheckout(twoMethods(), null, undefined, false);
+    fillGuestForm();
+    fireEvent.click(deliveryRadio("Kurier standardowy"));
+    const withoutStandard: CartView = { ...twoMethods(), delivery: delivery([option(EXPRESS, "Kurier ekspresowy", 0, 39998)]) };
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: withoutStandard });
+    await submit({ status: "conflict", reason: "delivery_method_unavailable", detail: UNAVAILABLE });
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain(UNAVAILABLE);
+    expect(document.activeElement).toBe(alert);
+    expect(within(deliveryGroup()).getAllByRole("radio")).toHaveLength(1);
+    expect(deliveryRadio("Kurier ekspresowy").checked).toBe(false);
+    expect(within(summary()).getByTestId("checkout-total").textContent).toBe("Wybierz sposób dostawy");
+
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+    const [first, second] = vi.mocked(placeOrder).mock.calls;
+    expect(second[1]).not.toBe(first[1]);
+    expect(second[0]).toMatchObject({ deliveryMethodId: EXPRESS, expectedTotalGross: 39998 });
+  });
+
+  it("shows a 422 at the delivery method (a checkout from before the delivery) in the message above the form", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({
+      status: "invalid",
+      violations: [{ propertyPath: "deliveryMethodId", title: "Kasa została zaktualizowana. Odśwież stronę i wybierz sposób dostawy." }],
+    });
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Kasa została zaktualizowana. Odśwież stronę i wybierz sposób dostawy.");
+    expect(document.activeElement).toBe(alert);
+  });
+});
+
 describe("CheckoutPage payment provider", () => {
   const group = () => screen.getByRole("radiogroup", { name: "Sposób płatności" });
   const CHOOSE = "Wybierz sposób płatności.";
@@ -591,7 +781,7 @@ describe("CheckoutPage payment provider", () => {
     expect(screen.getByText(CHOOSE)).toBeTruthy();
     expect(group().getAttribute("aria-invalid")).toBe("true");
     expect(group().getAttribute("aria-describedby")).toBe(screen.getByText(CHOOSE).id);
-    expect(document.activeElement).toBe(screen.getAllByRole("radio")[0]);
+    expect(document.activeElement).toBe(within(group()).getAllByRole("radio")[0]);
     expect(submitButton().disabled).toBe(false);
   });
 
@@ -644,7 +834,7 @@ describe("CheckoutPage payment provider", () => {
 
     expect(screen.getByText(CHOOSE).id).toBe(group().getAttribute("aria-describedby"));
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(document.activeElement).toBe(screen.getAllByRole("radio")[0]);
+    expect(document.activeElement).toBe(within(group()).getAllByRole("radio")[0]);
   });
 
   it.each([

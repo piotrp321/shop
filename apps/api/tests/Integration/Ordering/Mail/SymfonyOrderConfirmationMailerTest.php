@@ -95,6 +95,7 @@ final class SymfonyOrderConfirmationMailerTest extends KernelTestCase
             new ShippingAddressView('Długa 1', '00-950', 'Warszawa', 'PL'),
             [new OrderLineView('0192f0c4-7c1a-7c4e-9a6e-000000000001', 'Buty Asfalt', '42', 2, 61_728, 123_456, 0, 123_456, null)],
             null,
+            null,
             new OrderTotalsView(100_000, 23_456, 123_456, 'PLN'),
             new \DateTimeImmutable('2026-11-05 12:00:00+00:00'),
             new \DateTimeImmutable('2026-11-05 12:30:00+00:00'),

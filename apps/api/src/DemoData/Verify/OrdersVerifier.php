@@ -18,7 +18,7 @@ use Doctrine\DBAL\Connection;
  * The order and stock checks of demo-data:verify (steps 5 to 7, spec "Spójność"): the number of orders of the profile;
  * every generated variant has a stock record, its reserved stock is the sum of its active reservations and its last
  * movement is its stock; a paid order has an active reservation and a succeeded payment of its total; the lines of an
- * order less its discount are its total, and their sums are its totals; an order with a code has its usage; an order of
+ * order less its discount and with its delivery are its total, and their sums with the delivery are its totals; an order with a code has its usage; an order of
  * a customer is of a generated account; the history of an order ends with its status; the unit price of a line is the
  * effective price of its variant at the placement (the last history entry then, lowered by the promotion running then
  * by the rule of Pricing) with the copy of that promotion. The line prices are checked for every order in the small
@@ -63,9 +63,11 @@ final readonly class OrdersVerifier
                  WHERE (l.physical_after, l.reserved_after) IS DISTINCT FROM (s.physical, s.reserved) ORDER BY s.variant_id'),
             ...$this->listed('A paid order has no active reservation',
                 "SELECT o.number FROM ordering_order o WHERE o.status = 'paid' AND NOT EXISTS (SELECT 1 FROM inventory_reservation r WHERE r.reservation_key = o.id::text AND r.status = 'active') ORDER BY o.number"),
-            ...$this->listed('The lines of an order less its discount are not its total',
+            // The totals of an order are its lines with its delivery (0 for the generated orders, without a method).
+            ...$this->listed('The lines of an order less its discount and with its delivery are not its total',
                 'SELECT o.number FROM ordering_order o JOIN (SELECT order_id, sum(unit_gross * quantity) AS value, sum(discount_gross) AS discount, sum(line_net) AS net, sum(line_vat) AS vat, sum(line_gross) AS gross FROM ordering_order_line GROUP BY order_id) l ON l.order_id = o.id
-                 WHERE l.value - coalesce(o.discount_gross, 0) <> o.total_gross OR l.discount <> coalesce(o.discount_gross, 0) OR (l.net, l.vat, l.gross) IS DISTINCT FROM (o.total_net, o.total_vat, o.total_gross) ORDER BY o.number'),
+                 WHERE l.value - coalesce(o.discount_gross, 0) + o.delivery_gross <> o.total_gross OR l.discount <> coalesce(o.discount_gross, 0)
+                    OR (l.net + o.delivery_net, l.vat + o.delivery_vat, l.gross + o.delivery_gross) IS DISTINCT FROM (o.total_net, o.total_vat, o.total_gross) ORDER BY o.number'),
             ...$this->listed('A paid order has no succeeded payment of its total',
                 "SELECT o.number FROM ordering_order o WHERE o.paid_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM payment_payment p WHERE p.id = o.payment_id AND p.order_id = o.id AND p.status = 'succeeded' AND p.amount = o.total_gross) ORDER BY o.number"),
             ...$this->listed('An order with a discount code has no usage of the code',

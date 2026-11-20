@@ -805,6 +805,8 @@ export interface components {
             lines: components["schemas"]["BackofficeOrderLine"][];
             /** @description The discount code the order was placed with; null without one. */
             discount: components["schemas"]["BackofficeOrderDiscount"] | null;
+            /** @description The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery). */
+            delivery: components["schemas"]["BackofficeOrderDelivery"] | null;
             totals: components["schemas"]["BackofficeOrderTotals"];
             /**
              * Format: date-time
@@ -926,7 +928,17 @@ export interface components {
              */
             amountGross: number;
         };
-        /** @description Sums of the lines after the discount of the code; net + vat = gross. */
+        /** @description The delivery of an order, a copy of the method as it was when the order was placed. */
+        BackofficeOrderDelivery: {
+            /** @example Kurier standardowy */
+            methodName: string;
+            /**
+             * @description The gross cost of the delivery in grosze, part of the totals; 0 for a free delivery.
+             * @example 1999
+             */
+            gross: number;
+        };
+        /** @description Sums of the lines after the discount of the code and of the delivery; net + vat = gross. */
         BackofficeOrderTotals: {
             /** @example 32519 */
             net: number;

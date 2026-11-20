@@ -36,12 +36,14 @@ final class SeedDemoOrdersTest extends KernelTestCase
     public function testRemovesEveryOrderAndLineAndKeepsTheNumberSequence(): void
     {
         $number = 0;
+        $method = OrderingFixture::deliveryMethod($this->connection, 1_999);
         for ($i = 0; $i < 2; ++$i) {
             [$variant] = OrderingFixture::variant($this->connection, 1_000, 5);
             $cart = CartFixture::cart($this->connection, expiresAt: '+3 days', lines: [[$variant, 2]]);
-            $number = (int) substr($this->place($cart)->order->number, 2);
+            $number = (int) substr($this->place($cart, $method)->order->number, 2);
         }
         self::assertGreaterThanOrEqual(2, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order'));
+        self::assertGreaterThanOrEqual(2, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order_delivery_vat'));
 
         $tester = new CommandTester(new Application(self::$kernel ?? self::bootKernel())->find('ordering:seed-demo'));
         $exitCode = $tester->execute([]);
@@ -50,6 +52,7 @@ final class SeedDemoOrdersTest extends KernelTestCase
         self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order'));
         self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order_line'));
         self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order_status_change'), 'the history of the statuses goes with the orders');
+        self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order_delivery_vat'), 'the VAT shares of the deliveries too');
         $next = $this->connection->fetchOne("SELECT nextval('ordering_order_number_seq')");
         self::assertGreaterThan($number, $next, 'the numbers go on');
     }
@@ -112,11 +115,11 @@ final class SeedDemoOrdersTest extends KernelTestCase
         );
     }
 
-    private function place(string $cart): PlacedOrder
+    private function place(string $cart, string $deliveryMethodId): PlacedOrder
     {
         $bus = self::getContainer()->get('command.bus');
         self::assertInstanceOf(MessageBusInterface::class, $bus);
-        $command = new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', 2 * 1_230, 'seed-'.$cart);
+        $command = new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', $deliveryMethodId, 2 * 1_230 + 1_999, 'seed-'.$cart);
         $result = $bus->dispatch($command)->last(HandledStamp::class)?->getResult();
         self::assertInstanceOf(PlacedOrder::class, $result);
 

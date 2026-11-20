@@ -161,14 +161,16 @@ Kolejki i filtr poziomu stanu liczą się w Inventory, bez złączeń z tabelami
 - Miary okresu (`today`, `last7Days`, `last30Days` obok `dataUntil` i `currency`): przychód brutto (`revenue`), liczba
   zamówień (`orderCount`), średnia wartość (`averageOrderValue`: przychód / liczba, zaokrąglenie do grosza w API, bez
   zamówień `null`) i zmiana przychodu względem okresu porównawczego w punktach bazowych (`changeBasisPoints`, `null`
-  przy zerowym okresie porównawczym). Przychód = suma `total_gross` (po rabacie) zamówień opłaconych w okresie wg
-  `paid_at`; późniejsze anulowanie przez pracownika i zwrot nie zmniejszają przychodu (sprzedaż brutto), zwroty są
-  osobnymi kolejkami.
+  przy zerowym okresie porównawczym). Przychód = suma wartości towarów po rabatach, bez kosztu dostawy
+  (`total_gross - delivery_gross`, `docs/features/delivery/spec.md`, P14), zamówień opłaconych w okresie wg `paid_at`;
+  późniejsze anulowanie przez pracownika i zwrot nie zmniejszają przychodu (sprzedaż brutto), zwroty są osobnymi
+  kolejkami.
 - **Wstępna agregacja** w Ordering: `ordering_sales_hour (hour_start timestamptz, shard smallint, order_count int,
   gross bigint, PK (hour_start, shard))`, godzina w UTC (godziny Warszawy to pełne godziny UTC), `shard` = jeden z 16
   kubełków z identyfikatora zamówienia, żeby równoległe płatności jednej godziny nie czekały na jeden wiersz (blokada
   trwa do końca transakcji webhooka). `MarkOrderPaid` w swojej transakcji robi DBAL `INSERT … ON CONFLICT
-  (hour_start, shard) DO UPDATE SET order_count = order_count + 1, gross = gross + :gross` tylko przy wyniku `paid`
+  (hour_start, shard) DO UPDATE SET order_count = order_count + 1, gross = gross + :gross` (`:gross` = wartość towarów
+  bez dostawy, `OrderTotals::goodsGross()`; przebudowa sumuje `total_gross - delivery_gross`) tylko przy wyniku `paid`
   (`alreadyPaid` i odmowy nic nie dopisują), więc każde zamówienie liczy się raz, a wycofany webhook wycofuje też
   licznik. Jawny wyjątek od persystencji przez rekordy ORM, zapisany w `apps/api/CLAUDE.md` (jak
   `DbalOrderNotifications`). Odczyt sumuje najwyżej 2 × 720 godzin × 16 wierszy. Przebudowę godzin wspiera częściowy
@@ -375,9 +377,9 @@ Parametr `sort=<klucz>` z zamkniętą listą na endpoint; każdy klucz ma indeks
     `order_count + 1`, kontakt z zamówienia tylko gdy `(excluded.last_order_at, excluded.last_order_id) >=
     (ordering_customer.last_order_at, ordering_customer.last_order_id)`, więc kontakt jest zawsze z najnowszego
     zamówienia;
-  - w `MarkOrderPaid` przy wyniku `paid`: `paid_count + 1`, `paid_gross + total_gross` (klient bez wiersza, którego
-    zamówienia poprzedzają wypełnienie, dostaje go z opłaconego zamówienia). Wartość bez odejmowania zwrotów (jak
-    przychód).
+  - w `MarkOrderPaid` przy wyniku `paid`: `paid_count + 1`, `paid_gross + total_gross` (pełna kwota zamówienia
+    z dostawą, inaczej niż przychód; klient bez wiersza, którego zamówienia poprzedzają wypełnienie, dostaje go
+    z opłaconego zamówienia). Wartość bez odejmowania zwrotów (jak przychód).
 - `ordering:read-models:rebuild` (sekcja 1) przebudowuje tabelę; `ordering:seed-demo` ją czyści.
 - Indeksy: `(last_order_at DESC, customer_id)`, `(lower(full_name), customer_id)`, `(order_count DESC, customer_id)`,
   `(paid_gross DESC, customer_id)` (migracja tabeli) i dwa GIN trigram na `lower(email)` i `lower(full_name)`

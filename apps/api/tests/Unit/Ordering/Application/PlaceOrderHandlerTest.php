@@ -12,6 +12,7 @@ use App\Ordering\Application\UnpaidOrderLimit;
 use App\Ordering\Application\View\OrderLineView;
 use App\Ordering\Domain\CartEmpty;
 use App\Ordering\Domain\CartNotOrderable;
+use App\Ordering\Domain\DeliveryMethodUnavailable;
 use App\Ordering\Domain\DiscountCodeRejected;
 use App\Ordering\Domain\GuestOrderTooLarge;
 use App\Ordering\Domain\IdempotencyKeyReused;
@@ -29,6 +30,7 @@ use App\Tests\Unit\Ordering\InMemoryCustomerSummaries;
 use App\Tests\Unit\Ordering\InMemoryDiscountCodeRedemptions;
 use App\Tests\Unit\Ordering\InMemoryOrderCart;
 use App\Tests\Unit\Ordering\InMemoryOrderCatalog;
+use App\Tests\Unit\Ordering\InMemoryOrderDeliveryQuotes;
 use App\Tests\Unit\Ordering\InMemoryOrderPrices;
 use App\Tests\Unit\Ordering\InMemoryOrders;
 use App\Tests\Unit\Ordering\InMemoryStockReservations;
@@ -37,6 +39,7 @@ use App\Tests\Unit\Ordering\InMemoryUnpaidOrderExpiry;
 use App\Tests\Unit\Ordering\Journal;
 use App\Tests\Unit\Ordering\JournalingEventPublisher;
 use App\Tests\Unit\Ordering\SequenceOrderNumbers;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -65,6 +68,16 @@ final class PlaceOrderHandlerTest extends TestCase
     private const string ADDRESS = '203.0.113.7';
     private const int PER_ADDRESS = 5;
     private const int PER_IDENTITY = 3;
+    /** A free method (price 0): the totals of the cart stay the totals of the order. */
+    private const string DELIVERY = '0192f0c4-7c1a-7c4e-9a6e-0000000000d1';
+    /** COST below FREE_FROM, free from it. */
+    private const string PAID_DELIVERY = '0192f0c4-7c1a-7c4e-9a6e-0000000000d2';
+    private const string OTHER_DELIVERY = '0192f0c4-7c1a-7c4e-9a6e-0000000000d3';
+    private const string UNKNOWN_DELIVERY = '0192f0c4-7c1a-7c4e-9a6e-0000000000d9';
+    private const int COST = 1_999;
+    private const int FREE_FROM = 100_000;
+    private const string TEMPLATE = 'https://tracking.example.com/{numer}';
+    private const string UNAVAILABLE = 'Wybrany sposób dostawy jest niedostępny. Wybierz inny.';
     private const string TOO_MANY_UNPAID = 'Nie możemy teraz przyjąć kolejnego zamówienia, bo z tych danych albo z tej sieci czeka już kilka nieopłaconych. Spróbuj ponownie za ok. 35 minut.';
 
     private Journal $journal;
@@ -80,6 +93,7 @@ final class PlaceOrderHandlerTest extends TestCase
     private FixedOrderingClock $clock;
     private InMemoryCustomerSummaries $customers;
     private InMemoryUnpaidOrderClaims $claims;
+    private InMemoryOrderDeliveryQuotes $deliveries;
 
     protected function setUp(): void
     {
@@ -104,6 +118,10 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->clock = new FixedOrderingClock(new \DateTimeImmutable('2026-11-05 12:00:00+00:00'));
         $this->customers = new InMemoryCustomerSummaries();
         $this->claims = new InMemoryUnpaidOrderClaims($this->journal);
+        $this->deliveries = new InMemoryOrderDeliveryQuotes($this->journal)
+            ->method(self::DELIVERY, 'Kurier standardowy', 0)
+            ->method(self::PAID_DELIVERY, 'Kurier ekspresowy', self::COST, self::FREE_FROM, self::TEMPLATE)
+            ->method(self::OTHER_DELIVERY, 'Kurier wieczorny', 0);
         $this->carts->put(self::guest(), [self::SHOES => 2, self::CAP => 1]);
     }
 
@@ -206,9 +224,9 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->place(self::command());
 
         // Replay check, cart lock, replay check under the lock, the limit of unpaid orders under its locks (address,
-        // then identity), copies, number, cart cleared, reservation, then the order, its claim, its event and its
-        // expiry last.
-        self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'number', 'clear', 'reserve', 'add', 'claim', 'publish', 'schedule'], $this->journal->calls);
+        // then identity), copies, the delivery (a free one: no split of its cost), number, cart cleared, reservation,
+        // then the order, its claim, its event and its expiry last.
+        self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'delivery', 'number', 'clear', 'reserve', 'add', 'claim', 'publish', 'schedule'], $this->journal->calls);
     }
 
     public function testAnAppliedCodeGivesAnOrderWithTheCopyOfTheDiscountTheLineDiscountsOfTheQuoteAndAUsage(): void
@@ -246,7 +264,7 @@ final class PlaceOrderHandlerTest extends TestCase
 
         // Cart, address, identity, then code, then stock (decisions D7 and D8 of ABUSE-LIMITS); a rejected usage takes
         // no number of the order.
-        self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'redeem', 'number', 'clear', 'reserve', 'add', 'claim', 'publish', 'schedule'], $this->journal->calls);
+        self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'delivery', 'redeem', 'number', 'clear', 'reserve', 'add', 'claim', 'publish', 'schedule'], $this->journal->calls);
     }
 
     public function testALinePromotionIsCopiedToTheOrder(): void
@@ -284,7 +302,7 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->redemptions->redeemFailure = DiscountCodeRejected::of(self::USED_UP, 'Ten kod został już wykorzystany.', null);
 
         $this->assertRefused(DiscountCodeRejected::class, 'Ten kod został już wykorzystany.', self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT, discountCode: 'WITAJ10'));
-        self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'redeem'], $this->journal->calls, 'no number, clear or reservation');
+        self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'delivery', 'redeem'], $this->journal->calls, 'no number, clear or reservation');
         self::assertSame([], $this->stock->reservations);
         self::assertSame([], $this->events->published);
         self::assertSame([], $this->expiry->scheduled);
@@ -329,12 +347,17 @@ final class PlaceOrderHandlerTest extends TestCase
         self::assertSame($first->order->orderId, $this->place(self::command(discountCode: ''))->order->orderId);
     }
 
-    public function testTheFingerprintOfAPlacementWithoutACodeIsTheOneBeforeDiscountCodes(): void
+    public function testTheFingerprintOfAPlacementEndsWithTheDeliveryMethodAfterTheOptionalCode(): void
     {
         $this->place(self::command());
 
-        // RequestFingerprint of this request as it was computed before discount codes existed.
-        self::assertSame('45d8891143adea4162fe12830184a04efb4efd464e110a5e175b9a4f7d60027f', $this->onlyOrder()->requestFingerprint()->toString());
+        // The fields of a request before the delivery (the hash of a placement without a code before discount codes
+        // was 45d88911…), then `delivery:<id>`: a request without the method is refused before it (P15).
+        $fields = ['guest:'.self::CART, 'jan@example.com', 'Jan Kowalski', '+48600100200', 'Długa 1', '00-950', 'Warszawa', 'PL'];
+        self::assertSame(hash('sha256', json_encode([...$fields, self::TOTAL, 'delivery:'.self::DELIVERY], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE)), $this->onlyOrder()->requestFingerprint()->toString());
+        $this->setUp();
+        $this->place(self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT, discountCode: 'witaj10'));
+        self::assertSame(hash('sha256', json_encode([...$fields, self::TOTAL - self::DISCOUNT, 'WITAJ10', 'delivery:'.self::DELIVERY], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE)), $this->onlyOrder()->requestFingerprint()->toString());
     }
 
     public function testACodeLongerThan64CharactersIsRefusedBeforeAnyPort(): void
@@ -604,7 +627,7 @@ final class PlaceOrderHandlerTest extends TestCase
             $this->setUp();
 
             $this->assertRefused(OrderTotalChanged::class, 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', self::command(expectedTotalGross: $expected));
-            self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog'], $this->journal->calls, 'no number, no clear, no reservation');
+            self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'delivery'], $this->journal->calls, 'no number, no clear, no reservation');
             self::assertSame([self::SHOES => 2, self::CAP => 1], $this->carts->lines(self::guest()));
         }
     }
@@ -627,7 +650,7 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->assertRefused(InsufficientStockForOrder::class, 'Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.', self::command());
         self::assertSame([], $this->stock->reservations);
         self::assertSame([], $this->events->published);
-        self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'number', 'clear', 'reserve'], $this->journal->calls, 'the bus transaction rolls back the cleared cart');
+        self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'delivery', 'number', 'clear', 'reserve'], $this->journal->calls, 'the bus transaction rolls back the cleared cart');
     }
 
     public function testARepeatedRequestGivesTheSameOrderWithoutTheCartLockOrAnyChange(): void
@@ -662,7 +685,7 @@ final class PlaceOrderHandlerTest extends TestCase
     {
         $first = $this->place(self::command());
 
-        $replayed = $this->place(new PlaceOrder(CartReference::guest(strtoupper(self::CART)), ' jan@example.com ', ' Jan Kowalski ', '+48 600-100-200', ' Długa 1 ', '00-950', 'Warszawa ', self::TOTAL, 'key-1'));
+        $replayed = $this->place(new PlaceOrder(CartReference::guest(strtoupper(self::CART)), ' jan@example.com ', ' Jan Kowalski ', '+48 600-100-200', ' Długa 1 ', '00-950', 'Warszawa ', strtoupper(self::DELIVERY), self::TOTAL, 'key-1'));
 
         self::assertTrue($replayed->replayed);
         self::assertSame($first->order->orderId, $replayed->order->orderId);
@@ -741,6 +764,122 @@ final class PlaceOrderHandlerTest extends TestCase
         self::assertSame([], $this->journal->calls);
     }
 
+    public function testTheOrderHasTheCopyOfTheMethodAndItsCostSplitOverTheRatesOfTheGoods(): void
+    {
+        $placed = $this->place(self::command(expectedTotalGross: self::TOTAL + self::COST, deliveryMethodId: self::PAID_DELIVERY));
+
+        self::assertSame([[self::PAID_DELIVERY, self::TOTAL]], $this->deliveries->asked, 'quoted for the goods of the order');
+        self::assertSame([[self::COST, [2300 => 73_800, 800 => 2_000]]], $this->prices->askedShares, 'the cost over the gross of the lines by rate');
+        $delivery = $this->onlyOrder()->delivery();
+        self::assertNotNull($delivery);
+        self::assertSame([self::PAID_DELIVERY, 'Kurier ekspresowy', self::TEMPLATE, self::COST], [$delivery->methodId(), $delivery->methodName(), $delivery->trackingUrlTemplate(), $delivery->gross()->amount()]);
+        self::assertSame([[2300, 1_947], [800, 52]], array_map(static fn ($share): array => [$share->rateBp(), $share->gross()->amount()], $delivery->shares()));
+        self::assertSame([self::TOTAL + self::COST, self::TOTAL], [$this->onlyOrder()->totals()->gross()->amount(), $this->onlyOrder()->totals()->goodsGross()->amount()]);
+        self::assertNotNull($placed->order->delivery);
+        self::assertSame(['Kurier ekspresowy', self::COST], [$placed->order->delivery->methodName, $placed->order->delivery->gross]);
+        self::assertSame(self::TOTAL + self::COST, $placed->order->totals->gross);
+        self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'delivery', 'delivery-shares', 'number', 'clear', 'reserve', 'add', 'claim', 'publish', 'schedule'], $this->journal->calls);
+    }
+
+    public function testTheDeliveryIsQuotedForTheGoodsAfterTheDiscountCodeSoACodeCanTakeTheFreeDeliveryAway(): void
+    {
+        $this->deliveries->method(self::PAID_DELIVERY, 'Kurier ekspresowy', self::COST, self::TOTAL);
+
+        $this->assertRefused(OrderTotalChanged::class, 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT, discountCode: 'WITAJ10', deliveryMethodId: self::PAID_DELIVERY));
+        $placed = $this->place(self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT + self::COST, key: 'key-2', discountCode: 'WITAJ10', deliveryMethodId: self::PAID_DELIVERY));
+
+        self::assertSame([self::PAID_DELIVERY, self::TOTAL - self::DISCOUNT], end($this->deliveries->asked));
+        self::assertSame(self::COST, $placed->order->delivery?->gross);
+        self::assertSame(self::TOTAL - self::DISCOUNT + self::COST, $placed->order->totals->gross);
+    }
+
+    public function testADeliveryFreeFromTheThresholdHasNoSharesAndCostsNothing(): void
+    {
+        $this->deliveries->method(self::PAID_DELIVERY, 'Kurier ekspresowy', self::COST, self::TOTAL);
+
+        $placed = $this->place(self::command(deliveryMethodId: self::PAID_DELIVERY));
+
+        self::assertSame(0, $placed->order->delivery?->gross);
+        self::assertSame([], $this->onlyOrder()->delivery()?->shares());
+        self::assertSame([], $this->prices->askedShares, 'nothing to split');
+        self::assertSame(self::TOTAL, $placed->order->totals->gross);
+    }
+
+    public function testAnUnknownOrDisabledMethodIsRefusedAfterTheCodeAndBeforeTheTotalWithoutAnyChange(): void
+    {
+        foreach ([self::UNKNOWN_DELIVERY, self::PAID_DELIVERY] as $method) {
+            $this->setUp();
+            $this->deliveries->disable(self::PAID_DELIVERY);
+
+            $this->assertRefused(DeliveryMethodUnavailable::class, self::UNAVAILABLE, self::command(expectedTotalGross: 1, discountCode: 'WITAJ10', deliveryMethodId: $method));
+
+            self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'delivery'], $this->journal->calls, 'no usage, number, clear or reservation');
+            self::assertSame([], $this->redemptions->redeemed);
+            self::assertSame([], $this->stock->reservations);
+            self::assertSame([self::SHOES => 2, self::CAP => 1], $this->carts->lines(self::guest()));
+            self::assertSame([], $this->claims->claims);
+        }
+        self::assertSame('tag:piotrp321.github.io,2026:shop/problems/delivery-method-unavailable', new DeliveryMethodUnavailable()->problemType());
+    }
+
+    public function testARejectedCodeIsRefusedBeforeAnUnknownMethod(): void
+    {
+        $this->assertRefused(DiscountCodeRejected::class, 'Ten kod jest nieprawidłowy albo nieaktywny.', self::command(discountCode: 'LATO15', deliveryMethodId: self::UNKNOWN_DELIVERY));
+    }
+
+    public function testATotalWithoutTheCostOfTheDeliveryIsRefused(): void
+    {
+        $this->assertRefused(OrderTotalChanged::class, 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', self::command(deliveryMethodId: self::PAID_DELIVERY));
+        self::assertSame([], $this->stock->reservations);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function malformedMethodIds(): iterable
+    {
+        yield 'empty' => [''];
+        yield 'no UUID' => ['kurier'];
+        yield 'a UUID with a space' => [' '.self::DELIVERY];
+        yield 'a UUID without hyphens' => [str_replace('-', '', self::DELIVERY)];
+    }
+
+    #[DataProvider('malformedMethodIds')]
+    public function testAMethodIdThatIsNoUuidIsRefusedBeforeAnyPort(string $methodId): void
+    {
+        $this->assertRefused(InvalidOrderInput::class, 'Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie.', self::command(deliveryMethodId: $methodId));
+        self::assertSame([], $this->journal->calls);
+    }
+
+    public function testAMethodIdInUpperCaseIsTheSameMethodAndTheSameRequest(): void
+    {
+        $first = $this->place(self::command(deliveryMethodId: strtoupper(self::DELIVERY)));
+
+        self::assertSame(self::DELIVERY, $this->onlyOrder()->delivery()?->methodId());
+        $replayed = $this->place(self::command());
+        self::assertTrue($replayed->replayed);
+        self::assertSame($first->order->orderId, $replayed->order->orderId);
+    }
+
+    public function testTheSameKeyWithAnotherMethodIsAnotherRequest(): void
+    {
+        $first = $this->place(self::command());
+        $this->carts->put(self::guest(), [self::MAP => 1]);
+
+        $this->assertRefused(IdempotencyKeyReused::class, 'Ten klucz żądania był już użyty dla innego zamówienia.', self::command(deliveryMethodId: self::OTHER_DELIVERY), $first);
+    }
+
+    public function testAReplayGivesTheOrderEvenAfterItsMethodWasDisabled(): void
+    {
+        $first = $this->place(self::command(expectedTotalGross: self::TOTAL + self::COST, deliveryMethodId: self::PAID_DELIVERY));
+        $this->deliveries->disable(self::PAID_DELIVERY);
+
+        $replayed = $this->place(self::command(expectedTotalGross: self::TOTAL + self::COST, deliveryMethodId: self::PAID_DELIVERY));
+
+        self::assertTrue($replayed->replayed);
+        self::assertEquals($first->order, $replayed->order);
+    }
+
     /**
      * @param class-string<\Throwable> $expected
      */
@@ -772,7 +911,7 @@ final class PlaceOrderHandlerTest extends TestCase
 
     private function place(PlaceOrder $command): PlacedOrder
     {
-        $handler = new PlaceOrderHandler($this->orders, $this->carts, $this->prices, $this->redemptions, $this->catalog, $this->stock, $this->numbers, $this->expiry, $this->events, $this->clock, $this->customers, new UnpaidOrderLimit($this->claims, $this->claims, $this->clock, self::PER_ADDRESS, self::PER_IDENTITY));
+        $handler = new PlaceOrderHandler($this->orders, $this->carts, $this->prices, $this->redemptions, $this->catalog, $this->stock, $this->numbers, $this->expiry, $this->events, $this->clock, $this->customers, new UnpaidOrderLimit($this->claims, $this->claims, $this->clock, self::PER_ADDRESS, self::PER_IDENTITY), $this->deliveries);
 
         return $handler($command);
     }
@@ -791,7 +930,8 @@ final class PlaceOrderHandlerTest extends TestCase
         string $key = 'key-1',
         ?string $discountCode = null,
         string $address = self::ADDRESS,
+        string $deliveryMethodId = self::DELIVERY,
     ): PlaceOrder {
-        return new PlaceOrder($cart ?? self::guest(), $email, $fullName, $phone, 'Długa 1', '00-950', 'Warszawa', $expectedTotalGross, $key, $discountCode, $address);
+        return new PlaceOrder($cart ?? self::guest(), $email, $fullName, $phone, 'Długa 1', '00-950', 'Warszawa', $deliveryMethodId, $expectedTotalGross, $key, $discountCode, $address);
     }
 }

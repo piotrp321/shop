@@ -391,6 +391,10 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   `CREATE INDEX CONCURRENTLY IF NOT EXISTS`. Poprawny indeks zostaje, więc ponowiony Job `migrate` przechodzi. Pozostałe
   zmiany schematu idą w zwykłej, transakcyjnej migracji obok. Wzór: `Version20261115120100IndexStockLevels`, test:
   `StockLevelIndexMigrationTest`.
+- Ograniczenie CHECK na dużej tabeli migracja dodaje jako `NOT VALID` (bez skanu tabeli pod blokadą `ACCESS EXCLUSIVE`
+  migracji; nowe i zmieniane wiersze są sprawdzane od razu), a osobna, późniejsza migracja robi `VALIDATE CONSTRAINT`
+  (skan pod `SHARE UPDATE EXCLUSIVE`, odczyty i zapisy trwają). Wzór: `Version20261121100000AddOrderDelivery`
+  i `Version20261121100100ValidateOrderDeliveryChecks`, test: `OrderDeliveryMigrationTest`.
 - Mapowanie jest równe schematowi po migracjach: indeks częściowy ma w `#[ORM\Index]` warunek zapisany tak, jak zwraca
   go PostgreSQL; indeksy na wyrażeniach (mapowanie ich nie zna) narzędzia schematu pomijają. Zgodności pilnują testy
   schematu modułów (np. `OrderingSchemaTest`).

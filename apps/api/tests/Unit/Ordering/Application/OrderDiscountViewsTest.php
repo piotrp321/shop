@@ -87,6 +87,7 @@ final class OrderDiscountViewsTest extends TestCase
                 OrderLine::of(VariantId::fromString('0192f0c4-7c1a-7c4e-9a6e-000000000002'), $product, 'Czapka', '', 1, $price, LineAmounts::of(455, 9_630, 2_215, 11_845, Currency::PLN), null),
             ],
             OrderDiscount::of('MINUS50', OrderDiscountKind::Amount, 5_000, Money::of(5_000, Currency::PLN)),
+            OrderExamples::freeDelivery(),
             $example->idempotencyKey(),
             $example->requestFingerprint(),
             $example->placedAt(),

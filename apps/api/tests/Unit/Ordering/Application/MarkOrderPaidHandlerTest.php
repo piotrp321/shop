@@ -80,6 +80,17 @@ final class MarkOrderPaidHandlerTest extends TestCase
         self::assertSame([['customerId' => OrderExamples::CUSTOMER, 'orderId' => OrderExamples::ORDER, 'gross' => OrderExamples::TOTAL]], $this->customers->payments);
     }
 
+    public function testThePaymentOfAnOrderWithADeliveryAddsTheGoodsToTheSalesAndTheWholeTotalToTheCustomer(): void
+    {
+        $this->orders = new VersionedOrders();
+        $this->orders->add(OrderExamples::placed(byCustomer: true, delivery: OrderExamples::paidDelivery()));
+
+        self::assertSame(MarkOrderPaidResult::Paid, $this->handle(self::command(amount: OrderExamples::TOTAL + OrderExamples::DELIVERY_COST)));
+
+        self::assertEquals([['orderId' => OrderExamples::ORDER, 'paidAt' => $this->clock->now, 'gross' => OrderExamples::TOTAL]], $this->sales->added, 'the sales count the goods without the delivery (P14)');
+        self::assertSame([['customerId' => OrderExamples::CUSTOMER, 'orderId' => OrderExamples::ORDER, 'gross' => OrderExamples::TOTAL + OrderExamples::DELIVERY_COST]], $this->customers->payments, 'the customer the whole total');
+    }
+
     public function testAPaymentOfAnOrderOfAGuestAddsNoCustomer(): void
     {
         self::assertSame(MarkOrderPaidResult::Paid, $this->handle(self::command()));

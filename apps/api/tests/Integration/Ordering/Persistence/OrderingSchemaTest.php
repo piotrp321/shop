@@ -41,6 +41,32 @@ final class OrderingSchemaTest extends KernelTestCase
         ], $indexes);
     }
 
+    public function testTheDeliveryHasItsColumnsAndTheTableOfItsVatShares(): void
+    {
+        $connection = $this->entityManager()->getConnection();
+
+        self::assertSame(
+            [
+                ['delivery_gross', 'bigint', 'NO', '0'],
+                ['delivery_method_id', 'uuid', 'YES', null],
+                ['delivery_method_name', 'character varying', 'YES', null],
+                ['delivery_net', 'bigint', 'NO', '0'],
+                ['delivery_tracking_url_template', 'character varying', 'YES', null],
+                ['delivery_vat', 'bigint', 'NO', '0'],
+                ['tracking_number', 'character varying', 'YES', null],
+            ],
+            $connection->fetchAllNumeric("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = 'ordering_order' AND (column_name LIKE 'delivery%' OR column_name = 'tracking_number') ORDER BY column_name"),
+        );
+        self::assertSame(
+            ['gross', 'net', 'order_id', 'vat', 'vat_rate_bp'],
+            $connection->fetchFirstColumn("SELECT column_name FROM information_schema.columns WHERE table_name = 'ordering_order_delivery_vat' ORDER BY column_name"),
+        );
+        self::assertSame(
+            'PRIMARY KEY (order_id, vat_rate_bp)',
+            $connection->fetchOne("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'ordering_order_delivery_vat'::regclass AND contype = 'p'"),
+        );
+    }
+
     public function testTheHistoryOfACustomerHasItsPartialIndex(): void
     {
         $definition = $this->entityManager()->getConnection()->fetchOne(
