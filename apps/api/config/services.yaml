@@ -481,6 +481,9 @@ when@test: &test
         # Replaced by the delivery tests with a builder that signs with the secrets of the shared test vector.
         App\PaymentSimulator\SimulatedWebhooks:
             public: true
+        # Public (and so never inlined), so a test can replace it with one whose write of the copy fails.
+        App\Shared\Infrastructure\Messaging\KeepFailedMessageListener:
+            public: true
         # The HTTP client of the Sentry SDK in the tests (config/packages/sentry.yaml): keeps what would be sent.
         App\Tests\Functional\Shared\Sentry\RecordingSentryHttpClient:
             public: true
