@@ -475,9 +475,9 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
   `operationState.phase` `Succeeded`, a `syncResult.revision` i `sync.revision` są równe nowemu snapshotowi
   `deploy-images` (polecenie w runbooku `infra/k8s/README.md`, sekcja 7, „Sprawdzenie”); aplikacje są `Synced`
   i `Healthy`; pody `api`, `worker` i `worker-commands` należą wyłącznie do nowych ReplicaSetów i żaden nie jest
-  `Terminating` (`sudo k3s kubectl -n shop get pods -l 'app.kubernetes.io/name in (api,worker,worker-commands)'
-  -o custom-columns=POD:.metadata.name,IMAGE:.spec.containers[0].image,DELETING:.metadata.deletionTimestamp`: każdy
-  obraz z nowego snapshotu, kolumna `DELETING` pusta). Ta chwila jest też `:koniec_wdrozenia` w zapytaniu kontrolnym niżej. W trakcie rolloutu nie biegnie żaden
+  `Terminating` (`ssh <user>@<adres> 'sudo k3s kubectl -n shop get pods -l "app.kubernetes.io/name in
+  (api,worker,worker-commands)" -o custom-columns=POD:.metadata.name,IMAGE:.spec.containers[0].image,DELETING:.metadata.deletionTimestamp'`:
+  każdy obraz to digest `api` z `values-images.yaml` nowego snapshotu, a `DELETING` to `<none>`). Ta chwila jest też `:koniec_wdrozenia` w zapytaniu kontrolnym niżej. W trakcie rolloutu nie biegnie żaden
   seed (`make -C infra/k8s generate`, `make -C infra/k8s reinitialize`). Ta kolejność dotyczy tylko wydania tego
   epiku: kolejne wersje znają dostawę.
 - Cofnięcie do wersji sprzed epiku (runbook, sekcja 7, „Cofnięcie wersji”) jest bezpieczne tylko przed dodaniem metod.
