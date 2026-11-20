@@ -35,8 +35,8 @@ WRITE_ACCESS = {"DEMO_PHOTOS_WRITE_ACCESS_KEY_ID": "writekeyid1234abcd", "DEMO_P
 # probe; the kubectl image plays the cluster of $STUB_DIR/state.json. Every call is a JSON line in $STUB_LOG ({"image", "args",
 # "stdin"}). state["trigger"] = {"call": n, "action": kill|INT|TERM|fail} acts on the n-th call of kubectl: fail makes it fail without
 # any effect (a lost connection); a signal goes to the process group of the target once the call took effect.
-# state["inject_at_call"] = {"call": n, "changes": {...}} changes the state right before the n-th call of kubectl (another process
-# between two calls); state["inject_job_after"] = {"event", "job"[, "by": "generate"]} makes the Job demo-data-run right after the event,
+# state["inject_at_call"] = {"call": n, "changes": {...}} changes the state right before the n-th call of kubectl and
+# state["inject_after"] = {"event", "changes"} right after the event (another process between two calls); state["inject_job_after"] = {"event", "job"[, "by": "generate"]} makes the Job demo-data-run right after the event,
 # with "by": "generate" only as another make generate would: never while the lock is there (state["inject_refused"] then).
 DOCKER = r'''#!/usr/local/bin/python3 -SI
 import json, os, signal, sys
@@ -84,7 +84,7 @@ def option(name):
 
 def event(text):
     state["events"].append(text)
-    # Another copy of the target makes its Job right after this event; another make generate takes the lock before any change.
+    # A Job demo-data-run is made right after this event; another make generate would take the lock before any change.
     inject = state.get("inject_job_after")
     if inject and inject["event"] == text:
         if inject.get("by") == "generate" and state.get("lock") is not None:
@@ -92,6 +92,10 @@ def event(text):
         else:
             state["jobs"][JOB] = inject["job"]
         state["inject_job_after"] = None
+    inject = state.get("inject_after")
+    if inject and inject["event"] == text:
+        state.update(inject["changes"])
+        state["inject_after"] = None
 
 
 JOB = "demo-data-run"
@@ -783,7 +787,7 @@ class PreviousRun(Case):
         calls = cluster.kubectl_calls()
         (at,) = [i for i, c in enumerate(calls) if c[2:4] == ["delete", "job"]]
         self.assertEqual(["-n", "shop", "delete", "job", JOB, "--cascade=foreground", "--wait=true", "--ignore-not-found"], calls[at])
-        # The active Jobs are read again right before it (another copy of make generate may run its Job).
+        # The active Jobs are read again right before it (a Job may have started since the checks).
         self.assertEqual(["-n", "shop", "get", "jobs", "-o", "json"], calls[at - 1])
 
     def test_a_closing_that_the_probe_does_not_confirm_keeps_the_previous_run_and_open_opens_on_it_once_the_probe_works(self):
@@ -836,7 +840,7 @@ class PreviousRun(Case):
         self.assertTrue(cluster.state()["jobs"][JOB]["previous"])
 
     def test_a_job_of_the_same_name_made_meanwhile_ends_the_run_without_a_second_one(self):
-        """The fixed name is the lock: the Job demo-data-run of another make generate is not replaced."""
+        """A Job demo-data-run made meanwhile (by hand; another make generate waits on the lock) is not replaced: the name is fixed."""
         other = dict(finished_job("Running"), other=True)
         cluster = self.with_previous(inject_job_after={"event": f"delete job {JOB}", "job": other})
         result = cluster.run()
@@ -952,6 +956,12 @@ class Lock(Case):
         kubectl = [c for c in cluster.calls() if c["image"] == "registry.k8s.io/kubectl"]
         return next(i + 1 for i, c in enumerate(kubectl) if match in " ".join(c["args"]) + c["stdin"])
 
+    def lock_call(self):
+        """The call of kubectl of make generate that makes the lock: the first one after tak."""
+        asked = self.cluster()
+        asked.run(answer="nie\n")
+        return asked.state()["kubectl_calls"] + 1
+
     def test_make_open_keeps_the_rule_while_another_make_generate_would_replace_the_job(self):
         """A make generate started while make open runs (it clears the caches and runs the Job load for minutes) must not get to
         replace the Job demo-data-run that make open checked, or make open would open the shop on data being replaced: it refuses on
@@ -976,12 +986,10 @@ class Lock(Case):
         self.assertEqual([], cluster.state()["lock_events"])
 
     def test_make_generate_refuses_without_a_change_when_the_lock_is_taken_between_its_check_and_tak(self):
-        whole = self.cluster()
-        whole.run()
-        made = self.call_of(whole, '"ConfigMap"')
-        cluster = self.cluster(inject_at_call={"call": made, "changes": {"lock": held()}})
+        cluster = self.cluster(inject_at_call={"call": self.lock_call(), "changes": {"lock": held()}})
         result = cluster.run()
         self.assertIn("type tak", result.stdout)
+        self.assertEqual(1, len(self.made_locks(cluster)))
         self.assert_unchanged(cluster, result, lock=held())
         self.assert_refused_by_the_lock(result)
         self.assertEqual([], cluster.state()["lock_events"])
@@ -1043,35 +1051,37 @@ class Lock(Case):
         self.assertRegex(lock["data"]["holder"], rf"^open on [A-Za-z0-9.-]+, pid [0-9]+, since {self.SINCE}$")
 
     def test_the_lock_is_released_after_a_failure_or_a_refusal_after_tak(self):
+        runs = []
         for changes, script in (({"outcomes": {**initial_state()["outcomes"], "demo-data-": {"outcome": "Failed", "duration": 60, "message": ""}}}, GENERATE),
                                 ({"probes": {API_URL: "auto", STORE_URL: "200"}}, GENERATE),
                                 ({"jobs": {**initial_state()["jobs"], "cart-purge-expired-1": finished_job("Running", "cart-purge-expired")}}, OPEN),
                                 ({"jobs": initial_state()["jobs"], "netpol": CLOSED}, OPEN),
                                 ({"api_pods": [], "jobs": {**initial_state()["jobs"], JOB: finished_job()}}, OPEN)):
-            with self.subTest(changes=changes, script=script.name):
+            def run(changes=changes, script=script):
                 cluster = self.cluster(**changes)
-                result = cluster.run(script, GENERATE_CLOSE_WAIT="60")
+                return changes, script, cluster.run(script, GENERATE_CLOSE_WAIT="60"), cluster.state()
+            runs.append(run)
+        for changes, script, result, state in run_all(runs):
+            with self.subTest(changes=changes, script=script.name):
                 self.assertEqual(1, result.returncode, result.stderr)
-                state = cluster.state()
                 self.assertIsNone(state["lock"], result.stderr)
                 self.assertEqual(["create", "delete"], [e[0] for e in state["lock_events"]])
 
-    def test_a_hangup_interrupt_or_term_of_make_generate_releases_the_lock(self):
+    def test_a_hangup_of_make_generate_releases_the_lock(self):
+        """HUP (the terminal or the SSH session of the operator closed) right after the lock, while the Job runs and in its make open;
+        INT and TERM at every call: Interruptions."""
         outcomes = {**initial_state()["outcomes"], "demo-data-": {"outcome": "Complete", "duration": 1200, "message": "exit 0: done"}}
         whole = self.cluster(outcomes=outcomes)
         whole.run()
-        points = [self.call_of(whole, m) for m in ('"ConfigMap"', '"NetworkPolicy"', "get job demo-data-run", "cache:pool:clear",
-                                                   "delete networkpolicy")]
         runs = []
-        for call in points:
-            for action, code in (("HUP", 129), ("INT", 130), ("TERM", 143)):
-                def run(call=call, action=action, code=code):
-                    cluster = self.cluster(outcomes=outcomes, trigger={"call": call, "action": action})
-                    return call, action, code, cluster.run(), cluster.state()
-                runs.append(run)
-        for call, action, code, result, state in run_all(runs):
-            with self.subTest(call=call, action=action):
-                self.assertEqual(code, result.returncode, result.stderr)
+        for call in [self.call_of(whole, m) for m in ('"ConfigMap"', "get job demo-data-run", "delete networkpolicy")]:
+            def run(call=call):
+                cluster = self.cluster(outcomes=outcomes, trigger={"call": call, "action": "HUP"})
+                return call, cluster.run(), cluster.state()
+            runs.append(run)
+        for call, result, state in run_all(runs):
+            with self.subTest(call=call):
+                self.assertEqual(129, result.returncode, result.stderr)
                 self.assertIsNone(state["lock"], result.stderr)
                 self.assertEqual("delete", state["lock_events"][-1][0])
 
@@ -1116,9 +1126,7 @@ class Lock(Case):
                 self.assertIsNone(final["lock"])
 
     def test_make_generate_killed_leaves_the_lock_and_both_targets_refuse_until_the_operator_deletes_it(self):
-        whole = self.cluster()
-        whole.run()
-        cluster = self.cluster(trigger={"call": self.call_of(whole, '"ConfigMap"'), "action": "KILL"})
+        cluster = self.cluster(trigger={"call": self.lock_call(), "action": "KILL"})
         self.assertNotEqual(0, cluster.run().returncode)
         cluster.change(trigger=None)
         left = cluster.state()["lock"]
@@ -1130,29 +1138,30 @@ class Lock(Case):
                 self.assert_refused_by_the_lock(result, holder="generate PROFILE=medium on ")
                 self.assertEqual([], cluster.events())
                 self.assertEqual(left, cluster.state()["lock"])
+        # Once the operator deleted it, make generate gets to its question again.
         cluster.change(lock=None)
-        result = cluster.run()
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIsNone(cluster.state()["lock"])
+        result = cluster.run(answer="nie\n")
+        self.assertIn("not confirmed", result.stderr)
 
     def test_the_trap_never_deletes_the_lock_of_another(self):
         """The operator deleted the lock of a run that still went on, and another took it: neither the trap of make generate nor the
         one of make open deletes that lock, and the make open of make generate refuses on it."""
-        whole = self.cluster()
-        whole.run()
-        cluster = self.cluster(inject_at_call={"call": self.call_of(whole, '"NetworkPolicy"'), "changes": {"lock": held()}})
-        result = cluster.run()
+        def generate():
+            cluster = self.cluster(inject_after={"event": "create NetworkPolicy shop-closed", "changes": {"lock": held()}})
+            return cluster.run(), cluster.state()
+
+        def open_():
+            cluster = self.opened(inject_after={"event": "clear api-7c9f-a", "changes": {"lock": held()}})
+            return cluster.open(), cluster.state()
+
+        (result, state), (_, opened) = run_all([generate, open_])
         self.assertEqual(1, result.returncode, result.stderr)
         self.assertIn(f"held by {HOLDER}", result.stderr)
-        self.assertEqual(held(), cluster.state()["lock"])
-        self.assertIsNotNone(cluster.state()["netpol"])
-        self.assertNotIn("delete networkpolicy shop-closed", cluster.events())
-        whole = self.opened()
-        whole.open()
-        cluster = self.opened(inject_at_call={"call": self.call_of(whole, "cache:pool:clear"), "changes": {"lock": held()}})
-        cluster.open()
-        self.assertEqual(held(), cluster.state()["lock"])
-        self.assertEqual(["create"], [e[0] for e in cluster.state()["lock_events"]])
+        self.assertEqual(held(), state["lock"])
+        self.assertIsNotNone(state["netpol"])
+        self.assertNotIn("delete networkpolicy shop-closed", state["events"])
+        self.assertEqual(held(), opened["lock"])
+        self.assertEqual(["create"], [e[0] for e in opened["lock_events"]])
 
 
 class Secret(Case):

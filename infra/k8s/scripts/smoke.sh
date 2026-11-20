@@ -966,8 +966,11 @@ ingress_code() {
 }
 
 # check_shop <closed|open> <when>: closed is the rule shop-closed there and 502 for the API and the store through the ingress, open
-# no rule and 200 for both.
+# no rule and 200 for both. Either way make generate and make open have ended, so their lock demo-data-lock is gone.
 check_shop() {
+  lock_left="$(kc get configmap demo-data-lock --ignore-not-found -o name)"
+  [ -z "$lock_left" ] ||
+    { echo "smoke: $2: the ConfigMap demo-data-lock is still there (make generate and make open release it on every exit)" >&2; return 1; }
   rule="$(kc get networkpolicy shop-closed --ignore-not-found -o name)"
   if [ "$1" = closed ]; then
     want=502

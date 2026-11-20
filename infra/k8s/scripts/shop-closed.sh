@@ -12,6 +12,17 @@
 #   probe <closed|open> <s>     0 once every address says <state> in one round, 1 when <s> seconds passed first (probe_report: the
 #                               last round). 502, 503 and 504 are closed, a code below 500 is open; any other code and no answer are
 #                               a failed reading, tried again, never closed or open.
+#
+# The lock: make generate and make open run one at a time. It is the ConfigMap demo-data-lock of the namespace (data: holder, who
+# holds it, and token, random), without labels and annotations (Argo CD does not track it). kubectl create makes it or fails with
+# AlreadyExists, so only one run gets it; a run deletes it only while the token in it is its own.
+#   lock_read                   lock_holder and lock_held_token of the lock (both empty: there is none); 1 when it cannot be read
+#   lock_take <command> [<profile>]
+#                               makes the lock with a new token (lock_token, set before the creation: lock_release deletes a lock
+#                               that a creation with a lost answer made); 1 with lock_error when another holds it or it cannot be made
+#   lock_release                deletes the lock of lock_token, if any, and never the lock of another; 1 when that cannot be done
+#   lock_is <token>             0 when the lock is there with this token (make open run by make generate), else 1 with lock_error
+#   lock_message                how the lock is left and how the operator deletes it
 
 # shellcheck disable=SC2034 # close_wait, open_wait and poll are read by the scripts that source this file
 read_environment() {
@@ -80,4 +91,65 @@ probe() {
     [ "$(date +%s)" -lt "$probe_until" ] || return 1
     sleep "$probe_poll"
   done
+}
+
+lock_name=demo-data-lock
+lock_token=""
+
+lock_read() {
+  lock_read_out="$(kc get configmap "$lock_name" --ignore-not-found -o 'jsonpath={.metadata.name}{"/"}{.data.token}{"/"}{.data.holder}')" ||
+    return 1
+  lock_holder="" lock_held_token=""
+  [ -n "$lock_read_out" ] || return 0
+  lock_read_out="${lock_read_out#*/}"
+  lock_held_token="${lock_read_out%%/*}"
+  # It goes into messages: without control characters, and never empty for a lock that is there.
+  lock_holder="$(printf '%s' "${lock_read_out#*/}" | tr -d '\000-\037\177')"
+  lock_holder="${lock_holder:-(no holder written)}"
+  lock_held_token="${lock_held_token:-(none)}"
+}
+
+lock_message() {
+  echo "it stays after a make generate or make open killed with KILL, or one that could not release it; only when neither runs, the operator deletes it: kubectl -n $namespace delete configmap $lock_name (on the server: sudo k3s kubectl -n $namespace delete configmap $lock_name; make status shows it)"
+}
+
+lock_take() {
+  lock_token="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+  case "$lock_token" in
+    "" | *[!0-9a-f]*) lock_token="" lock_error="no random token for the lock $lock_name (/dev/urandom)"; return 1 ;;
+  esac
+  lock_host="$(uname -n 2>/dev/null | tr -cd 'A-Za-z0-9.-')"
+  lock_mine="$1${2:+ PROFILE=$2} on ${lock_host:-unknown}, pid $$, since $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"%s"},"data":{"token":"%s","holder":"%s"}}' \
+    "$lock_name" "$lock_token" "$lock_mine" | kc create -f - > /dev/null 2>&1 && return 0
+  if lock_read && [ -n "$lock_held_token" ] && [ "$lock_held_token" != "$lock_token" ]; then
+    # Another made it first, so this creation made nothing: there is nothing to release.
+    lock_token=""
+    lock_error="the lock $lock_name is held by $lock_holder: make generate and make open run one at a time; $(lock_message)"
+  else
+    lock_error="the lock $lock_name could not be made"
+  fi
+  return 1
+}
+
+lock_release() {
+  [ -n "$lock_token" ] || return 0
+  lock_read || return 1
+  [ -n "$lock_held_token" ] || return 0
+  if [ "$lock_held_token" != "$lock_token" ]; then
+    printf '%s: the lock %s is held by %s now, not by this run: it is left as it is\n' "$DEMO_DATA_TOOL" "$lock_name" "$lock_holder" >&2
+    return 0
+  fi
+  kc delete configmap "$lock_name" --ignore-not-found > /dev/null
+}
+
+lock_is() {
+  lock_read || { lock_error="cannot read the lock $lock_name"; return 1; }
+  if [ -z "$lock_held_token" ]; then
+    lock_error="there is no lock $lock_name, but DEMO_DATA_LOCK_TOKEN is set (make generate gives it to the make open it runs): unset it to run make open by hand"
+    return 1
+  fi
+  [ "$lock_held_token" = "$1" ] && return 0
+  lock_error="the lock $lock_name is held by $lock_holder, not by the make generate of DEMO_DATA_LOCK_TOKEN (make generate gives it to the make open it runs); $(lock_message)"
+  return 1
 }
