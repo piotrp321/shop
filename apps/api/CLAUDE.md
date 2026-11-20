@@ -51,7 +51,7 @@ Narzędzia uruchamiane świadomie (nie wywołuje ich `make init`, `make up` ani 
 cały katalog w Varnishu i w sklepie. `ordering:read-models:rebuild` i `inventory:stock-records:sync` są krokami
 `app:backfill` (niżej).
 
-`app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
+`app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api`, `worker` i `worker-commands`, lokalnie koniec
 `bin/seed-demo`) wypełnia dane, dla których migracje dodały tylko schemat (`docs/features/admin-features/spec.md`,
 „Wdrożenie: schemat w migracjach, wypełnienie po rolloucie”). Nowy krok implementuje `Shared\Infrastructure\Backfill\BackfillStep` w warstwie Infrastructure modułu
 (rejestracja tagiem z interfejsu, kolejność `#[AsTaggedItem(priority: …)]` malejąco), jest idempotentny, działa
@@ -361,8 +361,11 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
 - Transporty Messengera na Doctrine (`scheduled`, `payment_simulator`, `promotions`, `jobs`; ta sama tabela
   `messenger_messages` i to samo połączenie co `outbox`) trzymają wiadomości zapisane w transakcji wywołującego, więc
   przestój workera tylko opóźnia ich obsługę. W `test` są w pamięci (jak `outbox`), w `test_messaging` prawdziwe.
-  Worker konsumuje `outbox events scheduled payment_simulator promotions jobs` po kolei (compose i chart, komenda
-  i healthcheck albo sonda), więc długa kolejka wcześniejszego transportu opóźnia następne. Granice promocji mają osobną
+  Dwa workery z jednego obrazu (compose i chart, komenda i healthcheck albo sonda z tej samej listy): `worker` konsumuje
+  `outbox events`, `worker-commands` `payment_simulator scheduled promotions jobs` po kolei, bez RabbitMQ (webhooki
+  symulatora przed anulowaniami), więc długa kolejka wcześniejszego transportu opóźnia następne w tym samym workerze
+  (`docs/features/async-reliability/spec.md`, W1). Każdy transport poza `failed` ma dokładnie jednego workera (test
+  chartu). Granice promocji mają osobną
   kolejkę `promotions`, bo `ordering:seed-demo` czyści całe `scheduled`. Nowy transport: compose i chart w tym samym PR
   (`infra/k8s/CLAUDE.md`).
 - **Wzorzec łańcucha partii** (transport `jobs`) to sposób zadań wywołanych zmianą w domenie i wykonywanych przez
