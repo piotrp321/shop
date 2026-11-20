@@ -82,14 +82,31 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   brokera, ale nie obsłużyłby zaległych `pending` sprzed epiku ani płatności zamówień `new` po terminie, których nikt
   jeszcze nie anulował; komenda obsługuje wszystkie przypadki jednym mechanizmem.
 
-- **D6. Ponowienia transportu `failed` (wynik E5).** Domyślnie transport `failed` ma 3 ponowienia: wiadomość, która
-  przy `failed:retry` zawiedzie czwarty raz, znika bez śladu poza logiem, także webhook płatności.
-  - (a) Transport `failed` z jawną strategią bez limitu w praktyce (`max_retries` bardzo duże, stałe opóźnienie
-    60 s; rekomendacja): każda nieudana próba zostawia wiadomość w `failed` pod nowym ID, a `failed:retry` bez ID
-    kończy się, bo ponowione wiadomości czekają na swoje opóźnienie. Wiadomość znika tylko przez `failed-remove`.
-    Zmiana jednej sekcji `messenger.yaml` w zadaniu 7, test ścieżki „trzy nieudane próby i czwarta” w zadaniu 7.
-  - (b) Bez zmiany konfiguracji: runbook i cel `failed-retry` ostrzegają, że czwarta nieudana próba usuwa wiadomość.
-    Zostaje ryzyko utraty webhooka płatności przez pomyłkę operatora.
+- **D6. Wiadomość w `failed` znika tylko przez świadome usunięcie (wynik E5; kierunek (a) wybrany przez użytkownika
+  2026-11-20, zakres poniżej czeka na akceptację).** Nieudane ręczne ponowienie zachowuje wiadomość w `failed`,
+  także przy błędzie nieodwracalnym; udana obsługa ją usuwa; usunięcie to osobna operacja (`failed-remove`).
+  - Dlaczego konfiguracja nie wystarcza (Symfony Messenger v8.1.11, sprawdzone w kodzie): domyślna strategia `failed`
+    ma 3 ponowienia; `SendFailedMessageForRetryListener::shouldRetry()` odrzuca `UnrecoverableExceptionInterface`
+    (także `HandlerFailedException` z samymi takimi wyjątkami) przed strategią, a `SendFailedMessageToFailureTransportListener`
+    pomija wiadomości odebrane z transportu awarii, więc worker robi `reject` (usunięcie wiersza) przy pierwszej
+    nieudanej próbie, niezależnie od `max_retries`. `messenger:failed:retry` bez ID bierze w pętli dowolną dostępną
+    wiadomość, aż żadnej nie ma: wiadomość zachowana jako dostępna od razu zapętla przebieg, a zachowana z opóźnieniem
+    znika na ten czas z `failed:show` i przy dużym przebiegu wraca do niego drugi raz.
+  - Zakres (proponowany): (1) listener `WorkerMessageFailedEvent` w `Shared\Infrastructure\Messaging`: wiadomość
+    odebrana z `failed`, która zawiodła i nie idzie do ponowienia, wraca do `failed` od razu (ta sama koperta,
+    pierwotny `SentToFailureTransportStamp`, świeży `ErrorDetailsStamp`, nowe ID), z logiem starego i nowego ID;
+    `failed` dostaje `retry_strategy.max_retries: 0`, więc błąd odwracalny i nieodwracalny idą tą jedną ścieżką.
+    (2) Komenda `app:messaging:failed-retry [--max=200]`: zapamiętuje ID wiadomości `failed` na starcie i ponawia
+    tylko je (`messenger:failed:retry <id…> --force`), więc każda wiadomość jest przetwarzana najwyżej raz w jednym
+    uruchomieniu, a kopie zachowane w trakcie czekają na kolejne. (3) Cel `failed-retry HOST` bez `ID` woła tę
+    komendę, z `ID` `messenger:failed:retry <ID> --force`; runbook: ID zachowanej wiadomości zmienia się po nieudanej
+    próbie, a `messenger:failed:retry` bez ID nie jest używane. (1) i (2) to nowe zadanie API (ASYNC-RELIABILITY-9,
+    przed zadaniem 7); (3) zostaje w zadaniu 7.
+  - Testy (zadanie 9, transport Doctrine w kernelu `test_messaging`): kilka kolejnych nieudanych ponowień zostawia
+    wiadomość (nowe ID za każdym razem, ta sama treść); `UnrecoverableMessageHandlingException` i
+    `HandlerFailedException` z samymi wyjątkami nieodwracalnymi zostawiają wiadomość; udana obsługa ją usuwa;
+    `failed:remove` ją usuwa; `app:messaging:failed-retry` na kilku wiadomościach (część zawodzi) kończy się,
+    a handler każdej wiadomości jest wywołany dokładnie raz.
 
 ## Wymagane przed startem
 
