@@ -23,6 +23,9 @@ final class MessagingDatabaseQueuesTest extends KernelTestCase
 {
     private const string NOW = '2026-11-20 12:00:00';
 
+    /** `redeliver_timeout` of the Doctrine transports of messenger.yaml, in seconds. */
+    private const int REDELIVER_TIMEOUT = 300;
+
     private Connection $connection;
     private int $httpRequests = 0;
 
@@ -108,6 +111,40 @@ final class MessagingDatabaseQueuesTest extends KernelTestCase
         MessengerRows::add($this->connection, 'payment_simulator', $this->at('-30 seconds'));
 
         self::assertEquals(new TransportBacklog('payment_simulator', new BoundedCount(1, false), 30), $this->transport('payment_simulator'));
+    }
+
+    public function testAMessageHandedToAWorkerLongAgoIsReadyAgainAndItsAgeCountsFromWhenItWasDue(): void
+    {
+        // The worker took it an hour ago and died before the acknowledgement: Messenger hands it out again once
+        // `redeliver_timeout` has passed, so it waits for a worker, however long ago it was taken.
+        MessengerRows::add($this->connection, 'jobs', $this->at('-2 hours'), deliveredAt: $this->at('-1 hour'));
+
+        self::assertEquals(new TransportBacklog('jobs', new BoundedCount(1, false), 7200), $this->transport('jobs'));
+    }
+
+    public function testAMessageHandedToAWorkerJustBeforeTheTimeoutIsNotReady(): void
+    {
+        MessengerRows::add($this->connection, 'jobs', $this->at('-2 hours'), deliveredAt: $this->at('-'.(self::REDELIVER_TIMEOUT - 1).' seconds'));
+
+        self::assertEquals(new TransportBacklog('jobs', new BoundedCount(0, false), null), $this->transport('jobs'));
+    }
+
+    public function testAMessageHandedToAWorkerExactlyTheTimeoutAgoIsNotReadyYetAsInDoctrine(): void
+    {
+        // Doctrine takes back a message with `delivered_at < now - redeliver_timeout`: strictly older.
+        MessengerRows::add($this->connection, 'jobs', $this->at('-2 hours'), deliveredAt: $this->at('-'.self::REDELIVER_TIMEOUT.' seconds'));
+        self::assertEquals(new TransportBacklog('jobs', new BoundedCount(0, false), null), $this->transport('jobs'));
+
+        MessengerRows::clear($this->connection);
+        MessengerRows::add($this->connection, 'jobs', $this->at('-2 hours'), deliveredAt: $this->at('-'.(self::REDELIVER_TIMEOUT + 1).' seconds'));
+        self::assertEquals(new TransportBacklog('jobs', new BoundedCount(1, false), 7200), $this->transport('jobs'));
+    }
+
+    public function testAMessageHandedToAWorkerThatIsNotDueIsNotReadyWhateverTheDeliveryTime(): void
+    {
+        MessengerRows::add($this->connection, 'scheduled', $this->at('+10 minutes'), deliveredAt: $this->at('-1 hour'));
+
+        self::assertEquals(new TransportBacklog('scheduled', new BoundedCount(0, false), null), $this->transport('scheduled'));
     }
 
     public function testEveryQueueCountsOnlyItsOwnMessages(): void

@@ -170,6 +170,27 @@ final class DashboardEndpointTest extends WebTestCase
         self::assertFalse($messages['healthy']);
     }
 
+    public function testAMessageTakenByAWorkerThatDiedStandsOnceTheRedeliveryTimeoutHasPassed(): void
+    {
+        $client = static::createClient();
+        $connection = $this->connection();
+        MessengerRows::clear($connection);
+        // Taken an hour ago and never acknowledged: Messenger hands it out again, the queue has a ready message.
+        MessengerRows::add($connection, 'payment_simulator', new \DateTimeImmutable('-71 minutes'), deliveredAt: new \DateTimeImmutable('-1 hour'));
+        // Taken 10 seconds ago: a worker has it.
+        MessengerRows::add($connection, 'promotions', new \DateTimeImmutable('-71 minutes'), deliveredAt: new \DateTimeImmutable('-10 seconds'));
+
+        $this->get($client, TestTokenFactory::staff(['admin']));
+
+        $messages = $this->messages($this->json($client->getResponse()));
+        $byName = $this->transports($messages);
+        self::assertSame(1, $byName['payment_simulator']['ready']);
+        self::assertTrue($byName['payment_simulator']['stalled']);
+        self::assertSame(0, $byName['promotions']['ready']);
+        self::assertFalse($byName['promotions']['stalled']);
+        self::assertFalse($messages['healthy']);
+    }
+
     /**
      * The transports of the messages by name, in the order of the response.
      *
