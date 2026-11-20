@@ -58,7 +58,7 @@ Decyzje użytkownika:
 | Context / moduł | Odpowiada za |
 |---|---|
 | Payment | agregat `Payment`, rozpoczęcie płatności, webhooki (podpis, deduplikacja, kwota), port `PaymentProvider` i dwa adaptery, status płatności dla sklepu |
-| Ordering | statusy `paid` i `cancelled`, termin płatności, token dostępu gościa i reguła dostępu, `GetOrderForPayment`, `MarkOrderPaid`, `ExpireUnpaidOrder`, e-maile o płatności i anulowaniu |
+| Ordering | statusy `paid` i `cancelled`, termin płatności, token dostępu gościa i reguła dostępu, `GetOrderForPayment`, `GetOrderPayability`, `MarkOrderPaid`, `ExpireUnpaidOrder`, `ExpireOverdueOrder`, e-maile o płatności i anulowaniu |
 | Inventory | `ReleaseReservation(orderId)` przy anulowaniu |
 | PaymentSimulator (poza contextami) | dwa udawane API dostawców, strona płatności, wysyłka podpisanych webhooków z ponowieniami |
 | Shared | marker `Unavailable` (503, ogólna odpowiedź bez `detail`) w `Shared\Domain\Exception` i jego mapowanie w `ProblemDetailsSubscriber` |
@@ -129,9 +129,15 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 - `MarkOrderPaid(orderId, paymentId, amount, currency, executedAt)` (`command.bus`) → `MarkOrderPaidResult`
   (`Ordering_Application`: `paid`, `alreadyPaid`, `paidByAnotherPayment`, `paidAfterDeadline`, `orderCancelled`). Nieznane zamówienie: `OrderToPayNotFound`;
   konflikt wersji przy zapisie: `OrderChangedConcurrently` (oba wyjątki w `Ordering_Application`).
-- `ExpireUnpaidOrder(orderId)` (`command.bus`, wiadomość asynchroniczna na transporcie `scheduled`) zaczyna od blokady
-  wiersza zamówienia (`OrderRepository::lock`, jak komendy pracownika z `docs/features/order-management/spec.md`), więc
-  wygaśnięcie i zmiana z panelu idą po kolei:
+- `GetOrderPayability(orderIds)` (`query.bus`, najwyżej 100 identyfikatorów) → lista `OrderPayability {orderId,
+  payable, statusForPayment}` dla `payment:close-abandoned`: tylko to, czy zamówienie jest płatne (`isPayable`), i jego
+  status dla Payment, bez numeru, kwoty i danych osobowych, więc bez kontroli dostępu; nieznane zamówienie i
+  identyfikator, który nie jest UUID, pomija (`docs/features/async-reliability/spec.md`, W6).
+- `ExpireUnpaidOrder(orderId)` (`command.bus`, wiadomość asynchroniczna na transporcie `scheduled`) i
+  `ExpireOverdueOrder(orderId)` (`command.bus`, synchroniczna, bez trasy; wysyła ją `ordering:expire-overdue`) używają
+  tej samej logiki wygaśnięcia (`UnpaidOrderExpiration`). Zaczyna ona od blokady wiersza zamówienia
+  (`OrderRepository::lock`, jak komendy pracownika z `docs/features/order-management/spec.md`), więc wygaśnięcie,
+  zmiana z panelu i drugie wygaśnięcie tego samego zamówienia idą po kolei:
   - wynik `cancelled`: w tej samej transakcji port `StockReservations::release(orderId)` (Inventory
     `ReleaseReservation`, zagnieżdżony dispatch; rezerwacja już zwolniona: bez zmian) i zapis zamówienia
     z `OrderCancelled` w outboxie;
@@ -139,12 +145,17 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
     do `paymentDeadline + 5 min + 1 s`;
   - `notApplicable`: nic;
   - nieznane zamówienie (np. po `make seed`): nic, wpis w logu;
-  - konflikt wersji (równoległe opłacenie): wyjątek i ponowienie wiadomości, które widzi nowy status;
+  - konflikt wersji (równoległe opłacenie): wyjątek i ponowienie wiadomości (komenda konsoli ponawia raz), które widzi
+    nowy status;
   - rezerwacja nieznana Inventory (`ReservationNotFound`) albo zatwierdzona (`ReservationStateConflict`): błąd
     logiczny, wyjątek, po ponowieniach transport `failed`.
 - `PlaceOrder` w swojej transakcji wysyła `ExpireUnpaidOrder(orderId)` z `DelayStamp` do
   `paymentDeadline + 5 min` (transport Doctrine na tym samym połączeniu: wiadomość powstaje albo znika razem
   z zamówieniem). Powtórzenie złożenia nie wysyła drugiej wiadomości.
+- `ordering:expire-overdue [--batch-size=100]` (siatka bezpieczeństwa wiadomości, w klastrze CronJob `order-expiry`)
+  wygasza zamówienia `new`, których termin minął ponad 5 minut okna webhooków i 10 minut karencji
+  (`app.ordering.expiry_grace_seconds`) temu, każde w osobnej transakcji; opis w
+  `docs/features/async-reliability/spec.md`, W5.
 
 ### E-maile
 
@@ -191,8 +202,9 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 Pola: `id`, `orderId`, `provider`, `amount`, `status`, `providerPaymentId` (null do odpowiedzi dostawcy),
 `redirectUrl`, `idempotencyKey`, `requestFingerprint` (SHA-256 `orderId` i `provider`), `createdAt`,
 `completedAt`, `executedAt` (czas wykonania u dostawcy, przy `succeeded`), `refundRequiredReason` (null albo
-`RefundReason`). Bez pola wersji: istniejącą płatność zmieniają webhook i anulowanie przy nowej próbie, oba pod
-blokadą wiersza płatności; `attachProviderSession` działa w transakcji, która płatność tworzy.
+`RefundReason`). Bez pola wersji: istniejącą płatność zmieniają webhook, anulowanie przy nowej próbie i zamknięcie
+porzuconej płatności, wszystkie pod blokadą wiersza płatności; `attachProviderSession` działa w transakcji, która
+płatność tworzy.
 
 | Metoda | Działanie |
 |---|---|
@@ -320,6 +332,27 @@ Weryfikacja podpisu i parsowanie to walidacja wejścia na granicy (jak `MapReque
      `MarkOrderPaid`: adapter tłumaczy konflikt wersji na `OrderBusy` (marker `Unavailable`, 503), inne wyjątki
      przekazuje bez zmian (500); całość wycofana (także wiersz deduplikacji), dostawca ponawia.
 5. Zapis płatności. Odpowiedź 204.
+
+### Zamykanie porzuconych płatności (`payment:close-abandoned`)
+
+Komenda konsoli `payment:close-abandoned [--batch-size=1..100]` (w klastrze CronJob `order-expiry`, po
+`ordering:expire-overdue`) zamyka płatności `pending` zamówień, których Ordering nie uznaje już za płatne
+(`docs/features/async-reliability/spec.md`, D5, W6):
+
+1. Płatności `pending` partiami keysetem po `order_id` (częściowy indeks `payment_payment_one_pending_per_order`), dla
+   partii jedno zapytanie `GetOrderPayability` (port `PayableOrders::payabilityOf`). Zamówienie płatne: płatność
+   zostaje. Zamówienie nieopłacalne (anulowane, opłacone, `new` po terminie albo nieznane Ordering) już
+   nie staje się płatne, więc odpowiedź obowiązuje także przy zamknięciu.
+2. Każda wybrana płatność w osobnej transakcji `command.bus` (`CloseAbandonedPayment`): blokada płatności `pending`
+   zamówienia (`lockPendingOfOrder`); brak albo inna płatność niż wybrana (webhook albo nowa próba między wyborem
+   a blokadą) → nic, bez wywołania dostawcy.
+3. Anulowanie sesji u dostawcy z tym samym mapowaniem co `StartPayment` krok 6 (`PendingPaymentClosing`):
+   `Cancelled` → `cancelled`, `AlreadyRejected` → `failed`, `AlreadyPaid` → zostaje `pending` z ostrzeżeniem w logu,
+   rozliczy ją webhook (także ponowiony z `failed`). Późny webhook sukcesu po zamknięciu daje `succeeded`, przy
+   anulowanym zamówieniu z oznaczeniem zwrotu (`order_cancelled`).
+4. Błąd jednej płatności (np. dostawca niedostępny) jest w logu (`error`, z identyfikatorami płatności i zamówienia),
+   płatność zostaje `pending`, a komenda idzie dalej. Kod wyjścia: 0 gotowe, 1 zła `--batch-size` (bez zmian), 2
+   co najmniej jedna płatność się nie udała albo przerwanie błędem (np. niedostępna baza).
 
 ### Status płatności (`GetPaymentStatus`)
 
@@ -667,8 +700,9 @@ przekierowanie, link „Opłać zamówienie” przy pustym koszyku i ciasteczku)
   uruchomić jako osobną usługę (decyzja A3).
 - Dwa zamówienia o tym samym skrócie identyfikatora w blokadzie rozpoczęć (32 bity) dzielą ją: równoległe
   rozpoczęcie drugiego dostaje 409, a ponowienie przechodzi.
-- `ExpireUnpaidOrder` po wyczerpaniu ponowień trafia do `failed`: zamówienie zostaje `new`, a rezerwacja aktywna, aż
-  ktoś ponowi wiadomość (`bin/console messenger:failed:retry`).
+- `ExpireUnpaidOrder` po wyczerpaniu ponowień trafia do `failed` i zostaje tam do decyzji operatora; zamówienie wygasza
+  `ordering:expire-overdue` (CronJob `order-expiry`) około 10–15 minut po terminie wygaśnięcia, a jego płatność `pending`
+  zamyka `payment:close-abandoned`. Lokalnie (compose bez harmonogramów) obie komendy uruchamia się ręcznie.
 - Worker obsługuje transporty po kolei (`outbox events scheduled payment_simulator promotions jobs`): długa kolejka zdarzeń opóźnia
   webhooki symulatora, a sklep po 30 s pokazuje „Nie mamy jeszcze potwierdzenia płatności.”.
 - Gość traci możliwość zapłaty po utracie ciasteczka potwierdzenia (inne urządzenie, wylogowanie); zamówienie
