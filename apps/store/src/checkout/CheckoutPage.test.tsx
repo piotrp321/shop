@@ -752,6 +752,189 @@ describe("CheckoutPage delivery method", () => {
   });
 });
 
+describe("CheckoutPage delivery states", () => {
+  const UNAVAILABLE = "Wybrany sposób dostawy jest niedostępny. Wybierz inny.";
+  const NO_METHODS = "Nie możemy teraz przyjąć zamówienia: brak dostępnych sposobów dostawy. Spróbuj później.";
+  const summary = () => screen.getByRole("region", { name: "Podsumowanie zamówienia" });
+  const live = () => within(summary()).getByTestId("checkout-summary-status");
+  const codeField = () => screen.getByLabelText("Kod rabatowy") as HTMLInputElement;
+
+  /** The goods are 500,00 zł; the standard method is free from 300,00 zł, the express one never. Totals are the API's. */
+  const above = (): CartView => ({
+    ...cart(50000, [line(A, "Buty trailowe", "czarne, 42", 1, 50000)]),
+    delivery: delivery([
+      option(STANDARD, "Kurier standardowy", 0, 50000, { freeFromGross: 30000 }),
+      option(EXPRESS, "Kurier ekspresowy", 3999, 53999, { description: "Dostawa następnego dnia roboczego" }),
+    ]),
+  });
+  /** The same cart after a code that takes 250,00 zł off: the goods are below the threshold, the delivery is paid. */
+  const below = (): CartView => ({
+    ...cart(25000, [line(A, "Buty trailowe", "czarne, 42", 1, 50000)]),
+    totals: { subtotalGross: 50000, discountGross: 25000, gross: 25000, currency: "PLN", itemCount: 1 },
+    discount: { status: "applied", code: "POL50", amountGross: 25000, kind: "percent", value: 50 },
+    delivery: delivery([
+      option(STANDARD, "Kurier standardowy", 1999, 26999, { freeFromGross: 30000, missingToFreeGross: 5000 }),
+      option(EXPRESS, "Kurier ekspresowy", 3999, 28999, { description: "Dostawa następnego dnia roboczego" }),
+    ]),
+  });
+
+  async function applyCode(view: CartView) {
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: view });
+    fireEvent.change(codeField(), { target: { value: "pol50" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+    });
+  }
+  async function removeCode(view: CartView) {
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: view });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Usuń kod" }));
+    });
+  }
+
+  it("chooses the only method itself, so the order can be placed without a click on it", async () => {
+    await renderCheckout(cart(), null, undefined, false);
+
+    expect(deliveryRadio("Kurier standardowy").checked).toBe(true);
+    expect(within(summary()).getByTestId("checkout-delivery").textContent).toBe("Darmowa");
+    expect(within(summary()).getByTestId("checkout-total").textContent).toBe(price(39998));
+    fillGuestForm();
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+    expect(placeOrder).toHaveBeenCalledWith(GUEST_INPUT, expect.any(String));
+  });
+
+  it("chooses nothing among several methods", async () => {
+    await renderCheckout(above(), null, undefined, false);
+
+    expect((within(deliveryGroup()).getAllByRole("radio") as HTMLInputElement[]).map((radio) => radio.checked)).toEqual([false, false]);
+  });
+
+  it("keeps the chosen method when the summary is read again with a code and the method is still offered", async () => {
+    await renderCheckout(above(), null, undefined, false);
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+    await applyCode(below());
+
+    expect(deliveryRadio("Kurier ekspresowy").checked).toBe(true);
+    expect(deliveryRadio("Kurier standardowy").checked).toBe(false);
+    expect(within(summary()).getByTestId("checkout-delivery").textContent).toBe(price(3999));
+    expect(within(summary()).getByTestId("checkout-total").textContent).toBe(price(28999));
+  });
+
+  it("drops the chosen method when a code reads the summary without it, and does not choose it again when it is offered later", async () => {
+    await renderCheckout(above(), null, undefined, false);
+    fireEvent.click(deliveryRadio("Kurier standardowy"));
+    const withoutStandard: CartView = { ...below(), delivery: delivery([option(EXPRESS, "Kurier ekspresowy", 3999, 28999)]) };
+    await applyCode(withoutStandard);
+
+    expect(within(deliveryGroup()).getAllByRole("radio")).toHaveLength(1);
+    expect(deliveryRadio("Kurier ekspresowy").checked).toBe(false);
+    expect(within(summary()).getByTestId("checkout-total").textContent).toBe("Wybierz sposób dostawy");
+
+    await removeCode(above());
+    expect((within(deliveryGroup()).getAllByRole("radio") as HTMLInputElement[]).map((radio) => radio.checked)).toEqual([false, false]);
+    expect(within(summary()).getByTestId("checkout-total").textContent).toBe("Wybierz sposób dostawy");
+  });
+
+  it("shows the lost free delivery at once in the options and the summary and announces it in the live region of the summary", async () => {
+    await renderCheckout(above(), null, undefined, false);
+    fireEvent.click(deliveryRadio("Kurier standardowy"));
+    expect(live().textContent).toBe("");
+    expect(live().getAttribute("role")).toBe("status");
+    expect(within(summary()).getByTestId("checkout-delivery").textContent).toBe("Darmowa");
+
+    await applyCode(below());
+
+    const label = deliveryRadio("Kurier standardowy").labels?.[0]?.textContent ?? "";
+    expect(label).toContain(price(1999));
+    expect(label).toContain(`Do darmowej dostawy brakuje ${price(5000)}`);
+    expect(label).not.toContain("Darmowa");
+    expect(within(summary()).getByTestId("checkout-delivery").textContent).toBe(price(1999));
+    expect(within(summary()).getByTestId("checkout-total").textContent).toBe(price(26999));
+    expect(live().textContent).toBe(`Kurier standardowy nie jest już darmowy, kosztuje ${price(1999)}. Do darmowej dostawy brakuje ${price(5000)}.`);
+  });
+
+  it("announces that a method became free again when the code is taken off", async () => {
+    await renderCheckout(above(), null, undefined, false);
+    fireEvent.click(deliveryRadio("Kurier standardowy"));
+    await applyCode(below());
+    await removeCode(above());
+
+    expect(within(summary()).getByTestId("checkout-delivery").textContent).toBe("Darmowa");
+    expect(live().textContent).toBe("Kurier standardowy jest teraz darmowy.");
+  });
+
+  it("says nothing in the live region when the delivery of the chosen method did not change", async () => {
+    await renderCheckout(above(), null, undefined, false);
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+    await applyCode(below());
+
+    expect(live().textContent).toBe("");
+  });
+
+  it("announces the lost free delivery after a 409 of the total, which reads the summary again", async () => {
+    await renderCheckout(above(), null, undefined, false);
+    fillGuestForm();
+    fireEvent.click(deliveryRadio("Kurier standardowy"));
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: below() });
+    await submit({ status: "conflict", reason: "total_changed", detail: "Cena w koszyku zmieniła się." });
+
+    expect(live().textContent).toContain("Kurier standardowy nie jest już darmowy");
+    expect(within(summary()).getByTestId("checkout-total").textContent).toBe(price(26999));
+  });
+
+  it("shows „Darmowa” and no amount missing to free delivery for an option with the cost 0", async () => {
+    const view: CartView = { ...cart(), delivery: delivery([option(STANDARD, "Kurier standardowy", 0, 39998, { freeFromGross: 30000, missingToFreeGross: 5000 })]) };
+    await renderCheckout(view, null, undefined, false);
+
+    const label = deliveryRadio("Kurier standardowy").labels?.[0]?.textContent ?? "";
+    expect(label).toContain("Darmowa");
+    expect(label).not.toContain("Do darmowej dostawy brakuje");
+  });
+
+  it.each([
+    ["no active delivery method", (): CartView => ({ ...cart(), delivery: delivery([]) })],
+    ["an answer without delivery (the API from before it)", (): CartView => ({ ...cart(), delivery: undefined as unknown as CartView["delivery"] })],
+  ])("with %s says that the order cannot be placed and locks the button", async (_name, view) => {
+    await renderCheckout(view(), null, undefined, false);
+
+    const alert = screen.getByText(NO_METHODS);
+    expect(alert.closest("[data-slot='alert']")).not.toBeNull();
+    expect(screen.queryByRole("group", { name: "Sposób dostawy" })).toBeNull();
+    expect(submitButton().disabled).toBe(true);
+    fillGuestForm();
+    await act(async () => {
+      fireEvent.submit(submitButton().form as HTMLFormElement);
+    });
+    expect(placeOrder).not.toHaveBeenCalled();
+  });
+
+  it("has no alert about the methods for a cart without anything to buy", async () => {
+    await renderCheckout(cart(0, []), null, undefined, false);
+
+    expect(screen.queryByText(NO_METHODS)).toBeNull();
+  });
+
+  it("after a 409 of an unavailable method keeps the message focused and the key new, and does not choose the method that is gone when it comes back", async () => {
+    await renderCheckout(above(), null, undefined, false);
+    fillGuestForm();
+    fireEvent.click(deliveryRadio("Kurier standardowy"));
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: { ...above(), delivery: delivery([option(EXPRESS, "Kurier ekspresowy", 3999, 53999)]) } });
+    await submit({ status: "conflict", reason: "delivery_method_unavailable", detail: UNAVAILABLE });
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain(UNAVAILABLE);
+    expect(document.activeElement).toBe(alert);
+    expect(within(summary()).getByTestId("checkout-total").textContent).toBe("Wybierz sposób dostawy");
+
+    await applyCode(below());
+    expect((within(deliveryGroup()).getAllByRole("radio") as HTMLInputElement[]).map((radio) => radio.checked)).toEqual([false, false]);
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+    await submit({ status: "failed" });
+    const [first, second] = vi.mocked(placeOrder).mock.calls;
+    expect(second[1]).not.toBe(first[1]);
+  });
+});
+
 describe("CheckoutPage payment provider", () => {
   const group = () => screen.getByRole("radiogroup", { name: "Sposób płatności" });
   const CHOOSE = "Wybierz sposób płatności.";
