@@ -29,6 +29,16 @@ min_over_time(
   label_replace(vector(0), "namespace", "{{ .ns }}", "", "")
 )
 {{- end }}
+{{- /* The same, but one instance of the alert per CronJob however many Jobs have failed (a message that stays in `failed` makes every run
+of queue-check fail, so a new failed Job comes every five minutes): the Jobs are aggregated away and the CronJob is a label. */}}
+{{- define "shop.alerts.cronjobFailedOnce" -}}
+label_replace(
+  max by (namespace) (
+    {{- include "shop.alerts.cronjobFailed" . | nindent 4 }}
+  ),
+  "cronjob", "{{ .cronjob }}", "", ""
+)
+{{- end }}
 {{- /* The last success of the CronJob is older than `.threshold` (seconds, an expression such as 26 * 3600), or its metric has not been there
 for 30 minutes. Like the other
 comparisons below it takes the maximum over the series of one object: two series that differ only in a label such as instance (a new
@@ -105,6 +115,37 @@ spec:
           annotations:
             summary: "Limity żądań są wyłączone: Redis limiterów nie przyjmuje zapisu"
             description: "Od 17 minut nie ma udanego sprawdzenia Redisa limiterów (CronJob rate-limit-check) albo brak jego metryki od 30 minut: limity tras przepuszczają ruch bez ograniczeń. Sprawdź log Joba (make -C infra/k8s status) oraz stan Redisa i jego wolumenu. Przy restore alert wycisz razem z WorkloadNotReady. Runbook: Eksploatacja."
+    - name: shop-messaging
+      rules:
+        # A Job of queue-check that failed (a message in the transport `failed`, or a queue that has stood for ten minutes) and no success after
+        # it (docs/features/async-reliability/spec.md, W9, D4). One alert, however many Jobs have failed; it goes out at the next success.
+        - alert: MessagingUnhealthy
+          expr: |-
+            {{- include "shop.alerts.cronjobFailedOnce" (dict "ns" $ns "cronjob" "queue-check") | nindent 12 }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "Wiadomości w kolejkach utknęły albo się nie powiodły"
+            description: "Job z CronJoba queue-check zakończył się błędem i po nim nie ma udanego sprawdzenia: wiadomość jest w transporcie failed albo kolejka stoi dłużej niż 10 minut. Sprawdź ekran „Stan systemu” w panelu i make -C infra/k8s failed, ponów albo usuń wiadomość według runbooka (Eksploatacja); log Joba: make -C infra/k8s status. Alert znika po następnym udanym Jobie. Runbook: Eksploatacja."
+        # A Job of order-expiry that failed (an order or a payment that could not be handled) and no success after it.
+        - alert: OrderExpiryFailed
+          expr: |-
+            {{- include "shop.alerts.cronjobFailedOnce" (dict "ns" $ns "cronjob" "order-expiry") | nindent 12 }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "Wygaszanie zamówień po terminie nie powiodło się"
+            description: "Job z CronJoba order-expiry zakończył się błędem i po nim nie ma udanego przebiegu: zamówienie albo płatność nie dało się obsłużyć, a towar i kody zostają zajęte. Sprawdź log Joba (make -C infra/k8s status), znajdź zamówienie albo płatność z błędem i zdecyduj według runbooka (Eksploatacja). Alert znika po następnym udanym Jobie. Runbook: Eksploatacja."
+        # No success of order-expiry (every 5 minutes) for 30 minutes (six periods), or its metric gone for 30 minutes: the CronJob is suspended
+        # (an interrupted restore, by hand), gone, or its Jobs do not start; the failures of its Jobs are OrderExpiryFailed.
+        - alert: OrderExpiryMissing
+          expr: |-
+            {{- include "shop.alerts.cronjobMissing" (dict "ns" $ns "cronjob" "order-expiry" "threshold" "30 * 60") | nindent 12 }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "Brak udanego wygaszania zamówień po terminie"
+            description: "Ostatni udany przebieg CronJoba order-expiry jest starszy niż 30 minut albo brak jego metryki od 30 minut (CronJob wstrzymany po przerwanym restore, usunięty, serwer albo Alloy nie działa). Sprawdź make -C infra/k8s status i pole suspend CronJoba. Runbook: Eksploatacja."
     - name: shop-cluster
       rules:
         # A used file system of the node: more than 85% (less than 15% available) for 10 minutes; the temporary and virtual file

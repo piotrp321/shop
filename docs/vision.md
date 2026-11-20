@@ -392,10 +392,11 @@ Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra
   zdarzenia klastra i metryki z listy dozwolonych. Logi są maskowane w Alloy przed wysłaniem (hasła, tokeny, nagłówki
   `Authorization` i ciasteczka, adresy e-mail i IP, parametry zapytań Doctrine; linie `DETAIL` i `STATEMENT` Postgresa
   odrzucone), a Mailpit nie jest zbierany. Alloy czyta z klastra tylko sekret z tokenami Grafana Cloud.
-- **Alerty**: osiem reguł `PrometheusRule` w chartcie (tylko `prod`), które Alloy synchronizuje do Grafana Cloud jako reguły
+- **Alerty**: jedenaście reguł `PrometheusRule` w chartcie (tylko `prod`), które Alloy synchronizuje do Grafana Cloud jako reguły
   zarządzane przez Grafanę (powiadomienia e-mailem):
   nieudana albo brakująca kopia, nieudana albo brakująca weryfikacja kopii, wyłączone limitery tras (Redis, który nie przyjmuje
-  zapisu), zajęty dysk węzła, brak sygnału z klastra i niegotowy workload sklepu. Kopie są codziennie weryfikowane, a odtworzenie sprawdza test dymny; prawdziwe dane
+  zapisu), wiadomość w transporcie `failed` albo stojąca kolejka (CronJob `queue-check`), nieudane albo brakujące wygaszanie
+  zamówień po terminie i zamykanie porzuconych płatności (CronJob `order-expiry`), zajęty dysk węzła, brak sygnału z klastra i niegotowy workload sklepu. Kopie są codziennie weryfikowane, a odtworzenie sprawdza test dymny; prawdziwe dane
   i publiczny start dopiero po ćwiczeniu odtworzenia z runbooka na serwerze.
 - **Poczta**: Brevo SMTP dla Keycloaka i (za przełącznikiem) potwierdzeń zamówień; SPF, DKIM, DMARC w Cloudflare.
 - **Świadomie bez Ranchera**: przy jednym klastrze to narzut bez korzyści.
