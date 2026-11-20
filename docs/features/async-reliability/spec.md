@@ -309,7 +309,9 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
 
 - Nowe zapytanie Ordering `GetOrderPayability(orderIds)` (`query.bus`, do 100 identyfikatorów) zwraca dla każdego
   zamówienia tylko to, czy jest płatne (`new` przed terminem) i jego status dla Payment (`new`, `paid`, `cancelled`), bez
-  numeru, kwoty i danych osobowych; nie ma kontroli właściciela, bo nic nie ujawnia. Payment dostaje osobną metodę portu
+  numeru, kwoty i danych osobowych; nie ma kontroli właściciela, bo nic nie ujawnia. Pomija tylko identyfikator, który
+  nie jest UUID, i zamówienie, którego nie ma; zamówienie istniejące, którego nie da się odczytać (dane łamiące
+  niezmiennik domeny), zwraca osobno z przyczyną, a błąd bazy przerywa zapytanie. Payment dostaje osobną metodę portu
   (adapter w `Payment_Infrastructure`, Deptrac bez zmian). `PayableOrders::find` i `GetOrderForPayment` z kontrolą dostępu
   zostają bez zmian.
 - Mapowanie wyniku anulowania sesji u dostawcy (`SessionCancellation` → `cancel`, `fail` albo „opłacona”) jest w jednym
@@ -324,8 +326,9 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   (`succeed` z `cancelled` i `failed`, jak dziś), z oznaczeniem zwrotu, gdy zamówienie jest anulowane.
 - Płatność „opłacona u dostawcy”, której webhook nie dotrze (np. usunięty z `failed`), zostaje `pending`; każdy
   przebieg pyta o nią dostawcę i zapisuje ostrzeżenie. Runbook: takiej wiadomości webhooka nie usuwa się, tylko ponawia.
-- Dostawca niedostępny: ta płatność zostaje, błąd w logu, komenda idzie dalej. Kod wyjścia jak w W5 (2, gdy któraś
-  płatność się nie udała).
+- Dostawca niedostępny albo zamówienie, którego Ordering nie odczytało: ta płatność zostaje `pending` (przy
+  nieodczytanym zamówieniu bez wywołania dostawcy), błąd w logu z identyfikatorami płatności i zamówienia, komenda idzie
+  dalej. Kod wyjścia jak w W5 (2, gdy któraś płatność się nie udała).
 - Dane sprzed epiku (`pending` porzucone wcześniej) zamyka pierwsze uruchomienie; gdy zaległość nie zmieści się w limicie
   czasu Joba, Job kończy się błędem (`OrderExpiryFailed`), a kolejne przebiegi kończą pracę (komenda jest idempotentna).
 
@@ -433,25 +436,46 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
 - **Zachowanie po nieudanej próbie.** Wiadomość odebrana z `failed`, której obsługa zawiodła, zostaje w `failed`:
   - błąd, którego Symfony nie ponawia (strategia `failed` z `max_retries: 0`, `UnrecoverableMessageHandlingException`,
     `HandlerFailedException` z samymi wyjątkami nieodwracalnymi): listener `WorkerMessageFailedEvent`
-    (`Shared\Infrastructure\Messaging`) zapisuje kopię koperty do `failed` od razu dostępną (pierwotny
-    `SentToFailureTransportStamp`, świeży `ErrorDetailsStamp`, nowe ID) i loguje stare i nowe ID; dopiero potem worker
-    usuwa oryginał;
+    `KeepFailedMessageListener` (`Shared\Infrastructure\Messaging`, priorytet -50, czyli po listenerze ponowień Symfony
+    z priorytetem 100, który ustawia `willRetry()`) zapisuje kopię koperty do `failed` od razu dostępną (pierwotny
+    `SentToFailureTransportStamp`, nowe ID) i loguje w kanale `messenger` stare i nowe ID; dopiero potem worker usuwa
+    oryginał. `ErrorDetailsStamp` dokłada Symfony tylko wtedy, gdy błąd różni się od poprzedniego (klasa, kod, plik,
+    wiersz), więc ten sam błąd powtórzony zostawia szczegóły pierwszej próby. Listener Symfony tuż przed nim loguje
+    „Removing from transport after 0 retries”: przy wiadomości z `failed` rozstrzyga następny wpis o zachowaniu;
   - błąd wymuszający ponowienie (`RecoverableExceptionInterface`): Symfony sam odsyła kopertę do `failed` z opóźnieniem
     i licznikiem ponowień; listener jej nie kopiuje (jedna kopia, nie dwie). Do końca opóźnienia wiadomość nie jest
     widoczna w `failed:show`, a pulpit ją liczy.
-  - Nieudany zapis kopii kończy obsługę błędem przed usunięciem oryginału: oryginał zostaje (po `redeliver_timeout`
-    znów dostępny). Przerwanie procesu między zapisem kopii a usunięciem oryginału zostawia dwie wiadomości (duplikat);
-    obsługa jest idempotentna, a operator usuwa nadmiarową przez `failed-remove`.
+  - Nieudany zapis kopii kończy obsługę błędem przed usunięciem oryginału: oryginał zostaje i można go od razu ponowić
+    z ID (`messenger:failed:retry <id>` nie oznacza wiadomości jako pobranej). Przerwanie procesu między zapisem kopii
+    a usunięciem oryginału zostawia dwie wiadomości (duplikat); obsługa jest idempotentna, a operator usuwa nadmiarową
+    przez `failed-remove`.
 - **Udana obsługa** usuwa wiadomość jak dotąd.
-- **Ponowienie zbiorcze `app:messaging:failed-retry [--max=200]`** (`--force` bez pytania): zapamiętuje na starcie ID
-  najwyżej `max` najstarszych wiadomości `failed` i ponawia tylko je (`messenger:failed:retry <id…>`), więc kopie
-  zachowane w trakcie czekają na kolejny przebieg. Raport: ile wybrano, ile obsłużono (usunięte), ile zachowano po
-  błędzie (z nowymi ID), ile wiadomości zostało w `failed` po przebiegu i czy są poza wybraną listą („zostały
-  kolejne: uruchom ponownie”); zakończenie przebiegu nie oznacza pustej kolejki. Kod 0, gdy przebieg się odbył (także
-  z wiadomościami zachowanymi po błędzie), 2 przy błędzie odczytu.
-- **Blokada zbiorczego `messenger:failed:retry` bez ID**: listener `ConsoleEvents::COMMAND` wyłącza komendę bez
-  argumentu `id` (kod 113) z komunikatem wskazującym `app:messaging:failed-retry` albo ponowienie z `ID`; z ID komenda
-  działa bez zmian.
+- **Ponowienie zbiorcze `app:messaging:failed-retry [--max=200]`** (`Shared\UI\Console`, bez pytania): zapamiętuje na
+  starcie ID najwyżej `max` (1–1000) najstarszych wiadomości `failed` dostępnych teraz (kolejność `available_at`, potem
+  ID; wiadomość czekająca na opóźnione ponowienie Symfony nie jest wybierana) i ponawia każdą raz, po kolei
+  (`messenger:failed:retry <id> --force`), więc kopie zachowane w trakcie czekają na kolejny przebieg. Wynik każdej
+  wiadomości komenda bierze ze zdarzeń workera. Raport: ile wybrano, ile obsłużono (usunięte), ile zachowano po błędzie
+  (stare i nowe ID, z dopiskiem przy opóźnionym ponowieniu Symfony), ile zniknęło przed ponowieniem (usunięte w tym
+  czasie przez kogoś innego), ile wiadomości zostało w `failed` po przebiegu (wszystkie, także opóźnione) i, gdy
+  jakieś zostały, że żadna z nich nie była ponawiana w tym przebiegu („uruchom ponownie albo usuń”); zakończenie
+  przebiegu nie oznacza pustej kolejki. Kod 0, gdy przebieg się odbył (także z wiadomościami zachowanymi po błędzie),
+  1 przy złym `--max` (nic nie ponawia), 2 przy błędzie odczytu kolejki albo błędzie ponowienia poza handlerem (np.
+  nieudany zapis kopii): komenda wypisuje raport do tej chwili i przekazuje błąd konsoli. Dwa przebiegi naraz mogą
+  ponowić tę samą wiadomość (handler działa dwa razy).
+- **Blokada zbiorczego ponawiania bez końca**: listener `ConsoleEvents::COMMAND` (`DisableBulkFailedRetryListener`,
+  `Shared\UI\Console`) wyłącza w konsoli (kod 113, także pod skróconą nazwą komendy) komendy, które brałyby z `failed`
+  wiadomość po wiadomości, aż żadnej nie ma; wiadomość zachowana po błędzie jest od razu dostępna, więc przebieg by się
+  nie skończył, a handler działałby w kółko do limitu workera. Komunikat na stderr wskazuje `app:messaging:failed-retry`
+  albo ponowienie z `ID`. Wyłączone są:
+  - `messenger:failed:retry` bez argumentu `id` (z innymi opcjami i w trybie interaktywnym); z ID komenda działa bez
+    zmian;
+  - `messenger:consume`, które może konsumować `failed`, odczytane tak jak Symfony Messenger v8.1.11: odbiorca to wzorzec
+    `{^odbiorca$}` na nazwach transportów (więc też `fail.*`, `f[a]iled`), a odbiorca bez dopasowania to klucz lokatora
+    odbiorców, który zna też ID usługi `messenger.transport.failed`; `--all` bierze wszystkie transporty bez względu na
+    podanych odbiorców, minus dokładne nazwy z `--exclude-receivers` (Symfony nie czyta ich jako wzorców), więc `--all`
+    jest dozwolone tylko z `--exclude-receivers=failed`; bez odbiorców i bez `--all` komenda pyta o nich dopiero po
+    zdarzeniu, więc też jest wyłączona (odbiorców trzeba podać jawnie). Lista odbiorców bez `failed`, jak w workerach
+    compose i chartu, działa bez zmian.
 
 ## Zgodność wersji przy wdrożeniu epiku
 
@@ -531,8 +555,9 @@ Dokumenty, które dziś podają zachowanie zmieniane przez epik, zmienia zadanie
 6. **Płatności `pending` (B3).** Test funkcjonalny `payment:close-abandoned`: `pending` zamówienia anulowanego albo
    przeterminowanego → `cancelled`; dostawca „odrzucona” → `failed`; dostawca „opłacona” → zostaje `pending`; zamówienie
    płatne → bez zmian; późny webhook sukcesu po zamknięciu → `succeeded` z oznaczeniem zwrotu; niedostępny dostawca →
-   kod 2, pozostałe płatności zamknięte; test planu zapytania `pending`; `GetOrderPayability` nie zwraca danych zamówienia
-   poza płatnością i statusem.
+   kod 2, pozostałe płatności zamknięte; zamówienie istniejące, którego nie da się odczytać → płatność zostaje `pending`,
+   dostawca niewołany, kod 2, pozostałe zamknięte; test planu zapytania `pending`; `GetOrderPayability` nie zwraca danych
+   zamówienia poza płatnością i statusem.
 7. **Ponowienia.** `EventsRetryStrategyTest` z wartościami W3; test konfiguracji outboxa (200 prób, `max_delay` 60 s);
    test integracyjny: odbiorca `events` z błędem przejściowym jest ponawiany 10 razy, potem wiadomość jest w `failed`;
    błąd nieodwracalny od razu w `failed`.
@@ -558,7 +583,9 @@ Dokumenty, które dziś podają zachowanie zmieniane przez epik, zmienia zadanie
     obsługa ją usuwa; `failed:remove` ją usuwa; nieudany zapis kopii nie usuwa oryginału; `app:messaging:failed-retry`
     na kilku wiadomościach (część zawodzi) kończy się, handler każdej wybranej jest wywołany dokładnie raz, raport podaje
     wybrane, obsłużone, zachowane i pozostałe (także przy `--max` mniejszym niż kolejka); `messenger:failed:retry` bez
-    ID kończy się kodem 113 z komunikatem i nie przetwarza niczego, z ID działa.
+    ID oraz `messenger:consume`, które może konsumować `failed` (nazwa, wzorzec, ID usługi, `--all` bez wykluczenia
+    `failed`, brak odbiorców), kończą się kodem 113 z komunikatem i nie przetwarzają niczego; `failed:retry` z ID działa,
+    a komendy workerów z compose i chartu oraz `--all --exclude-receivers=failed` nie są wyłączone.
 
 ## Ryzyka i ograniczenia
 

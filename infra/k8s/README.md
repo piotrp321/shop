@@ -361,9 +361,11 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   - **Zator `worker-commands` dłuższy niż karencja wygaszania** (alert po 10 minutach zatoru): `order-expiry` anuluje
     wtedy zamówienia po terminie także wtedy, gdy webhook ich opłacenia czeka jeszcze w kolejce `payment_simulator`
     (obsługa komend stoi). Po przywróceniu workera i opróżnieniu kolejki **agent** sprawdza w logach `api` w Grafana Cloud
-    z okresu zatoru wpisy „wymaga ręcznego zwrotu” (webhook opłacenia zamówienia, które już anulowano; płatność ma wtedy
-    `refund_required_reason`) i zamówienia `cancelled` w panelu, i zgłasza je użytkownikowi do zwrotu (rejestru zwrotów
-    nie ma); sam zwrotów nie wykonuje. Wiadomości z webhookami płatności ze stojącej kolejki się nie usuwa.
+    z okresu zatoru wpisy poziomu `error` z komunikatem
+    „Payment webhook: the payment cannot pay its order and requires a manual refund.” (webhook opłacenia zamówienia, które już anulowano; pola `orderId`, `paymentId`, `reason`, czyli
+    `order_cancelled`, `paid_after_deadline` albo `duplicate`). Ten sam powód zapisuje kolumna `refund_required_reason`
+    płatności `succeeded` w bazie (do odczytu zleca **użytkownikowi**, agent nie sięga do bazy). Zgłasza zamówienia
+    użytkownikowi do zwrotu (rejestru zwrotów nie ma); sam zwrotów nie wykonuje. Wiadomości z webhookami płatności ze stojącej kolejki się nie usuwa.
 - **`OrderExpiryFailed`** (`critical`, CronJob `order-expiry`; do ok. 15 minut): Job wygaszania zamówień po terminie i zamykania
   porzuconych płatności (`ordering:expire-overdue`, potem `payment:close-abandoned`, zawsze obie) kończy się błędem.
   **Agent** czyta log nieudanego Joba `order-expiry` w sekcji „logs of the failed jobs” wyniku `status`: log wskazuje

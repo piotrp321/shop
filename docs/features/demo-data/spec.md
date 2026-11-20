@@ -81,9 +81,10 @@ Przyjęte przez użytkownika 2026-11-13 (rekomendacje z przygotowania epiku):
   z `apps/api/fixtures/images`.
 - **P7. Okres historii zamówień.** 3 lata przed chwilą odniesienia, z rosnącym ruchem i sezonowością.
 - **P8. Bez danych „w toku”.** Generator nie tworzy zamówień nieopłaconych (`new`) ani aktywnych promocji: zamówienie
-  `new` wygasa tylko przez zaplanowaną wiadomość `ExpireUnpaidOrder`, a koniec promocji przez wiadomość granicy
-  (`docs/features/promotions/spec.md`), a generator wiadomości nie planuje. W danych są zamówienia opłacone i dalej
-  oraz anulowane, promocje zakończone; aktywne promocje i kody z seeda działają jak dziś.
+  `new` wygasa przez zaplanowaną wiadomość `ExpireUnpaidOrder` (bez niej dopiero przez siatkę bezpieczeństwa
+  `ordering:expire-overdue`, CronJob `order-expiry` w klastrze, `docs/features/async-reliability/spec.md`, W5), a koniec
+  promocji przez wiadomość granicy (`docs/features/promotions/spec.md`), a generator wiadomości nie planuje. W danych
+  są zamówienia opłacone i dalej oraz anulowane, promocje zakończone; aktywne promocje i kody z seeda działają jak dziś.
 - **Zgłoszenie sekretu.** Rozdzielenie sekretu administratora Keycloaka od sekretu aplikacji: #485.
 - **P9. Konta w Keycloak zostają w tym epiku.** Recenzja architektury proponowała rezygnację, bo w tym epiku kont nic
   nie czyta (API bierze tożsamość z tokenu, zamówienia mają kopię danych klienta, k6 się nie loguje); konta zostają,

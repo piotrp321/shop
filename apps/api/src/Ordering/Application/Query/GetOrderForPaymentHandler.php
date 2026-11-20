@@ -49,9 +49,12 @@ final readonly class GetOrderForPaymentHandler
     }
 
     /**
+     * The status of an order as Payment knows it (also for GetOrderPayability): an order shipped, delivered or returned
+     * is `paid`, so Payment never learns the statuses of the panel.
+     *
      * @return 'new'|'paid'|'cancelled'
      */
-    private static function statusForPayment(OrderStatus $status): string
+    public static function statusForPayment(OrderStatus $status): string
     {
         return match ($status) {
             OrderStatus::New => 'new',
