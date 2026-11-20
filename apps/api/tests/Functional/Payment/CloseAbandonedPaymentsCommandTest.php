@@ -13,7 +13,6 @@ use App\Payment\Application\Port\PayableOrders;
 use App\Payment\Application\ProviderEvent;
 use App\Payment\Domain\Amount;
 use App\Payment\Domain\Currency;
-use App\Payment\Domain\OrderId;
 use App\Payment\Domain\ProviderCode;
 use App\Payment\Domain\ProviderEventId;
 use App\Payment\Domain\ProviderPaymentId;
@@ -161,7 +160,7 @@ final class CloseAbandonedPaymentsCommandTest extends KernelTestCase
             [$orderId, $payments[]] = $this->pendingPayment();
             $this->cancelOrder($orderId);
         }
-        $orders = $this->countingOrders();
+        $orders = new CountingPayableOrders($this->payableOrders());
         $tester = new CommandTester($this->command(new SpyLogger(), $orders));
 
         self::assertSame(0, $tester->execute(['--batch-size' => '2']), $tester->getDisplay());
@@ -227,33 +226,6 @@ final class CloseAbandonedPaymentsCommandTest extends KernelTestCase
         self::assertInstanceOf(MessageBusInterface::class, $queryBus);
 
         return new QueryBusPayableOrders($queryBus);
-    }
-
-    /**
-     * The adapter of the command, counting the orders of every question.
-     */
-    private function countingOrders(): PayableOrders
-    {
-        return new class($this->payableOrders()) implements PayableOrders {
-            /** @var list<int> */
-            public array $asked = [];
-
-            public function __construct(private readonly PayableOrders $orders)
-            {
-            }
-
-            public function find(OrderId $orderId, PaymentAccess $access): never
-            {
-                throw new \LogicException('payment:close-abandoned never reads an order with an access.');
-            }
-
-            public function payabilityOf(array $orderIds): array
-            {
-                $this->asked[] = \count($orderIds);
-
-                return $this->orders->payabilityOf($orderIds);
-            }
-        };
     }
 
     private function doctrine(): ManagerRegistry
