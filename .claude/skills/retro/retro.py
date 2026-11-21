@@ -10,10 +10,12 @@ an item that does not exist) and, for `validate`, proposals that do not pass.
 
   retro.py collect EPIC [--out DIR] [--worktree DIR] [--projects DIR] [--accept-process-mismatch REASON]
       First, before any `gh` call, the version of the process: `metrics.py process --worktree <worktree>` (the
-      expected version is HEAD of the worktree of the retro). Definitions on disk that differ (a place of loading with
-      `differs`, a skill of the user that hides a project skill) are a refusal (exit 2, nothing written) with the
-      places, the number of files, the first paths and what to do, unless --accept-process-mismatch gives a non-empty
-      reason; then, and when they match, the fact `<epic>/process/check` (`data.status` `match` or
+      expected version is HEAD of the worktree of the retro). Definitions on disk that differ (exit code 4 whatever
+      the output says, a place of loading with `differs`, a skill of the user that hides a project skill) are a
+      refusal (exit 2, nothing written) with the places, the number of files, the first paths, the epics in progress
+      (started with today's main checkout or not) and what to do, saying itself not to defer the retro, unless
+      --accept-process-mismatch gives a non-empty reason; then, and when they match, the fact `<epic>/process/check`
+      (`data.status` `match` or
       `mismatch_accepted`, `ref`, `describe`, `places`, `accepted`). A check that cannot run (no script, another exit
       code, not the expected JSON) is the fact `<epic>/process/missing/check` and collect goes on. For the collected
       native epic, the field `process` of its record is the fact `<epic>/process/record` (none:
@@ -1557,6 +1559,11 @@ PROCESS_HINT = ('zaktualizuj główny checkout według „Wersja procesu” w do
                 'collect z --accept-process-mismatch "<powód>"')
 PROCESS_SCOPE = ('kontrola dotyczy plików na dysku w miejscach ładowania; wersja załadowana przez retro-analyst nie '
                  'jest potwierdzona')
+# The refusal says itself what to do: a session that read an older SKILL.md must not take it for a failure to defer.
+PROCESS_NOT_AN_ERROR = ('To nie jest błąd zbierania danych: nie odraczaj retro (bez defer), pokaż różnicę '
+                        'użytkownikowi i zapytaj, czy zaktualizować główny checkout, czy kontynuować z akceptacją')
+UNREADABLE_DIFFERENCE = 'narzędzie zgłosiło różnicę, wynik nieczytelny'
+CURRENT_DEFINITIONS = {True: 'tak', False: 'nie'}
 PATHS_SHOWN = 5
 
 
@@ -1575,8 +1582,9 @@ def accept_reason(value):
         return None
     reason = ' '.join(value.split())
     if not reason or control_path(reason, 'reason'):
-        raise Refusal('pusty albo nieprawidłowy powód --accept-process-mismatch: podaj, dlaczego retro idzie mimo '
-                      'różnicy wersji procesu (bez znaków sterujących)')
+        raise Refusal('pusty albo nieprawidłowy powód --accept-process-mismatch: podaj niepusty powód i powtórz collect '
+                      '(powód: dlaczego retro idzie mimo różnicy wersji procesu, bez znaków sterujących). To nie jest '
+                      'błąd zbierania danych: nie odraczaj retro, zapytaj użytkownika o powód')
     return reason
 
 
@@ -1587,33 +1595,40 @@ def files_word(n):
 
 
 def read_process(metrics, worktree):
-    """(reading, None) of `metrics.py process --worktree <worktree>` (expected version: HEAD of the worktree; exit 0
-    when the definitions match, 4 with the same reading when they differ), or (None, category) when the check cannot
-    run: no runner or script, another exit code, an output that is not the expected JSON."""
+    """(reading, failure, reported) of `metrics.py process --worktree <worktree>` (expected version: HEAD of the
+    worktree; exit 0 when the definitions match, 4 with the same reading when they differ). `reported` is True for
+    exit code 4: a difference whatever the output says, with the part of the output that can be read (a dict, maybe
+    empty) and the category of what could not be read in `failure`. Otherwise a check that cannot run (no runner or
+    script, another exit code, an output that is not the expected JSON) is (None, category, False)."""
     if metrics is None:
-        return None, 'brak runnera'
+        return None, 'brak runnera', False
+    reported = False
     try:
         out = metrics(['process', '--worktree', worktree])
     except MeasurementError as e:
         if e.code != 4:
-            return None, str(e)
-        out = e.stdout
+            return None, str(e), False
+        out, reported = e.stdout, True
     except (next_epic.CommandError, OSError):
-        return None, 'błąd wywołania'
+        return None, 'błąd wywołania', False
     try:
         value = json.loads(out)
     except (TypeError, ValueError):
-        return None, 'wynik nie jest JSON-em'
-    if not (isinstance(value, dict) and isinstance(value.get('expected'), dict) and isinstance(value.get('disk'), list)
-            and isinstance(value.get('match'), bool)):
-        return None, 'nieoczekiwany kształt JSON'
-    return value, None
+        value, failure = None, 'wynik nie jest JSON-em'
+    else:
+        if isinstance(value, dict) and isinstance(value.get('expected'), dict) \
+                and isinstance(value.get('disk'), list) and isinstance(value.get('match'), bool):
+            return value, None, reported
+        failure = 'nieoczekiwany kształt JSON'
+    if reported:
+        return (value if isinstance(value, dict) else {}), failure, True
+    return None, failure, False
 
 
 def differing_places(reading):
     """[{kind, path, head, differs}] of the places of loading whose files differ from the expected version."""
     places = []
-    for place in reading['disk']:
+    for place in _as_list(reading.get('disk')):
         differs = [d for d in _as_list(_as_dict(place).get('differs')) if isinstance(d, dict)]
         if differs:
             places.append({'kind': place.get('kind'), 'path': place.get('path'), 'head': place.get('head'),
@@ -1638,14 +1653,14 @@ def process_check(epic_id, metrics, worktree, accepted):
     """W7: the facts of the check of the version of the process before the data is collected (`gh` not called yet).
     Matching definitions: the fact `<epic>/process/check` (status `match`, the expected version). Different ones: a
     refusal (exit 2) with the places, the number of files, the first paths and what to do, or, with an accepted reason,
-    the fact `<epic>/process/check` (status `mismatch_accepted`). A check that cannot run: the fact
-    `<epic>/process/missing/check` with the category, and the retro goes on."""
-    reading, failure = read_process(metrics, worktree)
+    the fact `<epic>/process/check` (status `mismatch_accepted`). Exit code 4 is a difference whatever the output
+    says. A check that cannot run: the fact `<epic>/process/missing/check` with the category, and the retro goes on."""
+    reading, failure, reported = read_process(metrics, worktree)
     if reading is None:
         return [{'id': '%s/process/missing/check' % epic_id,
                  'text': 'brak kontroli wersji procesu: metrics.py process nie dał wyniku: %s; nie wiadomo, czy '
                          'instrukcje na dysku są zgodne z HEAD worktree retro' % failure}]
-    expected = reading['expected']
+    expected = _as_dict(reading.get('expected'))
     ref = expected.get('ref') if isinstance(expected.get('ref'), str) else None
     describe = expected.get('describe') if isinstance(expected.get('describe'), str) else None
     version = '%s, %s' % (describe or 'bez tagu', ref[:12] if ref else 'brak SHA')
@@ -1653,18 +1668,25 @@ def process_check(epic_id, metrics, worktree, accepted):
     skills = [s for s in _as_list(_as_dict(reading.get('user_level')).get('skills')) if isinstance(s, str)]
     data = {'ref': ref, 'describe': describe, 'fingerprint': expected.get('fingerprint'), 'places': places,
             'user_skills': skills, 'accepted': None}
-    if reading['match'] and not places and not skills:
+    if not reported and reading.get('match') is True and not places and not skills:
         data['status'] = 'match'
         return [{'id': '%s/process/check' % epic_id, 'data': data,
                  'text': 'wersja procesu: definicje na dysku zgodne z HEAD worktree retro (%s); %s'
                          % (version, PROCESS_SCOPE)}]
-    lines = process_lines(places, skills) or ['niezgodność bez listy plików']
+    lines = process_lines(places, skills)
+    if failure:
+        lines.append(UNREADABLE_DIFFERENCE if not lines else 'wynik narzędzia niepełny (%s)' % failure)
+    elif not lines:
+        lines = ['narzędzie zgłosiło różnicę bez listy plików']
     if accepted is None:
-        running = [e.get('epic') for e in _as_list(reading.get('active_epics'))
-                   if isinstance(e, dict) and isinstance(e.get('epic'), str)]
-        raise Refusal('wersja procesu: definicje na dysku różnią się od HEAD worktree retro (%s): %s%s. Co zrobić: %s'
-                      % (version, '; '.join(lines), '; epiki w toku: %s' % ', '.join(running) if running else '',
-                         PROCESS_HINT))
+        # whether `pull` changes the rules of an epic in progress: did it start with today's main checkout?
+        running = ['%s (definicje z dzisiejszego głównego checkoutu: %s)'
+                   % (e['epic'], CURRENT_DEFINITIONS[e['current']] if isinstance(e.get('current'), bool)
+                      else 'brak danych')
+                   for e in _as_list(reading.get('active_epics')) if isinstance(e, dict) and isinstance(e.get('epic'), str)]
+        raise Refusal('wersja procesu: definicje na dysku różnią się od HEAD worktree retro (%s): %s%s. %s. Co zrobić: '
+                      '%s' % (version, '; '.join(lines), '; epiki w toku: %s' % ', '.join(running) if running else '',
+                              PROCESS_NOT_AN_ERROR, PROCESS_HINT))
     data.update(status='mismatch_accepted', accepted=accepted)
     return [{'id': '%s/process/check' % epic_id, 'data': data,
              'text': 'wersja procesu: definicje na dysku różnią się od HEAD worktree retro (%s): %s; różnicę '
@@ -1689,44 +1711,60 @@ def record_process_facts(epic_id, record):
     expected = _as_dict(process.get('expected'))
     ref = expected.get('ref') if isinstance(expected.get('ref'), str) else None
     describe = expected.get('describe') if isinstance(expected.get('describe'), str) else None
-    status, accepted = process.get('status'), process.get('accepted')
-    disk_checked = isinstance(process.get('disk'), list)
+    status, accepted, match = process.get('status'), process.get('accepted'), process.get('match')
+    # `disk_checked` of the record (false: `disk` null with `disk_reason`); an older record has only `disk`
+    disk_checked = process['disk_checked'] if isinstance(process.get('disk_checked'), bool) \
+        else isinstance(process.get('disk'), list)
+    checked = status == 'checked' and disk_checked
+    reason = process.get('disk_reason') or process.get('reason')
     changes = []
     for change in _as_list(process.get('changes')):
         if isinstance(change, dict):
-            files = sum(len(_as_list(_as_dict(p).get('differs'))) for p in _as_list(change.get('disk')))
-            changes.append({k: change.get(k) for k in ('at', 'event', 'kind', 'reason', 'accepted')}
-                           if change.get('kind') != 'disk' else
-                           {'at': change.get('at'), 'event': change.get('event'), 'kind': 'disk', 'files': files,
-                            'accepted': change.get('accepted')})
+            entry = {k: change.get(k) for k in ('at', 'event', 'kind', 'reason', 'accepted')}
+            if change.get('kind') == 'disk':
+                entry['files'] = sum(len(_as_list(_as_dict(p).get('differs'))) for p in _as_list(change.get('disk')))
+            # a change marked informational (committed on the branch of the epic in its worktree) is no difference
+            entry['informational'] = change.get('informational') is True
+            changes.append(entry)
+    disk_changes = len([c for c in changes if c['kind'] == 'disk' and not c['informational']]) if checked else None
+    informational = [c for c in changes if c['informational']]
+    failed = [c for c in changes if c['kind'] == 'check_failed']
     loaded = _as_dict(process.get('loaded'))
     summary, by_role = _as_dict(loaded.get('summary')), _as_dict(loaded.get('by_role'))
     differs_roles = sorted(role for role, cell in by_role.items()
                            if isinstance(cell, dict) and _number(cell.get('differs')) and cell['differs'] > 0)
     parts = ['oczekiwana %s (%s)' % (describe or 'bez tagu', ref[:12] if ref else 'brak SHA')]
-    if status != 'checked':
-        parts.append('odczyt %s: %s%s' % (status or 'nieznany', process.get('reason') or 'brak powodu',
-                                          ', zaakceptowano: %s' % accepted if accepted else ''))
-    if process.get('match') is True:
-        parts.append('dysk przy starcie zgodny')
-    elif process.get('match') is False:
-        parts.append('start zaakceptowany mimo różnicy definicji (powód: %s)' % (accepted or 'brak akceptacji'))
     if not disk_checked:
-        parts.append('dysk niesprawdzony (%s)' % (process.get('disk_reason') or process.get('reason') or 'brak powodu'))
-    parts.append('zmiany definicji w trakcie: %d' % len([c for c in changes if c['kind'] == 'disk']))
-    failed = [c for c in changes if c['kind'] == 'check_failed']
+        parts.append('dysk niesprawdzony w czasie epiku (odczyt %s: %s)' % (status or 'nieznany', reason or 'brak powodu'))
+    elif status != 'checked':
+        parts.append('odczyt %s: %s' % (status or 'nieznany', reason or 'brak powodu'))
+    if checked and match is True:
+        parts.append('dysk przy starcie zgodny')
+    elif checked and match is False:
+        parts.append('start zaakceptowany mimo różnicy definicji (powód: %s)' % accepted if accepted
+                     else 'różnica definicji przy starcie bez zapisanej akceptacji')
+    elif accepted:
+        parts.append('start zaakceptowany bez kontroli dysku (powód: %s)' % accepted)
+    parts.append('zmiany definicji w trakcie: %s' % ('brak danych' if disk_changes is None else disk_changes))
+    if informational:
+        parts.append('zmiany informacyjne (zacommitowane na gałęzi epiku): %d' % len(informational))
     if failed:
         parts.append('nieudane kontrole w trakcie: %d' % len(failed))
     if differs_roles:
         parts.append('subagenci z definicją inną niż oczekiwana: %s' % ', '.join(differs_roles))
+    confirmed, confirmed_epic = summary.get('confirmed'), summary.get('confirmed_epic')
+    if _number(confirmed):
+        parts.append('potwierdzone: %d%s' % (confirmed, ' (w wersji epiku: %d)' % confirmed_epic
+                                             if _number(confirmed_epic) else ''))
     unconfirmed = summary.get('unconfirmed')
     parts.append('bez potwierdzenia: %s' % (unconfirmed if _number(unconfirmed) else 'brak danych'))
     return [{'id': '%s/process/record' % epic_id,
              'text': 'wersja procesu epiku z rekordu metryk: %s (te fakty mówią, które instrukcje obowiązywały; brak '
                      'potwierdzenia nie jest zgodnością)' % '; '.join(parts),
-             'data': {'status': status, 'ref': ref, 'describe': describe, 'match': process.get('match'),
-                      'accepted': accepted, 'disk_checked': disk_checked, 'changes': changes, 'summary': summary,
-                      'by_role': by_role, 'differs_roles': differs_roles, 'gaps': gaps}}]
+             'data': {'status': status, 'ref': ref, 'describe': describe, 'match': match, 'accepted': accepted,
+                      'disk_checked': disk_checked, 'disk_reason': reason if not disk_checked else None,
+                      'disk_changes': disk_changes, 'changes': changes, 'summary': summary, 'by_role': by_role,
+                      'differs_roles': differs_roles, 'gaps': gaps}}]
 
 
 def epic_title_id(title):
