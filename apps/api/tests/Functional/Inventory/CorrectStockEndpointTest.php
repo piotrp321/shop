@@ -138,7 +138,8 @@ final class CorrectStockEndpointTest extends WebTestCase
         $this->correct($variantId, ['physical' => 8, 'version' => $version, 'reason' => 'loss', 'note' => null]);
 
         $problem = $this->assertProblem(409);
-        self::assertSame('The stock was modified concurrently. Reload it and try again.', $problem['detail']);
+        self::assertSame('Stan został w międzyczasie zmieniony. Odśwież go i spróbuj ponownie.', $problem['detail']);
+        self::assertSame('about:blank', $problem['type']);
         self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 4], $this->storedStock($variantId));
         self::assertSame([], $this->movements($variantId));
     }

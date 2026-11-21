@@ -56,7 +56,7 @@ final class InputContractTest extends WebTestCase
      */
     public static function rows(): iterable
     {
-        foreach ([CartCases::all(), CatalogCases::all(), InventoryCases::all(), OrderingCases::all(), PricingCases::all()] as $rows) {
+        foreach ([CartCases::all(), CatalogCases::all(), InventoryCases::all(), OrderingCases::all(), PaymentCases::all(), PricingCases::all()] as $rows) {
             foreach ($rows as $row) {
                 yield $row->name() => [$row];
             }
@@ -198,11 +198,14 @@ final class InputContractTest extends WebTestCase
 
         $url = strtr($row->path, $placeholders);
         $server = [];
+        foreach ($row->headers as $name => $header) {
+            $server[self::serverKey($name)] = strtr($header, $placeholders);
+        }
         if ('query' === $row->location && null !== $value && '' !== $value) {
             $url .= '?'.strtr($value, $placeholders);
         }
         if ('header' === $row->location && null !== $value) {
-            $server['HTTP_'.strtoupper(str_replace('-', '_', $row->input))] = strtr($value, $placeholders);
+            $server[self::serverKey($row->input)] = strtr($value, $placeholders);
         }
         $token = match ($row->token) {
             InputCase::STAFF => TestTokenFactory::staff(['admin']),
@@ -211,6 +214,14 @@ final class InputContractTest extends WebTestCase
         };
 
         return $this->request($row->method, $url, $token, null === $row->body ? null : strtr($row->body, $placeholders), server: $server);
+    }
+
+    /**
+     * The key of the request header in the server parameters of the test client.
+     */
+    private static function serverKey(string $header): string
+    {
+        return 'HTTP_'.strtoupper(str_replace('-', '_', $header));
     }
 
     /**

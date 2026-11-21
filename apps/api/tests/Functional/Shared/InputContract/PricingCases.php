@@ -23,6 +23,7 @@ final class PricingCases
     private const string HISTORY = 'GET /api/v1/admin/variants/{variantId}/price-history';
     private const string DISCOUNT_CODES = 'GET /api/v1/admin/discount-codes';
     private const string PROMOTIONS = 'GET /api/v1/admin/promotions';
+    private const string BAD_CURSOR = 'Kursor stronicowania jest nieprawidłowy.';
 
     /**
      * @return iterable<InputCase>
@@ -40,6 +41,8 @@ final class PricingCases
         yield from ValidatorRows::phrase(self::PRICES, $staff);
         yield from ValidatorRows::perPage(self::PRICES, $staff, InputContractFixtures::NONE, 100);
         yield from ValidatorRows::after(self::PRICES, $staff, InputContractFixtures::NONE, CatalogCases::productCursor());
+        yield InputCase::query(self::PRICES, $staff, InputContractFixtures::NONE, 'after', 'after=abc', 'after='.CatalogCases::productCursor(), 'after=abc', [['after', self::BAD_CURSOR]]);
+        yield InputCase::query(self::PRICES, $staff, 'product', 'q', 'q=ab%00', 'q=namiot', 'q=ab%00', [['q', 'Szukana fraza zawiera niedozwolone znaki.']]);
         yield ValidatorRows::ofAnotherKind(self::PRICES, $staff, InputContractFixtures::NONE, 'sort', 'sort=updatedAt', 'Sortowanie może mieć tylko wartość name, -name, -updatedAt albo updatedAt.');
         yield ValidatorRows::ofAnotherKind(self::PRICES, $staff, 'product', 'productId', 'productId={productId}', 'Identyfikator produktu musi być poprawnym UUID.');
 
@@ -47,6 +50,7 @@ final class PricingCases
         $cursor = PriceHistoryCursor::after(new PriceHistoryItem(Uuid::v7()->toRfc4122(), $now, 'PLN', 1230, 1000, 230, 2300, 'standard', 'panel', null))->encode();
         yield from ValidatorRows::perPage(self::HISTORY, $staff, 'variant', 100);
         yield from ValidatorRows::after(self::HISTORY, $staff, 'variant', $cursor);
+        yield InputCase::query(self::HISTORY, $staff, 'variant', 'after', 'after=abc', 'after='.$cursor, 'after=abc', [['after', self::BAD_CURSOR]]);
 
         $none = InputContractFixtures::NONE;
         $code = new ListedDiscountCode(Uuid::v7()->toRfc4122(), 'RABAT10', DiscountKind::Percent, 10, null, $now, null, null, true, 0, 1, $now);
@@ -62,5 +66,7 @@ final class PricingCases
             $parameter = str_replace('[]', '', (string) $parameter);
             yield InputCase::query(self::PROMOTIONS, $staff, $none, $parameter, $invalid, $valid, $invalid, [[$parameter, ValidatorRows::TYPE]]);
         }
+
+        yield InputCase::query('DELETE /api/v1/admin/promotions/{id}', $staff, 'promotion', 'version', 'version[]=x', 'version=1', 'version[]=x', [['version', 'Wersja musi być dodatnią liczbą całkowitą.']]);
     }
 }
