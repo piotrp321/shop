@@ -43,7 +43,8 @@ Audyt z 2026-11-18 (`docs/reports/agentic-software-house-audit-2026-11-18.md`) u
    są odraczane bez pytania właściciela; kolejna runda wymaga konkretnego uzasadnienia. Wagę nadaje reviewer według
    skutku w normalnym użyciu; definicje są w plikach agentów, a dla AO także w skillu `/integration`. Blokują
    `BLOCKER`, `Critical`, `IMPORTANT` i `Important` oraz werdykt `REWORK` agenta `architecture-reviewer`;
-   `SUGGESTION` i `Minor` trafiają do opisu PR jako odroczone.
+   `SUGGESTION` i `Minor` trafiają do opisu PR jako odroczone. Uwagi, która opisuje konkretną ścieżkę błędu, sesja nie
+   odracza po samej etykiecie: najpierw ocenia ją według kroku 4 „Przebiegu epiku”.
 4. **Merge do `main`** zawsze należy do użytkownika albo do sesji na jego wyraźne polecenie, które wskazuje PR.
    Squash i usunięcie gałęzi. Wyjątki procedury AO (niżej) obowiązują tylko przy jej uruchomieniu.
 5. **Modele.** Sesja orkiestrująca może działać na najmocniejszym modelu. Model i effort w definicji agenta to wartości
@@ -52,22 +53,25 @@ Audyt z 2026-11-18 (`docs/reports/agentic-software-house-audit-2026-11-18.md`) u
 6. **AO jest zamrożony.** Nie rozwijamy AO, skilli istniejących tylko dla niego (`/ao-run`, `/delivery`,
    `/sweep`) ani narzędzi z nimi związanych. `/retro` nie jest zamrożony: obsługuje też epiki natywne. AO zostaje
    uruchamialny jako rozwiązanie awaryjne, dopóki nie ocenimy serii trzech epików dostarczonych natywnie (wersja
-   procesu `ash-v1.0`: ABUSE-LIMITS, ASYNC-RELIABILITY, DELIVERY etap 1). Pliki procesu w czasie serii chroni
-   reguła z końca „Przebiegu epiku”. Epik DEMO-DATA, już w toku, kończy
-   się w AO. ONCALL i pozostałe zaplanowane prace infrastrukturalne związane z AO są wstrzymane. Kroki przejścia i ich
-   stan: [plan](../features/agentic-software-house/plan.md), sekcja „Status”.
+   procesu `ash-v1.0`: ABUSE-LIMITS, ASYNC-RELIABILITY, DELIVERY etap 1). Seria jest zakończona (retrospektywa:
+   `docs/reports/ash-v1-series-retrospective-2026-11-21.md`); decyzja o archiwizacji AO należy do użytkownika.
+   ONCALL i pozostałe zaplanowane prace infrastrukturalne związane z AO są wstrzymane. Kroki przejścia i ich stan:
+   [plan](../features/agentic-software-house/plan.md), sekcja „Status”.
 7. Zabezpieczenia agentów są techniczne i wynikają z modelu zagrożeń ([`agent-security.md`](agent-security.md)), nie
    tylko z instrukcji w promptach. Człowiek zatwierdza istotne decyzje biznesowe i końcową integrację (merge funkcji,
    wdrożenie na produkcję). Agent nie wykonuje samodzielnie destrukcyjnych operacji produkcyjnych, w tym rollbacku.
 
 ### Przebieg epiku
 
-Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
+Sesja prowadząca pracuje w swoim worktree na gałęzi epiku. Jedna sesja prowadzi jeden epik: kolejny epik zaczyna
+nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
 
 1. **Start.** Specyfikacja i plan są na `main`. Sesja zakłada gałąź epiku od `origin/main` (nazwa spoza `epic/*`, np.
    `feat/<epik>`), wypycha ją z pierwszym commitem (np. „Status” planu: epik w toku) i otwiera draft PR do `main`. Po otwarciu PR zapisuje
    punkt odniesienia: `python3 tools/metrics/metrics.py start <epik>` (nazwa epiku małymi literami, jak w `/retro <epik>`) z odczytem limitów subskrypcji (obiekt
-   z `get_usage`). Opcje, w tym wznowienie epiku w nowej sesji, opisuje `tools/metrics/README.md`.
+   z `get_usage`). `start` sprawdza też wersję procesu („Wersja procesu” niżej) i odmawia przy rozbieżności albo gdy
+   sesja prowadziła już inny epik; rozbieżność sesja obsługuje przed pierwszym zleceniem. Opcje, w tym wznowienie
+   epiku w nowej sesji, opisuje `tools/metrics/README.md`.
 2. **Zlecenie zadania.** Zadanie gotowe do startu (zależności zmergowane do gałęzi epiku) dostaje subagent `developer`
    z `isolation: worktree`. Jego worktree startuje z `origin/main`, nie z gałęzi epiku, więc zlecenie każe zacząć od
    `git fetch origin && git switch -c task/<ID> origin/<gałąź epiku>`. `description` wywołania subagenta zaczyna
@@ -78,26 +82,38 @@ Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
    `AO_COMPOSE_PROJECT=<nazwa> .ao/teardown`). Subagent commituje na gałęzi zadania i nie pushuje.
 3. **Równoległość.** Naraz idą zadania jednej fali, które mają się nawzajem w `parallel_with`. Liczbę ogranicza
    pamięć hosta (zwykle 2–3 stosy) i limity subskrypcji, które sesja sprawdza przed falą; płatnych przekroczeń nie
-   włącza. Przed falą sesja sprawdza też wolną pamięć Dockera i działające projekty Compose innych sesji. Gdy pamięci
+   włącza. Przed falą sesja sprawdza też wersję procesu (`metrics.py process <epik>`), wolną pamięć Dockera i działające
+   projekty Compose innych sesji oraz gasi stosy własnych zakończonych zadań (`.ao/teardown`): każdy stos zajmuje sieć
+   z ograniczonej puli Dockera, a jej wyczerpanie kończy `make up` błędem. Gdy pamięci
    nie wystarcza na planowaną liczbę stosów, zmniejsza równoległość i zapisuje to w „Problemach i zastojach” opisu
    końcowego PR.
 4. **Przegląd zadania.** `FAST`: sesja sama sprawdza diff i wyniki testów, w tym trzy kontrole z punktu 4 agenta
    `code-reviewer` (istniejące testy, zakres, RED). `STANDARD` i `CRITICAL`: `code-reviewer` w trybie FULL; zlecenie
    podaje worktree zadania jako katalog przeglądu, `head_sha` i `base_sha` (`git merge-base task/<ID> <gałąź epiku>`).
-   Poprawki robi `developer`, po nich przegląd różnicy (DELTA). Uwagę `SUGGESTION` albo `Minor` o błędnym działaniu
-   (nie styl), która opisuje skutek poza bazą (pieniądze, operator, wysłana wiadomość, stan widoczny dla klienta), sesja
-   przed odroczeniem ocenia według definicji `IMPORTANT` agenta `code-reviewer`: gdy ją spełnia, zleca poprawkę; ocenę
-   z powodem zapisuje w „Decyzjach bez pytania”, a odroczoną taką uwagę podaje w zleceniu przeglądu epiku (krok 6) do
-   ponownej oceny. Zlecenie poprawek przekazuje ustalenia reviewera;
+   Poprawki robi `developer`, po nich przegląd różnicy (DELTA). Zlecenie poprawek przekazuje ustalenia reviewera;
    to, co sesja dodaje od siebie (własna reguła, zawężenie albo rozszerzenie poprawki), oznacza jako decyzję sesji
    w zleceniu poprawek i w zleceniu przeglądu. Zlecenie przeglądu (tu i w kroku 6) podaje fakty i decyzje do oceny:
    nie zawęża przeglądu i nie mówi, czego nie sprawdzać, a reviewer ma obowiązek aktywnie kwestionować założenia
    i decyzje sesji tak samo jak kod. Gdy zadanie z TDD nie ma fazy RED, sesja uruchamia test na kodzie bazowym (ma
    nie przechodzić) i zapisuje wynik w opisie PR; RED nie odtwarza się po fakcie.
+
+   **Ocena przed odroczeniem** (tu i w kroku 6). Uwagi `SUGGESTION` albo `Minor`, która opisuje konkretną ścieżkę błędu
+   (wejście albo przeplot zdarzeń i błędny wynik), sesja nie odracza na podstawie samej etykiety. Zapisuje przy niej
+   krótką ocenę: rzeczywisty skutek (co zostaje zapisane, wysłane albo pokazane i komu), naruszona gwarancja
+   (specyfikacja, lista jakości, kontrakt) i odwracalność. Uwagę, która łamie gwarancję albo ma skutek nieodwracalny
+   lub poza bazą (pieniądze, operator, wysłana wiadomość, stan widoczny dla klienta, utrata wpisanych danych), zleca
+   do poprawki. Istotne podejrzenie oparte na niesprawdzonym założeniu („nie odtwarzałem”, założenie o działaniu
+   frameworka, bazy albo brokera, nadzór, który może pokazać stan zdrowy w awarii) sprawdza przed decyzją w kodzie
+   albo eksperymentem, sama albo zleceniem testu negatywnego. Wąskie okno wyścigu nie obniża wagi; równoległe żądania,
+   równoległe sesje i operacje oraz edycja formularza w trakcie zapisu to zwykłe użycie. Styl, drobne sugestie
+   i przypadki bez istotnego skutku sesja odracza bez tej oceny. Ocena nie jest obowiązkiem naprawy każdej uwagi
+   i nie zmienia budżetu rund (punkt 3 decyzji). Odroczona uwaga z oceną trafia do „Odroczonych uwag” opisu PR
+   i do zlecenia przeglądu epiku (krok 6) do ponownej oceny.
 5. **Merge zadania.** Sesja merguje gałąź zadania do gałęzi epiku (`git merge`), wypycha ją i wpisuje commit
    w „Status” planu. Czerwone CI draft PR naprawia przed kolejną falą. Czysty worktree zmergowanego zadania usuwa
    (`git worktree unlock`, potem `git worktree remove`: aplikacja zostawia worktree subagenta zablokowany).
-6. **Przegląd epiku.** Po ostatnim zadaniu i zielonym CI: jeden przegląd całego diffu `origin/main...<gałąź epiku>`.
+6. **Przegląd epiku.** Po ostatnim zadaniu i zielonym CI, po kontroli wersji procesu (`metrics.py process <epik>`):
+   jeden przegląd całego diffu `origin/main...<gałąź epiku>`.
    Zaczyna się od odbioru numerowanych kryteriów akceptacji specyfikacji epiku, przed szukaniem błędów. Kryteria
    sprawdza `qa-adversarial` (dostaje je w zleceniu) na działającym stosie, a kryteria narzędzia jego komendami na
    danych i stanie tymczasowym; epik bez QA (dokumentacja, instrukcje, narzędzie niskiego ryzyka): sesja prowadząca.
@@ -112,18 +128,57 @@ Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
    ryzyko i zostają bez QA, a sesja zapisuje to z powodem w „Decyzjach bez pytania” opisu PR.
    Stos na czole gałęzi epiku podnosi sesja w swoim worktree (`make up`, `make seed`) i podaje reviewerom jego adresy;
    `ux-reviewer` dostaje też katalog stosu, `AGENT_DIR`, tryb i listę zmienionych plików frontów, a `qa-adversarial`
-   (własny worktree) zaczyna od `git switch --detach origin/<gałąź epiku>`. Znaleziska blokujące naprawia jedno
-   zadanie, po nim przegląd różnicy (punkt 3 decyzji).
-7. **Koniec.** Sesja aktualizuje specyfikację, usuwa `plan.md`, wpisuje w opis PR odroczone uwagi i `Closes #N` dla
-   issues z linii `Issues:` specyfikacji, po zakończonym zielonym przebiegu CI na czole gałęzi wypełnia z niego
-   wiersze „CI” tabeli kryteriów i oznacza PR jako gotowy (po każdym późniejszym pushu aktualizuje te wiersze),
-   zapisuje drugi punkt odniesienia (`python3 tools/metrics/metrics.py done <epik>` z drugim odczytem limitów)
-   i pisze raport. Merge do `main` robi użytkownik.
+   (własny worktree) zaczyna od `git switch --detach origin/<gałąź epiku>`. `qa-adversarial` i `ux-reviewer` nie
+   pracują naraz na jednym stosie: dzielą konta pracowników (kod TOTP jest jednorazowy), a testy QA obciążają API;
+   sesja uruchamia `ux-reviewer` po QA albo podnosi mu osobny stos. `AGENT_DIR` leży w katalogu udostępnionym
+   Dockerowi (`~/Development/claude` albo katalog tymczasowy pod `/private/tmp`), nie w `~/.local/state`. Reviewer,
+   który zmienia commit w worktree z istniejącym `apps/api/var/cache/test*`, usuwa te katalogi przed testami API
+   (#645). Znaleziska blokujące naprawia jedno zadanie, po nim przegląd różnicy (punkt 3 decyzji). Uwagi
+   nieblokujące i niepotwierdzone ryzyka z raportów sesja rozstrzyga oceną przed odroczeniem z kroku 4.
+7. **Koniec.** Sesja aktualizuje specyfikację, usuwa `plan.md` i wpisuje w opis PR odroczone uwagi (z oceną z kroku 4)
+   oraz `Closes #N` dla issues z linii `Issues:` specyfikacji.
+
+   **Zewnętrzne review.** Przez trzy epiki od 2026-11-21 (potem ocena: `docs/features/ash-process-fixes/spec.md`, C3)
+   końcowy PR przechodzi niezależne review Codexa: po przeglądzie epiku i jego poprawkach, przed oznaczeniem PR jako
+   gotowego. Sesja nie uruchamia Codexa. Przekazuje użytkownikowi stan PR (numer, czoło gałęzi, wynik CI) i gotowe
+   zlecenie: „Zrób niezależne review PR #N (`origin/main...<gałąź>`) względem `docs/features/<epik>/spec.md`. 1. Cała
+   zmiana: błędy poprawności, współbieżności, danych i bezpieczeństwa, każdy z dowodem i wagą. 2. Osobno sekcja
+   »Odroczone uwagi« opisu PR: dla każdej pozycji oceń, czy odroczenie jest uzasadnione, i wskaż te, które są błędem
+   do naprawy przed merge'em.” Potwierdzone znaleziska naprawia zadanie z przeglądem różnicy; trafiają do „Problemów
+   i zastojów” z informacją, czy powtarzają odroczoną uwagę.
+
+   Po zakończonym zielonym przebiegu wymaganego CI na czole gałęzi sesja wypełnia z niego wiersze „CI” tabeli
+   kryteriów i oznacza PR jako gotowy (po każdym późniejszym pushu aktualizuje te wiersze), zapisuje drugi punkt
+   odniesienia (`python3 tools/metrics/metrics.py done <epik>` z drugim odczytem limitów) i pisze raport. Merge do
+   `main` robi użytkownik.
+
+   **Śledzenie CI** (tu i w kroku 5). Sesja nie kończy tury w oczekiwaniu na CI bez czegoś, co ją obudzi także po
+   sukcesie: powiadomienie aplikacji o błędach CI (Auto-fix) nie zgłasza zielonego wyniku. Po pushu, na którego wynik
+   czeka, uruchamia w tle jedno polecenie, które kończy się razem z wymaganymi checkami
+   (`gh pr checks <nr> --required --watch --fail-fast`), i w tym czasie robi pracę niezależną od wyniku. Gdy
+   środowisko sesji nie pozwala jej śledzić CI, mówi użytkownikowi przed końcem tury, że czeka na CI, i sprawdza
+   stan PR na początku każdej kolejnej tury.
+
+   **Po merge'u.** Gdy `gh pr view <nr> --json state,mergedAt` potwierdza merge, sesja:
+   - zapisuje rekord (`python3 tools/metrics/metrics.py epic <epik>`);
+   - gasi swoje stosy i usuwa czyste worktree zadań;
+   - dodaje do końcowego PR komentarz, którego treść zaczyna się od `## Przekazanie do retro`: nazwa epiku i polecenie
+     `/retro <epik>`, numer PR i commit merge'u, ścieżka specyfikacji, plan (commit, w którym jeszcze istnieje:
+     `git show <sha>:docs/features/<epik>/plan.md`), przeglądy i poprawki (role, rundy, zewnętrzne review
+     z commitami poprawek), plik przebiegu, rekord i sesje epiku, wersja procesu z odstępstwami oraz, w całości, uwagi
+     właściciela, które padły po ostatniej edycji opisu PR;
+   - kończy komunikatem: „Epik zakończony. Uruchom /retro <epik> w nowej sesji. Tę sesję można zarchiwizować”.
+
+   Sesja nie archiwizuje się sama, nie uruchamia `/retro` i nie zaczyna kolejnego epiku.
 
    Opis końcowego PR ma stałe sekcje o tych nazwach, w tej kolejności: „Zakres” (zadanie, ryzyko, przegląd),
    „Kryteria akceptacji”, „Testy”, „Ujawnienie TDD”, „Odroczone uwagi”, „Decyzje bez pytania”, „Problemy i zastoje”,
    „Luki w instrukcjach”, „Punkt odniesienia i przebieg”. Sekcja bez treści zostaje z wpisem „brak”. Nazwy sekcji
-   i kolumn tabeli czytają `metrics.py` i `/retro`, więc nie zmienia się ich ad hoc.
+   i kolumn tabeli czytają `metrics.py` i `/retro`, więc nie zmienia się ich ad hoc. Jeden punkt listy to jedna
+   uwaga i jeden incydent w `/retro`, bez limitu długości: punktów nie dzieli się ze względu na długość. Uwagę
+   właściciela o procesie sesja zapisuje w całości jako jeden punkt „Problemów i zastojów” albo „Luk
+   w instrukcjach”, z początkiem „Uwaga właściciela:”. „Punkt odniesienia i przebieg” podaje wersję procesu:
+   oczekiwaną, stan na dysku i potwierdzenie wersji załadowanej (`metrics.py process <epik>`), z odstępstwami.
 
    Sekcja „Kryteria akceptacji” to tabela z jednym wierszem na kryterium:
 
@@ -144,12 +199,47 @@ Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
    PR. Worktree przerwanego zadania zostaje na dysku razem z niezacommitowanymi zmianami. Sesja zapisuje je commitem
    w tym worktree (`git -C <worktree> add -A && git -C <worktree> commit -m "wip: …"`), potem go usuwa
    (`git worktree remove`, bez `--force`, który skasowałby niezapisane zmiany), a zlecenie nowego subagenta każe
-   `git switch task/<ID>`.
+   `git switch task/<ID>`. Ten sam epik w nowej sesji wznawia `metrics.py start <epik> --resume`: plik przebiegu
+   zostaje ten sam, więc pomiar i materiały do retro pozostają powiązane, a wersja procesu jest sprawdzana jak na
+   starcie. Przerwę komputera (wyłączenie, uśpienie) sesja zapisuje, gdy zna jej czasy z dowodu (ostatnia linia
+   transkryptu przed przerwą i pierwsza po niej, `pmset -g log`, wiadomość użytkownika):
+   `metrics.py pause <epik> --from <czas> --to <czas>`; bez dowodu nie zapisuje nic.
 
-**Zamrożenie na czas serii.** Od założenia tagu `ash-v1.0` do retrospektywy trzeciego epiku serii pliki procesu
-(`CLAUDE.md` w części o procesie, `.claude/`, ten „Przebieg epiku”, `tools/metrics`, `/retro`) zmienia tylko poprawka
-blokady albo zagrożenia, po zgodzie użytkownika. Pozostałe wnioski zbiera `/retro` jako propozycje. Stan serii
-i jej zmergowane epiki: „Status” planu Agentic Software House.
+**Wersja procesu.** Sesja w worktree uruchomiona z aplikacji desktopowej czyta `CLAUDE.md` z worktree, a agentów
+i skille (`.claude/agents`, `.claude/skills`) z głównego checkoutu repozytorium; zmieniony plik działa od następnego
+zlecenia we wszystkich otwartych sesjach. Pomiar rozróżnia wersję oczekiwaną (baza epiku), stan plików na dysku
+w każdym miejscu ładowania i wersję załadowaną, potwierdzoną z transkryptu (bez dowodu: „brak potwierdzenia”). Te
+same dane pliku przebiegu służą kontroli i raportowi:
+
+- `metrics.py start` odmawia, gdy definicje w głównym checkoucie różnią się od bazy, gdy worktree ma niezacommitowaną
+  zmianę pliku instrukcji, gdy skill użytkownika przesłania skill projektu albo gdy sesja wczytała `CLAUDE.md`
+  o treści spoza bazy i gałęzi epiku. `metrics.py process <epik>` powtarza kontrolę przed każdą falą zadań i przed
+  przeglądem epiku, a zaraz po starcie pierwszego subagenta danej roli potwierdza z jego transkryptu załadowaną
+  definicję; subagenta z inną definicją sesja zatrzymuje, zanim użyje jego wyniku. Rozbieżność obsługuje się przed
+  zleceniem implementacji albo przeglądu, nie w retro: przez usunięcie przyczyny albo jawną akceptację z powodem
+  (`--accept-process-mismatch "<powód>"` w `start`, `start --resume` i `process <epik>`), która zostaje w pomiarze
+  i obejmuje tylko to, co pokazała poprzednia kontrola: nowa rozbieżność znów zatrzymuje. Zmiana procesu przyniesiona
+  z `main` (np. `git merge origin/main` w gałęzi epiku) jest rozbieżnością tak samo jak zmiana w głównym checkoucie.
+- Zmiana zacommitowana na gałęzi epiku w jego własnym worktree (np. zadanie poprawia `CLAUDE.md` obszaru) nie jest
+  rozbieżnością: pomiar zapisuje ją jako informację. Agentów i skilli to nie obejmuje: ładują się z głównego
+  checkoutu, więc definicja zmieniona przez sam epik nie obowiązuje jego subagentów w trakcie i pomiar to pokazuje.
+- Główny checkout aktualizuje się tylko jawnie: `git -C <główny checkout> pull --ff-only` (nigdy `reset`, `checkout`
+  ani `stash`), gdy jest czysty, stoi na `main`, a `metrics.py process` nie pokazuje epiku w toku z bieżącymi
+  definicjami. Wtedy robi to sesja, która zaczyna epik, i mówi o tym użytkownikowi; sesja `/retro` po odmowie
+  `collect` pokazuje różnicę i pyta użytkownika. W każdym innym
+  przypadku (epik w toku w innej sesji, lokalne zmiany, inna gałąź) decyduje użytkownik: aktualizacja zmienia zasady
+  wszystkich otwartych sesji. Sesji bez pliku przebiegu (retro, mała zmiana) kontrola nie widzi.
+- Gdy zgodności nie da się uzyskać bez zmiany zasad epiku w toku, nowy epik startuje z opcją akceptacji i powodem
+  (`start --accept-process-mismatch "<powód>"`) i nie rusza wspólnych definicji: każde zlecenie każe subagentowi
+  najpierw przeczytać `.claude/agents/<rola>.md` z worktree zadania i stosować go zamiast wbudowanej definicji,
+  a skill sesja czyta z własnego worktree. Tak samo postępuje epik, którego definicje zmieniły się w trakcie.
+- PR, który zmienia `.claude/agents` albo `.claude/skills`, nie działa w otwartych sesjach, dopóki główny checkout
+  nie zostanie zaktualizowany; raport takiego PR to podaje.
+
+**Zamrożenie na czas serii.** Gdy „Status” planu Agentic Software House pokazuje serię pomiarową w toku, pliki
+procesu (`CLAUDE.md` w części o procesie, `.claude/`, ten „Przebieg epiku”, `tools/metrics`, `/retro`) zmienia tylko
+poprawka blokady albo zagrożenia, po zgodzie użytkownika; pozostałe wnioski zbiera `/retro` jako propozycje. Seria
+ASH v1.0 jest zakończona.
 
 Mała zmiana (poprawka albo do trzech zadań niskiego ryzyka) nie potrzebuje tej ścieżki: jedna gałąź i jeden PR do
 `main` w zwykłej sesji.

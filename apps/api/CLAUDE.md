@@ -52,7 +52,8 @@ cały katalog w Varnishu i w sklepie. `ordering:read-models:rebuild` i `inventor
 `app:backfill` (niżej).
 
 `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api`, `worker` i `worker-commands`, lokalnie koniec
-`bin/seed-demo`) wypełnia dane, dla których migracje dodały tylko schemat (`docs/features/admin-features/spec.md`,
+`bin/seed-demo`) wypełnia dane, dla których migracje dodały tylko schemat (wzorzec nieobowiązkowy na etapie demo:
+„Infrastruktura”, punkt o migracjach) (`docs/features/admin-features/spec.md`,
 „Wdrożenie: schemat w migracjach, wypełnienie po rolloucie”). Nowy krok implementuje `Shared\Infrastructure\Backfill\BackfillStep` w warstwie Infrastructure modułu
 (rejestracja tagiem z interfejsu, kolejność `#[AsTaggedItem(priority: …)]` malejąco), jest idempotentny, działa
 partiami w osobnych transakcjach i jest poprawny przy ruchu. Ukończony krok nie uruchomi się drugi raz bez `--force`,
@@ -384,17 +385,23 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   którego wiadomość trafiła do `failed`, zostaje bez `finished_at` i nikt go nie wznawia, a skutek naprawia narzędzie
   zadania (dla reindeksacji `catalog:reindex`).
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
-- Migracje zmieniają tylko schemat: nowe tabele, kolumny z wartością domyślną albo `NULL`, indeksy. Nie aktualizują
-  danych dużych tabel i nie wołają kodu aplikacji; dane wypełnia po rolloucie krok `app:backfill` (sekcja „Komendy”). Indeks na
-  dużej tabeli (`ordering_order`, `catalog_product`, `inventory_stock_item`) powstaje w osobnej migracji
+- Migracje nie wołają kodu aplikacji. Na etapie demo („Zgodność wersji” niżej) migracja może zmieniać schemat
+  niezgodnie z poprzednią wersją i wypełniać dane w tej samej wersji; przestój i blokada tabeli w jej trakcie są
+  dopuszczalne, a przy zmianie, której prostszym przejściem jest odtworzenie danych demo, wybierz odtworzenie.
+  Trzy wzorce niżej (dane wypełniane po rolloucie krokiem `app:backfill`, indeks `CONCURRENTLY`, CHECK `NOT VALID`
+  z osobnym `VALIDATE`) służą ciągłości działania i nie są obowiązkowe: stosuj je, gdy zwykła migracja na dużej
+  tabeli (`ordering_order`, `catalog_product`, `inventory_stock_item`) trwałaby na danych serwera demo dłużej, niż
+  można przyjąć jako przestój, albo gdy wymaga tego zadanie. Istniejących migracji i kroków `app:backfill` nie
+  przerabiamy.
+- Indeks na dużej tabeli tworzony bez blokady zapisów powstaje w osobnej migracji
   nietransakcyjnej (`isTransactional(): false`, bo `CONCURRENTLY` nie działa w transakcji; `all_or_nothing` jest
   wyłączone): `up()` sprawdza w `pg_index.indisvalid`, czy indeks o tej nazwie jest `INVALID` (zostawia go nieudane albo
   przerwane `CREATE INDEX CONCURRENTLY`), i tylko wtedy dodaje `DROP INDEX CONCURRENTLY IF EXISTS`, potem zawsze
   `CREATE INDEX CONCURRENTLY IF NOT EXISTS`. Poprawny indeks zostaje, więc ponowiony Job `migrate` przechodzi. Pozostałe
   zmiany schematu idą w zwykłej, transakcyjnej migracji obok. Wzór: `Version20261115120100IndexStockLevels`, test:
   `StockLevelIndexMigrationTest`.
-- Ograniczenie CHECK na dużej tabeli migracja dodaje jako `NOT VALID` (bez skanu tabeli pod blokadą `ACCESS EXCLUSIVE`
-  migracji; nowe i zmieniane wiersze są sprawdzane od razu), a osobna, późniejsza migracja robi `VALIDATE CONSTRAINT`
+- Ograniczenie CHECK na dużej tabeli dodawane bez długiej blokady migracja zapisuje jako `NOT VALID` (bez skanu
+  tabeli pod blokadą `ACCESS EXCLUSIVE` migracji; nowe i zmieniane wiersze są sprawdzane od razu), a osobna, późniejsza migracja robi `VALIDATE CONSTRAINT`
   (skan pod `SHARE UPDATE EXCLUSIVE`, odczyty i zapisy trwają). Wzór: `Version20261121100000AddOrderDelivery`
   i `Version20261121100100ValidateOrderDeliveryChecks`, test: `OrderDeliveryMigrationTest`.
 - Mapowanie jest równe schematowi po migracjach: indeks częściowy ma w `#[ORM\Index]` warunek zapisany tak, jak zwraca
@@ -432,27 +439,28 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
 
 ## Zgodność wersji
 
-Wdrożenie wymienia pody po kolei (`maxUnavailable: 0`), a migracje uruchamia Job przed startem nowej wersji, więc przez
-chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia wersja workera wymieniają wiadomości.
+Etap demo (`docs/vision.md`, „Wymagania niefunkcjonalne”): zgodności między kolejnymi wersjami nie wymagamy. Zmiana
+niezgodna (usunięcie albo zmiana kolumny lub tabeli, nowe `NOT NULL` bez wartości domyślnej, zmiana typu, zmiana pól
+albo nazwy klasy wiadomości) idzie jedną wersją, bez rozbijania na dwie i bez klas przejściowych. Zadanie, które ją
+wprowadza, opisuje w specyfikacji albo w opisie PR skutek przy wdrożeniu i sposób przejścia: co przez chwilę nie
+działa i czego wdrożenie wymaga (np. opróżnienie kolejek, odtworzenie danych demo, kolejność kroków). Reviewer nie
+zgłasza samego braku zgodności; zgłasza brak takiego opisu. Operacje na serwerze dalej wymagają zgody właściciela
+(główny `CLAUDE.md`).
 
-- Migracja jest zgodna wstecz z poprzednią wersją kodu: poprzednia wersja musi działać na schemacie po migracji. Zmianę
-  niezgodną (usunięcie lub zmiana nazwy kolumny albo tabeli, nowe ograniczenie `NOT NULL` bez wartości domyślnej,
-  zmiana typu) rozbij na dwie wersje: najpierw dodaj nowe i zacznij je zapisywać, w kolejnej wersji usuń stare.
-  Schemat jest zgodny wstecz tylko z poprzednią wersją: cofnięcie o więcej wersji wymaga kopii zapasowej.
-- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator`, `promotions` i `jobs`)
-  są zgodne w obie strony między kolejnymi wersjami: nowa wersja czyta wiadomości zapisane przez poprzednią (kolejka
-  może je jeszcze mieć) i poprzednia czyta wiadomości nowej (stary worker działa do końca wymiany). Transporty Doctrine
-  używają serializera PHP, a `unserialize` nie woła konstruktora: w klasie `final readonly` dodane pole zostaje
-  niezainicjalizowane, a pole, którego klasa nie ma, kończy dekodowanie błędem. Dlatego pól klasy wiadomości ani
-  zdarzenia domenowego nie dodajemy, nie usuwamy i nie zmieniamy: nowy kształt to nowa klasa, którą wersja z jej
-  handlerem tylko obsługuje, a nadawać zaczyna dopiero kolejna wersja (poprzednia nie zdekoduje wiadomości nieznanej
-  jej klasy). Nie zmieniaj nazw klas wiadomości, stempli i transportów. Zasada „pola dodawaj jako opcjonalne” jest
-  prawdziwa tylko dla JSON (`events`), nie jest zgodą na zmianę pól.
-- `MessageVersionCompatibilityTest` pilnuje tego na zapisach w `tests/Fixtures/MessageSerialization`: każda klasa
-  z `routing` w `messenger.yaml` i każda implementacja `DomainEvent` musi mieć zapis i dekodować się z zainicjalizowanymi
-  polami. Nowa klasa wiadomości lub zdarzenia dostaje zapis w tym samym PR (sposób: komentarz testu). Zapisy się
-  dopisuje, nigdy nie nadpisuje; zapis klasy usuwa się dopiero razem z jej handlerem, w wersji po tej, która przestała
-  ją nadawać.
+Fakty potrzebne do oceny skutku:
+
+- Wdrożenie wymienia pody po kolei (`maxUnavailable: 0`), a migracje uruchamia Job przed startem nowej wersji, więc
+  przez chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia wersja workera wymieniają
+  wiadomości (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator`, `promotions` i `jobs`).
+- Transporty Doctrine używają serializera PHP, a `unserialize` nie woła konstruktora: w klasie `final readonly` dodane
+  pole zostaje niezainicjalizowane, a pole, którego klasa nie ma, kończy dekodowanie błędem. Wiadomość zapisana przed
+  zmianą pól, nazwy klasy, stempla albo transportu nie zostanie obsłużona po zmianie. Zasada „pola dodawaj jako
+  opcjonalne” jest prawdziwa tylko dla JSON (`events`).
+- `MessageVersionCompatibilityTest` wykrywa zmianę kształtu na zapisach w `tests/Fixtures/MessageSerialization`: każda
+  klasa z `routing` w `messenger.yaml` i każda implementacja `DomainEvent` musi mieć zapis i dekodować się
+  z zainicjalizowanymi polami. Nowa klasa wiadomości lub zdarzenia dostaje zapis w tym samym PR (sposób: komentarz
+  testu). Celowa zmiana niezgodna wymienia zapis tej klasy w tym samym PR, razem z opisem przejścia; zapis klasy
+  usuwa się razem z jej handlerem.
 
 ## Testy
 

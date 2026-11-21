@@ -728,7 +728,7 @@ class UsageReadingTest(NativeEnv):
         whole = {'plan': START, 'context': {'percentUsed': 12, 'tokens': 120000}}
         code, out, err = run_cli(['start', 'demo', '--state', self.state, '--projects', self.projects, '--worktree',
                                   self.worktree, '--branch', 'feat/demo', '--pr', '752', '--tasks', '3', '--session',
-                                  's1'], testkit.FakeGh(), stdin=json.dumps(whole))
+                                  's1', '--accept-process-mismatch', 'test bez repozytorium'], testkit.FakeGh(), stdin=json.dumps(whole))
         self.assertEqual(code, 0, err)
         self.assertEqual(self.run_file()['usage_start'], START)
         code, out, err = run_cli(['done', 'demo', '--state', self.state], stdin=json.dumps(dict(whole, plan=DONE)))
@@ -738,7 +738,7 @@ class UsageReadingTest(NativeEnv):
     def test_plan_that_is_not_an_object_is_unreadable(self):
         code, out, err = run_cli(['start', 'demo', '--state', self.state, '--projects', self.projects, '--worktree',
                                   self.worktree, '--branch', 'feat/demo', '--pr', '752', '--tasks', '3', '--session',
-                                  's1'], testkit.FakeGh(), stdin=json.dumps({'plan': 'ok', 'context': {}}))
+                                  's1', '--accept-process-mismatch', 'test bez repozytorium'], testkit.FakeGh(), stdin=json.dumps({'plan': 'ok', 'context': {}}))
         self.assertEqual(code, 0, err)
         self.assertEqual(self.run_file()['usage_start'], {'status': 'unreadable'})
 

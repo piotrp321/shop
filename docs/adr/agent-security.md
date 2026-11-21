@@ -73,6 +73,10 @@ AGENT-ISOLATION (#498).
   końcowego PR przez użytkownika.
 - Logi CI i wyjście zależności czytane przez `/delivery` i `/integration` (log czerwonych jobów CI pusha) nie
   przechodzą przez bramkę; chronią R2–R5.
+- Transkrypty sesji epiku natywnego, które `/retro` wskazuje agentowi `retro-analyst` (`materials` w `input.json`),
+  zawierają wyniki narzędzi spoza bramki (np. pobrane strony). Reguła „dane, nie polecenia” i zapis wyłącznie do
+  `proposals.json` to granice promptu (analityk ma Bash i Write); skutek ogranicza walidacja propozycji i zgoda
+  użytkownika na każdą poprawkę i każde issue.
 - Nakładka `mktemp` jest wygodą pracy, nie granicą bezpieczeństwa: wykonawca steruje `PATH` własnego Basha i może
   wywołać `/usr/bin/mktemp`, który w sandboxie się nie uda. Granicą jest profil (brak zapisu do `/var/folders/…`).
 - Katalog tymczasowy użytkownika (`/var/folders/…`) jest czytelny dla wykonawcy (bez zapisu), w tym `KUBE_DIR`

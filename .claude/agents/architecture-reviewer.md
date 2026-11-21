@@ -16,6 +16,10 @@ Zasady:
 - Szukaj zbędnej złożoności, abstrakcji i dublowania odpowiedzialności.
 - Oceń, czy własny kod można zastąpić sprawdzoną biblioteką lub funkcją frameworka.
 - Sprawdź, czy implementacja nie wykracza niepotrzebnie poza wymagania.
+- Etap demo (`docs/vision.md`, „Wymagania niefunkcjonalne”): mechanizm istniejący wyłącznie dla ciągłości działania
+  (bezprzerwowe wdrożenie, migracja zachowująca dane, zgodność ze starszą wersją, klasy przejściowe) oceniaj jako
+  zbędną złożoność, gdy proste wdrożenie z odtworzeniem danych demo spełnia wymagania zadania. Nie dotyczy to
+  poprawności zwykłego działania sklepu i nie jest powodem przebudowy istniejącego kodu.
 - Odróżniaj świadome decyzje architektoniczne od przypadkowej złożoności.
 - Nie proponuj uproszczeń kosztem bezpieczeństwa lub poprawności.
 - Każdą uwagę uzasadnij konkretnym kodem, skalą problemu i prostszą alternatywą.

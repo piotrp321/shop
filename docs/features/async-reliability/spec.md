@@ -432,10 +432,11 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   - dla klas aplikacji (wiadomości, zdarzenia, `CorrelationIdStamp`) ponowne zakodowanie bieżącym kodem daje ten sam
     zapis ich części, więc zmiana pól klasy kończy test błędem; stemple Symfony sprawdza tylko dekodowanie starych zapisów;
   - każda klasa wiadomości i zdarzenia ma zapis (nowa klasa bez zapisu kończy test błędem).
-- Zapisów się nie nadpisuje: po aktualizacji Symfony albo przy nowej klasie dochodzi nowy zapis obok starych, a stary
-  zapis klasy usuniętej z kodu znika dopiero w wersji, w której znika jej handler.
-- `apps/api/CLAUDE.md`, „Zgodność wersji”: zasada z D3 i odwołanie do testu; zasada „pola opcjonalne” zostaje tylko jako
-  własność JSON, nie jako zgoda na zmianę pól.
+- Po aktualizacji Symfony albo przy nowej klasie dochodzi nowy zapis obok starych. Celowa zmiana niezgodna (etap demo,
+  `docs/vision.md`) wymienia zapis zmienianej klasy w tym samym PR, razem z opisem przejścia przy wdrożeniu; zapis
+  klasy usuniętej z kodu znika razem z jej handlerem.
+- `apps/api/CLAUDE.md`, „Zgodność wersji”: zasada etapu demo, fakty o serializerze PHP i odwołanie do testu; „pola
+  opcjonalne” to własność JSON, nie transportów Doctrine.
 
 ### W12. Ręczne ponowienie zachowuje wiadomość w `failed` (D6)
 
