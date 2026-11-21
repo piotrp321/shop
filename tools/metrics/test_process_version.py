@@ -807,6 +807,128 @@ class RecordWithoutDiskCheckTest(RecordTest):
         self.assertNotIn('instructions', record['attempts'][0])
 
 
+EPIC_API_MD = '# API\n\nZasady API po zmianie epiku.\n'
+
+
+class EpicVersionTest(RecordTest):
+    """A CLAUDE.md the session reads from its own worktree may be the version the epic changed: a version of the
+    history of the epic branch (not reachable from the base) or the current file of the worktree is confirmed with
+    `version: "epic"`, never `differs`; agents and skills keep the base as the expected version."""
+
+    def started(self):
+        self.lead(self.instructions_line())
+        self.assertEqual(self.start()[0], 0)
+
+    def change_in_the_epic(self, commit=True):
+        write(self.worktree, 'apps/api/CLAUDE.md', EPIC_API_MD)
+        if commit:
+            git(self.worktree, 'commit', '-q', '-am', 'docs: api rules')
+
+    def api_entry(self, loaded):
+        return [e for e in loaded['session'] if e['path'] == 'apps/api/CLAUDE.md'][0]
+
+    def test_claude_md_changed_and_committed_by_the_epic_is_the_epic_version(self):
+        self.started()
+        self.change_in_the_epic()
+        write(self.worktree, 'apps/api/CLAUDE.md', 'jeszcze nowsza treść na dysku\n')   # history, not disk, matches
+        self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD))
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, 0, err)
+        entry = self.api_entry(json.loads(out)['loaded'])
+        self.assertEqual((entry['status'], entry['version']), ('confirmed', 'epic'))
+        root = [e for e in json.loads(out)['loaded']['session'] if e['path'] == 'CLAUDE.md'][0]
+        self.assertEqual((root['status'], root['version']), ('confirmed', 'base'))
+
+    def test_claude_md_changed_on_disk_only_is_the_epic_version(self):
+        self.started()
+        self.change_in_the_epic(commit=False)
+        self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD))
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.api_entry(json.loads(out)['loaded'])['version'], 'epic')
+
+    def test_content_from_neither_base_nor_epic_differs(self):
+        self.started()
+        self.change_in_the_epic()
+        self.lead(self.instructions_line(), self.nested_line(500, 'treść spoza bazy i gałęzi\n'))
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, EXIT_PROCESS)
+        entry = self.api_entry(json.loads(out)['loaded'])
+        self.assertEqual((entry['status'], entry['version']), ('differs', None))
+
+    def test_claude_md_from_another_place_differs(self):
+        self.started()
+        self.change_in_the_epic()
+        self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD, base=self.main))
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, EXIT_PROCESS)
+        self.assertEqual(self.api_entry(json.loads(out)['loaded'])['status'], 'differs')
+
+    def test_record_with_the_branch_is_the_epic_version(self):
+        self.started()
+        self.change_in_the_epic()
+        self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD))
+        self.assertEqual(self.done()[0], 0)
+        record = self.record()
+        entry = self.api_entry(record['process']['loaded'])
+        self.assertEqual((entry['status'], entry['version']), ('confirmed', 'epic'))
+        self.assertEqual(record['process']['loaded']['summary']['confirmed_epic'], 1)
+        self.assertFalse([g for g in self.gaps(record) if 'apps/api' in g], self.gaps(record))
+
+    def test_record_after_the_merge_without_the_branch_is_unconfirmed(self):
+        self.started()
+        self.change_in_the_epic()
+        self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD))
+        self.assertEqual(self.done()[0], 0)
+        git(self.main, 'worktree', 'remove', '--force', self.worktree)
+        git(self.main, 'branch', '-D', 'feat/demo')
+        code, out, err = run_cli(['epic', 'demo', '--state', self.state, '--night', self.night, '--projects',
+                                  self.projects, '--no-gh', '--worktree', self.main])
+        self.assertEqual(code, 0, err)
+        entry = self.api_entry(json.loads(out)['process']['loaded'])
+        self.assertEqual(entry['status'], 'unconfirmed')
+        self.assertIn('historia gałęzi epiku niedostępna', entry['reason'])
+
+    def test_agent_changed_in_the_epic_branch_still_differs(self):
+        self.started()
+        write(self.worktree, '.claude/agents/code-reviewer.md', agent_file('code-reviewer', 'Nowa rola z epiku.'))
+        git(self.worktree, 'commit', '-q', '-am', 'agent')
+        self.subagent_run('a1', 'code-reviewer', ['Nowa rola z epiku.'], at=100)
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, EXIT_PROCESS)
+        agent = json.loads(out)['loaded']['agents'][0]
+        self.assertEqual((agent['agent_id'], agent['status'], agent['version']), ('a1', 'differs', None))
+
+
+class EpicWindowTest(RecordTest):
+    """The evidence of the session and the subagent runs count only up to the merge of the final PR: a session that
+    led two epics gives the record of the first one only its own loads."""
+
+    def test_session_of_two_epics(self):
+        self.lead(self.instructions_line(), self.nested_line(500), self.nested_line(5000, 'treść drugiego epiku\n'))
+        self.assertEqual(self.start()[0], 0)
+        self.subagent_run('a1', 'code-reviewer', [AGENT_BODY], at=100)
+        self.subagent_run('a2', 'code-reviewer', ['Rola drugiego epiku.'], at=6000)
+        self.assertEqual(self.done(now=testkit.T0 + 1000)[0], 0)
+        testkit.store_records(self.state, {'epic': 'demo', 'source': 'native', 'merged_at': iso_at(1200)})
+        record = self.record()
+        loaded = record['process']['loaded']
+        api = [e for e in loaded['session'] if e['path'] == 'apps/api/CLAUDE.md'][0]
+        self.assertEqual(api['status'], 'confirmed')
+        self.assertEqual([a['agent_id'] for a in loaded['agents']], ['a1'])
+        self.assertEqual(loaded['by_role'], {'code-reviewer': {'confirmed': 1, 'differs': 0, 'unconfirmed': 0}})
+
+    def test_load_without_a_timestamp_counts(self):
+        line = self.nested_line(500)
+        del line['timestamp']
+        self.lead(self.instructions_line(), line)
+        self.assertEqual(self.start()[0], 0)
+        self.assertEqual(self.done(now=testkit.T0 + 1000)[0], 0)
+        testkit.store_records(self.state, {'epic': 'demo', 'source': 'native', 'merged_at': iso_at(1200)})
+        api = [e for e in self.record()['process']['loaded']['session'] if e['path'] == 'apps/api/CLAUDE.md'][0]
+        self.assertEqual(api['status'], 'confirmed')
+
+
 class OldRecordsTest(testkit.Env):
     """Records without `process` (AO and native from before the check) keep working in render, trend and decide."""
 
