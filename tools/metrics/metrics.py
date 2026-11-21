@@ -2,8 +2,10 @@
 """Measurement of AO and native epic runs (spec docs/features/metrics/spec.md). Python 3.9+, standard library only.
 
   metrics.py start EPIC [--resume] [--at TIME] [--worktree DIR] [--branch NAME] [--pr N] [--tasks N] [--session ID]
-                        [--projects DIR] [COMMON] < get_usage reading
-  metrics.py done EPIC [--at TIME] [COMMON] < get_usage reading
+                        [--projects DIR] [--user-dir DIR] [--accept-process-mismatch REASON] [COMMON] < get_usage reading
+  metrics.py done EPIC [--at TIME] [--worktree DIR] [--projects DIR] [--user-dir DIR] [COMMON] < get_usage reading
+  metrics.py pause EPIC --from TIME --to TIME [--reason TEXT] [COMMON]
+  metrics.py process [EPIC] [--worktree DIR] [--base REF] [--user-dir DIR] [--projects DIR] [COMMON]
   metrics.py epic EPIC [--ao-home DIR] [--projects DIR] [--manual-fixes FILE] [--no-gh] [COMMON]
   metrics.py backfill [--ao-root DIR] [COMMON]
   metrics.py trend [--last N] [--epic EPIC] [--json] [--no-gh] [COMMON]
@@ -23,7 +25,16 @@ the branch, the draft PR, the number of tasks of the plan.md manifest (night_que
 (--session or the newest transcript of the working directory under --projects, default ~/.claude/projects) and the
 limits read from stdin (night_queue.parse_usage; a terminal or an empty input is no reading); --resume appends a new session; done
 records the time the PR was marked ready and the second reading. Exit 2 without a branch, PR, number of tasks or
-session, on a second start without --resume, and on --resume or done without a run file.
+session, on a second start without --resume, and on --resume or done without a run file. start and start --resume
+refuse a session id that is in the run file of another epic (one lead session, one epic).
+
+process: the version of the process (process_version.py): `expected` (the base commit of the epic or HEAD), `disk`
+(the instruction files on disk in the worktree and in the main checkout, which a desktop session loads the agents and
+skills from) and, for an epic, `loaded` (what the transcripts confirm). start stores the reading in the run file field
+`process` and refuses a mismatch without --accept-process-mismatch REASON; start --resume, done and `process EPIC`
+compare the disk with that reading and add every change to `process.changes`. Exit 4 on a mismatch.
+
+pause: a pause of the computer (--from, --to) in the run file `pauses`; the record counts it as `host_pause`.
 
 epic: prints the record of the epic run as one JSON line and stores it in <state>/epics/<EPIC>.json. The run is the
 AO directory --ao-home (default: ao-<EPIC> under $SHOP_METRICS_AO_ROOT or ~/.local/state), `source: ao`; without it the
@@ -100,7 +111,8 @@ danych" without a difference below the thresholds of config.json `decisions`. St
 Exit codes: 0 success (also without alarms); 2 nothing recorded or printed: bad arguments or config.json, missing AO
 directory, unreadable or locked database, no epic row, unreadable --manual-fixes file, state not writable, waste.json
 unreadable or of another shape (never overwritten) (message on stderr, nothing on stdout);
-3 the record was printed and stored but a source failed (`gh` error; message on stderr, the gap is in `gaps`).
+3 the record was printed and stored but a source failed (`gh` error; message on stderr, the gap is in `gaps`);
+4 `process` printed its reading and the definitions differ (summary on stderr).
 trend, render and decide also end with 2 without a stored record (or without the requested epic), effect with a bad key
 or --at or without a stored record of a merged epic.
 """
@@ -123,10 +135,13 @@ import ao_events  # noqa: E402  (waits: the windows of waiting for the user, sha
 import night_queue  # noqa: E402  (window deltas, measurement intervals and their time format)
 sys.path.insert(0, os.path.join(HERE, '..', 'agent-security'))
 import github_trust  # noqa: E402  (the origin gate: the description of the final PR of a native epic)
+sys.path.insert(0, HERE)
+import process_version  # noqa: E402  (the version of the process: expected, disk and loaded instructions)
 
 DEFAULT_CONFIG = os.path.join(HERE, 'config.json')
 EXIT_FATAL = 2
 EXIT_SOURCE = 3
+EXIT_PROCESS = 4                # `process`: the definitions differ from the expected ones
 BREAKDOWN_CATEGORIES = ('work', 'human_wait', 'limit_wait', 'ci_wait', 'host_pause', 'github_wait', 'idle')
 
 
@@ -2431,6 +2446,11 @@ def cmd_start(args, run, now, stdin):
     at = parse_at(args.at) if args.at else now
     worktree = _expand(args.worktree) if args.worktree else os.getcwd()
     session = checked_id(args.session or newest_session(_expand(args.projects), worktree), 'sesji')
+    other = epic_of_session(_expand(args.state), session, epic_id)
+    if other is not None:
+        raise MetricsError('sesja %s jest już w pliku przebiegu epiku %s: jedna sesja prowadzi jeden epik, nowy epik '
+                           'zaczyna nowa sesja (ten sam epik w nowej sesji: start --resume)' % (session, other))
+    accepted = accepted_reason(args.accept_process_mismatch)
     current = read_run_file(path)
     entry = {'id': session, 'worktree': worktree, 'at': iso(at)}
     if args.resume:
@@ -2439,6 +2459,8 @@ def cmd_start(args, run, now, stdin):
         sessions = current.get('sessions') if isinstance(current.get('sessions'), list) else []
         if not any(isinstance(s, dict) and s.get('id') == session for s in sessions):
             current['sessions'] = sessions + [entry]
+        if not args.at:
+            resume_check(run, current, worktree, args, now, session, accepted)
         data = current
     else:
         if current is not None:
@@ -2467,22 +2489,428 @@ def cmd_start(args, run, now, stdin):
             print('metrics: SHA origin/main nieznany (%s): base_sha null' % (reason or 'pusta odpowiedź'),
                   file=sys.stderr)
             sha = None
+        process = start_process(run, args, worktree, session, sha, now, accepted)
         data = {'epic': epic_id, 'started_at': iso(at), 'base_sha': sha, 'branch': branch, 'pr': pr, 'tasks': tasks,
-                'sessions': [entry], 'usage_start': read_usage(stdin), 'done_at': None, 'usage_done': None}
+                'sessions': [entry], 'usage_start': read_usage(stdin), 'done_at': None, 'usage_done': None,
+                'process': process}
     write_record(path, data)
     print(json.dumps(data, ensure_ascii=False))
     return 0
 
 
-def cmd_done(args, now, stdin):
+def cmd_done(args, run, now, stdin):
     path = run_path(_expand(args.state), native_epic_id(args.epic))
     data = read_run_file(path)
     if data is None:
         raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
+    if not args.at:
+        worktree = _expand(args.worktree) if args.worktree else os.getcwd()
+        try:
+            result = recheck(run, data, worktree, args, now, 'done', None, None)
+            if result['mismatch']:
+                print('metrics: wersja procesu inna niż przy starcie epiku (zapisano w process.changes): %s'
+                      % '; '.join(result['lines']), file=sys.stderr)
+        except process_version.CheckError as e:
+            if not isinstance(data.get('process'), dict):
+                data['process'] = {'status': 'check_failed', 'checked_at': iso(now), 'checked_on': 'done',
+                                   'reason': str(e), 'accepted': None, 'changes': []}
+            else:
+                add_change(data, failed_change(now, 'done', None, e, None))
+            print('metrics: kontrola wersji procesu nieudana (%s): zapisano w process.changes' % e, file=sys.stderr)
     data['done_at'] = iso(parse_at(args.at) if args.at else now)
     data['usage_done'] = read_usage(stdin)
     write_record(path, data)
     print(json.dumps(data, ensure_ascii=False))
+    return 0
+
+
+def cmd_pause(args):
+    path = run_path(_expand(args.state), native_epic_id(args.epic))
+    begin, end = parse_at(args.begin, '--from'), parse_at(args.end, '--to')
+    if begin >= end:
+        raise MetricsError('--from %s nie jest przed --to %s: przerwa musi mieć dodatnią długość' % (args.begin, args.end))
+    data = read_run_file(path)
+    if data is None:
+        raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
+    pauses = data.get('pauses') if isinstance(data.get('pauses'), list) else []
+    reason = ' '.join(CONTROL.sub(' ', args.reason).split()) if args.reason else ''
+    data['pauses'] = pauses + [{'from': iso(begin), 'to': iso(end), 'reason': reason or None}]
+    write_record(path, data)
+    print(json.dumps(data, ensure_ascii=False))
+    return 0
+
+
+# ------------------------------------------------------------------------------ native epics: the process version
+
+CONTROL = re.compile(r'[\x00-\x1f\x7f-\x9f  ]')
+PROCESS_HINT = ('sprawdź `metrics.py process`, zaktualizuj główny checkout według ADR „Przebieg epiku” '
+                '(docs/adr/agentic-software-house.md) albo podaj --accept-process-mismatch "<powód>"')
+NOT_CHECKED = 'zapis po fakcie (--at): dzisiejszy stan plików nie mówi nic o wersji z tamtej chwili'
+
+
+def accepted_reason(value):
+    """The reason of --accept-process-mismatch (control characters out, whitespace collapsed), None without the option;
+    a blank reason is an error."""
+    if value is None:
+        return None
+    text = ' '.join(CONTROL.sub(' ', value).split())
+    if not text:
+        raise MetricsError('pusty powód --accept-process-mismatch: podaj, dlaczego epik działa mimo różnicy wersji')
+    return text
+
+
+def epic_of_session(state, session, epic_id):
+    """The epic of another run file that already has the session (E1), or None."""
+    for name in sorted(glob.glob(os.path.join(glob.escape(os.path.join(state, 'runs')), '*.json'))):
+        other = os.path.basename(name)[:-len('.json')]
+        if other == epic_id:
+            continue
+        try:
+            data = read_run_file(name)
+        except MetricsError:
+            continue
+        sessions = data.get('sessions') if isinstance(data, dict) and isinstance(data.get('sessions'), list) else []
+        if any(isinstance(s, dict) and s.get('id') == session for s in sessions):
+            return other
+    return None
+
+
+def _sessions(run_file):
+    return [s['id'] for s in run_file.get('sessions') or [] if isinstance(s, dict) and isinstance(s.get('id'), str)
+            and SAFE_ID.match(s['id'])]
+
+
+def _roots(run_file, internal=None, process=None):
+    """The directories a CLAUDE.md path of a transcript is relative to: the worktrees of the sessions and the places."""
+    roots = [s.get('worktree') for s in run_file.get('sessions') or [] if isinstance(s, dict)]
+    if internal is not None:
+        roots += [internal['top'], internal['main']]
+    for place in (process or {}).get('disk') or []:
+        if isinstance(place, dict):
+            roots.append(place.get('path'))
+    return [r for r in roots if isinstance(r, str) and r]
+
+
+def _expected(run, top, expected):
+    """The texts of the expected instruction files (the blobs of `expected.files`) read from the repository of `top`;
+    an unknown base commit makes every text unavailable (`error`)."""
+    expected = expected if isinstance(expected, dict) else {}
+    files = expected.get('files') if isinstance(expected.get('files'), dict) else {}
+    return process_version.Expected(run, top, expected.get('ref'), files)
+
+
+def _item_name(entry):
+    if entry.get('agent_id') and entry.get('role'):
+        return '%s (%s)' % (entry['agent_id'], entry['role'])
+    return entry.get('skill') or entry.get('path') or entry.get('origin') or '?'
+
+
+def _mismatch_lines(disk, users, loaded):
+    lines = process_version.summary(disk)
+    if users.get('skills'):
+        lines.append('skille użytkownika przesłaniają skille projektu: %s' % ', '.join(users['skills']))
+    for section, entry in process_version.loaded_items(loaded):
+        if entry.get('status') == 'differs':
+            lines.append('załadowana treść inna niż w bazie: %s %s' % (section, _item_name(entry)))
+    return lines
+
+
+def checked_process(data, loaded, now, event):
+    differs = any(e.get('status') == 'differs' for e in loaded['session'])
+    return {'status': 'checked', 'checked_at': iso(now), 'checked_on': event, 'expected': data['expected'],
+            'disk': data['disk'], 'user_level': data['user_level'], 'loaded': dict(loaded, checked_at=iso(now)),
+            'match': data['match'] and not differs, 'accepted': None, 'changes': []}
+
+
+def start_process(run, args, worktree, session, base_sha, now, accepted):
+    """The field `process` of a new run file (W2): the reading of the start, or a refusal (MetricsError) when the
+    definitions differ from the base and the mismatch is not accepted with a reason."""
+    if args.at:
+        return {'status': 'not_checked', 'reason': NOT_CHECKED}
+    try:
+        data, internal = process_version.reading(run, worktree, base_sha, _expand(args.user_dir))
+        expected = _expected(run, internal['top'], data['expected'])
+        loaded = process_version.loaded_of(_expand(args.projects), [session], expected,
+                                           [internal['top'], internal['main']], agents=False)
+    except process_version.CheckError as e:
+        if accepted is None:
+            raise MetricsError('kontrola wersji procesu nieudana: %s; %s' % (e, PROCESS_HINT))
+        return {'status': 'check_failed', 'checked_at': iso(now), 'checked_on': 'start', 'reason': str(e),
+                'accepted': accepted, 'changes': []}
+    process = checked_process(data, loaded, now, 'start')
+    if not process['match']:
+        if accepted is None:
+            raise MetricsError('wersja procesu różni się od bazy epiku %s (%s): %s. Epik nie startuje: %s' % (
+                data['expected']['describe'] or '-', data['expected']['ref'][:12],
+                '; '.join(_mismatch_lines(data['disk'], data['user_level'], loaded)), PROCESS_HINT))
+        process['accepted'] = accepted
+    return process
+
+
+def _fingerprints(places):
+    return {p.get('kind'): p.get('fingerprint') for p in places or [] if isinstance(p, dict)}
+
+
+def disk_baseline(process, accepted_only):
+    """{kind: fingerprint} the disk is compared with: the start, then the last disk change (accepted only, or any)."""
+    found = _fingerprints(process.get('disk'))
+    for change in process.get('changes') or []:
+        if isinstance(change, dict) and change.get('kind') == 'disk' and (change.get('accepted') or not accepted_only):
+            found = _fingerprints(change.get('disk'))
+    return found
+
+
+def _change_key(change):
+    kind = change.get('kind')
+    if kind == 'disk':
+        return [kind, sorted(_fingerprints(change.get('disk')).items())]
+    if kind == 'loaded':
+        return [kind] + process_version.loaded_key(change.get('section'), change.get('item') or {})
+    return [kind, change.get('event'), change.get('reason')]
+
+
+def add_change(run_file, change):
+    """Appends `change` to `process.changes` unless the same change is there (an accepted one only once accepted)."""
+    process = run_file.get('process')
+    if not isinstance(process, dict):
+        return False
+    changes = process.setdefault('changes', [])
+    key = _change_key(change)
+    for old in changes:
+        if isinstance(old, dict) and _change_key(old) == key and (old.get('accepted') or not change.get('accepted')):
+            return False
+    changes.append(change)
+    return True
+
+
+def failed_change(now, event, session, error, accepted):
+    return {'at': iso(now), 'event': event, 'session': session, 'kind': 'check_failed', 'reason': str(error),
+            'accepted': accepted}
+
+
+def _accepted_loaded(process):
+    return [process_version.loaded_key(c.get('section'), c.get('item') or {}) for c in process.get('changes') or []
+            if isinstance(c, dict) and c.get('kind') == 'loaded' and c.get('accepted')]
+
+
+def _epoch_of(text):
+    return night_queue.parse_time(text).timestamp()
+
+
+def recheck(run, run_file, worktree, args, now, event, session, accepted):
+    """The check of a running epic (W3) on the data of the run file, shared by `process EPIC`, `start --resume` and
+    `done`: today's disk against the reading of the start (and the last accepted change), the transcripts of the
+    sessions for `loaded`; every new change is appended to `process.changes` (with `accepted` when given), once. A run
+    file without a reading (older, or a failed check at the start) gets one now, marked with `checked_on`. Mutates
+    `run_file`; raises process_version.CheckError when the check cannot run. Returns {status, late, disk, user_level,
+    loaded, added, mismatch, lines}."""
+    process = run_file.get('process')
+    if isinstance(process, dict) and process.get('status') == 'not_checked':
+        return {'status': 'not_checked', 'late': False, 'added': [], 'mismatch': False, 'lines': [],
+                'reason': process.get('reason')}
+    projects, sessions = _expand(args.projects), _sessions(run_file)
+    started = _run_time(run_file, 'started_at', Gaps(), '')
+    late = not isinstance(process, dict) or process.get('status') != 'checked'
+    ref = run_file.get('base_sha') if late else (process.get('expected') or {}).get('ref')
+    ref = ref if isinstance(ref, str) and ref else None
+    try:
+        data, internal = process_version.reading(run, worktree, ref, _expand(args.user_dir))
+    except process_version.CheckError:
+        if not late or ref is None:
+            raise
+        data, internal = process_version.reading(run, worktree, None, _expand(args.user_dir))   # base_sha unknown here
+    expected = _expected(run, internal['top'], data['expected'] if late else process['expected'])
+    loaded = process_version.loaded_of(projects, sessions, expected, _roots(run_file, internal, process),
+                                       window=(started, None), parse_time=_epoch_of)
+    if late:
+        new = checked_process(data, loaded, now, event)
+        if isinstance(process, dict) and process.get('status') == 'check_failed':
+            new.update(accepted=process.get('accepted'), start_failure=process.get('reason'),
+                       changes=process.get('changes') or [])
+        run_file['process'] = new
+        return {'status': 'checked', 'late': True, 'disk': data['disk'], 'user_level': data['user_level'],
+                'loaded': new['loaded'], 'added': [], 'mismatch': not new['match'],
+                'lines': _mismatch_lines(data['disk'], data['user_level'], loaded)}
+    added, lines = [], []
+    disk_changed = _fingerprints(data['disk']) != disk_baseline(process, True)
+    if disk_changed:
+        change = {'at': iso(now), 'event': event, 'session': session, 'kind': 'disk',
+                  'disk': [{'kind': p['kind'], 'fingerprint': p['fingerprint'], 'differs': p['differs']}
+                           for p in data['disk']], 'accepted': accepted}
+        if add_change(run_file, change):
+            added.append(change)
+        lines.append('definicje na dysku zmieniły się od startu epiku: %s'
+                     % ('; '.join(process_version.summary(data['disk'])) or 'inny odcisk drzewa definicji'))
+    accepted_keys, differs = _accepted_loaded(process), False
+    for section, entry in process_version.loaded_items(loaded):
+        if entry.get('status') != 'differs':
+            continue
+        if process_version.loaded_key(section, entry) not in accepted_keys:
+            differs = True
+            lines.append('załadowana treść inna niż w bazie: %s %s' % (section, _item_name(entry)))
+        change = {'at': iso(now), 'event': event, 'session': session, 'kind': 'loaded', 'section': section,
+                  'item': entry, 'accepted': accepted}
+        if add_change(run_file, change):
+            added.append(change)
+    process['loaded'] = dict(loaded, checked_at=iso(now))
+    process['rechecked_at'] = iso(now)
+    return {'status': 'checked', 'late': False, 'disk': data['disk'], 'user_level': data['user_level'],
+            'loaded': process['loaded'], 'added': added, 'mismatch': disk_changed or differs, 'lines': lines}
+
+
+def resume_check(run, run_file, worktree, args, now, session, accepted):
+    """`start --resume`: the recheck; a change refuses the resume (MetricsError, nothing written) unless it is accepted
+    with a reason. A run file without a reading gets one without a refusal."""
+    try:
+        result = recheck(run, run_file, worktree, args, now, 'resume', session, accepted)
+    except process_version.CheckError as e:
+        if accepted is None:
+            raise MetricsError('kontrola wersji procesu nieudana: %s; %s' % (e, PROCESS_HINT))
+        add_change(run_file, failed_change(now, 'resume', session, e, accepted))
+        return
+    if result['mismatch'] and not result['late'] and accepted is None:
+        raise MetricsError('wersja procesu zmieniła się od startu epiku: %s. Wznowienie wstrzymane: %s'
+                           % ('; '.join(result['lines']), PROCESS_HINT))
+
+
+def active_epics(state, main_fingerprint):
+    """The epics in progress (a run file without a merged record): {epic, started_at, fingerprint (of the main
+    checkout at the start; None without a reading), current (equal to today's; None when unknown)}."""
+    found = []
+    for name in sorted(glob.glob(os.path.join(glob.escape(os.path.join(state, 'runs')), '*.json'))):
+        epic = os.path.basename(name)[:-len('.json')]
+        record = read_previous(state_path(state, epic))
+        if isinstance(record, dict) and record.get('merged_at'):
+            continue
+        try:
+            data = read_run_file(name) or {}
+        except MetricsError:
+            data = {}
+        process = data.get('process') if isinstance(data.get('process'), dict) else {}
+        fingerprint = _fingerprints(process.get('disk')).get('main_checkout') if process.get('status') == 'checked' \
+            else None
+        found.append({'epic': epic, 'started_at': data.get('started_at'), 'fingerprint': fingerprint,
+                      'current': None if fingerprint is None or main_fingerprint is None
+                      else fingerprint == main_fingerprint})
+    return found
+
+
+def _files_count(places):
+    return sum(len(p.get('differs') or []) for p in places or [] if isinstance(p, dict))
+
+
+def _kinds(places):
+    return ', '.join(p.get('kind') or '?' for p in places or [] if isinstance(p, dict) and p.get('differs')) or '-'
+
+
+def native_process(run_file, run, worktree, projects, started, until, attempts, now, gaps):
+    """W4: the field `process` of the native record: the one of the run file (the reading of the start and the
+    changes), its `loaded` computed again from every transcript of the epic (the sessions and the subagent runs from the
+    start to the merge) with `summary` and `by_role`, and the status of each subagent run in `attempts[].instructions`.
+    `gaps` (key `process`): no reading, not checked, a failed check, a start accepted despite a difference, every change
+    on disk, every `differs` and one entry with the number of `unconfirmed`. A matching reading adds no entry."""
+    process = run_file.get('process')
+    if not isinstance(process, dict):
+        gaps.add('process', 'brak odczytu wersji procesu w pliku przebiegu (start sprzed kontroli wersji)')
+        return None
+    process = json.loads(json.dumps(process))
+    status = process.get('status')
+    if status == 'not_checked':
+        gaps.add('process', 'nie sprawdzono: %s' % (process.get('reason') or 'brak powodu'))
+        return process
+    if status == 'check_failed':
+        gaps.add('process', 'kontrola wersji przy starcie nieudana: %s; start zaakceptowany: %s'
+                 % (process.get('reason'), process.get('accepted')))
+        return process
+    if status != 'checked':
+        gaps.add('process', 'nieznany stan odczytu wersji procesu')
+        return process
+    if process.get('checked_on') != 'start':
+        gaps.add('process', 'odczyt wersji z %s, nie ze startu epiku' % process.get('checked_on'))
+    if process.get('start_failure'):
+        gaps.add('process', 'kontrola wersji przy starcie nieudana: %s' % process['start_failure'])
+    if process.get('match') is False:
+        gaps.add('process', 'start mimo różnicy definicji (%d plików: %s; skille użytkownika: %s); powód: %s' % (
+            _files_count(process.get('disk')), _kinds(process.get('disk')),
+            ', '.join(_dict(process.get('user_level')).get('skills') or []) or 'brak',
+            process.get('accepted') or 'brak akceptacji'))
+    for change in process.get('changes') or []:
+        if not isinstance(change, dict):
+            continue
+        accepted = '; zaakceptowano: %s' % change['accepted'] if change.get('accepted') else ''
+        if change.get('kind') == 'disk':
+            gaps.add('process', 'zmiana definicji na dysku przy %s %s (%d plików: %s)%s' % (
+                change.get('event'), change.get('at'), _files_count(change.get('disk')), _kinds(change.get('disk')),
+                accepted))
+        elif change.get('kind') == 'check_failed':
+            gaps.add('process', 'kontrola wersji przy %s %s nieudana: %s%s' % (change.get('event'), change.get('at'),
+                                                                             change.get('reason'), accepted))
+    if run is None:
+        expected = process_version.Expected(lambda c: None, worktree, None, {})
+    else:
+        expected = _expected(run, worktree or os.getcwd(), process.get('expected'))
+    loaded = process_version.loaded_of(projects, _sessions(run_file), expected, _roots(run_file, None, process),
+                                       window=(started, until), parse_time=_epoch_of)
+    entries = [entry for _, entry in process_version.loaded_items(loaded)]
+    by_role = {}
+    for entry in loaded['agents']:
+        if entry.get('role'):
+            cell = by_role.setdefault(entry['role'], dict.fromkeys(process_version.STATUSES, 0))
+            cell[entry['status']] += 1
+    loaded.update(checked_at=iso(now), summary=process_version.counts(entries), by_role=by_role)
+    process['loaded'] = loaded
+    statuses = {e['agent_id']: e['status'] for e in loaded['agents'] if e.get('agent_id')}
+    for attempt in attempts:
+        attempt['instructions'] = statuses.get(attempt.get('agent_id'))
+    for section, entry in process_version.loaded_items(loaded):
+        if entry.get('status') == 'differs':
+            gaps.add('process', 'załadowana wersja inna niż w bazie: %s %s%s' % (
+                section, _item_name(entry), ' (%s)' % entry['origin'] if entry.get('origin') else ''))
+    unconfirmed = loaded['summary']['unconfirmed']
+    if unconfirmed:
+        gaps.add('process', 'bez potwierdzenia w transkryptach (unconfirmed): %d pozycji, nie liczą się jako zgodne'
+                 % unconfirmed)
+    return process
+
+
+def cmd_process(args, run, now):
+    worktree = _expand(args.worktree) if args.worktree else os.getcwd()
+    if args.epic is None:
+        try:
+            data, _ = process_version.reading(run, worktree, args.base, _expand(args.user_dir))
+        except process_version.CheckError as e:
+            raise MetricsError('kontrola wersji procesu: %s' % e)
+        data['active_epics'] = active_epics(_expand(args.state), _fingerprints(data['disk']).get('main_checkout'))
+        print(json.dumps(data, ensure_ascii=False))
+        if not data['match']:
+            print('metrics: definicje różnią się od %s (%s): %s' % (
+                data['expected']['requested'], data['expected']['ref'][:12],
+                '; '.join(_mismatch_lines(data['disk'], data['user_level'], {}))), file=sys.stderr)
+            return EXIT_PROCESS
+        return 0
+    epic_id = native_epic_id(args.epic)
+    path = run_path(_expand(args.state), epic_id)
+    run_file = read_run_file(path)
+    if run_file is None:
+        raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
+    try:
+        result = recheck(run, run_file, worktree, args, now, 'process', None, None)
+    except process_version.CheckError as e:
+        raise MetricsError('kontrola wersji procesu: %s' % e)
+    if result['status'] == 'checked':
+        write_record(path, run_file)
+    process = run_file.get('process') or {}
+    output = {'epic': epic_id, 'status': result['status'], 'late': result['late'],
+              'expected': process.get('expected'), 'baseline': disk_baseline(process, True)
+              if result['status'] == 'checked' else None, 'disk': result.get('disk'),
+              'user_level': result.get('user_level'), 'loaded': result.get('loaded'), 'added': result['added'],
+              'match': not result['mismatch']}
+    if result['status'] == 'not_checked':
+        output['reason'] = result.get('reason')
+    print(json.dumps(output, ensure_ascii=False))
+    if result['mismatch']:
+        print('metrics: wersja procesu epiku %s: %s' % (epic_id, '; '.join(result['lines'])), file=sys.stderr)
+        return EXIT_PROCESS
     return 0
 
 
@@ -2895,28 +3323,55 @@ def human_gaps(marks):
     return found
 
 
-def native_breakdown(work, pauses, started, done, config, gaps):
-    """M3 `breakdown` of a native epic from the start to `done`: `work` the union of the intervals of work of the lead
-    and the subagents, `human_wait` the pauses before a human line that no work covers, `idle` the rest; the other
-    categories have no native source (null)."""
+def native_pauses(run_file, gaps):
+    """The pauses of the computer of the run file (`metrics.py pause`) as merged (start, end) epochs; None without any
+    (no key or an empty list): the record then has no source of `host_pause`. A bad entry is skipped with a gap."""
+    entries = run_file.get('pauses')
+    if not isinstance(entries, list) or not entries:
+        return None
+    found = []
+    for entry in entries:
+        try:
+            begin = night_queue.parse_time(entry.get('from')).timestamp()
+            end = night_queue.parse_time(entry.get('to')).timestamp()
+        except (TypeError, ValueError, AttributeError):
+            gaps.add('pauses', 'wpis przerwy bez poprawnych from i to: pominięty')
+            continue
+        if begin >= end:
+            gaps.add('pauses', 'wpis przerwy z from nie przed to: pominięty')
+            continue
+        found.append((begin, end))
+    return clip_merge(found, float('-inf'), float('inf')) if found else None
+
+
+def native_breakdown(work, pauses, started, done, config, gaps, host=None):
+    """M3 `breakdown` of a native epic from the start to `done`: `host_pause` the recorded pauses of the computer
+    (`host`, cut to the interval; they come first), `work` the union of the intervals of work of the lead and the
+    subagents outside them, `human_wait` the pauses before a human line that neither covers, `idle` the rest; the
+    other categories have no native source (null), `host_pause` neither without a recorded pause."""
     if started is None or done is None:
         gaps.add('breakdown', 'brak czasu startu albo wywołania metrics.py done: rozkład czasu niemożliwy')
         return None
-    busy = clip_merge(work, started, done)
-    waiting = subtract(clip_merge(pauses, started, done), busy)
+    stopped = clip_merge(host or [], started, done)
+    busy = subtract(clip_merge(work, started, done), stopped)
+    waiting = subtract(subtract(clip_merge(pauses, started, done), busy), stopped)
     found = {name: None for name in config['breakdown_order']}
     found['work'], found['human_wait'] = round(total(busy), 3), round(total(waiting), 3)
-    found['idle'] = round(done - started - total(busy) - total(waiting), 3)
+    if host is not None:
+        found['host_pause'] = round(total(stopped), 3)
+    found['idle'] = round(done - started - total(busy) - total(waiting) - total(stopped), 3)
     for name in NO_BREAKDOWN_SOURCE:
-        gaps.add('breakdown.%s' % name, '%s: czas tej kategorii jest w work i idle' % NATIVE_SOURCE)
+        if name != 'host_pause' or host is None:
+            gaps.add('breakdown.%s' % name, '%s: czas tej kategorii jest w work i idle' % NATIVE_SOURCE)
     return found
 
 
-def native_human(pauses, work, untimed, started, until, manual_fixes, gaps):
+def native_human(pauses, work, untimed, started, until, manual_fixes, gaps, host=None):
     """M3 `human` of a native epic: every human line after the start (the start command comes before it) up to the
     merge is an intervention (an estimate: also a question about the progress counts); its event has the time and the
-    part of the pause before it that no work covers (`wait_s`), never the text."""
-    busy = clip_merge(work, float('-inf'), float('inf'))
+    part of the pause before it that neither work nor a recorded pause of the computer (`host`) covers (`wait_s`),
+    never the text."""
+    busy = clip_merge(list(work) + list(host or []), float('-inf'), float('inf'))
     events, seen = [], set()
     for start, at, key in sorted(pauses, key=lambda p: p[1]):
         if key in seen or (started is not None and at <= started) or (until is not None and at > until):
@@ -3228,7 +3683,7 @@ def _run_time(run_file, field, gaps, reason):
 
 
 def build_native_record(epic_id, run_file, config, projects, now, run=None, no_gh=True, repo=None, previous=None,
-                        records=None, manual_fixes=None):
+                        records=None, manual_fixes=None, worktree=None):
     """(record, errors): the record of a native epic (spec ash-v1, M3) in the format of the AO record, `source:
     native`. A field without a native source is null with a gap; `errors` are the messages of failed GitHub calls (and
     of the origin gate). manual_fixes: the list of --manual-fixes or None."""
@@ -3276,6 +3731,7 @@ def build_native_record(epic_id, run_file, config, projects, now, run=None, no_g
     if any(a['value'] is None for a in fields['attempts']) or _get(fields['value'], ('total', 'incomplete')):
         gaps.add('value', 'część wiadomości bez wartości: suma niepełna')
     work, pauses = work_intervals(fields['marks']), human_gaps(fields['marks'])
+    host = native_pauses(run_file, gaps)
     record = {
         'epic': epic_id,
         'source': 'native',
@@ -3290,14 +3746,14 @@ def build_native_record(epic_id, run_file, config, projects, now, run=None, no_g
             'to_merge': round(merged - started, 3) if merged is not None and started is not None else None,
             'review': round(merged - done, 3) if merged is not None and done is not None else None,
         },
-        'breakdown': native_breakdown(work, [p[:2] for p in pauses], started, done, config, gaps),
+        'breakdown': native_breakdown(work, [p[:2] for p in pauses], started, done, config, gaps, host),
         'breakdown_incomplete': True,
         'integration': native_integration(fields['attempts'], fields['reviews'], gaps),
         'retries': native_retries(fields['attempts'], fields['reviews'], gaps),
         'parallel': None,
         'subscription': native_subscription(run_file, started, done, projects, fields['messages'], config, gaps),
         'gate_wait': None,
-        'human': native_human(pauses, work, fields['untimed_human'], started, known_merge, manual_fixes, gaps),
+        'human': native_human(pauses, work, fields['untimed_human'], started, known_merge, manual_fixes, gaps, host),
         'in_attempts': fields['in_attempts'],
         'by_task': fields['by_task'],
         'versions': fields['versions'],
@@ -3310,6 +3766,8 @@ def build_native_record(epic_id, run_file, config, projects, now, run=None, no_g
         'transcripts_read': fields['transcripts_read'],
         'pricing': {'source': config['pricing']['source'], 'read_at': config['pricing']['read_at']},
     }
+    record['process'] = native_process(run_file, run, worktree, projects, started, known_merge, record['attempts'],
+                                       now, gaps)
     for field in ('parallel', 'gate_wait', 'waste'):
         gaps.add(field, NATIVE_SOURCE)
     record['ci'] = None
@@ -3862,11 +4320,12 @@ def parse_effect_key(key):
                        % (key, D2_KEY, D3_KEY, '|'.join(D4_SUBJECTS)))
 
 
-def parse_at(text):
+def parse_at(text, option='--at'):
     try:
         return night_queue.parse_time(text).timestamp()
     except (ValueError, TypeError, AttributeError):
-        raise MetricsError('zły --at %r: oczekiwano czasu ISO 8601 z przesunięciem UTC albo Z (np. 2026-11-10T12:00:00Z)' % text)
+        raise MetricsError('zły %s %r: oczekiwano czasu ISO 8601 z przesunięciem UTC albo Z (np. 2026-11-10T12:00:00Z)'
+                           % (option, text))
 
 
 def _epoch(record, field):
@@ -4779,6 +5238,39 @@ def versions_topic(record):
     return ['Wersje CLI: %s; modele: %s' % (listed('cli', 'version') or 'brak', listed('models', 'model') or 'brak')]
 
 
+def process_topic(record):
+    """`Wersja procesu`: the expected version (`describe` and SHA), the disk (matching, or the number of differences
+    and the places) and the loaded instructions (confirmed, different, unconfirmed). Only names, SHAs and numbers (the
+    line also goes to the comment); a record without the field has no data."""
+    process = record.get('process')
+    if not isinstance(process, dict):
+        return ['Wersja procesu: %s' % NO_DATA]
+    if process.get('status') == 'not_checked':
+        return ['Wersja procesu: nie sprawdzono (zapis po fakcie)']
+    if process.get('status') != 'checked':
+        return ['Wersja procesu: kontrola nieudana']
+    expected = _dict(process.get('expected'))
+    describe = expected.get('describe') if _safe(expected.get('describe')) else None
+    ref = expected.get('ref') if isinstance(expected.get('ref'), str) and SHA_PATTERN.match(expected['ref']) else None
+    parts = ['oczekiwana %s (%s)' % (describe or 'bez tagu', ref[:12] if ref else NO_DATA)]
+    changes = [c for c in _list(process.get('changes')) if isinstance(c, dict) and c.get('kind') == 'disk']
+    differs = _files_count(process.get('disk'))
+    if process.get('match') is True and not changes:
+        parts.append('dysk zgodny')
+    else:
+        places = [p.get('kind') for p in _list(process.get('disk')) if isinstance(p, dict) and p.get('differs')
+                  and p.get('kind') in ('worktree', 'main_checkout')]
+        parts.append('dysk: różnic przy starcie %d%s%s' % (differs, ' (%s)' % ', '.join(places) if places else '',
+                                                           ', zmian w trakcie %d' % len(changes) if changes else ''))
+    summary = _dict(_dict(process.get('loaded')).get('summary'))
+    if all(_count(summary.get(s)) is not None for s in process_version.STATUSES):
+        parts.append('załadowana: potwierdzone %d, różne %d, bez potwierdzenia %d' % (
+            summary['confirmed'], summary['differs'], summary['unconfirmed']))
+    else:
+        parts.append('załadowana: %s' % NO_DATA)
+    return ['Wersja procesu: %s' % '; '.join(parts)]
+
+
 def ci_topic(record):
     ci = record.get('ci')
     if not isinstance(ci, dict):
@@ -4929,7 +5421,10 @@ def render_measurement(record, records, config, comment):
     topics += [gate_topic(record)]
     if not comment:
         topics += [human_topic(record)]
-    topics += [waste_topic(record), versions_topic(record), ci_topic(record)]
+    topics += [waste_topic(record), versions_topic(record)]
+    if source_of(record) == 'native':
+        topics += [process_topic(record)]
+    topics += [ci_topic(record)]
     if comment:
         topics += [[line] for line in regressions_topic(record)]
     topics += [position_topic(record, history, config, comment), gaps_topic(record, comment)]
@@ -5010,7 +5505,8 @@ def cmd_epic(args, config, run, now):
                                % (ao_home, run_file_path))
         record, errors = build_native_record(args.epic, run_file, config, _expand(args.projects), now, run=run,
                                              no_gh=args.no_gh, repo=args.repo, previous=read_previous(path),
-                                             records=read_records(_expand(args.state)), manual_fixes=manual_fixes)
+                                             records=read_records(_expand(args.state)), manual_fixes=manual_fixes,
+                                             worktree=_expand(args.worktree) if args.worktree else os.getcwd())
     write_record(path, record)
     print(json.dumps(record, ensure_ascii=False))
     for error in errors:
@@ -5459,11 +5955,26 @@ def build_parser():
     start.add_argument('--pr', type=_positive_int)
     start.add_argument('--tasks', type=_positive_int)
     start.add_argument('--session')
-    done = sub.add_parser('done', parents=[common])
+    start.add_argument('--user-dir', default='~/.claude')
+    start.add_argument('--accept-process-mismatch', metavar='REASON')
+    done = sub.add_parser('done', parents=[common, projects])
     done.add_argument('epic')
     done.add_argument('--at')
+    done.add_argument('--worktree')
+    done.add_argument('--user-dir', default='~/.claude')
+    pause = sub.add_parser('pause', parents=[common])
+    pause.add_argument('epic')
+    pause.add_argument('--from', dest='begin', required=True)
+    pause.add_argument('--to', dest='end', required=True)
+    pause.add_argument('--reason')
+    process = sub.add_parser('process', parents=[common, projects])
+    process.add_argument('epic', nargs='?')
+    process.add_argument('--worktree')
+    process.add_argument('--base')
+    process.add_argument('--user-dir', default='~/.claude')
     epic = sub.add_parser('epic', parents=[common, projects])
     epic.add_argument('epic')
+    epic.add_argument('--worktree')
     epic.add_argument('--ao-home')
     epic.add_argument('--manual-fixes')
     epic.add_argument('--no-gh', action='store_true')
@@ -5501,7 +6012,11 @@ def main(argv=None, run=None, now=None):
         if args.command == 'start':
             return cmd_start(args, runner, now, sys.stdin)
         if args.command == 'done':
-            return cmd_done(args, now, sys.stdin)
+            return cmd_done(args, runner, now, sys.stdin)
+        if args.command == 'pause':
+            return cmd_pause(args)
+        if args.command == 'process':
+            return cmd_process(args, runner, now)
         if args.command == 'epic':
             return cmd_epic(args, config, runner, now)
         if args.command == 'backfill':
