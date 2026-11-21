@@ -20,7 +20,8 @@ liczba jest polem rekordu albo pliku przebiegu, ewentualnie podzielonym przez li
 `metrics.py trend`). Wyjątki, w których eksporter zlicza wpisy list rekordu: przeglądy według roli, trybu i werdyktu
 (`reviews`), braki danych według pola (`gaps`), wpisy `process.changes` oraz, tylko dla epiku bez rekordu, statusy
 wpisów `process.loaded` pliku przebiegu (rekord ma je policzone w `loaded.summary`). Ocena różnicy na dysku
-(informacja albo niezgodność) powtarza regułę `process_version.mismatch_paths`.
+(informacja albo niezgodność) powtarza regułę `process_version.place_problems`; zmiana tej reguły wymaga tej samej
+zmiany w eksporterze.
 
 Rekordów AO (`source` inne niż `native`, także rekord bez pola `source`) dashboard nie pokazuje.
 
@@ -63,9 +64,11 @@ Rekordów AO (`source` inne niż `native`, także rekord bez pola `source`) dash
   tokeny według rodzaju, odczyty limitów i ich przyrost, przeglądy, rundy poprawek, kryteria akceptacji, CI końcowego
   PR, regresje i znaleziska po merge'u, powtórzone uruchomienia testów, wąskie gardła, przebiegi subagentów.
 - **Wersja ASH i instrukcje**, trzy poziomy osobno: oczekiwana baza (`process.expected`: `describe`, commit), pliki na
-  dysku w miejscach ładowania (`process.disk`: worktree epiku i główny checkout, z oceną każdej różnicy) oraz
-  instrukcje potwierdzone z transkryptów agentów (`process.loaded`: potwierdzone, w wersji epiku, inne niż w bazie, bez
-  potwierdzenia; według roli i wpisu). Epik, którego dysku nie sprawdzono, ma to napisane z powodem.
+  dysku w miejscach ładowania (`process.disk`: worktree epiku i główny checkout, z oceną każdej różnicy; niezgodne
+  pliki przy starcie i niezgodne zmiany dysku w trakcie epiku z `process.changes`) oraz instrukcje potwierdzone
+  z transkryptów agentów (`process.loaded`: potwierdzone, w wersji epiku, inne niż w bazie, bez potwierdzenia; według
+  roli i wpisu). Wynik kontroli przy starcie (`process.match`) jest osobną wartością, bo obejmuje dysk, skille
+  użytkownika i `CLAUDE.md` wczytany przez sesję. Epik, którego dysku nie sprawdzono, ma to napisane z powodem.
 - **Kompletność danych:** liczba i lista braków (`gaps`), miary bez danych, pola o nieoczekiwanym typie, przeczytane
   transkrypty, sesje prowadzące, czas aktualizacji rekordu i pliku przebiegu.
 
@@ -80,9 +83,9 @@ Prometheusa (co 30 s), bez własnego stanu i bez importu:
   oraz po `metrics.py trend`, który przelicza regresje rekordów z otwartym oknem;
 - restart stosu niczego nie wymaga: po starcie eksporter podaje te same pliki.
 
-Rekordu w trakcie epiku nikt nie odświeża automatycznie: komendy jednego epiku woła po kolei sesja prowadząca
-(`tools/metrics/README.md`, „Ograniczenia”), więc do zapisu rekordu epik w toku ma na dashboardzie dane pliku
-przebiegu i, w sekcji „Aktywność na żywo”, surową telemetrię swoich sesji.
+Rekordu w trakcie epiku nikt nie odświeża automatycznie: zapisuje go sesja prowadząca komendą `metrics.py epic`
+(`docs/adr/agentic-software-house.md`, „Przebieg epiku”), więc do zapisu rekordu epik w toku ma na dashboardzie dane
+pliku przebiegu i, w sekcji „Aktywność na żywo”, surową telemetrię swoich sesji.
 
 ## Kontrakt z METRICS
 
