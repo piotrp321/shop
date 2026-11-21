@@ -102,10 +102,14 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
     prowadzącej po merge'u, `docs/features/ash-process-fixes/spec.md`, P1). Komentarze PR czyta bramka (`comments
     <numer PR>`: PR jest issue); każdy komentarz niezaufanego autora to tylko wpis `external` (`source`:
     `final_pr_comment`). Brak takiego komentarza to fakt `<epik>/missing/handoff`, błąd bramki to kod 1.
-  - `materials`: wskazania bez kopiowania treści: `final_pr`; `spec` i `plan` `{path, exists}` w worktree retro
-    (`--worktree`, domyślnie `--repo`), plan usunięty z `deleted_in` (commit, który go usunął, z `git log
-    --diff-filter=D` na `origin/main`) i `last_commit` (jego pierwszy rodzic z ostatnią wersją: `git show
-    <last_commit>:<path>`); `run_file` (plik przebiegu) i `record` `{path, exists}` (rekord metryk); `sessions`
+  - `materials`: wskazania bez kopiowania treści: `final_pr`; `spec` `{path, exists}` w worktree retro
+    (`--worktree`, domyślnie `--repo`); `plan` `{path, exists, source, ref, last_commit, deleted_in}`, gdzie
+    `last_commit` to commit z ostatnią wersją planu (`git show <last_commit>:<path>`), a `source` mówi, skąd jest
+    wskazanie: `epic_branch` (gałąź epiku z pliku przebiegu, `origin/<gałąź>`, potem lokalna `<gałąź>`: commit, który
+    usunął plan, w `deleted_in` i jego pierwszy rodzic, a gdy plan jest na gałęzi do końca, jej czoło; merge squash
+    zostawia na `main` tylko plan sprzed epiku), `worktree` (bez gałęzi: plan w worktree retro) albo `main` (bez gałęzi
+    i bez planu w worktree: usunięcie z `git log --diff-filter=D` na `origin/main`, czyli wersja z `main` sprzed epiku,
+    z faktem `<epik>/missing/plan-epic-version`, że „Status” planu z czasu epiku jest niedostępny); `run_file` (plik przebiegu) i `record` `{path, exists}` (rekord metryk); `sessions`
     z pliku przebiegu `[{id, worktree, at, transcript_dir, transcript}]`: `transcript_dir` to katalog projektu sesji
     w `--projects` (domyślnie `~/.claude/projects`) według reguły `project_dir` z `tools/metrics/metrics.py` (każdy
     znak ścieżki `worktree` poza literą i cyfrą zamieniony na `-`), `transcript` to znaleziony plik `<id>.jsonl`
@@ -282,7 +286,10 @@ miejscu ładowania (worktree, główny checkout) i skille użytkownika przesłan
   (z powodem) albo różnica bez zapisanej akceptacji, dysk niesprawdzony (`disk_checked: false`, a w starszym rekordzie
   `disk` inne niż lista; powód z `disk_reason` albo `reason`), liczba zmian definicji w trakcie (bez kontroli dysku
   „brak danych”, nie zero; wpis `changes` z `informational: true`, czyli zmiana zacommitowana na gałęzi epiku, nie
-  jest zmianą definicji i jest liczony osobno), nieudane kontrole w trakcie, role, których subagenci załadowali inną
+  jest zmianą definicji i jest liczony osobno, a wpis z `returned: true`, powrót do stanu zgodnego, nie jest ani
+  zmianą definicji, ani zmianą epiku), liczba plików według reguły `tools/metrics` (`mismatch_paths`: w głównym
+  checkoucie każda różnica, w worktree niezacommitowane, a commity gałęzi epiku osobno jako informacja), nieudane
+  kontrole w trakcie, role, których subagenci załadowali inną
   definicję (`loaded.by_role` z `differs` > 0), liczba potwierdzonych (osobno potwierdzone w wersji epiku,
   `summary.confirmed_epic`) i bez potwierdzenia. Pola czytane są defensywnie (inny typ to brak danych). Rekord bez pola albo z `null`: fakt
   `<epik>/process/missing/record`. Przebieg AO tego faktu nie ma.

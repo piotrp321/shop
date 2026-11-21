@@ -43,8 +43,9 @@ an item that does not exist) and, for `validate`, proposals that do not pass.
       section that is in no point is the fact `<epic>/outside-points/<section or pr<nr>>`. For the collected native
       epic, `handoff` {pr, comments: [{author, created_at, url, body}]} has the whole comments "Przekazanie do retro"
       of its final PR (none: the fact `<epic>/missing/handoff`) and `materials` {final_pr, spec, plan, run_file,
-      record, sessions} points at its materials without their content: spec.md and plan.md in --worktree (a removed
-      plan: `deleted_in` and `last_commit`, the commit with its last version, from `git log` at origin/main), the run
+      record, sessions} points at its materials without their content: spec.md in --worktree, plan.md with `source`
+      (`epic_branch`: the last version on origin/<branch> or <branch> of the run file; `worktree`; `main`: the
+      version of main from before the epic, with a fact) and `last_commit`/`deleted_in`, the run
       file and the record, and the sessions of the run file with `transcript_dir` and `transcript` in --projects;
       what is missing is a fact `<epic>/missing/{spec,plan,sessions,transcripts}`. Both are null for an AO run.
       GitHub content (epic issues and their comments, PRs into epic/*, final PRs of native epics and their comments,
@@ -1181,27 +1182,75 @@ def native_handoff(gate, epic_id, number):
     return {'pr': number, 'comments': comments}, facts, external
 
 
-def plan_pointer(epic_id, path, worktree, run, commit):
-    """({path, exists, last_commit, deleted_in}, facts) of the plan of an epic: in the worktree of the retro, else the
-    commit that removed it at `commit` (origin/main) and its first parent, which still has the last version
-    (`git show <last_commit>:<path>`). A plan that never existed and a failing `git` are facts."""
-    plan = {'path': path, 'exists': os.path.isfile(os.path.join(worktree, path)), 'last_commit': None,
-            'deleted_in': None}
+BRANCH_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]*$')
+
+
+def _deletion(run, ref, path):
+    """(deleting commit, its first parent) of the last removal of `path` in the history of `ref`, None when it was
+    never removed there; raises CommandError (or OSError) when `git` fails, ValueError on an unexpected output."""
+    shas = run(['git', 'log', '-1', '--format=%H %P', '--diff-filter=D', ref, '--', path]).split()
+    if not shas:
+        return None
+    if len(shas) >= 2 and COMMIT_SHA.match(shas[0]) and COMMIT_SHA.match(shas[1]):
+        return shas[0], shas[1]
+    raise ValueError('git log dał nieoczekiwany wynik')
+
+
+def epic_branch_plan(run, path, branch):
+    """(ref, last_commit, deleted_in) of the plan on the branch of the epic (`origin/<branch>`, then `<branch>`):
+    the commit that removed it there and its first parent, or the head of the branch while the plan is still on it;
+    None when there is no such branch, the plan was never on it or `git` fails."""
+    if not (isinstance(branch, str) and BRANCH_NAME.match(branch) and '..' not in branch):
+        return None
+    for ref in ('origin/' + branch, branch):
+        try:
+            head = run(['git', 'rev-parse', '--verify', '-q', ref + '^{commit}']).strip()
+        except (next_epic.CommandError, OSError):
+            continue
+        if not COMMIT_SHA.match(head):
+            continue
+        try:
+            found = _deletion(run, ref, path)
+            if found:
+                return ref, found[1], found[0]
+            run(['git', 'cat-file', '-e', '%s:%s' % (ref, path)])
+            return ref, head, None
+        except (next_epic.CommandError, OSError, ValueError):
+            return None
+    return None
+
+
+def plan_pointer(epic_id, path, worktree, run, commit, branch=None):
+    """({path, exists, source, ref, last_commit, deleted_in}, facts) of the plan of an epic (`git show
+    <last_commit>:<path>` reads the version pointed at). The last version is on the branch of the epic (source
+    `epic_branch`, epic_branch_plan): a squash merge on main keeps only the plan from before the epic. Without the
+    branch: the plan in the worktree of the retro (source `worktree`), else the removal at `commit` (origin/main,
+    source `main`): that is the version of main from before the epic, marked by the fact
+    `<epic>/missing/plan-epic-version`. A plan that never existed and a failing `git` are the fact `<epic>/missing/plan`."""
+    plan = {'path': path, 'exists': os.path.isfile(os.path.join(worktree, path)), 'source': None, 'ref': None,
+            'last_commit': None, 'deleted_in': None}
+    found = epic_branch_plan(run, path, branch)
+    if found:
+        plan.update(source='epic_branch', ref=found[0], last_commit=found[1], deleted_in=found[2])
+        return plan, []
     if plan['exists']:
+        plan['source'] = 'worktree'
         return plan, []
     fact_id = '%s/missing/plan' % epic_id
     try:
-        out = run(['git', 'log', '-1', '--format=%H %P', '--diff-filter=D', commit, '--', path])
+        removal = _deletion(run, commit, path)
     except (next_epic.CommandError, OSError):
         return plan, [{'id': fact_id, 'text': 'brak planu %s w worktree retro, a historii planu nie ustalono: '
                                               'git log nie dał wyniku' % path}]
-    shas = out.split()
-    if len(shas) >= 2 and COMMIT_SHA.match(shas[0]) and COMMIT_SHA.match(shas[1]):
-        plan['deleted_in'], plan['last_commit'] = shas[0], shas[1]
-        return plan, []
-    if not shas:
+    except ValueError as e:
+        return plan, [{'id': fact_id, 'text': 'brak planu %s w worktree retro, a %s' % (path, e)}]
+    if removal is None:
         return plan, [{'id': fact_id, 'text': 'plan %s nigdy nie istniał w historii %s' % (path, commit)}]
-    return plan, [{'id': fact_id, 'text': 'brak planu %s w worktree retro, a git log dał nieoczekiwany wynik' % path}]
+    plan.update(source='main', ref=commit, deleted_in=removal[0], last_commit=removal[1])
+    return plan, [{'id': '%s/missing/plan-epic-version' % epic_id,
+                   'text': 'brak gałęzi epiku %s (ani origin, ani lokalnej): wskazanie planu to wersja z main sprzed '
+                           'epiku (%s, przed usunięciem w %s); „Status” planu z czasu epiku jest niedostępny'
+                           % (branch or '(brak gałęzi w pliku przebiegu)', removal[1][:12], removal[0][:12])}]
 
 
 def transcript_of(projects, session):
@@ -1228,13 +1277,13 @@ def native_materials(epic_id, number, paths, run, commit):
         why = ('brak pliku spec.md w %s' % directory if os.path.isdir(os.path.join(worktree, directory))
                else 'brak katalogu %s' % directory)
         facts.append({'id': '%s/missing/spec' % epic_id, 'text': 'brak specyfikacji w worktree retro: %s' % why})
-    plan, plan_facts = plan_pointer(epic_id, directory + '/plan.md', worktree, run, commit)
-    facts += plan_facts
-    record_path = os.path.join(state, 'epics', '%s.json' % epic_id)
     try:
         run_file = load_run_file(state, epic_id) or {}
     except ValueError:
         run_file = {}
+    plan, plan_facts = plan_pointer(epic_id, directory + '/plan.md', worktree, run, commit, run_file.get('branch'))
+    facts += plan_facts
+    record_path = os.path.join(state, 'epics', '%s.json' % epic_id)
     sessions = []
     listed = run_file.get('sessions') if isinstance(run_file.get('sessions'), list) else []
     for entry in listed:
@@ -1693,6 +1742,29 @@ def process_check(epic_id, metrics, worktree, accepted):
                      'zaakceptowano: %s; %s' % (version, '; '.join(lines), accepted, PROCESS_SCOPE)}]
 
 
+def mismatch_files(place):
+    """The differences of a place of loading that are a mismatch, by the rule of tools/metrics
+    (process_version.mismatch_paths): in the main checkout every one; in the worktree the uncommitted ones, and the
+    commits of its HEAD only when HEAD does not descend from the base (a commit of the epic branch is information)."""
+    place = _as_dict(place)
+    if place.get('kind') != 'worktree' or 'uncommitted' not in place:
+        return _as_list(place.get('differs'))
+    if _as_list(place.get('uncommitted')):
+        return place['uncommitted']
+    return [] if place.get('from_base') else _as_list(place.get('epic_branch'))
+
+
+def mismatch_count(places):
+    return sum(len(mismatch_files(p)) for p in _as_list(places))
+
+
+def epic_branch_paths(places):
+    """The files a commit of the epic branch changed in the worktree (metrics._epic_branch_paths): information."""
+    return sorted({d.get('path') for p in _as_list(places) if isinstance(p, dict) and p.get('kind') == 'worktree'
+                   and p.get('from_base') and not _as_list(p.get('uncommitted'))
+                   for d in _as_list(p.get('epic_branch')) if isinstance(d, dict) and isinstance(d.get('path'), str)})
+
+
 def record_process_facts(epic_id, record):
     """W4: the fact `<epic>/process/record` of the field `process` of a native record and its `gaps` under `process`
     (tools/metrics, "Wersja procesu w rekordzie"), read defensively: a start accepted despite a difference, changes of
@@ -1722,12 +1794,17 @@ def record_process_facts(epic_id, record):
         if isinstance(change, dict):
             entry = {k: change.get(k) for k in ('at', 'event', 'kind', 'reason', 'accepted')}
             if change.get('kind') == 'disk':
-                entry['files'] = sum(len(_as_list(_as_dict(p).get('differs'))) for p in _as_list(change.get('disk')))
-            # a change marked informational (committed on the branch of the epic in its worktree) is no difference
+                entry['mismatch_files'] = mismatch_count(change.get('disk'))
+                entry['epic_branch_files'] = len(epic_branch_paths(change.get('disk')))
+            # a change marked informational (committed on the branch of the epic in its worktree) and a return to the
+            # matching state are no change of the definitions
             entry['informational'] = change.get('informational') is True
+            entry['returned'] = change.get('returned') is True
             changes.append(entry)
-    disk_changes = len([c for c in changes if c['kind'] == 'disk' and not c['informational']]) if checked else None
-    informational = [c for c in changes if c['informational']]
+    mismatches = [c for c in changes if c['kind'] == 'disk' and not c['informational'] and not c['returned']]
+    disk_changes = len(mismatches) if checked else None
+    informational = [c for c in changes if c['informational'] and not c['returned']]
+    returned = [c for c in changes if c['returned']]
     failed = [c for c in changes if c['kind'] == 'check_failed']
     loaded = _as_dict(process.get('loaded'))
     summary, by_role = _as_dict(loaded.get('summary')), _as_dict(loaded.get('by_role'))
@@ -1741,13 +1818,22 @@ def record_process_facts(epic_id, record):
     if checked and match is True:
         parts.append('dysk przy starcie zgodny')
     elif checked and match is False:
-        parts.append('start zaakceptowany mimo różnicy definicji (powód: %s)' % accepted if accepted
-                     else 'różnica definicji przy starcie bez zapisanej akceptacji')
+        start_files = mismatch_count(process.get('disk'))
+        parts.append('start zaakceptowany mimo różnicy definicji (plików: %d; powód: %s)' % (start_files, accepted)
+                     if accepted else 'różnica definicji przy starcie bez zapisanej akceptacji (plików: %d)'
+                     % start_files)
     elif accepted:
         parts.append('start zaakceptowany bez kontroli dysku (powód: %s)' % accepted)
-    parts.append('zmiany definicji w trakcie: %s' % ('brak danych' if disk_changes is None else disk_changes))
+    if disk_changes is None:
+        parts.append('zmiany definicji w trakcie: brak danych')
+    else:
+        parts.append('zmiany definicji w trakcie: %d%s' % (disk_changes, ' (plików: %d)' % sum(
+            c['mismatch_files'] for c in mismatches) if mismatches else ''))
     if informational:
-        parts.append('zmiany informacyjne (zacommitowane na gałęzi epiku): %d' % len(informational))
+        parts.append('zmiany informacyjne (zacommitowane na gałęzi epiku): %d (plików: %d)'
+                     % (len(informational), sum(c.get('epic_branch_files') or 0 for c in informational)))
+    if returned:
+        parts.append('powroty do stanu zgodnego: %d' % len(returned))
     if failed:
         parts.append('nieudane kontrole w trakcie: %d' % len(failed))
     if differs_roles:

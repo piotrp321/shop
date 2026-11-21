@@ -872,6 +872,8 @@ class FakeRunner:
         self.head_prs = {}   # branch -> the pull requests of that head (the final PR of a native epic)
         self.pr_comments = {}   # number -> the comments of that PR (`gh issue view N --json comments`)
         self.git_log = {}   # path -> the output of `git log ... -- <path>`
+        self.refs = {}      # ref -> sha of `git rev-parse --verify -q <ref>^{commit}` (others: no such ref)
+        self.blobs = set()  # `<ref>:<path>` that `git cat-file -e` finds
         self.ao_issues = [gh_item(46, repo=AO_REPO, title='ao epic resume --add-qa-rounds po FINALIZE', body='x',
                                   labels=[])]
         self.shop_issues = [gh_item(380, title='tech-debt agent issue', body='y',
@@ -889,8 +891,17 @@ class FakeRunner:
             return 'this is not json'
         if args[:2] == ['git', 'fetch']:
             return ''
+        if args[:3] == ['git', 'rev-parse', '--verify']:
+            ref = args[-1][:-len('^{commit}')] if args[-1].endswith('^{commit}') else args[-1]
+            if ref not in self.refs:
+                raise next_epic_module().CommandError(args, 'exit code 1')
+            return self.refs[ref] + '\n'
         if args[:2] == ['git', 'rev-parse']:
             return 'c0ffee1234567890\n'
+        if args[:3] == ['git', 'cat-file', '-e']:
+            if args[3] not in self.blobs:
+                raise next_epic_module().CommandError(args, 'exit code 128')
+            return ''
         if args[:2] == ['git', 'ls-remote']:
             return 'abc\trefs/heads/epic/hardening\n'
         if args[:2] == ['git', 'ls-tree']:
@@ -2341,7 +2352,7 @@ class HandoffTest(NativeCase):
 
 
 PLAN_PATH = 'docs/features/abuse-limits/plan.md'
-DELETED_IN, LAST_VERSION = 'd' * 40, 'a' * 40
+DELETED_IN, LAST_VERSION, BRANCH_HEAD = 'd' * 40, 'a' * 40, 'f' * 40
 
 
 class MaterialsTest(NativeCase):
@@ -2357,6 +2368,7 @@ class MaterialsTest(NativeCase):
         with open(os.path.join(self.worktree, 'docs', 'features', NATIVE, 'spec.md'), 'w') as f:
             f.write('# spec\n')
         self.runner.git_log[PLAN_PATH] = '%s %s\n' % (DELETED_IN, LAST_VERSION)
+        self.runner.refs['origin/' + NATIVE_BRANCH] = BRANCH_HEAD   # the branch of the epic is still on origin
         self.transcripts = os.path.join(self.projects, '-w')
         os.makedirs(self.transcripts)
         with open(os.path.join(self.transcripts, 's1.jsonl'), 'w') as f:
@@ -2374,7 +2386,8 @@ class MaterialsTest(NativeCase):
         self.assertEqual(materials, {
             'final_pr': 800,
             'spec': {'path': 'docs/features/abuse-limits/spec.md', 'exists': True},
-            'plan': {'path': PLAN_PATH, 'exists': False, 'last_commit': LAST_VERSION, 'deleted_in': DELETED_IN},
+            'plan': {'path': PLAN_PATH, 'exists': False, 'source': 'epic_branch', 'ref': 'origin/' + NATIVE_BRANCH,
+                     'last_commit': LAST_VERSION, 'deleted_in': DELETED_IN},
             'run_file': os.path.join(self.metrics_state, 'runs', 'abuse-limits.json'),
             'record': {'path': os.path.join(self.metrics_state, 'epics', 'abuse-limits.json'), 'exists': True},
             'sessions': [{'id': 's1', 'worktree': '/w', 'at': '2026-11-20T08:00:00Z',
@@ -2383,28 +2396,60 @@ class MaterialsTest(NativeCase):
         self.assertFalse([f for f in facts if f.startswith('abuse-limits/missing/') and f.split('/')[2] in
                           ('spec', 'plan', 'sessions', 'transcripts')])
 
-    def test_the_history_of_the_plan_is_read_at_the_commit_of_input_json(self):
+    def test_the_history_of_the_plan_is_read_on_the_branch_of_the_epic(self):
         self.collected()
         logs = [c for c in self.runner.calls if c[:2] == ['git', 'log']]
         self.assertEqual(len(logs), 1)
-        self.assertIn('c0ffee1234567890', logs[0])
+        self.assertIn('origin/' + NATIVE_BRANCH, logs[0])
         self.assertIn('--diff-filter=D', logs[0])
         self.assertEqual(logs[0][-2:], ['--', PLAN_PATH])
 
-    def test_a_plan_in_the_worktree_needs_no_history(self):
+    def test_a_local_branch_is_used_when_origin_has_none(self):
+        del self.runner.refs['origin/' + NATIVE_BRANCH]
+        self.runner.refs[NATIVE_BRANCH] = BRANCH_HEAD
+        materials, _ = self.materials()
+        self.assertEqual((materials['plan']['source'], materials['plan']['ref']), ('epic_branch', NATIVE_BRANCH))
+
+    def test_a_plan_kept_on_the_branch_to_its_end_points_at_the_head_of_the_branch(self):
+        self.runner.git_log[PLAN_PATH] = ''
+        self.runner.blobs.add('origin/%s:%s' % (NATIVE_BRANCH, PLAN_PATH))
+        materials, facts = self.materials()
+        self.assertEqual(materials['plan'], {'path': PLAN_PATH, 'exists': False, 'source': 'epic_branch',
+                                             'ref': 'origin/' + NATIVE_BRANCH, 'last_commit': BRANCH_HEAD,
+                                             'deleted_in': None})
+        self.assertNotIn('abuse-limits/missing/plan', facts)
+
+    def test_without_the_branch_the_plan_of_main_before_the_epic_is_marked(self):
+        del self.runner.refs['origin/' + NATIVE_BRANCH]
+        materials, facts = self.materials()
+        self.assertEqual(materials['plan'], {'path': PLAN_PATH, 'exists': False, 'source': 'main',
+                                             'ref': 'c0ffee1234567890', 'last_commit': LAST_VERSION,
+                                             'deleted_in': DELETED_IN})
+        text = facts['abuse-limits/missing/plan-epic-version']['text']
+        for part in (NATIVE_BRANCH, 'sprzed epiku', '„Status” planu z czasu epiku jest niedostępny'):
+            self.assertIn(part, text)
+
+    def test_a_plan_in_the_worktree_without_the_branch_needs_no_history(self):
+        del self.runner.refs['origin/' + NATIVE_BRANCH]
         with open(os.path.join(self.worktree, PLAN_PATH), 'w') as f:
             f.write('# plan\n')
         materials, _ = self.materials()
-        self.assertEqual(materials['plan'], {'path': PLAN_PATH, 'exists': True, 'last_commit': None,
-                                             'deleted_in': None})
+        self.assertEqual(materials['plan'], {'path': PLAN_PATH, 'exists': True, 'source': 'worktree', 'ref': None,
+                                             'last_commit': None, 'deleted_in': None})
         self.assertFalse([c for c in self.runner.calls if c[:2] == ['git', 'log']])
 
     def test_a_plan_that_never_existed_is_a_fact(self):
         self.runner.git_log[PLAN_PATH] = ''
         materials, facts = self.materials()
-        self.assertEqual(materials['plan'], {'path': PLAN_PATH, 'exists': False, 'last_commit': None,
-                                             'deleted_in': None})
+        self.assertEqual((materials['plan']['last_commit'], materials['plan']['deleted_in']), (None, None))
         self.assertIn('nigdy', facts['abuse-limits/missing/plan']['text'])
+
+    def test_a_branch_name_that_looks_like_an_option_is_not_used(self):
+        self.write_native(run_file=dict(native_run_file(), branch='--output=/tmp/x'))
+        self.runner.head_prs['--output=/tmp/x'] = self.runner.head_prs[NATIVE_BRANCH]
+        materials, _ = self.materials()
+        self.assertEqual(materials['plan']['source'], 'main')
+        self.assertFalse([c for c in self.runner.calls if c[:2] == ['git', 'rev-parse'] and '--output' in ' '.join(c)])
 
     def test_a_failing_git_is_a_fact_and_collect_succeeds(self):
         self.runner.fail = '--diff-filter'
@@ -2430,6 +2475,75 @@ class MaterialsTest(NativeCase):
         self.assertEqual(materials['sessions'][0]['transcript'], None)
         self.assertEqual(materials['sessions'][0]['transcript_dir'], self.transcripts)
         self.assertIn('s1', facts['abuse-limits/missing/transcripts']['text'])
+
+
+class PlanPointerGitTest(TempDirCase):
+    """QA 1: the last version of the plan is on the branch of the epic, not on main. A real repository: main has the
+    plan before the epic, the epic branch changes it twice (its "Status") and removes it, main gets a squash merge
+    that removes it, and a clone has the branch as origin/<branch>."""
+
+    PLAN = 'docs/features/demo/plan.md'
+
+    def git(self, cwd, *args):
+        env = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t',
+                   GIT_COMMITTER_EMAIL='t@t', GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull)
+        result = subprocess.run(['git', '-C', cwd] + list(args), capture_output=True, text=True, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip()
+
+    def write(self, repo, text):
+        os.makedirs(os.path.join(repo, 'docs', 'features', 'demo'), exist_ok=True)
+        with open(os.path.join(repo, self.PLAN), 'w') as f:
+            f.write(text)
+
+    def setUp(self):
+        super().setUp()
+        self.upstream = os.path.join(self.tmp, 'upstream')
+        os.makedirs(self.upstream)
+        self.git(self.upstream, 'init', '-q', '-b', 'main')
+        self.write(self.upstream, '# plan\n\n## Status\n\n')
+        self.git(self.upstream, 'add', '.')
+        self.git(self.upstream, 'commit', '-q', '-m', 'plan before the epic')
+        self.before_epic = self.git(self.upstream, 'rev-parse', 'HEAD')
+        self.git(self.upstream, 'switch', '-q', '-c', 'feat/demo')
+        for status in ('zadanie 1 zrobione', 'zadanie 2 zrobione'):
+            self.write(self.upstream, '# plan\n\n## Status\n\n- %s\n' % status)
+            self.git(self.upstream, 'commit', '-q', '-am', status)
+        self.last_version = self.git(self.upstream, 'rev-parse', 'HEAD')
+        self.git(self.upstream, 'rm', '-q', self.PLAN)
+        self.git(self.upstream, 'commit', '-q', '-m', 'remove the plan')
+        self.removed_on_branch = self.git(self.upstream, 'rev-parse', 'HEAD')
+        self.git(self.upstream, 'switch', '-q', 'main')
+        self.git(self.upstream, 'merge', '-q', '--squash', 'feat/demo')
+        self.git(self.upstream, 'commit', '-q', '-m', 'feat: epic demo (squash)')
+        self.squash = self.git(self.upstream, 'rev-parse', 'HEAD')
+        self.clone = os.path.join(self.tmp, 'clone')
+        self.git(self.tmp, 'clone', '-q', self.upstream, self.clone)
+        self.main = self.git(self.clone, 'rev-parse', 'origin/main')
+
+    def pointer(self, repo, branch='feat/demo', commit=None):
+        return retro.plan_pointer('demo', self.PLAN, repo, retro.next_epic.make_runner(repo), commit or self.main,
+                                  branch)
+
+    def test_the_last_version_is_the_last_commit_of_the_branch_with_the_plan(self):
+        plan, facts = self.pointer(self.clone)
+        self.assertEqual(plan, {'path': self.PLAN, 'exists': False, 'source': 'epic_branch', 'ref': 'origin/feat/demo',
+                                'last_commit': self.last_version, 'deleted_in': self.removed_on_branch})
+        self.assertEqual(facts, [])
+        self.assertIn('zadanie 2 zrobione', self.git(self.clone, 'show', '%s:%s' % (plan['last_commit'], self.PLAN)))
+
+    def test_a_local_branch_without_origin(self):
+        plan, _ = self.pointer(self.upstream)
+        self.assertEqual((plan['source'], plan['ref'], plan['last_commit']),
+                         ('epic_branch', 'feat/demo', self.last_version))
+
+    def test_without_the_branch_the_version_of_main_before_the_epic_is_marked(self):
+        self.git(self.clone, 'branch', '-q', '-rd', 'origin/feat/demo')
+        plan, facts = self.pointer(self.clone)
+        self.assertEqual(plan, {'path': self.PLAN, 'exists': False, 'source': 'main', 'ref': self.main,
+                                'last_commit': self.before_epic, 'deleted_in': self.squash})
+        self.assertEqual([f['id'] for f in facts], ['demo/missing/plan-epic-version'])
+        self.assertIn('„Status” planu z czasu epiku jest niedostępny', facts[0]['text'])
 
 
 # ------------------------------------------------------------------ the version of the process (ASH-PROCESS-FIXES W4, W7)
@@ -2732,6 +2846,29 @@ class ProcessOfTheRecordTest(NativeCase):
         self.assertIn('zmiany informacyjne (zacommitowane na gałęzi epiku): 1', fact['text'])
         self.assertEqual(fact['data']['disk_changes'], 0)
         self.assertTrue(fact['data']['changes'][0]['informational'])
+
+    def test_the_numbers_of_files_follow_the_rule_of_tools_metrics(self):
+        # tools/metrics: in a worktree descending from the base only an uncommitted change is a mismatch, the commits
+        # of the epic branch are information; in the main checkout every difference is a mismatch
+        def files(*names):
+            return [{'path': n, 'state': 'changed'} for n in names]
+        changes = [
+            {'at': 't1', 'event': 'process', 'kind': 'disk', 'informational': True,
+             'disk': [{'kind': 'worktree', 'from_base': True, 'uncommitted': [], 'epic_branch': files('a', 'b'),
+                       'differs': files('a', 'b')}, {'kind': 'main_checkout', 'differs': []}]},
+            {'at': 't2', 'event': 'process', 'kind': 'disk', 'informational': False,
+             'disk': [{'kind': 'worktree', 'from_base': True, 'uncommitted': files('c'),
+                       'epic_branch': files('a', 'b'), 'differs': files('a', 'b', 'c')},
+                      {'kind': 'main_checkout', 'differs': files('x', 'y')}]},
+            {'at': 't3', 'event': 'done', 'kind': 'disk', 'informational': False, 'returned': True,
+             'disk': [{'kind': 'main_checkout', 'differs': []}]}]
+        fact = self.fact(record_process(changes=changes))['abuse-limits/process/record']
+        self.assertIn('zmiany definicji w trakcie: 1 (plików: 3)', fact['text'])
+        self.assertIn('zmiany informacyjne (zacommitowane na gałęzi epiku): 1 (plików: 2)', fact['text'])
+        self.assertIn('powroty do stanu zgodnego: 1', fact['text'])
+        self.assertEqual(fact['data']['disk_changes'], 1)
+        self.assertEqual([(c['mismatch_files'], c['epic_branch_files'], c['returned']) for c in fact['data']['changes']],
+                         [(0, 2, False), (3, 0, False), (0, 0, True)])
 
     def test_odd_shapes_of_the_field_are_no_error(self):
         for odd in ({'status': 'checked', 'loaded': 'x', 'changes': 'y', 'disk': 3, 'expected': []},
