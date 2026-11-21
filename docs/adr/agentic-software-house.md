@@ -223,7 +223,8 @@ same dane pliku przebiegu służą kontroli i raportowi:
   checkoutu, więc definicja zmieniona przez sam epik nie obowiązuje jego subagentów w trakcie i pomiar to pokazuje.
 - Główny checkout aktualizuje się tylko jawnie: `git -C <główny checkout> pull --ff-only` (nigdy `reset`, `checkout`
   ani `stash`), gdy jest czysty, stoi na `main`, a `metrics.py process` nie pokazuje epiku w toku z bieżącymi
-  definicjami. Wtedy robi to sesja, która zaczyna epik albo retro, i mówi o tym użytkownikowi. W każdym innym
+  definicjami. Wtedy robi to sesja, która zaczyna epik, i mówi o tym użytkownikowi; sesja `/retro` po odmowie
+  `collect` pokazuje różnicę i pyta użytkownika. W każdym innym
   przypadku (epik w toku w innej sesji, lokalne zmiany, inna gałąź) decyduje użytkownik: aktualizacja zmienia zasady
   wszystkich otwartych sesji. Sesji bez pliku przebiegu (retro, mała zmiana) kontrola nie widzi.
 - Gdy zgodności nie da się uzyskać bez zmiany zasad epiku w toku, nowy epik startuje z opcją akceptacji i powodem
