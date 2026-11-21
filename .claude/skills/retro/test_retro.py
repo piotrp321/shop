@@ -1243,6 +1243,26 @@ EFFECT = {'before': {'epics': ['a', 'b', 'c'], 'n': 3, 'n_epics': 3, 'median': 1
           'spanning': [], 'unmerged_after': [], 'gaps': []}
 
 
+HEAD_SHA, OLD_SHA = 'b' * 40, 'e' * 40
+
+
+def process_reading(differs=(), skills=(), match=None):
+    """The output of `metrics.py process --worktree DIR` (tools/metrics/process_version.py, `reading`): the worktree
+    of the retro at HEAD and the main checkout, with `differs` in the main checkout."""
+    def place(kind, path, head, found):
+        return {'kind': kind, 'path': path, 'head': head, 'branch': 'main' if kind == 'main_checkout' else None,
+                'dirty': False, 'fingerprint': 'f-%s' % kind, 'files': {},
+                'differs': [{'path': p, 'state': 'changed'} for p in found]}
+    return {'worktree': '/retro/wt', 'worktree_head': HEAD_SHA,
+            'expected': {'ref': HEAD_SHA, 'requested': 'HEAD', 'describe': 'ash-v1.0-24-gbbbbbbb',
+                         'fingerprint': 'f-worktree', 'files': {}},
+            'disk': [place('worktree', '/retro/wt', HEAD_SHA, ()), place('main_checkout', '/shop', OLD_SHA, differs)],
+            'user_level': {'agents': [], 'skills': list(skills)},
+            'match': (not differs and not skills) if match is None else match,
+            'active_epics': [{'epic': 'abuse-limits', 'started_at': '2026-11-19T16:29:32Z', 'fingerprint': None,
+                              'current': None}]}
+
+
 class FakeMetrics:
     """Stands in for the runner of `python3 tools/metrics/metrics.py`: gets the arguments after the script and returns
     the standard output. `fail` is None, 'all' (every call fails like a missing script or a non-zero exit code),
@@ -1257,6 +1277,10 @@ class FakeMetrics:
              'skipped': [{'key': 'D1', 'reason': 'za mało modeli'}], 'gaps': ['pole X']},
             {'epic': 'not-an-ao-run', 'candidates': [candidate('D2:plan_split')], 'skipped': [], 'gaps': []}]
         self.effect = dict(EFFECT)
+        # `process --worktree DIR`: (exit code, stdout); a non-zero code fails the way make_metrics_runner fails
+        self.process = (0, json.dumps(process_reading()))
+        self.watch = None            # a FakeRunner: how many gh/git calls were made before `process`
+        self.calls_before_process = None
 
     def __call__(self, args):
         self.calls.append(list(args))
@@ -1265,6 +1289,13 @@ class FakeMetrics:
             raise error
         if self.fail == 'bad_json':
             return 'not json'
+        if args[0] == 'process':
+            if self.watch is not None:
+                self.calls_before_process = len(self.watch.calls)
+            code, out = self.process
+            if code:
+                raise retro.MeasurementError('kod wyjścia %d' % code, code=code, stdout=out)
+            return out
         if args[0] == 'decide':
             return json.dumps({'epic': args[1], 'candidates': [], 'report': [], 'skipped': [], 'gaps': [],
                                'history': self.history, 'keys': {}})
@@ -1461,6 +1492,14 @@ class MetricsRunnerTest(TempDirCase):
     def test_a_non_zero_exit_code_is_only_the_category_kod_wyjscia_and_never_the_stderr(self):
         repo = self.repo_with('import sys; sys.stderr.write("metrics: brak rekordu w /Users/x/.local/state\\n"); sys.exit(2)')
         self.assertEqual(self.failure(repo, ('effect', 'X', '--at', 'Y')), 'kod wyjścia 2')
+
+    def test_a_non_zero_exit_code_keeps_the_code_and_the_standard_output_but_not_the_stderr(self):
+        # `metrics.py process` prints its reading and exits 4 when the definitions differ
+        repo = self.repo_with('import sys; print(\'{"match": false}\'); sys.stderr.write("/Users/x\\n"); sys.exit(4)')
+        with self.assertRaises(retro.MeasurementError) as caught:
+            retro.make_metrics_runner(repo)(['process', '--worktree', repo])
+        self.assertEqual((str(caught.exception), caught.exception.code), ('kod wyjścia 4', 4))
+        self.assertEqual(json.loads(caught.exception.stdout), {'match': False})
 
     def test_a_timeout_is_the_category_przekroczony_czas(self):
         repo = self.repo_with('import time; time.sleep(30)')
@@ -1865,7 +1904,8 @@ class NativeCollectTest(NativeCase):
     def test_collect_refreshes_the_record_with_metrics_epic_before_the_other_measurement(self):
         metrics = NativeMetrics(self.metrics_state, native_record())
         self.collected(metrics=metrics)
-        self.assertEqual(metrics.calls[0], ['epic', NATIVE])
+        # the check of the process version (`process`) comes first; of the measurement, the refresh is the first call
+        self.assertEqual([c for c in metrics.calls if c[0] != 'process'][0], ['epic', NATIVE])
         self.assertEqual(len([c for c in metrics.calls if c[0] == 'epic']), 1)
 
     def test_the_incidents_of_a_native_epic_by_kind(self):
@@ -2390,6 +2430,212 @@ class MaterialsTest(NativeCase):
         self.assertEqual(materials['sessions'][0]['transcript'], None)
         self.assertEqual(materials['sessions'][0]['transcript_dir'], self.transcripts)
         self.assertIn('s1', facts['abuse-limits/missing/transcripts']['text'])
+
+
+# ------------------------------------------------------------------ the version of the process (ASH-PROCESS-FIXES W4, W7)
+
+DIFFERING = ['.claude/agents/code-reviewer.md', '.claude/agents/retro-analyst.md', '.claude/skills/retro/SKILL.md']
+NOT_CONFIRMED = 'nie jest potwierdzona'
+
+
+class ProcessCheckTest(CollectCase):
+    """W7: collect checks the version of the process (`metrics.py process --worktree <worktree of the retro>`, the
+    expected version is its HEAD) before any `gh` call. A difference is a refusal (exit 2, nothing written) unless it is
+    accepted with a reason; a check that cannot run is a fact and collect goes on."""
+
+    def setUp(self):
+        super().setUp()
+        self.metrics = FakeMetrics()
+        self.metrics.watch = self.runner
+
+    def run_collect(self, *extra, epic='visual-design', metrics=None):
+        stderr = io.StringIO()
+        with redirect_stderr(stderr), redirect_stdout(io.StringIO()):
+            code = retro.main(self.argv(epic, *extra), run=self.runner,
+                              metrics=self.metrics if metrics is None else metrics)
+        return code, stderr.getvalue()
+
+    def facts(self):
+        return {f['id']: f for f in self.load()['facts']}
+
+    def test_a_matching_version_is_a_fact_with_the_expected_version_and_the_check_comes_before_any_gh(self):
+        code, err = self.run_collect()
+        self.assertEqual(code, 0, err)
+        process = [c for c in self.metrics.calls if c[0] == 'process']
+        self.assertEqual(process, [['process', '--worktree', self.tmp]])
+        self.assertEqual(self.metrics.calls[0][0], 'process')
+        self.assertEqual(self.metrics.calls_before_process, 0)
+        fact = self.facts()['visual-design/process/check']
+        self.assertEqual(fact['data']['status'], 'match')
+        self.assertEqual((fact['data']['ref'], fact['data']['describe']), (HEAD_SHA, 'ash-v1.0-24-gbbbbbbb'))
+        self.assertIn('ash-v1.0-24-gbbbbbbb', fact['text'])
+        self.assertIn(NOT_CONFIRMED, fact['text'])
+
+    def test_the_worktree_of_the_retro_is_checked(self):
+        worktree = os.path.join(self.tmp, 'wt')
+        os.makedirs(worktree)
+        self.assertEqual(self.run_collect('--worktree', worktree)[0], 0)
+        self.assertEqual([c for c in self.metrics.calls if c[0] == 'process'], [['process', '--worktree', worktree]])
+
+    def test_a_difference_without_acceptance_is_a_refusal_before_any_gh_without_input_json(self):
+        self.metrics.process = (4, json.dumps(process_reading(DIFFERING)))
+        code, err = self.run_collect()
+        self.assertEqual(code, 2)
+        self.assertTrue(err.startswith('retro: wersja procesu'), err)
+        for text in ('main_checkout', '/shop', '3 plik', DIFFERING[0], 'docs/adr/agentic-software-house.md',
+                     '--accept-process-mismatch'):
+            self.assertIn(text, err)
+        self.assertEqual(self.runner.calls, [])
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'input.json')))
+        self.assertFalse(os.path.exists(self.retro_home))
+
+    def test_a_skill_of_the_user_that_hides_the_project_skill_is_a_refusal(self):
+        self.metrics.process = (4, json.dumps(process_reading(skills=['retro'])))
+        code, err = self.run_collect()
+        self.assertEqual(code, 2)
+        self.assertIn('retro', err.split('skille użytkownika', 1)[1])
+
+    def test_a_difference_accepted_with_a_reason_is_collected_with_a_fact(self):
+        self.metrics.process = (4, json.dumps(process_reading(DIFFERING)))
+        code, err = self.run_collect('--accept-process-mismatch', '  epik abuse-limits w toku  ')
+        self.assertEqual(code, 0, err)
+        fact = self.facts()['visual-design/process/check']
+        self.assertEqual(fact['data']['status'], 'mismatch_accepted')
+        self.assertEqual(fact['data']['accepted'], 'epik abuse-limits w toku')
+        self.assertEqual(fact['data']['places'], [{'kind': 'main_checkout', 'path': '/shop', 'head': OLD_SHA,
+                                                   'differs': [{'path': p, 'state': 'changed'} for p in DIFFERING]}])
+        for text in ('epik abuse-limits w toku', 'main_checkout', DIFFERING[0], NOT_CONFIRMED, 'na dysku'):
+            self.assertIn(text, fact['text'])
+
+    def test_an_empty_reason_is_a_refusal_without_any_command(self):
+        for reason in ('', '   ', ' '):
+            with self.subTest(reason=reason):
+                code, err = self.run_collect('--accept-process-mismatch', reason)
+                self.assertEqual(code, 2)
+                self.assertIn('--accept-process-mismatch', err)
+                self.assertEqual(self.runner.calls, [])
+                self.assertFalse(os.path.exists(os.path.join(self.out, 'input.json')))
+
+    def test_a_check_that_cannot_run_is_a_fact_and_collect_goes_on(self):
+        for answer, category in (((2, ''), 'kod wyjścia 2'), ((0, 'not json'), 'wynik nie jest JSON-em'),
+                                 ((4, 'not json'), 'wynik nie jest JSON-em'),
+                                 ((0, json.dumps({'match': True})), 'nieoczekiwany kształt JSON')):
+            with self.subTest(answer=answer):
+                self.metrics = FakeMetrics()
+                self.metrics.process = answer
+                code, err = self.run_collect()
+                self.assertEqual(code, 0, err)
+                facts = self.facts()
+                fact = facts['visual-design/process/missing/check']
+                self.assertTrue(fact['text'].startswith('brak kontroli wersji procesu'), fact['text'])
+                self.assertIn(category, fact['text'])
+                self.assertNotIn('visual-design/process/check', facts)
+
+    def test_a_missing_script_in_the_worktree_is_a_fact(self):
+        # no metrics runner injected: the real one, and the repository of the test has no tools/metrics/metrics.py
+        code, err = self.run_collect(metrics=False)
+        self.assertEqual(code, 0, err)
+        self.assertIn('brak skryptu', self.facts()['visual-design/process/missing/check']['text'])
+
+    def test_an_ao_epic_has_no_fact_of_a_record(self):
+        self.run_collect()
+        self.assertFalse([f for f in self.facts() if f.startswith('visual-design/process/') and 'record' in f])
+
+
+def record_process(**extra):
+    """The field `process` of a native record (tools/metrics, "Wersja procesu w rekordzie")."""
+    process = {'status': 'checked', 'checked_at': '2026-11-20T08:00:00Z', 'checked_on': 'start',
+               'expected': {'ref': HEAD_SHA, 'requested': 'abc', 'describe': 'ash-v1.0-3-gbbbbbbb',
+                            'fingerprint': 'f1', 'files': {}},
+               'disk': [{'kind': 'worktree', 'path': '/w', 'head': HEAD_SHA, 'differs': []}],
+               'user_level': {'agents': [], 'skills': []}, 'match': True, 'accepted': None, 'changes': [],
+               'loaded': {'session': [], 'agents': [], 'skills': [],
+                          'summary': {'confirmed': 4, 'differs': 0, 'unconfirmed': 0},
+                          'by_role': {'developer': {'confirmed': 2, 'differs': 0, 'unconfirmed': 0}}}}
+    process.update(extra)
+    return process
+
+
+class ProcessOfTheRecordTest(NativeCase):
+    """W4: the field `process` of the record of a native epic (and its `gaps` under `process`) is a fact for the
+    analyst: a start accepted despite a difference, changes of the definitions during the epic, subagents with another
+    definition than expected, no confirmation, no check of the disk. A record without the field is a fact of missing
+    data."""
+
+    def setUp(self):
+        super().setUp()
+        self.write_native()
+
+    def fact(self, process, gaps=(), missing=False):
+        record = native_record(gaps=list(gaps))
+        if process is not None or not missing:
+            record['process'] = process
+        data = self.collected(metrics=NativeMetrics(self.metrics_state, record))
+        return {f['id']: f for f in data['facts']}
+
+    def test_a_matching_record(self):
+        fact = self.fact(record_process())['abuse-limits/process/record']
+        self.assertEqual((fact['data']['match'], fact['data']['ref'], fact['data']['describe']),
+                         (True, HEAD_SHA, 'ash-v1.0-3-gbbbbbbb'))
+        self.assertEqual(fact['data']['differs_roles'], [])
+        self.assertIn('dysk przy starcie zgodny', fact['text'])
+        self.assertIn('ash-v1.0-3-gbbbbbbb', fact['text'])
+
+    def test_a_start_accepted_despite_a_difference_with_its_gaps(self):
+        gap = 'process: start mimo różnicy definicji (3 plików: main_checkout; skille użytkownika: brak); powód: x'
+        fact = self.fact(record_process(match=False, accepted='epik w toku w innej sesji'),
+                         gaps=[gap, 'reviews: coś innego'])['abuse-limits/process/record']
+        self.assertIn('zaakceptowany mimo różnicy', fact['text'])
+        self.assertIn('epik w toku w innej sesji', fact['text'])
+        self.assertEqual(fact['data']['accepted'], 'epik w toku w innej sesji')
+        self.assertEqual(fact['data']['gaps'], [gap[len('process: '):]])
+
+    def test_changes_of_the_definitions_during_the_epic(self):
+        changes = [{'at': '2026-11-20T10:00:00Z', 'event': 'done', 'session': 's1', 'kind': 'disk',
+                    'disk': [{'kind': 'main_checkout', 'fingerprint': 'f9',
+                              'differs': [{'path': DIFFERING[0], 'state': 'changed'}]}], 'accepted': None},
+                   {'at': '2026-11-20T11:00:00Z', 'event': 'process', 'session': 's1', 'kind': 'check_failed',
+                    'reason': 'brak gita', 'accepted': None}]
+        fact = self.fact(record_process(changes=changes))['abuse-limits/process/record']
+        self.assertIn('zmiany definicji w trakcie: 1', fact['text'])
+        self.assertIn('nieudane kontrole w trakcie: 1', fact['text'])
+        self.assertEqual(len(fact['data']['changes']), 2)
+
+    def test_subagents_with_another_definition_and_without_a_confirmation(self):
+        loaded = {'session': [], 'agents': [], 'skills': [],
+                  'summary': {'confirmed': 1, 'differs': 1, 'unconfirmed': 3},
+                  'by_role': {'code-reviewer': {'confirmed': 0, 'differs': 1, 'unconfirmed': 0},
+                              'developer': {'confirmed': 1, 'differs': 0, 'unconfirmed': 2}}}
+        fact = self.fact(record_process(loaded=loaded))['abuse-limits/process/record']
+        self.assertEqual(fact['data']['differs_roles'], ['code-reviewer'])
+        self.assertIn('code-reviewer', fact['text'])
+        self.assertIn('bez potwierdzenia: 3', fact['text'])
+
+    def test_a_disk_that_was_not_checked(self):
+        fact = self.fact(record_process(disk=None, disk_reason='worktree poza repozytorium'))[
+            'abuse-limits/process/record']
+        self.assertFalse(fact['data']['disk_checked'])
+        self.assertIn('dysk niesprawdzony', fact['text'])
+        self.assertIn('worktree poza repozytorium', fact['text'])
+
+    def test_a_record_that_could_not_be_checked(self):
+        fact = self.fact(record_process(status='check_failed', reason='brak gita', accepted='awaria'))[
+            'abuse-limits/process/record']
+        self.assertEqual(fact['data']['status'], 'check_failed')
+        self.assertIn('brak gita', fact['text'])
+
+    def test_a_record_with_null_or_without_the_field_is_a_fact_of_missing_data(self):
+        for missing in (False, True):
+            with self.subTest(without_the_key=missing):
+                facts = self.fact(None, missing=missing)
+                self.assertIn('abuse-limits/process/missing/record', facts)
+                self.assertNotIn('abuse-limits/process/record', facts)
+
+    def test_odd_shapes_of_the_field_are_no_error(self):
+        for odd in ({'status': 'checked', 'loaded': 'x', 'changes': 'y', 'disk': 3, 'expected': []},
+                    {'loaded': {'by_role': {'r': 'x'}, 'summary': None}}):
+            with self.subTest(odd=odd):
+                self.assertIn('abuse-limits/process/record', self.fact(odd))
 
 
 class MeasurementFromTheWorktreeTest(CollectCase):
