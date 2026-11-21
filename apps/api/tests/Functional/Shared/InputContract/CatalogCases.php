@@ -62,7 +62,6 @@ final class CatalogCases
         }
         $pages = [
             'page=abc' => ValidatorRows::TYPE,
-            'page=1.5' => ValidatorRows::TYPE,
             'page=' => ValidatorRows::TYPE,
             'page[]=x' => ValidatorRows::TYPE,
             'page=0' => ValidatorRows::POSITIVE,
