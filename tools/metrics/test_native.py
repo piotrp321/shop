@@ -55,7 +55,10 @@ class StartDoneTest(NativeEnv):
             return json.load(f)
 
     def start(self, *extra, runner=None, stdin='', epic='demo', now=testkit.T0):
-        return run_cli(['start', epic, '--state', self.state, '--projects', self.projects] + list(extra),
+        # the stub runner has no repository: the check of the process version fails and is accepted here (its own
+        # tests are in test_process_version.py)
+        return run_cli(['start', epic, '--state', self.state, '--projects', self.projects,
+                        '--accept-process-mismatch', 'test bez repozytorium'] + list(extra),
                        runner or Git(), now=now, stdin=stdin)
 
     def test_start_after_the_fact_writes_the_run_file_without_plan_md(self):
@@ -198,7 +201,8 @@ class StartDoneTest(NativeEnv):
     def test_a_valid_epic_name_is_accepted(self):
         for name in ('small-fixes', 'ash-v1', '2fa'):
             with self.subTest(epic=name):
-                code, out, err = self.start('--worktree', WORKTREE, '--session', 's1', '--tasks', '3', epic=name)
+                code, out, err = self.start('--worktree', WORKTREE, '--session', 's-' + name, '--tasks', '3',
+                                            epic=name)     # one session, one epic (E1)
                 self.assertEqual(code, 0, err)
                 self.assertEqual(self.run_file(name)['epic'], name)
 

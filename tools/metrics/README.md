@@ -5,7 +5,8 @@ biblioteka standardowa. Skrypt czyta dane AO, miary limitów nocnej kolejki, pli
 Code epiku natywnego oraz GitHub (`gh`, tylko odczyt), nie czyta sklepu. Baza AO jest
 otwierana tylko do odczytu (`mode=ro`, `busy_timeout`), a `ao` nie jest nigdy uruchamiane.
 
-Komendy: `start` i `done` (plik przebiegu epiku natywnego), `epic` (rekord przebiegu z danych AO, transkryptów prób
+Komendy: `start`, `done` i `pause` (plik przebiegu epiku natywnego), `process` (wersja procesu: oczekiwane,
+na dysku i załadowane instrukcje), `epic` (rekord przebiegu z danych AO, transkryptów prób
 i GitHuba albo z pliku przebiegu i transkryptów sesji epiku natywnego), `backfill` (rekordy zmergowanych
 przebiegów), `render` (raport odbioru i komentarz w issue), `trend` (tabela i mediany ostatnich epików), `decide`
 (decyzje optymalizacyjne), `effect` (zmierzony efekt decyzji) i `waste` (alarmy bezproduktywnego zużycia w trakcie
@@ -15,9 +16,15 @@ przebiegu).
 
 ```
 python3 tools/metrics/metrics.py start EPIK [--resume] [--at CZAS] [--worktree DIR] [--branch NAZWA] [--pr N]
-    [--tasks N] [--session ID] [--projects DIR] [WSPÓLNE] < odczyt get_usage
-python3 tools/metrics/metrics.py done EPIK [--at CZAS] [WSPÓLNE] < odczyt get_usage
-python3 tools/metrics/metrics.py epic EPIK [--ao-home DIR] [--projects DIR] [--manual-fixes FILE] [--no-gh] [WSPÓLNE]
+    [--tasks N] [--session ID] [--projects DIR] [--user-dir DIR] [--accept-process-mismatch POWÓD] [WSPÓLNE]
+    < odczyt get_usage
+python3 tools/metrics/metrics.py done EPIK [--at CZAS] [--worktree DIR] [--projects DIR] [--user-dir DIR] [WSPÓLNE]
+    < odczyt get_usage
+python3 tools/metrics/metrics.py pause EPIK --from CZAS --to CZAS [--reason TEKST] [WSPÓLNE]
+python3 tools/metrics/metrics.py process [EPIK] [--worktree DIR] [--base REF] [--user-dir DIR] [--projects DIR]
+    [WSPÓLNE]
+python3 tools/metrics/metrics.py epic EPIK [--ao-home DIR] [--projects DIR] [--worktree DIR] [--manual-fixes FILE]
+    [--no-gh] [WSPÓLNE]
 python3 tools/metrics/metrics.py backfill [--ao-root DIR] [WSPÓLNE]
 python3 tools/metrics/metrics.py trend [--last N] [--epic EPIK] [--json] [--no-gh] [WSPÓLNE]
 python3 tools/metrics/metrics.py render EPIK [--format report|comment] [WSPÓLNE]
@@ -35,14 +42,30 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
 - `start EPIK`: zapisuje plik przebiegu epiku natywnego `<state>/runs/<epik>.json` (zapis atomowy) i wypisuje go jako
   jedną linię JSON (zob. „Epik natywny”). Nazwa epiku musi pasować do `^[a-z0-9][a-z0-9-]*$` (wzorzec `EPIC_NAME`
   z `/retro`, który inaczej nie rozpozna pliku przebiegu): wielkie litery, `.` i `_` dają kod `2` z komunikatem, bez
-  zapisu; dotyczy też `--resume` i `done`, a `epic` oraz pozostałych komend nie. `--resume` dopisuje nową sesję do istniejącego pliku. `--projects`: katalog
+  zapisu; dotyczy też `--resume`, `done` i `pause`, a `epic` oraz pozostałych komend nie. `--resume` dopisuje nową sesję do istniejącego pliku.
+  Identyfikator sesji, który jest już w pliku przebiegu innego epiku, daje w `start` i `--resume` kod `2` z nazwą
+  tamtego epiku (jedna sesja, jeden epik). `start` zapisuje wersję procesu (`process`, zob. „Wersja procesu”)
+  i odmawia przy różnicy (kod `2`, bez zapisu) bez `--accept-process-mismatch POWÓD` (pusty powód: kod `2`); `--resume`
+  porównuje ją z zapisaną na starcie tak samo; `--user-dir`: katalog użytkownika Claude Code (domyślnie `~/.claude`). `--projects`: katalog
   projektów Claude Code (domyślnie `~/.claude/projects`). Odczyt limitów z wejścia standardowego: obiekt `plan`
   z `get_usage` albo cały obiekt `get_usage` (`{"plan": …, "context": …}`, brany jest `plan`; `plan`, który nie jest
   obiektem, daje `{"status": "unreadable"}`); terminal albo puste wejście to brak odczytu (`null`).
 - `done EPIK`: wpisuje do pliku przebiegu `done_at` (teraz albo `--at`) i drugi odczyt limitów z wejścia (`usage_done`,
-  te same kształty co w `start`).
+  te same kształty co w `start`); bez `--at` porównuje wersję procesu z zapisaną na starcie (`--worktree`, domyślnie
+  bieżący katalog) i zapisuje zmianę albo nieudaną kontrolę w `process.changes` z ostrzeżeniem na stderr, nigdy nie
+  odmawia.
+- `pause EPIK --from CZAS --to CZAS [--reason TEKST]`: dopisuje przerwę komputera do `pauses` pliku przebiegu
+  (`{from, to, reason}`; czas jak `--at`; powód bez znaków sterujących, pusty to `null`) i wypisuje plik. Brak pliku
+  przebiegu, czas nie do odczytania albo `--from` nie przed `--to`: kod `2`, bez zapisu.
+- `process [EPIK]`: wersja procesu (zob. „Wersja procesu”) jako jedna linia JSON. Bez epiku: odczyt `--worktree`
+  (domyślnie bieżący katalog) względem `--base` (domyślnie `HEAD`), bez zapisu, z `active_epics`. Z epikiem: ponowna
+  kontrola na danych pliku przebiegu (dysk względem startu, `loaded` z transkryptów sesji epiku pod `--projects`),
+  zapis zmian w `process.changes` (raz na zmianę) i nowego `loaded`. Kod `0` przy zgodności (samo `unconfirmed` nie
+  jest niezgodnością), `4` przy niezgodności (stan na stdout, podsumowanie na stderr), `2` poza repozytorium git, bez
+  definicji, z nieznaną rewizją albo bez pliku przebiegu.
 - `epic`: wypisuje rekord przebiegu jako jedną linię JSON i zapisuje go w `<state>/epics/<epik>.json` (zapis
-  atomowy). Przebieg AO to `--ao-home` (domyślnie `ao-<epik>` pod `$SHOP_METRICS_AO_ROOT` albo `~/.local/state`); gdy
+  atomowy). `--worktree` (domyślnie bieżący katalog): repozytorium, z którego rekord natywny czyta treść instrukcji
+  bazy dla `process.loaded`. Przebieg AO to `--ao-home` (domyślnie `ao-<epik>` pod `$SHOP_METRICS_AO_ROOT` albo `~/.local/state`); gdy
   tego katalogu nie ma, rekord powstaje z pliku przebiegu `<state>/runs/<epik>.json` i transkryptów sesji pod
   `--projects` (rekord natywny, `source: native`); bez obu kod `2` z komunikatem, którego źródła brakuje.
   `--manual-fixes FILE`: lista ręcznych poprawek od sesji `/ao-run` albo sesji prowadzącej epik natywny, jedna na linię (`- PR #12: tekst` albo `- tekst`;
@@ -123,8 +146,12 @@ Kody wyjścia: `0` sukces; `2` nic nie zapisano ani nie wypisano (złe argumenty
 i pliku przebiegu, nieczytelny plik przebiegu, nazwa epiku spoza wzorca w `start` albo `done`, `start` bez gałęzi, PR, liczby zadań albo transkryptu sesji, drugi `start`
 bez `--resume`, `--resume` albo `done` bez pliku przebiegu,
 nieczytelna albo zablokowana baza, brak wiersza epiku, nieczytelny plik `--manual-fixes`, stan niezapisywalny,
-nieczytelny `waste.json` w `waste`, zły klucz albo `--at` w `effect`; komunikat po polsku na stderr, stdout pusty); `3` rekord wypisano i zapisano, ale źródło zawiodło (błąd `gh`: brak programu, kod ≠ 0,
-przekroczony czas, odpowiedź inna niż JSON; w `backfill` także pominięty przebieg z błędem bazy albo `gh`). Błąd `gh`
+nieczytelny `waste.json` w `waste`, zły klucz albo `--at` w `effect`, sesja z pliku przebiegu innego epiku, różnica
+wersji procesu w `start` albo `--resume` bez akceptacji, pusty powód akceptacji, zły czas w `pause`, `process` poza
+repozytorium git; komunikat po polsku na stderr, stdout pusty); `3` rekord wypisano i zapisano, ale źródło zawiodło (błąd `gh`: brak programu, kod ≠ 0,
+przekroczony czas, odpowiedź inna niż JSON; w `backfill` także pominięty przebieg z błędem bazy albo `gh`); `4`
+`process` wypisał stan, a wersja procesu jest niezgodna (różnica na dysku, skill użytkownika przesłaniający skill
+projektu albo załadowana treść inna niż w bazie). Błąd `gh`
 nie zatrzymuje pomiaru: pola z GitHuba są `null` z pozycją w `gaps`, a poprzednie wartości zostają (zob. „Cache”).
 
 ## Rekord epiku
@@ -262,7 +289,8 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   <gałąź> --json number`), `tasks` (`--tasks` albo `night_queue.task_count` na
   `origin/main:docs/features/<epik>/plan.md`), `sessions` (`[{id, worktree, at}]`; `--session` albo najnowszy według
   czasu modyfikacji `<id>.jsonl` w `<projects>/<katalog roboczy z każdym znakiem innym niż litera i cyfra zamienionym na
-  `-`>`), `usage_start`, `done_at`, `usage_done`. Polecenia gita działają w `--worktree` (domyślnie bieżący katalog).
+  `-`>`), `usage_start`, `done_at`, `usage_done`, `process` (zob. niżej, „Wersja procesu”) i po `pause` `pauses`.
+  Polecenia gita działają w `--worktree` (domyślnie bieżący katalog).
   Identyfikatory epiku i sesji: litery, cyfry, `.`, `_`, `-`, do 64 znaków.
 - **Transkrypty:** dla każdej sesji z pliku przebiegu `<projects>/*/<id>.jsonl` i `<id>/subagents/agent-<agent>.jsonl`
   z `agent-<agent>.meta.json`; inne sesje nie wchodzą. Wiadomości od `started_at` do merge'u końcowego PR (z `gh`, a przy
@@ -292,7 +320,10 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   człowieka, przed inną linią użytkownika (raport subagenta `peer`, `task-notification`, wznowienie `coordinator`,
   linia meta) ani jedno, ani drugie. `breakdown` od `started_at` do `done_at`: `work` (unia pracy prowadzącego
   i subagentów), `human_wait` (przerwy przed wiadomością człowieka bez części pokrytej pracą), `idle` (reszta);
-  `limit_wait`, `ci_wait`, `host_pause`, `github_wait` `null` (pozycje `breakdown.<kategoria>` w `gaps`),
+  `host_pause`: suma przerw z `pauses` (`native_pauses`: scalone, przycięte do `started_at`–`done_at`), które mają
+  pierwszeństwo, więc ich czas nie wchodzi do `work`, `human_wait`, `idle` ani do `human.events[].wait_s`
+  i `human.wait_s`; bez zapisanej przerwy `null` z pozycją w `gaps` (zły wpis przerwy: pozycja `pauses`);
+  `limit_wait`, `ci_wait`, `github_wait` `null` (pozycje `breakdown.<kategoria>` w `gaps`),
   `breakdown_incomplete: true`; bez `started_at` albo `done_at` `breakdown: null`. `human`: `interventions`
   (wiadomości człowieka po `started_at` do merge'u końcowego PR, każda raz według `uuid`, `interventions_estimated:
   true`), `events` (`[{at, wait_s}]`, bez treści), `waits` (zdarzenia z `wait_s` > 0), `wait_s` (ich suma),
@@ -331,8 +362,20 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   pliki zmodyfikowane przed `started_at` są pomijane), `share_estimated: true`.
 - **Pola bez źródła:** `parallel`, `gate_wait`, `waste` (`brak źródła w przebiegu natywnym`) są `null` z pozycją
   w `gaps`.
+- **Wersja procesu** (`process_version.py`, spec „Wersja procesu”): pole `process` pliku przebiegu i rekordu.
+  `expected` (`ref`, `requested`, `describe`, `fingerprint`, `files`), `disk` (miejsca ładowania `worktree`
+  i `main_checkout`: `path`, `head`, `branch`, `dirty`, `fingerprint`, `files`, `differs` ze stanem `changed`,
+  `missing`, `extra`), `user_level` (`agents`, `skills`), `loaded` (`session`, `agents`, `skills`, wpisy ze `status`
+  `confirmed`, `differs` albo `unconfirmed`, `origin`, `digest`, `reason`), `match`, `accepted`, `changes`, `status`
+  (`checked`, `not_checked`, `check_failed`), `checked_at`, `checked_on`. Dowód załadowania: `instructions`
+  i `nested_memory` (`CLAUDE.md`), `prompt_snapshot` (agent, pierwszy blok `systemPrompt` równy plikowi bez
+  frontmatteru), linia `Base directory for this skill:` (skill, z argumentami w miejscu `$ARGUMENTS` i podobnych). ADR
+  zawsze `unconfirmed`. Rekord: `loaded` liczony od nowa z transkryptów epiku plus `summary` i `by_role`,
+  `attempts[].instructions` oraz pozycje `process` w `gaps`; `render` ma linię „Wersja procesu” (tylko rekord
+  natywny; bez pola „brak danych”).
 - **Prywatność:** rekord ma identyfikatory sesji i agentów, nazwy ról i modeli, werdykty oraz liczby; bez treści
-  wiadomości, zleceń, raportów, opisu PR, poleceń i ścieżek (test: teksty z transkryptu i `meta.json` nie trafiają do wyjścia).
+  wiadomości, zleceń, raportów, opisu PR, poleceń i instrukcji (test: teksty z transkryptu i `meta.json` nie trafiają
+  do wyjścia); ścieżki katalogów roboczych są tylko w `process` (pochodzenie instrukcji), a komentarz ich nie wypisuje.
 
 ### Wąskie gardła i historia
 
@@ -618,7 +661,9 @@ polecenia powłoki zastąpione kanonicznym poleceniem kategorii z numerem `# c<n
 Epik natywny (`test_native.py`, `test_native_process.py`) ma syntetyczne transkrypty sesji budowane w teście
 (`testkit.Native` z `human`, `notice`, `handback`, `NativeEnv`:
 katalog projektów i plik przebiegu w katalogu tymczasowym), z samymi czytanymi polami; prawdziwe transkrypty nie trafiają
-do repozytorium.
+do repozytorium. `test_process_version.py` buduje w katalogu tymczasowym własne repozytorium git (główny checkout
+z tagiem `ash-v1.0` i worktree w `.claude/worktrees/epic`) oraz transkrypty z wpisami `instructions`, `nested_memory`,
+`prompt_snapshot` i wczytaniem skilla; `test_pause.py` sprawdza `pause` i `host_pause`.
 `fixture_scan.py` (test: `test_fixture_scan.py`) sprawdza każdy plik pod `fixtures/`: brak ścieżek bezwzględnych
 (`/Users/`, `/private/`, `~`), adresów e-mail, wzorców tokenów (`ghp_`, `gho_`, `github_pat_`, `sk-`, `Bearer`,
 `Basic`), ciągów base64 od 32 znaków (poza SHA i UUID; ciąg musi mieć cyfrę albo mieszane litery, a ścieżka ze samych

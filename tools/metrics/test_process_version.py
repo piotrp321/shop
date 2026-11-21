@@ -714,7 +714,7 @@ class RecordTest(RepoEnv):
             self.assertIn('ash-v1.0', line[0])
             self.assertIn(self.base[:12], line[0])
             self.assertIn('dysk zgodny', line[0])
-            self.assertIn('potwierdzone 1', line[0])
+            self.assertIn('potwierdzone 2', line[0])         # the CLAUDE.md of the session and a1
             self.assertNotIn(self.worktree, out if form == 'comment' else '')
 
 
