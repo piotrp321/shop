@@ -47,7 +47,10 @@ Wynik to `plan.md` w katalogu specyfikacji, z sekcją „Status” i manifestem 
      „żaden rekord bez X”) wpisujesz tylko wtedy, gdy zadanie nie zmienia zachowania ani danych, które te testy
      sprawdzają. Gdy zadanie celowo zmienia istniejące zachowanie (uprawnienia, kontrakt, dane), kryterium nazywa tę
      zmianę i mówi, że testy tego zachowania zmieniają się razem z nią. Gdy specyfikacja dopuszcza wyjątki (np. dane
-     sprzed wdrożenia, rekordy usuniętych obiektów), kryterium je wymienia.
+     sprzed wdrożenia, rekordy usuniętych obiektów), kryterium je wymienia. Nie dopisuj kryteriów ani zadań
+     istniejących tylko dla ciągłości działania (bezprzerwowe wdrożenie, migracja zachowująca dane, zgodność ze
+     starszą wersją), jeśli specyfikacja ich nie wymaga: na etapie demo (`docs/vision.md`, „Wymagania
+     niefunkcjonalne”) wystarcza sposób przejścia opisany w specyfikacji.
    - `risk`: `FAST` (lokalna zmiana niskiego ryzyka), `STANDARD` (funkcjonalność, API,
      integracja), `CRITICAL` (auth, pieniądze, migracje danych, transakcje, współbieżność, bezpieczeństwo).
      To ocena do planu i przeglądu: sesja prowadząca epik dobiera według niej model i głębokość przeglądu zadania.

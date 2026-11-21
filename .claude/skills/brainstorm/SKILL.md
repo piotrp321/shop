@@ -19,9 +19,20 @@ Zaprojektuj najprostsze poprawne rozwiązanie spełniające wymagania.
    - Istotna zmiana: przeanalizuj alternatywy, zależności i ryzyka.
    - Niezależne funkcjonalności: zaproponuj podział i projektuj je osobno.
 4. Niepewne założenia techniczne sprawdzaj małym, bezpiecznym eksperymentem zamiast zgadywać. Nie modyfikuj kodu produkcyjnego.
+   Niepewne założenie o zachowaniu zależności (framework, baza, broker, SDK), od którego zależy poprawność
+   rozwiązania, sprawdź przed przedstawieniem projektu: szczególnie transakcje, skutki zewnętrzne, ponowienia,
+   limity czasu i współbieżność. Odpowiednio do ryzyka: dokumentacja właściwej wersji (z lockfile), kod zależności
+   albo celowany eksperyment, także dla stanów zależnych od czasu i limitów. Specyfikacja podaje źródło. Wynik inny
+   niż założenie to pytanie do użytkownika z punktu 8, a nie odkrycie w trakcie epiku. Zwykłe, dobrze znane użycie
+   frameworka nie wymaga eksperymentu.
 5. Zanim zaproponujesz własny mechanizm, sprawdź istniejące możliwości frameworka, standardów i sprawdzonych bibliotek.
 6. Gdy rozwiązanie staje się złożone, zidentyfikuj założenia powodujące tę złożoność. Sprawdź, czy rzeczywiście są wymagane.
    Każda istotna dodatkowa złożoność (nowy moduł, warstwa, mechanizm) wymaga konkretnego uzasadnienia.
+   Etap demo (`docs/vision.md`, „Wymagania niefunkcjonalne”): przestój, zmiana niezgodna z poprzednią wersją
+   i odtworzenie danych demo są dopuszczalne. Nie projektuj bezprzerwowego wdrożenia, migracji zachowującej dane ani
+   zgodności ze starszą wersją wyłącznie dla ciągłości działania; gdy wystarcza proste wdrożenie z resetem albo
+   seedem, wybierz je i zapisz w specyfikacji sposób przejścia. Poprawność zwykłego działania sklepu (zamówienia,
+   płatności, bezpieczeństwo, formularze, współbieżność) projektujesz w pełni.
 7. Porównuj 2–3 podejścia tylko przy istotnych kompromisach. Zawsze wskaż rekomendację.
 8. Nie wymyślaj istotnych wymagań biznesowych. Jeśli zakres, limity, reguły albo zachowanie użytkownika wpływają
    na projekt, uzyskaj decyzję. Zadaj wszystkie takie pytania zbiorczo, w jednej wiadomości, pogrupowane według

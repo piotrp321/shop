@@ -78,6 +78,12 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
   istotnie ograniczyć skalowalność, zgłaszaj użytkownikowi. Nie wprowadzaj przedwcześnie złożonych optymalizacji,
   dodatkowych usług ani abstrakcji bez rzeczywistej potrzeby. Nie twierdź, że system spełnia wymagania wydajnościowe,
   dopóki nie potwierdzą tego testy obciążeniowe.
+- Etap demo (`docs/vision.md`, „Wymagania niefunkcjonalne”): przestój, zmiana niezgodna z poprzednią wersją
+  i odtworzenie danych demo (reset i seed) są dopuszczalne. Nie projektuj bezprzerwowych wdrożeń, migracji
+  zachowujących dane ani zgodności ze starszą wersją wyłącznie dla ciągłości działania; wybierz proste wdrożenie,
+  jeśli spełnia wymagania zadania. Poprawność zwykłego działania sklepu (zamówienia, płatności, bezpieczeństwo,
+  formularze) obowiązuje bez zmian. To nie jest zgoda na kasowanie danych ani wdrożenie i nie jest powodem
+  przebudowy istniejącego kodu.
 
 ## Sposób pracy
 
@@ -123,12 +129,23 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
   to izolacja i zasoby. Na końcu jeden przegląd całej zmiany: `architecture-reviewer`, `qa-adversarial`, `ux-reviewer`
   (tryb `integration`) według ryzyka i rodzaju zmiany. Większa zmiana poza epikiem też kończy się przeglądem całej
   zmiany w świeżym kontekście.
+- Jedna sesja prowadzi jeden epik. Po potwierdzonym merge'u zapisuje rekord pomiaru i komentarz „Przekazanie do
+  retro” w końcowym PR, po czym kończy komunikatem: „Epik zakończony. Uruchom /retro <epik> w nowej sesji. Tę sesję
+  można zarchiwizować”. Nie zaczyna kolejnego epiku i nie archiwizuje się sama.
+- Sesja w worktree z aplikacji desktopowej czyta `CLAUDE.md` z worktree, a agentów i skille z głównego checkoutu:
+  zmiana w `.claude/agents` albo `.claude/skills` działa dopiero po jego aktualizacji. Wersję oczekiwaną, stan na
+  dysku i wersję załadowaną sprawdza `tools/metrics/metrics.py` (`start`, `process`); rozbieżność obsługujemy przed
+  zleceniem implementacji albo przeglądu (ADR, „Wersja procesu”).
 - Najpierw natywne, własne na końcu: bez własnego schedulera, orkiestratora, frameworka ani hooków; nowy komponent tylko
   dla powtarzalnego, istotnego, zaobserwowanego problemu (`docs/adr/agentic-software-house.md`).
 - Dwie rundy przeglądu to domyślny budżet, nie twardy limit. Luki bezpieczeństwa, utratę danych, błędy logiki
   biznesowej i istotne regresje naprawiamy; drobne uwagi, hipotetyczne przypadki brzegowe i styl odraczamy bez pytania
   właściciela; kolejna runda wymaga konkretnego uzasadnienia. Wagę nadaje reviewer według skutku w normalnym użyciu
   (definicje w plikach agentów).
+- Uwagi o konkretnej ścieżce błędu nie odraczamy po samej etykiecie `Minor` albo `SUGGESTION`: sesja zapisuje ocenę
+  skutku, naruszonej gwarancji i odwracalności, a istotne podejrzenie oparte na niesprawdzonym założeniu sprawdza
+  w kodzie albo eksperymentem. Wąskie okno wyścigu nie obniża wagi; równoległe żądania i sesje oraz edycja formularza
+  w trakcie zapisu to zwykłe użycie (ADR, „Przebieg epiku”, krok 4). To nie jest obowiązek naprawy każdej uwagi.
 - Reviewer sprawdza zgodność ze specyfikacją, błędy logiczne, architekturę, przypadki brzegowe, testy (także przebieg
   TDD na podstawie wyników obu uruchomień) i zbędną złożoność; brak prawdziwej fazy RED w zadaniu z TDD to problem
   Important. Dodatkowych reviewerów ani modeli nie uruchamiamy bez powodu. Sesja orkiestrująca może działać na

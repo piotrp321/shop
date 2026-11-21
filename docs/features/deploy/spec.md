@@ -266,12 +266,14 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 6. Wycofanie wersji: revert na `main` i nowe uruchomienie wdrożenia. Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
    `deploy-images` (jego obrazy zostają w GHCR), po wyłączeniu automatycznej synchronizacji `root` (inaczej przywraca ona
    `syncPolicy` aplikacji `shop`), a potem `shop`; po revercie automatyczną synchronizację włącza się z powrotem, najpierw
-   `root`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją; cofnięcie o więcej wersji to starszy snapshot
+   `root`. Schemat bazy nie musi być zgodny z poprzednią wersją kodu (etap demo, `docs/vision.md`); cofnięcie wersji
+   po zmianie niezgodnej to starszy snapshot
    `deploy-images` i odtworzenie kopii z czasu tej wersji (`make -C infra/k8s restore`, zgoda użytkownika; kopii nowszej
    niż wdrożony kod odtworzenie odmawia) albo pełne ponowne wczytanie danych (`reinitialize`, zgoda użytkownika).
 
-Zasady dla zmian w repo (dokumentacja w `apps/api/CLAUDE.md` i `CLAUDE.md`): migracje zgodne wstecz z poprzednią
-wersją kodu; wiadomości Messengera zgodne w obie strony między kolejnymi wersjami; zmiana usług, zmiennych,
+Zasady dla zmian w repo (dokumentacja w `apps/api/CLAUDE.md` i `CLAUDE.md`): zmiana schematu albo wiadomości
+Messengera niezgodna z poprzednią wersją jest dopuszczalna na etapie demo i ma opisany sposób przejścia przy
+wdrożeniu; zmiana usług, zmiennych,
 transportów workera albo sekretów w compose i zmiana realmów (nowy klient, rola, adres) wymagają tej samej zmiany
 w chartcie w tym samym PR.
 

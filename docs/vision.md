@@ -228,6 +228,18 @@ context ma własne value objecty.
 
 Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których dotyczą, a nie w szkielecie.
 
+**Etap demo**
+- Obecnie rozwijamy demo. Przestój podczas prac i wdrożeń, zmiana niezgodna z poprzednią wersją (schemat, format
+  wiadomości, kontrakt) i odtworzenie danych demo (reset i seed albo generator) są dopuszczalne.
+- Nie projektujemy bezprzerwowych wdrożeń, migracji zachowujących dane ani zgodności ze starszą wersją wyłącznie dla
+  ciągłości działania. Wybieramy proste wdrożenie i odtworzenie danych, jeśli spełniają wymagania zadania.
+- Poprawność zwykłego działania sklepu jest wymagana w pełni: zamówienia, płatności, stany magazynowe, bezpieczeństwo
+  i formularze, także przy równoległych żądaniach.
+- Zasada nie jest zgodą na operację: kasowanie albo zastępowanie danych na serwerze i wdrożenie wymagają zgody
+  właściciela (`CLAUDE.md`, „Serwer, GitHub i bezpieczeństwo agentów”). Istniejącego kodu nie przebudowujemy tylko
+  dlatego, że zasada pozwala go uprościć.
+- Zasadę zmienia decyzja właściciela, np. przed przyjęciem prawdziwych klientów.
+
 **Skala docelowa**
 - Katalog do 10 milionów produktów.
 - Do 60 tysięcy jednocześnie aktywnych użytkowników.

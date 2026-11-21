@@ -22,17 +22,31 @@ Sesja w worktree uruchomiona z aplikacji desktopowej czyta `CLAUDE.md` z worktre
 checkoutu repozytorium. Zmieniony plik agenta albo skilla działa od następnego zlecenia, we wszystkich otwartych
 sesjach.
 
-- **W1.** `metrics.py process` pokazuje, z jakiej wersji pochodzą definicje: oczekiwany odcisk katalogów
-  `.claude/agents` i `.claude/skills` (z bazy epiku albo z `HEAD` worktree), odcisk każdego miejsca, z którego sesja
-  może je ładować (worktree, główny checkout), listę różniących się plików, agentów i skille użytkownika
-  (`~/.claude`) o nazwie takiej jak w projekcie oraz epiki w toku z odciskiem zapisanym na ich starcie. Odcisk liczy
-  się z treści plików, nie z długości promptu ani z numeru commita.
-- **W2.** `metrics.py start` zapisuje ten odczyt w pliku przebiegu i odmawia startu, gdy którekolwiek miejsce
-  ładowania różni się od bazy epiku. Start mimo różnicy wymaga opcji z powodem; powód trafia do pliku przebiegu.
-- **W3.** `start --resume` i `done` porównują miejsca ładowania z odciskiem zapisanym na starcie. Zmianę definicji
-  w trakcie epiku zapisują w pliku przebiegu; wznowienie mimo zmiany wymaga opcji z powodem, `done` zapisuje czas
-  zawsze.
-- **W4.** Rekord epiku ma pole `process`, a różnica, zaakceptowany start mimo różnicy i zmiana w trakcie są w `gaps`.
+Pomiar rozróżnia trzy poziomy i zapisuje je w jednym polu `process` pliku przebiegu, z którego korzysta i kontrola,
+i raport (bez osobnego rejestru):
+
+- **oczekiwana**: baza epiku (SHA, opis względem tagu `ash-v*`) i skróty plików instrukcji w bazie: każdy
+  `CLAUDE.md`, pliki agentów, `SKILL.md` skilli i ADR z „Przebiegiem epiku”;
+- **na dysku**: te same pliki w każdym miejscu, z którego sesja może je ładować (worktree, główny checkout),
+  z pochodzeniem (ścieżka, commit, gałąź, niezacommitowane zmiany), skrótami i listą różnic względem oczekiwanej;
+- **załadowana**: tylko to, co potwierdza transkrypt: treść `CLAUDE.md` wczytana przez sesję i treść definicji
+  w prompcie każdego subagenta. Status: potwierdzona, różni się albo brak potwierdzenia (z powodem). Brak dowodu
+  nigdy nie liczy się jako zgodność.
+
+- **W1.** `metrics.py process` pokazuje poziomy „oczekiwana” i „na dysku” dla bieżącego worktree, agentów i skille
+  użytkownika (`~/.claude`) o nazwie takiej jak w projekcie oraz epiki w toku z odciskiem zapisanym na ich starcie.
+  Skróty liczy się z treści plików, nie z długości promptu ani z numeru commita głównego checkoutu.
+- **W2.** `metrics.py start` zapisuje wszystkie trzy poziomy (załadowaną dla sesji prowadzącej; agenci i skille:
+  brak potwierdzenia, bo jeszcze nie ruszyli) i odmawia startu, gdy stan na dysku albo `CLAUDE.md` wczytany przez
+  sesję różni się od bazy epiku. Start mimo różnicy wymaga opcji z powodem; powód trafia do pliku przebiegu.
+- **W3.** `metrics.py process <epik>` powtarza kontrolę w trakcie epiku na danych pliku przebiegu: porównuje dysk ze
+  stanem ze startu i potwierdza z transkryptów wersję załadowaną przez każdego uruchomionego subagenta. Zmianę albo
+  różnicę zapisuje w pliku przebiegu i kończy się kodem niezgodności. Sesja uruchamia ją przed każdą falą zadań,
+  przed przeglądem epiku i zaraz po starcie pierwszego subagenta danej roli; rozbieżność obsługuje przed zleceniem
+  implementacji albo przeglądu (W5, W6). `start --resume` i `done` robią tę samą kontrolę; wznowienie mimo zmiany
+  wymaga opcji z powodem, `done` zapisuje czas zawsze.
+- **W4.** Rekord epiku ma pole `process` z trzema poziomami i podsumowaniem załadowanej wersji na rolę; różnica,
+  zaakceptowany start mimo różnicy, zmiana w trakcie i brak potwierdzenia są w `gaps` i w raporcie (`render`).
   `/retro` podaje je analitykowi jako fakt.
 - **W5.** Główny checkout aktualizuje się jawnym krokiem (`git pull --ff-only`, bez `reset`, `checkout` i `stash`),
   gdy jest czysty, stoi na `main` i `metrics.py process` nie pokazuje epiku w toku, który wystartował z bieżącymi
@@ -133,8 +147,10 @@ sesjach.
    się kodem różnym od zera; przy zgodnych definicjach kodem 0.
 2. `metrics.py start` przy różnicy definicji odmawia i nie zapisuje pliku; z opcją akceptacji zapisuje plik
    z powodem; przy zgodności zapisuje `process` bez odstępstw.
-3. `start --resume` i `done` po zmianie pliku agenta w miejscu ładowania zapisują zmianę w pliku przebiegu; rekord
-   (`metrics.py epic`) ma ją w `process` i `gaps`.
+3. `metrics.py process <epik>`, `start --resume` i `done` po zmianie pliku agenta w miejscu ładowania zapisują zmianę
+   w pliku przebiegu; rekord (`metrics.py epic`) ma ją w `process` i `gaps`. Subagent z definicją inną niż w bazie ma
+   w rekordzie status „różni się”, a subagent bez dowodu w transkrypcie „brak potwierdzenia”; rekord prawdziwego
+   epiku serii (np. DELIVERY, na kopii stanu) pokazuje reviewerów z definicją inną niż baza.
 4. `metrics.py start` z sesją zapisaną w pliku przebiegu innego epiku odmawia; `start --resume` tego samego epiku
    w nowej sesji przechodzi.
 5. Rekord DELIVERY z zapisaną przerwą 15:25–17:43Z ma ją w `host_pause`, `human_wait` jej nie zawiera,
@@ -152,8 +168,10 @@ sesjach.
 
 ## Ograniczenia
 
-- Kontrola wersji opiera się na udokumentowanym sposobie ładowania konfiguracji w worktree
-  (`https://code.claude.com/docs/en/worktrees.md`) i porównuje wszystkie znane miejsca ładowania; nie odczytuje
-  promptu, który subagent faktycznie dostał.
-- Zmianę definicji w trakcie epiku narzędzie wykrywa przy `start --resume` i `done`, nie w chwili zmiany.
+- Kontrola przed pracą porównuje pliki na dysku we wszystkich znanych miejscach ładowania
+  (`https://code.claude.com/docs/en/worktrees.md`). Wersję załadowaną przez subagenta da się potwierdzić dopiero po
+  jego starcie, z wpisu promptu w transkrypcie; gdy wersja CLI takiego wpisu nie zapisuje, status to „brak
+  potwierdzenia”.
+- Zmianę definicji w trakcie epiku narzędzie wykrywa przy kolejnej kontroli (`process <epik>`, `start --resume`,
+  `done`), nie w chwili zmiany.
 - Reguły O, S i D to instrukcje: ich skuteczność pokażą kolejne epiki, nie ta zmiana.

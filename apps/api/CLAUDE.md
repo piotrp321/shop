@@ -432,27 +432,28 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
 
 ## Zgodność wersji
 
-Wdrożenie wymienia pody po kolei (`maxUnavailable: 0`), a migracje uruchamia Job przed startem nowej wersji, więc przez
-chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia wersja workera wymieniają wiadomości.
+Etap demo (`docs/vision.md`, „Wymagania niefunkcjonalne”): zgodności między kolejnymi wersjami nie wymagamy. Zmiana
+niezgodna (usunięcie albo zmiana kolumny lub tabeli, nowe `NOT NULL` bez wartości domyślnej, zmiana typu, zmiana pól
+albo nazwy klasy wiadomości) idzie jedną wersją, bez rozbijania na dwie i bez klas przejściowych. Zadanie, które ją
+wprowadza, opisuje w specyfikacji albo w opisie PR skutek przy wdrożeniu i sposób przejścia: co przez chwilę nie
+działa i czego wdrożenie wymaga (np. opróżnienie kolejek, odtworzenie danych demo, kolejność kroków). Reviewer nie
+zgłasza samego braku zgodności; zgłasza brak takiego opisu. Operacje na serwerze dalej wymagają zgody właściciela
+(główny `CLAUDE.md`).
 
-- Migracja jest zgodna wstecz z poprzednią wersją kodu: poprzednia wersja musi działać na schemacie po migracji. Zmianę
-  niezgodną (usunięcie lub zmiana nazwy kolumny albo tabeli, nowe ograniczenie `NOT NULL` bez wartości domyślnej,
-  zmiana typu) rozbij na dwie wersje: najpierw dodaj nowe i zacznij je zapisywać, w kolejnej wersji usuń stare.
-  Schemat jest zgodny wstecz tylko z poprzednią wersją: cofnięcie o więcej wersji wymaga kopii zapasowej.
-- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator`, `promotions` i `jobs`)
-  są zgodne w obie strony między kolejnymi wersjami: nowa wersja czyta wiadomości zapisane przez poprzednią (kolejka
-  może je jeszcze mieć) i poprzednia czyta wiadomości nowej (stary worker działa do końca wymiany). Transporty Doctrine
-  używają serializera PHP, a `unserialize` nie woła konstruktora: w klasie `final readonly` dodane pole zostaje
-  niezainicjalizowane, a pole, którego klasa nie ma, kończy dekodowanie błędem. Dlatego pól klasy wiadomości ani
-  zdarzenia domenowego nie dodajemy, nie usuwamy i nie zmieniamy: nowy kształt to nowa klasa, którą wersja z jej
-  handlerem tylko obsługuje, a nadawać zaczyna dopiero kolejna wersja (poprzednia nie zdekoduje wiadomości nieznanej
-  jej klasy). Nie zmieniaj nazw klas wiadomości, stempli i transportów. Zasada „pola dodawaj jako opcjonalne” jest
-  prawdziwa tylko dla JSON (`events`), nie jest zgodą na zmianę pól.
-- `MessageVersionCompatibilityTest` pilnuje tego na zapisach w `tests/Fixtures/MessageSerialization`: każda klasa
-  z `routing` w `messenger.yaml` i każda implementacja `DomainEvent` musi mieć zapis i dekodować się z zainicjalizowanymi
-  polami. Nowa klasa wiadomości lub zdarzenia dostaje zapis w tym samym PR (sposób: komentarz testu). Zapisy się
-  dopisuje, nigdy nie nadpisuje; zapis klasy usuwa się dopiero razem z jej handlerem, w wersji po tej, która przestała
-  ją nadawać.
+Fakty potrzebne do oceny skutku:
+
+- Wdrożenie wymienia pody po kolei (`maxUnavailable: 0`), a migracje uruchamia Job przed startem nowej wersji, więc
+  przez chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia wersja workera wymieniają
+  wiadomości (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator`, `promotions` i `jobs`).
+- Transporty Doctrine używają serializera PHP, a `unserialize` nie woła konstruktora: w klasie `final readonly` dodane
+  pole zostaje niezainicjalizowane, a pole, którego klasa nie ma, kończy dekodowanie błędem. Wiadomość zapisana przed
+  zmianą pól, nazwy klasy, stempla albo transportu nie zostanie obsłużona po zmianie. Zasada „pola dodawaj jako
+  opcjonalne” jest prawdziwa tylko dla JSON (`events`).
+- `MessageVersionCompatibilityTest` wykrywa zmianę kształtu na zapisach w `tests/Fixtures/MessageSerialization`: każda
+  klasa z `routing` w `messenger.yaml` i każda implementacja `DomainEvent` musi mieć zapis i dekodować się
+  z zainicjalizowanymi polami. Nowa klasa wiadomości lub zdarzenia dostaje zapis w tym samym PR (sposób: komentarz
+  testu). Celowa zmiana niezgodna wymienia zapis tej klasy w tym samym PR, razem z opisem przejścia; zapis klasy
+  usuwa się razem z jej handlerem.
 
 ## Testy
 
