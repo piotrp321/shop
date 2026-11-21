@@ -6,7 +6,7 @@ kompletność danych i porównanie kolejnych przebiegów. Kod stosu (eksporter, 
 `piotrp321/agent-observability`; ten dokument opisuje zasady i kontrakt po stronie sklepu.
 
 Zakres: `docs/features/ash-dashboard`, `docs/features/telemetry/spec.md`; w `agent-observability`: `exporter/`,
-`grafana/`, `compose.yaml`, `prometheus/`, `scripts/`, `README.md`.
+`grafana/`, `compose.yaml`, `prometheus/`, `scripts/`, `Makefile`, `README.md`.
 
 ## Źródło prawdy
 
@@ -17,7 +17,8 @@ Zakres: `docs/features/ash-dashboard`, `docs/features/telemetry/spec.md`; w `age
 
 Dashboard niczego nie liczy od nowa z transkryptów ani z surowej telemetrii i nie ma własnych definicji miar: każda
 liczba jest polem rekordu albo pliku przebiegu, ewentualnie podzielonym przez liczbę zadań planu (jak w
-`metrics.py trend`). Wyjątki, w których eksporter zlicza wpisy list rekordu: przeglądy według roli, trybu i werdyktu
+`metrics.py trend`: niepełna suma wartości tokenów i epik bez zadań nie dają wartości na zadanie). Odczyt limitów
+ze stanem innym niż `ok` nie jest pokazywany. Wyjątki, w których eksporter zlicza wpisy list rekordu: przeglądy według roli, trybu i werdyktu
 (`reviews`), braki danych według pola (`gaps`), wpisy `process.changes` oraz, tylko dla epiku bez rekordu, statusy
 wpisów `process.loaded` pliku przebiegu (rekord ma je policzone w `loaded.summary`). Ocena różnicy na dysku
 (informacja albo niezgodność) powtarza regułę `process_version.place_problems`; zmiana tej reguły wymaga tej samej
@@ -65,10 +66,12 @@ Rekordów AO (`source` inne niż `native`, także rekord bez pola `source`) dash
   PR, regresje i znaleziska po merge'u, powtórzone uruchomienia testów, wąskie gardła, przebiegi subagentów.
 - **Wersja ASH i instrukcje**, trzy poziomy osobno: oczekiwana baza (`process.expected`: `describe`, commit), pliki na
   dysku w miejscach ładowania (`process.disk`: worktree epiku i główny checkout, z oceną każdej różnicy; niezgodne
-  pliki przy starcie i niezgodne zmiany dysku w trakcie epiku z `process.changes`) oraz instrukcje potwierdzone
+  pliki przy kontroli i niezgodne zmiany dysku w trakcie epiku z `process.changes`, bez powrotów do bazy; gdy dysku
+  nie sprawdzono, obie liczby to „brak danych”) oraz instrukcje potwierdzone
   z transkryptów agentów (`process.loaded`: potwierdzone, w wersji epiku, inne niż w bazie, bez potwierdzenia; według
-  roli i wpisu). Wynik kontroli przy starcie (`process.match`) jest osobną wartością, bo obejmuje dysk, skille
-  użytkownika i `CLAUDE.md` wczytany przez sesję. Epik, którego dysku nie sprawdzono, ma to napisane z powodem.
+  roli i wpisu). Wynik kontroli (`process.match`, z chwilą kontroli `checked_on`) jest osobną wartością, bo obejmuje
+  dysk, skille użytkownika i `CLAUDE.md` wczytany przez sesję. Epik, którego dysku nie sprawdzono, ma to napisane
+  z powodem.
 - **Kompletność danych:** liczba i lista braków (`gaps`), miary bez danych, pola o nieoczekiwanym typie, przeczytane
   transkrypty, sesje prowadzące, czas aktualizacji rekordu i pliku przebiegu.
 
