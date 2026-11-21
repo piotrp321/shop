@@ -87,6 +87,11 @@ class TempDirCase(unittest.TestCase):
         patcher = mock.patch.dict(os.environ, {'SHOP_METRICS_STATE': self.metrics_state})
         patcher.start()
         self.addCleanup(patcher.stop)
+        # The default directory of the session transcripts (~/.claude/projects) is a temporary one too.
+        self.projects = os.path.join(self.tmp, 'projects')
+        patcher = mock.patch.object(retro, 'CLAUDE_PROJECTS', self.projects, create=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def real_home(self):
         """VISUAL-DESIGN and DISCOUNT-CODES (with their events), CART (an AO without events), ao-night, a run in
@@ -865,6 +870,8 @@ class FakeRunner:
                          gh_item(357, kind='pull', title='VD-11', body='## Decyzje bez pytania\n\nBrak.\n')]
         self.open_prs = []
         self.head_prs = {}   # branch -> the pull requests of that head (the final PR of a native epic)
+        self.pr_comments = {}   # number -> the comments of that PR (`gh issue view N --json comments`)
+        self.git_log = {}   # path -> the output of `git log ... -- <path>`
         self.ao_issues = [gh_item(46, repo=AO_REPO, title='ao epic resume --add-qa-rounds po FINALIZE', body='x',
                                   labels=[])]
         self.shop_issues = [gh_item(380, title='tech-debt agent issue', body='y',
@@ -890,6 +897,10 @@ class FakeRunner:
             return 'docs/features/retro/spec.md\ndocs/features/retro/plan.md\n'
         if args[:2] == ['git', 'show']:
             return '{"schema_version": 1}'
+        if args[:2] == ['git', 'log']:
+            return self.git_log.get(args[-1], '')
+        if args[:3] == ['gh', 'issue', 'view'] and args[-2:] == ['--json', 'comments']:
+            return json.dumps({'comments': self.pr_comments.get(int(args[3]), [])})
         if args[:3] == ['gh', 'project', 'item-list']:
             return json.dumps({'items': [
                 {'content': {'type': 'Issue', 'number': 267, 'title': 'HARDENING: bezpieczeństwo',
@@ -2044,6 +2055,341 @@ class NativeRefusalTest(NativeCase):
         with open(os.path.join(self.metrics_state, 'runs', NATIVE + '.json'), 'w') as f:
             f.write('{not json')
         self.refused(NATIVE)
+
+
+# --------------------------------------------------------------- the whole text of the points (ASH-PROCESS-FIXES R)
+
+END_MARKER = 'ISTOTNE NA KOŃCU: właściciel chce pełnej treści'
+
+
+def long_point(length, end=END_MARKER):
+    """One line of `length` characters whose important part is at its very end."""
+    base = 'Uwaga właściciela: sesja dzieliła uwagę na kilka punktów, bo limit ucinał treść; '
+    filler = (base * (length // len(base) + 1))[:length - len(end) - 1]
+    if filler.endswith(' '):
+        filler = filler[:-1] + 'x'
+    return filler + ' ' + end
+
+
+class FullTextOfPointsTest(unittest.TestCase):
+    """R1, R2, R4: a point of a PR description is one incident with its whole text in `data.text` and in the evidence,
+    whatever its length; the identifier and the number of incidents do not depend on the length."""
+
+    LENGTHS = (501, 1200, 5000)
+
+    def test_a_long_point_is_built_to_the_length_with_the_marker_at_its_end(self):
+        for length in self.LENGTHS:
+            text = long_point(length)
+            self.assertEqual(len(text), length)
+            self.assertTrue(text.endswith(END_MARKER))
+
+    def test_a_long_decision_of_a_task_pr_is_one_incident_with_the_whole_text(self):
+        for length in self.LENGTHS:
+            with self.subTest(length=length):
+                text = long_point(length)
+                body = '## Decyzje bez pytania\n\n1. %s\n\n## Dalej\n\n- coś\n' % text
+                incidents = retro.unasked_incidents('e', [{'number': 9, 'title': 'T', 'body': body}])
+                self.assertEqual([i['id'] for i in incidents], ['e/unasked/pr9#1'])
+                self.assertEqual(incidents[0]['data']['text'], text)
+                self.assertEqual([f['text'] for f in incidents[0]['facts']], [text])
+
+    def test_n_points_of_a_task_pr_give_n_incidents_whatever_their_length(self):
+        texts = [long_point(n, 'koniec %d' % n) for n in (40, 700, 1600)]
+        body = '## Decyzje bez pytania\n\n' + ''.join('- %s\n' % t for t in texts)
+        incidents = retro.unasked_incidents('e', [{'number': 9, 'body': body}])
+        self.assertEqual([i['key'] for i in incidents], ['pr9#1', 'pr9#2', 'pr9#3'])
+        self.assertEqual([i['data']['text'] for i in incidents], texts)
+
+    def test_a_long_point_of_each_section_of_the_final_pr_is_one_incident_with_the_whole_text(self):
+        decision, problem, other = long_point(1200, 'decyzja-koniec'), long_point(5000), long_point(600, 'drugi')
+        gap = long_point(1100, 'luka-koniec')
+        body = ('## Decyzje bez pytania\n\n1. %s\n\n## Problemy i zastoje\n\n- %s\n- %s\n\n'
+                '## Luki w instrukcjach\n\n%s\n' % (decision, problem, other, gap))
+        incidents, facts = retro.native_pr_incidents('e', 800, {'title': 'T', 'body': body})
+        found = {i['id']: i for i in incidents}
+        self.assertEqual(sorted(found), ['e/reported/gaps#1', 'e/reported/problems#1', 'e/reported/problems#2',
+                                         'e/unasked/pr800#1'])
+        for incident_id, text in (('e/unasked/pr800#1', decision), ('e/reported/problems#1', problem),
+                                  ('e/reported/problems#2', other), ('e/reported/gaps#1', gap)):
+            with self.subTest(incident=incident_id):
+                self.assertEqual(found[incident_id]['data']['text'], text)
+                self.assertEqual([f['text'] for f in found[incident_id]['facts']], [text])
+        self.assertEqual(facts, [])
+
+    def test_polish_characters_on_the_old_limit_of_500_are_kept(self):
+        for length in (499, 500, 501, 502):
+            text = 'ż' * (length - 6) + 'ąęść ó'
+            with self.subTest(length=length):
+                self.assertEqual(len(text), length)
+                body = '## Decyzje bez pytania\n\n- %s\n\n## Problemy i zastoje\n\n- %s\n' % (text, text)
+                task = retro.unasked_incidents('e', [{'number': 9, 'body': body}])
+                final, _ = retro.native_pr_incidents('e', 800, {'body': body})
+                for incident in task + final:
+                    self.assertEqual(incident['data']['text'], text, incident['id'])
+                    self.assertEqual(incident['facts'][0]['text'], text, incident['id'])
+                    self.assertNotIn('…', incident['data']['text'])
+
+    def test_a_multi_line_point_with_paragraphs_and_a_nested_list_is_one_point_with_all_its_text(self):
+        body = ('## Problemy i zastoje\n\n'
+                '- Uwaga właściciela: pierwszy akapit.\n\n'
+                '  Drugi akapit po pustej linii, wcięty.\n'
+                '  - zagnieżdżony punkt A\n'
+                '  - zagnieżdżony punkt B: %s\n'
+                '- Drugi punkt.\n' % END_MARKER)
+        points = retro.pr_section_points(body, 'Problemy i zastoje')
+        self.assertEqual([p for p, _ in points], [1, 2])
+        for part in ('pierwszy akapit', 'Drugi akapit po pustej linii', 'zagnieżdżony punkt A', END_MARKER):
+            self.assertIn(part, points[0][1])
+        self.assertEqual(points[1][1], 'Drugi punkt.')
+
+    def test_text_outside_the_points_of_a_section_leaves_a_fact_with_the_whole_text(self):
+        tail = 'Akapit bez wcięcia po pustej linii. ' + long_point(900)
+        body = ('## Problemy i zastoje\n\nWstęp prozą przed listą.\n\n- Pierwszy punkt.\n\n%s\n\n'
+                '## Luki w instrukcjach\n\n- brak\n' % tail)
+        incidents, facts = retro.native_pr_incidents('e', 800, {'body': body})
+        self.assertEqual([i['id'] for i in incidents], ['e/reported/problems#1'])
+        self.assertEqual(incidents[0]['data']['text'], 'Pierwszy punkt.')
+        outside = {f['id']: f for f in facts}['e/outside-points/problems']
+        self.assertIn('Wstęp prozą przed listą.', outside['text'])
+        self.assertIn(tail, outside['text'])
+        self.assertIn('Problemy i zastoje', outside['text'])
+        self.assertIn('#800', outside['text'])
+
+    def test_a_section_of_points_only_leaves_no_outside_fact(self):
+        _, facts = retro.native_pr_incidents('e', 800, {'body': NATIVE_BODY})
+        self.assertFalse([f for f in facts if '/outside-points/' in f['id']])
+
+    def test_the_whole_text_of_a_manual_fix(self):
+        text = long_point(1500)
+        incidents, _ = retro.manual_incidents('e', retro.parse_measurement('Ręczne poprawki: 1\n- PR #12: %s\n' % text))
+        self.assertEqual(incidents[0]['data']['items'], [text])
+        self.assertEqual([f['text'] for f in incidents[0]['facts']], [text])
+
+
+class FullTextOfAoDataTest(CollectCase):
+    """R3 for the AO data that carries text written by a session or a person: the questions of a blocker (a wait and
+    the status of a blocked task) and the body of an open issue reach input.json whole."""
+
+    def test_the_whole_question_of_a_blocker_of_a_wait(self):
+        question = long_point(1500)
+        events = [{'type': 'status_changed', 'task_id': 'T-1', 'epic_id': 'open', 'at': 1794000000.5,
+                   'data': {'from': 'RUNNING', 'to': 'BLOCKED', 'reason': 'executor', 'blockers': [question],
+                            'reasons': [question]}}]
+        build_run(self.ao_home, 'open', 'cart.sql', json.dumps(events[0]) + '\n',
+                  extra_sql="UPDATE epics SET epic_id='open';")
+        epic = [e for e in retro.discover_epics(self.ao_home) if e['id'] == 'open'][0]
+        incidents, _ = retro.ao_incidents(epic)
+        wait = [i for i in incidents if i['kind'] == 'wait'][0]
+        self.assertEqual(wait['data']['blockers'], [question])
+        self.assertEqual(wait['data']['reasons'], [question])
+        self.assertIn('pytanie blokera: ' + question, [f['text'] for f in wait['facts']])
+        self.assertIn('powód wstrzymania: ' + question, [f['text'] for f in wait['facts']])
+
+    def test_the_whole_question_of_a_blocked_task_of_an_epic_in_progress(self):
+        question = long_point(1500)
+        con = sqlite3.connect(os.path.join(self.ao_home, 'ao-hardening', 'orchestrator.db'))
+        con.execute("UPDATE tasks SET status='BLOCKED', blockers=? WHERE task_id='CART-2'", (json.dumps([question]),))
+        con.commit()
+        con.close()
+        self.assertEqual(self.collect(), 0)
+        status = {s['id']: s for s in self.load()['status']}['status/in-progress']
+        self.assertEqual(status['blocked'][0]['tasks'][0]['blockers'], [question])
+
+    def test_the_whole_body_of_an_open_issue(self):
+        body = long_point(6000)
+        self.runner.shop_issues[0]['body'] = body
+        self.runner.ao_issues[0]['body'] = body
+        self.assertEqual(self.collect(), 0)
+        issues = self.load()['open_issues']
+        self.assertEqual(issues['shop'][0]['body'], body)
+        self.assertEqual(issues['ao'][0]['body'], body)
+
+    def test_prose_outside_the_decisions_of_a_task_pr_leaves_a_fact(self):
+        tail = 'Decyzja prozą po liście: ' + long_point(800)
+        self.runner.task_prs[0]['body'] = '## Decyzje bez pytania\n\n1. **Pierwsza**.\n\n%s\n' % tail
+        self.assertEqual(self.collect(), 0)
+        data = self.load()
+        facts = {f['id']: f for f in data['facts']}
+        self.assertIn(tail, facts['visual-design/outside-points/pr356']['text'])
+        self.assertEqual([i['key'] for i in data['incidents'] if i['kind'] == 'unasked'], ['pr356#1'])
+        # the entry "Brak." of PR #357 is no text outside the points
+        self.assertNotIn('visual-design/outside-points/pr357', facts)
+
+
+class FullTextOfNativeCollectTest(NativeCase):
+    """R4 end to end: collect of a native epic whose final PR has points longer than 500 (and 1000) characters with
+    the important part at their end."""
+
+    def setUp(self):
+        super().setUp()
+        self.write_native()
+        self.problem, self.decision = long_point(1100), long_point(520, 'koniec decyzji')
+        self.runner.head_prs[NATIVE_BRANCH][0]['body'] = NATIVE_BODY.replace(
+            '- Za mało pamięci Dockera: dwa stosy zamiast trzech.', '- ' + self.problem).replace(
+            '1. Limit liczony na adres IP, nie na konto.', '1. ' + self.decision)
+
+    def test_input_json_has_the_whole_text_one_incident_per_point_and_the_same_ids(self):
+        data = self.collected()
+        found = self.native(data)
+        for incident_id, text in (('abuse-limits/reported/problems#1', self.problem),
+                                  ('abuse-limits/unasked/pr800#1', self.decision)):
+            with self.subTest(incident=incident_id):
+                self.assertEqual(found[incident_id]['data']['text'], text)
+                self.assertEqual([f['text'] for f in found[incident_id]['facts']], [text])
+        self.assertEqual(self.kinds(data, NATIVE)['reported'], 2)
+        self.assertEqual(self.kinds(data, NATIVE)['unasked'], 2)
+        self.assertIn(END_MARKER, json.dumps(data, ensure_ascii=False))
+
+
+# ----------------------------------------------------------- handoff to the retro and the materials (ASH-PROCESS-FIXES P3)
+
+HANDOFF = '## Przekazanie do retro\n\nEpik: abuse-limits, `/retro abuse-limits`.\n\nUwaga właściciela: %s\n'
+
+
+class HandoffTest(NativeCase):
+    """P3: collect of a native epic gives the whole text of the comments "Przekazanie do retro" of the final PR, read
+    through the origin gate; a comment of an untrusted author is only an entry of `external`."""
+
+    def setUp(self):
+        super().setUp()
+        self.write_native()
+        self.text = HANDOFF % long_point(3000)
+        self.runner.pr_comments[800] = [
+            comment('Zwykły komentarz przeglądu.', n=5),
+            comment(self.text, n=6),
+            comment(HANDOFF % 'SECRET-HANDOFF-MARKER', author='eve', n=7)]
+
+    def test_the_handoff_comment_is_in_input_json_whole(self):
+        handoff = self.collected()['handoff']
+        self.assertEqual(handoff, {'pr': 800, 'comments': [
+            {'author': 'piotrp321', 'created_at': '2026-11-10T10:00:00Z',
+             'url': 'https://github.com/piotrp321/shop/issues/1#issuecomment-6', 'body': self.text}]})
+
+    def test_the_comments_are_read_through_the_gate(self):
+        self.collected()
+        self.assertIn(['gh', 'issue', 'view', '800', '--repo', 'piotrp321/shop', '--json', 'comments'],
+                      self.runner.calls)
+        self.assertTrue([c for c in self.runner.calls if c[:3] == ['gh', 'api', '--include'] and 'eve' in c[3]])
+
+    def test_a_comment_of_an_untrusted_author_is_only_number_author_and_link(self):
+        data = self.collected()
+        self.assertIn({'source': 'final_pr_comment', 'number': 800, 'author': 'eve',
+                       'url': 'https://github.com/piotrp321/shop/issues/1#issuecomment-7'}, data['external'])
+        self.assertNotIn('SECRET-HANDOFF-MARKER', json.dumps(data, ensure_ascii=False))
+
+    def test_without_a_handoff_comment_it_is_a_fact_not_an_error(self):
+        self.runner.pr_comments[800] = [comment('Zwykły komentarz przeglądu.', n=5)]
+        data = self.collected()
+        self.assertEqual(data['handoff'], {'pr': 800, 'comments': []})
+        facts = {f['id']: f for f in data['facts']}
+        self.assertIn('#800', facts['abuse-limits/missing/handoff']['text'])
+
+    def test_a_failing_gate_on_the_comments_is_exit_code_1_without_input_json(self):
+        self.runner.fail = '--json comments'
+        with redirect_stderr(io.StringIO()):
+            code = self.collect(NATIVE, metrics=NativeMetrics(self.metrics_state, native_record()))
+        self.assertEqual(code, 1)
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'input.json')))
+
+    def test_an_ao_epic_has_neither_handoff_nor_materials(self):
+        self.assertEqual(self.collect('visual-design', metrics=FakeMetrics()), 0)
+        data = self.load()
+        self.assertIsNone(data['handoff'])
+        self.assertIsNone(data['materials'])
+        self.assertFalse([c for c in self.runner.calls if c[:3] == ['gh', 'issue', 'view'] or c[:2] == ['git', 'log']])
+        self.assertFalse([f for f in data['facts'] if f['id'].startswith('visual-design/missing/handoff')])
+
+
+PLAN_PATH = 'docs/features/abuse-limits/plan.md'
+DELETED_IN, LAST_VERSION = 'd' * 40, 'a' * 40
+
+
+class MaterialsTest(NativeCase):
+    """P3: the pointers to the materials of a native epic (no copied content): the specification and the plan in the
+    worktree of the retro (a removed plan: the commit with its last version), the final PR, the run file, the record
+    and the sessions with the directories of their transcripts. Missing parts are facts; collect succeeds."""
+
+    def setUp(self):
+        super().setUp()
+        self.write_native()
+        self.worktree = os.path.join(self.tmp, 'wt')
+        os.makedirs(os.path.join(self.worktree, 'docs', 'features', NATIVE))
+        with open(os.path.join(self.worktree, 'docs', 'features', NATIVE, 'spec.md'), 'w') as f:
+            f.write('# spec\n')
+        self.runner.git_log[PLAN_PATH] = '%s %s\n' % (DELETED_IN, LAST_VERSION)
+        self.transcripts = os.path.join(self.projects, '-w')
+        os.makedirs(self.transcripts)
+        with open(os.path.join(self.transcripts, 's1.jsonl'), 'w') as f:
+            f.write('{}\n')
+
+    def argv(self, epic='visual-design', *extra):
+        return super().argv(epic, '--worktree', self.worktree, *extra)
+
+    def materials(self):
+        data = self.collected()
+        return data['materials'], {f['id']: f for f in data['facts']}
+
+    def test_the_pointers_to_the_materials_of_the_epic(self):
+        materials, facts = self.materials()
+        self.assertEqual(materials, {
+            'final_pr': 800,
+            'spec': {'path': 'docs/features/abuse-limits/spec.md', 'exists': True},
+            'plan': {'path': PLAN_PATH, 'exists': False, 'last_commit': LAST_VERSION, 'deleted_in': DELETED_IN},
+            'run_file': os.path.join(self.metrics_state, 'runs', 'abuse-limits.json'),
+            'record': {'path': os.path.join(self.metrics_state, 'epics', 'abuse-limits.json'), 'exists': True},
+            'sessions': [{'id': 's1', 'worktree': '/w', 'at': '2026-11-20T08:00:00Z',
+                          'transcript_dir': self.transcripts,
+                          'transcript': os.path.join(self.transcripts, 's1.jsonl')}]})
+        self.assertFalse([f for f in facts if f.startswith('abuse-limits/missing/') and f.split('/')[2] in
+                          ('spec', 'plan', 'sessions', 'transcripts')])
+
+    def test_the_history_of_the_plan_is_read_at_the_commit_of_input_json(self):
+        self.collected()
+        logs = [c for c in self.runner.calls if c[:2] == ['git', 'log']]
+        self.assertEqual(len(logs), 1)
+        self.assertIn('c0ffee1234567890', logs[0])
+        self.assertIn('--diff-filter=D', logs[0])
+        self.assertEqual(logs[0][-2:], ['--', PLAN_PATH])
+
+    def test_a_plan_in_the_worktree_needs_no_history(self):
+        with open(os.path.join(self.worktree, PLAN_PATH), 'w') as f:
+            f.write('# plan\n')
+        materials, _ = self.materials()
+        self.assertEqual(materials['plan'], {'path': PLAN_PATH, 'exists': True, 'last_commit': None,
+                                             'deleted_in': None})
+        self.assertFalse([c for c in self.runner.calls if c[:2] == ['git', 'log']])
+
+    def test_a_plan_that_never_existed_is_a_fact(self):
+        self.runner.git_log[PLAN_PATH] = ''
+        materials, facts = self.materials()
+        self.assertEqual(materials['plan'], {'path': PLAN_PATH, 'exists': False, 'last_commit': None,
+                                             'deleted_in': None})
+        self.assertIn('nigdy', facts['abuse-limits/missing/plan']['text'])
+
+    def test_a_failing_git_is_a_fact_and_collect_succeeds(self):
+        self.runner.fail = '--diff-filter'
+        materials, facts = self.materials()
+        self.assertEqual(materials['plan']['last_commit'], None)
+        self.assertIn('git', facts['abuse-limits/missing/plan']['text'])
+
+    def test_without_the_directory_of_the_specification_it_is_a_fact(self):
+        shutil.rmtree(os.path.join(self.worktree, 'docs'))
+        materials, facts = self.materials()
+        self.assertEqual(materials['spec'], {'path': 'docs/features/abuse-limits/spec.md', 'exists': False})
+        self.assertIn('brak katalogu docs/features/abuse-limits', facts['abuse-limits/missing/spec']['text'])
+
+    def test_a_run_file_without_sessions_is_a_fact(self):
+        self.write_native(run_file=dict(native_run_file(), sessions=[]))
+        materials, facts = self.materials()
+        self.assertEqual(materials['sessions'], [])
+        self.assertIn('abuse-limits/missing/sessions', facts)
+
+    def test_a_session_without_a_transcript_has_none_and_a_fact(self):
+        os.remove(os.path.join(self.transcripts, 's1.jsonl'))
+        materials, facts = self.materials()
+        self.assertEqual(materials['sessions'][0]['transcript'], None)
+        self.assertEqual(materials['sessions'][0]['transcript_dir'], self.transcripts)
+        self.assertIn('s1', facts['abuse-limits/missing/transcripts']['text'])
 
 
 class MeasurementFromTheWorktreeTest(CollectCase):
@@ -3521,6 +3867,61 @@ class IssuesTest(RunDirCase):
 
 
 
+class GithubLimitsTest(RunDirCase):
+    """R3: the text of an issue goes to GitHub whole; a text over the limit of GitHub (65536 characters in a body or a
+    comment, 256 in a title) is an error of `validate` and a refusal of `issues` with the name of the field, never a
+    text cut in silence."""
+
+    def setUp(self):
+        super().setUp()
+        self.repo = os.path.join(self.tmp, 'repo')
+        os.makedirs(self.repo)
+        retro.write_json(self.run_dir, 'input.json', valid_input())
+
+    def validate(self, *items):
+        self.write_proposals(*items)
+        code, out, err = self.cli('validate', self.run_dir, repo=self.repo)
+        return code, json.loads(out)['errors']
+
+    def test_a_long_body_with_the_important_part_at_its_end_reaches_gh_whole(self):
+        body = long_point(20000)
+        self.write_proposals(issue_item(1, key='long', body=body))
+        self.write_state('e3', {'decisions_open': [{'n': 1, 'kind': 'issue', 'key': 'long'}]})
+        code, out, err = self.cli('issues', self.run_dir, '--approve', '1')
+        self.assertEqual(code, 0, err)
+        create = [c for c in self.runner.calls if c[:3] == ['gh', 'issue', 'create']][0]
+        self.assertIn(body, create[create.index('--body') + 1])
+
+    def test_a_body_over_the_limit_of_github_is_an_error_of_validate_with_the_field(self):
+        code, errors = self.validate(issue_item(1, key='long', body=long_point(65600)))
+        self.assertEqual(code, 2)
+        self.assertTrue([e for e in errors if e['code'] == 'field' and e['item'] == 1 and 'body' in e['message']
+                         and '65536' in e['message']], errors)
+
+    def test_a_comment_over_the_limit_of_github_is_an_error_of_validate_with_the_field(self):
+        code, errors = self.validate(issue_item(1, key='long', body=None, existing_issue=46,
+                                                cause=long_point(65600)))
+        self.assertEqual(code, 2)
+        self.assertTrue([e for e in errors if e['code'] == 'field' and 'cause' in e['message']
+                         and '65536' in e['message']], errors)
+
+    def test_a_title_over_the_limit_of_github_is_an_error_of_validate_with_the_field(self):
+        code, errors = self.validate(issue_item(1, key='long', title='T' * 257))
+        self.assertEqual(code, 2)
+        self.assertTrue([e for e in errors if e['code'] == 'field' and 'title' in e['message']
+                         and '256' in e['message']], errors)
+
+    def test_a_text_at_the_limits_passes(self):
+        code, errors = self.validate(issue_item(1, key='ok', title='T' * 256, body=long_point(60000)))
+        self.assertEqual((code, errors), (0, []))
+
+    def test_issues_refuses_a_text_over_the_limit_without_any_gh_call(self):
+        self.write_proposals(issue_item(1, key='long', body=long_point(65600)))
+        self.write_state('e3', {'decisions_open': [{'n': 1, 'kind': 'issue', 'key': 'long'}]})
+        self.refused('issues', self.run_dir, '--approve', '1', text='65536')
+        self.assertFalse([c for c in self.runner.calls if c[:2] == ['gh', 'issue']])
+
+
 class ProcessErrorPathsTest(TempDirCase):
     """The commands as processes, with the real runner and a `gh` or `git` that fails."""
 
@@ -3852,10 +4253,10 @@ class RetroProcessDocumentsTest(unittest.TestCase):
         for text in (row % 'wstrzymana', '# Plan bez tabeli\n', None):
             with self.subTest(text=text):
                 self.assertTrue(self.series_state(text).startswith('w toku (nieznany stan'))
-        # the plan of today: the tag ash-v1.0 is set, so a retro during the series defers its fix items (the plain
-        # state, not the annotated "w toku (nieznany stan …)" of an unreadable row)
-        self.assertEqual(self.series_state(repo_text('docs', 'features', 'agentic-software-house', 'plan.md')),
-                         'w toku')
+        # the plan of today has a readable row: one of the plain states, not the annotated "w toku (nieznany stan …)"
+        # of an unreadable row (which state it is changes with the series and is not pinned here)
+        self.assertIn(self.series_state(repo_text('docs', 'features', 'agentic-software-house', 'plan.md')),
+                      ('przed startem', 'w toku', 'zakończona'))
 
     def test_the_agent_and_the_specification_describe_the_incidents_of_a_native_epic(self):
         agent = repo_text('.claude', 'agents', 'retro-analyst.md')

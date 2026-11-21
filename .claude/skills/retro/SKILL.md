@@ -218,7 +218,11 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    Dla epiku natywnego `collect` najpierw odświeża jego rekord (`metrics.py epic <epik>`), a incydenty bierze z rekordu
    (czekanie na człowieka, przeglądy blokujące, niezakończone przebiegi subagentów, zgłoszenia `bug` z okna regresji)
    i z opisu końcowego PR przez bramkę pochodzenia („Decyzje bez pytania”, „Problemy i zastoje”, „Luki w
-   instrukcjach”); brak sekcji albo pola to fakt braku danych.
+   instrukcjach”); brak sekcji albo pola to fakt braku danych. Teksty punktów, dowodów, blokerów i issues są w
+   `input.json` w całości (jeden punkt to jeden incydent, tekst poza punktami to fakt `…/outside-points/…`). Dla
+   epiku natywnego `handoff` ma pełną treść komentarzy „Przekazanie do retro” końcowego PR (brak: fakt
+   `<epik>/missing/handoff`), a `materials` wskazania: specyfikację i plan w `$WT` (plan usunięty: `last_commit`
+   z ostatnią wersją), końcowy PR, plik przebiegu, rekord i sesje z katalogami transkryptów.
 3. **Agent `retro-analyst`** (narzędzie Agent, na pierwszym planie). Zlecenie:
 
    ```text

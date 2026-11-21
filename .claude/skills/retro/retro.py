@@ -8,7 +8,7 @@ Every command takes `--repo DIR` (where `gh` and `git` run, default: the current
 invalid arguments or a refusal (a bad epic name, a retro in the state `done` or `skipped`, another run's fresh lock,
 an item that does not exist) and, for `validate`, proposals that do not pass.
 
-  retro.py collect EPIC [--out DIR] [--worktree DIR]
+  retro.py collect EPIC [--out DIR] [--worktree DIR] [--projects DIR]
       Writes DIR/input.json (default DIR: <retro-home>/EPIC) and prints its path. input.json has the incidents of the
       whole history of AO runs and native epics (docs/features/retro/spec.md, "Incydenty"; a native epic is a run file
       <metrics-state>/runs/EPIC.json of `metrics.py start` with a final PR and no ao-EPIC directory: its incidents
@@ -27,18 +27,28 @@ an item that does not exist) and, for `validate`, proposals that do not pass.
       `<epic>/measurement/missing/<call>`: "brak danych pomiaru" and the category of the failure in Polish ("kod
       wyjścia N", ...), never the stderr of the script (local paths, tracebacks); the other incidents are collected
       anyway.
-      GitHub content (epic issues and their comments, PRs into epic/*, final PRs of native epics, the open retro PR,
-      open issues) comes through the origin gate tools/agent-security/github_trust.py, AO issues judged by the
-      permission in the AO repository: a measurement comment counts only from a trusted author, an untrusted epic
-      issue, comment, task PR or final PR is only an entry of `external` {source, number, author, url} and an
-      untrusted open issue is {number, author, url, trusted: false}. A failing gate (gh, unknown permission) is exit
-      code 1 like a failing `gh`.
+      Text written by a person or a session (a point of a PR description and its evidence, a manual fix, a question of
+      a blocker, the body of an open issue) is whole: one point is one incident whatever its length, and the text of a
+      section that is in no point is the fact `<epic>/outside-points/<section or pr<nr>>`. For the collected native
+      epic, `handoff` {pr, comments: [{author, created_at, url, body}]} has the whole comments "Przekazanie do retro"
+      of its final PR (none: the fact `<epic>/missing/handoff`) and `materials` {final_pr, spec, plan, run_file,
+      record, sessions} points at its materials without their content: spec.md and plan.md in --worktree (a removed
+      plan: `deleted_in` and `last_commit`, the commit with its last version, from `git log` at origin/main), the run
+      file and the record, and the sessions of the run file with `transcript_dir` and `transcript` in --projects;
+      what is missing is a fact `<epic>/missing/{spec,plan,sessions,transcripts}`. Both are null for an AO run.
+      GitHub content (epic issues and their comments, PRs into epic/*, final PRs of native epics and their comments,
+      the open retro PR, open issues) comes through the origin gate tools/agent-security/github_trust.py, AO issues
+      judged by the permission in the AO repository: a measurement comment counts only from a trusted author, an
+      untrusted epic issue, comment, task PR, final PR or comment of a final PR is only an entry of `external`
+      {source, number, author, url} and an untrusted open issue is {number, author, url, trusted: false}. A failing
+      gate (gh, unknown permission) is exit code 1 like a failing `gh`.
   retro.py validate DIR
       Checks DIR/proposals.json against DIR/input.json ("Walidacja"; the plan without a manifest for `status` items
       is looked up in `--repo`). Prints {"ok": bool, "errors": [{"item": n|null, "code", "message"}]}; exit 0 when
-      ok, 2 otherwise. Codes: proposals, schema, limit, field, file, unknown_incident, class, threshold, open_pr,
-      rejected, applied, existing_issue (also an open issue without `trusted: true`), status. A missing input.json
-      is exit 2 with a message on stderr.
+      ok, 2 otherwise. Codes: proposals, schema, limit, field (also a title over 256 or an issue or comment text over
+      65536 characters, the limits of GitHub), file, unknown_incident, class, threshold, open_pr, rejected, applied,
+      existing_issue (also an open issue without `trusted: true`), status. A missing input.json is exit 2 with a
+      message on stderr.
   retro.py observe DIR [--pr N --branch B [--committed none|N[,N...]]]
       Appends to observations.jsonl the observations of DIR/proposals.json and the key and incidents of every `fix`
       and `issue` item (no row twice). Records in <retro-home>/<epic>/state.json the `issue` items as
@@ -59,7 +69,7 @@ an item that does not exist) and, for `validate`, proposals that do not pass.
       for repo shop) or, for an `existing_issue`, comments on it. `all` is every item not rejected with `reject`
       (it left `decisions_open` undone); the number of a rejected item is a refusal. DIR/issues.json keeps what was
       done by the `key` of the item, so a second run repeats nothing; a failing item (also a NUL in its text) does
-      not stop the others (exit 1 at the end).
+      not stop the others (exit 1 at the end). A text over the limits of GitHub is a refusal before any `gh` call.
   retro.py pending
       [{"epic", "merged_at", "attempts", "reason"}] of the epics (AO runs and native epics) whose final PR was merged
       after RETRO_SINCE and whose retro is neither `done` nor `skipped`, from the oldest merge; attempts and reason
@@ -89,6 +99,7 @@ Paths (defaults as in the specification, each can be overridden by an option or 
   SHOP_RETRO_HOME   ~/.local/state/shop-retro registers and per-epic state.json
   SHOP_SWEEP_HOME   ~/.local/state/shop-sweep <date>-<sha7>-<epic>/report.md of /sweep
   SHOP_METRICS_STATE ~/.local/state/shop-metrics runs/<epic>.json and epics/<epic>.json of tools/metrics
+  (--projects)      ~/.claude/projects        transcripts of the sessions (collect, `materials`)
 
 Files in SHOP_RETRO_HOME (docs/features/retro/spec.md, "Rejestry"); times are epoch seconds:
   <epic>/state.json   `state` (running, done, skipped; absent for a deferred or not started retro), `deferrals`
@@ -103,6 +114,7 @@ Files in SHOP_RETRO_HOME (docs/features/retro/spec.md, "Rejestry"); times are ep
 """
 import argparse
 import datetime
+import glob
 import hashlib
 import importlib.util
 import json
@@ -142,8 +154,10 @@ STEP_12_AT = datetime.datetime.fromisoformat('2026-11-09T13:51:12+01:00').timest
 RETRO_SINCE = '2026-11-10T00:00:00+00:00'
 # A failed attempt that ended at most this long before a block is the cause of that block.
 ATTEMPT_GAP_S = 600
-TEXT_LIMIT = 1000
 KNOWN_ATTEMPT_OK = 'result'
+# The transcripts of the Claude Code sessions: `<dir>/<project>/<session>.jsonl`, the project being the working
+# directory with every character that is not a letter or a digit turned into `-` (project_dir of tools/metrics).
+CLAUDE_PROJECTS = os.path.expanduser('~/.claude/projects')
 
 
 class RetroError(Exception):
@@ -157,10 +171,13 @@ def default_paths():
         'retro_home': os.environ.get('SHOP_RETRO_HOME') or os.path.join(home, 'shop-retro'),
         'sweep_home': os.environ.get('SHOP_SWEEP_HOME') or os.path.join(home, 'shop-sweep'),
         'metrics_state': os.environ.get('SHOP_METRICS_STATE') or os.path.join(home, 'shop-metrics'),
+        'projects': CLAUDE_PROJECTS,
     }
 
 
-def cut(text, limit=TEXT_LIMIT):
+def cut(text, limit):
+    """A file name, a role or a time shortened for a fact. Never used for text written by a person or a session (a
+    point of a PR description, a comment, a question of a blocker, the body of an issue): that is kept whole."""
     text = str(text)
     return text if len(text) <= limit else text[:limit - 1] + '…'
 
@@ -296,7 +313,7 @@ def _points_at(window, task):
 
 
 def _text_list(value):
-    return [cut(v) for v in value if isinstance(v, str)] if isinstance(value, list) else []
+    return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
 
 
 def ao_incidents(epic):
@@ -641,7 +658,7 @@ def manual_incidents(epic_id, measurement):
         texts = [i['text'] for i in items]
         incidents.append(_incident(epic_id, 'manual_fix', key, None,
                                    {'pr': items[0]['pr'], 'items': texts, 'can_be_corrective': True},
-                                   [{'source': 'issue comment', 'text': cut(t)} for t in texts]))
+                                   [{'source': 'issue comment', 'text': t} for t in texts]))
     facts = []
     count = measurement['manual_count']
     listed = len(measurement['manual_items'])
@@ -759,15 +776,18 @@ def unasked_decisions(body):
     return [] if lines is None else list_items(lines)
 
 
-def list_items(lines):
-    """[(position, text)] of the items of a section. An item is an item of the top level list (no indentation,
-    numbered or bulleted); indented lines, also indented bullets, continue the current item. A numbered item keeps
-    its number, a bullet takes the next ordinal among the items; a number that was already used (also by a bullet) is
-    replaced by the ordinal, so the positions of one description are unique."""
+def section_items(lines):
+    """([(position, text)], rest) of the lines of a section. An item is an item of the top level list (no indentation,
+    numbered or bulleted); indented lines (also indented bullets and indented paragraphs after a blank line) and an
+    unindented line right after the item continue the current item, so one item keeps its whole text. A numbered item
+    keeps its number, a bullet takes the next ordinal among the items; a number that was already used (also by a
+    bullet) is replaced by the ordinal, so the positions of one description are unique. `rest` is the text that is in
+    no item, as paragraphs: lines before the first item and an unindented paragraph after a blank line."""
     items, used, current, blank = [], set(), None, False
+    rest, paragraph = [], None
     for line in lines:
         if not line.strip():
-            blank = True
+            blank, paragraph = True, None
             continue
         numbered = re.match(r'^(\d+)[.)]\s+(.*\S)\s*$', line)
         bullet = re.match(r'^[-*]\s+(.*\S)\s*$', line)
@@ -780,24 +800,60 @@ def list_items(lines):
             used.add(position)
             current = [position, (numbered or bullet).group(2 if numbered else 1)]
             items.append(current)
+            paragraph = None
         elif current is not None and (line[0] in ' \t' or not blank):
             current[1] += ' ' + line.strip()
         else:
             current = None
+            if paragraph is None:
+                paragraph = []
+                rest.append(paragraph)
+            paragraph.append(line.strip())
         blank = False
-    return [(position, text) for position, text in items]
+    return [(position, text) for position, text in items], [' '.join(p) for p in rest]
+
+
+def list_items(lines):
+    """[(position, text)] of the items of a section (section_items without the rest)."""
+    return section_items(lines)[0]
+
+
+def outside_points_fact(fact_id, name, number, rest, final=False):
+    """The fact that keeps, whole, the text of a section that is in no point (it is no incident, but it is not lost),
+    or None when there is none (the entry "brak" is no text)."""
+    rest = [paragraph for paragraph in rest if not no_entry(paragraph)]
+    if not rest:
+        return None
+    return {'id': fact_id, 'text': 'tekst sekcji „%s” opisu %sPR #%s poza punktami listy (nie jest incydentem): %s'
+                                   % (name, 'końcowego ' if final else '', number, '\n\n'.join(rest))}
 
 
 def unasked_incidents(epic_id, prs):
+    """One `unasked` incident per point of "Decyzje bez pytania" of the task PRs, with the whole text of the point:
+    the key is the position, so the identifier and the number of incidents do not depend on the text."""
     incidents = []
     for pr in prs:
         number = pr.get('number')
         for position, text in unasked_decisions(pr.get('body')):
             incidents.append(_incident(
                 epic_id, 'unasked', 'pr%s#%d' % (number, position), None,
-                {'pr': number, 'position': position, 'text': cut(text, 500), 'title': pr.get('title')},
-                [{'source': 'pr %s' % number, 'text': cut(text, 500)}]))
+                {'pr': number, 'position': position, 'text': text, 'title': pr.get('title')},
+                [{'source': 'pr %s' % number, 'text': text}]))
     return incidents
+
+
+def unasked_outside_facts(epic_id, prs):
+    """The facts `<epic>/outside-points/pr<number>`: the text of "Decyzje bez pytania" of a task PR that is in no
+    point (a section of prose, a paragraph after the list)."""
+    facts = []
+    for pr in prs:
+        lines = section_lines(pr.get('body'), 'decyzje bez pytania')
+        fact = None if lines is None else outside_points_fact(
+            '%s/outside-points/pr%s' % (epic_id, pr.get('number')), 'Decyzje bez pytania', pr.get('number'),
+            section_items(lines)[1])
+        if fact:
+            facts.append(fact)
+    return facts
 
 
 # ------------------------------------------------------------------------------- native epics (docs/features/ash-v1)
@@ -813,18 +869,25 @@ def no_entry(text):
     return re.sub(r'[\W_]+', '', text).lower() == 'brak'
 
 
-def pr_section_points(body, name):
-    """[(position, text)] of the points of the section `name` of a PR description: the items of its list
-    (list_items) or, for a section of prose without a list, its whole text as one point; the entry "brak" is no point.
-    None when the description has no such section (a fact of missing data, not an error)."""
+def pr_section(body, name):
+    """(points, rest) of the section `name` of a PR description: the points are the items of its list (section_items)
+    or, for a section of prose without a list, its whole text as one point; the entry "brak" is no point. `rest` is
+    the text of a section with a list that is in no point (section_items). None when the description has no such
+    section (a fact of missing data, not an error)."""
     lines = section_lines(body, name)
     if lines is None:
         return None
-    items = list_items(lines)
+    items, rest = section_items(lines)
     if not items:
         text = ' '.join(line.strip() for line in lines if line.strip())
-        items = [(1, text)] if text else []
-    return [(position, text) for position, text in items if not no_entry(text)]
+        items, rest = ([(1, text)] if text else []), []
+    return [(position, text) for position, text in items if not no_entry(text)], rest
+
+
+def pr_section_points(body, name):
+    """[(position, text)] of the points of pr_section, None without the section."""
+    section = pr_section(body, name)
+    return None if section is None else section[0]
 
 
 def final_pr_of(run_file):
@@ -1032,21 +1095,25 @@ def native_pr_incidents(epic_id, number, record):
     section is a fact."""
     incidents, facts = [], []
     for slug, name, kind in NATIVE_PR_SECTIONS:
-        points = pr_section_points(record.get('body'), name)
-        if points is None:
+        section = pr_section(record.get('body'), name)
+        if section is None:
             facts.append({'id': '%s/missing/pr-section/%s' % (epic_id, slug),
                           'text': 'brak sekcji „%s” w opisie końcowego PR #%s' % (name, number)})
             continue
+        points, rest = section
         for position, text in points:
+            # the whole text of the point; the key is its position, never its text
             if kind == 'unasked':
                 key = 'pr%s#%d' % (number, position)
-                data = {'pr': number, 'position': position, 'text': cut(text, 500), 'title': record.get('title')}
+                data = {'pr': number, 'position': position, 'text': text, 'title': record.get('title')}
             else:
                 key = '%s#%d' % (slug, position)
-                data = {'pr': number, 'section': name, 'position': position, 'text': cut(text, 500),
+                data = {'pr': number, 'section': name, 'position': position, 'text': text,
                         'can_be_corrective': False}
-            incidents.append(_incident(epic_id, kind, key, None, data,
-                                       [{'source': 'pr %s' % number, 'text': cut(text, 500)}]))
+            incidents.append(_incident(epic_id, kind, key, None, data, [{'source': 'pr %s' % number, 'text': text}]))
+        fact = outside_points_fact('%s/outside-points/%s' % (epic_id, slug), name, number, rest, final=True)
+        if fact:
+            facts.append(fact)
     return incidents, facts
 
 
@@ -1070,6 +1137,114 @@ def native_numbers(record):
     return {'interventions': human.get('interventions'), 'waits': human.get('waits'),
             'wait_min': round(wait_s / 60) if _number(wait_s) else None,
             'manual_count': len(fixes) if isinstance(fixes, list) else None}
+
+
+# The comment of the lead session in the final PR of a native epic that hands the epic over to /retro: its text starts
+# with this heading (docs/features/ash-process-fixes/spec.md, P1).
+HANDOFF_HEADING = re.compile(r'^#{1,6}\s*Przekazanie do retro\b', re.I)
+COMMIT_SHA = re.compile(r'^[0-9a-f]{40}(?:[0-9a-f]{24})?$')
+SESSION_ID = re.compile(r'^[A-Za-z0-9._-]{1,64}$')
+
+
+def is_handoff(body):
+    first = next((line.strip() for line in str(body).splitlines() if line.strip()), '')
+    return bool(HANDOFF_HEADING.match(first))
+
+
+def native_handoff(gate, epic_id, number):
+    """(handoff, facts, external) of the final PR of a native epic: `handoff` {pr, comments: [{author, created_at,
+    url, body}]} holds the whole text of every comment of a trusted author that starts with the heading "Przekazanie
+    do retro", read through the origin gate (the comments of the PR as an issue); every comment of an untrusted author
+    is only an entry of `external` (source `final_pr_comment`). No such comment is the fact `<epic>/missing/handoff`;
+    a failing gate raises (exit code 1, like any failing `gh`)."""
+    comments, external = [], []
+    for record in gate.comments(number):
+        if not record['trusted']:
+            external.append(external_record('final_pr_comment', number, record))
+        elif is_handoff(record['body']):
+            comments.append({'author': record.get('author'), 'created_at': record.get('createdAt'),
+                             'url': record.get('url'), 'body': record['body']})
+    facts = [] if comments else [{
+        'id': '%s/missing/handoff' % epic_id,
+        'text': 'brak komentarza „Przekazanie do retro” zaufanego autora w końcowym PR #%s' % number}]
+    return {'pr': number, 'comments': comments}, facts, external
+
+
+def plan_pointer(epic_id, path, worktree, run, commit):
+    """({path, exists, last_commit, deleted_in}, facts) of the plan of an epic: in the worktree of the retro, else the
+    commit that removed it at `commit` (origin/main) and its first parent, which still has the last version
+    (`git show <last_commit>:<path>`). A plan that never existed and a failing `git` are facts."""
+    plan = {'path': path, 'exists': os.path.isfile(os.path.join(worktree, path)), 'last_commit': None,
+            'deleted_in': None}
+    if plan['exists']:
+        return plan, []
+    fact_id = '%s/missing/plan' % epic_id
+    try:
+        out = run(['git', 'log', '-1', '--format=%H %P', '--diff-filter=D', commit, '--', path])
+    except (next_epic.CommandError, OSError):
+        return plan, [{'id': fact_id, 'text': 'brak planu %s w worktree retro, a historii planu nie ustalono: '
+                                              'git log nie dał wyniku' % path}]
+    shas = out.split()
+    if len(shas) >= 2 and COMMIT_SHA.match(shas[0]) and COMMIT_SHA.match(shas[1]):
+        plan['deleted_in'], plan['last_commit'] = shas[0], shas[1]
+        return plan, []
+    if not shas:
+        return plan, [{'id': fact_id, 'text': 'plan %s nigdy nie istniał w historii %s' % (path, commit)}]
+    return plan, [{'id': fact_id, 'text': 'brak planu %s w worktree retro, a git log dał nieoczekiwany wynik' % path}]
+
+
+def transcript_of(projects, session):
+    """The path of the transcript `<session>.jsonl` in any project directory of `projects`, or None."""
+    if not SESSION_ID.match(session):
+        return None
+    found = sorted(glob.glob(os.path.join(glob.escape(projects), '*', glob.escape(session) + '.jsonl')))
+    return found[0] if found else None
+
+
+def native_materials(epic_id, number, paths, run, commit):
+    """(materials, facts): pointers to the materials of a native epic for the analyst, without their content: the
+    specification and the plan in the worktree of the retro (plan_pointer), the final PR, the run file and the record
+    of tools/metrics and the sessions of the run file with the directory of their transcripts (the rule of project_dir
+    of tools/metrics) and the transcript found in `paths['projects']`. A missing specification, plan, session or
+    transcript is a fact."""
+    worktree = paths.get('worktree') or '.'
+    projects = paths.get('projects') or CLAUDE_PROJECTS
+    state = paths.get('metrics_state') or ''
+    directory = 'docs/features/%s' % epic_id
+    facts = []
+    spec = {'path': directory + '/spec.md', 'exists': os.path.isfile(os.path.join(worktree, directory, 'spec.md'))}
+    if not spec['exists']:
+        why = ('brak pliku spec.md w %s' % directory if os.path.isdir(os.path.join(worktree, directory))
+               else 'brak katalogu %s' % directory)
+        facts.append({'id': '%s/missing/spec' % epic_id, 'text': 'brak specyfikacji w worktree retro: %s' % why})
+    plan, plan_facts = plan_pointer(epic_id, directory + '/plan.md', worktree, run, commit)
+    facts += plan_facts
+    record_path = os.path.join(state, 'epics', '%s.json' % epic_id)
+    try:
+        run_file = load_run_file(state, epic_id) or {}
+    except ValueError:
+        run_file = {}
+    sessions = []
+    listed = run_file.get('sessions') if isinstance(run_file.get('sessions'), list) else []
+    for entry in listed:
+        if not (isinstance(entry, dict) and filled(entry.get('id'))):
+            continue
+        where = entry.get('worktree') if filled(entry.get('worktree')) else None
+        sessions.append({'id': entry['id'], 'worktree': where, 'at': entry.get('at'),
+                         'transcript_dir': os.path.join(projects, re.sub(r'[^A-Za-z0-9]', '-', where))
+                         if where else None,
+                         'transcript': transcript_of(projects, entry['id'])})
+    if not sessions:
+        facts.append({'id': '%s/missing/sessions' % epic_id,
+                      'text': 'plik przebiegu bez sesji (metrics.py start zapisuje sesję prowadzącą): brak wskazań '
+                              'transkryptów'})
+    lost = [s['id'] for s in sessions if s['transcript'] is None]
+    if lost:
+        facts.append({'id': '%s/missing/transcripts' % epic_id,
+                      'text': 'brak transkryptu sesji %s w %s' % (', '.join(lost), projects)})
+    return {'final_pr': number, 'spec': spec, 'plan': plan,
+            'run_file': os.path.join(state, 'runs', '%s.json' % epic_id),
+            'record': {'path': record_path, 'exists': os.path.isfile(record_path)}, 'sessions': sessions}, facts
 
 
 # ---------------------------------------------------------------------------------------------- GitHub and registers
@@ -1202,7 +1377,7 @@ def blocked_in_runs(ao_home, in_progress):
             if not isinstance(questions, list):
                 questions = [questions]
             tasks.append({'task_id': row['task_id'], 'status': 'BLOCKED',
-                          'blockers': [cut(q) for q in questions if isinstance(q, str)]})
+                          'blockers': [q for q in questions if isinstance(q, str)]})
         if run['status'] == 'BLOCKED' or tasks:
             blocked.append({'epic': run['id'], 'epic_status': run['status'], 'tasks': tasks})
     return blocked
@@ -1404,6 +1579,7 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
         issues.setdefault(epic_title_id(issue.get('title')), {'number': issue['number'], 'comments': comments})
 
     entries, incidents, facts, measurements = [], [], skipped_facts(skipped), {}
+    handoff = materials = None   # an AO run has neither
     if epic_id in [e['id'] for e in natives]:
         # R1: the record of a native epic is refreshed first (decide and trend read it); a failed refresh leaves the
         # saved record, which is read below
@@ -1438,6 +1614,7 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
             task_prs = shop.prs(state='merged', base='epic/%s' % name, limit=200, fields=('title', 'body'))
             external += [external_record('task_pr', p['number'], p) for p in task_prs if not p['trusted']]
             found += unasked_incidents(name, [p for p in task_prs if p['trusted']])
+            facts += unasked_outside_facts(name, [p for p in task_prs if p['trusted']])
         found += optimization_incidents(name, history.get(name), merged_at)
         incidents += sorted(found, key=lambda i: (KIND_ORDER.index(i['kind']), i['at'] or 0, i['key']))
     records = {}
@@ -1472,6 +1649,12 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
             facts += described_facts
         found += optimization_incidents(name, history.get(name), merged_at)
         incidents += sorted(found, key=lambda i: (KIND_ORDER.index(i['kind']), i['at'] or 0, i['key']))
+        if name == epic_id:
+            # P3: the handoff of the lead session and the pointers to the materials, for the collected epic only
+            handoff, handoff_facts, handoff_external = native_handoff(shop, name, number)
+            materials, material_facts = native_materials(name, number, paths, run, commit)
+            facts += handoff_facts + material_facts
+            external += handoff_external
     entries.sort(key=lambda e: (e['merged_at'] is None, e['merged_at'] or 0, e['created_at'] or 0, e['id']))
     order = {e['id']: n for n, e in enumerate(entries)}
     incidents.sort(key=lambda i: order[i['epic']])   # stable: keeps the order inside an epic
@@ -1513,13 +1696,14 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
     for items in open_issues.values():
         for item in items:
             if item['trusted']:
-                item['body'] = cut(item.get('body') or '', 2000)
+                item['body'] = item.get('body') or ''   # whole: the duplicate check compares the text
     external.sort(key=lambda e: (e['source'], e['number'], e['url'] or ''))
     effects, effect_facts = optimization_effects(epic_id, registers['applied'], metrics)
     facts += effect_facts
     return {'schema': 1, 'epic': epic_id, 'generated_at': int(time.time()), 'commit': commit, 'epics': entries,
             'incidents': incidents, 'facts': facts, 'optimization_effects': effects, 'status': status,
-            'registers': registers, 'open_retro_pr': retro_pr, 'open_issues': open_issues, 'external': external}
+            'registers': registers, 'open_retro_pr': retro_pr, 'open_issues': open_issues, 'external': external,
+            'handoff': handoff, 'materials': materials}
 
 
 def report_text(epic, facts):
@@ -1978,6 +2162,10 @@ def cmd_sync(args, run):
 
 ISSUE_REPOSITORIES = {'ao': AO_REPOSITORY, 'shop': SHOP}
 SHOP_ISSUE_LABELS = ('tech-debt', 'agent')
+# GitHub refuses a longer body of an issue or a comment and a longer title of an issue: such a text is an error with
+# the name of its fields (validate, issues), never a text cut for GitHub.
+GITHUB_BODY_LIMIT = 65536
+GITHUB_TITLE_LIMIT = 256
 
 
 def issue_text(epic_id, item):
@@ -1990,6 +2178,25 @@ def issue_text(epic_id, item):
     return ('%s\n\n---\nZgłoszone przez `/retro` po epiku `%s`.\n\nIncydenty:\n%s\n\nPrzyczyna źródłowa: %s\n\n'
             'Jak sprawdzimy, że działa: %s\n' % (item['body'].strip(), epic_id, incidents, item['cause'],
                                                   item['verify']))
+
+
+def github_limit_errors(epic_id, item):
+    """The messages (with the names of the fields) for the texts of an issue item that GitHub would refuse: the title
+    of a new issue over GITHUB_TITLE_LIMIT, the text of issue_text over GITHUB_BODY_LIMIT. [] for an item that lacks
+    the fields (the other checks of validate report it)."""
+    n, existing = item.get('n'), item.get('existing_issue') is not None
+    errors = []
+    if not existing and filled(item.get('title')) and len(item['title']) > GITHUB_TITLE_LIMIT:
+        errors.append('item %s: title has %d characters; GitHub takes at most %d in the title of an issue'
+                      % (n, len(item['title']), GITHUB_TITLE_LIMIT))
+    fields = ('title', 'cause', 'verify') if existing else ('body', 'cause', 'verify')
+    if id_list(item.get('evidence')) is not None and all(filled(item.get(field)) for field in fields):
+        length = len(issue_text(epic_id, item))
+        if length > GITHUB_BODY_LIMIT:
+            errors.append('item %s: the text of the %s (%s and the incidents) has %d characters; GitHub takes at most '
+                          '%d: shorten %s' % (n, 'comment' if existing else 'issue', ', '.join(fields), length,
+                                              GITHUB_BODY_LIMIT, ', '.join(fields)))
+    return errors
 
 
 def approved_numbers(tokens, issue_items, rejected=()):
@@ -2050,6 +2257,9 @@ def cmd_issues(args, run):
         if item.get('repo') not in ISSUE_REPOSITORIES or id_list(item.get('evidence')) is None \
                 or not all(filled(item.get(field)) for field in needed):
             raise Refusal('item %d is not a complete issue proposal (run validate)' % n)
+        too_long = github_limit_errors(epic_id, item)
+        if too_long:
+            raise Refusal('; '.join(too_long))
     results, failed = [], 0
     for n in numbers:
         item = issue_items[n]
@@ -2261,6 +2471,8 @@ class Validation:
         n = item['n']
         if item.get('repo') not in ('ao', 'shop'):
             self.add(n, 'field', 'item %s: repo must be ao or shop' % n)
+        for message in github_limit_errors(self.input.get('epic'), item):
+            self.add(n, 'field', message)
         duplicates = item.get('duplicate_check')
         if not isinstance(duplicates, list) or not all(isinstance(d, int) and not isinstance(d, bool)
                                                        for d in duplicates):
@@ -2439,8 +2651,11 @@ def build_parser():
     collecting = commands.add_parser('collect', parents=[common], help='write input.json for an epic')
     collecting.add_argument('epic')
     collecting.add_argument('--out', help='directory for input.json (default: <retro-home>/<epic>)')
-    collecting.add_argument('--worktree', help='checkout of origin/main whose tools/metrics/metrics.py is run '
+    collecting.add_argument('--worktree', help='checkout of origin/main whose tools/metrics/metrics.py is run and '
+                                               'where the specification and the plan of a native epic are looked up '
                                                '(default: --repo)')
+    collecting.add_argument('--projects', default=paths['projects'],
+                            help='directory of the session transcripts (default: ~/.claude/projects)')
     commands.add_parser('pending', parents=[common], help='epics whose retro is still to do')
     for name, text in (('defer', 'defer the retro of an epic (it stays pending)'),
                        ('skip', 'skip the retro of an epic for good')):
@@ -2485,7 +2700,8 @@ def main(argv=None, run=None, metrics=None):
         if args.command == 'collect':
             check_epic_name(args.epic)
             paths = {'ao_home': args.ao_home, 'retro_home': args.retro_home, 'sweep_home': args.sweep_home,
-                     'metrics_state': args.metrics_state}
+                     'metrics_state': args.metrics_state, 'worktree': args.worktree or args.repo,
+                     'projects': args.projects}
             # The gate's own runner keeps the output of a failed `gh api --include`, so a 404 is an untrusted author.
             gates = None if run else make_gates(github_trust.make_runner(args.repo))
             data = collect(args.epic, paths, run or next_epic.make_runner(args.repo), gates,

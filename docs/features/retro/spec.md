@@ -47,13 +47,15 @@ Zakres: .claude/skills/retro, .claude/agents/retro-analyst.md, .claude/skills/ao
 `epics/<epik>/report.md`, a każda komenda `ao` w katalogu bez bazy zakłada nową (`orchestrator/cli.py`,
 `orchestrator/store.py` w AO). AO jest zamrożone, więc format jego plików się nie zmienia.
 
-Treść z GitHuba (issues epików i ich komentarze, PR zadań do `epic/*`, otwarty PR retro, otwarte issues AO
-i `tech-debt` z `agent`) `retro.py` czyta wyłącznie przez bramkę pochodzenia `tools/agent-security/github_trust.py`
+Treść z GitHuba (issues epików i ich komentarze, PR zadań do `epic/*`, opis i komentarze końcowego PR epiku
+natywnego, otwarty PR retro, otwarte issues AO i `tech-debt` z `agent`) `retro.py` czyta wyłącznie przez bramkę
+pochodzenia `tools/agent-security/github_trust.py`
 (`docs/adr/agent-security.md`). Zaufany autor to konto z prawem zapisu (`write`, `maintain`, `admin`) do repozytorium,
 z którego pochodzi treść: issues AO ocenia uprawnienie w `piotrp321/agentic-orchestrator`, resztę w `piotrp321/shop`.
 Konta `[bot]`, `ghost`, brak autora, `read`, `triage` i `404` są niezaufane. Komentarze ocenia każdy osobno, po
 autorze komentarza. Issue epiku, komentarz albo PR zadania od niezaufanego autora trafia do `input.json` tylko jako
-wpis `external` (`source`: `epic_issue`, `epic_comment` albo `task_pr`, `number`, `author`, `url`), a otwarte issue
+wpis `external` (`source`: `epic_issue`, `epic_comment`, `task_pr`, `final_pr` albo `final_pr_comment`, `number`,
+`author`, `url`), a otwarte issue
 jako rekord bramki `{number, author, url, trusted: false}`; bez tytułu, treści i etykiet. Błąd bramki (błąd `gh`,
 limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `input.json`, jak błąd `gh`. Wywołania
 `gh` bez treści (stan i `mergedAt` końcowego PR, liczby issues `agent`) idą bez bramki.
@@ -94,6 +96,22 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
   (`<epik>/missing/record`, `<epik>/missing/record/<pole>`, `<epik>/missing/pr-description`,
   `<epik>/missing/pr-section/<decisions|problems|gaps>`), nie błąd. Wpis epiku w `input.json` (`epics`) ma `source`
   (`ao` albo `native`).
+- **Przekazanie i materiały epiku natywnego** (tylko retrospektywowanego; dla przebiegu AO oba pola są `null`):
+  - `handoff` `{pr, comments: [{author, created_at, url, body}]}`: pełna treść każdego komentarza końcowego PR od
+    zaufanego autora, którego pierwsza niepusta linia to nagłówek „Przekazanie do retro” (komentarz sesji
+    prowadzącej po merge'u, `docs/features/ash-process-fixes/spec.md`, P1). Komentarze PR czyta bramka (`comments
+    <numer PR>`: PR jest issue); każdy komentarz niezaufanego autora to tylko wpis `external` (`source`:
+    `final_pr_comment`). Brak takiego komentarza to fakt `<epik>/missing/handoff`, błąd bramki to kod 1.
+  - `materials`: wskazania bez kopiowania treści: `final_pr`; `spec` i `plan` `{path, exists}` w worktree retro
+    (`--worktree`, domyślnie `--repo`), plan usunięty z `deleted_in` (commit, który go usunął, z `git log
+    --diff-filter=D` na `origin/main`) i `last_commit` (jego pierwszy rodzic z ostatnią wersją: `git show
+    <last_commit>:<path>`); `run_file` (plik przebiegu) i `record` `{path, exists}` (rekord metryk); `sessions`
+    z pliku przebiegu `[{id, worktree, at, transcript_dir, transcript}]`: `transcript_dir` to katalog projektu sesji
+    w `--projects` (domyślnie `~/.claude/projects`) według reguły `project_dir` z `tools/metrics/metrics.py` (każdy
+    znak ścieżki `worktree` poza literą i cyfrą zamieniony na `-`), `transcript` to znaleziony plik `<id>.jsonl`
+    w dowolnym katalogu projektu (jak w `metrics.py epic`) albo `null`. Brak specyfikacji (z powodem: brak katalogu
+    albo pliku), plan, który nigdy nie istniał, nieudany `git log`, plik przebiegu bez sesji i brak transkryptu to
+    fakty `<epik>/missing/{spec,plan,sessions,transcripts}`; `collect` kończy się poprawnie.
 
 ## Uruchamianie
 
@@ -144,8 +162,8 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
 2. **Fakty.** Worktree `git worktree add --detach` z `origin/main` w katalogu przebiegu. `retro.py collect <epik>`
    zapisuje `input.json`: incydenty całej historii (sekcja „Incydenty”), fakty „Statusu” z ID (`status/<nazwa>`),
    rejestry, pozycje otwartego PR retro (z `state.json` poprzednich przebiegów), otwarte issues AO i otwarte issues
-   `tech-debt` z etykietą `agent` (do sprawdzenia duplikatów), wpisy `external` (sekcja „Źródła”) i pomiar
-   (sekcja „Pomiar i decyzje optymalizacyjne”).
+   `tech-debt` z etykietą `agent` (do sprawdzenia duplikatów), wpisy `external` (sekcja „Źródła”), pomiar
+   (sekcja „Pomiar i decyzje optymalizacyjne”) i dla epiku natywnego `handoff` i `materials` (sekcja „Źródła”).
 3. **Agent `retro-analyst`** (`.claude/agents/retro-analyst.md`, model Opus, narzędzia Read, Grep, Glob, Bash tylko
    do odczytu, Write tylko w katalogu przebiegu) dostaje ścieżki `input.json` i worktree i zwraca `proposals.json`.
    Zasady agenta:
@@ -219,7 +237,14 @@ Wiersze tabeli wyżej poza `optimization` dotyczą epików AO. Epik natywny (sek
 | `optimization` | jak wyżej | jak wyżej |
 
 Punkt sekcji to pozycja listy (jak w „Decyzjach bez pytania” PR zadań), a sekcja z samym tekstem bez listy to jeden
-punkt. Wpis „brak” (także „Brak.”, „- brak”) nie daje incydentu. `repair`, `manual_fix` i `no_sweep` nie powstają dla
+punkt. Pozycja obejmuje swoje wcięte linie (także akapity po pustej linii i zagnieżdżone listy) i linię bez wcięcia
+tuż pod nią. Tekst sekcji z listą, który nie należy do żadnej pozycji (wstęp przed listą, akapit bez wcięcia po
+pustej linii), nie jest incydentem, ale zostaje w całości jako fakt `<epik>/outside-points/<decisions|problems|gaps>`
+(w PR zadań AO: `<epik>/outside-points/pr<numer>`). Wpis „brak” (także „Brak.”, „- brak”) nie daje incydentu.
+
+Tekst punktu jest w `data.text` i w fakcie incydentu w całości, bez limitu długości: jeden punkt to jeden incydent,
+a klucz zależy tylko od pozycji, więc liczba incydentów i ich ID nie zależą od długości tekstu. Tak samo w całości
+są tekst ręcznej poprawki, pytania blokera i treść otwartych issues. `repair`, `manual_fix` i `no_sweep` nie powstają dla
 epiku natywnego. Opis końcowego PR jest czytany dla każdego epiku natywnego historii, nie tylko retrospektywowanego,
 bo inaczej punkty „Problemów i zastojów” z dwóch epików nie spotkałyby się w jednym `input.json`.
 
@@ -294,6 +319,9 @@ błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do plan
   `verify` (co zobaczymy w kolejnych epikach); dla `fix` także `files` i `change`; dla `issue` `repo` (`ao` albo
   `shop`), `duplicate_check` (numery sprawdzonych issues) i `body` albo `existing_issue` (nie oba; numer otwartego issue
   w danych wejścia z `trusted: true`: po „tak” komentarz z nowymi incydentami zamiast nowego issue);
+- limity GitHuba: tytuł nowego issue do 256 znaków, treść issue albo komentarza (z incydentami, przyczyną i sposobem
+  sprawdzenia) do 65536 znaków; dłuższy tekst to błąd `field` z nazwami pól do skrócenia (`retro.py issues` odmawia
+  takiej pozycji przed wywołaniem `gh`). Skrypt nigdy nie skraca tekstu sam;
 - `files` tylko z listy dozwolonej: `CLAUDE.md` i `apps/*/CLAUDE.md`, `.claude/skills/*/SKILL.md`,
   `.claude/agents/*.md`, `docs/features/{ao-run,agent-tester-ux,retro}/spec.md`, `docs/adr/agentic-software-house.md`
   („Przebieg epiku”); zmiana
@@ -417,7 +445,8 @@ Klucze i ID w przykładzie są ilustracją.
 - `.claude/agents/retro-analyst.md`: agent.
 - `.claude/skills/retro/retro.py` (Python 3.9+, bez zależności) i `test_retro.py`: `pending`, `defer`, `skip`,
   `lock`, `unlock`, `sync`, `collect`, `validate`, `observe`, `reject`, `issues`; wspólna opcja `--metrics-state`
-  (pliki przebiegu i rekordy epików natywnych), `collect --worktree` (skrypt pomiaru z `origin/main`),
+  (pliki przebiegu i rekordy epików natywnych), `collect --worktree` (skrypt pomiaru z `origin/main`, specyfikacja
+  i plan epiku natywnego), `collect --projects` (transkrypty sesji),
   `observe --committed` (pozycje `fix` w PR retro przy serii w toku). Komendy `gh` i `git` przez
   wstrzykiwany runner `next_epic.make_runner`, `metrics.py` przez osobny wstrzykiwany runner (`make_metrics_runner`); `retro.py` importuje `next_epic` (tablica) i `ao_events` (`waits`)
   bez kopii ich kodu; `night_queue.py room` (limit) uruchamia sesja, a wynik podaje jako powód `defer`.
@@ -472,7 +501,15 @@ Klucze i ID w przykładzie są ilustracją.
    - epik natywny (syntetyczny plik przebiegu, rekord i opis PR): `pending` po merge'u końcowego PR, `collect`
      odświeża rekord, każdy rodzaj incydentu natywnego, brak sekcji opisu PR i pola rekordu jako fakt, opis
      niezaufanego autora tylko jako `external`, odmowa (kod 2) bez przebiegu AO i pliku przebiegu, skrypt pomiaru
-     z `--worktree` przy nieaktualnym `--repo` (#679), `observe --committed`.
+     z `--worktree` przy nieaktualnym `--repo` (#679), `observe --committed`;
+   - pełna treść: punkt dłuższy niż 500 i 1000 znaków z istotną informacją na końcu (także polskie znaki na granicy
+     500) jest w `data.text` i w fakcie, jeden incydent z tym samym ID; N punktów to N incydentów; tekst poza punktami
+     jako fakt; pytania blokera, ręczne poprawki i treść otwartych issues w całości; limity GitHuba jako błąd
+     `validate` i odmowa `issues`;
+   - przekazanie i materiały: komentarz „Przekazanie do retro” w całości, komentarz niezaufanego autora tylko jako
+     `external`, brak komentarza jako fakt, błąd bramki → kod 1; plan usunięty z commitem ostatniej wersji, plan
+     w worktree, plan, który nigdy nie istniał, nieudany `git`, brak katalogu specyfikacji, plik przebiegu bez sesji,
+     sesja bez transkryptu; przebieg AO bez `handoff` i `materials`.
 
    CI uruchamia testy `retro` nową linią w `ci.yml`.
 2. Warunki startu na ścieżce błędu: limit (≥ 95% z `/ao-run`, ≥ 80% ręcznie) i działający AO przy przebiegu ręcznym odraczają (epik
