@@ -4253,10 +4253,10 @@ class RetroProcessDocumentsTest(unittest.TestCase):
         for text in (row % 'wstrzymana', '# Plan bez tabeli\n', None):
             with self.subTest(text=text):
                 self.assertTrue(self.series_state(text).startswith('w toku (nieznany stan'))
-        # the plan of today has a readable row: one of the plain states, not the annotated "w toku (nieznany stan …)"
-        # of an unreadable row (which state it is changes with the series and is not pinned here)
-        self.assertIn(self.series_state(repo_text('docs', 'features', 'agentic-software-house', 'plan.md')),
-                      ('przed startem', 'w toku', 'zakończona'))
+        # the plan of today: the series ASH v1.0 has ended for good, so "zakończona" (the plain state, not the
+        # annotated "w toku (nieznany stan …)" of an unreadable row); "przed startem" or "w toku" would be a wrong plan
+        self.assertEqual(self.series_state(repo_text('docs', 'features', 'agentic-software-house', 'plan.md')),
+                         'zakończona')
 
     def test_the_agent_and_the_specification_describe_the_incidents_of_a_native_epic(self):
         agent = repo_text('.claude', 'agents', 'retro-analyst.md')
