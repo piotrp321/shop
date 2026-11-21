@@ -71,7 +71,9 @@ Rekordów AO (`source` inne niż `native`, także rekord bez pola `source`) dash
   z transkryptów agentów (`process.loaded`: potwierdzone, w wersji epiku, inne niż w bazie, bez potwierdzenia; według
   roli i wpisu). Wynik kontroli (`process.match`, z chwilą kontroli `checked_on`) jest osobną wartością, bo obejmuje
   dysk, skille użytkownika i `CLAUDE.md` wczytany przez sesję. Epik, którego dysku nie sprawdzono, ma to napisane
-  z powodem.
+  z powodem. Akceptacje niezgodności w trakcie epiku (wpisy `changes` rodzaju `accepted`) są liczone osobno,
+  a instrukcja inna niż w bazie, którą tłumaczy zaakceptowany stan dysku (`explained`), jest oznaczona i nie jest
+  niezgodnością.
 - **Kompletność danych:** liczba i lista braków (`gaps`), miary bez danych, pola o nieoczekiwanym typie, przeczytane
   transkrypty, sesje prowadzące, czas aktualizacji rekordu i pliku przebiegu.
 
