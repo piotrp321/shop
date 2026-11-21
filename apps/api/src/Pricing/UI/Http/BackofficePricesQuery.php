@@ -22,11 +22,13 @@ final readonly class BackofficePricesQuery
     public const string BAD_SORT = 'Sortowanie może mieć tylko wartość name, -name, -updatedAt albo updatedAt.';
     public const string BAD_PRODUCT_ID = 'Identyfikator produktu musi być poprawnym UUID.';
     public const string PRODUCT_EXCLUDES = 'Filtr produktu nie łączy się z wyszukiwaniem, kategorią, sortowaniem ani kursorem.';
+    public const string BAD_TERM = 'Szukana fraza zawiera niedozwolone znaki.';
+    public const string BAD_CURSOR = 'Kursor stronicowania jest nieprawidłowy.';
 
     public function __construct(
         #[Assert\Length(min: 2, max: 100)]
         // PostgreSQL cannot take a NUL in a parameter: the driver would cut the term there and search for something else.
-        #[Assert\Regex(pattern: '/\0/', message: 'The search term must not contain a NUL character.', match: false)]
+        #[Assert\Regex(pattern: '/\0/', message: self::BAD_TERM, match: false)]
         public ?string $q = null,
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Uuid]

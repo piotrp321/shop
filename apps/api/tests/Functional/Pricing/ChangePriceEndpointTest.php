@@ -300,7 +300,8 @@ final class ChangePriceEndpointTest extends WebTestCase
         $this->put($variantId, ['gross' => 6490, 'version' => $version]);
 
         $problem = $this->assertProblem(409);
-        self::assertSame('The price was modified concurrently. Reload it and try again.', $problem['detail']);
+        self::assertSame('Cena została w międzyczasie zmieniona. Odśwież ją i spróbuj ponownie.', $problem['detail']);
+        self::assertSame('about:blank', $problem['type']);
         self::assertSame(['gross_amount' => 5990, 'version' => 2], $this->storedPrice($variantId));
         self::assertCount(1, $this->history($variantId));
     }
@@ -335,7 +336,8 @@ final class ChangePriceEndpointTest extends WebTestCase
         $this->put($variantId, ['gross' => 5990, 'version' => 1]);
 
         $problem = $this->assertProblem(409);
-        self::assertSame('The price was modified concurrently. Reload it and try again.', $problem['detail']);
+        self::assertSame('Cena została w międzyczasie zmieniona. Odśwież ją i spróbuj ponownie.', $problem['detail']);
+        self::assertSame('about:blank', $problem['type']);
         self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
         self::assertSame([], $this->history($variantId));
     }

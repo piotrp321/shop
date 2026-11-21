@@ -52,7 +52,8 @@ final readonly class DeletePromotionController
     #[IsGranted(PromotionAttributes::MANAGE_PROMOTIONS)]
     public function __invoke(string $id, Request $request): Response
     {
-        $version = $request->query->get('version');
+        // `all()`, not `get()`: a bracketed key (`version[]=1`) must be a violation, not an exception.
+        $version = $request->query->all()['version'] ?? null;
         if (!\is_string($version) || 1 !== preg_match(self::VERSION, $version)) {
             throw new ValidationFailedException($request, new ConstraintViolationList([new ConstraintViolation('Wersja musi być dodatnią liczbą całkowitą.', null, [], $request, 'version', null)]));
         }

@@ -10,7 +10,7 @@ namespace App\Tests\Functional\Shared\InputContract;
  * a valid and an invalid value, and the exact violations the invalid value gives.
  *
  * Values may hold placeholders `{name}`: the values of the fixture and `{idempotencyKey}`, a new key in every request.
- * The path takes them too.
+ * The path, the body and the other headers take them too.
  */
 final readonly class InputCase
 {
@@ -21,6 +21,8 @@ final readonly class InputCase
      * @param self::STAFF|self::CUSTOMER|null $token
      * @param 'query'|'header'                $location
      * @param list<array{string, string}>     $violations property path and title of each expected violation
+     * @param array<string, string>           $headers    other headers of both requests, by name (e.g. the access token
+     *                                                    of a guest order)
      */
     private function __construct(
         public string $method,
@@ -34,6 +36,7 @@ final readonly class InputCase
         public ?string $invalid,
         public array $violations,
         public ?string $body,
+        public array $headers,
     ) {
     }
 
@@ -49,7 +52,7 @@ final readonly class InputCase
     {
         [$method, $path] = explode(' ', $operation, 2);
 
-        return new self($method, $path, $token, $fixture, 'query', $parameter, $label, $valid, $invalid, $violations, $body);
+        return new self($method, $path, $token, $fixture, 'query', $parameter, $label, $valid, $invalid, $violations, $body, []);
     }
 
     /**
@@ -58,12 +61,13 @@ final readonly class InputCase
      * @param string                          $operation  "METHOD /path" as in the OpenAPI documents
      * @param self::STAFF|self::CUSTOMER|null $token
      * @param list<array{string, string}>     $violations property path and title of each expected violation
+     * @param array<string, string>           $headers    other headers of both requests, by name
      */
-    public static function header(string $operation, ?string $token, string $fixture, string $header, string $label, ?string $valid, ?string $invalid, array $violations, ?string $body = null): self
+    public static function header(string $operation, ?string $token, string $fixture, string $header, string $label, ?string $valid, ?string $invalid, array $violations, ?string $body = null, array $headers = []): self
     {
         [$method, $path] = explode(' ', $operation, 2);
 
-        return new self($method, $path, $token, $fixture, 'header', $header, $label, $valid, $invalid, $violations, $body);
+        return new self($method, $path, $token, $fixture, 'header', $header, $label, $valid, $invalid, $violations, $body, $headers);
     }
 
     public function name(): string
