@@ -22,7 +22,7 @@ python3 tools/metrics/metrics.py done EPIK [--at CZAS] [--worktree DIR] [--proje
     < odczyt get_usage
 python3 tools/metrics/metrics.py pause EPIK --from CZAS --to CZAS [--reason TEKST] [WSPÓLNE]
 python3 tools/metrics/metrics.py process [EPIK] [--worktree DIR] [--base REF] [--user-dir DIR] [--projects DIR]
-    [WSPÓLNE]
+    [--accept-process-mismatch POWÓD] [--session ID] [WSPÓLNE]
 python3 tools/metrics/metrics.py epic EPIK [--ao-home DIR] [--projects DIR] [--worktree DIR] [--manual-fixes FILE]
     [--no-gh] [WSPÓLNE]
 python3 tools/metrics/metrics.py backfill [--ao-root DIR] [WSPÓLNE]
@@ -45,24 +45,28 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   zapisu; dotyczy też `--resume`, `done` i `pause`, a `epic` oraz pozostałych komend nie. `--resume` dopisuje nową sesję do istniejącego pliku.
   Identyfikator sesji, który jest już w pliku przebiegu innego epiku, daje w `start` i `--resume` kod `2` z nazwą
   tamtego epiku (jedna sesja, jeden epik). `start` zapisuje wersję procesu (`process`, zob. „Wersja procesu”)
-  i odmawia przy różnicy (kod `2`, bez zapisu) bez `--accept-process-mismatch POWÓD` (pusty powód: kod `2`); `--resume`
-  porównuje ją z zapisaną na starcie tak samo; `--user-dir`: katalog użytkownika Claude Code (domyślnie `~/.claude`). `--projects`: katalog
+  i odmawia przy niezgodności z bazą (kod `2`, bez zapisu; commity gałęzi epiku w worktree nie są niezgodnością) bez
+  `--accept-process-mismatch POWÓD` (pusty powód: kod `2`); `--resume` sprawdza ją tak samo (katalog kontroli:
+  `--worktree`, inaczej worktree ostatniej sesji z pliku przebiegu); `--user-dir`: katalog użytkownika Claude Code (domyślnie `~/.claude`). `--projects`: katalog
   projektów Claude Code (domyślnie `~/.claude/projects`). Odczyt limitów z wejścia standardowego: obiekt `plan`
   z `get_usage` albo cały obiekt `get_usage` (`{"plan": …, "context": …}`, brany jest `plan`; `plan`, który nie jest
   obiektem, daje `{"status": "unreadable"}`); terminal albo puste wejście to brak odczytu (`null`).
 - `done EPIK`: wpisuje do pliku przebiegu `done_at` (teraz albo `--at`) i drugi odczyt limitów z wejścia (`usage_done`,
-  te same kształty co w `start`); bez `--at` porównuje wersję procesu z zapisaną na starcie (`--worktree`, domyślnie
-  bieżący katalog) i zapisuje zmianę albo nieudaną kontrolę w `process.changes` z ostrzeżeniem na stderr, nigdy nie
+  te same kształty co w `start`); bez `--at` sprawdza wersję procesu (`--worktree`, domyślnie worktree ostatniej sesji
+  z pliku przebiegu, z komunikatem, gdy bieżący katalog jest innym checkoutem) i zapisuje zmianę albo nieudaną kontrolę w `process.changes` z ostrzeżeniem na stderr, nigdy nie
   odmawia.
 - `pause EPIK --from CZAS --to CZAS [--reason TEKST]`: dopisuje przerwę komputera do `pauses` pliku przebiegu
   (`{from, to, reason}`; czas jak `--at`; powód bez znaków sterujących, pusty to `null`) i wypisuje plik. Brak pliku
   przebiegu, czas nie do odczytania albo `--from` nie przed `--to`: kod `2`, bez zapisu.
 - `process [EPIK]`: wersja procesu (zob. „Wersja procesu”) jako jedna linia JSON. Bez epiku: odczyt `--worktree`
   (domyślnie bieżący katalog) względem `--base` (domyślnie `HEAD`), bez zapisu, z `active_epics`. Z epikiem: ponowna
-  kontrola na danych pliku przebiegu (dysk względem startu, `loaded` z transkryptów sesji epiku pod `--projects`),
-  zapis zmian w `process.changes` (raz na zmianę) i nowego `loaded`. Kod `0` przy zgodności (samo `unconfirmed` nie
-  jest niezgodnością), `4` przy niezgodności (stan na stdout, podsumowanie na stderr), `2` poza repozytorium git, bez
-  definicji, z nieznaną rewizją albo bez pliku przebiegu.
+  kontrola na danych pliku przebiegu (dysk według reguły miejsc, `loaded` z transkryptów sesji epiku pod `--projects`;
+  katalog: `--worktree`, inaczej worktree ostatniej sesji), zapis zmian w `process.changes` (raz na stan) i nowego
+  `loaded`; `--accept-process-mismatch POWÓD` akceptuje bieżące niezgodności (wpis z powodem i sesją `--session`,
+  domyślnie ostatnią z pliku przebiegu; pusty powód: kod `2`). Kod `0` przy zgodności (samo `unconfirmed` i commit
+  gałęzi epiku nie są niezgodnością), `4` przy niezgodności (stan na stdout z `mismatches`, na stderr podsumowanie
+  i co zrobić: aktualizacja głównego checkoutu według ADR, commit albo cofnięcie zmiany w worktree albo akceptacja
+  z powodem), `2` poza repozytorium git, bez definicji, z nieznaną rewizją albo bez pliku przebiegu.
 - `epic`: wypisuje rekord przebiegu jako jedną linię JSON i zapisuje go w `<state>/epics/<epik>.json` (zapis
   atomowy). `--worktree` (domyślnie bieżący katalog): repozytorium, z którego rekord natywny czyta treść instrukcji
   bazy dla `process.loaded`. Przebieg AO to `--ao-home` (domyślnie `ao-<epik>` pod `$SHOP_METRICS_AO_ROOT` albo `~/.local/state`); gdy
@@ -364,13 +368,24 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   w `gaps`.
 - **Wersja procesu** (`process_version.py`, spec „Wersja procesu”): pole `process` pliku przebiegu i rekordu.
   `expected` (`ref`, `requested`, `describe`, `fingerprint`, `files`), `disk` (miejsca ładowania `worktree`
-  i `main_checkout`: `path`, `head`, `branch`, `dirty`, `fingerprint`, `files`, `differs` ze stanem `changed`,
-  `missing`, `extra`), `user_level` (`agents`, `skills`), `loaded` (`session`, `agents`, `skills`, wpisy ze `status`
-  `confirmed`, `differs` albo `unconfirmed`, `origin`, `digest`, `reason`), `match`, `accepted`, `changes`, `status`
-  (`checked`, `not_checked`, `check_failed`), `checked_at`, `checked_on`. Dowód załadowania: `instructions`
-  i `nested_memory` (`CLAUDE.md`), `prompt_snapshot` (agent, pierwszy blok `systemPrompt` równy plikowi bez
-  frontmatteru), linia `Base directory for this skill:` (skill, z argumentami w miejscu `$ARGUMENTS` i podobnych). ADR
-  zawsze `unconfirmed`. Rekord: `loaded` liczony od nowa z transkryptów epiku plus `summary` i `by_role`,
+  i `main_checkout`: `path`, `head`, `branch`, `dirty`, `fingerprint`, `state`, `files`, `differs` ze stanem
+  `changed`, `missing`, `extra`; worktree też `uncommitted`, `epic_branch`, `from_base`), `user_level` (`agents`, `skills`), `loaded` (`session`, `agents`, `skills`, wpisy ze `status`
+  `confirmed`, `differs` albo `unconfirmed`, `version` `base`/`epic`/`null`, `origin`, `digest`, `reason`), `match`,
+  `accepted`, `changes`, `status` (`checked`, `not_checked`, `check_failed`), `checked_at`, `checked_on`. Dowód
+  załadowania: `instructions` i `nested_memory` (`CLAUDE.md`), `prompt_snapshot` (agent: tylko równość pierwszego
+  bloku `systemPrompt` z plikiem bez frontmatteru), linia `Base directory for this skill:` (skill, z argumentami
+  w miejscu `$ARGUMENTS` i podobnych; skill bez takiego miejsca może mieć na końcu dopisek CLI
+  `\n\n\nARGUMENTS: <argumenty>`, `ARGUMENTS_SUFFIX`); ADR zawsze `unconfirmed`. Dowód sesji i przebiegi subagentów
+  do merge'u końcowego PR, wczytania skilli i przebiegi od `started_at` (po czasie wpisu; bez czasu się liczy).
+  Reguła dysku (`process_version.mismatch_paths`, `assess`): w worktree commit gałęzi epiku ponad bazę to informacja
+  (wpis `disk` z `informational: true`), niezacommitowana zmiana (`uncommitted`) i `HEAD` spoza bazy to niezgodność;
+  w głównym checkoucie każda różnica, do tego `user_level.skills`; niezgodność trwa, dopóki ten sam stan (`state`)
+  nie zostanie zaakceptowany (`start`, `--resume` albo `process EPIK` z `--accept-process-mismatch`); odczyt późny
+  nie jest zaakceptowanym stanem. `CLAUDE.md` wczytany z worktree sesji w treści innej niż baza
+  (`EpicVersions`): wersja z commitów gałęzi epiku spoza bazy (`HEAD` worktree w kontroli, `origin/<branch>` albo
+  `<branch>` w rekordzie) albo bieżący plik worktree to `confirmed` z `version: "epic"`; bez historii gałęzi
+  `unconfirmed`; inaczej `differs`. Agenci i skille zawsze względem bazy. Rekord: `loaded` liczony od nowa
+  z transkryptów epiku plus `summary` (z `confirmed_epic`) i `by_role`,
   `attempts[].instructions`, `disk_checked` oraz pozycje `process` w `gaps`. Plik przebiegu bez kontroli dysku (bez
   pola, `not_checked`, `check_failed`) z `base_sha` znanym w repozytorium `--worktree` (`unchecked_process`):
   `expected` z `base_sha` w chwili budowy rekordu, `disk: null`, `disk_checked: false`, `disk_reason`, `loaded` jak
@@ -380,6 +395,9 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
 - **Prywatność:** rekord ma identyfikatory sesji i agentów, nazwy ról i modeli, werdykty oraz liczby; bez treści
   wiadomości, zleceń, raportów, opisu PR, poleceń i instrukcji (test: teksty z transkryptu i `meta.json` nie trafiają
   do wyjścia); ścieżki katalogów roboczych są tylko w `process` (pochodzenie instrukcji), a komentarz ich nie wypisuje.
+- **Ograniczenia:** komendy jednego epiku (`start`, `process EPIK`, `pause`, `done`, `epic`) woła się po kolei: plik
+  przebiegu nie ma blokady przy równoległych wywołaniach. Zapis po fakcie (`start --at`) dla sesji, która prowadziła
+  dwa epiki, nie jest wspierany: E1 odmówi drugiego pliku przebiegu z tą sesją i wymaga to ręcznej decyzji.
 
 ### Wąskie gardła i historia
 

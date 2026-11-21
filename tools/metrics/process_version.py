@@ -25,6 +25,7 @@ SKILL_HEADER = re.compile(r'^Base directory for this skill: ([^\n]*)\n')
 # The placeholders the CLI replaces in the text of a skill when it loads it (`$ARGUMENTS`, `$ARGUMENTS[0]`, `$0`,
 # `${CLAUDE_SKILL_DIR}`): in a comparison they stand for any text.
 PLACEHOLDER = re.compile(r'\$ARGUMENTS(?:\[\d+\])?|\$\{[A-Z_]+\}|\$\d+')
+ARGUMENTS_SUFFIX = re.compile(r'\n\n\n?ARGUMENTS: .*\Z', re.DOTALL)
 
 
 class CheckError(Exception):
@@ -169,16 +170,49 @@ def user_level(user_dir, entries):
     return {'agents': sorted(found_agents & agents), 'skills': sorted(found_skills & skills)}
 
 
-def place_of(run, kind, path, expected, full):
+def state_of(entries):
+    """The digest of every file of a place (definitions and instruction files): one value per state on disk."""
+    lines = ''.join('%s\t%s\n' % (path, entries[path]) for path in sorted(entries))
+    return hashlib.sha256(lines.encode('utf-8')).hexdigest()[:16]
+
+
+def place_of(run, kind, path, expected, full, base=None):
+    """One place a session loads the instructions from. A worktree (its own place of work) also has `uncommitted`
+    (the files on disk against its HEAD), `epic_branch` (HEAD against the base: the commits of the epic branch) and
+    `from_base` (whether HEAD descends from the base)."""
     entries = disk_of(run, path, full)
     specs = list(TREE) + ([ADR, ':(glob)**/' + CLAUDE_MD] if full else [])
     branch = _optional(run, path, ['rev-parse', '--abbrev-ref', 'HEAD'])
     # --no-optional-locks: `status` must not refresh the index of the place (the check only reads)
     status = git_text(run, path, ['--no-optional-locks', 'status', '--porcelain', '-z', '--'] + specs)
-    return {'kind': kind, 'path': path, 'head': _optional(run, path, ['rev-parse', '--verify', '-q', 'HEAD']),
-            'branch': None if branch == 'HEAD' else branch, 'dirty': bool(status.strip('\0').strip()),
-            'fingerprint': fingerprint(entries), 'files': {p: s for p, s in entries.items() if is_instruction(p)},
-            'differs': differences(expected, entries, full)}
+    head = _optional(run, path, ['rev-parse', '--verify', '-q', 'HEAD'])
+    place = {'kind': kind, 'path': path, 'head': head, 'branch': None if branch == 'HEAD' else branch,
+             'dirty': bool(status.strip('\0').strip()), 'fingerprint': fingerprint(entries), 'state': state_of(entries),
+             'files': {p: s for p, s in entries.items() if is_instruction(p)},
+             'differs': differences(expected, entries, full)}
+    if kind == 'worktree':
+        head_tree = tree_of(run, path, head) if head else {}
+        place['uncommitted'] = differences(head_tree, entries, full)
+        place['epic_branch'] = differences(expected, head_tree, full)
+        place['from_base'] = False
+        if base and head:
+            try:
+                git_text(run, path, ['merge-base', '--is-ancestor', base, head])
+                place['from_base'] = True
+            except CheckError:
+                pass
+    return place
+
+
+def mismatch_paths(place):
+    """The differences of a place that are a mismatch: in the main checkout every one, in the worktree the
+    uncommitted ones and the commits of a HEAD that does not descend from the base (a commit of the epic branch is
+    information)."""
+    if place.get('kind') != 'worktree' or 'uncommitted' not in place:
+        return place.get('differs') or []
+    if place.get('uncommitted'):
+        return place['uncommitted']
+    return [] if place.get('from_base') else place.get('epic_branch') or []
 
 
 def expected_of(run, directory, ref):
@@ -208,13 +242,13 @@ def reading(run, directory, ref, user_dir):
     if checkout['is_main']:
         disk = [place_of(run, 'main_checkout', top, tree, True)]
     else:
-        disk = [place_of(run, 'worktree', top, tree, True)]
+        disk = [place_of(run, 'worktree', top, tree, True, expected['ref'])]
         if checkout['main'] is not None and os.path.isdir(checkout['main']):
             disk.append(place_of(run, 'main_checkout', checkout['main'], tree, False))
     users = user_level(user_dir, tree)
     data = {'worktree': top, 'worktree_head': _optional(run, top, ['rev-parse', '--verify', '-q', 'HEAD']),
             'expected': expected, 'disk': disk, 'user_level': users,
-            'match': not any(p['differs'] for p in disk) and not users['skills']}
+            'match': not any(mismatch_paths(p) for p in disk) and not users['skills']}
     return data, {'tree': tree, 'top': top, 'main': checkout['main'], 'run': run}
 
 
@@ -222,7 +256,7 @@ def summary(places, limit=5):
     """One line per place with differences: the kind, the path, the number of files and the first paths."""
     lines = []
     for place in places:
-        differs = place.get('differs') or []
+        differs = mismatch_paths(place)
         if differs:
             shown = ', '.join('%s (%s)' % (d['path'], d['state']) for d in differs[:limit])
             lines.append('%s %s: %d %s: %s%s' % (place['kind'], place.get('path') or '', len(differs),
@@ -246,7 +280,10 @@ def matches_template(template, text):
     """Whether `text` is `template` with any text in place of every placeholder (linear, without a regex)."""
     pieces = PLACEHOLDER.split(template)
     if len(pieces) == 1:
-        return text == template
+        # a skill without a placeholder called with arguments: the CLI appends them after the text (seen in the
+        # transcripts of CLI 2.1.325 as the stripped text, two blank lines and `ARGUMENTS: <arguments>`)
+        return text == template or (text.startswith(template)
+                                    and ARGUMENTS_SUFFIX.match(text, len(template)) is not None)
     if not text.startswith(pieces[0]) or not text.endswith(pieces[-1]):
         return False
     position, end = len(pieces[0]), len(text) - len(pieces[-1])
@@ -271,8 +308,8 @@ def _texts(message):
 
 def read_evidence(path):
     """(evidence, None) of one transcript, or (None, reason) when it cannot be read: {claude_md: [(absolute path,
-    content)], skills: [(skill directory, loaded text)], snapshots: [system prompt blocks], problems: [reason],
-    times: [timestamp text]}. A line of an unknown shape is a problem, never an exception."""
+    content, timestamp text or None)], skills: [(skill directory, loaded text, timestamp)], snapshots: [system prompt
+    blocks], problems: [reason], times: [timestamp text]}. A line of an unknown shape is a problem, never an exception."""
     found = {'claude_md': [], 'skills': [], 'snapshots': [], 'problems': [], 'times': []}
     try:
         with open(path, encoding='utf-8', errors='replace') as f:
@@ -290,17 +327,18 @@ def read_evidence(path):
             continue
         if isinstance(line.get('timestamp'), str) and line.get('type') in ('user', 'assistant'):
             found['times'].append(line['timestamp'])
+        stamp = line.get('timestamp') if isinstance(line.get('timestamp'), str) else None
         if line.get('type') == 'attachment':
-            _attachment(line.get('attachment'), found)
+            _attachment(line.get('attachment'), found, stamp)
         elif line.get('type') == 'user':
             for text in _texts(line.get('message')):
                 match = SKILL_HEADER.match(text)
                 if match:
-                    found['skills'].append((match.group(1).strip(), text[match.end():].strip()))
+                    found['skills'].append((match.group(1).strip(), text[match.end():].strip(), stamp))
     return found, None
 
 
-def _attachment(attachment, found):
+def _attachment(attachment, found, stamp):
     if not isinstance(attachment, dict):
         found['problems'].append('wpis attachment bez obiektu attachment')
         return
@@ -315,14 +353,14 @@ def _attachment(attachment, found):
                     or not isinstance(entry.get('content'), str):
                 found['problems'].append('wpis instructions z plikiem bez path albo content')
             elif entry.get('type') == 'Project' and os.path.basename(entry['path']) == CLAUDE_MD:
-                found['claude_md'].append((entry['path'], entry['content']))
+                found['claude_md'].append((entry['path'], entry['content'], stamp))
     elif kind == 'nested_memory':
         content = attachment.get('content')
         if not isinstance(content, dict) or not isinstance(content.get('path'), str) \
                 or not isinstance(content.get('content'), str):
             found['problems'].append('wpis nested_memory bez content.path albo content.content')
         elif content.get('type', 'Project') == 'Project' and os.path.basename(content['path']) == CLAUDE_MD:
-            found['claude_md'].append((content['path'], content['content']))
+            found['claude_md'].append((content['path'], content['content'], stamp))
     elif kind == 'prompt_snapshot':
         blocks = attachment.get('systemPrompt')
         if not isinstance(blocks, list) or not blocks or not all(isinstance(b, str) for b in blocks):
@@ -373,21 +411,100 @@ def _relative(path, roots, candidates):
     return None
 
 
-def _entry(fields, status, reason=None, digest_=None, origin=None):
+def _entry(fields, status, reason=None, digest_=None, origin=None, version=None):
     entry = dict(fields)
-    entry.update(status=status, origin=origin, digest=digest_, reason=reason)
+    entry.update(status=status, version=version, origin=origin, digest=digest_, reason=reason)
     return entry
 
 
-def session_entries(session, evidence, reason, expected, roots):
+EPIC_UNKNOWN = 'treść inna niż w bazie, historia gałęzi epiku niedostępna'
+
+
+class EpicVersions:
+    """The versions of a file the epic itself made: every version of the file in the commits of the epic branch
+    (`heads`: the first ref the repository of `top` resolves) not reachable from the base, and its current text in the
+    `worktrees` of the sessions. `available`: whether the history of the branch could be read."""
+
+    def __init__(self, run, top, base, heads, worktrees):
+        self.run, self.top, self.base, self.cache = run, top, base, {}
+        self.worktrees = [w for w in worktrees or [] if isinstance(w, str) and os.path.isdir(w)]
+        self.head = None
+        for head in heads or []:
+            if not head or not base:
+                continue
+            try:
+                self.head = git_text(run, top, ['rev-parse', '--verify', '-q', head + '^{commit}']).strip()
+                break
+            except CheckError:
+                continue
+
+    @property
+    def available(self):
+        return self.head is not None
+
+    def texts(self, path):
+        """The stripped texts of the epic versions of `path` (the history of the branch and the files on disk)."""
+        if path in self.cache:
+            return self.cache[path]
+        found = set()
+        if self.head is not None:
+            try:
+                commits = git_text(self.run, self.top, ['log', '--format=%H', '%s..%s' % (self.base, self.head),
+                                                        '--', path]).split()
+            except CheckError:
+                commits = []
+            for commit in commits:
+                try:
+                    found.add(git_text(self.run, self.top, ['cat-file', 'blob', '%s:%s' % (commit, path)]).strip())
+                except CheckError:
+                    continue                        # the commit deletes the file
+        for worktree in self.worktrees:
+            try:
+                with open(os.path.join(worktree, path), encoding='utf-8') as f:
+                    found.add(f.read().strip())
+            except (OSError, UnicodeDecodeError):
+                continue
+        self.cache[path] = found
+        return found
+
+
+def _under(path, roots):
+    return any(root and path.startswith(root.rstrip('/') + '/') for root in roots or [])
+
+
+def _before(stamp, high, parse_time):
+    """Whether evidence with the timestamp text `stamp` lies before `high` (an epoch; None: no bound); evidence
+    without a readable time counts, like a line without `timestamp` in the rest of the record."""
+    if high is None or stamp is None or parse_time is None:
+        return True
+    try:
+        return parse_time(stamp) <= high
+    except (TypeError, ValueError, AttributeError):
+        return True
+
+
+def _after(stamp, low, parse_time):
+    """Whether evidence with the timestamp text `stamp` lies at or after `low` (None: no bound); without a readable
+    time it counts."""
+    if low is None or stamp is None or parse_time is None:
+        return True
+    try:
+        return parse_time(stamp) >= low
+    except (TypeError, ValueError, AttributeError):
+        return True
+
+
+def session_entries(session, evidence, reason, expected, roots, epic=None, own=()):
     """The `loaded.session` entries of one lead session: one per expected CLAUDE.md and the ADR, plus a loaded
-    CLAUDE.md that is no file of the base."""
+    CLAUDE.md that is no file of the base. A loaded text other than the base, read from the session's own worktree
+    (`own`), is the epic version (`version: "epic"`) when `epic` has it, `unconfirmed` when the history of the epic
+    branch is not available, else `differs`."""
     paths = sorted(p for p in expected.tree if os.path.basename(p) == CLAUDE_MD)
     entries = []
     loaded = {}
     extra = []
     if evidence is not None:
-        for origin, content in evidence['claude_md']:
+        for origin, content, _ in evidence['claude_md']:
             relative = _relative(origin, roots, set(paths))
             if relative in paths:
                 loaded.setdefault(relative, []).append((origin, content))
@@ -409,12 +526,7 @@ def session_entries(session, evidence, reason, expected, roots):
         if text is None:
             entries.append(_entry(fields, 'unconfirmed', 'treść oczekiwana niedostępna: %s' % expected.error))
             continue
-        bad = [(o, c) for o, c in found if c.strip() != text.strip()]
-        if bad:
-            entries.append(_entry(fields, 'differs', 'załadowana treść inna niż w bazie', digest(bad[0][1].strip()),
-                                  bad[0][0]))
-        else:
-            entries.append(_entry(fields, 'confirmed', origin=found[0][0]))
+        entries.append(_claude_md_entry(fields, found, text.strip(), epic, own))
     for origin, content in extra:
         entries.append(_entry({'session': session, 'path': None}, 'differs', 'plik CLAUDE.md spoza bazy epiku',
                               digest(content.strip()), origin))
@@ -424,13 +536,34 @@ def session_entries(session, evidence, reason, expected, roots):
     return entries
 
 
-def skill_entries(session, agent, evidence, expected):
-    """The `loaded.skills` entries of the skill loads of one transcript (only the skills of the project)."""
+def _claude_md_entry(fields, found, base, epic, own):
+    """The entry of one CLAUDE.md from its loads [(origin, content)]: the worst load decides (differs, then
+    unconfirmed, then the epic version, then the base)."""
+    results = []
+    for origin, content in found:
+        text = content.strip()
+        if text == base:
+            results.append((3, _entry(fields, 'confirmed', origin=origin, version='base')))
+        elif epic is None or not _under(origin, own):
+            results.append((0, _entry(fields, 'differs', 'załadowana treść inna niż w bazie', digest(text), origin)))
+        elif text in epic.texts(fields['path']):
+            results.append((2, _entry(fields, 'confirmed', origin=origin, digest_=digest(text), version='epic')))
+        elif not epic.available:
+            results.append((1, _entry(fields, 'unconfirmed', EPIC_UNKNOWN, digest(text), origin)))
+        else:
+            results.append((0, _entry(fields, 'differs', 'załadowana treść inna niż w bazie i w gałęzi epiku',
+                                      digest(text), origin)))
+    return min(results, key=lambda r: r[0])[1]
+
+
+def skill_entries(session, agent, evidence, expected, high=None, parse_time=None, low=None):
+    """The `loaded.skills` entries of the skill loads of one transcript from `low` to `high` (only the skills of the
+    project; the expected version is always the base: skills load from the main checkout)."""
     _, names = project_names(expected.tree)
     entries = []
-    for directory, text in evidence['skills'] if evidence is not None else []:
+    for directory, text, stamp in evidence['skills'] if evidence is not None else []:
         name = os.path.basename(directory.rstrip('/'))
-        if name not in names:
+        if name not in names or not _before(stamp, high, parse_time) or not _after(stamp, low, parse_time):
             continue
         fields = {'session': session, 'agent_id': agent, 'skill': name}
         template = expected.text('.claude/skills/%s/SKILL.md' % name)
@@ -438,15 +571,15 @@ def skill_entries(session, agent, evidence, expected):
             entries.append(_entry(fields, 'unconfirmed', 'treść oczekiwana niedostępna: %s'
                                   % (expected.error or 'brak SKILL.md w bazie'), origin=directory))
         elif matches_template(strip_frontmatter(template), text):
-            entries.append(_entry(fields, 'confirmed', origin=directory))
+            entries.append(_entry(fields, 'confirmed', origin=directory, version='base'))
         else:
             entries.append(_entry(fields, 'differs', 'załadowana treść inna niż w bazie', digest(text), directory))
     return entries
 
 
 def agent_entry(session, agent, role, evidence, reason, expected):
-    """The `loaded.agents` entry of one subagent run: its first `prompt_snapshot` block must be the agent file of the
-    base without the frontmatter (or the file must be in the prompt)."""
+    """The `loaded.agents` entry of one subagent run: the first block of every `prompt_snapshot` must be equal to the
+    agent file of the base without the frontmatter (both stripped); a prompt that only contains it differs."""
     fields = {'session': session, 'agent_id': agent, 'role': role}
     if role is None:
         return _entry(fields, 'unconfirmed', 'brak meta.json albo agentType: rola nieznana')
@@ -462,9 +595,9 @@ def agent_entry(session, agent, role, evidence, reason, expected):
         return _entry(fields, 'unconfirmed', 'treść oczekiwana niedostępna: %s' % (expected.error or 'brak pliku'))
     body = strip_frontmatter(text)
     for blocks in evidence['snapshots']:
-        if blocks[0].strip() != body and body not in '\n'.join(blocks):
+        if blocks[0].strip() != body:
             return _entry(fields, 'differs', 'załadowana treść roli inna niż w bazie', digest(blocks[0].strip()))
-    return _entry(fields, 'confirmed')
+    return _entry(fields, 'confirmed', version='base')
 
 
 def placeholder(fields, reason):
@@ -510,16 +643,20 @@ def _role(meta_path):
     return role if isinstance(role, str) and role else None
 
 
-def loaded_of(projects, sessions, expected, roots, agents=True, window=None, parse_time=None):
+def loaded_of(projects, sessions, expected, roots, agents=True, window=None, parse_time=None, epic=None, own=()):
     """`loaded` {session, agents, skills} from the transcripts of the sessions. agents False: the subagents are not
-    read (`start`: not run yet). window: (low, high) epochs; a subagent run whose messages all lie outside is no run of
-    the epic (parse_time turns a timestamp text into an epoch)."""
+    read (`start`: not run yet). window: (low, high) epochs; the CLAUDE.md and skill loads after `high` and a subagent
+    run whose messages all lie outside the window are no evidence of the epic (parse_time turns a timestamp text into
+    an epoch). epic, own: the epic versions of a CLAUDE.md read from the sessions' own worktrees (EpicVersions)."""
     session_list, agent_list, skill_list = [], [], []
     project_agents, _ = project_names(expected.tree)
+    low, high = window if window is not None else (None, None)
     for session, path, subagents in session_transcripts(projects, sessions):
         evidence, reason = read_evidence(path) if path else (None, 'brak transkryptu sesji')
-        session_list += session_entries(session, evidence, reason, expected, roots)
-        skill_list += skill_entries(session, None, evidence, expected)
+        if evidence is not None:
+            evidence['claude_md'] = [c for c in evidence['claude_md'] if _before(c[2], high, parse_time)]
+        session_list += session_entries(session, evidence, reason, expected, roots, epic, own)
+        skill_list += skill_entries(session, None, evidence, expected, high, parse_time, low)
         if not agents:
             continue
         for agent, agent_path, meta_path in subagents:
@@ -531,7 +668,7 @@ def loaded_of(projects, sessions, expected, roots, agents=True, window=None, par
                 continue
             agent_list.append(agent_entry(session, agent, role, evidence, reason or 'brak transkryptu subagenta',
                                           expected))
-            skill_list += skill_entries(session, agent, evidence, expected)
+            skill_list += skill_entries(session, agent, evidence, expected, high, parse_time, low)
     if not agents:
         agent_list = [placeholder(AGENT_FIELDS, NOT_RUN)]
     elif not agent_list:
@@ -572,4 +709,11 @@ def counts(entries):
     for entry in entries:
         if entry.get('status') in found:
             found[entry['status']] += 1
+    return found
+
+
+def summary_of(entries):
+    """`counts` and `confirmed_epic`: the confirmed entries in the version the epic made (`version: "epic"`)."""
+    found = counts(entries)
+    found['confirmed_epic'] = sum(1 for e in entries if e.get('status') == 'confirmed' and e.get('version') == 'epic')
     return found

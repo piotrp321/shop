@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import unittest
+from unittest import mock
 
 import metrics
 import testkit
@@ -203,9 +204,20 @@ class ProcessCommandTest(RepoEnv):
         code, data, err = self.reading('--base', self.base)
         self.assertEqual(data['expected']['ref'], self.base)
         self.assertEqual(data['expected']['requested'], self.base)
-        self.assertEqual(data['disk'][0]['differs'], [{'path': '.claude/agents/developer.md', 'state': 'changed'}])
+        changed = [{'path': '.claude/agents/developer.md', 'state': 'changed'}]
+        self.assertEqual(data['disk'][0]['differs'], changed)
+        self.assertEqual(data['disk'][0]['epic_branch'], changed)        # committed on the branch: information (D-a)
+        self.assertEqual(data['disk'][0]['uncommitted'], [])
+        self.assertIs(data['disk'][0]['from_base'], True)
         self.assertEqual(data['disk'][1]['differs'], [])
+        self.assertEqual(code, 0, err)
+
+    def test_uncommitted_change_in_the_worktree_is_a_mismatch(self):
+        write(self.worktree, 'docs/adr/agentic-software-house.md', 'inny ADR\n')
+        code, data, err = self.reading()
         self.assertEqual(code, EXIT_PROCESS)
+        self.assertEqual(data['disk'][0]['uncommitted'],
+                         [{'path': 'docs/adr/agentic-software-house.md', 'state': 'changed'}])
 
     def test_deleted_and_extra_files(self):
         os.remove(os.path.join(self.main, '.claude/agents/developer.md'))
@@ -362,7 +374,7 @@ class LoadedEvidenceTest(RepoEnv):
 
     def epic_with_subagents(self):
         self.lead(self.instructions_line(),
-                  self.skill_line(-20, os.path.join(self.worktree, '.claude/skills/delivery'),
+                  self.skill_line(20, os.path.join(self.worktree, '.claude/skills/delivery'),
                                   'Poprowadź zadanie `DEMO-1` do końca. TAJNA-TRESC-SKILLA.'))
         self.assertEqual(self.start()[0], 0)
         self.subagent_run('a1', 'code-reviewer', [AGENT_BODY, 'Inny blok TAJNY'], at=100)
@@ -379,7 +391,7 @@ class LoadedEvidenceTest(RepoEnv):
         data = json.loads(out)
         agents = {a['agent_id']: (a['role'], a['status']) for a in data['loaded']['agents']}
         self.assertEqual(agents, {'a1': ('code-reviewer', 'confirmed'), 'a2': ('code-reviewer', 'differs'),
-                                  'a3': ('developer', 'unconfirmed'), 'a4': ('developer', 'confirmed'),
+                                  'a3': ('developer', 'unconfirmed'), 'a4': ('developer', 'differs'),
                                   'a6': ('developer', 'unconfirmed')})
         a2 = [a for a in data['loaded']['agents'] if a['agent_id'] == 'a2'][0]
         self.assertRegex(a2['digest'], r'^[0-9a-f]{16}$')
@@ -388,7 +400,7 @@ class LoadedEvidenceTest(RepoEnv):
         stored = self.run_file()['process']
         self.assertEqual(stored['loaded']['agents'], data['loaded']['agents'])
         loaded_changes = [c for c in stored['changes'] if c['kind'] == 'loaded']
-        self.assertEqual([c['item']['agent_id'] for c in loaded_changes], ['a2'])
+        self.assertEqual([c['item']['agent_id'] for c in loaded_changes], ['a2', 'a4'])  # a4: only contained (D-c)
         self.assertNotIn('TAJNA', json.dumps(stored, ensure_ascii=False) + out)
 
     def test_process_epic_twice_adds_no_duplicate(self):
@@ -401,7 +413,7 @@ class LoadedEvidenceTest(RepoEnv):
 
     def test_skill_from_the_main_checkout_with_another_content_differs_with_its_origin(self):
         self.lead(self.instructions_line(),
-                  self.skill_line(-20, os.path.join(self.main, '.claude/skills/delivery'), 'Stara treść skilla.'))
+                  self.skill_line(20, os.path.join(self.main, '.claude/skills/delivery'), 'Stara treść skilla.'))
         self.assertEqual(self.start()[0], 0)
         code, out, err = self.process_epic()
         self.assertEqual(code, EXIT_PROCESS)
@@ -467,6 +479,7 @@ class StartCheckTest(RepoEnv):
         for reason in ('', '   ', ' '):
             code, out, err = self.start('--accept-process-mismatch', reason)
             self.assertEqual((code, out), (2, ''), reason)
+            self.assertIn('pusty powód --accept-process-mismatch', err)       # not argparse refusing the option
             self.assertFalse(self.has_run_file())
 
     def test_user_skill_shadowing_refuses(self):
@@ -645,7 +658,7 @@ class RecordTest(RepoEnv):
 
     def test_matching_epic_has_the_process_and_only_the_unconfirmed_gap(self):
         self.lead(self.instructions_line(),
-                  self.skill_line(-20, os.path.join(self.worktree, '.claude/skills/delivery'),
+                  self.skill_line(20, os.path.join(self.worktree, '.claude/skills/delivery'),
                                   'Poprowadź zadanie `DEMO-1` do końca. TAJNA-TRESC-SKILLA.'))
         self.assertEqual(self.start()[0], 0)
         self.subagent_run('a1', 'code-reviewer', [AGENT_BODY], at=100)
@@ -805,6 +818,321 @@ class RecordWithoutDiskCheckTest(RecordTest):
         record = self.record()
         self.assertEqual(record['process'], {'status': 'not_checked', 'reason': 'zapis po fakcie'})
         self.assertNotIn('instructions', record['attempts'][0])
+
+
+EPIC_API_MD = '# API\n\nZasady API po zmianie epiku.\n'
+
+
+class EpicVersionTest(RecordTest):
+    """A CLAUDE.md the session reads from its own worktree may be the version the epic changed: a version of the
+    history of the epic branch (not reachable from the base) or the current file of the worktree is confirmed with
+    `version: "epic"`, never `differs`; agents and skills keep the base as the expected version."""
+
+    def started(self):
+        self.lead(self.instructions_line())
+        self.assertEqual(self.start()[0], 0)
+
+    def change_in_the_epic(self, commit=True):
+        write(self.worktree, 'apps/api/CLAUDE.md', EPIC_API_MD)
+        if commit:
+            git(self.worktree, 'commit', '-q', '-am', 'docs: api rules')
+
+    def api_entry(self, loaded):
+        return [e for e in loaded['session'] if e['path'] == 'apps/api/CLAUDE.md'][0]
+
+    def test_claude_md_changed_and_committed_by_the_epic_is_the_epic_version(self):
+        self.started()
+        self.change_in_the_epic()
+        write(self.worktree, 'apps/api/CLAUDE.md', 'jeszcze nowsza treść\n')     # history, not disk, matches
+        git(self.worktree, 'commit', '-q', '-am', 'docs: newer api rules')
+        self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD))
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, 0, err)
+        entry = self.api_entry(json.loads(out)['loaded'])
+        self.assertEqual((entry['status'], entry['version']), ('confirmed', 'epic'))
+        root = [e for e in json.loads(out)['loaded']['session'] if e['path'] == 'CLAUDE.md'][0]
+        self.assertEqual((root['status'], root['version']), ('confirmed', 'base'))
+
+    def test_claude_md_changed_on_disk_only_is_the_epic_version(self):
+        self.started()
+        self.change_in_the_epic(commit=False)
+        self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD))
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, EXIT_PROCESS)            # an uncommitted change in the worktree is a mismatch (D-a)
+        self.assertNotIn('załadowana', err)
+        self.assertEqual(self.api_entry(json.loads(out)['loaded'])['version'], 'epic')
+
+    def test_content_from_neither_base_nor_epic_differs(self):
+        self.started()
+        self.change_in_the_epic()
+        self.lead(self.instructions_line(), self.nested_line(500, 'treść spoza bazy i gałęzi\n'))
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, EXIT_PROCESS)
+        entry = self.api_entry(json.loads(out)['loaded'])
+        self.assertEqual((entry['status'], entry['version']), ('differs', None))
+
+    def test_claude_md_from_another_place_differs(self):
+        self.started()
+        self.change_in_the_epic()
+        self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD, base=self.main))
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, EXIT_PROCESS)
+        self.assertEqual(self.api_entry(json.loads(out)['loaded'])['status'], 'differs')
+
+    def test_record_with_the_branch_is_the_epic_version(self):
+        self.started()
+        self.change_in_the_epic()
+        self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD))
+        self.assertEqual(self.done()[0], 0)
+        record = self.record()
+        entry = self.api_entry(record['process']['loaded'])
+        self.assertEqual((entry['status'], entry['version']), ('confirmed', 'epic'))
+        self.assertEqual(record['process']['loaded']['summary']['confirmed_epic'], 1)
+        self.assertFalse([g for g in self.gaps(record) if 'apps/api' in g and not g.startswith('process: informacja')],
+                         self.gaps(record))
+
+    def test_record_after_the_merge_without_the_branch_is_unconfirmed(self):
+        self.started()
+        self.change_in_the_epic()
+        self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD))
+        self.assertEqual(self.done()[0], 0)
+        git(self.main, 'worktree', 'remove', '--force', self.worktree)
+        git(self.main, 'branch', '-D', 'feat/demo')
+        code, out, err = run_cli(['epic', 'demo', '--state', self.state, '--night', self.night, '--projects',
+                                  self.projects, '--no-gh', '--worktree', self.main])
+        self.assertEqual(code, 0, err)
+        entry = self.api_entry(json.loads(out)['process']['loaded'])
+        self.assertEqual(entry['status'], 'unconfirmed')
+        self.assertIn('historia gałęzi epiku niedostępna', entry['reason'])
+
+    def test_agent_changed_in_the_epic_branch_still_differs(self):
+        self.started()
+        write(self.worktree, '.claude/agents/code-reviewer.md', agent_file('code-reviewer', 'Nowa rola z epiku.'))
+        git(self.worktree, 'commit', '-q', '-am', 'agent')
+        self.subagent_run('a1', 'code-reviewer', ['Nowa rola z epiku.'], at=100)
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, EXIT_PROCESS)
+        agent = json.loads(out)['loaded']['agents'][0]
+        self.assertEqual((agent['agent_id'], agent['status'], agent['version']), ('a1', 'differs', None))
+
+
+class EpicWindowTest(RecordTest):
+    """The evidence of the session and the subagent runs count only up to the merge of the final PR: a session that
+    led two epics gives the record of the first one only its own loads."""
+
+    def test_session_of_two_epics(self):
+        self.lead(self.instructions_line())
+        self.assertEqual(self.start()[0], 0)
+        # the lines written later: the first epic's load at 500, the second epic's at 5000
+        self.lead(self.instructions_line(), self.nested_line(500), self.nested_line(5000, 'treść drugiego epiku\n'))
+        self.subagent_run('a1', 'code-reviewer', [AGENT_BODY], at=100)
+        self.subagent_run('a2', 'code-reviewer', ['Rola drugiego epiku.'], at=6000)
+        self.assertEqual(self.done(now=testkit.T0 + 1000)[0], 0)
+        testkit.store_records(self.state, {'epic': 'demo', 'source': 'native', 'merged_at': iso_at(1200)})
+        record = self.record()
+        loaded = record['process']['loaded']
+        api = [e for e in loaded['session'] if e['path'] == 'apps/api/CLAUDE.md'][0]
+        self.assertEqual(api['status'], 'confirmed')
+        self.assertEqual([a['agent_id'] for a in loaded['agents']], ['a1'])
+        self.assertEqual(loaded['by_role'], {'code-reviewer': {'confirmed': 1, 'differs': 0, 'unconfirmed': 0}})
+
+    def test_load_without_a_timestamp_counts(self):
+        line = self.nested_line(500)
+        del line['timestamp']
+        self.lead(self.instructions_line(), line)
+        self.assertEqual(self.start()[0], 0)
+        self.assertEqual(self.done(now=testkit.T0 + 1000)[0], 0)
+        testkit.store_records(self.state, {'epic': 'demo', 'source': 'native', 'merged_at': iso_at(1200)})
+        api = [e for e in self.record()['process']['loaded']['session'] if e['path'] == 'apps/api/CLAUDE.md'][0]
+        self.assertEqual(api['status'], 'confirmed')
+
+
+class DiskRuleTest(RecordTest):
+    """D-a: one rule for a change on disk during the epic, by the place. The worktree is the epic's own place: a change
+    committed on its branch (from the base) is information, an uncommitted change of an instruction or definition is a
+    mismatch; every change in the main checkout and a user skill shadowing a project skill is a mismatch until it is
+    accepted (D-e: always against the base, `process EPIK --accept-process-mismatch`)."""
+
+    def started(self):
+        self.lead(self.instructions_line())
+        code, out, err = self.start()
+        self.assertEqual(code, 0, err)
+
+    def commit_in_the_epic(self):
+        write(self.worktree, 'CLAUDE.md', '# CLAUDE.md\n\nZasady po zmianie epiku.\n')
+        write(self.worktree, '.claude/agents/code-reviewer.md', agent_file('code-reviewer', 'Rola po zmianie epiku.'))
+        git(self.worktree, 'commit', '-q', '-am', 'docs: rules of the epic')
+
+    def changes(self, kind='disk'):
+        return [c for c in self.run_file()['process']['changes'] if c['kind'] == kind]
+
+    def test_uncommitted_claude_md_and_adr_change_is_a_mismatch(self):
+        self.started()
+        write(self.worktree, 'CLAUDE.md', '# CLAUDE.md\n\nNOWE zasady.\n')
+        write(self.worktree, 'docs/adr/agentic-software-house.md', '# Przebieg\n\nNOWE.\n')
+        code, out, err = self.process_epic()
+        self.assertEqual(code, EXIT_PROCESS)
+        self.assertIs(json.loads(out)['match'], False)
+        self.assertIn('CLAUDE.md', err)
+        self.assertEqual(self.done(now=testkit.T0 + 4000)[0], 0)
+        disk = self.changes()
+        self.assertEqual([(c['event'], c['informational']) for c in disk], [('process', False)])
+        worktree = [p for p in disk[0]['disk'] if p['kind'] == 'worktree'][0]
+        self.assertEqual(sorted(d['path'] for d in worktree['uncommitted']),
+                         ['CLAUDE.md', 'docs/adr/agentic-software-house.md'])
+        self.record()
+        code, out, err = run_cli(['render', 'demo', '--state', self.state])
+        line = [l for l in out.splitlines() if 'Wersja procesu' in l][0]
+        self.assertNotIn('dysk zgodny', line)
+
+    def test_change_committed_on_the_epic_branch_is_information(self):
+        self.started()
+        self.commit_in_the_epic()
+        for now in (100, 200):
+            code, out, err = self.process_epic(now=testkit.T0 + now)
+            self.assertEqual(code, 0, err)
+            self.assertIs(json.loads(out)['match'], True)
+        disk = self.changes()
+        self.assertEqual(len(disk), 1, disk)
+        self.assertIs(disk[0]['informational'], True)
+        self.assertIsNone(disk[0]['accepted'])
+        worktree = [p for p in disk[0]['disk'] if p['kind'] == 'worktree'][0]
+        self.assertEqual(sorted(d['path'] for d in worktree['epic_branch']),
+                         ['.claude/agents/code-reviewer.md', 'CLAUDE.md'])
+        self.assertEqual(self.done()[0], 0)
+        record = self.record()
+        gaps = self.gaps(record)
+        info = [g for g in gaps if g.startswith('process: informacja')]
+        self.assertEqual(len(info), 1, gaps)
+        self.assertIn('CLAUDE.md', info[0])
+        self.assertFalse([g for g in gaps if 'zmiana definicji na dysku' in g], gaps)
+        code, out, err = run_cli(['render', 'demo', '--state', self.state])
+        line = [l for l in out.splitlines() if 'Wersja procesu' in l][0]
+        self.assertIn('dysk zgodny', line)
+        self.assertIn('zmian w gałęzi epiku 1', line)
+
+    def test_start_on_a_branch_with_its_own_commits_is_information(self):
+        self.commit_in_the_epic()
+        self.started()
+        process = self.run_file()['process']
+        self.assertIs(process['match'], True)
+        worktree = process['disk'][0]
+        self.assertEqual(sorted(d['path'] for d in worktree['epic_branch']),
+                         ['.claude/agents/code-reviewer.md', 'CLAUDE.md'])
+        self.assertIs(worktree['from_base'], True)
+
+    def test_start_with_an_uncommitted_change_in_the_worktree_refuses(self):
+        write(self.worktree, 'apps/api/CLAUDE.md', 'niezacommitowane\n')
+        code, out, err = self.start()
+        self.assertEqual((code, out), (2, ''))
+        self.assertIn('apps/api/CLAUDE.md', err)
+
+    def test_user_skill_added_during_the_epic_is_a_mismatch(self):
+        self.started()
+        write(self.user_dir, 'skills/delivery/SKILL.md', 'x\n')
+        code, out, err = self.process_epic()
+        self.assertEqual(code, EXIT_PROCESS)
+        self.assertIn('delivery', err)
+        self.assertEqual(self.changes()[0]['user_level']['skills'], ['delivery'])
+
+    def test_scenario_of_the_epic(self):
+        """start, a commit of the epic, a change in the main checkout, its acceptance, done."""
+        self.started()
+        self.commit_in_the_epic()
+        codes = [self.process_epic(now=testkit.T0 + 100)[0]]
+        write(self.main, '.claude/agents/developer.md', agent_file('developer', 'Inna rola w głównym.'))
+        code, out, err = self.process_epic(now=testkit.T0 + 200)
+        codes.append(code)
+        self.assertIn('--accept-process-mismatch', err)
+        self.assertIn('główny checkout', err)
+        codes.append(self.process_epic('demo', '--accept-process-mismatch', 'świadomie: poprawka roli',
+                                       now=testkit.T0 + 300)[0])
+        codes.append(self.process_epic(now=testkit.T0 + 400)[0])
+        self.assertEqual(codes, [0, EXIT_PROCESS, 0, 0])
+        self.assertEqual(self.done(now=testkit.T0 + 4000)[0], 0)
+        disk = self.changes()
+        self.assertEqual([(c['at'], c['informational'], c['accepted']) for c in disk], [
+            (iso_at(100), True, None), (iso_at(200), False, None),
+            (iso_at(300), False, 'świadomie: poprawka roli')])
+        write(self.main, '.claude/agents/developer.md', agent_file('developer', 'Jeszcze inna rola.'))
+        self.assertEqual(self.process_epic(now=testkit.T0 + 500)[0], EXIT_PROCESS)       # a new change again
+
+    def test_blank_reason_of_process_epic_exit_2(self):
+        self.started()
+        code, out, err = self.process_epic('demo', '--accept-process-mismatch', '  ')
+        self.assertEqual((code, out), (2, ''))
+        self.assertIn('pusty powód', err)
+
+    def test_late_reading_stays_a_mismatch_until_accepted(self):
+        self.write_run(base_sha=self.base)                 # no process: a run file from before the check
+        write(self.main, '.claude/agents/developer.md', 'stara\n')
+        self.assertEqual(self.process_epic(now=testkit.T0 + 100)[0], EXIT_PROCESS)
+        self.assertEqual(self.process_epic(now=testkit.T0 + 200)[0], EXIT_PROCESS)
+        self.assertEqual(self.process_epic('demo', '--accept-process-mismatch', 'stary plik', now=testkit.T0 + 300)[0], 0)
+        self.assertEqual(self.process_epic(now=testkit.T0 + 400)[0], 0)
+
+    def test_failed_check_at_the_start_is_no_accepted_state(self):
+        self.write_run(base_sha=self.base, process={'status': 'check_failed', 'checked_at': iso_at(0),
+                                                    'checked_on': 'start', 'reason': 'git niedostępny',
+                                                    'accepted': 'bez gita', 'changes': []})
+        write(self.main, '.claude/agents/developer.md', 'stara\n')
+        self.assertEqual(self.process_epic(now=testkit.T0 + 100)[0], EXIT_PROCESS)
+        self.assertEqual(self.process_epic(now=testkit.T0 + 200)[0], EXIT_PROCESS)
+
+    def test_default_worktree_is_the_one_of_the_last_session(self):
+        self.started()
+        argv = ['process', 'demo', '--state', self.state, '--user-dir', self.user_dir, '--projects', self.projects]
+        with mock.patch('os.getcwd', return_value=self.main):
+            code, out, err = run_cli(argv, now=testkit.T0 + 100)
+            self.assertEqual(code, 0, err)
+            self.assertIn(self.worktree, err)
+            self.assertEqual(run_cli(['done', 'demo', '--state', self.state, '--user-dir', self.user_dir,
+                                      '--projects', self.projects], now=testkit.T0 + 4000)[0], 0)
+        self.assertEqual(self.changes(), [])
+        with mock.patch('os.getcwd', return_value=self.worktree):
+            code, out, err = run_cli(argv, now=testkit.T0 + 200)
+            self.assertEqual((code, err), (0, ''))
+
+
+class SkillArgumentsTest(RecordTest):
+    """D-b: the CLI appends `\\n\\n\\nARGUMENTS: <arguments>` to a skill without a placeholder; a skill load of the lead
+    before the start of the epic is no evidence."""
+
+    def setUp(self):
+        super().setUp()
+        write(self.main, '.claude/skills/brainstorm/SKILL.md', '---\nname: brainstorm\ndescription: b\n---\n\n'
+                                                               'Zbierz wymagania.\n')
+        git(self.main, 'add', '-A')
+        git(self.main, 'commit', '-q', '-m', 'brainstorm')
+        self.base = git(self.main, 'rev-parse', 'HEAD')
+        git(self.main, 'update-ref', 'refs/remotes/origin/main', self.base)
+        git(self.worktree, 'reset', '-q', '--hard', self.base)
+
+    def skill(self, at, text):
+        return self.skill_line(at, os.path.join(self.main, '.claude/skills/brainstorm'), text)
+
+    def statuses(self, *lines):
+        self.lead(self.instructions_line(), *lines)
+        self.assertEqual(self.start()[0], 0)
+        code, out, err = self.process_epic(now=testkit.T0 + 100)
+        return code, [(s['skill'], s['status']) for s in json.loads(out)['loaded']['skills']]
+
+    def test_arguments_appended_by_the_cli_are_no_difference(self):
+        self.assertEqual(self.statuses(self.skill(20, 'Zbierz wymagania.\n\n\nARGUMENTS: Kody rabatowe')),
+                         (0, [('brainstorm', 'confirmed')]))
+
+    def test_other_trailing_text_differs(self):
+        self.assertEqual(self.statuses(self.skill(20, 'Zbierz wymagania.\n\nInny dopisek.')),
+                         (EXIT_PROCESS, [('brainstorm', 'differs')]))
+        os.remove(os.path.join(self.state, 'runs', 'demo.json'))
+
+    def test_arguments_marker_elsewhere_differs(self):
+        self.assertEqual(self.statuses(self.skill(20, 'ARGUMENTS: x\n\n\nZbierz wymagania.'))[1],
+                         [('brainstorm', 'differs')])
+
+    def test_skill_load_before_the_start_is_no_evidence(self):
+        code, statuses = self.statuses(self.skill(-20, 'Stara treść skilla.'))
+        self.assertEqual((code, statuses), (0, [(None, 'unconfirmed')]))
 
 
 class OldRecordsTest(testkit.Env):
