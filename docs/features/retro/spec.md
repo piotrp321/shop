@@ -263,20 +263,28 @@ miejscu ładowania (worktree, główny checkout) i skille użytkownika przesłan
 
 - **Zgodność** (kod 0): fakt `<epik>/process/check` z `data.status` `match`, `ref`, `describe`, `fingerprint`;
   raport retro podaje z niego wersję instrukcji.
-- **Różnica** (kod 4): odmowa kodem 2 bez zapisu `input.json` i bez wywołań `gh`, z komunikatem po polsku: miejsca
-  ładowania, liczba plików, pierwsze ścieżki, epiki w toku i co zrobić (aktualizacja głównego checkoutu według ADR
-  albo `collect --accept-process-mismatch "<powód>"`). Z niepustym po przycięciu powodem (bez znaków sterujących;
-  pusty to odmowa kodem 2) `collect` idzie dalej, a fakt `<epik>/process/check` ma `status` `mismatch_accepted`,
-  `places` (`kind`, `path`, `head`, `differs`), `user_skills` i `accepted`. Tekst faktu mówi, że kontrola dotyczy
-  plików na dysku, a wersja załadowana przez `retro-analyst` nie jest potwierdzona.
+- **Różnica** (kod 4 bez względu na treść wyniku, także z `match: true` albo z wynikiem nieczytelnym lub niepełnym;
+  albo kod 0 z różnicą w wyniku): odmowa kodem 2 bez zapisu `input.json` i bez wywołań `gh`, z komunikatem po
+  polsku: miejsca ładowania, liczba plików, pierwsze ścieżki (to, co da się odczytać; bez niczego „narzędzie
+  zgłosiło różnicę, wynik nieczytelny”), epiki w toku z informacją, czy wystartowały z definicjami dzisiejszego
+  głównego checkoutu (`current` z `active_epics`: tak, nie, brak danych; od tego zależy, czy `pull` zmieni im
+  zasady), i co zrobić (aktualizacja głównego checkoutu według ADR albo `collect --accept-process-mismatch
+  "<powód>"`). Komunikat sam mówi, że to nie błąd zbierania danych i retro się nie odracza, bo sesja z nieaktualnym
+  `SKILL.md` nie zna tej reguły. Z niepustym po przycięciu powodem (bez znaków sterujących; pusty to odmowa kodem 2
+  z poleceniem „podaj niepusty powód i powtórz”) `collect` idzie dalej, a fakt `<epik>/process/check` ma `status`
+  `mismatch_accepted`, `places` (`kind`, `path`, `head`, `differs`), `user_skills` i `accepted`. Tekst faktu mówi,
+  że kontrola dotyczy plików na dysku, a wersja załadowana przez `retro-analyst` nie jest potwierdzona.
 - **Brak kontroli** (brak skryptu, inny kod wyjścia, wynik niebędący oczekiwanym JSON-em, brak runnera): fakt
   `<epik>/process/missing/check` „brak kontroli wersji procesu” z kategorią błędu; `collect` idzie dalej, jak przy
   braku pomiaru.
 - **Rekord epiku natywnego** (tylko retrospektywowanego): pole `process` rekordu metryk i wpisy `gaps` z kluczem
   `process` dają fakt `<epik>/process/record`: oczekiwana wersja, stan odczytu, start zaakceptowany mimo różnicy
-  (z powodem), dysk niesprawdzony (`disk` inne niż lista, z powodem), liczba zmian definicji i nieudanych kontroli
-  w trakcie, role, których subagenci załadowali inną definicję (`loaded.by_role` z `differs` > 0), liczba wpisów bez
-  potwierdzenia. Pola czytane są defensywnie (inny typ to brak danych). Rekord bez pola albo z `null`: fakt
+  (z powodem) albo różnica bez zapisanej akceptacji, dysk niesprawdzony (`disk_checked: false`, a w starszym rekordzie
+  `disk` inne niż lista; powód z `disk_reason` albo `reason`), liczba zmian definicji w trakcie (bez kontroli dysku
+  „brak danych”, nie zero; wpis `changes` z `informational: true`, czyli zmiana zacommitowana na gałęzi epiku, nie
+  jest zmianą definicji i jest liczony osobno), nieudane kontrole w trakcie, role, których subagenci załadowali inną
+  definicję (`loaded.by_role` z `differs` > 0), liczba potwierdzonych (osobno potwierdzone w wersji epiku,
+  `summary.confirmed_epic`) i bez potwierdzenia. Pola czytane są defensywnie (inny typ to brak danych). Rekord bez pola albo z `null`: fakt
   `<epik>/process/missing/record`. Przebieg AO tego faktu nie ma.
 
 ## Pomiar i decyzje optymalizacyjne

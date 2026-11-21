@@ -216,7 +216,8 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    checkoutu. Odmowa (kod 2, komunikat `retro: wersja procesu: …`) to nie `defer`: pokaż użytkownikowi różnicę
    z komunikatu (miejsca, pliki, epiki w toku) i zapytaj, czy zaktualizować główny checkout według „Wersji procesu”
    w `docs/adr/agentic-software-house.md` (potem sprzątanie, `unlock` i `/retro <epik>` w nowej sesji), czy
-   kontynuować: wtedy powtórz `collect` z `--accept-process-mismatch "<powód użytkownika>"`. Fakt
+   kontynuować: wtedy powtórz `collect` z `--accept-process-mismatch "<powód użytkownika>"`. Odmowa pustego powodu
+   (kod 2, `pusty albo nieprawidłowy powód`) też nie jest błędem: zapytaj użytkownika ponownie o powód. Fakt
    `<epik>/process/check` (wersja, przy akceptacji różnica i powód) albo `<epik>/process/missing/check` (kontroli nie
    dało się wykonać; retro idzie dalej) trafia do `report.md` (krok 6).
    Inny błąd (kod różny od 0, w tym `gh`, `git` albo bramka pochodzenia): sprzątanie, `defer` z powodem z błędu (np.
