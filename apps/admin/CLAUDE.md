@@ -198,7 +198,9 @@ Spec: `docs/features/sentry/spec.md`.
   `aria-describedby`, `aria-invalid` przy błędzie), `SaveBar` i `useUnsavedChangesGuard` z `UnsavedChangesDialog` zamiast
   `window.confirm`. Po zapisie toast (`vue-sonner`, region `aria-live`) i fokus na H1 (chyba że pracownik przeniósł go do
   pola), po akcji, która zastępuje swój przycisk, na nagłówek karty; po błędzie na pierwszy `data-form-error` albo pole
-  `aria-invalid`. Akcje nieodwracalne pytają `ConfirmDialog`.
+  `aria-invalid`. Akcje nieodwracalne pytają `ConfirmDialog`. W trakcie żądania zapisu pola formularza są zablokowane,
+  nie tylko przyciski paska zapisu (wzór: `DeliveryMethodFormView`); sprawdza to test Vitest z niezałatwioną obietnicą
+  mocka zapisu.
 - Lista według standardu: `PageHeader`, karta z `ListToolbar`, `DataTable` i `ListPager`; stan listy (wyszukiwanie, filtry,
   rozmiar strony 10/25/50, domyślnie 25, w Cenach i Stanach 10) jest w adresie przez `useListUrlState`,
   stronicowanie przez `useCursorPager`, a
