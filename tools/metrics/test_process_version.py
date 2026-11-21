@@ -905,8 +905,10 @@ class EpicWindowTest(RecordTest):
     led two epics gives the record of the first one only its own loads."""
 
     def test_session_of_two_epics(self):
-        self.lead(self.instructions_line(), self.nested_line(500), self.nested_line(5000, 'treść drugiego epiku\n'))
+        self.lead(self.instructions_line())
         self.assertEqual(self.start()[0], 0)
+        # the lines written later: the first epic's load at 500, the second epic's at 5000
+        self.lead(self.instructions_line(), self.nested_line(500), self.nested_line(5000, 'treść drugiego epiku\n'))
         self.subagent_run('a1', 'code-reviewer', [AGENT_BODY], at=100)
         self.subagent_run('a2', 'code-reviewer', ['Rola drugiego epiku.'], at=6000)
         self.assertEqual(self.done(now=testkit.T0 + 1000)[0], 0)

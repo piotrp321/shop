@@ -313,10 +313,19 @@ numer commita. Pole `process` pliku przebiegu ma trzy poziomy:
   (niezgodność), agent użytkownika to informacja (projekt wygrywa).
 - `loaded`: wyłącznie to, co potwierdza transkrypt, nigdy wniosek z dysku. `session` (pliki `CLAUDE.md` bazy i ADR, na
   sesję prowadzącą), `agents` (na przebieg subagenta roli projektu: `session`, `agent_id`, `role`) i `skills` (na
-  wczytanie skilla projektu: `session`, `agent_id`, `skill`); każdy wpis ma `status`, `origin` (ścieżka z dowodu),
-  `digest` (pierwsze 16 znaków sha256 załadowanej treści, tylko przy `differs`) i `reason`. Status: `confirmed`
-  (załadowana treść równa oczekiwanej), `differs` (inna) albo `unconfirmed` (brak dowodu, z powodem). Brak dowodu nigdy
-  nie jest `confirmed` ani pominięty; nieznany kształt wpisu, brak pola albo inny typ to `unconfirmed` z powodem.
+  wczytanie skilla projektu: `session`, `agent_id`, `skill`); każdy wpis ma `status`, `version`, `origin` (ścieżka
+  z dowodu), `digest` (pierwsze 16 znaków sha256 załadowanej treści, gdy różni się od bazy) i `reason`. Status:
+  `confirmed` (załadowana treść równa oczekiwanej), `differs` (inna) albo `unconfirmed` (brak dowodu, z powodem).
+  `version` przy `confirmed`: `base` (treść bazy) albo `epic` (wersja zmieniona przez sam epik), inaczej `null`. Brak
+  dowodu nigdy nie jest `confirmed` ani pominięty; nieznany kształt wpisu, brak pola albo inny typ to `unconfirmed`
+  z powodem. Wersja epiku dotyczy tylko `CLAUDE.md` wczytanego z worktree sesji (z pliku przebiegu; w kontroli też
+  z `--worktree`): treść inna niż w bazie jest `confirmed` z `version: "epic"`, gdy jest wersją tego pliku z commitów
+  gałęzi epiku nieosiągalnych z bazy (`git log <baza>..<gałąź> -- <plik>`; w `start`, `process <epik>`, `--resume`
+  i `done` gałąź to `HEAD` worktree, w rekordzie `origin/<branch>`, a bez niej lokalna `<branch>` z pliku przebiegu)
+  albo bieżącą treścią pliku w worktree sesji. Bez dostępnej historii gałęzi i bez zgodnego pliku na dysku wpis ma
+  `unconfirmed` („treść inna niż w bazie, historia gałęzi epiku niedostępna”), a `differs` zostaje dla treści spoza
+  bazy, historii i worktree albo dla pliku wczytanego z innego miejsca. Agenci i skille ładują się z głównego
+  checkoutu, więc ich wersją oczekiwaną jest zawsze baza: definicja zmieniona w gałęzi epiku ma `differs`.
   Źródła dowodu (CLI 2.1.325): `CLAUDE.md` z wpisów `type: "attachment"` sesji prowadzącej, `attachment.type`
   `instructions` (`files[]` z `path`, `type: "Project"`, `content`) i `nested_memory` (`content.path`,
   `content.content`; plik obszaru doczytany później), porównanie po `strip()`; ścieżka z dowodu względem worktree sesji
@@ -413,7 +422,7 @@ w sumie) i pozycja `value` w `gaps`; wiadomość bez tokenów (np. `<synthetic>`
 | `transcripts_read` | liczba przeczytanych transkryptów epiku (sesje i subagenci; niżej, „Brak transkryptów”) |
 | `pricing` | `source` i `read_at` cennika, z którego policzono wartość |
 | `breakdown` | `work`, `human_wait`, `idle` od `started_at` do `done_at` (niżej, „Czas i człowiek”); `host_pause` z `pauses` pliku przebiegu, bez zapisanej przerwy `null` z pozycją w `gaps`; `limit_wait`, `ci_wait`, `github_wait` `null` z pozycją w `gaps`, rekord ma `breakdown_incomplete: true`; bez `started_at` albo `done_at` całe `null` |
-| `process` | pole `process` pliku przebiegu (wyżej, „Wersja procesu”) z `loaded` policzonym od nowa ze wszystkich transkryptów epiku (sesje i przebiegi subagentów od `started_at` do merge'u; repozytorium do odczytu treści bazy: `--worktree`, domyślnie bieżący katalog; baza niedostępna w repozytorium daje `unconfirmed` z powodem) oraz `loaded.summary` (`{confirmed, differs, unconfirmed}` wszystkich wpisów) i `loaded.by_role` (to samo na rolę agenta); odczyt z kontrolą dysku ma `disk_checked: true`. Plik przebiegu bez kontroli dysku (bez pola `process`, `not_checked`, `check_failed`) z `base_sha`, który repozytorium zna: `status` (`not_checked`, także bez pola, albo `check_failed`), `expected` liczone z `base_sha` w chwili budowy rekordu, `disk: null`, `disk_checked: false`, `disk_reason` (start sprzed kontroli, `--at` albo błąd kontroli), `user_level` i `match` `null`, `loaded` jak wyżej; plik przebiegu się nie zmienia. Bez `base_sha` albo z commitem nieznanym w repozytorium: pole pliku przebiegu bez zmian (bez pola: `null`) |
+| `process` | pole `process` pliku przebiegu (wyżej, „Wersja procesu”) z `loaded` policzonym od nowa ze wszystkich transkryptów epiku (sesje i przebiegi subagentów od `started_at` do merge'u; repozytorium do odczytu treści bazy: `--worktree`, domyślnie bieżący katalog; baza niedostępna w repozytorium daje `unconfirmed` z powodem) oraz `loaded.summary` (`{confirmed, differs, unconfirmed}` wszystkich wpisów i `confirmed_epic`: potwierdzone w wersji epiku) i `loaded.by_role` (to samo na rolę agenta); odczyt z kontrolą dysku ma `disk_checked: true`. Plik przebiegu bez kontroli dysku (bez pola `process`, `not_checked`, `check_failed`) z `base_sha`, który repozytorium zna: `status` (`not_checked`, także bez pola, albo `check_failed`), `expected` liczone z `base_sha` w chwili budowy rekordu, `disk: null`, `disk_checked: false`, `disk_reason` (start sprzed kontroli, `--at` albo błąd kontroli), `user_level` i `match` `null`, `loaded` jak wyżej; plik przebiegu się nie zmienia. Bez `base_sha` albo z commitem nieznanym w repozytorium: pole pliku przebiegu bez zmian (bez pola: `null`) |
 | `human` | `interventions` (szacunek, `interventions_estimated: true`), `waits`, `wait_s`, `events` (`[{at, wait_s}]`), `manual_fixes` z `--manual-fixes` (bez opcji `null` z pozycją w `gaps`) |
 | `reviews` | lista przeglądów (niżej, „Przeglądy”); pusta bez przebiegów ról przeglądowych |
 | `integration` | `work_s` (suma `wall_s`) i `attempts` przebiegów `architecture-reviewer`, `qa-adversarial`, `ux-reviewer`; `rounds`: największa liczba raportów jednej z tych ról; bez takich przebiegów `null` z pozycją w `gaps` |
@@ -454,10 +463,11 @@ albo `check_failed` jak w pliku przebiegu), odczyt spoza startu (`checked_on`), 
 Zgodny odczyt bez zmian i bez `unconfirmed` nie daje wpisu. `render` (raport i komentarz) ma dla rekordu natywnego
 linię „Wersja procesu”: oczekiwana (`describe` i 12 znaków SHA), dysk („zgodny”, liczba różnic przy starcie
 z miejscami i liczba zmian w trakcie albo „nie sprawdzono” przy `disk_checked: false`), załadowana (liczby
-potwierdzonych, różnych i bez potwierdzenia); rekord bez pola ma „brak danych”, rekord AO tej linii nie ma.
-Dowód `CLAUDE.md` sesji nie jest przycinany do przedziału epiku: sesja prowadząca, która prowadziła kilka epików,
-ma w każdym z nich wszystkie swoje wczytania, a plik obszaru zmieniony przez sam epik i wczytany z jego worktree
-ma `differs` względem bazy.
+potwierdzonych, w tym w wersji epiku, różnych i bez potwierdzenia); rekord bez pola ma „brak danych”, rekord AO tej linii nie ma.
+Dowód sesji (`instructions`, `nested_memory`, wczytanie skilla) i przebiegi subagentów liczą się do merge'u końcowego
+PR (bez znanego merge'u bez górnej granicy, jak reszta rekordu), po czasie wpisu; wpis bez `timestamp` się liczy.
+Wczytania sprzed `started_at` zostają, bo sesja zaczyna się przed `metrics.py start` i od tej chwili ma je
+w kontekście. Sesja, która prowadziła dwa epiki, daje rekordowi pierwszego tylko wczytania do jego merge'u.
 
 **Brak transkryptów.** Gdy nie da się przeczytać transkryptu żadnej sesji z pliku przebiegu (retencja, zły
 identyfikator sesji), pola procesu z transkryptów (`breakdown`, `reviews`, `integration`, `human` poza

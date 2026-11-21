@@ -366,11 +366,16 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   `expected` (`ref`, `requested`, `describe`, `fingerprint`, `files`), `disk` (miejsca ładowania `worktree`
   i `main_checkout`: `path`, `head`, `branch`, `dirty`, `fingerprint`, `files`, `differs` ze stanem `changed`,
   `missing`, `extra`), `user_level` (`agents`, `skills`), `loaded` (`session`, `agents`, `skills`, wpisy ze `status`
-  `confirmed`, `differs` albo `unconfirmed`, `origin`, `digest`, `reason`), `match`, `accepted`, `changes`, `status`
-  (`checked`, `not_checked`, `check_failed`), `checked_at`, `checked_on`. Dowód załadowania: `instructions`
-  i `nested_memory` (`CLAUDE.md`), `prompt_snapshot` (agent, pierwszy blok `systemPrompt` równy plikowi bez
-  frontmatteru), linia `Base directory for this skill:` (skill, z argumentami w miejscu `$ARGUMENTS` i podobnych). ADR
-  zawsze `unconfirmed`. Rekord: `loaded` liczony od nowa z transkryptów epiku plus `summary` i `by_role`,
+  `confirmed`, `differs` albo `unconfirmed`, `version` `base`/`epic`/`null`, `origin`, `digest`, `reason`), `match`,
+  `accepted`, `changes`, `status` (`checked`, `not_checked`, `check_failed`), `checked_at`, `checked_on`. Dowód
+  załadowania: `instructions` i `nested_memory` (`CLAUDE.md`), `prompt_snapshot` (agent, pierwszy blok
+  `systemPrompt` równy plikowi bez frontmatteru), linia `Base directory for this skill:` (skill, z argumentami
+  w miejscu `$ARGUMENTS` i podobnych); ADR zawsze `unconfirmed`. Dowód sesji i przebiegi subagentów do merge'u
+  końcowego PR (po czasie wpisu; bez czasu się liczy). `CLAUDE.md` wczytany z worktree sesji w treści innej niż baza
+  (`EpicVersions`): wersja z commitów gałęzi epiku spoza bazy (`HEAD` worktree w kontroli, `origin/<branch>` albo
+  `<branch>` w rekordzie) albo bieżący plik worktree to `confirmed` z `version: "epic"`; bez historii gałęzi
+  `unconfirmed`; inaczej `differs`. Agenci i skille zawsze względem bazy. Rekord: `loaded` liczony od nowa
+  z transkryptów epiku plus `summary` (z `confirmed_epic`) i `by_role`,
   `attempts[].instructions`, `disk_checked` oraz pozycje `process` w `gaps`. Plik przebiegu bez kontroli dysku (bez
   pola, `not_checked`, `check_failed`) z `base_sha` znanym w repozytorium `--worktree` (`unchecked_process`):
   `expected` z `base_sha` w chwili budowy rekordu, `disk: null`, `disk_checked: false`, `disk_reason`, `loaded` jak

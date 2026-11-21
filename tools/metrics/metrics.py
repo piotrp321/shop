@@ -2599,6 +2599,19 @@ def _expected(run, top, expected):
     return process_version.Expected(run, top, expected.get('ref'), files)
 
 
+def _session_worktrees(run_file):
+    return [s['worktree'] for s in run_file.get('sessions') or [] if isinstance(s, dict)
+            and isinstance(s.get('worktree'), str) and s['worktree']]
+
+
+def _epic_versions(run, top, expected, heads, worktrees):
+    """The versions of the files the epic made (process_version.EpicVersions) against the base of `expected`; None
+    without a runner."""
+    if run is None:
+        return None
+    return process_version.EpicVersions(run, top, expected.ref if expected.error is None else None, heads, worktrees)
+
+
 def _item_name(entry):
     if entry.get('agent_id') and entry.get('role'):
         return '%s (%s)' % (entry['agent_id'], entry['role'])
@@ -2630,8 +2643,11 @@ def start_process(run, args, worktree, session, base_sha, now, accepted):
     try:
         data, internal = process_version.reading(run, worktree, base_sha, _expand(args.user_dir))
         expected = _expected(run, internal['top'], data['expected'])
+        own = [internal['top']]
         loaded = process_version.loaded_of(_expand(args.projects), [session], expected,
-                                           [internal['top'], internal['main']], agents=False)
+                                           [internal['top'], internal['main']], agents=False, window=None,
+                                           parse_time=_epoch_of, epic=_epic_versions(run, internal['top'], expected,
+                                                                                     ['HEAD'], own), own=own)
     except process_version.CheckError as e:
         if accepted is None:
             raise MetricsError('kontrola wersji procesu nieudana: %s; %s' % (e, PROCESS_HINT))
@@ -2720,8 +2736,10 @@ def recheck(run, run_file, worktree, args, now, event, session, accepted):
             raise
         data, internal = process_version.reading(run, worktree, None, _expand(args.user_dir))   # base_sha unknown here
     expected = _expected(run, internal['top'], data['expected'] if late else process['expected'])
+    own = _session_worktrees(run_file) + [internal['top']]
     loaded = process_version.loaded_of(projects, sessions, expected, _roots(run_file, internal, process),
-                                       window=(started, None), parse_time=_epoch_of)
+                                       window=(started, None), parse_time=_epoch_of,
+                                       epic=_epic_versions(run, internal['top'], expected, ['HEAD'], own), own=own)
     if late:
         new = checked_process(data, loaded, now, event)
         if isinstance(process, dict) and process.get('status') == 'check_failed':
@@ -2896,19 +2914,23 @@ def checked_gaps(process, gaps):
 def with_loaded(process, run_file, run, worktree, projects, started, until, attempts, now, gaps):
     """`process.loaded` computed from every transcript of the epic against `process.expected`, with `summary`,
     `by_role`, `attempts[].instructions` and the gaps of every `differs` and of the number of `unconfirmed`."""
+    top = worktree or os.getcwd()
     if run is None:
-        expected = process_version.Expected(lambda c: None, worktree, None, {})
+        expected = process_version.Expected(lambda c: None, top, None, {})
     else:
-        expected = _expected(run, worktree or os.getcwd(), process.get('expected'))
+        expected = _expected(run, top, process.get('expected'))
+    branch = run_file.get('branch') if isinstance(run_file.get('branch'), str) and run_file['branch'] else None
+    own = _session_worktrees(run_file)
+    epic = _epic_versions(run, top, expected, ['origin/%s' % branch, branch] if branch else [], own)
     loaded = process_version.loaded_of(projects, _sessions(run_file), expected, _roots(run_file, None, process),
-                                       window=(started, until), parse_time=_epoch_of)
+                                       window=(started, until), parse_time=_epoch_of, epic=epic, own=own)
     entries = [entry for _, entry in process_version.loaded_items(loaded)]
     by_role = {}
     for entry in loaded['agents']:
         if entry.get('role'):
             cell = by_role.setdefault(entry['role'], dict.fromkeys(process_version.STATUSES, 0))
             cell[entry['status']] += 1
-    loaded.update(checked_at=iso(now), summary=process_version.counts(entries), by_role=by_role)
+    loaded.update(checked_at=iso(now), summary=process_version.summary_of(entries), by_role=by_role)
     process['loaded'] = loaded
     statuses = {e['agent_id']: e['status'] for e in loaded['agents'] if e.get('agent_id')}
     for attempt in attempts:
@@ -5318,8 +5340,10 @@ def process_topic(record):
                                                            ', zmian w trakcie %d' % len(changes) if changes else ''))
     summary = _dict(_dict(process.get('loaded')).get('summary'))
     if all(_count(summary.get(s)) is not None for s in process_version.STATUSES):
-        parts.append('załadowana: potwierdzone %d, różne %d, bez potwierdzenia %d' % (
-            summary['confirmed'], summary['differs'], summary['unconfirmed']))
+        epic = _count(summary.get('confirmed_epic'))
+        parts.append('załadowana: potwierdzone %d%s, różne %d, bez potwierdzenia %d' % (
+            summary['confirmed'], ' (w tym w wersji epiku %d)' % epic if epic else '', summary['differs'],
+            summary['unconfirmed']))
     else:
         parts.append('załadowana: %s' % NO_DATA)
     return ['Wersja procesu: %s' % '; '.join(parts)]
