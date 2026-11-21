@@ -176,17 +176,22 @@ def state_of(entries):
     return hashlib.sha256(lines.encode('utf-8')).hexdigest()[:16]
 
 
-def place_of(run, kind, path, expected, full, base=None):
+MAIN_REF = 'origin/main'
+
+
+def place_of(run, kind, path, expected, full, base=None, branch=None):
     """One place a session loads the instructions from. A worktree (its own place of work) also has `uncommitted`
-    (the files on disk against its HEAD), `epic_branch` (HEAD against the base: the commits of the epic branch) and
-    `from_base` (whether HEAD descends from the base)."""
+    (the files on disk against its HEAD), `epic_branch` (HEAD against the base), `from_base` (whether HEAD descends
+    from the base), `on_epic_branch` (whether it stands on `branch`, the branch of the run file; None without it),
+    `origin_known` (whether origin/main is known) and `from_main` (the files of `epic_branch` that a commit reachable
+    from origin/main changed: a change of the process brought from main, not the epic's own)."""
     entries = disk_of(run, path, full)
     specs = list(TREE) + ([ADR, ':(glob)**/' + CLAUDE_MD] if full else [])
-    branch = _optional(run, path, ['rev-parse', '--abbrev-ref', 'HEAD'])
+    current = _optional(run, path, ['rev-parse', '--abbrev-ref', 'HEAD'])
     # --no-optional-locks: `status` must not refresh the index of the place (the check only reads)
     status = git_text(run, path, ['--no-optional-locks', 'status', '--porcelain', '-z', '--'] + specs)
     head = _optional(run, path, ['rev-parse', '--verify', '-q', 'HEAD'])
-    place = {'kind': kind, 'path': path, 'head': head, 'branch': None if branch == 'HEAD' else branch,
+    place = {'kind': kind, 'path': path, 'head': head, 'branch': None if current == 'HEAD' else current,
              'dirty': bool(status.strip('\0').strip()), 'fingerprint': fingerprint(entries), 'state': state_of(entries),
              'files': {p: s for p, s in entries.items() if is_instruction(p)},
              'differs': differences(expected, entries, full)}
@@ -201,18 +206,67 @@ def place_of(run, kind, path, expected, full, base=None):
                 place['from_base'] = True
             except CheckError:
                 pass
+        place['on_epic_branch'] = None if branch is None else place['branch'] == branch
+        place['expected_branch'] = branch
+        main = _optional(run, path, ['rev-parse', '--verify', '-q', MAIN_REF + '^{commit}'])
+        place['origin_known'] = main is not None
+        place['from_main'] = []
+        if main and place['from_base']:
+            for item in place['epic_branch']:
+                every = set(_lines(run, path, ['rev-list', '%s..%s' % (base, head), '--', item['path']]))
+                own = set(_lines(run, path, ['rev-list', '%s..%s' % (base, head), '^' + main, '--', item['path']]))
+                if every - own:
+                    place['from_main'].append(item)
     return place
 
 
-def mismatch_paths(place):
-    """The differences of a place that are a mismatch: in the main checkout every one, in the worktree the
-    uncommitted ones and the commits of a HEAD that does not descend from the base (a commit of the epic branch is
-    information)."""
+def _lines(run, path, args):
+    try:
+        return git_text(run, path, args).split()
+    except CheckError:
+        return []
+
+
+def place_problems(place):
+    """[(reason, paths)] of the mismatches of a place (D-a, D-g): in the main checkout every difference from the base;
+    in the worktree an uncommitted change, a HEAD that does not descend from the base, another branch than the one of
+    the epic, a change of `epic_branch` whose origin cannot be told (no origin/main) or that came from main. A commit
+    of the epic branch alone is information."""
     if place.get('kind') != 'worktree' or 'uncommitted' not in place:
-        return place.get('differs') or []
+        differs = place.get('differs') or []
+        return [('różnica względem bazy', differs)] if differs else []
+    found = []
     if place.get('uncommitted'):
-        return place['uncommitted']
-    return [] if place.get('from_base') else place.get('epic_branch') or []
+        found.append(('niezacommitowana zmiana w worktree', place['uncommitted']))
+    branch = place.get('epic_branch') or []
+    if not place.get('from_base'):
+        found.append(('HEAD worktree nie pochodzi od bazy epiku', branch))
+    elif place.get('on_epic_branch') is False:
+        found.append(('worktree na gałęzi %s, a nie na gałęzi epiku %s z pliku przebiegu'
+                      % (place.get('branch') or '(odłączony HEAD)', place.get('expected_branch')), branch))
+    elif branch and place.get('origin_known') is False:
+        found.append(('nie można ustalić pochodzenia zmiany (brak %s)' % MAIN_REF, branch))
+    elif place.get('from_main'):
+        found.append(('zmiana procesu przyniesiona z main (commit osiągalny z %s)' % MAIN_REF, place['from_main']))
+    return found
+
+
+def mismatch_paths(place):
+    """The files of the mismatches of a place (place_problems), each once."""
+    seen, found = set(), []
+    for _, paths in place_problems(place):
+        for item in paths:
+            if item.get('path') not in seen:
+                seen.add(item.get('path'))
+                found.append(item)
+    return found
+
+
+def own_changes(place):
+    """The files a commit of the epic branch changed in a worktree with no mismatch (information)."""
+    if place.get('kind') != 'worktree' or place_problems(place):
+        return []
+    return [d for d in place.get('epic_branch') or [] if d not in (place.get('from_main') or [])]
 
 
 def expected_of(run, directory, ref):
@@ -230,10 +284,11 @@ def expected_of(run, directory, ref):
              'files': {p: s for p, s in sorted(tree.items()) if is_instruction(p)}}, tree)
 
 
-def reading(run, directory, ref, user_dir):
+def reading(run, directory, ref, user_dir, branch=None):
     """(reading, internal): the expected version and the disk of every place. reading: {worktree, worktree_head,
     expected: {ref, requested, describe, fingerprint, files}, disk: [place], user_level, match}; internal: {tree, top,
-    main} for the comparison of the transcripts."""
+    main} for the comparison of the transcripts. branch: the branch of the epic (the run file), checked in the
+    worktree."""
     checkout = checkout_of(run, directory)
     top = checkout['top']
     expected, tree = expected_of(run, top, ref)
@@ -242,26 +297,25 @@ def reading(run, directory, ref, user_dir):
     if checkout['is_main']:
         disk = [place_of(run, 'main_checkout', top, tree, True)]
     else:
-        disk = [place_of(run, 'worktree', top, tree, True, expected['ref'])]
+        disk = [place_of(run, 'worktree', top, tree, True, expected['ref'], branch)]
         if checkout['main'] is not None and os.path.isdir(checkout['main']):
             disk.append(place_of(run, 'main_checkout', checkout['main'], tree, False))
     users = user_level(user_dir, tree)
     data = {'worktree': top, 'worktree_head': _optional(run, top, ['rev-parse', '--verify', '-q', 'HEAD']),
             'expected': expected, 'disk': disk, 'user_level': users,
-            'match': not any(mismatch_paths(p) for p in disk) and not users['skills']}
+            'match': not any(place_problems(p) for p in disk) and not users['skills']}
     return data, {'tree': tree, 'top': top, 'main': checkout['main'], 'run': run}
 
 
 def summary(places, limit=5):
-    """One line per place with differences: the kind, the path, the number of files and the first paths."""
+    """One line per mismatch of a place: the kind, the path, the reason, the number of files and the first paths."""
     lines = []
     for place in places:
-        differs = mismatch_paths(place)
-        if differs:
+        for reason, differs in place_problems(place):
             shown = ', '.join('%s (%s)' % (d['path'], d['state']) for d in differs[:limit])
-            lines.append('%s %s: %d %s: %s%s' % (place['kind'], place.get('path') or '', len(differs),
-                                                 'plik' if len(differs) == 1 else 'pliki' if len(differs) < 5
-                                                 else 'plików', shown, ', …' if len(differs) > limit else ''))
+            count = ': %d %s: %s%s' % (len(differs), 'plik' if len(differs) == 1 else 'pliki' if len(differs) < 5
+                                       else 'plików', shown, ', …' if len(differs) > limit else '') if differs else ''
+            lines.append('%s %s: %s%s' % (place['kind'], place.get('path') or '', reason, count))
     return lines
 
 
@@ -421,9 +475,11 @@ EPIC_UNKNOWN = 'treść inna niż w bazie, historia gałęzi epiku niedostępna'
 
 
 class EpicVersions:
-    """The versions of a file the epic itself made: every version of the file in the commits of the epic branch
-    (`heads`: the first ref the repository of `top` resolves) not reachable from the base, and its current text in the
-    `worktrees` of the sessions. `available`: whether the history of the branch could be read."""
+    """The versions of a file the epic itself made (D-g, D-k): every version of the file in the commits of the epic
+    branch (`heads`: the first ref the repository of `top` resolves, the branch of the run file) that are reachable
+    neither from the base nor from origin/main. `available`: whether the branch and origin/main are known. Also the
+    versions origin/main got after the base (`from_main`) and the current files in the `worktrees` of the sessions
+    (`on_disk`: uncommitted content is no epic version)."""
 
     def __init__(self, run, top, base, heads, worktrees):
         self.run, self.top, self.base, self.cache = run, top, base, {}
@@ -437,34 +493,44 @@ class EpicVersions:
                 break
             except CheckError:
                 continue
+        self.main = _optional(run, top, ['rev-parse', '--verify', '-q', MAIN_REF + '^{commit}']) if base else None
 
     @property
     def available(self):
-        return self.head is not None
+        return self.head is not None and self.main is not None
+
+    def _versions(self, args, path):
+        found = set()
+        for commit in _lines(self.run, self.top, ['rev-list'] + args + ['--', path]):
+            try:
+                found.add(git_text(self.run, self.top, ['cat-file', 'blob', '%s:%s' % (commit, path)]).strip())
+            except CheckError:
+                continue                        # the commit deletes the file
+        return found
 
     def texts(self, path):
-        """The stripped texts of the epic versions of `path` (the history of the branch and the files on disk)."""
-        if path in self.cache:
-            return self.cache[path]
+        """The stripped texts of `path` in the epic's own commits."""
+        if ('own', path) not in self.cache:
+            self.cache[('own', path)] = self._versions(['%s..%s' % (self.base, self.head), '^' + self.main], path) \
+                if self.available else set()
+        return self.cache[('own', path)]
+
+    def from_main(self, path):
+        """The stripped texts of `path` in the commits origin/main got after the base."""
+        if ('main', path) not in self.cache:
+            self.cache[('main', path)] = self._versions(['%s..%s' % (self.base, self.main)], path) \
+                if self.main and self.base else set()
+        return self.cache[('main', path)]
+
+    def on_disk(self, path):
+        """The stripped current texts of `path` in the worktrees of the sessions."""
         found = set()
-        if self.head is not None:
-            try:
-                commits = git_text(self.run, self.top, ['log', '--format=%H', '%s..%s' % (self.base, self.head),
-                                                        '--', path]).split()
-            except CheckError:
-                commits = []
-            for commit in commits:
-                try:
-                    found.add(git_text(self.run, self.top, ['cat-file', 'blob', '%s:%s' % (commit, path)]).strip())
-                except CheckError:
-                    continue                        # the commit deletes the file
         for worktree in self.worktrees:
             try:
                 with open(os.path.join(worktree, path), encoding='utf-8') as f:
                     found.add(f.read().strip())
             except (OSError, UnicodeDecodeError):
                 continue
-        self.cache[path] = found
         return found
 
 
@@ -548,6 +614,11 @@ def _claude_md_entry(fields, found, base, epic, own):
             results.append((0, _entry(fields, 'differs', 'załadowana treść inna niż w bazie', digest(text), origin)))
         elif text in epic.texts(fields['path']):
             results.append((2, _entry(fields, 'confirmed', origin=origin, digest_=digest(text), version='epic')))
+        elif text in epic.from_main(fields['path']):
+            results.append((0, _entry(fields, 'differs', 'wersja z main późniejszego niż baza', digest(text), origin)))
+        elif text in epic.on_disk(fields['path']):
+            results.append((0, _entry(fields, 'differs', 'treść niezacommitowana (plik worktree sesji spoza commitów '
+                                                         'epiku)', digest(text), origin)))
         elif not epic.available:
             results.append((1, _entry(fields, 'unconfirmed', EPIC_UNKNOWN, digest(text), origin)))
         else:

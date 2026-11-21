@@ -301,8 +301,10 @@ class ProcessCommandTest(RepoEnv):
         self.assertEqual(code, 0, err)
         fingerprint = data['disk'][1]['fingerprint']
         self.assertEqual(data['active_epics'], [
-            {'epic': 'demo', 'started_at': iso_at(0), 'fingerprint': fingerprint, 'current': True},
-            {'epic': 'old', 'started_at': iso_at(0), 'fingerprint': None, 'current': None}])
+            {'epic': 'demo', 'started_at': iso_at(0), 'done_at': None, 'has_record': False, 'note': 'w toku',
+             'fingerprint': fingerprint, 'current': True},
+            {'epic': 'old', 'started_at': iso_at(0), 'done_at': None, 'has_record': False, 'note': 'w toku',
+             'fingerprint': None, 'current': None}])
         write(self.main, '.claude/agents/developer.md', 'zmiana\n')
         code, data, err = self.reading()
         self.assertEqual(data['active_epics'][0]['current'], False)
@@ -592,7 +594,7 @@ class ResumeDoneTest(RepoEnv):
         run = self.run_file()
         self.assertEqual(run['done_at'], iso_at(4000))
         change = run['process']['changes'][-1]
-        self.assertEqual((change['event'], change['kind'], change['accepted']), ('done', 'disk', None))
+        self.assertEqual((change['event'], change['kind'], change['informational']), ('done', 'disk', False))
 
     def test_done_twice_adds_the_change_once(self):
         self.change_agent()
@@ -1014,7 +1016,7 @@ class DiskRuleTest(RecordTest):
         disk = self.changes()
         self.assertEqual(len(disk), 1, disk)
         self.assertIs(disk[0]['informational'], True)
-        self.assertIsNone(disk[0]['accepted'])
+        self.assertEqual(self.changes('accepted'), [])
         worktree = [p for p in disk[0]['disk'] if p['kind'] == 'worktree'][0]
         self.assertEqual(sorted(d['path'] for d in worktree['epic_branch']),
                          ['.claude/agents/code-reviewer.md', 'CLAUDE.md'])
@@ -1343,7 +1345,9 @@ class QaRoundTest(DiskRuleTest):
     def test_q3_lock_held_by_another_process_ends_with_exit_2(self):
         self.started()
         import fcntl
-        with open(os.path.join(self.state, 'runs', 'demo.lock'), 'a') as lock:
+        lock_path = metrics.lock_path_of(os.path.join(self.state, 'runs', 'demo.json'))
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+        with open(lock_path, 'a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             with mock.patch('metrics.LOCK_TIMEOUT_S', 0.2):
                 code, out, err = run_cli(['pause', 'demo', '--state', self.state, '--from', iso_at(10), '--to',
