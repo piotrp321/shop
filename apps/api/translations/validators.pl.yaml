@@ -1,0 +1,2 @@
+# Overrides the catalogue of the framework: one text for every type error, without the name of a PHP type.
+'This value should be of type {{ type }}.': 'Ta wartość ma nieprawidłowy typ.'

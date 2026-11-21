@@ -1,0 +1,7 @@
+# The messages of the validator and the type errors of #[MapQueryString] and #[MapRequestPayload] are Polish: the
+# catalogue of symfony/validator, and translations/validators.pl.yaml for the type error. A message of its own (a
+# Polish text in a constraint) has no entry in a catalogue and is not changed.
+framework:
+    default_locale: pl
+    translator:
+        default_path: '%kernel.project_dir%/translations'
