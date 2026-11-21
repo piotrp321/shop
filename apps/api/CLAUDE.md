@@ -254,6 +254,13 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
 - Wejście przez DTO z Symfony Validator. Domena dodatkowo pilnuje swoich niezmienników. Złe parametry zapytania
   (`#[MapQueryString]`) to 400, zła treść żądania (`#[MapRequestPayload]`, tylko JSON, typy bez rzutowania) to 422;
   oba z listą `violations`.
+- Domyślny język komunikatów walidatora to `pl` (`symfony/translation`, katalog frameworka `validators.pl.xlf`). Jeden
+  wpis projektu w `apps/api/translations` nadpisuje błąd typu: tekst bez nazwy typu PHP. Własne polskie komunikaty nie
+  mają wpisów w katalogu.
+- Nowy parametr zapytania albo nagłówek żądania (`Idempotency-Key`) dostaje wiersz w tabeli testu kontraktu wejścia
+  (`tests/Functional/Shared/InputContract`, pliki `*Cases.php` według modułu). Strażnik zamkniętej listy
+  (`ClosedInputListTest`) przerywa test, gdy parametr zapytania albo `Idempotency-Key` opisany w OpenAPI nie ma wiersza
+  albo trasa `/api/v1` nie jest opisana w `openapi.json` ani `openapi-admin.json`.
 - Parametry, których błąd typu (`q[]=…`) ma dawać ten sam polski komunikat co zła wartość, są w DTO typu `mixed`
   i sprawdzane w callbackach (np. `sort` list panelu, `q` zamówień, klientów i kodów, `level`, `images`,
   `productId`).
