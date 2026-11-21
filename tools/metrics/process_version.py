@@ -534,6 +534,14 @@ class EpicVersions:
         return found
 
 
+def _read_text(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return f.read()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
 def _under(path, roots):
     return any(root and path.startswith(root.rstrip('/') + '/') for root in roots or [])
 
@@ -644,7 +652,11 @@ def skill_entries(session, agent, evidence, expected, high=None, parse_time=None
         elif matches_template(strip_frontmatter(template), text):
             entries.append(_entry(fields, 'confirmed', origin=directory, version='base'))
         else:
-            entries.append(_entry(fields, 'differs', 'załadowana treść inna niż w bazie', digest(text), directory))
+            entry = _entry(fields, 'differs', 'załadowana treść inna niż w bazie', digest(text), directory)
+            current = _read_text(os.path.join(directory, 'SKILL.md'))
+            if current is not None and matches_template(strip_frontmatter(current), text):
+                entry['origin_match'] = True        # the text of the SKILL.md at its origin now (D-i for skills)
+            entries.append(entry)
     return entries
 
 

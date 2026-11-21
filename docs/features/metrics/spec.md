@@ -324,7 +324,8 @@ numer commita. Pole `process` pliku przebiegu ma trzy poziomy:
   procesu przyniesiona z main, np. `git merge origin/main`, także gdy tę ścieżkę zmienił też epik), różnica, której
   pochodzenia nie da się ustalić (brak `origin/main`), każda różnica głównego checkoutu (stąd sesja desktopowa
   ładuje agentów i skille) i niepuste `user_level.skills`. Niezgodność trwa, dopóki nie zostanie zaakceptowana
-  z powodem (niżej).
+  z powodem (niżej). Ograniczenie: inna gałąź zmergowana do epiku, zanim trafi do `origin/main`, jest dla tej reguły
+  nie do odróżnienia od własnej zmiany epiku i liczy się jako informacja.
 - `loaded`: wyłącznie to, co potwierdza transkrypt, nigdy wniosek z dysku. `session` (pliki `CLAUDE.md` bazy i ADR, na
   sesję prowadzącą), `agents` (na przebieg subagenta roli projektu: `session`, `agent_id`, `role`) i `skills` (na
   wczytanie skilla projektu: `session`, `agent_id`, `skill`); każdy wpis ma `status`, `version`, `origin` (ścieżka
@@ -368,7 +369,9 @@ Treść instrukcji nie trafia do pliku przebiegu ani rekordu, tylko ścieżki, s
   po przycięciu daje kod 2) plik powstaje z `accepted` = powód i wpisem akceptacji tego, co start pokazał. Kontrola,
   która nie może się wykonać (brak gita, katalog spoza repozytorium), też odmawia; z akceptacją zapisuje `{status:
   "check_failed", checked_at, checked_on, reason, accepted, changes: []}`. Zapis po fakcie (`--at`) to `{status:
-  "not_checked", reason}`, bez kontroli i bez odmowy (także dla `--resume --at` i `done --at`).
+  "not_checked", reason}`, bez kontroli i bez odmowy. `start --resume --at` i `done --at` też nie sprawdzają (zapis po
+  fakcie, nie sposób na ominięcie odmowy): dopisują do `process.changes` wpis `{at, event, session, kind:
+  "not_checked", reason}`, który rekord pokazuje w `gaps` („kontrola pominięta”).
 - `metrics.py process <epik>` (przed każdą falą zadań, przed przeglądem epiku i zaraz po starcie pierwszego subagenta
   danej roli), `start --resume` i `done` sprawdzają dzisiejszy `disk` według reguły wyżej i czytają transkrypty sesji
   z pliku przebiegu (subagenci, których wiadomości nie leżą w całości przed `started_at`), zastępując `loaded`
@@ -381,11 +384,17 @@ Treść instrukcji nie trafia do pliku przebiegu ani rekordu, tylko ścieżki, s
   w `process.changes`: `informational: true` przy niepustych zmianach z commitów epiku i bez niezgodności,
   `returned: true` bez jednego i drugiego (powrót do bazy albo do stanu zaakceptowanego). `differs` w `loaded` to
   wpis `{at, event, session, kind: "loaded", section, item}` (raz na wpis), nieudana kontrola `{at, event, session,
-  kind: "check_failed", reason, accepted}`. Subagent, którego załadowana rola jest równa (po tym samym zdjęciu
-  frontmatteru) plikowi tej roli w głównym checkoucie w zaakceptowanym stanie, zostaje `differs` z `explained:
-  "accepted_disk"` i nie jest nową niezgodnością (tryb awaryjny ADR po starcie mimo różnicy).
+  kind: "check_failed", reason, accepted}`. Wpis `differs`, którego załadowana treść jest bieżącym plikiem miejsca
+  w zaakceptowanym stanie, zostaje `differs` z `explained: "accepted_disk"` i nie jest nową niezgodnością: subagent
+  z rolą równą (po tym samym zdjęciu frontmatteru) plikowi tej roli w głównym checkoucie (tryb awaryjny ADR po starcie
+  mimo różnicy), skill, którego treść pokrywa `SKILL.md` w jego katalogu pochodzenia w zaakceptowanym miejscu, i
+  `CLAUDE.md` równy plikowi worktree epiku w zaakceptowanym stanie (np. po zaakceptowanym `git merge origin/main`
+  nowa sesja, która wczytała zmergowany plik, wznawia bez ponownej akceptacji). Rekord przenosi `explained`
+  z pliku przebiegu do swoich wpisów `loaded`, liczy je w `summary` jako `differs`, a w `gaps` pisze „inna niż
+  w bazie, zgodna z zaakceptowanym stanem głównego checkoutu” (albo „worktree epiku”).
   Niezgodność to pozycja (stan miejsca, lista skilli użytkownika albo wpis `differs`) bez akceptacji; `unconfirmed`
-  nie jest niezgodnością. Każda kontrola zapisuje bieżące niezgodności jako `process.shown` (`{at, event, keys}`).
+  nie jest niezgodnością. Każda kontrola zapisuje bieżące niezgodności jako `process.shown` (`{at, event, session,
+  keys}`).
   Akceptacja (`--accept-process-mismatch "<powód>"` w `process <epik>` i `start --resume`; te same zasady powodu co
   w `start`; sesja: `--session`, domyślnie ostatnia z pliku przebiegu, spoza pliku przebiegu kod 2) obejmuje tylko
   pozycje z `shown`, które nadal występują, i zapisuje wpis `{at, event, session, kind: "accepted", keys, items,
@@ -395,7 +404,11 @@ Treść instrukcji nie trafia do pliku przebiegu ani rekordu, tylko ścieżki, s
   JSON (`mismatches`: lista niezgodności, `accepted`) i kończy się kodem 4 przy niezgodności, z komunikatem, co
   zrobić: usunąć przyczynę (aktualizacja głównego checkoutu według ADR, commit albo cofnięcie zmiany w worktree)
   albo zaakceptować ją z powodem; zapisuje plik przebiegu tylko wtedy, gdy coś się zmieniło (poza czasami kontroli).
-  `start --resume` przy niezgodności odmawia (kod 2), z akceptacją pokazanych pozycji przechodzi; `done` zawsze
+  `start --resume` liczy `loaded` także dla nowej sesji; przy niezgodności odmawia (kod 2) i pod blokadą zapisuje
+  plik przebiegu bez nowej sesji, ale z `shown` (`event: "resume"`, `session` nowej sesji, także jej klucze), więc
+  to samo wznowienie z `--accept-process-mismatch "<powód>"` akceptuje pokazane pozycje, dopisuje sesję i kończy się
+  kodem 0, a pozycje nowe od odmowy dają kod 2 z listą i nowym `shown`; komunikat mówi „powtórz
+  z --accept-process-mismatch "<powód>"”. `done` zawsze
   zapisuje `done_at` (kod 0), niezgodność i nieudaną kontrolę zapisuje w `process.changes` z ostrzeżeniem na stderr.
   Plik przebiegu bez `process` (sprzed kontroli) albo z `check_failed` dostaje odczyt teraz (`checked_on`: `resume`,
   `done` albo `process`; przy `check_failed` `start_failure: {reason, accepted}`); ten odczyt nic nie akceptuje, więc
@@ -413,8 +426,9 @@ Treść instrukcji nie trafia do pliku przebiegu ani rekordu, tylko ścieżki, s
 Kontrola nie odczytuje promptu, który subagent dostał poza transkryptem, i wykrywa zmianę przy `process <epik>`,
 `--resume` i `done`, nie w chwili zmiany. Każda komenda, która zapisuje plik przebiegu (`start`, `start --resume`,
 `done`, `pause`, `process <epik>`), trzyma przez cały odczyt, zmianę i zapis wyłączną blokadę
-`<state>/locks/<epik>.lock` (`fcntl.flock`); po 60 s czekania kończy się kodem 2 z komunikatem, więc równoległe
-wywołania nie gubią swoich zapisów.
+`<state>/locks/<epik>.lock` (`fcntl.flock`); czeka tylko na blokadę zajętą przez inne wywołanie (po 60 s kod 2
+z komunikatem), a inny błąd blokady (np. system plików bez blokad) zgłasza od razu kodem 2 z jego treścią, więc
+równoległe wywołania nie gubią swoich zapisów.
 
 **Transkrypty epiku.** Tylko sesje z pliku przebiegu: `<id>.jsonl` w katalogu projektów Claude Code
 (`~/.claude/projects/*/`, opcja `--projects`) i ich subagenci `<id>/subagents/agent-<agent>.jsonl` z

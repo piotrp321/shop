@@ -118,6 +118,7 @@ or --at or without a stored record of a merged epic.
 """
 import argparse
 import contextlib
+import errno
 import fcntl
 import glob
 import json
@@ -2466,8 +2467,14 @@ def _start(args, run, now, stdin, path):
         directory = None if args.at else check_dir(args, current, resume=True)     # the new session's worktree
         if not any(isinstance(s, dict) and s.get('id') == session for s in sessions):
             current['sessions'] = sessions + [entry]
-        if not args.at:
-            resume_check(run, current, directory, args, now, session, accepted)
+        if args.at:
+            skipped_check(current, at, 'resume', session)
+        else:
+            refusal = resume_check(run, current, directory, args, now, session, accepted)
+            if refusal is not None:
+                current['sessions'] = sessions          # the refused session is no session of the epic (D-n)
+                write_record(path, current)
+                raise MetricsError(refusal)
         data = current
     else:
         if current is not None:
@@ -2515,7 +2522,9 @@ def _done(args, run, now, stdin, path):
     data = read_run_file(path)
     if data is None:
         raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
-    if not args.at:
+    if args.at:
+        skipped_check(data, parse_at(args.at), 'done', None)
+    else:
         worktree = check_dir(args, data)
         try:
             result = recheck(run, data, worktree, args, now, 'done', None, None)
@@ -2749,21 +2758,40 @@ def _acceptance(now, event, session, items, reason):
             'items': [i['line'] for i in items], 'reason': reason}
 
 
-def _explained(entry, places, accepted):
-    """D-i: a subagent whose loaded role is the role file of the main checkout in a state accepted with a reason (the
-    same text, compared by its digest after the same frontmatter strip as a confirmation)."""
-    main = next((p for p in places if p.get('kind') == 'main_checkout'), None)
-    role = entry.get('role')
-    if main is None or not role or not entry.get('digest') or not main.get('path'):
-        return False
-    if ['disk', 'main_checkout', _place_state(main), main.get('branch')] not in accepted:
-        return False
+def _place_accepted(place, accepted):
+    return ['disk', place.get('kind'), _place_state(place), place.get('branch')] in accepted
+
+
+def _read(path):
     try:
-        with open(os.path.join(main['path'], '.claude', 'agents', '%s.md' % role), encoding='utf-8') as f:
-            text = f.read()
+        with open(path, encoding='utf-8') as f:
+            return f.read()
     except (OSError, UnicodeDecodeError):
-        return False
-    return process_version.digest(process_version.strip_frontmatter(text)) == entry['digest']
+        return None
+
+
+def _explained(section, entry, places, accepted):
+    """D-i, D-n: a `differs` entry whose loaded text is the current file of a place in a state accepted with a reason
+    (compared by content, the same way as a confirmation): an agent with the role file of the main checkout, a skill
+    whose text matches the SKILL.md at its origin in an accepted place, a CLAUDE.md equal to the file of the place it
+    is read from (the worktree of the epic, after an accepted merge of main)."""
+    if section == 'agents':
+        main = next((p for p in places if p.get('kind') == 'main_checkout'), None)
+        if main is None or not entry.get('role') or not entry.get('digest') or not _place_accepted(main, accepted):
+            return False
+        text = _read(os.path.join(main['path'], '.claude', 'agents', '%s.md' % entry['role']))
+        return text is not None and process_version.digest(process_version.strip_frontmatter(text)) == entry['digest']
+    if section == 'skills':
+        origin = entry.get('origin') or ''
+        return bool(entry.get('origin_match')) and any(
+            _place_accepted(p, accepted) and process_version._under(origin + '/', [p.get('path')]) for p in places)
+    if section == 'session' and entry.get('path') and entry.get('digest'):
+        for place in places:
+            if entry['path'] in (place.get('files') or {}) and _place_accepted(place, accepted):
+                text = _read(os.path.join(place['path'], entry['path']))
+                if text is not None and process_version.digest(text.strip()) == entry['digest']:
+                    return True
+    return False
 
 
 def mismatch_items(data, loaded, process):
@@ -2784,7 +2812,7 @@ def mismatch_items(data, loaded, process):
     for section, entry in process_version.loaded_items(loaded):
         if entry.get('status') != 'differs':
             continue
-        if section == 'agents' and _explained(entry, data['disk'], accepted):
+        if _explained(section, entry, data['disk'], accepted):
             entry['explained'] = 'accepted_disk'
             continue
         key = ['loaded'] + process_version.loaded_key(section, entry)
@@ -2896,7 +2924,7 @@ def recheck(run, run_file, worktree, args, now, event, session, accepted):
             process.setdefault('changes', []).append(change)
             added.append(change)
     if remaining:
-        process['shown'] = {'at': iso(now), 'event': event, 'keys': [i['key'] for i in remaining]}
+        process['shown'] = {'at': iso(now), 'event': event, 'session': session, 'keys': [i['key'] for i in remaining]}
     else:
         process.pop('shown', None)
     process['loaded'] = dict(loaded, checked_at=iso(now))
@@ -2937,23 +2965,35 @@ UNSHOWN = ('nie zaakceptowano niezgodności, których nie pokazała poprzednia k
            'sprawdź je i powtórz z --accept-process-mismatch "<powód>"')
 
 
+def skipped_check(run_file, at, event, session):
+    """D-o: `start --resume --at` and `done --at` do not check (a record after the fact) and say so in
+    `process.changes`."""
+    process = run_file.get('process')
+    if isinstance(process, dict):
+        process.setdefault('changes', []).append({
+            'at': iso(at), 'event': event, 'session': session, 'kind': 'not_checked',
+            'reason': 'zapis po fakcie (--at): kontrola wersji pominięta'})
+
+
 def resume_check(run, run_file, worktree, args, now, session, accepted):
-    """`start --resume`: the recheck of the worktree of the new session; a mismatch refuses the resume (MetricsError,
-    nothing written) unless it was shown by `process EPIC` and is accepted with a reason. The first reading of a run
-    file without one refuses nothing."""
+    """`start --resume`: the recheck of the worktree of the new session, with the new session in `sessions`. None when
+    the resume may go on; else the message of the refusal (the caller writes the run file without the new session:
+    `process.shown` holds what was shown, so the same resume with an acceptance ends it, D-n). The first reading of a
+    run file without one refuses nothing."""
     try:
         result = recheck(run, run_file, worktree, args, now, 'resume', session, accepted)
     except process_version.CheckError as e:
         if accepted is None:
             raise MetricsError('kontrola wersji procesu nieudana: %s; %s' % (e, PROCESS_HINT))
         add_change(run_file, failed_change(now, 'resume', session, e, accepted))
-        return
-    if result['mismatch'] and not result['late']:
-        epic = run_file.get('epic')
-        raise MetricsError('wersja procesu niezgodna z bazą epiku: %s. Wznowienie wstrzymane: %s; %s' % (
-            '; '.join(result['lines']), 'akceptacja obejmuje tylko niezgodności pokazane przez `metrics.py process %s`'
-            % epic if result['unshown'] else 'wznów z --accept-process-mismatch "<powód>" po `metrics.py process %s`'
-            % epic, MISMATCH_HINT % epic))
+        return None
+    if not result['mismatch'] or result['late']:
+        return None
+    return ('wersja procesu niezgodna z bazą epiku: %s. Wznowienie wstrzymane%s: sprawdź te niezgodności i powtórz '
+            'z --accept-process-mismatch "<powód>" (akceptacja obejmuje tylko pokazane teraz) albo usuń przyczynę '
+            '(zaktualizuj główny checkout według ADR, docs/adr/agentic-software-house.md, „Wersja procesu”; zacommituj '
+            'albo cofnij zmianę w worktree)' % ('; '.join(result['lines']),
+                                                ' (są nowe względem poprzedniej kontroli)' if result['unshown'] else ''))
 
 
 LOCK_TIMEOUT_S = 60.0
@@ -2981,7 +3021,9 @@ def run_lock(path):
             try:
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
-            except OSError:
+            except OSError as e:
+                if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
+                    raise MetricsError('nie można założyć blokady %s: %s' % (lock_path, e.strerror or e))
                 if time.monotonic() >= deadline:
                     raise MetricsError('plik przebiegu %s ma blokadę innego wywołania metrics.py dłużej niż %g s: '
                                        'poczekaj, aż się skończy, i spróbuj ponownie' % (path, LOCK_TIMEOUT_S))
@@ -3100,6 +3142,9 @@ def checked_gaps(process, gaps):
             accepted = '; zaakceptowano: %s' % change['accepted'] if change.get('accepted') else ''
             gaps.add('process', 'kontrola wersji przy %s %s nieudana: %s%s' % (change.get('event'), change.get('at'),
                                                                              change.get('reason'), accepted))
+        elif change.get('kind') == 'not_checked':
+            gaps.add('process', 'kontrola pominięta przy %s %s (zapis po fakcie --at)%s' % (
+                change.get('event'), change.get('at'), ', sesja %s' % change['session'] if change.get('session') else ''))
 
 
 def native_process(run_file, run, worktree, projects, started, until, attempts, now, gaps):
@@ -3166,7 +3211,23 @@ def unchecked_process(original, run_file, run, worktree, gaps):
         if isinstance(change, dict) and change.get('kind') == 'check_failed':
             gaps.add('process', 'kontrola wersji przy %s %s nieudana: %s' % (change.get('event'), change.get('at'),
                                                                            change.get('reason')))
+        elif isinstance(change, dict) and change.get('kind') == 'not_checked':
+            gaps.add('process', 'kontrola pominięta przy %s %s (zapis po fakcie --at)' % (change.get('event'),
+                                                                                        change.get('at')))
     return process
+
+
+def _explained_keys(process):
+    """The `loaded` keys a check of the epic explained (D-i, D-n): from the last `loaded` and the `loaded` entries of
+    `process.changes` of the run file."""
+    found = []
+    for section, entry in process_version.loaded_items(process.get('loaded')):
+        if entry.get('explained'):
+            found.append(process_version.loaded_key(section, entry))
+    for change in process.get('changes') or []:
+        if isinstance(change, dict) and change.get('kind') == 'loaded' and _dict(change.get('item')).get('explained'):
+            found.append(process_version.loaded_key(change.get('section'), change['item']))
+    return found
 
 
 def with_loaded(process, run_file, run, worktree, projects, started, until, attempts, now, gaps):
@@ -3184,8 +3245,12 @@ def with_loaded(process, run_file, run, worktree, projects, started, until, atte
                  % expected.error)
     own = _session_worktrees(run_file)
     epic = _epic_versions(run, top, expected, _epic_heads(_branch_of(run_file), record=True), own)
+    explained = _explained_keys(process)
     loaded = process_version.loaded_of(projects, _sessions(run_file), expected, _roots(run_file, None, process),
                                        window=(started, until), parse_time=_epoch_of, epic=epic, own=own)
+    for section, entry in process_version.loaded_items(loaded):
+        if entry.get('status') == 'differs' and process_version.loaded_key(section, entry) in explained:
+            entry['explained'] = 'accepted_disk'
     entries = [entry for _, entry in process_version.loaded_items(loaded)]
     by_role = {}
     for entry in loaded['agents']:
@@ -3199,7 +3264,9 @@ def with_loaded(process, run_file, run, worktree, projects, started, until, atte
         attempt['instructions'] = statuses.get(attempt.get('agent_id'))
     for section, entry in process_version.loaded_items(loaded):
         if entry.get('status') == 'differs':
-            gaps.add('process', 'załadowana wersja inna niż w bazie: %s %s%s%s' % (
+            gaps.add('process', 'załadowana wersja inna niż w bazie%s: %s %s%s%s' % (
+                ', zgodna z zaakceptowanym stanem %s' % ('worktree epiku' if section == 'session' else
+                                                          'głównego checkoutu') if entry.get('explained') else '',
                 section, _item_name(entry), ' (%s)' % entry['origin'] if entry.get('origin') else '',
                 ': %s' % entry['reason'] if entry.get('reason') else ''))
     unconfirmed = loaded['summary']['unconfirmed']

@@ -563,20 +563,21 @@ class ResumeDoneTest(RepoEnv):
         self.assertEqual(code, 2)
         self.assertIn('main_checkout', err)
         self.assertIn('--accept-process-mismatch', err)
-        self.assertEqual(self.run_file(), before)
+        after = self.run_file()
+        self.assertEqual(after['sessions'], before['sessions'])         # the refused session is not added
+        self.assertEqual((after['process']['shown']['event'], after['process']['shown']['session']), ('resume', 's2'))
 
     def test_resume_after_a_change_with_acceptance_records_it(self):
         self.change_agent()
         code, out, err = self.start('--resume', '--accept-process-mismatch', 'poprawka roli w trakcie',
                                     session='s2', now=testkit.T0 + 500)
         self.assertEqual(code, 2)                       # nothing shown yet: only a shown mismatch is accepted (D-h)
-        self.assertIn('metrics.py process demo', err)
-        self.assertEqual(self.process_epic(now=testkit.T0 + 550)[0], EXIT_PROCESS)
+        self.assertIn('powtórz z --accept-process-mismatch', err)        # the refusal showed it now (D-n)
         code, out, err = self.start('--resume', '--accept-process-mismatch', 'poprawka roli w trakcie',
                                     session='s2', now=testkit.T0 + 600)
         self.assertEqual(code, 0, err)
         changes = self.run_file()['process']['changes']
-        self.assertEqual([(c['kind'], c['event']) for c in changes], [('disk', 'process'), ('accepted', 'resume')])
+        self.assertEqual([(c['kind'], c['event']) for c in changes], [('disk', 'resume'), ('accepted', 'resume')])
         main = [d for d in changes[0]['disk'] if d['kind'] == 'main_checkout'][0]
         self.assertEqual(main['differs'], [{'path': '.claude/agents/code-reviewer.md', 'state': 'changed'}])
         accepted = changes[1]
@@ -778,7 +779,8 @@ class RecordWithoutDiskCheckTest(RecordTest):
         self.assertIn(reason_part, disk[0])
         self.assertTrue(any('a2' in g for g in gaps), gaps)
         self.assertTrue(any('unconfirmed' in g for g in gaps), gaps)
-        self.assertEqual(len(gaps), 3, gaps)
+        skipped = [g for g in gaps if 'kontrola pominięta' in g]       # done --at leaves a trace (D-o)
+        self.assertEqual(len(gaps) - len(skipped), 3, gaps)
         self.assertNotIn('TAJNA', json.dumps(record, ensure_ascii=False))
 
     def test_run_file_from_before_the_check(self):

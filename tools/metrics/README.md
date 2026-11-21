@@ -48,12 +48,14 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   i odmawia przy niezgodności z bazą (kod `2`, bez zapisu; commity gałęzi epiku w worktree nie są niezgodnością) bez
   `--accept-process-mismatch POWÓD` (pusty powód: kod `2`); `--resume` sprawdza ją w worktree nowej sesji
   (`--worktree`, inaczej bieżący katalog; inna gałąź niż gałąź epiku albo zmiana procesu z `origin/main` to
-  niezgodność) i z akceptacją przechodzi tylko dla niezgodności pokazanych wcześniej przez `process EPIK`; `--user-dir`: katalog użytkownika Claude Code (domyślnie `~/.claude`). `--projects`: katalog
+  niezgodność); odmowa zapisuje pokazane niezgodności (`process.shown`, także nowej sesji, bez dopisania sesji),
+  a to samo wznowienie z `--accept-process-mismatch POWÓD` je akceptuje i dopisuje sesję (nowe od odmowy: znowu kod
+  `2`); `--resume --at` nie sprawdza i zapisuje wpis `not_checked` (zapis po fakcie, nie obejście odmowy); `--user-dir`: katalog użytkownika Claude Code (domyślnie `~/.claude`). `--projects`: katalog
   projektów Claude Code (domyślnie `~/.claude/projects`). Odczyt limitów z wejścia standardowego: obiekt `plan`
   z `get_usage` albo cały obiekt `get_usage` (`{"plan": …, "context": …}`, brany jest `plan`; `plan`, który nie jest
   obiektem, daje `{"status": "unreadable"}`); terminal albo puste wejście to brak odczytu (`null`).
 - `done EPIK`: wpisuje do pliku przebiegu `done_at` (teraz albo `--at`) i drugi odczyt limitów z wejścia (`usage_done`,
-  te same kształty co w `start`); bez `--at` sprawdza wersję procesu (`--worktree`, domyślnie worktree ostatniej sesji
+  te same kształty co w `start`); z `--at` nie sprawdza i zapisuje wpis `not_checked`; bez `--at` sprawdza wersję procesu (`--worktree`, domyślnie worktree ostatniej sesji
   z pliku przebiegu, z komunikatem, gdy bieżący katalog jest innym checkoutem albo gdy tego worktree już nie ma i
   kontrola idzie w bieżącym katalogu) i zapisuje zmianę albo nieudaną kontrolę w `process.changes` z ostrzeżeniem na stderr, nigdy nie
   odmawia.
@@ -389,8 +391,10 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   różnicy to niezgodność; w głównym checkoucie każda różnica, do tego `user_level.skills`. Wpis `disk` bez
   niezgodności i bez commitów epiku ma `returned: true`. Akceptacja (`start`, `--resume`, `process EPIK`
   z `--accept-process-mismatch`) obejmuje tylko pozycje pokazane (`process.shown`; w `start` to, co pokazał start)
-  i zapisuje wpis `accepted` z ich kluczami; odczyt późny niczego nie akceptuje. Subagent z rolą równą plikowi
-  głównego checkoutu w zaakceptowanym stanie: `differs` z `explained: "accepted_disk"`, bez kodu 4. `CLAUDE.md`
+  i zapisuje wpis `accepted` z ich kluczami; odczyt późny niczego nie akceptuje. Wpis `differs` równy bieżącemu
+  plikowi miejsca w zaakceptowanym stanie (rola z głównego checkoutu, skill z katalogu pochodzenia, `CLAUDE.md`
+  z worktree epiku po zaakceptowanym mergu): `explained: "accepted_disk"`, bez kodu 4; rekord przenosi to pole
+  i pisze o tym w `gaps`. `CLAUDE.md`
   wczytany z worktree sesji w treści innej niż baza (`EpicVersions`): wersja z commitów gałęzi epiku z pliku
   przebiegu nieosiągalnych z `origin/main` (lokalna gałąź w kontroli, `origin/<branch>` w rekordzie) to `confirmed`
   z `version: "epic"`; wersja z `origin/main` po bazie i treść niezacommitowana to `differs` z powodem; bez gałęzi
@@ -407,7 +411,8 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   do wyjścia); ścieżki katalogów roboczych są tylko w `process` (pochodzenie instrukcji), a komentarz ich nie wypisuje.
 - **Blokada:** `start`, `start --resume`, `done`, `pause` i `process EPIK` trzymają przez cały odczyt, zmianę
   i zapis pliku przebiegu wyłączną blokadę `<state>/locks/<epik>.lock` (`run_lock`, `fcntl.flock`); po
-  `LOCK_TIMEOUT_S` (60 s) czekania kod `2` z komunikatem.
+  `LOCK_TIMEOUT_S` (60 s) czekania na blokadę zajętą kod `2` z komunikatem; inny błąd blokady od razu kod `2` z jego
+  treścią.
 - **Ograniczenia:** zapis po fakcie (`start --at`) dla sesji, która prowadziła dwa epiki, nie jest wspierany: E1
   odmówi drugiego pliku przebiegu z tą sesją i wymaga to ręcznej decyzji. Miejsce `$ARGUMENTS` (i podobne)
   w treści skilla pasuje do dowolnego tekstu, więc zmiana treści skilla tylko w miejscu argumentu nie jest wykrywana.
