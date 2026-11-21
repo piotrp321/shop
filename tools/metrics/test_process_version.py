@@ -1175,14 +1175,19 @@ class OriginAndAcceptanceTest(DiskRuleTest):
         code, out, err = self.start('--resume', session='s2', worktree=new, now=testkit.T0 + 100)
         self.assertEqual(code, 2)
         self.assertIn('feat/demo', err)
-        run = self.run_file()
-        run['sessions'].append({'id': 's2', 'worktree': new, 'at': iso_at(100)})
-        with open(os.path.join(self.state, 'runs', 'demo.json'), 'w') as f:
-            json.dump(run, f)
-        code, out, err = self.process_epic(now=testkit.T0 + 200)
-        root = [e for e in json.loads(out)['loaded']['session'] if e['session'] == 's2' and e['path'] == 'CLAUDE.md'][0]
+        self.assertIn('powtórz z --accept-process-mismatch', err)
+        shown = self.run_file()['process']['shown']                 # the refusal records what it showed (D-n)
+        self.assertEqual((shown['event'], shown['session']), ('resume', 's2'))
+        self.assertEqual([s['id'] for s in self.run_file()['sessions']], ['s1'])
+        root = [e for e in self.run_file()['process']['loaded']['session']
+                if e['session'] == 's2' and e['path'] == 'CLAUDE.md'][0]
         self.assertEqual(root['status'], 'differs')
         self.assertIn('wersja z main późniejszego niż baza', root['reason'])
+        code, out, err = self.start('--resume', '--accept-process-mismatch', 'nowa sesja z nowszego main',
+                                    session='s2', worktree=new, now=testkit.T0 + 200)
+        self.assertEqual(code, 0, err)
+        self.assertEqual([s['id'] for s in self.run_file()['sessions']], ['s1', 's2'])
+        self.assertEqual(self.changes('accepted')[-1]['reason'], 'nowa sesja z nowszego main')
 
     def test_acceptance_covers_only_what_was_shown(self):
         self.started()
@@ -1400,6 +1405,115 @@ class QaRoundTest(DiskRuleTest):
         record = self.native_record()
         self.assertEqual(record['breakdown']['host_pause'], 500)
         self.assertTrue(any(g.startswith('pauses: ') and '500' in g for g in record['gaps']), record['gaps'])
+
+
+class ResumeRefusalTest(DiskRuleTest):
+    """R3-1, D-n, D-o, D-p: a refused `start --resume` records what it showed and the same resume with an acceptance
+    ends it; after an accepted merge of main a new session that loaded the merged CLAUDE.md resumes without a new
+    acceptance; `--at` leaves a trace; the lock reports an error that is not a busy lock at once."""
+
+    test_scenario_of_the_epic = None
+
+    def resume(self, *extra, session='s2', cwd=None, now=testkit.T0 + 1000):
+        argv = ['start', 'demo', '--resume', '--state', self.state, '--projects', self.projects, '--user-dir',
+                self.user_dir, '--session', session] + list(extra)
+        with mock.patch('os.getcwd', return_value=cwd or self.worktree):
+            return run_cli(argv, now=now)
+
+    def sessions(self):
+        return [s['id'] for s in self.run_file()['sessions']]
+
+    def test_a3_resume_after_an_accepted_merge_of_main_needs_no_new_acceptance(self):
+        self.started()
+        self.merge_from_main({'CLAUDE.md': NEWER_MD})
+        self.assertEqual(self.process_epic(now=testkit.T0 + 100)[0], EXIT_PROCESS)
+        self.assertEqual(self.process_epic('demo', '--accept-process-mismatch', 'merge main', now=testkit.T0 + 200)[0], 0)
+        self.lead(self.instructions_line(at=900, root_md=NEWER_MD, session='s2'), session='s2')
+        code, out, err = self.resume(now=testkit.T0 + 1000)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.sessions(), ['s1', 's2'])
+        entry = [e for e in self.run_file()['process']['loaded']['session']
+                 if e['session'] == 's2' and e['path'] == 'CLAUDE.md'][0]
+        self.assertEqual((entry['status'], entry['explained']), ('differs', 'accepted_disk'))
+
+    def test_a1_refused_resume_then_the_same_resume_with_an_acceptance(self):
+        self.started()
+        git(self.main, 'worktree', 'remove', '--force', self.worktree)
+        other = os.path.join(self.main, '.claude', 'worktrees', 'w2')
+        git(self.main, 'worktree', 'add', '-q', other, 'feat/demo')
+        changed = '# CLAUDE.md\n\nlokalnie\n'
+        write(other, 'CLAUDE.md', changed)
+        self.lead(self.instructions_line(at=900, root_md=changed, session='s2', worktree=other), session='s2',
+                  worktree=other)
+        code, out, err = self.resume(cwd=other)
+        self.assertEqual(code, 2)
+        self.assertIn('powtórz z --accept-process-mismatch', err)
+        self.assertNotIn('metrics.py process demo`', err)
+        self.assertEqual(self.sessions(), ['s1'])
+        code, out, err = self.resume('--accept-process-mismatch', 'nowa sesja', cwd=other, now=testkit.T0 + 1100)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.sessions(), ['s1', 's2'])
+
+    def test_a_new_mismatch_between_the_refusal_and_the_acceptance_is_refused(self):
+        self.started()
+        self.merge_from_main({'CLAUDE.md': NEWER_MD})
+        self.lead(self.instructions_line(at=900, root_md=NEWER_MD, session='s2'), session='s2')
+        self.assertEqual(self.resume(now=testkit.T0 + 1000)[0], 2)
+        write(self.main, '.claude/agents/developer.md', agent_file('developer', 'Zmiana w międzyczasie.'))
+        code, out, err = self.resume('--accept-process-mismatch', 'merge', now=testkit.T0 + 1100)
+        self.assertEqual(code, 2)
+        self.assertIn('main_checkout', err)
+        self.assertEqual(self.sessions(), ['s1'])
+        code, out, err = self.resume('--accept-process-mismatch', 'i główny', now=testkit.T0 + 1200)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.sessions(), ['s1', 's2'])
+
+    def test_resume_and_done_after_the_fact_leave_a_trace(self):
+        self.started()
+        self.lead(self.instructions_line(session='s2'), session='s2')
+        self.assertEqual(self.resume('--at', iso_at(500))[0], 0)
+        self.assertEqual(self.done('--at', iso_at(4000))[0], 0)
+        skipped = self.changes('not_checked')
+        self.assertEqual([(c['event'], c['session'], c['at']) for c in skipped],
+                         [('resume', 's2', iso_at(500)), ('done', None, iso_at(4000))])
+        gaps = self.gaps(self.record())
+        self.assertEqual(len([g for g in gaps if 'kontrola pominięta' in g]), 2, gaps)
+
+    def test_lock_error_other_than_busy_is_reported_at_once(self):
+        self.started()
+        import errno
+        with mock.patch('fcntl.flock', side_effect=OSError(errno.ENOLCK, 'No locks available')):
+            code, out, err = run_cli(['pause', 'demo', '--state', self.state, '--from', iso_at(10), '--to',
+                                      iso_at(20)])
+        self.assertEqual((code, out), (2, ''))
+        self.assertIn('No locks available', err)
+        self.assertNotIn('innego wywołania', err)
+
+    def test_record_keeps_the_explanation(self):
+        stale = 'Stara rola developera z głównego checkoutu.'
+        write(self.main, '.claude/agents/developer.md', agent_file('developer', stale))
+        self.lead(self.instructions_line())
+        self.assertEqual(self.start('--accept-process-mismatch', 'główny checkout nieaktualny')[0], 0)
+        self.subagent_run('a1', 'developer', [stale], at=100)
+        self.assertEqual(self.process_epic(now=testkit.T0 + 200)[0], 0)
+        self.assertEqual(self.done()[0], 0)
+        record = self.record()
+        agent = record['process']['loaded']['agents'][0]
+        self.assertEqual((agent['status'], agent['explained']), ('differs', 'accepted_disk'))
+        self.assertEqual(record['process']['loaded']['summary']['differs'], 1)
+        gap = [g for g in self.gaps(record) if 'a1' in g][0]
+        self.assertIn('zgodna z zaakceptowanym stanem głównego checkoutu', gap)
+
+    def test_skill_from_the_accepted_main_checkout_is_explained(self):
+        write(self.main, '.claude/skills/delivery/SKILL.md', '---\nname: delivery\n---\n\nStary skill.\n')
+        self.lead(self.instructions_line())
+        self.assertEqual(self.start('--accept-process-mismatch', 'stary skill w głównym')[0], 0)
+        self.lead(self.instructions_line(), self.skill_line(20, os.path.join(self.main, '.claude/skills/delivery'),
+                                                           'Stary skill.'))
+        code, out, err = self.process_epic(now=testkit.T0 + 100)
+        self.assertEqual(code, 0, err)
+        skill = json.loads(out)['loaded']['skills'][0]
+        self.assertEqual((skill['status'], skill['explained']), ('differs', 'accepted_disk'))
 
 
 class SkillArgumentsTest(RecordTest):
