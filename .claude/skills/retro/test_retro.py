@@ -2438,10 +2438,8 @@ DIFFERING = ['.claude/agents/code-reviewer.md', '.claude/agents/retro-analyst.md
 NOT_CONFIRMED = 'nie jest potwierdzona'
 
 
-class ProcessCheckTest(CollectCase):
-    """W7: collect checks the version of the process (`metrics.py process --worktree <worktree of the retro>`, the
-    expected version is its HEAD) before any `gh` call. A difference is a refusal (exit 2, nothing written) unless it is
-    accepted with a reason; a check that cannot run is a fact and collect goes on."""
+class ProcessCheckCase(CollectCase):
+    """collect of visual-design with a FakeMetrics that answers `process` and watches the gh/git calls."""
 
     def setUp(self):
         super().setUp()
@@ -2457,6 +2455,12 @@ class ProcessCheckTest(CollectCase):
 
     def facts(self):
         return {f['id']: f for f in self.load()['facts']}
+
+
+class ProcessCheckTest(ProcessCheckCase):
+    """W7: collect checks the version of the process (`metrics.py process --worktree <worktree of the retro>`, the
+    expected version is its HEAD) before any `gh` call. A difference is a refusal (exit 2, nothing written) unless it is
+    accepted with a reason; a check that cannot run is a fact and collect goes on."""
 
     def test_a_matching_version_is_a_fact_with_the_expected_version_and_the_check_comes_before_any_gh(self):
         code, err = self.run_collect()
@@ -2517,8 +2521,8 @@ class ProcessCheckTest(CollectCase):
                 self.assertFalse(os.path.exists(os.path.join(self.out, 'input.json')))
 
     def test_a_check_that_cannot_run_is_a_fact_and_collect_goes_on(self):
+        # (exit code 4 is a difference whatever its output: ProcessCheckExitCodeTest)
         for answer, category in (((2, ''), 'kod wyjścia 2'), ((0, 'not json'), 'wynik nie jest JSON-em'),
-                                 ((4, 'not json'), 'wynik nie jest JSON-em'),
                                  ((0, json.dumps({'match': True})), 'nieoczekiwany kształt JSON')):
             with self.subTest(answer=answer):
                 self.metrics = FakeMetrics()
@@ -2537,9 +2541,73 @@ class ProcessCheckTest(CollectCase):
         self.assertEqual(code, 0, err)
         self.assertIn('brak skryptu', self.facts()['visual-design/process/missing/check']['text'])
 
+    def test_the_refusal_says_itself_that_it_is_no_error_to_defer(self):
+        self.metrics.process = (4, json.dumps(process_reading(DIFFERING)))
+        _, err = self.run_collect()
+        self.assertIn('To nie jest błąd zbierania danych', err)
+        self.assertIn('nie odraczaj retro', err)
+        self.assertIn('zapytaj', err)
+
+    def test_an_empty_reason_says_to_give_one_and_repeat(self):
+        code, err = self.run_collect('--accept-process-mismatch', ' ')
+        self.assertEqual(code, 2)
+        self.assertIn('podaj niepusty powód i powtórz', err)
+        self.assertIn('nie odraczaj retro', err)
+
+    def test_the_refusal_says_whether_an_epic_in_progress_started_with_the_definitions_of_the_main_checkout(self):
+        reading = process_reading(DIFFERING)
+        reading['active_epics'] = [{'epic': 'a-epic', 'current': True}, {'epic': 'b-epic', 'current': False},
+                                   {'epic': 'c-epic', 'current': None}, {'epic': 'd-epic'}]
+        self.metrics.process = (4, json.dumps(reading))
+        _, err = self.run_collect()
+        for text in ('a-epic (definicje z dzisiejszego głównego checkoutu: tak)',
+                     'b-epic (definicje z dzisiejszego głównego checkoutu: nie)',
+                     'c-epic (definicje z dzisiejszego głównego checkoutu: brak danych)',
+                     'd-epic (definicje z dzisiejszego głównego checkoutu: brak danych)'):
+            self.assertIn(text, err)
+
     def test_an_ao_epic_has_no_fact_of_a_record(self):
         self.run_collect()
         self.assertFalse([f for f in self.facts() if f.startswith('visual-design/process/') and 'record' in f])
+
+
+class ProcessCheckExitCodeTest(ProcessCheckCase):
+    """S1: exit code 4 of `metrics.py process` is a difference whatever its output says: a reading with `match: true`,
+    an unreadable or a partial output is a refusal (showing what can be shown), and an accepted reason still works."""
+
+    def test_exit_code_4_with_match_true_is_a_refusal(self):
+        self.metrics.process = (4, json.dumps(process_reading()))
+        code, err = self.run_collect()
+        self.assertEqual(code, 2)
+        self.assertTrue(err.startswith('retro: wersja procesu'), err)
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'input.json')))
+
+    def test_exit_code_4_with_an_unreadable_output_is_a_refusal(self):
+        for out in ('not json', '', None, '[]'):
+            with self.subTest(out=out):
+                self.metrics.process = (4, out)
+                code, err = self.run_collect()
+                self.assertEqual(code, 2)
+                self.assertIn('narzędzie zgłosiło różnicę, wynik nieczytelny', err)
+                self.assertEqual(self.runner.calls, [])
+
+    def test_exit_code_4_with_a_partial_output_shows_what_it_can(self):
+        reading = process_reading(DIFFERING)
+        del reading['expected'], reading['match']
+        self.metrics.process = (4, json.dumps(reading))
+        code, err = self.run_collect()
+        self.assertEqual(code, 2)
+        self.assertIn(DIFFERING[0], err)
+        self.assertIn('brak SHA', err)
+
+    def test_exit_code_4_with_an_unreadable_output_can_be_accepted(self):
+        self.metrics.process = (4, 'not json')
+        code, err = self.run_collect('--accept-process-mismatch', 'świadomie')
+        self.assertEqual(code, 0, err)
+        fact = self.facts()['visual-design/process/check']
+        self.assertEqual((fact['data']['status'], fact['data']['accepted']), ('mismatch_accepted', 'świadomie'))
+        self.assertIn('wynik nieczytelny', fact['text'])
+        self.assertNotIn('visual-design/process/missing/check', self.facts())
 
 
 def record_process(**extra):
@@ -2630,6 +2698,40 @@ class ProcessOfTheRecordTest(NativeCase):
                 facts = self.fact(None, missing=missing)
                 self.assertIn('abuse-limits/process/missing/record', facts)
                 self.assertNotIn('abuse-limits/process/record', facts)
+
+    def test_a_record_without_a_disk_check_gives_no_structural_zeros(self):
+        # the shape of tools/metrics for a run file without a disk check (README, "Wersja procesu")
+        unchecked = record_process(status='not_checked', disk=None, disk_checked=False,
+                                   disk_reason='start sprzed kontroli wersji (plik przebiegu bez pola process)',
+                                   match=None, accepted=None, changes=[])
+        unchecked.pop('checked_on')
+        fact = self.fact(unchecked)['abuse-limits/process/record']
+        self.assertIn('zmiany definicji w trakcie: brak danych', fact['text'])
+        self.assertNotIn('w trakcie: 0', fact['text'])
+        self.assertIn('start sprzed kontroli wersji (plik przebiegu bez pola process)', fact['text'])
+        self.assertNotIn('brak powodu', fact['text'])
+        self.assertNotIn('zgodny', fact['text'])
+        self.assertIsNone(fact['data']['disk_changes'])
+        self.assertFalse(fact['data']['disk_checked'])
+
+    def test_a_difference_without_a_recorded_acceptance_is_said_as_it_is(self):
+        fact = self.fact(record_process(match=False, accepted=None))['abuse-limits/process/record']
+        self.assertIn('różnica definicji przy starcie bez zapisanej akceptacji', fact['text'])
+        self.assertNotIn('zaakceptowany', fact['text'])
+
+    def test_confirmed_in_the_version_of_the_epic_are_told_apart(self):
+        loaded = {'summary': {'confirmed': 4, 'differs': 0, 'unconfirmed': 1, 'confirmed_epic': 2}, 'by_role': {}}
+        fact = self.fact(record_process(loaded=loaded))['abuse-limits/process/record']
+        self.assertIn('potwierdzone: 4 (w wersji epiku: 2)', fact['text'])
+
+    def test_an_informational_change_is_no_change_of_the_definitions(self):
+        changes = [{'at': '2026-11-20T10:00:00Z', 'event': 'process', 'kind': 'disk', 'informational': True,
+                    'disk': [{'kind': 'worktree', 'differs': [{'path': DIFFERING[0], 'state': 'changed'}]}]}]
+        fact = self.fact(record_process(changes=changes))['abuse-limits/process/record']
+        self.assertIn('zmiany definicji w trakcie: 0', fact['text'])
+        self.assertIn('zmiany informacyjne (zacommitowane na gałęzi epiku): 1', fact['text'])
+        self.assertEqual(fact['data']['disk_changes'], 0)
+        self.assertTrue(fact['data']['changes'][0]['informational'])
 
     def test_odd_shapes_of_the_field_are_no_error(self):
         for odd in ({'status': 'checked', 'loaded': 'x', 'changes': 'y', 'disk': 3, 'expected': []},
