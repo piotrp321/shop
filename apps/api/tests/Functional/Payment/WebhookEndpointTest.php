@@ -18,7 +18,7 @@ final class WebhookEndpointTest extends WebTestCase
     use Factories;
     use PaymentEndpointTestTrait;
 
-    private const string GENERIC_400 = 'The request is invalid.';
+    private const string GENERIC_400 = 'Żądanie jest nieprawidłowe.';
 
     public function testAPaidTransferPaysTheOrder(): void
     {
@@ -111,7 +111,7 @@ final class WebhookEndpointTest extends WebTestCase
 
         $problem = $this->postWebhook('paypal', $body, $this->transferSignature($body));
 
-        $this->assertProblem(404, 'Resource not found.', $problem);
+        $this->assertProblem(404, 'Nie znaleziono zasobu.', $problem);
         $this->assertNoStore();
         self::assertSame('pending', $this->paymentStatus($payment));
         self::assertSame(['new', null], $this->orderPayment($order['orderId']));

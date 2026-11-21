@@ -264,7 +264,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
             default => $token,
         };
 
-        $this->assertProblem(401, 'Authentication is required.', $this->place(self::PATH, self::details(12_300), token: $token));
+        $this->assertProblem(401, 'Wymagane jest uwierzytelnienie.', $this->place(self::PATH, self::details(12_300), token: $token));
 
         self::assertSame('Bearer', $this->response()->headers->get('WWW-Authenticate'));
         self::assertSame([[$shoes, 1]], CartFixture::lines($this->connection, $cart));

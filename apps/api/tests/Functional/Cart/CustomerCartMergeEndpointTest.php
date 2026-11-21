@@ -185,7 +185,7 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
 
         $problem = $this->request('POST', self::PATH, json_encode(['guestCartId' => $guest], \JSON_THROW_ON_ERROR), 'staff' === $token ? TestTokenFactory::staff(['admin']) : $token);
 
-        $this->assertProblem(401, 'Authentication is required.', $problem);
+        $this->assertProblem(401, 'Wymagane jest uwierzytelnienie.', $problem);
         self::assertSame('Bearer', $this->response()->headers->get('WWW-Authenticate'));
         self::assertSame(1, $this->connection->fetchOne("SELECT COUNT(*) FROM cart_cart WHERE id = ? AND status = 'open'", [$guest]));
     }

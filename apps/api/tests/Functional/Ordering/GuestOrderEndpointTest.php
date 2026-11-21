@@ -429,7 +429,7 @@ final class GuestOrderEndpointTest extends WebTestCase
             default => $token,
         };
 
-        $this->assertProblem(401, 'Authentication is required.', $this->place(self::PATH, $this->body($cart, 12_300), token: $token));
+        $this->assertProblem(401, 'Wymagane jest uwierzytelnienie.', $this->place(self::PATH, $this->body($cart, 12_300), token: $token));
 
         self::assertSame('Bearer', $this->response()->headers->get('WWW-Authenticate'));
         self::assertSame(0, $this->orders());
