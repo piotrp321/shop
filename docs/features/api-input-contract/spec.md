@@ -11,9 +11,8 @@ Zakres: `apps/api/src/Shared`, `apps/api/src/Catalog`, `apps/api/src/Cart`, `app
 `apps/api/composer.json`, `apps/api/composer.lock`, `apps/api/symfony.lock`, `apps/api/tests`, `apps/api/CLAUDE.md`,
 `docs/features/api-input-contract`.
 
-**Dowody.** Stan sprzed etapu opisuje raport `docs/reports/api-input-contract-probe-2026-11-21.md` (rewizja
-`e250032a`): 6051 błędnych żądań do 72 operacji, 0 odpowiedzi 5xx, 30 różnych tekstów po angielsku, reprodukcje
-pojedyncze i sprawdzenie tłumaczeń frameworka. Zero 5xx to wynik tej próby, nie gwarancja całego API.
+**Dowody.** Próbę błędnych żądań do 72 operacji (rewizja `e250032a`) opisuje raport
+`docs/reports/api-input-contract-probe-2026-11-21.md`. Zero 5xx w tej próbie nie jest gwarancją całego API.
 
 ## Decyzje właściciela
 
@@ -28,8 +27,8 @@ pojedyncze i sprawdzenie tłumaczeń frameworka. Zero 5xx to wynik tej próby, n
 
 ## Zachowanie
 
-Liczby operacji dotyczą rewizji `e250032a`: 72 operacje (30 w `openapi.json`, 42 w `openapi-admin.json`),
-63 parametry zapytań na 19 operacjach, `Idempotency-Key` na 5 operacjach. Ścieżki niżej są bez prefiksu `/api/v1`.
+API ma 72 operacje (30 w `openapi.json`, 42 w `openapi-admin.json`), 63 parametry zapytań na 19 operacjach
+i `Idempotency-Key` na 5 operacjach. Ścieżki niżej są bez prefiksu `/api/v1`.
 Kryteria dotyczą `detail` i `violations[].title`; `title` problemu (fraza statusu HTTP) nie jest częścią kontraktu
 języka.
 
@@ -40,8 +39,8 @@ języka.
 | Metoda spoza trasy | wszystkie | 405 | „Metoda nie jest dozwolona.” |
 | Brak tokenu | wszystkie wymagające tokenu (`/admin/...`, `/me/...`) | 401 | „Wymagane jest uwierzytelnienie.” |
 | Identyfikator w ścieżce w formacie, którego trasa nie przyjmuje | operacje z parametrem ścieżki, które dają ogólne 404 (38) | 404 | „Nie znaleziono zasobu.” |
-| `Content-Type` inny niż JSON, poprawny token | operacje z treścią JSON poza webhookiem (29) | 415 | „Nieobsługiwany typ treści.” |
-| Zepsuty JSON, niepoprawny UTF-8 w treści, zagnieżdżenie ponad limit dekodera | operacje z treścią JSON (29) i webhook | 400 | „Żądanie jest nieprawidłowe.” |
+| `Content-Type` inny niż JSON, poprawny token | operacje z treścią JSON poza webhookiem (28) | 415 | „Nieobsługiwany typ treści.” |
+| Zepsuty JSON, niepoprawny UTF-8 w treści, zagnieżdżenie ponad limit dekodera | operacje z treścią JSON poza webhookiem (28) i webhook (29 razem) | 400 | „Żądanie jest nieprawidłowe.” |
 
 Pozostałe stałe teksty `ProblemDetailsSubscriber`: 403 „Brak dostępu.”, 406 „Żądana reprezentacja nie jest dostępna.”,
 409 „Żądanie jest sprzeczne z bieżącym stanem.”, 422 „Żądanie jest nieprawidłowe.”, 429 „Zbyt wiele żądań.”, tekst
@@ -63,8 +62,9 @@ Skróty komunikatów:
 | zakres(max) | „Ta wartość powinna być pomiędzy 1 a max.” |
 
 Teksty poza T pochodzą z polskiego katalogu walidatora frameworka (`validators.pl.xlf` w wersji z `composer.lock`).
+Tytuł T jest wpisem projektu w `apps/api/translations`.
 
-**B1. Parametry, których odpowiedź się zmienia**
+**B1. Parametry z komunikatem frameworka albo własnym tekstem według tabeli**
 
 | Parametr | Operacje | Przypadek → komunikat |
 |---|---|---|
@@ -75,7 +75,7 @@ Teksty poza T pochodzą z polskiego katalogu walidatora frameworka (`validators.
 | `sort` | `GET /products` | `[]` → T; nieznana wartość → opcja; `relevance` bez `q` → „To sortowanie wymaga szukanej frazy.” |
 | `page` | `GET /products` | `abc`, `1.5`, pusty, `[]` → T; `0`, `-1` → „Ta wartość powinna być dodatnia.” |
 | `perPage` | `GET /products` (max 48), `GET /me/orders` (50), `GET /admin/products`, `GET /admin/stock`, `GET /admin/orders`, `GET /admin/prices`, `GET /admin/variants/{variantId}/stock-history`, `GET /admin/variants/{variantId}/price-history` (100) | `abc`, `[]` → T; `0`, max+1 → zakres(max) |
-| `perPage`, `status`, `after` | `GET /admin/promotions` | `[]` (dla `perPage` także `abc`) → T; pozostałe przypadki mają już polskie komunikaty i się nie zmieniają |
+| `perPage`, `status`, `after` | `GET /admin/promotions` | `[]` (dla `perPage` także `abc`) → T; pozostałe przypadki mają własne polskie komunikaty |
 | `option` | `GET /products` | `option[]=x` → „Podaj opcje jako powtórzony klucz option, nie option[].”; bez dwukropka → „Opcja musi mieć postać oś:wartość.”; niepoprawny UTF-8 → „Opcja zawiera niedozwolone znaki.”; oś ponad 30 albo wartość ponad 40 znaków → „Oś opcji ma od 1 do 30 znaków, a wartość od 1 do 40.”; 51 opcji → „Można podać najwyżej 50 opcji.”; opcje 6 osi → „Można podać opcje najwyżej 5 różnych osi.” |
 | `status` | `GET /admin/products` | `[]` → T; nieznany → „Status produktu musi być jednym z: draft, published.” |
 | `status` | `GET /admin/orders` | `[]` → T; nieznany → „Status zamówienia jest nieprawidłowy.” |
@@ -84,7 +84,7 @@ Teksty poza T pochodzą z polskiego katalogu walidatora frameworka (`validators.
 | `version` | `DELETE /admin/promotions/{id}` | `version[]=x` → naruszenie `version` „Wersja musi być dodatnią liczbą całkowitą.” |
 | `productId` | `GET /admin/stock`, `GET /admin/prices` | nil UUID → jedno naruszenie „Identyfikator produktu musi być poprawnym UUID.” |
 
-**B2. Parametry z komunikatem bez zmian.** Test obejmuje je przypadkiem złego rodzaju (`p[]=x`), z dokładnym tekstem.
+**B2. Parametry z własnym komunikatem.** Test obejmuje je przypadkiem złego rodzaju (`p[]=x`), z dokładnym tekstem.
 
 | Parametr | Operacja | Komunikat |
 |---|---|---|
@@ -140,35 +140,29 @@ Operacje: `POST /orders`, `POST /me/orders`, `POST /orders/{orderId}/payments`, 
    tekstu i błąd typu z `#[MapQueryString]` i `#[MapRequestPayload]` przechodzą przez translator. Katalog projektu
    (`apps/api/translations`, domena `validators`) nadpisuje jeden wpis: błąd typu ma tekst T, bez nazwy typu PHP.
    Własne polskie komunikaty nie mają wpisów w katalogu, więc translator ich nie zmienia.
-2. **Teksty własne.** Komunikaty z tabel A–D są przepisane tam, gdzie są dziś: `ProblemDetailsSubscriber`, klasy
-   zapytań (`ListProductsQuery`, `BackofficeProductsQuery`, `BackofficeStockQuery`, `BackofficePricesQuery`,
-   `BackofficeOrderListQuery`), `OptionFilter`, wyjątki kursorów i wyszukiwania list, trzy miejsca odczytu nagłówka
-   (`OrderPlacement`, `PaymentEndpoints`, `ReceiveStockController`), `InvalidReceiptKey`, `StockModifiedConcurrently`,
-   `PriceModifiedConcurrently`, `ProductNotFound`.
+2. **Teksty własne.** Komunikaty z tabel A–D są w kodzie, który je zwraca: `ProblemDetailsSubscriber` (sekcja A),
+   stałe klas zapytań (`ListProductsQuery`, `BackofficeProductsQuery`, `BackofficeStockQuery`, `BackofficePricesQuery`,
+   `BackofficeOrderListQuery`, `BackofficeCustomerListQuery`, `StockHistoryQuery`, `PriceHistoryQuery`,
+   `PromotionListQuery`, `DiscountCodeListQuery`: m.in. teksty kursorów i szukanej frazy), `OptionFilter`, kontrolery
+   czytające parametr same (`BackofficeCategoryTreeController`, `SitemapProductsController`,
+   `CategoryRedirectController`, `DeletePromotionController`), trzy miejsca odczytu nagłówka (`OrderPlacement`,
+   `PaymentEndpoints`, `ReceiveStockController`), `InvalidReceiptKey`, `StockModifiedConcurrently`,
+   `PriceModifiedConcurrently`, `ProductNotFound` (sekcja D). Wyjątki Application (`Invalid*Cursor`,
+   `InvalidBackofficeProductSearch`) mają komunikaty po angielsku, które nie trafiają do klienta: odpowiedź budują
+   klasy zapytań i kontrolery.
 3. **Identyczne duplikaty.** `ProblemDetailsSubscriber` pomija naruszenie o tym samym `propertyPath` i `title` co
    wcześniejsze w tej odpowiedzi. Różne naruszenia jednego pola zostają.
-4. **`version` promocji.** `DeletePromotionController` czyta parametr tak, żeby tablica dała naruszenie `version`,
-   nie wyjątek frameworka.
+4. **`version` promocji.** `DeletePromotionController` czyta parametr tak, że tablica (`version[]=x`) daje naruszenie
+   `version` bez `detail`, nie wyjątek frameworka.
 5. **Strażnik klas żądań (#441).** Test przechodzi po klasach z `#[RequiredKeysBody]` znalezionych w kontrolerach
    z routera i wymaga parametrów konstruktora bez typu albo `mixed`.
 
-## Zmiany zachowania API
+## Wdrożenie i klienci
 
-| Zmiana | Przed | Po |
-|---|---|---|
-| Teksty `detail` i `violations[].title` z sekcji A–D | angielskie | polskie; status i `propertyPath` bez zmian |
-| `DELETE /admin/promotions/{id}?version[]=x` | 400 z `detail`, bez `violations` | 400 z naruszeniem `version`, bez `detail` |
-| Identyczne naruszenia (to samo pole i ten sam tekst) w odpowiedzi 400 albo 422 | powtórzone | jedno; znany przypadek: `productId` list stanów i cen |
-| Niepoprawny `Idempotency-Key` przyjęcia magazynowego | własny angielski tekst z listą znaków | „Nieprawidłowy klucz żądania.”, jak w zamówieniach i płatnościach |
-
-Statusy HTTP się nie zmieniają.
-
-**Bez zmian:** schematy `openapi.json` i `openapi-admin.json` (opis 400 usuwania promocji już mówi o `violations`),
-typy klientów TS, sklep, panel i E2E: nie odwołują się do zmienianych tekstów ani do liczby naruszeń. Zadanie, które
-zmienia klasę zapytania albo kontroler, uruchamia `make -C apps/api openapi` i `make api-client`; różnica, jeśli
-wystąpi, wchodzi do tego samego commita.
-
-**Wdrożenie.** Zmiana tekstów i kodu API, bez migracji, bez zmian compose i chartu.
+Schematy `openapi.json` i `openapi-admin.json` (opis 400 usuwania promocji mówi o `violations`), typy klientów TS,
+sklep, panel i E2E nie zależą od tekstów z tabel A–D ani od liczby naruszeń. Zadanie, które zmienia klasę zapytania
+albo kontroler, uruchamia `make -C apps/api openapi` i `make api-client`; różnica, jeśli wystąpi, wchodzi do tego
+samego commita. Zmiana tekstów i kodu API nie wymaga migracji, zmian compose ani chartu.
 
 ## Testy
 
@@ -178,20 +172,26 @@ Jedna klasa testu funkcjonalnego w `apps/api/tests/Functional/Shared/InputContra
 odwzorowuje tabele B1, B2 i C wiersz po wierszu. Tabela jest podzielona na pliki według modułu właściciela operacji.
 
 - **Wiersz tabeli:** operacja, rodzaj tokenu, nazwa fikstury, badane wejście, wartość poprawna, wartość błędna,
-  oczekiwany zbiór par (`propertyPath`, `title`).
+  oczekiwany zbiór par (`propertyPath`, `title`), treść żądania i pole `headers` (inne nagłówki obu żądań, np.
+  `Order-Access-Token` zamówienia gościa).
 - **Dwa wykonania na wiersz, każde jako osobny test:** żądanie z wartością poprawną daje 2xx; żądanie z wartością
   błędną daje 400 z dokładnie oczekiwanym zbiorem naruszeń. Każde wykonanie buduje stan tą samą fiksturą od zera
   (transakcja testu jest wycofywana po każdym teście, `DAMA\DoctrineTestBundle`), a klucz idempotencji jest nowy
   w każdym wykonaniu. Kontrola dodatnia nie usuwa więc zasobu, nie zmienia wersji i nie zużywa klucza przed próbą
   błędną, a 400 próby błędnej dotyczy badanego wejścia, nie stanu po wcześniejszej operacji.
-- **Fikstury:** wyłącznie istniejące: `TestTokenFactory` (pracownik, klient), fabryki Foundry (`ProductFactory`,
-  `CategoryFactory`, `DiscountCodeFactory`), `CartFixture`, `OrderingFixture`, `StockFixture` i pomocniki
-  `OrderEndpointTestTrait`, `PaymentEndpointTestTrait`, `StockEndpointTestTrait`.
+- **Fikstury** (`InputContractFixtures`) składają się wyłącznie z istniejących elementów: `TestTokenFactory`
+  (pracownik, klient), fabryki Foundry (`ProductFactory`, `CategoryFactory`, `DiscountCodeFactory`), `CartFixture`,
+  `OrderingFixture`, `StockFixture`, pomocniki `OrderEndpointTestTrait`, `PaymentEndpointTestTrait`,
+  `StockEndpointTestTrait`, agregat `Promotion::plan` oraz repozytoria Doctrine kategorii, produktów, kodów rabatowych,
+  promocji i przekierowań kategorii, którymi zapisują stan.
 - **Granice mechanizmu:** nie generuje wartości ze schematów, nie mutuje treści JSON i nie jest biblioteką dla innych
   testów; zawiera tylko przypadki z tej specyfikacji.
 - **Router i OpenAPI** służą do list operacji przypadków 405 i 401 (wzorem `AdminRouteAccessTest`) i do strażnika
-  zamkniętej listy: parametr zapytania albo nagłówek `Idempotency-Key` opisany w OpenAPI bez wiersza w tabeli przerywa
-  test, tak samo trasa `/api/v1` bez wpisu w OpenAPI.
+  zamkniętej listy (`ClosedInputListTest`, logika w `ClosedInputList`, jedna lista wierszy w `InputRows`): parametr
+  zapytania albo nagłówek `Idempotency-Key` opisany w OpenAPI bez wiersza w tabeli przerywa test (dopasowanie po
+  metodzie, ścieżce w postaci z OpenAPI i nazwie wejścia), tak samo trasa `/api/v1` bez wpisu w jednym z dwóch
+  dokumentów. Strażnik nie generuje przypadków. Pozostałe nagłówki z OpenAPI (`Order-Access-Token`, podpisy webhooka)
+  są poza tabelą.
 - **Sekcja A:** 404, 415 i 400 dla operacji z tabeli A, z poprawnym tokenem i istniejącym zasobem tam, gdzie błąd ma
   wystąpić za autoryzacją.
 
@@ -202,19 +202,18 @@ odwzorowuje tabele B1, B2 i C wiersz po wierszu. Tabela jest podzielona na pliki
 - Strażnik klas żądań z próbą obejścia: klasa testowa z parametrem `int` go łamie.
 - Sekcja D w istniejących klasach testów modułów: 409 korekty stanu, 409 zmiany ceny, 404 produktu, z dokładnym
   `detail`.
-- Istniejące asercje angielskich tekstów (około 30 linii w 19 plikach) zmieniają się razem z tekstami.
 
 ### TDD
 
 Każde zadanie najpierw dopisuje swoje wiersze tabeli i testy, uruchamia je i zapisuje wynik RED, potem wprowadza
 zmianę i zapisuje wynik GREEN. Dotyczy to także tłumaczeń. Strażnik klas żądań i strażnik zamkniętej listy pilnują
-stanu, który jest już zgodny albo staje się zgodny po zadaniach epiku: ich RED pokazuje próba obejścia w teście.
+stanu zgodnego z tabelą: ich RED pokazuje próba obejścia w teście (zmieniona kopia dokumentu albo tabeli).
 
 ## Dokumentacja razem z implementacją
 
 - `apps/api/CLAUDE.md`, sekcja „API”: domyślny język komunikatów walidatora (`pl`, katalog frameworka, nadpisany błąd
   typu) i zasada, że nowy parametr zapytania albo nagłówek żądania dostaje wiersz w tabeli testu kontraktu.
-- Ta specyfikacja po zakończeniu epiku opisuje stan obecny (bez odwołań do stanu sprzed etapu).
+- Ta specyfikacja opisuje stan obecny; zmiana zachowania wejścia aktualizuje ją w tym samym commicie co kod.
 
 ## Poza etapem 1
 
@@ -233,9 +232,6 @@ stanu, który jest już zgodny albo staje się zgodny po zadaniach epiku: ich RE
 
 - Teksty katalogu frameworka mogą się zmienić przy aktualizacji Symfony; test kontraktu to wykryje i oczekiwania
   trzeba wtedy poprawić.
-- Przepis Fleksa dla `symfony/translation` dopisuje pliki konfiguracji; zadanie zostawia tylko potrzebne.
-- Pomijanie identycznych duplikatów może zmienić liczbę naruszeń w istniejących asercjach; pokaże to pełny przebieg
-  testów zadania.
 - Tabela przypadków jest w jednym katalogu i sięga po fikstury kilku modułów; alternatywa (przypadki w testach
   modułów) wymagałaby osobnego rejestru dla strażnika zamkniętej listy.
 - Założenia techniczne: `title` problemu zostaje frazą statusu HTTP; błąd typu ma jeden ogólny tekst bez nazwy typu.
