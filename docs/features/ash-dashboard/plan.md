@@ -19,8 +19,7 @@ w repo `piotrp321/agent-observability` (gałąź `feat/ash-native-epics`), w skl
 
 ## Status
 
-- Zadania 1–3 i 5 wykonane na próbnym stosie (osobny projekt Compose z kopią rekordów).
-- Zadanie 4 czeka na udostępnienie katalogu `~/.local/state/shop-metrics` w Docker Desktop (File Sharing): bez tego
-  usługa `epics-exporter` prawdziwego stosu nie wystartuje.
+- Zadania 1–5 wykonane (2026-11-21): stos `agent-observability` działa z nową konfiguracją na czystych wolumenach,
+  rekordy pięciu epików natywnych odtworzone.
 - Po merge'u obu PR-ów: przełączyć checkout `agent-observability` na `main` (`git switch main && git pull`,
   `make up`) i usunąć ten plan.
