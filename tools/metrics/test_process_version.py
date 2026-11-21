@@ -717,6 +717,95 @@ class RecordTest(RepoEnv):
             self.assertIn('potwierdzone 2', line[0])         # the CLAUDE.md of the session and a1
             self.assertNotIn(self.worktree, out if form == 'comment' else '')
 
+    def test_checked_disk_is_marked_as_checked(self):
+        self.lead(self.instructions_line())
+        self.assertEqual(self.start()[0], 0)
+        self.assertIs(self.record()['process']['disk_checked'], True)
+
+
+class RecordWithoutDiskCheckTest(RecordTest):
+    """A run file without a disk check (start before the check, `--at`, a failed check) with a `base_sha` the
+    repository knows: the record computes `expected` from `base_sha` and `loaded` from the transcripts, and marks the
+    disk as not checked (never as matching). The run file does not change."""
+
+    def epic_lines(self):
+        self.lead(self.instructions_line())
+        self.subagent_run('a1', 'code-reviewer', [AGENT_BODY], at=100)
+        self.subagent_run('a2', 'developer', ['Stara wersja roli developera.'], at=300)
+
+    def assert_loaded_without_disk(self, record, status, reason_part):
+        process = record['process']
+        self.assertEqual(process['status'], status)
+        self.assertIs(process['disk_checked'], False)
+        self.assertIsNone(process['disk'])
+        self.assertIsNone(process['match'])
+        self.assertIn(reason_part, process['disk_reason'])
+        self.assertEqual(process['expected']['ref'], self.base)
+        self.assertEqual(process['expected']['describe'], 'ash-v1.0')
+        self.assertEqual(process['expected']['files']['CLAUDE.md'], git(self.main, 'rev-parse', 'HEAD:CLAUDE.md'))
+        self.assertEqual(process['loaded']['by_role'], {
+            'code-reviewer': {'confirmed': 1, 'differs': 0, 'unconfirmed': 0},
+            'developer': {'confirmed': 0, 'differs': 1, 'unconfirmed': 0}})
+        session = {e['path']: e['status'] for e in process['loaded']['session']}
+        self.assertEqual(session['CLAUDE.md'], 'confirmed')
+        self.assertEqual({a['agent_id']: a['instructions'] for a in record['attempts']},
+                         {'a1': 'confirmed', 'a2': 'differs'})
+        gaps = self.gaps(record)
+        disk = [g for g in gaps if 'dysk' in g and 'nie sprawdzono' in g]
+        self.assertEqual(len(disk), 1, gaps)
+        self.assertIn(reason_part, disk[0])
+        self.assertTrue(any('a2' in g for g in gaps), gaps)
+        self.assertTrue(any('unconfirmed' in g for g in gaps), gaps)
+        self.assertEqual(len(gaps), 3, gaps)
+        self.assertNotIn('TAJNA', json.dumps(record, ensure_ascii=False))
+
+    def test_run_file_from_before_the_check(self):
+        self.write_run(base_sha=self.base)
+        self.epic_lines()
+        before = self.run_file()
+        record = self.record()
+        self.assert_loaded_without_disk(record, 'not_checked', 'sprzed kontroli')
+        self.assertEqual(self.run_file(), before)
+
+    def test_start_after_the_fact(self):
+        self.assertEqual(self.start('--at', iso_at(0))[0], 0)
+        self.assertEqual(self.run_file()['base_sha'], self.base)
+        self.epic_lines()
+        self.assertEqual(self.done('--at', iso_at(4000))[0], 0)
+        self.assert_loaded_without_disk(self.record(), 'not_checked', '--at')
+
+    def test_failed_check_at_the_start(self):
+        self.write_run(base_sha=self.base, process={'status': 'check_failed', 'checked_at': iso_at(0),
+                                                    'checked_on': 'start', 'reason': 'git niedostępny',
+                                                    'accepted': 'bez gita', 'changes': []})
+        self.epic_lines()
+        record = self.record()
+        self.assert_loaded_without_disk(record, 'check_failed', 'git niedostępny')
+        self.assertEqual(record['process']['accepted'], 'bez gita')
+
+    def test_render_says_the_disk_was_not_checked(self):
+        self.write_run(base_sha=self.base)
+        self.epic_lines()
+        self.record()
+        for form in ('report', 'comment'):
+            code, out, err = run_cli(['render', 'demo', '--state', self.state, '--format', form])
+            self.assertEqual(code, 0, err)
+            line = [l for l in out.splitlines() if 'Wersja procesu' in l]
+            self.assertEqual(len(line), 1, out)
+            self.assertIn('ash-v1.0 (%s)' % self.base[:12], line[0])
+            self.assertIn('dysk: nie sprawdzono', line[0])
+            self.assertNotIn('dysk zgodny', line[0])
+            self.assertIn('potwierdzone 2, różne 1', line[0])
+
+    def test_unknown_base_sha_keeps_the_old_shape(self):
+        self.write_run(base_sha='e' * 40)
+        self.epic_lines()
+        self.assertIsNone(self.record()['process'])
+        self.write_run(base_sha=None, process={'status': 'not_checked', 'reason': 'zapis po fakcie'})
+        record = self.record()
+        self.assertEqual(record['process'], {'status': 'not_checked', 'reason': 'zapis po fakcie'})
+        self.assertNotIn('instructions', record['attempts'][0])
+
 
 class OldRecordsTest(testkit.Env):
     """Records without `process` (AO and native from before the check) keep working in render, trend and decide."""
