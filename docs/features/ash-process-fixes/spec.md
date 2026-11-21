@@ -37,14 +37,18 @@ i raport (bez osobnego rejestru):
   użytkownika (`~/.claude`) o nazwie takiej jak w projekcie oraz epiki w toku z odciskiem zapisanym na ich starcie.
   Skróty liczy się z treści plików, nie z długości promptu ani z numeru commita głównego checkoutu.
 - **W2.** `metrics.py start` zapisuje wszystkie trzy poziomy (załadowaną dla sesji prowadzącej; agenci i skille:
-  brak potwierdzenia, bo jeszcze nie ruszyli) i odmawia startu, gdy stan na dysku albo `CLAUDE.md` wczytany przez
-  sesję różni się od bazy epiku. Start mimo różnicy wymaga opcji z powodem; powód trafia do pliku przebiegu.
+  brak potwierdzenia, bo jeszcze nie ruszyli) i odmawia startu, gdy definicje w głównym checkoucie różnią się od
+  bazy, gdy worktree ma niezacommitowaną zmianę pliku instrukcji, gdy skill użytkownika przesłania skill projektu
+  albo gdy sesja wczytała `CLAUDE.md` o treści spoza bazy i gałęzi epiku. Start mimo różnicy wymaga opcji
+  z powodem; powód trafia do pliku przebiegu. Zmiana zacommitowana na gałęzi epiku w jego worktree jest zapisem
+  informacyjnym, nie rozbieżnością.
 - **W3.** `metrics.py process <epik>` powtarza kontrolę w trakcie epiku na danych pliku przebiegu: porównuje dysk ze
   stanem ze startu i potwierdza z transkryptów wersję załadowaną przez każdego uruchomionego subagenta. Zmianę albo
   różnicę zapisuje w pliku przebiegu i kończy się kodem niezgodności. Sesja uruchamia ją przed każdą falą zadań,
   przed przeglądem epiku i zaraz po starcie pierwszego subagenta danej roli; rozbieżność obsługuje przed zleceniem
-  implementacji albo przeglądu (W5, W6). `start --resume` i `done` robią tę samą kontrolę; wznowienie mimo zmiany
-  wymaga opcji z powodem, `done` zapisuje czas zawsze.
+  implementacji albo przeglądu (W5, W6): usuwa przyczynę albo akceptuje ją opcją z powodem, a zaakceptowany stan
+  nie jest zgłaszany ponownie. `start --resume` i `done` robią tę samą kontrolę; wznowienie mimo zmiany wymaga opcji
+  z powodem, `done` zapisuje czas zawsze.
 - **W4.** Rekord epiku ma pole `process` z trzema poziomami i podsumowaniem załadowanej wersji na rolę; różnica,
   zaakceptowany start mimo różnicy, zmiana w trakcie i brak potwierdzenia są w `gaps` i w raporcie (`render`).
   `/retro` podaje je analitykowi jako fakt.
@@ -174,4 +178,8 @@ i raport (bez osobnego rejestru):
   potwierdzenia”.
 - Zmianę definicji w trakcie epiku narzędzie wykrywa przy kolejnej kontroli (`process <epik>`, `start --resume`,
   `done`), nie w chwili zmiany.
+- Kontrola wersji w `/retro` obejmuje pliki na dysku; wersji załadowanej przez `retro-analyst` nie potwierdza.
+- `start --at` (zapis po fakcie) nie sprawdza wersji, ale podlega E1: plik przebiegu drugiego epiku tej samej sesji
+  historycznej nie powstanie tą komendą.
+- Komendy jednego epiku woła się po kolei: plik przebiegu nie ma blokady na równoległy zapis.
 - Reguły O, S i D to instrukcje: ich skuteczność pokażą kolejne epiki, nie ta zmiana.

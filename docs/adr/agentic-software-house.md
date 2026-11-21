@@ -211,10 +211,16 @@ zlecenia we wszystkich otwartych sesjach. Pomiar rozróżnia wersję oczekiwaną
 w każdym miejscu ładowania i wersję załadowaną, potwierdzoną z transkryptu (bez dowodu: „brak potwierdzenia”). Te
 same dane pliku przebiegu służą kontroli i raportowi:
 
-- `metrics.py start` odmawia, gdy dysk albo wczytany `CLAUDE.md` różni się od bazy. `metrics.py process <epik>`
-  powtarza kontrolę przed każdą falą zadań i przed przeglądem epiku, a zaraz po starcie pierwszego subagenta danej
-  roli potwierdza z jego transkryptu załadowaną definicję; subagenta z inną definicją sesja zatrzymuje, zanim użyje
-  jego wyniku. Rozbieżność obsługuje się przed zleceniem implementacji albo przeglądu, nie w retro.
+- `metrics.py start` odmawia, gdy definicje w głównym checkoucie różnią się od bazy, gdy worktree ma niezacommitowaną
+  zmianę pliku instrukcji, gdy skill użytkownika przesłania skill projektu albo gdy sesja wczytała `CLAUDE.md`
+  o treści spoza bazy i gałęzi epiku. `metrics.py process <epik>` powtarza kontrolę przed każdą falą zadań i przed
+  przeglądem epiku, a zaraz po starcie pierwszego subagenta danej roli potwierdza z jego transkryptu załadowaną
+  definicję; subagenta z inną definicją sesja zatrzymuje, zanim użyje jego wyniku. Rozbieżność obsługuje się przed
+  zleceniem implementacji albo przeglądu, nie w retro: przez usunięcie przyczyny albo jawną akceptację z powodem
+  (`--accept-process-mismatch "<powód>"` w `start`, `start --resume` i `process <epik>`), która zostaje w pomiarze.
+- Zmiana zacommitowana na gałęzi epiku w jego własnym worktree (np. zadanie poprawia `CLAUDE.md` obszaru) nie jest
+  rozbieżnością: pomiar zapisuje ją jako informację. Agentów i skilli to nie obejmuje: ładują się z głównego
+  checkoutu, więc definicja zmieniona przez sam epik nie obowiązuje jego subagentów w trakcie i pomiar to pokazuje.
 - Główny checkout aktualizuje się tylko jawnie: `git -C <główny checkout> pull --ff-only` (nigdy `reset`, `checkout`
   ani `stash`), gdy jest czysty, stoi na `main`, a `metrics.py process` nie pokazuje epiku w toku z bieżącymi
   definicjami. Wtedy robi to sesja, która zaczyna epik albo retro, i mówi o tym użytkownikowi. W każdym innym
