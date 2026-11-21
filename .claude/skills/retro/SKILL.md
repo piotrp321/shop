@@ -214,7 +214,7 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    **Wersja procesu.** `collect` najpierw porównuje definicje (agenci, skille, `CLAUDE.md`) na dysku w każdym miejscu
    ładowania z `HEAD` `$WT` (`metrics.py process`), bo ten `SKILL.md` i `retro-analyst` są czytane z głównego
    checkoutu. Odmowa (kod 2, komunikat `retro: wersja procesu: …`) to nie `defer`: pokaż użytkownikowi różnicę
-   z komunikatu (miejsca, pliki, epiki w toku) i zapytaj, czy zaktualizować główny checkout według „Wersji procesu”
+   z komunikatu (miejsca, pliki, epiki bez zmergowanego rekordu) i zapytaj, czy zaktualizować główny checkout według „Wersji procesu”
    w `docs/adr/agentic-software-house.md` (potem sprzątanie, `unlock` i `/retro <epik>` w nowej sesji), czy
    kontynuować: wtedy powtórz `collect` z `--accept-process-mismatch "<powód użytkownika>"`. Odmowa pustego powodu
    (kod 2, `pusty albo nieprawidłowy powód`) też nie jest błędem: zapytaj użytkownika ponownie o powód. Fakt

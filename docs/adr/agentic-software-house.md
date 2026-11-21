@@ -217,7 +217,9 @@ same dane pliku przebiegu służą kontroli i raportowi:
   przeglądem epiku, a zaraz po starcie pierwszego subagenta danej roli potwierdza z jego transkryptu załadowaną
   definicję; subagenta z inną definicją sesja zatrzymuje, zanim użyje jego wyniku. Rozbieżność obsługuje się przed
   zleceniem implementacji albo przeglądu, nie w retro: przez usunięcie przyczyny albo jawną akceptację z powodem
-  (`--accept-process-mismatch "<powód>"` w `start`, `start --resume` i `process <epik>`), która zostaje w pomiarze.
+  (`--accept-process-mismatch "<powód>"` w `start`, `start --resume` i `process <epik>`), która zostaje w pomiarze
+  i obejmuje tylko to, co pokazała poprzednia kontrola: nowa rozbieżność znów zatrzymuje. Zmiana procesu przyniesiona
+  z `main` (np. `git merge origin/main` w gałęzi epiku) jest rozbieżnością tak samo jak zmiana w głównym checkoucie.
 - Zmiana zacommitowana na gałęzi epiku w jego własnym worktree (np. zadanie poprawia `CLAUDE.md` obszaru) nie jest
   rozbieżnością: pomiar zapisuje ją jako informację. Agentów i skilli to nie obejmuje: ładują się z głównego
   checkoutu, więc definicja zmieniona przez sam epik nie obowiązuje jego subagentów w trakcie i pomiar to pokazuje.

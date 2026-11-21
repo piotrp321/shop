@@ -46,8 +46,11 @@ i raport (bez osobnego rejestru):
   stanem ze startu i potwierdza z transkryptów wersję załadowaną przez każdego uruchomionego subagenta. Zmianę albo
   różnicę zapisuje w pliku przebiegu i kończy się kodem niezgodności. Sesja uruchamia ją przed każdą falą zadań,
   przed przeglądem epiku i zaraz po starcie pierwszego subagenta danej roli; rozbieżność obsługuje przed zleceniem
-  implementacji albo przeglądu (W5, W6): usuwa przyczynę albo akceptuje ją opcją z powodem, a zaakceptowany stan
-  nie jest zgłaszany ponownie. `start --resume` i `done` robią tę samą kontrolę; wznowienie mimo zmiany wymaga opcji
+  implementacji albo przeglądu (W5, W6): usuwa przyczynę albo akceptuje ją opcją z powodem. Akceptacja obejmuje
+  tylko pozycje pokazane przez poprzednią kontrolę; zaakceptowany stan nie jest zgłaszany ponownie, także gdy
+  kolejny subagent załaduje definicję z zaakceptowanego stanu głównego checkoutu. Zmiana procesu przyniesiona
+  z `main` do gałęzi epiku jest rozbieżnością. Komendy zapisujące plik przebiegu biorą na niego blokadę, więc
+  równoległe wywołania nie gubią zapisów. `start --resume` i `done` robią tę samą kontrolę; wznowienie mimo zmiany wymaga opcji
   z powodem, `done` zapisuje czas zawsze.
 - **W4.** Rekord epiku ma pole `process` z trzema poziomami i podsumowaniem załadowanej wersji na rolę; różnica,
   zaakceptowany start mimo różnicy, zmiana w trakcie i brak potwierdzenia są w `gaps` i w raporcie (`render`).
@@ -181,5 +184,5 @@ i raport (bez osobnego rejestru):
 - Kontrola wersji w `/retro` obejmuje pliki na dysku; wersji załadowanej przez `retro-analyst` nie potwierdza.
 - `start --at` (zapis po fakcie) nie sprawdza wersji, ale podlega E1: plik przebiegu drugiego epiku tej samej sesji
   historycznej nie powstanie tą komendą.
-- Komendy jednego epiku woła się po kolei: plik przebiegu nie ma blokady na równoległy zapis.
+- Inna gałąź zmergowana do gałęzi epiku, zanim trafi na `main`, liczy się jako własna zmiana epiku.
 - Reguły O, S i D to instrukcje: ich skuteczność pokażą kolejne epiki, nie ta zmiana.

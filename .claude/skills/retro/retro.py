@@ -1729,12 +1729,13 @@ def process_check(epic_id, metrics, worktree, accepted):
         lines = ['narzędzie zgłosiło różnicę bez listy plików']
     if accepted is None:
         # whether `pull` changes the rules of an epic in progress: did it start with today's main checkout?
-        running = ['%s (definicje z dzisiejszego głównego checkoutu: %s)'
-                   % (e['epic'], CURRENT_DEFINITIONS[e['current']] if isinstance(e.get('current'), bool)
-                      else 'brak danych')
+        # `note` of metrics.py tells an epic in progress from a merged one whose record is missing
+        running = ['%s (%sdefinicje z dzisiejszego głównego checkoutu: %s)'
+                   % (e['epic'], '%s; ' % e['note'] if isinstance(e.get('note'), str) and e['note'].strip() else '',
+                      CURRENT_DEFINITIONS[e['current']] if isinstance(e.get('current'), bool) else 'brak danych')
                    for e in _as_list(reading.get('active_epics')) if isinstance(e, dict) and isinstance(e.get('epic'), str)]
         raise Refusal('wersja procesu: definicje na dysku różnią się od HEAD worktree retro (%s): %s%s. %s. Co zrobić: '
-                      '%s' % (version, '; '.join(lines), '; epiki w toku: %s' % ', '.join(running) if running else '',
+                      '%s' % (version, '; '.join(lines), '; epiki bez zmergowanego rekordu: %s' % ', '.join(running) if running else '',
                               PROCESS_NOT_AN_ERROR, PROCESS_HINT))
     data.update(status='mismatch_accepted', accepted=accepted)
     return [{'id': '%s/process/check' % epic_id, 'data': data,

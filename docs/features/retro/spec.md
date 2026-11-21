@@ -270,7 +270,7 @@ miejscu ładowania (worktree, główny checkout) i skille użytkownika przesłan
 - **Różnica** (kod 4 bez względu na treść wyniku, także z `match: true` albo z wynikiem nieczytelnym lub niepełnym;
   albo kod 0 z różnicą w wyniku): odmowa kodem 2 bez zapisu `input.json` i bez wywołań `gh`, z komunikatem po
   polsku: miejsca ładowania, liczba plików, pierwsze ścieżki (to, co da się odczytać; bez niczego „narzędzie
-  zgłosiło różnicę, wynik nieczytelny”), epiki w toku z informacją, czy wystartowały z definicjami dzisiejszego
+  zgłosiło różnicę, wynik nieczytelny”), epiki bez zmergowanego rekordu (w toku albo z gotowym PR bez rekordu) z informacją, czy wystartowały z definicjami dzisiejszego
   głównego checkoutu (`current` z `active_epics`: tak, nie, brak danych; od tego zależy, czy `pull` zmieni im
   zasady), i co zrobić (aktualizacja głównego checkoutu według ADR albo `collect --accept-process-mismatch
   "<powód>"`). Komunikat sam mówi, że to nie błąd zbierania danych i retro się nie odracza, bo sesja z nieaktualnym
