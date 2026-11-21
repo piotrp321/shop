@@ -211,8 +211,16 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    ```
 
    Pierwsza linia usuwa resztkę po zabitej sesji; blokada tego przebiegu gwarantuje, że `$WT` nie jest cudzy.
-   Błąd (kod różny od 0, w tym `gh`, `git` albo bramka pochodzenia): sprzątanie, `defer` z powodem z błędu (np. „błąd
-   zbierania danych: <komunikat>”), koniec. `collect` zapisuje `$RUN/input.json` (incydenty całej historii, fakty
+   **Wersja procesu.** `collect` najpierw porównuje definicje (agenci, skille, `CLAUDE.md`) na dysku w każdym miejscu
+   ładowania z `HEAD` `$WT` (`metrics.py process`), bo ten `SKILL.md` i `retro-analyst` są czytane z głównego
+   checkoutu. Odmowa (kod 2, komunikat `retro: wersja procesu: …`) to nie `defer`: pokaż użytkownikowi różnicę
+   z komunikatu (miejsca, pliki, epiki w toku) i zapytaj, czy zaktualizować główny checkout według „Wersji procesu”
+   w `docs/adr/agentic-software-house.md` (potem sprzątanie, `unlock` i `/retro <epik>` w nowej sesji), czy
+   kontynuować: wtedy powtórz `collect` z `--accept-process-mismatch "<powód użytkownika>"`. Fakt
+   `<epik>/process/check` (wersja, przy akceptacji różnica i powód) albo `<epik>/process/missing/check` (kontroli nie
+   dało się wykonać; retro idzie dalej) trafia do `report.md` (krok 6).
+   Inny błąd (kod różny od 0, w tym `gh`, `git` albo bramka pochodzenia): sprzątanie, `defer` z powodem z błędu (np.
+   „błąd zbierania danych: <komunikat>”), koniec. `collect` zapisuje `$RUN/input.json` (incydenty całej historii, fakty
    „Statusu” `status/*`, rejestry, pozycje otwartego PR retro, otwarte issues AO i `tech-debt` z `agent`, wpisy
    `external` niezaufanych autorów: tylko numer, autor i link) oraz pomiar z `tools/metrics/metrics.py`: incydenty
    rodzaju `optimization` (kandydaci reguł D1–D4 z `decide --history`), fakty `<epik>/measurement/*`
@@ -281,7 +289,8 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    `fix` idą jak zawsze.
 6. **Wynik.** Wywołaj `get_usage` (koniec pomiaru). Zapisz `$RUN/report.md` (po polsku): poprawki (commit, ID pozycji),
    obserwacje, propozycje issues z numerami (repo, tytuł, `existing_issue` albo nowe, dowody), `overflow`, zmiany
-   „Statusu”, PR, ostrzeżenie `warning` z `lock` (jeśli było), przy serii w toku sekcja `## Odroczone do końca serii`
+   „Statusu”, PR, ostrzeżenie `warning` z `lock` (jeśli było), wersja procesu z faktu `<epik>/process/check` albo
+   `<epik>/process/missing/check` (przy akceptacji różnica i powód), przy serii w toku sekcja `## Odroczone do końca serii`
    (krok 5), nierozstrzygnięte decyzje poprzednich przebiegów (niżej), sekcja `## Zużycie` (krok 8) i
    na samym końcu sekcja `## Decyzje optymalizacyjne` (niżej).
    Numery to
