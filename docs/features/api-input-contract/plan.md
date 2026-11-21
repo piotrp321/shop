@@ -10,7 +10,7 @@ roboczym: po ukończeniu epiku usuń go.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | API-INPUT-CONTRACT-1 | |
+| 1 | API-INPUT-CONTRACT-1 | w toku |
 | 2 | API-INPUT-CONTRACT-2 | |
 | 3 | API-INPUT-CONTRACT-3, API-INPUT-CONTRACT-4 | |
 | 4 | API-INPUT-CONTRACT-5 | |
