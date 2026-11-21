@@ -4,8 +4,9 @@ Krok 18 planu Agentic Software House (`docs/features/agentic-software-house/plan
 i evale” ADR `docs/adr/agentic-software-house.md`. Część 1 (pomiar epiku z bazy AO, alarmy, decyzje
 optymalizacyjne) to METRICS (#496). Epik podłącza do lokalnego stosu telemetrii na Macu wykonawców AO i sesje
 interaktywne Claude Code. Każdy punkt danych z wykonawcy ma przypisany epik, zadanie i rodzaj zadania. Stos
-(Docker Compose: kolektor OpenTelemetry, Prometheus, Loki, Grafana z dashboardem „Claude Code”) jest w prywatnym repo
-`piotrp321/agent-observability` i nie należy do tego epiku.
+(Docker Compose: kolektor OpenTelemetry, Prometheus, Loki, Grafana z dashboardem „Claude Code: surowa telemetria”) jest
+w prywatnym repo `piotrp321/agent-observability` i nie należy do tego epiku. Stroną startową Grafany jest dashboard
+epików natywnych z rekordów METRICS (`docs/features/ash-dashboard/spec.md`).
 
 Issues: #577
 Zakres: `tools/agent-security`, `tools/telemetry`, `.claude/skills/ao-run/SKILL.md`, `docs/features/ao-run/spec.md`, `docs/features/agent-security/spec.md`, `docs/adr/agent-security.md`, `docs/adr/agentic-software-house.md`
@@ -14,7 +15,7 @@ Zakres: `tools/agent-security`, `tools/telemetry`, `.claude/skills/ao-run/SKILL.
 
 - Próby zadań AO wysyłają do stosu metryki (koszt, tokeny według typu, czas aktywny, sesje) i zdarzenia
   (`api_request`, `tool_result`, `tool_decision`, `api_error` i pozostałe) z atrybutami `shop.source=ao`, `shop.epic`,
-  `shop.task` i `shop.task_kind`. Dashboard „Claude Code” filtruje po nich bez zmian w stosie.
+  `shop.task` i `shop.task_kind`. Dashboard „Claude Code: surowa telemetria” filtruje po nich bez zmian w stosie.
 - Eksport jest staraniem (best effort), a nie gwarancją. Eksperymenty E1–E2 potwierdzają zachowanie Claude Code
   2.1.311 w zwykłych warunkach: krótki proces eksportuje przed końcem, a wyłączony stos nie wydłuża przebiegu. Dane
   mogą jednak przepaść, gdy:
@@ -114,8 +115,8 @@ Research (raport „Telemetria agentów kodujących”, 2026-11-17) i eksperymen
   zakresem”).
 - Propozycje z researchu, których epik nie przyjmuje:
   - `TRACEPARENT` i ślady: złączenie z METRICS daje `shop.task` z czasem próby;
-  - osobny `service.name` dla wykonawców: dashboard filtruje po `service_name="claude-code"`, a `shop_source` jest
-    już etykietą w Lokim;
+  - osobny `service.name` dla wykonawców: dashboard surowej telemetrii filtruje zdarzenia po `service_name`
+    zaczynającym się od `claude-code`, a `shop_source` jest już etykietą w Lokim;
   - `shop.task` poza etykietami metryk: serie i tak mnoży `session_id` (sekcja „Ryzyka”);
   - usuwanie `user.email` w kolektorze: decyzja 2026-11-15, zresztą to zmiana w `agent-observability`.
 
@@ -410,6 +411,10 @@ atrybutów z `OTEL_RESOURCE_ATTRIBUTES` ustawień jej zasób nie dostaje, więc 
 
 Powiązanie jest sprawdzone na stosie (2026-11-19, sesja aplikacji desktop z dwoma subagentami): `session_id` z pliku
 przebiegu jest etykietą metryk w Prometheusie, a `agent_id` zdarzeń w Lokim jest równy `attempts[].agent_id` rekordu.
+
+Z tego powiązania korzysta dashboard „ASH: epiki natywne” (`docs/features/ash-dashboard/spec.md`): miary epiku bierze
+z rekordu METRICS, a surową telemetrię sesji epiku (złączenie po `session_id`) pokazuje tylko jako diagnostykę pracy
+w toku, bez sum i kosztu.
 
 ## Scenariusze błędów
 
