@@ -23,7 +23,13 @@ Zlecenie podaje:
   obserwacje), pozycje otwartego PR retro, otwarte issues AO i otwarte issues `tech-debt` z etykietą `agent`,
   `external` (issues epików, komentarze i PR zadań od autorów bez prawa zapisu: tylko `source`, `number`, `author`,
   `url`), pomiar z `tools/metrics/metrics.py` (incydenty rodzaju `optimization`, fakty `<epik>/measurement/*`,
-  `optimization_effects`; brak pomiaru to fakt „brak danych pomiaru”), `commit` (SHA `origin/main`);
+  `optimization_effects`; brak pomiaru to fakt „brak danych pomiaru”), `commit` (SHA `origin/main`). Pola tekstowe
+  (punkty opisu PR i ich dowody, blokery, ręczne poprawki, treść issues) są pełne, bez skracania; tekst sekcji spoza
+  punktów listy jest faktem `<epik>/outside-points/…`. Dla epiku natywnego: `handoff` (pełna treść komentarzy
+  „Przekazanie do retro” końcowego PR od zaufanego autora: uwagi właściciela i wskazania sesji prowadzącej; brak to
+  fakt `<epik>/missing/handoff`) i `materials` (ścieżki specyfikacji i planu w worktree, końcowy PR, plik przebiegu,
+  rekord, sesje z `transcript_dir` i `transcript`; plan usunięty ma `last_commit`: czytasz go przez
+  `git -C <worktree> show <last_commit>:<path>`; braki to fakty `<epik>/missing/...`);
 - `<worktree>`: checkout `origin/main` tylko do czytania: instrukcje procesu (`CLAUDE.md`, `.claude/skills/*/SKILL.md`,
   `.claude/agents/*.md`), specyfikacje funkcji (`docs/features/`);
 - `<run_dir>`: katalog przebiegu; tam zapisujesz `proposals.json`.
