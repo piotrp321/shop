@@ -7,6 +7,7 @@ python3 -m unittest discover -s tools/metrics -p 'test_*.py'"""
 import json
 import os
 import subprocess
+import sys
 import unittest
 from unittest import mock
 
@@ -565,15 +566,21 @@ class ResumeDoneTest(RepoEnv):
     def test_resume_after_a_change_with_acceptance_records_it(self):
         self.change_agent()
         code, out, err = self.start('--resume', '--accept-process-mismatch', 'poprawka roli w trakcie',
+                                    session='s2', now=testkit.T0 + 500)
+        self.assertEqual(code, 2)                       # nothing shown yet: only a shown mismatch is accepted (D-h)
+        self.assertIn('metrics.py process demo', err)
+        self.assertEqual(self.process_epic(now=testkit.T0 + 550)[0], EXIT_PROCESS)
+        code, out, err = self.start('--resume', '--accept-process-mismatch', 'poprawka roli w trakcie',
                                     session='s2', now=testkit.T0 + 600)
         self.assertEqual(code, 0, err)
         changes = self.run_file()['process']['changes']
-        self.assertEqual(len(changes), 1)
-        change = changes[0]
-        self.assertEqual((change['at'], change['event'], change['session'], change['kind'], change['accepted']),
-                         (iso_at(600), 'resume', 's2', 'disk', 'poprawka roli w trakcie'))
-        main = [d for d in change['disk'] if d['kind'] == 'main_checkout'][0]
+        self.assertEqual([(c['kind'], c['event']) for c in changes], [('disk', 'process'), ('accepted', 'resume')])
+        main = [d for d in changes[0]['disk'] if d['kind'] == 'main_checkout'][0]
         self.assertEqual(main['differs'], [{'path': '.claude/agents/code-reviewer.md', 'state': 'changed'}])
+        accepted = changes[1]
+        self.assertEqual((accepted['at'], accepted['session'], accepted['reason']),
+                         (iso_at(600), 's2', 'poprawka roli w trakcie'))
+        self.assertIn('main_checkout', ' '.join(accepted['items']))
         code, out, err = self.start('--resume', session='s3', now=testkit.T0 + 900)
         self.assertEqual(code, 0, err)                                  # the accepted state is the new baseline
 
@@ -853,14 +860,15 @@ class EpicVersionTest(RecordTest):
         root = [e for e in json.loads(out)['loaded']['session'] if e['path'] == 'CLAUDE.md'][0]
         self.assertEqual((root['status'], root['version']), ('confirmed', 'base'))
 
-    def test_claude_md_changed_on_disk_only_is_the_epic_version(self):
+    def test_claude_md_changed_on_disk_only_is_no_epic_version(self):
         self.started()
         self.change_in_the_epic(commit=False)
         self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD))
         code, out, err = self.process_epic(now=testkit.T0 + 600)
         self.assertEqual(code, EXIT_PROCESS)            # an uncommitted change in the worktree is a mismatch (D-a)
-        self.assertNotIn('załadowana', err)
-        self.assertEqual(self.api_entry(json.loads(out)['loaded'])['version'], 'epic')
+        entry = self.api_entry(json.loads(out)['loaded'])
+        self.assertEqual((entry['status'], entry['version']), ('differs', None))     # D-k: no epic version
+        self.assertIn('niezacommitowana', entry['reason'])
 
     def test_content_from_neither_base_nor_epic_differs(self):
         self.started()
@@ -963,6 +971,17 @@ class DiskRuleTest(RecordTest):
         write(self.worktree, '.claude/agents/code-reviewer.md', agent_file('code-reviewer', 'Rola po zmianie epiku.'))
         git(self.worktree, 'commit', '-q', '-am', 'docs: rules of the epic')
 
+    def merge_from_main(self, files):
+        """Another branch changes `files` and is merged to main (origin/main moves); the epic merges origin/main."""
+        other = os.path.join(self.root, 'upstream')
+        if not os.path.isdir(other):
+            git(self.main, 'worktree', 'add', '-q', '-b', 'upstream', other, self.base)
+        for path, text in files.items():
+            write(other, path, text)
+        git(other, 'commit', '-q', '-am', 'process change on main')
+        git(self.main, 'update-ref', 'refs/remotes/origin/main', 'upstream')
+        git(self.worktree, 'merge', '-q', '--no-edit', 'origin/main')
+
     def changes(self, kind='disk'):
         return [c for c in self.run_file()['process']['changes'] if c['kind'] == kind]
 
@@ -1051,11 +1070,16 @@ class DiskRuleTest(RecordTest):
         self.assertEqual(codes, [0, EXIT_PROCESS, 0, 0])
         self.assertEqual(self.done(now=testkit.T0 + 4000)[0], 0)
         disk = self.changes()
-        self.assertEqual([(c['at'], c['informational'], c['accepted']) for c in disk], [
-            (iso_at(100), True, None), (iso_at(200), False, None),
-            (iso_at(300), False, 'świadomie: poprawka roli')])
+        self.assertEqual([(c['at'], c['informational']) for c in disk], [(iso_at(100), True), (iso_at(200), False)])
+        self.assertEqual([(c['at'], c['reason']) for c in self.changes('accepted')],
+                         [(iso_at(300), 'świadomie: poprawka roli')])
         write(self.main, '.claude/agents/developer.md', agent_file('developer', 'Jeszcze inna rola.'))
         self.assertEqual(self.process_epic(now=testkit.T0 + 500)[0], EXIT_PROCESS)       # a new change again
+        # a branch from main that changes CLAUDE.md, merged into the epic: a change of the process from main
+        self.merge_from_main({'apps/api/CLAUDE.md': '# API\n\nZasady API z main.\n'})
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, EXIT_PROCESS)
+        self.assertIn('przyniesiona z main', err)
 
     def test_blank_reason_of_process_epic_exit_2(self):
         self.started()
@@ -1092,6 +1116,286 @@ class DiskRuleTest(RecordTest):
         with mock.patch('os.getcwd', return_value=self.worktree):
             code, out, err = run_cli(argv, now=testkit.T0 + 200)
             self.assertEqual((code, err), (0, ''))
+
+
+MAIN_MD = '# API\n\nZasady API z main (inny epik).\n'
+
+
+class OriginAndAcceptanceTest(DiskRuleTest):
+    """D-g: only a commit of the epic branch that is not reachable from origin/main is the epic's own change; D-h: an
+    acceptance covers only the mismatches the previous check showed; D-i: a subagent that loaded the file of the
+    accepted state of the main checkout is explained; D-j: information, a return to an accepted state, N4-N6."""
+
+    test_scenario_of_the_epic = None
+
+    def api(self, loaded):
+        return [e for e in loaded['session'] if e['path'] == 'apps/api/CLAUDE.md' and e['session'] == 's1'][0]
+
+    def test_a_merge_of_main_with_a_process_change_is_a_mismatch(self):
+        self.started()
+        self.commit_in_the_epic()
+        self.merge_from_main({'apps/api/CLAUDE.md': MAIN_MD, 'docs/adr/agentic-software-house.md': '# ADR z main\n',
+                              '.claude/agents/developer.md': agent_file('developer', 'Rola z main.')})
+        self.lead(self.instructions_line(), self.nested_line(500, MAIN_MD))
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, EXIT_PROCESS)
+        data = json.loads(out)
+        self.assertIn('przyniesiona z main', ' '.join(data['mismatches']))
+        worktree = data['disk'][0]
+        self.assertEqual(sorted(d['path'] for d in worktree['from_main']), [
+            '.claude/agents/developer.md', 'apps/api/CLAUDE.md', 'docs/adr/agentic-software-house.md'])
+        self.assertEqual([c['informational'] for c in self.changes()], [False])
+        api = self.api(data['loaded'])
+        self.assertEqual((api['status'], api['version']), ('differs', None))
+        self.assertIn('wersja z main późniejszego niż baza', api['reason'])
+
+    def test_b_worktree_on_another_branch_is_a_mismatch(self):
+        self.started()
+        git(self.worktree, 'checkout', '-q', '-b', 'other')
+        write(self.worktree, 'apps/api/CLAUDE.md', MAIN_MD)
+        git(self.worktree, 'commit', '-q', '-am', 'other branch change')
+        self.lead(self.instructions_line(), self.nested_line(500, MAIN_MD))
+        code, out, err = self.process_epic(now=testkit.T0 + 600)
+        self.assertEqual(code, EXIT_PROCESS)
+        data = json.loads(out)
+        self.assertIn('feat/demo', ' '.join(data['mismatches']))
+        self.assertIs(data['disk'][0]['on_epic_branch'], False)
+        self.assertNotEqual(self.api(data['loaded'])['version'], 'epic')
+
+    def test_c_resume_in_a_new_worktree_from_a_later_main(self):
+        self.started()
+        self.merge_from_main({'CLAUDE.md': '# CLAUDE.md\n\nnowy main\n'})
+        git(self.worktree, 'reset', '-q', '--hard', self.base)          # the epic itself did not merge main
+        new = os.path.join(self.main, '.claude', 'worktrees', 'new')
+        git(self.main, 'worktree', 'add', '-q', '-b', 'claude/new', new, 'origin/main')
+        self.lead(self.instructions_line(root_md='# CLAUDE.md\n\nnowy main\n', worktree=new, session='s2'),
+                  session='s2', worktree=new)
+        code, out, err = self.start('--resume', session='s2', worktree=new, now=testkit.T0 + 100)
+        self.assertEqual(code, 2)
+        self.assertIn('feat/demo', err)
+        run = self.run_file()
+        run['sessions'].append({'id': 's2', 'worktree': new, 'at': iso_at(100)})
+        with open(os.path.join(self.state, 'runs', 'demo.json'), 'w') as f:
+            json.dump(run, f)
+        code, out, err = self.process_epic(now=testkit.T0 + 200)
+        root = [e for e in json.loads(out)['loaded']['session'] if e['session'] == 's2' and e['path'] == 'CLAUDE.md'][0]
+        self.assertEqual(root['status'], 'differs')
+        self.assertIn('wersja z main późniejszego niż baza', root['reason'])
+
+    def test_acceptance_covers_only_what_was_shown(self):
+        self.started()
+        write(self.main, '.claude/agents/developer.md', agent_file('developer', 'Inna rola w głównym.'))
+        self.assertEqual(self.process_epic(now=testkit.T0 + 100)[0], EXIT_PROCESS)
+        self.subagent_run('a9', 'code-reviewer', ['Zmieniona rola.'], at=150)         # starts after the check
+        code, out, err = self.process_epic('demo', '--accept-process-mismatch', 'tylko developer', now=testkit.T0 + 200)
+        self.assertEqual(code, EXIT_PROCESS)
+        data = json.loads(out)
+        self.assertEqual(len(data['mismatches']), 1, data['mismatches'])
+        self.assertIn('a9', data['mismatches'][0])
+        code, out, err = self.process_epic('demo', '--accept-process-mismatch', 'i reviewer', now=testkit.T0 + 300)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.process_epic(now=testkit.T0 + 400)[0], 0)
+        self.assertEqual([c['reason'] for c in self.changes('accepted')], ['tylko developer', 'i reviewer'])
+
+    def test_acceptance_without_a_shown_check_shows_first(self):
+        self.started()
+        write(self.main, '.claude/agents/developer.md', agent_file('developer', 'Inna rola w głównym.'))
+        code, out, err = self.process_epic('demo', '--accept-process-mismatch', 'od razu', now=testkit.T0 + 100)
+        self.assertEqual(code, EXIT_PROCESS)
+        self.assertIn('powtórz', err)
+        self.assertEqual(self.changes('accepted'), [])
+        self.assertEqual(self.process_epic('demo', '--accept-process-mismatch', 'od razu', now=testkit.T0 + 200)[0], 0)
+
+    def test_f1_subagent_with_the_file_of_the_accepted_main_checkout_is_explained(self):
+        stale = 'Stara rola developera z głównego checkoutu.'
+        write(self.main, '.claude/agents/developer.md', agent_file('developer', stale))
+        self.lead(self.instructions_line())
+        self.assertEqual(self.start('--accept-process-mismatch', 'główny checkout nieaktualny')[0], 0)
+        self.subagent_run('a1', 'developer', [stale, 'blok'], at=100)
+        code, out, err = self.process_epic(now=testkit.T0 + 200)
+        self.assertEqual(code, 0, err)
+        agent = json.loads(out)['loaded']['agents'][0]
+        self.assertEqual((agent['status'], agent['explained']), ('differs', 'accepted_disk'))
+        self.subagent_run('a2', 'developer', ['Trzecia treść roli.'], at=300)
+        code, out, err = self.process_epic(now=testkit.T0 + 400)
+        self.assertEqual(code, EXIT_PROCESS)
+        self.assertIn('a2', err)
+        self.assertNotIn('a1', err)
+
+    def test_return_to_an_accepted_state_is_no_information(self):
+        self.started()
+        first = agent_file('developer', 'Stan A.')
+        write(self.main, '.claude/agents/developer.md', first)
+        self.process_epic(now=testkit.T0 + 100)
+        self.assertEqual(self.process_epic('demo', '--accept-process-mismatch', 'A', now=testkit.T0 + 150)[0], 0)
+        write(self.main, '.claude/agents/developer.md', agent_file('developer', 'Stan B.'))
+        self.assertEqual(self.process_epic(now=testkit.T0 + 200)[0], EXIT_PROCESS)
+        write(self.main, '.claude/agents/developer.md', first)
+        self.assertEqual(self.process_epic(now=testkit.T0 + 300)[0], 0)
+        last = self.changes()[-1]
+        self.assertEqual((last['informational'], last['returned']), (False, True))
+        self.assertEqual(self.done()[0], 0)
+        record = self.record()
+        gaps = self.gaps(record)
+        self.assertTrue(any('powrót' in g for g in gaps), gaps)
+        self.assertFalse([g for g in gaps if g.startswith('process: informacja')], gaps)
+        code, out, err = run_cli(['render', 'demo', '--state', self.state])
+        self.assertNotIn('zmian w gałęzi epiku', out)
+
+    def test_n4_failed_check_keeps_the_accepted_reason_in_the_gaps(self):
+        self.write_run(base_sha=self.base, process={'status': 'check_failed', 'checked_at': iso_at(0),
+                                                    'checked_on': 'start', 'reason': 'git niedostępny',
+                                                    'accepted': 'bez gita', 'changes': []})
+        self.lead(self.instructions_line())
+        self.assertTrue(any('start zaakceptowany: bez gita' in g for g in self.gaps(self.record())))
+
+    def test_n5_missing_worktree_of_the_last_session_is_said(self):
+        self.started()
+        run = self.run_file()
+        run['sessions'][-1]['worktree'] = os.path.join(self.root, 'gone')
+        with open(os.path.join(self.state, 'runs', 'demo.json'), 'w') as f:
+            json.dump(run, f)
+        argv = ['process', 'demo', '--state', self.state, '--user-dir', self.user_dir, '--projects', self.projects]
+        with mock.patch('os.getcwd', return_value=self.worktree):
+            code, out, err = run_cli(argv, now=testkit.T0 + 100)
+        self.assertIn(os.path.join(self.root, 'gone'), err)
+        self.assertIn(self.worktree, err)
+
+    def test_n6_session_outside_the_run_file_exit_2(self):
+        self.started()
+        code, out, err = self.process_epic('demo', '--session', 'obca', now=testkit.T0 + 100)
+        self.assertEqual((code, out), (2, ''))
+        self.assertIn('obca', err)
+
+
+NEWER_MD = '# CLAUDE.md\n\nZasady zmienione przez inny PR po bazie epiku.\n'
+
+
+class QaRoundTest(DiskRuleTest):
+    """The findings of the QA of the whole change (Q1, Q3, Q-minor; decisions D-k, D-l, D-m)."""
+
+    test_scenario_of_the_epic = None
+
+    def new_worktree(self, name, *options, commit=None):
+        path = os.path.join(self.main, '.claude', 'worktrees', name)
+        git(self.main, 'worktree', 'add', '-q', *options, path, *([commit] if commit else []))
+        return path
+
+    def test_q1a_resume_in_a_worktree_from_a_newer_main_refuses(self):
+        self.started()
+        self.merge_from_main({'CLAUDE.md': NEWER_MD})
+        git(self.worktree, 'reset', '-q', '--hard', self.base)
+        other = self.new_worktree('second', '-b', 'claude/new-session', commit='origin/main')
+        self.lead(self.instructions_line(root_md=NEWER_MD, session='s2', worktree=other), session='s2', worktree=other)
+        code, out, err = self.start('--resume', session='s2', worktree=other, now=testkit.T0 + 100)
+        self.assertEqual(code, 2)
+        self.assertEqual([s['id'] for s in self.run_file()['sessions']], ['s1'])
+
+    def test_q1b_resume_in_a_new_worktree_with_an_uncommitted_claude_md_refuses(self):
+        self.started()
+        other = self.new_worktree('second', '--detach')
+        git(other, 'checkout', '-q', '--detach', 'feat/demo')
+        changed = '# CLAUDE.md\n\nLokalna, niezacommitowana zmiana zasad.\n'
+        write(other, 'CLAUDE.md', changed)
+        self.lead(self.instructions_line(root_md=changed, session='s2', worktree=other), session='s2', worktree=other)
+        argv = ['start', 'demo', '--resume', '--state', self.state, '--projects', self.projects, '--user-dir',
+                self.user_dir, '--session', 's2']
+        with mock.patch('os.getcwd', return_value=other):
+            code, out, err = run_cli(argv, now=testkit.T0 + 100)
+        self.assertEqual(code, 2)
+        self.assertIn(other, err)                          # the worktree of the new session is checked (D-k)
+
+    def test_q1_resume_in_a_new_worktree_on_the_epic_branch_works(self):
+        self.started()
+        git(self.main, 'worktree', 'remove', '--force', self.worktree)
+        other = self.new_worktree('second', commit='feat/demo')
+        self.lead(self.instructions_line(session='s2', worktree=other), session='s2', worktree=other)
+        code, out, err = self.start('--resume', session='s2', worktree=other, now=testkit.T0 + 100)
+        self.assertEqual(code, 0, err)
+
+    def test_q3_concurrent_process_and_pause_lose_nothing(self):
+        self.started()
+        script = os.path.join(testkit.HERE, 'metrics.py')
+        base = [sys.executable, script, 'process', 'demo', '--state', self.state, '--user-dir', self.user_dir,
+                '--projects', self.projects, '--worktree', self.worktree]
+        write(self.main, '.claude/agents/developer.md', agent_file('developer', 'Zmiana w głównym.'))
+        workers = [subprocess.Popen(base, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for _ in range(4)]
+        for index in range(10):
+            code, out, err = run_cli(['pause', 'demo', '--state', self.state, '--from', iso_at(100 + index * 10),
+                                      '--to', iso_at(105 + index * 10)])
+            self.assertEqual(code, 0, err)
+        code, out, err = self.done(now=testkit.T0 + 4000)
+        self.assertEqual(code, 0, err)
+        for worker in workers:
+            worker.wait(timeout=120)
+        run = self.run_file()
+        self.assertEqual(len(run['pauses']), 10)
+        self.assertEqual(run['done_at'], iso_at(4000))
+
+    def test_q3_process_epic_without_a_change_does_not_write(self):
+        self.started()
+        self.process_epic(now=testkit.T0 + 100)
+        path = os.path.join(self.state, 'runs', 'demo.json')
+        before = os.stat(path).st_mtime_ns, open(path, encoding='utf-8').read()
+        self.assertEqual(self.process_epic(now=testkit.T0 + 200)[0], 0)
+        self.assertEqual((os.stat(path).st_mtime_ns, open(path, encoding='utf-8').read()), before)
+
+    def test_q3_lock_held_by_another_process_ends_with_exit_2(self):
+        self.started()
+        import fcntl
+        with open(os.path.join(self.state, 'runs', 'demo.lock'), 'a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            with mock.patch('metrics.LOCK_TIMEOUT_S', 0.2):
+                code, out, err = run_cli(['pause', 'demo', '--state', self.state, '--from', iso_at(10), '--to',
+                                          iso_at(20)])
+        self.assertEqual((code, out), (2, ''))
+        self.assertIn('blokad', err)
+
+    def test_qm1_late_reading_gap_tells_the_truth(self):
+        self.write_run(base_sha=self.base)
+        self.lead(self.instructions_line())
+        write(self.main, '.claude/agents/developer.md', 'stara\n')
+        self.process_epic(now=testkit.T0 + 100)
+        self.assertEqual(self.done()[0], 0)
+        gaps = self.gaps(self.record())
+        self.assertFalse([g for g in gaps if 'start mimo różnicy' in g], gaps)
+        self.assertTrue(any('start bez kontroli' in g and 'bez akceptacji' in g for g in gaps), gaps)
+
+    def test_qm2_active_epics_tell_ready_without_a_record(self):
+        self.started()
+        self.assertEqual(self.done()[0], 0)
+        code, out, err = self.process()
+        entry = json.loads(out)['active_epics'][0]
+        self.assertEqual((entry['epic'], entry['done_at'], entry['has_record']), ('demo', iso_at(4000), False))
+        self.assertIn('metrics.py epic demo', entry['note'])
+
+    def test_qm3_record_outside_a_repository_keeps_the_process(self):
+        self.started()
+        self.subagent_run('a1', 'code-reviewer', [AGENT_BODY], at=100)
+        self.assertEqual(self.done()[0], 0)
+        plain = os.path.join(self.root, 'plain')
+        os.makedirs(plain)
+        code, out, err = run_cli(['epic', 'demo', '--state', self.state, '--night', self.night, '--projects',
+                                  self.projects, '--no-gh', '--worktree', plain])
+        self.assertEqual(code, 0, err)
+        record = json.loads(out)
+        process = record['process']
+        self.assertEqual(process['expected']['ref'], self.base)
+        self.assertTrue(process['disk'])
+        self.assertTrue(all(e['status'] == 'unconfirmed' for _, e in metrics.process_version.loaded_items(
+            process['loaded'])), process['loaded'])
+        self.assertTrue(any('repozytor' in g for g in self.gaps(record)), self.gaps(record))
+
+    def test_qm4_pause_over_work_is_said(self):
+        self.write_run(started=0, done=4000)
+        self.write_session('s1', Native('s1').human(-50).assistant(10, input=1).assistant(1000))
+        code, out, err = run_cli(['pause', 'demo', '--state', self.state, '--projects', self.projects, '--from',
+                                  iso_at(100), '--to', iso_at(600)])
+        self.assertEqual(code, 0, err)
+        self.assertIn('500', err)
+        record = self.native_record()
+        self.assertEqual(record['breakdown']['host_pause'], 500)
+        self.assertTrue(any(g.startswith('pauses: ') and '500' in g for g in record['gaps']), record['gaps'])
 
 
 class SkillArgumentsTest(RecordTest):
