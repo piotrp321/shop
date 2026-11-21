@@ -371,8 +371,12 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   i `nested_memory` (`CLAUDE.md`), `prompt_snapshot` (agent, pierwszy blok `systemPrompt` równy plikowi bez
   frontmatteru), linia `Base directory for this skill:` (skill, z argumentami w miejscu `$ARGUMENTS` i podobnych). ADR
   zawsze `unconfirmed`. Rekord: `loaded` liczony od nowa z transkryptów epiku plus `summary` i `by_role`,
-  `attempts[].instructions` oraz pozycje `process` w `gaps`; `render` ma linię „Wersja procesu” (tylko rekord
-  natywny; bez pola „brak danych”).
+  `attempts[].instructions`, `disk_checked` oraz pozycje `process` w `gaps`. Plik przebiegu bez kontroli dysku (bez
+  pola, `not_checked`, `check_failed`) z `base_sha` znanym w repozytorium `--worktree` (`unchecked_process`):
+  `expected` z `base_sha` w chwili budowy rekordu, `disk: null`, `disk_checked: false`, `disk_reason`, `loaded` jak
+  zwykle i jedna pozycja „dysk: nie sprawdzono” w `gaps`; plik przebiegu się nie zmienia; bez takiego `base_sha` pole
+  jak w pliku przebiegu (bez niego `null`). `render` ma linię „Wersja procesu” (tylko rekord natywny; „dysk: nie
+  sprawdzono” przy `disk_checked: false`; bez pola „brak danych”).
 - **Prywatność:** rekord ma identyfikatory sesji i agentów, nazwy ról i modeli, werdykty oraz liczby; bez treści
   wiadomości, zleceń, raportów, opisu PR, poleceń i instrukcji (test: teksty z transkryptu i `meta.json` nie trafiają
   do wyjścia); ścieżki katalogów roboczych są tylko w `process` (pochodzenie instrukcji), a komentarz ich nie wypisuje.

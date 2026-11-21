@@ -181,23 +181,30 @@ def place_of(run, kind, path, expected, full):
             'differs': differences(expected, entries, full)}
 
 
+def expected_of(run, directory, ref):
+    """(expected, tree): `expected` {ref, requested, describe, fingerprint, files} of the commit `ref` (None: HEAD) in
+    the repository of `directory` and the {path: blob sha} of its definitions and instruction files; CheckError when
+    the repository does not know the commit."""
+    requested = ref or 'HEAD'
+    try:
+        sha = git_text(run, directory, ['rev-parse', '--verify', '-q', requested + '^{commit}']).strip()
+    except CheckError:
+        raise CheckError('nieznana rewizja %s w %s' % (requested, directory))
+    tree = tree_of(run, directory, sha)
+    describe = _optional(run, directory, ['describe', '--tags', '--match', 'ash-v*', '--always', sha])
+    return ({'ref': sha, 'requested': requested, 'describe': describe, 'fingerprint': fingerprint(tree),
+             'files': {p: s for p, s in sorted(tree.items()) if is_instruction(p)}}, tree)
+
+
 def reading(run, directory, ref, user_dir):
     """(reading, internal): the expected version and the disk of every place. reading: {worktree, worktree_head,
     expected: {ref, requested, describe, fingerprint, files}, disk: [place], user_level, match}; internal: {tree, top,
     main} for the comparison of the transcripts."""
     checkout = checkout_of(run, directory)
     top = checkout['top']
-    requested = ref or 'HEAD'
-    try:
-        sha = git_text(run, top, ['rev-parse', '--verify', '-q', requested + '^{commit}']).strip()
-    except CheckError:
-        raise CheckError('nieznana rewizja %s w %s' % (requested, top))
-    tree = tree_of(run, top, sha)
+    expected, tree = expected_of(run, top, ref)
     if not any(in_tree(p) for p in tree) and not os.path.isdir(os.path.join(top, '.claude')):
-        raise CheckError('brak definicji .claude/agents i .claude/skills w %s i w %s' % (sha[:12], top))
-    describe = _optional(run, top, ['describe', '--tags', '--match', 'ash-v*', '--always', sha])
-    expected = {'ref': sha, 'requested': requested, 'describe': describe, 'fingerprint': fingerprint(tree),
-                'files': {p: s for p, s in sorted(tree.items()) if is_instruction(p)}}
+        raise CheckError('brak definicji .claude/agents i .claude/skills w %s i w %s' % (expected['ref'][:12], top))
     if checkout['is_main']:
         disk = [place_of(run, 'main_checkout', top, tree, True)]
     else:

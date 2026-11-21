@@ -2810,21 +2810,67 @@ def native_process(run_file, run, worktree, projects, started, until, attempts, 
     `gaps` (key `process`): no reading, not checked, a failed check, a start accepted despite a difference, every change
     on disk, every `differs` and one entry with the number of `unconfirmed`. A matching reading adds no entry."""
     process = run_file.get('process')
-    if not isinstance(process, dict):
-        gaps.add('process', 'brak odczytu wersji procesu w pliku przebiegu (start sprzed kontroli wersji)')
-        return None
-    process = json.loads(json.dumps(process))
-    status = process.get('status')
-    if status == 'not_checked':
-        gaps.add('process', 'nie sprawdzono: %s' % (process.get('reason') or 'brak powodu'))
-        return process
-    if status == 'check_failed':
-        gaps.add('process', 'kontrola wersji przy starcie nieudana: %s; start zaakceptowany: %s'
-                 % (process.get('reason'), process.get('accepted')))
-        return process
-    if status != 'checked':
+    original = json.loads(json.dumps(process)) if isinstance(process, dict) else None
+    status = original.get('status') if original is not None else None
+    if original is None or status in ('not_checked', 'check_failed'):
+        process = unchecked_process(original, run_file, run, worktree, gaps)
+        if process is None or not process.get('expected'):
+            return process
+    elif status != 'checked':
         gaps.add('process', 'nieznany stan odczytu wersji procesu')
-        return process
+        return original
+    else:
+        process = original
+        process['disk_checked'] = True
+        checked_gaps(process, gaps)
+    return with_loaded(process, run_file, run, worktree, projects, started, until, attempts, now, gaps)
+
+
+DISK_NOT_CHECKED = {None: 'start sprzed kontroli wersji (plik przebiegu bez pola process)'}
+
+
+def unchecked_process(original, run_file, run, worktree, gaps):
+    """The `process` of the record for a run file without a disk check (no field, `not_checked`, `check_failed`):
+    with a `base_sha` the repository of `worktree` knows, `expected` from it now, `disk: null`, `disk_checked: false`
+    and the reason (`loaded` follows); else the field of the run file as it is (None without it) with its gap."""
+    status = original.get('status') if original is not None else None
+    if status is None:
+        reason = DISK_NOT_CHECKED[None]
+    elif status == 'not_checked':
+        reason = original.get('reason') or 'zapis po fakcie (--at)'
+    else:
+        reason = 'kontrola wersji przy starcie nieudana: %s' % original.get('reason')
+    base = run_file.get('base_sha')
+    expected = None
+    if run is not None and isinstance(base, str) and SHA_PATTERN.match(base):
+        try:
+            expected, _ = process_version.expected_of(run, worktree or os.getcwd(), base)
+        except process_version.CheckError:
+            expected = None
+    if expected is None:
+        if original is None:
+            gaps.add('process', 'brak odczytu wersji procesu w pliku przebiegu (%s); base_sha brak albo nieznany '
+                                'w repozytorium' % reason)
+        elif status == 'not_checked':
+            gaps.add('process', 'nie sprawdzono: %s' % reason)
+        else:
+            gaps.add('process', '%s; start zaakceptowany: %s' % (reason, original.get('accepted')))
+        return original
+    process = dict(original or {}, status=status or 'not_checked', expected=expected, disk=None, disk_checked=False,
+                   disk_reason=reason, user_level=None, match=None)
+    process.setdefault('accepted', None)
+    process.setdefault('changes', [])
+    gaps.add('process', 'dysk: nie sprawdzono w czasie epiku (%s); expected z base_sha %s w chwili budowy rekordu'
+             % (reason, base[:12]))
+    for change in process['changes']:
+        if isinstance(change, dict) and change.get('kind') == 'check_failed':
+            gaps.add('process', 'kontrola wersji przy %s %s nieudana: %s' % (change.get('event'), change.get('at'),
+                                                                           change.get('reason')))
+    return process
+
+
+def checked_gaps(process, gaps):
+    """The `gaps` of a checked reading: not from the start, a start accepted despite a difference, every change."""
     if process.get('checked_on') != 'start':
         gaps.add('process', 'odczyt wersji z %s, nie ze startu epiku' % process.get('checked_on'))
     if process.get('start_failure'):
@@ -2845,6 +2891,11 @@ def native_process(run_file, run, worktree, projects, started, until, attempts, 
         elif change.get('kind') == 'check_failed':
             gaps.add('process', 'kontrola wersji przy %s %s nieudana: %s%s' % (change.get('event'), change.get('at'),
                                                                              change.get('reason'), accepted))
+
+
+def with_loaded(process, run_file, run, worktree, projects, started, until, attempts, now, gaps):
+    """`process.loaded` computed from every transcript of the epic against `process.expected`, with `summary`,
+    `by_role`, `attempts[].instructions` and the gaps of every `differs` and of the number of `unconfirmed`."""
     if run is None:
         expected = process_version.Expected(lambda c: None, worktree, None, {})
     else:
@@ -5245,9 +5296,10 @@ def process_topic(record):
     process = record.get('process')
     if not isinstance(process, dict):
         return ['Wersja procesu: %s' % NO_DATA]
-    if process.get('status') == 'not_checked':
+    unchecked = process.get('disk_checked') is False and isinstance(process.get('expected'), dict)
+    if process.get('status') == 'not_checked' and not unchecked:
         return ['Wersja procesu: nie sprawdzono (zapis po fakcie)']
-    if process.get('status') != 'checked':
+    if process.get('status') != 'checked' and not unchecked:
         return ['Wersja procesu: kontrola nieudana']
     expected = _dict(process.get('expected'))
     describe = expected.get('describe') if _safe(expected.get('describe')) else None
@@ -5255,7 +5307,9 @@ def process_topic(record):
     parts = ['oczekiwana %s (%s)' % (describe or 'bez tagu', ref[:12] if ref else NO_DATA)]
     changes = [c for c in _list(process.get('changes')) if isinstance(c, dict) and c.get('kind') == 'disk']
     differs = _files_count(process.get('disk'))
-    if process.get('match') is True and not changes:
+    if unchecked:
+        parts.append('dysk: nie sprawdzono')
+    elif process.get('match') is True and not changes:
         parts.append('dysk zgodny')
     else:
         places = [p.get('kind') for p in _list(process.get('disk')) if isinstance(p, dict) and p.get('differs')

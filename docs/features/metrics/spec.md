@@ -413,7 +413,7 @@ w sumie) i pozycja `value` w `gaps`; wiadomość bez tokenów (np. `<synthetic>`
 | `transcripts_read` | liczba przeczytanych transkryptów epiku (sesje i subagenci; niżej, „Brak transkryptów”) |
 | `pricing` | `source` i `read_at` cennika, z którego policzono wartość |
 | `breakdown` | `work`, `human_wait`, `idle` od `started_at` do `done_at` (niżej, „Czas i człowiek”); `host_pause` z `pauses` pliku przebiegu, bez zapisanej przerwy `null` z pozycją w `gaps`; `limit_wait`, `ci_wait`, `github_wait` `null` z pozycją w `gaps`, rekord ma `breakdown_incomplete: true`; bez `started_at` albo `done_at` całe `null` |
-| `process` | pole `process` pliku przebiegu (wyżej, „Wersja procesu”) z `loaded` policzonym od nowa ze wszystkich transkryptów epiku (sesje i przebiegi subagentów od `started_at` do merge'u; repozytorium do odczytu treści bazy: `--worktree`, domyślnie bieżący katalog; baza niedostępna w repozytorium daje `unconfirmed` z powodem) oraz `loaded.summary` (`{confirmed, differs, unconfirmed}` wszystkich wpisów) i `loaded.by_role` (to samo na rolę agenta); plik przebiegu bez pola: `null` |
+| `process` | pole `process` pliku przebiegu (wyżej, „Wersja procesu”) z `loaded` policzonym od nowa ze wszystkich transkryptów epiku (sesje i przebiegi subagentów od `started_at` do merge'u; repozytorium do odczytu treści bazy: `--worktree`, domyślnie bieżący katalog; baza niedostępna w repozytorium daje `unconfirmed` z powodem) oraz `loaded.summary` (`{confirmed, differs, unconfirmed}` wszystkich wpisów) i `loaded.by_role` (to samo na rolę agenta); odczyt z kontrolą dysku ma `disk_checked: true`. Plik przebiegu bez kontroli dysku (bez pola `process`, `not_checked`, `check_failed`) z `base_sha`, który repozytorium zna: `status` (`not_checked`, także bez pola, albo `check_failed`), `expected` liczone z `base_sha` w chwili budowy rekordu, `disk: null`, `disk_checked: false`, `disk_reason` (start sprzed kontroli, `--at` albo błąd kontroli), `user_level` i `match` `null`, `loaded` jak wyżej; plik przebiegu się nie zmienia. Bez `base_sha` albo z commitem nieznanym w repozytorium: pole pliku przebiegu bez zmian (bez pola: `null`) |
 | `human` | `interventions` (szacunek, `interventions_estimated: true`), `waits`, `wait_s`, `events` (`[{at, wait_s}]`), `manual_fixes` z `--manual-fixes` (bez opcji `null` z pozycją w `gaps`) |
 | `reviews` | lista przeglądów (niżej, „Przeglądy”); pusta bez przebiegów ról przeglądowych |
 | `integration` | `work_s` (suma `wall_s`) i `attempts` przebiegów `architecture-reviewer`, `qa-adversarial`, `ux-reviewer`; `rounds`: największa liczba raportów jednej z tych ról; bez takich przebiegów `null` z pozycją w `gaps` |
@@ -446,14 +446,18 @@ z `from` nie przed `to` jest pomijany z pozycją `pauses` w `gaps`. Bez zapisane
 z pozycją w `gaps`, jak dotąd: narzędzie przerw nie wykrywa. Dzięki temu przerwa nie podnosi `human_wait`, więc nie
 uruchamia reguły `D4:human_wait`.
 
-**Wersja procesu w rekordzie.** `gaps` pod kluczem `process`: brak odczytu w pliku przebiegu, `not_checked`,
-`check_failed`, odczyt spoza startu (`checked_on`), start zaakceptowany mimo różnicy (z liczbą plików, miejscami
-i powodem), każda zmiana na dysku i nieudana kontrola z `process.changes`, każdy wpis `differs` w `loaded` i jeden
-zbiorczy wpis z liczbą `unconfirmed` (brak potwierdzenia nie liczy się jako zgodność). Zgodny odczyt bez zmian
-i bez `unconfirmed` nie daje wpisu. `render` (raport i komentarz) ma dla rekordu natywnego linię „Wersja procesu”:
-oczekiwana (`describe` i 12 znaków SHA), dysk („zgodny” albo liczba różnic przy starcie z miejscami i liczba zmian
-w trakcie), załadowana (liczby potwierdzonych, różnych i bez potwierdzenia); rekord bez pola ma „brak danych”, rekord
-AO tej linii nie ma.
+**Wersja procesu w rekordzie.** `gaps` pod kluczem `process`: brak kontroli dysku (jeden wpis „dysk: nie sprawdzono”
+z powodem, gdy `expected` pochodzi z `base_sha`; bez `base_sha` znanego w repozytorium brak odczytu, `not_checked`
+albo `check_failed` jak w pliku przebiegu), odczyt spoza startu (`checked_on`), start zaakceptowany mimo różnicy
+(z liczbą plików, miejscami i powodem), każda zmiana na dysku i nieudana kontrola z `process.changes`, każdy wpis
+`differs` w `loaded` i jeden zbiorczy wpis z liczbą `unconfirmed` (brak potwierdzenia nie liczy się jako zgodność).
+Zgodny odczyt bez zmian i bez `unconfirmed` nie daje wpisu. `render` (raport i komentarz) ma dla rekordu natywnego
+linię „Wersja procesu”: oczekiwana (`describe` i 12 znaków SHA), dysk („zgodny”, liczba różnic przy starcie
+z miejscami i liczba zmian w trakcie albo „nie sprawdzono” przy `disk_checked: false`), załadowana (liczby
+potwierdzonych, różnych i bez potwierdzenia); rekord bez pola ma „brak danych”, rekord AO tej linii nie ma.
+Dowód `CLAUDE.md` sesji nie jest przycinany do przedziału epiku: sesja prowadząca, która prowadziła kilka epików,
+ma w każdym z nich wszystkie swoje wczytania, a plik obszaru zmieniony przez sam epik i wczytany z jego worktree
+ma `differs` względem bazy.
 
 **Brak transkryptów.** Gdy nie da się przeczytać transkryptu żadnej sesji z pliku przebiegu (retencja, zły
 identyfikator sesji), pola procesu z transkryptów (`breakdown`, `reviews`, `integration`, `human` poza
