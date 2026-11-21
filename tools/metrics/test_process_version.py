@@ -1456,6 +1456,21 @@ class ResumeRefusalTest(DiskRuleTest):
         self.assertEqual(code, 0, err)
         self.assertEqual(self.sessions(), ['s1', 's2'])
 
+    def test_a_process_epic_between_the_refusal_and_the_acceptance_keeps_what_the_resume_showed(self):
+        self.started()
+        git(self.main, 'worktree', 'remove', '--force', self.worktree)
+        other = os.path.join(self.main, '.claude', 'worktrees', 'w2')
+        git(self.main, 'worktree', 'add', '-q', other, 'feat/demo')
+        changed = '# CLAUDE.md\n\nlokalnie\n'
+        write(other, 'CLAUDE.md', changed)
+        self.lead(self.instructions_line(at=900, root_md=changed, session='s2', worktree=other), session='s2',
+                  worktree=other)
+        self.assertEqual(self.resume(cwd=other)[0], 2)
+        self.assertEqual(self.process_epic(worktree=other, now=testkit.T0 + 1050)[0], EXIT_PROCESS)
+        code, out, err = self.resume('--accept-process-mismatch', 'nowa sesja', cwd=other, now=testkit.T0 + 1100)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.sessions(), ['s1', 's2'])
+
     def test_a_new_mismatch_between_the_refusal_and_the_acceptance_is_refused(self):
         self.started()
         self.merge_from_main({'CLAUDE.md': NEWER_MD})
