@@ -12,7 +12,7 @@ roboczym: po ukończeniu epiku usuń go.
 |---|---|---|
 | 1 | API-INPUT-CONTRACT-1 | zmergowane do gałęzi epiku, 01e48d0f |
 | 2 | API-INPUT-CONTRACT-2 | zmergowane do gałęzi epiku, 06630596 |
-| 3 | API-INPUT-CONTRACT-3, API-INPUT-CONTRACT-4 | 4 zmergowane do gałęzi epiku, 492636b1; 3 czeka na decyzję o `page=1.5` |
+| 3 | API-INPUT-CONTRACT-3, API-INPUT-CONTRACT-4 | 4 zmergowane do gałęzi epiku, 492636b1; 3 zmergowane do gałęzi epiku, 92f19b15 (bez wiersza `page=1.5`, czeka na decyzję właściciela) |
 | 4 | API-INPUT-CONTRACT-5 | |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
