@@ -24,6 +24,26 @@ wpisów `process.loaded` pliku przebiegu (rekord ma je policzone w `loaded.summa
 (informacja albo niezgodność) powtarza regułę `process_version.place_problems`; zmiana tej reguły wymaga tej samej
 zmiany w eksporterze.
 
+Pole `process` mają oba pliki i dashboard pokazuje nowsze dane, nigdy ustaloną z góry stronę. Dotyczy to osobno
+dwóch części pola:
+
+- **stan kontroli wersji** (status, wynik, pliki na dysku, zmiany, akceptacje, pokazane niezgodności): zapisują go
+  w pliku przebiegu `start`, `process <epik>`, `start --resume` i `done`, a rekord ma jego kopię z chwili budowy;
+- **instrukcje załadowane** (`loaded`): odczytuje je z transkryptów tych samych sesji epiku każda kontrola (do pliku
+  przebiegu) i `metrics.py epic` (do rekordu, z `summary` i `by_role`).
+
+Gdy obie strony mówią to samo, dane są z rekordu. Gdy się różnią, nowszą wskazują najpierw same dane, bo znacznik
+czasu to start komendy, a nie chwila zapisu (rekord budowany w trakcie kontroli ma późniejszy czas i starszy stan,
+a wpis z `--at` czas wsteczny): plik przebiegu ze stanem sprawdzonym jest nowszy niż rekord, który mówi „nie
+sprawdzono”; historia `changes`, która zaczyna się całą historią drugiej strony i ma kolejne wpisy, jest nowsza (METRICS
+tylko dopisuje do `changes`); odczyt `loaded`, który zna wszystkie przebiegi subagentów drugiej strony i kolejne, jest
+nowszy. Dopiero gdy to nie rozstrzyga, decyduje najnowszy znacznik czasu w danych (`checked_at`, `rechecked_at`,
+`shown.at`, `changes[].at`, `loaded.checked_at`; dla `loaded` jego `checked_at`). Kolejność jest **nieustalona**, gdy
+strony się różnią, a znacznika po jednej z nich nie ma, nie da się go odczytać albo oba są równe, oraz gdy drugiego
+pliku nie da się odczytać (plik przebiegu dla stanu kontroli; którykolwiek dla `loaded`): ta część to wtedy „brak
+danych” z oznaczeniem „nieustalone”, bez zgadywania. Oczekiwana baza epiku jest ze stanu kontroli, a gdy go nie ma,
+z rekordu. `attempts[].instructions` i pozostałe miary są zawsze z rekordu.
+
 Rekordów AO (`source` inne niż `native`, także rekord bez pola `source`) dashboard nie pokazuje.
 
 ## Zasady danych
@@ -43,9 +63,17 @@ Rekordów AO (`source` inne niż `native`, także rekord bez pola `source`) dash
   czas sesji epiku z `claude_code_*` (złączenie po `session_id` z pliku przebiegu, `docs/features/telemetry/spec.md`,
   R8). Nie pokazuje sum ani kosztu: koszt z CLI i wartość z cennika to różne miary, a miarą epiku jest rekord.
 - **Błąd jednego pliku jest widoczny i lokalny.** Plik nie do odczytania (zły JSON, nie obiekt, inny `epic` niż nazwa
-  pliku, ponad 5 MB) jest w panelu „Pliki, których nie da się użyć” z powodem; pozostałe epiki mają swoje dane, a epik
-  z zepsutym rekordem zachowuje dane pliku przebiegu. Pole o nieoczekiwanym typie jest brakiem danych i jest liczone
-  w „Pola o nieoczekiwanym typie”.
+  pliku, ponad 5 MB, wpis, którego nie da się sprawdzić) jest w panelu „Pliki i katalogi, których nie da się użyć”
+  z powodem; pozostałe epiki mają swoje dane, a epik z zepsutym rekordem zachowuje dane pliku przebiegu. Pole
+  o nieoczekiwanym typie jest brakiem danych i jest liczone w „Pola o nieoczekiwanym typie”.
+- **Nieczytelny katalog to błąd, nie pusty stan.** `epics/` i `runs/` są czytane osobno. Katalog, który jest, a nie
+  da się go odczytać (brak dostępu, plik w miejscu katalogu, dowiązanie donikąd, błąd odczytu, katalog bez dostępu do
+  swoich plików), daje „Katalog stanu: błąd odczytu”, wiersz z powodem w tej samej tabeli i niezerowy wynik
+  `make check` stosu. Pliki drugiego katalogu są nadal pokazane, a czego nie dało się sprawdzić, to „brak danych”:
+  czy epik ma rekord albo plik przebiegu i czy są zepsute, liczby plików katalogu, czy epik jest zmergowany (merge
+  zna tylko rekord, więc epik z nieczytelnym rekordem nie jest pokazany jako „gotowy”), stan kontroli i instrukcje
+  załadowane. Katalog, którego jeszcze nie ma (`runs/` zakłada pierwszy `metrics.py start`, `epics/` pierwszy
+  rekord), i katalog pusty to pusty stan; plik usunięty w trakcie odczytu katalogu po prostu znika.
 - **Prywatność.** Do stosu trafiają identyfikatory (epik, sesja, przebieg subagenta), nazwy ról, modeli, zadań,
   gałęzi i plików instrukcji, liczby, statusy i teksty `gaps`. Nie trafiają ścieżki katalogów (`process.disk[].path`,
   `loaded[].origin`, `sessions[].worktree`; katalog domowy w tekście jest zamieniany na `~`), treść rozmów, zleceń,
@@ -54,10 +82,13 @@ Rekordów AO (`source` inne niż `native`, także rekord bez pola `source`) dash
 ## Co pokazuje dashboard
 
 - **Stan danych:** liczba epików natywnych, epiki w toku, epiki bez rekordu, pliki z błędem, pominięte rekordy AO,
-  czytelność katalogu stanu, czas ostatniego odczytu plików i ostatniej zmiany rekordu.
+  wynik odczytu katalogu stanu i jego `epics/` i `runs/`, czas ostatniego odczytu plików i ostatniej zmiany rekordu;
+  obok tabela plików i katalogów, których nie da się użyć.
 - **Lista epików:** stan (w toku, gotowy, zmergowany), daty, zadania, czas do gotowości i do merge'u, praca, czekanie
-  na człowieka, wartość tokenów, interwencje, rundy poprawek, regresje, wersja ASH, niezgodne pliki na dysku, instrukcje
-  załadowane w treści innej niż baza, braki danych, czas aktualizacji rekordu.
+  na człowieka, wartość tokenów, interwencje, rundy poprawek, regresje, wersja ASH, niezgodne pliki na dysku,
+  niezaakceptowane niezgodności ostatniej kontroli, źródło stanu kontroli i źródło instrukcji załadowanych (rekord,
+  plik przebiegu, plik przebiegu nowszy niż rekord, nieustalone), instrukcje załadowane w treści innej niż baza, braki
+  danych, czas aktualizacji rekordu.
 - **Porównanie przebiegów** w kolejności rzeczywistego czasu startu: czas zegarowy, rozkład czasu, wartość tokenów
   według modelu, jakość i udział człowieka, limity subskrypcji, instrukcje załadowane, wartości na jedno zadanie planu.
 - **Szczegóły wybranego epiku:** czas do gotowości i merge'u, rozkład czasu (`work`, `human_wait`, `host_pause`, `idle`
@@ -69,11 +100,12 @@ Rekordów AO (`source` inne niż `native`, także rekord bez pola `source`) dash
   pliki przy kontroli i niezgodne zmiany dysku w trakcie epiku z `process.changes`, bez powrotów do bazy; gdy dysku
   nie sprawdzono, obie liczby to „brak danych”) oraz instrukcje potwierdzone
   z transkryptów agentów (`process.loaded`: potwierdzone, w wersji epiku, inne niż w bazie, bez potwierdzenia; według
-  roli i wpisu). Wynik kontroli (`process.match`, z chwilą kontroli `checked_on`) jest osobną wartością, bo obejmuje
-  dysk, skille użytkownika i `CLAUDE.md` wczytany przez sesję. Epik, którego dysku nie sprawdzono, ma to napisane
-  z powodem. Akceptacje niezgodności w trakcie epiku (wpisy `changes` rodzaju `accepted`) są liczone osobno,
-  a instrukcja inna niż w bazie, którą tłumaczy zaakceptowany stan dysku (`explained`), jest oznaczona i nie jest
-  niezgodnością.
+  roli i wpisu; ze źródłem i czasem odczytu). Wynik pierwszej kontroli (`process.match`, z chwilą kontroli `checked_on`) jest
+  osobną wartością, bo obejmuje dysk, skille użytkownika i `CLAUDE.md` wczytany przez sesję. Obok: niezgodności,
+  które pokazała ostatnia zapisana kontrola i których nikt nie zaakceptował (`process.shown`), czas tej kontroli
+  i źródło stanu kontroli. Epik, którego dysku nie sprawdzono, ma to napisane z powodem. Akceptacje niezgodności
+  w trakcie epiku (wpisy `changes` rodzaju `accepted`) są liczone osobno, a instrukcja inna niż w bazie, którą
+  tłumaczy zaakceptowany stan dysku (`explained`), jest oznaczona i nie jest niezgodnością.
 - **Kompletność danych:** liczba i lista braków (`gaps`), miary bez danych, pola o nieoczekiwanym typie, przeczytane
   transkrypty, sesje prowadzące, czas aktualizacji rekordu i pliku przebiegu.
 
@@ -86,6 +118,9 @@ Prometheusa (co 30 s), bez własnego stanu i bez importu:
   startu i wersja procesu z ostatniej kontroli; `pause`, `process <epik>` i `done` zmieniają te dane;
 - miary rekordu pojawiają się i zmieniają po każdym `metrics.py epic <epik>` (po merge'u, w `/retro`, przy korekcie)
   oraz po `metrics.py trend`, który przelicza regresje rekordów z otwartym oknem;
+- kontrola zapisana w pliku przebiegu po zbudowaniu rekordu (`process <epik>`, `start --resume`, `done`) zmienia na
+  dashboardzie stan kontroli i instrukcje załadowane od razu, z oznaczeniem „plik przebiegu, nowszy niż rekord”;
+  pozostałe miary rekordu zostają z chwili jego budowy do następnego `metrics.py epic <epik>`;
 - restart stosu niczego nie wymaga: po starcie eksporter podaje te same pliki.
 
 Rekordu w trakcie epiku nikt nie odświeża automatycznie: zapisuje go sesja prowadząca komendą `metrics.py epic`
@@ -102,7 +137,11 @@ Zmiana nazwy albo znaczenia pola, które dashboard pokazuje, wymaga zmiany ekspo
 `in_attempts` (`categories`, `repeat_runs`, `api_retry`), `by_task`, `versions`, `attempts`, `value`, `reviews`,
 `acceptance`, `sessions`, `transcripts_read`, `pricing.read_at`, `ci.final`, `regressions`, `found_after_merge`,
 `bottlenecks`, `process` i `gaps`; z pliku przebiegu: `epic`, `started_at`, `done_at`, `base_sha`, `branch`, `pr`,
-`tasks`, `sessions[].id`, `usage_start`, `usage_done` i `process`.
+`tasks`, `sessions[].id`, `usage_start`, `usage_done` i `process`. Wybór nowszych danych pola `process` opiera się na
+tym, że rekord kopiuje stan kontroli pliku przebiegu, `changes` jest tylko dopisywane, odczyt nie jest cofany do „nie
+sprawdzono”, `loaded.agents` ma wpis na każdy przebieg subagenta (`session`, `agent_id`), a każdy zapis zostawia
+znacznik czasu (`checked_at`, `rechecked_at`, `shown.at`, `changes[].at`, `loaded.checked_at`): zmiana którejkolwiek
+z tych własności w METRICS wymaga zmiany eksportera.
 
 ## Wymagania i ograniczenia
 
