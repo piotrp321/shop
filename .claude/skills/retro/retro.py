@@ -8,7 +8,16 @@ Every command takes `--repo DIR` (where `gh` and `git` run, default: the current
 invalid arguments or a refusal (a bad epic name, a retro in the state `done` or `skipped`, another run's fresh lock,
 an item that does not exist) and, for `validate`, proposals that do not pass.
 
-  retro.py collect EPIC [--out DIR] [--worktree DIR] [--projects DIR]
+  retro.py collect EPIC [--out DIR] [--worktree DIR] [--projects DIR] [--accept-process-mismatch REASON]
+      First, before any `gh` call, the version of the process: `metrics.py process --worktree <worktree>` (the
+      expected version is HEAD of the worktree of the retro). Definitions on disk that differ (a place of loading with
+      `differs`, a skill of the user that hides a project skill) are a refusal (exit 2, nothing written) with the
+      places, the number of files, the first paths and what to do, unless --accept-process-mismatch gives a non-empty
+      reason; then, and when they match, the fact `<epic>/process/check` (`data.status` `match` or
+      `mismatch_accepted`, `ref`, `describe`, `places`, `accepted`). A check that cannot run (no script, another exit
+      code, not the expected JSON) is the fact `<epic>/process/missing/check` and collect goes on. For the collected
+      native epic, the field `process` of its record is the fact `<epic>/process/record` (none:
+      `<epic>/process/missing/record`).
       Writes DIR/input.json (default DIR: <retro-home>/EPIC) and prints its path. input.json has the incidents of the
       whole history of AO runs and native epics (docs/features/retro/spec.md, "Incydenty"; a native epic is a run file
       <metrics-state>/runs/EPIC.json of `metrics.py start` with a final PR and no ao-EPIC directory: its incidents
@@ -1397,7 +1406,13 @@ OPTIMIZATION_ID = re.compile(r'^[^/]+/optimization/(.+)$')
 class MeasurementError(Exception):
     """A failed call of metrics.py. The message is only the category of the failure, in Polish ("brak skryptu", "kod
     wyjścia N", "przekroczony czas", "wynik nie jest JSON-em", "nieoczekiwany kształt JSON", "brak runnera"): never
-    what the script wrote, because its stderr has local paths and tracebacks and goes to input.json."""
+    what the script wrote, because its stderr has local paths and tracebacks and goes to input.json. A non-zero exit
+    code keeps `code` and the standard output in `stdout` (`metrics.py process` prints its reading and exits 4)."""
+
+    def __init__(self, message, code=None, stdout=None):
+        super().__init__(message)
+        self.code = code
+        self.stdout = stdout
 
 
 def make_metrics_runner(repo, root=None, state=None):
@@ -1425,7 +1440,8 @@ def make_metrics_runner(repo, root=None, state=None):
             if ': timed out after ' in message:
                 raise MeasurementError('przekroczony czas')
             if code:
-                raise MeasurementError('kod wyjścia %s' % code.group(1))
+                raise MeasurementError('kod wyjścia %s' % code.group(1), code=int(code.group(1)),
+                                       stdout=getattr(e, 'stdout', None))
             raise MeasurementError('nie udało się uruchomić skryptu')
     return metrics
 
@@ -1533,6 +1549,186 @@ def optimization_effects(epic_id, applied, metrics):
     return effects, facts
 
 
+# ------------------------------------------------------------- the version of the process (tools/metrics, process)
+
+PROCESS_HINT = ('zaktualizuj główny checkout według „Wersja procesu” w docs/adr/agentic-software-house.md '
+                '(git -C <główny checkout> pull --ff-only, gdy jest czysty, stoi na main i metrics.py process nie '
+                'pokazuje epiku w toku z bieżącymi definicjami; w innym przypadku decyduje użytkownik) albo powtórz '
+                'collect z --accept-process-mismatch "<powód>"')
+PROCESS_SCOPE = ('kontrola dotyczy plików na dysku w miejscach ładowania; wersja załadowana przez retro-analyst nie '
+                 'jest potwierdzona')
+PATHS_SHOWN = 5
+
+
+def _as_dict(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value):
+    return value if isinstance(value, list) else []
+
+
+def accept_reason(value):
+    """The reason of `--accept-process-mismatch` with collapsed white space (also Unicode), or None without the
+    option; an empty reason or one with a control character is a refusal."""
+    if value is None:
+        return None
+    reason = ' '.join(value.split())
+    if not reason or control_path(reason, 'reason'):
+        raise Refusal('pusty albo nieprawidłowy powód --accept-process-mismatch: podaj, dlaczego retro idzie mimo '
+                      'różnicy wersji procesu (bez znaków sterujących)')
+    return reason
+
+
+def files_word(n):
+    if n == 1:
+        return 'plik'
+    return 'pliki' if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else 'plików'
+
+
+def read_process(metrics, worktree):
+    """(reading, None) of `metrics.py process --worktree <worktree>` (expected version: HEAD of the worktree; exit 0
+    when the definitions match, 4 with the same reading when they differ), or (None, category) when the check cannot
+    run: no runner or script, another exit code, an output that is not the expected JSON."""
+    if metrics is None:
+        return None, 'brak runnera'
+    try:
+        out = metrics(['process', '--worktree', worktree])
+    except MeasurementError as e:
+        if e.code != 4:
+            return None, str(e)
+        out = e.stdout
+    except (next_epic.CommandError, OSError):
+        return None, 'błąd wywołania'
+    try:
+        value = json.loads(out)
+    except (TypeError, ValueError):
+        return None, 'wynik nie jest JSON-em'
+    if not (isinstance(value, dict) and isinstance(value.get('expected'), dict) and isinstance(value.get('disk'), list)
+            and isinstance(value.get('match'), bool)):
+        return None, 'nieoczekiwany kształt JSON'
+    return value, None
+
+
+def differing_places(reading):
+    """[{kind, path, head, differs}] of the places of loading whose files differ from the expected version."""
+    places = []
+    for place in reading['disk']:
+        differs = [d for d in _as_list(_as_dict(place).get('differs')) if isinstance(d, dict)]
+        if differs:
+            places.append({'kind': place.get('kind'), 'path': place.get('path'), 'head': place.get('head'),
+                           'differs': [{'path': d.get('path'), 'state': d.get('state')} for d in differs]})
+    return places
+
+
+def process_lines(places, skills):
+    lines = []
+    for place in places:
+        paths = ['%s (%s)' % (d['path'], d['state']) for d in place['differs'][:PATHS_SHOWN]]
+        more = len(place['differs']) - PATHS_SHOWN
+        lines.append('%s %s: %d %s: %s%s' % (place['kind'], place['path'], len(place['differs']),
+                                            files_word(len(place['differs'])), ', '.join(paths),
+                                            ' i %d innych' % more if more > 0 else ''))
+    if skills:
+        lines.append('skille użytkownika przesłaniające skille projektu: %s' % ', '.join(skills))
+    return lines
+
+
+def process_check(epic_id, metrics, worktree, accepted):
+    """W7: the facts of the check of the version of the process before the data is collected (`gh` not called yet).
+    Matching definitions: the fact `<epic>/process/check` (status `match`, the expected version). Different ones: a
+    refusal (exit 2) with the places, the number of files, the first paths and what to do, or, with an accepted reason,
+    the fact `<epic>/process/check` (status `mismatch_accepted`). A check that cannot run: the fact
+    `<epic>/process/missing/check` with the category, and the retro goes on."""
+    reading, failure = read_process(metrics, worktree)
+    if reading is None:
+        return [{'id': '%s/process/missing/check' % epic_id,
+                 'text': 'brak kontroli wersji procesu: metrics.py process nie dał wyniku: %s; nie wiadomo, czy '
+                         'instrukcje na dysku są zgodne z HEAD worktree retro' % failure}]
+    expected = reading['expected']
+    ref = expected.get('ref') if isinstance(expected.get('ref'), str) else None
+    describe = expected.get('describe') if isinstance(expected.get('describe'), str) else None
+    version = '%s, %s' % (describe or 'bez tagu', ref[:12] if ref else 'brak SHA')
+    places = differing_places(reading)
+    skills = [s for s in _as_list(_as_dict(reading.get('user_level')).get('skills')) if isinstance(s, str)]
+    data = {'ref': ref, 'describe': describe, 'fingerprint': expected.get('fingerprint'), 'places': places,
+            'user_skills': skills, 'accepted': None}
+    if reading['match'] and not places and not skills:
+        data['status'] = 'match'
+        return [{'id': '%s/process/check' % epic_id, 'data': data,
+                 'text': 'wersja procesu: definicje na dysku zgodne z HEAD worktree retro (%s); %s'
+                         % (version, PROCESS_SCOPE)}]
+    lines = process_lines(places, skills) or ['niezgodność bez listy plików']
+    if accepted is None:
+        running = [e.get('epic') for e in _as_list(reading.get('active_epics'))
+                   if isinstance(e, dict) and isinstance(e.get('epic'), str)]
+        raise Refusal('wersja procesu: definicje na dysku różnią się od HEAD worktree retro (%s): %s%s. Co zrobić: %s'
+                      % (version, '; '.join(lines), '; epiki w toku: %s' % ', '.join(running) if running else '',
+                         PROCESS_HINT))
+    data.update(status='mismatch_accepted', accepted=accepted)
+    return [{'id': '%s/process/check' % epic_id, 'data': data,
+             'text': 'wersja procesu: definicje na dysku różnią się od HEAD worktree retro (%s): %s; różnicę '
+                     'zaakceptowano: %s; %s' % (version, '; '.join(lines), accepted, PROCESS_SCOPE)}]
+
+
+def record_process_facts(epic_id, record):
+    """W4: the fact `<epic>/process/record` of the field `process` of a native record and its `gaps` under `process`
+    (tools/metrics, "Wersja procesu w rekordzie"), read defensively: a start accepted despite a difference, changes of
+    the definitions and failed checks during the epic, roles whose subagents loaded another definition
+    (`loaded.by_role`), the number without a confirmation, a disk that was not checked. A record without the field (or
+    with null) is the fact `<epic>/process/missing/record`; without a record, nothing (`<epic>/missing/record`)."""
+    if record is None:
+        return []
+    gaps = [g[len('process: '):] for g in _as_list(record.get('gaps'))
+            if isinstance(g, str) and g.startswith('process: ')]
+    process = record.get('process')
+    if not isinstance(process, dict):
+        return [{'id': '%s/process/missing/record' % epic_id, 'data': {'gaps': gaps},
+                 'text': 'rekord metryk bez pola process (start sprzed kontroli wersji procesu albo brak odczytu): '
+                         'nie wiadomo, które instrukcje obowiązywały w epiku'}]
+    expected = _as_dict(process.get('expected'))
+    ref = expected.get('ref') if isinstance(expected.get('ref'), str) else None
+    describe = expected.get('describe') if isinstance(expected.get('describe'), str) else None
+    status, accepted = process.get('status'), process.get('accepted')
+    disk_checked = isinstance(process.get('disk'), list)
+    changes = []
+    for change in _as_list(process.get('changes')):
+        if isinstance(change, dict):
+            files = sum(len(_as_list(_as_dict(p).get('differs'))) for p in _as_list(change.get('disk')))
+            changes.append({k: change.get(k) for k in ('at', 'event', 'kind', 'reason', 'accepted')}
+                           if change.get('kind') != 'disk' else
+                           {'at': change.get('at'), 'event': change.get('event'), 'kind': 'disk', 'files': files,
+                            'accepted': change.get('accepted')})
+    loaded = _as_dict(process.get('loaded'))
+    summary, by_role = _as_dict(loaded.get('summary')), _as_dict(loaded.get('by_role'))
+    differs_roles = sorted(role for role, cell in by_role.items()
+                           if isinstance(cell, dict) and _number(cell.get('differs')) and cell['differs'] > 0)
+    parts = ['oczekiwana %s (%s)' % (describe or 'bez tagu', ref[:12] if ref else 'brak SHA')]
+    if status != 'checked':
+        parts.append('odczyt %s: %s%s' % (status or 'nieznany', process.get('reason') or 'brak powodu',
+                                          ', zaakceptowano: %s' % accepted if accepted else ''))
+    if process.get('match') is True:
+        parts.append('dysk przy starcie zgodny')
+    elif process.get('match') is False:
+        parts.append('start zaakceptowany mimo różnicy definicji (powód: %s)' % (accepted or 'brak akceptacji'))
+    if not disk_checked:
+        parts.append('dysk niesprawdzony (%s)' % (process.get('disk_reason') or process.get('reason') or 'brak powodu'))
+    parts.append('zmiany definicji w trakcie: %d' % len([c for c in changes if c['kind'] == 'disk']))
+    failed = [c for c in changes if c['kind'] == 'check_failed']
+    if failed:
+        parts.append('nieudane kontrole w trakcie: %d' % len(failed))
+    if differs_roles:
+        parts.append('subagenci z definicją inną niż oczekiwana: %s' % ', '.join(differs_roles))
+    unconfirmed = summary.get('unconfirmed')
+    parts.append('bez potwierdzenia: %s' % (unconfirmed if _number(unconfirmed) else 'brak danych'))
+    return [{'id': '%s/process/record' % epic_id,
+             'text': 'wersja procesu epiku z rekordu metryk: %s (te fakty mówią, które instrukcje obowiązywały; brak '
+                     'potwierdzenia nie jest zgodnością)' % '; '.join(parts),
+             'data': {'status': status, 'ref': ref, 'describe': describe, 'match': process.get('match'),
+                      'accepted': accepted, 'disk_checked': disk_checked, 'changes': changes, 'summary': summary,
+                      'by_role': by_role, 'differs_roles': differs_roles, 'gaps': gaps}}]
+
+
 def epic_title_id(title):
     return (title or '').partition(':')[0].strip().lower()
 
@@ -1548,7 +1744,7 @@ def external_record(source, number, record):
     return {'source': source, 'number': number, 'author': record.get('author'), 'url': record.get('url')}
 
 
-def collect(epic_id, paths, run, gates=None, metrics=None):
+def collect(epic_id, paths, run, gates=None, metrics=None, accept=None):
     """The contents of input.json for the retrospective of epic_id (see the module docstring). GitHub content (epic
     issues and their comments, task PRs, the open retro PR, open issues) comes through the origin gates `gates`
     (default: make_gates(run)); a record of an author without write access gives only `external` or an untrusted
@@ -1560,6 +1756,8 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
     natives, skipped = scan_native(paths.get('metrics_state'), paths['ao_home'])
     if epic_id not in [e['id'] for e in epics + natives]:
         check_collectable(epic_id, paths)
+    # W7: the version of the process first, before any `gh` call; a difference without `accept` is a refusal
+    version_facts = process_check(epic_id, metrics, paths.get('worktree') or '.', accept_reason(accept))
     gates = gates or make_gates(run)
     shop = gates[SHOP]
     commit = run(['git', 'rev-parse', 'origin/main']).strip()
@@ -1578,7 +1776,7 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
                 external.append(external_record('epic_comment', issue['number'], c))
         issues.setdefault(epic_title_id(issue.get('title')), {'number': issue['number'], 'comments': comments})
 
-    entries, incidents, facts, measurements = [], [], skipped_facts(skipped), {}
+    entries, incidents, facts, measurements = [], [], version_facts + skipped_facts(skipped), {}
     handoff = materials = None   # an AO run has neither
     if epic_id in [e['id'] for e in natives]:
         # R1: the record of a native epic is refreshed first (decide and trend read it); a failed refresh leaves the
@@ -1653,7 +1851,7 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
             # P3: the handoff of the lead session and the pointers to the materials, for the collected epic only
             handoff, handoff_facts, handoff_external = native_handoff(shop, name, number)
             materials, material_facts = native_materials(name, number, paths, run, commit)
-            facts += handoff_facts + material_facts
+            facts += handoff_facts + material_facts + record_process_facts(name, record)
             external += handoff_external
     entries.sort(key=lambda e: (e['merged_at'] is None, e['merged_at'] or 0, e['created_at'] or 0, e['id']))
     order = {e['id']: n for n, e in enumerate(entries)}
@@ -2656,6 +2854,9 @@ def build_parser():
                                                '(default: --repo)')
     collecting.add_argument('--projects', default=paths['projects'],
                             help='directory of the session transcripts (default: ~/.claude/projects)')
+    collecting.add_argument('--accept-process-mismatch', metavar='REASON',
+                            help='collect although the definitions on disk differ from HEAD of the worktree, with the '
+                                 'reason (a fact of input.json)')
     commands.add_parser('pending', parents=[common], help='epics whose retro is still to do')
     for name, text in (('defer', 'defer the retro of an epic (it stays pending)'),
                        ('skip', 'skip the retro of an epic for good')):
@@ -2705,7 +2906,8 @@ def main(argv=None, run=None, metrics=None):
             # The gate's own runner keeps the output of a failed `gh api --include`, so a 404 is an untrusted author.
             gates = None if run else make_gates(github_trust.make_runner(args.repo))
             data = collect(args.epic, paths, run or next_epic.make_runner(args.repo), gates,
-                           metrics or make_metrics_runner(args.repo, root=args.worktree, state=args.metrics_state))
+                                  metrics or make_metrics_runner(args.repo, root=args.worktree, state=args.metrics_state),
+                           accept=args.accept_process_mismatch)
             print(write_json(args.out or os.path.join(args.retro_home, args.epic), 'input.json', data))
         elif args.command == 'pending':
             print_json(cmd_pending(args, run or next_epic.make_runner(args.repo)))

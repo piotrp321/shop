@@ -167,6 +167,8 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
    rejestry, pozycje otwartego PR retro (z `state.json` poprzednich przebiegów), otwarte issues AO i otwarte issues
    `tech-debt` z etykietą `agent` (do sprawdzenia duplikatów), wpisy `external` (sekcja „Źródła”), pomiar
    (sekcja „Pomiar i decyzje optymalizacyjne”) i dla epiku natywnego `handoff` i `materials` (sekcja „Źródła”).
+   Najpierw sprawdza wersję procesu (sekcja „Wersja procesu”); odmowę kontroli sesja pokazuje użytkownikowi, nie
+   odracza retro.
 3. **Agent `retro-analyst`** (`.claude/agents/retro-analyst.md`, model Opus, narzędzia Read, Grep, Glob, Bash tylko
    do odczytu, Write tylko w katalogu przebiegu) dostaje ścieżki `input.json` i worktree i zwraca `proposals.json`.
    Zasady agenta:
@@ -250,6 +252,32 @@ a klucz zależy tylko od pozycji, więc liczba incydentów i ich ID nie zależą
 są tekst ręcznej poprawki, pytania blokera i treść otwartych issues. `repair`, `manual_fix` i `no_sweep` nie powstają dla
 epiku natywnego. Opis końcowego PR jest czytany dla każdego epiku natywnego historii, nie tylko retrospektywowanego,
 bo inaczej punkty „Problemów i zastojów” z dwóch epików nie spotkałyby się w jednym `input.json`.
+
+## Wersja procesu
+
+Sesja `/retro` z aplikacji desktopowej czyta `SKILL.md` i agenta `retro-analyst` z głównego checkoutu repozytorium,
+a skrypty z worktree retro (`docs/adr/agentic-software-house.md`, „Wersja procesu”). Dlatego `collect`, zanim
+wywoła `gh`, uruchamia `metrics.py process --worktree <worktree retro>` tym samym runnerem co pomiar (skrypt
+z `--worktree`); oczekiwana wersja to `HEAD` worktree retro, a kontrola porównuje pliki definicji na dysku w każdym
+miejscu ładowania (worktree, główny checkout) i skille użytkownika przesłaniające skille projektu.
+
+- **Zgodność** (kod 0): fakt `<epik>/process/check` z `data.status` `match`, `ref`, `describe`, `fingerprint`;
+  raport retro podaje z niego wersję instrukcji.
+- **Różnica** (kod 4): odmowa kodem 2 bez zapisu `input.json` i bez wywołań `gh`, z komunikatem po polsku: miejsca
+  ładowania, liczba plików, pierwsze ścieżki, epiki w toku i co zrobić (aktualizacja głównego checkoutu według ADR
+  albo `collect --accept-process-mismatch "<powód>"`). Z niepustym po przycięciu powodem (bez znaków sterujących;
+  pusty to odmowa kodem 2) `collect` idzie dalej, a fakt `<epik>/process/check` ma `status` `mismatch_accepted`,
+  `places` (`kind`, `path`, `head`, `differs`), `user_skills` i `accepted`. Tekst faktu mówi, że kontrola dotyczy
+  plików na dysku, a wersja załadowana przez `retro-analyst` nie jest potwierdzona.
+- **Brak kontroli** (brak skryptu, inny kod wyjścia, wynik niebędący oczekiwanym JSON-em, brak runnera): fakt
+  `<epik>/process/missing/check` „brak kontroli wersji procesu” z kategorią błędu; `collect` idzie dalej, jak przy
+  braku pomiaru.
+- **Rekord epiku natywnego** (tylko retrospektywowanego): pole `process` rekordu metryk i wpisy `gaps` z kluczem
+  `process` dają fakt `<epik>/process/record`: oczekiwana wersja, stan odczytu, start zaakceptowany mimo różnicy
+  (z powodem), dysk niesprawdzony (`disk` inne niż lista, z powodem), liczba zmian definicji i nieudanych kontroli
+  w trakcie, role, których subagenci załadowali inną definicję (`loaded.by_role` z `differs` > 0), liczba wpisów bez
+  potwierdzenia. Pola czytane są defensywnie (inny typ to brak danych). Rekord bez pola albo z `null`: fakt
+  `<epik>/process/missing/record`. Przebieg AO tego faktu nie ma.
 
 ## Pomiar i decyzje optymalizacyjne
 
@@ -449,7 +477,8 @@ Klucze i ID w przykładzie są ilustracją.
 - `.claude/skills/retro/retro.py` (Python 3.9+, bez zależności) i `test_retro.py`: `pending`, `defer`, `skip`,
   `lock`, `unlock`, `sync`, `collect`, `validate`, `observe`, `reject`, `issues`; wspólna opcja `--metrics-state`
   (pliki przebiegu i rekordy epików natywnych), `collect --worktree` (skrypt pomiaru z `origin/main`, specyfikacja
-  i plan epiku natywnego), `collect --projects` (transkrypty sesji),
+  i plan epiku natywnego), `collect --projects` (transkrypty sesji), `collect --accept-process-mismatch` (różnica wersji
+  procesu z powodem),
   `observe --committed` (pozycje `fix` w PR retro przy serii w toku). Komendy `gh` i `git` przez
   wstrzykiwany runner `next_epic.make_runner`, `metrics.py` przez osobny wstrzykiwany runner (`make_metrics_runner`); `retro.py` importuje `next_epic` (tablica) i `ao_events` (`waits`)
   bez kopii ich kodu; `night_queue.py room` (limit) uruchamia sesja, a wynik podaje jako powód `defer`.
@@ -512,7 +541,11 @@ Klucze i ID w przykładzie są ilustracją.
    - przekazanie i materiały: komentarz „Przekazanie do retro” w całości, komentarz niezaufanego autora tylko jako
      `external`, brak komentarza jako fakt, błąd bramki → kod 1; plan usunięty z commitem ostatniej wersji, plan
      w worktree, plan, który nigdy nie istniał, nieudany `git`, brak katalogu specyfikacji, plik przebiegu bez sesji,
-     sesja bez transkryptu; przebieg AO bez `handoff` i `materials`.
+     sesja bez transkryptu; przebieg AO bez `handoff` i `materials`;
+   - wersja procesu: kontrola przed `gh` na worktree retro, zgodność, różnica bez akceptacji (kod 2, bez `input.json`
+     i bez `gh`), skill użytkownika, różnica z akceptacją, pusty powód, brak skryptu, kod 2, nieczytelny JSON
+     i nieoczekiwany kształt; rekord natywny z `process` zgodnym, zaakceptowanym, ze zmianami, z `differs` w roli,
+     z niesprawdzonym dyskiem, z nieudaną kontrolą, z `null` i bez pola, w nieoczekiwanym kształcie.
 
    CI uruchamia testy `retro` nową linią w `ci.yml`.
 2. Warunki startu na ścieżce błędu: limit (≥ 95% z `/ao-run`, ≥ 80% ręcznie) i działający AO przy przebiegu ręcznym odraczają (epik
