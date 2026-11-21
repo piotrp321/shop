@@ -57,8 +57,12 @@ Powiadomienie push to `PushNotification` (do 200 znaków). Limit i procesy spraw
 - **Z `/ao-run`** (kolejka przeglądów po `/sweep`): to samo wejście z argumentem `<epik>`; sesja przeczytała ten
   skill i wykonuje go od „Warunków przed startem”.
 - **Epik natywny:** (prowadzony przez główną sesję według „Przebiegu epiku” w `docs/adr/agentic-software-house.md`,
-  z plikiem przebiegu `metrics.py start`): `/retro <epik>` uruchamia użytkownik po merge'u końcowego PR; sesja
-  prowadząca epik go nie uruchamia. `pending` wymienia taki epik po merge'u jego końcowego PR.
+  z plikiem przebiegu `metrics.py start`): `/retro <epik>` uruchamia użytkownik po merge'u końcowego PR, w nowej
+  sesji; sesja prowadząca epik go nie uruchamia, tylko zostawia w końcowym PR komentarz „Przekazanie do retro”
+  (ADR, krok 7, „Po merge'u”). Gdy skill wywołano w sesji, która prowadziła ten epik (jej identyfikator jest
+  w pliku przebiegu), powiedz to użytkownikowi i poproś o nową sesję zamiast zaczynać. `pending` wymienia taki
+  epik po merge'u jego końcowego PR. Retro trzeciego epiku natywnego zmergowanego po 2026-11-21 przypomina
+  w raporcie o ocenie zewnętrznego review (`docs/features/ash-process-fixes/spec.md`, C3).
 - **Nierozstrzygnięte decyzje** (krok 7) to `decisions_open` (propozycje issues) i pozycje PR retro bez `outcome` w
   `$RETRO_HOME/*/state.json`. Pokaż je tylko do odczytu (opcjonalny drugi argument to epik pomijany, bo jego pozycje są
   w propozycjach bieżącego przebiegu, krok 6):
