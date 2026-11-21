@@ -11,8 +11,8 @@ roboczym: po ukończeniu epiku usuń go.
 | Fala | Zadania | Status |
 |---|---|---|
 | 1 | API-INPUT-CONTRACT-1 | zmergowane do gałęzi epiku, 01e48d0f |
-| 2 | API-INPUT-CONTRACT-2 | w toku |
-| 3 | API-INPUT-CONTRACT-3, API-INPUT-CONTRACT-4 | |
+| 2 | API-INPUT-CONTRACT-2 | zmergowane do gałęzi epiku, 06630596 |
+| 3 | API-INPUT-CONTRACT-3, API-INPUT-CONTRACT-4 | 4 w toku; 3 czeka na decyzję o `page=1.5` |
 | 4 | API-INPUT-CONTRACT-5 | |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
