@@ -19,8 +19,8 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
 /**
  * Renders every exception as an RFC 9457 problem details document.
  *
- * A validation failure (also as the `previous` of an HTTP exception) lists its violations, without `detail`; its
- * status is 400, or 422 when the HTTP exception that wraps it is a 422 (a request payload).
+ * A validation failure (also as the `previous` of an HTTP exception) lists its violations, each identical one once,
+ * without `detail`; its status is 400, or 422 when the HTTP exception that wraps it is a 422 (a request payload).
  *
  * Only the thrown exception itself decides about `detail`, its `previous` chain is never inspected for it.
  * The one exception: a Messenger HandlerFailedException that wraps exactly one exception is replaced by that
@@ -46,20 +46,23 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
     /** The members of a problem document that an extension never replaces. */
     private const RESERVED_MEMBERS = ['type', 'title', 'status', 'detail', 'instance', 'violations'];
 
-    private const FALLBACK_DETAIL = 'The request could not be processed.';
+    private const FALLBACK_DETAIL = 'Nie można przetworzyć żądania.';
 
-    /** Fixed texts for framework exceptions, they never depend on the exception message. */
+    /**
+     * Fixed texts for framework exceptions, they never depend on the exception message (spec:
+     * docs/features/api-input-contract/spec.md, section A). The `title` stays the phrase of the HTTP status.
+     */
     private const GENERIC_DETAILS = [
-        Response::HTTP_BAD_REQUEST => 'The request is invalid.',
-        Response::HTTP_UNAUTHORIZED => 'Authentication is required.',
-        Response::HTTP_FORBIDDEN => 'Access is denied.',
-        Response::HTTP_NOT_FOUND => 'Resource not found.',
-        Response::HTTP_METHOD_NOT_ALLOWED => 'Method not allowed.',
-        Response::HTTP_NOT_ACCEPTABLE => 'Requested representation is not available.',
-        Response::HTTP_CONFLICT => 'The request conflicts with the current state.',
-        Response::HTTP_UNSUPPORTED_MEDIA_TYPE => 'Unsupported media type.',
-        Response::HTTP_UNPROCESSABLE_ENTITY => 'The request is invalid.',
-        Response::HTTP_TOO_MANY_REQUESTS => 'Too many requests.',
+        Response::HTTP_BAD_REQUEST => 'Żądanie jest nieprawidłowe.',
+        Response::HTTP_UNAUTHORIZED => 'Wymagane jest uwierzytelnienie.',
+        Response::HTTP_FORBIDDEN => 'Brak dostępu.',
+        Response::HTTP_NOT_FOUND => 'Nie znaleziono zasobu.',
+        Response::HTTP_METHOD_NOT_ALLOWED => 'Metoda nie jest dozwolona.',
+        Response::HTTP_NOT_ACCEPTABLE => 'Żądana reprezentacja nie jest dostępna.',
+        Response::HTTP_CONFLICT => 'Żądanie jest sprzeczne z bieżącym stanem.',
+        Response::HTTP_UNSUPPORTED_MEDIA_TYPE => 'Nieobsługiwany typ treści.',
+        Response::HTTP_UNPROCESSABLE_ENTITY => 'Żądanie jest nieprawidłowe.',
+        Response::HTTP_TOO_MANY_REQUESTS => 'Zbyt wiele żądań.',
     ];
 
     public static function getSubscribedEvents(): array
@@ -103,14 +106,21 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
         return self::problemResponse($problem, $status, $headers);
     }
 
+    /**
+     * A violation with the same property path and text as an earlier one is left out (two constraints of one field
+     * can give the same text); different violations of one field all stay.
+     */
     private function validationProblem(ValidationFailedException $validation, int $status): JsonResponse
     {
         $problem = ['type' => 'about:blank', 'title' => Response::$statusTexts[$status] ?? 'Error', 'status' => $status, 'violations' => []];
         foreach ($validation->getViolations() as $violation) {
-            $problem['violations'][] = [
+            $entry = [
                 'propertyPath' => $violation->getPropertyPath(),
                 'title' => (string) $violation->getMessage(),
             ];
+            if (!\in_array($entry, $problem['violations'], true)) {
+                $problem['violations'][] = $entry;
+            }
         }
 
         return self::problemResponse($problem, $status);
