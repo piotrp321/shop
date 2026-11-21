@@ -89,7 +89,6 @@ final class CatalogCases
      */
     private static function options(): iterable
     {
-        $entries = static fn (int $count, callable $entry): string => implode('&', array_map(static fn (int $i): string => 'option='.$entry($i), range(1, $count)));
         $cases = [
             'option[]=x' => ['option=Kolor%3Aczarne', 'option%5B%5D=Kolor%3Aczarne', 'Podaj opcje jako powtórzony klucz option, nie option[].'],
             'without a colon' => ['option=Kolor%3Aczarne', 'option=Kolor', 'Opcja musi mieć postać oś:wartość.'],
@@ -97,19 +96,29 @@ final class CatalogCases
             'axis over 30 characters' => ['option='.str_repeat('a', 30).'%3Ax', 'option='.str_repeat('a', 31).'%3Ax', self::BAD_OPTION_LENGTH],
             'value over 40 characters' => ['option=Kolor%3A'.str_repeat('a', 40), 'option=Kolor%3A'.str_repeat('a', 41), self::BAD_OPTION_LENGTH],
             '51 options' => [
-                $entries(50, static fn (int $i): string => 'Kolor%3A'.$i),
-                $entries(51, static fn (int $i): string => 'Kolor%3A'.$i),
+                self::optionEntries(50, static fn (int $i): string => 'Kolor%3A'.$i),
+                self::optionEntries(51, static fn (int $i): string => 'Kolor%3A'.$i),
                 'Można podać najwyżej 50 opcji.',
             ],
             'options of 6 axes' => [
-                $entries(5, static fn (int $i): string => 'Os'.$i.'%3Ax'),
-                $entries(6, static fn (int $i): string => 'Os'.$i.'%3Ax'),
+                self::optionEntries(5, static fn (int $i): string => 'Os'.$i.'%3Ax'),
+                self::optionEntries(6, static fn (int $i): string => 'Os'.$i.'%3Ax'),
                 'Można podać opcje najwyżej 5 różnych osi.',
             ],
         ];
         foreach ($cases as $label => [$valid, $invalid, $title]) {
             yield InputCase::query(self::PRODUCTS, null, InputContractFixtures::NONE, 'option', $label, $valid, $invalid, [['option', $title]]);
         }
+    }
+
+    /**
+     * `$count` repeated `option` keys, the value of the i-th (from 1) given by `$entry`.
+     *
+     * @param \Closure(int): string $entry
+     */
+    private static function optionEntries(int $count, \Closure $entry): string
+    {
+        return implode('&', array_map(static fn (int $i): string => 'option='.$entry($i), range(1, $count)));
     }
 
     /**
