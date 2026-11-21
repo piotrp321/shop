@@ -56,10 +56,8 @@ final class InputContractTest extends WebTestCase
      */
     public static function rows(): iterable
     {
-        foreach ([CartCases::all(), CatalogCases::all(), InventoryCases::all(), OrderingCases::all(), PaymentCases::all(), PricingCases::all()] as $rows) {
-            foreach ($rows as $row) {
-                yield $row->name() => [$row];
-            }
+        foreach (InputRows::all() as $row) {
+            yield $row->name() => [$row];
         }
     }
 
