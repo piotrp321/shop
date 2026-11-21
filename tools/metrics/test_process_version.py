@@ -843,7 +843,8 @@ class EpicVersionTest(RecordTest):
     def test_claude_md_changed_and_committed_by_the_epic_is_the_epic_version(self):
         self.started()
         self.change_in_the_epic()
-        write(self.worktree, 'apps/api/CLAUDE.md', 'jeszcze nowsza treść na dysku\n')   # history, not disk, matches
+        write(self.worktree, 'apps/api/CLAUDE.md', 'jeszcze nowsza treść\n')     # history, not disk, matches
+        git(self.worktree, 'commit', '-q', '-am', 'docs: newer api rules')
         self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD))
         code, out, err = self.process_epic(now=testkit.T0 + 600)
         self.assertEqual(code, 0, err)
@@ -857,7 +858,8 @@ class EpicVersionTest(RecordTest):
         self.change_in_the_epic(commit=False)
         self.lead(self.instructions_line(), self.nested_line(500, EPIC_API_MD))
         code, out, err = self.process_epic(now=testkit.T0 + 600)
-        self.assertEqual(code, 0, err)
+        self.assertEqual(code, EXIT_PROCESS)            # an uncommitted change in the worktree is a mismatch (D-a)
+        self.assertNotIn('załadowana', err)
         self.assertEqual(self.api_entry(json.loads(out)['loaded'])['version'], 'epic')
 
     def test_content_from_neither_base_nor_epic_differs(self):
@@ -886,7 +888,8 @@ class EpicVersionTest(RecordTest):
         entry = self.api_entry(record['process']['loaded'])
         self.assertEqual((entry['status'], entry['version']), ('confirmed', 'epic'))
         self.assertEqual(record['process']['loaded']['summary']['confirmed_epic'], 1)
-        self.assertFalse([g for g in self.gaps(record) if 'apps/api' in g], self.gaps(record))
+        self.assertFalse([g for g in self.gaps(record) if 'apps/api' in g and not g.startswith('process: informacja')],
+                         self.gaps(record))
 
     def test_record_after_the_merge_without_the_branch_is_unconfirmed(self):
         self.started()
@@ -1042,7 +1045,7 @@ class DiskRuleTest(RecordTest):
         codes.append(code)
         self.assertIn('--accept-process-mismatch', err)
         self.assertIn('główny checkout', err)
-        codes.append(self.process_epic('--accept-process-mismatch', 'świadomie: poprawka roli',
+        codes.append(self.process_epic('demo', '--accept-process-mismatch', 'świadomie: poprawka roli',
                                        now=testkit.T0 + 300)[0])
         codes.append(self.process_epic(now=testkit.T0 + 400)[0])
         self.assertEqual(codes, [0, EXIT_PROCESS, 0, 0])
@@ -1056,7 +1059,7 @@ class DiskRuleTest(RecordTest):
 
     def test_blank_reason_of_process_epic_exit_2(self):
         self.started()
-        code, out, err = self.process_epic('--accept-process-mismatch', '  ')
+        code, out, err = self.process_epic('demo', '--accept-process-mismatch', '  ')
         self.assertEqual((code, out), (2, ''))
         self.assertIn('pusty powód', err)
 
@@ -1065,7 +1068,7 @@ class DiskRuleTest(RecordTest):
         write(self.main, '.claude/agents/developer.md', 'stara\n')
         self.assertEqual(self.process_epic(now=testkit.T0 + 100)[0], EXIT_PROCESS)
         self.assertEqual(self.process_epic(now=testkit.T0 + 200)[0], EXIT_PROCESS)
-        self.assertEqual(self.process_epic('--accept-process-mismatch', 'stary plik', now=testkit.T0 + 300)[0], 0)
+        self.assertEqual(self.process_epic('demo', '--accept-process-mismatch', 'stary plik', now=testkit.T0 + 300)[0], 0)
         self.assertEqual(self.process_epic(now=testkit.T0 + 400)[0], 0)
 
     def test_failed_check_at_the_start_is_no_accepted_state(self):

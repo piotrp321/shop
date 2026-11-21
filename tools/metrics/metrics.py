@@ -2457,10 +2457,11 @@ def cmd_start(args, run, now, stdin):
         if current is None:
             raise MetricsError('brak pliku przebiegu %s: wznowienie wymaga wcześniejszego start' % path)
         sessions = current.get('sessions') if isinstance(current.get('sessions'), list) else []
+        directory = None if args.at else check_dir(args, current)       # the worktree of the last session so far
         if not any(isinstance(s, dict) and s.get('id') == session for s in sessions):
             current['sessions'] = sessions + [entry]
         if not args.at:
-            resume_check(run, current, worktree, args, now, session, accepted)
+            resume_check(run, current, directory, args, now, session, accepted)
         data = current
     else:
         if current is not None:
@@ -2504,11 +2505,11 @@ def cmd_done(args, run, now, stdin):
     if data is None:
         raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
     if not args.at:
-        worktree = _expand(args.worktree) if args.worktree else os.getcwd()
+        worktree = check_dir(args, data)
         try:
             result = recheck(run, data, worktree, args, now, 'done', None, None)
             if result['mismatch']:
-                print('metrics: wersja procesu inna niż przy starcie epiku (zapisano w process.changes): %s'
+                print('metrics: wersja procesu niezgodna z bazą epiku (zapisano w process.changes): %s'
                       % '; '.join(result['lines']), file=sys.stderr)
         except process_version.CheckError as e:
             if not isinstance(data.get('process'), dict):
@@ -2542,9 +2543,9 @@ def cmd_pause(args):
 
 # ------------------------------------------------------------------------------ native epics: the process version
 
-CONTROL = re.compile(r'[\x00-\x1f\x7f-\x9f  ]')
-PROCESS_HINT = ('sprawdź `metrics.py process`, zaktualizuj główny checkout według ADR „Przebieg epiku” '
-                '(docs/adr/agentic-software-house.md) albo podaj --accept-process-mismatch "<powód>"')
+CONTROL = re.compile(r'[\x00-\x1f\x7f-\x9f\u2028\u2029]')
+PROCESS_HINT = ('sprawdź `metrics.py process`, zaktualizuj główny checkout według ADR (docs/adr/agentic-software-house.md, '
+                '„Wersja procesu”) albo podaj --accept-process-mismatch "<powód>"')
 NOT_CHECKED = 'zapis po fakcie (--at): dzisiejszy stan plików nie mówi nic o wersji z tamtej chwili'
 
 
@@ -2636,8 +2637,9 @@ def checked_process(data, loaded, now, event):
 
 
 def start_process(run, args, worktree, session, base_sha, now, accepted):
-    """The field `process` of a new run file (W2): the reading of the start, or a refusal (MetricsError) when the
-    definitions differ from the base and the mismatch is not accepted with a reason."""
+    """The field `process` of a new run file (W2): the reading of the start, or a refusal (MetricsError) when it is a
+    mismatch against the base (the rule of `assess`: a commit of the epic branch in the worktree is information) and
+    the mismatch is not accepted with a reason."""
     if args.at:
         return {'status': 'not_checked', 'reason': NOT_CHECKED}
     try:
@@ -2645,7 +2647,7 @@ def start_process(run, args, worktree, session, base_sha, now, accepted):
         expected = _expected(run, internal['top'], data['expected'])
         own = [internal['top']]
         loaded = process_version.loaded_of(_expand(args.projects), [session], expected,
-                                           [internal['top'], internal['main']], agents=False, window=None,
+                                           [internal['top'], internal['main']], agents=False, window=(now, None),
                                            parse_time=_epoch_of, epic=_epic_versions(run, internal['top'], expected,
                                                                                      ['HEAD'], own), own=own)
     except process_version.CheckError as e:
@@ -2660,6 +2662,10 @@ def start_process(run, args, worktree, session, base_sha, now, accepted):
                 data['expected']['describe'] or '-', data['expected']['ref'][:12],
                 '; '.join(_mismatch_lines(data['disk'], data['user_level'], loaded)), PROCESS_HINT))
         process['accepted'] = accepted
+        for section, entry in process_version.loaded_items(loaded):
+            if entry.get('status') == 'differs':
+                process['changes'].append({'at': iso(now), 'event': 'start', 'session': session, 'kind': 'loaded',
+                                           'section': section, 'item': entry, 'accepted': accepted})
     return process
 
 
@@ -2667,19 +2673,67 @@ def _fingerprints(places):
     return {p.get('kind'): p.get('fingerprint') for p in places or [] if isinstance(p, dict)}
 
 
-def disk_baseline(process, accepted_only):
-    """{kind: fingerprint} the disk is compared with: the start, then the last disk change (accepted only, or any)."""
-    found = _fingerprints(process.get('disk'))
+def _place_state(place):
+    return place.get('state') or place.get('fingerprint')
+
+
+def _state_key(places, users):
+    """The state on disk the changes are recorded by: the state of every place and the shadowing user skills."""
+    return [sorted([p.get('kind') or '', _place_state(p) or ''] for p in places or [] if isinstance(p, dict)),
+            sorted(_dict(users).get('skills') or [])]
+
+
+def _last_state(process):
+    """The state of the last record: the reading of the start, then the last disk change."""
+    key = _state_key(process.get('disk'), process.get('user_level'))
     for change in process.get('changes') or []:
-        if isinstance(change, dict) and change.get('kind') == 'disk' and (change.get('accepted') or not accepted_only):
-            found = _fingerprints(change.get('disk'))
-    return found
+        if isinstance(change, dict) and change.get('kind') == 'disk':
+            key = _state_key(change.get('disk'), change.get('user_level'))
+    return key
+
+
+def _accepted_states(process):
+    """({(kind, state)} of the places, {skills} of the user level) accepted with a reason: the start accepted
+    despite a difference and every accepted disk change (a failed check at the start accepts no state)."""
+    places, users = set(), set()
+
+    def add(disk, user_level):
+        for place in disk or []:
+            if isinstance(place, dict):
+                places.add((place.get('kind'), _place_state(place)))
+        users.add(tuple(sorted(_dict(user_level).get('skills') or [])))
+    if process.get('accepted') and process.get('status') == 'checked':
+        add(process.get('disk'), process.get('user_level'))
+    for change in process.get('changes') or []:
+        if isinstance(change, dict) and change.get('kind') == 'disk' and change.get('accepted'):
+            add(change.get('disk'), change.get('user_level'))
+    return places, users
+
+
+def assess(data, loaded, process):
+    """(disk lines, loaded lines) of the mismatches of a reading that are not accepted (D-a, D-e): always against
+    the base; in the worktree only an uncommitted change (or a HEAD that does not descend from the base), in the main
+    checkout every difference, a user skill shadowing a project skill and every `differs` of `loaded`."""
+    places, users = _accepted_states(process)
+    disk_lines = []
+    for place in data['disk']:
+        paths = process_version.mismatch_paths(place)
+        if paths and (place['kind'], _place_state(place)) not in places:
+            disk_lines += process_version.summary([place])
+    skills = tuple(sorted(data['user_level'].get('skills') or []))
+    if skills and skills not in users:
+        disk_lines.append('skille użytkownika przesłaniają skille projektu: %s' % ', '.join(skills))
+    accepted_keys = _accepted_loaded(process)
+    loaded_lines = ['załadowana treść inna niż w bazie: %s %s' % (section, _item_name(entry))
+                    for section, entry in process_version.loaded_items(loaded) if entry.get('status') == 'differs'
+                    and process_version.loaded_key(section, entry) not in accepted_keys]
+    return disk_lines, loaded_lines
 
 
 def _change_key(change):
     kind = change.get('kind')
     if kind == 'disk':
-        return [kind, sorted(_fingerprints(change.get('disk')).items())]
+        return [kind, _state_key(change.get('disk'), change.get('user_level'))]
     if kind == 'loaded':
         return [kind] + process_version.loaded_key(change.get('section'), change.get('item') or {})
     return [kind, change.get('event'), change.get('reason')]
@@ -2713,13 +2767,19 @@ def _epoch_of(text):
     return night_queue.parse_time(text).timestamp()
 
 
+def _disk_of_change(places):
+    keep = ('kind', 'fingerprint', 'state', 'differs', 'uncommitted', 'epic_branch', 'from_base')
+    return [{k: p[k] for k in keep if k in p} for p in places]
+
+
 def recheck(run, run_file, worktree, args, now, event, session, accepted):
     """The check of a running epic (W3) on the data of the run file, shared by `process EPIC`, `start --resume` and
-    `done`: today's disk against the reading of the start (and the last accepted change), the transcripts of the
-    sessions for `loaded`; every new change is appended to `process.changes` (with `accepted` when given), once. A run
-    file without a reading (older, or a failed check at the start) gets one now, marked with `checked_on`. Mutates
-    `run_file`; raises process_version.CheckError when the check cannot run. Returns {status, late, disk, user_level,
-    loaded, added, mismatch, lines}."""
+    `done`: today's disk and the transcripts of the sessions (`loaded`) against the base, by the rule of `assess`.
+    A new state on disk is one entry of `process.changes` (`informational` when it is no mismatch: a commit of the
+    epic branch in the worktree), a `differs` one `loaded` entry; with `accepted` the current mismatches are recorded
+    as accepted and give no mismatch any more. A run file without a reading (older, or a failed check at the start)
+    gets one now (`checked_on`), which is no accepted state. Mutates `run_file`; raises process_version.CheckError
+    when the check cannot run. Returns {status, late, disk, user_level, loaded, added, mismatch, lines}."""
     process = run_file.get('process')
     if isinstance(process, dict) and process.get('status') == 'not_checked':
         return {'status': 'not_checked', 'late': False, 'added': [], 'mismatch': False, 'lines': [],
@@ -2743,42 +2803,56 @@ def recheck(run, run_file, worktree, args, now, event, session, accepted):
     if late:
         new = checked_process(data, loaded, now, event)
         if isinstance(process, dict) and process.get('status') == 'check_failed':
-            new.update(accepted=process.get('accepted'), start_failure=process.get('reason'),
+            new.update(start_failure={'reason': process.get('reason'), 'accepted': process.get('accepted')},
                        changes=process.get('changes') or [])
-        run_file['process'] = new
-        return {'status': 'checked', 'late': True, 'disk': data['disk'], 'user_level': data['user_level'],
-                'loaded': new['loaded'], 'added': [], 'mismatch': not new['match'],
-                'lines': _mismatch_lines(data['disk'], data['user_level'], loaded)}
-    added, lines = [], []
-    disk_changed = _fingerprints(data['disk']) != disk_baseline(process, True)
-    if disk_changed:
+        run_file['process'] = process = new
+    disk_lines, loaded_lines = assess(data, loaded, process)
+    added = []
+    if _state_key(data['disk'], data['user_level']) != _last_state(process) or (disk_lines and accepted):
         change = {'at': iso(now), 'event': event, 'session': session, 'kind': 'disk',
-                  'disk': [{'kind': p['kind'], 'fingerprint': p['fingerprint'], 'differs': p['differs']}
-                           for p in data['disk']], 'accepted': accepted}
+                  'informational': not disk_lines, 'disk': _disk_of_change(data['disk']),
+                  'user_level': data['user_level'], 'accepted': accepted if disk_lines else None}
         if add_change(run_file, change):
             added.append(change)
-        lines.append('definicje na dysku zmieniły się od startu epiku: %s'
-                     % ('; '.join(process_version.summary(data['disk'])) or 'inny odcisk drzewa definicji'))
-    accepted_keys, differs = _accepted_loaded(process), False
     for section, entry in process_version.loaded_items(loaded):
-        if entry.get('status') != 'differs':
-            continue
-        if process_version.loaded_key(section, entry) not in accepted_keys:
-            differs = True
-            lines.append('załadowana treść inna niż w bazie: %s %s' % (section, _item_name(entry)))
-        change = {'at': iso(now), 'event': event, 'session': session, 'kind': 'loaded', 'section': section,
-                  'item': entry, 'accepted': accepted}
-        if add_change(run_file, change):
-            added.append(change)
+        if entry.get('status') == 'differs':
+            change = {'at': iso(now), 'event': event, 'session': session, 'kind': 'loaded', 'section': section,
+                      'item': entry, 'accepted': accepted}
+            if add_change(run_file, change):
+                added.append(change)
     process['loaded'] = dict(loaded, checked_at=iso(now))
     process['rechecked_at'] = iso(now)
-    return {'status': 'checked', 'late': False, 'disk': data['disk'], 'user_level': data['user_level'],
-            'loaded': process['loaded'], 'added': added, 'mismatch': disk_changed or differs, 'lines': lines}
+    lines = disk_lines + loaded_lines
+    return {'status': 'checked', 'late': late, 'disk': data['disk'], 'user_level': data['user_level'],
+            'loaded': process['loaded'], 'added': added, 'mismatch': bool(lines) and accepted is None,
+            'accepted': bool(lines) and accepted is not None, 'lines': lines}
+
+
+def check_dir(args, run_file):
+    """The directory of the check of a running epic (D-d): --worktree, else the worktree of the last session of the run
+    file (said on stderr when the current directory is another checkout), else the current directory."""
+    if args.worktree:
+        return _expand(args.worktree)
+    cwd = os.getcwd()
+    stored = _session_worktrees(run_file)
+    stored = stored[-1] if stored else None
+    if stored is None or not os.path.isdir(stored):
+        return cwd
+    here, there = os.path.realpath(cwd), os.path.realpath(stored)
+    if here != there and not here.startswith(there.rstrip('/') + '/'):
+        print('metrics: kontrola wersji w worktree ostatniej sesji epiku %s (z pliku przebiegu), nie w bieżącym '
+              'katalogu %s; inny katalog: --worktree' % (stored, cwd), file=sys.stderr)
+    return stored
+
+
+MISMATCH_HINT = ('co zrobić: usuń przyczynę (zaktualizuj główny checkout według ADR, docs/adr/agentic-software-house.md, '
+                 '„Wersja procesu”; zacommituj albo cofnij zmianę w worktree epiku) albo zaakceptuj różnicę z powodem: '
+                 'metrics.py process %s --accept-process-mismatch "<powód>"')
 
 
 def resume_check(run, run_file, worktree, args, now, session, accepted):
-    """`start --resume`: the recheck; a change refuses the resume (MetricsError, nothing written) unless it is accepted
-    with a reason. A run file without a reading gets one without a refusal."""
+    """`start --resume`: the recheck; a mismatch refuses the resume (MetricsError, nothing written) unless it is
+    accepted with a reason. The first reading of a run file without one refuses nothing."""
     try:
         result = recheck(run, run_file, worktree, args, now, 'resume', session, accepted)
     except process_version.CheckError as e:
@@ -2786,9 +2860,10 @@ def resume_check(run, run_file, worktree, args, now, session, accepted):
             raise MetricsError('kontrola wersji procesu nieudana: %s; %s' % (e, PROCESS_HINT))
         add_change(run_file, failed_change(now, 'resume', session, e, accepted))
         return
-    if result['mismatch'] and not result['late'] and accepted is None:
-        raise MetricsError('wersja procesu zmieniła się od startu epiku: %s. Wznowienie wstrzymane: %s'
-                           % ('; '.join(result['lines']), PROCESS_HINT))
+    if result['mismatch'] and not result['late']:
+        raise MetricsError('wersja procesu niezgodna z bazą epiku: %s. Wznowienie wstrzymane; %s albo wznów '
+                           'z --accept-process-mismatch "<powód>"'
+                           % ('; '.join(result['lines']), MISMATCH_HINT % run_file.get('epic')))
 
 
 def active_epics(state, main_fingerprint):
@@ -2814,11 +2889,62 @@ def active_epics(state, main_fingerprint):
 
 
 def _files_count(places):
-    return sum(len(p.get('differs') or []) for p in places or [] if isinstance(p, dict))
+    """The number of the files that are a mismatch in the places (process_version.mismatch_paths)."""
+    return sum(len(process_version.mismatch_paths(p)) for p in places or [] if isinstance(p, dict))
 
 
 def _kinds(places):
-    return ', '.join(p.get('kind') or '?' for p in places or [] if isinstance(p, dict) and p.get('differs')) or '-'
+    return ', '.join(p.get('kind') or '?' for p in places or [] if isinstance(p, dict)
+                     and process_version.mismatch_paths(p)) or '-'
+
+
+def _epic_branch_paths(places):
+    """The files a commit of the epic branch changed in the worktree (information, not a mismatch)."""
+    return sorted({d.get('path') for p in places or [] if isinstance(p, dict) and p.get('kind') == 'worktree'
+                   and p.get('from_base') and not p.get('uncommitted') for d in p.get('epic_branch') or []
+                   if isinstance(d, dict) and d.get('path')})
+
+
+def informational_changes(process):
+    """The disk changes of the run file that are information (a commit of the epic branch), plus the reading of the
+    start when its worktree already had such commits."""
+    found = [c for c in _list(process.get('changes')) if isinstance(c, dict) and c.get('kind') == 'disk'
+             and c.get('informational') is True]
+    return found + ([process] if _epic_branch_paths(process.get('disk')) else [])
+
+
+def checked_gaps(process, gaps):
+    """The `gaps` of a checked reading: not from the start, a start accepted despite a difference, every change (a
+    commit of the epic branch as information, clearly apart from a mismatch)."""
+    if process.get('checked_on') != 'start':
+        gaps.add('process', 'odczyt wersji z %s, nie ze startu epiku' % process.get('checked_on'))
+    failure = process.get('start_failure')
+    if failure:
+        gaps.add('process', 'kontrola wersji przy starcie nieudana: %s' % (
+            _dict(failure).get('reason') if isinstance(failure, dict) else failure))
+    if process.get('match') is False:
+        gaps.add('process', 'start mimo różnicy definicji (%d plików: %s; skille użytkownika: %s); powód: %s' % (
+            _files_count(process.get('disk')), _kinds(process.get('disk')),
+            ', '.join(_dict(process.get('user_level')).get('skills') or []) or 'brak',
+            process.get('accepted') or 'brak akceptacji'))
+    paths = _epic_branch_paths(process.get('disk'))
+    if paths:
+        gaps.add('process', 'informacja (nie niezgodność): pliki zmienione w gałęzi epiku przy starcie: %s'
+                 % ', '.join(paths))
+    for change in process.get('changes') or []:
+        if not isinstance(change, dict):
+            continue
+        accepted = '; zaakceptowano: %s' % change['accepted'] if change.get('accepted') else ''
+        if change.get('kind') == 'disk' and change.get('informational') is True:
+            gaps.add('process', 'informacja (nie niezgodność): pliki zmienione w gałęzi epiku przy %s %s: %s' % (
+                change.get('event'), change.get('at'), ', '.join(_epic_branch_paths(change.get('disk'))) or '-'))
+        elif change.get('kind') == 'disk':
+            gaps.add('process', 'zmiana definicji na dysku przy %s %s (%d plików: %s; skille użytkownika: %s)%s' % (
+                change.get('event'), change.get('at'), _files_count(change.get('disk')), _kinds(change.get('disk')),
+                ', '.join(_dict(change.get('user_level')).get('skills') or []) or 'brak', accepted))
+        elif change.get('kind') == 'check_failed':
+            gaps.add('process', 'kontrola wersji przy %s %s nieudana: %s%s' % (change.get('event'), change.get('at'),
+                                                                             change.get('reason'), accepted))
 
 
 def native_process(run_file, run, worktree, projects, started, until, attempts, now, gaps):
@@ -2887,28 +3013,7 @@ def unchecked_process(original, run_file, run, worktree, gaps):
     return process
 
 
-def checked_gaps(process, gaps):
-    """The `gaps` of a checked reading: not from the start, a start accepted despite a difference, every change."""
-    if process.get('checked_on') != 'start':
-        gaps.add('process', 'odczyt wersji z %s, nie ze startu epiku' % process.get('checked_on'))
-    if process.get('start_failure'):
-        gaps.add('process', 'kontrola wersji przy starcie nieudana: %s' % process['start_failure'])
-    if process.get('match') is False:
-        gaps.add('process', 'start mimo różnicy definicji (%d plików: %s; skille użytkownika: %s); powód: %s' % (
-            _files_count(process.get('disk')), _kinds(process.get('disk')),
-            ', '.join(_dict(process.get('user_level')).get('skills') or []) or 'brak',
-            process.get('accepted') or 'brak akceptacji'))
-    for change in process.get('changes') or []:
-        if not isinstance(change, dict):
-            continue
-        accepted = '; zaakceptowano: %s' % change['accepted'] if change.get('accepted') else ''
-        if change.get('kind') == 'disk':
-            gaps.add('process', 'zmiana definicji na dysku przy %s %s (%d plików: %s)%s' % (
-                change.get('event'), change.get('at'), _files_count(change.get('disk')), _kinds(change.get('disk')),
-                accepted))
-        elif change.get('kind') == 'check_failed':
-            gaps.add('process', 'kontrola wersji przy %s %s nieudana: %s%s' % (change.get('event'), change.get('at'),
-                                                                             change.get('reason'), accepted))
+
 
 
 def with_loaded(process, run_file, run, worktree, projects, started, until, attempts, now, gaps):
@@ -2947,8 +3052,10 @@ def with_loaded(process, run_file, run, worktree, projects, started, until, atte
 
 
 def cmd_process(args, run, now):
-    worktree = _expand(args.worktree) if args.worktree else os.getcwd()
     if args.epic is None:
+        if args.accept_process_mismatch is not None:
+            raise MetricsError('--accept-process-mismatch działa tylko z epikiem: metrics.py process EPIK')
+        worktree = _expand(args.worktree) if args.worktree else os.getcwd()
         try:
             data, _ = process_version.reading(run, worktree, args.base, _expand(args.user_dir))
         except process_version.CheckError as e:
@@ -2962,27 +3069,31 @@ def cmd_process(args, run, now):
             return EXIT_PROCESS
         return 0
     epic_id = native_epic_id(args.epic)
+    accepted = accepted_reason(args.accept_process_mismatch)
     path = run_path(_expand(args.state), epic_id)
     run_file = read_run_file(path)
     if run_file is None:
         raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
+    sessions = _sessions(run_file)
+    session = checked_id(args.session, 'sesji') if args.session else (sessions[-1] if sessions else None)
     try:
-        result = recheck(run, run_file, worktree, args, now, 'process', None, None)
+        result = recheck(run, run_file, check_dir(args, run_file), args, now, 'process', session, accepted)
     except process_version.CheckError as e:
         raise MetricsError('kontrola wersji procesu: %s' % e)
     if result['status'] == 'checked':
         write_record(path, run_file)
     process = run_file.get('process') or {}
     output = {'epic': epic_id, 'status': result['status'], 'late': result['late'],
-              'expected': process.get('expected'), 'baseline': disk_baseline(process, True)
-              if result['status'] == 'checked' else None, 'disk': result.get('disk'),
+              'expected': process.get('expected'), 'disk': result.get('disk'),
               'user_level': result.get('user_level'), 'loaded': result.get('loaded'), 'added': result['added'],
+              'mismatches': result['lines'], 'accepted': accepted if result.get('accepted') else None,
               'match': not result['mismatch']}
     if result['status'] == 'not_checked':
         output['reason'] = result.get('reason')
     print(json.dumps(output, ensure_ascii=False))
     if result['mismatch']:
-        print('metrics: wersja procesu epiku %s: %s' % (epic_id, '; '.join(result['lines'])), file=sys.stderr)
+        print('metrics: wersja procesu epiku %s niezgodna z bazą: %s; %s' % (
+            epic_id, '; '.join(result['lines']), MISMATCH_HINT % epic_id), file=sys.stderr)
         return EXIT_PROCESS
     return 0
 
@@ -5327,17 +5438,21 @@ def process_topic(record):
     describe = expected.get('describe') if _safe(expected.get('describe')) else None
     ref = expected.get('ref') if isinstance(expected.get('ref'), str) and SHA_PATTERN.match(expected['ref']) else None
     parts = ['oczekiwana %s (%s)' % (describe or 'bez tagu', ref[:12] if ref else NO_DATA)]
-    changes = [c for c in _list(process.get('changes')) if isinstance(c, dict) and c.get('kind') == 'disk']
+    changes = [c for c in _list(process.get('changes')) if isinstance(c, dict) and c.get('kind') == 'disk'
+               and c.get('informational') is not True]
+    branch = len(informational_changes(process))
+    branch_text = ' (zmian w gałęzi epiku %d)' % branch if branch else ''
     differs = _files_count(process.get('disk'))
     if unchecked:
         parts.append('dysk: nie sprawdzono')
     elif process.get('match') is True and not changes:
-        parts.append('dysk zgodny')
+        parts.append('dysk zgodny' + branch_text)
     else:
-        places = [p.get('kind') for p in _list(process.get('disk')) if isinstance(p, dict) and p.get('differs')
-                  and p.get('kind') in ('worktree', 'main_checkout')]
-        parts.append('dysk: różnic przy starcie %d%s%s' % (differs, ' (%s)' % ', '.join(places) if places else '',
-                                                           ', zmian w trakcie %d' % len(changes) if changes else ''))
+        places = [p.get('kind') for p in _list(process.get('disk')) if isinstance(p, dict)
+                  and process_version.mismatch_paths(p) and p.get('kind') in ('worktree', 'main_checkout')]
+        parts.append('dysk: różnic przy starcie %d%s%s%s' % (differs, ' (%s)' % ', '.join(places) if places else '',
+                                                             ', zmian w trakcie %d' % len(changes) if changes else '',
+                                                             branch_text))
     summary = _dict(_dict(process.get('loaded')).get('summary'))
     if all(_count(summary.get(s)) is not None for s in process_version.STATUSES):
         epic = _count(summary.get('confirmed_epic'))
@@ -6050,6 +6165,8 @@ def build_parser():
     process.add_argument('--worktree')
     process.add_argument('--base')
     process.add_argument('--user-dir', default='~/.claude')
+    process.add_argument('--accept-process-mismatch', metavar='REASON')
+    process.add_argument('--session')
     epic = sub.add_parser('epic', parents=[common, projects])
     epic.add_argument('epic')
     epic.add_argument('--worktree')
