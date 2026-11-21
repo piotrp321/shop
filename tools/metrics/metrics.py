@@ -2915,7 +2915,15 @@ def recheck(run, run_file, worktree, args, now, event, session, accepted):
             if add_change(run_file, change):
                 added.append(change)
     remaining, accepted_now = items, []
-    shown = _dict(process.get('shown')).get('keys') or []
+    previous = _dict(process.get('shown'))
+    # what a refused resume showed for a session that is not in the run file yet stays shown for that resume, also
+    # after a `process EPIC` (which reads only the sessions of the run file)
+    pending = _dict(previous.get('resume')) or (previous if previous.get('event') == 'resume' else {})
+    if pending.get('session') in sessions and event != 'resume':
+        pending = {}
+    shown = list(previous.get('keys') or [])
+    if event == 'resume' and pending.get('session') == session:
+        shown += pending.get('keys') or []
     if accepted is not None and items:
         accepted_now = [i for i in items if i['key'] in shown]
         remaining = [i for i in items if i['key'] not in shown]
@@ -2923,8 +2931,12 @@ def recheck(run, run_file, worktree, args, now, event, session, accepted):
             change = _acceptance(now, event, session, accepted_now, accepted)
             process.setdefault('changes', []).append(change)
             added.append(change)
-    if remaining:
-        process['shown'] = {'at': iso(now), 'event': event, 'session': session, 'keys': [i['key'] for i in remaining]}
+    new_shown = {'at': iso(now), 'event': event, 'session': session, 'keys': [i['key'] for i in remaining]} \
+        if remaining else {}
+    if event != 'resume' and pending:
+        new_shown['resume'] = {'at': pending.get('at'), 'session': pending.get('session'), 'keys': pending.get('keys')}
+    if new_shown:
+        process['shown'] = new_shown
     else:
         process.pop('shown', None)
     process['loaded'] = dict(loaded, checked_at=iso(now))

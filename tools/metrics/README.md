@@ -50,7 +50,7 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   (`--worktree`, inaczej bieżący katalog; inna gałąź niż gałąź epiku albo zmiana procesu z `origin/main` to
   niezgodność); odmowa zapisuje pokazane niezgodności (`process.shown`, także nowej sesji, bez dopisania sesji),
   a to samo wznowienie z `--accept-process-mismatch POWÓD` je akceptuje i dopisuje sesję (nowe od odmowy: znowu kod
-  `2`); `--resume --at` nie sprawdza i zapisuje wpis `not_checked` (zapis po fakcie, nie obejście odmowy); `--user-dir`: katalog użytkownika Claude Code (domyślnie `~/.claude`). `--projects`: katalog
+  `2`; `process EPIK` w międzyczasie zachowuje je w `shown.resume`); `--resume --at` nie sprawdza i zapisuje wpis `not_checked` (zapis po fakcie, nie obejście odmowy); `--user-dir`: katalog użytkownika Claude Code (domyślnie `~/.claude`). `--projects`: katalog
   projektów Claude Code (domyślnie `~/.claude/projects`). Odczyt limitów z wejścia standardowego: obiekt `plan`
   z `get_usage` albo cały obiekt `get_usage` (`{"plan": …, "context": …}`, brany jest `plan`; `plan`, który nie jest
   obiektem, daje `{"status": "unreadable"}`); terminal albo puste wejście to brak odczytu (`null`).

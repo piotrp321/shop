@@ -408,7 +408,9 @@ Treść instrukcji nie trafia do pliku przebiegu ani rekordu, tylko ścieżki, s
   plik przebiegu bez nowej sesji, ale z `shown` (`event: "resume"`, `session` nowej sesji, także jej klucze), więc
   to samo wznowienie z `--accept-process-mismatch "<powód>"` akceptuje pokazane pozycje, dopisuje sesję i kończy się
   kodem 0, a pozycje nowe od odmowy dają kod 2 z listą i nowym `shown`; komunikat mówi „powtórz
-  z --accept-process-mismatch "<powód>"”. `done` zawsze
+  z --accept-process-mismatch "<powód>"”. `process <epik>` między odmową a akceptacją czyta tylko sesje pliku
+  przebiegu, więc to, co pokazała odmowa dla nowej sesji, zachowuje w `shown.resume` (`{at, session, keys}`) do jej
+  wznowienia. `done` zawsze
   zapisuje `done_at` (kod 0), niezgodność i nieudaną kontrolę zapisuje w `process.changes` z ostrzeżeniem na stderr.
   Plik przebiegu bez `process` (sprzed kontroli) albo z `check_failed` dostaje odczyt teraz (`checked_on`: `resume`,
   `done` albo `process`; przy `check_failed` `start_failure: {reason, accepted}`); ten odczyt nic nie akceptuje, więc
