@@ -76,33 +76,33 @@ final readonly class OptionFilter
     public function validate(ExecutionContextInterface $context): void
     {
         if ($this->bracketForm) {
-            $context->buildViolation('Send the options as a repeated `option` key, not as `option[]`.')->atPath(self::PARAMETER)->addViolation();
+            $context->buildViolation('Podaj opcje jako powtórzony klucz option, nie option[].')->atPath(self::PARAMETER)->addViolation();
         }
         if (\count($this->entries) > self::MAX_ENTRIES) {
-            $context->buildViolation('At most 50 options are accepted.')->atPath(self::PARAMETER)->addViolation();
+            $context->buildViolation('Można podać najwyżej 50 opcji.')->atPath(self::PARAMETER)->addViolation();
 
             return;
         }
         foreach ($this->entries as $entry) {
             if (!mb_check_encoding($entry, 'UTF-8')) {
-                $context->buildViolation('An option must be valid UTF-8.')->atPath(self::PARAMETER)->addViolation();
+                $context->buildViolation('Opcja zawiera niedozwolone znaki.')->atPath(self::PARAMETER)->addViolation();
 
                 return;
             }
             if (!str_contains($entry, ':')) {
-                $context->buildViolation('An option must have the form `<axis>:<value>`.')->atPath(self::PARAMETER)->addViolation();
+                $context->buildViolation('Opcja musi mieć postać oś:wartość.')->atPath(self::PARAMETER)->addViolation();
 
                 return;
             }
             [$axis, $value] = explode(':', $entry, 2);
             if ($this->lengthOutside($axis, self::MAX_AXIS_LENGTH) || $this->lengthOutside($value, self::MAX_VALUE_LENGTH)) {
-                $context->buildViolation('The axis of an option has 1 to 30 characters and its value 1 to 40.')->atPath(self::PARAMETER)->addViolation();
+                $context->buildViolation('Oś opcji ma od 1 do 30 znaków, a wartość od 1 do 40.')->atPath(self::PARAMETER)->addViolation();
 
                 return;
             }
         }
         if (\count($this->axes()) > self::MAX_AXES) {
-            $context->buildViolation('Options of at most 5 different axes are accepted.')->atPath(self::PARAMETER)->addViolation();
+            $context->buildViolation('Można podać opcje najwyżej 5 różnych osi.')->atPath(self::PARAMETER)->addViolation();
         }
     }
 

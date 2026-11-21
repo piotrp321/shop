@@ -20,6 +20,7 @@ final readonly class ListProductsQuery
     public const string AVAILABLE = 'true';
     // Strings, not ints: the query-string denormalizer would silently cut "10.5" to 10 (and deprecate doing so).
     private const string GROSZE_PATTERN = '/^\d{1,12}\z/';
+    private const string BAD_PRICE = 'Cena musi być liczbą całkowitą groszy, 0 albo więcej.';
 
     public function __construct(
         #[Assert\NotBlank(allowNull: true)]
@@ -28,10 +29,10 @@ final readonly class ListProductsQuery
         #[Assert\Length(min: 2, max: 100, normalizer: 'trim')]
         public ?string $q = null,
         #[Assert\NotBlank(allowNull: true)]
-        #[Assert\Regex(pattern: self::GROSZE_PATTERN, message: 'The price must be a whole number of grosze, 0 or more.')]
+        #[Assert\Regex(pattern: self::GROSZE_PATTERN, message: self::BAD_PRICE)]
         public ?string $priceMin = null,
         #[Assert\NotBlank(allowNull: true)]
-        #[Assert\Regex(pattern: self::GROSZE_PATTERN, message: 'The price must be a whole number of grosze, 0 or more.')]
+        #[Assert\Regex(pattern: self::GROSZE_PATTERN, message: self::BAD_PRICE)]
         public ?string $priceMax = null,
         #[Assert\Choice(choices: [self::AVAILABLE])]
         public ?string $available = null,
@@ -66,10 +67,10 @@ final readonly class ListProductsQuery
     public function validateCombinations(ExecutionContextInterface $context): void
     {
         if (1 === preg_match(self::GROSZE_PATTERN, $this->priceMin ?? '') && 1 === preg_match(self::GROSZE_PATTERN, $this->priceMax ?? '') && $this->priceMin() > $this->priceMax()) {
-            $context->buildViolation('The minimum price must not be higher than the maximum price.')->atPath('priceMin')->addViolation();
+            $context->buildViolation('Cena minimalna nie może być wyższa niż maksymalna.')->atPath('priceMin')->addViolation();
         }
         if (self::SORT_RELEVANCE === $this->sort && null === $this->q) {
-            $context->buildViolation('This sort order needs a search phrase.')->atPath('sort')->addViolation();
+            $context->buildViolation('To sortowanie wymaga szukanej frazy.')->atPath('sort')->addViolation();
         }
     }
 }

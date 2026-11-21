@@ -93,7 +93,7 @@ final class ListBackofficeProductsController
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();
             if (1 === \count($wrapped) && reset($wrapped) instanceof InvalidProductCursor) {
-                throw new ValidationFailedException($query, new ConstraintViolationList([new ConstraintViolation('The paging cursor is invalid.', null, [], $query, 'after', $query->after)]));
+                throw new ValidationFailedException($query, new ConstraintViolationList([new ConstraintViolation(BackofficeProductsQuery::BAD_CURSOR, null, [], $query, 'after', $query->after)]));
             }
 
             throw $failure;
