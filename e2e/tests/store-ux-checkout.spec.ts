@@ -407,6 +407,26 @@ test.describe("the checkout while the order is placed", () => {
     expect(await focusedId(page)).toBe(moved);
   });
 
+  test("an order sent with Enter from „Miejscowość” and refused with a 422 of a field leaves the focus where Tab moved it and announces the error", async ({ page }) => {
+    await openGuestCheckout(page);
+    await fillGuestCheckout(page);
+    const orders = await holdOrders(page);
+
+    await page.getByLabel("Miejscowość").focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(orders.posts).toBe(1);
+    await page.keyboard.press("Tab");
+    await expect(page.getByLabel("Miejscowość")).not.toBeFocused();
+    const moved = await focusedId(page);
+    expect(moved).not.toBe("");
+
+    orders.release(invalidPhone);
+    await expect(page.getByLabel("Telefon")).toHaveAttribute("aria-invalid", "true");
+    await expect(page.getByRole("alert").filter({ hasText: PHONE_INVALID })).toBeVisible();
+    await settle(page);
+    expect(await focusedId(page)).toBe(moved);
+  });
+
   test("an order sent with Enter from „Miejscowość” puts the focus on the first wrong field after a 422 when it stayed in the field", async ({ page }) => {
     await openGuestCheckout(page);
     await fillGuestCheckout(page);

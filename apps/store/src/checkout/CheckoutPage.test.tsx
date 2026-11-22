@@ -963,8 +963,71 @@ describe("CheckoutPage while the order is being placed", () => {
       await answer(result);
 
       expect(document.activeElement).toBe(field("Kod pocztowy"));
-      if (result.status === "failed") expect(alert().textContent).toBe(SUBMIT_FAILED);
-      else expect(field("Telefon").getAttribute("aria-invalid")).toBe("true");
+      if (result.status === "failed") {
+        expect(alert().textContent).toBe(SUBMIT_FAILED);
+      } else {
+        // The focus does not tell about the error of the field, so the error itself is announced.
+        expect(field("Telefon").getAttribute("aria-invalid")).toBe("true");
+        expect(alert().textContent).toBe("Podaj 9-cyfrowy numer telefonu.");
+        expect(alert().id).toBe(field("Telefon").getAttribute("aria-describedby"));
+      }
+    });
+
+    it.each([
+      ["Enter in „Miejscowość”", sendFromTheCity],
+      ["the button", sendFromTheButton],
+    ])("sent with %s, announces a 422 of the provider when the customer moved the focus; the focus stays", async (_name, send) => {
+      const answer = await send();
+      field("Kod pocztowy").focus();
+      await answer({ status: "invalid", violations: [{ propertyPath: "provider", title: "Wybierz sposób płatności." }] });
+
+      expect(document.activeElement).toBe(field("Kod pocztowy"));
+      const group = screen.getByRole("radiogroup", { name: "Sposób płatności" });
+      expect(alert().textContent).toBe("Wybierz sposób płatności.");
+      expect(group.getAttribute("aria-describedby")).toBe(alert().id);
+    });
+
+    it("announces every error of the fields of a 422 when the customer moved the focus", async () => {
+      const answer = await sendFromTheCity();
+      field("Kod pocztowy").focus();
+      await answer({
+        status: "invalid",
+        violations: [
+          { propertyPath: "phone", title: "Podaj 9-cyfrowy numer telefonu." },
+          { propertyPath: "postalCode", title: "Podaj kod pocztowy w formacie 00-000." },
+        ],
+      });
+
+      expect(screen.getAllByRole("alert").map((node) => node.textContent)).toEqual(["Podaj 9-cyfrowy numer telefonu.", "Podaj kod pocztowy w formacie 00-000."]);
+      expect(document.activeElement).toBe(field("Kod pocztowy"));
+    });
+
+    it.each([
+      ["Enter in „Miejscowość”", sendFromTheCity],
+      ["the button", sendFromTheButton],
+    ])("sent with %s, does not announce the errors of a 422 a second time when the focus goes to the first wrong field", async (_name, send) => {
+      const answer = await send();
+      await answer(INVALID);
+
+      expect(document.activeElement).toBe(field("Telefon"));
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("announces the errors of a 422 only for that answer: a later refusal with the focus kept says them without an alert", async () => {
+      const answer = await sendFromTheButton();
+      field("Kod pocztowy").focus();
+      await answer(INVALID);
+      expect(alert().textContent).toBe("Podaj 9-cyfrowy numer telefonu.");
+
+      const again = holdOrder();
+      submitButton().focus();
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+      await again(INVALID);
+
+      expect(document.activeElement).toBe(field("Telefon"));
+      expect(screen.queryByRole("alert")).toBeNull();
     });
 
     it("moves the focus to the message when it was lost during the request", async () => {
