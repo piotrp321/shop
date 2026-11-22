@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import {
   type AccountSession,
   type CartView,
@@ -12,16 +12,19 @@ import {
   type PlaceOrderResult,
   placeOrder,
 } from "@/api/client";
+import { actionsFinished } from "@/cart/cart-actions";
 import { announceCartChange } from "@/cart/events";
 import { SessionExpired } from "@/cart/messages";
 import { formatPrice } from "@/catalog/format-price";
 import { ScreenMain, ScreenTitle } from "@/components/ScreenLayout";
+import { useSiteSwitches } from "@/components/SiteSwitches";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import { navigateTo } from "./navigate";
 import type { PaymentProvider } from "./payment-api";
 
@@ -64,6 +67,15 @@ const RATE_LIMITED = "Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie
 const CART_GONE = "Koszyk nie jest już dostępny.";
 const FIELD_ID_PREFIX = "checkout-";
 const FAILURE_ID = "checkout-failure";
+const TITLE_ID = "checkout-title";
+const RETRY_ID = "checkout-retry";
+const LOAD_FAILED = "Nie udało się wczytać kasy";
+/** What the status region says while the checkout is read. */
+const LOADING = "Wczytywanie…";
+/** What the status region says from the order being sent to its refusal, or to leaving the page after a success. */
+const PLACING = "Składamy zamówienie…";
+/** The keys that change the choice of a radio of a group: the arrows move it, Space chooses the focused one. */
+const CHOICE_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "]);
 const LOGIN_HREF = `/auth/login?returnTo=${encodeURIComponent("/checkout")}`;
 
 const CODE_INPUT_ID = "checkout-discount-code";
@@ -101,6 +113,7 @@ const newIdempotencyKey = () => crypto.randomUUID();
  */
 export function CheckoutPage({ providers, pendingOrderNumber }: { providers: PaymentProvider[] | null; pendingOrderNumber: string | null }) {
   const router = useRouter();
+  const { customerAccounts, loaded: switchesLoaded } = useSiteSwitches();
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
   const [form, setForm] = useState<Form>(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
@@ -116,6 +129,12 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // What the live region of the summary says about the delivery after the summary was read again (a code, a 409).
   const [summaryStatus, setSummaryStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Whether the errors of the fields and of the provider of the last 422 are alerts: only when the focus did not go to
+  // the first wrong field, because the customer had moved it during the request (F2), so nothing else would say them.
+  const [errorsAnnounced, setErrorsAnnounced] = useState(false);
+  // "Spróbuj ponownie" reads the checkout again while the error stays (the button keeps the focus); `loaded` says
+  // "loading" only for the first read.
+  const [retrying, setRetrying] = useState(false);
   // The discount code lives in this component only (D3): a reload of the page starts without one. `appliedCode` is the
   // code the summary of `loaded` was priced with; `codeInput` is what the customer types.
   const [codeInput, setCodeInput] = useState("");
@@ -123,7 +142,11 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeStatus, setCodeStatus] = useState("");
   const [codeBusy, setCodeBusy] = useState(false);
-  // Where the focus goes after a refusal: the button was locked during the request, so the focus would be on the body.
+  // The request on its way, read by the handlers: the order or a check of the code. One at a time; while the order runs
+  // nothing of the form changes. The states above render the same, but a second event may come before they do.
+  const running = useRef<"order" | "code" | null>(null);
+  // Where the focus goes after an answer: the message, a field, the code. Set only under the condition of F2
+  // (`focusStayed`), or at once when nothing was sent.
   const [attention, setAttention] = useState<{ id: string; seq: number } | null>(null);
   // The key of one logical attempt. Made on entry and kept for a retry of an uncertain result (a network error, 403,
   // 5xx), after a 429 of the rate limit and after a 409 that leaves the request as it was. A new one for a new attempt: after every change of the
@@ -134,14 +157,18 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
 
   useEffect(() => {
     let active = true;
-    void loadCheckout().then((result) => {
-      if (!active) return;
-      setLoaded(result);
-      if (result.status === "ready") {
-        setForm(prefilled(result.session));
-        setDeliveryMethodId(onlyMethod(result.cart));
-      }
-    });
+    // A change given on the cart page of this tab while the navigation here was on its way is sent by that page after it
+    // was left: the cart is read after it, with the page loading till then (docs/features/checkout/spec.md).
+    void actionsFinished()
+      .then(loadCheckout)
+      .then((result) => {
+        if (!active) return;
+        setLoaded(result);
+        if (result.status === "ready") {
+          setForm(prefilled(result.session));
+          setDeliveryMethodId(onlyMethod(result.cart));
+        }
+      });
     return () => {
       active = false;
     };
@@ -151,15 +178,28 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     if (attention) document.getElementById(attention.id)?.focus();
   }, [attention]);
 
-  function retry() {
-    setLoaded({ status: "loading" });
-    void loadCheckout().then((result) => {
-      setLoaded(result);
-      if (result.status === "ready") {
-        setForm(prefilled(result.session));
-        setDeliveryMethodId(onlyMethod(result.cart));
-      }
-    });
+  function moveFocusTo(id: string) {
+    setAttention((current) => ({ id, seq: (current?.seq ?? 0) + 1 }));
+  }
+
+  /** Moves the focus to `id` after an answer only when it stayed on `origin`, where the action came from, or was lost. */
+  function focusAfterAnswer(origin: Element | null, id: string) {
+    if (focusStayed(origin)) moveFocusTo(id);
+  }
+
+  async function retry() {
+    if (retrying) return;
+    setRetrying(true);
+    const result = await loadCheckout();
+    // The focus is moved only when it is still on the button the retry came from, or was lost with it (F2).
+    const keepsFocus = focusStayed(document.getElementById(RETRY_ID));
+    setRetrying(false);
+    setLoaded(result);
+    if (result.status === "ready") {
+      setForm(prefilled(result.session));
+      setDeliveryMethodId(onlyMethod(result.cart));
+    }
+    if (keepsFocus) moveFocusTo(result.status === "error" ? RETRY_ID : TITLE_ID);
   }
 
   /**
@@ -173,6 +213,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   }
 
   function change(name: FieldName, value: string) {
+    if (running.current === "order") return;
     setForm((current) => ({ ...current, [name]: value }));
     setFieldErrors((current) => ({ ...current, [name]: undefined }));
     setIdempotencyKey(newIdempotencyKey());
@@ -198,16 +239,20 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
 
   async function applyCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (loaded.status !== "ready" || codeBusy || submitting) return;
+    if (loaded.status !== "ready" || running.current !== null) return;
     const code = codeInput.trim();
     if (code === "") {
       setCodeError(CODE_BLANK);
-      setAttention((current) => ({ id: CODE_INPUT_ID, seq: (current?.seq ?? 0) + 1 }));
+      moveFocusTo(CODE_INPUT_ID);
       return;
     }
+    // The button "Zastosuj", or the field Enter was pressed in.
+    const origin = document.activeElement;
+    running.current = "code";
     setCodeBusy(true);
     setCodeError(null);
     const preview = await loadPreview(code);
+    running.current = null;
     setCodeBusy(false);
     let target = CODE_INPUT_ID;
     if (preview.status === "ok") {
@@ -226,14 +271,17 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     } else {
       setCodeError(CODE_NOT_CHECKED);
     }
-    setAttention((current) => ({ id: target, seq: (current?.seq ?? 0) + 1 }));
+    focusAfterAnswer(origin, target);
   }
 
   async function removeCode() {
-    if (loaded.status !== "ready" || codeBusy || submitting) return;
+    if (loaded.status !== "ready" || running.current !== null) return;
+    const origin = document.activeElement;
+    running.current = "code";
     setCodeBusy(true);
     setCodeError(null);
     const preview = await loadPreview(null);
+    running.current = null;
     setCodeBusy(false);
     let target = CODE_REMOVE_ID;
     if (preview.status === "ok") {
@@ -249,35 +297,51 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     } else {
       setCodeError(CODE_NOT_REMOVED);
     }
-    setAttention((current) => ({ id: target, seq: (current?.seq ?? 0) + 1 }));
+    focusAfterAnswer(origin, target);
   }
 
   function chooseDelivery(methodId: string) {
+    if (running.current === "order") return;
     setDeliveryMethodId(methodId);
     setDeliveryError(null);
     setIdempotencyKey(newIdempotencyKey());
   }
 
+  function chooseProvider(code: string) {
+    if (running.current === "order") return;
+    setProvider(code);
+    setProviderError(null);
+  }
+
+  function typeCode(value: string) {
+    if (running.current === "order") return;
+    setCodeInput(value);
+    setCodeError(null);
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (loaded.status !== "ready" || submitting || codeBusy || providers === null || providers.length === 0) return;
+    if (loaded.status !== "ready" || running.current !== null || providers === null || providers.length === 0) return;
     if (offersNoMethods(loaded.cart)) return;
     const delivery = chosenOption(loaded.cart, deliveryMethodId);
-    if (delivery === null) {
-      setDeliveryError(CHOOSE_DELIVERY);
+    // Both missing choices are told at once; the focus goes to the first group with a message.
+    if (delivery === null || provider === null) {
+      if (delivery === null) setDeliveryError(CHOOSE_DELIVERY);
+      if (provider === null) setProviderError(CHOOSE_PROVIDER);
+      setErrorsAnnounced(false);
       const first = loaded.cart.delivery?.options[0];
-      setAttention((current) => ({ id: first === undefined ? DELIVERY_ERROR_ID : `${DELIVERY_ID_PREFIX}${first.methodId}`, seq: (current?.seq ?? 0) + 1 }));
+      if (delivery !== null) moveFocusTo(`${PROVIDER_ID_PREFIX}${providers[0].code}`);
+      else moveFocusTo(first === undefined ? DELIVERY_ERROR_ID : `${DELIVERY_ID_PREFIX}${first.methodId}`);
       return;
     }
-    if (provider === null) {
-      setProviderError(CHOOSE_PROVIDER);
-      setAttention((current) => ({ id: `${PROVIDER_ID_PREFIX}${providers[0].code}`, seq: (current?.seq ?? 0) + 1 }));
-      return;
-    }
+    // The button, or the field Enter was pressed in: the focus moves after a refusal only when it stayed there (F2).
+    const origin = document.activeElement;
+    running.current = "order";
     setSubmitting(true);
     setProviderError(null);
     setFailure(null);
     setFieldErrors({});
+    setErrorsAnnounced(false);
     const { email, ...contact } = form;
     const input: PlaceOrderInput = {
       ...(loaded.session === null ? { email } : {}),
@@ -290,7 +354,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     const result = await placeOrder(input, idempotencyKey);
     if (result.status === "ok") {
       announceCartChange(0);
-      // The button stays locked: the page of the provider, or the confirmation page, is on its way.
+      // The form stays locked: the page of the provider, or the confirmation page, is on its way.
       if (result.redirectUrl === null) {
         router.push("/checkout/confirmation");
       } else {
@@ -298,9 +362,12 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       }
       return;
     }
+    // Set with the errors themselves (the 422 is shown without waiting), so that they are rendered as alerts at once.
+    setErrorsAnnounced(result.status === "invalid" && !focusStayed(origin));
     const target = await showFailure(result, loaded.session);
+    running.current = null;
     setSubmitting(false);
-    setAttention((current) => ({ id: target, seq: (current?.seq ?? 0) + 1 }));
+    focusAfterAnswer(origin, target);
   }
 
   /** Shows why the order was not placed; answers the id of the element that gets the focus. */
@@ -386,11 +453,19 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
 
   // The message that replaces the form has its own link to the cart, so a conflict does not add a second one.
   const showsForm = loaded.status === "ready" && loaded.cart.lines.length > 0 && !loaded.cart.hasExcludedLines;
+  // The one status region of the screen says what the screen is doing; it is there in every state and only its text
+  // changes, so that a screen reader announces the text each time it is set.
+  const operation = loaded.status === "loading" || retrying ? LOADING : submitting ? PLACING : "";
 
   return (
     <ScreenMain>
-      <ScreenTitle>Kasa</ScreenTitle>
-      {loaded.status === "loading" ? <p className="text-muted-foreground">Wczytywanie…</p> : null}
+      <ScreenTitle id={TITLE_ID} tabIndex={-1}>
+        Kasa
+      </ScreenTitle>
+      {/* An empty region takes no room: the negative margin cancels the gap above it. */}
+      <p role="status" data-testid="checkout-status" className="text-muted-foreground empty:-mt-6">
+        {operation}
+      </p>
       {loaded.status === "unauthorized" ? (
         <Alert variant="destructive">
           <AlertDescription>
@@ -399,12 +474,24 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         </Alert>
       ) : null}
       {loaded.status === "error" ? (
-        <Alert variant="destructive" className="justify-items-start gap-3">
-          <AlertDescription>Nie udało się wczytać kasy</AlertDescription>
-          <Button type="button" variant="outline" onClick={retry}>
+        <div className="flex flex-col items-start gap-3">
+          {retrying ? null : (
+            <Alert variant="destructive">
+              <AlertDescription>{LOAD_FAILED}</AlertDescription>
+            </Alert>
+          )}
+          {/* A running read blocks with `aria-disabled`, not `disabled`: a disabled button loses the keyboard focus. */}
+          <Button
+            id={RETRY_ID}
+            type="button"
+            variant="outline"
+            aria-disabled={retrying ? true : undefined}
+            className={retrying ? "opacity-50" : undefined}
+            onClick={() => void retry()}
+          >
             Spróbuj ponownie
           </Button>
-        </Alert>
+        </div>
       ) : null}
       {failure ? <FailureMessage failure={failure} cartLinkShown={showsForm} /> : null}
       {loaded.status === "ready" ? (
@@ -413,27 +500,23 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           session={loaded.session}
           form={form}
           fieldErrors={fieldErrors}
+          errorsAnnounced={errorsAnnounced}
           providers={providers}
           provider={provider}
           providerError={providerError}
           deliveryMethodId={deliveryMethodId}
           deliveryError={deliveryError}
           summaryStatus={summaryStatus}
+          offersLogin={switchesLoaded && customerAccounts}
           onDeliveryChange={chooseDelivery}
           pendingOrderNumber={pendingOrderNumber}
           submitting={submitting}
           code={{ input: codeInput, applied: appliedCode !== null, error: codeError, status: codeStatus, busy: codeBusy }}
-          onCodeInput={(value) => {
-            setCodeInput(value);
-            setCodeError(null);
-          }}
+          onCodeInput={typeCode}
           onApplyCode={(event) => void applyCode(event)}
           onRemoveCode={() => void removeCode()}
           onChange={change}
-          onProviderChange={(code) => {
-            setProvider(code);
-            setProviderError(null);
-          }}
+          onProviderChange={chooseProvider}
           onSubmit={(event) => void submit(event)}
         />
       ) : null}
@@ -461,6 +544,36 @@ async function loadPreview(code: string | null): Promise<Preview> {
   const discount = result.data.discount;
   if (discount?.status === "applied") return { status: "ok", cart: result.data, appliedCode: code, codeError: null };
   return { status: "ok", cart: result.data, appliedCode: null, codeError: discount?.status === "rejected" ? discount.detail : CODE_BLANK };
+}
+
+/**
+ * Whether the focus may be moved after an answer (F2): it is still on `origin`, the element the action came from (the
+ * button, or the field Enter was pressed in), or it was lost with it. Moved by the customer meanwhile, it stays there.
+ */
+function focusStayed(origin: Element | null): boolean {
+  const focused = document.activeElement;
+  return focused === null || focused === document.body || focused === origin;
+}
+
+/** The look of a field or a button blocked with `aria-disabled`: `disabled` would drop the keyboard focus. */
+const BLOCKED_FIELD = "aria-disabled:cursor-not-allowed aria-disabled:border-border aria-disabled:bg-muted aria-disabled:text-muted-foreground";
+const BLOCKED_BUTTON = "aria-disabled:cursor-not-allowed aria-disabled:opacity-50";
+const BLOCKED_CHOICE = "cursor-not-allowed text-muted-foreground";
+
+/**
+ * What a radio of a choice gets while the order is placed: `aria-disabled`, not `disabled` (which drops the focus), and
+ * no change of the choice by a click, a tap, the arrows or Space. A cancelled click leaves the browser's choice as it
+ * was; the handler of the change ignores it too.
+ */
+function blockedRadio(locked: boolean) {
+  if (!locked) return {};
+  return {
+    "aria-disabled": true,
+    onClick: (event: MouseEvent<HTMLInputElement>) => event.preventDefault(),
+    onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => {
+      if (CHOICE_KEYS.has(event.key)) event.preventDefault();
+    },
+  } as const;
 }
 
 type DeliveryOption = NonNullable<CartView["delivery"]>["options"][number];
@@ -551,12 +664,14 @@ function CheckoutContent({
   session,
   form,
   fieldErrors,
+  errorsAnnounced,
   providers,
   provider,
   providerError,
   deliveryMethodId,
   deliveryError,
   summaryStatus,
+  offersLogin,
   onDeliveryChange,
   pendingOrderNumber,
   submitting,
@@ -572,12 +687,16 @@ function CheckoutContent({
   session: AccountSession;
   form: Form;
   fieldErrors: Partial<Record<FieldName, string>>;
+  /** Whether the errors of the fields and of the provider are alerts (see `errorsAnnounced` of the page). */
+  errorsAnnounced: boolean;
   providers: PaymentProvider[] | null;
   provider: string | null;
   providerError: string | null;
   deliveryMethodId: string | null;
   deliveryError: string | null;
   summaryStatus: string;
+  /** Whether a guest is offered the login: the switches are read and the accounts are on. */
+  offersLogin: boolean;
   onDeliveryChange: (methodId: string) => void;
   pendingOrderNumber: string | null;
   submitting: boolean;
@@ -614,26 +733,36 @@ function CheckoutContent({
       <OrderSummary cart={cart} delivery={chosenOption(cart, deliveryMethodId)} status={summaryStatus} />
       <DiscountCode
         state={code}
-        disabled={submitting}
+        locked={submitting}
         onInput={onCodeInput}
         onApply={onApplyCode}
         onRemove={onRemoveCode}
       />
       <form noValidate onSubmit={onSubmit} className="flex flex-col gap-5">
         {session === null ? (
-          <p className="text-sm text-muted-foreground">
-            Masz konto?{" "}
-            <a href={LOGIN_HREF} className="text-link underline underline-offset-4">
-              Zaloguj się
-            </a>
-          </p>
+          offersLogin ? (
+            <p className="text-sm text-muted-foreground">
+              Masz konto?{" "}
+              <a href={LOGIN_HREF} className="text-link underline underline-offset-4">
+                Zaloguj się
+              </a>
+            </p>
+          ) : null
         ) : (
           <p className="text-sm">
             Potwierdzenie wyślemy na adres <span data-testid="account-email">{session.email}</span>
           </p>
         )}
         {FIELDS.filter((field) => field.name !== "email" || session === null).map((field) => (
-          <FormField key={field.name} {...field} value={form[field.name]} error={fieldErrors[field.name]} onChange={onChange} />
+          <FormField
+            key={field.name}
+            {...field}
+            value={form[field.name]}
+            error={fieldErrors[field.name]}
+            announced={errorsAnnounced}
+            locked={submitting}
+            onChange={onChange}
+          />
         ))}
         {offersNoMethods(cart) ? (
           <Alert role="status">
@@ -645,6 +774,7 @@ function CheckoutContent({
             value={chosenOption(cart, deliveryMethodId)?.methodId ?? null}
             error={deliveryError}
             currency={cart.totals.currency}
+            locked={submitting}
             onChange={onDeliveryChange}
           />
         ) : null}
@@ -654,8 +784,22 @@ function CheckoutContent({
           </Alert>
         ) : (
           <>
-            <ProviderChoice providers={providers} value={provider} error={providerError} onChange={onProviderChange} />
-            <Button type="submit" className="self-end" disabled={submitting || code.busy || offersNoMethods(cart)}>
+            <ProviderChoice
+              providers={providers}
+              value={provider}
+              error={providerError}
+              announced={errorsAnnounced}
+              locked={submitting}
+              onChange={onProviderChange}
+            />
+            {/* A running request blocks with `aria-disabled`, not `disabled`: a disabled button loses the keyboard focus.
+                No delivery method to choose is a lasting state, not a request, and keeps `disabled`. */}
+            <Button
+              type="submit"
+              className={cn("self-end", BLOCKED_BUTTON)}
+              disabled={offersNoMethods(cart)}
+              aria-disabled={submitting || code.busy ? true : undefined}
+            >
               Zamawiam z obowiązkiem zapłaty
             </Button>
           </>
@@ -669,11 +813,17 @@ function ProviderChoice({
   providers,
   value,
   error,
+  announced,
+  locked,
   onChange,
 }: {
   providers: PaymentProvider[];
   value: string | null;
   error: string | null;
+  /** Whether the error is an alert (see `errorsAnnounced`). */
+  announced: boolean;
+  /** While the order is placed the choice does not change. */
+  locked: boolean;
   onChange: (code: string) => void;
 }) {
   return (
@@ -689,7 +839,7 @@ function ProviderChoice({
         Sposób płatności
       </span>
       {providers.map(({ code, name }) => (
-        <Label key={code} htmlFor={`${PROVIDER_ID_PREFIX}${code}`} className="min-h-11 gap-3 text-ui font-normal">
+        <Label key={code} htmlFor={`${PROVIDER_ID_PREFIX}${code}`} className={cn("min-h-11 gap-3 text-ui font-normal", locked && BLOCKED_CHOICE)}>
           <input
             id={`${PROVIDER_ID_PREFIX}${code}`}
             type="radio"
@@ -697,13 +847,14 @@ function ProviderChoice({
             value={code}
             checked={value === code}
             onChange={() => onChange(code)}
+            {...blockedRadio(locked)}
             className="size-5 accent-foreground"
           />
           {name}
         </Label>
       ))}
       {error ? (
-        <p id={PROVIDER_ERROR_ID} className="text-sm text-destructive">
+        <p id={PROVIDER_ERROR_ID} role={announced ? "alert" : undefined} className="text-sm text-destructive">
           {error}
         </p>
       ) : null}
@@ -720,12 +871,15 @@ function DeliveryChoice({
   value,
   error,
   currency,
+  locked,
   onChange,
 }: {
   options: DeliveryOption[];
   value: string | null;
   error: string | null;
   currency: string;
+  /** While the order is placed the choice does not change. */
+  locked: boolean;
   onChange: (methodId: string) => void;
 }) {
   return (
@@ -736,7 +890,11 @@ function DeliveryChoice({
     >
       <legend className="mb-1 text-ui font-semibold">Sposób dostawy</legend>
       {options.map((option) => (
-        <Label key={option.methodId} htmlFor={`${DELIVERY_ID_PREFIX}${option.methodId}`} className="min-h-11 items-start gap-3 py-1 text-ui font-normal">
+        <Label
+          key={option.methodId}
+          htmlFor={`${DELIVERY_ID_PREFIX}${option.methodId}`}
+          className={cn("min-h-11 items-start gap-3 py-1 text-ui font-normal", locked && BLOCKED_CHOICE)}
+        >
           <input
             id={`${DELIVERY_ID_PREFIX}${option.methodId}`}
             type="radio"
@@ -745,6 +903,7 @@ function DeliveryChoice({
             value={option.methodId}
             checked={value === option.methodId}
             onChange={() => onChange(option.methodId)}
+            {...blockedRadio(locked)}
             className="mt-0.5 size-5 shrink-0 accent-foreground"
           />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -775,6 +934,8 @@ function FormField({
   autoComplete,
   value,
   error,
+  announced,
+  locked,
   onChange,
 }: {
   name: FieldName;
@@ -783,6 +944,10 @@ function FormField({
   autoComplete: string;
   value: string;
   error?: string;
+  /** Whether the error is an alert (see `errorsAnnounced`). */
+  announced: boolean;
+  /** While the order is placed the field keeps its value: read-only with `aria-disabled`, and it keeps the focus. */
+  locked: boolean;
   onChange: (name: FieldName, value: string) => void;
 }) {
   const id = `${FIELD_ID_PREFIX}${name}`;
@@ -796,12 +961,15 @@ function FormField({
         type={type}
         autoComplete={autoComplete}
         value={value}
+        readOnly={locked}
+        aria-disabled={locked ? true : undefined}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
+        className={BLOCKED_FIELD}
         onChange={(event) => onChange(name, event.target.value)}
       />
       {error ? (
-        <p id={errorId} className="text-sm text-destructive">
+        <p id={errorId} role={announced ? "alert" : undefined} className="text-sm text-destructive">
           {error}
         </p>
       ) : null}
@@ -818,25 +986,28 @@ type CodeState = { input: string; applied: boolean; error: string | null; status
  */
 function DiscountCode({
   state,
-  disabled,
+  locked,
   onInput,
   onApply,
   onRemove,
 }: {
   state: CodeState;
-  disabled: boolean;
+  /** While the order is placed the field keeps its value and the buttons send nothing. */
+  locked: boolean;
   onInput: (value: string) => void;
   onApply: (event: FormEvent<HTMLFormElement>) => void;
   onRemove: () => void;
 }) {
-  const locked = disabled || state.busy;
+  // A running request (the order or a check of the code) blocks the buttons with `aria-disabled`, not `disabled`, which
+  // would drop the keyboard focus; the handlers send nothing meanwhile.
+  const buttonsBlocked = locked || state.busy ? true : undefined;
   return (
     <div className="flex flex-col gap-2">
       <div data-testid="checkout-code-status" role="status" className="sr-only">
         {state.status}
       </div>
       {state.applied ? (
-        <Button id={CODE_REMOVE_ID} type="button" variant="outline" className="self-start" disabled={locked} onClick={onRemove}>
+        <Button id={CODE_REMOVE_ID} type="button" variant="outline" className={cn("self-start", BLOCKED_BUTTON)} aria-disabled={buttonsBlocked} onClick={onRemove}>
           Usuń kod
         </Button>
       ) : (
@@ -851,11 +1022,14 @@ function DiscountCode({
               autoCapitalize="characters"
               maxLength={CODE_MAX_LENGTH}
               value={state.input}
+              readOnly={locked}
+              aria-disabled={locked ? true : undefined}
               aria-invalid={state.error ? true : undefined}
               aria-describedby={state.error ? CODE_ERROR_ID : undefined}
+              className={BLOCKED_FIELD}
               onChange={(event) => onInput(event.target.value)}
             />
-            <Button type="submit" variant="outline" disabled={locked} aria-busy={state.busy || undefined}>
+            <Button type="submit" variant="outline" className={BLOCKED_BUTTON} aria-disabled={buttonsBlocked} aria-busy={state.busy || undefined}>
               Zastosuj
             </Button>
           </div>

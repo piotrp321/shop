@@ -477,11 +477,26 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   brakuje Y zł”, nigdy razem z „Darmowa”; wymagany wybór; bez sekcji przy `delivery: null`; szczegóły:
   `docs/features/delivery/spec.md`, W10; stany: akapit „Dostawa w kasie” niżej), grupa radiowa „Sposób płatności” (dostawcy z API, wymagany wybór, bez domyślnego), przycisk
   „Zamawiam z obowiązkiem zapłaty” (P9). Gość: pole
-  e-mail i link „Zaloguj się” (`/auth/login?returnTo=/checkout`). Klient: e-mail z `/auth/session` jako tekst,
+  e-mail i link „Zaloguj się” (`/auth/login?returnTo=/checkout`), który pokazuje się dopiero po odczycie
+  przełączników wdrożenia (`useSiteSwitches`, `/api/site`) i tylko przy `customerAccounts: true`; błąd odczytu daje stan
+  domyślny, czyli link, jak w nagłówku. Klient: e-mail z `/auth/session` jako tekst,
   imię i nazwisko wstępnie wypełnione z sesji (konto bez imienia ma w sesji e-mail jako nazwę: pole zostaje puste).
   Pusty koszyk albo `hasExcludedLines`: zamiast formularza komunikat i link do koszyka; przy pustym koszyku
   i poprawnym `store_order_confirmation` także link „Opłać zamówienie R-…” na `/checkout/confirmation` (powrót ze
   strony dostawcy bez decyzji, `docs/features/payment/spec.md`, P7).
+- Status i ponowienie wczytania (`CheckoutPage.tsx`): jeden region `role="status"` (`data-testid="checkout-status"`)
+  istnieje od pierwszego renderu przez wszystkie stany ekranu (wczytywanie, błąd, treść, pusty koszyk, wygasła sesja);
+  zmienia się tylko jego tekst („Wczytywanie…” w trakcie odczytu, „Składamy zamówienie…” w trakcie składania
+  zamówienia, poza tym pusty) i jest jedynym miejscem tego tekstu. Region podsumowania (`checkout-summary-status`) i kodu rabatowego (`checkout-code-status`) są osobne. Po nieudanym
+  odczycie kasy (`/api/cart` albo `/auth/session`) komunikat „Nie udało się wczytać kasy” jest w `role="alert"`,
+  a „Spróbuj ponownie” poza nim. Na czas ponowienia przycisk zostaje na ekranie z `aria-disabled="true"` (nie
+  `disabled`, więc zachowuje fokus; ponowna aktywacja nie wysyła żądania), komunikat znika, a region mówi
+  „Wczytywanie…”. Sukces: fokus na nagłówek „Kasa”; ponowny błąd: komunikat wraca, fokus na przycisku. Fokus
+  przenosi się tylko wtedy, gdy w chwili odpowiedzi jest nadal na przycisku albo na `<body>`; przeniesiony w trakcie
+  zostaje tam. Pierwszy odczyt kasy czeka na zakończenie akcji stron koszyka tej karty (`actionsFinished()`,
+  `src/cart/cart-actions.ts`; zmiana zlecona w koszyku, gdy nawigacja do kasy była w drodze), z regionem „Wczytywanie…”
+  do tego czasu; bez akcji albo po ich porzuceniu przy 401 czyta od razu. Ponowienie i odczyt po kodzie rabatowym nie
+  czekają: w karcie z kasą nie ma już strony koszyka.
 - Kod rabatowy (`docs/features/discount-codes/spec.md`): pod podsumowaniem pole „Kod rabatowy” (`maxLength` 64,
   etykieta) w osobnym formularzu, więc Enter zastosuje kod i nie złoży zamówienia, z przyciskiem „Zastosuj”. Zastosowanie
   wczytuje podsumowanie z kodem (`/api/cart?discountCode=…`; kod przycięty z białych znaków). Zastosowany kod: linia
@@ -490,7 +505,10 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   z podsumowania (`rejected`) albo 400 koszyka pokazane przy polu (`role="alert"`, `aria-invalid`,
   `aria-describedby`), podsumowanie bez rabatu, fokus w polu; pole puste albo kod pusty po normalizacji w API:
   „Wpisz kod rabatowy.”. Pole znika razem z formularzem (pusty koszyk, `hasExcludedLines`). Zastosowanie i usunięcie
-  ogłasza obszar `role="status"`. Złożenie wysyła `discountCode` zastosowanego kodu (bez kodu: bez klucza)
+  ogłasza obszar `role="status"`. W trakcie sprawdzania kodu „Zastosuj”, „Usuń kod” i przycisk zamówienia mają
+  `aria-disabled="true"` zamiast `disabled` (zachowują fokus) i nie wysyłają żądania. Po odpowiedzi fokus idzie na pole
+  kodu albo „Usuń kod” tylko wtedy, gdy jest nadal na elemencie, z którego wyszło sprawdzenie („Zastosuj”, pole kodu
+  z Enterem, „Usuń kod”), albo na `<body>`; przeniesiony w trakcie zostaje tam. Złożenie wysyła `discountCode` zastosowanego kodu (bez kodu: bez klucza)
   i `expectedTotalGross` z podsumowania po rabacie. Kod nie przeżywa przeładowania strony (stan tylko w pamięci
   strony).
 - Dostawa w kasie (stany; `CheckoutPage.tsx`):
@@ -525,10 +543,20 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   403), a zamówienie jednak powstało, zmiana pola i ponowne kliknięcie dają 409 `CartEmpty` (pusty koszyk), a nie
   potwierdzenie. Drugiego zamówienia nie ma, bo koszyk jest pusty.
 - `expectedTotalGross` = `totalGross` wybranej opcji dostawy z ostatnio wczytanego podsumowania, `deliveryMethodId` =
-  jej `methodId`. Bez wybranej metody (także gdy wybranej nie ma już wśród opcji podsumowania) żądania nie ma:
-  „Wybierz sposób dostawy.” przy grupie i fokus na jej pierwszej opcji. Zmiana metody daje nowy klucz (inna treść
-  żądania); po 409 `delivery-method-unavailable` komunikat jest nad formularzem, podsumowanie wczytuje się od nowa
-  i powstaje nowy klucz. Na czas żądania przycisk jest zablokowany.
+  jej `methodId`. Bez wybranej metody (także gdy wybranej nie ma już wśród opcji podsumowania) albo bez dostawcy
+  płatności żądania nie ma: „Wybierz sposób dostawy.” i „Wybierz sposób płatności.” przy grupach, których dotyczą,
+  jednym kliknięciem także oba naraz; każda z nich ma wtedy `aria-invalid` i `aria-describedby` na swój komunikat,
+  a fokus idzie na pierwszą opcję pierwszej grupy z błędem (dostawa przed płatnością). Zmiana metody daje nowy klucz
+  (inna treść żądania); po 409 `delivery-method-unavailable` komunikat jest nad formularzem, podsumowanie wczytuje się
+  od nowa i powstaje nowy klucz.
+- Składanie zamówienia: od wysłania `POST /api/checkout` do odpowiedzi z błędem albo, po sukcesie, do opuszczenia
+  strony formularz jest zablokowany i nic w nim się nie zmienia. Pola formularza i pole kodu są tylko do odczytu
+  z `aria-disabled="true"` i wyglądem nieaktywnym; wybór dostawy i płatności ma `aria-disabled="true"` bez `disabled`
+  i nie zmienia się po kliknięciu, dotyku, strzałkach ani Spacji; „Zastosuj”, „Usuń kod” i przycisk zamówienia mają
+  `aria-disabled="true"` zamiast `disabled` i nie wysyłają żądania. Każda z tych kontrolek zachowuje fokus. Enter w polu,
+  kliknięcie i Spacja na przycisku dają jedno żądanie; region statusu mówi „Składamy zamówienie…”. Po błędzie kontrolki
+  są odblokowane, a wartości pól zostają; dostawa, płatność, kod i podsumowanie zmieniają się tylko tak, jak opisuje
+  tabela niżej. Przycisk zamówienia przy braku sposobów dostawy jest `disabled` (stan trwały, nie żądanie w drodze).
 - Sukces: licznik koszyka 0 (zdarzenie `src/cart/events.ts`), przejście na stronę dostawcy (`redirectUrl`) albo,
   bez niego, na `/checkout/confirmation`.
 - `/checkout/confirmation` (`noindex, nofollow`, Server Component czytający podpisane `store_order_confirmation`
@@ -551,9 +579,14 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | 401 | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem (`returnTo=/checkout`) |
 | 403, 503, 5xx, błąd sieci | „Nie udało się złożyć zamówienia. Spróbuj ponownie.” (ponowienie z tym samym kluczem) |
 
-Po każdym odrzuceniu fokus przechodzi na komunikat błędu (`role="alert"`, `tabIndex=-1`), bo przycisk jest zablokowany na
-czas żądania; po 422 z błędami pól na pierwsze błędne pole (w kolejności formularza), które ma `aria-invalid`
-i `aria-describedby` na swój komunikat.
+Po odrzuceniu fokus przechodzi na komunikat błędu (`role="alert"`, `tabIndex=-1`); po 422 z błędami pól na pierwsze
+błędne pole (w kolejności formularza), które ma `aria-invalid` i `aria-describedby` na swój komunikat; po odrzuconym
+kodzie na pole kodu. Dzieje się tak tylko wtedy, gdy w chwili odpowiedzi fokus jest nadal na elemencie, z którego
+wyszło wysłanie (przycisk albo pole, w którym naciśnięto Enter), albo na `<body>`. Gdy klient przeszedł w tym czasie
+do innej kontrolki, fokus zostaje tam, a odrzucenie ogłasza `role="alert"`: komunikat nad formularzem, a po 422
+z błędami pól albo dostawcy same teksty tych błędów przy polach i przy grupie „Sposób płatności” (te same teksty, bez
+zmiany wyglądu). Gdy fokus idzie na pierwsze błędne pole, błędy przy polach nie są w `role="alert"`; opisuje je
+`aria-describedby` pola.
 
 ## Scenariusze błędów
 
@@ -677,10 +710,16 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   (z walutą), 404 gościa usuwa `store_cart`, 409 (przekazuje `type` każdej z pięciu przyczyn, `about:blank` i brak),
   422, 401, 503, `no-store`.
 - `/auth/session` (`app/auth/session`): `{name, email}`.
-- `CheckoutPage`: formularz gościa i klienta (e-mail z sesji), podsumowanie, blokada przycisku, każdy wiersz tabeli
+- `CheckoutPage`: pierwszy odczyt po zakończeniu akcji strony koszyka (do tego czasu „Wczytywanie…”), od razu bez
+  akcji i po akcjach porzuconych; formularz gościa i klienta (e-mail z sesji), podsumowanie, blokada przycisku, każdy wiersz tabeli
   UI (pięć przyczyn 409 i nieznany 409: komunikat, link do koszyka, formularz, ten sam albo nowy klucz przy kolejnym
   kliknięciu, brak automatycznego drugiego POST), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
-  danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`.
+  danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`, region statusu (ten sam węzeł od wczytywania do treści),
+  „Spróbuj ponownie” (przycisk z `aria-disabled` w trakcie, fokus po sukcesie, ponownym błędzie i przeniesiony w trakcie),
+  link „Zaloguj się” według przełączników (przed odczytem, wyłączone konta, włączone konta), blokada w trakcie
+  składania zamówienia (pola, wybory, kod, jedno żądanie, blokada w chwili przejścia po sukcesie, odblokowanie po
+  błędzie z zachowanymi wartościami), fokus po odrzuceniu i po sprawdzeniu kodu pod warunkiem pozostania fokusu (wysłanie
+  przyciskiem i Enterem z „Miejscowość”, 422 i błąd) oraz oba błędy wyboru jednym kliknięciem.
 - `/checkout/confirmation` i `PaymentConfirmation`: z ciasteczkiem, bez, z niepoprawnym podpisem, każdy stan płatności
   (`docs/features/payment/spec.md`).
 - `CartPage`: przycisk „Przejdź do kasy” aktywny i nieaktywny.
@@ -696,6 +735,18 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   bez pola e-mail), odrzuca płatność „Kartą płatniczą (demo)”, wybiera ponownie i płaci; w Mailpit e-maile na adres
   Jana z numerem tego zamówienia (wyszukiwanie po adresie i temacie z numerem, bo Jan dostaje e-maile przy każdym
   uruchomieniu).
+- `store-ux-checkout.spec.ts`: ponowienie wczytania kasy po błędzie `/api/cart` i `/auth/session` (odpowiedź ponowienia
+  wstrzymana: przycisk z fokusem i `aria-disabled`, drugi Enter bez żądania, region „Wczytywanie…”; sukces: fokus na
+  „Kasa”; ponowny błąd: komunikat i fokus na przycisku; fokus przeniesiony w trakcie zostaje), ten sam węzeł regionu
+  statusu, brak przewijania poziomego przy 320 i 375 px oraz link „Zaloguj się” przy podstawionym `/api/site`
+  (wyłączone konta, włączone, błąd odczytu; odpowiedź wstrzymana). Składanie zamówienia z `POST /api/checkout`
+  wstrzymanym w przeglądarce i zakończonym odpowiedzią podstawioną przez test (500 albo 422), więc bez zamówienia:
+  wpisywanie w pola i w pole kodu, mysz, dotyk, strzałki i Spacja na wyborach oraz „Zastosuj” niczego nie zmieniają,
+  przycisk ma fokus i `aria-disabled`, region „Składamy zamówienie…”, jeden POST; wysłanie Enterem z „Miejscowość”
+  (po 422 fokus na pierwszym błędnym polu; po przejściu Tab w trakcie fokus zostaje, a po 500 komunikat, po 422 błąd
+  pola jest w `role="alert"`); pusty formularz przy 375 px
+  z dotykiem: oba błędy wyboru, fokus na pierwszym sposobie dostawy w widoku, bez POST; brak przewijania poziomego
+  przy 320 i 375 px.
 - `payment-resume.spec.ts`: powrót ze strony symulatora na `/checkout`, link „Opłać zamówienie R-…”, „Wróć do
   płatności” otwiera tę samą sesję, płatność się udaje.
 - E2E składają zamówienia na wariantach z dużym stanem i je opłacają; rezerwacje opłaconych zamówień zostają do

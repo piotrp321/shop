@@ -300,8 +300,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   także komunikat o dostawcy przy grupie.
 - Przyczynę 409 wyznacza wyłącznie `type` (`placeOrder` zwraca `reason` z `conflictReason`, mapa typów
   w `src/checkout/problems.ts` jest sprawdzana kompilatorem względem schematu), nigdy tekst `detail`. Żadne odrzucenie
-  nie ponawia zamówienia samo. Po każdym odrzuceniu fokus idzie na komunikat (`role="alert"`, `tabIndex={-1}`, bo
-  przycisk jest zablokowany na czas żądania), a po 422 z błędami pól na pierwsze błędne pole.
+  nie ponawia zamówienia samo. Po odrzuceniu fokus idzie na komunikat (`role="alert"`, `tabIndex={-1}`), a po 422
+  z błędami pól na pierwsze błędne pole, tylko gdy został na elemencie, z którego wyszło wysłanie, albo zginął
+  (`focusStayed` w `CheckoutPage.tsx`); przeniesiony przez klienta w trakcie żądania zostaje tam.
 - `/checkout/confirmation` (`noindex, nofollow`, Server Component): czyta `store_order_confirmation` (`cookies()`
   i `readOrderConfirmation`, sekret z `readAuthConfig`). Bez ciasteczka, z niepoprawnym podpisem albo treścią:
   „Nie znaleźliśmy informacji o zamówieniu.” i link „Wróć do sklepu”. Inaczej czyta status płatności (`readPaymentStatus`:

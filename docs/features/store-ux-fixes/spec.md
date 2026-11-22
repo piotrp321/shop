@@ -101,7 +101,7 @@ w kolejności ich zlecenia.
 | Ilość pozycji czeka na wysłanie | Pole pokazuje wpisaną wartość i jest edytowalne. Zmiana wpisu porzuca wartość czekającą; nowa idzie po zatwierdzeniu (`blur`, Enter, aktywacja „Przejdź do kasy”). |
 | Usunięcie zlecone (w drodze albo czeka) | Obie kontrolki pozycji mają `aria-disabled`; kolejna aktywacja „Usuń” nie wysyła żądania. |
 | Odpowiedź operacji innej pozycji | Nie nadpisuje pola, które ma niezatwierdzony wpis albo wartość czekającą. Pole wraca do ilości z odpowiedzi tylko po odpowiedzi na własną operację. |
-| Błąd operacji (5xx, sieć, 409, 429) | Komunikat przy pozycji (dzisiejsze teksty). Pole wraca do ostatniej potwierdzonej ilości; to nie jest pewny stan serwera, bo wynik zapisu może być nieznany. Akcje czekające innych pozycji wykonują się dalej. |
+| Błąd operacji (5xx, sieć, 409, 429) | Komunikat przy pozycji (dzisiejsze teksty), który zostaje na czas następnej operacji tej pozycji i znika dopiero po jej udanej odpowiedzi (nie na starcie operacji: start wypada na naciśnięciu kontrolki niżej, a zniknięcie komunikatu przesunęłoby ją przed zwolnieniem przycisku). Odpowiedź, która przychodzi, gdy wskaźnik jest wciśnięty, jest stosowana po jego zwolnieniu (najwyżej po ok. 1 s). Pole wraca do ostatniej potwierdzonej ilości; to nie jest pewny stan serwera, bo wynik zapisu może być nieznany. Akcje czekające innych pozycji wykonują się dalej. |
 | Sesja wygasła (401 operacji albo ponownego odczytu koszyka po 404) | Akcje czekające są porzucane bez wysłania. Strona przechodzi w istniejący widok wygasłej sesji (`loaded.status === "unauthorized"`, `:116-122`): sam komunikat z linkiem logowania, bez listy pozycji i bez „Przejdź do kasy”. Dziś 401 operacji zostawia listę pozycji pod komunikatem (`:131-137`). |
 | Klient opuszcza koszyk (nawigacja w sklepie) | Akcje już zlecone wykonują się do końca, bez nawigacji i komunikatów; po 401 są porzucane. |
 
@@ -289,7 +289,8 @@ w symulatorze płatności stosu.
 - „Sprawdź ponownie”: F1. Przycisk po odpowiedzi nadal jest na ekranie: fokus zostaje na nim. Przycisku po odpowiedzi
   nie ma (status rozstrzygnięty albo znów trwa odpytywanie): fokus na nagłówek ekranu. Błąd odczytu: przycisk i fokus
   zostają, komunikat „Nie udało się sprawdzić statusu
-  płatności.” jest w `role="alert"`.
+  płatności.” jest w `role="alert"`. Fokus przeniesiony przez klienta w trakcie odczytu zostaje tam, chyba że
+  odpowiedź usuwa ten element (np. „Wróć do płatności”): wtedy idzie na nagłówek ekranu (F3).
 - Zdania statusu płatności są w jednym trwałym regionie (F5); przyciski, link „Wróć do płatności” i formularz
   płatności są poza nim. Kolejność zdań i kontrolek może się zmienić tylko w obrębie tej sekcji ekranu.
 - Zmiana statusu z odpytywania zmienia tekst regionu i nie przenosi fokusu (F4).
@@ -302,7 +303,7 @@ w symulatorze płatności stosu.
 21. Enter na „Sprawdź ponownie”, odpowiedź wstrzymana: przycisk ma fokus, drugi Enter nie wysyła żądania. Przycisk
     zostaje po odpowiedzi: fokus na nim. Przycisku nie ma: fokus na nagłówku. 500: fokus na przycisku i komunikat,
     także w widoku bez statusu.
-    Fokus przeniesiony w trakcie: bez zmiany.
+    Fokus przeniesiony w trakcie: bez zmiany, a gdy odpowiedź usuwa ten element – na nagłówek.
 22. Zmiana z odpytywania (oczekuje → opłacone; oczekuje → płatność nieudana; koniec okna odpytywania): fokus ustawiony
     wcześniej na innym elemencie zostaje; „Płatność przyjęta.” występuje w DOM raz.
 
@@ -430,8 +431,8 @@ Poza gwarancją zostaje stan dzisiejszy (#853):
 
 - Ogłaszanie sprawdzono po DOM (regiony i ich tekst); próby prawdziwym czytnikiem ekranu nie było.
 - Pomiary wykonano tylko w Chromium.
-- Żądania koszyka i kasy nie mają limitu czasu: zapis bez odpowiedzi trzyma zamiar przejścia (S2) i blokadę kasy (S5)
-  do błędu sieci przeglądarki. Dziś taki zapis też blokuje cały koszyk. Etap nie dodaje limitu czasu.
+- Żądania koszyka i kasy nie mają limitu czasu: zapis bez odpowiedzi trzyma zamiar przejścia (S2), blokadę kasy (S5)
+  i pierwszy odczyt kasy otwartej w trakcie tego zapisu do błędu sieci przeglądarki. Dziś taki zapis też blokuje cały koszyk. Etap nie dodaje limitu czasu.
 - S1 zmienia zachowanie, które dziś utrwala test jednostkowy koszyka; S5 zmienia regułę fokusu po odrzuceniu opisaną
   w `apps/store/CLAUDE.md`.
 - `CartPage.tsx` zmieniają S1, S2 i S3, a `CheckoutPage.tsx` S4 i S5: zadania na tych plikach idą szeregowo.

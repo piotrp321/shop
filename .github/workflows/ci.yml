@@ -601,20 +601,20 @@ jobs:
         run: make seed RUN="docker compose exec -T"
 
       # This part of the suite: `--shard=<index>/<number of parts>` runs whole spec files in file order. The weights (one
-      # per part, 79:109:121:114 of 423 tests) put the boundaries after 79 tests (inside admin-screens-discount-codes),
-      # after 188 (inside admin-screens-promotions) and after 309 (inside listing-tile-variants). The parts, with the time
-      # of their tests in CI run 45044387222: admin-customers to admin-screens-discount-codes (91 tests, ~295 s, with
-      # admin-design), admin-screens-inventory to admin-screens-promotions (115, ~385 s), admin-screens-toasts to
-      # listing-tile-variants (108, ~480 s, with catalog-admin) and order-management to visual-screens (109, ~305 s),
-      # which also runs the checks after the tests (~3 min). A spec file belongs to the part in which its first test
-      # starts before the boundary. When tests are added, move the boundaries so that the parts end about together:
-      # count by the times of the files in the log of the parts, not by the number of tests (a panel test takes several
-      # times as long as a store test), and keep every boundary inside a file of at least 8 tests.
+      # per part, 105:129:126:124 of 484 tests) put the boundaries after 105 tests (inside admin-screens-inventory),
+      # after 234 (inside catalog-admin) and after 360 (inside search). The parts, with the time of their tests in CI
+      # runs 45063420116 (panel files) and 45066634806 (store files): admin-customers to admin-screens-inventory (119
+      # tests, ~565 s, with admin-design), admin-screens-orders to catalog-admin (126, ~545 s), catalog to search (120,
+      # ~470 s, with delivery-checkout and request-body-limit) and seo to visual-screens (119, ~295 s), which also runs
+      # the checks after the tests (~3 min). A spec file belongs to the part in which its first test starts before the
+      # boundary. When tests are added, move the boundaries so that the parts end about together: count by the times of
+      # the files in the log of the parts, not by the number of tests (a panel test takes several times as long as a
+      # store test), and keep every boundary inside a file of at least 8 tests.
       - name: make e2e
         if: env.FULL_CI == 'true'
         env:
           E2E_SHARD: ${{ matrix.index }}/${{ strategy.job-total }}
-          E2E_SHARD_WEIGHTS: '79:109:121:114'
+          E2E_SHARD_WEIGHTS: '105:129:126:124'
         run: make e2e E2E_FLAGS=-T E2E_BUILD=
 
       # The checks on the running stack after the E2E tests of the part with `after_e2e`: every target a make/*.mk
