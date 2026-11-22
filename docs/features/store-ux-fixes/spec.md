@@ -289,7 +289,8 @@ w symulatorze płatności stosu.
 - „Sprawdź ponownie”: F1. Przycisk po odpowiedzi nadal jest na ekranie: fokus zostaje na nim. Przycisku po odpowiedzi
   nie ma (status rozstrzygnięty albo znów trwa odpytywanie): fokus na nagłówek ekranu. Błąd odczytu: przycisk i fokus
   zostają, komunikat „Nie udało się sprawdzić statusu
-  płatności.” jest w `role="alert"`.
+  płatności.” jest w `role="alert"`. Fokus przeniesiony przez klienta w trakcie odczytu zostaje tam, chyba że
+  odpowiedź usuwa ten element (np. „Wróć do płatności”): wtedy idzie na nagłówek ekranu (F3).
 - Zdania statusu płatności są w jednym trwałym regionie (F5); przyciski, link „Wróć do płatności” i formularz
   płatności są poza nim. Kolejność zdań i kontrolek może się zmienić tylko w obrębie tej sekcji ekranu.
 - Zmiana statusu z odpytywania zmienia tekst regionu i nie przenosi fokusu (F4).
@@ -302,7 +303,7 @@ w symulatorze płatności stosu.
 21. Enter na „Sprawdź ponownie”, odpowiedź wstrzymana: przycisk ma fokus, drugi Enter nie wysyła żądania. Przycisk
     zostaje po odpowiedzi: fokus na nim. Przycisku nie ma: fokus na nagłówku. 500: fokus na przycisku i komunikat,
     także w widoku bez statusu.
-    Fokus przeniesiony w trakcie: bez zmiany.
+    Fokus przeniesiony w trakcie: bez zmiany, a gdy odpowiedź usuwa ten element – na nagłówek.
 22. Zmiana z odpytywania (oczekuje → opłacone; oczekuje → płatność nieudana; koniec okna odpytywania): fokus ustawiony
     wcześniej na innym elemencie zostaje; „Płatność przyjęta.” występuje w DOM raz.
 
