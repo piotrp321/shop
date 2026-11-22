@@ -11,7 +11,7 @@ roboczym: po ukończeniu epiku usuń go.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | STORE-UX-FIXES-1, STORE-UX-FIXES-4, STORE-UX-FIXES-6, STORE-UX-FIXES-7 | |
+| 1 | STORE-UX-FIXES-1, STORE-UX-FIXES-4, STORE-UX-FIXES-6, STORE-UX-FIXES-7 | w toku |
 | 2 | STORE-UX-FIXES-3, STORE-UX-FIXES-5 | |
 | 3 | STORE-UX-FIXES-2 | |
 | 4 | STORE-UX-FIXES-8 | |
