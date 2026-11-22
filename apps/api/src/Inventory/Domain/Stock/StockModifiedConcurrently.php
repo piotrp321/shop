@@ -13,6 +13,6 @@ final class StockModifiedConcurrently extends \DomainException implements Confli
 {
     public function __construct()
     {
-        parent::__construct('The stock was modified concurrently. Reload it and try again.');
+        parent::__construct('Stan został w międzyczasie zmieniony. Odśwież go i spróbuj ponownie.');
     }
 }

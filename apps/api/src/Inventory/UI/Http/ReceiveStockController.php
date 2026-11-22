@@ -140,7 +140,7 @@ final class ReceiveStockController
     {
         $key = $request->headers->get(self::IDEMPOTENCY_KEY);
         if (null === $key) {
-            throw self::badKey($key, \sprintf('The %s header is required.', self::IDEMPOTENCY_KEY));
+            throw self::badKey($key, 'Nagłówek Idempotency-Key jest wymagany.');
         }
         try {
             return ReceiptKey::fromString($key)->toString();

@@ -21,16 +21,19 @@ final readonly class BackofficeProductsQuery
     public const array SORTS = ['name', '-name', '-updatedAt', 'updatedAt'];
     public const string BAD_SORT = 'Sortowanie może mieć tylko wartość name, -name, -updatedAt albo updatedAt.';
     public const string BAD_IMAGES = 'Filtr zdjęć może mieć tylko wartość none.';
+    public const string BAD_TERM = 'Szukana fraza zawiera niedozwolone znaki.';
+    public const string BAD_STATUS = 'Status produktu musi być jednym z: draft, published.';
+    public const string BAD_CURSOR = 'Kursor stronicowania jest nieprawidłowy.';
 
     public function __construct(
         #[Assert\Length(min: SearchBackofficeProducts::MIN_TERM_LENGTH, max: SearchBackofficeProducts::MAX_TERM_LENGTH)]
         // PostgreSQL cannot take a NUL in a parameter: the driver would cut the term there and search for something else.
-        #[Assert\Regex(pattern: '/\0/', message: 'The search term must not contain a NUL character.', match: false)]
+        #[Assert\Regex(pattern: '/\0/', message: self::BAD_TERM, match: false)]
         public ?string $q = null,
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Uuid]
         public ?string $category = null,
-        #[Assert\Choice(choices: ['draft', 'published'], message: 'The status must be draft or published.')]
+        #[Assert\Choice(choices: ['draft', 'published'], message: self::BAD_STATUS)]
         public ?string $status = null,
         // A string checked by validateSort: a value of another kind (`sort[]=…`) gets the same Polish message.
         #[OA\Property(type: 'string', enum: self::SORTS, nullable: true)]

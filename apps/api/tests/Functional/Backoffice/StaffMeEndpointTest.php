@@ -240,7 +240,7 @@ final class StaffMeEndpointTest extends WebTestCase
         self::assertSame('Bearer', $response->headers->get('WWW-Authenticate'));
         self::assertStringStartsWith('application/problem+json', (string) $response->headers->get('Content-Type'));
         self::assertSame(
-            ['type' => 'about:blank', 'title' => 'Unauthorized', 'status' => 401, 'detail' => 'Authentication is required.'],
+            ['type' => 'about:blank', 'title' => 'Unauthorized', 'status' => 401, 'detail' => 'Wymagane jest uwierzytelnienie.'],
             $this->json($response),
         );
     }

@@ -161,7 +161,7 @@ final class CorrectStockHandlerTest extends TestCase
             $this->correct(self::A, 8, $version, 'loss', null);
             self::fail('Expected StockModifiedConcurrently.');
         } catch (StockModifiedConcurrently $conflict) {
-            self::assertSame('The stock was modified concurrently. Reload it and try again.', $conflict->getMessage());
+            self::assertSame('Stan został w międzyczasie zmieniony. Odśwież go i spróbuj ponownie.', $conflict->getMessage());
         }
 
         self::assertSame([10, 0, 4], $this->state(self::A));

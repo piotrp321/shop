@@ -52,7 +52,7 @@ final class ReceiptKeyTest extends TestCase
             ReceiptKey::fromString($value);
             self::fail('Expected InvalidReceiptKey.');
         } catch (InvalidReceiptKey $invalid) {
-            self::assertSame('A receipt key must have 1 to 100 characters: letters, digits, ".", "_", ":" or "-".', $invalid->getMessage());
+            self::assertSame('Nieprawidłowy klucz żądania.', $invalid->getMessage());
         }
     }
 

@@ -112,7 +112,7 @@ final class ProblemDetailsTest extends WebTestCase
         self::assertStringNotContainsString('secret-path-xyz', $body);
         self::assertStringNotContainsString('localhost', $body);
         self::assertStringNotContainsString('No route found', $body);
-        self::assertSame('Resource not found.', $this->problem($client->getResponse())['detail']);
+        self::assertSame('Nie znaleziono zasobu.', $this->problem($client->getResponse())['detail']);
     }
 
     public function testWrongMethodKeepsAllowHeaderWithGenericDetail(): void
@@ -123,7 +123,7 @@ final class ProblemDetailsTest extends WebTestCase
         self::assertResponseStatusCodeSame(405);
         self::assertStringContainsString('GET', (string) $client->getResponse()->headers->get('Allow'));
         $problem = $this->problem($client->getResponse());
-        self::assertSame('Method not allowed.', $problem['detail']);
+        self::assertSame('Metoda nie jest dozwolona.', $problem['detail']);
         self::assertStringNotContainsString('No route found', (string) $client->getResponse()->getContent());
     }
 
@@ -185,7 +185,7 @@ final class ProblemDetailsTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(400);
         self::assertStringNotContainsString('internal secret', (string) $client->getResponse()->getContent());
-        self::assertSame('The request is invalid.', $this->problem($client->getResponse())['detail']);
+        self::assertSame('Żądanie jest nieprawidłowe.', $this->problem($client->getResponse())['detail']);
     }
 
     public function testSeveralWrappedExceptionsGiveOpaque500EvenIfFirstIsValidationFailure(): void
@@ -208,7 +208,7 @@ final class ProblemDetailsTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(400);
         self::assertStringNotContainsString('internal secret', (string) $client->getResponse()->getContent());
-        self::assertSame('The request is invalid.', $this->problem($client->getResponse())['detail']);
+        self::assertSame('Żądanie jest nieprawidłowe.', $this->problem($client->getResponse())['detail']);
     }
 
     public function testPlainExceptionFromBusHandlerIsAnOpaque500(): void
@@ -229,7 +229,7 @@ final class ProblemDetailsTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(400);
         self::assertStringNotContainsString('internal secret', (string) $client->getResponse()->getContent());
-        self::assertSame('The request is invalid.', $this->problem($client->getResponse())['detail']);
+        self::assertSame('Żądanie jest nieprawidłowe.', $this->problem($client->getResponse())['detail']);
     }
 
     public function testFrameworkExceptionWrappedInPlainExceptionIsAnOpaque500(): void
@@ -253,7 +253,7 @@ final class ProblemDetailsTest extends WebTestCase
         $body = (string) $client->getResponse()->getContent();
         self::assertStringNotContainsString('internal secret', $body);
         self::assertStringNotContainsString('out of stock', $body);
-        self::assertSame('The request is invalid.', $this->problem($client->getResponse())['detail']);
+        self::assertSame('Żądanie jest nieprawidłowe.', $this->problem($client->getResponse())['detail']);
     }
 
     /**

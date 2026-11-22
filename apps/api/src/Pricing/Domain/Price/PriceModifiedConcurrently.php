@@ -10,6 +10,6 @@ final class PriceModifiedConcurrently extends \DomainException implements Confli
 {
     public function __construct()
     {
-        parent::__construct('The price was modified concurrently. Reload it and try again.');
+        parent::__construct('Cena została w międzyczasie zmieniona. Odśwież ją i spróbuj ponownie.');
     }
 }

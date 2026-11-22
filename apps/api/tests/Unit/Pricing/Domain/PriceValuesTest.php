@@ -100,7 +100,7 @@ final class PriceValuesTest extends TestCase
     public function testConcurrentModificationIsAConflict(): void
     {
         $this->expectException(Conflict::class);
-        $this->expectExceptionMessage('The price was modified concurrently. Reload it and try again.');
+        $this->expectExceptionMessage('Cena została w międzyczasie zmieniona. Odśwież ją i spróbuj ponownie.');
 
         throw new PriceModifiedConcurrently();
     }

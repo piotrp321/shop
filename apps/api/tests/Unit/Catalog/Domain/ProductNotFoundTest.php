@@ -15,7 +15,7 @@ final class ProductNotFoundTest extends TestCase
         $e = $this->create();
 
         self::assertInstanceOf(NotFound::class, $e);
-        self::assertSame('Product not found.', $e->getMessage());
+        self::assertSame('Produkt nie istnieje.', $e->getMessage());
     }
 
     private function create(): \Throwable

@@ -40,7 +40,7 @@ final class SecurityProblemDetailsTest extends WebTestCase
         self::assertSame($status, $response->getStatusCode());
         $problem = $this->problem($response);
         self::assertSame($status, $problem['status']);
-        self::assertSame(401 === $status ? 'Authentication is required.' : 'Access is denied.', $problem['detail']);
+        self::assertSame(401 === $status ? 'Wymagane jest uwierzytelnienie.' : 'Brak dostępu.', $problem['detail']);
         self::assertSame(401 === $status ? 'Bearer' : null, $response->headers->get('WWW-Authenticate'));
         $this->assertNothingLeaks($response);
     }
