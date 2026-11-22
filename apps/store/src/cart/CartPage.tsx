@@ -122,6 +122,34 @@ export function CartPage() {
   // state brings the render, the ref makes the click happen once.
   const [openings, setOpenings] = useState(0);
   const openRequested = useRef(false);
+  // The messages of the lines wait while a pointer is pressed: a message going or coming between the press and the
+  // release of a button would move the control the customer is pressing before the click lands on it.
+  const pointerPressed = useRef(false);
+  const heldLineErrors = useRef<{ variantId: string; message: string | null }[]>([]);
+
+  useEffect(() => {
+    // The release is handled in a timer, so that the render comes after the click that the release ends.
+    const press = () => {
+      pointerPressed.current = true;
+    };
+    const release = () => {
+      pointerPressed.current = false;
+      setTimeout(() => {
+        if (pointerPressed.current) return;
+        for (const { variantId, message } of heldLineErrors.current.splice(0)) applyLineError(variantId, message);
+      }, 0);
+    };
+    document.addEventListener("pointerdown", press, true);
+    document.addEventListener("pointerup", release, true);
+    document.addEventListener("pointercancel", release, true);
+    window.addEventListener("blur", release);
+    return () => {
+      document.removeEventListener("pointerdown", press, true);
+      document.removeEventListener("pointerup", release, true);
+      document.removeEventListener("pointercancel", release, true);
+      window.removeEventListener("blur", release);
+    };
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -213,6 +241,11 @@ export function CartPage() {
   }
 
   function showLineError(variantId: string, message: string | null) {
+    if (pointerPressed.current) heldLineErrors.current.push({ variantId, message });
+    else applyLineError(variantId, message);
+  }
+
+  function applyLineError(variantId: string, message: string | null) {
     setLineErrors((current) => {
       const next = { ...current };
       if (message === null) delete next[variantId];
@@ -317,12 +350,14 @@ export function CartPage() {
 
   async function send(operation: CartOperation, givenNow: boolean): Promise<Outcome> {
     const { variantId, action } = operation;
-    showLineError(variantId, null);
+    // The message of the line stays while its operation runs: it going at the start (a blur, so the mouse down on a
+    // control below) would move that control before the mouse up. The answer takes it away or replaces it.
     if (givenNow) setStatus("");
     const result = action.kind === "remove" ? await removeCartItem(variantId) : await changeCartItemQuantity(variantId, action.quantity);
     if (result.status === "ok") {
       const before = view.current;
       show(result.data);
+      showLineError(variantId, null);
       // The field shows the quantity the API answered with, also when it is not the one typed.
       resetQuantityField(variantId);
       if (action.kind === "remove") setStatus(removedText(before, variantId));
@@ -340,6 +375,7 @@ export function CartPage() {
         show(reloaded.data);
         moveFocusFromGoneLink(before, reloaded.data);
         if (!reloaded.data.lines.some((line) => line.variantId === variantId)) {
+          showLineError(variantId, null);
           setStatus(LINE_GONE);
           moveFocusFromGoneLine(operation, before, reloaded.data);
           return "gone";
