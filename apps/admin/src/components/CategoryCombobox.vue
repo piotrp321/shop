@@ -121,8 +121,9 @@ function onInput(event: Event) {
 // list is closed or filtered down to nothing, when its options are removed from the DOM.
 const listOpen = ref(false);
 // An empty object leaves the attribute to reka; with the list closed or without options the key is present and
-// undefined, so it is removed.
-const activeDescendantWhenClosed = computed(() => (listOpen.value && visibleOptions.value.length > 0 ? {} : { "aria-activedescendant": undefined }));
+// undefined, so it is removed. Disabled options cannot be highlighted, so a list of only those has no active option.
+const hasHighlightableOption = computed(() => visibleOptions.value.some((option) => !props.disabledIds.includes(option.id)));
+const activeDescendantWhenClosed = computed(() => (listOpen.value && hasHighlightableOption.value ? {} : { "aria-activedescendant": undefined }));
 
 function onOpenChange(open: boolean) {
   listOpen.value = open;
