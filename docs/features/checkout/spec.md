@@ -493,7 +493,10 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   `disabled`, więc zachowuje fokus; ponowna aktywacja nie wysyła żądania), komunikat znika, a region mówi
   „Wczytywanie…”. Sukces: fokus na nagłówek „Kasa”; ponowny błąd: komunikat wraca, fokus na przycisku. Fokus
   przenosi się tylko wtedy, gdy w chwili odpowiedzi jest nadal na przycisku albo na `<body>`; przeniesiony w trakcie
-  zostaje tam.
+  zostaje tam. Pierwszy odczyt kasy czeka na zakończenie akcji stron koszyka tej karty (`actionsFinished()`,
+  `src/cart/cart-actions.ts`; zmiana zlecona w koszyku, gdy nawigacja do kasy była w drodze), z regionem „Wczytywanie…”
+  do tego czasu; bez akcji albo po ich porzuceniu przy 401 czyta od razu. Ponowienie i odczyt po kodzie rabatowym nie
+  czekają: w karcie z kasą nie ma już strony koszyka.
 - Kod rabatowy (`docs/features/discount-codes/spec.md`): pod podsumowaniem pole „Kod rabatowy” (`maxLength` 64,
   etykieta) w osobnym formularzu, więc Enter zastosuje kod i nie złoży zamówienia, z przyciskiem „Zastosuj”. Zastosowanie
   wczytuje podsumowanie z kodem (`/api/cart?discountCode=…`; kod przycięty z białych znaków). Zastosowany kod: linia
@@ -707,7 +710,8 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   (z walutą), 404 gościa usuwa `store_cart`, 409 (przekazuje `type` każdej z pięciu przyczyn, `about:blank` i brak),
   422, 401, 503, `no-store`.
 - `/auth/session` (`app/auth/session`): `{name, email}`.
-- `CheckoutPage`: formularz gościa i klienta (e-mail z sesji), podsumowanie, blokada przycisku, każdy wiersz tabeli
+- `CheckoutPage`: pierwszy odczyt po zakończeniu akcji strony koszyka (do tego czasu „Wczytywanie…”), od razu bez
+  akcji i po akcjach porzuconych; formularz gościa i klienta (e-mail z sesji), podsumowanie, blokada przycisku, każdy wiersz tabeli
   UI (pięć przyczyn 409 i nieznany 409: komunikat, link do koszyka, formularz, ten sam albo nowy klucz przy kolejnym
   kliknięciu, brak automatycznego drugiego POST), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
   danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`, region statusu (ten sam węzeł od wczytywania do treści),

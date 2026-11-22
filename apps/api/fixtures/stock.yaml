@@ -29,7 +29,8 @@
 #   The payment confirmation test (store-ux-payment.spec.ts) places two guest orders of 1 unit of Hala 500: one is paid
 #   at the simulator, the other is never paid and expires. The cart test of the checkout link (store-ux-cart.spec.ts)
 #   orders as a guest 3 units of the mat Dravik Podłoże 10 and 1 unit of Hantle regulowane Dravik Para 24, which no other
-#   test orders, and rejects the payment at the simulator: the unpaid order expires and gives the units back.
+#   test orders, and its test of a change given while the checkout loads orders 4 units of the same mat; both reject the
+#   payment at the simulator: the unpaid order expires and gives the units back.
 # Products with variants both in and out of stock: kajak-turystyczny-dravik-rzeka-2, narty-skiturowe-stavro-gran-95.
 
 # Out of stock

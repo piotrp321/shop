@@ -583,7 +583,7 @@ zwracana.
 
   | Wynik operacji | Zachowanie |
   |---|---|
-  | Wszystkie zapisane, koszyk da się zamówić | Oczekiwanie się kończy i strona aktywuje sam link po wyświetleniu koszyka z ostatniej odpowiedzi (także gdy wcześniejsza odpowiedź zastąpiła link nieaktywnym przyciskiem): przejście do `/checkout` jak bez oczekiwania (nawigacja w sklepie, bez wczytania całej strony). Oczekiwanie kończy się w chwili tego kliknięcia: kontrolki pozycji są znowu aktywne jak przy linku bez oczekiwania, więc strona koszyka, która zostaje (np. przywrócona przyciskiem „Wstecz” albo po przejściu linkiem nagłówka do koszyka w trakcie otwierania kasy), na nic nie czeka. |
+  | Wszystkie zapisane, koszyk da się zamówić | Oczekiwanie się kończy i strona aktywuje sam link po wyświetleniu koszyka z ostatniej odpowiedzi (także gdy wcześniejsza odpowiedź zastąpiła link nieaktywnym przyciskiem): przejście do `/checkout` jak bez oczekiwania (nawigacja w sklepie, bez wczytania całej strony). Oczekiwanie kończy się w chwili tego kliknięcia: kontrolki pozycji są znowu aktywne jak przy linku bez oczekiwania, więc strona koszyka, która zostaje (np. przywrócona przyciskiem „Wstecz” albo po przejściu linkiem nagłówka do koszyka w trakcie otwierania kasy), na nic nie czeka. Zmiana zlecona, zanim kasa się otworzy (koszyk zostaje na ekranie, dopóki serwer nie odpowie na nawigację), jest zmianą tej strony: kasa czyta koszyk dopiero po jej zakończeniu (`actionsFinished()`), jak koszyk otwarty ponownie. |
   | Błąd którejkolwiek (5xx, sieć, 409, 429, 404 pozycji, która jest w koszyku) | Zamiar kończy się na stałe: późniejszy sukces innej akcji go nie przywraca. Klient zostaje w koszyku; pod linkiem jest `role="alert"` „Nie udało się zapisać zmian w koszyku. Sprawdź pozycje i spróbuj ponownie.” (do następnej aktywacji linku), przy pozycji jej komunikat. Fokus zostaje na linku, akcje czekające wykonują się dalej. |
   | 404 pozycji, której nie ma w koszyku | Zamiar kończy się bez komunikatu przy linku: koszyk z odpowiedzi i „Pozycja została już usunięta” w regionie statusu. |
   | 401 | Widok wygasłej sesji (jak przy 401 operacji), bez przejścia. |
@@ -836,7 +836,8 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   i 375 px; „Przejdź do kasy” przy zmianie ilości wstrzymanej w przeglądarce (kliknięcie przy 1280 px, dotyk przy 375 px,
   Tab i Enter: adres zostaje `/cart`, link z `aria-disabled` i fokusem, tekst regionu, wpis w innym polu, „Usuń” i druga
   aktywacja bez skutku, po zwolnieniu kasa z zapisaną ilością i kwotą z serwera jako nawigacja w sklepie (znacznik na `window` zostaje), jedna zmiana; zamówienie gościa złożone
-  z tej kasy ma tę ilość), przejście linkiem nagłówka w trakcie oczekiwania (adres zostaje, serwer ma zmiany), fokus z linku na „Twój koszyk jest pusty” po 404 zmiany pozycji usuniętej w innej karcie oraz tekst
+  z tej kasy ma tę ilość), zmiana ilości zatwierdzona w koszyku, gdy nawigacja do kasy po oczekiwaniu jest wstrzymana
+  (kasa czyta koszyk po jej odpowiedzi, pokazuje i zamawia nową ilość, koszyk po zamówieniu jest pusty), przejście linkiem nagłówka w trakcie oczekiwania (adres zostaje, serwer ma zmiany), fokus z linku na „Twój koszyk jest pusty” po 404 zmiany pozycji usuniętej w innej karcie oraz tekst
   regionu i komunikat po błędzie 500 bez przewijania poziomego przy 320 i 375 px.
 - `cart-merge.spec.ts` (wybór pierwszego dostępnego wariantu, gdy kafelek ma wybór): Jan loguje się, opróżnia swój koszyk w UI, dodaje B i wylogowuje się; jako gość dodaje A i B;
   po zalogowaniu licznik pokazuje 3, ciasteczko `store_cart` znika, a koszyk ma A × 1 i B × 2; drugi kontekst

@@ -562,6 +562,148 @@ for (const { way, use, touch, activate, again, orders } of ways) {
   });
 }
 
+// The checkout opens after the waiting by a navigation of the client, and the cart stays on the screen, with its
+// controls active again, until the server answers that navigation. A change given then is one of the changes of this
+// cart page (docs/features/store-ux-fixes/spec.md, „Granica ochrony zamówienia”): the checkout reads the cart after
+// it. The test orders the mat Dravik Podłoże 10 like the click of criterion 8 and rejects the payment.
+test.describe("a change given in the cart while the checkout it opened after the waiting loads", () => {
+  test.use(DESKTOP);
+
+  // The second change is held until the server placed the order, at most this long: without the order it reaches the
+  // server after this time, and the checkout must have waited for it.
+  const SECOND_HOLD_MS = 8_000;
+
+  test("is saved before the checkout reads the cart, and the order has its quantity", async ({ page }) => {
+    test.setTimeout(150_000);
+    const [a] = await cartWithProducts(page, CHECKOUT_PRODUCTS.slice(0, 1));
+    if (a === undefined) throw new Error("the cart needs a line");
+    // What the browser did, in order: the reads of the cart, the release of the navigation, the answers of the changes.
+    const events: string[] = [];
+    const answers: { status: number; quantity: number | null }[] = [];
+    let orderPlaced: () => void = () => {};
+    const placed = new Promise<void>((resolve) => (orderPlaced = resolve));
+    let secondAnswered: () => void = () => {};
+    const secondAnswer = new Promise<void>((resolve) => (secondAnswered = resolve));
+    page.on("request", (request) => {
+      if (request.method() === "GET" && new URL(request.url()).pathname === "/api/cart") events.push("cart read");
+    });
+    page.on("response", async (response) => {
+      const method = response.request().method();
+      const path = new URL(response.url()).pathname;
+      if (method !== "PATCH" || !/^\/api\/cart\/items\/[^/]+$/.test(path)) return;
+      // Recorded before the body is read: the page may read the cart meanwhile.
+      const answer = { status: response.status(), quantity: null as number | null };
+      answers.push(answer);
+      events.push(`change ${answers.length} answered`);
+      const body = (await response.json().catch(() => null)) as { lines?: { quantity: number }[] } | null;
+      answer.quantity = body?.lines?.[0]?.quantity ?? null;
+      if (answers.length === 2) secondAnswered();
+    });
+
+    // The first change is held until the test releases it, the second one until the server placed the order or 8 s pass.
+    let releaseFirst: () => void = () => {};
+    const firstReleased = new Promise<void>((resolve) => (releaseFirst = resolve));
+    let changes = 0;
+    await page.route(ITEM_URL, async (route) => {
+      if (route.request().method() !== "PATCH") return route.fallback();
+      changes++;
+      if (changes === 1) await Promise.all([firstReleased, new Promise((resolve) => setTimeout(resolve, HOLD_MS))]);
+      else await Promise.race([placed, new Promise((resolve) => setTimeout(resolve, SECOND_HOLD_MS))]);
+      return route.fallback();
+    });
+    // The answer of the order reaches the page after the answer of the second change: the page goes to the payment
+    // next, and a change still held then would be lost with it.
+    await page.route(
+      (url) => url.pathname === "/api/checkout",
+      async (route) => {
+        if (route.request().method() !== "POST") return route.fallback();
+        const response = await route.fetch();
+        orderPlaced();
+        await Promise.race([secondAnswer, new Promise((resolve) => setTimeout(resolve, 10_000))]);
+        return route.fulfill({ response });
+      },
+    );
+    // The navigation of the client to the checkout (its request of the server components, not a prefetch) is held.
+    let releaseNavigation: () => void = () => {};
+    const navigationReleased = new Promise<void>((resolve) => (releaseNavigation = resolve));
+    let navigationAsked: () => void = () => {};
+    const navigationHeld = new Promise<void>((resolve) => (navigationAsked = resolve));
+    await page.route(
+      (url) => url.pathname === "/checkout",
+      async (route) => {
+        const headers = route.request().headers();
+        if (headers.rsc === "1" && headers["next-router-prefetch"] === undefined) {
+          navigationAsked();
+          await navigationReleased;
+        }
+        return route.fallback();
+      },
+    );
+
+    const link = checkoutLink(page);
+    await typeQuantity(quantityOf(page, a), "2", { touch: false });
+    await link.click();
+    await expect(link).toHaveAttribute("aria-disabled", "true");
+    releaseFirst();
+    await navigationHeld;
+
+    // The waiting ended and the navigation is on its way: the cart is still there and its controls work again.
+    expect(isOnPath(page, "/cart")).toBe(true);
+    await expect(link).not.toHaveAttribute("aria-disabled");
+    await expect(quantityOf(page, a)).toHaveValue("2");
+    await quantityOf(page, a).fill("4");
+    await page.keyboard.press("Tab");
+    await expect.poll(() => changes).toBe(2);
+
+    events.push("navigation released");
+    releaseNavigation();
+    await expect(page).toHaveURL(/\/checkout$/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { level: 1, name: "Kasa" })).toBeVisible();
+    // The checkout waits for the held change with its loading state.
+    await expect(page.getByTestId("checkout-status")).toHaveText("Wczytywanie…");
+    const summary = page.getByRole("region", { name: "Podsumowanie zamówienia" });
+    const lineA = summary.getByRole("listitem").filter({ hasText: a.name });
+    const shown = lineA.getByTestId("checkout-line-quantity");
+    await expect(shown).toBeVisible({ timeout: SECOND_HOLD_MS + 15_000 });
+    const shownQuantity = await shown.innerText();
+
+    const email = `e2e-kasa-po-zmianie+${Date.now()}@example.com`;
+    await page.getByLabel("E-mail").fill(email);
+    await page.getByLabel("Imię i nazwisko").fill("Anna Testowa");
+    await fillAddress(page);
+    await chooseDelivery(page);
+    await chooseProvider(page, "Szybki przelew (demo)");
+    await page.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" }).click();
+    await expectSimulatorPage(page, "demo-transfer");
+    await decideAtSimulator(page, "Odrzuć płatność");
+    const number = (await page.getByTestId("order-number").innerText()).trim();
+    expect(number).toMatch(/^R-\d{6,}$/);
+    const confirmation = await waitForOrderEmail(email, number);
+    const line = new RegExp(`- ${a.label === "" ? a.name : `${a.name}, ${a.label}`} × (\\d+): `).exec(confirmation.text);
+
+    await secondAnswer;
+    const server = (await (await page.request.get("/api/cart")).json()) as { lines: { quantity: number }[] };
+    const afterNavigation = events.slice(events.indexOf("navigation released"));
+    expect({
+      shown: shownQuantity,
+      ordered: line?.[1] ?? null,
+      answers,
+      secondChangeBeforeCheckoutRead:
+        afterNavigation.includes("cart read") && afterNavigation.indexOf("change 2 answered") < afterNavigation.indexOf("cart read"),
+      cartAfterOrder: server.lines,
+    }).toEqual({
+      shown: "4 szt.",
+      ordered: "4",
+      answers: [
+        { status: 200, quantity: 2 },
+        { status: 200, quantity: 4 },
+      ],
+      secondChangeBeforeCheckoutRead: true,
+      cartAfterOrder: [],
+    });
+  });
+});
+
 test.describe("the link gone with a waiting that ended without the checkout", () => {
   test.use(DESKTOP);
 
