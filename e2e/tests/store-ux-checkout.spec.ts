@@ -326,11 +326,12 @@ test.describe("the checkout while the order is placed", () => {
     // Typing changes no field, the code included; Enter in a field sends nothing.
     for (const [index, label] of TEXT_FIELDS.entries()) {
       const input = page.getByLabel(label);
+      const value = before[index] ?? "";
       await input.focus();
       await page.keyboard.type("X");
-      await expect(input).toHaveValue(before[index]);
+      await expect(input).toHaveValue(value);
       await page.keyboard.press("Backspace");
-      await expect(input).toHaveValue(before[index]);
+      await expect(input).toHaveValue(value);
       await expect(input).toHaveAttribute("aria-disabled", "true");
     }
     await page.getByLabel("Miejscowość").focus();
@@ -346,10 +347,17 @@ test.describe("the checkout while the order is placed", () => {
     ] as const) {
       await expect(other).toHaveAttribute("aria-disabled", "true");
       await other.click({ force: true });
+      await settle(page);
+      await expect(other).not.toBeChecked();
       await other.tap({ force: true });
+      await settle(page);
+      await expect(other).not.toBeChecked();
+      // The chosen option is the first of its group: the down arrow would choose the other one.
       await chosen.focus();
       await page.keyboard.press("ArrowDown");
-      await page.keyboard.press("ArrowUp");
+      await settle(page);
+      await expect(chosen).toBeChecked();
+      await expect(chosen).toBeFocused();
       await other.focus();
       await page.keyboard.press("Space");
       await settle(page);
