@@ -864,6 +864,32 @@ describe("usePromotionForm", () => {
       expect(mocks.get).toHaveBeenCalledTimes(1);
     });
 
+    it("reads one second after a start that the clock of the browser has already passed: 0.7 s after the answer for a start 0.3 s before it", async () => {
+      const { form } = await openPlanned();
+      await saveNow(form, "2026-11-15T10:20:29.700+00:00");
+      serveRead("active");
+
+      await vi.advanceTimersByTimeAsync(699);
+      expect(mocks.get).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await flushPromises();
+
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      expect(form.status.value).toBe("active");
+    });
+
+    it("reads at once when the start and one second more have already passed by the clock of the browser", async () => {
+      const { form } = await openPlanned();
+      await saveNow(form, "2026-11-15T10:20:28.500+00:00");
+      serveRead("active");
+
+      await vi.advanceTimersByTimeAsync(0);
+      await flushPromises();
+
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      expect(form.status.value).toBe("active");
+    });
+
     it("reads first 3 s after the answer at the latest, when the start is far ahead of the clock of the browser", async () => {
       const { form } = await openPlanned();
       await saveNow(form, "2026-11-15T10:21:30+00:00");
