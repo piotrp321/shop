@@ -601,12 +601,12 @@ jobs:
         run: make seed RUN="docker compose exec -T"
 
       # This part of the suite: `--shard=<index>/<number of parts>` runs whole spec files in file order. The weights (one
-      # per part, 121:128:89:124 of 462 tests) put the boundaries after 121 tests (inside admin-screens-orders), after
+      # per part, 121:128:89:124 of 463 tests) put the boundaries after 121 tests (inside admin-screens-orders), after
       # 249 (inside delivery-checkout) and after 338 (inside request-body-limit). The parts, with the time of their tests
       # (one full run on the production build, scaled to the CI runs of the earlier split): admin-customers to
       # admin-screens-orders (143 tests, ~410 s, with admin-design), admin-screens-prices to delivery-checkout (108, ~400 s,
       # with catalog-admin), delivery-tracking to request-body-limit (90, ~405 s, with listing-filters and
-      # request-body-limit) and search to visual-screens (121, ~260 s), which also runs the checks after the tests (~3 min).
+      # request-body-limit) and search to visual-screens (122, ~265 s), which also runs the checks after the tests (~3 min).
       # A spec file belongs to the part in which its first test starts before the boundary. When tests are added, move
       # the boundaries so that the parts end about together.
       - name: make e2e
