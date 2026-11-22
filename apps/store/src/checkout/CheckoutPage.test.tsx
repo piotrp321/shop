@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type CartView, loadAccountSession, loadCart, type PlaceOrderResult, placeOrder } from "@/api/client";
+import { runActions } from "@/cart/cart-actions";
 import { subscribeToCartChanges } from "@/cart/events";
 import { formatPrice } from "@/catalog/format-price";
 import { useSiteSwitches } from "@/components/SiteSwitches";
@@ -201,6 +202,47 @@ describe("CheckoutPage loading", () => {
     expect(screen.getByTestId("checkout-status")).toBe(region);
     expect(region.isConnected).toBe(true);
     expect(region.textContent).toBe("");
+  });
+
+  it("reads the cart only after the actions given on a cart page of the tab are sent, loading till then", async () => {
+    // A change given on the cart page while the navigation to the checkout was on its way (the loop of that page goes on
+    // after it is left).
+    let sent: () => void = () => {};
+    runActions(() => new Promise<void>((resolve) => (sent = resolve)));
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart() });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+    await act(async () => {});
+
+    expect(loadCart).not.toHaveBeenCalled();
+    expect(screen.getByTestId("checkout-status").textContent).toBe("Wczytywanie…");
+    expect(screen.queryByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeNull();
+
+    await act(async () => sent());
+
+    expect(loadCart).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeTruthy();
+  });
+
+  it("reads the cart at once when the actions of the cart page were dropped or failed", async () => {
+    runActions(() => Promise.reject(new Error("the session expired")));
+    vi.mocked(loadCart).mockResolvedValue({ status: "unauthorized" });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+    await act(async () => {});
+
+    expect(loadCart).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Twoja sesja wygasła/)).toBeTruthy();
+  });
+
+  it("reads the cart at once without actions of a cart page", async () => {
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart() });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+    await act(async () => {});
+
+    expect(loadCart).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeTruthy();
   });
 
   it.each([
