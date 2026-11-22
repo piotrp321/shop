@@ -917,6 +917,37 @@ describe("PromotionFormView", () => {
       expect(document.activeElement).toBe(heading("h2", "Status"));
     });
 
+    it("locks the fields while „Odśwież” waits for its read, so a name typed meanwhile is not lost, and unlocks them with the answer", async () => {
+      const wrapper = await saveNow();
+      serveRead(async () => ({ data: undefined, error: {}, response: { status: 500 } }));
+      await vi.advanceTimersByTimeAsync(2000);
+      await settle();
+      const refresh = [...card("Status").querySelectorAll<HTMLButtonElement>("[role=alert] button")].find((button) => button.textContent?.trim() === "Odśwież");
+      expect(refresh).toBeDefined();
+      let release!: (value: unknown) => void;
+      serveRead(() => new Promise((resolve) => (release = resolve)));
+      await wrapper.get("[data-testid=name-input]").setValue("Wpisana przed odświeżeniem");
+      const fields = () => wrapper.get<HTMLFieldSetElement>("[data-testid=promotion-fields]").element;
+
+      refresh!.click();
+      await settle();
+
+      expect(fields().disabled).toBe(true);
+      expect(off(wrapper, "name-input")).toBe(true);
+      expect(off(wrapper, "remove-variant")).toBe(true);
+      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+      await wrapper.get("[data-testid=name-input]").setValue("Wpisana w trakcie odczytu");
+      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+
+      release({ data: promotion({ status: "active", name: "Z odczytu", version: 6 }), response: { status: 200 } });
+      await settle();
+
+      expect(fields().disabled).toBe(false);
+      expect(off(wrapper, "name-input")).toBe(false);
+      expect(input(wrapper, "name-input").value).toBe("Z odczytu");
+      expect(badge()).toBe("Aktywna");
+    });
+
     it("gives the message of the load and the focus on the H1 when „Odśwież” fails as well", async () => {
       const wrapper = await saveNow();
       serveRead(async () => {

@@ -1452,5 +1452,115 @@ describe("usePromotionForm", () => {
       expect(form.error.value).toBeNull();
       expect(form.dirty.value).toBe(false);
     });
+
+    describe("while the read of „Odśwież” has no answer", () => {
+      /** Holds the next read of the promotion; `release` answers it. */
+      function holdRead() {
+        const held: { release: (value: unknown) => void } = { release: () => {} };
+        mocks.get.mockImplementation(() => new Promise((resolve) => (held.release = resolve)));
+        return held;
+      }
+
+      it("locks the fields and the controls of the variants and turns the actions off, and the answer unlocks the form and is shown", async () => {
+        const { form } = await open();
+        form.form.value.name = "Wpisana przed odświeżeniem";
+        const held = holdRead();
+
+        const refreshing = form.refresh();
+
+        expect(form.locked.value).toBe(true);
+        expect(form.canSave.value).toBe(false);
+        expect(form.canDelete.value).toBe(false);
+        form.addVariants([variant("v-3")]);
+        form.removeVariant("v-1");
+        form.discard();
+        expect(form.form.value.variants.map((item) => item.variantId)).toEqual(["v-1", "v-2"]);
+        expect(form.form.value.name).toBe("Wpisana przed odświeżeniem");
+
+        held.release(ok(promotion({ name: "Z odczytu", version: 6 })));
+        await refreshing;
+
+        expect(form.locked.value).toBe(false);
+        expect(form.form.value.name).toBe("Z odczytu");
+        expect(form.view.value?.version).toBe(6);
+        expect(form.dirty.value).toBe(false);
+        expect(form.canDelete.value).toBe(true);
+        expect(form.canSave.value).toBe(false);
+        form.form.value.name = "Po odświeżeniu";
+        expect(form.canSave.value).toBe(true);
+      });
+
+      it("turns „Zakończ teraz” off for an active promotion", async () => {
+        const { form } = await open(promotion({ status: "active" }));
+        expect(form.canEndNow.value).toBe(true);
+        const held = holdRead();
+
+        const refreshing = form.refresh();
+
+        expect(form.locked.value).toBe(true);
+        expect(form.canEndNow.value).toBe(false);
+        held.release(ok(promotion({ status: "active" })));
+        await refreshing;
+        expect(form.canEndNow.value).toBe(true);
+      });
+
+      it.each([
+        ["a read that does not reach the API", () => Promise.reject(new TypeError("network down")), "Nie udało się pobrać promocji. Sprawdź połączenie z API."],
+        ["a read that fails", () => Promise.resolve(problem(500)), "Nie udało się pobrać promocji (HTTP 500)."],
+      ])("unlocks the form again after %s", async (_name, answer, loadError) => {
+        const { form } = await open();
+        let settle!: () => void;
+        mocks.get.mockImplementation(
+          () =>
+            new Promise((resolve, reject) => {
+              settle = () => answer().then(resolve, reject);
+            }),
+        );
+
+        const refreshing = form.refresh();
+        expect(form.locked.value).toBe(true);
+        settle();
+        await refreshing;
+
+        expect(form.locked.value).toBe(false);
+        expect(form.loadError.value).toBe(loadError);
+      });
+
+      it("ignores the answer after another promotion was opened, and the other promotion is not locked", async () => {
+        const { form, id } = await open();
+        const held = holdRead();
+        const refreshing = form.refresh();
+        expect(form.locked.value).toBe(true);
+
+        servePromotion(promotion({ id: "promo-2", name: "Druga promocja", version: 7 }));
+        id.value = "promo-2";
+        await flushPromises();
+
+        expect(form.form.value.name).toBe("Druga promocja");
+        expect(form.locked.value).toBe(false);
+        held.release(ok(promotion({ name: "Spóźniona", version: 9 })));
+        await refreshing;
+
+        expect(form.form.value.name).toBe("Druga promocja");
+        expect(form.view.value?.id).toBe("promo-2");
+        expect(form.locked.value).toBe(false);
+        expect(form.canDelete.value).toBe(true);
+      });
+
+      it("ignores the answer after the form was left, and leaves no lock", async () => {
+        const { form, wrapper: mounted } = await open();
+        const held = holdRead();
+        const refreshing = form.refresh();
+        expect(form.locked.value).toBe(true);
+
+        mounted.unmount();
+        held.release(ok(promotion({ name: "Spóźniona", version: 9 })));
+        await refreshing;
+
+        expect(form.form.value.name).toBe("Jesień w górach");
+        expect(form.view.value?.version).toBe(4);
+        expect(form.locked.value).toBe(false);
+      });
+    });
   });
 });

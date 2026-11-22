@@ -140,6 +140,10 @@ export function usePromotionForm(options: PromotionFormOptions) {
   const busy = ref(false);
   // A save runs: the fields are locked, because its answer rebuilds the form (the actions of „Status” do not lock them).
   const saving = ref(false);
+  // „Odśwież” reads the promotion: the fields are locked too, because its answer replaces the whole form (the baseline too).
+  const refreshing = ref(false);
+  // Which „Odśwież” may end the lock: opening another promotion, leaving the form and a newer „Odśwież” make it stale.
+  let refreshRun = 0;
   const message = ref<string | null>(null);
   const error = ref<string | null>(null);
   const fieldErrors = ref<Record<string, string[]>>({});
@@ -170,9 +174,12 @@ export function usePromotionForm(options: PromotionFormOptions) {
   const readOnly = computed(() => !options.canManage() || status.value === "ended");
   const scheduleLocked = computed(() => status.value === "active");
   const dirty = computed(() => signature(form.value) !== baseline.value);
-  const idle = computed(() => !busy.value && loaded.value);
-  /** Whether the fields and the controls of the variants are off: while a save runs and while the form waits for the start. */
-  const locked = computed(() => saving.value || starting.value);
+  const idle = computed(() => !busy.value && loaded.value && !refreshing.value);
+  /**
+   * Whether the fields and the controls of the variants are off: while a save runs, while the form waits for the start
+   * and while „Odśwież” reads the promotion (its answer replaces the form).
+   */
+  const locked = computed(() => saving.value || starting.value || refreshing.value);
   const canSave = computed(() => idle.value && !ending.value && !starting.value && !readOnly.value && (view.value === null || dirty.value));
   const canEndNow = computed(() => idle.value && !ending.value && options.canManage() && status.value === "active" && !dirty.value);
   const canDelete = computed(() => idle.value && !starting.value && options.canManage() && status.value === "planned" && !dirty.value);
@@ -279,6 +286,8 @@ export function usePromotionForm(options: PromotionFormOptions) {
     // A request for the previous promotion no longer holds this one: its answer is ignored (`perform`, `remove`).
     busy.value = false;
     saving.value = false;
+    refreshRun++;
+    refreshing.value = false;
     stopEnding();
     stopStarting();
     clearFeedback();
@@ -297,6 +306,8 @@ export function usePromotionForm(options: PromotionFormOptions) {
     disposed = true;
     shown++;
     latest++;
+    refreshRun++;
+    refreshing.value = false;
     stopEnding();
     stopStarting();
   });
@@ -305,14 +316,27 @@ export function usePromotionForm(options: PromotionFormOptions) {
     (id) => open(id),
   );
 
-  /** Discards the changes and shows the promotion as the API has it now. */
+  /**
+   * Discards the changes and shows the promotion as the API has it now. The fields stay locked until the answer, so
+   * nothing typed meanwhile is replaced by it; an answer that comes after another promotion was opened or the form was
+   * left is ignored and leaves no lock.
+   */
   async function refresh(): Promise<void> {
     const id = view.value?.id ?? options.promotionId();
     stopEnding();
     stopStarting();
     clearFeedback();
-    if (id !== null) {
+    if (id === null) {
+      return;
+    }
+    const run = ++refreshRun;
+    refreshing.value = true;
+    try {
       await loadPromotion(id);
+    } finally {
+      if (run === refreshRun) {
+        refreshing.value = false;
+      }
     }
   }
 

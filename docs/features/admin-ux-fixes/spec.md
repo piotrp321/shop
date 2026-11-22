@@ -137,7 +137,9 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
     pracownik widzi wtedy komunikat o nieudanym odczycie, choć promocja mogła się już rozpocząć; „Odśwież” pokazuje
     jej stan.
 - **Ochrona zmian.** W trakcie oczekiwania nie da się nic wpisać, a po jego końcu panel sam nie czyta promocji
-  ponownie, więc żaden automatyczny odczyt nie nadpisuje zmian pracownika.
+  ponownie, więc żaden automatyczny odczyt nie nadpisuje zmian pracownika. Pola są zablokowane także na czas odczytu
+  „Odśwież” (jego odpowiedź zastępuje cały formularz), a akcje karty „Status” i „Zapisz” są wtedy wyłączone;
+  odpowiedź odczytu po opuszczeniu widoku albo otwarciu innej promocji jest pomijana i nie zostawia blokady.
 - **Nieaktualne odpowiedzi.** Odpowiedź odczytu jest pomijana, gdy w tym czasie pracownik opuścił widok, otworzył inną
   promocję albo formularz nowej, albo formularz wysłał nowsze żądanie (zapis, „Odśwież”). Opuszczenie widoku
   i przejście do innej promocji zatrzymują oczekiwanie. Przejście z `/promotions/new` na `/promotions/:id` po

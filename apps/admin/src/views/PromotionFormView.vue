@@ -413,8 +413,9 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
           </FormSection>
         </div>
 
-        <!-- While a save runs and while the form waits for the start of a promotion saved „od teraz”, nothing can be
-             typed or chosen: the answer rebuilds the form from the API and would overwrite it (#580). -->
+        <!-- While a save runs, while the form waits for the start of a promotion saved „od teraz” and while „Odśwież”
+             reads the promotion, nothing can be typed or chosen: the answer rebuilds the form from the API and would
+             overwrite it (#580). -->
         <fieldset
           data-testid="promotion-fields"
           :disabled="locked"
