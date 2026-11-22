@@ -277,7 +277,7 @@ test.describe("„Ostatnie zamówienia” in the card", () => {
         const name = row.getByTestId("order-customer");
         const date = row.getByTestId("order-date");
         await expect(row.getByRole("link", { name: `R-10000${index + 1}` }), "the number").toBeVisible();
-        await expect(name).toHaveText(NAMES[index]);
+        await expect(name).toHaveText(NAMES[index]!);
         await expect(date, "the date").toBeVisible();
         await expect(row.getByTestId("order-total"), "the amount").toBeVisible();
         await expect(row.getByTestId("order-status"), "the status").toBeVisible();
