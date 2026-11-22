@@ -56,6 +56,18 @@ const END_READ_RETRY_MS = 1000;
 /** ...and this many times at most, after the first read. */
 const END_READ_RETRIES = 5;
 
+const STARTED_MESSAGE = "Promocja jest aktywna.";
+const START_READ_FAILED = "Nie udało się odczytać statusu promocji. Odśwież, żeby zobaczyć jej stan.";
+/** A save „od teraz” starts at the next whole second: the form reads one second after the start the API set... */
+const START_READ_GRACE_MS = 1000;
+/** ...but never later than this after the answer of the save, whatever the clock of the browser says... */
+const START_READ_LATEST_MS = 3000;
+/** ...and again this often while the answer is still „planned”, this many times at most after the first read... */
+const START_READ_RETRY_MS = 1000;
+const START_READ_RETRIES = 5;
+/** ...and gives up this long after the answer of the save, also while a read has no answer (only the reads, not the save). */
+const START_WAIT_LIMIT_MS = 10_000;
+
 function emptyForm(): PromotionFormData {
   return { name: "", percentOff: "", startNow: false, startsAt: "", endsAt: "", variants: [] };
 }
@@ -126,6 +138,8 @@ export function usePromotionForm(options: PromotionFormOptions) {
   const loaded = ref(false);
   const loadError = ref<string | null>(null);
   const busy = ref(false);
+  // A save runs: the fields are locked, because its answer rebuilds the form (the actions of „Status” do not lock them).
+  const saving = ref(false);
   const message = ref<string | null>(null);
   const error = ref<string | null>(null);
   const fieldErrors = ref<Record<string, string[]>>({});
@@ -136,20 +150,32 @@ export function usePromotionForm(options: PromotionFormOptions) {
   const endNotice = ref<string | null>(null);
   const endError = ref<string | null>(null);
   let endTimer: ReturnType<typeof setTimeout> | undefined;
+  // A save „od teraz” answered „planned”: the form stays locked and reads the promotion again once it has started (#580).
+  const starting = ref(false);
+  // Where the wait for the start stopped: the promotion is active, it has not started yet, or it could not be read.
+  const startNotice = ref<string | null>(null);
+  const startError = ref<string | null>(null);
+  let startTimer: ReturnType<typeof setTimeout> | undefined;
+  let startLimit: ReturnType<typeof setTimeout> | undefined;
 
   // Only the newest load may change the state; an older one that finishes late is ignored.
   let latest = 0;
   // Set when the form is left: an answer that arrives later must not change it or send the staff member anywhere.
   let disposed = false;
+  // Which promotion the form shows: opening another one, or the form of a new one, changes it, and the answer of a save
+  // or a deletion sent for the previous one is then ignored. Moving to the page of the promotion just created does not.
+  let shown = 0;
 
   const status = computed(() => view.value?.status ?? null);
   const readOnly = computed(() => !options.canManage() || status.value === "ended");
   const scheduleLocked = computed(() => status.value === "active");
   const dirty = computed(() => signature(form.value) !== baseline.value);
   const idle = computed(() => !busy.value && loaded.value);
-  const canSave = computed(() => idle.value && !ending.value && !readOnly.value && (view.value === null || dirty.value));
+  /** Whether the fields and the controls of the variants are off: while a save runs and while the form waits for the start. */
+  const locked = computed(() => saving.value || starting.value);
+  const canSave = computed(() => idle.value && !ending.value && !starting.value && !readOnly.value && (view.value === null || dirty.value));
   const canEndNow = computed(() => idle.value && !ending.value && options.canManage() && status.value === "active" && !dirty.value);
-  const canDelete = computed(() => idle.value && options.canManage() && status.value === "planned" && !dirty.value);
+  const canDelete = computed(() => idle.value && !starting.value && options.canManage() && status.value === "planned" && !dirty.value);
 
   /** The messages for a field path and everything under it (`variantIds[1]` is under `variantIds`). */
   function errorsAt(path: string): string[] {
@@ -172,11 +198,21 @@ export function usePromotionForm(options: PromotionFormOptions) {
     ending.value = false;
   }
 
+  function stopStarting(): void {
+    clearTimeout(startTimer);
+    clearTimeout(startLimit);
+    startTimer = undefined;
+    startLimit = undefined;
+    starting.value = false;
+  }
+
   function clearFeedback(): void {
     message.value = null;
     error.value = null;
     endNotice.value = null;
     endError.value = null;
+    startNotice.value = null;
+    startError.value = null;
     fieldErrors.value = {};
     conflicting.value = new Set();
   }
@@ -239,7 +275,12 @@ export function usePromotionForm(options: PromotionFormOptions) {
     if (id !== null && view.value?.id === id) {
       return;
     }
+    shown++;
+    // A request for the previous promotion no longer holds this one: its answer is ignored (`perform`, `remove`).
+    busy.value = false;
+    saving.value = false;
     stopEnding();
+    stopStarting();
     clearFeedback();
     if (id === null) {
       latest++;
@@ -254,8 +295,10 @@ export function usePromotionForm(options: PromotionFormOptions) {
   onMounted(() => open(options.promotionId()));
   onBeforeUnmount(() => {
     disposed = true;
+    shown++;
     latest++;
     stopEnding();
+    stopStarting();
   });
   watch(
     () => options.promotionId(),
@@ -266,6 +309,7 @@ export function usePromotionForm(options: PromotionFormOptions) {
   async function refresh(): Promise<void> {
     const id = view.value?.id ?? options.promotionId();
     stopEnding();
+    stopStarting();
     clearFeedback();
     if (id !== null) {
       await loadPromotion(id);
@@ -275,7 +319,7 @@ export function usePromotionForm(options: PromotionFormOptions) {
   /** Throws away the unsaved changes: the form goes back to the promotion as the API last sent it, without a request. */
   function discard(): void {
     const current = view.value;
-    if (current === null || busy.value) {
+    if (current === null || busy.value || locked.value) {
       return;
     }
     form.value = fromView(current);
@@ -402,10 +446,15 @@ export function usePromotionForm(options: PromotionFormOptions) {
 
   type Outcome = { data?: PromotionView; error?: unknown; response: { status: number } };
 
+  /**
+   * Sends a change and shows its answer. `lock` locks the fields until the answer (a save). The answer is ignored when
+   * the form was left or shows another promotion by then; the request also makes older reads stale (`latest`).
+   */
   async function perform(
     allowed: boolean,
     request: () => Promise<Outcome> | null,
     success: string | ((saved: PromotionView) => string | null),
+    lock = false,
   ): Promise<ActionResult> {
     if (!allowed) {
       return null;
@@ -415,10 +464,13 @@ export function usePromotionForm(options: PromotionFormOptions) {
     if (pending === null) {
       return "failure";
     }
+    const context = shown;
+    latest++;
     busy.value = true;
+    saving.value = lock;
     try {
       const result = await pending;
-      if (disposed) {
+      if (disposed || context !== shown) {
         return null;
       }
       if (result.data) {
@@ -435,18 +487,23 @@ export function usePromotionForm(options: PromotionFormOptions) {
       }
       return "failure";
     } catch {
-      if (disposed) {
+      if (disposed || context !== shown) {
         return null;
       }
       error.value = "Nie udało się wykonać operacji. Sprawdź połączenie z API.";
       return "failure";
     } finally {
-      busy.value = false;
+      if (context === shown) {
+        busy.value = false;
+        saving.value = false;
+      }
     }
   }
 
+  /** Saves the form; a save „od teraz” that answers „planned” then waits for the start (`watchStart`). */
   function save(): Promise<ActionResult> {
     const current = view.value;
+    let startsNow = false;
     return perform(
       canSave.value,
       () => {
@@ -454,12 +511,70 @@ export function usePromotionForm(options: PromotionFormOptions) {
         if (body === null) {
           return null;
         }
+        startsNow = body.startsAt === null;
         return current === null
           ? getApiClient().POST("/api/v1/admin/promotions", { body })
           : getApiClient().PUT("/api/v1/admin/promotions/{id}", { params: { path: { id: current.id } }, body: { ...body, version: current.version } });
       },
-      "Promocja zapisana.",
+      (saved) => {
+        if (startsNow && saved.status === "planned") {
+          watchStart(saved);
+        }
+        return "Promocja zapisana.";
+      },
+      true,
     );
+  }
+
+  /**
+   * A save „od teraz” starts the promotion at the next whole second, so its answer is still „planned” (#580). The form
+   * stays locked and reads the promotion one second after the start the API set by the clock of the browser, but never
+   * later than 3 s after the answer of the save, then every second while it is still „planned”, at most 5 more times.
+   * Any other answer (or the last „planned” one) is shown as it is, unlocks the form and says what it is in
+   * `startNotice`; a failed read is `startError`. Whatever happens, the wait ends 10 s after the answer of the save with
+   * `startError`, and a read that answers later is ignored (`latest`). Leaving the form, opening another promotion and
+   * „Odśwież” stop it. The status always comes from the API: the clock only decides when to read.
+   */
+  function watchStart(saved: PromotionView): void {
+    starting.value = true;
+    let retries = 0;
+
+    const read = async (): Promise<void> => {
+      startTimer = undefined;
+      const request = ++latest;
+      const result = await fetchPromotion(saved.id);
+      if (disposed || request !== latest || !starting.value) {
+        return;
+      }
+      if (result === null || !("data" in result)) {
+        stopStarting();
+        startError.value = START_READ_FAILED;
+        return;
+      }
+      if (result.data.status === "planned" && retries < START_READ_RETRIES) {
+        retries++;
+        startTimer = setTimeout(() => void read(), START_READ_RETRY_MS);
+        return;
+      }
+      stopStarting();
+      // Nothing could be typed while the form waited, so the answer replaces nothing of the staff member's.
+      apply(result.data);
+      if (result.data.status === "active") {
+        startNotice.value = STARTED_MESSAGE;
+      } else if (result.data.status === "planned") {
+        startNotice.value = `Promocja jeszcze się nie rozpoczęła. Początek: ${formatDateTime(result.data.startsAt)}.`;
+      }
+    };
+
+    startLimit = setTimeout(() => {
+      stopStarting();
+      // The read that is still running is stale now, like after a newer request of the form.
+      latest++;
+      startError.value = START_READ_FAILED;
+    }, START_WAIT_LIMIT_MS);
+    const untilStart = Date.parse(saved.startsAt) - Date.now();
+    const delay = Number.isFinite(untilStart) ? Math.max(untilStart, 0) + START_READ_GRACE_MS : START_READ_LATEST_MS;
+    startTimer = setTimeout(() => void read(), Math.min(delay, START_READ_LATEST_MS));
   }
 
   /**
@@ -544,12 +659,13 @@ export function usePromotionForm(options: PromotionFormOptions) {
       return null;
     }
     clearFeedback();
+    const context = shown;
     busy.value = true;
     try {
       const result = await getApiClient().DELETE("/api/v1/admin/promotions/{id}", {
         params: { path: { id: current.id }, query: { version: current.version } },
       });
-      if (disposed) {
+      if (disposed || context !== shown) {
         return null;
       }
       if (result.response.status === 204) {
@@ -561,19 +677,21 @@ export function usePromotionForm(options: PromotionFormOptions) {
       }
       return "failure";
     } catch {
-      if (disposed) {
+      if (disposed || context !== shown) {
         return null;
       }
       error.value = "Nie udało się wykonać operacji. Sprawdź połączenie z API.";
       return "failure";
     } finally {
-      busy.value = false;
+      if (context === shown) {
+        busy.value = false;
+      }
     }
   }
 
   /** Adds variants once each, after the ones already chosen. Only while the variants can change. */
   function addVariants(variants: PromotionVariant[]): void {
-    if (readOnly.value || scheduleLocked.value) {
+    if (readOnly.value || scheduleLocked.value || locked.value) {
       return;
     }
     const known = new Set(form.value.variants.map((variant) => variant.variantId));
@@ -582,7 +700,7 @@ export function usePromotionForm(options: PromotionFormOptions) {
   }
 
   function removeVariant(variantId: string): void {
-    if (readOnly.value || scheduleLocked.value) {
+    if (readOnly.value || scheduleLocked.value || locked.value) {
       return;
     }
     form.value.variants = form.value.variants.filter((variant) => variant.variantId !== variantId);
@@ -599,6 +717,7 @@ export function usePromotionForm(options: PromotionFormOptions) {
     loaded,
     loadError,
     busy,
+    locked,
     dirty,
     status,
     readOnly,
@@ -611,6 +730,9 @@ export function usePromotionForm(options: PromotionFormOptions) {
     ending,
     endNotice,
     endError,
+    starting,
+    startNotice,
+    startError,
     errorsAt,
     isConflicting,
     save,
