@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type CartResult, type CartView, changeCartItemQuantity, loadCart, removeCartItem } from "@/api/client";
 import { formatPrice } from "@/catalog/format-price";
 import { ProductPhoto } from "@/catalog/ProductPhoto";
@@ -10,6 +10,19 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  type CartActions,
+  type CartOperation,
+  NO_ACTIONS,
+  actionsFinished,
+  dropWaitingQuantity,
+  give,
+  hasWaitingQuantity,
+  isQuantitySent,
+  isRemovalGiven,
+  runActions,
+  sendNext,
+} from "./cart-actions";
 import { announceCartChange } from "./events";
 import { CART_RATE_LIMITED, SAVE_FAILED, SessionExpired } from "./messages";
 
@@ -33,24 +46,34 @@ const PHOTO_SIZES = "96px";
 const MIN_QUANTITY = 1;
 const MAX_QUANTITY = 99;
 
+/** How an operation of the cart page ended; a 401 drops the actions still waiting. */
+type Outcome = "saved" | "refused" | "unauthorized";
+
 /**
  * The cart of the browser, loaded from `/api/cart`. Every view comes from the last answer of the API; nothing is
- * computed here, and a refused change leaves the last view as it was.
+ * computed here, and a refused change leaves the last view as it was. One operation goes to the API at a time; an
+ * action given meanwhile waits at its line (`cart-actions.ts`) and goes after the answer, also when the page is left.
  */
 export function CartPage() {
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
-  const [busy, setBusy] = useState(false);
   const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
-  const [sessionExpired, setSessionExpired] = useState(false);
-  // Bumped after every answer, so that the quantity field shows the quantity of the last view (also after a refused change).
+  // Bumped after the answer to an operation of the line, so that its quantity field shows the quantity of the last
+  // view (also after a refused change).
   const [resets, setResets] = useState<Record<string, number>>({});
+  // The actions are read and changed through the ref only: an answer must not see the actions of the render that sent
+  // the request. The state is the copy the render shows.
+  const actions = useRef<CartActions>(NO_ACTIONS);
+  const [shownActions, setShownActions] = useState<CartActions>(NO_ACTIONS);
 
   useEffect(() => {
     let active = true;
-    void loadCart().then((result) => {
-      if (active) setLoaded(toLoaded(result));
-    });
+    // Actions given on a cart page that was left may still run: the cart is read after them, not before.
+    void actionsFinished()
+      .then(() => loadCart())
+      .then((result) => {
+        if (active) setLoaded(toLoaded(result));
+      });
     return () => {
       active = false;
     };
@@ -70,43 +93,79 @@ export function CartPage() {
     setResets((current) => ({ ...current, [variantId]: (current[variantId] ?? 0) + 1 }));
   }
 
-  async function change(variantId: string, run: () => Promise<CartResult<CartView>>) {
-    setBusy(true);
-    setLineErrors({});
+  function showLineError(variantId: string, message: string | null) {
+    setLineErrors((current) => {
+      const next = { ...current };
+      if (message === null) delete next[variantId];
+      else next[variantId] = message;
+      return next;
+    });
+  }
+
+  function setActions(next: CartActions) {
+    actions.current = next;
+    setShownActions(next);
+  }
+
+  /** Sends the operation at once when nothing is on its way; otherwise it waits at its line. */
+  function request(operation: CartOperation) {
+    const before = actions.current;
+    const after = give(before, operation);
+    if (after === before) return;
+    setActions(after);
+    if (before.sent === null) runActions(sendAll);
+  }
+
+  /** The customer changed the entry of a field: its waiting quantity is not sent. */
+  function editQuantity(variantId: string) {
+    const after = dropWaitingQuantity(actions.current, variantId);
+    if (after !== actions.current) setActions(after);
+  }
+
+  /** Sends the waiting operations one by one, in their order, until none is left or the session expires. */
+  async function sendAll() {
+    for (;;) {
+      const next = sendNext(actions.current);
+      setActions(next);
+      if (next.sent === null) return;
+      if ((await send(next.sent)) === "unauthorized") {
+        setActions(NO_ACTIONS);
+        setLoaded({ status: "unauthorized" });
+        return;
+      }
+    }
+  }
+
+  async function send({ variantId, action }: CartOperation): Promise<Outcome> {
+    showLineError(variantId, null);
     setNotice(null);
-    setSessionExpired(false);
-    const result = await run();
+    const result = action.kind === "remove" ? await removeCartItem(variantId) : await changeCartItemQuantity(variantId, action.quantity);
     if (result.status === "ok") {
       show(result.data);
       // The field shows the quantity the API answered with, also when it is not the one typed.
       resetQuantityField(variantId);
-    } else if (result.status === "not_found") {
+      return "saved";
+    }
+    if (result.status === "unauthorized") return "unauthorized";
+    if (result.status === "not_found") {
       // A 404 does not prove the line is gone (an unavailable product answers 404 to a change), so the reloaded cart decides.
       const reloaded = await loadCart();
+      if (reloaded.status === "unauthorized") return "unauthorized";
       if (reloaded.status === "ok") {
         show(reloaded.data);
-        if (reloaded.data.lines.some((line) => line.variantId === variantId)) {
-          setLineErrors({ [variantId]: result.detail || SAVE_FAILED });
-          resetQuantityField(variantId);
-        } else {
+        if (!reloaded.data.lines.some((line) => line.variantId === variantId)) {
           setNotice("Pozycja została już usunięta");
+          return "refused";
         }
-      } else {
-        if (reloaded.status === "unauthorized") setSessionExpired(true);
-        else setLineErrors({ [variantId]: SAVE_FAILED });
-        resetQuantityField(variantId);
       }
+      showLineError(variantId, (reloaded.status === "ok" && result.detail) || SAVE_FAILED);
+    } else if (result.status === "rate_limited") {
+      showLineError(variantId, CART_RATE_LIMITED);
     } else {
-      if (result.status === "unauthorized") {
-        setSessionExpired(true);
-      } else if (result.status === "rate_limited") {
-        setLineErrors({ [variantId]: CART_RATE_LIMITED });
-      } else {
-        setLineErrors({ [variantId]: (result.status === "conflict" && result.detail) || SAVE_FAILED });
-      }
-      resetQuantityField(variantId);
+      showLineError(variantId, (result.status === "conflict" && result.detail) || SAVE_FAILED);
     }
-    setBusy(false);
+    resetQuantityField(variantId);
+    return "refused";
   }
 
   return (
@@ -126,13 +185,6 @@ export function CartPage() {
           <Button type="button" variant="outline" onClick={retry}>
             Spróbuj ponownie
           </Button>
-        </Alert>
-      ) : null}
-      {sessionExpired ? (
-        <Alert variant="destructive">
-          <AlertDescription>
-            <SessionExpired returnTo="/cart" />
-          </AlertDescription>
         </Alert>
       ) : null}
       {notice ? (
@@ -155,11 +207,14 @@ export function CartPage() {
                 <CartLineRow
                   key={line.variantId}
                   line={line}
-                  busy={busy}
+                  quantitySaving={isQuantitySent(shownActions, line.variantId)}
+                  removalGiven={isRemovalGiven(shownActions, line.variantId)}
+                  quantityWaiting={hasWaitingQuantity(shownActions, line.variantId)}
                   error={lineErrors[line.variantId]}
                   resetKey={resets[line.variantId] ?? 0}
-                  onChangeQuantity={(quantity) => void change(line.variantId, () => changeCartItemQuantity(line.variantId, quantity))}
-                  onRemove={() => void change(line.variantId, () => removeCartItem(line.variantId))}
+                  onEditQuantity={() => editQuantity(line.variantId)}
+                  onChangeQuantity={(quantity) => request({ variantId: line.variantId, action: { kind: "quantity", quantity } })}
+                  onRemove={() => request({ variantId: line.variantId, action: { kind: "remove" } })}
                 />
               ))}
             </ul>
@@ -241,18 +296,29 @@ function CheckoutButton({ cart }: { cart: CartView }) {
   );
 }
 
+/**
+ * `quantitySaving`: the change of this line's quantity is on its way, so its field is read-only. `removalGiven`: its
+ * removal is on its way or waits, so both controls are inactive. `quantityWaiting`: a quantity of this line waits for
+ * the operation of another line.
+ */
 function CartLineRow({
   line,
-  busy,
+  quantitySaving,
+  removalGiven,
+  quantityWaiting,
   error,
   resetKey,
+  onEditQuantity,
   onChangeQuantity,
   onRemove,
 }: {
   line: CartLine;
-  busy: boolean;
+  quantitySaving: boolean;
+  removalGiven: boolean;
+  quantityWaiting: boolean;
   error?: string;
   resetKey: number;
+  onEditQuantity: () => void;
   onChangeQuantity: (quantity: number) => void;
   onRemove: () => void;
 }) {
@@ -285,7 +351,9 @@ function CartLineRow({
             label={name ? `Ilość: ${variantLabel ? `${name}, ${variantLabel}` : name}` : "Ilość"}
             quantity={line.quantity}
             resetKey={resetKey}
-            busy={busy}
+            locked={quantitySaving || removalGiven}
+            waiting={quantityWaiting}
+            onEdit={onEditQuantity}
             onCommit={onChangeQuantity}
           />
           {line.lineTotal ? (
@@ -293,15 +361,15 @@ function CartLineRow({
               {formatPrice(line.lineTotal.gross, line.lineTotal.currency)}
             </p>
           ) : null}
-          {/* aria-disabled, not disabled: a disabled button would drop the keyboard focus for the time of the save. */}
+          {/* aria-disabled, not disabled: a disabled button would drop the keyboard focus while the removal is on its way. */}
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            aria-disabled={busy || undefined}
+            aria-disabled={removalGiven || undefined}
             className="aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground"
             onClick={() => {
-              if (!busy) onRemove();
+              if (!removalGiven) onRemove();
             }}
             aria-label={name ? `Usuń: ${name}` : "Usuń"}
           >
@@ -320,34 +388,45 @@ function CartLineRow({
 
 /**
  * Commits a changed number on blur or Enter; anything but a whole number from 1 to 99 goes back to the quantity.
- * It is the same element for the whole life of the line, so the keyboard focus stays where the customer put it: while a
- * change is saved the field is `aria-disabled` and read-only (not `disabled`, which would drop the focus) and ignores
- * every commit. `resetKey` brings the quantity back after a refused change.
+ * It is the same element for the whole life of the line, so the keyboard focus stays where the customer put it: while
+ * the change of its quantity is saved or its removal is given, the field is `aria-disabled` and read-only (not
+ * `disabled`, which would drop the focus) and ignores every commit. A committed quantity that waits for the operation
+ * of another line stays in the field, which stays editable: a new entry drops it (`onEdit`). `resetKey` brings the
+ * quantity of the line back after the answer to its own operation; an answer for another line does not overwrite an
+ * entry not committed yet or a waiting quantity.
  */
 function QuantityField({
   label,
   quantity,
   resetKey,
-  busy,
+  locked,
+  waiting,
+  onEdit,
   onCommit,
 }: {
   label: string;
   quantity: number;
   resetKey: number;
-  busy: boolean;
+  locked: boolean;
+  waiting: boolean;
+  onEdit: () => void;
   onCommit: (quantity: number) => void;
 }): ReactNode {
   const [draft, setDraft] = useState(String(quantity));
   const [shown, setShown] = useState({ quantity, resetKey });
 
-  // The field shows the new quantity of the line, or goes back to it after a refused change.
-  if (shown.quantity !== quantity || shown.resetKey !== resetKey) {
+  if (shown.resetKey !== resetKey) {
+    // The answer to the line's own operation: the field shows its quantity, also after a refused change.
     setShown({ quantity, resetKey });
     setDraft(String(quantity));
+  } else if (shown.quantity !== quantity) {
+    // The answer to another line's operation brings a new quantity of this one: only an untouched field shows it.
+    setShown({ quantity, resetKey });
+    if (!waiting && draft === String(shown.quantity)) setDraft(String(quantity));
   }
 
   function commit() {
-    if (busy) return;
+    if (locked) return;
     const value = draft.trim() === "" ? Number.NaN : Number(draft);
     if (!Number.isInteger(value) || value < MIN_QUANTITY || value > MAX_QUANTITY || value === quantity) {
       setDraft(String(quantity));
@@ -363,12 +442,14 @@ function QuantityField({
       min={MIN_QUANTITY}
       max={MAX_QUANTITY}
       aria-label={label}
-      aria-disabled={busy || undefined}
-      readOnly={busy}
+      aria-disabled={locked || undefined}
+      readOnly={locked}
       className="w-20 aria-disabled:cursor-not-allowed aria-disabled:border-border aria-disabled:bg-muted aria-disabled:text-muted-foreground"
       value={draft}
       onChange={(event) => {
-        if (!busy) setDraft(event.target.value);
+        if (locked) return;
+        setDraft(event.target.value);
+        onEdit();
       }}
       onBlur={commit}
       onKeyDown={(event) => {
