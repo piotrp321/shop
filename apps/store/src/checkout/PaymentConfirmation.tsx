@@ -147,6 +147,8 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
     const active = document.activeElement;
     const keepsFocus = active === trigger || active === document.body || active === null;
     if (read === newestRead.current && next !== null) setView(next);
+    // The customer moved the focus to another control, and the answer may remove it: the effect on `polled` checks that.
+    if (!keepsFocus && active) setPolled((current) => ({ active, seq: (current?.seq ?? 0) + 1 }));
     // A page that already has a status keeps it and says the read failed; one that has none shows its own message.
     if (next === null) setMessage(view.kind === "ok" ? READ_FAILED : null);
     setBusy(false);
