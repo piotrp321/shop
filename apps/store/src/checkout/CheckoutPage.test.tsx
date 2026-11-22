@@ -4,12 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type CartView, loadAccountSession, loadCart, type PlaceOrderResult, placeOrder } from "@/api/client";
 import { subscribeToCartChanges } from "@/cart/events";
 import { formatPrice } from "@/catalog/format-price";
+import { useSiteSwitches } from "@/components/SiteSwitches";
 import { CheckoutPage } from "./CheckoutPage";
 import { navigateTo } from "./navigate";
 import type { PaymentProvider } from "./payment-api";
 
 vi.mock("@/api/client", () => ({ loadCart: vi.fn(), loadAccountSession: vi.fn(), placeOrder: vi.fn() }));
 vi.mock("./navigate", () => ({ navigateTo: vi.fn() }));
+// The switches are read by the provider of the layout, which is not rendered here; a test sets what it says.
+vi.mock("@/components/SiteSwitches", () => ({ useSiteSwitches: vi.fn() }));
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -73,6 +76,8 @@ const PROVIDERS: PaymentProvider[] = [
 ];
 const REDIRECT_URL = "http://localhost:8000/payment-simulator/demo-transfer/pay/7d3f0a8e-4a1b-4c55-9f1e-2b3c4d5e6f70";
 
+const SWITCHES_ON = { demoNotice: false, customerAccounts: true, loaded: true };
+
 const JAN = { name: "Jan Kowalski", email: "jan.kowalski@example.com" };
 
 const announced: number[] = [];
@@ -84,6 +89,8 @@ beforeEach(() => {
   vi.mocked(loadAccountSession).mockReset();
   vi.mocked(placeOrder).mockReset();
   vi.mocked(navigateTo).mockReset();
+  vi.mocked(useSiteSwitches).mockReset();
+  vi.mocked(useSiteSwitches).mockReturnValue(SWITCHES_ON);
   push.mockReset();
   keys = 0;
   vi.spyOn(crypto, "randomUUID").mockImplementation(() => `00000000-0000-4000-8000-${String(++keys).padStart(12, "0")}` as `${string}-${string}-${string}-${string}-${string}`);
@@ -177,19 +184,131 @@ describe("CheckoutPage loading", () => {
     expect(screen.queryByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeNull();
   });
 
+  it("has one status region from the first render, the same node through loading and content", async () => {
+    let answer: (result: Awaited<ReturnType<typeof loadCart>>) => void = () => {};
+    vi.mocked(loadCart).mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+
+    const region = screen.getByTestId("checkout-status");
+    expect(region.getAttribute("role")).toBe("status");
+    expect(region.textContent).toBe("Wczytywanie…");
+    expect(screen.getAllByText("Wczytywanie…")).toHaveLength(1);
+
+    await act(async () => answer({ status: "ok", data: cart(0, []) }));
+
+    expect(screen.getByText("Twój koszyk jest pusty.")).toBeTruthy();
+    expect(screen.getByTestId("checkout-status")).toBe(region);
+    expect(region.isConnected).toBe(true);
+    expect(region.textContent).toBe("");
+  });
+
   it.each([
     ["the cart", () => vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" })],
     ["the session", () => vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "unavailable" })],
-  ])("offers a retry when %s cannot be loaded", async (_name, fail) => {
+  ])("keeps the retry button on the screen while it reads again when %s cannot be loaded", async (_name, fail) => {
     vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart() });
     vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
     fail();
     render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toBe("Nie udało się wczytać kasy");
+    const region = screen.getByTestId("checkout-status");
+    expect(region.textContent).toBe("");
 
-    expect(await screen.findByText("Nie udało się wczytać kasy")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Spróbuj ponownie" }));
+    // The second read is held back.
+    let answer: (result: Awaited<ReturnType<typeof loadCart>>) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const button = screen.getByRole("button", { name: "Spróbuj ponownie" });
+    button.focus();
+    fireEvent.click(button);
+    await act(async () => {});
 
-    expect(await screen.findByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeTruthy();
+    expect(button.isConnected).toBe(true);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(document.activeElement).toBe(button);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(region.textContent).toBe("Wczytywanie…");
+    const reads = vi.mocked(loadCart).mock.calls.length;
+    fireEvent.click(button);
+    await act(async () => {});
+    expect(vi.mocked(loadCart).mock.calls.length).toBe(reads);
+
+    await act(async () => answer({ status: "ok", data: cart() }));
+
+    expect(screen.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeTruthy();
+    expect(screen.getByTestId("checkout-status")).toBe(region);
+    expect(region.textContent).toBe("");
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Kasa" }));
+  });
+
+  it("shows the message again and keeps the focus on the button when the second read fails too", async () => {
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+    await screen.findByRole("alert");
+
+    let answer: (result: Awaited<ReturnType<typeof loadCart>>) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const button = screen.getByRole("button", { name: "Spróbuj ponownie" });
+    button.focus();
+    fireEvent.click(button);
+    await act(async () => {});
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    await act(async () => answer({ status: "failed" }));
+
+    expect(screen.getByRole("alert").textContent).toBe("Nie udało się wczytać kasy");
+    expect(screen.getByTestId("checkout-status").textContent).toBe("");
+    expect(button.isConnected).toBe(true);
+    expect(button.getAttribute("aria-disabled")).toBeNull();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it.each([
+    ["succeeds", { status: "ok", data: cart() } as const],
+    ["fails", { status: "failed" } as const],
+  ])("leaves the focus where the customer moved it while the read again %s", async (_name, outcome) => {
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+    await screen.findByRole("alert");
+    const elsewhere = document.createElement("input");
+    document.body.append(elsewhere);
+
+    let answer: (result: Awaited<ReturnType<typeof loadCart>>) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const button = screen.getByRole("button", { name: "Spróbuj ponownie" });
+    button.focus();
+    fireEvent.click(button);
+    await act(async () => {});
+    elsewhere.focus();
+
+    await act(async () => answer(outcome));
+
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
+
+  it("puts the focus back on the retry button when it was lost during the failed read", async () => {
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+    await screen.findByRole("alert");
+
+    let answer: (result: Awaited<ReturnType<typeof loadCart>>) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const button = screen.getByRole("button", { name: "Spróbuj ponownie" });
+    button.focus();
+    fireEvent.click(button);
+    await act(async () => {});
+    button.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    await act(async () => answer({ status: "failed" }));
+
+    expect(document.activeElement).toBe(button);
   });
 
   it("says the session expired when the cart answers 401", async () => {
@@ -231,6 +350,30 @@ describe("CheckoutPage content", () => {
     }
     expect(screen.getByRole("link", { name: "Zaloguj się" }).getAttribute("href")).toBe("/auth/login?returnTo=%2Fcheckout");
     expect(submitButton().disabled).toBe(false);
+  });
+
+  it("offers the login of a guest only after the switches are read, and only with the accounts on", async () => {
+    // The read of /api/site is under way.
+    vi.mocked(useSiteSwitches).mockReturnValue({ demoNotice: false, customerAccounts: true, loaded: false });
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart() });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    const { rerender } = render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+    await screen.findByRole("heading", { level: 1, name: "Kasa" });
+    await act(async () => {});
+    expect(field("E-mail")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Zaloguj się" })).toBeNull();
+
+    // The answer: the accounts are off.
+    vi.mocked(useSiteSwitches).mockReturnValue({ demoNotice: false, customerAccounts: false, loaded: true });
+    rerender(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+    expect(field("E-mail")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Zaloguj się" })).toBeNull();
+    expect(screen.queryByText("Masz konto?")).toBeNull();
+
+    // The accounts are on.
+    vi.mocked(useSiteSwitches).mockReturnValue(SWITCHES_ON);
+    rerender(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+    expect(screen.getByRole("link", { name: "Zaloguj się" }).getAttribute("href")).toBe("/auth/login?returnTo=%2Fcheckout");
   });
 
   it("shows a customer the e-mail of the account as text and fills the name in from the account", async () => {
