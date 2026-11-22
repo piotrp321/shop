@@ -583,12 +583,16 @@ zwracana.
 
   | Wynik operacji | Zachowanie |
   |---|---|
-  | Wszystkie zapisane, koszyk da się zamówić | Przejście do `/checkout` (pełne wczytanie strony kasy, jak `navigateTo` w kasie); kontrolki pozycji są zablokowane do zmiany strony. |
+  | Wszystkie zapisane, koszyk da się zamówić | Oczekiwanie się kończy i strona aktywuje sam link: przejście do `/checkout` jak bez oczekiwania (nawigacja w sklepie, bez wczytania całej strony). Strona koszyka przywrócona przyciskiem „Wstecz” na nic nie czeka. |
   | Błąd którejkolwiek (5xx, sieć, 409, 429, 404 pozycji, która jest w koszyku) | Zamiar kończy się na stałe: późniejszy sukces innej akcji go nie przywraca. Klient zostaje w koszyku; pod linkiem jest `role="alert"` „Nie udało się zapisać zmian w koszyku. Sprawdź pozycje i spróbuj ponownie.” (do następnej aktywacji linku), przy pozycji jej komunikat. Fokus zostaje na linku, akcje czekające wykonują się dalej. |
   | 404 pozycji, której nie ma w koszyku | Zamiar kończy się bez komunikatu przy linku: koszyk z odpowiedzi i „Pozycja została już usunięta” w regionie statusu. |
   | 401 | Widok wygasłej sesji (jak przy 401 operacji), bez przejścia. |
-  | Koszyk pusty albo z pozycjami nie do kupienia | Widok tych stanów, bez przejścia. Link znika, więc fokus z linku (albo z `<body>`) idzie na „Twój koszyk jest pusty” albo, przy pozycjach nie do kupienia, na nagłówek „Koszyk”. |
+  | Koszyk pusty albo z pozycjami nie do kupienia | Widok tych stanów, bez przejścia. |
   | Klient opuścił koszyk | Akcje wykonują się do końca (jak wyżej), a spóźniona odpowiedź nie otwiera kasy. |
+
+  Gdy odpowiedź dowolnej operacji (także po błędzie albo 404, które zakończyły oczekiwanie) daje koszyk bez linku
+  (pusty albo z pozycjami nie do kupienia), fokus z linku albo z `<body>` idzie na „Twój koszyk jest pusty” albo, przy
+  pozycjach nie do kupienia, na nagłówek „Koszyk”; fokus przeniesiony na inną kontrolkę zostaje tam.
 
   Granica ochrony: kasa otwarta tym linkiem w tej samej karcie otwiera się dopiero po zakończeniu wszystkich zmian
   zleconych na tej stronie koszyka (niezatwierdzony wpis, operacja w drodze, akcje czekające). Poza tą gwarancją
@@ -804,7 +808,7 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   ofert dla strony i lista bez ofert przy błędzie.
 - `AddToCartButton` (`AddToCartButton.test.tsx`): blokada na czas żądania, sukces, 409 z `detail`, 404, błąd sieci.
 - `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, przycisk „Przejdź do kasy” (aktywny, nieaktywny, brak przy pustym koszyku), wiersze dostawy (od, darmowa, brakująca kwota, brak wiersza, region `aria-live` obecny przed zmianą), pusty koszyk, zmiana ilości z błędem 409
-  (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem; akcje w trakcie zapisu na wstrzymanych obietnicach z liczbą wysłanych zmian i usunięć (usunięcie zaraz po wpisie, wpis w innej pozycji, porzucenie wartości czekającej, odpowiedź innej pozycji przy wpisie, błąd i 401 z akcją czekającą, dwie aktywacje „Usuń”, kolejność, opuszczenie strony); region statusu (ten sam węzeł w każdym stanie, teksty, czyszczenie przy starcie operacji klienta, brak czyszczenia przez operację z kolejki, jedyny `role="status"`); fokus po usunięciu (następna, poprzednia, pusty koszyk, wstrzymane usunięcie, fokus przeniesiony w trakcie, także przy usunięciu czekającym, widok z ostatniej odpowiedzi, nieudane usunięcie, 404); ponowienie wczytania (przycisk zostaje z `aria-disabled`, drugie żądanie nie wychodzi, sukces, ponowny błąd, fokus przeniesiony w trakcie); przejście do kasy z nawigacją (`navigateTo`) podmienioną w teście (link zostaje linkiem bez operacji i przy kliknięciu z klawiszem, oczekiwanie z zablokowanymi kontrolkami, tekstem regionu i fokusem na linku, druga aktywacja bez skutku, zatwierdzenie wpisu z fokusem, wpis zastępujący wartość czekającą, błąd 5xx, 409 i 429 z późniejszym sukcesem innej akcji, 401, 404, pusty koszyk, pozycje nie do kupienia, opuszczenie strony). Stan modułu `cart-actions.ts` jest wspólny dla testów pliku: `afterEach` rozstrzyga wstrzymane zapisy (401) i czeka na `actionsFinished()`.
+  (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem; akcje w trakcie zapisu na wstrzymanych obietnicach z liczbą wysłanych zmian i usunięć (usunięcie zaraz po wpisie, wpis w innej pozycji, porzucenie wartości czekającej, odpowiedź innej pozycji przy wpisie, błąd i 401 z akcją czekającą, dwie aktywacje „Usuń”, kolejność, opuszczenie strony); region statusu (ten sam węzeł w każdym stanie, teksty, czyszczenie przy starcie operacji klienta, brak czyszczenia przez operację z kolejki, jedyny `role="status"`); fokus po usunięciu (następna, poprzednia, pusty koszyk, wstrzymane usunięcie, fokus przeniesiony w trakcie, także przy usunięciu czekającym, widok z ostatniej odpowiedzi, nieudane usunięcie, 404); ponowienie wczytania (przycisk zostaje z `aria-disabled`, drugie żądanie nie wychodzi, sukces, ponowny błąd, fokus przeniesiony w trakcie); przejście do kasy z nawigacją linku przechwyconą w teście (przejście po oczekiwaniu przez sam link, bez `navigateTo`; link zostaje linkiem bez operacji i przy kliknięciu z klawiszem, oczekiwanie z zablokowanymi kontrolkami, tekstem regionu i fokusem na linku, druga aktywacja bez skutku, zatwierdzenie wpisu z fokusem, wpis zastępujący wartość czekającą, błąd 5xx, 409 i 429 z późniejszym sukcesem innej akcji, 401, 404, pusty koszyk, pozycje nie do kupienia, opuszczenie strony, fokus z linku po błędzie albo 404, które opróżniły koszyk albo zostawiły pozycje nie do kupienia). Stan modułu `cart-actions.ts` jest wspólny dla testów pliku: `afterEach` rozstrzyga wstrzymane zapisy (401) i czeka na `actionsFinished()`.
 - `CartBadge` (`CartBadge.test.tsx`, `events.test.ts`): liczba sztuk, aktualizacja po zmianie, ukrycie przy błędzie,
   komunikat scalenia.
 - `src/api/client.test.ts`: wywołania `/api/cart/*`, kolejka zapisów z dublerem `navigator.locks` i bez niego (każdy
@@ -831,8 +835,8 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   podłączony węzeł regionu przez wczytywanie, treść i pusty koszyk; tekst usunięcia bez przewijania poziomego przy 320
   i 375 px; „Przejdź do kasy” przy zmianie ilości wstrzymanej w przeglądarce (kliknięcie przy 1280 px, dotyk przy 375 px,
   Tab i Enter: adres zostaje `/cart`, link z `aria-disabled` i fokusem, tekst regionu, wpis w innym polu, „Usuń” i druga
-  aktywacja bez skutku, po zwolnieniu kasa z zapisaną ilością i kwotą z serwera, jedna zmiana; zamówienie gościa złożone
-  z tej kasy ma tę ilość), przejście linkiem nagłówka w trakcie oczekiwania (adres zostaje, serwer ma zmiany) oraz tekst
+  aktywacja bez skutku, po zwolnieniu kasa z zapisaną ilością i kwotą z serwera jako nawigacja w sklepie (znacznik na `window` zostaje), jedna zmiana; zamówienie gościa złożone
+  z tej kasy ma tę ilość), przejście linkiem nagłówka w trakcie oczekiwania (adres zostaje, serwer ma zmiany), fokus z linku na „Twój koszyk jest pusty” po 404 zmiany pozycji usuniętej w innej karcie oraz tekst
   regionu i komunikat po błędzie 500 bez przewijania poziomego przy 320 i 375 px.
 - `cart-merge.spec.ts` (wybór pierwszego dostępnego wariantu, gdy kafelek ma wybór): Jan loguje się, opróżnia swój koszyk w UI, dodaje B i wylogowuje się; jako gość dodaje A i B;
   po zalogowaniu licznik pokazuje 3, ciasteczko `store_cart` znika, a koszyk ma A × 1 i B × 2; drugi kontekst

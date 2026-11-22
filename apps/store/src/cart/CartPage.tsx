@@ -5,7 +5,6 @@ import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from "re
 import { type CartResult, type CartView, changeCartItemQuantity, loadCart, removeCartItem } from "@/api/client";
 import { formatPrice } from "@/catalog/format-price";
 import { ProductPhoto } from "@/catalog/ProductPhoto";
-import { navigateTo } from "@/checkout/navigate";
 import { ScreenMain, ScreenTitle } from "@/components/ScreenLayout";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -187,6 +186,15 @@ export function CartPage() {
     if (target !== null && origins.some((origin) => focusStays(origin))) focusAt(target);
   }
 
+  /**
+   * The cart of the answer has no link to the checkout any more (it is empty or has a line that cannot be bought): the
+   * focus the link had goes to the text of the empty cart or to the title (F3), however the waiting for it ended.
+   */
+  function moveFocusFromGoneLink(before: CartView | null, after: CartView) {
+    if (before === null || !canBeOrdered(before) || canBeOrdered(after)) return;
+    if (focusStays(CHECKOUT_ID)) focusAt(after.lines.length === 0 ? EMPTY_ID : TITLE_ID);
+  }
+
   function resetQuantityField(variantId: string) {
     setResets((current) => ({ ...current, [variantId]: (current[variantId] ?? 0) + 1 }));
   }
@@ -240,18 +248,17 @@ export function CartPage() {
     if (document.activeElement !== link) link.focus();
   }
 
-  /** Every operation is answered: the checkout the customer asked for opens when the cart can be ordered. */
+  /**
+   * Every operation is answered: the checkout the customer asked for opens when the cart can be ordered. The page clicks
+   * the link itself, now with nothing on its way, so `next/link` opens the checkout as without the waiting (a navigation
+   * of the client); a cart page kept by the browser for "Wstecz" then waits for nothing.
+   */
   function finishCheckout() {
     const cart = view.current;
-    if (checkout.current !== "waiting" || !mounted.current || cart === null) return;
-    if (cart.lines.length > 0 && !cart.hasExcludedLines) {
-      // The controls stay locked until the checkout replaces the page.
-      navigateTo(CHECKOUT_PATH);
-      return;
-    }
+    if (checkout.current !== "waiting") return;
     setCheckout("none");
-    // The link went with the cart that cannot be ordered: its focus goes to the text of the empty cart or to the title.
-    if (focusStays(CHECKOUT_ID)) focusAt(cart.lines.length === 0 ? EMPTY_ID : TITLE_ID);
+    if (!mounted.current || cart === null || !canBeOrdered(cart)) return;
+    document.getElementById(CHECKOUT_ID)?.click();
   }
 
   /** Sends the operation at once when nothing is on its way; otherwise it waits at its line. */
@@ -305,6 +312,7 @@ export function CartPage() {
       // The field shows the quantity the API answered with, also when it is not the one typed.
       resetQuantityField(variantId);
       if (action.kind === "remove") setStatus(removedText(before, variantId));
+      moveFocusFromGoneLink(before, result.data);
       moveFocusFromGoneLine(operation, before, result.data);
       return "saved";
     }
@@ -316,6 +324,7 @@ export function CartPage() {
       if (reloaded.status === "ok") {
         const before = view.current;
         show(reloaded.data);
+        moveFocusFromGoneLink(before, reloaded.data);
         if (!reloaded.data.lines.some((line) => line.variantId === variantId)) {
           setStatus(LINE_GONE);
           moveFocusFromGoneLine(operation, before, reloaded.data);
@@ -413,6 +422,9 @@ export function CartPage() {
     </ScreenMain>
   );
 }
+
+/** The cart has the link to the checkout: lines, all of which can be bought. */
+const canBeOrdered = (cart: CartView): boolean => cart.lines.length > 0 && !cart.hasExcludedLines;
 
 function toLoaded(result: CartResult<CartView>): Loaded {
   if (result.status === "ok") return { status: "ready", cart: result.data };
