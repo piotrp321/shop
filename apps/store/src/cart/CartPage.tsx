@@ -46,6 +46,18 @@ const PHOTO_SIZES = "96px";
 const MIN_QUANTITY = 1;
 const MAX_QUANTITY = 99;
 
+const TITLE_ID = "cart-title";
+const RETRY_ID = "cart-retry";
+const EMPTY_ID = "cart-empty";
+// The controls an action came from; the focus is looked up by them after the answer.
+const removeId = (variantId: string) => `cart-remove-${variantId}`;
+const quantityId = (variantId: string) => `cart-quantity-${variantId}`;
+
+// What the status region says. The region is one element for every state of the screen and only its text changes.
+const LOADING = "Wczytywanie koszyka…";
+const LINE_GONE = "Pozycja została już usunięta";
+const REMOVED_UNNAMED = "Usunięto pozycję z koszyka.";
+
 /** How an operation of the cart page ended; a 401 drops the actions still waiting. */
 type Outcome = "saved" | "refused" | "unauthorized";
 
@@ -53,11 +65,26 @@ type Outcome = "saved" | "refused" | "unauthorized";
  * The cart of the browser, loaded from `/api/cart`. Every view comes from the last answer of the API; nothing is
  * computed here, and a refused change leaves the last view as it was. One operation goes to the API at a time; an
  * action given meanwhile waits at its line (`cart-actions.ts`) and goes after the answer, also when the page is left.
+ *
+ * The one status region (`cart-status`) says what the page is doing or did: it reads the cart, a line was removed, a
+ * line was gone already. Its text stays until the next operation the customer starts; an operation that waited for
+ * the one before it does not clear the text, it only replaces it with its own. After a removal the focus goes to the
+ * next line, and after a retry of the load to the title, but only when the customer did not move it meanwhile.
  */
 export function CartPage() {
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
   const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
-  const [notice, setNotice] = useState<string | null>(null);
+  // The text of the status region once the cart is read; "" says nothing.
+  const [status, setStatus] = useState("");
+  // "Spróbuj ponownie" reads the cart again while the error stays (the button keeps the focus). The ref stops a second
+  // activation before the render that shows the state.
+  const [retrying, setRetrying] = useState(false);
+  const retryRunning = useRef(false);
+  // Where the focus goes after an answer (an element id): set only when the customer left it where the action came from.
+  const [attention, setAttention] = useState<{ id: string; seq: number } | null>(null);
+  // The view the page shows, for an answer that comes after a render: the operations that waited for another one run
+  // in the closure of the render that started the sending, whose `loaded` is old by then.
+  const view = useRef<CartView | null>(null);
   // Bumped after the answer to an operation of the line, so that its quantity field shows the quantity of the last
   // view (also after a refused change).
   const [resets, setResets] = useState<Record<string, number>>({});
@@ -72,21 +99,53 @@ export function CartPage() {
     void actionsFinished()
       .then(() => loadCart())
       .then((result) => {
-        if (active) setLoaded(toLoaded(result));
+        if (active) applyLoaded(toLoaded(result));
       });
     return () => {
       active = false;
     };
   }, []);
 
-  function retry() {
-    setLoaded({ status: "loading" });
-    void loadCart().then((result) => setLoaded(toLoaded(result)));
+  useEffect(() => {
+    if (attention) document.getElementById(attention.id)?.focus();
+  }, [attention]);
+
+  function applyLoaded(next: Loaded) {
+    view.current = next.status === "ready" ? next.cart : null;
+    setLoaded(next);
+  }
+
+  /** The focus is still on the control the action came from, or was lost with it (F2). */
+  function focusStays(originId: string): boolean {
+    const focus = document.activeElement;
+    return focus === null || focus === document.body || focus === document.getElementById(originId);
+  }
+
+  function focusAt(id: string) {
+    setAttention((current) => ({ id, seq: (current?.seq ?? 0) + 1 }));
+  }
+
+  async function retry() {
+    if (retryRunning.current) return;
+    retryRunning.current = true;
+    setRetrying(true);
+    const result = toLoaded(await loadCart());
+    const keepsFocus = focusStays(RETRY_ID);
+    retryRunning.current = false;
+    setRetrying(false);
+    applyLoaded(result);
+    if (keepsFocus) focusAt(result.status === "error" ? RETRY_ID : TITLE_ID);
   }
 
   function show(cart: CartView) {
-    setLoaded({ status: "ready", cart });
+    applyLoaded({ status: "ready", cart });
     announceCartChange(cart.totals.itemCount);
+  }
+
+  /** A line the page showed is not in the cart of the answer: the focus it had goes to a line that is left (F3). */
+  function moveFocusFromGoneLine({ variantId, action }: CartOperation, before: CartView | null, after: CartView) {
+    const target = focusAfterGone(before, after, variantId);
+    if (target !== null && focusStays(action.kind === "remove" ? removeId(variantId) : quantityId(variantId))) focusAt(target);
   }
 
   function resetQuantityField(variantId: string) {
@@ -124,26 +183,35 @@ export function CartPage() {
 
   /** Sends the waiting operations one by one, in their order, until none is left or the session expires. */
   async function sendAll() {
+    // The first operation was given by the customer after the earlier ones ended, so it clears the text of the status
+    // region; the ones that waited for another operation only replace it with their own text.
+    let givenNow = true;
     for (;;) {
       const next = sendNext(actions.current);
       setActions(next);
       if (next.sent === null) return;
-      if ((await send(next.sent)) === "unauthorized") {
+      const outcome = await send(next.sent, givenNow);
+      givenNow = false;
+      if (outcome === "unauthorized") {
         setActions(NO_ACTIONS);
-        setLoaded({ status: "unauthorized" });
+        applyLoaded({ status: "unauthorized" });
         return;
       }
     }
   }
 
-  async function send({ variantId, action }: CartOperation): Promise<Outcome> {
+  async function send(operation: CartOperation, givenNow: boolean): Promise<Outcome> {
+    const { variantId, action } = operation;
     showLineError(variantId, null);
-    setNotice(null);
+    if (givenNow) setStatus("");
     const result = action.kind === "remove" ? await removeCartItem(variantId) : await changeCartItemQuantity(variantId, action.quantity);
     if (result.status === "ok") {
+      const before = view.current;
       show(result.data);
       // The field shows the quantity the API answered with, also when it is not the one typed.
       resetQuantityField(variantId);
+      if (action.kind === "remove") setStatus(removedText(before, variantId));
+      moveFocusFromGoneLine(operation, before, result.data);
       return "saved";
     }
     if (result.status === "unauthorized") return "unauthorized";
@@ -152,9 +220,11 @@ export function CartPage() {
       const reloaded = await loadCart();
       if (reloaded.status === "unauthorized") return "unauthorized";
       if (reloaded.status === "ok") {
+        const before = view.current;
         show(reloaded.data);
         if (!reloaded.data.lines.some((line) => line.variantId === variantId)) {
-          setNotice("Pozycja została już usunięta");
+          setStatus(LINE_GONE);
+          moveFocusFromGoneLine(operation, before, reloaded.data);
           return "refused";
         }
       }
@@ -168,10 +238,14 @@ export function CartPage() {
     return "refused";
   }
 
+  // What the status region says now; the texts of the other operations of the screen are chosen here too.
+  const statusText = loaded.status === "loading" || retrying ? LOADING : status;
+
   return (
     <ScreenMain>
-      <ScreenTitle>Koszyk</ScreenTitle>
-      {loaded.status === "loading" ? <p className="text-muted-foreground">Wczytywanie koszyka…</p> : null}
+      <ScreenTitle id={TITLE_ID} tabIndex={-1}>
+        Koszyk
+      </ScreenTitle>
       {loaded.status === "unauthorized" ? (
         <Alert variant="destructive">
           <AlertDescription>
@@ -180,22 +254,31 @@ export function CartPage() {
         </Alert>
       ) : null}
       {loaded.status === "error" ? (
-        <Alert variant="destructive" className="justify-items-start gap-3">
-          <AlertDescription>Nie udało się wczytać koszyka</AlertDescription>
-          <Button type="button" variant="outline" onClick={retry}>
+        <div className="flex flex-col items-start gap-3">
+          {retrying ? null : (
+            <Alert variant="destructive">
+              <AlertDescription>Nie udało się wczytać koszyka</AlertDescription>
+            </Alert>
+          )}
+          {/* A running read blocks with `aria-disabled`, not `disabled`: a disabled button loses the keyboard focus. */}
+          <Button
+            id={RETRY_ID}
+            type="button"
+            variant="outline"
+            aria-disabled={retrying || undefined}
+            className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+            onClick={() => void retry()}
+          >
             Spróbuj ponownie
           </Button>
-        </Alert>
-      ) : null}
-      {notice ? (
-        <Alert role="status">
-          <AlertDescription>{notice}</AlertDescription>
-        </Alert>
+        </div>
       ) : null}
       {loaded.status === "ready" ? (
         loaded.cart.lines.length === 0 ? (
           <div className="flex flex-col items-start gap-1">
-            <p className="text-lg">Twój koszyk jest pusty</p>
+            <p id={EMPTY_ID} tabIndex={-1} className="text-lg">
+              Twój koszyk jest pusty
+            </p>
             <Button asChild variant="link" className="px-0 underline">
               <Link href="/">Zobacz produkty</Link>
             </Button>
@@ -223,6 +306,14 @@ export function CartPage() {
           </>
         )
       ) : null}
+      {/*
+        The last element of the screen, so that its text appearing and going (also at the mouse down that starts an
+        operation, when the focus leaves a field) never moves a control the customer is about to press. An empty region
+        takes no room: the negative margin cancels the gap above it.
+      */}
+      <p role="status" data-testid="cart-status" className="break-words text-muted-foreground empty:-mt-6">
+        {statusText}
+      </p>
     </ScreenMain>
   );
 }
@@ -230,6 +321,27 @@ export function CartPage() {
 function toLoaded(result: CartResult<CartView>): Loaded {
   if (result.status === "ok") return { status: "ready", cart: result.data };
   return { status: result.status === "unauthorized" ? "unauthorized" : "error" };
+}
+
+/** The status text after a removal: the name of the line like the label of its quantity field, or none for a line without a name. */
+function removedText(before: CartView | null, variantId: string): string {
+  const product = before?.lines.find((line) => line.variantId === variantId)?.product;
+  if (!product?.name) return REMOVED_UNNAMED;
+  return `Usunięto z koszyka: ${product.variantLabel ? `${product.name}, ${product.variantLabel}` : product.name}.`;
+}
+
+/**
+ * The id of the element that takes the focus of a line that is not in the cart any more: "Usuń" of the next line that
+ * is left, else of the previous one; the text of the empty cart when nothing is left. Null when the line is still there
+ * (or was not shown), so the focus stays.
+ */
+function focusAfterGone(before: CartView | null, after: CartView, variantId: string): string | null {
+  const index = before?.lines.findIndex((line) => line.variantId === variantId) ?? -1;
+  if (before === null || index === -1 || after.lines.some((line) => line.variantId === variantId)) return null;
+  if (after.lines.length === 0) return EMPTY_ID;
+  const left = (lines: CartLine[]) => lines.filter((line) => after.lines.some((kept) => kept.variantId === line.variantId));
+  const target = left(before.lines.slice(index + 1))[0] ?? left(before.lines.slice(0, index)).at(-1) ?? after.lines[0];
+  return removeId(target.variantId);
 }
 
 function CartSummary({ cart }: { cart: CartView }) {
@@ -348,6 +460,7 @@ function CartLineRow({
         </div>
         <div className="flex flex-col items-end gap-2">
           <QuantityField
+            id={quantityId(line.variantId)}
             label={name ? `Ilość: ${variantLabel ? `${name}, ${variantLabel}` : name}` : "Ilość"}
             quantity={line.quantity}
             resetKey={resetKey}
@@ -363,6 +476,7 @@ function CartLineRow({
           ) : null}
           {/* aria-disabled, not disabled: a disabled button would drop the keyboard focus while the removal is on its way. */}
           <Button
+            id={removeId(line.variantId)}
             type="button"
             variant="ghost"
             size="sm"
@@ -396,6 +510,7 @@ function CartLineRow({
  * entry not committed yet or a waiting quantity.
  */
 function QuantityField({
+  id,
   label,
   quantity,
   resetKey,
@@ -404,6 +519,7 @@ function QuantityField({
   onEdit,
   onCommit,
 }: {
+  id: string;
   label: string;
   quantity: number;
   resetKey: number;
@@ -437,6 +553,7 @@ function QuantityField({
 
   return (
     <Input
+      id={id}
       type="number"
       inputMode="numeric"
       min={MIN_QUANTITY}

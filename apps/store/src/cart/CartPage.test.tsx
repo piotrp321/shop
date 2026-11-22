@@ -5,6 +5,7 @@ import { type CartView, changeCartItemQuantity, loadCart, removeCartItem } from 
 import { makeImage } from "@/catalog/fixtures";
 import { formatPrice } from "@/catalog/format-price";
 import { CartPage } from "./CartPage";
+import { actionsFinished } from "./cart-actions";
 import { subscribeToCartChanges } from "./events";
 
 vi.mock("@/api/client", () => ({ loadCart: vi.fn(), changeCartItemQuantity: vi.fn(), removeCartItem: vi.fn() }));
@@ -56,17 +57,39 @@ const ok = (data: CartView) => ({ status: "ok" as const, data });
 const announced: number[] = [];
 let unsubscribe: () => void;
 
+type Answer = Awaited<ReturnType<typeof changeCartItemQuantity>>;
+
+// Every held write waits until the test answers it, in the order of the calls.
+const held: { resolve: (answer: Answer) => void; answered: boolean }[] = [];
+const hold = () => {
+  const write = () => new Promise<Answer>((resolve) => held.push({ resolve: (value) => resolve(value), answered: false }));
+  vi.mocked(changeCartItemQuantity).mockImplementation(write);
+  vi.mocked(removeCartItem).mockImplementation(write);
+};
+const answer = async (index: number, value: Answer) => {
+  expect(held.length, `write ${index + 1} was not sent`).toBeGreaterThan(index);
+  held[index].answered = true;
+  await act(async () => held[index].resolve(value));
+};
+
 beforeEach(() => {
   vi.mocked(loadCart).mockReset();
   vi.mocked(changeCartItemQuantity).mockReset();
   vi.mocked(removeCartItem).mockReset();
   announced.length = 0;
+  held.length = 0;
   unsubscribe = subscribeToCartChanges((count) => announced.push(count));
 });
 
-afterEach(() => {
-  unsubscribe();
+afterEach(async () => {
   cleanup();
+  unsubscribe();
+  // The actions of the cart page outlive it (`actionsFinished`): a write the test left without an answer would keep
+  // every later cart page on "Wczytywanie koszyka…". A 401 ends the sending at once and drops what waits.
+  await act(async () => {
+    for (const write of held) if (!write.answered) write.resolve({ status: "unauthorized" });
+  });
+  await actionsFinished();
 });
 
 const renderWith = async (cart: CartView) => {
@@ -83,22 +106,35 @@ const setQuantity = (name: string, value: string) => {
 };
 
 describe("CartPage loading", () => {
-  it("says it is loading until the cart arrives", async () => {
+  it("says it is loading in the status region until the cart arrives", async () => {
     vi.mocked(loadCart).mockReturnValue(new Promise(() => {}));
     render(<CartPage />);
 
-    expect(await screen.findByText("Wczytywanie koszyka…")).toBeTruthy();
+    expect((await screen.findByTestId("cart-status")).textContent).toBe("Wczytywanie koszyka…");
+    expect(screen.getByTestId("cart-status").getAttribute("role")).toBe("status");
+    expect(screen.getAllByText("Wczytywanie koszyka…")).toHaveLength(1);
   });
 
-  it("offers a retry when the cart cannot be loaded, and shows the cart after it works", async () => {
-    vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" }).mockResolvedValueOnce(ok(view([line(A, "Produkt A", 1)], { gross: 1000 })));
+  it("offers a retry when the cart cannot be loaded, keeps the button during it, and shows the cart after it works", async () => {
+    let finish: (result: Awaited<ReturnType<typeof loadCart>>) => void = () => {};
+    vi.mocked(loadCart)
+      .mockResolvedValueOnce({ status: "failed" })
+      .mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
     render(<CartPage />);
 
     expect(await screen.findByText("Nie udało się wczytać koszyka")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Spróbuj ponownie" }));
+    const retry = screen.getByRole("button", { name: "Spróbuj ponownie" });
+    fireEvent.click(retry);
 
-    expect(await screen.findByText("Produkt A")).toBeTruthy();
+    // The button stays while the cart is read again; the message of the failure makes way for the loading text.
+    expect(screen.getByRole("button", { name: "Spróbuj ponownie" })).toBe(retry);
     expect(screen.queryByText("Nie udało się wczytać koszyka")).toBeNull();
+    expect(screen.getByTestId("cart-status").textContent).toBe("Wczytywanie koszyka…");
+
+    await act(async () => finish(ok(view([line(A, "Produkt A", 1)], { gross: 1000 }))));
+    expect(await screen.findByText("Produkt A")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Spróbuj ponownie" })).toBeNull();
+    expect(screen.getByTestId("cart-status").textContent).toBe("");
     expect(loadCart).toHaveBeenCalledTimes(2);
   });
 
@@ -456,7 +492,8 @@ describe("CartPage changing the quantity", () => {
 
     setQuantity("Produkt A", "3");
 
-    expect(await screen.findByText("Pozycja została już usunięta")).toBeTruthy();
+    await vi.waitFor(() => expect(screen.getByTestId("cart-status").textContent).toBe("Pozycja została już usunięta"));
+    expect(screen.getAllByText("Pozycja została już usunięta")).toHaveLength(1);
     expect(screen.queryByText("Produkt A")).toBeNull();
     expect(screen.getByText("Produkt B")).toBeTruthy();
     expect(loadCart).toHaveBeenCalledTimes(2);
@@ -642,30 +679,11 @@ describe("CartPage checkout button", () => {
 });
 
 describe("CartPage actions during a save", () => {
-  type Answer = Awaited<ReturnType<typeof changeCartItemQuantity>>;
-  type Held = { resolve: (answer: Answer) => void };
-
-  // Every write waits until the test answers it, in the order of the calls.
-  const held: Held[] = [];
-  const hold = () => {
-    const write = () => new Promise<Answer>((resolve) => held.push({ resolve }));
-    vi.mocked(changeCartItemQuantity).mockImplementation(write);
-    vi.mocked(removeCartItem).mockImplementation(write);
-  };
-  const answer = async (index: number, value: Answer) => {
-    expect(held.length, `write ${index + 1} was not sent`).toBeGreaterThan(index);
-    await act(async () => held[index].resolve(value));
-  };
-
   const cart = (a: number | null, b: number | null) =>
     view([...(a === null ? [] : [line(A, "Produkt A", a)]), ...(b === null ? [] : [line(B, "Produkt B", b)])]);
   const removeButton = (name: string) => screen.getByRole("button", { name: `Usuń: ${name}` });
   const patches = () => vi.mocked(changeCartItemQuantity).mock.calls;
   const deletes = () => vi.mocked(removeCartItem).mock.calls;
-
-  beforeEach(() => {
-    held.length = 0;
-  });
 
   describe.each([
     ["answered at once", false],
@@ -1056,5 +1074,419 @@ describe("CartPage actions during a save", () => {
 
     expect(screen.getByText(/Twoja sesja wygasła\. Zaloguj się ponownie\./)).toBeTruthy();
     expect(deletes()).toEqual([]);
+  });
+});
+
+const statusRegion = () => screen.getByTestId("cart-status");
+const removeOf = (name: string) => screen.getByRole("button", { name: `Usuń: ${name}` });
+const threeLines = () => view([line(A, "Produkt A", 1), line(B, "Produkt B", 1), line(PRODUCT, "Produkt C", 1)]);
+const without = (...names: string[]) => view(threeLines().lines.filter((l) => !names.includes(l.product?.name ?? "")));
+
+describe("CartPage status region", () => {
+  it("is one node from the first render through loading, the content and the empty cart, and only its text changes", async () => {
+    let finish: (result: Awaited<ReturnType<typeof loadCart>>) => void = () => {};
+    vi.mocked(loadCart).mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    render(<CartPage />);
+    const region = statusRegion();
+    expect(region.getAttribute("role")).toBe("status");
+    expect(region.textContent).toBe("Wczytywanie koszyka…");
+
+    await act(async () => finish(ok(view([line(A, "Produkt A", 1)]))));
+    expect(await screen.findByText("Produkt A")).toBeTruthy();
+    expect(statusRegion()).toBe(region);
+    expect(region.isConnected).toBe(true);
+    expect(region.textContent).toBe("");
+
+    vi.mocked(removeCartItem).mockResolvedValue(ok(view([])));
+    fireEvent.click(removeOf("Produkt A"));
+    expect(await screen.findByText("Twój koszyk jest pusty")).toBeTruthy();
+    expect(statusRegion()).toBe(region);
+    expect(region.isConnected).toBe(true);
+    expect(region.textContent).toBe("Usunięto z koszyka: Produkt A.");
+    expect(screen.getAllByText("Usunięto z koszyka: Produkt A.")).toHaveLength(1);
+  });
+
+  it("is there, empty, when the cart cannot be loaded and when the session expired, and is the only status of the screen", async () => {
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+    render(<CartPage />);
+    await screen.findByText("Nie udało się wczytać koszyka");
+    expect(statusRegion().textContent).toBe("");
+    expect(screen.getAllByRole("status")).toEqual([statusRegion()]);
+    cleanup();
+
+    vi.mocked(loadCart).mockResolvedValue({ status: "unauthorized" });
+    render(<CartPage />);
+    await screen.findByText(/Twoja sesja wygasła/);
+    expect(statusRegion().textContent).toBe("");
+    expect(screen.getAllByRole("status")).toEqual([statusRegion()]);
+  });
+
+  it("keeps a single status of the screen next to the cart with lines", async () => {
+    await renderWith(threeLines());
+
+    expect(screen.getAllByRole("status")).toEqual([statusRegion()]);
+  });
+
+  it.each([
+    ["a name", line(A, "Produkt A", 1), "Usunięto z koszyka: Produkt A."],
+    [
+      "a name and the label of the variant",
+      line(A, "Buty Asfalt", 1, { product: { productId: PRODUCT, name: "Buty Asfalt", variantLabel: "czarne, 42", image: null } }),
+      "Usunięto z koszyka: Buty Asfalt, czarne, 42.",
+    ],
+    [
+      "no name (an unavailable product)",
+      line(A, "x", 1, { product: null, state: "unavailable_product", unitPrice: null, lineTotal: null }),
+      "Usunięto pozycję z koszyka.",
+    ],
+  ])("says what was removed for a line with %s", async (_name, removed, text) => {
+    await renderWith(view([removed, line(B, "Produkt B", 1)], {}, removed.product === null));
+    vi.mocked(removeCartItem).mockResolvedValue(ok(view([line(B, "Produkt B", 1)])));
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^Usuń/ })[0]);
+
+    await vi.waitFor(() => expect(statusRegion().textContent).toBe(text));
+    expect(screen.getAllByText(text)).toHaveLength(1);
+  });
+
+  it("keeps its text until the next operation starts and then replaces it, so that the same text is announced again", async () => {
+    await renderWith(threeLines());
+    vi.mocked(removeCartItem).mockResolvedValueOnce(ok(without("Produkt A")));
+
+    fireEvent.click(removeOf("Produkt A"));
+    await vi.waitFor(() => expect(statusRegion().textContent).toBe("Usunięto z koszyka: Produkt A."));
+
+    // A quantity of another line starts: the text of the removal is gone at once, and the answer does not bring it back.
+    hold();
+    setQuantity("Produkt B", "2");
+    expect(statusRegion().textContent).toBe("");
+    await answer(0, ok(view([line(B, "Produkt B", 2), line(PRODUCT, "Produkt C", 1)])));
+    expect(statusRegion().textContent).toBe("");
+
+    fireEvent.click(removeOf("Produkt B"));
+    expect(statusRegion().textContent).toBe("");
+    await answer(1, ok(without("Produkt A", "Produkt B")));
+    expect(statusRegion().textContent).toBe("Usunięto z koszyka: Produkt B.");
+  });
+
+  it("says the line is gone when its removal gets a 404 and the reloaded cart does not have it", async () => {
+    await renderWith(threeLines());
+    vi.mocked(removeCartItem).mockResolvedValue({ status: "not_found" });
+    vi.mocked(loadCart).mockResolvedValue(ok(without("Produkt A")));
+
+    fireEvent.click(removeOf("Produkt A"));
+
+    await vi.waitFor(() => expect(statusRegion().textContent).toBe("Pozycja została już usunięta"));
+    expect(screen.getAllByText("Pozycja została już usunięta")).toHaveLength(1);
+    expect(screen.queryByText("Produkt A")).toBeNull();
+  });
+
+  it("keeps the text of a 404 until the action of another line that waited for it ends, and replaces it with its own", async () => {
+    await renderWith(threeLines());
+    hold();
+    vi.mocked(loadCart).mockResolvedValue(ok(without("Produkt A")));
+
+    setQuantity("Produkt A", "3");
+    fireEvent.click(removeOf("Produkt B"));
+    await answer(0, { status: "not_found" });
+
+    // The removal of B is on its way and says nothing yet: the text of the 404 stays.
+    expect(held).toHaveLength(2);
+    expect(statusRegion().textContent).toBe("Pozycja została już usunięta");
+
+    await answer(1, ok(without("Produkt A", "Produkt B")));
+    expect(statusRegion().textContent).toBe("Usunięto z koszyka: Produkt B.");
+  });
+
+  it("keeps the text of a 404 while a quantity of another line that waited for it is saved, and clears it for a new operation", async () => {
+    await renderWith(threeLines());
+    hold();
+    vi.mocked(loadCart).mockResolvedValue(ok(without("Produkt A")));
+
+    setQuantity("Produkt A", "3");
+    setQuantity("Produkt B", "2");
+    await answer(0, { status: "not_found" });
+    expect(statusRegion().textContent).toBe("Pozycja została już usunięta");
+
+    await answer(1, ok(view([line(B, "Produkt B", 2), line(PRODUCT, "Produkt C", 1)])));
+    expect(statusRegion().textContent).toBe("Pozycja została już usunięta");
+
+    // An operation the customer starts after the earlier ones ended clears the text.
+    setQuantity("Produkt C", "4");
+    expect(statusRegion().textContent).toBe("");
+  });
+});
+
+describe("CartPage focus after removing a line (criterion 12)", () => {
+  const removeAndWait = async (name: string, next: CartView) => {
+    vi.mocked(removeCartItem).mockResolvedValue(ok(next));
+    removeOf(name).focus();
+    fireEvent.click(removeOf(name));
+    await vi.waitFor(() => expect(screen.queryByText(name)).toBeNull());
+  };
+
+  it("goes to Usuń of the next line after a line of several is removed", async () => {
+    await renderWith(threeLines());
+
+    await removeAndWait("Produkt A", without("Produkt A"));
+
+    expect(document.activeElement).toBe(removeOf("Produkt B"));
+  });
+
+  it("goes to Usuń of the next line after a line in the middle is removed", async () => {
+    await renderWith(threeLines());
+
+    await removeAndWait("Produkt B", without("Produkt B"));
+
+    expect(document.activeElement).toBe(removeOf("Produkt C"));
+  });
+
+  it("goes to Usuń of the previous line after the last line of the list is removed", async () => {
+    await renderWith(threeLines());
+
+    await removeAndWait("Produkt C", without("Produkt C"));
+
+    expect(document.activeElement).toBe(removeOf("Produkt B"));
+  });
+
+  it("goes to the text that the cart is empty, which is in the page once, after the only line is removed", async () => {
+    await renderWith(view([line(A, "Produkt A", 1)]));
+
+    vi.mocked(removeCartItem).mockResolvedValue(ok(view([])));
+    removeOf("Produkt A").focus();
+    fireEvent.click(removeOf("Produkt A"));
+
+    const empty = await screen.findByText("Twój koszyk jest pusty");
+    expect(screen.getAllByText("Twój koszyk jest pusty")).toHaveLength(1);
+    expect(document.activeElement).toBe(empty);
+    expect(empty.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("keeps the focus on Usuń while the removal is held, and moves it on the answer", async () => {
+    await renderWith(threeLines());
+    hold();
+    removeOf("Produkt A").focus();
+
+    fireEvent.click(removeOf("Produkt A"));
+    expect(document.activeElement).toBe(removeOf("Produkt A"));
+    expect(removeOf("Produkt A").getAttribute("aria-disabled")).toBe("true");
+    expect(removeOf("Produkt A").hasAttribute("disabled")).toBe(false);
+
+    await answer(0, ok(without("Produkt A")));
+    expect(document.activeElement).toBe(removeOf("Produkt B"));
+  });
+
+  it("moves the focus also when it was lost with the removed line (on the body) before the answer", async () => {
+    await renderWith(threeLines());
+    hold();
+    removeOf("Produkt B").focus();
+    fireEvent.click(removeOf("Produkt B"));
+
+    (document.activeElement as HTMLElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    await answer(0, ok(without("Produkt B")));
+
+    expect(document.activeElement).toBe(removeOf("Produkt C"));
+  });
+
+  it.each([
+    ["a quantity field", () => qty("Produkt C")],
+    ["another Usuń", () => removeOf("Produkt C")],
+  ])("leaves the focus on %s when the customer moved there during the held removal", async (_name, target) => {
+    await renderWith(threeLines());
+    hold();
+    removeOf("Produkt A").focus();
+    fireEvent.click(removeOf("Produkt A"));
+
+    target().focus();
+    await answer(0, ok(without("Produkt A")));
+
+    expect(screen.queryByText("Produkt A")).toBeNull();
+    expect(document.activeElement).toBe(target());
+  });
+
+  it("leaves the focus where it is when the only line is removed and the customer moved it to a link meanwhile", async () => {
+    vi.mocked(loadCart).mockResolvedValue(ok(view([line(A, "Produkt A", 1)])));
+    render(
+      <>
+        <a href="/inne">Inne</a>
+        <CartPage />
+      </>,
+    );
+    await screen.findByText("Produkt A");
+    hold();
+    removeOf("Produkt A").focus();
+    fireEvent.click(removeOf("Produkt A"));
+
+    screen.getByRole("link", { name: "Inne" }).focus();
+    await answer(0, ok(view([])));
+
+    expect(await screen.findByText("Twój koszyk jest pusty")).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("link", { name: "Inne" }));
+  });
+
+  it("keeps the line, the button and the focus when the removal fails", async () => {
+    await renderWith(threeLines());
+    vi.mocked(removeCartItem).mockResolvedValue({ status: "failed" });
+    const remove = removeOf("Produkt A");
+    remove.focus();
+
+    fireEvent.click(remove);
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(removeOf("Produkt A")).toBe(remove);
+    expect(document.activeElement).toBe(remove);
+    expect(statusRegion().textContent).toBe("");
+  });
+
+  it("moves the focus for a removal that waited for the save of another line, when it is still on its Usuń", async () => {
+    await renderWith(threeLines());
+    hold();
+
+    setQuantity("Produkt A", "3");
+    removeOf("Produkt B").focus();
+    fireEvent.click(removeOf("Produkt B"));
+    await answer(0, ok(view([line(A, "Produkt A", 3), line(B, "Produkt B", 1), line(PRODUCT, "Produkt C", 1)])));
+    expect(document.activeElement).toBe(removeOf("Produkt B"));
+    await answer(1, ok(view([line(A, "Produkt A", 3), line(PRODUCT, "Produkt C", 1)])));
+
+    expect(document.activeElement).toBe(removeOf("Produkt C"));
+  });
+
+  it("leaves the focus on the control the customer moved to while a removal waited for the save of another line", async () => {
+    await renderWith(threeLines());
+    hold();
+
+    setQuantity("Produkt A", "3");
+    removeOf("Produkt B").focus();
+    fireEvent.click(removeOf("Produkt B"));
+    qty("Produkt C").focus();
+    await answer(0, ok(view([line(A, "Produkt A", 3), line(B, "Produkt B", 1), line(PRODUCT, "Produkt C", 1)])));
+    await answer(1, ok(view([line(A, "Produkt A", 3), line(PRODUCT, "Produkt C", 1)])));
+
+    expect(screen.queryByText("Produkt B")).toBeNull();
+    expect(document.activeElement).toBe(qty("Produkt C"));
+  });
+
+  it("chooses the next line and the name from the cart of the last answer, not from the cart the sending began with", async () => {
+    // The save of A answers with a line that came to the cart meanwhile (another tab): it stands after B.
+    await renderWith(view([line(A, "Produkt A", 1), line(B, "Produkt B", 1)]));
+    hold();
+
+    setQuantity("Produkt A", "3");
+    removeOf("Produkt B").focus();
+    fireEvent.click(removeOf("Produkt B"));
+    await answer(0, ok(view([line(A, "Produkt A", 3), line(B, "Produkt B", 1), line(PRODUCT, "Produkt C", 1)])));
+    await answer(1, ok(view([line(A, "Produkt A", 3), line(PRODUCT, "Produkt C", 1)])));
+
+    expect(statusRegion().textContent).toBe("Usunięto z koszyka: Produkt B.");
+    expect(document.activeElement).toBe(removeOf("Produkt C"));
+  });
+
+  it("moves the focus to the next Usuń also when the removed line was gone already (a 404 and the reloaded cart without it)", async () => {
+    await renderWith(threeLines());
+    vi.mocked(removeCartItem).mockResolvedValue({ status: "not_found" });
+    vi.mocked(loadCart).mockResolvedValue(ok(without("Produkt A")));
+    removeOf("Produkt A").focus();
+
+    fireEvent.click(removeOf("Produkt A"));
+
+    await vi.waitFor(() => expect(screen.queryByText("Produkt A")).toBeNull());
+    expect(document.activeElement).toBe(removeOf("Produkt B"));
+  });
+});
+
+describe("CartPage retry after a failed load (criterion 13)", () => {
+  type Result = Awaited<ReturnType<typeof loadCart>>;
+
+  const failFirst = async (second: Promise<Result>) => {
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" }).mockReturnValueOnce(second);
+    render(
+      <>
+        <a href="/inne">Inne</a>
+        <CartPage />
+      </>,
+    );
+    await screen.findByText("Nie udało się wczytać koszyka");
+    const retry = screen.getByRole("button", { name: "Spróbuj ponownie" });
+    retry.focus();
+    return retry;
+  };
+  const deferred = () => {
+    let finish: (result: Result) => void = () => {};
+    const promise = new Promise<Result>((resolve) => (finish = resolve));
+    return { promise, finish: (result: Result) => act(async () => finish(result)) };
+  };
+
+  it("keeps the focused button on the screen, inactive but not disabled, and sends no second request on another activation", async () => {
+    const second = deferred();
+    const retry = await failFirst(second.promise);
+
+    fireEvent.click(retry);
+
+    expect(screen.getByRole("button", { name: "Spróbuj ponownie" })).toBe(retry);
+    expect(document.activeElement).toBe(retry);
+    expect(retry.getAttribute("aria-disabled")).toBe("true");
+    expect(retry.hasAttribute("disabled")).toBe(false);
+    expect(statusRegion().textContent).toBe("Wczytywanie koszyka…");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("Nie udało się wczytać koszyka")).toBeNull();
+
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    expect(loadCart).toHaveBeenCalledTimes(2);
+
+    await second.finish(ok(view([line(A, "Produkt A", 1)])));
+  });
+
+  it("moves the focus to the title Koszyk after a successful retry, and the region has no text", async () => {
+    const second = deferred();
+    const retry = await failFirst(second.promise);
+    fireEvent.click(retry);
+
+    await second.finish(ok(view([line(A, "Produkt A", 1)])));
+
+    expect(await screen.findByText("Produkt A")).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Koszyk" }));
+    expect(statusRegion().textContent).toBe("");
+  });
+
+  it("keeps the focus on the button after another failure and shows the message again", async () => {
+    const second = deferred();
+    const retry = await failFirst(second.promise);
+    fireEvent.click(retry);
+
+    await second.finish({ status: "failed" });
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByText("Nie udało się wczytać koszyka")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Spróbuj ponownie" })).toBe(retry);
+    expect(document.activeElement).toBe(retry);
+    expect(retry.hasAttribute("aria-disabled")).toBe(false);
+    expect(statusRegion().textContent).toBe("");
+  });
+
+  it("does not move the focus when the customer moved it to another control during the retry", async () => {
+    const second = deferred();
+    const retry = await failFirst(second.promise);
+    fireEvent.click(retry);
+
+    screen.getByRole("link", { name: "Inne" }).focus();
+    await second.finish(ok(view([line(A, "Produkt A", 1)])));
+
+    expect(await screen.findByText("Produkt A")).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("link", { name: "Inne" }));
+  });
+
+  it("moves the focus to the title when it was lost during the retry (on the body)", async () => {
+    const second = deferred();
+    const retry = await failFirst(second.promise);
+    fireEvent.click(retry);
+
+    retry.blur();
+    await second.finish(ok(view([line(A, "Produkt A", 1)])));
+
+    expect(await screen.findByText("Produkt A")).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Koszyk" }));
   });
 });

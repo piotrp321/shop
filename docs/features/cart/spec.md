@@ -573,6 +573,28 @@ zwracana.
   | Sesja wygasła (401 operacji albo ponownego odczytu koszyka po 404) | Akcje czekające są porzucane bez wysłania. Strona pokazuje widok wygasłej sesji: sam komunikat z linkiem logowania, bez listy pozycji i bez „Przejdź do kasy”. |
   | Klient opuszcza koszyk (nawigacja w sklepie) | Akcje już zlecone wykonują się do końca, bez nawigacji i komunikatów (licznik w nagłówku dostaje liczbę sztuk z odpowiedzi); po 401 są porzucane. Koszyk otwarty ponownie w tym czasie pokazuje wczytywanie i czyta koszyk z serwera dopiero po ich zakończeniu (po 401 od razu). Przeładowanie albo zamknięcie karty gubi akcje jeszcze niewysłane. |
 
+- Region statusu: jeden element `role="status"` (`data-testid="cart-status"`) jest ostatnim elementem ekranu (pojawienie się i zniknięcie
+  jego tekstu, także przy naciśnięciu myszą, które zatwierdza pole ilości i zaczyna operację, nie przesuwa kontrolki, którą
+  klient właśnie naciska) i istnieje od pierwszego renderu przez wczytywanie, błąd wczytania, treść, pusty koszyk i widok wygasłej sesji; zmienia się tylko jego
+  tekst, a tekst nie występuje w DOM nigdzie indziej. Mówi: „Wczytywanie koszyka…” (pierwsze wczytanie i ponowienie),
+  „Usunięto z koszyka: <nazwa pozycji>.” (nazwa z etykietą wariantu tak, jak w etykiecie pola ilości: „Buty, czarne, 42”;
+  pozycja bez nazwy: „Usunięto pozycję z koszyka.”) i „Pozycja została już usunięta” (404 linii, której nie ma
+  w koszyku). Tekst zostaje do startu następnej operacji, którą zlecił klient po zakończeniu poprzednich: ta go czyści,
+  więc taki sam tekst po kolejnej operacji jest ogłaszany ponownie. Operacja, która czekała na inną (wysłana z kolejki akcji
+  czekających), czyści tekst tylko wtedy, gdy zastępuje go własnym, więc „Pozycja została już usunięta” zostaje do końca
+  następnej akcji. Nazwę usuniętej pozycji i następną pozycję strona czyta z ostatniego widoku, nie z widoku sprzed
+  zapisu, który uruchomił wysyłanie. Błędy zostają w `role="alert"` (przy pozycji, przy przycisku), region dostawy bez zmian.
+- Fokus po usunięciu pozycji (także gdy 404 pokazał, że jej już nie ma): na „Usuń” następnej pozycji, a po usunięciu
+  ostatniej na liście na „Usuń” poprzedniej; po opróżnieniu koszyka na tekst „Twój koszyk jest pusty” (`tabIndex=-1`,
+  w DOM raz). Fokus przenosi się tylko wtedy, gdy w chwili odpowiedzi jest nadal na „Usuń”, z którego wyszła akcja (także
+  akcja, która czekała na wysłanie), albo zginął razem z nim (`<body>`); klient, który przeszedł w tym czasie do innej
+  kontrolki, zostaje tam. Po nieudanym usunięciu wiersz, przycisk i fokus zostają. Pozycja, którą usunięto, kiedy
+  strona koszyka była już opuszczona, niczego nie fokusuje.
+- „Spróbuj ponownie” po nieudanym wczytaniu zostaje na ekranie na czas ponowienia z `aria-disabled` (bez `disabled`, więc
+  fokus zostaje); kolejna aktywacja (Enter, Spacja, kliknięcie) nie wysyła żądania. Komunikat „Nie udało się wczytać
+  koszyka” (`role="alert"`, przycisk jest poza nim) znika na ten czas, a region mówi „Wczytywanie koszyka…”. Sukces: fokus
+  na nagłówek „Koszyk”. Ponowny błąd: fokus na przycisku, komunikat wraca i jest ogłaszany ponownie. Fokus przeniesiony
+  w trakcie ponowienia na inną kontrolkę zostaje tam.
 - Pusty koszyk BFF (`emptyCart` w `src/cart/bff.ts`) ma `delivery: null`.
 - Kwoty przez `formatPrice`. Front niczego nie liczy: każdy widok pochodzi z ostatniej odpowiedzi API.
 
@@ -581,12 +603,12 @@ zwracana.
 | dodanie OK | komunikat „Dodano do koszyka”, licznik z `itemCount` |
 | 409 przy dodaniu albo zmianie ilości | `detail` z API przy kafelku albo linii; linia pokazuje poprzednią ilość z ostatniego widoku |
 | 404 produktu przy dodaniu | „Produkt nie jest już dostępny” |
-| 404 linii przy zmianie albo usunięciu | strona wczytuje koszyk ponownie i rozstrzyga po nim (404 nie dowodzi, że linii nie ma: zmiana ilości linii `unavailable_product` też dostaje 404). Linii nie ma w koszyku: „Pozycja została już usunięta”. Linia jest w koszyku: przy linii `detail` z 404 (dla `unavailable_product` „Produkt nie jest już dostępny.”), a bez `detail` „Nie udało się zapisać zmian. Spróbuj ponownie.”; pole ilości pokazuje ilość z wczytanego koszyka, „Usuń” zostaje. Wczytanie dało 401: widok wygasłej sesji (jak przy 401); wczytanie nie udało się inaczej: „Nie udało się zapisać zmian. Spróbuj ponownie.” przy linii, a pole ilości pokazuje ilość z ostatniego widoku |
+| 404 linii przy zmianie albo usunięciu | strona wczytuje koszyk ponownie i rozstrzyga po nim (404 nie dowodzi, że linii nie ma: zmiana ilości linii `unavailable_product` też dostaje 404). Linii nie ma w koszyku: „Pozycja została już usunięta” w regionie statusu. Linia jest w koszyku: przy linii `detail` z 404 (dla `unavailable_product` „Produkt nie jest już dostępny.”), a bez `detail` „Nie udało się zapisać zmian. Spróbuj ponownie.”; pole ilości pokazuje ilość z wczytanego koszyka, „Usuń” zostaje. Wczytanie dało 401: widok wygasłej sesji (jak przy 401); wczytanie nie udało się inaczej: „Nie udało się zapisać zmian. Spróbuj ponownie.” przy linii, a pole ilości pokazuje ilość z ostatniego widoku |
 | 429 przy dodaniu, zmianie ilości albo usunięciu | „Zbyt wiele zmian koszyka. Spróbuj ponownie za kilka minut.” (`role="alert"`) przy kafelku albo linii; linia pokazuje poprzednią ilość z ostatniego widoku |
 | 429 podglądu kodu w kasie | „Zbyt wiele prób sprawdzenia kodu. Spróbuj ponownie za kilka minut.” przy polu kodu; kasa czyta koszyk bez kodu, formularz zostaje |
 | 403, 422, 503, 5xx, błąd sieci | „Nie udało się zapisać zmian. Spróbuj ponownie.” (bez automatycznego ponowienia) |
 | 401 (sesja wygasła), także przy wczytaniu `/cart` | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem „Zaloguj się” (`/auth/login?returnTo=…`); na stronie koszyka sam komunikat, bez listy pozycji i bez „Przejdź do kasy” |
-| błąd wczytania koszyka | „Nie udało się wczytać koszyka” i przycisk „Spróbuj ponownie” |
+| błąd wczytania koszyka | „Nie udało się wczytać koszyka” (`role="alert"`) i przycisk „Spróbuj ponownie” (w trakcie ponowienia: patrz „Fokus” i „Spróbuj ponownie” wyżej) |
 | `hasExcludedLines` | przy sumie: „Część produktów nie jest wliczona”; „Przejdź do kasy” nieaktywny z tekstem „Usuń albo popraw oznaczone pozycje, żeby złożyć zamówienie.” |
 | `notice: merge_truncated` | „Część produktów z koszyka gościa nie zmieściła się w koszyku” (`CartBadge`: osobny wiersz nagłówka pod pozostałymi, na pełną szerokość, w przepływie strony) |
 | `no_price` | „Cena niedostępna” |
@@ -754,7 +776,7 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   ofert dla strony i lista bez ofert przy błędzie.
 - `AddToCartButton` (`AddToCartButton.test.tsx`): blokada na czas żądania, sukces, 409 z `detail`, 404, błąd sieci.
 - `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, przycisk „Przejdź do kasy” (aktywny, nieaktywny, brak przy pustym koszyku), wiersze dostawy (od, darmowa, brakująca kwota, brak wiersza, region `aria-live` obecny przed zmianą), pusty koszyk, zmiana ilości z błędem 409
-  (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem; akcje w trakcie zapisu na wstrzymanych obietnicach z liczbą wysłanych zmian i usunięć (usunięcie zaraz po wpisie, wpis w innej pozycji, porzucenie wartości czekającej, odpowiedź innej pozycji przy wpisie, błąd i 401 z akcją czekającą, dwie aktywacje „Usuń”, kolejność, opuszczenie strony).
+  (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem; akcje w trakcie zapisu na wstrzymanych obietnicach z liczbą wysłanych zmian i usunięć (usunięcie zaraz po wpisie, wpis w innej pozycji, porzucenie wartości czekającej, odpowiedź innej pozycji przy wpisie, błąd i 401 z akcją czekającą, dwie aktywacje „Usuń”, kolejność, opuszczenie strony); region statusu (ten sam węzeł w każdym stanie, teksty, czyszczenie przy starcie operacji klienta, brak czyszczenia przez operację z kolejki, jedyny `role="status"`); fokus po usunięciu (następna, poprzednia, pusty koszyk, wstrzymane usunięcie, fokus przeniesiony w trakcie, także przy usunięciu czekającym, widok z ostatniej odpowiedzi, nieudane usunięcie, 404); ponowienie wczytania (przycisk zostaje z `aria-disabled`, drugie żądanie nie wychodzi, sukces, ponowny błąd, fokus przeniesiony w trakcie). Stan modułu `cart-actions.ts` jest wspólny dla testów pliku: `afterEach` rozstrzyga wstrzymane zapisy (401) i czeka na `actionsFinished()`.
 - `CartBadge` (`CartBadge.test.tsx`, `events.test.ts`): liczba sztuk, aktualizacja po zmianie, ukrycie przy błędzie,
   komunikat scalenia.
 - `src/api/client.test.ts`: wywołania `/api/cart/*`, kolejka zapisów z dublerem `navigator.locks` i bez niego (każdy
@@ -773,7 +795,13 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
 - `store-ux-cart.spec.ts`: „Usuń” zaraz po wpisaniu ilości (mysz przy 1280 px, dotyk przy 375 px, bez opóźnienia
   i ze zmianą ilości wstrzymaną w przeglądarce na 3 s): usunięta jest wskazana pozycja, wpisana ilość zostaje zapisana,
   wychodzi jedna zmiana i jedno usunięcie na próbę, a po odświeżeniu serwer ma to samo; powrót do koszyka linkiem
-  nagłówka, zanim akcje opuszczonej strony się skończą, pokazuje koszyk po nich.
+  nagłówka, zanim akcje opuszczonej strony się skończą, pokazuje koszyk po nich; ponowienie wczytania po 500 `GET /api/cart`
+  z odpowiedzią wstrzymaną (przycisk z fokusem i `aria-disabled`, drugi Enter i Spacja bez żądania, region z tekstem
+  wczytywania bez komunikatu błędu, sukces: fokus na „Koszyk”, ponowny błąd: fokus na przycisku, fokus przeniesiony w trakcie
+  zostaje); usunięcie klawiaturą jednej z kilku pozycji (fokus na „Usuń” następnej, po ostatniej na poprzedniej),
+  jedynej (fokus na „Twój koszyk jest pusty”) i z wstrzymanym DELETE (fokus na przycisku, przeniesiony zostaje); ten sam
+  podłączony węzeł regionu przez wczytywanie, treść i pusty koszyk; tekst usunięcia bez przewijania poziomego przy 320
+  i 375 px.
 - `cart-merge.spec.ts` (wybór pierwszego dostępnego wariantu, gdy kafelek ma wybór): Jan loguje się, opróżnia swój koszyk w UI, dodaje B i wylogowuje się; jako gość dodaje A i B;
   po zalogowaniu licznik pokazuje 3, ciasteczko `store_cart` znika, a koszyk ma A × 1 i B × 2; drugi kontekst
   przeglądarki zalogowany jako Jan widzi ten sam koszyk.
