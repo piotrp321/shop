@@ -39,7 +39,7 @@ Do potwierdzenia przez właściciela przy akceptacji planu (specyfikacja przyjmu
 | # | Decyzja | Rekomendacja przyjęta w specyfikacji | Inne warianty |
 |---|---|---|---|
 | D6 | K2: co dzieje się z formularzem promocji między udanym zapisem „Od teraz” a odczytem statusu | Blokada trwa dalej: zwykle 1–2 s, zawsze najwyżej 10 s od odpowiedzi zapisu (całkowity limit oczekiwania). Po zapisie nie da się wpisać zmiany, którą nadpisałby odczyt, i nie trzeba scalać formularza z odpowiedzią | Pola odblokowane od razu po zapisie, a odczyt zmienia tylko status i akcje (wymaga reguł dla pól zmienionych w tym czasie i dla pól, które aktywna promocja blokuje) |
-| D7 | K2 i K3: zapis, na który API nie odpowiada | Bez własnego limitu czasu zapisu: blokada trwa do odpowiedzi albo błędu sieci przeglądarki, a wyjściem jest zmiana trasy (okno zamówienia) albo opuszczenie formularza (promocja). Wynik takiego zapisu jest nieznany, więc panel nie pozwala wysłać go drugi raz z tego samego okna | Limit czasu z odblokowaniem i ponowieniem (ponawia zmianę o nieznanym wyniku); brak blokady zamknięcia okna (wraca wada #581 F4) |
+| D7 | K2 i K3: zapis, na który API nie odpowiada | Bez własnego limitu czasu zapisu: blokada trwa do odpowiedzi albo błędu sieci przeglądarki, a wyjściem jest opuszczenie ekranu: Wstecz przeglądarki przy otwartym oknie zamówienia (okno modalne zasłania menu panelu) albo opuszczenie formularza promocji. Opuszczenie ekranu nie anuluje operacji na serwerze: wynik takiego zapisu jest nieznany do ponownego wczytania zamówienia albo promocji, więc panel nie pozwala wysłać go drugi raz z tego samego okna | Limit czasu z odblokowaniem i ponowieniem (ponawia zmianę o nieznanym wyniku); brak blokady zamknięcia okna (wraca wada #581 F4) |
 
 D3 dotyczy zapisu w toku i nie przesądza D6 ani D7: obie zmieniają to, jak długo pracownik czeka.
 
@@ -197,7 +197,8 @@ odtworzenia go testem.
     żądanie.
 - **Zamknięcie przez panel działa jak dotąd.** Przejście do innego zamówienia albo opuszczenie ekranu w trakcie
   zapisu zamyka okno, a odpowiedź dotycząca poprzedniego zamówienia jest pomijana (bez toastu, bez zmiany nowego
-  widoku). Blokada zamknięcia dotyczy tylko okna, z którego wyszło żądanie w toku: okno otwarte potem dla innego
+  widoku). Przy otwartym oknie modalnym drogą dostępną dla pracownika jest Wstecz przeglądarki; menu panelu jest pod
+  oknem. Zamknięcie okna tą drogą nie anuluje zapisu na serwerze. Blokada zamknięcia dotyczy tylko okna, z którego wyszło żądanie w toku: okno otwarte potem dla innego
   zamówienia zamyka się normalnie, a jego przycisk skutku jest nieaktywny do końca tamtego żądania (stan zapisu jest
   wspólny, `apps/admin/src/orders/useOrderDetail.ts:115`, `:186`).
 
@@ -213,7 +214,9 @@ odtworzenia go testem.
 2. E2E (`admin-screens-orders.spec.ts`, na zamówieniu złożonym w teście; komentarz nagłówka pliku o testach, które
    niczego nie zmieniają, dostaje ten wyjątek): odpowiedź zmiany statusu wstrzymana o 3 s (`page.route`); w tym
    czasie przycisk skutku ma fokus, a `Escape` zostawia okno; po odpowiedzi jest toast „Status zamówienia
-   zmieniony: …” i fokus na nagłówku karty. Test nie przechodzi przed zmianą.
+   zmieniony: …” i fokus na nagłówku karty. Test nie przechodzi przed zmianą. Drugi test (kontrola, przechodzi także
+   przed zmianą): przy otwartym oknie i wstrzymanej odpowiedzi Wstecz przeglądarki (`page.goBack()`) opuszcza ekran
+   zamówienia, okno znika, a po zwolnieniu odpowiedzi nie ma toastu.
 
 ## K4: wybór wariantów promocji (#575, część #584)
 
@@ -348,8 +351,9 @@ czytają odpowiedzi błędów. **Do ponownego sprawdzenia przed implementacją**
   zapisu, także przy rozjechanych zegarach i odczycie bez odpowiedzi. Po limicie panel pokazuje „Zaplanowana”, choć
   promocja może już trwać; wyjaśnia to komunikat z „Odśwież”.
 - **K2 i K3 (D7).** Klient API panelu nie ma limitu czasu żądania. Zapis bez odpowiedzi trzyma blokadę do błędu sieci
-  przeglądarki: w oknie zamówienia wyjściem jest zmiana trasy (Wstecz, menu), która zamyka okno i pomija odpowiedź;
-  w formularzu promocji jego opuszczenie. Ten etap nie dodaje limitu czasu zapisu.
+  przeglądarki: w oknie zamówienia wyjściem jest Wstecz przeglądarki (menu panelu jest pod oknem modalnym), które
+  zamyka okno i pomija odpowiedź; w formularzu promocji jego opuszczenie. Żadna z tych dróg nie anuluje zapisu na
+  serwerze, więc jego wynik jest nieznany do ponownego wczytania. Ten etap nie dodaje limitu czasu zapisu.
 - **K3 i K5.** Dane demo nie mają zamówień: test E2E K3 składa własne zamówienie (`placeOrderAsJan`,
   `e2e/support/panel-orders.ts`, bez zmiany helpera), a test K5 podstawia odpowiedź listy.
 - Zadania zmieniają rozłączne pliki, poza K2 i K4, które dzielą wybór wariantów formularza promocji
