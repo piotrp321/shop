@@ -16,6 +16,7 @@ import { announceCartChange } from "@/cart/events";
 import { SessionExpired } from "@/cart/messages";
 import { formatPrice } from "@/catalog/format-price";
 import { ScreenMain, ScreenTitle } from "@/components/ScreenLayout";
+import { useSiteSwitches } from "@/components/SiteSwitches";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -64,6 +65,11 @@ const RATE_LIMITED = "Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie
 const CART_GONE = "Koszyk nie jest już dostępny.";
 const FIELD_ID_PREFIX = "checkout-";
 const FAILURE_ID = "checkout-failure";
+const TITLE_ID = "checkout-title";
+const RETRY_ID = "checkout-retry";
+const LOAD_FAILED = "Nie udało się wczytać kasy";
+/** What the status region says while the checkout is read. */
+const LOADING = "Wczytywanie…";
 const LOGIN_HREF = `/auth/login?returnTo=${encodeURIComponent("/checkout")}`;
 
 const CODE_INPUT_ID = "checkout-discount-code";
@@ -101,6 +107,7 @@ const newIdempotencyKey = () => crypto.randomUUID();
  */
 export function CheckoutPage({ providers, pendingOrderNumber }: { providers: PaymentProvider[] | null; pendingOrderNumber: string | null }) {
   const router = useRouter();
+  const { customerAccounts, loaded: switchesLoaded } = useSiteSwitches();
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
   const [form, setForm] = useState<Form>(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
@@ -116,6 +123,9 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // What the live region of the summary says about the delivery after the summary was read again (a code, a 409).
   const [summaryStatus, setSummaryStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // "Spróbuj ponownie" reads the checkout again while the error stays (the button keeps the focus); `loaded` says
+  // "loading" only for the first read.
+  const [retrying, setRetrying] = useState(false);
   // The discount code lives in this component only (D3): a reload of the page starts without one. `appliedCode` is the
   // code the summary of `loaded` was priced with; `codeInput` is what the customer types.
   const [codeInput, setCodeInput] = useState("");
@@ -151,15 +161,20 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     if (attention) document.getElementById(attention.id)?.focus();
   }, [attention]);
 
-  function retry() {
-    setLoaded({ status: "loading" });
-    void loadCheckout().then((result) => {
-      setLoaded(result);
-      if (result.status === "ready") {
-        setForm(prefilled(result.session));
-        setDeliveryMethodId(onlyMethod(result.cart));
-      }
-    });
+  async function retry() {
+    if (retrying) return;
+    setRetrying(true);
+    const result = await loadCheckout();
+    // The focus is moved only when it is still on the button the retry came from, or was lost with it (F2).
+    const focus = document.activeElement;
+    const keepsFocus = focus === null || focus === document.body || focus === document.getElementById(RETRY_ID);
+    setRetrying(false);
+    setLoaded(result);
+    if (result.status === "ready") {
+      setForm(prefilled(result.session));
+      setDeliveryMethodId(onlyMethod(result.cart));
+    }
+    if (keepsFocus) setAttention((current) => ({ id: result.status === "error" ? RETRY_ID : TITLE_ID, seq: (current?.seq ?? 0) + 1 }));
   }
 
   /**
@@ -386,11 +401,19 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
 
   // The message that replaces the form has its own link to the cart, so a conflict does not add a second one.
   const showsForm = loaded.status === "ready" && loaded.cart.lines.length > 0 && !loaded.cart.hasExcludedLines;
+  // The one status region of the screen says what the screen is doing; it is there in every state and only its text
+  // changes, so that a screen reader announces the text each time it is set.
+  const operation = loaded.status === "loading" || retrying ? LOADING : "";
 
   return (
     <ScreenMain>
-      <ScreenTitle>Kasa</ScreenTitle>
-      {loaded.status === "loading" ? <p className="text-muted-foreground">Wczytywanie…</p> : null}
+      <ScreenTitle id={TITLE_ID} tabIndex={-1}>
+        Kasa
+      </ScreenTitle>
+      {/* An empty region takes no room: the negative margin cancels the gap above it. */}
+      <p role="status" data-testid="checkout-status" className="text-muted-foreground empty:-mt-6">
+        {operation}
+      </p>
       {loaded.status === "unauthorized" ? (
         <Alert variant="destructive">
           <AlertDescription>
@@ -399,12 +422,24 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         </Alert>
       ) : null}
       {loaded.status === "error" ? (
-        <Alert variant="destructive" className="justify-items-start gap-3">
-          <AlertDescription>Nie udało się wczytać kasy</AlertDescription>
-          <Button type="button" variant="outline" onClick={retry}>
+        <div className="flex flex-col items-start gap-3">
+          {retrying ? null : (
+            <Alert variant="destructive">
+              <AlertDescription>{LOAD_FAILED}</AlertDescription>
+            </Alert>
+          )}
+          {/* A running read blocks with `aria-disabled`, not `disabled`: a disabled button loses the keyboard focus. */}
+          <Button
+            id={RETRY_ID}
+            type="button"
+            variant="outline"
+            aria-disabled={retrying ? true : undefined}
+            className={retrying ? "opacity-50" : undefined}
+            onClick={() => void retry()}
+          >
             Spróbuj ponownie
           </Button>
-        </Alert>
+        </div>
       ) : null}
       {failure ? <FailureMessage failure={failure} cartLinkShown={showsForm} /> : null}
       {loaded.status === "ready" ? (
@@ -419,6 +454,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           deliveryMethodId={deliveryMethodId}
           deliveryError={deliveryError}
           summaryStatus={summaryStatus}
+          offersLogin={switchesLoaded && customerAccounts}
           onDeliveryChange={chooseDelivery}
           pendingOrderNumber={pendingOrderNumber}
           submitting={submitting}
@@ -557,6 +593,7 @@ function CheckoutContent({
   deliveryMethodId,
   deliveryError,
   summaryStatus,
+  offersLogin,
   onDeliveryChange,
   pendingOrderNumber,
   submitting,
@@ -578,6 +615,8 @@ function CheckoutContent({
   deliveryMethodId: string | null;
   deliveryError: string | null;
   summaryStatus: string;
+  /** Whether a guest is offered the login: the switches are read and the accounts are on. */
+  offersLogin: boolean;
   onDeliveryChange: (methodId: string) => void;
   pendingOrderNumber: string | null;
   submitting: boolean;
@@ -621,12 +660,14 @@ function CheckoutContent({
       />
       <form noValidate onSubmit={onSubmit} className="flex flex-col gap-5">
         {session === null ? (
-          <p className="text-sm text-muted-foreground">
-            Masz konto?{" "}
-            <a href={LOGIN_HREF} className="text-link underline underline-offset-4">
-              Zaloguj się
-            </a>
-          </p>
+          offersLogin ? (
+            <p className="text-sm text-muted-foreground">
+              Masz konto?{" "}
+              <a href={LOGIN_HREF} className="text-link underline underline-offset-4">
+                Zaloguj się
+              </a>
+            </p>
+          ) : null
         ) : (
           <p className="text-sm">
             Potwierdzenie wyślemy na adres <span data-testid="account-email">{session.email}</span>

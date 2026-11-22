@@ -477,11 +477,23 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   brakuje Y zł”, nigdy razem z „Darmowa”; wymagany wybór; bez sekcji przy `delivery: null`; szczegóły:
   `docs/features/delivery/spec.md`, W10; stany: akapit „Dostawa w kasie” niżej), grupa radiowa „Sposób płatności” (dostawcy z API, wymagany wybór, bez domyślnego), przycisk
   „Zamawiam z obowiązkiem zapłaty” (P9). Gość: pole
-  e-mail i link „Zaloguj się” (`/auth/login?returnTo=/checkout`). Klient: e-mail z `/auth/session` jako tekst,
+  e-mail i link „Zaloguj się” (`/auth/login?returnTo=/checkout`), który pokazuje się dopiero po odczycie
+  przełączników wdrożenia (`useSiteSwitches`, `/api/site`) i tylko przy `customerAccounts: true`; błąd odczytu daje stan
+  domyślny, czyli link, jak w nagłówku. Klient: e-mail z `/auth/session` jako tekst,
   imię i nazwisko wstępnie wypełnione z sesji (konto bez imienia ma w sesji e-mail jako nazwę: pole zostaje puste).
   Pusty koszyk albo `hasExcludedLines`: zamiast formularza komunikat i link do koszyka; przy pustym koszyku
   i poprawnym `store_order_confirmation` także link „Opłać zamówienie R-…” na `/checkout/confirmation` (powrót ze
   strony dostawcy bez decyzji, `docs/features/payment/spec.md`, P7).
+- Status i ponowienie wczytania (`CheckoutPage.tsx`): jeden region `role="status"` (`data-testid="checkout-status"`)
+  istnieje od pierwszego renderu przez wszystkie stany ekranu (wczytywanie, błąd, treść, pusty koszyk, wygasła sesja);
+  zmienia się tylko jego tekst („Wczytywanie…” w trakcie odczytu, poza tym pusty) i jest jedynym miejscem tego
+  tekstu. Region podsumowania (`checkout-summary-status`) i kodu rabatowego (`checkout-code-status`) są osobne. Po nieudanym
+  odczycie kasy (`/api/cart` albo `/auth/session`) komunikat „Nie udało się wczytać kasy” jest w `role="alert"`,
+  a „Spróbuj ponownie” poza nim. Na czas ponowienia przycisk zostaje na ekranie z `aria-disabled="true"` (nie
+  `disabled`, więc zachowuje fokus; ponowna aktywacja nie wysyła żądania), komunikat znika, a region mówi
+  „Wczytywanie…”. Sukces: fokus na nagłówek „Kasa”; ponowny błąd: komunikat wraca, fokus na przycisku. Fokus
+  przenosi się tylko wtedy, gdy w chwili odpowiedzi jest nadal na przycisku albo na `<body>`; przeniesiony w trakcie
+  zostaje tam.
 - Kod rabatowy (`docs/features/discount-codes/spec.md`): pod podsumowaniem pole „Kod rabatowy” (`maxLength` 64,
   etykieta) w osobnym formularzu, więc Enter zastosuje kod i nie złoży zamówienia, z przyciskiem „Zastosuj”. Zastosowanie
   wczytuje podsumowanie z kodem (`/api/cart?discountCode=…`; kod przycięty z białych znaków). Zastosowany kod: linia
@@ -680,7 +692,9 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
 - `CheckoutPage`: formularz gościa i klienta (e-mail z sesji), podsumowanie, blokada przycisku, każdy wiersz tabeli
   UI (pięć przyczyn 409 i nieznany 409: komunikat, link do koszyka, formularz, ten sam albo nowy klucz przy kolejnym
   kliknięciu, brak automatycznego drugiego POST), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
-  danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`.
+  danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`, region statusu (ten sam węzeł od wczytywania do treści),
+  „Spróbuj ponownie” (przycisk z `aria-disabled` w trakcie, fokus po sukcesie, ponownym błędzie i przeniesiony w trakcie)
+  i link „Zaloguj się” według przełączników (przed odczytem, wyłączone konta, włączone konta).
 - `/checkout/confirmation` i `PaymentConfirmation`: z ciasteczkiem, bez, z niepoprawnym podpisem, każdy stan płatności
   (`docs/features/payment/spec.md`).
 - `CartPage`: przycisk „Przejdź do kasy” aktywny i nieaktywny.
@@ -696,6 +710,11 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   bez pola e-mail), odrzuca płatność „Kartą płatniczą (demo)”, wybiera ponownie i płaci; w Mailpit e-maile na adres
   Jana z numerem tego zamówienia (wyszukiwanie po adresie i temacie z numerem, bo Jan dostaje e-maile przy każdym
   uruchomieniu).
+- `store-ux-checkout.spec.ts`: ponowienie wczytania kasy po błędzie `/api/cart` i `/auth/session` (odpowiedź ponowienia
+  wstrzymana: przycisk z fokusem i `aria-disabled`, drugi Enter bez żądania, region „Wczytywanie…”; sukces: fokus na
+  „Kasa”; ponowny błąd: komunikat i fokus na przycisku; fokus przeniesiony w trakcie zostaje), ten sam węzeł regionu
+  statusu, brak przewijania poziomego przy 320 i 375 px oraz link „Zaloguj się” przy podstawionym `/api/site`
+  (wyłączone konta, włączone, błąd odczytu; odpowiedź wstrzymana).
 - `payment-resume.spec.ts`: powrót ze strony symulatora na `/checkout`, link „Opłać zamówienie R-…”, „Wróć do
   płatności” otwiera tę samą sesję, płatność się udaje.
 - E2E składają zamówienia na wariantach z dużym stanem i je opłacają; rezerwacje opłaconych zamówień zostają do
