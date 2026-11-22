@@ -858,6 +858,20 @@ describe("checking again", () => {
     expect(document.activeElement).toBe(shop);
   });
 
+  it("puts the focus on the heading when the customer moved it to the way back to the payment and the answer removes it", async () => {
+    await afterWindow();
+    const answer = holdRead();
+    act(() => checkButton().focus());
+    fireEvent.click(checkButton());
+    const back = screen.getByRole("link", { name: "Wróć do płatności" });
+    act(() => back.focus());
+    await answer({ status: "ok", data: paid() });
+
+    expect(screen.queryByRole("link", { name: "Wróć do płatności" })).toBeNull();
+    expect(region().textContent).toContain("Płatność przyjęta.");
+    expect(document.activeElement).toBe(heading());
+  });
+
   it("leaves the focus where the customer moved it also when the read fails", async () => {
     await afterWindow();
     const answer = holdRead();

@@ -543,7 +543,8 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
   - „Sprawdź ponownie” na czas odczytu ma `aria-disabled="true"` zamiast `disabled`, więc zachowuje fokus; drugie
     uruchomienie nie wysyła żądania. Po odpowiedzi fokus przenosi się tylko wtedy, gdy nadal jest na przycisku albo na
     `<body>`: przycisk nadal na ekranie – zostaje na nim, przycisku nie ma (status rozstrzygnięty albo znów trwa
-    odpytywanie) – nagłówek ekranu. Fokus przeniesiony przez klienta w trakcie odczytu zostaje tam.
+    odpytywanie) – nagłówek ekranu. Fokus przeniesiony przez klienta w trakcie odczytu zostaje tam,
+    chyba że odpowiedź usuwa ten element (np. „Wróć do płatności”): wtedy idzie na nagłówek ekranu.
   - Błąd odczytu: przycisk i fokus zostają, „Nie udało się sprawdzić statusu płatności.” jest w `role="alert"`; gdy
     pierwszy odczyt (serwera) się nie udał, to zdanie jest poza regionem (w `role="alert"`), znika na czas sprawdzania
     i wraca po ponownym błędzie.
