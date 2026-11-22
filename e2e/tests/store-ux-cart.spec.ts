@@ -591,9 +591,12 @@ test.describe("a change given in the cart while the checkout it opened after the
       const method = response.request().method();
       const path = new URL(response.url()).pathname;
       if (method !== "PATCH" || !/^\/api\/cart\/items\/[^/]+$/.test(path)) return;
-      const body = (await response.json().catch(() => null)) as { lines?: { variantId: string; quantity: number }[] } | null;
-      answers.push({ status: response.status(), quantity: body?.lines?.[0]?.quantity ?? null });
+      // Recorded before the body is read: the page may read the cart meanwhile.
+      const answer = { status: response.status(), quantity: null as number | null };
+      answers.push(answer);
       events.push(`change ${answers.length} answered`);
+      const body = (await response.json().catch(() => null)) as { lines?: { quantity: number }[] } | null;
+      answer.quantity = body?.lines?.[0]?.quantity ?? null;
       if (answers.length === 2) secondAnswered();
     });
 
@@ -656,6 +659,8 @@ test.describe("a change given in the cart while the checkout it opened after the
     releaseNavigation();
     await expect(page).toHaveURL(/\/checkout$/, { timeout: 15_000 });
     await expect(page.getByRole("heading", { level: 1, name: "Kasa" })).toBeVisible();
+    // The checkout waits for the held change with its loading state.
+    await expect(page.getByTestId("checkout-status")).toHaveText("Wczytywanie…");
     const summary = page.getByRole("region", { name: "Podsumowanie zamówienia" });
     const lineA = summary.getByRole("listitem").filter({ hasText: a.name });
     const shown = lineA.getByTestId("checkout-line-quantity");
