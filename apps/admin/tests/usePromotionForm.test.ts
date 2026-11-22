@@ -749,6 +749,9 @@ describe("usePromotionForm", () => {
       servePromotion(promotion({ id: "promo-2", name: "Druga", version: 7 }));
       id.value = "promo-2";
       await flushPromises();
+      // The save of the previous promotion does not hold this one.
+      expect(form.locked.value).toBe(false);
+      expect(form.busy.value).toBe(false);
       mocks.get.mockClear();
       release(ok(promotion({ status: "planned", startsAt: "2026-11-15T10:20:31+00:00", version: 5 })));
 
@@ -762,6 +765,25 @@ describe("usePromotionForm", () => {
       expect(onCreated).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(15_000);
       expect(mocks.get).not.toHaveBeenCalled();
+    });
+
+    it("ignores the answer of a deletion that comes after another promotion was opened, and it does not hold that one", async () => {
+      const { form, id, onDeleted } = await open();
+      let release!: (value: unknown) => void;
+      mocks.delete.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+      const deleting = form.remove();
+
+      servePromotion(promotion({ id: "promo-2", name: "Druga", version: 7 }));
+      id.value = "promo-2";
+      await flushPromises();
+      expect(form.busy.value).toBe(false);
+      expect(form.canDelete.value).toBe(true);
+      release(problem(404));
+
+      expect(await deleting).toBeNull();
+      expect(onDeleted).not.toHaveBeenCalled();
+      expect(form.error.value).toBeNull();
+      expect(form.view.value?.name).toBe("Druga");
     });
 
     it("ignores the answer of a create that comes after the form of a new promotion was opened again", async () => {
