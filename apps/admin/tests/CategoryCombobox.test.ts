@@ -278,6 +278,55 @@ describe("CategoryCombobox after a choice in single mode", () => {
     expect(activeDescendant()?.getAttribute("role")).toBe("option");
   });
 
+  it("does not point at a removed option while the list is open and the typed text matches nothing", async () => {
+    mountCombobox();
+    await open();
+    input().focus();
+    input().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    await flushPromises();
+    await type("zzzzqq");
+
+    expect(options()).toEqual([]);
+    expect(document.body.textContent).toContain("Brak pasujących kategorii.");
+    expect(pointsAtExistingElement(), "aria-activedescendant is empty or names an element in the DOM").toBe(true);
+  });
+
+  const disabledSubtree = ["c-camping", "c-tents", "c-sleeping-bags"];
+
+  it("does not point at a removed option when the typed text leaves only disabled options", async () => {
+    mountCombobox({ disabledIds: disabledSubtree });
+    await open();
+    input().focus();
+    await type("namio");
+
+    expect(optionNames()).toEqual(["Turystyka › Biwak › Namioty"]);
+    expect(pointsAtExistingElement(), "aria-activedescendant is empty or names an element in the DOM").toBe(true);
+  });
+
+  it("does not point at a removed option when the typed text leaves only disabled options after the arrow keys", async () => {
+    mountCombobox({ disabledIds: disabledSubtree });
+    await open();
+    input().focus();
+    for (let step = 0; step < 3; step++) {
+      input().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+      await flushPromises();
+    }
+    await type("namio");
+
+    expect(optionNames()).toEqual(["Turystyka › Biwak › Namioty"]);
+    expect(pointsAtExistingElement(), "aria-activedescendant is empty or names an element in the DOM").toBe(true);
+  });
+
+  it("points at an existing option while the list is open and the typed text matches", async () => {
+    mountCombobox();
+    await open();
+    input().focus();
+    await type("Namioty");
+
+    expect(optionNames()).toEqual(["Turystyka › Biwak › Namioty"]);
+    expect(pointsAtExistingElement(), "aria-activedescendant is empty or names an element in the DOM").toBe(true);
+  });
+
   // jsdom does not move the focus on a mousedown, so this passes before the change as well; the move of the focus to the
   // option and its return to the field are covered by the E2E tests (admin-screens-inventory.spec.ts, catalog-admin.spec.ts).
   it("keeps the focus in the field after an option is clicked", async () => {
