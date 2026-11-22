@@ -21,18 +21,23 @@ function gate(): { opened: Promise<void>; open: () => void } {
 const failure = (route: Route) => route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
 
 /**
- * The two reads of the checkout. The first read of `url` fails; the read again (the second request) is held until the
- * returned `release()` and then goes on to the server (`success`) or fails again.
+ * Opens the checkout with the first read of `url` failed. The reads after that (the retries; `/auth/session` is also
+ * read by the header, which is why the first read is not counted but the moment the failure is shown) are held until
+ * the returned `release()` and then go on to the server (`success`) or fail again.
  */
-async function failFirstHoldSecond(page: Page, url: string, outcome: "success" | "failure") {
+async function openFailedCheckout(page: Page, url: string, outcome: "success" | "failure") {
   const held = gate();
+  let armed = false;
   let requests = 0;
   await page.route(url, async (route) => {
+    if (!armed) return failure(route);
     requests++;
-    if (requests === 1) return failure(route);
     await held.opened;
     return outcome === "success" ? route.continue() : failure(route);
   });
+  await page.goto("/checkout");
+  await expect(loadFailure(page)).toBeVisible();
+  armed = true;
   return { release: held.open, requests: () => requests };
 }
 
@@ -52,9 +57,7 @@ const READS = [
 for (const { name, url } of READS) {
   test.describe(`a retry of the load of the checkout when ${name} cannot be read`, () => {
     test("stays on the screen, ignores a second Enter, and ends on the heading", async ({ page }) => {
-      const reads = await failFirstHoldSecond(page, url, "success");
-      await page.goto("/checkout");
-      await expect(loadFailure(page)).toBeVisible();
+      const reads = await openFailedCheckout(page, url, "success");
       await expect(statusRegion(page)).toHaveText("");
 
       await retryButton(page).focus();
@@ -68,7 +71,7 @@ for (const { name, url } of READS) {
 
       await page.keyboard.press("Enter");
       await settle(page);
-      expect(reads.requests()).toBe(2);
+      expect(reads.requests()).toBe(1);
 
       reads.release();
       await expect(page.getByRole("heading", { level: 1, name: "Kasa" })).toBeFocused();
@@ -77,9 +80,7 @@ for (const { name, url } of READS) {
     });
 
     test("shows the message again and keeps the focus on the button when the second read fails too", async ({ page }) => {
-      const reads = await failFirstHoldSecond(page, url, "failure");
-      await page.goto("/checkout");
-      await expect(loadFailure(page)).toBeVisible();
+      const reads = await openFailedCheckout(page, url, "failure");
 
       await retryButton(page).focus();
       await page.keyboard.press("Enter");
@@ -94,9 +95,7 @@ for (const { name, url } of READS) {
     });
 
     test("leaves the focus where the customer moved it during the read", async ({ page }) => {
-      const reads = await failFirstHoldSecond(page, url, "success");
-      await page.goto("/checkout");
-      await expect(loadFailure(page)).toBeVisible();
+      const reads = await openFailedCheckout(page, url, "success");
 
       await retryButton(page).focus();
       await page.keyboard.press("Enter");
@@ -114,9 +113,7 @@ for (const { name, url } of READS) {
 }
 
 test("the status region of the checkout is one node through loading, the error and the content", async ({ page }) => {
-  const reads = await failFirstHoldSecond(page, "**/api/cart", "success");
-  await page.goto("/checkout");
-  await expect(loadFailure(page)).toBeVisible();
+  const reads = await openFailedCheckout(page, "**/api/cart", "success");
   const region = await statusRegion(page).elementHandle();
   expect(region).not.toBeNull();
   const sameNode = () =>
@@ -158,9 +155,7 @@ for (const width of [320, 375]) {
     test.use({ viewport: { width, height: 800 } });
 
     test("the retry and its status text cause no horizontal scrolling", async ({ page }) => {
-      const reads = await failFirstHoldSecond(page, "**/api/cart", "failure");
-      await page.goto("/checkout");
-      await expect(loadFailure(page)).toBeVisible();
+      const reads = await openFailedCheckout(page, "**/api/cart", "failure");
       const overflows = () => page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
       expect(await overflows()).toBe(false);
 
