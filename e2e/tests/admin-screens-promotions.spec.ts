@@ -43,18 +43,31 @@ async function openList(page: Page, address = "/promotions"): Promise<void> {
 
 /**
  * A promotion saved „od teraz” starts at the first whole second after the save, so the answer of the save is still
- * planned: the form reads the promotion again once it has started and shows it active, without a reload (#580).
+ * planned: the form reads the promotion again once it has started and shows it active, without a reload (#580). When
+ * the save itself takes a whole second, the answer is already active: the form does not wait and announces nothing.
  */
-async function expectStartedWithoutReload(page: Page): Promise<void> {
+async function expectStartedWithoutReload(page: Page, savedStatus: string): Promise<void> {
   // A reload would drop this mark of the document.
   await page.evaluate(() => document.documentElement.setAttribute("data-e2e-not-reloaded", ""));
   const since = Date.now();
   await expect(page.getByTestId("promotion-status"), "the form shows the promotion active by itself").toHaveText("Aktywna", { timeout: 5_000 });
   await expect(page.getByRole("button", { name: "Zakończ teraz" })).toBeEnabled({ timeout: 5_000 });
   expect(Date.now() - since, "„Aktywna” and „Zakończ teraz” within 5 s of the toast").toBeLessThan(5_000);
-  await expect(page.getByRole("status").filter({ hasText: "Promocja jest aktywna." })).toBeVisible();
+  if (savedStatus === "planned") {
+    await expect(page.getByRole("status").filter({ hasText: "Promocja jest aktywna." })).toBeVisible();
+  } else {
+    expect(savedStatus, "the answer of the save is planned or already active").toBe("active");
+    await expect(page.getByRole("status").filter({ hasText: "Promocja rozpoczyna się." })).toHaveCount(0);
+  }
   await expect(page.getByTestId("name-input")).toBeEnabled();
   await expect(page.locator("html"), "no reload of the page").toHaveAttribute("data-e2e-not-reloaded", "");
+}
+
+/** The status of the promotion in the answer of the save (set before the click on „Zapisz”). */
+function waitForSavedStatus(page: Page): Promise<string> {
+  return page
+    .waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/admin/promotions" && response.request().method() === "POST")
+    .then(async (response) => ((await response.json()) as { status: string }).status);
 }
 
 /** Fills the form of a new promotion „od teraz” of the two variants of the product, ending in a day. */
@@ -430,9 +443,10 @@ test.describe("the form", () => {
         await endActivePromotionsOf(page.request, await token.fresh(page), PRODUCT_NAME);
 
         await fillStartingNow(page, `E2E koniec ${Date.now()}`);
+        const savedStatus = waitForSavedStatus(page);
         await page.getByTestId("save").click();
         await expect(toasts(page).getByText("Promocja zapisana."), "the promotion was rejected (conflict, validation or API error)").toBeVisible();
-        await expectStartedWithoutReload(page);
+        await expectStartedWithoutReload(page, await savedStatus);
 
         await page.getByTestId("end-now").click();
         await page.getByRole("alertdialog").getByRole("button", { name: "Zakończ promocję teraz" }).click();
@@ -465,6 +479,7 @@ test.describe("the form", () => {
         await fillStartingNow(page, `E2E od teraz ${Date.now()}`);
         // The API saves at once; its answer reaches the panel 3 s later.
         let held = 0;
+        let savedStatus = "";
         await page.route("**/api/v1/admin/promotions", async (route) => {
           if (route.request().method() !== "POST") {
             await route.fallback();
@@ -472,6 +487,7 @@ test.describe("the form", () => {
           }
           held += 1;
           const response = await route.fetch();
+          savedStatus = ((await response.json()) as { status: string }).status;
           await new Promise((resolve) => setTimeout(resolve, 3_000));
           await route.fulfill({ response });
         });
@@ -485,7 +501,7 @@ test.describe("the form", () => {
         await expect(toasts(page).getByText("Promocja zapisana."), "the promotion was rejected (conflict, validation or API error)").toBeVisible({ timeout: 10_000 });
         expect(held).toBe(1);
         await expect(page).toHaveURL(/\/promotions\/[0-9a-f-]{36}$/);
-        await expectStartedWithoutReload(page);
+        await expectStartedWithoutReload(page, savedStatus);
       } finally {
         await page.unrouteAll({ behavior: "ignoreErrors" });
         await endActivePromotionsOf(page.request, await token.fresh(page), PRODUCT_NAME);
