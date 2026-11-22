@@ -1783,6 +1783,52 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
     expect(deletes()).toEqual([[B]]);
   });
 
+  it("opens the checkout through the link when an answer on the way had a line that cannot be bought and the last one can be ordered", async () => {
+    await renderWith(cart(1, 1));
+    hold();
+    setQuantity("Produkt A", "3");
+    fireEvent.click(removeOf("Produkt B"));
+    checkoutLink().focus();
+    expect(activate()).toBe(false);
+
+    // Somebody bought the last unit of B meanwhile: the link makes way for the inactive button.
+    await answer(0, ok(view([line(A, "Produkt A", 3), line(B, "Produkt B", 1, { state: "out_of_stock", lineTotal: null })], {}, true)));
+    expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
+    expect(navigations).toBe(0);
+    await answer(1, ok(cart(3, null)));
+
+    expect(navigations).toBe(1);
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(notSavedAlert()).toBeNull();
+  });
+
+  it("keeps the controls of the lines inactive from the click of the link until the checkout replaces the page", async () => {
+    await goWhileAIsSaved();
+    let lockedAtTheClick: boolean[] = [];
+    const recordLocks = () => {
+      lockedAtTheClick = [...document.querySelectorAll('[id^="cart-quantity-"], [id^="cart-remove-"]')].map(
+        (control) => control.getAttribute("aria-disabled") === "true",
+      );
+    };
+    document.addEventListener("click", recordLocks);
+
+    await answer(0, ok(cart(3, 1)));
+    document.removeEventListener("click", recordLocks);
+
+    expect(navigations).toBe(1);
+    expect(lockedAtTheClick).toEqual([true, true, true, true]);
+    // jsdom does not navigate: the page stays as the checkout would find it, with the controls still inactive.
+    await act(async () => {});
+    for (const name of ["Produkt A", "Produkt B"]) {
+      expect(qty(name).getAttribute("aria-disabled")).toBe("true");
+      expect(removeOf(name).getAttribute("aria-disabled")).toBe("true");
+    }
+    fireEvent.change(qty("Produkt B"), { target: { value: "5" } });
+    fireEvent.blur(qty("Produkt B"));
+    expect(qty("Produkt B").value).toBe("1");
+    expect(patches()).toEqual([[A, 3]]);
+  });
+
   describe("the link gone with a waiting that ended without the checkout (F3)", () => {
     it("moves the focus to the text of the empty cart when the change gets a 404 and the reloaded cart is empty", async () => {
       await goWhileAIsSaved(view([line(A, "Produkt A", 1)]));
