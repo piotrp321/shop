@@ -370,7 +370,8 @@ do adresu trafia dopiero zastosowana fraza.
   (publikacja, wycofanie, zakończenie, usunięcie) są w karcie bocznej „Status”, nie w pasku.
 - **Po zapisie**: toast („Produkt zapisany.”, „Promocja zapisana.”, „Kod rabatowy zapisany.”), pasek znika, a fokus
   przechodzi na H1 formularza (`tabindex="-1"`), bo przycisk „Zapisz” zniknął razem z paskiem. Wyjątek (#250 F16):
-  gdy w trakcie żądania pracownik przeniósł fokus do pola, fokus zostaje w tym polu. Po nieudanym zapisie fokus trafia
+  gdy w trakcie żądania pracownik przeniósł fokus do pola, fokus zostaje w tym polu. Wyjątek nie dotyczy zapisu
+  formularza promocji: w jego trakcie pola są wyłączone (dotyczy akcji karty „Status”). Po nieudanym zapisie fokus trafia
   na pierwsze pole z błędem albo komunikat formularza, a komunikat jest przewinięty do widoku (#304 F3).
 - **Strażnik niezapisanych zmian** we wszystkich trzech formularzach (produkt, promocja, kod rabatowy), jeden composable `useUnsavedChangesGuard` (globalny `router.beforeEach`) z oknem
   `UnsavedChangesDialog`: przejście na inną trasę panelu z niezapisanymi zmianami otwiera okno „Masz niezapisane

@@ -688,6 +688,469 @@ describe("usePromotionForm", () => {
     });
   });
 
+  describe("the lock while a save runs (#580)", () => {
+    it("locks the fields from the save to its answer, and a second save sends nothing", async () => {
+      const { form } = await open();
+      form.form.value.name = "Inna";
+      let release!: (value: unknown) => void;
+      mocks.put.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+      expect(form.locked.value).toBe(false);
+
+      const saving = form.save();
+
+      expect(form.locked.value).toBe(true);
+      expect(await form.save()).toBeNull();
+      release(ok(promotion({ name: "Inna", version: 5 })));
+      await saving;
+      expect(form.locked.value).toBe(false);
+      expect(mocks.put).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ["a 422", () => mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Za długa nazwa." }] }))],
+      ["a request that does not reach the API", () => mocks.put.mockRejectedValue(new TypeError("network down"))],
+    ])("unlocks the fields with the values that were sent after %s", async (_name, fail) => {
+      const { form } = await open();
+      form.form.value.name = "Wysłana";
+      form.form.value.percentOff = "35";
+      fail();
+
+      expect(await form.save()).toBe("failure");
+
+      expect(form.locked.value).toBe(false);
+      expect(form.form.value.name).toBe("Wysłana");
+      expect(form.form.value.percentOff).toBe("35");
+    });
+
+    it("does not lock the fields while „Zakończ teraz” or „Usuń” runs", async () => {
+      const ended = await open(promotion({ status: "active" }));
+      mocks.put.mockReturnValue(new Promise(() => {}));
+      void ended.form.endNow();
+      expect(ended.form.busy.value).toBe(true);
+      expect(ended.form.locked.value).toBe(false);
+      wrapper?.unmount();
+
+      const deleted = await open(promotion({ status: "planned" }));
+      mocks.delete.mockReturnValue(new Promise(() => {}));
+      void deleted.form.remove();
+      expect(deleted.form.busy.value).toBe(true);
+      expect(deleted.form.locked.value).toBe(false);
+    });
+
+    it("ignores the answer of a save that comes after another promotion was opened: no change, no message, no move and no wait", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      vi.setSystemTime(new Date("2026-11-15T10:20:30.000Z"));
+      const { form, id, onCreated } = await open();
+      form.form.value.startNow = true;
+      let release!: (value: unknown) => void;
+      mocks.put.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+      const saving = form.save();
+
+      servePromotion(promotion({ id: "promo-2", name: "Druga", version: 7 }));
+      id.value = "promo-2";
+      await flushPromises();
+      // The save of the previous promotion does not hold this one.
+      expect(form.locked.value).toBe(false);
+      expect(form.busy.value).toBe(false);
+      mocks.get.mockClear();
+      release(ok(promotion({ status: "planned", startsAt: "2026-11-15T10:20:31+00:00", version: 5 })));
+
+      expect(await saving).toBeNull();
+      expect(form.view.value?.id).toBe("promo-2");
+      expect(form.form.value.name).toBe("Druga");
+      expect(form.view.value?.version).toBe(7);
+      expect(form.message.value).toBeNull();
+      expect(form.starting.value).toBe(false);
+      expect(form.locked.value).toBe(false);
+      expect(onCreated).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(mocks.get).not.toHaveBeenCalled();
+    });
+
+    it("ignores the answer of a deletion that comes after another promotion was opened, and it does not hold that one", async () => {
+      const { form, id, onDeleted } = await open();
+      let release!: (value: unknown) => void;
+      mocks.delete.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+      const deleting = form.remove();
+
+      servePromotion(promotion({ id: "promo-2", name: "Druga", version: 7 }));
+      id.value = "promo-2";
+      await flushPromises();
+      expect(form.busy.value).toBe(false);
+      expect(form.canDelete.value).toBe(true);
+      release(problem(404));
+
+      expect(await deleting).toBeNull();
+      expect(onDeleted).not.toHaveBeenCalled();
+      expect(form.error.value).toBeNull();
+      expect(form.view.value?.name).toBe("Druga");
+    });
+
+    it("ignores the answer of a create that comes after the form of a new promotion was opened again", async () => {
+      const { form, id, onCreated } = await open(promotion(), { id: null });
+      Object.assign(form.form.value, { name: "N", percentOff: "10", startNow: true, endsAt: "2026-11-21T00:00" });
+      form.addVariants([variant("v-1")]);
+      let release!: (value: unknown) => void;
+      mocks.post.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+      const saving = form.save();
+
+      // To an existing promotion and back to the form of a new one, while the create runs.
+      id.value = "promo-2";
+      await flushPromises();
+      id.value = null;
+      await flushPromises();
+      release(ok(promotion(), 201));
+
+      expect(await saving).toBeNull();
+      expect(form.view.value).toBeNull();
+      expect(form.form.value.name).toBe("");
+      expect(form.message.value).toBeNull();
+      expect(onCreated).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("after a save „od teraz” that answers planned (#580)", () => {
+    // The start „od teraz” is the next whole second after the save, so the answer of the save is still „planned”: the
+    // form waits for the start and reads the promotion again. The clock of the browser only decides when it reads.
+    const NOW = "2026-11-15T10:20:30.000Z";
+    const STARTED_MESSAGE = "Promocja jest aktywna.";
+    const READ_FAILED = "Nie udało się odczytać statusu promocji. Odśwież, żeby zobaczyć jej stan.";
+
+    async function openPlanned() {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      vi.setSystemTime(new Date(NOW));
+      const started = await open(promotion({ status: "planned", startsAt: "2026-11-16T23:00:00+00:00" }));
+      mocks.get.mockClear();
+      return started;
+    }
+
+    /** Saves „od teraz” and answers with the promotion planned to start at `startsAt`. */
+    async function saveNow(form: ReturnType<typeof usePromotionForm>, startsAt: string) {
+      form.form.value.startNow = true;
+      mocks.put.mockResolvedValue(ok(promotion({ status: "planned", startsAt, version: 5 })));
+      expect(await form.save()).toBe("success");
+    }
+
+    function serveRead(status: Promotion["status"], overrides: Partial<Promotion> = {}) {
+      mocks.get.mockImplementation(async () => ok(promotion({ status, startsAt: "2026-11-15T10:20:31+00:00", ...overrides })));
+    }
+
+    it("locks the form, reads once exactly 2 s after the answer for a start 1 s ahead, and an active answer unlocks it", async () => {
+      const { form } = await openPlanned();
+      await saveNow(form, "2026-11-15T10:20:31+00:00");
+
+      expect(form.starting.value).toBe(true);
+      expect(form.locked.value).toBe(true);
+      expect(form.canSave.value).toBe(false);
+      expect(form.canDelete.value).toBe(false);
+      expect(form.message.value).toBe("Promocja zapisana.");
+      serveRead("active", { version: 6 });
+
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(mocks.get).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await flushPromises();
+
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      expect(mocks.get).toHaveBeenCalledWith(PROMOTION, { params: { path: { id: "promo-1" } } });
+      expect(form.starting.value).toBe(false);
+      expect(form.locked.value).toBe(false);
+      expect(form.status.value).toBe("active");
+      expect(form.view.value?.version).toBe(6);
+      expect(form.canEndNow.value).toBe(true);
+      expect(form.startNotice.value).toBe(STARTED_MESSAGE);
+      expect(form.startError.value).toBeNull();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
+
+    it("reads one second after a start that the clock of the browser has already passed: 0.7 s after the answer for a start 0.3 s before it", async () => {
+      const { form } = await openPlanned();
+      await saveNow(form, "2026-11-15T10:20:29.700+00:00");
+      serveRead("active");
+
+      await vi.advanceTimersByTimeAsync(699);
+      expect(mocks.get).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await flushPromises();
+
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      expect(form.status.value).toBe("active");
+    });
+
+    it("reads at once when the start and one second more have already passed by the clock of the browser", async () => {
+      const { form } = await openPlanned();
+      await saveNow(form, "2026-11-15T10:20:28.500+00:00");
+      serveRead("active");
+
+      await vi.advanceTimersByTimeAsync(0);
+      await flushPromises();
+
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      expect(form.status.value).toBe("active");
+    });
+
+    it("reads first 3 s after the answer at the latest, when the start is far ahead of the clock of the browser", async () => {
+      const { form } = await openPlanned();
+      await saveNow(form, "2026-11-15T10:21:30+00:00");
+      serveRead("active");
+
+      await vi.advanceTimersByTimeAsync(2999);
+      expect(mocks.get).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await flushPromises();
+
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      expect(form.status.value).toBe("active");
+    });
+
+    it("counts from the answer of the save, however long the save took", async () => {
+      const { form } = await openPlanned();
+      form.form.value.startNow = true;
+      let release!: (value: unknown) => void;
+      mocks.put.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+      const saving = form.save();
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(form.locked.value).toBe(true);
+      release(ok(promotion({ status: "planned", startsAt: "2026-11-15T10:20:46+00:00" })));
+      expect(await saving).toBe("success");
+      serveRead("active");
+
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(mocks.get).not.toHaveBeenCalled();
+      expect(form.startError.value).toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      await flushPromises();
+
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      expect(form.status.value).toBe("active");
+    });
+
+    it("reads again every second, at most 5 times, and then unlocks the form, still planned, and says when it starts", async () => {
+      const { form } = await openPlanned();
+      await saveNow(form, "2026-11-15T10:20:31+00:00");
+      serveRead("planned", { startsAt: "2026-11-15T10:20:41+00:00", version: 8 });
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      for (let retry = 1; retry <= 5; retry++) {
+        expect(form.starting.value).toBe(true);
+        await vi.advanceTimersByTimeAsync(999);
+        expect(mocks.get).toHaveBeenCalledTimes(retry);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(mocks.get).toHaveBeenCalledTimes(retry + 1);
+      }
+      await flushPromises();
+
+      expect(form.starting.value).toBe(false);
+      expect(form.locked.value).toBe(false);
+      expect(form.status.value).toBe("planned");
+      expect(form.view.value?.version).toBe(8);
+      expect(form.startNotice.value).toBe(`Promocja jeszcze się nie rozpoczęła. Początek: ${formatDateTime("2026-11-15T10:20:41+00:00")}.`);
+      expect(form.startError.value).toBeNull();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(mocks.get).toHaveBeenCalledTimes(6);
+    });
+
+    it.each([
+      ["a read that fails", () => mocks.get.mockResolvedValue(problem(500))],
+      ["a read of a promotion that is gone", () => mocks.get.mockResolvedValue(problem(404))],
+      ["a read that does not reach the API", () => mocks.get.mockRejectedValue(new TypeError("network down"))],
+    ])("ends the wait with an error for %s, leaves the form as after the save, and „Odśwież” (refresh) shows the promotion", async (_name, fail) => {
+      const { form } = await openPlanned();
+      await saveNow(form, "2026-11-15T10:20:31+00:00");
+      fail();
+
+      await vi.advanceTimersByTimeAsync(2000);
+      await flushPromises();
+
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      expect(form.starting.value).toBe(false);
+      expect(form.locked.value).toBe(false);
+      expect(form.startError.value).toBe(READ_FAILED);
+      expect(form.startNotice.value).toBeNull();
+      expect(form.status.value).toBe("planned");
+      expect(form.view.value?.version).toBe(5);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+
+      serveRead("active", { version: 6 });
+      await form.refresh();
+
+      expect(form.startError.value).toBeNull();
+      expect(form.status.value).toBe("active");
+      expect(form.view.value?.version).toBe(6);
+    });
+
+    it("gives up 10 s after the answer of the save while a read has no answer, and the late answer changes nothing", async () => {
+      const { form } = await openPlanned();
+      await saveNow(form, "2026-11-15T10:20:31+00:00");
+      let release!: (value: unknown) => void;
+      mocks.get.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+
+      await vi.advanceTimersByTimeAsync(9999);
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      expect(form.starting.value).toBe(true);
+      expect(form.locked.value).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(form.starting.value).toBe(false);
+      expect(form.locked.value).toBe(false);
+      expect(form.startError.value).toBe(READ_FAILED);
+      expect(form.canSave.value).toBe(false);
+      form.form.value.name = "Zmieniona po limicie";
+      expect(form.canSave.value).toBe(true);
+
+      release(ok(promotion({ status: "active", startsAt: "2026-11-15T10:20:31+00:00", version: 9 })));
+      await flushPromises();
+
+      expect(form.form.value.name).toBe("Zmieniona po limicie");
+      expect(form.status.value).toBe("planned");
+      expect(form.view.value?.version).toBe(5);
+      expect(form.startError.value).toBe(READ_FAILED);
+      expect(form.startNotice.value).toBeNull();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
+
+    it("gives up 10 s after the answer of the save also while the reads still say planned", async () => {
+      const { form } = await openPlanned();
+      // Every read takes 1.5 s: the sixth would come after the limit.
+      await saveNow(form, "2026-11-15T10:20:31+00:00");
+      mocks.get.mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve(ok(promotion({ status: "planned", startsAt: "2026-11-15T10:20:31+00:00" }))), 1500)),
+      );
+
+      await vi.advanceTimersByTimeAsync(9999);
+      expect(form.starting.value).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(form.starting.value).toBe(false);
+      expect(form.startError.value).toBe(READ_FAILED);
+      const reads = mocks.get.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(mocks.get).toHaveBeenCalledTimes(reads);
+      expect(form.startError.value).toBe(READ_FAILED);
+      expect(form.startNotice.value).toBeNull();
+    });
+
+    it("waits on after the form of a new promotion moved to the page of the promotion it created", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      vi.setSystemTime(new Date(NOW));
+      const { form, id, onCreated } = await open(promotion(), { id: null });
+      Object.assign(form.form.value, { name: "N", percentOff: "10", startNow: true, endsAt: "2026-11-21T00:00" });
+      form.addVariants([variant("v-1")]);
+      mocks.post.mockResolvedValue(ok(promotion({ status: "planned", startsAt: "2026-11-15T10:20:31+00:00" }), 201));
+
+      expect(await form.save()).toBe("success");
+      expect(onCreated).toHaveBeenCalledWith("promo-1");
+      id.value = "promo-1";
+      await flushPromises();
+      expect(form.starting.value).toBe(true);
+      serveRead("active");
+
+      await vi.advanceTimersByTimeAsync(2000);
+      await flushPromises();
+
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      expect(form.status.value).toBe("active");
+      expect(form.startNotice.value).toBe(STARTED_MESSAGE);
+    });
+
+    it("makes no read after the form is left, and ignores the answer of a read that comes after that", async () => {
+      const first = await openPlanned();
+      wrapper = undefined;
+      await saveNow(first.form, "2026-11-15T10:20:31+00:00");
+      first.wrapper.unmount();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(mocks.get).not.toHaveBeenCalled();
+
+      const second = await openPlanned();
+      wrapper = undefined;
+      await saveNow(second.form, "2026-11-15T10:20:31+00:00");
+      let release!: (value: unknown) => void;
+      mocks.get.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      second.wrapper.unmount();
+      release(ok(promotion({ status: "active", version: 9 })));
+      await flushPromises();
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      expect(second.form.status.value).toBe("planned");
+      expect(second.form.startNotice.value).toBeNull();
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops waiting when another promotion is opened: no more reads, no limit, and a late answer changes nothing", async () => {
+      const { form, id } = await openPlanned();
+      await saveNow(form, "2026-11-15T10:20:31+00:00");
+      let release!: (value: unknown) => void;
+      mocks.get.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+      const pendingRead = release;
+
+      servePromotion(promotion({ id: "promo-2", name: "Druga", status: "planned", version: 7 }));
+      id.value = "promo-2";
+      await flushPromises();
+      pendingRead(ok(promotion({ status: "active", version: 9 })));
+      await flushPromises();
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      expect(mocks.get).toHaveBeenCalledTimes(2);
+      expect(mocks.get.mock.calls[1]).toEqual([PROMOTION, { params: { path: { id: "promo-2" } } }]);
+      expect(form.view.value?.id).toBe("promo-2");
+      expect(form.status.value).toBe("planned");
+      expect(form.view.value?.version).toBe(7);
+      expect(form.starting.value).toBe(false);
+      expect(form.locked.value).toBe(false);
+      expect(form.startNotice.value).toBeNull();
+      expect(form.startError.value).toBeNull();
+    });
+
+    it("stops waiting when the form of a new promotion is opened", async () => {
+      const { form, id } = await openPlanned();
+      await saveNow(form, "2026-11-15T10:20:31+00:00");
+
+      id.value = null;
+      await flushPromises();
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      expect(mocks.get).not.toHaveBeenCalled();
+      expect(form.view.value).toBeNull();
+      expect(form.starting.value).toBe(false);
+      expect(form.locked.value).toBe(false);
+      expect(form.startError.value).toBeNull();
+    });
+
+    it("does not wait after a save with a start in the future", async () => {
+      const { form } = await openPlanned();
+      form.form.value.startsAt = "2026-11-18T10:00";
+      mocks.put.mockResolvedValue(ok(promotion({ status: "planned", startsAt: "2026-11-18T09:00:00+00:00", version: 5 })));
+
+      expect(await form.save()).toBe("success");
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      expect(form.starting.value).toBe(false);
+      expect(form.locked.value).toBe(false);
+      expect(mocks.get).not.toHaveBeenCalled();
+    });
+
+    it("does not wait when the answer of a save „od teraz” is already active", async () => {
+      const { form } = await openPlanned();
+      form.form.value.startNow = true;
+      mocks.put.mockResolvedValue(ok(promotion({ status: "active", startsAt: NOW })));
+
+      expect(await form.save()).toBe("success");
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      expect(form.starting.value).toBe(false);
+      expect(mocks.get).not.toHaveBeenCalled();
+      expect(form.status.value).toBe("active");
+    });
+  });
+
   describe("deleting", () => {
     it("deletes a planned promotion with the version of the view and leaves the form", async () => {
       const { form, onDeleted } = await open();
