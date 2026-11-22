@@ -1183,7 +1183,7 @@ describe("OrderDetailView", () => {
           "„Wróć”": () => inWindow(target.cancel).trigger("click"),
           "„Zamknij”": () => closeButton().trigger("click"),
         };
-        await close[way]();
+        await close[way]!();
         await settle();
 
         expect(windowExists()).toBe(true);
