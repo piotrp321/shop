@@ -15,6 +15,7 @@ roboczym: po ukończeniu epiku usuń go.
 | 2 | STORE-UX-FIXES-3, STORE-UX-FIXES-5 | zmergowane do gałęzi epiku: STORE-UX-FIXES-5 (`6fbcc733`), STORE-UX-FIXES-3 (`7743e37e`) |
 | 3 | STORE-UX-FIXES-2 | zmergowane do gałęzi epiku (`8b499ddb`) |
 | 4 | STORE-UX-FIXES-8 | zmergowane do gałęzi epiku (`0d8862a5`) |
+| przegląd epiku | STORE-UX-FIXES-QA1 (poprawka po `qa-adversarial` i `ux-reviewer`) | zmergowane do gałęzi epiku (`fde24136`) |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
