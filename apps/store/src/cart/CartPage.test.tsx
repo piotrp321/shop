@@ -885,6 +885,45 @@ describe("CartPage actions during a save", () => {
     });
   });
 
+  describe("the messages of the lines while a pointer is pressed (S1)", () => {
+    const lineAlert = () => within(screen.getAllByRole("listitem")[0]).queryByRole("alert");
+    const press = () => fireEvent.pointerDown(document.body);
+    const release = async () => {
+      fireEvent.pointerUp(document.body);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    };
+
+    it("keeps the message the answer takes away until the pointer is released", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+      setQuantity("Produkt A", "3");
+      await answer(0, { status: "failed" });
+      setQuantity("Produkt A", "4");
+
+      press();
+      await answer(1, ok(cart(4, 1)));
+      expect(lineAlert()).not.toBeNull();
+
+      await release();
+      expect(lineAlert()).toBeNull();
+    });
+
+    it("shows a new message only when the pointer is released", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+      setQuantity("Produkt A", "3");
+
+      press();
+      await answer(0, { status: "failed" });
+      expect(lineAlert()).toBeNull();
+
+      await release();
+      expect(lineAlert()?.textContent).toBe("Nie udało się zapisać zmian. Spróbuj ponownie.");
+    });
+  });
+
   describe("a failed change with an action waiting (criterion 5)", () => {
     it("shows the message at the failed line with its confirmed quantity and removes the other line", async () => {
       await renderWith(cart(1, 1));
