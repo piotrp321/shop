@@ -285,7 +285,7 @@ Powtórzenie z tym samym kluczem i odciskiem zwraca istniejące zamówienie bez 
   zamówienia trafia tylko wycena z chwili złożenia (P2 CHECKOUT, 409 `OrderTotalChanged`). Linia niekupowalna ma
   `unitPrice` z `CartPrices` jak dziś i `lineTotal = null`.
 - `lineTotal` = `grossBeforeDiscount` (`g_i`), `unitPrice` = cena skuteczna jednostkowa; widok koszyka nie pokazuje
-  rabatu linii, więc linie plus wiersz kodu sumują się do „Razem”.
+  rabatu linii, więc linie plus wiersz kodu sumują się do „Do zapłaty”.
 - `GetCart(cartRef, discountCode | null)`. `CartTotals`: `subtotalGross`, `discountGross`, `gross` (do zapłaty),
   `currency`, `itemCount`. `CartView.discount`: `{code, status: applied, amountGross, kind, value}` albo `{code,
   status: rejected, reason, detail, minimumOrderGross | null}` (`reason`: `invalid`, `used_up`, `below_minimum`) albo
@@ -359,7 +359,7 @@ pozostali 403; odczyt: każdy pracownik):
 ## Sklep (`apps/store`)
 
 - Kasa: pole „Kod rabatowy” z przyciskiem „Zastosuj” pod podsumowaniem. Zastosowanie przeładowuje podsumowanie z
-  `discountCode` (BFF koszyka przekazuje parametr). Zastosowany kod: linia „Kod <KOD>: −X zł”, „Razem” po rabacie
+  `discountCode` (BFF koszyka przekazuje parametr). Zastosowany kod: linia „Kod <KOD>: −X zł”, „Do zapłaty” po rabacie
   i przycisk „Usuń kod”. Odrzucony: `detail` przy polu, podsumowanie bez rabatu.
 - Złożenie wysyła `discountCode` zastosowanego kodu i `expectedTotalGross` = `totals.gross` podsumowania. BFF
   (`CUSTOMER_ORDER_FIELDS` w `apps/store/src/checkout/api.ts`) przepuszcza `discountCode`; `problems.ts` zna trzy nowe
