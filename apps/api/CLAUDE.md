@@ -10,7 +10,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `check` – PHPStan, Deptrac, PHP CS Fixer
 - `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ); dodatkowe
   argumenty PHPUnit w `PHPUNIT_ARGS`, np. `make -C apps/api test-unit PHPUNIT_ARGS='--filter CartTest'`.
-  CI uruchamia suity `unit`, `integration`, `demo-data` i `functional` z `phpunit.dist.xml` po nazwie, w osobnych częściach
+  CI uruchamia suity `unit`, `integration`, `demo-data`, `demo-data-orders` i `functional` z `phpunit.dist.xml` po nazwie, w osobnych częściach
   `checks`: nowa suita wymaga też nowej części w macierzy `checks-part` w `ci.yml`, inaczej CI jej nie uruchomi
 - `init` – migracje bazy deweloperskiej i `catalog:search-index:setup` (alias `products` i indeks, jeśli ich nie ma);
   idempotentny, wywołuje go `make up` po starcie usług

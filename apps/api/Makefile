@@ -27,7 +27,7 @@ PHPUNIT_ARGS ?=
 # keeps every test object (and the data of its data providers) until the run ends, so one process over all ~8000
 # tests peaks at about 250 MB, right at memory_limit (256 MB). With `--testsuite` (CI runs one suite per part) the
 # arguments go to a single run.
-PHPUNIT_SUITES = $(if $(findstring --testsuite,$(PHPUNIT_ARGS)),all,unit integration demo-data functional)
+PHPUNIT_SUITES = $(if $(findstring --testsuite,$(PHPUNIT_ARGS)),all,unit integration demo-data demo-data-orders functional)
 
 test: init-test warm-test-cache
 	$(foreach suite,$(PHPUNIT_SUITES),$(RUN) api vendor/bin/phpunit $(if $(filter all,$(suite)),,--testsuite $(suite)) $(PHPUNIT_ARGS) &&) true

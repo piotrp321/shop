@@ -407,8 +407,8 @@ Opis szczegółowy: `docs/features/search/spec.md`.
 
 ### Testy i lokalnie
 
-- Testy API (`make -C apps/api test`; testy integracyjne generatora to suita `demo-data`, w CI w części
-  `checks part api demo data`, testy funkcjonalne w części `checks part api functional`) uruchamiają kroki `demo-data:*` z profilem `small`
+- Testy API (`make -C apps/api test`; testy integracyjne generatora to suity `demo-data` i `demo-data-orders` (testy zamówień),
+  w CI w częściach `checks part api demo data` i `checks part api demo data orders`, testy funkcjonalne w części `checks part api functional`) uruchamiają kroki `demo-data:*` z profilem `small`
   osobno, na bazie `shop_test`, bez `bin/seed-demo` i bez czyszczenia cache sklepu (worker i Varnish nie obsługują
   `shop_test`): w procesie testu, w transakcji testu, a test determinizmu przy innej liczbie procesów w osobnej grupie
   z czyszczeniem tabel po sobie. Krok kont w testach pracuje na tymczasowych realmach zakładanych i usuwanych przez

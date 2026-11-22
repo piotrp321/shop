@@ -9,7 +9,7 @@
 # documentation) runs just the script tests (in the `apps` part); the Kubernetes deployment only (infra/k8s/**,
 # possibly with documentation) runs just `make -C infra/k8s check` (in the `k8s` part). Skipped steps
 # let the other jobs pass within seconds. Anything else,
-# and every push, runs it all. A full run uses 1 + 5 + 3 runners for its work (`scope`, the `checks-part` and
+# and every push, runs it all. A full run uses 1 + 6 + 3 runners for its work (`scope`, the `checks-part` and
 # `e2e-shard` parts) and two more for the short `checks` and `e2e` reports.
 name: CI
 
@@ -75,10 +75,11 @@ jobs:
   #   apps             make check-code (PHPStan, Deptrac, PHP CS Fixer, ESLint, tsc and the make/*.mk fragments), the api
   #                    unit suite (a few seconds, no services), the contract freshness, the store and admin suites, the
   #                    VCL tests and the script tests; Redis for the store integration tests
-  #   api integration  the api `integration`, `demo-data` (the integration tests of the demo data generator, about two
-  #   api demo data    thirds of the integration time) and `functional` suites, one part each, on PostgreSQL, Garage,
-  #   api functional   imgproxy, RabbitMQ, Elasticsearch, Keycloak, Redis and Mailpit; the step summary of each lists its
-  #                    slowest tests and classes (.github/scripts/junit-slowest.py)
+  #   api integration  the api `integration`, `demo-data` and `demo-data-orders` (the integration tests of the demo
+  #   api demo data    data generator, about two thirds of the integration time, split in two of about the same time)
+  #   api demo data    and `functional` suites, one part each, on PostgreSQL, Garage, imgproxy, RabbitMQ, Elasticsearch,
+  #     orders         Keycloak, Redis and Mailpit; the step summary of each lists its slowest tests and classes
+  #   api functional   (.github/scripts/junit-slowest.py)
   # The parts are not named `checks`: the required check of that name is the job below. When the parts end far apart,
   # move work between them (the api parts by test directory: the suites of apps/api/phpunit.dist.xml).
   checks-part:
@@ -113,6 +114,11 @@ jobs:
             stack: full
             also: none
             phpunit_args: --testsuite demo-data
+          - name: api demo data orders
+            apps: api
+            stack: full
+            also: none
+            phpunit_args: --testsuite demo-data-orders
           - name: api functional
             apps: api
             stack: full
