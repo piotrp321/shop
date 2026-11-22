@@ -35,7 +35,7 @@ final class GeneratedProductsOnTheRealPathsTest extends WebTestCase
         $t = hrtime(true);
         $lap = static function (string $what) use (&$t): void {
             $now = hrtime(true);
-            fwrite(\STDERR, \sprintf("\n[DIAG step] %.3fs %s\n", ($now - $t) / 1e9, $what));
+            fwrite(\STDERR, \sprintf("\n[DIAG step] %s %.3fs %s\n", new \DateTimeImmutable()->format('H:i:s.v'), ($now - $t) / 1e9, $what));
             $t = $now;
         };
         $this->succeeds('demo-data:categories');
