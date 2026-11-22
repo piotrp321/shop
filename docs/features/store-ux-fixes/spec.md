@@ -430,8 +430,8 @@ Poza gwarancją zostaje stan dzisiejszy (#853):
 
 - Ogłaszanie sprawdzono po DOM (regiony i ich tekst); próby prawdziwym czytnikiem ekranu nie było.
 - Pomiary wykonano tylko w Chromium.
-- Żądania koszyka i kasy nie mają limitu czasu: zapis bez odpowiedzi trzyma zamiar przejścia (S2) i blokadę kasy (S5)
-  do błędu sieci przeglądarki. Dziś taki zapis też blokuje cały koszyk. Etap nie dodaje limitu czasu.
+- Żądania koszyka i kasy nie mają limitu czasu: zapis bez odpowiedzi trzyma zamiar przejścia (S2), blokadę kasy (S5)
+  i pierwszy odczyt kasy otwartej w trakcie tego zapisu do błędu sieci przeglądarki. Dziś taki zapis też blokuje cały koszyk. Etap nie dodaje limitu czasu.
 - S1 zmienia zachowanie, które dziś utrwala test jednostkowy koszyka; S5 zmienia regułę fokusu po odrzuceniu opisaną
   w `apps/store/CLAUDE.md`.
 - `CartPage.tsx` zmieniają S1, S2 i S3, a `CheckoutPage.tsx` S4 i S5: zadania na tych plikach idą szeregowo.
