@@ -658,3 +658,73 @@ for (const width of [320, 375]) {
     });
   });
 }
+
+// The message of a line stays until the answer of the next operation of that line (S1): it does not go at the mouse
+// down that starts the operation, so the control the customer presses in the same gesture does not move and still gets
+// the click.
+async function failFirstQuantityChange(page: Page): Promise<void> {
+  let failed = false;
+  await page.route(ITEM_URL, async (route) => {
+    if (route.request().method() === "PATCH" && !failed) {
+      failed = true;
+      await route.fulfill({ status: 500, contentType: "application/problem+json", body: "{}" });
+      return;
+    }
+    await route.fallback();
+  });
+}
+
+/** A click of a person: press, hold for 120 ms, release, at the centre the element has at the press. */
+async function clickWithHold(page: Page, target: Locator): Promise<void> {
+  const box = await target.boundingBox();
+  if (box === null) throw new Error("the control has no box");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(120);
+  await page.mouse.up();
+}
+
+const gestures = [
+  { device: "the mouse held for 120 ms at 1280 px", use: DESKTOP, touch: false, press: clickWithHold },
+  {
+    device: "a tap at 375 px",
+    use: { viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true },
+    touch: true,
+    press: (_page: Page, target: Locator) => target.tap(),
+  },
+];
+
+for (const { device, use, touch, press: gesture } of gestures) {
+  test.describe(`the message of a failed line does not move the control pressed next, with ${device}`, () => {
+    test.use(use);
+
+    for (const target of ["Przejdź do kasy", "Usuń of the other line"] as const) {
+      test(`${target}: typing in the failed line and pressing it still works`, async ({ page }) => {
+        test.setTimeout(90_000);
+        const [a, b] = await cartWithLines(page, 2);
+        if (a === undefined || b === undefined) throw new Error("the cart needs two lines");
+        const writes = countWrites(page);
+        await failFirstQuantityChange(page);
+
+        await typeQuantity(quantityOf(page, a), "2", { touch });
+        await quantityOf(page, a).press("Enter");
+        await expect(rowOf(page, a).getByRole("alert")).toBeVisible();
+
+        // The failed line is edited again: the message stays, so nothing under it moves when the field is left.
+        await typeQuantity(quantityOf(page, a), "3", { touch });
+        const control = target === "Przejdź do kasy" ? checkoutLink(page) : removeOf(page, b);
+        await gesture(page, control);
+
+        if (target === "Przejdź do kasy") {
+          await page.waitForURL((url) => url.pathname === "/checkout", { timeout: 30_000 });
+          expect(writes).toEqual({ PATCH: 2, DELETE: 0 });
+        } else {
+          await expect(rowOf(page, b)).toHaveCount(0, { timeout: 30_000 });
+          await expect(quantityOf(page, a)).toHaveValue("3");
+          expect(writes).toEqual({ PATCH: 2, DELETE: 1 });
+          expect(isOnPath(page, "/cart")).toBe(true);
+        }
+      });
+    }
+  });
+}

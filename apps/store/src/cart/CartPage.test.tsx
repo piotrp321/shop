@@ -848,6 +848,43 @@ describe("CartPage actions during a save", () => {
     expect(qty("Produkt B").value).toBe("7");
   });
 
+  describe("the message of a line during the next operation of that line (S1)", () => {
+    const lineAlert = () => within(screen.getAllByRole("listitem")[0]).queryByRole("alert");
+
+    it("stays while the next operation of the line is on its way and goes after its success", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+
+      setQuantity("Produkt A", "3");
+      await answer(0, { status: "failed" });
+      expect(lineAlert()?.textContent).toBe("Nie udało się zapisać zmian. Spróbuj ponownie.");
+
+      setQuantity("Produkt A", "4");
+      expect(patches()).toEqual([
+        [A, 3],
+        [A, 4],
+      ]);
+      expect(lineAlert()?.textContent).toBe("Nie udało się zapisać zmian. Spróbuj ponownie.");
+
+      await answer(1, ok(cart(4, 1)));
+      expect(lineAlert()).toBeNull();
+    });
+
+    it("stays while the removal of the line is on its way and takes the text of a new failure", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+
+      setQuantity("Produkt A", "3");
+      await answer(0, { status: "failed" });
+
+      fireEvent.click(removeButton("Produkt A"));
+      expect(lineAlert()?.textContent).toBe("Nie udało się zapisać zmian. Spróbuj ponownie.");
+
+      await answer(1, { status: "conflict", detail: "Nie mamy tylu sztuk tego produktu." });
+      expect(lineAlert()?.textContent).toBe("Nie mamy tylu sztuk tego produktu.");
+    });
+  });
+
   describe("a failed change with an action waiting (criterion 5)", () => {
     it("shows the message at the failed line with its confirmed quantity and removes the other line", async () => {
       await renderWith(cart(1, 1));
