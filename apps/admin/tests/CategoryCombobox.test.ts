@@ -229,6 +229,69 @@ describe("CategoryCombobox", () => {
   });
 });
 
+describe("CategoryCombobox after a choice in single mode", () => {
+  /** The element the field points at as the active option, if any. */
+  const activeDescendant = () => {
+    const id = input().getAttribute("aria-activedescendant");
+    return id === null || id === "" ? null : document.getElementById(id);
+  };
+  const pointsAtExistingElement = () => {
+    const id = input().getAttribute("aria-activedescendant");
+    return id === null || id === "" || document.getElementById(id) !== null;
+  };
+
+  it("does not point at a removed option once an option is chosen by a click and the list is closed", async () => {
+    mountCombobox();
+    await open();
+    input().focus();
+    options()[2]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    options()[2]!.click();
+    await flushPromises();
+
+    expect(options()).toEqual([]);
+    expect(pointsAtExistingElement(), "aria-activedescendant is empty or names an element in the DOM").toBe(true);
+  });
+
+  it("does not point at a removed option once an option is chosen with Enter and the list is closed", async () => {
+    const wrapper = mountCombobox();
+    await open();
+    input().focus();
+    input().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    await flushPromises();
+    input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flushPromises();
+
+    expect(wrapper.emitted("update:modelValue")).toHaveLength(1);
+    expect(options()).toEqual([]);
+    expect(pointsAtExistingElement(), "aria-activedescendant is empty or names an element in the DOM").toBe(true);
+  });
+
+  it("points at the highlighted option while the list is open", async () => {
+    mountCombobox();
+    await open();
+    input().focus();
+    input().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    await flushPromises();
+
+    expect(options().length).toBeGreaterThan(0);
+    expect(activeDescendant()).not.toBeNull();
+    expect(activeDescendant()?.getAttribute("role")).toBe("option");
+  });
+
+  // jsdom does not move the focus on a mousedown, so this passes before the change as well; the move of the focus to the
+  // option and its return to the field are covered by the E2E tests (admin-screens-inventory.spec.ts, catalog-admin.spec.ts).
+  it("keeps the focus in the field after an option is clicked", async () => {
+    mountCombobox();
+    await open();
+    input().focus();
+    options()[2]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    options()[2]!.click();
+    await flushPromises();
+
+    expect(document.activeElement).toBe(input());
+  });
+});
+
 describe("CategoryCombobox focus after a removal", () => {
   // A parent that owns the value, so that the removed chip really leaves the DOM.
   function mountWithParent(initial: string[]) {
