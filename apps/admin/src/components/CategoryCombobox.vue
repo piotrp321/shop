@@ -118,10 +118,11 @@ function onInput(event: Event) {
 }
 
 // Whether the list is open: reka sets `aria-activedescendant` from the highlighted option, which stays set after the
-// list is closed and its options are removed from the DOM.
+// list is closed or filtered down to nothing, when its options are removed from the DOM.
 const listOpen = ref(false);
-// An empty object leaves the attribute to reka; with the list closed the key is present and undefined, so it is removed.
-const activeDescendantWhenClosed = computed(() => (listOpen.value ? {} : { "aria-activedescendant": undefined }));
+// An empty object leaves the attribute to reka; with the list closed or without options the key is present and
+// undefined, so it is removed.
+const activeDescendantWhenClosed = computed(() => (listOpen.value && visibleOptions.value.length > 0 ? {} : { "aria-activedescendant": undefined }));
 
 function onOpenChange(open: boolean) {
   listOpen.value = open;
