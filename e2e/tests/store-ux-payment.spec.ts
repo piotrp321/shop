@@ -1,4 +1,4 @@
-import { type Browser, expect, type Locator, type Page, type Route, test } from "@playwright/test";
+import { type Browser, type BrowserContext, expect, type Locator, type Page, type Route, test } from "@playwright/test";
 import { decideAtSimulator, expectSimulatorPage, WEBHOOK_TIMEOUT_MS } from "../support/payment";
 import { addVariantOf, chooseDelivery, chooseProvider, fillAddress, tileNamed } from "../support/shop";
 
@@ -8,7 +8,7 @@ import { addVariantOf, chooseDelivery, chooseProvider, fillAddress, tileNamed } 
 const PRODUCT = "Buty trailowe Norvane Hala 500";
 const READ_FAILED = "Nie udało się sprawdzić statusu płatności.";
 
-type StorageState = Awaited<ReturnType<Page["context"]>["storageState"]>;
+type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 interface UnpaidOrder {
   storageState: StorageState;
   /** The session of the payment provider: paying there makes the webhook come. */

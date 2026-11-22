@@ -534,6 +534,22 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 | odczyt statusu: 404 | „Nie znaleźliśmy zamówienia.” i link do sklepu |
 | brak ciasteczka | jak w CHECKOUT |
 
+- Region statusu i „Sprawdź ponownie” (S6 STORE-UX-FIXES): zdania statusu płatności z tabeli („Płatność przyjęta. …”,
+  „Zamówienie zostało anulowane.”, „Opłać do …”, „Czekamy na potwierdzenie płatności…”, „Nie mamy jeszcze potwierdzenia
+  płatności.”, „Minął termin płatności. …”, „Płatność nie powiodła się.”) są w jednym regionie `role="status"`
+  (`data-testid="payment-status"`), który istnieje od pierwszego renderu przez wszystkie zmiany statusu (bez statusu jest
+  pusty) i zmienia tylko tekst; jest jedynym miejscem tych zdań w DOM. Przyciski, link „Wróć do płatności” i formularz
+  płatności są poza nim, po nim.
+  - „Sprawdź ponownie” na czas odczytu ma `aria-disabled="true"` zamiast `disabled`, więc zachowuje fokus; drugie
+    uruchomienie nie wysyła żądania. Po odpowiedzi fokus przenosi się tylko wtedy, gdy nadal jest na przycisku albo na
+    `<body>`: przycisk nadal na ekranie – zostaje na nim, przycisku nie ma (status rozstrzygnięty albo znów trwa
+    odpytywanie) – nagłówek ekranu. Fokus przeniesiony przez klienta w trakcie odczytu zostaje tam.
+  - Błąd odczytu: przycisk i fokus zostają, „Nie udało się sprawdzić statusu płatności.” jest w `role="alert"`; gdy
+    pierwszy odczyt (serwera) się nie udał, to zdanie jest poza regionem (w `role="alert"`), znika na czas sprawdzania
+    i wraca po ponownym błędzie.
+  - Odpytywanie (co 2 s przez 30 s) zmienia tekst regionu i nie przenosi fokusu; jeśli zmiana usuwa element z fokusem
+    (np. „Wróć do płatności”), fokus idzie na nagłówek ekranu.
+
 - „Zapłać”: `Idempotency-Key` nowy przy każdej próbie i po zmianie dostawcy, ten sam przy ponowieniu niepewnego
   wyniku (błąd sieci, 5xx, 503) i po 429 z tym samym dostawcą. Wyniki:
 
