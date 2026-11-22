@@ -327,14 +327,36 @@ async function openWholeListPicker(page: Page): Promise<void> {
 
 const pickerRegion = (page: Page) => page.getByRole("region", { name: "Warianty do wyboru" });
 
+/** Waits until the page and the region have stopped scrolling (a scroll by a key or by a focus may be animated). */
+async function settleScroll(page: Page): Promise<void> {
+  await settle(page);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const region = document.querySelector("[role=region][aria-label='Warianty do wyboru']");
+        const position = () => `${window.scrollY}/${region?.scrollTop}`;
+        let last = position();
+        let still = 0;
+        const frame = () => {
+          const now = position();
+          still = now === last ? still + 1 : 0;
+          last = now;
+          if (still >= 10) resolve();
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }),
+  );
+}
+
 /** Scrolls the page so that the field of the search lies right under the top bar (or as far as the page goes). */
 async function scrollSearchUnderTopbar(page: Page): Promise<void> {
   await page.evaluate(() => {
     const topbar = document.querySelector("header")!.getBoundingClientRect();
     const search = document.querySelector("[data-testid=picker-search]")!.getBoundingClientRect();
-    window.scrollBy(0, search.top - topbar.bottom);
+    window.scrollBy({ top: search.top - topbar.bottom, behavior: "instant" });
   });
-  await settle(page);
+  await settleScroll(page);
 }
 
 /** The focused control of the choice lies wholly in the region and in the window, and is the element at its own centre. */
@@ -392,10 +414,11 @@ test.describe("the region of the choice of variants has a height of its own (K4)
             const rect = element.getBoundingClientRect();
             return { top: rect.top, bottom: rect.bottom };
           };
+          // A disabled button does not take the pointer: the point is then the row of the pager that holds it.
           const hits = (element: Element) => {
             const rect = element.getBoundingClientRect();
             const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-            return hit !== null && (element === hit || element.contains(hit));
+            return hit !== null && (element.contains(hit) || (element.matches(":disabled") && hit === element.parentElement));
           };
           const search = document.querySelector("[data-testid=picker-search]")!;
           const pager = [...document.querySelectorAll("[data-testid=picker-previous], [data-testid=picker-next]")];
@@ -422,11 +445,12 @@ test.describe("the region of the choice of variants has a height of its own (K4)
         const before = await region.evaluate((element) => element.scrollTop);
         await page.keyboard.press("End");
         await expect.poll(() => region.evaluate((element) => element.scrollTop), "End scrolls the region").toBeGreaterThan(before);
+        await settleScroll(page);
 
         await page.keyboard.press("Tab");
         const firstAdd = await region.evaluate((element) => element.querySelector("button:not(:disabled)")!.getAttribute("aria-label"));
         expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Tab from the region goes to the first „Dodaj”").toBe(firstAdd);
-        await settle(page);
+        await settleScroll(page);
         await expectInRegionAndUncovered(page, "the first button");
 
         // The first active button of the pager is „Następna” (the first page has no previous one).
@@ -434,7 +458,7 @@ test.describe("the region of the choice of variants has a height of its own (K4)
         await page.keyboard.press("Shift+Tab");
         const lastAdd = await region.evaluate((element) => [...element.querySelectorAll("button:not(:disabled)")].at(-1)!.getAttribute("aria-label"));
         expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Shift+Tab from the pager goes to the last button of the region").toBe(lastAdd);
-        await settle(page);
+        await settleScroll(page);
         await expectInRegionAndUncovered(page, "the last button");
       });
 
