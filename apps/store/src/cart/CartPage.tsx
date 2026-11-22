@@ -73,10 +73,9 @@ type Outcome = "saved" | "refused" | "gone" | "unauthorized";
 
 /**
  * "Przejdź do kasy" activated while operations were on their way or waited: `waiting` for them (the controls of the
- * lines are locked), `opening` the checkout after all of them were saved (the controls stay locked until the checkout
- * replaces the page), `failed` when one of them was not saved (a message at the link), `none` otherwise.
+ * lines are locked), `failed` when one of them was not saved (a message at the link), `none` otherwise.
  */
-type Checkout = "none" | "waiting" | "opening" | "failed";
+type Checkout = "none" | "waiting" | "failed";
 
 /**
  * The cart of the browser, loaded from `/api/cart`. Every view comes from the last answer of the API; nothing is
@@ -119,6 +118,10 @@ export function CartPage() {
   const [shownCheckout, setShownCheckout] = useState<Checkout>("none");
   // The sending goes on after the page is left (`runActions`); a late answer must not open the checkout then.
   const mounted = useRef(false);
+  // The waiting ended with a cart that can be ordered: the link is clicked once, after the render that shows it. The
+  // state brings the render, the ref makes the click happen once.
+  const [openings, setOpenings] = useState(0);
+  const openRequested = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -145,10 +148,13 @@ export function CartPage() {
   }, [attention]);
 
   // The checkout opens through the link once the render of the last answer shows it: an earlier answer may have put
-  // the inactive button in its place. The click goes to `next/link`, as without the waiting (a navigation of the client).
+  // the inactive button in its place. The page is idle by then, so the click goes to `next/link`, as without the
+  // waiting (a navigation of the client), and the page is not locked when that navigation does not happen.
   useEffect(() => {
-    if (shownCheckout === "opening") document.getElementById(CHECKOUT_ID)?.click();
-  }, [shownCheckout]);
+    if (!openRequested.current) return;
+    openRequested.current = false;
+    document.getElementById(CHECKOUT_ID)?.click();
+  }, [openings]);
 
   function applyLoaded(next: Loaded) {
     view.current = next.status === "ready" ? next.cart : null;
@@ -238,8 +244,6 @@ export function CartPage() {
    */
   function goToCheckout(event: MouseEvent<HTMLAnchorElement>) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    // Everything is saved and the page opens the checkout: the click is the link's.
-    if (checkout.current === "opening") return;
     if (checkout.current === "waiting") {
       event.preventDefault();
       return;
@@ -265,7 +269,10 @@ export function CartPage() {
   function finishCheckout() {
     const cart = view.current;
     if (checkout.current !== "waiting") return;
-    setCheckout(mounted.current && cart !== null && canBeOrdered(cart) ? "opening" : "none");
+    setCheckout("none");
+    if (!mounted.current || cart === null || !canBeOrdered(cart)) return;
+    openRequested.current = true;
+    setOpenings((count) => count + 1);
   }
 
   /** Sends the operation at once when nothing is on its way; otherwise it waits at its line. */
@@ -348,7 +355,7 @@ export function CartPage() {
     return "refused";
   }
 
-  const linesLocked = shownCheckout === "waiting" || shownCheckout === "opening";
+  const linesLocked = shownCheckout === "waiting";
   // What the status region says now; the texts of the other operations of the screen are chosen here too.
   const statusText = loaded.status === "loading" || retrying ? LOADING : linesLocked ? SAVING : status;
 
@@ -520,7 +527,7 @@ function CheckoutButton({
     return (
       <div className="flex flex-col items-end gap-2">
         <Button asChild className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50">
-          <Link id={CHECKOUT_ID} href={CHECKOUT_PATH} aria-disabled={checkout === "waiting" || checkout === "opening" || undefined} onClick={onActivate}>
+          <Link id={CHECKOUT_ID} href={CHECKOUT_PATH} aria-disabled={checkout === "waiting" || undefined} onClick={onActivate}>
             Przejdź do kasy
           </Link>
         </Button>
