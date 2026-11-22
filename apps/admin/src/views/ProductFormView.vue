@@ -475,6 +475,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
             :product-id="view.id"
             :reload-key="view.version"
             :has-unsaved-variants="data.variants.some((variant) => variant.variantId === null)"
+            :tax-classes="taxClasses"
           />
         </div>
       </div>
