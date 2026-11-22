@@ -18,6 +18,8 @@ vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get, POST: mo
 const PRICES = "/api/v1/admin/prices";
 const STOCK = "/api/v1/admin/stock";
 const PRICE_OF = "/api/v1/admin/variants/{variantId}/price";
+const PRICE_HISTORY = "/api/v1/admin/variants/{variantId}/price-history";
+const TAX_CLASSES = "/api/v1/admin/tax-classes";
 const RECEIPTS = "/api/v1/admin/variants/{variantId}/stock/receipts";
 
 function product(overrides: Partial<ProductEditView> = {}): ProductEditView {
@@ -79,15 +81,23 @@ interface Served {
   product?: ProductEditView;
   prices?: PriceListItem[] | number;
   stocks?: StockListItem[] | number;
+  taxClasses?: { code: string; name: string }[];
+  historyTaxClass?: string;
 }
 
-function serve({ product: shown = product(), prices = [priceItem()], stocks = [stockItem()] }: Served = {}) {
+function serve({ product: shown = product(), prices = [priceItem()], stocks = [stockItem()], taxClasses = [{ code: "standard", name: "Standardowa" }], historyTaxClass = "standard" }: Served = {}) {
   mocks.get.mockImplementation(async (path: string) => {
     if (path === "/api/v1/admin/categories") {
       return { data: [], response: { status: 200 } };
     }
     if (path === "/api/v1/admin/tax-classes") {
-      return { data: [{ code: "standard", name: "Standardowa" }], response: { status: 200 } };
+      return { data: taxClasses, response: { status: 200 } };
+    }
+    if (path === PRICE_HISTORY) {
+      return {
+        data: { items: [{ changedAt: "2026-11-01T12:30:00+00:00", currency: "PLN", gross: 12300, net: 10000, vat: 2300, vatRate: 2300, taxClass: historyTaxClass, source: "staff", actorName: "Anna Admin" }], next: null },
+        response: { status: 200 },
+      };
     }
     if (path === PRICES) {
       return typeof prices === "number" ? { data: undefined, response: { status: prices } } : page(prices);
@@ -339,5 +349,37 @@ describe("the card „Ceny i stany” of the product form", () => {
     mounted = await mountForm("/products/p-1");
 
     expect(byTestid("price-stock-empty")?.textContent).toContain("Produkt nie ma jeszcze zapisanych wariantów.");
+  });
+
+  describe("the tax class in the price history", () => {
+    async function openHistory(served: Served = {}) {
+      serve(served);
+      mounted = await mountForm("/products/p-1");
+      byTestid("show-price-history")!.click();
+      await flushPromises();
+      return document.body.querySelector<HTMLElement>("[data-testid=history-row]")!;
+    }
+
+    it("shows the Polish name from the dictionary the form loaded, in the column and in the line of the date cell, without a second request", async () => {
+      const row = await openHistory();
+
+      expect(text(row, "history-tax-class")).toBe("Standardowa");
+      expect(text(row, "line-taxClass")).toBe("Klasa: Standardowa");
+      expect(mocks.get.mock.calls.filter(([path]) => path === TAX_CLASSES)).toHaveLength(1);
+    });
+
+    it("shows the code when the dictionary of the form is empty", async () => {
+      const row = await openHistory({ taxClasses: [] });
+
+      expect(text(row, "history-tax-class")).toBe("standard");
+      expect(text(row, "line-taxClass")).toBe("Klasa: standard");
+    });
+
+    it("shows the code of a tax class the dictionary does not have", async () => {
+      const row = await openHistory({ historyTaxClass: "energy_bar" });
+
+      expect(text(row, "history-tax-class")).toBe("energy_bar");
+      expect(text(row, "line-taxClass")).toBe("Klasa: energy_bar");
+    });
   });
 });
