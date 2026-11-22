@@ -305,6 +305,154 @@ test.describe("the columns of lower priority", () => {
   });
 });
 
+/**
+ * K4 (ADMIN-UX-FIXES): the region „Warianty do wyboru” has a height of its own, so the search and the pager of the choice
+ * stay in the window together with it, between the top bar and the save bar. Every number is read from the layout.
+ */
+const PICKER_WINDOWS = [viewports.desktop, viewports.phone] as const;
+
+type Box = { top: number; bottom: number };
+
+/** The form of a new promotion with the choice opened on the first page of the whole list (more than 100 rows of the demo data). */
+async function openWholeListPicker(page: Page): Promise<void> {
+  await go(page, "/promotions/new");
+  await expect(page.getByRole("heading", { level: 1, name: "Nowa promocja" })).toBeVisible();
+  await page.getByTestId("open-picker").click();
+  await expect(page.getByTestId("picker-row").first()).toBeVisible();
+  expect(await page.getByTestId("picker-row").count(), "the page of the choice has more than 100 rows").toBeGreaterThan(100);
+  await expect(page.getByRole("region", { name: "Zapis formularza" }), "the save bar is in view").toBeVisible();
+  await expect(pickerRegion(page)).toBeVisible();
+  await settle(page);
+}
+
+const pickerRegion = (page: Page) => page.getByRole("region", { name: "Warianty do wyboru" });
+
+/** Scrolls the page so that the field of the search lies right under the top bar (or as far as the page goes). */
+async function scrollSearchUnderTopbar(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const topbar = document.querySelector("header")!.getBoundingClientRect();
+    const search = document.querySelector("[data-testid=picker-search]")!.getBoundingClientRect();
+    window.scrollBy(0, search.top - topbar.bottom);
+  });
+  await settle(page);
+}
+
+/** The focused control of the choice lies wholly in the region and in the window, and is the element at its own centre. */
+async function expectInRegionAndUncovered(page: Page, label: string): Promise<void> {
+  const state = await page.evaluate(() => {
+    const item = document.activeElement as HTMLElement;
+    const region = document.querySelector<HTMLElement>("[role=region][aria-label='Warianty do wyboru']")!.getBoundingClientRect();
+    const rect = item.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return {
+      name: item.getAttribute("aria-label") ?? item.textContent?.trim() ?? item.tagName,
+      rect: `${Math.round(rect.top)}..${Math.round(rect.bottom)}`,
+      region: `${Math.round(region.top)}..${Math.round(region.bottom)}`,
+      window: innerHeight,
+      inRegion: rect.top >= region.top - 0.5 && rect.bottom <= region.bottom + 0.5 && rect.left >= region.left - 0.5 && rect.right <= region.right + 0.5,
+      inWindow: rect.top >= -0.5 && rect.bottom <= innerHeight + 0.5,
+      reachable: hit !== null && (item === hit || item.contains(hit)),
+    };
+  });
+  const where = `${label} „${state.name}” (control ${state.rect}, region ${state.region}, window ${state.window})`;
+  expect(state.inRegion, `${where} lies wholly in the region`).toBe(true);
+  expect(state.inWindow, `${where} lies wholly in the window`).toBe(true);
+  expect(state.reachable, `${where} is not covered by another element`).toBe(true);
+}
+
+test.describe("the region of the choice of variants has a height of its own (K4)", () => {
+  for (const size of PICKER_WINDOWS) {
+    test.describe(`at ${size.width} x ${size.height} px`, () => {
+      let page: Page;
+
+      test.beforeEach(async () => {
+        test.setTimeout(60_000);
+        page = await newPanelPage("admin", size);
+        await openWholeListPicker(page);
+      });
+
+      test.afterEach(async () => {
+        await page.close();
+      });
+
+      test("the region is at most 60% of the window high and scrolls in itself", async () => {
+        const { height, scrollHeight, clientHeight } = await pickerRegion(page).evaluate((element) => ({
+          height: element.getBoundingClientRect().height,
+          scrollHeight: element.scrollHeight,
+          clientHeight: element.clientHeight,
+        }));
+        expect(height, `the height of the region (${Math.round(height)} px) against 60% of ${size.height} px`).toBeLessThanOrEqual(size.height * 0.6 + 1);
+        expect(scrollHeight, `the region scrolls: scrollHeight ${scrollHeight}, clientHeight ${clientHeight}`).toBeGreaterThan(clientHeight);
+      });
+
+      test("the search, the region and the pager are in the window together, between the top bar and the save bar", async () => {
+        await scrollSearchUnderTopbar(page);
+        const edges = await page.evaluate(() => {
+          const box = (element: Element): Box => {
+            const rect = element.getBoundingClientRect();
+            return { top: rect.top, bottom: rect.bottom };
+          };
+          const hits = (element: Element) => {
+            const rect = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            return hit !== null && (element === hit || element.contains(hit));
+          };
+          const search = document.querySelector("[data-testid=picker-search]")!;
+          const pager = [...document.querySelectorAll("[data-testid=picker-previous], [data-testid=picker-next]")];
+          return {
+            topbarBottom: box(document.querySelector("header")!).bottom,
+            saveBarTop: box(document.querySelector("[aria-label='Zapis formularza']")!).top,
+            searchTop: box(search).top,
+            searchHit: hits(search),
+            pagerBottom: Math.max(...pager.map((element) => box(element).bottom)),
+            pagerHits: pager.map(hits),
+          };
+        });
+        expect(edges.searchTop, `the top of the search (${Math.round(edges.searchTop)}) is not above the bottom of the top bar (${Math.round(edges.topbarBottom)})`).toBeGreaterThanOrEqual(edges.topbarBottom - 0.5);
+        expect(edges.pagerBottom, `the bottom of the pager (${Math.round(edges.pagerBottom)}) is not below the top of the save bar (${Math.round(edges.saveBarTop)})`).toBeLessThanOrEqual(edges.saveBarTop + 0.5);
+        expect(edges.searchHit, "the centre of the search is the search").toBe(true);
+        expect(edges.pagerHits, "the centre of each button of the pager is that button").toEqual([true, true]);
+      });
+
+      test("the keyboard scrolls the region, and the first and the last button stay in view", async () => {
+        await scrollSearchUnderTopbar(page);
+        const region = pickerRegion(page);
+        await region.focus();
+        await expect(region).toBeFocused();
+        const before = await region.evaluate((element) => element.scrollTop);
+        await page.keyboard.press("End");
+        await expect.poll(() => region.evaluate((element) => element.scrollTop), "End scrolls the region").toBeGreaterThan(before);
+
+        await page.keyboard.press("Tab");
+        const firstAdd = await region.evaluate((element) => element.querySelector("button:not(:disabled)")!.getAttribute("aria-label"));
+        expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Tab from the region goes to the first „Dodaj”").toBe(firstAdd);
+        await settle(page);
+        await expectInRegionAndUncovered(page, "the first button");
+
+        // The first active button of the pager is „Następna” (the first page has no previous one).
+        await page.getByTestId("picker-next").focus();
+        await page.keyboard.press("Shift+Tab");
+        const lastAdd = await region.evaluate((element) => [...element.querySelectorAll("button:not(:disabled)")].at(-1)!.getAttribute("aria-label"));
+        expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Shift+Tab from the pager goes to the last button of the region").toBe(lastAdd);
+        await settle(page);
+        await expectInRegionAndUncovered(page, "the last button");
+      });
+
+      test("after an add on the last row the focus is on the search, and the search is in the window", async () => {
+        const last = pickerRegion(page).getByTestId("picker-row").last().getByTestId("add-variant");
+        await expect(last, "the last row has a variant that can be added").toBeEnabled();
+        await last.click();
+        const search = page.getByTestId("picker-search");
+        await expect(search, "the focus goes back to the search").toBeFocused();
+        await settle(page);
+        const { top, bottom } = await search.evaluate((element) => element.getBoundingClientRect());
+        expect(top, `the top of the search (${Math.round(top)}) is in the window`).toBeGreaterThanOrEqual(-0.5);
+        expect(bottom, `the bottom of the search (${Math.round(bottom)}) is in the window (${size.height} px)`).toBeLessThanOrEqual(size.height + 0.5);
+      });
+    });
+  }
+});
+
 test.describe("the form", () => {
   test("#304 F5: the buttons of the choice of variants are named with the variant, and the focus goes back to the search after an add (F4)", async () => {
     test.setTimeout(60_000);
