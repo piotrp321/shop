@@ -891,9 +891,9 @@ class E2ePartsTest(unittest.TestCase):
     def test_reads_the_parts_of_the_ci_workflow_of_the_repository(self):
         r = self.parts(cwd=os.path.dirname(os.path.dirname(os.path.dirname(WORKFLOW))))
         self.assertEqual(0, r.returncode, r.stderr)
-        self.assertEqual({'parts': 4, 'weights': '104:116:95:87'}, json.loads(r.stdout))
+        self.assertEqual({'parts': 4, 'weights': '121:128:89:117'}, json.loads(r.stdout))
         r = self.parts('--workflow', WORKFLOW)
-        self.assertEqual({'parts': 4, 'weights': '104:116:95:87'}, json.loads(r.stdout))
+        self.assertEqual({'parts': 4, 'weights': '121:128:89:117'}, json.loads(r.stdout))
 
     def test_reads_unquoted_and_double_quoted_weights(self):
         for value in ('100:200', '"100:200"'):
