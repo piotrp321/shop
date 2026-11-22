@@ -736,3 +736,22 @@ for (const { device, use, touch, press: gesture } of gestures) {
     }
   });
 }
+
+test.describe("the session expires while a quantity is saved (U1)", () => {
+  test.use(DESKTOP);
+
+  test("moves the focus to the title Koszyk when the field Enter was pressed in is answered with a 401", async ({ page }) => {
+    test.setTimeout(90_000);
+    const [a] = await cartWithLines(page, 2);
+    if (a === undefined) throw new Error("the cart needs lines");
+    await page.route(ITEM_URL, (route) =>
+      route.request().method() === "PATCH" ? route.fulfill({ status: 401, contentType: "application/problem+json", body: "{}" }) : route.fallback(),
+    );
+
+    await typeQuantity(quantityOf(page, a), "3", { touch: false });
+    await quantityOf(page, a).press("Enter");
+
+    await expect(page.getByRole("main").getByText(/Twoja sesja wygasła/)).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Koszyk" })).toBeFocused();
+  });
+});

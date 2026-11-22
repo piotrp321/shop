@@ -1586,6 +1586,75 @@ describe("CartPage retry after a failed load (criterion 13)", () => {
   });
 });
 
+describe("CartPage focus after the session expired (U1)", () => {
+  const cart = () => view([line(A, "Produkt A", 1), line(B, "Produkt B", 1)]);
+  const title = () => screen.getByRole("heading", { name: "Koszyk" });
+
+  it("moves the focus to the title when the quantity Enter was pressed in is answered with a 401", async () => {
+    await renderWith(cart());
+    hold();
+    const field = qty("Produkt A");
+    field.focus();
+
+    fireEvent.change(field, { target: { value: "3" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await answer(0, { status: "unauthorized" });
+    await act(async () => {});
+
+    expect(screen.getByText(/Twoja sesja wygasła\. Zaloguj się ponownie\./)).toBeTruthy();
+    expect(document.activeElement).toBe(title());
+  });
+
+  it("moves the focus to the title when the removal the button was pressed on is answered with a 401", async () => {
+    await renderWith(cart());
+    hold();
+    const remove = screen.getByRole("button", { name: "Usuń: Produkt A" });
+    remove.focus();
+
+    fireEvent.click(remove);
+    await answer(0, { status: "unauthorized" });
+    await act(async () => {});
+
+    expect(document.activeElement).toBe(title());
+  });
+
+  it("moves the focus from the link that waited for the changes to the title when the answer is a 401", async () => {
+    await renderWith(cart());
+    hold();
+    setQuantity("Produkt A", "3");
+    const link = screen.getByRole("link", { name: "Przejdź do kasy" });
+    link.focus();
+    fireEvent.click(link);
+    expect(link.getAttribute("aria-disabled")).toBe("true");
+
+    await answer(0, { status: "unauthorized" });
+    await act(async () => {});
+
+    expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
+    expect(document.activeElement).toBe(title());
+  });
+
+  it("leaves the focus where the customer moved it during the save", async () => {
+    const outside = document.body.appendChild(document.createElement("button"));
+    try {
+      await renderWith(cart());
+      hold();
+      const field = qty("Produkt A");
+      field.focus();
+      fireEvent.change(field, { target: { value: "3" } });
+      fireEvent.keyDown(field, { key: "Enter" });
+
+      outside.focus();
+      await answer(0, { status: "unauthorized" });
+      await act(async () => {});
+
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      outside.remove();
+    }
+  });
+});
+
 describe("CartPage going to the checkout while changes are saved (S2)", () => {
   const SAVING = "Zapisujemy zmiany w koszyku…";
   const NOT_SAVED = "Nie udało się zapisać zmian w koszyku. Sprawdź pozycje i spróbuj ponownie.";
