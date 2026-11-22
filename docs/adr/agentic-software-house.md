@@ -109,6 +109,14 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    i przypadki bez istotnego skutku sesja odracza bez tej oceny. Ocena nie jest obowiązkiem naprawy każdej uwagi
    i nie zmienia budżetu rund (punkt 3 decyzji). Odroczona uwaga z oceną trafia do „Odroczonych uwag” opisu PR
    i do zlecenia przeglądu epiku (krok 6) do ponownej oceny.
+
+   **Niespełnione wymaganie** (tu i w kroku 6). Przypadek albo kryterium specyfikacji lub planu, którego zadanie nie
+   spełnia albo nie umie przetestować (pominięty wiersz tabeli, przypadek niewykonalny bez zmiany poza zakresem), nie
+   jest decyzją bez pytania ani uwagą do odroczenia. Sesja przedstawia właścicielowi opcje z rekomendacją. Do jego
+   decyzji wymaganie zostaje w specyfikacji bez zmian. Gdy żadna opcja nie cofa kodu zadania, sesja może je zmergować
+   bez tego przypadku i prowadzić kolejne zadania, których rozwiązanie decyzja nie zmienia. W tabeli kryteriów (krok 7)
+   takie kryterium ma sposób „niezweryfikowane: czeka na decyzję właściciela (<przypadek>)” i wynik „do decyzji”.
+   Raporty sesji nie podają wtedy, że wszystkie kryteria przeszły, a PR nie jest oznaczany jako gotowy przed decyzją.
 5. **Merge zadania.** Sesja merguje gałąź zadania do gałęzi epiku (`git merge`), wypycha ją i wpisuje commit
    w „Status” planu. Czerwone CI draft PR naprawia przed kolejną falą. Czysty worktree zmergowanego zadania usuwa
    (`git worktree unlock`, potem `git worktree remove`: aplikacja zostawia worktree subagenta zablokowany).
