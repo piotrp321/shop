@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { type CartResult, type CartView, changeCartItemQuantity, loadCart, removeCartItem } from "@/api/client";
 import { formatPrice } from "@/catalog/format-price";
 import { ProductPhoto } from "@/catalog/ProductPhoto";
+import { navigateTo } from "@/checkout/navigate";
 import { ScreenMain, ScreenTitle } from "@/components/ScreenLayout";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import {
   dropWaitingQuantity,
   give,
   hasWaitingQuantity,
+  isIdle,
   isQuantitySent,
   isRemovalGiven,
   runActions,
@@ -49,17 +51,32 @@ const MAX_QUANTITY = 99;
 const TITLE_ID = "cart-title";
 const RETRY_ID = "cart-retry";
 const EMPTY_ID = "cart-empty";
+const CHECKOUT_ID = "cart-checkout";
+const CHECKOUT_PATH = "/checkout";
 // The controls an action came from; the focus is looked up by them after the answer.
+const QUANTITY_ID_PREFIX = "cart-quantity-";
 const removeId = (variantId: string) => `cart-remove-${variantId}`;
-const quantityId = (variantId: string) => `cart-quantity-${variantId}`;
+const quantityId = (variantId: string) => `${QUANTITY_ID_PREFIX}${variantId}`;
 
 // What the status region says. The region is one element for every state of the screen and only its text changes.
 const LOADING = "Wczytywanie koszyka…";
 const LINE_GONE = "Pozycja została już usunięta";
 const REMOVED_UNNAMED = "Usunięto pozycję z koszyka.";
+const SAVING = "Zapisujemy zmiany w koszyku…";
+// At "Przejdź do kasy" when a change it waited for was not saved.
+const NOT_SAVED = "Nie udało się zapisać zmian w koszyku. Sprawdź pozycje i spróbuj ponownie.";
 
-/** How an operation of the cart page ended; a 401 drops the actions still waiting. */
-type Outcome = "saved" | "refused" | "unauthorized";
+/**
+ * How an operation of the cart page ended: saved, refused (a message at the line), gone (a 404 of a line that is not in
+ * the cart any more) or unauthorized (a 401 drops the actions still waiting).
+ */
+type Outcome = "saved" | "refused" | "gone" | "unauthorized";
+
+/**
+ * "Przejdź do kasy" activated while operations were on their way or waited: `waiting` for them (the controls of the
+ * lines are locked), `failed` when one of them was not saved (a message at the link), `none` otherwise.
+ */
+type Checkout = "none" | "waiting" | "failed";
 
 /**
  * The cart of the browser, loaded from `/api/cart`. Every view comes from the last answer of the API; nothing is
@@ -70,6 +87,11 @@ type Outcome = "saved" | "refused" | "unauthorized";
  * line was gone already. Its text stays until the next operation the customer starts; an operation that waited for
  * the one before it does not clear the text, it only replaces it with its own. After a removal the focus goes to the
  * next line, and after a retry of the load to the title, but only when the customer did not move it meanwhile.
+ *
+ * "Przejdź do kasy" first commits the entry of the focused quantity field. With nothing on its way and nothing waiting
+ * the link works as a link; otherwise the page waits for the operations, with the controls locked, and opens the
+ * checkout only when all of them were saved and the cart can be ordered (docs/features/cart/spec.md, „Przejście do
+ * kasy”). A failure, a 404, a 401 or leaving the page ends the waiting without the checkout.
  */
 export function CartPage() {
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
@@ -92,6 +114,18 @@ export function CartPage() {
   // the request. The state is the copy the render shows.
   const actions = useRef<CartActions>(NO_ACTIONS);
   const [shownActions, setShownActions] = useState<CartActions>(NO_ACTIONS);
+  // Read and changed through the ref like the actions; the state is the copy the render shows.
+  const checkout = useRef<Checkout>("none");
+  const [shownCheckout, setShownCheckout] = useState<Checkout>("none");
+  // The sending goes on after the page is left (`runActions`); a late answer must not open the checkout then.
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -142,10 +176,15 @@ export function CartPage() {
     announceCartChange(cart.totals.itemCount);
   }
 
-  /** A line the page showed is not in the cart of the answer: the focus it had goes to a line that is left (F3). */
+  /**
+   * A line the page showed is not in the cart of the answer: the focus it had goes to a line that is left (F3). A
+   * quantity is committed by leaving its field, also with Tab to "Usuń" of the same line, so the focus there counts as
+   * where the change came from.
+   */
   function moveFocusFromGoneLine({ variantId, action }: CartOperation, before: CartView | null, after: CartView) {
     const target = focusAfterGone(before, after, variantId);
-    if (target !== null && focusStays(action.kind === "remove" ? removeId(variantId) : quantityId(variantId))) focusAt(target);
+    const origins = action.kind === "remove" ? [removeId(variantId)] : [quantityId(variantId), removeId(variantId)];
+    if (target !== null && origins.some((origin) => focusStays(origin))) focusAt(target);
   }
 
   function resetQuantityField(variantId: string) {
@@ -164,6 +203,55 @@ export function CartPage() {
   function setActions(next: CartActions) {
     actions.current = next;
     setShownActions(next);
+  }
+
+  function setCheckout(next: Checkout) {
+    checkout.current = next;
+    setShownCheckout(next);
+  }
+
+  /** An entry not committed yet is committed the way a click elsewhere does it: by leaving the field. */
+  function commitFocusedEntry() {
+    const focused = document.activeElement;
+    if (focused instanceof HTMLInputElement && focused.id.startsWith(QUANTITY_ID_PREFIX)) focused.blur();
+  }
+
+  /**
+   * "Przejdź do kasy": the link itself when nothing is on its way and nothing waits; otherwise the page waits for the
+   * operations and keeps the focus on the link (F1). A click with a modifier key is left to the browser (a new tab or
+   * window), outside the guarantee of the page.
+   */
+  function goToCheckout(event: MouseEvent<HTMLAnchorElement>) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (checkout.current === "waiting") {
+      event.preventDefault();
+      return;
+    }
+    const link = event.currentTarget;
+    commitFocusedEntry();
+    if (isIdle(actions.current)) {
+      // `next/link` opens the checkout.
+      if (checkout.current === "failed") setCheckout("none");
+      return;
+    }
+    event.preventDefault();
+    setStatus("");
+    setCheckout("waiting");
+    if (document.activeElement !== link) link.focus();
+  }
+
+  /** Every operation is answered: the checkout the customer asked for opens when the cart can be ordered. */
+  function finishCheckout() {
+    const cart = view.current;
+    if (checkout.current !== "waiting" || !mounted.current || cart === null) return;
+    if (cart.lines.length > 0 && !cart.hasExcludedLines) {
+      // The controls stay locked until the checkout replaces the page.
+      navigateTo(CHECKOUT_PATH);
+      return;
+    }
+    setCheckout("none");
+    // The link went with the cart that cannot be ordered: its focus goes to the text of the empty cart or to the title.
+    if (focusStays(CHECKOUT_ID)) focusAt(cart.lines.length === 0 ? EMPTY_ID : TITLE_ID);
   }
 
   /** Sends the operation at once when nothing is on its way; otherwise it waits at its line. */
@@ -189,14 +277,20 @@ export function CartPage() {
     for (;;) {
       const next = sendNext(actions.current);
       setActions(next);
-      if (next.sent === null) return;
+      if (next.sent === null) {
+        finishCheckout();
+        return;
+      }
       const outcome = await send(next.sent, givenNow);
       givenNow = false;
       if (outcome === "unauthorized") {
         setActions(NO_ACTIONS);
+        if (checkout.current === "waiting") setCheckout("none");
         applyLoaded({ status: "unauthorized" });
         return;
       }
+      // An operation that was not saved ends the waiting for good: a later success does not bring it back.
+      if (outcome !== "saved" && checkout.current === "waiting") setCheckout(outcome === "gone" ? "none" : "failed");
     }
   }
 
@@ -225,7 +319,7 @@ export function CartPage() {
         if (!reloaded.data.lines.some((line) => line.variantId === variantId)) {
           setStatus(LINE_GONE);
           moveFocusFromGoneLine(operation, before, reloaded.data);
-          return "refused";
+          return "gone";
         }
       }
       showLineError(variantId, (reloaded.status === "ok" && result.detail) || SAVE_FAILED);
@@ -239,7 +333,8 @@ export function CartPage() {
   }
 
   // What the status region says now; the texts of the other operations of the screen are chosen here too.
-  const statusText = loaded.status === "loading" || retrying ? LOADING : status;
+  const statusText = loaded.status === "loading" || retrying ? LOADING : shownCheckout === "waiting" ? SAVING : status;
+  const linesLocked = shownCheckout === "waiting";
 
   return (
     <ScreenMain>
@@ -293,6 +388,7 @@ export function CartPage() {
                   quantitySaving={isQuantitySent(shownActions, line.variantId)}
                   removalGiven={isRemovalGiven(shownActions, line.variantId)}
                   quantityWaiting={hasWaitingQuantity(shownActions, line.variantId)}
+                  locked={linesLocked}
                   error={lineErrors[line.variantId]}
                   resetKey={resets[line.variantId] ?? 0}
                   onEditQuantity={() => editQuantity(line.variantId)}
@@ -302,7 +398,7 @@ export function CartPage() {
               ))}
             </ul>
             <CartSummary cart={loaded.cart} />
-            <CheckoutButton cart={loaded.cart} />
+            <CheckoutButton cart={loaded.cart} checkout={shownCheckout} onActivate={goToCheckout} />
           </>
         )
       ) : null}
@@ -387,13 +483,34 @@ function CartDelivery({ delivery, currency }: { delivery: CartView["delivery"]; 
 
 const EXCLUDED_LINES_HINT = "Usuń albo popraw oznaczone pozycje, żeby złożyć zamówienie.";
 
-/** The way to the checkout; a cart with a line that cannot be bought (`hasExcludedLines` of the API) cannot be ordered. */
-function CheckoutButton({ cart }: { cart: CartView }) {
+/**
+ * The way to the checkout; a cart with a line that cannot be bought (`hasExcludedLines` of the API) cannot be ordered.
+ * The link stays a link while it waits for the changes of the cart: `aria-disabled`, not a button with `disabled`, so it
+ * keeps the focus. The message of a change it waited for in vain is under it, so it never moves the link.
+ */
+function CheckoutButton({
+  cart,
+  checkout,
+  onActivate,
+}: {
+  cart: CartView;
+  checkout: Checkout;
+  onActivate: (event: MouseEvent<HTMLAnchorElement>) => void;
+}) {
   if (!cart.hasExcludedLines) {
     return (
-      <Button asChild className="self-end">
-        <Link href="/checkout">Przejdź do kasy</Link>
-      </Button>
+      <div className="flex flex-col items-end gap-2">
+        <Button asChild className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50">
+          <Link id={CHECKOUT_ID} href={CHECKOUT_PATH} aria-disabled={checkout === "waiting" || undefined} onClick={onActivate}>
+            Przejdź do kasy
+          </Link>
+        </Button>
+        {checkout === "failed" ? (
+          <Alert variant="destructive">
+            <AlertDescription>{NOT_SAVED}</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
     );
   }
   return (
@@ -411,13 +528,15 @@ function CheckoutButton({ cart }: { cart: CartView }) {
 /**
  * `quantitySaving`: the change of this line's quantity is on its way, so its field is read-only. `removalGiven`: its
  * removal is on its way or waits, so both controls are inactive. `quantityWaiting`: a quantity of this line waits for
- * the operation of another line.
+ * the operation of another line. `locked`: the page waits for its operations to open the checkout, so both controls are
+ * inactive.
  */
 function CartLineRow({
   line,
   quantitySaving,
   removalGiven,
   quantityWaiting,
+  locked,
   error,
   resetKey,
   onEditQuantity,
@@ -428,6 +547,7 @@ function CartLineRow({
   quantitySaving: boolean;
   removalGiven: boolean;
   quantityWaiting: boolean;
+  locked: boolean;
   error?: string;
   resetKey: number;
   onEditQuantity: () => void;
@@ -464,7 +584,7 @@ function CartLineRow({
             label={name ? `Ilość: ${variantLabel ? `${name}, ${variantLabel}` : name}` : "Ilość"}
             quantity={line.quantity}
             resetKey={resetKey}
-            locked={quantitySaving || removalGiven}
+            locked={quantitySaving || removalGiven || locked}
             waiting={quantityWaiting}
             onEdit={onEditQuantity}
             onCommit={onChangeQuantity}
@@ -480,10 +600,10 @@ function CartLineRow({
             type="button"
             variant="ghost"
             size="sm"
-            aria-disabled={removalGiven || undefined}
+            aria-disabled={removalGiven || locked || undefined}
             className="aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground"
             onClick={() => {
-              if (!removalGiven) onRemove();
+              if (!removalGiven && !locked) onRemove();
             }}
             aria-label={name ? `Usuń: ${name}` : "Usuń"}
           >

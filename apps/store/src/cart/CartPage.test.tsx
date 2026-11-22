@@ -4,14 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type CartView, changeCartItemQuantity, loadCart, removeCartItem } from "@/api/client";
 import { makeImage } from "@/catalog/fixtures";
 import { formatPrice } from "@/catalog/format-price";
+import { navigateTo } from "@/checkout/navigate";
 import { CartPage } from "./CartPage";
 import { actionsFinished } from "./cart-actions";
 import { subscribeToCartChanges } from "./events";
 
 vi.mock("@/api/client", () => ({ loadCart: vi.fn(), changeCartItemQuantity: vi.fn(), removeCartItem: vi.fn() }));
-// The navigation of the router after the changes are saved; jsdom cannot navigate.
-const push = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+// The navigation to the checkout after the changes are saved; jsdom cannot navigate.
+vi.mock("@/checkout/navigate", () => ({ navigateTo: vi.fn() }));
 
 const A = "00000000-0000-4000-8000-00000000000a";
 const B = "00000000-0000-4000-8000-00000000000b";
@@ -79,7 +79,7 @@ beforeEach(() => {
   vi.mocked(loadCart).mockReset();
   vi.mocked(changeCartItemQuantity).mockReset();
   vi.mocked(removeCartItem).mockReset();
-  push.mockReset();
+  vi.mocked(navigateTo).mockReset();
   announced.length = 0;
   held.length = 0;
   unsubscribe = subscribeToCartChanges((count) => announced.push(count));
@@ -1554,7 +1554,7 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
     expect(activate()).toBe(true);
     expect(checkoutLink().hasAttribute("aria-disabled")).toBe(false);
     expect(statusRegion().textContent).toBe("");
-    expect(push).not.toHaveBeenCalled();
+    expect(navigateTo).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -1575,7 +1575,7 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
   it("waits for a held change with the link inactive and focused, the lines locked, and goes to the checkout after it (criterion 8)", async () => {
     await goWhileAIsSaved();
 
-    expect(push).not.toHaveBeenCalled();
+    expect(navigateTo).not.toHaveBeenCalled();
     expect(checkoutLink().getAttribute("aria-disabled")).toBe("true");
     expect(checkoutLink().getAttribute("href")).toBe("/checkout");
     expect(document.activeElement).toBe(checkoutLink());
@@ -1601,7 +1601,7 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
 
     await answer(0, ok(cart(3, 1)));
 
-    expect(push).toHaveBeenCalledExactlyOnceWith("/checkout");
+    expect(navigateTo).toHaveBeenCalledExactlyOnceWith("/checkout");
     expect(patches()).toEqual([[A, 3]]);
     expect(deletes()).toEqual([]);
   });
@@ -1617,9 +1617,9 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
     expect(patches()).toEqual([[A, 3]]);
     expect(checkoutLink().getAttribute("aria-disabled")).toBe("true");
     expect(document.activeElement).toBe(checkoutLink());
-    expect(push).not.toHaveBeenCalled();
+    expect(navigateTo).not.toHaveBeenCalled();
     await answer(0, ok(cart(3, 1)));
-    expect(push).toHaveBeenCalledExactlyOnceWith("/checkout");
+    expect(navigateTo).toHaveBeenCalledExactlyOnceWith("/checkout");
   });
 
   it("sends the entry typed over a waiting quantity instead of it, and goes to the checkout after both (criterion 4 with the link)", async () => {
@@ -1638,11 +1638,11 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
       [A, 3],
       [B, 4],
     ]);
-    expect(push).not.toHaveBeenCalled();
+    expect(navigateTo).not.toHaveBeenCalled();
     expect(qty("Produkt B").value).toBe("4");
 
     await answer(1, ok(cart(3, 4)));
-    expect(push).toHaveBeenCalledExactlyOnceWith("/checkout");
+    expect(navigateTo).toHaveBeenCalledExactlyOnceWith("/checkout");
     expect(patches()).toEqual([
       [A, 3],
       [B, 4],
@@ -1659,7 +1659,7 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
 
     await answer(0, failure);
 
-    expect(push).not.toHaveBeenCalled();
+    expect(navigateTo).not.toHaveBeenCalled();
     expect(notSavedAlert()).not.toBeNull();
     expect(within(screen.getAllByRole("listitem")[0]).getByRole("alert").textContent).toBe(message);
     expect(qty("Produkt A").value).toBe("1");
@@ -1687,7 +1687,7 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
     await answer(1, ok(cart(1, null)));
 
     expect(screen.queryByText("Produkt B")).toBeNull();
-    expect(push).not.toHaveBeenCalled();
+    expect(navigateTo).not.toHaveBeenCalled();
     expect(notSavedAlert()).not.toBeNull();
     expect(document.activeElement).toBe(checkoutLink());
     expect(deletes()).toEqual([[B]]);
@@ -1707,7 +1707,7 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
     expect(screen.getByText(/Twoja sesja wygasła\. Zaloguj się ponownie\./)).toBeTruthy();
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
     expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
-    expect(push).not.toHaveBeenCalled();
+    expect(navigateTo).not.toHaveBeenCalled();
     expect(deletes()).toEqual([]);
   });
 
@@ -1718,7 +1718,7 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
     await answer(0, { status: "not_found" });
     await act(async () => {});
 
-    expect(push).not.toHaveBeenCalled();
+    expect(navigateTo).not.toHaveBeenCalled();
     expect(screen.queryByText("Produkt A")).toBeNull();
     expect(screen.getByText("Produkt B")).toBeTruthy();
     expect(statusRegion().textContent).toBe("Pozycja została już usunięta");
@@ -1736,7 +1736,7 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
     await answer(0, ok(view([])));
 
     const empty = await screen.findByText("Twój koszyk jest pusty");
-    expect(push).not.toHaveBeenCalled();
+    expect(navigateTo).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(empty);
     expect(statusRegion().textContent).toBe("Usunięto z koszyka: Produkt A.");
   });
@@ -1746,7 +1746,7 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
 
     await answer(0, ok(view([line(A, "Produkt A", 3), line(B, "Produkt B", 1, { state: "out_of_stock", lineTotal: null })], {}, true)));
 
-    expect(push).not.toHaveBeenCalled();
+    expect(navigateTo).not.toHaveBeenCalled();
     expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
     expect((screen.getByRole("button", { name: "Przejdź do kasy" }) as HTMLButtonElement).disabled).toBe(true);
     expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Koszyk" }));
@@ -1768,7 +1768,7 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
     await answer(1, ok(cart(3, null)));
     await actionsFinished();
 
-    expect(push).not.toHaveBeenCalled();
+    expect(navigateTo).not.toHaveBeenCalled();
     expect(patches()).toEqual([[A, 3]]);
     expect(deletes()).toEqual([[B]]);
   });
