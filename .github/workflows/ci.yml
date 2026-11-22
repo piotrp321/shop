@@ -9,7 +9,7 @@
 # documentation) runs just the script tests (in the `apps` part); the Kubernetes deployment only (infra/k8s/**,
 # possibly with documentation) runs just `make -C infra/k8s check` (in the `k8s` part). Skipped steps
 # let the other jobs pass within seconds. Anything else,
-# and every push, runs it all. A full run uses 1 + 4 + 3 runners for its work (`scope`, the `checks-part` and
+# and every push, runs it all. A full run uses 1 + 5 + 3 runners for its work (`scope`, the `checks-part` and
 # `e2e-shard` parts) and two more for the short `checks` and `e2e` reports.
 name: CI
 
@@ -75,10 +75,12 @@ jobs:
   #   apps             make check-code (PHPStan, Deptrac, PHP CS Fixer, ESLint, tsc and the make/*.mk fragments), the api
   #                    unit suite (a few seconds, no services), the contract freshness, the store and admin suites, the
   #                    VCL tests and the script tests; Redis for the store integration tests
-  #   api integration  the api `integration` and `functional` suites, one part each, on PostgreSQL, Garage, imgproxy,
-  #   api functional   RabbitMQ, Elasticsearch, Keycloak, Redis and Mailpit
+  #   api integration  the api `integration`, `demo-data` (the integration tests of the demo data generator, about two
+  #   api demo data    thirds of the integration time) and `functional` suites, one part each, on PostgreSQL, Garage,
+  #   api functional   imgproxy, RabbitMQ, Elasticsearch, Keycloak, Redis and Mailpit; the step summary of each lists its
+  #                    slowest tests and classes (.github/scripts/junit-slowest.py)
   # The parts are not named `checks`: the required check of that name is the job below. When the parts end far apart,
-  # move work between them (the api parts by test directory, `phpunit_args`).
+  # move work between them (the api parts by test directory: the suites of apps/api/phpunit.dist.xml).
   checks-part:
     name: checks part ${{ matrix.name }}
     needs: scope
@@ -106,6 +108,11 @@ jobs:
             stack: full
             also: none
             phpunit_args: --testsuite integration
+          - name: api demo data
+            apps: api
+            stack: full
+            also: none
+            phpunit_args: --testsuite demo-data
           - name: api functional
             apps: api
             stack: full
@@ -289,12 +296,23 @@ jobs:
         if: env.FULL_CI == 'true' && matrix.stack != 'none'
         run: sh .github/scripts/background.sh wait services
 
-      # The api suite of the part; `test` migrates shop_test and recreates the test index first.
+      # The api suite of the part; `test` migrates shop_test and recreates the test index first. The JUnit log lands in
+      # apps/api/var (mounted into the container) for the step below.
       - name: api tests
         if: env.FULL_CI == 'true' && matrix.phpunit_args != ''
         env:
           PHPUNIT_ARGS: ${{ matrix.phpunit_args }}
-        run: make -C apps/api test RUN="$CI_RUN" PHPUNIT_ARGS="$PHPUNIT_ARGS"
+        run: make -C apps/api test RUN="$CI_RUN" PHPUNIT_ARGS="$PHPUNIT_ARGS --log-junit var/junit.xml"
+
+      # Also after failed tests; no log (the run did not get to the end) adds nothing.
+      - name: Slowest api tests in the step summary
+        if: ${{ !cancelled() && env.FULL_CI == 'true' && matrix.phpunit_args != '' }}
+        env:
+          PART: ${{ matrix.name }}
+        run: |
+          [ -f apps/api/var/junit.xml ] || { echo "No JUnit log: the tests did not get to the end"; exit 0; }
+          { echo "### Slowest tests: $PART"; echo; python3 .github/scripts/junit-slowest.py apps/api/var/junit.xml; } \
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
       # The `apps` part: the static analysis (`check-code` is `make check` without `make -C infra/k8s check`, which the
       # `k8s` part runs) and the store and admin suites run in the background next to the steps below, the script tests

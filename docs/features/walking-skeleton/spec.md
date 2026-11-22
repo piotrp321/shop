@@ -999,7 +999,7 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
 `.github/workflows/ci.yml`, uruchamiany przy każdym pull requeście (także ze zmianami wyłącznie w dokumentacji)
 i pushu na `main`, więc job `checks` może być wymaganym checkiem gałęzi `main`. Nowe uruchomienie dla tego samego
 PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikacji startują z `--no-deps`.
-Job `checks` tylko zbiera wynik czterech części (`checks part <nazwa>`), z których każda biegnie na własnym runnerze
+Job `checks` tylko zbiera wynik pięciu części (`checks part <nazwa>`), z których każda biegnie na własnym runnerze
 i ma tylko obrazy i usługi, których potrzebuje. Część pobiera tylko obrazy deweloperskie, których potrzebuje (`apps`: `api`, `store` i `admin`; części api: `api`),
 z GHCR (a brakujące zbudowane z cache buildx, `type=gha`) i instalacja zależności do wolumenów, jak lokalnie.
 Polecenia mają `RUN="docker compose run --rm --no-deps -T"`.
@@ -1010,8 +1010,11 @@ Polecenia mają `RUN="docker compose run --rm --no-deps -T"`.
    (`make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na `apps/api/openapi.json`,
    `apps/api/openapi-admin.json` i obu `schema.d.ts`), `make -C apps/store test` (z Redisem),
    `make -C apps/admin test`, testy VCL i testy skryptów.
-3. `api integration` i `api functional`: `make -C apps/api test` z `PHPUNIT_ARGS` jednej z suit, na usługach stosu.
-   Zmiana, która dodaje testy na usługach stosu, w tym samym PR uruchamia w CI te usługi przed testami.
+3. `api integration`, `api demo data` i `api functional`: `make -C apps/api test` z `PHPUNIT_ARGS` jednej z suit
+   (`integration`, `demo-data`, czyli testy integracyjne generatora danych demo, i `functional`), na usługach stosu.
+   Podsumowanie kroku każdej z nich podaje najwolniejsze testy i klasy z logu JUnit
+   (`.github/scripts/junit-slowest.py`). Zmiana, która dodaje testy na usługach stosu, w tym samym PR uruchamia
+   w CI te usługi przed testami.
 
 Osobny job `e2e` najpierw sprawdza typy testów i uruchamia testy skryptu median (`make e2e-check`), potem uruchamia pełny
 stos (`make up`, `make seed`) i `make e2e`. Po `make e2e` i testach `init-env.sh` uruchamia `make lighthouse` (sklep
