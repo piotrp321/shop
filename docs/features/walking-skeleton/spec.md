@@ -1004,7 +1004,8 @@ i ma tylko obrazy i usługi, których potrzebuje. Część pobiera tylko obrazy 
 z GHCR (a brakujące zbudowane z cache buildx, `type=gha`) i instalacja zależności do wolumenów, jak lokalnie.
 Polecenia mają `RUN="docker compose run --rm --no-deps -T"`.
 
-1. `k8s`: `make -C infra/k8s check` (bez obrazów i usług).
+1. `k8s`: `make -C infra/k8s check` (bez obrazów i usług); pliki testów chartu i skryptów biegną równolegle
+   (`infra/k8s/tests/run_parallel.py`, tyle naraz, ile procesorów ma runner).
 2. `apps`: `make check-code` (`make check` bez `infra/k8s`), suita `unit` api (bez usług), aktualność kontraktu
    (`make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na `apps/api/openapi.json`,
    `apps/api/openapi-admin.json` i obu `schema.d.ts`), `make -C apps/store test` (z Redisem),

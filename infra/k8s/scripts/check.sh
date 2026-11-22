@@ -7,6 +7,8 @@
 #
 # CHECK_TESTS_FILTER=<pattern> runs only the tests whose name contains the pattern (unittest -k) in the step tests; the
 # self-test (selftest.sh) uses it to run the one test a case must break. A pattern that matches no test fails the step.
+# Without it the step runs the test files side by side (tests/run_parallel.py), CHECK_TESTS_JOBS at a time (default:
+# the CPUs that the container sees).
 #
 # The first failing step stops the script. REPO_ROOT (default: this repository) selects the tree to check; the
 # self-test (selftest.sh) points it at a copy with an injected error.
@@ -264,7 +266,8 @@ do_tests() {
     tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests -k "$CHECK_TESTS_FILTER"
   else
     step "tests of the rendered chart and of the scripts"
-    tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests
+    tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I tests/run_parallel.py \
+      ${CHECK_TESTS_JOBS:+--jobs "$CHECK_TESTS_JOBS"} tests
   fi
 }
 
