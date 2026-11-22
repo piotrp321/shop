@@ -1802,31 +1802,28 @@ describe("CartPage going to the checkout while changes are saved (S2)", () => {
     expect(notSavedAlert()).toBeNull();
   });
 
-  it("keeps the controls of the lines inactive from the click of the link until the checkout replaces the page", async () => {
+  it("is an idle cart page after it clicked the link, when the same page stays (the navigation did not happen)", async () => {
     await goWhileAIsSaved();
-    let lockedAtTheClick: boolean[] = [];
-    const recordLocks = () => {
-      lockedAtTheClick = [...document.querySelectorAll('[id^="cart-quantity-"], [id^="cart-remove-"]')].map(
-        (control) => control.getAttribute("aria-disabled") === "true",
-      );
-    };
-    document.addEventListener("click", recordLocks);
 
     await answer(0, ok(cart(3, 1)));
-    document.removeEventListener("click", recordLocks);
+    // jsdom does not navigate, like a navigation of the client replaced by another one to the cart itself.
+    await act(async () => {});
 
     expect(navigations).toBe(1);
-    expect(lockedAtTheClick).toEqual([true, true, true, true]);
-    // jsdom does not navigate: the page stays as the checkout would find it, with the controls still inactive.
-    await act(async () => {});
+    expect(checkoutLink().hasAttribute("aria-disabled")).toBe(false);
+    expect(statusRegion().textContent).not.toBe("Zapisujemy zmiany w koszyku…");
     for (const name of ["Produkt A", "Produkt B"]) {
-      expect(qty(name).getAttribute("aria-disabled")).toBe("true");
-      expect(removeOf(name).getAttribute("aria-disabled")).toBe("true");
+      expect(qty(name).hasAttribute("aria-disabled")).toBe(false);
+      expect(removeOf(name).hasAttribute("aria-disabled")).toBe(false);
     }
-    fireEvent.change(qty("Produkt B"), { target: { value: "5" } });
-    fireEvent.blur(qty("Produkt B"));
-    expect(qty("Produkt B").value).toBe("1");
-    expect(patches()).toEqual([[A, 3]]);
+    // The page works as before the waiting: a change goes, and the link is clicked only once.
+    setQuantity("Produkt B", "2");
+    expect(patches()).toEqual([
+      [A, 3],
+      [B, 2],
+    ]);
+    await answer(1, ok(cart(3, 2)));
+    expect(navigations).toBe(1);
   });
 
   describe("the link gone with a waiting that ended without the checkout (F3)", () => {
