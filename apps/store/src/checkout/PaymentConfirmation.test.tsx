@@ -622,3 +622,265 @@ describe("paying", () => {
     expect(radios.some((radio) => radio.checked)).toBe(false);
   });
 });
+
+/** One held read of the status: the returned function lets it finish with the given result. */
+function holdRead() {
+  let answer: (result: Awaited<ReturnType<typeof getPaymentStatus>>) => void = () => {};
+  vi.mocked(getPaymentStatus).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+  return (result: Awaited<ReturnType<typeof getPaymentStatus>>) => act(async () => answer(result));
+}
+
+const region = () => screen.getByTestId("payment-status");
+const checkButton = () => screen.getByRole("button", { name: "Sprawdź ponownie" });
+const heading = () => screen.getByRole("heading", { level: 1 });
+const READ_FAILED = "Nie udało się sprawdzić statusu płatności.";
+
+describe("the status region", () => {
+  it("holds the sentences of the payment status, and no controls, as the only place of them", () => {
+    renderPage(ok(view()));
+
+    expect(region().getAttribute("role")).toBe("status");
+    expect(region().textContent).toContain("Opłać do 14:00");
+    expect(region().textContent).toContain(WAITING);
+    expect(within(region()).queryByRole("link")).toBeNull();
+    expect(within(region()).queryByRole("button")).toBeNull();
+    expect(screen.getAllByText(WAITING)).toHaveLength(1);
+  });
+
+  it("keeps the controls out of the region after the 30 seconds", async () => {
+    vi.mocked(getPaymentStatus).mockResolvedValue({ status: "ok", data: view() });
+    renderPage(ok(view()));
+    await advance(31_000);
+
+    expect(region().textContent).toContain(NO_CONFIRMATION);
+    expect(within(region()).queryByRole("button")).toBeNull();
+    expect(within(region()).queryByRole("link")).toBeNull();
+    expect(within(region()).queryByRole("radiogroup")).toBeNull();
+  });
+
+  it("is there from the first render of a view without a status, empty, and the same node when the status arrives", async () => {
+    vi.mocked(getPaymentStatus).mockResolvedValue({ status: "ok", data: paid() });
+    renderPage({ kind: "failed" });
+    const node = region();
+    expect(node.textContent).toBe("");
+
+    await click("Sprawdź ponownie");
+
+    expect(region()).toBe(node);
+    expect(node.isConnected).toBe(true);
+    expect(node.textContent).toContain("Płatność przyjęta. Potwierdzenie wysłaliśmy na adres anna.nowak@example.com.");
+  });
+
+  it("is the same connected node with a changed text when the polling finds the order paid", async () => {
+    vi.mocked(getPaymentStatus).mockResolvedValue({ status: "ok", data: paid() });
+    renderPage(ok(view()));
+    const node = region();
+    expect(node.textContent).toContain(WAITING);
+
+    await advance(2_000);
+
+    expect(region()).toBe(node);
+    expect(node.isConnected).toBe(true);
+    expect(node.textContent).not.toContain(WAITING);
+    expect(node.textContent).toContain("Płatność przyjęta.");
+  });
+
+  it("is the same node when the order turns out cancelled", async () => {
+    vi.mocked(getPaymentStatus).mockResolvedValue({ status: "ok", data: view({ orderStatus: "cancelled", canStartPayment: false, latestPayment: null }) });
+    renderPage(ok(view()));
+    const node = region();
+    await advance(2_000);
+
+    expect(region()).toBe(node);
+    expect(node.textContent).toBe("Zamówienie zostało anulowane.");
+  });
+});
+
+describe("the focus while the status refreshes by itself", () => {
+  it("stays where it was when the polling finds the order paid, and the payment is accepted once in the DOM", async () => {
+    vi.mocked(getPaymentStatus).mockResolvedValue({ status: "ok", data: paid() });
+    renderPage(ok(view()));
+    const shop = screen.getByRole("link", { name: "Wróć do sklepu" });
+    act(() => shop.focus());
+
+    await advance(2_000);
+
+    expect(document.activeElement).toBe(shop);
+    expect(screen.getAllByText(/^Płatność przyjęta\./)).toHaveLength(1);
+    expect(region().textContent).toContain("Płatność przyjęta.");
+  });
+
+  it("stays where it was when the polling finds the payment failed", async () => {
+    vi.mocked(getPaymentStatus).mockResolvedValue({ status: "ok", data: failedPayment() });
+    renderPage(ok(view()));
+    const shop = screen.getByRole("link", { name: "Wróć do sklepu" });
+    act(() => shop.focus());
+
+    await advance(2_000);
+
+    expect(region().textContent).toContain("Płatność nie powiodła się.");
+    expect(document.activeElement).toBe(shop);
+  });
+
+  it("stays where it was when the 30 seconds pass, also on the way back to the payment", async () => {
+    vi.mocked(getPaymentStatus).mockResolvedValue({ status: "ok", data: view() });
+    renderPage(ok(view()));
+    const back = screen.getByRole("link", { name: "Wróć do płatności" });
+    act(() => back.focus());
+
+    await advance(31_000);
+
+    expect(region().textContent).toContain(NO_CONFIRMATION);
+    expect(document.activeElement).toBe(back);
+  });
+
+  it("goes to the heading when the change removes the element that has it", async () => {
+    vi.mocked(getPaymentStatus).mockResolvedValue({ status: "ok", data: paid() });
+    renderPage(ok(view()));
+    act(() => screen.getByRole("link", { name: "Wróć do płatności" }).focus());
+
+    await advance(2_000);
+
+    expect(screen.queryByRole("link", { name: "Wróć do płatności" })).toBeNull();
+    expect(document.activeElement).toBe(heading());
+  });
+
+  it("does not take the focus when nothing had it", async () => {
+    vi.mocked(getPaymentStatus).mockResolvedValue({ status: "ok", data: paid() });
+    renderPage(ok(view()));
+
+    await advance(2_000);
+
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+
+describe("checking again", () => {
+  const afterWindow = async () => {
+    vi.mocked(getPaymentStatus).mockResolvedValue({ status: "ok", data: view() });
+    renderPage(ok(view()));
+    await advance(31_000);
+    vi.mocked(getPaymentStatus).mockReset();
+  };
+
+  it("keeps the button on the screen with the focus while the read runs: aria-disabled, not disabled, one request for two activations", async () => {
+    await afterWindow();
+    const answer = holdRead();
+    const button = checkButton();
+    act(() => button.focus());
+    fireEvent.click(button);
+
+    expect(checkButton()).toBe(button);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(document.activeElement).toBe(button);
+    fireEvent.click(button);
+    expect(getPaymentStatus).toHaveBeenCalledTimes(1);
+
+    await answer({ status: "ok", data: view() });
+    expect(checkButton().getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("leaves the focus on the button that is still there after the answer", async () => {
+    await afterWindow();
+    const answer = holdRead();
+    act(() => checkButton().focus());
+    fireEvent.click(checkButton());
+    await answer({ status: "ok", data: view() });
+
+    expect(document.activeElement).toBe(checkButton());
+  });
+
+  it("puts the focus on the heading when the order is paid and the button is gone", async () => {
+    await afterWindow();
+    const answer = holdRead();
+    act(() => checkButton().focus());
+    fireEvent.click(checkButton());
+    await answer({ status: "ok", data: paid() });
+
+    expect(screen.queryByRole("button", { name: "Sprawdź ponownie" })).toBeNull();
+    expect(region().textContent).toContain("Płatność przyjęta.");
+    expect(document.activeElement).toBe(heading());
+  });
+
+  it("puts the focus on the heading when a view without a status gets one that is awaited again", async () => {
+    vi.mocked(getPaymentStatus).mockResolvedValue({ status: "ok", data: view() });
+    renderPage({ kind: "failed" });
+    act(() => checkButton().focus());
+    await click("Sprawdź ponownie");
+
+    expect(screen.queryByRole("button", { name: "Sprawdź ponownie" })).toBeNull();
+    expect(region().textContent).toContain(WAITING);
+    expect(document.activeElement).toBe(heading());
+  });
+
+  it("keeps the button and the focus on a failed read and says so in an alert", async () => {
+    await afterWindow();
+    const answer = holdRead();
+    act(() => checkButton().focus());
+    fireEvent.click(checkButton());
+    await answer({ status: "failed" });
+
+    expect(screen.getByRole("alert").textContent).toContain(READ_FAILED);
+    expect(region().textContent).not.toContain(READ_FAILED);
+    expect(document.activeElement).toBe(checkButton());
+    expect(checkButton().getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("in a view without a status hides the message while it checks and shows it again after a failed read, with the focus on the button", async () => {
+    renderPage({ kind: "failed" });
+    expect(screen.getByRole("alert").textContent).toBe(READ_FAILED);
+    expect(region().textContent).toBe("");
+    const answer = holdRead();
+    act(() => checkButton().focus());
+    fireEvent.click(checkButton());
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(document.activeElement).toBe(checkButton());
+    expect(checkButton().getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(checkButton());
+    expect(getPaymentStatus).toHaveBeenCalledTimes(1);
+
+    await answer({ status: "failed" });
+    expect(screen.getByRole("alert").textContent).toBe(READ_FAILED);
+    expect(document.activeElement).toBe(checkButton());
+  });
+
+  it("leaves the focus where the customer moved it while the read ran", async () => {
+    await afterWindow();
+    const answer = holdRead();
+    act(() => checkButton().focus());
+    fireEvent.click(checkButton());
+    const shop = screen.getByRole("link", { name: "Wróć do sklepu" });
+    act(() => shop.focus());
+    await answer({ status: "ok", data: paid() });
+
+    expect(document.activeElement).toBe(shop);
+  });
+
+  it("puts the focus on the heading when the customer moved it to the way back to the payment and the answer removes it", async () => {
+    await afterWindow();
+    const answer = holdRead();
+    act(() => checkButton().focus());
+    fireEvent.click(checkButton());
+    const back = screen.getByRole("link", { name: "Wróć do płatności" });
+    act(() => back.focus());
+    await answer({ status: "ok", data: paid() });
+
+    expect(screen.queryByRole("link", { name: "Wróć do płatności" })).toBeNull();
+    expect(region().textContent).toContain("Płatność przyjęta.");
+    expect(document.activeElement).toBe(heading());
+  });
+
+  it("leaves the focus where the customer moved it also when the read fails", async () => {
+    await afterWindow();
+    const answer = holdRead();
+    act(() => checkButton().focus());
+    fireEvent.click(checkButton());
+    const back = screen.getByRole("link", { name: "Wróć do płatności" });
+    act(() => back.focus());
+    await answer({ status: "failed" });
+
+    expect(document.activeElement).toBe(back);
+  });
+});
