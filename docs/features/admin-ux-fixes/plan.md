@@ -11,7 +11,7 @@ roboczym: po ukończeniu epiku usuń go.
 | Fala | Zadania | Status |
 |---|---|---|
 | 1 | ADMIN-UX-FIXES-1, ADMIN-UX-FIXES-2, ADMIN-UX-FIXES-3, ADMIN-UX-FIXES-4, ADMIN-UX-FIXES-5, ADMIN-UX-FIXES-6 | zmergowane: 3 (`4cb72462`), 1 (`cd639f3f`), 6 (`f61c7189`), 2 (`09839d04`), 4 (`41546740`), 5 (`049d7718`), poprawka testu 2 (`72dfec62`); fala zakończona |
-| 2 | ADMIN-UX-FIXES-7 | w toku |
+| 2 | ADMIN-UX-FIXES-7 | zmergowane: 7 (`b31ffe63`) |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
