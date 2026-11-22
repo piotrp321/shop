@@ -601,18 +601,18 @@ jobs:
         run: make seed RUN="docker compose exec -T"
 
       # This part of the suite: `--shard=<index>/<number of parts>` runs whole spec files in file order. The weights (one
-      # per part, 78:122:94:108 of 402 tests) put the boundaries after 78 tests (inside admin-screens-discount-codes),
-      # after 200 (inside admin-screens-toasts) and after 294 (inside listing-tile-variants). The parts, with the time of
-      # their tests in CI: admin-customers to admin-screens-discount-codes (91 tests, ~350 s, with admin-design),
-      # admin-screens-inventory to admin-screens-toasts (115, ~310 s), cart-guest to listing-tile-variants (93, ~410 s,
-      # with catalog-admin) and order-management to visual-screens (103, ~290 s), which also runs the checks after the
-      # tests (~3 min). A spec file belongs to the part in which its first test starts before the boundary. When tests are
-      # added, move the boundaries so that the parts end about together.
+      # per part, 104:116:95:87 of 402 tests) put the boundaries after 104 tests (inside admin-screens-inventory), after
+      # 220 (inside catalog-admin) and after 315 (inside product-gallery). The parts, with the mean time of their tests in
+      # two CI runs: admin-customers to admin-screens-inventory (118 tests, ~400 s, with admin-design),
+      # admin-screens-orders to catalog-admin (112, ~425 s, with catalog-admin), catalog to product-gallery (94, ~290 s)
+      # and product-page-freshness to visual-screens (78, ~200 s), which also runs the checks after the tests (~3 min).
+      # A spec file belongs to the part in which its first test starts before the boundary. When tests are added, move
+      # the boundaries so that the parts end about together.
       - name: make e2e
         if: env.FULL_CI == 'true'
         env:
           E2E_SHARD: ${{ matrix.index }}/${{ strategy.job-total }}
-          E2E_SHARD_WEIGHTS: '78:122:94:108'
+          E2E_SHARD_WEIGHTS: '104:116:95:87'
         run: make e2e E2E_FLAGS=-T E2E_BUILD=
 
       # The checks on the running stack after the E2E tests of the part with `after_e2e`: every target a make/*.mk
