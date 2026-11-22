@@ -34,12 +34,18 @@ Właściciel zaakceptował 2026-11-22:
 | D4 | Co ustępuje miejsca w „Ostatnich zamówieniach” (#509) | Data jako druga linia komórki klienta; „Pozycje” jako kolumna tylko tam, gdzie tabela mieści się z nią w karcie | Karty pulpitu jedna pod drugą |
 | D5 | #581 F5 (wymagana notatka z samym znakiem niewidocznym) | Poza tym etapem: przyczyna jest w walidacji API | Naprawa w tym etapie |
 
-Założenie techniczne do D3 (K2): blokada formularza promocji trwa także przez oczekiwanie na początek „od teraz”
-(zwykle 1–2 s, najwyżej 8 s plus czas odpowiedzi odczytów). Dzięki temu po zapisie nie da się wpisać zmiany, którą
-nadpisałby ponowny odczyt, i nie jest potrzebne scalanie stanu formularza z odpowiedzią.
+Do potwierdzenia przez właściciela przy akceptacji planu (specyfikacja przyjmuje rekomendację):
 
-Zdania specyfikacji ekranów zostają prawdziwe po tym etapie; nowe zachowanie opisuje ta specyfikacja. Wyjątek: opis
-kolumn „Ostatnich zamówień” w `docs/features/admin-design/spec.md` zmienia zadanie K5.
+| # | Decyzja | Rekomendacja przyjęta w specyfikacji | Inne warianty |
+|---|---|---|---|
+| D6 | K2: co dzieje się z formularzem promocji między udanym zapisem „Od teraz” a odczytem statusu | Blokada trwa dalej: zwykle 1–2 s, zawsze najwyżej 10 s od odpowiedzi zapisu (całkowity limit oczekiwania). Po zapisie nie da się wpisać zmiany, którą nadpisałby odczyt, i nie trzeba scalać formularza z odpowiedzią | Pola odblokowane od razu po zapisie, a odczyt zmienia tylko status i akcje (wymaga reguł dla pól zmienionych w tym czasie i dla pól, które aktywna promocja blokuje) |
+| D7 | K2 i K3: zapis, na który API nie odpowiada | Bez własnego limitu czasu zapisu: blokada trwa do odpowiedzi albo błędu sieci przeglądarki, a wyjściem jest zmiana trasy (okno zamówienia) albo opuszczenie formularza (promocja). Wynik takiego zapisu jest nieznany, więc panel nie pozwala wysłać go drugi raz z tego samego okna | Limit czasu z odblokowaniem i ponowieniem (ponawia zmianę o nieznanym wyniku); brak blokady zamknięcia okna (wraca wada #581 F4) |
+
+D3 dotyczy zapisu w toku i nie przesądza D6 ani D7: obie zmieniają to, jak długo pracownik czeka.
+
+Zdania specyfikacji ekranów zostają prawdziwe po tym etapie; nowe zachowanie opisuje ta specyfikacja. Dwa wyjątki
+w `docs/features/admin-design/spec.md`: wyjątek #250 F16 w „Po zapisie” (zmienia K2) i opis kolumn „Ostatnich
+zamówień” (zmienia K5).
 
 ## Poza zakresem
 
@@ -102,8 +108,10 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
   są wyłączone jak dotąd. Blokada niczego nie ukrywa: otwarty wybór wariantów zostaje otwarty. Ponowne „Zapisz” nie
   wysyła drugiego żądania. `SaveBar` zostaje bez zmian, a fokus po zapisie działa według standardu formularza
   (`docs/features/admin-design/spec.md`, „Po zapisie”); wyjątek #250 F16 (fokus przeniesiony do pola w trakcie
-  żądania) nie występuje w formularzu promocji, bo pola są wyłączone, więc jego test w `PromotionFormView.test.ts`
-  zmienia się razem z zachowaniem. Po odpowiedzi udany zapis i 409 pokazują promocję z API jak dotąd, a 422 i błąd
+  żądania) nie występuje przy zapisie formularza promocji, bo pola są wyłączone, więc jego test w
+  `PromotionFormView.test.ts` i zdanie o nim w `docs/features/admin-design/spec.md` („Po zapisie”: wyjątek nie
+  dotyczy zapisu formularza promocji) zmieniają się razem z zachowaniem. Przy akcjach karty „Status” („Zakończ
+  teraz”, „Usuń”) pola nie są blokowane i wyjątek działa jak dotąd. Po odpowiedzi udany zapis i 409 pokazują promocję z API jak dotąd, a 422 i błąd
   sieci odblokowują pola z wartościami, które pracownik wysłał.
 - **Oczekiwanie na początek.** Gdy udany zapis (utworzenie albo zmiana) był wysłany z „Od teraz”, a odpowiedź ma
   `status: planned`, blokada trwa dalej, region `role="status"` karty „Status” pokazuje „Promocja rozpoczyna się.”,
@@ -120,6 +128,14 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
     stan.” ma przycisk „Odśwież”. „Odśwież” działa jak ten sam przycisk po nieudanym odczycie końca (`refresh`,
     `usePromotionForm.ts:266-273`): udany odczyt pokazuje promocję i przenosi fokus na nagłówek karty „Status”,
     nieudany zastępuje formularz komunikatem wczytania z linkiem do listy promocji.
+  - Całkowity limit: gdy 10 s po odpowiedzi zapisu oczekiwanie jeszcze trwa (odczyt bez odpowiedzi, wolne odczyty),
+    kończy się tak jak po nieudanym odczycie: blokada znika, widać ten sam komunikat z „Odśwież”. Odpowiedź odczytu,
+    która wróci po limicie, jest pomijana i nie zmienia formularza, statusu ani wersji, także gdy pracownik zdążył
+    zmienić pole: limit unieważnia trwający odczyt tak jak nowsze żądanie formularza. Opuszczenie widoku, przejście
+    do innej promocji i „Odśwież” zatrzymują licznik limitu. Limit jest lokalnym licznikiem tego oczekiwania, nie
+    limitem czasu klienta API; dotyczy tylko odczytów statusu (`GET`), nie zapisu. Przy wolnym, ale działającym API
+    pracownik widzi wtedy komunikat o nieudanym odczycie, choć promocja mogła się już rozpocząć; „Odśwież” pokazuje
+    jej stan.
 - **Ochrona zmian.** W trakcie oczekiwania nie da się nic wpisać, a po jego końcu panel sam nie czyta promocji
   ponownie, więc żaden automatyczny odczyt nie nadpisuje zmian pracownika.
 - **Nieaktualne odpowiedzi.** Odpowiedź odczytu jest pomijana, gdy w tym czasie pracownik opuścił widok, otworzył inną
@@ -130,9 +146,8 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
   `perform` sprawdza tylko opuszczenie widoku, `usePromotionForm.ts:420-423`).
 - **Czas.** Liczony od chwili, w której przeglądarka dostała odpowiedź zapisu. Gdy zegary przeglądarki i serwera
   różnią się o mniej niż 0,5 s, pierwszy odczyt wychodzi najpóźniej po 2,5 s, więc „Aktywna” i „Zakończ teraz” są
-  widoczne w ciągu 3 s, jeśli odczyt wraca w czasie poniżej 0,5 s. Niezależnie od zegarów pierwszy odczyt wychodzi
-  najpóźniej po 3 s, a blokada kończy się jednym z trzech wyników powyżej najpóźniej po piątym ponowieniu (8 s plus
-  czas odpowiedzi odczytów).
+  widoczne w ciągu 3 s, jeśli odczyt wraca w czasie poniżej 0,5 s. Niezależnie od zegarów i od czasu odpowiedzi API
+  pierwszy odczyt wychodzi najpóźniej po 3 s, a blokada po udanym zapisie kończy się najpóźniej po 10 s.
 
 **Kryteria.**
 1. Testy `usePromotionForm.test.ts` i `PromotionFormView.test.ts` z fałszywym zegarem (jak testy #304 F7):
@@ -147,8 +162,10 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
    karty „Status” są wyłączone; (g) opuszczenie widoku i otwarcie innej promocji w trakcie oczekiwania: żadnego
    kolejnego `GET` oczekiwania, a odpowiedź odczytu, która wróci później, niczego nie zmienia; odpowiedź zapisu, która
    wraca po otwarciu innej promocji, nie zmienia jej formularza i nie daje toastu ani oczekiwania; (h) zapis
-   z początkiem w przyszłości (bez „Od teraz”) nie daje dodatkowego `GET`. Testy (a)–(f) i część (g) o odpowiedzi
-   zapisu nie przechodzą przed zmianą; reszta (g) i (h) to kontrole do (a).
+   z początkiem w przyszłości (bez „Od teraz”) nie daje dodatkowego `GET`; (i) `GET`, którego odpowiedź nie wraca:
+   10 s po odpowiedzi zapisu pola są odblokowane i widać komunikat z „Odśwież”; po zmianie pola nazwy zwolniona
+   odpowiedź `active` nie zmienia nazwy, statusu ani komunikatu. Testy (a)–(f), (i) i część (g) o odpowiedzi zapisu
+   nie przechodzą przed zmianą; reszta (g) i (h) to kontrole do (a).
 2. E2E (`admin-screens-promotions.spec.ts`): po toaście „Promocja zapisana.” karta „Status” pokazuje „Aktywna”
    i „Zakończ teraz” w ciągu 5 s bez przeładowania strony; pętla przeładowań znika. Drugi test wstrzymuje odpowiedź
    zapisu o 3 s (`page.route`), sprawdza w tym czasie, że pole nazwy jest wyłączone, i ten sam wynik po odpowiedzi.
@@ -206,18 +223,24 @@ odtworzenia go testem.
 sprawdza region wyższy niż okno tylko w poziomie (`e2e/support/panel-layout.ts:95-98`), więc tego nie wykrywa.
 
 **Zachowanie.**
-- Region ma wysokość najwyżej 60% wysokości okna (nie mniej niż 12 rem) i przewija się w sobie w pionie; w poziomie
-  jak dotąd. Pole szukania i pager leżą poza regionem.
+- Region ma wysokość najwyżej 60% wysokości okna (nie mniej niż 12 rem), dobraną tak, żeby pole szukania, region
+  i pager były naraz widoczne między górnym paskiem panelu (`AppTopbar`, przyklejony) a paskiem zapisu (`SaveBar`,
+  przyklejony do dołu). Ta jednoczesna widoczność dotyczy okien o wysokości co najmniej 720 px; w niższych region
+  ma dolną granicę 12 rem, a resztę przewija strona. Region przewija się w sobie w pionie; w poziomie jak dotąd. Pole
+  szukania i pager leżą poza regionem.
 - Region zachowuje `tabindex="0"`: po fokusie przewija się klawiaturą. Przycisk „Dodaj…” wiersza, który dostaje fokus
   z klawiatury, jest w całości w widocznej części regionu i okna.
 - Po „Dodaj” fokus wraca na pole szukania jak dotąd.
 
-**Kryteria** (E2E w `admin-screens-promotions.spec.ts`, przy 1280×720 i 375×812, na stronie wyboru z ponad 100
-wierszami z danych demo; asercje geometrii, bez asercji klas CSS; nie przechodzą przed zmianą).
+**Kryteria** (E2E w `admin-screens-promotions.spec.ts`, przy 1280×720 i 375×812, w formularzu nowej promocji
+z widocznym paskiem zapisu, na stronie wyboru z ponad 100 wierszami z danych demo; asercje geometrii, bez asercji klas
+CSS; nie przechodzą przed zmianą).
 1. Wysokość regionu jest nie większa niż 60% wysokości okna (z tolerancją 1 px), a `scrollHeight` regionu większe
    niż `clientHeight`.
-2. Pole szukania i przyciski pagera mieszczą się jednocześnie w oknie (odległość od górnej krawędzi pola do dolnej
-   krawędzi pagera nie większa niż wysokość okna).
+2. Po otwarciu wyboru („Dodaj warianty”) test przewija stronę tak, żeby pole szukania było tuż pod górnym paskiem
+   panelu (albo do końca strony, gdy dalej przewinąć się nie da), i sprawdza rzeczywiste krawędzie: górna krawędź pola nie wyżej niż dolna krawędź górnego paska, dolna
+   krawędź przycisków pagera nie niżej niż górna krawędź paska zapisu, a `elementFromPoint` w środku pola i w środku
+   każdego przycisku pagera trafia w ten element (nie zasłania ich przyklejony pasek).
 3. Klawiatura: po fokusie regionu `End` zwiększa jego `scrollTop`; `Tab` z regionu trafia na pierwszy „Dodaj…”,
    a `Shift+Tab` z pierwszego aktywnego przycisku pagera na ostatni; każdy z nich po fokusie leży w całości w widocznym prostokącie regionu i okna
    i nie jest zasłonięty (`elementFromPoint` w jego środku trafia w niego).
@@ -321,12 +344,14 @@ czytają odpowiedzi błędów. **Do ponownego sprawdzenia przed implementacją**
 - **K1.** Sposób usunięcia nieaktualnego `aria-activedescendant` nie jest sprawdzony: wartość ustawia `ListboxFilter`
   reka-ui. Zadanie zaczyna od testu i wybiera sposób w naszym komponencie (nadpisanie atrybutu przy zamkniętej
   liście albo zostawienie listy w DOM); miarą jest kryterium axe.
-- **K2.** Formularz jest zablokowany przez oczekiwanie na początek: zwykle 1–2 s po zapisie, najwyżej 8 s plus czas
-  odpowiedzi odczytów, także przy rozjechanych zegarach.
-- **K3.** Żądanie, na które API nie odpowiada, trzyma okno otwarte do błędu sieci przeglądarki; wyjściem jest zmiana
-  trasy (Wstecz, menu), która zamyka okno i pomija odpowiedź. Panel nie ma własnego limitu czasu żądania i ten etap go
-  nie dodaje.
+- **K2 (D6).** Formularz jest zablokowany przez oczekiwanie na początek: zwykle 1–2 s, najwyżej 10 s od odpowiedzi
+  zapisu, także przy rozjechanych zegarach i odczycie bez odpowiedzi. Po limicie panel pokazuje „Zaplanowana”, choć
+  promocja może już trwać; wyjaśnia to komunikat z „Odśwież”.
+- **K2 i K3 (D7).** Klient API panelu nie ma limitu czasu żądania. Zapis bez odpowiedzi trzyma blokadę do błędu sieci
+  przeglądarki: w oknie zamówienia wyjściem jest zmiana trasy (Wstecz, menu), która zamyka okno i pomija odpowiedź;
+  w formularzu promocji jego opuszczenie. Ten etap nie dodaje limitu czasu zapisu.
 - **K3 i K5.** Dane demo nie mają zamówień: test E2E K3 składa własne zamówienie (`placeOrderAsJan`,
   `e2e/support/panel-orders.ts`, bez zmiany helpera), a test K5 podstawia odpowiedź listy.
 - Zadania zmieniają rozłączne pliki, poza K2 i K4, które dzielą wybór wariantów formularza promocji
-  (`apps/admin/src/promotions`) i plik `e2e/tests/admin-screens-promotions.spec.ts`.
+  (`apps/admin/src/promotions`) i plik `e2e/tests/admin-screens-promotions.spec.ts`, oraz K2 i K5, które zmieniają
+  dwie sekcje `docs/features/admin-design/spec.md`.

@@ -22,12 +22,16 @@ Sesja prowadząca sprawdza na aktualnym `main` dwa warunki specyfikacji i zapisu
 - „Zależność od API-INPUT-CONTRACT”, punkty 1–4 (dotyczą zadań 2 i 3).
 - „Równoległość ze STORE-UX-FIXES (#777)”: gdy #777 ma już specyfikację albo plan, porównanie jego `Zakres:` i `paths`
   z tym planem; bez tego epiki nie idą równolegle.
+- „Decyzje”, D6 i D7: potwierdzenie właściciela (dotyczą zadań 2 i 3).
 
 ## Praca szeregowa
 
 - ADMIN-UX-FIXES-2, ADMIN-UX-FIXES-4: `apps/admin/src/promotions/PromotionVariantPicker.vue`,
   `e2e/tests/admin-screens-promotions.spec.ts`; blokada formularza w zadaniu 2 obejmuje wybór wariantów, a zadanie 4
   zmienia jego region, czyli jeden komponent i jeden plik testów ekranu promocji.
+- ADMIN-UX-FIXES-2, ADMIN-UX-FIXES-5: `docs/features/admin-design/spec.md`; zadanie 2 zmienia w nim wyjątek #250 F16
+  („Po zapisie”), zadanie 5 opis kolumn „Ostatnich zamówień”. Każda zmiana idzie w commicie swojego kodu, więc
+  zadania zmieniają ten sam plik i idą jedno po drugim, w dowolnej kolejności.
 
 ## Zadania
 
@@ -66,17 +70,18 @@ Sesja prowadząca sprawdza na aktualnym `main` dwa warunki specyfikacji i zapisu
     {
       "id": "ADMIN-UX-FIXES-2",
       "title": "Formularz promocji: blokada w trakcie zapisu i odczyt statusu po „Od teraz”",
-      "scope": "Panel, formularz promocji: usePromotionForm, PromotionFormView i blokada kontrolek wariantów (spec, K2; #580; decyzje D2, D3 i założenie techniczne do D3). Blokada przez disabled jak w DeliveryMethodFormView; SaveBar bez zmian. Status zawsze z API; bez zmian API. Poza zadaniem: oczekiwanie na koniec promocji (watchEnd), region wyboru wariantów (zadanie 4), ogólny mechanizm synchronizacji i scalanie stanu formularza z odpowiedzią.",
+      "scope": "Panel, formularz promocji: usePromotionForm, PromotionFormView i blokada kontrolek wariantów (spec, K2; #580; decyzje D2, D3, D6 i D7) oraz zdanie o wyjątku #250 F16 w docs/features/admin-design/spec.md. Blokada przez disabled jak w DeliveryMethodFormView; SaveBar bez zmian. Status zawsze z API; bez zmian API. Poza zadaniem: oczekiwanie na koniec promocji (watchEnd), region wyboru wariantów (zadanie 4), ogólny mechanizm synchronizacji i scalanie stanu formularza z odpowiedzią.",
       "acceptance_criteria": [
         "Blokada w trakcie zapisu (wstrzymana odpowiedź): pola formularza i kontrolki wariantów (lista wybranych, „Dodaj warianty”, otwarty wybór) są wyłączone, otwarty wybór wariantów zostaje otwarty, drugie „Zapisz” nie wysyła żądania. Po 422 i po błędzie sieci pola mają wysłane wartości i są odblokowane; udany zapis i 409 pokazują promocję z API jak dotąd.",
-        "Zmiana istniejącego zachowania: wyjątek #250 F16 (fokus przeniesiony do pola w trakcie żądania) nie występuje w formularzu promocji, bo pola są wyłączone; jego test w PromotionFormView.test.ts zmienia się razem z tym zachowaniem. Fokus po zapisie działa według standardu formularza.",
+        "Zmiana istniejącego zachowania: wyjątek #250 F16 (fokus przeniesiony do pola w trakcie żądania) nie występuje przy zapisie formularza promocji, bo pola są wyłączone; jego test w PromotionFormView.test.ts i zdanie o nim w docs/features/admin-design/spec.md („Po zapisie”: wyjątek nie dotyczy zapisu formularza promocji) zmieniają się razem z tym zachowaniem. Przy akcjach karty „Status” („Zakończ teraz”, „Usuń”) pola nie są blokowane i wyjątek działa jak dotąd. Fokus po zapisie działa według standardu formularza.",
         "Oczekiwanie na początek (fałszywy zegar): zapis z „Od teraz” i odpowiedzią planned ze startsAt sekundę po odpowiedzi daje jeden GET dokładnie 2 s po odpowiedzi zapisu; startsAt minutę po odpowiedzi daje pierwszy GET 3 s po odpowiedzi. W trakcie oczekiwania pola, kontrolki wariantów i akcje karty „Status” są wyłączone, a region role=\"status\" pokazuje „Promocja rozpoczyna się.”; po odpowiedzi active widać „Aktywna”, „Zakończ teraz”, ogłoszenie „Promocja jest aktywna.” i odblokowane pola.",
         "Ograniczone ponowienia: odpowiedź planned daje kolejny odczyt po sekundzie, najwyżej 5 razy; po ostatniej blokada znika, status zostaje „Zaplanowana”, region statusu pokazuje „Promocja jeszcze się nie rozpoczęła. Początek: <data i godzina>.” i dalszych GET nie ma.",
         "Nieudany odczyt (błąd sieci, odpowiedź inna niż 200): oczekiwanie się kończy, blokada znika, widok zostaje jak po zapisie, komunikat role=\"alert\" „Nie udało się odczytać statusu promocji. Odśwież, żeby zobaczyć jej stan.” ma przycisk „Odśwież”; udane „Odśwież” pokazuje promocję i przenosi fokus na nagłówek karty „Status”, nieudane zastępuje formularz komunikatem wczytania z linkiem do listy promocji.",
+        "Całkowity limit oczekiwania (fałszywy zegar, GET bez odpowiedzi): 10 s po odpowiedzi zapisu pola są odblokowane i widać ten sam komunikat z „Odśwież”; limit unieważnia trwający odczyt tak jak nowsze żądanie formularza, więc po zmianie pola nazwy zwolniona odpowiedź active nie zmienia nazwy, statusu, wersji ani komunikatu. Opuszczenie widoku, przejście do innej promocji i „Odśwież” zatrzymują licznik limitu. Limit dotyczy tylko odczytów statusu, nie zapisu.",
         "Nieaktualne odpowiedzi: po opuszczeniu widoku, otwarciu innej promocji albo formularza nowej oraz po nowszym żądaniu formularza (zapis, „Odśwież”) nie ma kolejnych GET oczekiwania, a odpowiedź odczytu, która wróci później, niczego nie zmienia. Odpowiedź zapisu, która wraca po przejściu do innej promocji albo formularza nowej, nie zmienia formularza, nie pokazuje toastu, nie nawiguje i nie uruchamia oczekiwania. Przejście z /promotions/new na /promotions/:id po utworzeniu nie przerywa oczekiwania.",
         "Zapis z początkiem w przyszłości (bez „Od teraz”) nie daje dodatkowego GET. Panel nie wylicza statusu z zegara: zegar przeglądarki wyznacza tylko moment odczytu.",
         "E2E (admin-screens-promotions.spec.ts): po toaście „Promocja zapisana.” karta „Status” pokazuje „Aktywna” i „Zakończ teraz” w ciągu 5 s bez przeładowania strony, a pętla przeładowań znika z testu; drugi test wstrzymuje odpowiedź zapisu o 3 s (page.route), sprawdza w tym czasie, że pole nazwy jest wyłączone, i ten sam wynik po odpowiedzi.",
-        "Raport zawiera komendy i rzeczywiste wyniki testów przed zmianą (RED: testy blokady, obu momentów pierwszego odczytu, ponowień, błędu odczytu, odpowiedzi zapisu po zmianie promocji i oba testy E2E nie przechodzą) i po niej (GREEN); make -C apps/admin check i make -C apps/admin test przechodzą."
+        "Raport zawiera komendy i rzeczywiste wyniki testów przed zmianą (RED: testy blokady, obu momentów pierwszego odczytu, ponowień, błędu odczytu, całkowitego limitu, odpowiedzi zapisu po zmianie promocji i oba testy E2E nie przechodzą) i po niej (GREEN); make -C apps/admin check i make -C apps/admin test przechodzą."
       ],
       "risk": "CRITICAL",
       "depends_on": [],
@@ -86,19 +91,19 @@ Sesja prowadząca sprawdza na aktualnym `main` dwa warunki specyfikacji i zapisu
         "apps/admin/src/views/PromotionFormView.vue",
         "apps/admin/tests/usePromotionForm.test.ts",
         "apps/admin/tests/PromotionFormView.test.ts",
-        "e2e/tests/admin-screens-promotions.spec.ts"
+        "e2e/tests/admin-screens-promotions.spec.ts",
+        "docs/features/admin-design/spec.md"
       ],
       "parallel_with": [
         "ADMIN-UX-FIXES-1",
         "ADMIN-UX-FIXES-3",
-        "ADMIN-UX-FIXES-5",
         "ADMIN-UX-FIXES-6"
       ]
     },
     {
       "id": "ADMIN-UX-FIXES-3",
       "title": "Okna zamówienia: zapis w toku bez zamknięcia, utraty fokusu i wyniku",
-      "scope": "Panel, szczegóły zamówienia: okno zmiany statusu i zwrotu oraz okno numeru przesyłki (spec, K3; #581 F4; decyzja D3). Zadanie zaczyna od testu, który odtwarza wadę w oknie numeru przesyłki (potwierdzona dotąd tylko w kodzie). Bez zmian API i bez zmiany zachowania po odpowiedzi poza opisanym w K3. Poza zadaniem: #581 F3 i F5.",
+      "scope": "Panel, szczegóły zamówienia: okno zmiany statusu i zwrotu oraz okno numeru przesyłki (spec, K3; #581 F4; decyzje D3 i D7; bez własnego limitu czasu zapisu). Zadanie zaczyna od testu, który odtwarza wadę w oknie numeru przesyłki (potwierdzona dotąd tylko w kodzie). Bez zmian API i bez zmiany zachowania po odpowiedzi poza opisanym w K3. Poza zadaniem: #581 F3 i F5.",
       "acceptance_criteria": [
         "W trakcie zapisu (wstrzymana odpowiedź), w obu oknach: Escape, kliknięcie obok, „Wróć” i „Zamknij” nie zamykają okna, z którego wyszło żądanie; pola „Notatka” i „Numer przesyłki” nie przyjmują wpisywania; przycisk skutku ma aria-disabled=\"true\" zamiast disabled i wygląda jak przycisk ConfirmDialog z busy.",
         "Drugie kliknięcie, Enter i Spacja na przycisku skutku oraz Enter w polu numeru przesyłki dają w trakcie zapisu dokładnie jedno żądanie.",
@@ -128,8 +133,8 @@ Sesja prowadząca sprawdza na aktualnym `main` dwa warunki specyfikacji i zapisu
       "title": "Wybór wariantów promocji: region o ograniczonej wysokości z testem geometrii i klawiatury",
       "scope": "Panel, PromotionVariantPicker: region „Warianty do wyboru” (spec, K4; #575 i część #584). Bezpośredni test E2E regionu; helper e2e/support/panel-layout.ts zostaje bez zmian. Poza zadaniem: pozostałe części #584 i blokada wyboru w trakcie zapisu (zadanie 2).",
       "acceptance_criteria": [
-        "E2E (admin-screens-promotions.spec.ts) przy 1280×720 i 375×812, na stronie wyboru z ponad 100 wierszami z danych demo: wysokość regionu nie większa niż 60% wysokości okna (tolerancja 1 px), a scrollHeight regionu większe niż clientHeight.",
-        "Pole szukania i przyciski pagera mieszczą się jednocześnie w oknie: odległość od górnej krawędzi pola do dolnej krawędzi pagera nie większa niż wysokość okna.",
+        "E2E (admin-screens-promotions.spec.ts) przy 1280×720 i 375×812, w formularzu nowej promocji z widocznym paskiem zapisu, na stronie wyboru z ponad 100 wierszami z danych demo: wysokość regionu nie większa niż 60% wysokości okna (tolerancja 1 px), a scrollHeight regionu większe niż clientHeight.",
+        "Po otwarciu wyboru („Dodaj warianty”) test przewija stronę tak, żeby pole szukania było tuż pod górnym paskiem panelu (albo do końca strony, gdy dalej przewinąć się nie da), i sprawdza rzeczywiste krawędzie: górna krawędź pola nie wyżej niż dolna krawędź górnego paska, dolna krawędź przycisków pagera nie niżej niż górna krawędź paska zapisu, a elementFromPoint w środku pola i w środku każdego przycisku pagera trafia w ten element (nie zasłania ich przyklejony pasek).",
         "Klawiatura: po fokusie regionu End zwiększa jego scrollTop; Tab z regionu trafia na pierwszy „Dodaj…”, a Shift+Tab z pierwszego aktywnego przycisku pagera na ostatni; każdy z nich po fokusie leży w całości w widocznym prostokącie regionu i okna, a elementFromPoint w jego środku trafia w niego.",
         "Po „Dodaj” na ostatnim wierszu fokus jest na polu szukania, a pole leży w oknie.",
         "Asercje są asercjami geometrii, nie obecności klas CSS. Raport zawiera komendy i rzeczywiste wyniki tych testów E2E przed zmianą (RED) i po niej (GREEN); make -C apps/admin check i make -C apps/admin test przechodzą."
@@ -173,7 +178,6 @@ Sesja prowadząca sprawdza na aktualnym `main` dwa warunki specyfikacji i zapisu
       ],
       "parallel_with": [
         "ADMIN-UX-FIXES-1",
-        "ADMIN-UX-FIXES-2",
         "ADMIN-UX-FIXES-3",
         "ADMIN-UX-FIXES-4",
         "ADMIN-UX-FIXES-6"
