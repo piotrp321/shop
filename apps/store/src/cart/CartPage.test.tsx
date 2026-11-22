@@ -848,6 +848,153 @@ describe("CartPage actions during a save", () => {
     expect(qty("Produkt B").value).toBe("7");
   });
 
+  describe("the message of a line during the next operation of that line (S1)", () => {
+    const lineAlert = () => within(screen.getAllByRole("listitem")[0]).queryByRole("alert");
+
+    it("stays while the next operation of the line is on its way and goes after its success", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+
+      setQuantity("Produkt A", "3");
+      await answer(0, { status: "failed" });
+      expect(lineAlert()?.textContent).toBe("Nie udało się zapisać zmian. Spróbuj ponownie.");
+
+      setQuantity("Produkt A", "4");
+      expect(patches()).toEqual([
+        [A, 3],
+        [A, 4],
+      ]);
+      expect(lineAlert()?.textContent).toBe("Nie udało się zapisać zmian. Spróbuj ponownie.");
+
+      await answer(1, ok(cart(4, 1)));
+      expect(lineAlert()).toBeNull();
+    });
+
+    it("stays while the removal of the line is on its way and takes the text of a new failure", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+
+      setQuantity("Produkt A", "3");
+      await answer(0, { status: "failed" });
+
+      fireEvent.click(removeButton("Produkt A"));
+      expect(lineAlert()?.textContent).toBe("Nie udało się zapisać zmian. Spróbuj ponownie.");
+
+      await answer(1, { status: "conflict", detail: "Nie mamy tylu sztuk tego produktu." });
+      expect(lineAlert()?.textContent).toBe("Nie mamy tylu sztuk tego produktu.");
+    });
+  });
+
+  describe("an answer that comes while a pointer is pressed (S1)", () => {
+    const lineAlert = () => within(screen.getAllByRole("listitem")[0]).queryByRole("alert");
+    const itemCount = () => screen.getByTestId("cart-item-count").textContent;
+    const press = () => fireEvent.pointerDown(document.body);
+    const release = async () => {
+      fireEvent.pointerUp(document.body);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    };
+
+    it("is applied only after the pointer is released: the view, the message of the line and the field", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+      setQuantity("Produkt A", "3");
+      await answer(0, { status: "failed" });
+      setQuantity("Produkt A", "4");
+
+      press();
+      await answer(1, ok(cart(4, 1)));
+      expect(lineAlert()).not.toBeNull();
+      expect(itemCount()).toBe("2");
+
+      await release();
+      expect(lineAlert()).toBeNull();
+      expect(itemCount()).toBe("5");
+    });
+
+    it("shows a new message only after the pointer is released", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+      setQuantity("Produkt A", "3");
+
+      press();
+      await answer(0, { status: "failed" });
+      expect(lineAlert()).toBeNull();
+
+      await release();
+      expect(lineAlert()?.textContent).toBe("Nie udało się zapisać zmian. Spróbuj ponownie.");
+    });
+
+    it("keeps the line on the screen until the pointer is released when the answer removes it", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+      fireEvent.click(removeButton("Produkt A"));
+
+      press();
+      await answer(0, ok(cart(null, 1)));
+      expect(screen.getByText("Produkt A")).toBeTruthy();
+
+      await release();
+      expect(screen.queryByText("Produkt A")).toBeNull();
+    });
+
+    it("is applied after a second when the release never comes", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        setQuantity("Produkt A", "3");
+
+        press();
+        await answer(0, ok(cart(3, 1)));
+        await act(async () => {
+          vi.advanceTimersByTime(900);
+        });
+        expect(itemCount()).toBe("2");
+
+        await act(async () => {
+          vi.advanceTimersByTime(200);
+        });
+        expect(itemCount()).toBe("4");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("sends the waiting operations after the answer is applied, in their order", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+      setQuantity("Produkt A", "3");
+      setQuantity("Produkt B", "2");
+
+      press();
+      await answer(0, ok(cart(3, 1)));
+      expect(patches()).toEqual([[A, 3]]);
+      expect(itemCount()).toBe("2");
+
+      await release();
+      expect(itemCount()).toBe("4");
+      expect(patches()).toEqual([
+        [A, 3],
+        [B, 2],
+      ]);
+    });
+
+    it("forgets a pointer that was pressed when the page was left: the answers of the next cart page are applied at once", async () => {
+      await renderWith(cart(1, 1));
+      press();
+      cleanup();
+      await renderWith(cart(1, 1));
+      hold();
+
+      setQuantity("Produkt A", "3");
+      await answer(0, ok(cart(3, 1)));
+
+      expect(itemCount()).toBe("4");
+    });
+  });
+
   describe("a failed change with an action waiting (criterion 5)", () => {
     it("shows the message at the failed line with its confirmed quantity and removes the other line", async () => {
       await renderWith(cart(1, 1));
@@ -1507,6 +1654,90 @@ describe("CartPage retry after a failed load (criterion 13)", () => {
 
     expect(await screen.findByText("Produkt A")).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Koszyk" }));
+  });
+});
+
+describe("CartPage focus after the session expired (U1)", () => {
+  const cart = () => view([line(A, "Produkt A", 1), line(B, "Produkt B", 1)]);
+  const title = () => screen.getByRole("heading", { name: "Koszyk" });
+
+  it("moves the focus to the title when the quantity Enter was pressed in is answered with a 401", async () => {
+    await renderWith(cart());
+    hold();
+    const field = qty("Produkt A");
+    field.focus();
+
+    fireEvent.change(field, { target: { value: "3" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await answer(0, { status: "unauthorized" });
+    await act(async () => {});
+
+    expect(screen.getByText(/Twoja sesja wygasła\. Zaloguj się ponownie\./)).toBeTruthy();
+    expect(document.activeElement).toBe(title());
+  });
+
+  it("moves the focus to the title when the removal the button was pressed on is answered with a 401", async () => {
+    await renderWith(cart());
+    hold();
+    const remove = screen.getByRole("button", { name: "Usuń: Produkt A" });
+    remove.focus();
+
+    fireEvent.click(remove);
+    await answer(0, { status: "unauthorized" });
+    await act(async () => {});
+
+    expect(document.activeElement).toBe(title());
+  });
+
+  it("moves the focus from the link that waited for the changes to the title when the answer is a 401", async () => {
+    await renderWith(cart());
+    hold();
+    setQuantity("Produkt A", "3");
+    const link = screen.getByRole("link", { name: "Przejdź do kasy" });
+    link.focus();
+    fireEvent.click(link);
+    expect(link.getAttribute("aria-disabled")).toBe("true");
+
+    await answer(0, { status: "unauthorized" });
+    await act(async () => {});
+
+    expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
+    expect(document.activeElement).toBe(title());
+  });
+
+  it("moves the focus to the title when the customer moved it to the field of another line during the save", async () => {
+    await renderWith(cart());
+    hold();
+    const field = qty("Produkt A");
+    field.focus();
+    fireEvent.change(field, { target: { value: "3" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    qty("Produkt B").focus();
+    await answer(0, { status: "unauthorized" });
+    await act(async () => {});
+
+    expect(document.activeElement).toBe(title());
+  });
+
+  it("leaves the focus where the customer moved it during the save", async () => {
+    const outside = document.body.appendChild(document.createElement("button"));
+    try {
+      await renderWith(cart());
+      hold();
+      const field = qty("Produkt A");
+      field.focus();
+      fireEvent.change(field, { target: { value: "3" } });
+      fireEvent.keyDown(field, { key: "Enter" });
+
+      outside.focus();
+      await answer(0, { status: "unauthorized" });
+      await act(async () => {});
+
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      outside.remove();
+    }
   });
 });
 

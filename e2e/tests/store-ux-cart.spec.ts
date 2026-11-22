@@ -658,3 +658,135 @@ for (const width of [320, 375]) {
     });
   });
 }
+
+// The message of a line stays until the answer of the next operation of that line (S1): it does not go at the mouse
+// down that starts the operation, so the control the customer presses in the same gesture does not move and still gets
+// the click.
+async function failNextQuantityChange(page: Page): Promise<{ arm: () => void }> {
+  let armed = false;
+  await page.route(ITEM_URL, async (route) => {
+    if (route.request().method() === "PATCH" && armed) {
+      armed = false;
+      await route.fulfill({ status: 500, contentType: "application/problem+json", body: "{}" });
+      return;
+    }
+    await route.fallback();
+  });
+  return { arm: () => (armed = true) };
+}
+
+/** A click of a person: press, hold for 150 ms, release, at the centre the element has at the press. */
+async function clickWithHold(page: Page, target: Locator): Promise<void> {
+  await target.scrollIntoViewIfNeeded();
+  const box = await target.boundingBox();
+  if (box === null) throw new Error("the control has no box");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+}
+
+const gestures = [
+  { device: "the mouse held for 150 ms at 1280 px", use: DESKTOP, touch: false, press: clickWithHold },
+  {
+    device: "a tap at 375 px",
+    use: { viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true },
+    touch: true,
+    press: (_page: Page, target: Locator) => target.tap(),
+  },
+];
+
+for (const { device, use, touch, press: gesture } of gestures) {
+  test.describe(`the message of a failed line does not move the control pressed next, with ${device}`, () => {
+    test.use(use);
+
+    for (const target of ["Przejdź do kasy", "Usuń of the other line"] as const) {
+      test(`${target}: typing in the failed line and pressing it still works`, async ({ page }) => {
+        test.setTimeout(90_000);
+        const [a, b] = await cartWithLines(page, 2);
+        if (a === undefined || b === undefined) throw new Error("the cart needs two lines");
+        const writes = countWrites(page);
+        const failure = await failNextQuantityChange(page);
+
+        // 3 pieces first: from here on the total is above the limit of the free delivery, so no later answer changes the
+        // delivery rows of the summary (a change of those moves the link as well).
+        await typeQuantity(quantityOf(page, a), "3", { touch });
+        await quantityOf(page, a).press("Enter");
+        await expect(page.getByTestId("cart-item-count")).toHaveText("4");
+        failure.arm();
+        await typeQuantity(quantityOf(page, a), "2", { touch });
+        await quantityOf(page, a).press("Enter");
+        await expect(rowOf(page, a).getByRole("alert")).toBeVisible();
+
+        // The failed line is edited again: the message stays, so nothing under it moves when the field is left.
+        await typeQuantity(quantityOf(page, a), "4", { touch });
+        const control = target === "Przejdź do kasy" ? checkoutLink(page) : removeOf(page, b);
+        await gesture(page, control);
+
+        if (target === "Przejdź do kasy") {
+          await page.waitForURL((url) => url.pathname === "/checkout", { timeout: 30_000 });
+          expect(writes).toEqual({ PATCH: 3, DELETE: 0 });
+        } else {
+          await expect(rowOf(page, b)).toHaveCount(0, { timeout: 30_000 });
+          await expect(quantityOf(page, a)).toHaveValue("4");
+          expect(writes).toEqual({ PATCH: 3, DELETE: 1 });
+          expect(isOnPath(page, "/cart")).toBe(true);
+        }
+      });
+    }
+  });
+}
+
+test.describe("the session expires while a quantity is saved (U1)", () => {
+  test.use(DESKTOP);
+
+  test("moves the focus to the title Koszyk when the field Enter was pressed in is answered with a 401", async ({ page }) => {
+    test.setTimeout(90_000);
+    const [a] = await cartWithLines(page, 2);
+    if (a === undefined) throw new Error("the cart needs lines");
+    await page.route(ITEM_URL, (route) =>
+      route.request().method() === "PATCH" ? route.fulfill({ status: 401, contentType: "application/problem+json", body: "{}" }) : route.fallback(),
+    );
+
+    await typeQuantity(quantityOf(page, a), "3", { touch: false });
+    await quantityOf(page, a).press("Enter");
+
+    await expect(page.getByRole("main").getByText(/Twoja sesja wygasła/)).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Koszyk" })).toBeFocused();
+  });
+});
+
+// An answer that comes while the button is pressed changes more than the message of a line: the delivery rows of the
+// summary, a removed line. It is applied after the release (S1), so the control keeps its place for the click.
+test.describe("an answer between the press and the release of a button does not move the button (S1)", () => {
+  test.use(DESKTOP);
+
+  test("Przejdź do kasy pressed for 150 ms after typing a quantity that reaches the free delivery", async ({ page }) => {
+    test.setTimeout(90_000);
+    const [a] = await cartWithLines(page, 2);
+    if (a === undefined) throw new Error("the cart needs lines");
+    const writes = countWrites(page);
+    await expect(page.getByTestId("cart-delivery-missing")).toHaveCount(1);
+
+    await typeQuantity(quantityOf(page, a), "3", { touch: false });
+    await clickWithHold(page, checkoutLink(page));
+
+    await page.waitForURL((url) => url.pathname === "/checkout", { timeout: 30_000 });
+    expect(writes).toEqual({ PATCH: 1, DELETE: 0 });
+  });
+
+  test("Usuń of a line pressed for 150 ms right after Usuń of the line above it", async ({ page }) => {
+    test.setTimeout(90_000);
+    const [a, b, c] = await cartWithLines(page, 3);
+    if (a === undefined || b === undefined || c === undefined) throw new Error("the cart needs three lines");
+    const writes = countWrites(page);
+
+    await removeOf(page, a).click();
+    await clickWithHold(page, removeOf(page, b));
+
+    await expect(rowOf(page, a)).toHaveCount(0, { timeout: 30_000 });
+    await expect(rowOf(page, b)).toHaveCount(0, { timeout: 30_000 });
+    await expect(rowOf(page, c)).toHaveCount(1);
+    expect(writes).toEqual({ PATCH: 0, DELETE: 2 });
+  });
+});

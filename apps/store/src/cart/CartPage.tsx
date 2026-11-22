@@ -26,6 +26,7 @@ import {
 } from "./cart-actions";
 import { announceCartChange } from "./events";
 import { CART_RATE_LIMITED, SAVE_FAILED, SessionExpired } from "./messages";
+import { pointerReleased, watchPointer } from "./pointer-release";
 
 type CartLine = CartView["lines"][number];
 
@@ -123,6 +124,9 @@ export function CartPage() {
   const [openings, setOpenings] = useState(0);
   const openRequested = useRef(false);
 
+  // The answers of the operations wait while a pointer is pressed (`pointer-release.ts`).
+  useEffect(() => watchPointer(), []);
+
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -167,6 +171,13 @@ export function CartPage() {
     return focus === null || focus === document.body || focus === document.getElementById(originId);
   }
 
+  /** The focus is on the body or on an element of the cart that is not the title: the view of an expired session takes it away. */
+  function focusLeavesWithView(): boolean {
+    const focus = document.activeElement;
+    if (focus === null || focus === document.body) return true;
+    return focus.closest("main") !== null && focus.id !== TITLE_ID;
+  }
+
   function focusAt(id: string) {
     setAttention((current) => ({ id, seq: (current?.seq ?? 0) + 1 }));
   }
@@ -193,10 +204,9 @@ export function CartPage() {
    * quantity is committed by leaving its field, also with Tab to "Usuń" of the same line, so the focus there counts as
    * where the change came from.
    */
-  function moveFocusFromGoneLine({ variantId, action }: CartOperation, before: CartView | null, after: CartView) {
-    const target = focusAfterGone(before, after, variantId);
-    const origins = action.kind === "remove" ? [removeId(variantId)] : [quantityId(variantId), removeId(variantId)];
-    if (target !== null && origins.some((origin) => focusStays(origin))) focusAt(target);
+  function moveFocusFromGoneLine(operation: CartOperation, before: CartView | null, after: CartView) {
+    const target = focusAfterGone(before, after, operation.variantId);
+    if (target !== null && originsOf(operation).some((origin) => focusStays(origin))) focusAt(target);
   }
 
   /**
@@ -305,9 +315,13 @@ export function CartPage() {
       const outcome = await send(next.sent, givenNow);
       givenNow = false;
       if (outcome === "unauthorized") {
+        // The view of the expired session has no controls: the focus that is in the cart (a field, a "Usuń", the link) or
+        // on the body would be lost with it, so it goes to the title (F2, F3); a focus outside the cart stays.
+        const keepsFocus = focusLeavesWithView();
         setActions(NO_ACTIONS);
         if (checkout.current === "waiting") setCheckout("none");
         applyLoaded({ status: "unauthorized" });
+        if (keepsFocus) focusAt(TITLE_ID);
         return;
       }
       // An operation that was not saved ends the waiting for good: a later success does not bring it back.
@@ -317,12 +331,16 @@ export function CartPage() {
 
   async function send(operation: CartOperation, givenNow: boolean): Promise<Outcome> {
     const { variantId, action } = operation;
-    showLineError(variantId, null);
+    // The message of the line stays while its operation runs: it going at the start (a blur, so the mouse down on a
+    // control below) would move that control before the mouse up. The answer takes it away or replaces it.
     if (givenNow) setStatus("");
     const result = action.kind === "remove" ? await removeCartItem(variantId) : await changeCartItemQuantity(variantId, action.quantity);
+    // An answer is applied when no pointer is pressed: it changes the page, and the control under the pointer must not move.
+    await pointerReleased();
     if (result.status === "ok") {
       const before = view.current;
       show(result.data);
+      showLineError(variantId, null);
       // The field shows the quantity the API answered with, also when it is not the one typed.
       resetQuantityField(variantId);
       if (action.kind === "remove") setStatus(removedText(before, variantId));
@@ -334,12 +352,14 @@ export function CartPage() {
     if (result.status === "not_found") {
       // A 404 does not prove the line is gone (an unavailable product answers 404 to a change), so the reloaded cart decides.
       const reloaded = await loadCart();
+      await pointerReleased();
       if (reloaded.status === "unauthorized") return "unauthorized";
       if (reloaded.status === "ok") {
         const before = view.current;
         show(reloaded.data);
         moveFocusFromGoneLink(before, reloaded.data);
         if (!reloaded.data.lines.some((line) => line.variantId === variantId)) {
+          showLineError(variantId, null);
           setStatus(LINE_GONE);
           moveFocusFromGoneLine(operation, before, reloaded.data);
           return "gone";
@@ -464,6 +484,11 @@ function focusAfterGone(before: CartView | null, after: CartView, variantId: str
   const left = (lines: CartLine[]) => lines.filter((line) => after.lines.some((kept) => kept.variantId === line.variantId));
   const target = left(before.lines.slice(index + 1))[0] ?? left(before.lines.slice(0, index)).at(-1) ?? after.lines[0];
   return removeId(target.variantId);
+}
+
+/** The controls an operation came from: its removal button, and for a quantity also its field (committed by Tab too). */
+function originsOf({ variantId, action }: CartOperation): string[] {
+  return action.kind === "remove" ? [removeId(variantId)] : [quantityId(variantId), removeId(variantId)];
 }
 
 function CartSummary({ cart }: { cart: CartView }) {
