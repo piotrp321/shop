@@ -12,6 +12,7 @@ import {
   type PlaceOrderResult,
   placeOrder,
 } from "@/api/client";
+import { actionsFinished } from "@/cart/cart-actions";
 import { announceCartChange } from "@/cart/events";
 import { SessionExpired } from "@/cart/messages";
 import { formatPrice } from "@/catalog/format-price";
@@ -156,14 +157,18 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
 
   useEffect(() => {
     let active = true;
-    void loadCheckout().then((result) => {
-      if (!active) return;
-      setLoaded(result);
-      if (result.status === "ready") {
-        setForm(prefilled(result.session));
-        setDeliveryMethodId(onlyMethod(result.cart));
-      }
-    });
+    // A change given on the cart page of this tab while the navigation here was on its way is sent by that page after it
+    // was left: the cart is read after it, with the page loading till then (docs/features/checkout/spec.md).
+    void actionsFinished()
+      .then(loadCheckout)
+      .then((result) => {
+        if (!active) return;
+        setLoaded(result);
+        if (result.status === "ready") {
+          setForm(prefilled(result.session));
+          setDeliveryMethodId(onlyMethod(result.cart));
+        }
+      });
     return () => {
       active = false;
     };
