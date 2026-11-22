@@ -12,8 +12,8 @@ roboczym: po ukończeniu epiku usuń go.
 | Fala | Zadania | Status |
 |---|---|---|
 | 1 | STORE-UX-FIXES-1, STORE-UX-FIXES-4, STORE-UX-FIXES-6, STORE-UX-FIXES-7 | zmergowane do gałęzi epiku: STORE-UX-FIXES-6 (`50c404e5`), STORE-UX-FIXES-4 (`1988cd14`), STORE-UX-FIXES-7 (`36c97963`), STORE-UX-FIXES-1 (`5af8a3c4`) |
-| 2 | STORE-UX-FIXES-3, STORE-UX-FIXES-5 | w toku; STORE-UX-FIXES-5 zmergowane (`6fbcc733`) |
-| 3 | STORE-UX-FIXES-2 | |
+| 2 | STORE-UX-FIXES-3, STORE-UX-FIXES-5 | zmergowane do gałęzi epiku: STORE-UX-FIXES-5 (`6fbcc733`), STORE-UX-FIXES-3 (`7743e37e`) |
+| 3 | STORE-UX-FIXES-2 | w toku |
 | 4 | STORE-UX-FIXES-8 | |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
