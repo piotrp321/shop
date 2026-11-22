@@ -495,7 +495,10 @@ Fakty potrzebne do oceny skutku:
   instancja kernela z własnym `EntityManager`, więc `flush` i błąd symulatora nie dotykają `UnitOfWork` wywołującego);
   testy błędów dostawcy podmieniają serwis na klienta ze stałymi odpowiedziami.
 - Testy generatora danych demo biegną na `shop_test` w transakcji testu, bez `bin/seed-demo` i bez czyszczenia cache
-  sklepu (worker i Varnish nie obsługują `shop_test`). Testy kont na Keycloaku stosu używają tymczasowych realmów
+  sklepu (worker i Varnish nie obsługują `shop_test`). Test, który po krokach czyta załadowane wiersze, kończy kroki
+  `demo-data:analyze` w swojej transakcji (`RunsDemoDataSteps::analyze()`, już w `catalogSteps()`): autovacuum innej
+  sesji nie liczy niezatwierdzonych wierszy testu, planer oczekuje wtedy pustych tabel i odczyty trwają minuty
+  (`StepsPlannerStatisticsTest`). Testy kont na Keycloaku stosu używają tymczasowych realmów
   (`KeycloakTestRealms`, `demo-data-test-*`, usuwane po teście), nigdy realmów `shop` i `backoffice`, i ziarna losowanego
   na test (id kont są globalne w Keycloaku).
 
