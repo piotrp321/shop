@@ -358,11 +358,27 @@ describe("DashboardView", () => {
       expect(wrapper.get("[data-testid=order-status]").classes()).toContain(colour);
     });
 
-    it("heads the columns Numer, Klient, Data, Pozycje, Kwota and Status", async () => {
+    it("heads the columns Numer, Klient, Pozycje, Kwota and Status, with no column of the date", async () => {
       serve(dashboard(), { items: five, nextCursor: null });
       wrapper = await mountDashboard(["admin"]);
 
-      expect(wrapper.get("[data-testid=recent-orders]").findAll("th").map((cell) => cell.text())).toEqual(["Numer", "Klient", "Data", "Pozycje", "Kwota", "Status"]);
+      expect(wrapper.get("[data-testid=recent-orders]").findAll("th").map((cell) => cell.text())).toEqual(["Numer", "Klient", "Pozycje", "Kwota", "Status"]);
+    });
+
+    it("puts the date under the name and the units in a line of the cell of the customer, as the column of the units is hidden below the width of the card", async () => {
+      serve(dashboard(), { items: [order("R-100001", { itemCount: 3 })], nextCursor: null });
+      wrapper = await mountDashboard(["admin"]);
+
+      const row = wrapper.get("[data-testid=recent-order]");
+      const cell = row.get("[data-testid=order-customer]").element.closest("td")!;
+      const lines = Array.from(cell.querySelectorAll("[data-testid]")).map((line) => [line.getAttribute("data-testid"), line.textContent?.trim()]);
+      expect(lines[0]).toEqual(["order-customer", "Anna Nowak"]);
+      expect(lines[1]?.[0]).toBe("order-date");
+      expect(lines[1]?.[1]).toMatch(/^05\.11\.2026.*13:30:00$/);
+      expect(lines[2]).toEqual(["order-items-line", "Pozycje: 3"]);
+      // The date has no cell of its own, the units have theirs for a card wide enough.
+      expect(row.findAll("td")).toHaveLength(5);
+      expect(row.get("[data-testid=order-items]").element.closest("td")).not.toBe(cell);
     });
 
     it("links „Wszystkie zamówienia →” to the list of the orders", async () => {

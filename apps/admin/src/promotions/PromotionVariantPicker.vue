@@ -23,6 +23,10 @@ import type { PromotionVariant } from "./usePromotionForm";
  * nothing in the address (the address belongs to the form of the promotion). The buttons are named with the variant
  * („Dodaj: Hantle regulowane Lumora Para 10 / 10 kg”), and after an add the focus goes back to the search field, because
  * the button that had it is off by then (#304 F4, F5); `focusSearch` is for the parent, which puts it there on opening.
+ * The region of the table is at most 60% of the window high (not less than 12 rem) and scrolls in itself, so the search
+ * and the pager, which lie outside it, stay in the window together with it (#575). The 22 rem are what the rest of the
+ * choice (its search, the buttons below it at 375 px, the pager and the padding), the top bar and the save bar take
+ * together, so a phone window still holds the whole choice.
  */
 const props = defineProps<{ chosen: string[] }>();
 const emit = defineEmits<{ add: [variants: PromotionVariant[]]; close: [] }>();
@@ -183,7 +187,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
         aria-label="Warianty do wyboru"
         tabindex="0"
         :aria-busy="loading"
-        class="overflow-x-auto"
+        class="max-h-[max(12rem,min(60dvh,100dvh-22rem))] overflow-auto"
       >
         <table class="w-full caption-bottom text-sm">
           <TableHeader>

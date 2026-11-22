@@ -553,6 +553,77 @@ test.describe("categories screen", () => {
     }
   });
 
+  // #572, #627: a click on an option gave the focus to the page (out of the window of a move) and left the field pointing
+  // at the removed option. The tests choose an option and change nothing else: the move is not confirmed.
+  test("the window of a move keeps the focus inside after an option is clicked, filters by the next typed character and has no aria-activedescendant of a removed option", async () => {
+    test.setTimeout(90_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/categories");
+      await expect(page.getByRole("treeitem").first()).toBeVisible();
+      await page.getByRole("treeitem").first().getByRole("button", { name: /^Przenieś do…:/ }).click();
+      const window = page.getByRole("dialog", { name: /^Przenieś kategorię/ });
+      const field = window.getByRole("combobox", { name: "Nowa kategoria nadrzędna" });
+
+      await field.click();
+      await page.getByRole("option", { name: "Poziom główny" }).click();
+      await expect(field, "the field keeps the focus after a click on an option").toBeFocused();
+      await expect(window.locator(":focus"), "the focus stays inside the window").toHaveCount(1);
+      expect(await violationsOf(page, null, ["aria-valid-attr-value"]), "axe after a choice by the mouse").toEqual([]);
+
+      await page.keyboard.press("ControlOrMeta+A");
+      await page.keyboard.type("tur");
+      const options = page.getByRole("option");
+      await expect(options.first()).toBeVisible();
+      for (const name of await options.evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label") ?? ""))) {
+        expect(name.toLocaleLowerCase("pl"), "the list is filtered by the typed text").toContain("tur");
+      }
+
+      await field.press("ArrowDown");
+      await field.press("Enter");
+      await expect(page.getByRole("option")).toHaveCount(0);
+      await expect(field).toBeFocused();
+      expect(await violationsOf(page, null, ["aria-valid-attr-value"]), "axe after a choice with Enter").toEqual([]);
+
+      await window.getByRole("button", { name: "Anuluj" }).click();
+      await expect(window).toHaveCount(0);
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("the field „Kategoria główna” of a new product keeps the focus after an option is clicked, filters by the next typed character and has no aria-activedescendant of a removed option", async () => {
+    test.setTimeout(90_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/products/new");
+      await expect(page.getByRole("heading", { level: 1, name: "Nowy produkt" })).toBeVisible();
+      const field = page.getByRole("combobox", { name: "Kategoria główna" });
+      await expect(field).toBeEnabled();
+
+      await field.click();
+      await page.getByRole("option", { name: /Kajaki/ }).first().click();
+      await expect(field, "the field keeps the focus after a click on an option").toBeFocused();
+      expect(await violationsOf(page, null, ["aria-valid-attr-value"]), "axe after a choice by the mouse").toEqual([]);
+
+      await page.keyboard.press("ControlOrMeta+A");
+      await page.keyboard.type("kaj");
+      const options = page.getByRole("option");
+      await expect(options.first()).toBeVisible();
+      for (const name of await options.evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label") ?? ""))) {
+        expect(name.toLocaleLowerCase("pl"), "the list is filtered by the typed text").toContain("kaj");
+      }
+
+      await field.press("ArrowDown");
+      await field.press("Enter");
+      await expect(page.getByRole("option")).toHaveCount(0);
+      expect(await violationsOf(page, null, ["aria-valid-attr-value"]), "axe after a choice with Enter").toEqual([]);
+    } finally {
+      // Nothing is saved; the form has unsaved changes, so the page is closed without a request.
+      await page.close();
+    }
+  });
+
   // The screen and its windows, opened on a demo category (opening a window changes nothing).
   const opensTree = async (page: Page) => {
     await go(page, "/categories");

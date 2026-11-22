@@ -8,7 +8,7 @@ import { waitForBearerToken } from "../support/staff-login";
 // rabatowe”): the look and the accessibility of the list, of the form with the choice of variants and the windows, the
 // state of the list in the address, the names of the buttons and the windows of the report #304, and the colour of the
 // message of a promotion that does not exist (#446). The save of the form is in promotions.spec.ts; the tests here that
-// write plan promotions of their own that start far ahead, and the one that ends a promotion ends its own.
+// write plan promotions of their own that start far ahead, and the two that start a promotion „od teraz” (#580) end their own.
 
 // The product of promotions.spec.ts (the demo data keeps it out of its promotions): two variants of one price.
 const PRODUCT_NAME = "Elektrolity w tabletkach Lumora Nawodnienie 20";
@@ -39,6 +39,46 @@ async function openList(page: Page, address = "/promotions"): Promise<void> {
   await go(page, address);
   await expect(page.getByRole("heading", { level: 1, name: "Promocje" })).toBeVisible();
   await expect(page.getByTestId("promotion-row").first()).toBeVisible();
+}
+
+/**
+ * A promotion saved „od teraz” starts at the first whole second after the save, so the answer of the save is still
+ * planned: the form reads the promotion again once it has started and shows it active, without a reload (#580). When
+ * the save itself takes a whole second, the answer is already active: the form does not wait and announces nothing.
+ */
+async function expectStartedWithoutReload(page: Page, savedStatus: string): Promise<void> {
+  // A reload would drop this mark of the document.
+  await page.evaluate(() => document.documentElement.setAttribute("data-e2e-not-reloaded", ""));
+  const since = Date.now();
+  await expect(page.getByTestId("promotion-status"), "the form shows the promotion active by itself").toHaveText("Aktywna", { timeout: 5_000 });
+  await expect(page.getByRole("button", { name: "Zakończ teraz" })).toBeEnabled({ timeout: 5_000 });
+  expect(Date.now() - since, "„Aktywna” and „Zakończ teraz” within 5 s of the toast").toBeLessThan(5_000);
+  if (savedStatus === "planned") {
+    await expect(page.getByRole("status").filter({ hasText: "Promocja jest aktywna." })).toBeVisible();
+  } else {
+    expect(savedStatus, "the answer of the save is planned or already active").toBe("active");
+    await expect(page.getByRole("status").filter({ hasText: "Promocja rozpoczyna się." })).toHaveCount(0);
+  }
+  await expect(page.getByTestId("name-input")).toBeEnabled();
+  await expect(page.locator("html"), "no reload of the page").toHaveAttribute("data-e2e-not-reloaded", "");
+}
+
+/** The status of the promotion in the answer of the save (set before the click on „Zapisz”). */
+function waitForSavedStatus(page: Page): Promise<string> {
+  return page
+    .waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/admin/promotions" && response.request().method() === "POST")
+    .then(async (response) => ((await response.json()) as { status: string }).status);
+}
+
+/** Fills the form of a new promotion „od teraz” of the two variants of the product, ending in a day. */
+async function fillStartingNow(page: Page, name: string): Promise<void> {
+  await go(page, "/promotions/new");
+  await page.getByTestId("name-input").fill(name);
+  await page.getByTestId("percent-input").fill("10");
+  await page.getByTestId("start-now").click();
+  await page.getByTestId("ends-input").fill(warsawLocal(Date.now() + DAY_MS));
+  await openPickerOn(page);
+  await page.getByRole("button", { name: `Dodaj cały produkt: ${PRODUCT_NAME}` }).click();
 }
 
 /** The choice of variants of the form of a new promotion, narrowed to the two variants of the product. */
@@ -278,6 +318,178 @@ test.describe("the columns of lower priority", () => {
   });
 });
 
+/**
+ * K4 (ADMIN-UX-FIXES): the region „Warianty do wyboru” has a height of its own, so the search and the pager of the choice
+ * stay in the window together with it, between the top bar and the save bar. Every number is read from the layout.
+ */
+const PICKER_WINDOWS = [viewports.desktop, viewports.phone] as const;
+
+type Box = { top: number; bottom: number };
+
+/** The form of a new promotion with the choice opened on the first page of the whole list (more than 100 rows of the demo data). */
+async function openWholeListPicker(page: Page): Promise<void> {
+  await go(page, "/promotions/new");
+  await expect(page.getByRole("heading", { level: 1, name: "Nowa promocja" })).toBeVisible();
+  await page.getByTestId("open-picker").click();
+  await expect(page.getByTestId("picker-row").first()).toBeVisible();
+  expect(await page.getByTestId("picker-row").count(), "the page of the choice has more than 100 rows").toBeGreaterThan(100);
+  await expect(page.getByRole("region", { name: "Zapis formularza" }), "the save bar is in view").toBeVisible();
+  await expect(pickerRegion(page)).toBeVisible();
+  await settle(page);
+}
+
+const pickerRegion = (page: Page) => page.getByRole("region", { name: "Warianty do wyboru" });
+
+/** Waits until the page and the region have stopped scrolling (a scroll by a key or by a focus may be animated). */
+async function settleScroll(page: Page): Promise<void> {
+  await settle(page);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const region = document.querySelector("[role=region][aria-label='Warianty do wyboru']");
+        const position = () => `${window.scrollY}/${region?.scrollTop}`;
+        let last = position();
+        let still = 0;
+        const frame = () => {
+          const now = position();
+          still = now === last ? still + 1 : 0;
+          last = now;
+          if (still >= 10) resolve();
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }),
+  );
+}
+
+/** Scrolls the page so that the field of the search lies right under the top bar (or as far as the page goes). */
+async function scrollSearchUnderTopbar(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const topbar = document.querySelector("header")!.getBoundingClientRect();
+    const search = document.querySelector("[data-testid=picker-search]")!.getBoundingClientRect();
+    window.scrollBy({ top: search.top - topbar.bottom, behavior: "instant" });
+  });
+  await settleScroll(page);
+}
+
+/** The focused control of the choice lies wholly in the region and in the window, and is the element at its own centre. */
+async function expectInRegionAndUncovered(page: Page, label: string): Promise<void> {
+  const state = await page.evaluate(() => {
+    const item = document.activeElement as HTMLElement;
+    const region = document.querySelector<HTMLElement>("[role=region][aria-label='Warianty do wyboru']")!.getBoundingClientRect();
+    const rect = item.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return {
+      name: item.getAttribute("aria-label") ?? item.textContent?.trim() ?? item.tagName,
+      rect: `${Math.round(rect.top)}..${Math.round(rect.bottom)}`,
+      region: `${Math.round(region.top)}..${Math.round(region.bottom)}`,
+      window: innerHeight,
+      inRegion: rect.top >= region.top - 0.5 && rect.bottom <= region.bottom + 0.5 && rect.left >= region.left - 0.5 && rect.right <= region.right + 0.5,
+      inWindow: rect.top >= -0.5 && rect.bottom <= innerHeight + 0.5,
+      reachable: hit !== null && (item === hit || item.contains(hit)),
+    };
+  });
+  const where = `${label} „${state.name}” (control ${state.rect}, region ${state.region}, window ${state.window})`;
+  expect(state.inRegion, `${where} lies wholly in the region`).toBe(true);
+  expect(state.inWindow, `${where} lies wholly in the window`).toBe(true);
+  expect(state.reachable, `${where} is not covered by another element`).toBe(true);
+}
+
+test.describe("the region of the choice of variants has a height of its own (K4)", () => {
+  for (const size of PICKER_WINDOWS) {
+    test.describe(`at ${size.width} x ${size.height} px`, () => {
+      let page: Page;
+
+      test.beforeEach(async () => {
+        test.setTimeout(60_000);
+        page = await newPanelPage("admin", size);
+        await openWholeListPicker(page);
+      });
+
+      test.afterEach(async () => {
+        await page.close();
+      });
+
+      test("the region is at most 60% of the window high and scrolls in itself", async () => {
+        const { height, scrollHeight, clientHeight } = await pickerRegion(page).evaluate((element) => ({
+          height: element.getBoundingClientRect().height,
+          scrollHeight: element.scrollHeight,
+          clientHeight: element.clientHeight,
+        }));
+        expect(height, `the height of the region (${Math.round(height)} px) against 60% of ${size.height} px`).toBeLessThanOrEqual(size.height * 0.6 + 1);
+        expect(scrollHeight, `the region scrolls: scrollHeight ${scrollHeight}, clientHeight ${clientHeight}`).toBeGreaterThan(clientHeight);
+      });
+
+      test("the search, the region and the pager are in the window together, between the top bar and the save bar", async () => {
+        await scrollSearchUnderTopbar(page);
+        const edges = await page.evaluate(() => {
+          const box = (element: Element): Box => {
+            const rect = element.getBoundingClientRect();
+            return { top: rect.top, bottom: rect.bottom };
+          };
+          // A disabled button does not take the pointer: the point is then the row of the pager that holds it.
+          const hits = (element: Element) => {
+            const rect = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            return hit !== null && (element.contains(hit) || (element.matches(":disabled") && hit === element.parentElement));
+          };
+          const search = document.querySelector("[data-testid=picker-search]")!;
+          const pager = [...document.querySelectorAll("[data-testid=picker-previous], [data-testid=picker-next]")];
+          return {
+            topbarBottom: box(document.querySelector("header")!).bottom,
+            saveBarTop: box(document.querySelector("[aria-label='Zapis formularza']")!).top,
+            searchTop: box(search).top,
+            searchHit: hits(search),
+            pagerBottom: Math.max(...pager.map((element) => box(element).bottom)),
+            pagerHits: pager.map(hits),
+          };
+        });
+        expect(edges.searchTop, `the top of the search (${Math.round(edges.searchTop)}) is not above the bottom of the top bar (${Math.round(edges.topbarBottom)})`).toBeGreaterThanOrEqual(edges.topbarBottom - 0.5);
+        expect(edges.pagerBottom, `the bottom of the pager (${Math.round(edges.pagerBottom)}) is not below the top of the save bar (${Math.round(edges.saveBarTop)})`).toBeLessThanOrEqual(edges.saveBarTop + 0.5);
+        expect(edges.searchHit, "the centre of the search is the search").toBe(true);
+        expect(edges.pagerHits, "the centre of each button of the pager is that button").toEqual([true, true]);
+      });
+
+      test("the keyboard scrolls the region, and the first and the last button stay in view", async () => {
+        await scrollSearchUnderTopbar(page);
+        const region = pickerRegion(page);
+        await region.focus();
+        await expect(region).toBeFocused();
+        const before = await region.evaluate((element) => element.scrollTop);
+        await page.keyboard.press("End");
+        await expect.poll(() => region.evaluate((element) => element.scrollTop), "End scrolls the region").toBeGreaterThan(before);
+        await settleScroll(page);
+
+        await page.keyboard.press("Tab");
+        const firstAdd = await region.evaluate((element) => element.querySelector("button:not(:disabled)")!.getAttribute("aria-label"));
+        expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Tab from the region goes to the first „Dodaj”").toBe(firstAdd);
+        await settleScroll(page);
+        await expectInRegionAndUncovered(page, "the first button");
+
+        // The first active button of the pager is „Następna” (the first page has no previous one).
+        await page.getByTestId("picker-next").focus();
+        await page.keyboard.press("Shift+Tab");
+        const lastAdd = await region.evaluate((element) => [...element.querySelectorAll("button:not(:disabled)")].at(-1)!.getAttribute("aria-label"));
+        expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Shift+Tab from the pager goes to the last button of the region").toBe(lastAdd);
+        await settleScroll(page);
+        await expectInRegionAndUncovered(page, "the last button");
+      });
+
+      test("after an add on the last row the focus is on the search, and the search is in the window", async () => {
+        const last = pickerRegion(page).getByTestId("picker-row").last().getByTestId("add-variant");
+        await expect(last, "the last row has a variant that can be added").toBeEnabled();
+        await last.click();
+        const search = page.getByTestId("picker-search");
+        await expect(search, "the focus goes back to the search").toBeFocused();
+        await settle(page);
+        const { top, bottom } = await search.evaluate((element) => element.getBoundingClientRect());
+        expect(top, `the top of the search (${Math.round(top)}) is in the window`).toBeGreaterThanOrEqual(-0.5);
+        expect(bottom, `the bottom of the search (${Math.round(bottom)}) is in the window (${size.height} px)`).toBeLessThanOrEqual(size.height + 0.5);
+      });
+    });
+  }
+});
+
 test.describe("the form", () => {
   test("#304 F5: the buttons of the choice of variants are named with the variant, and the focus goes back to the search after an add (F4)", async () => {
     test.setTimeout(60_000);
@@ -391,7 +603,7 @@ test.describe("the form", () => {
     }
   });
 
-  test("#304 F7: after „Zakończ teraz” the form waits for the end, reads the promotion again and shows it ended and read-only, with the toast", async () => {
+  test("#580, #304 F7: a save „od teraz” shows the promotion active by itself, and after „Zakończ teraz” the form waits for the end, reads the promotion again and shows it ended and read-only, with the toast", async () => {
     test.setTimeout(WAIT_FOR_END_MS + 150_000);
     const page = await newPanelPage("admin", viewports.desktop);
     const pendingToken = waitForBearerToken(page);
@@ -402,22 +614,11 @@ test.describe("the form", () => {
         // A promotion of the product left by an earlier run would overlap the new one.
         await endActivePromotionsOf(page.request, await token.fresh(page), PRODUCT_NAME);
 
-        const name = `E2E koniec ${Date.now()}`;
-        await go(page, "/promotions/new");
-        await page.getByTestId("name-input").fill(name);
-        await page.getByTestId("percent-input").fill("10");
-        await page.getByTestId("start-now").click();
-        await page.getByTestId("ends-input").fill(warsawLocal(Date.now() + DAY_MS));
-        await openPickerOn(page);
-        await page.getByRole("button", { name: `Dodaj cały produkt: ${PRODUCT_NAME}` }).click();
+        await fillStartingNow(page, `E2E koniec ${Date.now()}`);
+        const savedStatus = waitForSavedStatus(page);
         await page.getByTestId("save").click();
         await expect(toasts(page).getByText("Promocja zapisana."), "the promotion was rejected (conflict, validation or API error)").toBeVisible();
-        // A promotion that starts „od teraz” starts at the first whole second after the save, and the form shows the status of
-        // the answer of the save: the page is read again until the promotion is active.
-        await expect(async () => {
-          await page.reload();
-          await expect(page.getByTestId("promotion-status")).toHaveText("Aktywna", { timeout: 2_000 });
-        }).toPass({ timeout: 20_000, intervals: [1_000] });
+        await expectStartedWithoutReload(page, await savedStatus);
 
         await page.getByTestId("end-now").click();
         await page.getByRole("alertdialog").getByRole("button", { name: "Zakończ promocję teraz" }).click();
@@ -431,6 +632,50 @@ test.describe("the form", () => {
         await expect(page.getByRole("heading", { level: 2, name: "Status" }), "the focus stays on the heading of the card").toBeFocused();
       } finally {
         // The next run (and the stack, until the next make seed) must not meet this promotion.
+        await endActivePromotionsOf(page.request, await token.fresh(page), PRODUCT_NAME);
+      }
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("#580: a save „od teraz” whose answer is held for 3 s locks the form meanwhile, and then shows the promotion active without a reload", async () => {
+    test.setTimeout(150_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    const pendingToken = waitForBearerToken(page);
+    try {
+      await go(page, "/promotions");
+      const token = await PanelToken.from(pendingToken);
+      try {
+        await endActivePromotionsOf(page.request, await token.fresh(page), PRODUCT_NAME);
+        await fillStartingNow(page, `E2E od teraz ${Date.now()}`);
+        // The API saves at once; its answer reaches the panel 3 s later.
+        let held = 0;
+        let savedStatus = "";
+        await page.route("**/api/v1/admin/promotions", async (route) => {
+          if (route.request().method() !== "POST") {
+            await route.fallback();
+            return;
+          }
+          held += 1;
+          const response = await route.fetch();
+          savedStatus = ((await response.json()) as { status: string }).status;
+          await new Promise((resolve) => setTimeout(resolve, 3_000));
+          await route.fulfill({ response });
+        });
+
+        await page.getByTestId("save").click();
+
+        await expect(page.getByTestId("name-input"), "the field is locked while the answer of the save is held").toBeDisabled();
+        await expect(page.getByTestId("picker-search")).toBeDisabled();
+        await expect(toasts(page).getByText("Promocja zapisana.")).toHaveCount(0);
+        await expect(page.getByTestId("name-input")).toBeDisabled();
+        await expect(toasts(page).getByText("Promocja zapisana."), "the promotion was rejected (conflict, validation or API error)").toBeVisible({ timeout: 10_000 });
+        expect(held).toBe(1);
+        await expect(page).toHaveURL(/\/promotions\/[0-9a-f-]{36}$/);
+        await expectStartedWithoutReload(page, savedStatus);
+      } finally {
+        await page.unrouteAll({ behavior: "ignoreErrors" });
         await endActivePromotionsOf(page.request, await token.fresh(page), PRODUCT_NAME);
       }
     } finally {

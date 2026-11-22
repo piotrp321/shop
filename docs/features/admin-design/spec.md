@@ -370,7 +370,8 @@ do adresu trafia dopiero zastosowana fraza.
   (publikacja, wycofanie, zakończenie, usunięcie) są w karcie bocznej „Status”, nie w pasku.
 - **Po zapisie**: toast („Produkt zapisany.”, „Promocja zapisana.”, „Kod rabatowy zapisany.”), pasek znika, a fokus
   przechodzi na H1 formularza (`tabindex="-1"`), bo przycisk „Zapisz” zniknął razem z paskiem. Wyjątek (#250 F16):
-  gdy w trakcie żądania pracownik przeniósł fokus do pola, fokus zostaje w tym polu. Po nieudanym zapisie fokus trafia
+  gdy w trakcie żądania pracownik przeniósł fokus do pola, fokus zostaje w tym polu. Wyjątek nie dotyczy zapisu
+  formularza promocji: w jego trakcie pola są wyłączone (dotyczy akcji karty „Status”). Po nieudanym zapisie fokus trafia
   na pierwsze pole z błędem albo komunikat formularza, a komunikat jest przewinięty do widoku (#304 F3).
 - **Strażnik niezapisanych zmian** we wszystkich trzech formularzach (produkt, promocja, kod rabatowy), jeden composable `useUnsavedChangesGuard` (globalny `router.beforeEach`) z oknem
   `UnsavedChangesDialog`: przejście na inną trasę panelu z niezapisanymi zmianami otwiera okno „Masz niezapisane
@@ -437,10 +438,14 @@ błędu z czasem pokazanych danych; dotyczy kafli katalogu i „Ostatnich zamów
   - „Kody rabatowe” → `/discount-codes?status=active` (`admin`, `marketing`).
   Każda rola widzi co najmniej jeden wiersz, a rola z kilku widzi każdy raz. Do czasu wczytania `/me` karty nie ma;
   do czasu wczytania pulpitu (i po błędzie jego pobrania) wiersze ról pokazują się bez liczb.
-- **„Ostatnie zamówienia”** (role `admin`, `support`, `warehouse`): tabela pięciu najnowszych (numer jako link, klient,
-  data, pozycje `itemCount`, kwota, status) i link „Wszystkie zamówienia →”. Błąd tej karty nie psuje reszty pulpitu
-  (komunikat w karcie z „Spróbuj ponownie”, a 403 bez ponowienia; nieudane odświeżenie zostawia pokazane zamówienia
-  i podaje czas ich pobrania).
+- **„Ostatnie zamówienia”** (role `admin`, `support`, `warehouse`): tabela pięciu najnowszych i link „Wszystkie zamówienia →”.
+  Kolumny: numer (link), klient, pozycje (`itemCount`), kwota, status. Data zamówienia jest drugą linią komórki
+  „Klient”. „Pozycje” są kolumną tylko w karcie szerokiej na co najmniej 40 rem (container query na szerokości karty,
+  nie okna: karta ma 2/3 albo całą szerokość pulpitu), węższa pokazuje liczbę pozycji jako trzecią linię komórki
+  „Klient”. Tabela mieści się w karcie przy 1280 i 1440 px; gdy region mimo to się przewija (telefon), ma cień przy
+  krawędzi, za którą jest dalszy ciąg, jak `DataTable` (wspólny kod `useScrollEdges` i `ScrollEdgeShadows`).
+  Błąd tej karty nie psuje reszty pulpitu (komunikat w karcie z „Spróbuj ponownie”, a 403 bez ponowienia;
+  nieudane odświeżenie zostawia pokazane zamówienia i podaje czas ich pobrania).
 - Komunikat „Nie masz dostępu do tej strony.” po przekierowaniu ze strażnika (sekcja „Powłoka”).
 
 **Stan systemu** (`/system`, H1 „Stan systemu”, tylko `admin`, pozycja menu w sekcji System): dzisiejsza zawartość

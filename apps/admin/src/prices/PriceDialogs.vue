@@ -15,6 +15,7 @@ import type { PriceChange } from "@/prices/priceChange";
 import type { PriceRow } from "@/prices/pricePage";
 import type { PriceHistoryItem } from "@/prices/usePriceHistory";
 import { usePriceHistory } from "@/prices/usePriceHistory";
+import { type TaxClass, taxClassName } from "@/products/taxClasses";
 
 /**
  * The windows of a price: „Zmień cenę” and „Historia ceny”, shared by the price list and the card of a product. The
@@ -26,6 +27,8 @@ export type PriceDialogRow = Pick<PriceRow, "variantId" | "name" | "label" | "pr
 
 const props = defineProps<{
   rows: PriceDialogRow[];
+  /** The tax classes of the catalog: the history shows the name of a class, or its code when the list does not have it. */
+  taxClasses: TaxClass[];
   changePrice: (variantId: string, gross: number, version: number | null) => Promise<PriceChange>;
   fallbackFocus: () => HTMLElement | null;
 }>();
@@ -181,7 +184,7 @@ const historyColumns: ListColumn<HistoryRow>[] = [
   { key: "net", header: "Netto", align: "right", hideBelow: "lg", text: (row) => money(row.net, row.currency) },
   { key: "vat", header: "VAT", align: "right", hideBelow: "lg", text: (row) => money(row.vat, row.currency) },
   { key: "rate", header: "Stawka", hideBelow: "lg", text: (row) => formatRate(row.vatRate) },
-  { key: "taxClass", header: "Klasa", hideBelow: "lg", text: (row) => row.taxClass },
+  { key: "taxClass", header: "Klasa", hideBelow: "lg", text: (row) => taxClassName(props.taxClasses, row.taxClass) },
   { key: "source", header: "Źródło" },
   { key: "actor", header: "Pracownik", hideBelow: "lg", text: (row) => row.actorName ?? "—" },
 ];
@@ -344,7 +347,7 @@ defineExpose({ openChange, openHistory });
           <span data-testid="history-rate">{{ formatRate(row.vatRate) }}</span>
         </template>
         <template #cell-taxClass="{ row }">
-          <span data-testid="history-tax-class">{{ row.taxClass }}</span>
+          <span data-testid="history-tax-class">{{ taxClassName(props.taxClasses, row.taxClass) }}</span>
         </template>
         <template #cell-source="{ row }">
           <span data-testid="history-source">{{ sourceLabel(row.source) }}</span>

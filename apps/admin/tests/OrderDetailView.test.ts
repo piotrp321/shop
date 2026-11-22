@@ -1088,6 +1088,241 @@ describe("OrderDetailView", () => {
     });
   });
 
+  // K3 (docs/features/admin-ux-fixes/spec.md): while a change is sent, the window it was sent from stays open and takes no input.
+  describe("a save in flight", () => {
+    interface SaveWindow {
+      name: string;
+      /** The order the window is opened on. */
+      order: (overrides?: Partial<BackofficeOrder>) => BackofficeOrder;
+      /** The action that opens the window. */
+      opener: string;
+      root: string;
+      submit: string;
+      cancel: string;
+      /** The fields that take text. */
+      fields: string[];
+      /** The field a 422 points at, which Enter submits from. */
+      field: string;
+      send: () => typeof mocks.post;
+      error: string;
+    }
+
+    const answered = (overrides: Partial<BackofficeOrder> = {}) => order({ status: "shipped", version: 3, allowedTransitions: ["deliver"], canChangeTrackingNumber: true, ...overrides });
+    const windows: SaveWindow[] = [
+      {
+        name: "the window of a change",
+        order: (overrides) => order(overrides),
+        opener: "action-ship",
+        root: "change-dialog",
+        submit: "change-submit",
+        cancel: "change-cancel",
+        fields: ["change-note", "change-tracking-number-field"],
+        field: "change-tracking-number-field",
+        send: () => mocks.post,
+        error: "change-error",
+      },
+      {
+        name: "the window of the tracking number",
+        order: (overrides) => answered(overrides),
+        opener: "change-tracking-number",
+        root: "tracking-dialog",
+        submit: "tracking-submit",
+        cancel: "tracking-cancel",
+        fields: ["tracking-number-input"],
+        field: "tracking-number-input",
+        send: () => mocks.put,
+        error: "tracking-error",
+      },
+    ];
+
+    type Answer = { data?: BackofficeOrder; error?: unknown; response: { status: number } };
+    function deferred() {
+      let resolve!: (value: Answer) => void;
+      let reject!: (reason: unknown) => void;
+      const promise = new Promise<Answer>((done, fail) => {
+        resolve = done;
+        reject = fail;
+      });
+      return { promise, resolve, reject };
+    }
+
+    const pressEscape = () => (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    const clickOutside = () => document.querySelector("[data-slot=dialog-overlay]")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }));
+    const settle = async () => {
+      await new Promise((done) => setTimeout(done, 10));
+      await flushPromises();
+    };
+
+    describe.each(windows)("$name", (target) => {
+      const inWindow = (id: string) => page().get(`[data-testid=${target.root}] [data-testid=${id}]`);
+      const windowExists = () => page().find(`[data-testid=${target.root}]`).exists();
+      const closeButton = () => page().get(`[data-testid=${target.root}] [data-slot=dialog-close]`);
+
+      /** Opens the window, types into its field and sends the change, which the test answers later. */
+      async function sendHeld() {
+        serve(target.order());
+        wrapper = await mountView();
+        const held = deferred();
+        target.send().mockReturnValue(held.promise);
+        await wrapper.get(`[data-testid=${target.opener}]`).trigger("click");
+        await settle();
+        await inWindow(target.field).setValue("AB-1");
+        (inWindow(target.submit).element as HTMLElement).focus();
+        await inWindow(target.submit).trigger("click");
+        await flushPromises();
+        return held;
+      }
+
+      it.each(["Escape", "a click outside", "„Wróć”", "„Zamknij”"])("stays open on %s, and the change still ends with its toast", async (way) => {
+        const held = await sendHeld();
+        expect(target.send()).toHaveBeenCalledTimes(1);
+
+        const close: Record<string, () => Promise<unknown> | unknown> = {
+          Escape: pressEscape,
+          "a click outside": clickOutside,
+          "„Wróć”": () => inWindow(target.cancel).trigger("click"),
+          "„Zamknij”": () => closeButton().trigger("click"),
+        };
+        await close[way]!();
+        await settle();
+
+        expect(windowExists()).toBe(true);
+        expect(successToast).not.toHaveBeenCalled();
+        held.resolve({ data: answered({ shipment: { carrier: "Kurier", trackingNumber: "AB-1", trackingUrl: null } }), response: { status: 200 } });
+        await settle();
+
+        expect(successToast).toHaveBeenCalledTimes(1);
+        expect(windowExists()).toBe(false);
+      });
+
+      it("has aria-disabled instead of disabled on the button of the effect, keeps the focus on it, and takes no typing", async () => {
+        await sendHeld();
+
+        const submit = inWindow(target.submit);
+        expect(submit.attributes("aria-disabled")).toBe("true");
+        expect(submit.attributes("disabled")).toBeUndefined();
+        expect(document.activeElement).toBe(submit.element);
+        for (const id of target.fields) {
+          expect(inWindow(id).attributes("readonly"), id).toBeDefined();
+        }
+      });
+
+      it("sends one request for the second click, Enter and Space on the button and Enter in the field", async () => {
+        await sendHeld();
+        const submit = inWindow(target.submit);
+
+        await submit.trigger("click");
+        await submit.trigger("keydown.enter");
+        await submit.trigger("keydown.space");
+        await submit.trigger("keyup.space");
+        await submit.trigger("click");
+        await inWindow(target.field).trigger("keydown.enter");
+        await flushPromises();
+
+        expect(target.send()).toHaveBeenCalledTimes(1);
+      });
+
+      it("lifts the block after a 422: the window stays, the field keeps its value and takes changes, the error is at it with the focus", async () => {
+        const held = await sendHeld();
+        held.resolve({ data: undefined, error: { violations: [{ propertyPath: "trackingNumber", title: "Zły numer." }] }, response: { status: 422 } });
+        await settle();
+
+        expect(windowExists()).toBe(true);
+        expect(inWindow(target.submit).attributes("aria-disabled")).toBeUndefined();
+        expect((inWindow(target.field).element as HTMLInputElement).value).toBe("AB-1");
+        expect(inWindow(target.field).attributes("readonly")).toBeUndefined();
+        expect(page().get(`[data-testid=${target.root}] [data-form-error]`).text()).toBe("Zły numer.");
+        expect(document.activeElement).toBe(inWindow(target.field).element);
+        await inWindow(target.field).setValue("AB-2");
+        target.send().mockResolvedValue({ data: answered(), response: { status: 200 } });
+        await inWindow(target.submit).trigger("click");
+        await settle();
+
+        expect(target.send()).toHaveBeenCalledTimes(2);
+        expect(successToast).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        ["a network error", { reject: new Error("offline") }, /Sprawdź połączenie z API\./],
+        ["a 403", { answer: { data: undefined, response: { status: 403 } } }, /^Nie masz uprawnień do tej zmiany\.$/],
+        ["a 500", { answer: { data: undefined, response: { status: 500 } } }, /\(HTTP 500\)/],
+      ] as const)("lifts the block after %s: the message is in the window with the focus, the value stays, and the next try sends a new request", async (_name, outcome, message) => {
+        const held = await sendHeld();
+        if ("reject" in outcome) {
+          held.reject(outcome.reject);
+        } else {
+          held.resolve(outcome.answer);
+        }
+        await settle();
+
+        expect(windowExists()).toBe(true);
+        expect(inWindow(target.error).text()).toMatch(message);
+        expect(document.activeElement).toBe(inWindow(target.error).element);
+        expect(inWindow(target.submit).attributes("aria-disabled")).toBeUndefined();
+        expect((inWindow(target.field).element as HTMLInputElement).value).toBe("AB-1");
+        expect(inWindow(target.field).attributes("readonly")).toBeUndefined();
+        target.send().mockResolvedValue({ data: answered(), response: { status: 200 } });
+        await inWindow(target.submit).trigger("click");
+        await settle();
+
+        expect(target.send()).toHaveBeenCalledTimes(2);
+        expect(successToast).toHaveBeenCalledTimes(1);
+      });
+
+      it("lifts the block after a 409 and reloads the order", async () => {
+        const held = await sendHeld();
+        serve(answered({ version: 5, allowedTransitions: [] }));
+        held.resolve({ data: undefined, error: { status: 409 }, response: { status: 409 } });
+        await settle();
+
+        expect(mocks.get).toHaveBeenCalledTimes(2);
+        expect(text("status")).toBe("Wysłane");
+        expect(successToast).not.toHaveBeenCalled();
+        if (target.root === "change-dialog") {
+          // The window of a change closes, and the conflict, not the window, says what happened.
+          expect(windowExists()).toBe(false);
+          expect(document.activeElement).toBe(wrapper!.get("[data-testid=conflict]").element);
+        } else {
+          // The window of the number stays with the message and the value.
+          expect(windowExists()).toBe(true);
+          expect(inWindow(target.error).text()).toBe("Zamówienie zostało w międzyczasie zmienione – sprawdź jego stan.");
+          expect(document.activeElement).toBe(inWindow(target.error).element);
+          expect((inWindow(target.field).element as HTMLInputElement).value).toBe("AB-1");
+          expect(inWindow(target.field).attributes("readonly")).toBeUndefined();
+          expect(inWindow(target.submit).attributes("aria-disabled")).toBeUndefined();
+        }
+      });
+
+      it("closes the window when the screen moves to another order, drops the late answer, and closes the window opened there with Escape", async () => {
+        const held = await sendHeld();
+
+        serve(target.order({ orderId: "o-2", number: "R-100002" }));
+        await wrapper!.router.push("/orders/o-2");
+        await settle();
+        expect(windowExists()).toBe(false);
+        expect(wrapper!.get("h1").text()).toBe("Zamówienie R-100002");
+
+        // The save of the first order is still in flight: the new window waits for it, but is not locked.
+        const statusBefore = text("status");
+        await wrapper!.get(`[data-testid=${target.opener}]`).trigger("click");
+        await settle();
+        expect(windowExists()).toBe(true);
+        expect(inWindow(target.submit).attributes("aria-disabled")).toBe("true");
+        held.resolve({ data: answered(), response: { status: 200 } });
+        await settle();
+
+        expect(successToast).not.toHaveBeenCalled();
+        expect(wrapper!.get("h1").text()).toBe("Zamówienie R-100002");
+        expect(text("status")).toBe(statusBefore);
+        expect(windowExists()).toBe(true);
+        expect(inWindow(target.submit).attributes("aria-disabled")).toBeUndefined();
+        pressEscape();
+        await settle();
+        expect(windowExists()).toBe(false);
+      });
+    });
+  });
+
   describe("the states of the screen", () => {
     it("says the order was not found, with the H1 „Nie znaleziono zamówienia” and a link to the list", async () => {
       serve(404);

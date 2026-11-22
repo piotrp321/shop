@@ -28,7 +28,8 @@ import { useAuthStore } from "@/stores/auth";
 // What a failed save moves the focus to: the first error mark or field marked invalid, in the order of the document;
 // a disabled field cannot take focus.
 const FIRST_ERROR = '[data-form-error], [aria-invalid="true"]:not(:disabled)';
-// A field the staff member types in: an action that ends while the focus is in one leaves it there (#250 F16).
+// A field the staff member types in: an action of the card „Status” that ends while the focus is in one leaves it there
+// (#250 F16). A save cannot: the fields are off while it runs.
 const EDITABLE_FIELD = 'input:not([type="file"]), textarea, select, [role="combobox"]';
 const FOCUSABLE = "input, textarea, select, button, a[href], [tabindex]";
 
@@ -44,6 +45,7 @@ const {
   loaded,
   loadError,
   busy,
+  locked,
   dirty,
   status: promotionStatus,
   readOnly,
@@ -56,6 +58,9 @@ const {
   ending,
   endNotice,
   endError,
+  starting,
+  startNotice,
+  startError,
   errorsAt,
   isConflicting,
   save,
@@ -81,7 +86,16 @@ const {
   },
 });
 
-const ids = { name: useId(), percent: useId(), starts: useId(), startNow: useId(), ends: useId(), ending: useId(), reason: useId() };
+const ids = {
+  name: useId(),
+  percent: useId(),
+  starts: useId(),
+  startNow: useId(),
+  ends: useId(),
+  ending: useId(),
+  starting: useId(),
+  reason: useId(),
+};
 
 const root = ref<HTMLElement | null>(null);
 const header = ref<InstanceType<typeof PageHeader> | null>(null);
@@ -92,8 +106,8 @@ const picker = ref<InstanceType<typeof PromotionVariantPicker> | null>(null);
 // The result of an action: a success says so in a toast (a save and the immediate end by the text of the form, a
 // deletion by its own) and moves the focus to where the button was: the save bar goes away with its button, so the focus
 // goes to the H1; ending replaces its button, so it goes to the heading of the card „Status”; after a deletion the view
-// leaves and the shell takes the focus to the H1 of the list. Unless the staff member moved to a field while the request
-// ran: then it stays there. A failure moves the focus to the first field with an error, else to the message of the form,
+// leaves and the shell takes the focus to the H1 of the list. Unless the staff member moved to a field while an action of
+// the card „Status” ran: then it stays there (the fields are off while a save runs). A failure moves the focus to the first field with an error, else to the message of the form,
 // and brings it into view (#304 F3).
 async function run(action: () => Promise<ActionResult>, after: "page" | "status" | "left", toastText?: string): Promise<void> {
   const result = await action();
@@ -136,9 +150,10 @@ async function discardChanges(): Promise<void> {
   header.value?.focus();
 }
 
-// „Odśwież” is gone with the message about a failed read, so the focus goes to the heading of the card; when the read
-// fails as well, the message of the load replaces the form and the card with it, so it goes to the H1.
-async function refreshAfterEnd(): Promise<void> {
+// „Odśwież” is gone with the message about a failed read (of the end or of the start), so the focus goes to the heading
+// of the card; when the read fails as well, the message of the load replaces the form and the card with it, so it goes
+// to the H1.
+async function refreshAfterRead(): Promise<void> {
   await refresh();
   await nextTick();
   if (statusCard.value === null) {
@@ -211,8 +226,12 @@ const crumbs = computed(() => [
   { label: loadError.value ? "Promocja" : title.value },
 ]);
 
-// What explains a disabled „Zakończ teraz” or „Usuń”: the wait for the end, or the changes to save first.
-const actionReason = computed(() => (ending.value ? ids.ending : dirty.value ? ids.reason : undefined));
+// What explains a disabled „Zakończ teraz” or „Usuń”: the wait for the end or for the start, or the changes to save first.
+const actionReason = computed(() => (ending.value ? ids.ending : starting.value ? ids.starting : dirty.value ? ids.reason : undefined));
+// What explains a disabled „Zapisz”: the wait for the end or for the start.
+const saveReason = computed(() => (ending.value ? ids.ending : starting.value ? ids.starting : undefined));
+// A read of the promotion after „Zakończ teraz” or after a save „od teraz” that failed or ran out of time.
+const readError = computed(() => endError.value ?? startError.value);
 
 // The text of an error is the colour of the status „danger” (#446): the contrast of the default one is lower on the card.
 const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-description]:text-status-danger";
@@ -321,21 +340,36 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
               >
                 {{ endNotice }}
               </p>
+              <p
+                v-if="starting"
+                :id="ids.starting"
+                data-testid="starting-note"
+                class="text-sm text-muted-foreground"
+              >
+                Promocja rozpoczyna się.
+              </p>
+              <p
+                v-if="startNotice"
+                data-testid="start-notice"
+                class="text-sm"
+              >
+                {{ startNotice }}
+              </p>
             </div>
             <Alert
-              v-if="endError"
-              data-testid="end-error"
+              v-if="readError"
+              :data-testid="endError ? 'end-error' : 'start-error'"
               variant="destructive"
               :class="ERROR_ALERT"
             >
               <AlertDescription class="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <span>{{ endError }}</span>
+                <span>{{ readError }}</span>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   data-testid="end-refresh"
-                  @click="refreshAfterEnd"
+                  @click="refreshAfterRead"
                 >
                   Odśwież
                 </Button>
@@ -368,7 +402,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
                 Usuń
               </Button>
               <p
-                v-if="dirty && !ending"
+                v-if="dirty && !ending && !starting"
                 :id="ids.reason"
                 data-testid="action-reason"
                 class="text-sm text-muted-foreground"
@@ -379,7 +413,14 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
           </FormSection>
         </div>
 
-        <div class="flex min-w-0 flex-col gap-6 xl:col-start-1 xl:row-start-1">
+        <!-- While a save runs, while the form waits for the start of a promotion saved „od teraz” and while „Odśwież”
+             reads the promotion, nothing can be typed or chosen: the answer rebuilds the form from the API and would
+             overwrite it (#580). -->
+        <fieldset
+          data-testid="promotion-fields"
+          :disabled="locked"
+          class="flex min-w-0 flex-col gap-6 xl:col-start-1 xl:row-start-1"
+        >
           <FormSection title="Dane promocji">
             <p
               v-if="scheduleLocked && !readOnly"
@@ -636,7 +677,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
               </table>
             </div>
           </FormSection>
-        </div>
+        </fieldset>
       </div>
 
       <SaveBar
@@ -645,7 +686,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
         new-label="Nowa promocja"
         :busy="busy"
         :save-disabled="!canSave"
-        :save-described-by="ending ? ids.ending : undefined"
+        :save-described-by="saveReason"
         @save="run(save, 'page')"
         @discard="discardChanges"
         @cancel="router.push({ name: 'promotions' })"
