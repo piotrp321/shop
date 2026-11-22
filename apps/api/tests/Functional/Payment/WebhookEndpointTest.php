@@ -228,7 +228,7 @@ final class WebhookEndpointTest extends WebTestCase
     /**
      * @return array<string, string>
      */
-    public function cardSignature(string $body, ?int $timestamp = null): array
+    public static function cardSignature(string $body, ?int $timestamp = null): array
     {
         $timestamp ??= time();
 

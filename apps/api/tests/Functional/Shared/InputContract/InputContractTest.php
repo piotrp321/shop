@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Shared\InputContract;
 
+use App\Tests\Functional\Payment\WebhookEndpointTest;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\ORM\EntityManagerInterface;
+use Monolog\Handler\TestHandler;
+use Monolog\Logger;
+use Monolog\LogRecord;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -172,12 +176,29 @@ final class InputContractTest extends WebTestCase
         yield 'nested deeper than the limit of the decoder' => [str_repeat('[', 600).str_repeat(']', 600)];
     }
 
+    /**
+     * The webhook verifies the signature before it reads the body, so its body is signed for demo-card (self::url())
+     * and the log must show that the body, not the signature, was refused. It goes first: the kernel of the client
+     * is rebooted before every later request, which would drop the handler of the log.
+     */
     #[DataProvider('bodiesThatAreNoJson')]
     public function testABodyThatIsNoJsonIs400(string $body): void
     {
         $failures = [];
-        $operations = 0;
+        $operations = 1;
+        $logs = $this->logs();
+        $response = $this->request('POST', self::url(self::WEBHOOK), null, $body, server: [self::serverKey('Card-Signature') => WebhookEndpointTest::cardSignature($body)['Card-Signature']]);
+        $failures[] = $this->genericFailure('POST '.self::WEBHOOK, $response, 400, self::BAD_REQUEST);
+        if (str_contains((string) $response->getContent(), '"violations"')) {
+            $failures[] = 'POST '.self::WEBHOOK.': violations';
+        }
+        $causes = array_map(static fn (LogRecord $record): mixed => $record->context['cause'] ?? null, array_filter($logs->getRecords(), static fn (LogRecord $record): bool => 'Payment webhook refused.' === $record->message));
+        self::assertSame(['Webhook body: body is missing or malformed.'], array_values($causes));
+
         foreach ($this->jsonBodyOperations() as [$method, $path]) {
+            if (self::WEBHOOK === $path) {
+                continue;
+            }
             ++$operations;
             $response = $this->request($method, $this->existingUrl($method, $path), $this->tokenFor($path), $body, server: self::newIdempotencyKey());
             $failures[] = $this->genericFailure("$method $path", $response, 400, self::BAD_REQUEST);
@@ -188,6 +209,19 @@ final class InputContractTest extends WebTestCase
 
         self::assertGreaterThanOrEqual(25, $operations);
         self::assertSame([], array_values(array_filter($failures)));
+    }
+
+    /**
+     * The records of the log of the application from now until the next reboot of the kernel.
+     */
+    private function logs(): TestHandler
+    {
+        $logger = self::getContainer()->get('logger');
+        self::assertInstanceOf(Logger::class, $logger);
+        $logs = new TestHandler();
+        $logger->pushHandler($logs);
+
+        return $logs;
     }
 
     private function send(InputCase $row, ?string $value): Response
