@@ -26,6 +26,7 @@ import {
 } from "./cart-actions";
 import { announceCartChange } from "./events";
 import { CART_RATE_LIMITED, SAVE_FAILED, SessionExpired } from "./messages";
+import { pointerReleased, watchPointer } from "./pointer-release";
 
 type CartLine = CartView["lines"][number];
 
@@ -122,34 +123,9 @@ export function CartPage() {
   // state brings the render, the ref makes the click happen once.
   const [openings, setOpenings] = useState(0);
   const openRequested = useRef(false);
-  // The messages of the lines wait while a pointer is pressed: a message going or coming between the press and the
-  // release of a button would move the control the customer is pressing before the click lands on it.
-  const pointerPressed = useRef(false);
-  const heldLineErrors = useRef<{ variantId: string; message: string | null }[]>([]);
 
-  useEffect(() => {
-    // The release is handled in a timer, so that the render comes after the click that the release ends.
-    const press = () => {
-      pointerPressed.current = true;
-    };
-    const release = () => {
-      pointerPressed.current = false;
-      setTimeout(() => {
-        if (pointerPressed.current) return;
-        for (const { variantId, message } of heldLineErrors.current.splice(0)) applyLineError(variantId, message);
-      }, 0);
-    };
-    document.addEventListener("pointerdown", press, true);
-    document.addEventListener("pointerup", release, true);
-    document.addEventListener("pointercancel", release, true);
-    window.addEventListener("blur", release);
-    return () => {
-      document.removeEventListener("pointerdown", press, true);
-      document.removeEventListener("pointerup", release, true);
-      document.removeEventListener("pointercancel", release, true);
-      window.removeEventListener("blur", release);
-    };
-  }, []);
+  // The answers of the operations wait while a pointer is pressed (`pointer-release.ts`).
+  useEffect(() => watchPointer(), []);
 
   useEffect(() => {
     mounted.current = true;
@@ -193,6 +169,13 @@ export function CartPage() {
   function focusStays(originId: string): boolean {
     const focus = document.activeElement;
     return focus === null || focus === document.body || focus === document.getElementById(originId);
+  }
+
+  /** The focus is on the body or on an element of the cart that is not the title: the view of an expired session takes it away. */
+  function focusLeavesWithView(): boolean {
+    const focus = document.activeElement;
+    if (focus === null || focus === document.body) return true;
+    return focus.closest("main") !== null && focus.id !== TITLE_ID;
   }
 
   function focusAt(id: string) {
@@ -240,11 +223,6 @@ export function CartPage() {
   }
 
   function showLineError(variantId: string, message: string | null) {
-    if (pointerPressed.current) heldLineErrors.current.push({ variantId, message });
-    else applyLineError(variantId, message);
-  }
-
-  function applyLineError(variantId: string, message: string | null) {
     setLineErrors((current) => {
       const next = { ...current };
       if (message === null) delete next[variantId];
@@ -337,9 +315,9 @@ export function CartPage() {
       const outcome = await send(next.sent, givenNow);
       givenNow = false;
       if (outcome === "unauthorized") {
-        // The view of the expired session has no controls: the focus of the control the action came from (the field, its
-        // "Usuń" or the link that waited) would be lost with it, so it goes to the title (F2, F3).
-        const keepsFocus = [...originsOf(next.sent), CHECKOUT_ID].some((origin) => focusStays(origin));
+        // The view of the expired session has no controls: the focus that is in the cart (a field, a "Usuń", the link) or
+        // on the body would be lost with it, so it goes to the title (F2, F3); a focus outside the cart stays.
+        const keepsFocus = focusLeavesWithView();
         setActions(NO_ACTIONS);
         if (checkout.current === "waiting") setCheckout("none");
         applyLoaded({ status: "unauthorized" });
@@ -357,6 +335,8 @@ export function CartPage() {
     // control below) would move that control before the mouse up. The answer takes it away or replaces it.
     if (givenNow) setStatus("");
     const result = action.kind === "remove" ? await removeCartItem(variantId) : await changeCartItemQuantity(variantId, action.quantity);
+    // An answer is applied when no pointer is pressed: it changes the page, and the control under the pointer must not move.
+    await pointerReleased();
     if (result.status === "ok") {
       const before = view.current;
       show(result.data);
@@ -372,6 +352,7 @@ export function CartPage() {
     if (result.status === "not_found") {
       // A 404 does not prove the line is gone (an unavailable product answers 404 to a change), so the reloaded cart decides.
       const reloaded = await loadCart();
+      await pointerReleased();
       if (reloaded.status === "unauthorized") return "unauthorized";
       if (reloaded.status === "ok") {
         const before = view.current;
