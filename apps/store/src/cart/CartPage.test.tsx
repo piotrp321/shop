@@ -4,11 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type CartView, changeCartItemQuantity, loadCart, removeCartItem } from "@/api/client";
 import { makeImage } from "@/catalog/fixtures";
 import { formatPrice } from "@/catalog/format-price";
+import { navigateTo } from "@/checkout/navigate";
 import { CartPage } from "./CartPage";
 import { actionsFinished } from "./cart-actions";
 import { subscribeToCartChanges } from "./events";
 
 vi.mock("@/api/client", () => ({ loadCart: vi.fn(), changeCartItemQuantity: vi.fn(), removeCartItem: vi.fn() }));
+// The navigation to the checkout after the changes are saved; jsdom cannot navigate.
+vi.mock("@/checkout/navigate", () => ({ navigateTo: vi.fn() }));
 
 const A = "00000000-0000-4000-8000-00000000000a";
 const B = "00000000-0000-4000-8000-00000000000b";
@@ -76,6 +79,7 @@ beforeEach(() => {
   vi.mocked(loadCart).mockReset();
   vi.mocked(changeCartItemQuantity).mockReset();
   vi.mocked(removeCartItem).mockReset();
+  vi.mocked(navigateTo).mockReset();
   announced.length = 0;
   held.length = 0;
   unsubscribe = subscribeToCartChanges((count) => announced.push(count));
@@ -1394,6 +1398,21 @@ describe("CartPage focus after removing a line (criterion 12)", () => {
     await vi.waitFor(() => expect(screen.queryByText("Produkt A")).toBeNull());
     expect(document.activeElement).toBe(removeOf("Produkt B"));
   });
+
+  it("moves the focus to the next Usuń when a quantity committed with Tab finds the line gone and the focus is on its Usuń", async () => {
+    await renderWith(threeLines());
+    vi.mocked(changeCartItemQuantity).mockResolvedValue({ status: "not_found" });
+    vi.mocked(loadCart).mockResolvedValue(ok(without("Produkt A")));
+
+    // Tab leaves the field (which commits it) for Usuń of the same line, before the answer comes.
+    fireEvent.change(qty("Produkt A"), { target: { value: "3" } });
+    fireEvent.blur(qty("Produkt A"));
+    removeOf("Produkt A").focus();
+
+    await vi.waitFor(() => expect(screen.queryByText("Produkt A")).toBeNull());
+    expect(statusRegion().textContent).toBe("Pozycja została już usunięta");
+    expect(document.activeElement).toBe(removeOf("Produkt B"));
+  });
 });
 
 describe("CartPage retry after a failed load (criterion 13)", () => {
@@ -1488,5 +1507,389 @@ describe("CartPage retry after a failed load (criterion 13)", () => {
 
     expect(await screen.findByText("Produkt A")).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Koszyk" }));
+  });
+});
+
+describe("CartPage going to the checkout while changes are saved (S2)", () => {
+  const SAVING = "Zapisujemy zmiany w koszyku…";
+  const NOT_SAVED = "Nie udało się zapisać zmian w koszyku. Sprawdź pozycje i spróbuj ponownie.";
+  const SAVE_FAILED_TEXT = "Nie udało się zapisać zmian. Spróbuj ponownie.";
+  const cart = (a: number | null, b: number | null) =>
+    view([...(a === null ? [] : [line(A, "Produkt A", a)]), ...(b === null ? [] : [line(B, "Produkt B", b)])]);
+  const checkoutLink = () => screen.getByRole("link", { name: "Przejdź do kasy" });
+  const patches = () => vi.mocked(changeCartItemQuantity).mock.calls;
+  const deletes = () => vi.mocked(removeCartItem).mock.calls;
+  // The message at the button, not the ones at the lines.
+  const notSavedAlert = () => screen.queryAllByRole("alert").find((alert) => alert.textContent === NOT_SAVED) ?? null;
+
+  /**
+   * The clicks on "Przejdź do kasy" that the page left to the link: its navigation, as `next/link` does it in the
+   * browser, whether the customer or the page clicked it. jsdom cannot navigate, so every click stops at the document.
+   */
+  let navigations = 0;
+  const recordNavigation = (event: Event) => {
+    if (event.target instanceof Element && event.target.closest("#cart-checkout") && !event.defaultPrevented) navigations++;
+    event.preventDefault();
+  };
+  beforeEach(() => {
+    navigations = 0;
+    document.addEventListener("click", recordNavigation);
+  });
+  afterEach(() => document.removeEventListener("click", recordNavigation));
+
+  /** Activates "Przejdź do kasy" like a click, a tap or Enter does; true when the page leaves the click to the link. */
+  const activate = (init: MouseEventInit = {}): boolean => {
+    const before = navigations;
+    fireEvent.click(checkoutLink(), init);
+    return navigations > before;
+  };
+
+  /** A held change of A to 3 and the activation of the link while it is on its way. */
+  const goWhileAIsSaved = async (start: CartView = cart(1, 1)) => {
+    await renderWith(start);
+    hold();
+    setQuantity("Produkt A", "3");
+    checkoutLink().focus();
+    expect(activate()).toBe(false);
+  };
+
+  it("leaves the click to the link when nothing is on its way or waits", async () => {
+    await renderWith(cart(1, 1));
+
+    expect(activate()).toBe(true);
+    expect(checkoutLink().hasAttribute("aria-disabled")).toBe(false);
+    expect(statusRegion().textContent).toBe("");
+    expect(navigations).toBe(1);
+    expect(navigateTo).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Ctrl", { ctrlKey: true }],
+    ["Cmd", { metaKey: true }],
+    ["Shift", { shiftKey: true }],
+  ])("leaves a click with %s to the browser also while a change is saved", async (_name, init) => {
+    await renderWith(cart(1, 1));
+    hold();
+    setQuantity("Produkt A", "3");
+
+    expect(activate(init)).toBe(true);
+    expect(navigations).toBe(1);
+    expect(checkoutLink().hasAttribute("aria-disabled")).toBe(false);
+    expect(statusRegion().textContent).toBe("");
+    expect(qty("Produkt B").hasAttribute("aria-disabled")).toBe(false);
+  });
+
+  it("waits for a held change with the link inactive and focused, the lines locked, and goes to the checkout after it (criterion 8)", async () => {
+    await goWhileAIsSaved();
+
+    expect(navigations).toBe(0);
+    expect(checkoutLink().getAttribute("aria-disabled")).toBe("true");
+    expect(checkoutLink().getAttribute("href")).toBe("/checkout");
+    expect(document.activeElement).toBe(checkoutLink());
+    expect(statusRegion().textContent).toBe(SAVING);
+    expect(screen.getAllByText(SAVING)).toHaveLength(1);
+    for (const name of ["Produkt A", "Produkt B"]) {
+      expect(qty(name).getAttribute("aria-disabled")).toBe("true");
+      expect(qty(name).readOnly).toBe(true);
+      expect(removeOf(name).getAttribute("aria-disabled")).toBe("true");
+      expect(removeOf(name).hasAttribute("disabled")).toBe(false);
+    }
+
+    // An entry in another field, Usuń and a second activation change nothing.
+    fireEvent.change(qty("Produkt B"), { target: { value: "5" } });
+    fireEvent.keyDown(qty("Produkt B"), { key: "Enter" });
+    fireEvent.blur(qty("Produkt B"));
+    expect(qty("Produkt B").value).toBe("1");
+    fireEvent.click(removeOf("Produkt B"));
+    fireEvent.click(removeOf("Produkt A"));
+    expect(activate()).toBe(false);
+    expect(checkoutLink().getAttribute("aria-disabled")).toBe("true");
+    expect(statusRegion().textContent).toBe(SAVING);
+
+    await answer(0, ok(cart(3, 1)));
+
+    expect(navigations).toBe(1);
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(patches()).toEqual([[A, 3]]);
+    expect(deletes()).toEqual([]);
+  });
+
+  it("commits the entry of the focused quantity field first and keeps the focus on the link", async () => {
+    await renderWith(cart(1, 1));
+    hold();
+    qty("Produkt A").focus();
+    fireEvent.change(qty("Produkt A"), { target: { value: "3" } });
+
+    expect(activate()).toBe(false);
+
+    expect(patches()).toEqual([[A, 3]]);
+    expect(checkoutLink().getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(checkoutLink());
+    expect(navigations).toBe(0);
+    await answer(0, ok(cart(3, 1)));
+    expect(navigations).toBe(1);
+    expect(navigateTo).not.toHaveBeenCalled();
+  });
+
+  it("sends the entry typed over a waiting quantity instead of it, and goes to the checkout after both (criterion 4 with the link)", async () => {
+    await renderWith(cart(1, 1));
+    hold();
+
+    setQuantity("Produkt A", "3");
+    setQuantity("Produkt B", "2");
+    qty("Produkt B").focus();
+    fireEvent.change(qty("Produkt B"), { target: { value: "4" } });
+    expect(activate()).toBe(false);
+    expect(patches()).toEqual([[A, 3]]);
+
+    await answer(0, ok(cart(3, 1)));
+    expect(patches()).toEqual([
+      [A, 3],
+      [B, 4],
+    ]);
+    expect(navigations).toBe(0);
+    expect(qty("Produkt B").value).toBe("4");
+
+    await answer(1, ok(cart(3, 4)));
+    expect(navigations).toBe(1);
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(patches()).toEqual([
+      [A, 3],
+      [B, 4],
+    ]);
+    expect(deletes()).toEqual([]);
+  });
+
+  it.each([
+    ["a failure", { status: "failed" as const }, SAVE_FAILED_TEXT],
+    ["a 409", { status: "conflict" as const, detail: "Nie mamy tylu sztuk tego produktu." }, "Nie mamy tylu sztuk tego produktu."],
+    ["a 429", { status: "rate_limited" as const }, "Zbyt wiele zmian koszyka. Spróbuj ponownie za kilka minut."],
+  ])("stays in the cart after %s, with the message at the button and at the line and the focus on the link (criterion 9)", async (_name, failure, message) => {
+    await goWhileAIsSaved();
+
+    await answer(0, failure);
+
+    expect(navigations).toBe(0);
+    expect(notSavedAlert()).not.toBeNull();
+    expect(within(screen.getAllByRole("listitem")[0]).getByRole("alert").textContent).toBe(message);
+    expect(qty("Produkt A").value).toBe("1");
+    expect(document.activeElement).toBe(checkoutLink());
+    expect(checkoutLink().hasAttribute("aria-disabled")).toBe(false);
+    expect(statusRegion().textContent).not.toBe(SAVING);
+    expect(qty("Produkt B").hasAttribute("aria-disabled")).toBe(false);
+    expect(removeOf("Produkt B").hasAttribute("aria-disabled")).toBe(false);
+
+    // A new activation with nothing on its way is the link again, without the old message.
+    expect(activate()).toBe(true);
+    expect(notSavedAlert()).toBeNull();
+  });
+
+  it("does not go to the checkout when a later action that waited succeeds after the failure (criterion 9)", async () => {
+    await renderWith(cart(1, 1));
+    hold();
+    setQuantity("Produkt A", "3");
+    fireEvent.click(removeOf("Produkt B"));
+    checkoutLink().focus();
+    expect(activate()).toBe(false);
+
+    await answer(0, { status: "failed" });
+    expect(notSavedAlert()).not.toBeNull();
+    await answer(1, ok(cart(1, null)));
+
+    expect(screen.queryByText("Produkt B")).toBeNull();
+    expect(navigations).toBe(0);
+    expect(notSavedAlert()).not.toBeNull();
+    expect(document.activeElement).toBe(checkoutLink());
+    expect(deletes()).toEqual([[B]]);
+  });
+
+  it("shows the view of an expired session after a 401 and does not go anywhere (criterion 10)", async () => {
+    await renderWith(cart(1, 1));
+    hold();
+    setQuantity("Produkt A", "3");
+    fireEvent.click(removeOf("Produkt B"));
+    checkoutLink().focus();
+    expect(activate()).toBe(false);
+
+    await answer(0, { status: "unauthorized" });
+    await act(async () => {});
+
+    expect(screen.getByText(/Twoja sesja wygasła\. Zaloguj się ponownie\./)).toBeTruthy();
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
+    expect(navigations).toBe(0);
+    expect(deletes()).toEqual([]);
+  });
+
+  it("stays in the cart of the answer saying the line is gone after a 404", async () => {
+    await goWhileAIsSaved();
+    vi.mocked(loadCart).mockResolvedValue(ok(cart(null, 1)));
+
+    await answer(0, { status: "not_found" });
+    await act(async () => {});
+
+    expect(navigations).toBe(0);
+    expect(screen.queryByText("Produkt A")).toBeNull();
+    expect(screen.getByText("Produkt B")).toBeTruthy();
+    expect(statusRegion().textContent).toBe("Pozycja została już usunięta");
+    expect(checkoutLink().hasAttribute("aria-disabled")).toBe(false);
+    expect(document.activeElement).toBe(checkoutLink());
+  });
+
+  it("shows the empty cart with the focus on its text when the saves empty the cart", async () => {
+    await renderWith(view([line(A, "Produkt A", 1)]));
+    hold();
+    fireEvent.click(removeOf("Produkt A"));
+    checkoutLink().focus();
+    expect(activate()).toBe(false);
+
+    await answer(0, ok(view([])));
+
+    const empty = await screen.findByText("Twój koszyk jest pusty");
+    expect(navigations).toBe(0);
+    expect(document.activeElement).toBe(empty);
+    expect(statusRegion().textContent).toBe("Usunięto z koszyka: Produkt A.");
+  });
+
+  it("shows the lines that cannot be bought with the focus on the title when the saves end with such a cart", async () => {
+    await goWhileAIsSaved();
+
+    await answer(0, ok(view([line(A, "Produkt A", 3), line(B, "Produkt B", 1, { state: "out_of_stock", lineTotal: null })], {}, true)));
+
+    expect(navigations).toBe(0);
+    expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
+    expect((screen.getByRole("button", { name: "Przejdź do kasy" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Koszyk" }));
+    expect(notSavedAlert()).toBeNull();
+  });
+
+  it("does not go to the checkout when the cart page was left meanwhile, and finishes its actions (criterion 11)", async () => {
+    vi.mocked(loadCart).mockResolvedValue(ok(cart(1, 1)));
+    const page = render(<CartPage />);
+    await screen.findByText("Produkt A");
+    hold();
+    setQuantity("Produkt A", "3");
+    fireEvent.click(removeOf("Produkt B"));
+    checkoutLink().focus();
+    expect(activate()).toBe(false);
+
+    page.unmount();
+    await answer(0, ok(cart(3, 1)));
+    await answer(1, ok(cart(3, null)));
+    await actionsFinished();
+
+    expect(navigations).toBe(0);
+    expect(patches()).toEqual([[A, 3]]);
+    expect(deletes()).toEqual([[B]]);
+  });
+
+  it("opens the checkout through the link when an answer on the way had a line that cannot be bought and the last one can be ordered", async () => {
+    await renderWith(cart(1, 1));
+    hold();
+    setQuantity("Produkt A", "3");
+    fireEvent.click(removeOf("Produkt B"));
+    checkoutLink().focus();
+    expect(activate()).toBe(false);
+
+    // Somebody bought the last unit of B meanwhile: the link makes way for the inactive button.
+    await answer(0, ok(view([line(A, "Produkt A", 3), line(B, "Produkt B", 1, { state: "out_of_stock", lineTotal: null })], {}, true)));
+    expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
+    expect(navigations).toBe(0);
+    await answer(1, ok(cart(3, null)));
+
+    expect(navigations).toBe(1);
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(notSavedAlert()).toBeNull();
+  });
+
+  it("is an idle cart page after it clicked the link, when the same page stays (the navigation did not happen)", async () => {
+    await goWhileAIsSaved();
+
+    await answer(0, ok(cart(3, 1)));
+    // jsdom does not navigate, like a navigation of the client replaced by another one to the cart itself.
+    await act(async () => {});
+
+    expect(navigations).toBe(1);
+    expect(checkoutLink().hasAttribute("aria-disabled")).toBe(false);
+    expect(statusRegion().textContent).not.toBe("Zapisujemy zmiany w koszyku…");
+    for (const name of ["Produkt A", "Produkt B"]) {
+      expect(qty(name).hasAttribute("aria-disabled")).toBe(false);
+      expect(removeOf(name).hasAttribute("aria-disabled")).toBe(false);
+    }
+    // The page works as before the waiting: a change goes, and the link is clicked only once.
+    setQuantity("Produkt B", "2");
+    expect(patches()).toEqual([
+      [A, 3],
+      [B, 2],
+    ]);
+    await answer(1, ok(cart(3, 2)));
+    expect(navigations).toBe(1);
+  });
+
+  describe("the link gone with a waiting that ended without the checkout (F3)", () => {
+    it("moves the focus to the text of the empty cart when the change gets a 404 and the reloaded cart is empty", async () => {
+      await goWhileAIsSaved(view([line(A, "Produkt A", 1)]));
+      // Another tab removed the line meanwhile.
+      vi.mocked(loadCart).mockResolvedValue(ok(view([])));
+
+      await answer(0, { status: "not_found" });
+      await act(async () => {});
+
+      const empty = await screen.findByText("Twój koszyk jest pusty");
+      expect(document.activeElement).toBe(empty);
+      expect(navigations).toBe(0);
+    });
+
+    it("moves the focus to the text of the empty cart when a failed change is followed by the waiting removal of the only line", async () => {
+      await renderWith(view([line(A, "Produkt A", 1)]));
+      hold();
+      setQuantity("Produkt A", "3");
+      fireEvent.click(removeOf("Produkt A"));
+      checkoutLink().focus();
+      expect(activate()).toBe(false);
+
+      await answer(0, { status: "failed" });
+      expect(document.activeElement).toBe(checkoutLink());
+      await answer(1, ok(view([])));
+
+      const empty = await screen.findByText("Twój koszyk jest pusty");
+      expect(document.activeElement).toBe(empty);
+      expect(navigations).toBe(0);
+    });
+
+    it("moves the focus to the title when the change gets a 404 and the reloaded cart has a line that cannot be bought", async () => {
+      await goWhileAIsSaved();
+      vi.mocked(loadCart).mockResolvedValue(ok(view([line(B, "Produkt B", 1, { state: "out_of_stock", lineTotal: null })], {}, true)));
+
+      await answer(0, { status: "not_found" });
+      await act(async () => {});
+
+      expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
+      expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Koszyk" }));
+      expect(navigations).toBe(0);
+    });
+
+    it("leaves the focus where the customer moved it from the link", async () => {
+      vi.mocked(loadCart).mockResolvedValue(ok(view([line(A, "Produkt A", 1)])));
+      render(
+        <>
+          <a href="/inne">Inne</a>
+          <CartPage />
+        </>,
+      );
+      await screen.findByText("Produkt A");
+      hold();
+      setQuantity("Produkt A", "3");
+      checkoutLink().focus();
+      expect(activate()).toBe(false);
+      vi.mocked(loadCart).mockResolvedValue(ok(view([])));
+
+      screen.getByRole("link", { name: "Inne" }).focus();
+      await answer(0, { status: "not_found" });
+      await act(async () => {});
+
+      expect(await screen.findByText("Twój koszyk jest pusty")).toBeTruthy();
+      expect(document.activeElement).toBe(screen.getByRole("link", { name: "Inne" }));
+    });
   });
 });

@@ -1,5 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { addVariantOf, tileNamed } from "../support/shop";
+import { waitForOrderEmail } from "../support/mailpit";
+import { decideAtSimulator, expectSimulatorPage } from "../support/payment";
+import { addVariantOf, chooseDelivery, chooseProvider, fillAddress, tileNamed } from "../support/shop";
 import { cartLineOf } from "../support/variants";
 
 // Actions given in the cart while a change is saved (docs/features/store-ux-fixes/spec.md, S1). Three demo mats of the
@@ -379,6 +381,280 @@ for (const width of [320, 375]) {
         };
       });
       expect(overflow).toEqual({ page: 0, region: 0 });
+    });
+  });
+}
+
+// "Przejdź do kasy" while changes of the cart are saved (docs/features/store-ux-fixes/spec.md, S2). The tests of
+// criterion 8 use two products of "Fitness" > "Trening" that no other test orders: the mat Dravik Podłoże 10 (32 units
+// of every variant, apps/api/fixtures/stock.yaml) changed to 3 units, and the dumbbells Dravik Para 24 (1 unit). The
+// click at 1280 px orders them as a guest and rejects the payment at the simulator: the unpaid order expires and gives
+// the units back.
+const CHECKOUT_PRODUCTS = ["Mata do ćwiczeń Dravik Podłoże 10", "Hantle regulowane Dravik Para 24"];
+const SAVING_TEXT = "Zapisujemy zmiany w koszyku…";
+const NOT_SAVED_TEXT = "Nie udało się zapisać zmian w koszyku. Sprawdź pozycje i spróbuj ponownie.";
+
+async function cartWithProducts(page: Page, names: string[]): Promise<Line[]> {
+  await page.goto(CATEGORY);
+  await expect(page.getByRole("heading", { level: 1, name: "Trening" })).toBeVisible();
+  const lines: Line[] = [];
+  for (const name of names) {
+    const tile = tileNamed(page, name);
+    await expect(tile).toHaveCount(1);
+    lines.push({ name, label: await addVariantOf(page, tile, 1) });
+  }
+  await page.goto("/cart");
+  await expect(page.getByTestId("cart-total")).toBeVisible({ timeout: 30_000 });
+  return lines;
+}
+
+const checkoutLink = (page: Page): Locator => page.getByRole("main").getByRole("link", { name: "Przejdź do kasy" });
+const notSavedAlert = (page: Page): Locator => page.getByRole("main").getByRole("alert").filter({ hasText: NOT_SAVED_TEXT });
+const isOnPath = (page: Page, path: string): boolean => new URL(page.url()).pathname === path;
+/** "1 234,56 zł" as 123456. */
+const cents = (text: string): number => Number(text.replace(/\D/g, ""));
+
+/**
+ * Holds every quantity change in the browser for at least 3 s and until the test releases it; `release` lets it go to
+ * the server, `fail` answers it with a 500.
+ */
+async function holdQuantityChangesUntilReleased(page: Page): Promise<{ release: () => void; fail: () => void }> {
+  let settle: (failure: boolean) => void = () => {};
+  const released = new Promise<boolean>((resolve) => (settle = resolve));
+  await page.route(ITEM_URL, async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    const [failure] = await Promise.all([released, new Promise((resolve) => setTimeout(resolve, HOLD_MS))]);
+    if (failure) return route.fulfill({ status: 500, contentType: "application/problem+json", body: "{}" });
+    return route.fallback();
+  });
+  return { release: () => settle(false), fail: () => settle(true) };
+}
+
+/** Presses Tab until the link has the focus, as a keyboard user gets to it from a field above. */
+async function tabTo(page: Page, target: Locator): Promise<void> {
+  for (let presses = 0; presses < 12; presses++) {
+    if (await target.evaluate((element) => element === document.activeElement)) return;
+    await page.keyboard.press("Tab");
+  }
+  await expect(target).toBeFocused();
+}
+
+/** Marks the document of the page; a full load of another page loses the mark, a navigation of the client keeps it. */
+const markThePage = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    (window as { cartPageMark?: boolean }).cartPageMark = true;
+  });
+const pageIsMarked = (page: Page): Promise<boolean> => page.evaluate(() => (window as { cartPageMark?: boolean }).cartPageMark === true);
+
+type Way = {
+  way: string;
+  use: Parameters<typeof test.use>[0];
+  touch: boolean;
+  /** The first activation of the link, from the quantity field the customer typed into without leaving it. */
+  activate: (page: Page, link: Locator) => Promise<void>;
+  /** The control activated again while the link waits; Playwright waits for an aria-disabled control to be active. */
+  again: (page: Page, control: Locator) => Promise<void>;
+  orders: boolean;
+};
+
+const DESKTOP = { viewport: { width: 1280, height: 800 } };
+const ways: Way[] = [
+  {
+    way: "a click at 1280 px",
+    use: DESKTOP,
+    touch: false,
+    activate: (_page, link) => link.click(),
+    again: (_page, control) => control.click({ force: true }),
+    orders: true,
+  },
+  {
+    way: "a tap at 375 px",
+    use: { viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true },
+    touch: true,
+    activate: (_page, link) => link.tap(),
+    again: (_page, control) => control.tap({ force: true }),
+    orders: false,
+  },
+  {
+    way: "Tab and Enter",
+    use: DESKTOP,
+    touch: false,
+    activate: async (page, link) => {
+      await tabTo(page, link);
+      await page.keyboard.press("Enter");
+    },
+    again: async (page, control) => {
+      await control.focus();
+      await page.keyboard.press("Enter");
+    },
+    orders: false,
+  },
+];
+
+for (const { way, use, touch, activate, again, orders } of ways) {
+  test.describe(`"Przejdź do kasy" with ${way} while a change is held (criterion 8)`, () => {
+    test.use(use);
+
+    test(`waits on the cart with the link inactive and focused, then the checkout shows the saved quantity${orders ? ", and the order has it" : ""}`, async ({ page }) => {
+      test.setTimeout(120_000);
+      const [a, b] = await cartWithProducts(page, CHECKOUT_PRODUCTS);
+      if (a === undefined || b === undefined) throw new Error("the cart needs two lines");
+      const unitPrice = cents(await rowOf(page, a).getByTestId("unit-price").innerText());
+      const writes = countWrites(page);
+      const held = await holdQuantityChangesUntilReleased(page);
+      const link = checkoutLink(page);
+
+      await typeQuantity(quantityOf(page, a), "3", { touch });
+      await markThePage(page);
+      await activate(page, link);
+
+      await expect(link).toHaveAttribute("aria-disabled", "true");
+      await expect(link).toHaveAttribute("href", "/checkout");
+      await expect(link).toBeFocused();
+      expect(isOnPath(page, "/cart")).toBe(true);
+      await expect(page.getByTestId(REGION)).toHaveText(SAVING_TEXT);
+      await expect(page.getByText(SAVING_TEXT)).toHaveCount(1);
+      expect(writes).toEqual({ PATCH: 1, DELETE: 0 });
+
+      // An entry in another field, its Usuń and a second activation of the link change nothing.
+      await quantityOf(page, b).focus();
+      await page.keyboard.type("5");
+      await page.keyboard.press("Tab");
+      await expect(quantityOf(page, b)).toHaveValue("1");
+      await again(page, removeOf(page, b));
+      await again(page, link);
+      await page.waitForTimeout(300);
+      expect(isOnPath(page, "/cart")).toBe(true);
+      await expect(link).toHaveAttribute("aria-disabled", "true");
+      await expect(rowOf(page, b)).toHaveCount(1);
+      expect(writes).toEqual({ PATCH: 1, DELETE: 0 });
+
+      held.release();
+
+      await expect(page).toHaveURL(/\/checkout$/, { timeout: HOLD_MS + 15_000 });
+      await expect(page.getByRole("heading", { level: 1, name: "Kasa" })).toBeVisible();
+      // A navigation of the client, like the link without the waiting: the document of the cart page is still there.
+      expect(await pageIsMarked(page)).toBe(true);
+      const summary = page.getByRole("region", { name: "Podsumowanie zamówienia" });
+      const lineA = summary.getByRole("listitem").filter({ hasText: a.name });
+      await expect(lineA.getByTestId("checkout-line-quantity")).toHaveText("3 szt.");
+      expect(cents(await lineA.getByTestId("checkout-line-total").innerText())).toBe(3 * unitPrice);
+      await expect(summary.getByRole("listitem").filter({ hasText: b.name }).getByTestId("checkout-line-quantity")).toHaveText("1 szt.");
+      expect(writes).toEqual({ PATCH: 1, DELETE: 0 });
+      if (!orders) return;
+
+      const email = `e2e-kasa-po-zapisie+${Date.now()}@example.com`;
+      await page.getByLabel("E-mail").fill(email);
+      await page.getByLabel("Imię i nazwisko").fill("Anna Testowa");
+      await fillAddress(page);
+      await chooseDelivery(page);
+      await chooseProvider(page, "Szybki przelew (demo)");
+      await page.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" }).click();
+      await expectSimulatorPage(page, "demo-transfer");
+      await decideAtSimulator(page, "Odrzuć płatność");
+      const number = (await page.getByTestId("order-number").innerText()).trim();
+      expect(number).toMatch(/^R-\d{6,}$/);
+
+      const confirmation = await waitForOrderEmail(email, number);
+      expect(confirmation.text).toContain(`- ${a.label === "" ? a.name : `${a.name}, ${a.label}`} × 3: `);
+      expect(confirmation.text).toContain(`- ${b.label === "" ? b.name : `${b.name}, ${b.label}`} × 1: `);
+    });
+  });
+}
+
+test.describe("the link gone with a waiting that ended without the checkout", () => {
+  test.use(DESKTOP);
+
+  test("moves the focus from the link to the empty cart when the line was removed elsewhere and the change gets a 404", async ({ page }) => {
+    test.setTimeout(90_000);
+    const [a] = await cartWithLines(page, 1);
+    if (a === undefined) throw new Error("the cart needs a line");
+    const held = await holdQuantityChangesUntilReleased(page);
+
+    await typeQuantity(quantityOf(page, a), "3", { touch: false });
+    await checkoutLink(page).click();
+    await expect(checkoutLink(page)).toHaveAttribute("aria-disabled", "true");
+    await expect(checkoutLink(page)).toBeFocused();
+
+    // Another tab removes the line while the change is held.
+    const cart = (await (await page.request.get("/api/cart")).json()) as { lines: { variantId: string }[] };
+    const [only] = cart.lines;
+    if (only === undefined) throw new Error("the server cart has no line");
+    const removed = await page.request.delete(`/api/cart/items/${only.variantId}`, { headers: { Origin: new URL(page.url()).origin } });
+    expect(removed.ok()).toBe(true);
+    held.release();
+
+    const empty = page.getByText("Twój koszyk jest pusty");
+    await expect(empty).toBeVisible({ timeout: HOLD_MS + 10_000 });
+    await expect(page.getByTestId(REGION)).toHaveText("Pozycja została już usunięta");
+    await expect(empty).toBeFocused();
+    expect(isOnPath(page, "/cart")).toBe(true);
+  });
+});
+
+test.describe("leaving the cart while the link waits for the changes (criterion 11)", () => {
+  test.use(DESKTOP);
+
+  test("stays on the page the customer went to, and the server has the changes", async ({ page }) => {
+    test.setTimeout(90_000);
+    const [a, b] = await cartWithLines(page, 2);
+    if (a === undefined || b === undefined) throw new Error("the cart needs two lines");
+    const writes = countWrites(page);
+    const held = await holdQuantityChangesUntilReleased(page);
+
+    await typeQuantity(quantityOf(page, a), "3", { touch: false });
+    await removeOf(page, b).click();
+    await checkoutLink(page).click();
+    await expect(checkoutLink(page)).toHaveAttribute("aria-disabled", "true");
+    await page.getByRole("banner").getByRole("link", { name: "Worf" }).click();
+    await page.waitForURL((url) => url.pathname === "/");
+
+    const removed = page.waitForResponse((response) => response.request().method() === "DELETE" && /\/api\/cart\/items\//.test(response.url()));
+    held.release();
+    await removed;
+    // Nothing navigates later.
+    await page.waitForTimeout(1_000);
+    expect(isOnPath(page, "/")).toBe(true);
+    expect(writes).toEqual({ PATCH: 1, DELETE: 1 });
+
+    const server = (await (await page.request.get("/api/cart")).json()) as { lines: { quantity: number; product: { name: string; variantLabel: string } | null }[] };
+    const named = (line: Line) => server.lines.filter((saved) => saved.product?.name === line.name && saved.product.variantLabel === line.label);
+    expect(named(a).map((saved) => saved.quantity)).toEqual([3]);
+    expect(named(b)).toEqual([]);
+  });
+});
+
+for (const width of [320, 375]) {
+  test.describe(`the texts of the waiting link at ${width} px`, () => {
+    test.use({ viewport: { width, height: 812 } });
+
+    test("do not scroll the page sideways: the status while saving and the message after a failure", async ({ page }) => {
+      test.setTimeout(90_000);
+      const [a] = await cartWithLines(page, 2);
+      if (a === undefined) throw new Error("the cart needs lines");
+      const held = await holdQuantityChangesUntilReleased(page);
+      const overflow = () =>
+        page.evaluate((text) => {
+          const sideways = (node: Element | null | undefined) => (node ? Math.max(0, node.scrollWidth - node.clientWidth) : -1);
+          const alert = [...document.querySelectorAll('[role="alert"]')].find((node) => node.textContent === text);
+          return {
+            page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            region: sideways(document.querySelector('[data-testid="cart-status"]')),
+            alert: alert === undefined ? null : sideways(alert),
+          };
+        }, NOT_SAVED_TEXT);
+
+      await typeQuantity(quantityOf(page, a), "3", { touch: false });
+      await checkoutLink(page).click();
+      await expect(page.getByTestId(REGION)).toHaveText(SAVING_TEXT);
+      await expect(page.getByTestId(REGION)).toBeVisible();
+      expect(await overflow()).toEqual({ page: 0, region: 0, alert: null });
+
+      held.fail();
+      await expect(notSavedAlert(page)).toBeVisible({ timeout: HOLD_MS + 10_000 });
+      expect(isOnPath(page, "/cart")).toBe(true);
+      await expect(checkoutLink(page)).toBeFocused();
+      expect(await overflow()).toEqual({ page: 0, region: 0, alert: 0 });
     });
   });
 }
