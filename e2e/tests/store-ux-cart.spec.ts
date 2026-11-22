@@ -439,6 +439,13 @@ async function tabTo(page: Page, target: Locator): Promise<void> {
   await expect(target).toBeFocused();
 }
 
+/** Marks the document of the page; a full load of another page loses the mark, a navigation of the client keeps it. */
+const markThePage = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    (window as { cartPageMark?: boolean }).cartPageMark = true;
+  });
+const pageIsMarked = (page: Page): Promise<boolean> => page.evaluate(() => (window as { cartPageMark?: boolean }).cartPageMark === true);
+
 type Way = {
   way: string;
   use: Parameters<typeof test.use>[0];
@@ -498,6 +505,7 @@ for (const { way, use, touch, activate, again, orders } of ways) {
       const link = checkoutLink(page);
 
       await typeQuantity(quantityOf(page, a), "3", { touch });
+      await markThePage(page);
       await activate(page, link);
 
       await expect(link).toHaveAttribute("aria-disabled", "true");
@@ -525,6 +533,8 @@ for (const { way, use, touch, activate, again, orders } of ways) {
 
       await expect(page).toHaveURL(/\/checkout$/, { timeout: HOLD_MS + 15_000 });
       await expect(page.getByRole("heading", { level: 1, name: "Kasa" })).toBeVisible();
+      // A navigation of the client, like the link without the waiting: the document of the cart page is still there.
+      expect(await pageIsMarked(page)).toBe(true);
       const summary = page.getByRole("region", { name: "Podsumowanie zamówienia" });
       const lineA = summary.getByRole("listitem").filter({ hasText: a.name });
       await expect(lineA.getByTestId("checkout-line-quantity")).toHaveText("3 szt.");
@@ -551,6 +561,36 @@ for (const { way, use, touch, activate, again, orders } of ways) {
     });
   });
 }
+
+test.describe("the link gone with a waiting that ended without the checkout", () => {
+  test.use(DESKTOP);
+
+  test("moves the focus from the link to the empty cart when the line was removed elsewhere and the change gets a 404", async ({ page }) => {
+    test.setTimeout(90_000);
+    const [a] = await cartWithLines(page, 1);
+    if (a === undefined) throw new Error("the cart needs a line");
+    const held = await holdQuantityChangesUntilReleased(page);
+
+    await typeQuantity(quantityOf(page, a), "3", { touch: false });
+    await checkoutLink(page).click();
+    await expect(checkoutLink(page)).toHaveAttribute("aria-disabled", "true");
+    await expect(checkoutLink(page)).toBeFocused();
+
+    // Another tab removes the line while the change is held.
+    const cart = (await (await page.request.get("/api/cart")).json()) as { lines: { variantId: string }[] };
+    const [only] = cart.lines;
+    if (only === undefined) throw new Error("the server cart has no line");
+    const removed = await page.request.delete(`/api/cart/items/${only.variantId}`, { headers: { Origin: new URL(page.url()).origin } });
+    expect(removed.ok()).toBe(true);
+    held.release();
+
+    const empty = page.getByText("Twój koszyk jest pusty");
+    await expect(empty).toBeVisible({ timeout: HOLD_MS + 10_000 });
+    await expect(page.getByTestId(REGION)).toHaveText("Pozycja została już usunięta");
+    await expect(empty).toBeFocused();
+    expect(isOnPath(page, "/cart")).toBe(true);
+  });
+});
 
 test.describe("leaving the cart while the link waits for the changes (criterion 11)", () => {
   test.use(DESKTOP);
