@@ -11,8 +11,8 @@ roboczym: po ukończeniu epiku usuń go.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | STORE-UX-FIXES-1, STORE-UX-FIXES-4, STORE-UX-FIXES-6, STORE-UX-FIXES-7 | w toku; STORE-UX-FIXES-6 zmergowane (`50c404e5`), STORE-UX-FIXES-4 zmergowane (`1988cd14`), STORE-UX-FIXES-7 zmergowane (`36c97963`) |
-| 2 | STORE-UX-FIXES-3, STORE-UX-FIXES-5 | |
+| 1 | STORE-UX-FIXES-1, STORE-UX-FIXES-4, STORE-UX-FIXES-6, STORE-UX-FIXES-7 | zmergowane do gałęzi epiku: STORE-UX-FIXES-6 (`50c404e5`), STORE-UX-FIXES-4 (`1988cd14`), STORE-UX-FIXES-7 (`36c97963`), STORE-UX-FIXES-1 (`5af8a3c4`) |
+| 2 | STORE-UX-FIXES-3, STORE-UX-FIXES-5 | w toku |
 | 3 | STORE-UX-FIXES-2 | |
 | 4 | STORE-UX-FIXES-8 | |
 
