@@ -18,13 +18,14 @@ export interface ListColumn<Row> {
 </script>
 
 <script setup lang="ts" generic="Row">
-import { useResizeObserver } from "@vueuse/core";
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { focusAfterAction } from "@/lib/focus";
+import ScrollEdgeShadows from "./ScrollEdgeShadows.vue";
+import { useScrollEdges } from "./useScrollEdges";
 
 /**
  * The table of a list on the `Table` of shadcn-vue (docs/features/admin-design/spec.md, „Standard listy”). The cells are
@@ -119,21 +120,7 @@ async function retryAndRefocus() {
   focusAfterAction(trigger, alertElement.value ?? region.value ?? cardList.value ?? emptyRegion.value);
 }
 
-// Which edges of the scrolling region have more behind them.
-const edges = ref({ start: false, end: false });
-
-function measure() {
-  const element = region.value;
-  if (element === null) {
-    edges.value = { start: false, end: false };
-    return;
-  }
-  edges.value = { start: element.scrollLeft > 0, end: element.scrollLeft + element.clientWidth < element.scrollWidth - 1 };
-}
-
-useResizeObserver(region, measure);
-useResizeObserver(table, measure);
-onMounted(measure);
+const { edges, measure } = useScrollEdges(region, table);
 </script>
 
 <template>
@@ -293,16 +280,7 @@ onMounted(measure);
             </TableBody>
           </table>
         </div>
-        <div
-          v-show="edges.start"
-          aria-hidden="true"
-          class="pointer-events-none absolute inset-y-0 left-0 w-px shadow-md"
-        />
-        <div
-          v-show="edges.end"
-          aria-hidden="true"
-          class="pointer-events-none absolute inset-y-0 right-0 w-px shadow-md"
-        />
+        <ScrollEdgeShadows :edges="edges" />
       </div>
     </template>
     <div
