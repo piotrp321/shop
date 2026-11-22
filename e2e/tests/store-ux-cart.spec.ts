@@ -116,3 +116,32 @@ for (const { device, touch } of scenarios) {
     }
   });
 }
+
+test("coming back to the cart while the actions of the left page still run shows the cart after them", async ({ page }) => {
+  test.setTimeout(90_000);
+  const [a, b] = await cartWithThreeLines(page);
+  const writes = countWrites(page);
+  await holdQuantityChanges(page);
+
+  await typeQuantity(quantityOf(page, a), "3", { touch: false });
+  await removeOf(page, b).click();
+  // Leave by a link of the store and come back by the cart link of the header before the held change is answered.
+  await page.getByRole("banner").getByRole("link", { name: "Worf" }).click();
+  await page.waitForURL((url) => url.pathname === "/");
+  await page.getByRole("banner").getByRole("link", { name: /^Koszyk/ }).click();
+  await page.waitForURL((url) => url.pathname === "/cart");
+
+  await expect(quantityOf(page, a)).toHaveValue("3", { timeout: HOLD_MS + 10_000 });
+  await expect(rowOf(page, b)).toHaveCount(0);
+  await expect(page.getByTestId("cart-item-count")).toHaveText("4");
+  // Nothing more comes later: the page stays as it is.
+  await page.waitForTimeout(1_000);
+  await expect(quantityOf(page, a)).toHaveValue("3");
+  await expect(rowOf(page, b)).toHaveCount(0);
+  expect(writes).toEqual({ PATCH: 1, DELETE: 1 });
+
+  await page.unroute(ITEM_URL);
+  await page.reload();
+  await expect(quantityOf(page, a)).toHaveValue("3");
+  await expect(rowOf(page, b)).toHaveCount(0);
+});

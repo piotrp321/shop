@@ -878,6 +878,7 @@ describe("CartPage actions during a save", () => {
         [A, 9],
         [B, 2],
       ]);
+      expect(deletes()).toEqual([]);
     });
   });
 
@@ -933,6 +934,7 @@ describe("CartPage actions during a save", () => {
       expect(document.activeElement).toBe(remove);
       await answer(0, ok(cart(null, 1)));
       expect(deletes()).toEqual([[A]]);
+      expect(patches()).toEqual([]);
     });
 
     it("send one removal when it waits for another change", async () => {
@@ -950,6 +952,7 @@ describe("CartPage actions during a save", () => {
 
       expect(screen.queryByText("Produkt B")).toBeNull();
       expect(deletes()).toEqual([[B]]);
+      expect(patches()).toEqual([[A, 3]]);
     });
   });
 
@@ -1003,6 +1006,55 @@ describe("CartPage actions during a save", () => {
     await answer(0, { status: "unauthorized" });
     await act(async () => {});
 
+    expect(deletes()).toEqual([]);
+  });
+
+  it("reads the cart again only after the actions of the left page are finished when the customer comes back to it", async () => {
+    // The cart of the server, changed by the answers of the test.
+    let server = cart(1, 1);
+    vi.mocked(loadCart).mockImplementation(async () => ok(server));
+    const page = render(<CartPage />);
+    await screen.findByText("Produkt A");
+    hold();
+
+    setQuantity("Produkt A", "3");
+    fireEvent.click(removeButton("Produkt B"));
+    page.unmount();
+    render(<CartPage />);
+    await act(async () => {});
+
+    // While the actions of the left page run, the page reads nothing and shows that it is loading.
+    expect(screen.getByText("Wczytywanie koszyka…")).toBeTruthy();
+    server = cart(3, 1);
+    await answer(0, ok(server));
+    expect(screen.queryByText("Produkt A")).toBeNull();
+    server = cart(3, null);
+    await answer(1, ok(server));
+    await act(async () => {});
+
+    expect(await screen.findByText("Produkt A")).toBeTruthy();
+    expect(qty("Produkt A").value).toBe("3");
+    expect(screen.queryByText("Produkt B")).toBeNull();
+    expect(patches()).toEqual([[A, 3]]);
+    expect(deletes()).toEqual([[B]]);
+  });
+
+  it("reads the cart again at once after the actions of the left page end with a 401", async () => {
+    vi.mocked(loadCart).mockResolvedValue(ok(cart(1, 1)));
+    const page = render(<CartPage />);
+    await screen.findByText("Produkt A");
+    hold();
+
+    setQuantity("Produkt A", "3");
+    fireEvent.click(removeButton("Produkt B"));
+    page.unmount();
+    render(<CartPage />);
+    await act(async () => {});
+    vi.mocked(loadCart).mockResolvedValue({ status: "unauthorized" });
+    await answer(0, { status: "unauthorized" });
+    await act(async () => {});
+
+    expect(screen.getByText(/Twoja sesja wygasła\. Zaloguj się ponownie\./)).toBeTruthy();
     expect(deletes()).toEqual([]);
   });
 });
