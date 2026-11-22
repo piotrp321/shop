@@ -114,6 +114,9 @@ const dialogMessage = ref<string | null>(null);
 const conflict = ref<string | null>(null);
 // Counts the openings and closings: an answer reaches only the window it was sent from.
 let session = 0;
+// True from the moment the change leaves this window until the API answers: the window cannot be dismissed and its fields take
+// no typing (D3, D7: no timeout of our own, the way out of a save that gets no answer is Back of the browser).
+const statusSending = ref(false);
 // The button that opened the window, and where the focus goes when it has closed.
 let opener: HTMLElement | null = null;
 let afterClose: "done" | "conflict" | null = null;
@@ -164,6 +167,9 @@ watch(
   () => {
     conflict.value = null;
     afterClose = null;
+    // The panel closes the windows of the order it left, whatever they were sending: the answer is dropped by the session.
+    statusSending.value = false;
+    trackingSending.value = false;
     closeDialog();
     trackingOpener = null;
     closeTracking();
@@ -175,9 +181,16 @@ function closeDialog(): void {
   dialogOpen.value = false;
 }
 
+// The staff member closes the window (Escape, a click outside, „Wróć”, „Zamknij”): not while its change is on the way.
+function dismissDialog(): void {
+  if (!statusSending.value) {
+    closeDialog();
+  }
+}
+
 function onOpenChange(open: boolean): void {
   if (!open) {
-    closeDialog();
+    dismissDialog();
   }
 }
 
@@ -245,10 +258,12 @@ async function submit(): Promise<void> {
   trackingNumberError.value = null;
   dialogMessage.value = null;
   const sentFrom = session;
+  statusSending.value = true;
   const result = current.kind === "status" ? await changeStatus(current.transition, note.value, trackingNumber.value) : await completeRefund(note.value);
   if (sentFrom !== session) {
     return;
   }
+  statusSending.value = false;
   applyResult(result, current);
 }
 
@@ -293,6 +308,8 @@ const trackingMessage = ref<string | null>(null);
 // Whether the order had a number when the window opened: the title and the buttons keep their words while it answers.
 const trackingHadNumber = ref(false);
 let trackingSession = 0;
+// Like `statusSending`, for the window of the number.
+const trackingSending = ref(false);
 let trackingOpener: HTMLElement | null = null;
 
 const trackingInput = ref<InstanceType<typeof Input> | null>(null);
@@ -307,9 +324,15 @@ function closeTracking(): void {
   trackingOpen.value = false;
 }
 
+function dismissTracking(): void {
+  if (!trackingSending.value) {
+    closeTracking();
+  }
+}
+
 function onTrackingOpenChange(open: boolean): void {
   if (!open) {
-    closeTracking();
+    dismissTracking();
   }
 }
 
@@ -348,10 +371,12 @@ async function submitTracking(): Promise<void> {
   trackingError.value = null;
   trackingMessage.value = null;
   const sentFrom = trackingSession;
+  trackingSending.value = true;
   const result = await changeTrackingNumber(trackingValue.value);
   if (sentFrom !== trackingSession) {
     return;
   }
+  trackingSending.value = false;
   switch (result.status) {
     case "saved":
       toast.success(hasNumber.value ? "Numer przesyłki zapisany." : "Numer przesyłki usunięty.");
@@ -948,6 +973,7 @@ function statusName(status: string | undefined): string {
             ref="noteInput"
             v-model="note"
             data-testid="change-note"
+            :readonly="statusSending"
             maxlength="500"
             autocomplete="off"
             :aria-invalid="noteError !== null ? 'true' : undefined"
@@ -976,6 +1002,7 @@ function statusName(status: string | undefined): string {
             ref="trackingNumberInput"
             v-model="trackingNumber"
             data-testid="change-tracking-number-field"
+            :readonly="statusSending"
             :maxlength="TRACKING_MAX_LENGTH"
             autocomplete="off"
             :aria-invalid="trackingNumberError !== null ? 'true' : undefined"
@@ -1003,7 +1030,7 @@ function statusName(status: string | undefined): string {
             type="button"
             variant="outline"
             data-testid="change-cancel"
-            @click="closeDialog()"
+            @click="dismissDialog()"
           >
             Wróć
           </Button>
@@ -1011,7 +1038,7 @@ function statusName(status: string | undefined): string {
             type="button"
             :variant="destructive ? 'destructive' : 'interface'"
             data-testid="change-submit"
-            :disabled="saving"
+            :aria-disabled="saving ? 'true' : undefined"
             @click="submit()"
           >
             {{ submitLabel }}
@@ -1054,6 +1081,7 @@ function statusName(status: string | undefined): string {
             ref="trackingInput"
             v-model="trackingValue"
             data-testid="tracking-number-input"
+            :readonly="trackingSending"
             :maxlength="TRACKING_MAX_LENGTH"
             autocomplete="off"
             :aria-invalid="trackingError !== null ? 'true' : undefined"
@@ -1081,7 +1109,7 @@ function statusName(status: string | undefined): string {
             type="button"
             variant="outline"
             data-testid="tracking-cancel"
-            @click="closeTracking()"
+            @click="dismissTracking()"
           >
             Wróć
           </Button>
@@ -1089,7 +1117,7 @@ function statusName(status: string | undefined): string {
             type="button"
             variant="interface"
             data-testid="tracking-submit"
-            :disabled="saving"
+            :aria-disabled="saving ? 'true' : undefined"
             @click="submitTracking()"
           >
             Zapisz numer
