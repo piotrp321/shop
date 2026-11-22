@@ -303,7 +303,7 @@ describe("CartPage changing the quantity", () => {
     expect(qty("Produkt A").value).toBe("2");
   });
 
-  it("keeps the quantity field and Usuń focusable but inactive while the request runs", async () => {
+  it("keeps the quantity field focusable but inactive while its change is saved, and leaves Usuń active", async () => {
     await renderWith(before());
     let finish: (value: Awaited<ReturnType<typeof changeCartItemQuantity>>) => void = () => {};
     vi.mocked(changeCartItemQuantity).mockReturnValue(new Promise((resolve) => (finish = resolve)));
@@ -315,18 +315,17 @@ describe("CartPage changing the quantity", () => {
     fireEvent.keyDown(field, { key: "Enter" });
 
     expect(field.getAttribute("aria-disabled")).toBe("true");
-    expect(remove.getAttribute("aria-disabled")).toBe("true");
+    expect(remove.hasAttribute("aria-disabled")).toBe(false);
     expect(field.disabled).toBe(false);
     expect(remove.disabled).toBe(false);
     expect(field.readOnly).toBe(true);
     expect(document.activeElement).toBe(field);
 
-    // Typing, the arrow keys, another commit and a click on Usuń change nothing and send nothing.
+    // Typing, the arrow keys and another commit change nothing and send nothing.
     fireEvent.change(field, { target: { value: "7" } });
     fireEvent.keyDown(field, { key: "ArrowUp" });
     fireEvent.keyDown(field, { key: "Enter" });
     fireEvent.blur(field);
-    fireEvent.click(remove);
     expect(field.value).toBe("3");
     expect(changeCartItemQuantity).toHaveBeenCalledExactlyOnceWith(A, 3);
     expect(removeCartItem).not.toHaveBeenCalled();
@@ -533,7 +532,7 @@ describe("CartPage changing the quantity", () => {
       expect(quantityField().value).toBe("1");
     });
 
-    it("says the session expired when the reload after a 404 gets a 401, with the quantity of the last view", async () => {
+    it("shows the view of an expired session when the reload after a 404 gets a 401", async () => {
       await renderWith(unavailable());
       vi.mocked(changeCartItemQuantity).mockResolvedValue({ status: "not_found", detail: "Produkt nie jest już dostępny." });
       vi.mocked(loadCart).mockResolvedValue({ status: "unauthorized" });
@@ -543,7 +542,11 @@ describe("CartPage changing the quantity", () => {
       expect(await screen.findByText(/Twoja sesja wygasła\. Zaloguj się ponownie\./)).toBeTruthy();
       expect(screen.getByRole("link", { name: "Zaloguj się" }).getAttribute("href")).toBe("/auth/login?returnTo=%2Fcart");
       expect(screen.queryByText("Pozycja została już usunięta")).toBeNull();
-      expect(quantityField().value).toBe("1");
+      // The view of an expired session: the message alone, without the lines and the way to the checkout.
+      expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+      expect(screen.queryByRole("spinbutton")).toBeNull();
+      expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Przejdź do kasy" })).toBeNull();
     });
 
     it("shows the general message at the line when the reload after a 404 fails, with the quantity of the last view", async () => {
@@ -560,7 +563,7 @@ describe("CartPage changing the quantity", () => {
     });
   });
 
-  it("says the session expired on a 401", async () => {
+  it("says the session expired on a 401, without the lines and the way to the checkout", async () => {
     await renderWith(before());
     vi.mocked(changeCartItemQuantity).mockResolvedValue({ status: "unauthorized" });
 
@@ -568,7 +571,10 @@ describe("CartPage changing the quantity", () => {
 
     expect(await screen.findByText(/Twoja sesja wygasła\. Zaloguj się ponownie\./)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Zaloguj się" }).getAttribute("href")).toBe("/auth/login?returnTo=%2Fcart");
-    expect(qty("Produkt A").value).toBe("2");
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
+    expect(screen.getAllByText(/Twoja sesja wygasła/)).toHaveLength(1);
   });
 });
 
@@ -632,5 +638,371 @@ describe("CartPage checkout button", () => {
 
     expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Przejdź do kasy" })).toBeNull();
+  });
+});
+
+describe("CartPage actions during a save", () => {
+  type Answer = Awaited<ReturnType<typeof changeCartItemQuantity>>;
+  type Held = { resolve: (answer: Answer) => void };
+
+  // Every write waits until the test answers it, in the order of the calls.
+  const held: Held[] = [];
+  const hold = () => {
+    const write = () => new Promise<Answer>((resolve) => held.push({ resolve }));
+    vi.mocked(changeCartItemQuantity).mockImplementation(write);
+    vi.mocked(removeCartItem).mockImplementation(write);
+  };
+  const answer = async (index: number, value: Answer) => {
+    expect(held.length, `write ${index + 1} was not sent`).toBeGreaterThan(index);
+    await act(async () => held[index].resolve(value));
+  };
+
+  const cart = (a: number | null, b: number | null) =>
+    view([...(a === null ? [] : [line(A, "Produkt A", a)]), ...(b === null ? [] : [line(B, "Produkt B", b)])]);
+  const removeButton = (name: string) => screen.getByRole("button", { name: `Usuń: ${name}` });
+  const patches = () => vi.mocked(changeCartItemQuantity).mock.calls;
+  const deletes = () => vi.mocked(removeCartItem).mock.calls;
+
+  beforeEach(() => {
+    held.length = 0;
+  });
+
+  describe.each([
+    ["answered at once", false],
+    ["held", true],
+  ])("Usuń right after typing a quantity (criterion 1), the change %s", (_name, withHold) => {
+    it("removes the line of the typed quantity after its change, and keeps the other one", async () => {
+      await renderWith(cart(1, 1));
+      if (withHold) hold();
+      else {
+        vi.mocked(changeCartItemQuantity).mockResolvedValue(ok(cart(3, 1)));
+        vi.mocked(removeCartItem).mockResolvedValue(ok(cart(null, 1)));
+      }
+
+      setQuantity("Produkt A", "3");
+      fireEvent.click(removeButton("Produkt A"));
+      if (withHold) {
+        await answer(0, ok(cart(3, 1)));
+        await answer(1, ok(cart(null, 1)));
+      }
+
+      await vi.waitFor(() => expect(screen.queryByText("Produkt A")).toBeNull());
+      expect(screen.getByText("Produkt B")).toBeTruthy();
+      expect(patches()).toEqual([[A, 3]]);
+      expect(deletes()).toEqual([[A]]);
+    });
+
+    it("removes the other line after the change, and keeps the typed quantity", async () => {
+      await renderWith(cart(1, 1));
+      if (withHold) hold();
+      else {
+        vi.mocked(changeCartItemQuantity).mockResolvedValue(ok(cart(3, 1)));
+        vi.mocked(removeCartItem).mockResolvedValue(ok(cart(3, null)));
+      }
+
+      setQuantity("Produkt A", "3");
+      fireEvent.click(removeButton("Produkt B"));
+      if (withHold) {
+        await answer(0, ok(cart(3, 1)));
+        await answer(1, ok(cart(3, null)));
+      }
+
+      await vi.waitFor(() => expect(screen.queryByText("Produkt B")).toBeNull());
+      expect(qty("Produkt A").value).toBe("3");
+      expect(patches()).toEqual([[A, 3]]);
+      expect(deletes()).toEqual([[B]]);
+    });
+  });
+
+  it("sends a quantity of another line committed during a held change after it, never showing the old one (criterion 2)", async () => {
+    await renderWith(cart(1, 1));
+    hold();
+
+    setQuantity("Produkt A", "3");
+    // Only the field of the saved line is read-only.
+    expect(qty("Produkt A").getAttribute("aria-disabled")).toBe("true");
+    expect(qty("Produkt B").hasAttribute("aria-disabled")).toBe(false);
+    expect(qty("Produkt B").readOnly).toBe(false);
+    setQuantity("Produkt B", "2");
+    expect(qty("Produkt B").value).toBe("2");
+    expect(patches()).toEqual([[A, 3]]);
+
+    await answer(0, ok(cart(3, 1)));
+    expect(qty("Produkt A").value).toBe("3");
+    expect(qty("Produkt B").value).toBe("2");
+    expect(patches()).toEqual([
+      [A, 3],
+      [B, 2],
+    ]);
+
+    await answer(1, ok(cart(3, 2)));
+    expect(qty("Produkt A").value).toBe("3");
+    expect(qty("Produkt B").value).toBe("2");
+    expect(deletes()).toEqual([]);
+  });
+
+  it("ignores Enter and blur with the same value while the change of the field is held, and takes a change after it (criterion 3)", async () => {
+    await renderWith(cart(1, 1));
+    hold();
+    const field = qty("Produkt A");
+    field.focus();
+
+    fireEvent.change(field, { target: { value: "3" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(field.readOnly).toBe(true);
+    expect(field.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.blur(field);
+    expect(patches()).toEqual([[A, 3]]);
+
+    await answer(0, ok(cart(3, 1)));
+    expect(field.readOnly).toBe(false);
+    setQuantity("Produkt A", "5");
+    await answer(1, ok(cart(5, 1)));
+
+    expect(qty("Produkt A").value).toBe("5");
+    expect(patches()).toEqual([
+      [A, 3],
+      [A, 5],
+    ]);
+    expect(deletes()).toEqual([]);
+  });
+
+  it("drops a waiting quantity when the entry changes, and sends the new one only once it is committed (criterion 4)", async () => {
+    await renderWith(cart(1, 1));
+    hold();
+
+    setQuantity("Produkt A", "3");
+    setQuantity("Produkt B", "2");
+    fireEvent.change(qty("Produkt B"), { target: { value: "4" } });
+    await answer(0, ok(cart(3, 1)));
+
+    expect(patches()).toEqual([[A, 3]]);
+    expect(qty("Produkt B").value).toBe("4");
+    expect(qty("Produkt B").readOnly).toBe(false);
+    expect(qty("Produkt B").hasAttribute("aria-disabled")).toBe(false);
+
+    fireEvent.blur(qty("Produkt B"));
+    expect(patches()).toEqual([
+      [A, 3],
+      [B, 4],
+    ]);
+    await answer(1, ok(cart(3, 4)));
+    expect(qty("Produkt B").value).toBe("4");
+    expect(deletes()).toEqual([]);
+  });
+
+  it("keeps an uncommitted entry and a waiting quantity when the answer for another line brings a new quantity of them", async () => {
+    await renderWith(view([line(A, "Produkt A", 1), line(B, "Produkt B", 1), line(PRODUCT, "Produkt C", 1)]));
+    hold();
+
+    setQuantity("Produkt A", "3");
+    setQuantity("Produkt B", "2");
+    fireEvent.change(qty("Produkt C"), { target: { value: "6" } });
+    // Another tab changed B and C in the meantime: the answer for A has their new quantities.
+    await answer(0, ok(view([line(A, "Produkt A", 3), line(B, "Produkt B", 7), line(PRODUCT, "Produkt C", 8)])));
+
+    expect(qty("Produkt A").value).toBe("3");
+    expect(qty("Produkt B").value).toBe("2");
+    expect(qty("Produkt C").value).toBe("6");
+    expect(patches()).toEqual([
+      [A, 3],
+      [B, 2],
+    ]);
+
+    // After the answer for its own change the field shows the quantity of that answer.
+    await answer(1, ok(view([line(A, "Produkt A", 3), line(B, "Produkt B", 2), line(PRODUCT, "Produkt C", 8)])));
+    expect(qty("Produkt B").value).toBe("2");
+    expect(qty("Produkt C").value).toBe("6");
+  });
+
+  it("shows the new quantity of an untouched field from the answer for another line", async () => {
+    await renderWith(cart(1, 1));
+    hold();
+
+    setQuantity("Produkt A", "3");
+    await answer(0, ok(cart(3, 7)));
+
+    expect(qty("Produkt B").value).toBe("7");
+  });
+
+  describe("a failed change with an action waiting (criterion 5)", () => {
+    it("shows the message at the failed line with its confirmed quantity and removes the other line", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+
+      setQuantity("Produkt A", "3");
+      fireEvent.click(removeButton("Produkt B"));
+      await answer(0, { status: "failed" });
+      await answer(1, ok(cart(1, null)));
+
+      expect(screen.queryByText("Produkt B")).toBeNull();
+      const rowA = screen.getByRole("listitem");
+      expect(within(rowA).getByRole("alert").textContent).toBe("Nie udało się zapisać zmian. Spróbuj ponownie.");
+      expect(qty("Produkt A").value).toBe("1");
+      expect(patches()).toEqual([[A, 3]]);
+      expect(deletes()).toEqual([[B]]);
+    });
+
+    it("removes the line of the failed change", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+
+      setQuantity("Produkt A", "3");
+      fireEvent.click(removeButton("Produkt A"));
+      await answer(0, { status: "failed" });
+      await answer(1, ok(cart(null, 1)));
+
+      expect(screen.queryByText("Produkt A")).toBeNull();
+      expect(screen.getByText("Produkt B")).toBeTruthy();
+      expect(patches()).toEqual([[A, 3]]);
+      expect(deletes()).toEqual([[A]]);
+    });
+
+    it.each([
+      ["a 409", { status: "conflict" as const, detail: "Nie mamy tylu sztuk tego produktu." }, "Nie mamy tylu sztuk tego produktu."],
+      ["a 429", { status: "rate_limited" as const }, "Zbyt wiele zmian koszyka. Spróbuj ponownie za kilka minut."],
+    ])("sends a waiting quantity of another line after %s", async (_name, failure, message) => {
+      await renderWith(cart(1, 1));
+      hold();
+
+      setQuantity("Produkt A", "9");
+      setQuantity("Produkt B", "2");
+      await answer(0, failure);
+      await answer(1, ok(cart(1, 2)));
+
+      expect(within(screen.getAllByRole("listitem")[0]).getByRole("alert").textContent).toBe(message);
+      expect(qty("Produkt A").value).toBe("1");
+      expect(qty("Produkt B").value).toBe("2");
+      expect(patches()).toEqual([
+        [A, 9],
+        [B, 2],
+      ]);
+    });
+  });
+
+  describe.each([
+    ["a removal", () => fireEvent.click(removeButton("Produkt B"))],
+    ["a quantity", () => setQuantity("Produkt B", "2")],
+  ])("a 401 with %s of another line waiting (criterion 6)", (_name, actOnB) => {
+    it("shows the view of an expired session and sends nothing for the other line", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+
+      setQuantity("Produkt A", "3");
+      actOnB();
+      await answer(0, { status: "unauthorized" });
+      await act(async () => {});
+
+      expect(screen.getByText(/Twoja sesja wygasła\. Zaloguj się ponownie\./)).toBeTruthy();
+      expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+      expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Przejdź do kasy" })).toBeNull();
+      expect(patches()).toEqual([[A, 3]]);
+      expect(deletes()).toEqual([]);
+    });
+  });
+
+  it("drops the waiting actions when the reload after a 404 gets a 401", async () => {
+    await renderWith(cart(1, 1));
+    hold();
+    vi.mocked(loadCart).mockResolvedValue({ status: "unauthorized" });
+
+    setQuantity("Produkt A", "3");
+    fireEvent.click(removeButton("Produkt B"));
+    await answer(0, { status: "not_found" });
+    await act(async () => {});
+
+    expect(screen.getByText(/Twoja sesja wygasła\. Zaloguj się ponownie\./)).toBeTruthy();
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(deletes()).toEqual([]);
+  });
+
+  describe("two activations of Usuń of one line (criterion 7)", () => {
+    it("send one removal while it is held, with both controls of the line inactive", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+      const remove = removeButton("Produkt A");
+      remove.focus();
+
+      fireEvent.click(remove);
+      fireEvent.click(remove);
+
+      expect(remove.getAttribute("aria-disabled")).toBe("true");
+      expect(qty("Produkt A").getAttribute("aria-disabled")).toBe("true");
+      expect(document.activeElement).toBe(remove);
+      await answer(0, ok(cart(null, 1)));
+      expect(deletes()).toEqual([[A]]);
+    });
+
+    it("send one removal when it waits for another change", async () => {
+      await renderWith(cart(1, 1));
+      hold();
+
+      setQuantity("Produkt A", "3");
+      fireEvent.click(removeButton("Produkt B"));
+      fireEvent.click(removeButton("Produkt B"));
+      expect(removeButton("Produkt B").getAttribute("aria-disabled")).toBe("true");
+      expect(qty("Produkt B").getAttribute("aria-disabled")).toBe("true");
+      expect(qty("Produkt B").readOnly).toBe(true);
+      await answer(0, ok(cart(3, 1)));
+      await answer(1, ok(cart(3, null)));
+
+      expect(screen.queryByText("Produkt B")).toBeNull();
+      expect(deletes()).toEqual([[B]]);
+    });
+  });
+
+  it("sends the waiting actions in the order they were given, a replacing one in the place of the replaced one", async () => {
+    await renderWith(view([line(A, "Produkt A", 1), line(B, "Produkt B", 1), line(PRODUCT, "Produkt C", 1)]));
+    hold();
+
+    setQuantity("Produkt A", "3");
+    setQuantity("Produkt B", "2");
+    setQuantity("Produkt C", "4");
+    // The removal of B replaces its waiting quantity and keeps its place before C.
+    fireEvent.click(removeButton("Produkt B"));
+    await answer(0, ok(view([line(A, "Produkt A", 3), line(B, "Produkt B", 1), line(PRODUCT, "Produkt C", 1)])));
+    await answer(1, ok(view([line(A, "Produkt A", 3), line(PRODUCT, "Produkt C", 1)])));
+    await answer(2, ok(view([line(A, "Produkt A", 3), line(PRODUCT, "Produkt C", 4)])));
+
+    expect(patches()).toEqual([
+      [A, 3],
+      [PRODUCT, 4],
+    ]);
+    expect(deletes()).toEqual([[B]]);
+    expect(vi.mocked(removeCartItem).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(changeCartItemQuantity).mock.invocationCallOrder[1]);
+  });
+
+  it("finishes the actions it was given after the cart page is left", async () => {
+    vi.mocked(loadCart).mockResolvedValue(ok(cart(1, 1)));
+    const page = render(<CartPage />);
+    await screen.findByText("Produkt A");
+    hold();
+
+    setQuantity("Produkt A", "3");
+    fireEvent.click(removeButton("Produkt B"));
+    page.unmount();
+    await answer(0, ok(cart(3, 1)));
+    await answer(1, ok(cart(3, null)));
+
+    expect(patches()).toEqual([[A, 3]]);
+    expect(deletes()).toEqual([[B]]);
+    expect(announced).toEqual([4, 3]);
+  });
+
+  it("sends nothing it was given after the cart page is left when the change gets a 401", async () => {
+    vi.mocked(loadCart).mockResolvedValue(ok(cart(1, 1)));
+    const page = render(<CartPage />);
+    await screen.findByText("Produkt A");
+    hold();
+
+    setQuantity("Produkt A", "3");
+    fireEvent.click(removeButton("Produkt B"));
+    page.unmount();
+    await answer(0, { status: "unauthorized" });
+    await act(async () => {});
+
+    expect(deletes()).toEqual([]);
   });
 });
