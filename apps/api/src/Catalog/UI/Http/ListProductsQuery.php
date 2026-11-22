@@ -11,7 +11,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
  * Query string of GET /api/v1/products, without the repeated `option` key (see {@see OptionFilter}). The violation
  * messages never contain the submitted value.
  */
-final readonly class ListProductsQuery
+final class ListProductsQuery
 {
     public const string SORT_RELEVANCE = 'relevance';
     public const string SORT_NAME = 'name';
@@ -25,25 +25,29 @@ final readonly class ListProductsQuery
     public function __construct(
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Uuid]
-        public ?string $category = null,
+        public readonly ?string $category = null,
         #[Assert\Length(min: 2, max: 100, normalizer: 'trim')]
-        public ?string $q = null,
+        public readonly ?string $q = null,
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Regex(pattern: self::GROSZE_PATTERN, message: self::BAD_PRICE)]
-        public ?string $priceMin = null,
+        public readonly ?string $priceMin = null,
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Regex(pattern: self::GROSZE_PATTERN, message: self::BAD_PRICE)]
-        public ?string $priceMax = null,
+        public readonly ?string $priceMax = null,
         #[Assert\Choice(choices: [self::AVAILABLE])]
-        public ?string $available = null,
+        public readonly ?string $available = null,
         #[Assert\Choice(choices: [self::SORT_RELEVANCE, self::SORT_NAME, self::SORT_PRICE_ASC, self::SORT_PRICE_DESC])]
-        public ?string $sort = null,
-        #[Assert\Positive]
-        public int $page = 1,
-        #[Assert\Range(min: 1, max: 48)]
-        public int $perPage = 24,
+        public readonly ?string $sort = null,
     ) {
     }
+
+    // Set after the constructor, not through it: a value the query-string denormalizer rejects as an int ("1.5") is
+    // reported as a type error and leaves the default here, while a constructor parameter would get the raw string,
+    // which PHP cuts to 1 (and deprecates doing so). Declared after the constructor to keep the order of the schema.
+    #[Assert\Positive]
+    public int $page = 1;
+    #[Assert\Range(min: 1, max: 48)]
+    public int $perPage = 24;
 
     /**
      * The trimmed phrase, null without `q`.

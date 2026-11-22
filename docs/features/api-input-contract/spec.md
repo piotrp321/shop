@@ -74,7 +74,7 @@ Tytuł T jest wpisem projektu w `apps/api/translations`.
 | `available` | `GET /products` | `[]` → T; `false` → opcja |
 | `sort` | `GET /products` | `[]` → T; nieznana wartość → opcja; `relevance` bez `q` → „To sortowanie wymaga szukanej frazy.” |
 | `page` | `GET /products` | `abc`, `1.5`, pusty, `[]` → T; `0`, `-1` → „Ta wartość powinna być dodatnia.” |
-| `perPage` | `GET /products` (max 48), `GET /me/orders` (50), `GET /admin/products`, `GET /admin/stock`, `GET /admin/orders`, `GET /admin/prices`, `GET /admin/variants/{variantId}/stock-history`, `GET /admin/variants/{variantId}/price-history` (100) | `abc`, `[]` → T; `0`, max+1 → zakres(max) |
+| `perPage` | `GET /products` (max 48), `GET /me/orders` (50), `GET /admin/products`, `GET /admin/stock`, `GET /admin/orders`, `GET /admin/prices`, `GET /admin/variants/{variantId}/stock-history`, `GET /admin/variants/{variantId}/price-history` (100) | `abc`, `[]` (na `GET /products` także `1.5`) → T; `0`, max+1 → zakres(max) |
 | `perPage`, `status`, `after` | `GET /admin/promotions` | `[]` (dla `perPage` także `abc`) → T; pozostałe przypadki mają własne polskie komunikaty |
 | `option` | `GET /products` | `option[]=x` → „Podaj opcje jako powtórzony klucz option, nie option[].”; bez dwukropka → „Opcja musi mieć postać oś:wartość.”; niepoprawny UTF-8 → „Opcja zawiera niedozwolone znaki.”; oś ponad 30 albo wartość ponad 40 znaków → „Oś opcji ma od 1 do 30 znaków, a wartość od 1 do 40.”; 51 opcji → „Można podać najwyżej 50 opcji.”; opcje 6 osi → „Można podać opcje najwyżej 5 różnych osi.” |
 | `status` | `GET /admin/products` | `[]` → T; nieznany → „Status produktu musi być jednym z: draft, published.” |
@@ -156,6 +156,9 @@ Operacje: `POST /orders`, `POST /me/orders`, `POST /orders/{orderId}/payments`, 
    `version` bez `detail`, nie wyjątek frameworka.
 5. **Strażnik klas żądań (#441).** Test przechodzi po klasach z `#[RequiredKeysBody]` znalezionych w kontrolerach
    z routera i wymaga parametrów konstruktora bez typu albo `mixed`.
+6. **`page` i `perPage` listy produktów.** W `ListProductsQuery` to właściwości ustawiane po konstruktorze, nie jego
+   parametry: wartość, której denormalizator nie przyjmuje jako liczby całkowitej (`1.5`), daje T i zostawia wartość
+   domyślną, zamiast trafić do parametru `int` konstruktora, który PHP obcina z ostrzeżeniem.
 
 ## Wdrożenie i klienci
 
