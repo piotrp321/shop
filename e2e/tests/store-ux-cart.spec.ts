@@ -214,7 +214,8 @@ test.describe("retry of the load of the cart (criterion 13)", () => {
 
     await expect(retryButton(page)).toBeFocused();
     await expect(retryButton(page)).toHaveAttribute("aria-disabled", "true");
-    await expect(retryButton(page)).not.toBeDisabled();
+    // Playwright counts aria-disabled as disabled: the attribute `disabled` is what would drop the focus.
+    expect(await retryButton(page).evaluate((button) => (button as HTMLButtonElement).disabled)).toBe(false);
     await page.keyboard.press("Enter");
     await page.keyboard.press("Space");
     await page.waitForTimeout(500);
