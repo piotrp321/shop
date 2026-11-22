@@ -572,9 +572,10 @@ export function usePromotionForm(options: PromotionFormOptions) {
       latest++;
       startError.value = START_READ_FAILED;
     }, START_WAIT_LIMIT_MS);
-    const untilStart = Date.parse(saved.startsAt) - Date.now();
-    const delay = Number.isFinite(untilStart) ? Math.max(untilStart, 0) + START_READ_GRACE_MS : START_READ_LATEST_MS;
-    startTimer = setTimeout(() => void read(), Math.min(delay, START_READ_LATEST_MS));
+    // One second after the start by the clock of the browser (at once when that has passed), at most 3 s from now.
+    const untilRead = Date.parse(saved.startsAt) + START_READ_GRACE_MS - Date.now();
+    const delay = Number.isFinite(untilRead) ? Math.min(Math.max(untilRead, 0), START_READ_LATEST_MS) : START_READ_LATEST_MS;
+    startTimer = setTimeout(() => void read(), delay);
   }
 
   /**
