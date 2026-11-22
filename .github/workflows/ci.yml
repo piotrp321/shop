@@ -300,7 +300,7 @@ jobs:
           df -h / /var/lib/docker || true
           docker compose exec -T elasticsearch curl -s 'localhost:9200/_cat/allocation?v' || true
           docker compose exec -T elasticsearch curl -s 'localhost:9200/_cluster/health?pretty' || true
-          docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres' <<'SQL'
+          docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U postgres -d postgres' <<'SQL'
           LOAD 'auto_explain';
           ALTER SYSTEM SET log_min_duration_statement = '500ms';
           ALTER SYSTEM SET session_preload_libraries = 'auto_explain';
@@ -326,7 +326,7 @@ jobs:
           docker compose logs --no-color elasticsearch | grep -iE 'watermark|disk|unassigned|timed out|took' | tail -n 80 || true
           docker stats --no-stream || true
           free -m; nproc
-          docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d shop_test -c "SELECT relname, n_live_tup, n_dead_tup, n_mod_since_analyze, last_autovacuum, last_autoanalyze, autovacuum_count, autoanalyze_count FROM pg_stat_user_tables WHERE relname LIKE '"'"'catalog%'"'"' OR relname LIKE '"'"'pricing%'"'"' OR relname LIKE '"'"'inventory%'"'"' ORDER BY relname"' || true
+          docker compose exec -T postgres sh -c 'psql -U postgres -d shop_test -c "SELECT relname, n_live_tup, n_dead_tup, n_mod_since_analyze, last_autovacuum, last_autoanalyze, autovacuum_count, autoanalyze_count FROM pg_stat_user_tables WHERE relname LIKE '"'"'catalog%'"'"' OR relname LIKE '"'"'pricing%'"'"' OR relname LIKE '"'"'inventory%'"'"' ORDER BY relname"' || true
           docker compose logs --no-color -t postgres > apps/api/var/postgres.log || true
           wc -l apps/api/var/postgres.log
           grep -E 'duration: [0-9]{4,}|automatic analyze|automatic vacuum|still waiting|acquired' apps/api/var/postgres.log | cut -c1-400 | tail -n 150 || true
