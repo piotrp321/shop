@@ -15,7 +15,7 @@ const ITEM_URL = "**/api/cart/items/*";
 type Line = { name: string; label: string };
 type Writes = { PATCH: number; DELETE: number };
 
-async function cartWithThreeLines(page: Page): Promise<Line[]> {
+async function cartWithThreeLines(page: Page): Promise<[Line, Line, Line]> {
   await page.goto(CATEGORY);
   await expect(page.getByRole("heading", { level: 1, name: "Trening" })).toBeVisible();
   const lines: Line[] = [];
@@ -30,7 +30,9 @@ async function cartWithThreeLines(page: Page): Promise<Line[]> {
   for (const line of lines) {
     await expect(quantityOf(page, line)).toHaveValue("1");
   }
-  return lines;
+  const [a, b, c] = lines;
+  if (a === undefined || b === undefined || c === undefined) throw new Error("the cart needs three lines");
+  return [a, b, c];
 }
 
 const rowOf = (page: Page, line: Line): Locator => cartLineOf(page, line.name, line.label);
