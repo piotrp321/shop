@@ -73,9 +73,10 @@ type Outcome = "saved" | "refused" | "gone" | "unauthorized";
 
 /**
  * "Przejdź do kasy" activated while operations were on their way or waited: `waiting` for them (the controls of the
- * lines are locked), `failed` when one of them was not saved (a message at the link), `none` otherwise.
+ * lines are locked), `opening` the checkout after all of them were saved (the controls stay locked until the checkout
+ * replaces the page), `failed` when one of them was not saved (a message at the link), `none` otherwise.
  */
-type Checkout = "none" | "waiting" | "failed";
+type Checkout = "none" | "waiting" | "opening" | "failed";
 
 /**
  * The cart of the browser, loaded from `/api/cart`. Every view comes from the last answer of the API; nothing is
@@ -142,6 +143,12 @@ export function CartPage() {
   useEffect(() => {
     if (attention) document.getElementById(attention.id)?.focus();
   }, [attention]);
+
+  // The checkout opens through the link once the render of the last answer shows it: an earlier answer may have put
+  // the inactive button in its place. The click goes to `next/link`, as without the waiting (a navigation of the client).
+  useEffect(() => {
+    if (shownCheckout === "opening") document.getElementById(CHECKOUT_ID)?.click();
+  }, [shownCheckout]);
 
   function applyLoaded(next: Loaded) {
     view.current = next.status === "ready" ? next.cart : null;
@@ -231,6 +238,8 @@ export function CartPage() {
    */
   function goToCheckout(event: MouseEvent<HTMLAnchorElement>) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    // Everything is saved and the page opens the checkout: the click is the link's.
+    if (checkout.current === "opening") return;
     if (checkout.current === "waiting") {
       event.preventDefault();
       return;
@@ -249,16 +258,14 @@ export function CartPage() {
   }
 
   /**
-   * Every operation is answered: the checkout the customer asked for opens when the cart can be ordered. The page clicks
-   * the link itself, now with nothing on its way, so `next/link` opens the checkout as without the waiting (a navigation
-   * of the client); a cart page kept by the browser for "Wstecz" then waits for nothing.
+   * Every operation is answered: the checkout the customer asked for opens when the cart can be ordered, through the link
+   * itself after the render of this cart (the effect above), so a cart page the browser keeps for "Wstecz" waits for
+   * nothing. A page that was left opens nothing.
    */
   function finishCheckout() {
     const cart = view.current;
     if (checkout.current !== "waiting") return;
-    setCheckout("none");
-    if (!mounted.current || cart === null || !canBeOrdered(cart)) return;
-    document.getElementById(CHECKOUT_ID)?.click();
+    setCheckout(mounted.current && cart !== null && canBeOrdered(cart) ? "opening" : "none");
   }
 
   /** Sends the operation at once when nothing is on its way; otherwise it waits at its line. */
@@ -341,9 +348,9 @@ export function CartPage() {
     return "refused";
   }
 
+  const linesLocked = shownCheckout === "waiting" || shownCheckout === "opening";
   // What the status region says now; the texts of the other operations of the screen are chosen here too.
-  const statusText = loaded.status === "loading" || retrying ? LOADING : shownCheckout === "waiting" ? SAVING : status;
-  const linesLocked = shownCheckout === "waiting";
+  const statusText = loaded.status === "loading" || retrying ? LOADING : linesLocked ? SAVING : status;
 
   return (
     <ScreenMain>
@@ -513,7 +520,7 @@ function CheckoutButton({
     return (
       <div className="flex flex-col items-end gap-2">
         <Button asChild className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50">
-          <Link id={CHECKOUT_ID} href={CHECKOUT_PATH} aria-disabled={checkout === "waiting" || undefined} onClick={onActivate}>
+          <Link id={CHECKOUT_ID} href={CHECKOUT_PATH} aria-disabled={checkout === "waiting" || checkout === "opening" || undefined} onClick={onActivate}>
             Przejdź do kasy
           </Link>
         </Button>
