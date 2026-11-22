@@ -32,6 +32,7 @@ final class GeneratedOrdersOnTheRealPathsTest extends WebTestCase
         foreach (['demo-data:categories', 'demo-data:products', 'demo-data:prices', 'demo-data:promotions', 'demo-data:orders', 'demo-data:stock', 'demo-data:order-numbers'] as $step) {
             $this->succeeds($step, ['--anchor' => $anchor->format(\DATE_ATOM)]);
         }
+        $this->analyze();
     }
 
     public function testThePanelListsFiltersAndShowsAGeneratedOrderWithItsHistoryAndPayment(): void
