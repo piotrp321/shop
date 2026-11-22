@@ -74,7 +74,9 @@ usuniętej z DOM (axe: `aria-valid-attr-value`, critical).
 - Po wyborze opcji myszą fokus jest w polu tego comboboxu; kolejny wpisany znak filtruje listę, a `Tab` przechodzi do
   następnej kontrolki. W oknie „Przenieś do…” fokus zostaje w oknie.
 - Przy zamkniętej liście pole nie ma `aria-activedescendant` albo wskazuje element istniejący w DOM; przy otwartej
-  wskazuje podświetloną opcję jak dotąd.
+  wskazuje podświetloną opcję jak dotąd. Tak samo przy otwartej liście bez opcji do podświetlenia (wpisany tekst nie
+  pasuje do żadnej kategorii albo pasują tylko opcje wyłączone, np. poddrzewo przenoszonej kategorii w „Przenieś
+  do…”): pole nie ma `aria-activedescendant`.
 - Wybór z klawiatury, tryb wielokrotny, opcje wyłączone i `Escape` działają jak dotąd.
 
 **Kryteria.**
