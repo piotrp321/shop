@@ -95,7 +95,11 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    w zleceniu poprawek i w zleceniu przeglądu. Zlecenie przeglądu (tu i w kroku 6) podaje fakty i decyzje do oceny:
    nie zawęża przeglądu i nie mówi, czego nie sprawdzać, a reviewer ma obowiązek aktywnie kwestionować założenia
    i decyzje sesji tak samo jak kod. Gdy zadanie z TDD nie ma fazy RED, sesja uruchamia test na kodzie bazowym (ma
-   nie przechodzić) i zapisuje wynik w opisie PR; RED nie odtwarza się po fakcie.
+   nie przechodzić) i zapisuje wynik w opisie PR; RED nie odtwarza się po fakcie. Takie uruchomienie, tak samo jak
+   RED odtworzony po fakcie, potwierdza, że test wykrywa błąd, ale nie jest fazą RED; kolejność commitów też jej nie
+   dowodzi. RED przed implementacją potwierdza tylko zapis uruchomienia: dziennik dowodów albo transkrypt subagenta,
+   w którym RED jest przed pierwszą zmianą pliku produkcyjnego. Bez takiego zapisu sesja pisze w „Ujawnieniu TDD”,
+   na czym oparła ocenę.
 
    **Ocena przed odroczeniem** (tu i w kroku 6). Uwagi `SUGGESTION` albo `Minor`, która opisuje konkretną ścieżkę błędu
    (wejście albo przeplot zdarzeń i błędny wynik), sesja nie odracza na podstawie samej etykiety. Zapisuje przy niej
@@ -202,7 +206,10 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    Sposób to jedno z: „stos” (polecenie albo scenariusz), „CI” (nazwa testu i zielony przebieg na czole gałęzi),
    „po wdrożeniu”, „niezweryfikowane” (z powodem). Kryteria „niezweryfikowane” są też na początku opisu PR jako
    decyzja dla użytkownika. Kryteria „po wdrożeniu” sesja sprawdza po wdrożeniu zleconym przez użytkownika i dopisuje
-   wynik w komentarzu PR.
+   wynik w komentarzu PR. Kryterium procesu, które wymaga RED przed zmianą, ma wynik rozdzielony na zachowanie
+   i proces: przy odstępstwach z „Ujawnienia TDD” „zachowanie: PASS; proces: częściowo (<zadania>)”, przy ocenie bez
+   zapisu uruchomień „proces: niepotwierdzony (tylko kolejność commitów)”. Takie kryterium nie dostaje samego PASS
+   i nie jest „do decyzji”, bo historii przebiegu nie da się poprawić.
 8. **Wznowienie po przerwie.** Stan odtwarza się z sekcji „Status” planu, gałęzi `task/*`, `git worktree list` i draft
    PR. Worktree przerwanego zadania zostaje na dysku razem z niezacommitowanymi zmianami. Sesja zapisuje je commitem
    w tym worktree (`git -C <worktree> add -A && git -C <worktree> commit -m "wip: …"`), potem go usuwa
