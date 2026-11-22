@@ -580,7 +580,10 @@ Po odrzuceniu fokus przechodzi na komunikat błędu (`role="alert"`, `tabIndex=-
 błędne pole (w kolejności formularza), które ma `aria-invalid` i `aria-describedby` na swój komunikat; po odrzuconym
 kodzie na pole kodu. Dzieje się tak tylko wtedy, gdy w chwili odpowiedzi fokus jest nadal na elemencie, z którego
 wyszło wysłanie (przycisk albo pole, w którym naciśnięto Enter), albo na `<body>`. Gdy klient przeszedł w tym czasie
-do innej kontrolki, fokus zostaje tam, a komunikat ogłasza `role="alert"`.
+do innej kontrolki, fokus zostaje tam, a odrzucenie ogłasza `role="alert"`: komunikat nad formularzem, a po 422
+z błędami pól albo dostawcy same teksty tych błędów przy polach i przy grupie „Sposób płatności” (te same teksty, bez
+zmiany wyglądu). Gdy fokus idzie na pierwsze błędne pole, błędy przy polach nie są w `role="alert"`; opisuje je
+`aria-describedby` pola.
 
 ## Scenariusze błędów
 
@@ -736,7 +739,8 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   wstrzymanym w przeglądarce i zakończonym odpowiedzią podstawioną przez test (500 albo 422), więc bez zamówienia:
   wpisywanie w pola i w pole kodu, mysz, dotyk, strzałki i Spacja na wyborach oraz „Zastosuj” niczego nie zmieniają,
   przycisk ma fokus i `aria-disabled`, region „Składamy zamówienie…”, jeden POST; wysłanie Enterem z „Miejscowość”
-  (po 422 fokus na pierwszym błędnym polu; po przejściu Tab w trakcie fokus zostaje); pusty formularz przy 375 px
+  (po 422 fokus na pierwszym błędnym polu; po przejściu Tab w trakcie fokus zostaje, a po 500 komunikat, po 422 błąd
+  pola jest w `role="alert"`); pusty formularz przy 375 px
   z dotykiem: oba błędy wyboru, fokus na pierwszym sposobie dostawy w widoku, bez POST; brak przewijania poziomego
   przy 320 i 375 px.
 - `payment-resume.spec.ts`: powrót ze strony symulatora na `/checkout`, link „Opłać zamówienie R-…”, „Wróć do

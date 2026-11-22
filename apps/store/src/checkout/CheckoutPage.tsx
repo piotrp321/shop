@@ -128,6 +128,9 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // What the live region of the summary says about the delivery after the summary was read again (a code, a 409).
   const [summaryStatus, setSummaryStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Whether the errors of the fields and of the provider of the last 422 are alerts: only when the focus did not go to
+  // the first wrong field, because the customer had moved it during the request (F2), so nothing else would say them.
+  const [errorsAnnounced, setErrorsAnnounced] = useState(false);
   // "Spróbuj ponownie" reads the checkout again while the error stays (the button keeps the focus); `loaded` says
   // "loading" only for the first read.
   const [retrying, setRetrying] = useState(false);
@@ -320,6 +323,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     if (delivery === null || provider === null) {
       if (delivery === null) setDeliveryError(CHOOSE_DELIVERY);
       if (provider === null) setProviderError(CHOOSE_PROVIDER);
+      setErrorsAnnounced(false);
       const first = loaded.cart.delivery?.options[0];
       if (delivery !== null) moveFocusTo(`${PROVIDER_ID_PREFIX}${providers[0].code}`);
       else moveFocusTo(first === undefined ? DELIVERY_ERROR_ID : `${DELIVERY_ID_PREFIX}${first.methodId}`);
@@ -332,6 +336,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setProviderError(null);
     setFailure(null);
     setFieldErrors({});
+    setErrorsAnnounced(false);
     const { email, ...contact } = form;
     const input: PlaceOrderInput = {
       ...(loaded.session === null ? { email } : {}),
@@ -352,6 +357,8 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       }
       return;
     }
+    // Set with the errors themselves (the 422 is shown without waiting), so that they are rendered as alerts at once.
+    setErrorsAnnounced(result.status === "invalid" && !focusStayed(origin));
     const target = await showFailure(result, loaded.session);
     running.current = null;
     setSubmitting(false);
@@ -488,6 +495,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           session={loaded.session}
           form={form}
           fieldErrors={fieldErrors}
+          errorsAnnounced={errorsAnnounced}
           providers={providers}
           provider={provider}
           providerError={providerError}
@@ -651,6 +659,7 @@ function CheckoutContent({
   session,
   form,
   fieldErrors,
+  errorsAnnounced,
   providers,
   provider,
   providerError,
@@ -673,6 +682,8 @@ function CheckoutContent({
   session: AccountSession;
   form: Form;
   fieldErrors: Partial<Record<FieldName, string>>;
+  /** Whether the errors of the fields and of the provider are alerts (see `errorsAnnounced` of the page). */
+  errorsAnnounced: boolean;
   providers: PaymentProvider[] | null;
   provider: string | null;
   providerError: string | null;
@@ -738,7 +749,15 @@ function CheckoutContent({
           </p>
         )}
         {FIELDS.filter((field) => field.name !== "email" || session === null).map((field) => (
-          <FormField key={field.name} {...field} value={form[field.name]} error={fieldErrors[field.name]} locked={submitting} onChange={onChange} />
+          <FormField
+            key={field.name}
+            {...field}
+            value={form[field.name]}
+            error={fieldErrors[field.name]}
+            announced={errorsAnnounced}
+            locked={submitting}
+            onChange={onChange}
+          />
         ))}
         {offersNoMethods(cart) ? (
           <Alert role="status">
@@ -760,7 +779,14 @@ function CheckoutContent({
           </Alert>
         ) : (
           <>
-            <ProviderChoice providers={providers} value={provider} error={providerError} locked={submitting} onChange={onProviderChange} />
+            <ProviderChoice
+              providers={providers}
+              value={provider}
+              error={providerError}
+              announced={errorsAnnounced}
+              locked={submitting}
+              onChange={onProviderChange}
+            />
             {/* A running request blocks with `aria-disabled`, not `disabled`: a disabled button loses the keyboard focus.
                 No delivery method to choose is a lasting state, not a request, and keeps `disabled`. */}
             <Button
@@ -782,12 +808,15 @@ function ProviderChoice({
   providers,
   value,
   error,
+  announced,
   locked,
   onChange,
 }: {
   providers: PaymentProvider[];
   value: string | null;
   error: string | null;
+  /** Whether the error is an alert (see `errorsAnnounced`). */
+  announced: boolean;
   /** While the order is placed the choice does not change. */
   locked: boolean;
   onChange: (code: string) => void;
@@ -820,7 +849,7 @@ function ProviderChoice({
         </Label>
       ))}
       {error ? (
-        <p id={PROVIDER_ERROR_ID} className="text-sm text-destructive">
+        <p id={PROVIDER_ERROR_ID} role={announced ? "alert" : undefined} className="text-sm text-destructive">
           {error}
         </p>
       ) : null}
@@ -900,6 +929,7 @@ function FormField({
   autoComplete,
   value,
   error,
+  announced,
   locked,
   onChange,
 }: {
@@ -909,6 +939,8 @@ function FormField({
   autoComplete: string;
   value: string;
   error?: string;
+  /** Whether the error is an alert (see `errorsAnnounced`). */
+  announced: boolean;
   /** While the order is placed the field keeps its value: read-only with `aria-disabled`, and it keeps the focus. */
   locked: boolean;
   onChange: (name: FieldName, value: string) => void;
@@ -932,7 +964,7 @@ function FormField({
         onChange={(event) => onChange(name, event.target.value)}
       />
       {error ? (
-        <p id={errorId} className="text-sm text-destructive">
+        <p id={errorId} role={announced ? "alert" : undefined} className="text-sm text-destructive">
           {error}
         </p>
       ) : null}
