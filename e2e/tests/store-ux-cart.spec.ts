@@ -675,19 +675,19 @@ async function failNextQuantityChange(page: Page): Promise<{ arm: () => void }> 
   return { arm: () => (armed = true) };
 }
 
-/** A click of a person: press, hold for 120 ms, release, at the centre the element has at the press. */
+/** A click of a person: press, hold for 150 ms, release, at the centre the element has at the press. */
 async function clickWithHold(page: Page, target: Locator): Promise<void> {
   await target.scrollIntoViewIfNeeded();
   const box = await target.boundingBox();
   if (box === null) throw new Error("the control has no box");
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await page.waitForTimeout(120);
+  await page.waitForTimeout(150);
   await page.mouse.up();
 }
 
 const gestures = [
-  { device: "the mouse held for 120 ms at 1280 px", use: DESKTOP, touch: false, press: clickWithHold },
+  { device: "the mouse held for 150 ms at 1280 px", use: DESKTOP, touch: false, press: clickWithHold },
   {
     device: "a tap at 375 px",
     use: { viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true },
@@ -753,5 +753,40 @@ test.describe("the session expires while a quantity is saved (U1)", () => {
 
     await expect(page.getByRole("main").getByText(/Twoja sesja wygasła/)).toBeVisible();
     await expect(page.getByRole("heading", { level: 1, name: "Koszyk" })).toBeFocused();
+  });
+});
+
+// An answer that comes while the button is pressed changes more than the message of a line: the delivery rows of the
+// summary, a removed line. It is applied after the release (S1), so the control keeps its place for the click.
+test.describe("an answer between the press and the release of a button does not move the button (S1)", () => {
+  test.use(DESKTOP);
+
+  test("Przejdź do kasy pressed for 150 ms after typing a quantity that reaches the free delivery", async ({ page }) => {
+    test.setTimeout(90_000);
+    const [a] = await cartWithLines(page, 2);
+    if (a === undefined) throw new Error("the cart needs lines");
+    const writes = countWrites(page);
+    await expect(page.getByTestId("cart-delivery-missing")).toHaveCount(1);
+
+    await typeQuantity(quantityOf(page, a), "3", { touch: false });
+    await clickWithHold(page, checkoutLink(page));
+
+    await page.waitForURL((url) => url.pathname === "/checkout", { timeout: 30_000 });
+    expect(writes).toEqual({ PATCH: 1, DELETE: 0 });
+  });
+
+  test("Usuń of a line pressed for 150 ms right after Usuń of the line above it", async ({ page }) => {
+    test.setTimeout(90_000);
+    const [a, b, c] = await cartWithLines(page, 3);
+    if (a === undefined || b === undefined || c === undefined) throw new Error("the cart needs three lines");
+    const writes = countWrites(page);
+
+    await removeOf(page, a).click();
+    await clickWithHold(page, removeOf(page, b));
+
+    await expect(rowOf(page, a)).toHaveCount(0, { timeout: 30_000 });
+    await expect(rowOf(page, b)).toHaveCount(0, { timeout: 30_000 });
+    await expect(rowOf(page, c)).toHaveCount(1);
+    expect(writes).toEqual({ PATCH: 0, DELETE: 2 });
   });
 });
