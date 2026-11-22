@@ -31,8 +31,21 @@ final class GeneratedProductsOnTheRealPathsTest extends WebTestCase
         $this->client->disableReboot();
         self::assertSame(0, $this->int($this->connection()->fetchOne('SELECT count(*) FROM catalog_product')), 'shop_test has catalog rows that are not the ones of this test.');
 
-        $this->catalogSteps();
+        // DIAG (temporary): the time of every step.
+        $t = hrtime(true);
+        $lap = static function (string $what) use (&$t): void {
+            $now = hrtime(true);
+            fwrite(\STDERR, \sprintf("\n[DIAG step] %.3fs %s\n", ($now - $t) / 1e9, $what));
+            $t = $now;
+        };
+        $this->succeeds('demo-data:categories');
+        $lap('categories');
+        $this->succeeds('demo-data:products');
+        $lap('products');
+        $this->succeeds('demo-data:photos');
+        $lap('photos');
         $this->succeeds('catalog:reindex', [], false);
+        $lap('catalog:reindex');
 
         // A published product with photos and several variants, from the middle of the tail.
         $row = $this->connection()->fetchAssociative(
@@ -55,7 +68,9 @@ final class GeneratedProductsOnTheRealPathsTest extends WebTestCase
     {
         $maintenance = self::getContainer()->get(SearchIndexMaintenance::class);
         self::assertInstanceOf(SearchIndexMaintenance::class, $maintenance);
+        $t = hrtime(true);
         $maintenance->recreate();
+        fwrite(\STDERR, \sprintf("\n[DIAG step] %.3fs tearDown recreate (%s)\n", (hrtime(true) - $t) / 1e9, $this->name()));
         parent::tearDown();
     }
 
@@ -170,7 +185,9 @@ final class GeneratedProductsOnTheRealPathsTest extends WebTestCase
      */
     private function get(string $path, bool $admin = false): array
     {
+        $t = hrtime(true);
         $this->client->request('GET', $path, server: $admin ? ['HTTP_AUTHORIZATION' => 'Bearer '.TestTokenFactory::staff(['admin'])] : []);
+        fwrite(\STDERR, \sprintf("\n[DIAG get] %.3fs %s\n", (hrtime(true) - $t) / 1e9, $path));
         $decoded = json_decode((string) $this->client->getResponse()->getContent(), true, flags: \JSON_THROW_ON_ERROR);
         self::assertIsArray($decoded);
 

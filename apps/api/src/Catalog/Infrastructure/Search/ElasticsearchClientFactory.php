@@ -39,11 +39,37 @@ final readonly class ElasticsearchClientFactory
      */
     public function httpClient(float $responseTimeout): ClientInterface
     {
-        return new Psr18Client(HttpClient::create([
+        $inner = new Psr18Client(HttpClient::create([
             'max_connect_duration' => $this->connectTimeout,
             'timeout' => $responseTimeout,
             'max_duration' => $this->connectTimeout + $responseTimeout,
         ]));
+
+        // DIAG (temporary): log every slow Elasticsearch request to stderr.
+        return new class($inner) implements ClientInterface {
+            public function __construct(private ClientInterface $inner)
+            {
+            }
+
+            public function sendRequest(\Psr\Http\Message\RequestInterface $request): \Psr\Http\Message\ResponseInterface
+            {
+                $start = hrtime(true);
+                try {
+                    $response = $this->inner->sendRequest($request);
+                } catch (\Throwable $e) {
+                    fwrite(\STDERR, \sprintf("\n[DIAG es] %.3fs %s %s -> %s %s\n", (hrtime(true) - $start) / 1e9, $request->getMethod(), (string) $request->getUri(), $e::class, $e->getMessage()));
+                    throw $e;
+                }
+                $seconds = (hrtime(true) - $start) / 1e9;
+                if ($seconds > 0.3) {
+                    $body = (string) $response->getBody();
+                    $response->getBody()->rewind();
+                    fwrite(\STDERR, \sprintf("\n[DIAG es] %.3fs %s %s -> %d %s\n", $seconds, $request->getMethod(), (string) $request->getUri(), $response->getStatusCode(), substr($body, 0, 300)));
+                }
+
+                return $response;
+            }
+        };
     }
 
     public function createWith(ClientInterface $httpClient): Client

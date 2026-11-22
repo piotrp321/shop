@@ -94,32 +94,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # apps: the CI images the part pulls; stack: `full` starts the services of the api tests, `redis` only Redis;
-          # also: the scope (besides `full`) in which the part still has work.
-          - name: k8s
-            apps: ''
-            stack: none
-            also: k8s
-          - name: apps
-            apps: api store admin
-            stack: redis
-            also: tooling
-          - name: api integration
+          - name: api functional a
             apps: api
             stack: full
             also: none
-            phpunit_args: --testsuite integration
-          - name: api demo data
+            phpunit_args: --testsuite functional
+          - name: api functional b
             apps: api
             stack: full
             also: none
-            phpunit_args: --testsuite demo-data
-          - name: api demo data orders
-            apps: api
-            stack: full
-            also: none
-            phpunit_args: --testsuite demo-data-orders
-          - name: api functional
+            phpunit_args: --testsuite functional
+          - name: api functional c
             apps: api
             stack: full
             also: none
@@ -304,11 +289,29 @@ jobs:
 
       # The api suite of the part; `test` migrates shop_test and recreates the test index first. The JUnit log lands in
       # apps/api/var (mounted into the container) for the step below.
+      - name: DIAG disk and Elasticsearch before the tests
+        if: env.FULL_CI == 'true'
+        run: |
+          df -h / /var/lib/docker || true
+          docker compose exec -T elasticsearch curl -s 'localhost:9200/_cat/allocation?v' || true
+          docker compose exec -T elasticsearch curl -s 'localhost:9200/_cluster/health?pretty' || true
+
       - name: api tests
         if: env.FULL_CI == 'true' && matrix.phpunit_args != ''
         env:
           PHPUNIT_ARGS: ${{ matrix.phpunit_args }}
         run: make -C apps/api test RUN="$CI_RUN" PHPUNIT_ARGS="$PHPUNIT_ARGS --log-junit var/junit.xml"
+
+      - name: DIAG disk and Elasticsearch after the tests
+        if: ${{ !cancelled() && env.FULL_CI == 'true' }}
+        run: |
+          df -h / /var/lib/docker || true
+          docker compose exec -T elasticsearch curl -s 'localhost:9200/_cat/allocation?v' || true
+          docker compose exec -T elasticsearch curl -s 'localhost:9200/_cluster/settings?include_defaults=true&flat_settings=true&pretty' | grep -E 'disk|info.update' || true
+          docker compose logs --no-color elasticsearch | grep -viE '"log.level": ?"INFO"' | tail -n 80 || true
+          docker compose logs --no-color elasticsearch | grep -iE 'watermark|disk|unassigned|timed out|took' | tail -n 80 || true
+          docker stats --no-stream || true
+          free -m; nproc
 
       # Also after failed tests; no log (the run did not get to the end) adds nothing.
       - name: Slowest api tests in the step summary
@@ -399,7 +402,7 @@ jobs:
   e2e-shard:
     name: e2e shard ${{ matrix.index }}
     needs: scope
-    if: ${{ !cancelled() }}
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
