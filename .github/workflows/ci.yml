@@ -9,7 +9,7 @@
 # documentation) runs just the script tests (in the `apps` part); the Kubernetes deployment only (infra/k8s/**,
 # possibly with documentation) runs just `make -C infra/k8s check` (in the `k8s` part). Skipped steps
 # let the other jobs pass within seconds. Anything else,
-# and every push, runs it all. A full run uses 1 + 4 + 3 runners for its work (`scope`, the `checks-part` and
+# and every push, runs it all. A full run uses 1 + 6 + 4 runners for its work (`scope`, the `checks-part` and
 # `e2e-shard` parts) and two more for the short `checks` and `e2e` reports.
 name: CI
 
@@ -75,10 +75,14 @@ jobs:
   #   apps             make check-code (PHPStan, Deptrac, PHP CS Fixer, ESLint, tsc and the make/*.mk fragments), the api
   #                    unit suite (a few seconds, no services), the contract freshness, the store and admin suites, the
   #                    VCL tests and the script tests; Redis for the store integration tests
-  #   api integration  the api `integration` and `functional` suites, one part each, on PostgreSQL, Garage, imgproxy,
-  #   api functional   RabbitMQ, Elasticsearch, Keycloak, Redis and Mailpit
+  #   api integration, api demo data, api demo data orders, api functional
+  #                    the api suites `integration`, `demo-data` and `demo-data-orders` (the integration tests of the
+  #                    demo data generator, about two thirds of the integration time, split in two of about the same
+  #                    time) and `functional`, one part each, on PostgreSQL, Garage, imgproxy, RabbitMQ, Elasticsearch,
+  #                    Keycloak, Redis and Mailpit; the step summary of each lists its slowest tests and classes
+  #                    (.github/scripts/junit-slowest.py)
   # The parts are not named `checks`: the required check of that name is the job below. When the parts end far apart,
-  # move work between them (the api parts by test directory, `phpunit_args`).
+  # move work between them (the api parts by test directory: the suites of apps/api/phpunit.dist.xml).
   checks-part:
     name: checks part ${{ matrix.name }}
     needs: scope
@@ -106,6 +110,16 @@ jobs:
             stack: full
             also: none
             phpunit_args: --testsuite integration
+          - name: api demo data
+            apps: api
+            stack: full
+            also: none
+            phpunit_args: --testsuite demo-data
+          - name: api demo data orders
+            apps: api
+            stack: full
+            also: none
+            phpunit_args: --testsuite demo-data-orders
           - name: api functional
             apps: api
             stack: full
@@ -289,12 +303,25 @@ jobs:
         if: env.FULL_CI == 'true' && matrix.stack != 'none'
         run: sh .github/scripts/background.sh wait services
 
-      # The api suite of the part; `test` migrates shop_test and recreates the test index first.
+      # The api suite of the part; `test` migrates shop_test and recreates the test index first. The JUnit log lands in
+      # apps/api/var (mounted into the container) for the step below.
       - name: api tests
         if: env.FULL_CI == 'true' && matrix.phpunit_args != ''
         env:
           PHPUNIT_ARGS: ${{ matrix.phpunit_args }}
-        run: make -C apps/api test RUN="$CI_RUN" PHPUNIT_ARGS="$PHPUNIT_ARGS"
+        run: make -C apps/api test RUN="$CI_RUN" PHPUNIT_ARGS="$PHPUNIT_ARGS --log-junit var/junit.xml"
+
+      # Also after failed tests; no log (the run did not get to the end) adds nothing.
+      # bash: pipefail, so a failing script fails the step instead of leaving an empty summary behind tee.
+      - name: Slowest api tests in the step summary
+        if: ${{ !cancelled() && env.FULL_CI == 'true' && matrix.phpunit_args != '' }}
+        shell: bash
+        env:
+          PART: ${{ matrix.name }}
+        run: |
+          [ -f apps/api/var/junit.xml ] || { echo "No JUnit log: the tests did not get to the end"; exit 0; }
+          { echo "### Slowest tests: $PART"; echo; python3 .github/scripts/junit-slowest.py apps/api/var/junit.xml; } \
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
       # The `apps` part: the static analysis (`check-code` is `make check` without `make -C infra/k8s check`, which the
       # `k8s` part runs) and the store and admin suites run in the background next to the steps below, the script tests
@@ -388,6 +415,8 @@ jobs:
           - index: 2
             after_e2e: false
           - index: 3
+            after_e2e: false
+          - index: 4
             after_e2e: true
     env:
       SCOPE: ${{ needs.scope.outputs.scope }}
@@ -572,18 +601,20 @@ jobs:
         run: make seed RUN="docker compose exec -T"
 
       # This part of the suite: `--shard=<index>/<number of parts>` runs whole spec files in file order. The weights (one
-      # per part, 133:131:159 of 423 tests) put the boundaries after 133 tests (inside admin-screens-orders, so the first
-      # part runs admin-customers to admin-screens-orders: 146 slow panel tests) and after 264 (inside
-      # delivery-checkout, so the second runs admin-screens-prices to delivery-checkout: 120 tests, among them the slow
-      # catalog-admin); the last part (delivery-tracking to visual-screens, 157 faster tests) also runs the checks after
-      # the tests. A spec file belongs to the part in which its first test starts before the boundary. When tests are
-      # added, move the boundaries so that the parts end about together: count by the times of the files in the log of
-      # the parts, not by the number of tests (a panel test takes several times as long as a store test).
+      # per part, 79:109:121:114 of 423 tests) put the boundaries after 79 tests (inside admin-screens-discount-codes),
+      # after 188 (inside admin-screens-promotions) and after 309 (inside listing-tile-variants). The parts, with the time
+      # of their tests in CI run 45044387222: admin-customers to admin-screens-discount-codes (91 tests, ~295 s, with
+      # admin-design), admin-screens-inventory to admin-screens-promotions (115, ~385 s), admin-screens-toasts to
+      # listing-tile-variants (108, ~480 s, with catalog-admin) and order-management to visual-screens (109, ~305 s),
+      # which also runs the checks after the tests (~3 min). A spec file belongs to the part in which its first test
+      # starts before the boundary. When tests are added, move the boundaries so that the parts end about together:
+      # count by the times of the files in the log of the parts, not by the number of tests (a panel test takes several
+      # times as long as a store test), and keep every boundary inside a file of at least 8 tests.
       - name: make e2e
         if: env.FULL_CI == 'true'
         env:
           E2E_SHARD: ${{ matrix.index }}/${{ strategy.job-total }}
-          E2E_SHARD_WEIGHTS: '133:131:159'
+          E2E_SHARD_WEIGHTS: '79:109:121:114'
         run: make e2e E2E_FLAGS=-T E2E_BUILD=
 
       # The checks on the running stack after the E2E tests of the part with `after_e2e`: every target a make/*.mk
