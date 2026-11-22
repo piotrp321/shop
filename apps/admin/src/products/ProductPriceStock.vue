@@ -12,6 +12,7 @@ import { variantName } from "@/lib/variantName";
 import { formatMoney } from "@/prices/format";
 import PriceDialogs from "@/prices/PriceDialogs.vue";
 import { useAuthStore } from "@/stores/auth";
+import type { TaxClass } from "./taxClasses";
 import { type PriceStockRow, useProductPriceStock } from "./useProductPriceStock";
 
 /**
@@ -19,9 +20,10 @@ import { type PriceStockRow, useProductPriceStock } from "./useProductPriceStock
  * variant saved in the API, with its price and stock and the actions of the price and stock lists, which use the same
  * windows. Saving in a window changes nothing in the form of the product. `reloadKey` is the version of the saved
  * product: when it changes (the product was saved) the card reads the prices and stocks again. `hasUnsavedVariants`
- * tells that the variant editor has a row the API does not know yet, which has no price and stock to set.
+ * tells that the variant editor has a row the API does not know yet, which has no price and stock to set. `taxClasses` is
+ * the dictionary the form already read: the price history shows the name of a class from it.
  */
-const props = defineProps<{ productId: string; reloadKey: number; hasUnsavedVariants: boolean }>();
+const props = defineProps<{ productId: string; reloadKey: number; hasUnsavedVariants: boolean; taxClasses: TaxClass[] }>();
 
 const { rows, loading, loaded, error, forbidden, load, changePrice, receiveStock, correctStock } = useProductPriceStock(() => props.productId);
 
@@ -209,6 +211,7 @@ const fallbackFocus = () => section.value?.heading ?? null;
     <PriceDialogs
       ref="priceDialogs"
       :rows="rows"
+      :tax-classes="taxClasses"
       :change-price="changePrice"
       :fallback-focus="fallbackFocus"
     />

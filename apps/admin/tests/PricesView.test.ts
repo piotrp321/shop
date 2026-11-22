@@ -1599,9 +1599,46 @@ describe("PricesView: price history", () => {
       "Netto: 52,29 zł",
       "VAT: 2,61 zł",
       "Stawka: 5%",
-      "Klasa: printed_book",
+      "Klasa: Książki drukowane",
       "Pracownik: Jan Kowalski",
     ]);
+  });
+
+  it("shows the Polish name of the tax class from the dictionary in the column and in the line of the date cell", async () => {
+    serveHistory({ "": { items: [entry(5490, { taxClass: "printed_book" })], next: null } });
+    wrapper = await mountView();
+
+    await openHistory();
+
+    const row = page().get("[data-testid=history-row]");
+    expect(row.get("[data-testid=history-tax-class]").text()).toBe("Książki drukowane");
+    expect(row.get("[data-testid=line-taxClass]").text()).toBe("Klasa: Książki drukowane");
+  });
+
+  it("shows the code of a tax class the dictionary does not have", async () => {
+    serveHistory({ "": { items: [entry(5490, { taxClass: "energy_bar" })], next: null } });
+    wrapper = await mountView();
+
+    await openHistory();
+
+    const row = page().get("[data-testid=history-row]");
+    expect(row.get("[data-testid=history-tax-class]").text()).toBe("energy_bar");
+    expect(row.get("[data-testid=line-taxClass]").text()).toBe("Klasa: energy_bar");
+  });
+
+  it("shows the code of the tax class when the dictionary could not be read", async () => {
+    serveHistory({ "": { items: [entry(5490, { taxClass: "printed_book" })], next: null } });
+    const served = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation(async (path: string, options?: never) =>
+      path === TAX_CLASSES ? { data: undefined, response: { status: 500 } } : served(path, options),
+    );
+    wrapper = await mountView();
+
+    await openHistory();
+
+    const row = page().get("[data-testid=history-row]");
+    expect(row.get("[data-testid=history-tax-class]").text()).toBe("printed_book");
+    expect(row.get("[data-testid=line-taxClass]").text()).toBe("Klasa: printed_book");
   });
 
   it("gives the focus back to „Historia” of the row when it closes", async () => {

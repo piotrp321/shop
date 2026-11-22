@@ -206,6 +206,25 @@ test.describe("the list", () => {
     }
   });
 
+  test("#579: the history of a price shows the tax class of its variant as the row of the list does", async () => {
+    test.setTimeout(60_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await openPrices(page, `/prices?q=${encodeURIComponent(WITH_VARIANTS)}`);
+
+      const group = page.getByTestId("product-row").filter({ has: page.getByTestId("name").getByText(WITH_VARIANTS, { exact: true }) });
+      const listed = (await group.getByTestId("tax-class").innerText()).trim();
+      expect(listed).toMatch(/^[A-ZĄĆĘŁŃÓŚŹŻ][^_]+$/);
+      await group.locator("xpath=following-sibling::tr[@data-testid='price-row']").first().getByTestId("show-history").click();
+
+      const dialog = page.getByRole("dialog", { name: "Historia ceny" });
+      await expect(dialog.getByTestId("history-row").first()).toBeVisible();
+      await expect(dialog.getByTestId("history-tax-class").first()).toHaveText(listed);
+    } finally {
+      await page.close();
+    }
+  });
+
   test("shows „Wariant domyślny” for a product without variant axes", async () => {
     test.setTimeout(60_000);
     const page = await newPanelPage("admin", viewports.desktop);
