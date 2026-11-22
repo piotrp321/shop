@@ -444,7 +444,7 @@ describe("CheckoutPage placing the order", () => {
     expect(push).toHaveBeenCalledWith("/checkout/confirmation");
   });
 
-  it("locks the button while the request runs", async () => {
+  it("locks the button while the request runs: aria-disabled, not disabled, and a second click orders nothing", async () => {
     await renderCheckout();
     fillGuestForm();
     let answer: (result: PlaceOrderResult) => void = () => {};
@@ -453,11 +453,13 @@ describe("CheckoutPage placing the order", () => {
       fireEvent.click(submitButton());
     });
 
-    expect(submitButton().disabled).toBe(true);
+    expect(submitButton().getAttribute("aria-disabled")).toBe("true");
+    expect(submitButton().disabled).toBe(false);
     fireEvent.click(submitButton());
     expect(placeOrder).toHaveBeenCalledTimes(1);
 
     await act(async () => answer({ status: "failed" }));
+    expect(submitButton().getAttribute("aria-disabled")).toBeNull();
     expect(submitButton().disabled).toBe(false);
   });
 
@@ -527,10 +529,11 @@ describe("CheckoutPage placing the order", () => {
     ["a 404", { status: "not_found" }],
     ["a 401", { status: "unauthorized" }],
     ["a failure", { status: "failed" }],
-  ])("moves the focus to the message after %s, because the button was locked", async (_name, result) => {
+  ])("moves the focus from the button to the message after %s", async (_name, result) => {
     await renderCheckout();
     fillGuestForm();
     vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart() });
+    submitButton().focus();
     await submit(result);
 
     const alert = screen.getByRole("alert");
@@ -744,6 +747,283 @@ describe("CheckoutPage placing the order", () => {
     expect(screen.getByRole("alert").textContent).toBe(SUBMIT_FAILED);
     expect(push).not.toHaveBeenCalled();
     expect(announced).toEqual([]);
+  });
+});
+
+describe("CheckoutPage while the order is being placed", () => {
+  const PLACING = "Składamy zamówienie…";
+  /** The text fields of a guest's form with what `fillGuestForm` types in them. */
+  const GUEST_FIELDS: [string, string][] = [
+    ["E-mail", GUEST_INPUT.email],
+    ["Imię i nazwisko", GUEST_INPUT.fullName],
+    ["Telefon", GUEST_INPUT.phone],
+    ["Ulica i numer", GUEST_INPUT.street],
+    ["Kod pocztowy", GUEST_INPUT.postalCode],
+    ["Miejscowość", GUEST_INPUT.city],
+  ];
+  const providerRadio = (name: string) => screen.getByRole("radio", { name }) as HTMLInputElement;
+  const form = () => submitButton().form as HTMLFormElement;
+  const twoMethods = (): CartView => ({
+    ...cart(),
+    delivery: delivery([option(STANDARD, "Kurier standardowy", 0, 39998), option(EXPRESS, "Kurier ekspresowy", 1999, 41997)]),
+  });
+
+  /** Holds the answer of the next order; the returned function gives it. */
+  function holdOrder(): (result: PlaceOrderResult) => Promise<void> {
+    let answer: (result: PlaceOrderResult) => void = () => {};
+    vi.mocked(placeOrder).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    return (result) => act(async () => answer(result));
+  }
+
+  /** A guest's form with two methods, the first one chosen, then the order sent from the focused button and held. */
+  async function placeHeld(): Promise<(result: PlaceOrderResult) => Promise<void>> {
+    await renderCheckout(twoMethods());
+    fillGuestForm();
+    const answer = holdOrder();
+    submitButton().focus();
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+    return answer;
+  }
+
+  it("keeps every text field as it was, read-only with aria-disabled, while the request runs", async () => {
+    await placeHeld();
+
+    for (const [label, value] of GUEST_FIELDS) {
+      expect(field(label).readOnly).toBe(true);
+      expect(field(label).getAttribute("aria-disabled")).toBe("true");
+      expect(field(label).disabled).toBe(false);
+      fireEvent.change(field(label), { target: { value: `${value}X` } });
+      expect(field(label).value).toBe(value);
+    }
+  });
+
+  it("keeps the delivery method and the provider as they were: a click, the arrows and Space change nothing", async () => {
+    await placeHeld();
+
+    const radios = [deliveryRadio("Kurier standardowy"), deliveryRadio("Kurier ekspresowy"), providerRadio("Szybki przelew (demo)"), providerRadio("Karta płatnicza (demo)")];
+    for (const radio of radios) {
+      expect(radio.getAttribute("aria-disabled")).toBe("true");
+      expect(radio.disabled).toBe(false);
+    }
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+    fireEvent.click(providerRadio("Karta płatnicza (demo)"));
+    for (const radio of radios) {
+      // A key whose default is cancelled moves no choice: fireEvent answers false for a cancelled event.
+      expect(fireEvent.keyDown(radio, { key: "ArrowDown" })).toBe(false);
+      expect(fireEvent.keyDown(radio, { key: "ArrowRight" })).toBe(false);
+      expect(fireEvent.keyDown(radio, { key: " " })).toBe(false);
+    }
+
+    expect(deliveryRadio("Kurier standardowy").checked).toBe(true);
+    expect(deliveryRadio("Kurier ekspresowy").checked).toBe(false);
+    expect(providerRadio("Szybki przelew (demo)").checked).toBe(true);
+    expect(providerRadio("Karta płatnicza (demo)").checked).toBe(false);
+    expect(screen.getByTestId("checkout-total").textContent).toBe(price(39998));
+  });
+
+  it("keeps the focus on the order button, says it is placing the order, and sends one request for a click, Space and Enter", async () => {
+    await placeHeld();
+
+    expect(document.activeElement).toBe(submitButton());
+    expect(submitButton().getAttribute("aria-disabled")).toBe("true");
+    expect(submitButton().disabled).toBe(false);
+    expect(screen.getByTestId("checkout-status").textContent).toBe(PLACING);
+    expect(screen.getAllByText(PLACING)).toHaveLength(1);
+    await act(async () => {
+      fireEvent.click(submitButton());
+      fireEvent.submit(form());
+    });
+
+    expect(placeOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends one request when the order is sent with Enter from a field, again and again", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    holdOrder();
+    field("Miejscowość").focus();
+    await act(async () => {
+      fireEvent.submit(form());
+      fireEvent.submit(form());
+    });
+    await act(async () => {
+      fireEvent.submit(form());
+    });
+
+    expect(placeOrder).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(field("Miejscowość"));
+  });
+
+  it.each<[string, PlaceOrderResult]>([
+    ["a failure", { status: "failed" }],
+    ["a 422", { status: "invalid", violations: [{ propertyPath: "phone", title: "Podaj 9-cyfrowy numer telefonu." }] }],
+  ])("unlocks everything after %s and keeps the fields, the method, the provider and the code", async (_name, result) => {
+    await renderCheckout(twoMethods());
+    fillGuestForm();
+    fireEvent.change(screen.getByLabelText("Kod rabatowy"), { target: { value: "LATO15" } });
+    const answer = holdOrder();
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+    await answer(result);
+
+    expect(screen.getByTestId("checkout-status").textContent).toBe("");
+    expect(submitButton().getAttribute("aria-disabled")).toBeNull();
+    for (const [label, value] of GUEST_FIELDS) {
+      expect(field(label).readOnly).toBe(false);
+      expect(field(label).getAttribute("aria-disabled")).toBeNull();
+      expect(field(label).value).toBe(value);
+    }
+    expect(deliveryRadio("Kurier ekspresowy").getAttribute("aria-disabled")).toBeNull();
+    expect(providerRadio("Karta płatnicza (demo)").getAttribute("aria-disabled")).toBeNull();
+    expect(deliveryRadio("Kurier standardowy").checked).toBe(true);
+    expect(providerRadio("Szybki przelew (demo)").checked).toBe(true);
+    expect((screen.getByLabelText("Kod rabatowy") as HTMLInputElement).value).toBe("LATO15");
+
+    // Unlocked, the choices and the fields change again.
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+    expect(deliveryRadio("Kurier ekspresowy").checked).toBe(true);
+    type("Telefon", "600 100 201");
+    expect(field("Telefon").value).toBe("600 100 201");
+  });
+
+  it("is still locked when it goes to the page of the provider after a success", async () => {
+    let lockedWhenLeaving: (string | boolean | null)[] = [];
+    vi.mocked(navigateTo).mockImplementation(() => {
+      lockedWhenLeaving = [submitButton().getAttribute("aria-disabled"), field("Telefon").readOnly, deliveryRadio("Kurier standardowy").getAttribute("aria-disabled")];
+    });
+    const answer = await placeHeld();
+    await answer({ status: "ok", number: "R-100001", redirectUrl: REDIRECT_URL });
+
+    expect(navigateTo).toHaveBeenCalledWith(REDIRECT_URL);
+    expect(lockedWhenLeaving).toEqual(["true", true, "true"]);
+    expect(screen.getByTestId("checkout-status").textContent).toBe(PLACING);
+  });
+
+  describe("the focus after a refusal (F2)", () => {
+    const INVALID: PlaceOrderResult = { status: "invalid", violations: [{ propertyPath: "phone", title: "Podaj 9-cyfrowy numer telefonu." }] };
+    const alert = () => screen.getByRole("alert");
+
+    /** Sends the order with Enter from „Miejscowość” (the focus is on the field), held. */
+    async function sendFromTheCity(): Promise<(result: PlaceOrderResult) => Promise<void>> {
+      await renderCheckout();
+      fillGuestForm();
+      const answer = holdOrder();
+      field("Miejscowość").focus();
+      await act(async () => {
+        fireEvent.submit(form());
+      });
+      expect(document.activeElement).toBe(field("Miejscowość"));
+      return answer;
+    }
+
+    /** Sends the order with a click on the focused button, held. */
+    async function sendFromTheButton(): Promise<(result: PlaceOrderResult) => Promise<void>> {
+      await renderCheckout();
+      fillGuestForm();
+      const answer = holdOrder();
+      submitButton().focus();
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+      expect(document.activeElement).toBe(submitButton());
+      return answer;
+    }
+
+    it.each([
+      ["Enter in „Miejscowość”", sendFromTheCity],
+      ["the button", sendFromTheButton],
+    ])("sent with %s, moves the focus to the first wrong field after a 422 when it stayed there", async (_name, send) => {
+      const answer = await send();
+      await answer(INVALID);
+
+      expect(document.activeElement).toBe(field("Telefon"));
+    });
+
+    it.each([
+      ["Enter in „Miejscowość”", sendFromTheCity],
+      ["the button", sendFromTheButton],
+    ])("sent with %s, moves the focus to the message after a failure when it stayed there", async (_name, send) => {
+      const answer = await send();
+      await answer({ status: "failed" });
+
+      expect(document.activeElement).toBe(alert());
+    });
+
+    it.each<[string, () => Promise<(result: PlaceOrderResult) => Promise<void>>, PlaceOrderResult]>([
+      ["Enter in „Miejscowość”, a 422", sendFromTheCity, INVALID],
+      ["Enter in „Miejscowość”, a failure", sendFromTheCity, { status: "failed" }],
+      ["the button, a 422", sendFromTheButton, INVALID],
+      ["the button, a failure", sendFromTheButton, { status: "failed" }],
+    ])("sent with %s, leaves the focus in the field the customer moved to; the message is an alert", async (_name, send, result) => {
+      const answer = await send();
+      field("Kod pocztowy").focus();
+      await answer(result);
+
+      expect(document.activeElement).toBe(field("Kod pocztowy"));
+      if (result.status === "failed") expect(alert().textContent).toBe(SUBMIT_FAILED);
+      else expect(field("Telefon").getAttribute("aria-invalid")).toBe("true");
+    });
+
+    it("moves the focus to the message when it was lost during the request", async () => {
+      const answer = await sendFromTheButton();
+      submitButton().blur();
+      expect(document.activeElement).toBe(document.body);
+      await answer({ status: "failed" });
+
+      expect(document.activeElement).toBe(alert());
+    });
+  });
+
+  describe("both choices missing (#345)", () => {
+    const CHOOSE_DELIVERY = "Wybierz sposób dostawy.";
+    const CHOOSE_PROVIDER = "Wybierz sposób płatności.";
+    const providerGroup = () => screen.getByRole("radiogroup", { name: "Sposób płatności" });
+
+    it("shows both messages with one click, marks both groups and puts the focus on the first method; nothing is ordered", async () => {
+      await renderCheckout(twoMethods(), null, undefined, false);
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+
+      expect(placeOrder).not.toHaveBeenCalled();
+      const deliveryMessage = within(deliveryGroup()).getByText(CHOOSE_DELIVERY);
+      const providerMessage = within(providerGroup()).getByText(CHOOSE_PROVIDER);
+      expect(deliveryGroup().getAttribute("aria-invalid")).toBe("true");
+      expect(deliveryGroup().getAttribute("aria-describedby")).toBe(deliveryMessage.id);
+      expect(providerGroup().getAttribute("aria-invalid")).toBe("true");
+      expect(providerGroup().getAttribute("aria-describedby")).toBe(providerMessage.id);
+      expect(document.activeElement).toBe(deliveryRadio("Kurier standardowy"));
+    });
+
+    it("with only the provider missing asks for it alone, with the focus on its first option", async () => {
+      await renderCheckout(twoMethods());
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+
+      expect(placeOrder).not.toHaveBeenCalled();
+      expect(screen.queryByText(CHOOSE_DELIVERY)).toBeNull();
+      expect(deliveryGroup().getAttribute("aria-invalid")).toBeNull();
+      expect(within(providerGroup()).getByText(CHOOSE_PROVIDER)).toBeTruthy();
+      expect(document.activeElement).toBe(providerRadio("Szybki przelew (demo)"));
+    });
+
+    it("with only the method missing asks for it alone, with the focus on its first option", async () => {
+      await renderCheckout(twoMethods(), null, undefined, false);
+      choose("Szybki przelew (demo)");
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+
+      expect(placeOrder).not.toHaveBeenCalled();
+      expect(within(deliveryGroup()).getByText(CHOOSE_DELIVERY)).toBeTruthy();
+      expect(screen.queryByText(CHOOSE_PROVIDER)).toBeNull();
+      expect(providerGroup().getAttribute("aria-invalid")).toBeNull();
+      expect(document.activeElement).toBe(deliveryRadio("Kurier standardowy"));
+    });
   });
 });
 
@@ -1129,7 +1409,8 @@ describe("CheckoutPage payment provider", () => {
     expect(navigateTo).toHaveBeenCalledWith(REDIRECT_URL);
     expect(push).not.toHaveBeenCalled();
     expect(announced).toEqual([0]);
-    expect(submitButton().disabled).toBe(true);
+    expect(submitButton().getAttribute("aria-disabled")).toBe("true");
+    expect(field("Telefon").readOnly).toBe(true);
   });
 
   it("goes to the confirmation page when the payment could not be started", async () => {
@@ -1667,9 +1948,144 @@ describe("CheckoutPage discount code", () => {
       fireEvent.click(applyButton());
     });
 
-    expect(applyButton().disabled).toBe(true);
-    expect(submitButton().disabled).toBe(true);
-    await act(async () => release({ status: "ok", data: discounted("WITAJ10", 39998, 4000) }));
+    expect(applyButton().getAttribute("aria-disabled")).toBe("true");
+    expect(applyButton().disabled).toBe(false);
+    expect(submitButton().getAttribute("aria-disabled")).toBe("true");
     expect(submitButton().disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(applyButton());
+      fireEvent.click(submitButton());
+    });
+    expect(vi.mocked(loadCart).mock.calls.filter((call) => call.length > 0)).toEqual([["WITAJ10"]]);
+    expect(placeOrder).not.toHaveBeenCalled();
+
+    await act(async () => release({ status: "ok", data: discounted("WITAJ10", 39998, 4000) }));
+    expect(submitButton().getAttribute("aria-disabled")).toBeNull();
+    expect(submitButton().disabled).toBe(false);
+  });
+
+  it("locks „Usuń kod” and the order button with aria-disabled while the code is being removed", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    let release: (value: Awaited<ReturnType<typeof loadCart>>) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+    const reads = vi.mocked(loadCart).mock.calls.length;
+    await act(async () => {
+      fireEvent.click(removeButton());
+    });
+
+    expect(removeButton().getAttribute("aria-disabled")).toBe("true");
+    expect((removeButton() as HTMLButtonElement).disabled).toBe(false);
+    expect(submitButton().getAttribute("aria-disabled")).toBe("true");
+    await act(async () => {
+      fireEvent.click(removeButton());
+      fireEvent.click(submitButton());
+    });
+    expect(vi.mocked(loadCart).mock.calls.length).toBe(reads + 1);
+    expect(placeOrder).not.toHaveBeenCalled();
+
+    await act(async () => release({ status: "ok", data: cart() }));
+    expect(submitButton().getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it.each([
+    ["applied", (): Awaited<ReturnType<typeof loadCart>> => ({ status: "ok", data: discounted("WITAJ10", 39998, 4000) })],
+    ["not checked", (): Awaited<ReturnType<typeof loadCart>> => ({ status: "failed" })],
+  ])("leaves the focus where the customer moved it while the code was checked (%s)", async (_name, answer) => {
+    await renderCheckout();
+    let release: (value: Awaited<ReturnType<typeof loadCart>>) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+    fireEvent.change(codeField(), { target: { value: "WITAJ10" } });
+    applyButton().focus();
+    await act(async () => {
+      fireEvent.click(applyButton());
+    });
+    expect(document.activeElement).toBe(applyButton());
+    field("Telefon").focus();
+
+    await act(async () => release(answer()));
+
+    expect(document.activeElement).toBe(field("Telefon"));
+  });
+
+  it("moves the focus to the field after a check sent from it with Enter when the focus stayed there", async () => {
+    await renderCheckout();
+    let release: (value: Awaited<ReturnType<typeof loadCart>>) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+    fireEvent.change(codeField(), { target: { value: "LATO15" } });
+    codeField().focus();
+    await act(async () => {
+      fireEvent.submit(codeField().closest("form") as HTMLFormElement);
+    });
+
+    await act(async () => release({ status: "ok", data: withRejection("invalid", "Ten kod jest nieprawidłowy albo nieaktywny.", null) }));
+
+    expect(document.activeElement).toBe(codeField());
+  });
+
+  it("leaves the focus where the customer moved it while the code was being removed", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    let release: (value: Awaited<ReturnType<typeof loadCart>>) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+    removeButton().focus();
+    await act(async () => {
+      fireEvent.click(removeButton());
+    });
+    field("Telefon").focus();
+
+    await act(async () => release({ status: "failed" }));
+
+    expect(document.activeElement).toBe(field("Telefon"));
+  });
+
+  it("locks the field and „Zastosuj” while the order is placed: the field keeps its text and no code is checked", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    fireEvent.change(codeField(), { target: { value: "LATO15" } });
+    let answer: (result: PlaceOrderResult) => void = () => {};
+    vi.mocked(placeOrder).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const reads = vi.mocked(loadCart).mock.calls.length;
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect(codeField().readOnly).toBe(true);
+    expect(codeField().getAttribute("aria-disabled")).toBe("true");
+    fireEvent.change(codeField(), { target: { value: "LATO20" } });
+    expect(codeField().value).toBe("LATO15");
+    expect(applyButton().getAttribute("aria-disabled")).toBe("true");
+    expect(applyButton().disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(applyButton());
+      fireEvent.submit(codeField().closest("form") as HTMLFormElement);
+    });
+    expect(vi.mocked(loadCart).mock.calls.length).toBe(reads);
+
+    await act(async () => answer({ status: "failed" }));
+    expect(codeField().readOnly).toBe(false);
+    expect(codeField().getAttribute("aria-disabled")).toBeNull();
+    expect(codeField().value).toBe("LATO15");
+    expect(applyButton().getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("locks an applied code while the order is placed: „Usuń kod” sends nothing", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    fillGuestForm();
+    vi.mocked(placeOrder).mockReturnValueOnce(new Promise(() => {}));
+    const reads = vi.mocked(loadCart).mock.calls.length;
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect(removeButton().getAttribute("aria-disabled")).toBe("true");
+    expect((removeButton() as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(removeButton());
+    });
+    expect(vi.mocked(loadCart).mock.calls.length).toBe(reads);
+    expect(screen.getByTestId("checkout-discount")).toBeTruthy();
   });
 });
