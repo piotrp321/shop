@@ -8,7 +8,7 @@ import { waitForBearerToken } from "../support/staff-login";
 // rabatowe”): the look and the accessibility of the list, of the form with the choice of variants and the windows, the
 // state of the list in the address, the names of the buttons and the windows of the report #304, and the colour of the
 // message of a promotion that does not exist (#446). The save of the form is in promotions.spec.ts; the tests here that
-// write plan promotions of their own that start far ahead, and the one that ends a promotion ends its own.
+// write plan promotions of their own that start far ahead, and the two that start a promotion „od teraz” (#580) end their own.
 
 // The product of promotions.spec.ts (the demo data keeps it out of its promotions): two variants of one price.
 const PRODUCT_NAME = "Elektrolity w tabletkach Lumora Nawodnienie 20";
@@ -39,6 +39,33 @@ async function openList(page: Page, address = "/promotions"): Promise<void> {
   await go(page, address);
   await expect(page.getByRole("heading", { level: 1, name: "Promocje" })).toBeVisible();
   await expect(page.getByTestId("promotion-row").first()).toBeVisible();
+}
+
+/**
+ * A promotion saved „od teraz” starts at the first whole second after the save, so the answer of the save is still
+ * planned: the form reads the promotion again once it has started and shows it active, without a reload (#580).
+ */
+async function expectStartedWithoutReload(page: Page): Promise<void> {
+  // A reload would drop this mark of the document.
+  await page.evaluate(() => document.documentElement.setAttribute("data-e2e-not-reloaded", ""));
+  const since = Date.now();
+  await expect(page.getByTestId("promotion-status"), "the form shows the promotion active by itself").toHaveText("Aktywna", { timeout: 5_000 });
+  await expect(page.getByRole("button", { name: "Zakończ teraz" })).toBeEnabled({ timeout: 5_000 });
+  expect(Date.now() - since, "„Aktywna” and „Zakończ teraz” within 5 s of the toast").toBeLessThan(5_000);
+  await expect(page.getByRole("status").filter({ hasText: "Promocja jest aktywna." })).toBeVisible();
+  await expect(page.getByTestId("name-input")).toBeEnabled();
+  await expect(page.locator("html"), "no reload of the page").toHaveAttribute("data-e2e-not-reloaded", "");
+}
+
+/** Fills the form of a new promotion „od teraz” of the two variants of the product, ending in a day. */
+async function fillStartingNow(page: Page, name: string): Promise<void> {
+  await go(page, "/promotions/new");
+  await page.getByTestId("name-input").fill(name);
+  await page.getByTestId("percent-input").fill("10");
+  await page.getByTestId("start-now").click();
+  await page.getByTestId("ends-input").fill(warsawLocal(Date.now() + DAY_MS));
+  await openPickerOn(page);
+  await page.getByRole("button", { name: `Dodaj cały produkt: ${PRODUCT_NAME}` }).click();
 }
 
 /** The choice of variants of the form of a new promotion, narrowed to the two variants of the product. */
@@ -391,7 +418,7 @@ test.describe("the form", () => {
     }
   });
 
-  test("#304 F7: after „Zakończ teraz” the form waits for the end, reads the promotion again and shows it ended and read-only, with the toast", async () => {
+  test("#580, #304 F7: a save „od teraz” shows the promotion active by itself, and after „Zakończ teraz” the form waits for the end, reads the promotion again and shows it ended and read-only, with the toast", async () => {
     test.setTimeout(WAIT_FOR_END_MS + 150_000);
     const page = await newPanelPage("admin", viewports.desktop);
     const pendingToken = waitForBearerToken(page);
@@ -402,22 +429,10 @@ test.describe("the form", () => {
         // A promotion of the product left by an earlier run would overlap the new one.
         await endActivePromotionsOf(page.request, await token.fresh(page), PRODUCT_NAME);
 
-        const name = `E2E koniec ${Date.now()}`;
-        await go(page, "/promotions/new");
-        await page.getByTestId("name-input").fill(name);
-        await page.getByTestId("percent-input").fill("10");
-        await page.getByTestId("start-now").click();
-        await page.getByTestId("ends-input").fill(warsawLocal(Date.now() + DAY_MS));
-        await openPickerOn(page);
-        await page.getByRole("button", { name: `Dodaj cały produkt: ${PRODUCT_NAME}` }).click();
+        await fillStartingNow(page, `E2E koniec ${Date.now()}`);
         await page.getByTestId("save").click();
         await expect(toasts(page).getByText("Promocja zapisana."), "the promotion was rejected (conflict, validation or API error)").toBeVisible();
-        // A promotion that starts „od teraz” starts at the first whole second after the save, and the form shows the status of
-        // the answer of the save: the page is read again until the promotion is active.
-        await expect(async () => {
-          await page.reload();
-          await expect(page.getByTestId("promotion-status")).toHaveText("Aktywna", { timeout: 2_000 });
-        }).toPass({ timeout: 20_000, intervals: [1_000] });
+        await expectStartedWithoutReload(page);
 
         await page.getByTestId("end-now").click();
         await page.getByRole("alertdialog").getByRole("button", { name: "Zakończ promocję teraz" }).click();
@@ -431,6 +446,48 @@ test.describe("the form", () => {
         await expect(page.getByRole("heading", { level: 2, name: "Status" }), "the focus stays on the heading of the card").toBeFocused();
       } finally {
         // The next run (and the stack, until the next make seed) must not meet this promotion.
+        await endActivePromotionsOf(page.request, await token.fresh(page), PRODUCT_NAME);
+      }
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("#580: a save „od teraz” whose answer is held for 3 s locks the form meanwhile, and then shows the promotion active without a reload", async () => {
+    test.setTimeout(150_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    const pendingToken = waitForBearerToken(page);
+    try {
+      await go(page, "/promotions");
+      const token = await PanelToken.from(pendingToken);
+      try {
+        await endActivePromotionsOf(page.request, await token.fresh(page), PRODUCT_NAME);
+        await fillStartingNow(page, `E2E od teraz ${Date.now()}`);
+        // The API saves at once; its answer reaches the panel 3 s later.
+        let held = 0;
+        await page.route("**/api/v1/admin/promotions", async (route) => {
+          if (route.request().method() !== "POST") {
+            await route.fallback();
+            return;
+          }
+          held += 1;
+          const response = await route.fetch();
+          await new Promise((resolve) => setTimeout(resolve, 3_000));
+          await route.fulfill({ response });
+        });
+
+        await page.getByTestId("save").click();
+
+        await expect(page.getByTestId("name-input"), "the field is locked while the answer of the save is held").toBeDisabled();
+        await expect(page.getByTestId("picker-search")).toBeDisabled();
+        await expect(toasts(page).getByText("Promocja zapisana.")).toHaveCount(0);
+        await expect(page.getByTestId("name-input")).toBeDisabled();
+        await expect(toasts(page).getByText("Promocja zapisana."), "the promotion was rejected (conflict, validation or API error)").toBeVisible({ timeout: 10_000 });
+        expect(held).toBe(1);
+        await expect(page).toHaveURL(/\/promotions\/[0-9a-f-]{36}$/);
+        await expectStartedWithoutReload(page);
+      } finally {
+        await page.unrouteAll({ behavior: "ignoreErrors" });
         await endActivePromotionsOf(page.request, await token.fresh(page), PRODUCT_NAME);
       }
     } finally {
