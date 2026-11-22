@@ -11,7 +11,8 @@
 #        SELFTEST_JOBS=<n> selftest.sh         n cases at a time (default: the CPUs of the Docker daemon, which run the tools;
 #                                              1 runs them one after another). Every case has a tree of its own and the
 #                                              unbroken copy runs next to the cases; the output of a case is printed whole,
-#                                              when the case ends.
+#                                              when the case ends. The cases already fill the CPUs, so the step tests of
+#                                              each check.sh runs its files one at a time (CHECK_TESTS_JOBS, default 1).
 # What the cases share is the cache of the tools (TOOLS_CACHE): check.sh and render.sh write their files to directories named
 # by their process, and a chart archive enters the cache of monitoring-render.sh only after its digest is checked. kubeconform
 # writes the schemas it downloads to its cache in place, not atomically: on a cold cache two cases that run it at the same time
@@ -227,7 +228,8 @@ run_case() {
 run_check() {
   check_id="$1" check_filter="$2"
   shift 2
-  CHECK_TESTS_FILTER="$check_filter" sh "$tree/infra/k8s/scripts/check.sh" "$@" > "$base/$check_id.check" 2>&1 &
+  CHECK_TESTS_FILTER="$check_filter" CHECK_TESTS_JOBS="${CHECK_TESTS_JOBS:-1}" \
+    sh "$tree/infra/k8s/scripts/check.sh" "$@" > "$base/$check_id.check" 2>&1 &
   check_pid=$!
   check_status=0
   wait "$check_pid" || check_status=$?

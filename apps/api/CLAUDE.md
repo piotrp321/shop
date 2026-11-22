@@ -10,8 +10,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `check` – PHPStan, Deptrac, PHP CS Fixer
 - `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ); dodatkowe
   argumenty PHPUnit w `PHPUNIT_ARGS`, np. `make -C apps/api test-unit PHPUNIT_ARGS='--filter CartTest'`.
-  CI uruchamia suity `unit`, `integration` i `functional` z `phpunit.dist.xml` po nazwie, w osobnych częściach
-  `checks`: nowa suita wymaga też nowej części w macierzy `checks-part` w `ci.yml`, inaczej CI jej nie uruchomi
+  CI uruchamia suity `unit`, `integration`, `demo-data`, `demo-data-orders` i `functional` z `phpunit.dist.xml` po
+  nazwie, w osobnych częściach `checks`: nowa suita wymaga też nowej części w macierzy `checks-part` w `ci.yml`, inaczej CI jej nie uruchomi
 - `init` – migracje bazy deweloperskiej i `catalog:search-index:setup` (alias `products` i indeks, jeśli ich nie ma);
   idempotentny, wywołuje go `make up` po starcie usług
 - `init-test` – migracje bazy `shop_test` i indeks testowy `test_products` tworzony od nowa
@@ -495,7 +495,10 @@ Fakty potrzebne do oceny skutku:
   instancja kernela z własnym `EntityManager`, więc `flush` i błąd symulatora nie dotykają `UnitOfWork` wywołującego);
   testy błędów dostawcy podmieniają serwis na klienta ze stałymi odpowiedziami.
 - Testy generatora danych demo biegną na `shop_test` w transakcji testu, bez `bin/seed-demo` i bez czyszczenia cache
-  sklepu (worker i Varnish nie obsługują `shop_test`). Testy kont na Keycloaku stosu używają tymczasowych realmów
+  sklepu (worker i Varnish nie obsługują `shop_test`). Test, który po krokach czyta załadowane wiersze, kończy kroki
+  `demo-data:analyze` w swojej transakcji (`RunsDemoDataSteps::analyze()`, już w `catalogSteps()`): autovacuum innej
+  sesji nie liczy niezatwierdzonych wierszy testu, planer oczekuje wtedy pustych tabel i odczyty trwają minuty
+  (`StepsPlannerStatisticsTest`). Testy kont na Keycloaku stosu używają tymczasowych realmów
   (`KeycloakTestRealms`, `demo-data-test-*`, usuwane po teście), nigdy realmów `shop` i `backoffice`, i ziarna losowanego
   na test (id kont są globalne w Keycloaku).
 

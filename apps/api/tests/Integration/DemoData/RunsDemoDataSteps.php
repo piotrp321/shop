@@ -61,19 +61,32 @@ trait RunsDemoDataSteps
         $this->succeeds('demo-data:categories');
         $this->succeeds('demo-data:products');
         $this->succeeds('demo-data:photos');
+        $this->analyze();
+    }
+
+    /**
+     * demo-data:analyze in the transaction of the test, after the steps that load the rows the test then reads.
+     * PostgreSQL plans the joins of those reads well only with the statistics of the loaded tables, and the rows of a test
+     * are never committed: a vacuum of another session (autovacuum, after the rollback of an earlier test) counts none
+     * of them and leaves the planner expecting empty tables, so every join becomes a nested loop over whole tables
+     * (StepsPlannerStatisticsTest). ANALYZE counts the rows of its own transaction and keeps its lock until the rollback,
+     * so autovacuum skips these tables for the rest of the test.
+     */
+    private function analyze(): void
+    {
+        $this->succeeds('demo-data:analyze', [], false);
     }
 
     /**
      * The steps of the catalog and of the prices (step 3: the prices with their history, then the promotions and the
      * discount codes) and the ANALYZE that bin/generate-demo runs before demo-data:verify: the checks of the prices join
-     * the big tables, and PostgreSQL plans those joins well only with the statistics of a loaded table (the tables of
-     * a test are loaded and rolled back, so their statistics are not those of the rows the test sees).
+     * the big tables ({@see analyze()}).
      */
     private function generatedSteps(): void
     {
         $this->catalogSteps();
         $this->pricingSteps();
-        $this->succeeds('demo-data:analyze', [], false);
+        $this->analyze();
     }
 
     /**
@@ -85,7 +98,7 @@ trait RunsDemoDataSteps
         $this->catalogSteps();
         $this->pricingSteps();
         $this->orderSteps();
-        $this->succeeds('demo-data:analyze', [], false);
+        $this->analyze();
     }
 
     /**
