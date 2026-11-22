@@ -291,6 +291,32 @@ describe("CategoryCombobox after a choice in single mode", () => {
     expect(pointsAtExistingElement(), "aria-activedescendant is empty or names an element in the DOM").toBe(true);
   });
 
+  const disabledSubtree = ["c-camping", "c-tents", "c-sleeping-bags"];
+
+  it("does not point at a removed option when the typed text leaves only disabled options", async () => {
+    mountCombobox({ disabledIds: disabledSubtree });
+    await open();
+    input().focus();
+    await type("namio");
+
+    expect(optionNames()).toEqual(["Turystyka › Biwak › Namioty"]);
+    expect(pointsAtExistingElement(), "aria-activedescendant is empty or names an element in the DOM").toBe(true);
+  });
+
+  it("does not point at a removed option when the typed text leaves only disabled options after the arrow keys", async () => {
+    mountCombobox({ disabledIds: disabledSubtree });
+    await open();
+    input().focus();
+    for (let step = 0; step < 3; step++) {
+      input().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+      await flushPromises();
+    }
+    await type("namio");
+
+    expect(optionNames()).toEqual(["Turystyka › Biwak › Namioty"]);
+    expect(pointsAtExistingElement(), "aria-activedescendant is empty or names an element in the DOM").toBe(true);
+  });
+
   it("points at an existing option while the list is open and the typed text matches", async () => {
     mountCombobox();
     await open();
