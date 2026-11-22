@@ -22,7 +22,6 @@ Sesja prowadząca sprawdza na aktualnym `main` dwa warunki specyfikacji i zapisu
 - „Zależność od API-INPUT-CONTRACT”, punkty 1–4 (dotyczą zadań 2 i 3).
 - „Równoległość ze STORE-UX-FIXES (#777)”: gdy #777 ma już specyfikację albo plan, porównanie jego `Zakres:` i `paths`
   z tym planem; bez tego epiki nie idą równolegle.
-- „Decyzje”, D6 i D7: potwierdzenie właściciela (dotyczą zadań 2 i 3).
 
 ## Praca szeregowa
 

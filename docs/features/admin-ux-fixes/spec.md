@@ -34,14 +34,12 @@ Właściciel zaakceptował 2026-11-22:
 | D4 | Co ustępuje miejsca w „Ostatnich zamówieniach” (#509) | Data jako druga linia komórki klienta; „Pozycje” jako kolumna tylko tam, gdzie tabela mieści się z nią w karcie | Karty pulpitu jedna pod drugą |
 | D5 | #581 F5 (wymagana notatka z samym znakiem niewidocznym) | Poza tym etapem: przyczyna jest w walidacji API | Naprawa w tym etapie |
 
-Do potwierdzenia przez właściciela przy akceptacji planu (specyfikacja przyjmuje rekomendację):
+Właściciel potwierdził 2026-11-22 także, jak długo pracownik czeka:
 
-| # | Decyzja | Rekomendacja przyjęta w specyfikacji | Inne warianty |
+| # | Decyzja | Przyjęty wariant | Odrzucone |
 |---|---|---|---|
 | D6 | K2: co dzieje się z formularzem promocji między udanym zapisem „Od teraz” a odczytem statusu | Blokada trwa dalej: zwykle 1–2 s, zawsze najwyżej 10 s od odpowiedzi zapisu (całkowity limit oczekiwania). Po zapisie nie da się wpisać zmiany, którą nadpisałby odczyt, i nie trzeba scalać formularza z odpowiedzią | Pola odblokowane od razu po zapisie, a odczyt zmienia tylko status i akcje (wymaga reguł dla pól zmienionych w tym czasie i dla pól, które aktywna promocja blokuje) |
 | D7 | K2 i K3: zapis, na który API nie odpowiada | Bez własnego limitu czasu zapisu: blokada trwa do odpowiedzi albo błędu sieci przeglądarki, a wyjściem jest opuszczenie ekranu: Wstecz przeglądarki przy otwartym oknie zamówienia (okno modalne zasłania menu panelu) albo opuszczenie formularza promocji. Opuszczenie ekranu nie anuluje operacji na serwerze: wynik takiego zapisu jest nieznany do ponownego wczytania zamówienia albo promocji, więc panel nie pozwala wysłać go drugi raz z tego samego okna | Limit czasu z odblokowaniem i ponowieniem (ponawia zmianę o nieznanym wyniku); brak blokady zamknięcia okna (wraca wada #581 F4) |
-
-D3 dotyczy zapisu w toku i nie przesądza D6 ani D7: obie zmieniają to, jak długo pracownik czeka.
 
 Zdania specyfikacji ekranów zostają prawdziwe po tym etapie; nowe zachowanie opisuje ta specyfikacja. Dwa wyjątki
 w `docs/features/admin-design/spec.md`: wyjątek #250 F16 w „Po zapisie” (zmienia K2) i opis kolumn „Ostatnich
