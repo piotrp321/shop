@@ -51,6 +51,17 @@ export function dropWaitingQuantity(actions: CartActions, variantId: string): Ca
   return { ...actions, waiting: actions.waiting.filter((operation) => operation.variantId !== variantId) };
 }
 
+// The actions outlive the cart page that was given them; a cart page opened again reads the cart only after them.
+let running: Promise<void> = Promise.resolve();
+
+/** Runs the sending of the actions of a cart page; `actionsFinished` waits for it, also after the page is left. */
+export function runActions(send: () => Promise<void>): void {
+  running = send().catch(() => undefined);
+}
+
+/** Settles when the actions of every cart page are sent (or dropped after a 401). */
+export const actionsFinished = (): Promise<void> => running;
+
 /** After the answer to the operation on its way: the first waiting action goes, or nothing is on its way. */
 export function sendNext(actions: CartActions): CartActions {
   const [next = null, ...rest] = actions.waiting;

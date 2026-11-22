@@ -14,11 +14,13 @@ import {
   type CartActions,
   type CartOperation,
   NO_ACTIONS,
+  actionsFinished,
   dropWaitingQuantity,
   give,
   hasWaitingQuantity,
   isQuantitySent,
   isRemovalGiven,
+  runActions,
   sendNext,
 } from "./cart-actions";
 import { announceCartChange } from "./events";
@@ -66,9 +68,12 @@ export function CartPage() {
 
   useEffect(() => {
     let active = true;
-    void loadCart().then((result) => {
-      if (active) setLoaded(toLoaded(result));
-    });
+    // Actions given on a cart page that was left may still run: the cart is read after them, not before.
+    void actionsFinished()
+      .then(() => loadCart())
+      .then((result) => {
+        if (active) setLoaded(toLoaded(result));
+      });
     return () => {
       active = false;
     };
@@ -108,7 +113,7 @@ export function CartPage() {
     const after = give(before, operation);
     if (after === before) return;
     setActions(after);
-    if (before.sent === null) void sendAll();
+    if (before.sent === null) runActions(sendAll);
   }
 
   /** The customer changed the entry of a field: its waiting quantity is not sent. */

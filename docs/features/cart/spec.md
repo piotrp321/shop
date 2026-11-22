@@ -571,7 +571,7 @@ zwracana.
   | Odpowiedź operacji innej pozycji | Nie nadpisuje pola, które ma niezatwierdzony wpis albo wartość czekającą; pole bez wpisu pokazuje ilość z odpowiedzi. Pole z wpisem wraca do ilości z odpowiedzi tylko po odpowiedzi na własną operację. |
   | Błąd operacji (5xx, sieć, 409, 429, 404 pozycji, która jest w koszyku) | Komunikat przy pozycji (teksty z tabeli niżej), zostaje do następnej operacji tej pozycji. Pole wraca do ostatniej potwierdzonej ilości; to nie jest pewny stan serwera, bo wynik zapisu może być nieznany. Akcje czekające innych pozycji wykonują się dalej. |
   | Sesja wygasła (401 operacji albo ponownego odczytu koszyka po 404) | Akcje czekające są porzucane bez wysłania. Strona pokazuje widok wygasłej sesji: sam komunikat z linkiem logowania, bez listy pozycji i bez „Przejdź do kasy”. |
-  | Klient opuszcza koszyk (nawigacja w sklepie) | Akcje już zlecone wykonują się do końca, bez nawigacji i komunikatów (licznik w nagłówku dostaje liczbę sztuk z odpowiedzi); po 401 są porzucane. Przeładowanie albo zamknięcie karty gubi akcje jeszcze niewysłane. |
+  | Klient opuszcza koszyk (nawigacja w sklepie) | Akcje już zlecone wykonują się do końca, bez nawigacji i komunikatów (licznik w nagłówku dostaje liczbę sztuk z odpowiedzi); po 401 są porzucane. Koszyk otwarty ponownie w tym czasie pokazuje wczytywanie i czyta koszyk z serwera dopiero po ich zakończeniu (po 401 od razu). Przeładowanie albo zamknięcie karty gubi akcje jeszcze niewysłane. |
 
 - Pusty koszyk BFF (`emptyCart` w `src/cart/bff.ts`) ma `delivery: null`.
 - Kwoty przez `formatPrice`. Front niczego nie liczy: każdy widok pochodzi z ostatniej odpowiedzi API.
@@ -772,7 +772,8 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   „Do koszyka” na dwóch różnych produktach (z wyborem wariantu, gdy kafelek go ma); po odświeżeniu licznik pokazuje 2, a `/cart` ma oba produkty.
 - `store-ux-cart.spec.ts`: „Usuń” zaraz po wpisaniu ilości (mysz przy 1280 px, dotyk przy 375 px, bez opóźnienia
   i ze zmianą ilości wstrzymaną w przeglądarce na 3 s): usunięta jest wskazana pozycja, wpisana ilość zostaje zapisana,
-  wychodzi jedna zmiana i jedno usunięcie na próbę, a po odświeżeniu serwer ma to samo.
+  wychodzi jedna zmiana i jedno usunięcie na próbę, a po odświeżeniu serwer ma to samo; powrót do koszyka linkiem
+  nagłówka, zanim akcje opuszczonej strony się skończą, pokazuje koszyk po nich.
 - `cart-merge.spec.ts` (wybór pierwszego dostępnego wariantu, gdy kafelek ma wybór): Jan loguje się, opróżnia swój koszyk w UI, dodaje B i wylogowuje się; jako gość dodaje A i B;
   po zalogowaniu licznik pokazuje 3, ciasteczko `store_cart` znika, a koszyk ma A × 1 i B × 2; drugi kontekst
   przeglądarki zalogowany jako Jan widzi ten sam koszyk.
