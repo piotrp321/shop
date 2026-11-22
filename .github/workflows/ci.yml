@@ -9,7 +9,7 @@
 # documentation) runs just the script tests (in the `apps` part); the Kubernetes deployment only (infra/k8s/**,
 # possibly with documentation) runs just `make -C infra/k8s check` (in the `k8s` part). Skipped steps
 # let the other jobs pass within seconds. Anything else,
-# and every push, runs it all. A full run uses 1 + 6 + 3 runners for its work (`scope`, the `checks-part` and
+# and every push, runs it all. A full run uses 1 + 6 + 4 runners for its work (`scope`, the `checks-part` and
 # `e2e-shard` parts) and two more for the short `checks` and `e2e` reports.
 name: CI
 
@@ -415,6 +415,8 @@ jobs:
           - index: 2
             after_e2e: false
           - index: 3
+            after_e2e: false
+          - index: 4
             after_e2e: true
     env:
       SCOPE: ${{ needs.scope.outputs.scope }}
@@ -599,17 +601,18 @@ jobs:
         run: make seed RUN="docker compose exec -T"
 
       # This part of the suite: `--shard=<index>/<number of parts>` runs whole spec files in file order. The weights (one
-      # per part, 110:118:122 of 350 tests) put the boundaries after 110 tests (inside admin-screens-orders, so the first
-      # part runs admin-customers to admin-screens-orders: 120 slow panel tests) and after 228 (inside home, so the
-      # second runs admin-screens-prices to home: 114 tests); the last part (listing-filters to
-      # visual-screens, 116 faster tests) also runs the checks after the tests, which take ~3 min. A spec file belongs to
-      # the part in which its first test starts before the boundary. When tests are added, move the boundaries so that
-      # the parts end about together.
+      # per part, 78:122:94:108 of 402 tests) put the boundaries after 78 tests (inside admin-screens-discount-codes),
+      # after 200 (inside admin-screens-toasts) and after 294 (inside listing-tile-variants). The parts, with the time of
+      # their tests in CI: admin-customers to admin-screens-discount-codes (91 tests, ~350 s, with admin-design),
+      # admin-screens-inventory to admin-screens-toasts (115, ~310 s), cart-guest to listing-tile-variants (93, ~410 s,
+      # with catalog-admin) and order-management to visual-screens (103, ~290 s), which also runs the checks after the
+      # tests (~3 min). A spec file belongs to the part in which its first test starts before the boundary. When tests are
+      # added, move the boundaries so that the parts end about together.
       - name: make e2e
         if: env.FULL_CI == 'true'
         env:
           E2E_SHARD: ${{ matrix.index }}/${{ strategy.job-total }}
-          E2E_SHARD_WEIGHTS: '110:118:122'
+          E2E_SHARD_WEIGHTS: '78:122:94:108'
         run: make e2e E2E_FLAGS=-T E2E_BUILD=
 
       # The checks on the running stack after the E2E tests of the part with `after_e2e`: every target a make/*.mk

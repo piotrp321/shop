@@ -214,7 +214,7 @@ JSON i AO powtarza rundę. Dlatego:
           zbierają wynik i nie dostają osobnego znaleziska, a job `scope` i części z `timed_out`, `startup_failure`,
           `cancelled` albo `failure` bez kroku w `failed_steps` wymieniasz w `evidence` i raporcie:
           - `title`: nazwa joba albo części i jej kroku z `failed_steps` (np. `checks part apps: api unit tests`,
-            `e2e shard 3: make ci-after-e2e`, `scope: Scope script tests`), a gdy log podaje padający test, także
+            `e2e shard 4: make ci-after-e2e`, `scope: Scope script tests`), a gdy log podaje padający test, także
             jego nazwa; bez SHA i numeru runu (krok 7) i nigdy „make test nie przechodzi” ani „make e2e nie
             przechodzi”;
           - `evidence`: numer runu, SHA, część, krok, `reason` i koniec logu tej części;
