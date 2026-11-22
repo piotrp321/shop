@@ -9,7 +9,7 @@ failures=0
 
 # check <name> <expected status> <expected output pattern> <actual status> <actual output>
 check() {
-    if [ "$4" -eq "$2" ] && { [ -z "$3" ] || printf '%s' "$5" | grep -q -- "$3"; }; then
+    if [ "$4" -eq "$2" ] && { [ -z "$3" ] || printf '%s' "$5" | grep -qF -- "$3"; }; then
         echo "ok   $1"
     else
         echo "FAIL $1: expected status $2 and output matching '$3', got status $4 and output:"
@@ -20,7 +20,7 @@ check() {
 
 # check_absent <name> <pattern> <output>
 check_absent() {
-    if printf '%s' "$3" | grep -q -- "$2"; then
+    if printf '%s' "$3" | grep -qF -- "$2"; then
         echo "FAIL $1: the output matches '$2':"
         printf '%s\n' "$3" | sed 's/^/     /'
         failures=$((failures + 1))
@@ -44,6 +44,9 @@ cat > "$tmp/junit.xml" <<'XML'
       <testcase name="testItPasses" class="App\Tests\Integration\DemoData\VerifyStepTest" time="7.5"/>
       <testcase name="testItLists" class="App\Tests\Integration\DemoData\VerifyStepTest" time="2.75"/>
     </testsuite>
+    <testsuite name="App\Tests\Functional\DemoData\VerifyStepTest" tests="1" time="0.5">
+      <testcase name="testOther" class="App\Tests\Functional\DemoData\VerifyStepTest" time="0.5"/>
+    </testsuite>
     <testsuite name="App\Tests\Integration\Cart\CartTest" tests="2" time="3.25">
       <testsuite name="App\Tests\Integration\Cart\CartTest::testAdds" tests="2" time="3.25">
         <testcase name="testAdds with data set #0" class="App\Tests\Integration\Cart\CartTest" time="3.0"/>
@@ -55,14 +58,15 @@ cat > "$tmp/junit.xml" <<'XML'
 XML
 
 slowest "$tmp/junit.xml" 2
-check "a summary of the tests and their time" 0 "4 tests, 13.5 s" "$status" "$out"
-check "the slowest test first, with its short class name" 0 "| 7.5 s | VerifyStepTest::testItPasses |" "$status" "$out"
-check "a test of a data provider" 0 "| 3.0 s | CartTest::testAdds with data set #0 |" "$status" "$out"
+check "a summary of the tests and their time" 0 "5 tests, 14.0 s" "$status" "$out"
+check "the slowest test first, with its class without App\\Tests" 0 "| 7.5 s | Integration\\DemoData\\VerifyStepTest::testItPasses |" "$status" "$out"
+check "a test of a data provider" 0 "| 3.0 s | Integration\\Cart\\CartTest::testAdds with data set #0 |" "$status" "$out"
 check_absent "only the given number of tests" "testItLists" "$out"
-check "the slowest classes" 0 "| 10.2 s | 2 | VerifyStepTest |" "$status" "$out"
+check "the slowest classes" 0 "| 10.2 s | 2 | Integration\\DemoData\\VerifyStepTest |" "$status" "$out"
 
 slowest "$tmp/junit.xml"
-check "fifteen tests by default, all four here" 0 "CartTest::testAdds with data set #1" "$status" "$out"
+check "fifteen tests by default, all five here" 0 "Integration\\Cart\\CartTest::testAdds with data set #1" "$status" "$out"
+check "two classes of the same short name are two rows" 0 "| 0.5 s | 1 | Functional\\DemoData\\VerifyStepTest |" "$status" "$out"
 
 slowest "$tmp/missing.xml"
 check "a missing file" 2 "junit-slowest: cannot read" "$status" "$out"

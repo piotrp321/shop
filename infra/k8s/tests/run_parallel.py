@@ -3,7 +3,8 @@
 that the long files start early and the short ones fill the gaps. The output of a file is printed only when it fails;
 a passing file gets one line with its number of tests and its time. Every file runs to the end.
 
-Exit status: 0 every file passed, 1 a file failed (also a file that cannot be imported or has no tests), 2 a usage
+Exit status: 0 every file passed, 1 a file failed (also a file that cannot be imported, has no tests or ends before
+unittest reports its run), 2 a usage
 error (no such directory, no test files, a number of jobs below one).
 
 Usage: run_parallel.py [--jobs N] <directory>   (N: default the CPUs of the machine)
@@ -31,10 +32,15 @@ def jobs(value):
 
 def run(directory, name):
     started = time.monotonic()
+    # errors="replace": bytes that are not UTF-8 in the output of a test must not stop the report of the file.
     result = subprocess.run([sys.executable, "-I", "-m", "unittest", "discover", "-s", str(directory), "-p", name],
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
     ran = re.search(r"(?m)^Ran (\d+) tests? in", result.stdout)
-    return name, result.returncode, int(ran.group(1)) if ran else 0, time.monotonic() - started, result.stdout
+    status = result.returncode
+    if status == 0 and not ran:
+        # It ended with 0 before unittest reported a run (os._exit, sys.exit at import): its tests did not run.
+        status = "no tests ran"
+    return name, status, int(ran.group(1)) if ran else 0, time.monotonic() - started, result.stdout
 
 
 def main():
@@ -63,7 +69,8 @@ def main():
                 print(f"ok      {name} ({count} tests, {seconds:.1f} s)", flush=True)
             else:
                 failed.append(name)
-                print(f"FAILED  {name} (exit {status}, {count} tests, {seconds:.1f} s)\n{output}", flush=True)
+                reason = status if isinstance(status, str) else f"exit {status}"
+                print(f"FAILED  {name} ({reason}, {count} tests, {seconds:.1f} s)\n{output}", flush=True)
 
     summary = f"run_parallel: {len(files)} files, {tests} tests, {args.jobs} jobs, {time.monotonic() - started:.0f} s"
     if failed:

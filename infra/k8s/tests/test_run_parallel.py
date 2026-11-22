@@ -93,6 +93,35 @@ class RunParallel(unittest.TestCase):
         self.assertEqual(1, result.returncode, result.stdout + result.stderr)
         self.assertIn("FAILED: test_a.py", result.stdout)
 
+    def test_a_file_that_exits_with_zero_without_running_its_tests_fails_the_run(self):
+        self.file("test_a.py", """
+            import os
+            os._exit(0)
+        """)
+        self.file("test_b.py", PASSING)
+        result = self.run_parallel("--jobs", "2", "tests")
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertRegex(result.stdout, r"(?m)^FAILED +test_a\.py .*no tests ran")
+        self.assertIn("FAILED: test_a.py", result.stdout)
+
+    def test_output_that_is_not_utf_8_still_names_the_failing_file(self):
+        self.file("test_a.py", """
+            import sys, unittest
+
+            class Bytes(unittest.TestCase):
+                def test_bytes(self):
+                    sys.stdout.flush()
+                    sys.stdout.buffer.write(b"\\xff\\xfe broken bytes\\n")
+                    sys.stdout.buffer.flush()
+                    self.fail("the bytes test failed")
+        """)
+        self.file("test_b.py", PASSING)
+        result = self.run_parallel("--jobs", "2", "tests")
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("the bytes test failed", result.stdout)
+        self.assertIn("broken bytes", result.stdout)
+        self.assertIn("run_parallel: 2 files, FAILED: test_a.py", result.stdout)
+
     def test_the_files_run_at_the_same_time(self):
         markers = self.dir / "markers"
         markers.mkdir()

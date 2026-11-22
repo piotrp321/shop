@@ -34,7 +34,8 @@ def main(args):
     classes = collections.defaultdict(lambda: [0.0, 0])
     for case in root.iter("testcase"):
         seconds = float(case.get("time") or 0)
-        name = (case.get("class") or case.get("classname") or "").rsplit("\\", 1)[-1]
+        # The class without the namespace of the tests: two classes may share a short name (Integration\…\X, Functional\…\X).
+        name = (case.get("class") or case.get("classname") or "").removeprefix("App\\Tests\\")
         tests.append((seconds, f"{name}::{case.get('name')}"))
         classes[name][0] += seconds
         classes[name][1] += 1

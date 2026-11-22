@@ -75,11 +75,12 @@ jobs:
   #   apps             make check-code (PHPStan, Deptrac, PHP CS Fixer, ESLint, tsc and the make/*.mk fragments), the api
   #                    unit suite (a few seconds, no services), the contract freshness, the store and admin suites, the
   #                    VCL tests and the script tests; Redis for the store integration tests
-  #   api integration  the api `integration`, `demo-data` and `demo-data-orders` (the integration tests of the demo
-  #   api demo data    data generator, about two thirds of the integration time, split in two of about the same time)
-  #   api demo data    and `functional` suites, one part each, on PostgreSQL, Garage, imgproxy, RabbitMQ, Elasticsearch,
-  #     orders         Keycloak, Redis and Mailpit; the step summary of each lists its slowest tests and classes
-  #   api functional   (.github/scripts/junit-slowest.py)
+  #   api integration, api demo data, api demo data orders, api functional
+  #                    the api suites `integration`, `demo-data` and `demo-data-orders` (the integration tests of the
+  #                    demo data generator, about two thirds of the integration time, split in two of about the same
+  #                    time) and `functional`, one part each, on PostgreSQL, Garage, imgproxy, RabbitMQ, Elasticsearch,
+  #                    Keycloak, Redis and Mailpit; the step summary of each lists its slowest tests and classes
+  #                    (.github/scripts/junit-slowest.py)
   # The parts are not named `checks`: the required check of that name is the job below. When the parts end far apart,
   # move work between them (the api parts by test directory: the suites of apps/api/phpunit.dist.xml).
   checks-part:
@@ -311,8 +312,10 @@ jobs:
         run: make -C apps/api test RUN="$CI_RUN" PHPUNIT_ARGS="$PHPUNIT_ARGS --log-junit var/junit.xml"
 
       # Also after failed tests; no log (the run did not get to the end) adds nothing.
+      # bash: pipefail, so a failing script fails the step instead of leaving an empty summary behind tee.
       - name: Slowest api tests in the step summary
         if: ${{ !cancelled() && env.FULL_CI == 'true' && matrix.phpunit_args != '' }}
+        shell: bash
         env:
           PART: ${{ matrix.name }}
         run: |

@@ -262,8 +262,10 @@ do_tests() {
   [ -f "$work/prod.ndjson" ] || do_render
   if [ -n "${CHECK_TESTS_FILTER:-}" ]; then
     step "tests of the rendered chart and of the scripts matching '$CHECK_TESTS_FILTER'"
-    # unittest exits 5 when no test matches: a filter that selects nothing fails instead of passing.
-    tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests -k "$CHECK_TESTS_FILTER"
+    # unittest exits 5 when no test matches: a filter that selects nothing fails instead of passing. The pattern of the
+    # files is that of run_parallel.py, so both runs see the same tests.
+    tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests -p 'test_*.py' \
+      -k "$CHECK_TESTS_FILTER"
   else
     step "tests of the rendered chart and of the scripts"
     tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I tests/run_parallel.py \
