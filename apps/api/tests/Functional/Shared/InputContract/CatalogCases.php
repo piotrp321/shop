@@ -50,6 +50,7 @@ final class CatalogCases
         yield from ValidatorRows::category(self::PRODUCTS, null);
         yield from ValidatorRows::phrase(self::PRODUCTS, null);
         yield from ValidatorRows::perPage(self::PRODUCTS, null, InputContractFixtures::NONE, 48);
+        yield InputCase::query(self::PRODUCTS, null, InputContractFixtures::NONE, 'perPage', 'perPage=1.5', 'perPage=48', 'perPage=1.5', [['perPage', ValidatorRows::TYPE]]);
 
         foreach (['priceMin', 'priceMax'] as $price) {
             foreach ([$price.'[]=x' => ValidatorRows::TYPE, $price.'=' => ValidatorRows::BLANK] as $invalid => $title) {
@@ -72,6 +73,7 @@ final class CatalogCases
         yield from self::options();
         $pages = [
             'page=abc' => ValidatorRows::TYPE,
+            'page=1.5' => ValidatorRows::TYPE,
             'page=' => ValidatorRows::TYPE,
             'page[]=x' => ValidatorRows::TYPE,
             'page=0' => ValidatorRows::POSITIVE,
