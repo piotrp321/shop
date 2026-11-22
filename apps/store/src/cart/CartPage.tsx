@@ -221,10 +221,9 @@ export function CartPage() {
    * quantity is committed by leaving its field, also with Tab to "Usuń" of the same line, so the focus there counts as
    * where the change came from.
    */
-  function moveFocusFromGoneLine({ variantId, action }: CartOperation, before: CartView | null, after: CartView) {
-    const target = focusAfterGone(before, after, variantId);
-    const origins = action.kind === "remove" ? [removeId(variantId)] : [quantityId(variantId), removeId(variantId)];
-    if (target !== null && origins.some((origin) => focusStays(origin))) focusAt(target);
+  function moveFocusFromGoneLine(operation: CartOperation, before: CartView | null, after: CartView) {
+    const target = focusAfterGone(before, after, operation.variantId);
+    if (target !== null && originsOf(operation).some((origin) => focusStays(origin))) focusAt(target);
   }
 
   /**
@@ -338,9 +337,13 @@ export function CartPage() {
       const outcome = await send(next.sent, givenNow);
       givenNow = false;
       if (outcome === "unauthorized") {
+        // The view of the expired session has no controls: the focus of the control the action came from (the field, its
+        // "Usuń" or the link that waited) would be lost with it, so it goes to the title (F2, F3).
+        const keepsFocus = [...originsOf(next.sent), CHECKOUT_ID].some((origin) => focusStays(origin));
         setActions(NO_ACTIONS);
         if (checkout.current === "waiting") setCheckout("none");
         applyLoaded({ status: "unauthorized" });
+        if (keepsFocus) focusAt(TITLE_ID);
         return;
       }
       // An operation that was not saved ends the waiting for good: a later success does not bring it back.
@@ -500,6 +503,11 @@ function focusAfterGone(before: CartView | null, after: CartView, variantId: str
   const left = (lines: CartLine[]) => lines.filter((line) => after.lines.some((kept) => kept.variantId === line.variantId));
   const target = left(before.lines.slice(index + 1))[0] ?? left(before.lines.slice(0, index)).at(-1) ?? after.lines[0];
   return removeId(target.variantId);
+}
+
+/** The controls an operation came from: its removal button, and for a quantity also its field (committed by Tab too). */
+function originsOf({ variantId, action }: CartOperation): string[] {
+  return action.kind === "remove" ? [removeId(variantId)] : [quantityId(variantId), removeId(variantId)];
 }
 
 function CartSummary({ cart }: { cart: CartView }) {
