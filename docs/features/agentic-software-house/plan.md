@@ -23,10 +23,10 @@ Ostatni epik prowadzony przez AO: DEMO-DATA (#482), zakończony w AO 2026-11-18 
 w pierwszej rundzie).
 
 W toku: brak epiku. Blokery: brak.
-Ostatni zmergowany epik: API-INPUT-CONTRACT etap 1 (#441, końcowy PR #843, zmergowany 2026-11-22; epik natywny
-z danymi pomiaru; 6 wiadomości właściciela, 5 oczekiwań, łącznie 850 min czekania). Ostatni zmergowany epik serii:
-DELIVERY etap 1 (#120, końcowy PR #819). Retro do zrobienia: brak (retro API-INPUT-CONTRACT: ten PR). Otwartych
-issues z etykietą `agent` jest 131, zamkniętych 78.
+Ostatni zmergowany epik: ADMIN-UX-FIXES etap 1 (#509, końcowy PR #855, zmergowany 2026-11-22; epik natywny
+z danymi pomiaru; 5 wiadomości właściciela, 4 oczekiwania, łącznie 85 min czekania). Ostatni zmergowany epik serii:
+DELIVERY etap 1 (#120, końcowy PR #819). Retro do zrobienia: ADMIN-UX-FIXES etap 1 (retro STORE-UX-FIXES etap 1:
+ten PR). Otwartych issues z etykietą `agent` jest 127, zamkniętych 90.
 
 Seria ASH v1.0 (specyfikacja `docs/features/ash-v1/spec.md`): trzy epiki prowadzone natywnie według „Przebiegu epiku”
 w ADR, ocenianie metrykami i retrospektywami `/retro`. Seria jest w toku od założenia tagu `ash-v1.0` do retrospektywy
