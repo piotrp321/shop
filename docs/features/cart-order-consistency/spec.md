@@ -3,8 +3,7 @@
 Issues: #853, #852
 
 Zgłoszenia: #853 (kasa nie wykrywa zmiany zawartości koszyka przy tej samej kwocie), #852 (komunikat po 409 nie mówi,
-co się zmieniło). Specyfikacja opisuje stan docelowy epiku; kasę i koszyk opisują `docs/features/checkout/spec.md`
-i `docs/features/cart/spec.md`, które zadania epiku aktualizują razem z kodem.
+co się zmieniło). Szczegóły kasy i koszyka opisują `docs/features/checkout/spec.md` i `docs/features/cart/spec.md`.
 
 ## Cel
 
@@ -13,31 +12,20 @@ pozycje, ilości, kwotę i tego samego kupującego. Gdy stan na serwerze jest in
 albo na innym urządzeniu, zmiana ceny, logowanie w innej karcie), zamówienie nie powstaje, a kasa pokazuje, co się
 zmieniło, i aktualne podsumowanie. Nic nie zamawia się samo po raz drugi: klient klika ponownie.
 
-## Odtworzenie na `main`
+## Przebiegi
 
-2026-11-23, commit `00f1fe6f`, lokalny stos w trybie produkcyjnym z danymi seed, Chromium (Playwright, 1280 px), gość,
-produkt „Buty trailowe Norvane Hala 500” (warianty po 549,00 zł), dostawa „Kurier standardowy”, płatność „Szybki
-przelew (demo)”. Dwie karty jednego kontekstu przeglądarki; zmiany w drugiej karcie wykonane żądaniami do BFF koszyka.
+Nazwy przebiegów używane w tej specyfikacji i w testach E2E (`e2e/tests/cart-order-consistency.spec.ts`); zmiany
+„w drugiej karcie” dotyczą tej samej przeglądarki, a po stronie API tak samo działa inna przeglądarka i urządzenie.
 
-| # | Przebieg | Wynik (pomiar) |
-|---|---|---|
-| R1 (#853 a) | Kasa wczytana z „czarne, 40” × 2 i „czarne, 41” × 1 (1 647,00 zł). Druga karta zamienia ilości na 1 i 2. Pierwsza karta wysyła zamówienie. | `POST /api/checkout` → 201. E-mail zamówienia R-100001: „czarne, 40 × 1”, „czarne, 41 × 2”, 1 647,00 zł. Zamówienie różni się od pokazanego w kasie, bez komunikatu. |
-| R2 (#852) | Kasa wczytana z 1 szt. (549,00 zł). Druga karta zmienia ilość na 3. Pierwsza karta wysyła zamówienie. | 409 `order-total-changed`. Jedyny komunikat: „Kwota zamówienia się zmieniła. Sprawdź podsumowanie.”, bez linku. Podsumowanie po odczycie: 3 szt., 1 647,00 zł. Region statusu podsumowania pusty. Fokus na komunikacie. |
-| R3 (#853 b, c) | Na stronie koszyka wpis 3 (było 1), PATCH wstrzymany w drodze (karta trzyma blokadę `store-cart-write`). Druga karta otwiera kasę (1 szt.) i wysyła zamówienie. Potem PATCH zostaje zwolniony. | Zamówienie 201 z 1 szt., zgodne z kasą. Spóźniony PATCH: 404 „Tej pozycji nie ma w koszyku.”; strona koszyka: „Twój koszyk jest pusty”, „Pozycja została już usunięta”. |
-| R4 | Kasa gościa wczytana i wypełniona (e-mail `repro-r4+…@example.com`). Druga karta loguje klienta Jan. Pierwsza karta wysyła zamówienie. | 201. Zamówienie R-100004 jest zamówieniem konta: potwierdzenie przyszło na adres konta, a nie na adres wpisany w kasie. Bez komunikatu. |
-
-Wnioski:
-
-- R1 i R4: zamówienie inne niż pokazane w kasie. To luka, którą epik zamyka.
-- R2: zamówienie nie powstaje, ale komunikat nie mówi, co się zmieniło.
-- R3: zamówienie jest zgodne z kasą. Niezapisana zmiana z innej karty przepada z komunikatem, który nie mówi o
-  zamówieniu. Epik zostawia ten przebieg (decyzja D4).
-
-Nie sprawdzano: innej przeglądarki i innego urządzenia (ten sam mechanizm po stronie API co druga karta), Firefoksa
-i Safari, zalogowanego klienta w R1–R3, wylogowania w innej karcie i zmiany konta A na konto B. Dwa ostatnie to
-wniosek z kodu: `runCheckout` wybiera kupującego wyłącznie po ciasteczku sesji w chwili wysłania, więc zamówienie
-kasy konta A wysłane przy sesji konta B byłoby zamówieniem konta B, a kasa klienta wysłana bez sesji poszłaby ścieżką
-gościa (dziś kończy się 422 o brakującym e-mailu).
+| # | Przebieg |
+|---|---|
+| R1 | Kasa wczytana z dwoma wariantami w tej samej cenie; druga karta zamienia ich ilości (ta sama kwota); pierwsza karta wysyła zamówienie. |
+| R2 | Kasa wczytana z 1 szt.; druga karta zmienia ilość na 3; pierwsza karta wysyła zamówienie. |
+| R3 | Zmiana ilości na stronie koszyka jest w drodze; druga karta otwiera kasę i wysyła zamówienie; potem zapis dociera. |
+| R4 | Kasa gościa wczytana i wypełniona; druga karta loguje klienta; pierwsza karta wysyła zamówienie. |
+| R5 | Kasa konta A; druga karta przelogowuje na konto B z tymi samymi pozycjami i kwotą; pierwsza karta wysyła zamówienie. |
+| R6 | Kasa konta; druga karta wylogowuje; pierwsza karta wysyła zamówienie. |
+| R7 | Kasa konta A wysyła zamówienie, API je składa, ale odpowiedź ginie; druga karta przelogowuje na konto B; pierwsza karta ponawia. |
 
 ## Decyzje
 
@@ -157,8 +145,13 @@ Komunikat:
   pierwszy i ostatni akapit.
 - Kwoty formatuje `formatPrice`. Różnice wyznacza czysta funkcja z dwóch `CartView` i id wybranej metody; sklep
   porównuje wartości, które pokazał, i niczego nie liczy.
-- Region statusu podsumowania (`checkout-summary-status`) ogłasza dostawę jak dziś (`deliveryAnnouncement`).
-- Komunikat nie powoduje przewijania poziomego przy 320 i 375 px, także z najdłuższą nazwą produktu danych demo.
+- Komunikat opisuje różnicę z chwili odrzuconego zamówienia. Znika, gdy klient sam zmieni podsumowanie po jego
+  pokazaniu: zastosuje albo usunie kod rabatowy albo wybierze inną metodę dostawy. Edycja pól i wybór płatności go
+  nie zdejmują.
+- Region statusu podsumowania (`checkout-summary-status`) ogłasza dostawę jak dziś (`deliveryAnnouncement`), dla
+  metody wybranej w chwili odpowiedzi.
+- Komunikat i podsumowanie nie powodują przewijania poziomego przy 320 i 375 px, także z nazwą produktu, wariantu
+  albo metody dostawy bez spacji.
 
 Pozostałe odrzucenia (kod rabatowy, niedobór, limit, klucz, metoda dostawy) działają jak dziś.
 
@@ -196,7 +189,8 @@ zostaje bez zmian i może czytać Redis ponownie; gdy po odświeżeniu `sub` ses
 | konto A | sesja konta B | 409 `checkout-buyer-changed`, bez scalania i bez API | ponowny odczyt i komunikat (niżej) |
 | konto A | brak ciasteczka sesji, zły podpis, sesji nie ma w Redisie albo tokenu nie da się odświeżyć | 401 (sesja usunięta jak dziś), bez API; nigdy zamówienie gościa, także gdy przeglądarka ma ciasteczko koszyka gościa i żądanie niesie pole `email` | dzisiejszy widok wygasłej sesji z linkiem logowania |
 | dowolne | sesji nie da się odczytać (Redis albo Keycloak niedostępny) | 503, sesja zostaje, bez API i bez przejścia do zamówienia gościa | „Nie udało się złożyć zamówienia. Spróbuj ponownie.”; formularz i klucz zostają |
-| brak pola, nie tekst, pusty tekst | dowolna | 422 „Nieprawidłowe dane.” bez API | komunikat zbiorczy |
+| brak pola `buyer` (karta kasy sprzed wdrożenia) | dowolna | 422 „Kasa została zaktualizowana. Odśwież stronę.” bez API | komunikat zbiorczy |
+| `buyer` nie jest tekstem albo jest pusty | dowolna | 422 „Nieprawidłowe dane.” bez API | komunikat zbiorczy |
 
 `checkout-buyer-changed` to własny typ BFF (jak `cart-empty` bez koszyka); odpowiedź ma tylko `type` i `detail`, bez
 adresu i znacznika drugiego konta.
@@ -210,12 +204,17 @@ adresu i znacznika drugiego konta.
 3. Tekst: „Od wczytania kasy zmieniło się konto: teraz to <adres konta>. Nie złożyliśmy zamówienia. Zamówienie
    będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.” Gdy po odczycie sesji nie ma
    (wylogowanie po odrzuceniu): „Od wczytania kasy nastąpiło wylogowanie. Nie złożyliśmy zamówienia. Podaj adres
-   e-mail, sprawdź dane i podsumowanie, potem zamów ponownie.”
+   e-mail, sprawdź dane i podsumowanie, potem zamów ponownie.” Gdy wcześniejsza próba miała niepewny wynik (błąd
+   sieci, 5xx: zamówienie mogło powstać) i API jej nie rozstrzygnęło, zamiast „Nie złożyliśmy zamówienia.” jest
+   „Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.” Niepewność klucza kończy
+   tylko odpowiedź API na ten sam klucz; odrzucenia BFF przed API i odpowiedzi na inny klucz jej nie kończą.
 4. Koszyk może być inny (inny klient, scalenie przy logowaniu): kasa pokazuje go bez listy zmian, bo komunikat prosi
    o sprawdzenie podsumowania.
 5. Następne kliknięcie to świadome potwierdzenie: nowy `Idempotency-Key`, `buyer` i `expectedLines` z ostatniego
    odczytu. BFF sprawdza je od nowa, więc kolejna zmiana konta między odczytem a wysłaniem daje kolejne 409.
-6. Odczyt nieudany: komunikat „Kupujący się zmienił, ale nie udało się wczytać kasy. Spróbuj ponownie.”; kasa jest
+6. Nagłówek strony (menu konta) pokazuje po tym odczycie tę samą sesję co kasa, także brak sesji po 401, bez
+   dodatkowego żądania.
+7. Odczyt nieudany: komunikat „Kupujący się zmienił, ale nie udało się wczytać kasy. Spróbuj ponownie.”; kasa jest
    oznaczona jako nieaktualna i następne kliknięcie najpierw czyta sesję i koszyk, a niczego nie zamawia. 401 odczytu
    koszyka: widok wygasłej sesji.
 
@@ -289,6 +288,9 @@ Poza gwarancją:
   kwotą w koszyku → brak zamówienia na obu kontach (brak e-maila zamówienia, koszyk B bez zmian), komunikat z adresem
   konta B, ponowny odczyt; drugie kliknięcie składa zamówienie konta B z potwierdzeniem na adres B.
 - R6: kasa konta A, w drugiej karcie wylogowanie → brak zamówienia, widok wygasłej sesji, żadnego zamówienia gościa.
+- R7: ponowienie po utraconej odpowiedzi i przelogowaniu → komunikat ostrzega, że wcześniejsza próba mogła złożyć
+  zamówienie; zamówienie konta A istnieje i jest jedno.
+- Nagłówek strony w R4, R5 i R6 pokazuje tę samą sesję co kasa; 320 i 375 px z nazwą produktu bez spacji.
 - Istniejące przepływy zamówień (`checkout-guest`, `checkout-customer`, `delivery-checkout`, `discount-codes`,
   `store-ux-checkout`, `placeAndPayOrder` w `e2e/support/orders.ts`) przechodzą bez zmiany asercji i helperów.
 
@@ -331,36 +333,14 @@ Poza gwarancją:
 14. Zamówienie zgodne z kasą z innej karty przy zapisie koszyka w drodze (R3) powstaje jak dotąd, a spóźniony zapis
     go nie zmienia (granica ochrony).
 
-## Zależności i równoległość
-
-- **API-INPUT-CONTRACT:** naruszenia nowego pola są w `OrderRequestViolationCases` (treść żądania); zestaw
-  `tests/Functional/Shared/InputContract` nie obejmuje treści żądań i dostaje tylko poprawną listę w ciałach swoich
-  wierszy. Kolejny etap tego epiku, który zmieni te pliki, uwzględnia nowe pole.
-- **STORE-UX-FIXES etap 1** jest na `main`: reguły F1, F2 i blokada formularza w trakcie zamówienia (S5) obowiązują
-  i ten epik je rozszerza o czas odczytu po 409.
-- **ADMIN-UX-FIXES etap 2** (przygotowywany równolegle; zakres według komentarza w #778: #573, #574, #576, #581
-  F3/F6/F7/F8/F11, #584, #628, #629, #630, #866, #867; specyfikacji i planu nie ma jeszcze w repo). Epiki nie mają
-  wspólnego kodu aplikacji: ten zmienia `apps/api` (Ordering) i `apps/store`, tamten `apps/admin`. Punkty styku:
-
-  | Plik albo kontrakt | Ten epik | ADMIN-UX-FIXES etap 2 | Ustalenie |
-  |---|---|---|---|
-  | `e2e/support/orders.ts`, `shop.ts`, `panel-orders.ts` | nie zmienia | testy panelu składają nimi zamówienia przez kasę sklepu | nazwy „Przejdź do kasy” i „Zamawiam z obowiązkiem zapłaty”, pola kasy i przebieg bez rozbieżności zostają bez zmian |
-  | `apps/api/fixtures/stock.yaml` (stany i lista testów E2E, które zamawiają produkt) | dopisuje nowe testy do komentarza | może dopisać testy okien zamówień (#581) | nowe testy tego epiku zamawiają „Buty trailowe Norvane Hala 500” (50 szt. na wariant); konflikt tylko w komentarzu |
-  | `apps/api/openapi.json`, `apps/store/src/api/schema.d.ts` | zmienia | nie powinien zmieniać | gdyby etap 2 zmieniał API, eksport robi epik mergowany jako drugi |
-  | `apps/api/openapi-admin.json`, `apps/admin/src/api/schema.d.ts` | nie zmienia | może zmieniać | bez styku |
-  | `.github/workflows/ci.yml`, wagi części E2E | nie zmienia | nie zmienia (`e2e/CLAUDE.md`) | nowe pliki spec biegną bez zmiany wag |
-  | `e2e/playwright.config.ts`, `e2e/package.json` | nie zmienia | do sprawdzenia | pomocniki nowych testów są lokalne w pliku testu |
-  | `docs/features/checkout/spec.md`, `cart/spec.md`, `store-ux-fixes/spec.md`, `apps/store/CLAUDE.md` | zmienia | nie zmienia | bez styku |
-
-  Do ponownego sprawdzenia przed implementacją: stan ADMIN-UX-FIXES etap 2 na `main` i `paths` jego planu;
-  `git diff HEAD..origin/main -- e2e .github make apps/api/fixtures apps/api/openapi.json`. Epik mergowany jako drugi
-  scala `main` i uruchamia pełne `make e2e`.
-
 ## Ryzyka i ograniczenia
+
+- `expectedLines` podane jako obiekt JSON o kluczach „0”…„n” w kolejności jest przyjmowane jak lista (po
+  zdekodowaniu treści nie da się go odróżnić); skutek jest taki sam jak dla listy.
 
 - Wdrożenie: API i sklep wymieniają się osobno, więc w trakcie wdrożenia stara kasa może dostać 422 „Kasa została
   zaktualizowana. Odśwież stronę.” (dopuszczalne na etapie demo). Karta kasy otwarta przed wdrożeniem dostaje ten sam
-  komunikat.
+  komunikat z BFF (brak pola `buyer`).
 - Zmienia się zasada z `docs/features/checkout/spec.md` i `apps/store/CLAUDE.md` „żądanie nie niesie pozycji ani
   ilości”: niesie je wyłącznie do porównania.
 - Pomiary wykonano tylko w Chromium; ogłaszanie sprawdzane po DOM, bez czytnika ekranu.
