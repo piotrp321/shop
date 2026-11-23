@@ -250,6 +250,7 @@ describe("useDeliveryMethodForm: the draft and the unknown result of a save (sta
       const { form } = await open();
       form.form.value.name = "Kurier 2";
       mocks.put.mockResolvedValue(conflict("delivery-method-name-taken", TAKEN));
+      mocks.get.mockClear();
 
       await form.save();
       await advance(30_000);

@@ -3,6 +3,7 @@ import { computed, nextTick, ref, useId } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import FormField from "@/components/FormField.vue";
+import FormSafetyNotices from "@/components/FormSafetyNotices.vue";
 import FormSection from "@/components/FormSection.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import SaveBar from "@/components/SaveBar.vue";
@@ -25,10 +26,29 @@ const router = useRouter();
 // The route of an existing method carries its id: a failed or pending load must not look like a new method.
 const isExisting = computed(() => typeof route.params.id === "string");
 
-const { form: data, view, loaded, loadError, busy, dirty, canSave, message, error, errorsAt, save, discard } = useDeliveryMethodForm({
+const {
+  form: data,
+  view,
+  loaded,
+  loadError,
+  busy,
+  locked,
+  safety,
+  dirty,
+  canSave,
+  message,
+  error,
+  errorsAt,
+  save,
+  discard,
+} = useDeliveryMethodForm({
   methodId: () => (typeof route.params.id === "string" ? route.params.id : null),
   onSaved: () => {
     void router.push({ name: "delivery" });
+  },
+  // The answer of a save the staff member gave up on turned out to be a success: only this is said (B4).
+  onLateSaved: (text) => {
+    toast.success(text);
   },
 });
 
@@ -63,10 +83,18 @@ async function submit(): Promise<void> {
   target.scrollIntoView({ block: "center" });
 }
 
-// The bar goes away with „Odrzuć”, so the focus goes to the H1.
+// The bar goes away with „Odrzuć”, so the focus goes to the H1; when a message about the server stays (an unknown result,
+// the way to its state after a 409), `FormSafetyNotices` puts the focus on it.
 async function discardChanges(): Promise<void> {
   discard();
   await nextTick();
+  if (safety.unknown.value === null && safety.restoreNote.value === null) {
+    header.value?.focus();
+  }
+}
+
+// „Odrzuć moje zmiany i pokaż stan z serwera” took the button with it: the focus goes to the H1.
+function focusHeader(): void {
   header.value?.focus();
 }
 
@@ -136,10 +164,16 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
       >
         <AlertDescription>{{ error }}</AlertDescription>
       </Alert>
+      <FormSafetyNotices
+        :safety="safety"
+        :list-to="{ name: 'delivery' }"
+        list-label="Lista metod dostawy"
+        @restored="focusHeader"
+      />
 
-      <!-- While the request runs nothing can be typed: the answer rebuilds the form from the API and would overwrite it. -->
+      <!-- While a save runs and while a read replaces the form nothing can be typed: the answer rebuilds the form from the API and would overwrite it. -->
       <fieldset
-        :disabled="busy"
+        :disabled="locked"
         class="flex max-w-3xl min-w-0 flex-col gap-6"
       >
         <FormSection title="Metoda dostawy">

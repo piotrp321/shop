@@ -384,6 +384,16 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
   „Aktywna”, „Kolejność”, „Link śledzenia (opcjonalnie)” z podpowiedzią „Adres https:// z {numer} w miejscu numeru
   przesyłki”. Naruszenia API przy polach, 409 nad formularzem z focusem na komunikacie, zapis z komunikatem jak inne
   formularze panelu i powrotem do listy. Kwoty w zł z przecinkiem (`parseGross`); puste „Darmowa od” → `null`.
+  Bezpieczeństwo zmian w formularzu (`docs/features/admin-ux-fixes/spec.md`, „Etap 2”: B3, B4): szkic zmienia tylko
+  pracownik. Pola są wyłączone od wysłania zapisu do jego wyniku. 409 wersji pokazuje „Metoda dostawy została
+  w międzyczasie zmieniona. Twoje zmiany zostają w formularzu.”, zostawia szkic i wersję, niczego nie czyta sam i daje
+  przycisk „Odrzuć moje zmiany i pokaż stan z serwera” (odczyt, a szkic zastępuje dopiero odpowiedź 200); 409 nazwy
+  i limitu zostawiają to, co wpisano. Brak odpowiedzi przez 10 s, błąd sieci i każde 5xx to nieznany wynik zapisu,
+  nigdy komunikat, że się nie udał: „Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.” ze „Sprawdź
+  stan” (zmiana) albo „Odblokuj formularz” i linkiem do listy (nowa metoda, „Nie wiemy, czy metoda dostawy została
+  utworzona.”). Limit nie przerywa żądania, a panel niczego nie ponawia sam; spóźniony sukces to tylko toast
+  „Wcześniejszy zapis został wykonany.”. Po „Odblokuj formularz” (albo błędzie sieci) kolejny zapis, który dostanie 409
+  nazwy, dopisuje „Możliwe, że utworzył ją Twój wcześniejszy zapis.”.
 - Szczegóły zamówienia (`OrderDetailView.vue`): wiersz dostawy (nazwa metody i koszt) w podsumowaniu kwot, gdy
   zamówienie ma metodę; numer przesyłki i link śledzenia (nowa karta) tylko, gdy jest `shipment`. Okno „Wyślij” (`useOrderDetail.ts:210-222`) ma opcjonalne pole
   „Numer przesyłki” (tylko dla `ship`) z podpowiedzią „Litery, cyfry i myślniki, do 40 znaków”; naruszenie przy polu.
@@ -507,7 +517,8 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
 | Brak aktywnych metod | koszyk: `options` puste | kasa: `Alert`, przycisk nieaktywny; koszyk bez wiersza dostawy |
 | Nazwa metody zajęta (też inną wielkością liter) | 409 `delivery-method-name-taken` | komunikat nad formularzem panelu |
 | 21. aktywna metoda | 409 `delivery-method-limit-reached` | komunikat nad formularzem panelu |
-| Metoda zmieniona przez kogoś innego | 409 `about:blank` | komunikat z prośbą o odświeżenie |
+| Metoda zmieniona przez kogoś innego | 409 `about:blank` | komunikat, że zmiany zostają w formularzu, z przyciskiem „Odrzuć moje zmiany i pokaż stan z serwera” (bez automatycznego odczytu) |
+| Zapis metody bez odpowiedzi (10 s), błąd sieci, 5xx | brak odpowiedzi albo 5xx | stan „nieznany wynik” ze „Sprawdź stan” albo „Odblokuj formularz”, szkic zostaje |
 | Przy „Wyślij”: numer z polskimi znakami, spacją w środku, za długi | 422 przy `trackingNumber` (komunikat formatu) | komunikat przy polu okna „Wyślij” |
 | Numer (inny niż `null` i same białe znaki) przy „Dostarczone”, „Anuluj”, „Zwrot”, w dowolnym formacie | 422 przy `trackingNumber` („Numer przesyłki można podać tylko przy wysyłce.”) | komunikat przy polu |
 | Stara karta panelu wysyła zamówienie | 422 przy `trackingNumber` („To pole jest wymagane.”) | komunikat do przeładowania karty |
