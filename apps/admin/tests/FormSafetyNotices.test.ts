@@ -1,8 +1,8 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import FormSafetyNotices from "@/components/FormSafetyNotices.vue";
-import { REQUEST_LIMIT_MS } from "@/composables/formRequests";
+import { REQUEST_LIMIT_MS, type ReadResult } from "@/composables/formRequests";
 import { useFormSafety } from "@/composables/useFormSafety";
 
 interface Doc {
@@ -13,7 +13,7 @@ interface Doc {
 
 describe("FormSafetyNotices", () => {
   let state: { id: string | null; draft: { name: string } };
-  let read: ReturnType<typeof vi.fn>;
+  let read: Mock<(id: string) => Promise<ReadResult<Doc>>>;
   let mounted: ReturnType<typeof mount> | undefined;
 
   function create() {
@@ -86,7 +86,7 @@ describe("FormSafetyNotices", () => {
     const wrapper = await show(safety);
     await safety.write(() => failing() as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
     await flushPromises();
-    let release!: (value: unknown) => void;
+    let release!: (value: ReadResult<Doc>) => void;
     read.mockReturnValue(new Promise((resolve) => (release = resolve)));
 
     await wrapper.get("[data-testid=check-state]").trigger("click");

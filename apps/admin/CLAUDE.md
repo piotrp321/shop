@@ -200,8 +200,15 @@ Spec: `docs/features/sentry/spec.md`.
   pola), po akcji, która zastępuje swój przycisk, na nagłówek karty; po błędzie na pierwszy `data-form-error` albo pole
   `aria-invalid`. Akcje nieodwracalne pytają `ConfirmDialog`. W trakcie każdego żądania, którego odpowiedź
   zastępuje pola formularza albo jego stan bazowy (zapis, „Odśwież”, ponowny odczyt po zapisie), pola formularza są
-  zablokowane, nie tylko przyciski paska zapisu (wzór zapisu: `DeliveryMethodFormView`, odczytu: flaga `refreshing`
-  w `usePromotionForm`); sprawdza to test Vitest z niezałatwioną obietnicą mocka każdego takiego żądania.
+  zablokowane, nie tylko przyciski paska zapisu (wzór zapisu i odczytu: `safety.locked` z `useFormSafety` w
+  `usePromotionForm`); sprawdza to test Vitest z niezałatwioną obietnicą mocka każdego takiego żądania.
+- Szkic formularza zmienia tylko pracownik: odczyt, 409 ani spóźniona odpowiedź go nie zastępują (wyjątki: potwierdzony
+  sukces zapisu, zgodność przy „Sprawdź stan”, udany odczyt po „Odrzuć moje zmiany i pokaż stan z serwera”). Brak
+  odpowiedzi przez 10 s, błąd sieci i każde 5xx to „nieznany wynik” zapisu, nigdy komunikat, że zapis się nie powiódł;
+  limit nie przerywa żądania i panel niczego nie ponawia sam. Tę logikę ma jeden wspólny kod, bez kopii w formularzach:
+  `src/composables/useFormSafety.ts` (stan żądań formularza: zapis, „Sprawdź stan”, odczyty z limitem), `formRequests.ts`
+  (limit, teksty, klasyfikacja odpowiedzi, porównanie żądań) i komponent `FormSafetyNotices` (komunikaty i przyciski);
+  wzorem jest `usePromotionForm`. Nowy formularz używa ich, nie pisze własnych limitów ani odczytów po 409.
 - Lista według standardu: `PageHeader`, karta z `ListToolbar`, `DataTable` i `ListPager`; stan listy (wyszukiwanie, filtry,
   rozmiar strony 10/25/50, domyślnie 25, w Cenach i Stanach 10) jest w adresie przez `useListUrlState`,
   stronicowanie przez `useCursorPager`, a

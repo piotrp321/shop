@@ -1755,7 +1755,7 @@ describe("PromotionFormView", () => {
       expect(alert(wrapper).get("[data-testid=check-state]").text()).toBe("Sprawdź stan");
       expect(wrapper.find("[data-testid=unblock-form]").exists()).toBe(false);
       expect(document.activeElement).toBe(alert(wrapper).element);
-      expect(input(wrapper, "name-input").disabled).toBe(true);
+      expect(input(wrapper, "name-input").matches(":disabled")).toBe(true);
       expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
     });
 
@@ -1770,7 +1770,7 @@ describe("PromotionFormView", () => {
       expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
       expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
       expect(wrapper.get("[data-testid=safety-status]").attributes("role")).toBe("status");
-      expect(input(wrapper, "name-input").disabled).toBe(false);
+      expect(input(wrapper, "name-input").matches(":disabled")).toBe(false);
       expect(input(wrapper, "name-input").value).toBe("Pierwsza");
       expect(saveBar()).toBeNull();
       expect(mocks.put).toHaveBeenCalledTimes(1);
@@ -1786,7 +1786,7 @@ describe("PromotionFormView", () => {
       expect(alert(wrapper).text()).toContain("Zapisu nie widać na serwerze. Może jeszcze dotrzeć.");
       expect(document.activeElement).toBe(alert(wrapper).element);
       expect(input(wrapper, "name-input").value).toBe("Pierwsza");
-      expect(input(wrapper, "name-input").disabled).toBe(false);
+      expect(input(wrapper, "name-input").matches(":disabled")).toBe(false);
     });
 
     it("„Sprawdź stan” offers „Odrzuć moje zmiany i pokaż stan z serwera” when the version on the server is another", async () => {
@@ -1817,7 +1817,7 @@ describe("PromotionFormView", () => {
       expect(successToast).toHaveBeenCalledWith("Wcześniejszy zapis został wykonany.");
       expect(successToast).not.toHaveBeenCalledWith("Promocja zapisana.");
       expect(input(wrapper, "name-input").value).toBe("Druga");
-      expect(input(wrapper, "name-input").disabled).toBe(false);
+      expect(input(wrapper, "name-input").matches(":disabled")).toBe(false);
     });
 
     it("gives an ordinary result, with the toast, when the answer comes after the limit but before „Sprawdź stan”", async () => {
@@ -1830,7 +1830,7 @@ describe("PromotionFormView", () => {
 
       expect(successToast).toHaveBeenCalledWith("Promocja zapisana.");
       expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
-      expect(input(wrapper, "name-input").disabled).toBe(false);
+      expect(input(wrapper, "name-input").matches(":disabled")).toBe(false);
     });
 
     it("moves the focus to the message after an error that does not reach the API, with the fields unlocked", async () => {
@@ -1841,7 +1841,7 @@ describe("PromotionFormView", () => {
 
       expect(alert(wrapper).text()).toContain(UNKNOWN);
       expect(document.activeElement).toBe(alert(wrapper).element);
-      expect(input(wrapper, "name-input").disabled).toBe(false);
+      expect(input(wrapper, "name-input").matches(":disabled")).toBe(false);
       expect(input(wrapper, "name-input").value).toBe("Pierwsza");
     });
 
@@ -1854,7 +1854,7 @@ describe("PromotionFormView", () => {
         expect(alert(wrapper).text()).toContain(UNKNOWN);
         expect(wrapper.find("[data-testid=check-state]").exists()).toBe(false);
         expect(alert(wrapper).get("[data-testid=unblock-form]").text()).toBe("Odblokuj formularz");
-        expect(input(wrapper, "name-input").disabled).toBe(true);
+        expect(input(wrapper, "name-input").matches(":disabled")).toBe(true);
       });
 
       it("unlocks the form with the message about the list and a link to it in a new tab, and a late success only gives a toast", async () => {
@@ -1870,7 +1870,7 @@ describe("PromotionFormView", () => {
         expect(link.attributes("target")).toBe("_blank");
         expect(link.attributes("rel")).toContain("noopener");
         expect(link.text()).toContain("Lista promocji");
-        expect(input(wrapper, "name-input").disabled).toBe(false);
+        expect(input(wrapper, "name-input").matches(":disabled")).toBe(false);
         await wrapper.get("[data-testid=name-input]").setValue("Inna nazwa");
 
         calls[0]!.resolve({ data: promotion({ id: "created" }), response: { status: 201 } });

@@ -42,7 +42,7 @@ Właściciel potwierdził 2026-11-22 także, jak długo pracownik czeka:
 | # | Decyzja | Przyjęty wariant | Odrzucone |
 |---|---|---|---|
 | D6 | K2: co dzieje się z formularzem promocji między udanym zapisem „Od teraz” a odczytem statusu | Blokada trwa dalej: zwykle 1–2 s, zawsze najwyżej 10 s od odpowiedzi zapisu (całkowity limit oczekiwania). Po zapisie nie da się wpisać zmiany, którą nadpisałby odczyt, i nie trzeba scalać formularza z odpowiedzią | Pola odblokowane od razu po zapisie, a odczyt zmienia tylko status i akcje (wymaga reguł dla pól zmienionych w tym czasie i dla pól, które aktywna promocja blokuje) |
-| D7 | K2 i K3: zapis, na który API nie odpowiada | Bez własnego limitu czasu zapisu: blokada trwa do odpowiedzi albo błędu sieci przeglądarki, a wyjściem jest opuszczenie ekranu: Wstecz przeglądarki przy otwartym oknie zamówienia (okno modalne zasłania menu panelu) albo opuszczenie formularza promocji. Opuszczenie ekranu nie anuluje operacji na serwerze: wynik takiego zapisu jest nieznany do ponownego wczytania zamówienia albo promocji, więc panel nie pozwala wysłać go drugi raz z tego samego okna | Limit czasu z odblokowaniem i ponowieniem (ponawia zmianę o nieznanym wyniku); brak blokady zamknięcia okna (wraca wada #581 F4) |
+| D7 | K3: zapis w oknie zamówienia, na który API nie odpowiada (formularze: E2, „Etap 2”) | Bez własnego limitu czasu zapisu: blokada trwa do odpowiedzi albo błędu sieci przeglądarki, a wyjściem jest Wstecz przeglądarki przy otwartym oknie zamówienia (okno modalne zasłania menu panelu). Opuszczenie ekranu nie anuluje operacji na serwerze: wynik takiego zapisu jest nieznany do ponownego wczytania zamówienia, więc panel nie pozwala wysłać go drugi raz z tego samego okna | Limit czasu z odblokowaniem i ponowieniem (ponawia zmianę o nieznanym wyniku); brak blokady zamknięcia okna (wraca wada #581 F4) |
 
 Zdania specyfikacji ekranów zostają prawdziwe po tym etapie; nowe zachowanie opisuje ta specyfikacja. Dwa wyjątki
 w `docs/features/admin-design/spec.md`: wyjątek #250 F16 w „Po zapisie” (zmienia K2) i opis kolumn „Ostatnich
@@ -62,7 +62,8 @@ zamówień” (zmienia K5).
 - **Pozostałe części #584:** wyłączenia `expectControlsReachable` dla drzewa, pól daty, grupy opcji i podpowiedzi oraz
   sprawdzenie podpowiedzi przy 320 px (z #576) i akcji schowanych w przewijaniu poziomym (z #629). Helper
   `e2e/support/panel-layout.ts` zostaje bez zmian.
-- Blokada pól w formularzach innych niż formularz promocji oraz oczekiwanie na koniec promocji (`watchEnd`).
+- Oczekiwanie na koniec promocji (`watchEnd`). Blokada pól w formularzach innych niż formularz promocji i limit zapisu
+  tych formularzy: „Etap 2”.
 
 ## K1: wybór w comboboxie kategorii (#572, #627)
 
@@ -114,8 +115,9 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
   żądania) nie występuje przy zapisie formularza promocji, bo pola są wyłączone, więc jego test w
   `PromotionFormView.test.ts` i zdanie o nim w `docs/features/admin-design/spec.md` („Po zapisie”: wyjątek nie
   dotyczy zapisu formularza promocji) zmieniają się razem z zachowaniem. Przy akcjach karty „Status” („Zakończ
-  teraz”, „Usuń”) pola nie są blokowane i wyjątek działa jak dotąd. Po odpowiedzi udany zapis i 409 pokazują promocję z API jak dotąd, a 422 i błąd
-  sieci odblokowują pola z wartościami, które pracownik wysłał.
+  teraz”, „Usuń”) pola nie są blokowane i wyjątek działa jak dotąd. Po odpowiedzi udany zapis pokazuje promocję z API; 422 odblokowuje pola z wartościami,
+  które pracownik wysłał; 409, błąd sieci i 5xx nie zastępują szkicu, a brak odpowiedzi w limicie, błąd sieci i 5xx to
+  nieznany wynik zapisu (B4 w „Etapie 2”; pola zostają zablokowane do odpowiedzi albo „Sprawdź stan”).
 - **Oczekiwanie na początek.** Gdy udany zapis (utworzenie albo zmiana) był wysłany z „Od teraz”, a odpowiedź ma
   `status: planned`, blokada trwa dalej, region `role="status"` karty „Status” pokazuje „Promocja rozpoczyna się.”,
   a panel czyta promocję (`GET /api/v1/admin/promotions/{id}`). Pierwszy odczyt wychodzi sekundę po `startsAt`
@@ -130,7 +132,9 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
     zapisie, a komunikat błędu (`role="alert"`) „Nie udało się odczytać statusu promocji. Odśwież, żeby zobaczyć jej
     stan.” ma przycisk „Odśwież”. „Odśwież” działa jak ten sam przycisk po nieudanym odczycie końca (`refresh`,
     `usePromotionForm.ts:266-273`): udany odczyt pokazuje promocję i przenosi fokus na nagłówek karty „Status”,
-    nieudany zastępuje formularz komunikatem wczytania z linkiem do listy promocji.
+    nieudany (błąd sieci, odpowiedź inna niż 200, brak odpowiedzi w 10 s) zostawia formularz i pokazuje komunikat „Nie
+    udało się odczytać stanu. Spróbuj ponownie.” z przyciskiem ponowienia (B3); w trakcie odczytu region
+    `role="status"` formularza mówi „Odświeżamy…”.
   - Całkowity limit: gdy 10 s po odpowiedzi zapisu oczekiwanie jeszcze trwa (odczyt bez odpowiedzi, wolne odczyty),
     kończy się tak jak po nieudanym odczycie: blokada znika, widać ten sam komunikat z „Odśwież”. Odpowiedź odczytu,
     która wróci po limicie, jest pomijana i nie zmienia formularza, statusu ani wersji, także gdy pracownik zdążył
@@ -147,8 +151,8 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
   promocję albo formularz nowej, albo formularz wysłał nowsze żądanie (zapis, „Odśwież”). Opuszczenie widoku
   i przejście do innej promocji zatrzymują oczekiwanie. Przejście z `/promotions/new` na `/promotions/:id` po
   utworzeniu go nie przerywa. To samo dotyczy odpowiedzi samego zapisu: gdy wraca po przejściu do innej promocji albo
-  formularza nowej, nie zmienia formularza, nie pokazuje toastu, nie nawiguje i nie uruchamia oczekiwania (dziś
-  `perform` sprawdza tylko opuszczenie widoku, `usePromotionForm.ts:420-423`).
+  formularza nowej, nie zmienia formularza, nie pokazuje toastu, nie nawiguje i nie uruchamia oczekiwania
+  (`useFormSafety`).
 - **Czas.** Liczony od chwili, w której przeglądarka dostała odpowiedź zapisu. Gdy zegary przeglądarki i serwera
   różnią się o mniej niż 0,5 s, pierwszy odczyt wychodzi najpóźniej po 2,5 s, więc „Aktywna” i „Zakończ teraz” są
   widoczne w ciągu 3 s, jeśli odczyt wraca w czasie poniżej 0,5 s. Niezależnie od zegarów i od czasu odpowiedzi API
@@ -161,7 +165,7 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
    w `role="status"` i odblokowane pola; (b) `startsAt` minutę po odpowiedzi (spóźniony zegar przeglądarki) daje
    pierwszy `GET` 3 s po odpowiedzi; (c) sześć odpowiedzi `planned` kończy oczekiwanie komunikatem i odblokowaniem,
    dalszych `GET` nie ma; (d) nieudany odczyt pokazuje błąd z „Odśwież”; udane „Odśwież” pokazuje promocję z fokusem
-   na nagłówku karty „Status”, nieudane daje komunikat wczytania; (e) wstrzymana odpowiedź zapisu: pola i kontrolki
+   na nagłówku karty „Status”, nieudane zostawia formularz z komunikatem do ponowienia; (e) wstrzymana odpowiedź zapisu: pola i kontrolki
    wariantów są wyłączone, otwarty wybór zostaje otwarty, drugie „Zapisz” nie wysyła żądania; po 422 i po błędzie
    sieci pola mają wysłane wartości i są odblokowane; (f) w trakcie oczekiwania pola, kontrolki wariantów i akcje
    karty „Status” są wyłączone; (g) opuszczenie widoku i otwarcie innej promocji w trakcie oczekiwania: żadnego
@@ -353,10 +357,10 @@ czytają odpowiedzi błędów. **Do ponownego sprawdzenia przed implementacją**
 - **K2 (D6).** Formularz jest zablokowany przez oczekiwanie na początek: zwykle 1–2 s, najwyżej 10 s od odpowiedzi
   zapisu, także przy rozjechanych zegarach i odczycie bez odpowiedzi. Po limicie panel pokazuje „Zaplanowana”, choć
   promocja może już trwać; wyjaśnia to komunikat z „Odśwież”.
-- **K2 i K3 (D7).** Klient API panelu nie ma limitu czasu żądania. Zapis bez odpowiedzi trzyma blokadę do błędu sieci
-  przeglądarki: w oknie zamówienia wyjściem jest Wstecz przeglądarki (menu panelu jest pod oknem modalnym), które
-  zamyka okno i pomija odpowiedź; w formularzu promocji jego opuszczenie. Żadna z tych dróg nie anuluje zapisu na
-  serwerze, więc jego wynik jest nieznany do ponownego wczytania. Ten etap nie dodaje limitu czasu zapisu.
+- **K3 (D7).** Klient API panelu nie ma limitu czasu żądania. Zapis w oknie zamówienia bez odpowiedzi trzyma blokadę do
+  błędu sieci przeglądarki: wyjściem jest Wstecz przeglądarki (menu panelu jest pod oknem modalnym), które zamyka okno
+  i pomija odpowiedź. To nie anuluje zapisu na serwerze, więc jego wynik jest nieznany do ponownego wczytania. Okna
+  zamówienia nie mają limitu czasu zapisu. Zapis formularza promocji ma limit 10 s i stan „nieznany wynik” (E2).
 - **K3 i K5.** Dane demo nie mają zamówień: test E2E K3 składa własne zamówienie (`placeOrderAsJan`,
   `e2e/support/panel-orders.ts`, bez zmiany helpera), a test K5 podstawia odpowiedź listy.
 - Zadania zmieniają rozłączne pliki, poza K2 i K4, które dzielą wybór wariantów formularza promocji
@@ -446,8 +450,7 @@ Właściciel zaakceptował 2026-11-23:
 - W trakcie odczytu region `role="status"` formularza pokazuje „Odświeżamy…”.
 - Po 10 s bez odpowiedzi: blokada znika, a komunikat błędu (`role="alert"`) „Nie udało się odczytać stanu. Spróbuj
   ponownie.” ma przycisk ponowienia. Formularz zostaje taki, jaki był przed odczytem. To samo po błędzie sieci
-  i odpowiedzi innej niż 200. W promocji zastępuje to dzisiejsze zachowanie nieudanego „Odśwież” (komunikat wczytania
-  zamiast formularza).
+  i odpowiedzi innej niż 200. W promocji nieudane „Odśwież” nie zastępuje formularza komunikatem wczytania.
 - #866, punkt 3: bez zmian (E4).
 
 ## B4: nieznany wynik zapisu

@@ -4,6 +4,7 @@ import { computed, nextTick, ref, useId } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import FormSafetyNotices from "@/components/FormSafetyNotices.vue";
 import FormField from "@/components/FormField.vue";
 import FormSection from "@/components/FormSection.vue";
 import PageHeader from "@/components/PageHeader.vue";
@@ -46,6 +47,7 @@ const {
   loadError,
   busy,
   locked,
+  safety,
   dirty,
   status: promotionStatus,
   readOnly,
@@ -82,6 +84,10 @@ const {
   },
   // The promotion that „Zakończ teraz” left active was read as ended after the call returned (#304 F7).
   onEnded: (text) => {
+    toast.success(text);
+  },
+  // The answer of a save the staff member gave up on turned out to be a success: only this is said (B4).
+  onLateSaved: (text) => {
     toast.success(text);
   },
 });
@@ -151,16 +157,24 @@ async function discardChanges(): Promise<void> {
 }
 
 // „Odśwież” is gone with the message about a failed read (of the end or of the start), so the focus goes to the heading
-// of the card; when the read fails as well, the message of the load replaces the form and the card with it, so it goes
-// to the H1.
+// of the card; when the read fails as well, the form stays and the message to try again takes the focus
+// (`FormSafetyNotices`).
 async function refreshAfterRead(): Promise<void> {
   await refresh();
   await nextTick();
+  if (safety.readFailed.value) {
+    return;
+  }
   if (statusCard.value === null) {
     header.value?.focus();
   } else {
     statusCard.value.focusHeading();
   }
+}
+
+// „Odrzuć moje zmiany i pokaż stan z serwera” took the button with it: the focus goes to the H1.
+function focusHeader(): void {
+  header.value?.focus();
 }
 
 const { open: leaveOpen, leave } = useUnsavedChangesGuard(() => dirty.value);
@@ -285,6 +299,12 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
       >
         <AlertDescription>{{ error }}</AlertDescription>
       </Alert>
+      <FormSafetyNotices
+        :safety="safety"
+        :list-to="{ name: 'promotions' }"
+        list-label="Lista promocji"
+        @restored="focusHeader"
+      />
 
       <!-- From 1280 px two columns: the data on the left, the side column of 320 px on the right. Below that one column
            with the side card above the data, which is the order of the source. -->

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LATE_SAVE_MESSAGE,
   MATCHES_MESSAGE,
@@ -7,6 +7,7 @@ import {
   READING_MESSAGE,
   REQUEST_LIMIT_MS,
   UNKNOWN_RESULT_MESSAGE,
+  type ReadResult,
   sameRequest,
   settleWrite,
 } from "@/composables/formRequests";
@@ -126,7 +127,7 @@ describe("useFormSafety", () => {
   let state: { id: string | null; version: number | null; draft: Body | null };
   let adopted: Doc[];
   let late: string[];
-  let read: ReturnType<typeof vi.fn>;
+  let read: Mock<(id: string) => Promise<ReadResult<Doc>>>;
 
   function create() {
     return useFormSafety<Doc, Body>({
@@ -384,7 +385,7 @@ describe("useFormSafety", () => {
       const safety = create();
       const first = startWrite(safety);
       await vi.advanceTimersByTimeAsync(REQUEST_LIMIT_MS);
-      const reading = held<unknown>();
+      const reading = held<ReadResult<Doc>>();
       read.mockReturnValue(reading.promise);
       const checking = safety.check();
       expect(safety.reading.value).toBe(true);
@@ -419,7 +420,7 @@ describe("useFormSafety", () => {
   describe("a read that locks the form", () => {
     it("says „Odświeżamy…” while it runs, locks, and unlocks with the answer", async () => {
       const safety = create();
-      const reading = held<unknown>();
+      const reading = held<ReadResult<Doc>>();
       read.mockReturnValue(reading.promise);
 
       const restoring = safety.restore();
@@ -437,7 +438,7 @@ describe("useFormSafety", () => {
 
     it("unlocks after 10 s without an answer with a message to try again, and the late answer changes nothing", async () => {
       const safety = create();
-      const reading = held<unknown>();
+      const reading = held<ReadResult<Doc>>();
       read.mockReturnValue(reading.promise);
       const restoring = safety.restore();
 
@@ -485,7 +486,7 @@ describe("useFormSafety", () => {
 
     it("ignores the answer after another object was opened and leaves no lock", async () => {
       const safety = create();
-      const reading = held<unknown>();
+      const reading = held<ReadResult<Doc>>();
       read.mockReturnValue(reading.promise);
       const restoring = safety.restore();
 
@@ -500,7 +501,7 @@ describe("useFormSafety", () => {
 
     it("ignores the answer after the form was left, and a limit that comes after that", async () => {
       const safety = create();
-      const reading = held<unknown>();
+      const reading = held<ReadResult<Doc>>();
       read.mockReturnValue(reading.promise);
       const restoring = safety.restore();
 
@@ -656,7 +657,7 @@ describe("useFormSafety", () => {
     it("locks the fields while the read runs", async () => {
       const safety = create();
       await unknownResult(safety);
-      const reading = held<unknown>();
+      const reading = held<ReadResult<Doc>>();
       read.mockReturnValue(reading.promise);
 
       const checking = safety.check();
@@ -693,7 +694,7 @@ describe("useFormSafety", () => {
       const safety = create();
       await safety.write(() => Promise.resolve(refused(503)) as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
       safety.offerRestore();
-      const reading = held<unknown>();
+      const reading = held<ReadResult<Doc>>();
       read.mockReturnValue(reading.promise);
 
       const restoring = safety.restore();
