@@ -484,7 +484,8 @@ test.describe("the buyer changed in another tab", () => {
     await expect(orderMessage(page)).toHaveText(MAYBE_SIGNED_IN_AS(customers.anna.email));
     expect(statuses).toEqual([201, 409]);
     expect(keys[1]).toBe(keys[0]);
-    await expect(page.getByTestId("account-email")).toHaveText(customers.anna.email);
+    // Anna's cart is empty: the checkout shows it instead of the form, so the next click cannot order anything.
+    await expect(page.getByText("Twój koszyk jest pusty.")).toBeVisible();
     // The message is true: the lost attempt placed Jan's order.
     await waitForOrderEmail(customers.jan.email, placed.number);
     await waitForOrderEmail(customers.jan.email, placed.number, "payment");
