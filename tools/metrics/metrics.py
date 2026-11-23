@@ -4205,16 +4205,21 @@ def native_orders(data, resumes):
 
 
 def unmatched_resumes(unmatched, data, started, until, agent, gaps):
-    """A gap for the resumes of the lead that confirmed no line of the subagent (another format of the line that
-    resumes it, a lost line), counting those in the interval of the epic and in the time of its transcript: its
-    orders may be unsplit and the time of the run may hold the gaps between them."""
+    """Gaps for the resumes of the lead in the interval of the epic that confirmed no line of the subagent: in the time
+    of its transcript (another format of the line that resumes it, a lost line) its orders may be unsplit and the time
+    of the run may hold the gaps between them; after its last line (an interrupted write) the order after the resume
+    has no line in the transcript, so its time and tokens are lost."""
     times = [at for _, at in data['timed']]
-    found = [r for r in unmatched
-             if times and min(times) <= r['at'] <= max(times) and in_window(r['at'], started, until)]
-    if found:
+    found = [r for r in unmatched if times and r['at'] >= min(times) and in_window(r['at'], started, until)]
+    inside = sum(1 for r in found if r['at'] <= max(times))
+    if inside:
         gaps.add('attempts.%s' % agent, 'wznowienia w sesji prowadzącej bez linii coordinator w transkrypcie '
                                         'subagenta (%d): zlecenia mogą być niepodzielone, wall_s może zawierać '
-                                        'odstępy' % len(found))
+                                        'odstępy' % inside)
+    if len(found) > inside:
+        gaps.add('attempts.%s' % agent, 'wznowienia w sesji prowadzącej po ostatniej linii transkryptu subagenta (%d): '
+                                        'zlecenie po wznowieniu bez linii w transkrypcie, jego czas i tokeny utracone'
+                                        % (len(found) - inside))
 
 
 def order_parts(data, orders, started, until):
@@ -4258,7 +4263,7 @@ def run_time(orders, start, end, agent, gaps):
         if found['idle_s'] < 0:
             found['idle_s'] = None
             gaps.add('attempts.%s' % agent, 'zlecenia nachodzą na siebie (znaczniki czasu nie po kolei): idle_s '
-                                            'nieznane')
+                                            'nieznane, wall_s może liczyć część czasu podwójnie')
     return found
 
 
