@@ -368,9 +368,8 @@ describe("DeliveryMethodFormView", () => {
 
     it.each([
       [403, "Nie masz uprawnień do zmiany metod dostawy."],
-      [503, "Usługa jest chwilowo niedostępna. Spróbuj ponownie."],
-      [500, "Nie udało się zapisać metody dostawy (HTTP 500)."],
-    ])("shows the failure %s above the form and keeps the form", async (status, message) => {
+      [400, "Nie udało się zapisać metody dostawy (HTTP 400)."],
+    ])("shows the refusal %s above the form and keeps the form", async (status, message) => {
       const wrapper = await open("/delivery/new");
       await fillNew(wrapper);
       mocks.post.mockResolvedValue({ data: undefined, error: {}, response: { status } });
@@ -382,14 +381,24 @@ describe("DeliveryMethodFormView", () => {
       expect(input(wrapper, "name-input").value).toBe("Paczkomat");
     });
 
-    it("shows a failure of the connection above the form, and the next save can succeed", async () => {
+    it.each([
+      ["a 500", () => mocks.post.mockResolvedValueOnce({ data: undefined, error: {}, response: { status: 500 } })],
+      ["a 503", () => mocks.post.mockResolvedValueOnce({ data: undefined, error: {}, response: { status: 503 } })],
+      ["a failure of the connection", () => mocks.post.mockRejectedValueOnce(new Error("network"))],
+    ])("does not say the save failed after %s: the result is unknown, the form keeps the draft, and the next save can succeed", async (_name, answer) => {
       const wrapper = await open("/delivery/new");
       await fillNew(wrapper);
-      mocks.post.mockRejectedValueOnce(new Error("network"));
+      answer();
 
       await click(wrapper, "save");
 
-      expect(wrapper.get("[data-testid=form-error]").text()).toBe("Nie udało się zapisać metody dostawy. Sprawdź połączenie z API.");
+      expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+      const unknown = wrapper.get("[data-testid=unknown-result]");
+      expect(unknown.text()).toContain("Nie wiemy, czy metoda dostawy została utworzona.");
+      expect(unknown.attributes("role")).toBe("alert");
+      expect(document.activeElement).toBe(unknown.element);
+      expect(input(wrapper, "name-input").value).toBe("Paczkomat");
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => false));
       mocks.post.mockResolvedValueOnce({ data: method(), response: { status: 201 } });
       await click(wrapper, "save");
       expect(mounted!.router.currentRoute.value.name).toBe("delivery");
@@ -575,25 +584,60 @@ describe("DeliveryMethodFormView", () => {
       expect(document.activeElement).toBe(wrapper.get("[data-testid=form-error]").element);
     });
 
-    it("shows a 409 on the version above the form with the focus on it and shows the method as the API has it now", async () => {
+    it("shows a 409 on the version above the form with the focus on it, keeps the draft and the version, and does not read the method (E7)", async () => {
       const wrapper = await open();
       await wrapper.get("[data-testid=name-input]").setValue("Moja nazwa");
-      const detail = "Metoda dostawy została w międzyczasie zmieniona. Odśwież ją i spróbuj ponownie.";
-      mocks.put.mockResolvedValue(conflict("about:blank", detail));
+      mocks.put.mockResolvedValue(conflict("about:blank", "Metoda dostawy została w międzyczasie zmieniona. Odśwież ją i spróbuj ponownie."));
       serve(method({ name: "Nazwa kogoś innego", version: 4 }));
+      mocks.get.mockClear();
 
       await click(wrapper, "save");
 
       const alert = wrapper.get("[data-testid=form-error]");
-      expect(alert.text()).toBe(detail);
+      expect(alert.text()).toBe("Metoda dostawy została w międzyczasie zmieniona. Twoje zmiany zostają w formularzu.");
       expect(document.activeElement).toBe(alert.element);
-      expect(input(wrapper, "name-input").value).toBe("Nazwa kogoś innego");
-      expect(saveBar()).toBeNull();
+      expect(input(wrapper, "name-input").value).toBe("Moja nazwa");
+      expect(saveBar()).not.toBeNull();
+      expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Odrzuć moje zmiany i pokaż stan z serwera");
+      expect(mocks.get).not.toHaveBeenCalled();
 
-      mocks.put.mockResolvedValue({ data: method({ name: "Nazwa kogoś innego", priceGross: 100, version: 5 }), response: { status: 200 } });
-      await wrapper.get("[data-testid=price-input]").setValue("1");
+      mocks.put.mockResolvedValue({ data: method({ name: "Moja nazwa", version: 5 }), response: { status: 200 } });
       await click(wrapper, "save");
-      expect(mocks.put.mock.calls[1]![1].body.version).toBe(4);
+      expect(mocks.put.mock.calls[1]![1].body.version).toBe(3);
+    });
+
+    it("shows the method as the API has it only after „Odrzuć moje zmiany i pokaż stan z serwera”, with the focus on the H1", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=name-input]").setValue("Moja nazwa");
+      mocks.put.mockResolvedValue(conflict("about:blank", "Zmieniona."));
+      await click(wrapper, "save");
+      serve(method({ name: "Nazwa kogoś innego", version: 4 }));
+      (wrapper.get("[data-testid=restore-state]").element as HTMLElement).focus();
+
+      await click(wrapper, "restore-state");
+
+      expect(input(wrapper, "name-input").value).toBe("Nazwa kogoś innego");
+      expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=restore-state]").exists()).toBe(false);
+      expect(saveBar()).toBeNull();
+      expect(document.activeElement).toBe(heading("h1"));
+    });
+
+    it("keeps the way to the server state after „Odrzuć”, with the focus on the message and not on the H1", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=name-input]").setValue("Moja nazwa");
+      mocks.put.mockResolvedValue(conflict("about:blank", "Zmieniona."));
+      await click(wrapper, "save");
+
+      await click(wrapper, "discard");
+
+      expect(input(wrapper, "name-input").value).toBe("Kurier");
+      expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+      const note = wrapper.get("[data-testid=restore-note]");
+      expect(note.text()).toContain("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+      expect(wrapper.find("[data-testid=check-state]").exists()).toBe(false);
+      expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Odrzuć moje zmiany i pokaż stan z serwera");
+      expect(document.activeElement).toBe(note.element);
     });
 
     it("shows the failure of a method that no longer exists", async () => {
@@ -636,6 +680,223 @@ describe("DeliveryMethodFormView", () => {
       expect(document.activeElement).toBe(wrapper.get("[data-testid=price-input]").element);
       expect(input(wrapper, "price-input").value).toBe("25,00");
       expect(mounted!.router.currentRoute.value.name).toBe("delivery-method");
+    });
+  });
+
+  describe("the unknown result of a save (stage 2, B4)", () => {
+    const UNKNOWN = "Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.";
+    const alert = (wrapper: Wrapper) => wrapper.get("[data-testid=unknown-result]");
+    const settle = async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await flushPromises();
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** A save of the changed name (or of a new method) whose answer waits for the test; `calls[n]` answers the n-th. */
+    async function saveHeld(path = "/delivery/method-1") {
+      const wrapper = await open(path);
+      if (path.endsWith("/new")) {
+        await fillNew(wrapper);
+      } else {
+        await wrapper.get("[data-testid=name-input]").setValue("Kurier DPD");
+      }
+      const calls: { resolve: (value: unknown) => void; reject: (reason: unknown) => void }[] = [];
+      const hold = () =>
+        new Promise((resolve, reject) => {
+          calls.push({ resolve, reject });
+        });
+      mocks.put.mockImplementation(hold);
+      mocks.post.mockImplementation(hold);
+      await wrapper.get("[data-testid=save]").trigger("click");
+      await settle();
+      return { wrapper, calls };
+    }
+
+    it("says after 10 s that the result is unknown, with „Sprawdź stan” and the focus on the message, and keeps the fields locked", async () => {
+      const { wrapper } = await saveHeld();
+
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await settle();
+
+      expect(alert(wrapper).text()).toContain(UNKNOWN);
+      expect(alert(wrapper).attributes("role")).toBe("alert");
+      expect(alert(wrapper).get("[data-testid=check-state]").text()).toBe("Sprawdź stan");
+      expect(wrapper.find("[data-testid=unblock-form]").exists()).toBe(false);
+      expect(document.activeElement).toBe(alert(wrapper).element);
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => true));
+      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+    });
+
+    it("„Sprawdź stan” takes the method from the server when it equals the form, says so in a status region and sends no write", async () => {
+      const { wrapper } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      serve(method({ name: "Kurier DPD", version: 4 }));
+
+      await click(wrapper, "check-state");
+
+      expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+      expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
+      expect(wrapper.get("[data-testid=safety-status]").attributes("role")).toBe("status");
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => false));
+      expect(input(wrapper, "name-input").value).toBe("Kurier DPD");
+      expect(saveBar()).toBeNull();
+      expect(mocks.put).toHaveBeenCalledTimes(1);
+    });
+
+    it("„Sprawdź stan” says the write is not on the server when the version is the same and the values are not", async () => {
+      const { wrapper } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+
+      await click(wrapper, "check-state");
+
+      expect(alert(wrapper).text()).toContain("Zapisu nie widać na serwerze. Może jeszcze dotrzeć.");
+      expect(document.activeElement).toBe(alert(wrapper).element);
+      expect(input(wrapper, "name-input").value).toBe("Kurier DPD");
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => false));
+    });
+
+    it("„Sprawdź stan” offers „Odrzuć moje zmiany i pokaż stan z serwera” when the version on the server is another, and the button shows the server state", async () => {
+      const { wrapper } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      serve(method({ name: "Nazwa kogoś innego", version: 8 }));
+
+      await click(wrapper, "check-state");
+
+      expect(alert(wrapper).text()).toContain("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+      expect(input(wrapper, "name-input").value).toBe("Kurier DPD");
+      await click(wrapper, "restore-state");
+      expect(input(wrapper, "name-input").value).toBe("Nazwa kogoś innego");
+      expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+      expect(document.activeElement).toBe(heading("h1"));
+    });
+
+    it("says in a toast that the earlier save was done when its answer comes after „Sprawdź stan”, and changes nothing in the form", async () => {
+      const { wrapper, calls } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      await click(wrapper, "check-state");
+      await wrapper.get("[data-testid=name-input]").setValue("Kurier GLS");
+
+      calls[0]!.resolve({ data: method({ name: "Kurier DPD", version: 4 }), response: { status: 200 } });
+      await settle();
+
+      expect(successToast).toHaveBeenCalledWith("Wcześniejszy zapis został wykonany.");
+      expect(successToast).not.toHaveBeenCalledWith("Metoda dostawy zapisana.");
+      expect(input(wrapper, "name-input").value).toBe("Kurier GLS");
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => false));
+      expect(mounted!.router.currentRoute.value.name).toBe("delivery-method");
+    });
+
+    it("gives an ordinary result, with the toast and the way back to the list, when the answer comes after the limit but before „Sprawdź stan”", async () => {
+      const { wrapper, calls } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+
+      calls[0]!.resolve({ data: method({ name: "Kurier DPD", version: 4 }), response: { status: 200 } });
+      await settle();
+
+      expect(successToast).toHaveBeenCalledWith("Metoda dostawy zapisana.");
+      expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+      expect(mounted!.router.currentRoute.value.name).toBe("delivery");
+    });
+
+    it("says „Odświeżamy…” while it reads, and keeps the message with „Sprawdź stan” and the draft when the read runs out of time", async () => {
+      const { wrapper } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      mocks.get.mockReturnValue(new Promise(() => {}));
+
+      await click(wrapper, "check-state");
+      expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Odświeżamy…");
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => true));
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+
+      expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => false));
+      expect(wrapper.get("[data-testid=read-failed]").text()).toContain("Nie udało się odczytać stanu. Spróbuj ponownie.");
+      expect(alert(wrapper).text()).toContain(UNKNOWN);
+      expect(input(wrapper, "name-input").value).toBe("Kurier DPD");
+    });
+
+    it("keeps the unknown result of a save that ended with a 502 after „Odrzuć”, without the sentence that the changes stay, and moves the focus to it instead of the H1", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=name-input]").setValue("Kurier DPD");
+      mocks.put.mockResolvedValue({ data: undefined, error: {}, response: { status: 502 } });
+      await click(wrapper, "save");
+      expect(alert(wrapper).text()).toContain(UNKNOWN);
+
+      await click(wrapper, "discard");
+
+      expect(input(wrapper, "name-input").value).toBe("Kurier");
+      expect(alert(wrapper).text()).toContain("Nie wiemy, czy zapis się powiódł.");
+      expect(alert(wrapper).text()).not.toContain("Twoje zmiany zostają w formularzu.");
+      expect(document.activeElement).toBe(alert(wrapper).element);
+    });
+
+    describe("a new method", () => {
+      it("says after 10 s that the result is unknown, with „Odblokuj formularz” instead of „Sprawdź stan”", async () => {
+        const { wrapper } = await saveHeld("/delivery/new");
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+
+        expect(alert(wrapper).text()).toContain(UNKNOWN);
+        expect(wrapper.find("[data-testid=check-state]").exists()).toBe(false);
+        expect(alert(wrapper).get("[data-testid=unblock-form]").text()).toBe("Odblokuj formularz");
+        expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => true));
+      });
+
+      it("unlocks the form with the message about the list and a link to it in a new tab, and a late success only gives a toast", async () => {
+        const { wrapper, calls } = await saveHeld("/delivery/new");
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+
+        await click(wrapper, "unblock-form");
+
+        expect(alert(wrapper).text()).toContain(
+          "Nie wiemy, czy metoda dostawy została utworzona. Wcześniejszy zapis może się jeszcze wykonać. Sprawdź listę przed ponownym zapisem.",
+        );
+        const link = alert(wrapper).get("[data-testid=list-link]");
+        expect(link.attributes("href")).toBe("/delivery");
+        expect(link.attributes("target")).toBe("_blank");
+        expect(link.attributes("rel")).toContain("noopener");
+        expect(link.text()).toContain("Lista metod dostawy");
+        expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => false));
+        await wrapper.get("[data-testid=name-input]").setValue("Inna");
+
+        calls[0]!.resolve({ data: method({ id: "created", name: "Paczkomat" }), response: { status: 201 } });
+        await settle();
+
+        expect(successToast).toHaveBeenCalledWith("Wcześniejszy zapis został wykonany.");
+        expect(successToast).not.toHaveBeenCalledWith("Metoda dostawy zapisana.");
+        expect(mounted!.router.currentRoute.value.name).toBe("delivery-method-new");
+        expect(input(wrapper, "name-input").value).toBe("Inna");
+      });
+
+      it("adds the note of an earlier unknown creation to a 409 on the name", async () => {
+        const wrapper = await open("/delivery/new");
+        await fillNew(wrapper);
+        mocks.post.mockRejectedValueOnce(new TypeError("network down"));
+        await click(wrapper, "save");
+        mocks.post.mockResolvedValue(conflict("delivery-method-name-taken", "Metoda dostawy o tej nazwie już istnieje."));
+
+        await click(wrapper, "save");
+
+        expect(wrapper.get("[data-testid=form-error]").text()).toBe(
+          "Metoda dostawy o tej nazwie już istnieje. Możliwe, że utworzył ją Twój wcześniejszy zapis.",
+        );
+      });
     });
   });
 
