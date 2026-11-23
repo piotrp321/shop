@@ -10,7 +10,7 @@ epiku i wypycha ją. Zadania nie mają własnych PR. Plan jest dokumentem robocz
 | Fala | Zadania | Status |
 |---|---|---|
 | 1 | CART-ORDER-CONSISTENCY-1 | zmergowane, 60664561 i poprawki po przeglądzie d87c0206 (FULL: PASS, DELTA: PASS) |
-| 2 | CART-ORDER-CONSISTENCY-2, CART-ORDER-CONSISTENCY-3 | zadanie 2 zmergowane (f862efb2; FULL: PASS); zadanie 3 w toku |
+| 2 | CART-ORDER-CONSISTENCY-2, CART-ORDER-CONSISTENCY-3 | zadanie 2 zmergowane (f862efb2; FULL: PASS); zadanie 3 zmergowane (752dafd9; FULL: CHANGES_REQUIRED, DELTA 1: CHANGES_REQUIRED, DELTA 2: PASS) |
 | 3 | CART-ORDER-CONSISTENCY-4 | |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
