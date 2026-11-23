@@ -94,7 +94,9 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   progi swojego rodzaju; lista w `exceeded`) albo `no_data` z `reason` (za mało przebiegów bazy, brak pełnego
   zielonego, nieponowionego przebiegu końcowego SHA, po merge'u brak zakończonego zielonego przebiegu na `main`, brak danych w pliku
   przebiegu, błąd `gh`). Przy przekroczeniu `reason` podaje, czego jeszcze brakuje. Przebieg ponowiony (`attempt` > 1) nie jest
-  porównywalny; przy zmienionej macierzy części E2E (`e2e_parts_changed`) część jest porównywana, a jej mediany i rozrzut
+  porównywalny; job, który w danym przebiegu wykonał krok `inactive_step` (część bez pracy dla zakresu zmiany, np.
+  `k8s` poza `infra/k8s` i workflowami), w tym przebiegu nie wchodzi do bazy, median ani porównań joba i nie jest
+  zmianą zestawu jobów; przy zmienionej macierzy części E2E (`e2e_parts_changed`) część jest porównywana, a jej mediany i rozrzut
   liczone, tylko z przebiegów o macierzy przebiegu po epiku (za mało takich: brak danych). Progi sprawdza się na
   wartościach niezaokrąglonych. Rozrzut części E2E
   (`e2e_spread`) liczy się z median ostatnich przebiegów PR i od progu rekomenduje osobny PR wyrównania wag. Kody:
@@ -698,7 +700,7 @@ zapisany rekord jest pomijany.
 | `evals` | `roles` (role objęte EVALS 2.0: dziś `code-reviewer`) i `results_dir` (katalog wyników, z `~`) dla D1 |
 | `regression_window_days`, `trend_last` | okno regresji (14 dni), domyślna liczba epików w `trend` (10) |
 | `ci_workflow`, `ci_jobs` | plik workflowu CI (`ci.yml`) i grupy zadań, których czas liczy `ci` (`checks`, `e2e`: zadania o tej nazwie i `<nazwa> …`) |
-| `ci_time` | `ci-time` i `ci.time`: `full_step` (krok części E2E, po którym poznaje się pełny przebieg: `make e2e`), `e2e_job_prefix` (`e2e shard`), `base_branch` (`main`), `aggregate_jobs` (joby zbiorcze poza porównaniem: `scope`, `checks`, `e2e`), `baseline_runs` (5), `min_baseline_runs` (3), `recent_runs` (3), `scan_limit` (15: najwyżej tyle przebiegów czytanych w poszukiwaniu porównywalnych) i progi startowe, do oceny po trzech kolejnych epikach: `run_min_s` (180) z `run_min_pct` (20), `job_min_s` (240) z `job_min_pct` (30), `e2e_spread_s` (240); wszystkie liczby całkowite dodatnie |
+| `ci_time` | `ci-time` i `ci.time`: `full_step` (krok części E2E, po którym poznaje się pełny przebieg: `make e2e`), `inactive_step` (krok części bez pracy dla zakresu zmiany: `Nothing to run in this part for the scope of the change`; nazwa musi się zgadzać z `.github/workflows/ci.yml`, pilnuje tego test), `e2e_job_prefix` (`e2e shard`), `base_branch` (`main`), `aggregate_jobs` (joby zbiorcze poza porównaniem: `scope`, `checks`, `e2e`), `baseline_runs` (5), `min_baseline_runs` (3), `recent_runs` (3), `scan_limit` (15: najwyżej tyle przebiegów czytanych w poszukiwaniu porównywalnych) i progi startowe, do oceny po trzech kolejnych epikach: `run_min_s` (180) z `run_min_pct` (20), `job_min_s` (240) z `job_min_pct` (30), `e2e_spread_s` (240); wszystkie liczby całkowite dodatnie |
 | `weekly_window_label` | etykieta okna limitu z `get_usage` brana do kolumny `pp` w `trend` (`Weekly · all models`) |
 | `pricing` | cennik API wartości epiku natywnego: `source` (strona cennika), `read_at` (data odczytu, `RRRR-MM-DD`), `models` (`{model: {input, output, cache_read, cache_write_5m, cache_write_1h}}`, USD za milion tokenów, liczby nieujemne; rodzaju może brakować). Dziś `claude-fable-5-2`, `claude-opus-5-5` i `claude-sonnet-5-5` ze wszystkimi pięcioma stawkami (odczyt 2026-11-19); test sprawdza też, że model każdej definicji agenta (`.claude/agents/*.md`, np. `opus`) ma stawki. Zmiana cennika to edycja tych liczb, źródła i daty |
 

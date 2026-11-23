@@ -16,6 +16,7 @@ PR = testkit.PR_NUMBER
 BRANCH = 'feat/demo'
 JOBS = {'checks part apps': 6, 'checks part k8s': 9, 'e2e shard 1': 10, 'e2e shard 2': 10, 'e2e shard 3': 10,
         'e2e shard 4': 10}
+INACTIVE_STEP = 'Nothing to run in this part for the scope of the change'
 
 
 def at(minutes):
@@ -27,9 +28,10 @@ def ci_run(run_id, minute, sha='a' * 40, event='push', conclusion='success', sta
             'headSha': sha, 'event': event, 'url': 'https://example.test/runs/%d' % run_id, 'attempt': attempt}
 
 
-def jobs_of(minute, durations=None, full=True, wait=0, steps=None, **changed):
+def jobs_of(minute, durations=None, full=True, wait=0, steps=None, inactive=(), **changed):
     """The jobs of a run created at `minute`: every job starts one minute later (`wait` more for the last one, a wait
-    for a runner between the jobs) and takes its minutes. The e2e parts run the step `make e2e` in a full run."""
+    for a runner between the jobs) and takes its minutes. The e2e parts run the step `make e2e` in a full run. A job
+    in `inactive` is a part with no work for the scope of the change: it runs only the step INACTIVE_STEP."""
     durations = dict(JOBS if durations is None else durations, **{k.replace('_', ' '): v for k, v in changed.items()})
     found = [{'name': 'scope', 'startedAt': at(minute), 'completedAt': at(minute + 0.5), 'conclusion': 'success'}]
     names = list(durations)
@@ -37,7 +39,12 @@ def jobs_of(minute, durations=None, full=True, wait=0, steps=None, **changed):
         begin = minute + 1 + (wait if name == names[-1] else 0)
         job = {'name': name, 'startedAt': at(begin), 'completedAt': at(begin + durations[name]),
                'conclusion': 'success', 'steps': []}
-        if name.startswith('e2e shard'):
+        if name in inactive:
+            job['steps'] = [{'name': 'Require the scope job', 'conclusion': 'skipped'},
+                            {'name': INACTIVE_STEP, 'startedAt': at(begin), 'completedAt': at(begin + durations[name]),
+                             'conclusion': 'success'},
+                            {'name': 'Run the checks of the part', 'conclusion': 'skipped'}]
+        elif name.startswith('e2e shard'):
             job['steps'] = [{'name': 'Wait for the stack', 'startedAt': at(begin), 'completedAt': at(begin + 2),
                              'conclusion': 'success'},
                             {'name': 'make e2e', 'startedAt': at(begin + 2), 'completedAt': at(begin + durations[name]),
@@ -58,12 +65,12 @@ class CiTimeEnv(NativeEnv):
                    'closingIssuesReferences': []}
         self.next_id = 100
 
-    def add(self, where, minute, durations=None, full=True, measured=True, wait=0, steps=None, **run):
+    def add(self, where, minute, durations=None, full=True, measured=True, wait=0, steps=None, inactive=(), **run):
         self.next_id += 1
         entry = ci_run(self.next_id, minute, **run)
         where.append(entry)
         if measured:
-            self.jobs[self.next_id] = jobs_of(minute, durations, full=full, wait=wait, steps=steps)
+            self.jobs[self.next_id] = jobs_of(minute, durations, full=full, wait=wait, steps=steps, inactive=inactive)
         return entry
 
     def baseline(self, count=5, **changed):
@@ -694,6 +701,56 @@ class RecordTest(CiTimeEnv):
         self.assertIsNone(self.native_record()['ci'])
 
 
+class InactivePartTest(CiTimeEnv):
+    """A part of `checks` with no work for the scope of the change (the `k8s` part when the change touches neither
+    infra/k8s nor the workflows) ends within seconds with the step INACTIVE_STEP. Its time is not a time of the check:
+    it is left out of the baseline, the medians and the comparisons of that job, like a run without `make e2e`."""
+    K8S = 'checks part k8s'
+
+    def test_a_baseline_with_the_part_inactive_gives_no_false_exceeded_to_an_epic_that_runs_it(self):
+        for i in range(5):
+            self.add(self.main, START - 100 + i * 10, dict(JOBS, **{self.K8S: 0.1}), inactive=(self.K8S,))
+        self.final()
+        self.earlier(START + 150)
+        self.earlier(START + 160)
+        result = self.result()
+        row = self.row(result, self.K8S)
+        self.assertEqual((row['base_s'], row['final_exceeded'], row['recent_exceeded']), (None, None, None))
+        self.assertEqual(row['final_s'], 9 * 60)
+        self.assertEqual(result['exceeded'], [])
+        self.assertEqual(result['status'], 'ok')
+        # inactive in the baseline is not a job missing from it
+        self.assertEqual(result['jobs_changed'], {'only_baseline': [], 'only_final': []})
+
+    def test_the_baseline_of_the_part_is_the_median_of_the_runs_where_it_was_active(self):
+        self.add(self.main, START - 100, dict(JOBS, **{self.K8S: 0.1}), inactive=(self.K8S,))
+        self.add(self.main, START - 90, dict(JOBS, **{self.K8S: 0.1}), inactive=(self.K8S,))
+        for i, minutes in enumerate((8, 9, 10)):
+            self.add(self.main, START - 80 + i * 10, dict(JOBS, **{self.K8S: minutes}))
+        self.final(checks_part_k8s=12)
+        row = self.row(self.result(), self.K8S)
+        self.assertEqual((row['base_s'], row['final_s'], row['final_exceeded']), (9 * 60, 12 * 60, False))
+
+    def test_a_part_inactive_after_the_epic_is_not_compared_and_not_a_missing_job(self):
+        self.baseline()
+        self.add(self.branch, START + 150, dict(JOBS, **{self.K8S: 0.1}), sha='e' * 40, event='pull_request',
+                 inactive=(self.K8S,))
+        self.add(self.branch, START + 200, dict(JOBS, **{self.K8S: 0.1}), sha=HEAD, event='pull_request',
+                 inactive=(self.K8S,))
+        result = self.result()
+        row = self.row(result, self.K8S)
+        self.assertEqual((row['base_s'], row['final_s'], row['recent_s']), (9 * 60, None, None))
+        self.assertEqual(result['jobs_changed'], {'only_baseline': [], 'only_final': []})
+
+    def test_the_steps_of_an_inactive_part_are_not_steps_of_the_job(self):
+        jobs = jobs_of(0, dict(JOBS, **{self.K8S: 0.1}), inactive=(self.K8S,))
+        measured = metrics.measure_ci_run(jobs, metrics.load_config(os.path.join(HERE, 'config.json'))['ci_time'])
+        self.assertNotIn(self.K8S, measured['jobs'])
+        self.assertNotIn(self.K8S, measured['steps'])
+        self.assertEqual(measured['inactive'], [self.K8S])
+        self.assertEqual(measured['run_s'], 11 * 60)        # the run itself is measured as before
+
+
 class ConfigTest(unittest.TestCase):
     def config(self, **changed):
         with open(os.path.join(HERE, 'config.json'), encoding='utf-8') as f:
@@ -714,9 +771,15 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual((ci_time['run_min_s'], ci_time['run_min_pct']), (180, 20))
         self.assertEqual((ci_time['job_min_s'], ci_time['job_min_pct'], ci_time['e2e_spread_s']), (240, 30, 240))
 
+    def test_the_inactive_step_is_the_step_of_the_ci_workflow(self):
+        ci_time = metrics.load_config(os.path.join(HERE, 'config.json'))['ci_time']
+        self.assertEqual(ci_time['inactive_step'], INACTIVE_STEP)
+        with open(os.path.join(HERE, '..', '..', '.github', 'workflows', 'ci.yml'), encoding='utf-8') as f:
+            self.assertIn('- name: %s\n' % INACTIVE_STEP, f.read())
+
     def test_a_wrong_value_or_a_missing_or_unknown_key_is_refused(self):
         for changed in ({'run_min_s': 0}, {'run_min_pct': -1}, {'baseline_runs': 2, 'min_baseline_runs': 3},
-                        {'full_step': ''}, {'aggregate_jobs': 'checks'}, {'surprise': 1}):
+                        {'full_step': ''}, {'inactive_step': ''}, {'aggregate_jobs': 'checks'}, {'surprise': 1}):
             with self.subTest(changed=changed):
                 with self.assertRaises(metrics.MetricsError):
                     self.load(self.config(**changed))

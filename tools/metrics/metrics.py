@@ -266,7 +266,7 @@ def _evals(value):
 
 # `ci_time` of config.json (spec: Czas CI po epiku). The thresholds are starting values: both the seconds and the
 # percent of a pair must be reached.
-CI_TIME_TEXTS = ('full_step', 'e2e_job_prefix', 'base_branch')
+CI_TIME_TEXTS = ('full_step', 'inactive_step', 'e2e_job_prefix', 'base_branch')
 CI_TIME_LISTS = ('aggregate_jobs',)
 CI_TIME_NUMBERS = ('baseline_runs', 'min_baseline_runs', 'recent_runs', 'scan_limit', 'run_min_s', 'run_min_pct',
                    'job_min_s', 'job_min_pct', 'e2e_spread_s')
@@ -2239,8 +2239,11 @@ def measure_ci_run(jobs, settings):
     """The times of one CI run from its jobs, or None when no job has its times.
     run_s: from the start of the first job to the end of the last one, so with the waits for a runner between the
     jobs. jobs: {name: the seconds the job ran}, without the aggregate jobs and the names of a matrix that was not
-    expanded. steps: {job: {step: seconds}}. full: an e2e part ran the step `full_step` (not a limited scope)."""
-    spans, found, steps, full = [], {}, {}, False
+    expanded. steps: {job: {step: seconds}}. full: an e2e part ran the step `full_step` (not a limited scope).
+    inactive: the jobs that ran the step `inactive_step` (a part with no work for the scope of the change, e.g. the
+    `k8s` part of a change outside infra/k8s): their seconds are not a time of the job, so they are in neither `jobs`
+    nor `steps` and drop out of the baselines, the medians and the comparisons of that job; the run keeps their span."""
+    spans, found, steps, full, inactive = [], {}, {}, False, []
     for job in jobs if isinstance(jobs, list) else []:
         span, name = _span(job), job.get('name') if isinstance(job, dict) else None
         if span is None or not isinstance(name, str):
@@ -2252,13 +2255,16 @@ def measure_ci_run(jobs, settings):
             full = True
         if name in settings['aggregate_jobs'] or '${{' in name:
             continue
+        if any(s['name'] == settings['inactive_step'] and s.get('conclusion') == 'success' for s in job_steps):
+            inactive.append(name)
+            continue
         found[name] = round(span[1] - span[0], 1)
         steps[name] = {s['name']: round(_span(s)[1] - _span(s)[0], 1) for s in job_steps
                        if s.get('conclusion') == 'success' and _span(s) is not None}
     if not spans:
         return None
     return {'run_s': round(max(e for _, e in spans) - min(b for b, _ in spans), 1), 'jobs': found, 'steps': steps,
-            'full': full}
+            'full': full, 'inactive': sorted(inactive)}
 
 
 class _CiMeasurer:
@@ -2481,9 +2487,12 @@ def ci_time_of(run, repo, config, run_file):
         result['rows'].append(row)
     result['exceeded'].sort(key=lambda e: (CI_TIME_SOURCES.index(e['source']), e['name'] != 'run', e['name']))
     if after is not None:
-        before = set().union(*[set(r['measured']['jobs']) for r in base_runs]) if base_runs else set()
-        result['jobs_changed'] = {'only_baseline': sorted(before - set(after['measured']['jobs'])),
-                                  'only_final': sorted(set(after['measured']['jobs']) - before) if before else []}
+        # an inactive part is a job of the run all the same: the set of jobs changes only when a job is gone or new
+        def jobs_of(entry):
+            return set(entry['measured']['jobs']) | set(entry['measured']['inactive'])
+        before = set().union(*[jobs_of(r) for r in base_runs]) if base_runs else set()
+        result['jobs_changed'] = {'only_baseline': sorted(before - jobs_of(after)),
+                                  'only_final': sorted(jobs_of(after) - before) if before else []}
     parts = {r['name']: r['recent_s'] for r in result['rows']
              if r['name'].startswith(settings['e2e_job_prefix']) and r['recent_s'] is not None}
     if len(parts) >= 2:

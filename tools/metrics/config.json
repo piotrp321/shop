@@ -88,6 +88,7 @@
   "ci_jobs": ["checks", "e2e"],
   "ci_time": {
     "full_step": "make e2e",
+    "inactive_step": "Nothing to run in this part for the scope of the change",
     "e2e_job_prefix": "e2e shard",
     "base_branch": "main",
     "aggregate_jobs": ["scope", "checks", "e2e"],
