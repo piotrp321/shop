@@ -710,13 +710,14 @@ zmiany wyglądu). Gdy fokus idzie na pierwsze błędne pole, błędy przy polach
 | O2 | 10 równoległych złożeń z tym samym kluczem i koszykiem | 1 zamówienie, 1 × 201 i 9 × powtórzenie z tym samym `orderId`, rezerwacja raz |
 | O3 | 2 równoległe złożenia z różnymi kluczami z jednego koszyka | 1 zamówienie, 1 × `CartEmpty` |
 | O4 | 2 koszyki `[A, B]` i `[B, A]` równolegle, stan A = B = 1 | dokładnie 1 zamówienie, brak zakleszczeń |
-| O5 | złożenie klienta z listą sprzed scalenia równolegle ze scaleniem koszyka gościa do tego klienta | brak zakleszczeń; albo zamówienie dokładnie z listy i linie gościa w koszyku, albo `CartContentChanged` i wszystkie linie w koszyku; nigdy utracone |
+| O5 | złożenie klienta równolegle ze scaleniem koszyka gościa do tego klienta; nieparzyste rundy z listą sprzed scalenia, parzyste z listą po scaleniu | brak zakleszczeń; albo zamówienie dokładnie z listy (sprzed scalenia: linie gościa zostają w koszyku; po scaleniu: wszystkie linie w zamówieniu), albo `CartContentChanged` i wszystkie linie w koszyku; linie nigdy utracone |
 | O6 | po złożeniu koszyk gościa scalony do konta (osobna runda: wygasły); 10 równoległych powtórzeń z tym samym kluczem, `cartId` i treścią | 10 × powtórzenie z tym samym `orderId`, żadnego 404, żadnej nowej rezerwacji |
 | O7 | ten sam klucz równolegle z dwóch różnych koszyków gości (osobna runda: dwóch klientów), te same dane | 1 zamówienie, 1 × `IdempotencyKeyReused` bez danych zamówienia; koszyk przegranego z liniami, jedna rezerwacja |
 | O8 | złożenie z listą sprzed zmiany równolegle ze zmianą ilości tej linii | albo zamówienie z ilością z listy i `CartLineNotFound` zmiany, albo `CartContentChanged`, brak zamówienia i koszyk z nową ilością; nigdy zamówienie z nową ilością |
 | O9 | złożenie równolegle z dodaniem innego wariantu | albo zamówienie z liniami z listy i koszyk z samą nową linią, albo `CartContentChanged` i koszyk z obiema; nigdy zamówienie z dodaną linią ani utracona linia |
 | O10 | złożenie koszyka z dwiema liniami równolegle z usunięciem jednej | albo zamówienie z obiema (usunięcie spóźnione niczego nie zmienia: `RemoveCartItem` brakującej linii to sukces), albo `CartContentChanged` i koszyk z jedną linią |
 | O11 | dwa złożenia z różnymi kluczami z jednego koszyka: lista aktualna i lista nieaktualna | dokładnie jedno zamówienie, z listą aktualną; nieaktualne dostaje `CartContentChanged` albo `CartEmpty` |
+| O12 | dwa warianty w tej samej cenie; złożenie z listą A × 2, B × 1 równolegle ze zmianami ilości w innej karcie na A × 1, B × 2 (ta sama kwota). Nieparzyste rundy: zmiana B przed rundą (koszyk startuje z A × 2, B × 2), równolegle tylko zmiana A; parzyste: obie zmiany równolegle od A × 2, B × 1 | albo zamówienie dokładnie z listy i obie zmiany trafiają w opróżniony koszyk (`CartLineNotFound`), albo `CartContentChanged` i koszyk A × 1, B × 2; nigdy zamówienie A × 1, B × 2 |
 
 Po każdej rundzie: `reserved` każdego wariantu = suma ilości aktywnych rezerwacji, każde zamówienie ma rezerwację
 o kluczu `orderId` z tymi samymi liniami, a jego linie są równe `expectedLines` żądania, które je złożyło.
