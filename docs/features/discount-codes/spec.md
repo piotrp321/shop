@@ -387,8 +387,16 @@ pozostali 403; odczyt: każdy pracownik):
   (etykieta, przełącznik „Aktywny” jako zwykłe pole formularza, aktywne użycia). Pola niedostępne według reguł edycji
   są zablokowane. Zmiana pól, także samego „Aktywny”, pokazuje pasek zapisu i trafia do API dopiero z „Zapisz”;
   opuszczenie formularza z niezapisanymi zmianami pyta w oknie. Po zapisie toast „Kod rabatowy zapisany.” i fokus na
-  nagłówku. 409 `discount-code-taken` przy polu kodu, inne 409: `detail` i odświeżenie. Kod, który nie istnieje:
-  komunikat „Ten kod rabatowy nie istnieje.” z linkiem do listy.
+  nagłówku. Od wysłania zapisu do jego wyniku wszystkie pola (także przełącznik „Aktywny” i rodzaj rabatu) są wyłączone,
+  a odpowiedź zapisu po przejściu do innego kodu albo formularza nowego jest pomijana. 409 `discount-code-taken` przy polu
+  kodu (po nieznanym wyniku utworzenia z dopisanym zdaniem „Możliwe, że utworzył go Twój wcześniejszy zapis.”); inne
+  409 zapisu: komunikat z `detail` (wersji: „Kod rabatowy został w międzyczasie zmieniony. Twoje zmiany zostają
+  w formularzu.”), szkic, stan bazowy i wersja zostają, bez automatycznego odczytu, z przyciskiem „Odrzuć moje zmiany
+  i pokaż stan z serwera” (stan z serwera zastępuje szkic dopiero po odpowiedzi 200). Zapis bez odpowiedzi w 10 s, błąd
+  sieci i odpowiedź 5xx to nieznany wynik: „Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.”
+  z przyciskiem „Sprawdź stan” (dla nowego kodu „Odblokuj formularz” i link do listy); szczegóły i reguły:
+  `docs/features/admin-ux-fixes/spec.md`, „Etap 2”. Kod, który nie istnieje: komunikat „Ten kod rabatowy nie istnieje.”
+  z linkiem do listy.
 - Szczegóły zamówienia (`OrderDetailView`): wartość pozycji przed rabatem, kopia promocji przy pozycji, linia kodu,
   sumy po rabacie.
 
