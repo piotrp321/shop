@@ -690,9 +690,10 @@ danych”. Ten sam wynik jest w rekordzie epiku natywnego (`ci.time`).
   i `job_min_pct` (30%). Wartości pochodzą z 203 pełnych zielonych przebiegów z 16–23.11.2026: przy niezmienionym
   kodzie mediany przebiegu różniły się do 2,4 min (18%), a mediany jednego joba do ok. 2 min (20%); znane realne
   wzrosty to +3,8 do +6,2 min (+31 do +50%) dla przebiegu i +5,8 do +9,4 min dla joba.
-- **Zmieniona macierz części E2E:** gdy zestaw części przed epikiem i po nim jest inny, część o tej samej nazwie
-  to inny zestaw plików: części są pokazane, ale nie porównywane z bazą i nie przekraczają progu; liczy się cały
-  przebieg i rozrzut części.
+- **Zmieniona macierz części E2E:** gdy zestaw części choć jednego przebiegu bazy jest inny niż po epiku, część
+  o tej samej nazwie to inny zestaw plików: części są pokazane, ale nie porównywane z bazą i nie przekraczają progu;
+  liczy się cały przebieg i rozrzut części. Zmiany samych wag (wyrównanie na `main` przy tej samej liczbie części)
+  narzędzie nie wykrywa: to jedna z przyczyn, które sprawdza sesja.
 - **Rozrzut części E2E:** różnica median ostatnich przebiegów PR między najdłuższą a najkrótszą częścią; od
   `e2e_spread_s` (240 s) raport rekomenduje osobny PR wyrównania wag (`e2e/CLAUDE.md`, „CI”). Poniżej tego zysk
   z wyrównania mieści się w rozrzucie pojedynczych przebiegów.

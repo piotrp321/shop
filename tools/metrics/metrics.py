@@ -2445,8 +2445,9 @@ def ci_time_of(run, repo, config, run_file):
         return {n for e in entries for n in e['measured']['jobs'] if n.startswith(settings['e2e_job_prefix'])}
 
     # another matrix of e2e parts: a part of the same name is another set of spec files, so the parts are shown but
-    # not compared with the baseline
-    result['e2e_parts_changed'] = bool(base_runs and after and e2e_parts(base_runs) != e2e_parts([after]))
+    # not compared with the baseline. Every baseline run is looked at by itself: a baseline that holds both matrices
+    # is another matrix too.
+    result['e2e_parts_changed'] = bool(after) and any(e2e_parts([r]) != e2e_parts([after]) for r in base_runs)
     for name in ['run'] + sorted(names):
         kind = 'run' if name == 'run' else 'job'
         # a job needs its own minimum of baseline runs: one that only a part of them has (a new job) has no baseline

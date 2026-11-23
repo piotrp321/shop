@@ -173,10 +173,11 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    wynik do „Punktu odniesienia i przebiegu”: czas CI po epiku względem przebiegów na `main` sprzed startu epiku,
    końcowy SHA osobno, „brak danych” zamiast oceny, gdy brakuje porównywalnych przebiegów. Przekroczony próg nie
    blokuje PR: sesja ustala przyczynę z dowodem (nowe testy, nierówny podział części E2E, wolniejsze testy,
-   infrastruktura, zmiana workflowu) i wpisuje ją do „Problemów i zastojów” z rekomendacją (zgłoszenie albo osobny
-   PR, np. wyrównanie wag według `e2e/CLAUDE.md`). Wzrostu widocznego też na `main` w trakcie epiku albo w jobie,
-   którego wejść epik nie zmienia, nie przypisuje epikowi. Sesja nie uruchamia CI po to, żeby zebrać pomiar, i nie
-   zmienia wag części E2E w epiku. Progi są startowe (`tools/metrics/config.json`, `ci_time`).
+   infrastruktura, zmiana workflowu albo wag części na `main` od przebiegów bazy) i wpisuje ją do „Problemów
+   i zastojów” z rekomendacją (zgłoszenie albo osobny PR, np. wyrównanie wag według `e2e/CLAUDE.md`). Wzrostu
+   widocznego też na `main` w trakcie epiku albo w jobie, którego wejść epik nie zmienia, nie przypisuje epikowi.
+   Sesja nie uruchamia CI po to, żeby zebrać pomiar, i nie zmienia wag części E2E w epiku. Progi są startowe
+   (`tools/metrics/config.json`, `ci_time`).
 
    **Śledzenie CI** (tu i w kroku 5). Sesja nie kończy tury w oczekiwaniu na CI bez czegoś, co ją obudzi także po
    sukcesie: powiadomienie aplikacji o błędach CI (Auto-fix) nie zgłasza zielonego wyniku. Po pushu, na którego wynik

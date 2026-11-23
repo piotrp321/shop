@@ -439,6 +439,17 @@ class JobsTest(CiTimeEnv):
         self.assertIn({'name': 'run', 'source': 'final'}, result['exceeded'])           # the run itself: 11 -> 17
         self.assertIn('części E2E nie są porównywane', self.cli()[1])
 
+    def test_a_baseline_of_both_matrices_is_another_matrix_too(self):
+        # the matrix changed inside the baseline: three runs with three parts, then two with four, four after the epic
+        three = {k: v for k, v in JOBS.items() if k != 'e2e shard 4'}
+        for i in range(5):
+            self.add(self.main, START - 100 + i * 10, three if i < 3 else JOBS)
+        self.final(e2e_shard_1=16)
+        result = self.result()
+        self.assertTrue(result['e2e_parts_changed'])
+        self.assertEqual(self.row(result, 'e2e shard 1')['final_exceeded'], None)
+        self.assertNotIn({'name': 'e2e shard 1', 'source': 'final'}, result['exceeded'])
+
     def test_the_same_e2e_parts_are_compared(self):
         self.baseline()
         self.final()
