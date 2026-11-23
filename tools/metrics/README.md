@@ -346,9 +346,10 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   i najwyżej `RESUME_WINDOW_S` (60 s) od kandydata. Wznowienie i raport `SubagentHandback` poprzedniego zlecenia:
   `resume`; samo wznowienie: `resume_unreported`; sam raport: `resume_unconfirmed`; żadne: linia nie dzieli zlecenia.
   Trzy ostatnie przypadki to pozycja `attempts.<agent>` w `gaps`, tylko dla zleceń, które są w rekordzie.
-  Wznowienie u prowadzącego, które nie potwierdziło żadnej linii (`unmatched_resumes`; w przedziale epiku i w czasie
-  transkryptu subagenta), też jest pozycją `attempts.<agent>`: zlecenia mogą być niepodzielone. `queued_command` (wiadomość do pracującego
-  subagenta) i wynik `SendMessage` bez `resumedAgentId` granicą nie są. Wiadomość należy do zlecenia swojej pierwszej
+  Wznowienie u prowadzącego w przedziale epiku, które nie potwierdziło żadnej linii (`unmatched_resumes`), też jest
+  pozycją `attempts.<agent>`: w czasie transkryptu subagenta zlecenia mogą być niepodzielone, a po jego ostatniej
+  linii (przerwany zapis) zlecenie po wznowieniu nie ma linii, więc jego czas i tokeny są utracone. `queued_command`
+  (wiadomość do pracującego subagenta) i wynik `SendMessage` bez `resumedAgentId` granicą nie są. Wiadomość należy do zlecenia swojej pierwszej
   linii; czas zlecenia to ostatnia minus pierwsza linia `user`/`assistant` zlecenia w przedziale epiku; zlecenie bez
   linii i wiadomości w przedziale nie wchodzi do rekordu.
 - **Identyfikator i przypisanie** (`order_ref`, `order_assignment`): źródło to `description` (pierwsze zlecenie) albo

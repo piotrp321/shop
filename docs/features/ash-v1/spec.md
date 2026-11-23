@@ -108,8 +108,9 @@ koniecznych; rekord oznacza ją jako szacunek. Rekord nie zawiera treści wiadom
 Dla przebiegów ról przeglądowych rekord zapisuje każdy raport: zadanie, identyfikator i przypisanie zlecenia, w którym
 jest raport, rolę, tryb, werdykt i czy blokuje. Raport to treść, którą subagent oddaje sesji prowadzącej na końcu pracy
 (wywołanie `SubagentHandback`). Tryb: `FULL` dla pierwszego raportu przebiegu z danym zadaniem, `DELTA` dla kolejnych,
-`null` w zleceniu z zadaniem nieustalonym (`docs/features/metrics/spec.md`, „Przeglądy (M4)”). Werdykty według kontraktów agentów: `code-reviewer` `PASS` / `CHANGES_REQUIRED`, `qa-adversarial` `PASS` /
-`INVESTIGATE` / `BLOCK`, `architecture-reviewer` `KEEP` / `SIMPLIFY` / `REWORK`. Blokują `CHANGES_REQUIRED`, `BLOCK`
+`null` w zleceniu z zadaniem nieustalonym (`docs/features/metrics/spec.md`, „Przeglądy (M4)”). Werdykty według
+kontraktów agentów: `code-reviewer` `PASS` / `CHANGES_REQUIRED`, `qa-adversarial` `PASS` / `INVESTIGATE` / `BLOCK`,
+`architecture-reviewer` `KEEP` / `SIMPLIFY` / `REWORK`. Blokują `CHANGES_REQUIRED`, `BLOCK`
 i `REWORK`. Raport bez rozpoznanego werdyktu (dziś `ux-reviewer`) ma werdykt `null` i wpis w `gaps`. Rekord zapisuje
 sam werdykt, bez treści raportu.
 
