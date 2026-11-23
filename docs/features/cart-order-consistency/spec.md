@@ -61,8 +61,9 @@ Właściciel zaakceptował 2026-11-23 (D6 po poprawce o zmianę konta A na konto
 - **Z2. Sklep: kasa wysyła pokazaną zawartość** i obsługuje nowe odrzucenie.
 - **Z3. Sklep: komunikat rozbieżności (#852)** dla zmiany zawartości i zmiany kwoty.
 - **Z4. Sklep: zmiana kupującego (R4).**
-- **Z5. Pozostałe wywołania składania zamówienia:** `load/lib/flows.js` (k6, `make load-smoke` w CI) i
-  `infra/k8s/smoke/checks.py` (test dymny wdrożenia) z testem `infra/k8s/tests/test_smoke_messaging.py`.
+- **Z5. Pozostałe wywołania składania zamówienia:** `load/lib/flows.js` (k6, `make load-smoke` w CI; woła BFF sklepu,
+  więc wysyła też `buyer: "guest"`) i `infra/k8s/smoke/checks.py` (test dymny wdrożenia; woła API) z testem
+  `infra/k8s/tests/test_smoke_messaging.py`.
 
 Poza zakresem:
 
@@ -168,8 +169,9 @@ kasa pokazała.
 
 ### Znacznik kupującego
 
-- `GET /auth/session` dla zalogowanego klienta zwraca obok `name` i `email` pole `buyer`: HMAC-SHA256 z tekstu
-  `checkout-buyer:<sub>` kluczem `STORE_SESSION_SECRET`, w base64url. `sub` pochodzi z `SessionData` tej samej sesji,
+- `GET /auth/session` dla zalogowanego klienta zwraca obok `name` i `email` pole `buyer`: HMAC-SHA256 z `sub` kluczem
+  wyprowadzonym z `STORE_SESSION_SECRET` (osobnym od klucza podpisów ciasteczek, więc znacznik nie jest poprawnym
+  podpisem żadnego ciasteczka), w base64url. `sub` pochodzi z `SessionData` tej samej sesji,
   z której pochodzi token użyty do odczytu `/api/v1/me`. Gość dostaje jak dziś `null`.
 - Znacznik nie jest danymi uwierzytelniającymi: niczego nie otwiera i nie zastępuje sesji. Odpowiedź nie zawiera
   identyfikatora sesji, tokenów ani `sub`. Ten sam `sub` daje zawsze ten sam znacznik, także po odświeżeniu tokenu
@@ -189,6 +191,7 @@ zostaje bez zmian i może czytać Redis ponownie; gdy po odświeżeniu `sub` ses
 |---|---|---|---|
 | gość | brak ciasteczka sesji | zamówienie gościa jak dziś | bez zmian |
 | gość | sesja klienta | 409 `checkout-buyer-changed`, bez scalania i bez API | ponowny odczyt i komunikat (niżej) |
+| gość | ciasteczko sesji, której nie ma w Redisie albo której tokenu nie da się odświeżyć | 401 (sesja usunięta jak dziś), bez API i bez zamówienia gościa: przeglądarka przedstawia się jako zalogowana | dzisiejszy widok wygasłej sesji |
 | konto A | sesja konta A (także po odświeżeniu tokenu albo ponownym logowaniu na A) | zamówienie konta A jak dziś | bez zmian |
 | konto A | sesja konta B | 409 `checkout-buyer-changed`, bez scalania i bez API | ponowny odczyt i komunikat (niżej) |
 | konto A | brak ciasteczka sesji, zły podpis, sesji nie ma w Redisie albo tokenu nie da się odświeżyć | 401 (sesja usunięta jak dziś), bez API; nigdy zamówienie gościa, także gdy przeglądarka ma ciasteczko koszyka gościa i żądanie niesie pole `email` | dzisiejszy widok wygasłej sesji z linkiem logowania |
