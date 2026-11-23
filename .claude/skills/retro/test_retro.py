@@ -1908,6 +1908,21 @@ class NativeReviewFindingsTest(unittest.TestCase):
         data = [i['data'] for i in incidents if i['kind'] == 'finding'][0]
         self.assertEqual((data['task'], data['ref'], data['assignment']), (None, 'ABUSE-LIMITS-QA1', 'outside_plan'))
 
+    def test_a_ref_that_is_no_identifier_reaches_neither_the_key_nor_the_data(self):
+        for ref in ('ABUSE-LIMITS-QA1\nTAJNY-TEKST', 123, ['ABUSE-LIMITS-QA1'], 'A' * 101, ' ', ''):
+            with self.subTest(ref=ref):
+                incidents, _ = retro.native_record_incidents(NATIVE, native_record(reviews=[
+                    self.review('09:10', ref=ref, assignment='outside_plan')]))
+                finding = [i for i in incidents if i['kind'] == 'finding'][0]
+                self.assertIsNone(finding['data']['ref'])
+                self.assertEqual(finding['key'], 'nieustalone:code-reviewer@1795165800')
+                self.assertNotIn('\n', finding['facts'][0]['text'])
+        incidents, _ = retro.native_record_incidents(NATIVE, native_record(reviews=[
+            self.review('09:10', ref='ABUSE-LIMITS-QA1', assignment='outside_plan\nTAJNE')]))
+        finding = [i for i in incidents if i['kind'] == 'finding'][0]
+        self.assertIsNone(finding['data']['assignment'])
+        self.assertEqual(finding['key'], 'nieustalone:code-reviewer@1795165800')
+
     def test_a_review_of_the_record_without_orders_keeps_its_text_key_and_data(self):
         incidents, _ = retro.native_record_incidents(NATIVE, native_record())
         found = {i['key']: (i['facts'][0]['text'], i['data']) for i in incidents if i['kind'] == 'finding'}

@@ -522,22 +522,37 @@ class GapsOfOrdersTest(OrdersEnv):
         self.assertEqual(self.attempt(record, 'ad1')['wall_s'], 1000)
         self.assertTrue([g for g in gaps_of(record, 'ad1') if 'bez linii coordinator' in g], record['gaps'])
 
-    def test_every_resume_matched_or_outside_the_run_is_no_gap(self):
+    def test_every_resume_matched_or_after_the_merge_is_no_gap(self):
         record = self.reproduction()
         self.assertFalse(gaps_of(record, 'bez linii coordinator'), record['gaps'])
+        self.assertFalse(gaps_of(record, 'po ostatniej linii'), record['gaps'])
         self.setUp()
         self.write_run(started=0, done=4000)
-        # a resume after the end of the transcript (its lines are lost) and one after the merge
-        self.write_session('s1', Native('s1').assistant(10, input=5).resume(3000, 'ad1', 'DEMO-1 popraw')
-                           .resume(6000, 'ad2', 'DEMO-2 popraw'))
-        self.write_subagent('s1', 'ad1', Native('s1', 'ad1').assistant(100, model=OPUS, input=5)
-                            .handback(200, 'Gotowe', model=OPUS), meta(description='DEMO-1 developer'))
+        # resumes after the merge: one in the time of the transcript, one after its last line
+        self.write_session('s1', Native('s1').assistant(10, input=5).resume(6000, 'ad2', 'DEMO-2 popraw')
+                           .resume(7000, 'ad2', 'DEMO-2 jeszcze'))
         self.write_subagent('s1', 'ad2', Native('s1', 'ad2').assistant(4800, model=OPUS, input=5)
                             .handback(4900, 'Gotowe', model=OPUS).notice(6000, None)
                             .assistant(6100, model=OPUS, input=5), meta())
         gh = testkit.FakeGh(prs={752: testkit.merged_pr(merged_at=iso_at(5000))})
         record = self.native_record(runner=gh, no_gh=False)
         self.assertFalse(gaps_of(record, 'bez linii coordinator'), record['gaps'])
+        self.assertFalse(gaps_of(record, 'po ostatniej linii'), record['gaps'])
+
+    def test_resume_after_the_last_line_of_the_transcript_is_a_lost_order(self):
+        for at, gap in ((1095, 'bez linii coordinator'), (1101, 'po ostatniej linii'), (1300, 'po ostatniej linii'),
+                        (3000, 'po ostatniej linii')):
+            with self.subTest(at=at):
+                self.setUp()
+                self.write_run(started=0, done=4000)
+                self.write_session('s1', Native('s1').assistant(10, input=5).resume(at, 'ad1', 'DEMO-1 popraw'))
+                self.write_subagent('s1', 'ad1', Native('s1', 'ad1').assistant(100, model=OPUS, input=5)
+                                    .assistant(1100, model=OPUS, input=5).handback(1100, 'Gotowe', model=OPUS),
+                                    meta(description='DEMO-1 developer'))
+                record = self.native_record()
+                self.assertTrue([g for g in gaps_of(record, 'ad1') if gap in g], record['gaps'])
+                other = 'po ostatniej linii' if gap == 'bez linii coordinator' else 'bez linii coordinator'
+                self.assertFalse(gaps_of(record, other), record['gaps'])
 
     def test_orders_outside_the_epic_window_have_no_gaps(self):
         self.write_run(started=0, done=4000)
