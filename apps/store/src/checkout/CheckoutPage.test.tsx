@@ -1802,6 +1802,27 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
       expect(told).toEqual([null]);
     });
 
+    it("tells the session of the first read of the checkout, and of „Spróbuj ponownie”", async () => {
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+      vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: JAN });
+      render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+      await screen.findByRole("button", { name: "Spróbuj ponownie" });
+      expect(told).toEqual([]);
+
+      vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart() });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Spróbuj ponownie" }));
+      });
+      expect(told).toEqual([JAN]);
+
+      cleanup();
+      told.length = 0;
+      vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+      render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+      await screen.findByLabelText("E-mail");
+      expect(told).toEqual([null]);
+    });
+
     it("tells nobody when the first read of the checkout answers 401", async () => {
       vi.mocked(loadCart).mockResolvedValue({ status: "unauthorized" });
       vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: JAN });
@@ -1815,7 +1836,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
   // A retry of an uncertain result goes with the same key, and the attempt before it may have placed the order (the
   // answer was lost): the BFF refuses the retry before the API, so the checkout does not know (QA F3).
   describe("on the key of an attempt whose result was uncertain", () => {
-    const MAY_HAVE_PLACED = "Poprzednia próba mogła złożyć zamówienie dla poprzedniego kupującego. Sprawdź pocztę, zanim zamówisz ponownie.";
+    const MAY_HAVE_PLACED = "Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.";
     const MAYBE_SIGNED_IN_AS = (email: string) =>
       `Od wczytania kasy zmieniło się konto: teraz to ${email}. ${MAY_HAVE_PLACED} Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
     const MAYBE_SIGNED_OUT = `Od wczytania kasy nastąpiło wylogowanie. ${MAY_HAVE_PLACED} Podaj adres e-mail, sprawdź dane i podsumowanie, potem zamów ponownie.`;
@@ -1889,25 +1910,91 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
       expect(alert().textContent).toBe(MAYBE_SIGNED_IN_AS(ANNA.email));
     });
 
-    it("says nothing was placed when the key is new: the form changed after the uncertain attempt", async () => {
-      await janUncertain({ status: "ok", session: ANNA });
-      type("Telefon", "600 100 201");
-      await submit(buyerChanged);
+    // Only an answer of the API to the same key, given after its check of a repetition, settles that key; an answer to
+    // another key, or a refusal of the BFF before the API, settles nothing (QA I1).
+    /** Jan's checkout sent once with an uncertain result; every later read of the cart answers the same cart. */
+    async function janFailed() {
+      await renderCheckout(cart(), JAN);
+      fillContact();
+      await submit({ status: "failed" });
+    }
 
-      const [first, second] = vi.mocked(placeOrder).mock.calls;
-      expect(second[1]).not.toBe(first[1]);
-      expect(alert().textContent).toBe(SIGNED_IN_AS(ANNA.email));
+    /** The order refused for a changed buyer, with Anna's session read after it. */
+    async function annaSignsIn() {
+      vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "ok", session: ANNA });
+      await submit(buyerChanged);
+    }
+
+    const keysSent = () => vi.mocked(placeOrder).mock.calls.map(([, sent]) => sent);
+    const reused: PlaceOrderResult = { status: "conflict", reason: "key_reused", detail: "Ten klucz należy do innego zamówienia." };
+
+    it("still warns after the form changed: the new key settles nothing of the uncertain one", async () => {
+      await janFailed();
+      type("Telefon", "600 100 201");
+      await annaSignsIn();
+
+      const [first, second] = keysSent();
+      expect(second).not.toBe(first);
+      expect(alert().textContent).toBe(MAYBE_SIGNED_IN_AS(ANNA.email));
     });
 
-    it("says nothing was placed by the attempt after the message: it has a new key", async () => {
+    it("still warns at the next change of the buyer, after the message, with a new key", async () => {
       await janUncertain({ status: "ok", session: ANNA });
       await submit(buyerChanged);
       vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "ok", session: JAN });
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
       await submit(buyerChanged);
 
-      expect(new Set(vi.mocked(placeOrder).mock.calls.map(([, key]) => key)).size).toBe(2);
-      expect(alert().textContent).toBe(SIGNED_IN_AS(JAN.email));
+      expect(new Set(keysSent()).size).toBe(2);
+      expect(alert().textContent).toBe(MAYBE_SIGNED_IN_AS(JAN.email));
+    });
+
+    it.each<[string, PlaceOrderResult]>([
+      ["cart-changed", { status: "conflict", reason: "cart_changed", detail: "Zawartość koszyka się zmieniła." }],
+      ["insufficient-stock-for-order", { status: "conflict", reason: "insufficient_stock", detail: "Brak wystarczającej liczby sztuk." }],
+    ])("says nothing was placed after the API refused the same key with %s, after its check of a repetition", async (_name, refusal) => {
+      await janFailed();
+      await submit(refusal);
+      await annaSignsIn();
+
+      const [first, second] = keysSent();
+      expect(second).toBe(first);
+      expect(alert().textContent).toBe(SIGNED_IN_AS(ANNA.email));
+    });
+
+    it("still warns after a cart-empty on the same key: the BFF answers it too, before the API", async () => {
+      await janFailed();
+      await submit({ status: "conflict", reason: "cart_empty", detail: "Koszyk jest pusty." });
+      await annaSignsIn();
+
+      expect(alert().textContent).toBe(MAYBE_SIGNED_IN_AS(ANNA.email));
+    });
+
+    it("still warns after a key-reused, which says that an order with that key exists", async () => {
+      await janFailed();
+      await submit(reused);
+      await annaSignsIn();
+
+      expect(alert().textContent).toBe(MAYBE_SIGNED_IN_AS(ANNA.email));
+    });
+
+    it("warns after a key-reused also without an uncertain attempt before it", async () => {
+      await renderCheckout(cart(), JAN);
+      fillContact();
+      await submit(reused);
+      await annaSignsIn();
+
+      expect(alert().textContent).toBe(MAYBE_SIGNED_IN_AS(ANNA.email));
+    });
+
+    it("still warns after the API refused another key: the uncertain one is not settled", async () => {
+      await janFailed();
+      type("Telefon", "600 100 201");
+      await submit({ status: "conflict", reason: "cart_changed", detail: "Zawartość koszyka się zmieniła." });
+      await annaSignsIn();
+
+      expect(new Set(keysSent()).size).toBe(3);
+      expect(alert().textContent).toBe(MAYBE_SIGNED_IN_AS(ANNA.email));
     });
   });
 

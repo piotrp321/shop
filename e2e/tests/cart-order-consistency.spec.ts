@@ -26,7 +26,7 @@ const SIGNED_IN_AS = (email: string) =>
   `Od wczytania kasy zmieniło się konto: teraz to ${email}. Nie złożyliśmy zamówienia. Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
 // The same after a retry of an uncertain result: the attempt before may have placed the order.
 const MAYBE_SIGNED_IN_AS = (email: string) =>
-  `Od wczytania kasy zmieniło się konto: teraz to ${email}. Poprzednia próba mogła złożyć zamówienie dla poprzedniego kupującego. Sprawdź pocztę, zanim zamówisz ponownie. Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
+  `Od wczytania kasy zmieniło się konto: teraz to ${email}. Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie. Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
 // 60 characters without a space or a hyphen: the address must wrap on a narrow screen. The demo accounts have short ones.
 const LONG_EMAIL = "bardzodlugiadresklientasklepunorvanetestowykonto@example.com";
 
