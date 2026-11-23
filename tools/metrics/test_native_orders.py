@@ -311,9 +311,10 @@ def assigned(orders):
 class AssignmentTest(OrdersEnv):
     """The identifier of an order (`ref`) and its assignment, and the tokens, the value and the reviews of the order."""
 
-    def resumed(self, description, summary, kind='developer', reports=('Gotowe', 'Gotowe'), lead=True):
+    def resumed(self, description, summary, kind='developer', reports=('Gotowe', 'Gotowe'), lead=True, build=True):
         """A run of two orders: 100-300 s (input 1M Opus tokens) and 1000-1200 s (input 3M), the second resumed by
-        the lead with `summary` (lead False: no resume in the lead transcript)."""
+        the lead with `summary` (lead False: no resume in the lead transcript); its record (build False: only the
+        files)."""
         self.write_run(started=0, done=4000)
         session = Native('s1').assistant(10, input=1000)
         if lead:
@@ -323,7 +324,7 @@ class AssignmentTest(OrdersEnv):
                             .handback(300, reports[0], model=OPUS).order(1000)
                             .assistant(1100, model=OPUS, input=3 * MILLION).handback(1200, reports[1], model=OPUS),
                             meta(kind, description))
-        return self.native_record()
+        return self.native_record() if build else None
 
     def test_value_and_tokens_follow_the_order(self):
         record = self.reproduction()
@@ -373,7 +374,7 @@ class AssignmentTest(OrdersEnv):
         self.assertEqual(sorted(record['by_task']), ['DEMO-1', 'unknown_task'])
         self.assertTrue([g for g in gaps_of(record, 'ad1') if 'nieustalone' in g], record['gaps'])
         self.setUp()
-        self.resumed('DEMO-1 developer', 'DEMO-1 popraw')
+        self.resumed('DEMO-1 developer', 'DEMO-1 popraw', build=False)
         self.write_session('s1', ['{cut', 'not json'])            # the lead transcript is unreadable
         record = self.native_record()
         orders = self.orders(record, 'ad1')
