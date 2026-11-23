@@ -137,6 +137,9 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // The id of the chosen delivery method, no default. The option is looked up in the summary shown: a method that is
   // no longer among its options is no choice.
   const [deliveryMethodId, setDeliveryMethodId] = useState<string | null>(null);
+  // The same choice as it is now, for what a read of the summary does when its answer comes: the method is not locked
+  // while a code is checked, so the render of the click may hold an older one. Set only by `chooseMethod`.
+  const chosenMethod = useRef<string | null>(null);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   // What the live region of the summary says about the delivery after the summary was read again (a code, a 409).
   const [summaryStatus, setSummaryStatus] = useState("");
@@ -150,8 +153,9 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // The summary is out of date: a refusal for a changed cart or total could not read the cart. Until the customer is
   // told what changed against `shown`, the summary of the refused order, nothing is ordered: the next click on the
   // order button reads the cart and tells the changes instead (`checking` is that read, with the form locked), and any
-  // other read of the summary (a code) tells them at once (`showCart`).
-  const [outOfDate, setOutOfDate] = useState<{ reason: ChangeReason; shown: CartView } | null>(null);
+  // other read of the summary (a code) tells them at once (`showCart`). A ref, not a state: a read of a code started
+  // after the failed read but before its render must see it.
+  const outOfDate = useRef<{ reason: ChangeReason; shown: CartView } | null>(null);
   const [checking, setChecking] = useState(false);
   // The discount code lives in this component only (D3): a reload of the page starts without one. `appliedCode` is the
   // code the summary of `loaded` was priced with; `codeInput` is what the customer types.
@@ -184,7 +188,9 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         setLoaded(result);
         if (result.status === "ready") {
           setForm(prefilled(result.session));
-          setDeliveryMethodId(onlyMethod(result.cart));
+          // `chooseMethod`, spelled out: the effect runs once and depends on nothing of the render.
+          chosenMethod.current = onlyMethod(result.cart);
+          setDeliveryMethodId(chosenMethod.current);
         }
       });
     return () => {
@@ -215,7 +221,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setLoaded(result);
     if (result.status === "ready") {
       setForm(prefilled(result.session));
-      setDeliveryMethodId(onlyMethod(result.cart));
+      chooseMethod(onlyMethod(result.cart));
     }
     if (keepsFocus) moveFocusTo(result.status === "error" ? RETRY_ID : TITLE_ID);
   }
@@ -224,17 +230,27 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
    * Shows the summary read again. The chosen delivery method stays only while the new summary offers it (a method that
    * is gone is not chosen again when it comes back), and a changed delivery is announced in the live region. Every
    * read of the summary goes through here: one read while the summary is out of date comes with the message of what
-   * changed against the summary of the refused order (the method is the one chosen now, which the customer sees), so a
-   * summary the customer was not told about is never ordered and the message of the failed read does not stay.
+   * changed against the summary of the refused order, so a summary the customer was not told about is never ordered
+   * and the message of the failed read does not stay. The method of the announcement and of the list is the one chosen
+   * when the answer comes (`chosenMethod`), the one the summary and the next order have; the state out of date is the
+   * one at that moment too.
    */
   function showCart(next: CartView, session: AccountSession) {
-    if (loaded.status === "ready") setSummaryStatus(deliveryAnnouncement(loaded.cart, next, deliveryMethodId));
+    const chosen = chosenMethod.current;
+    if (loaded.status === "ready") setSummaryStatus(deliveryAnnouncement(loaded.cart, next, chosen));
     setLoaded({ status: "ready", cart: next, session });
-    if (outOfDate !== null) {
-      setFailure({ kind: "changed", reason: outOfDate.reason, changes: cartChanges(outOfDate.shown, next, deliveryMethodId) });
-      setOutOfDate(null);
+    const stale = outOfDate.current;
+    if (stale !== null) {
+      setFailure({ kind: "changed", reason: stale.reason, changes: cartChanges(stale.shown, next, chosen) });
+      outOfDate.current = null;
     }
-    setDeliveryMethodId((current) => (next.delivery?.options.some((option) => option.methodId === current) ? current : null));
+    chooseMethod(next.delivery?.options.some((option) => option.methodId === chosen) ? chosen : null);
+  }
+
+  /** Chooses the delivery method (none: `null`); the only place that changes the choice. */
+  function chooseMethod(methodId: string | null) {
+    chosenMethod.current = methodId;
+    setDeliveryMethodId(methodId);
   }
 
   function change(name: FieldName, value: string) {
@@ -277,7 +293,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   async function readChanges(reason: ChangeReason, shown: CartView, chosenId: string | null, session: AccountSession): Promise<string> {
     const preview = await loadPreview(appliedCode);
     if (preview.status !== "ok") {
-      setOutOfDate({ reason, shown });
+      outOfDate.current = { reason, shown };
       setFailure(preview.status === "unauthorized" ? { kind: "unauthorized" } : { kind: "message", text: CHANGES_NOT_READ });
     } else {
       showPreview(preview, session);
@@ -359,7 +375,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
 
   function chooseDelivery(methodId: string) {
     if (running.current === "order") return;
-    setDeliveryMethodId(methodId);
+    chooseMethod(methodId);
     setDeliveryError(null);
     setIdempotencyKey(newIdempotencyKey());
   }
@@ -380,14 +396,15 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     event.preventDefault();
     if (loaded.status !== "ready" || running.current !== null || providers === null || providers.length === 0) return;
     if (offersNoMethods(loaded.cart)) return;
-    if (outOfDate !== null) {
+    const stale = outOfDate.current;
+    if (stale !== null) {
       // The summary shown may not be the cart any more: this click reads it and tells the changes, and orders nothing.
       const origin = document.activeElement;
       running.current = "order";
       setSubmitting(true);
       setChecking(true);
       setFailure(null);
-      const target = await readChanges(outOfDate.reason, outOfDate.shown, deliveryMethodId, loaded.session);
+      const target = await readChanges(stale.reason, stale.shown, chosenMethod.current, loaded.session);
       focusAfterAnswer(origin, target);
       return;
     }

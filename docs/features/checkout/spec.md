@@ -552,7 +552,9 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
     „Dostawa „<nazwa>” nie jest już darmowa, kosztuje X zł. Do darmowej dostawy brakuje Y zł.”, „Dostawa „<nazwa>” jest
     teraz darmowa.” albo przy zmianie samej brakującej kwoty „Dostawa „<nazwa>”: Do darmowej dostawy brakuje Y zł.”.
     Mowa o wybranej metodzie, a bez wyboru o każdej, której dotyczy zmiana; przy zmianie, która niczego takiego nie
-    zmienia, obszar jest pusty. Kwoty są z API.
+    zmienia, obszar jest pusty. Kwoty są z API. Wybór dostawy nie jest zablokowany w trakcie sprawdzania kodu: wybrana
+    metoda to ta wybrana w chwili odpowiedzi odczytu (ta sama, którą pokazuje podsumowanie i niesie następne
+    zamówienie), także dla listy zmian w stanie nieaktualnym.
   - Opcja z kosztem 0 pokazuje „Darmowa” i nie pokazuje „Do darmowej dostawy brakuje”, nawet gdy API poda brakującą kwotę.
   - Brak aktywnych metod (`options` puste) albo odczyt koszyka bez `delivery` (API sprzed dostawy): zamiast grupy
     `Alert` („Nie możemy teraz przyjąć zamówienia: brak dostępnych sposobów dostawy. Spróbuj później.”,
@@ -651,8 +653,9 @@ Rozbieżność koszyka i kwoty (409 `cart-changed` i `order-total-changed`; `doc
    ekranie jest prawdziwy. Dlatego udany odczyt podsumowania w inny sposób w stanie nieaktualnym (zastosowanie kodu,
    „Usuń kod”, kod odrzucony przez podsumowanie albo przez 400, po którym kasa czyta podsumowanie bez kodu) od razu
    zastępuje komunikat o nieudanym odczycie komunikatem z punktu 3: lista zmian względem podsumowania odrzuconego
-   zamówienia i metody wybranej w chwili odczytu, z tym samym pierwszym akapitem; dopiero kolejne kliknięcie zamawia.
-   Nieudane albo 401 sprawdzenie kodu zostawia stan nieaktualny.
+   zamówienia i metody wybranej w chwili odpowiedzi odczytu, z tym samym pierwszym akapitem; dopiero kolejne kliknięcie
+   zamawia. Dotyczy to także kodu zastosowanego po nieudanym odczycie, zanim strona go wyrenderowała (stan nieaktualny
+   jest ustawiany od razu, nie dopiero z renderem). Nieudane albo 401 sprawdzenie kodu zostawia stan nieaktualny.
 
 Po odrzuceniu fokus przechodzi na komunikat błędu (`role="alert"`, `tabIndex=-1`); po 422 z błędami pól na pierwsze
 błędne pole (w kolejności formularza), które ma `aria-invalid` i `aria-describedby` na swój komunikat; po odrzuconym
