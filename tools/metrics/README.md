@@ -345,7 +345,9 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   `toolUseResult.resumedAgentId` w transkryptach sesji epiku (każde wywołanie raz po `id`), kolejny w kolejności czasu
   i najwyżej `RESUME_WINDOW_S` (60 s) od kandydata. Wznowienie i raport `SubagentHandback` poprzedniego zlecenia:
   `resume`; samo wznowienie: `resume_unreported`; sam raport: `resume_unconfirmed`; żadne: linia nie dzieli zlecenia.
-  Trzy ostatnie przypadki to pozycja `attempts.<agent>` w `gaps`. `queued_command` (wiadomość do pracującego
+  Trzy ostatnie przypadki to pozycja `attempts.<agent>` w `gaps`, tylko dla zleceń, które są w rekordzie.
+  Wznowienie u prowadzącego, które nie potwierdziło żadnej linii (`unmatched_resumes`; w przedziale epiku i w czasie
+  transkryptu subagenta), też jest pozycją `attempts.<agent>`: zlecenia mogą być niepodzielone. `queued_command` (wiadomość do pracującego
   subagenta) i wynik `SendMessage` bez `resumedAgentId` granicą nie są. Wiadomość należy do zlecenia swojej pierwszej
   linii; czas zlecenia to ostatnia minus pierwsza linia `user`/`assistant` zlecenia w przedziale epiku; zlecenie bez
   linii i wiadomości w przedziale nie wchodzi do rekordu.
@@ -359,8 +361,9 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   w `gaps`. Zadanie nie przechodzi z poprzedniego zlecenia. `attempts[].task` to zadanie planu pierwszego zlecenia.
 - **Czas przebiegu** (`run_time`, `native_by_task`): `attempts[].wall_s` to suma `wall_s` zleceń, `idle_s` reszta
   rozpiętości (`ended_at − started_at − wall_s`); zlecenie bez czasu daje `incomplete: true`, `idle_s: null` i pozycję
-  w `gaps` (suma to dolna granica). `attempts[].orders`: `{n, boundary, assignment, task, ref, task_source, started_at,
-  ended_at, wall_s, reported_at, tokens, value, estimated}`. `by_task`: `{klucz: {kind: null, work, attempts,
+  w `gaps` (suma to dolna granica); ujemny odstęp (znaczniki czasu nie po kolei) daje `idle_s: null` z pozycją
+  w `gaps`. `attempts[].orders`: `{n, boundary, assignment, task, ref, task_source, started_at, ended_at, wall_s,
+  reported_at, tokens, value, estimated}`. `by_task`: `{klucz: {kind: null, work, attempts,
   orders}}` z kluczami zadań planu, `no_task` i `unknown_task`; `work` to suma `wall_s` zleceń klucza. Rekord
   zbudowany starszym narzędziem nie ma `orders`, `idle_s` ani `by_task.orders`: komendy czytające traktują to jak brak
   danych.
