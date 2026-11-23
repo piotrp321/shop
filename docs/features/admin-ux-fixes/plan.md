@@ -10,8 +10,8 @@ mogą iść naraz. Plan jest dokumentem roboczym: po ukończeniu epiku usuń go.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | ADMIN-UX-2-1 | w toku |
-| 2 | ADMIN-UX-2-2, ADMIN-UX-2-3, ADMIN-UX-2-4 | czeka na falę 1 |
+| 1 | ADMIN-UX-2-1 | zmergowane do gałęzi epiku, commit 238373aa (czoło zadania 7be9a92e) |
+| 2 | ADMIN-UX-2-2, ADMIN-UX-2-3, ADMIN-UX-2-4 | po kolei (decyzja właściciela 2026-11-23); ADMIN-UX-2-2 w toku |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
