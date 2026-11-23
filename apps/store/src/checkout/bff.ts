@@ -26,6 +26,7 @@ import { CART_EMPTY_TYPE, CHECKOUT_BUYER_CHANGED_TYPE } from "./problems";
 const CART_EMPTY = "Koszyk jest pusty.";
 const BUYER_CHANGED = "Od wczytania kasy zmienił się kupujący. Nie złożyliśmy zamówienia.";
 const CHOOSE_PROVIDER = "Wybierz sposób płatności.";
+const CHECKOUT_UPDATED = "Kasa została zaktualizowana. Odśwież stronę.";
 
 type Outcome = { status: number; body: unknown; retryAfter?: string };
 /** What the answer does to the browser's cookies, as in the cart BFF, plus the confirmation of a placed order. */
@@ -65,7 +66,14 @@ export async function runCheckout(request: NextRequest, cartDeps: CartDeps): Pro
   if (body instanceof Response) {
     return body;
   }
-  if (!idempotencyKey || !body || typeof body.buyer !== "string" || body.buyer === "") {
+  if (!idempotencyKey || !body) {
+    return invalidBody();
+  }
+  if (!Object.hasOwn(body, "buyer")) {
+    // A checkout page opened before the buyer check sends none; it shows the `detail` of a 422 without violations.
+    return json({ detail: CHECKOUT_UPDATED }, 422);
+  }
+  if (typeof body.buyer !== "string" || body.buyer === "") {
     return invalidBody();
   }
 

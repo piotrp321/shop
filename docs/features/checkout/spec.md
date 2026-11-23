@@ -467,8 +467,10 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   zmian, także wartość, której API nie przyjmie (wtedy 422 API).
 - Body niesie `buyer`: kupującego, którego pokazała kasa (`"guest"` przy polu e-mail albo znacznik konta z
   `/auth/session`; `docs/features/cart-order-consistency/spec.md`, Z4). Pole służy tylko do porównania: nie trafia do
-  API, a konto zamówienia wynika wyłącznie z sesji. Brak pola, wartość niebędąca tekstem albo pusty tekst: 422
-  „Nieprawidłowe dane.” bez API. Sprawdzenie (`checkBuyer` w `src/checkout/bff.ts`) jest przed listą dostawców,
+  API, a konto zamówienia wynika wyłącznie z sesji. Brak pola (żądanie strony kasy otwartej przed wdrożeniem tego
+  sprawdzenia): 422 „Kasa została zaktualizowana. Odśwież stronę.” bez `violations`, którego `detail` taka strona
+  pokazuje nad formularzem; wartość niebędąca tekstem albo pusty tekst: 422 „Nieprawidłowe dane.”; w obu przypadkach
+  bez API. Sprawdzenie (`checkBuyer` w `src/checkout/bff.ts`) jest przed listą dostawców,
   scaleniem koszyka i złożeniem, więc odrzucenie nie woła API:
 
   | Kasa pokazała | Sesja przy wysłaniu | Odpowiedź BFF |
