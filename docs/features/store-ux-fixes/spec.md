@@ -328,14 +328,11 @@ w symulatorze płatności stosu.
     statusu płatności.
 25. Nowe komunikaty nie powodują przewijania poziomego przy 320 i 375 px.
 26. Każde zadanie pokazuje w raporcie komendy i rzeczywiste wyniki testów przed zmianą (RED) i po niej (GREEN).
-    Wyjątki: test S7 utrwala zachowanie już naprawione, więc przechodzi także przed zmianą (raport pisze to wprost);
-    przeliczenie wag części E2E to konfiguracja, weryfikowana komendą z `e2e/CLAUDE.md`.
+    Wyjątek: test S7 utrwala zachowanie już naprawione, więc przechodzi także przed zmianą (raport pisze to wprost).
 27. `make -C apps/store check`, `make -C apps/store test` i `STORE_MODE=production make e2e` przechodzą.
 28. `git diff` względem `main` nie zawiera `apps/api/openapi*.json`, `apps/store/src/api/schema.d.ts` ani
     `apps/admin`, a z `apps/api` tylko komentarz w `apps/api/fixtures/stock.yaml` (lista testów E2E, które zamawiają
     produkt; dochodzi test kryterium 8).
-29. Po dodaniu testów granice części E2E (`E2E_SHARD_WEIGHTS` i komentarz kroku `make e2e`
-    w `.github/workflows/ci.yml`) są przeliczone według `e2e/CLAUDE.md`.
 
 ## Testy
 
@@ -374,10 +371,9 @@ zaimplementowanych zadań.
 
 - **Kod aplikacji.** Ten etap zmienia tylko `apps/store`, ADMIN tylko `apps/admin`; aplikacje nie mają wspólnego
   pakietu ani klienta API.
-- **Jedyny wspólny plik:** `.github/workflows/ci.yml` (`E2E_SHARD_WEIGHTS` i komentarz kroku `make e2e`). Każdy epik
-  zmienia je w swoim ostatnim zadaniu, na stanie po scaleniu aktualnego `main`. Epik mergowany jako drugi liczy wagi
-  od nowa komendą z `e2e/CLAUDE.md` na połączonym zestawie testów; przy konflikcie nie scala liczb ręcznie. Nowe
-  pliki `store-ux-*.spec.ts` sąsiadują alfabetycznie ze `staff-dashboard.spec.ts` z ADMIN (dziś część 3).
+- **Wspólnych plików brak.** Wag części E2E (`E2E_SHARD_WEIGHTS` w `.github/workflows/ci.yml`) epiki nie zmieniają
+  (`e2e/CLAUDE.md`, „CI”). Nowe pliki `store-ux-*.spec.ts` sąsiadują alfabetycznie ze `staff-dashboard.spec.ts`
+  z ADMIN.
 - **Pliki E2E.** Ten etap dodaje `e2e/tests/store-ux-*.spec.ts` i nie zmienia sześciu plików E2E, które zmienia ADMIN
   (`admin-screens-inventory`, `admin-screens-prices`, `admin-screens-promotions`, `admin-screens-orders`,
   `catalog-admin`, `staff-dashboard`). Plan ADMIN nie zmienia `e2e/support`.

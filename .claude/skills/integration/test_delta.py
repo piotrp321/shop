@@ -888,12 +888,62 @@ class E2ePartsTest(unittest.TestCase):
             f.write(textwrap.dedent(text))
         return path
 
+    @staticmethod
+    def matrix_parts(text):
+        """The number of parts of the `e2e-shard` matrix of a CI workflow: its `- index:` entries."""
+        job = re.search(r'^  e2e-shard:\n(.*?)(?=^  \S|\Z)', text, re.MULTILINE | re.DOTALL)
+        return len(re.findall(r'^\s*- index:', job.group(1), re.MULTILINE)) if job else 0
+
+    def assert_split_of(self, workflow):
+        """The split of a CI workflow is sound: one positive weight for every part of the `e2e-shard` matrix. The
+        weights themselves are not checked: they change with the tests and with every rebalance (#813)."""
+        r = self.parts('--workflow', workflow)
+        self.assertEqual(0, r.returncode, r.stderr)
+        split = json.loads(r.stdout)
+        weights = split['weights'].split(':')
+        with open(workflow, encoding='utf-8') as f:
+            matrix = self.matrix_parts(f.read())
+        self.assertGreater(matrix, 1, 'no e2e-shard matrix in %s' % workflow)
+        self.assertEqual(matrix, split['parts'], 'one weight for every part of the e2e-shard matrix')
+        self.assertEqual(matrix, len(weights))
+        self.assertTrue(all(int(w) > 0 for w in weights), split['weights'])
+        return split
+
     def test_reads_the_parts_of_the_ci_workflow_of_the_repository(self):
+        split = self.assert_split_of(WORKFLOW)
         r = self.parts(cwd=os.path.dirname(os.path.dirname(os.path.dirname(WORKFLOW))))
         self.assertEqual(0, r.returncode, r.stderr)
-        self.assertEqual({'parts': 4, 'weights': '105:129:126:124'}, json.loads(r.stdout))
-        r = self.parts('--workflow', WORKFLOW)
-        self.assertEqual({'parts': 4, 'weights': '105:129:126:124'}, json.loads(r.stdout))
+        self.assertEqual(split, json.loads(r.stdout))
+
+    def changed_workflow(self, change):
+        with open(WORKFLOW, encoding='utf-8') as f:
+            text = f.read()
+        changed = change(text)
+        self.assertNotEqual(text, changed)
+        path = os.path.join(self.tmp.name, 'ci.yml')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(changed)
+        return path
+
+    def test_other_weights_of_the_ci_workflow_keep_the_split_sound(self):
+        parts = self.assert_split_of(WORKFLOW)['parts']
+        moved = ':'.join(str(100 + i) for i in range(parts))
+        path = self.changed_workflow(lambda text: re.sub(r"(E2E_SHARD_WEIGHTS: )'[^']*'", r"\1'%s'" % moved, text))
+        self.assertEqual({'parts': parts, 'weights': moved}, self.assert_split_of(path))
+
+    def test_a_number_of_weights_other_than_the_parts_of_the_matrix_is_not_a_sound_split(self):
+        for change in (lambda w: w.rsplit(':', 1)[0], lambda w: w + ':50'):
+            with self.subTest(weights=change('1:2:3:4')):
+                path = self.changed_workflow(lambda text: re.sub(
+                    r"(E2E_SHARD_WEIGHTS: )'([^']*)'", lambda m: "%s'%s'" % (m.group(1), change(m.group(2))), text))
+                with self.assertRaises(AssertionError):
+                    self.assert_split_of(path)
+
+    def test_a_part_added_to_the_matrix_without_a_weight_is_not_a_sound_split(self):
+        path = self.changed_workflow(lambda text: text.replace(
+            '          - index: 1\n', '          - index: 9\n            after_e2e: false\n          - index: 1\n', 1))
+        with self.assertRaises(AssertionError):
+            self.assert_split_of(path)
 
     def test_reads_unquoted_and_double_quoted_weights(self):
         for value in ('100:200', '"100:200"'):

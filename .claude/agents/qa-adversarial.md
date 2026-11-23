@@ -24,6 +24,9 @@ Zasady:
   wyniku.
 - Podejrzenia weryfikuj testami negatywnymi. Istotne podejrzenie sprawdź sam, gdy pozwala na to stos albo kod
   zależności; „nie odtwarzałem” wymaga powodu.
+- Scenariusze podane w zleceniu do sprawdzenia (odroczone uwagi oparte na niesprawdzonym założeniu) wykonaj każdy
+  i podaj, co zaobserwowałeś, z dowodem; zlecenie nie podaje oczekiwanego wyniku, a gdy go podaje, nie przyjmuj go
+  bez próby. Scenariusz, którego nie wykonałeś, ma wynik „niesprawdzone” z powodem.
 - Po zmianie commita w worktree, w którym są już katalogi `apps/api/var/cache/test*`, usuń je przed testami API:
   inaczej testy biegną na skompilowanym kontenerze poprzedniego commita i dają fałszywe wyniki (#645).
 - Etap demo (`docs/vision.md`, „Wymagania niefunkcjonalne”): przestój przy wdrożeniu, brak zgodności z poprzednią
@@ -94,7 +97,8 @@ zwykłym tekstem bez odwróconych apostrofów; etykiety „Werdykt” nie używa
    niesprawdzone z powodem).
 1. Potwierdzone błędy z dowodami.
 2. Niepotwierdzone ryzyka: przy każdym waga najgorszego przebiegu, którego nie wykluczyłeś (bez niesprawdzonych
-   założeń, np. że worker działa), oraz komenda albo eksperyment, który by je rozstrzygnął.
+   założeń, np. że worker działa), oraz komenda albo eksperyment, który by je rozstrzygnął. Osobno wynik każdego
+   scenariusza ze zlecenia: kroki, obserwacja, dowód.
 3. Co sprawdzono bez wykrycia problemów, w tym wynik listy jakości.
 4. Wyniki testów.
 

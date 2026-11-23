@@ -310,8 +310,6 @@ produktu (`useProductForm`), ale karta „Ceny i stany” (`ProductPriceStock.vu
    (GREEN). Dla K4 i K5 dowodem RED są testy przeglądarkowe z asercjami geometrii.
 2. `make -C apps/admin check`, `make -C apps/admin test` i `make e2e` przechodzą.
 3. `git diff` względem `main` nie zawiera `apps/api`, `apps/api/openapi*.json` ani `apps/admin/src/api/schema.d.ts`.
-4. Po dodaniu testów granice części E2E (`E2E_SHARD_WEIGHTS` i komentarz kroku `make e2e` w
-   `.github/workflows/ci.yml`) są przeliczone według `e2e/CLAUDE.md`.
 
 ## Równoległość ze STORE-UX-FIXES (#777)
 
@@ -321,8 +319,8 @@ prowadząca porównuje `Zakres:` i plan #777 z tą specyfikacją w punktach poni
 
 - **Kod aplikacji.** Etap zmienia tylko `apps/admin`; aplikacje nie mają wspólnego pakietu, a klient panelu powstaje
   z osobnego `openapi-admin.json`.
-- **Granice części E2E** (`.github/workflows/ci.yml`, `E2E_SHARD_WEIGHTS` z komentarzem): zmienia je każdy epik, który
-  dodaje testy. Propozycja: przelicza je ten epik, który merguje drugi, po rebase na `main`.
+- **Granice części E2E** (`.github/workflows/ci.yml`, `E2E_SHARD_WEIGHTS`): epiki ich nie zmieniają (`e2e/CLAUDE.md`,
+  „CI”).
 - **Pliki `e2e/support` używane przez testy sklepu i panelu** (`accounts.ts`, `urls.ts`, `shop.ts`, `orders.ts`,
   `promotions.ts`, `discount-codes.ts`, `price-change.ts`): ten etap ich nie zmienia.
 - **Dane.** Testy tego etapu nie zostawiają kategorii ani produktów; promocje utworzone w teście są kończone jak

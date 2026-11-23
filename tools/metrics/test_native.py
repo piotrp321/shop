@@ -361,8 +361,9 @@ class NativeRecordTest(NativeEnv):
                             runs={'feat/demo': [{'databaseId': 9, 'createdAt': iso_at(4000), 'conclusion': 'success'}]},
                             jobs={9: [{'name': 'checks', 'startedAt': iso_at(4000), 'completedAt': iso_at(4300)}]})
         record = self.native_record(runner=gh, no_gh=False)
-        self.assertEqual(record['ci'], {'final': {'pr': 752, 'runs': 1, 'checks_s': 300, 'e2e_s': None},
-                                        'tasks': None})
+        self.assertEqual(record['ci']['final'], {'pr': 752, 'runs': 1, 'checks_s': 300, 'e2e_s': None})
+        self.assertIsNone(record['ci']['tasks'])
+        self.assertEqual(record['ci']['time']['status'], 'no_data')       # no comparable run of main in the stub
         self.assertEqual(record['merged_at'], iso_at(5000))
         self.assertEqual(record['issue'], 496)
         self.assertEqual(record['wall']['to_merge'], 5000)

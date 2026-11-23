@@ -104,15 +104,20 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    **Ocena przed odroczeniem** (tu i w kroku 6). Uwagi `SUGGESTION` albo `Minor`, która opisuje konkretną ścieżkę błędu
    (wejście albo przeplot zdarzeń i błędny wynik), sesja nie odracza na podstawie samej etykiety. Zapisuje przy niej
    krótką ocenę: rzeczywisty skutek (co zostaje zapisane, wysłane albo pokazane i komu), naruszona gwarancja
-   (specyfikacja, lista jakości, kontrakt) i odwracalność. Uwagę, która łamie gwarancję albo ma skutek nieodwracalny
+   (specyfikacja, lista jakości, kontrakt), odwracalność i podstawa oceny: „sprawdzone: <próba albo miejsce w kodzie
+   i wynik>” albo „założenie niesprawdzone: <jakie>”. Uwagę, która łamie gwarancję albo ma skutek nieodwracalny
    lub poza bazą (pieniądze, operator, wysłana wiadomość, stan widoczny dla klienta, utrata wpisanych danych), zleca
    do poprawki. Istotne podejrzenie oparte na niesprawdzonym założeniu („nie odtwarzałem”, założenie o działaniu
-   frameworka, bazy albo brokera, nadzór, który może pokazać stan zdrowy w awarii) sprawdza przed decyzją w kodzie
-   albo eksperymentem, sama albo zleceniem testu negatywnego. Wąskie okno wyścigu nie obniża wagi; równoległe żądania,
+   frameworka, bazy albo brokera, nadzór, który może pokazać stan zdrowy w awarii, a także własne założenie sesji
+   o skutku: „stara kasa dostanie 409”, „ten test to pokrywa”) sprawdza przed decyzją w kodzie albo eksperymentem, sama
+   albo zleceniem testu negatywnego. Ocena z podstawą „założenie niesprawdzone” nie stwierdza braku skutku: uwaga
+   zostaje do sprawdzenia. Wąskie okno wyścigu nie obniża wagi; równoległe żądania,
    równoległe sesje i operacje oraz edycja formularza w trakcie zapisu to zwykłe użycie. Styl, drobne sugestie
    i przypadki bez istotnego skutku sesja odracza bez tej oceny. Ocena nie jest obowiązkiem naprawy każdej uwagi
    i nie zmienia budżetu rund (punkt 3 decyzji). Odroczona uwaga z oceną trafia do „Odroczonych uwag” opisu PR
-   i do zlecenia przeglądu epiku (krok 6) do ponownej oceny.
+   i do zlecenia przeglądu epiku (krok 6): uwaga z podstawą „założenie niesprawdzone” jako scenariusz do wykonania
+   (wejście albo przeplot zdarzeń i co zaobserwować), bez oceny sesji i bez oczekiwanego wyniku, pozostałe z oceną,
+   do ponownej oceny. Wynik scenariusza zastępuje podstawę w opisie PR; w epiku bez QA scenariusz wykonuje sesja.
 
    **Niespełnione wymaganie** (tu i w kroku 6). Przypadek albo kryterium specyfikacji lub planu, którego zadanie nie
    spełnia albo nie umie przetestować (pominięty wiersz tabeli, przypadek niewykonalny bez zmiany poza zakresem), nie
@@ -150,34 +155,56 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
 7. **Koniec.** Sesja aktualizuje specyfikację, usuwa `plan.md` i wpisuje w opis PR odroczone uwagi (z oceną z kroku 4)
    oraz `Closes #N` dla issues z linii `Issues:` specyfikacji.
 
-   **Zewnętrzne review.** Przez trzy epiki od 2026-11-21 (potem ocena: `docs/features/ash-process-fixes/spec.md`, C3)
-   końcowy PR przechodzi niezależne review Codexa: po przeglądzie epiku i jego poprawkach, przed oznaczeniem PR jako
-   gotowego. Sesja nie uruchamia Codexa. Przekazuje użytkownikowi stan PR (numer, czoło gałęzi, wynik CI) i gotowe
+   **Zewnętrzne review.** Końcowy PR przechodzi niezależne review Codexa (`docs/features/ash-process-fixes/spec.md`,
+   C): po przeglądzie epiku i jego poprawkach, przed oznaczeniem PR jako gotowego. Sesja nie uruchamia Codexa. Przekazuje użytkownikowi stan PR (numer, czoło gałęzi, wynik CI) i gotowe
    zlecenie: „Zrób niezależne review PR #N (`origin/main...<gałąź>`) względem `docs/features/<epik>/spec.md`. 1. Cała
    zmiana: błędy poprawności, współbieżności, danych i bezpieczeństwa, każdy z dowodem i wagą. 2. Osobno sekcja
    »Odroczone uwagi« opisu PR: dla każdej pozycji oceń, czy odroczenie jest uzasadnione, i wskaż te, które są błędem
    do naprawy przed merge'em.” Potwierdzone znaleziska naprawia zadanie z przeglądem różnicy; trafiają do „Problemów
-   i zastojów” z informacją, czy powtarzają odroczoną uwagę.
+   i zastojów”, każde jako „nowe” albo „powtarza odroczoną uwagę” (z jej podstawą: sprawdzone albo założenie
+   niesprawdzone). `/retro` liczy obie grupy osobno.
 
    Po zakończonym zielonym przebiegu wymaganego CI na czole gałęzi sesja wypełnia z niego wiersze „CI” tabeli
-   kryteriów i oznacza PR jako gotowy (po każdym późniejszym pushu aktualizuje te wiersze), zapisuje drugi punkt
-   odniesienia (`python3 tools/metrics/metrics.py done <epik>` z drugim odczytem limitów) i pisze raport. Merge do
-   `main` robi użytkownik.
+   kryteriów (SHA i numer przebiegu) i oznacza PR jako gotowy (po każdym późniejszym pushu aktualizuje te wiersze),
+   zapisuje drugi punkt odniesienia (`python3 tools/metrics/metrics.py done <epik>` z drugim odczytem limitów)
+   i pisze raport. Merge do `main` robi użytkownik.
+
+   **Czas CI.** Po tym samym przebiegu sesja uruchamia `python3 tools/metrics/metrics.py ci-time <epik>` i wkleja
+   wynik do „Punktu odniesienia i przebiegu”: czas CI po epiku względem przebiegów na `main` sprzed startu epiku,
+   końcowy SHA osobno, „brak danych” zamiast oceny, gdy brakuje porównywalnych przebiegów. Przekroczony próg nie
+   blokuje PR: sesja ustala przyczynę z dowodem (nowe testy, nierówny podział części E2E, wolniejsze testy,
+   infrastruktura, zmiana workflowu albo wag części na `main` od przebiegów bazy) i wpisuje ją do „Problemów
+   i zastojów” z rekomendacją (zgłoszenie albo osobny PR, np. wyrównanie wag według `e2e/CLAUDE.md`). Wzrostu
+   widocznego też na `main` w trakcie epiku albo w jobie, którego wejść epik nie zmienia, nie przypisuje epikowi.
+   Sesja nie uruchamia CI po to, żeby zebrać pomiar, i nie zmienia wag części E2E w epiku. Progi są startowe
+   (`tools/metrics/config.json`, `ci_time`).
 
    **Śledzenie CI** (tu i w kroku 5). Sesja nie kończy tury w oczekiwaniu na CI bez czegoś, co ją obudzi także po
    sukcesie: powiadomienie aplikacji o błędach CI (Auto-fix) nie zgłasza zielonego wyniku. Po pushu, na którego wynik
-   czeka, uruchamia w tle jedno polecenie, które kończy się razem z wymaganymi checkami
-   (`gh pr checks <nr> --required --watch --fail-fast`), i w tym czasie robi pracę niezależną od wyniku. Gdy
-   środowisko sesji nie pozwala jej śledzić CI, mówi użytkownikowi przed końcem tury, że czeka na CI, i sprawdza
-   stan PR na początku każdej kolejnej tury.
+   czeka, uruchamia w tle jedno polecenie, które kończy się razem z przebiegiem CI wypchniętego commita
+   (`sh .github/scripts/ci-wait.sh "$(git rev-parse HEAD)"`), i w tym czasie robi pracę niezależną od wyniku.
+   Polecenie czeka, aż GitHub zarejestruje przebieg dokładnie tego SHA (kod 3: przebieg się nie pojawił, bo
+   zdarzenie zaginęło albo PR ma konflikt z `main`: sprawdzić, rozwiązać konflikt albo wypchnąć ponownie),
+   i podaje wynik z SHA i numerem przebiegu. Wynik przebiegu
+   starszego commita nie potwierdza bieżącego czoła: zielone CI sesja stwierdza tylko z linii `ci-wait:` dla SHA,
+   które jest czołem gałęzi. Gdy środowisko sesji nie pozwala jej śledzić CI, mówi użytkownikowi przed końcem tury,
+   że czeka na CI, i sprawdza stan PR na początku każdej kolejnej tury.
 
-   **Po merge'u.** Gdy `gh pr view <nr> --json state,mergedAt` potwierdza merge, sesja:
-   - zapisuje rekord (`python3 tools/metrics/metrics.py epic <epik>`);
-   - gasi swoje stosy i usuwa czyste worktree zadań;
+   **Po merge'u.** Gdy `gh pr view <nr> --json state,mergedAt,mergeCommit` potwierdza merge, sesja:
+   - uruchamia w tle `sh .github/scripts/ci-wait.sh --event push <commit merge'u>`, gasi swoje stosy i usuwa czyste
+     worktree zadań;
+   - po zakończeniu przebiegu CI commita merge'u na `main` zapisuje rekord
+     (`python3 tools/metrics/metrics.py epic <epik>`: czerwone CI po merge'u i pomiar czasu CI na `main`). Wyniku CI
+     na `main` nie podaje i nie zapisuje wcześniej: przebieg w toku to wynik nieznany. Czerwony przebieg zgłasza
+     użytkownikowi z nazwą joba i oceną, czy dotyczy zmiany epiku; sama go nie naprawia. Gdy przebieg się nie
+     pojawił albo `gh` zawiódł (kody 3 i 4), zgłasza to użytkownikowi, zapisuje rekord z wynikiem nieznanym
+     i podaje tę lukę w przekazaniu do retro;
    - dodaje do końcowego PR komentarz, którego treść zaczyna się od `## Przekazanie do retro`: nazwa epiku i polecenie
      `/retro <epik>`, numer PR i commit merge'u, ścieżka specyfikacji, plan (commit, w którym jeszcze istnieje:
      `git show <sha>:docs/features/<epik>/plan.md`), przeglądy i poprawki (role, rundy, zewnętrzne review
-     z commitami poprawek), plik przebiegu, rekord i sesje epiku, wersja procesu z odstępstwami oraz, w całości, uwagi
+     z commitami poprawek i z podziałem znalezisk na nowe i powtarzające odroczoną uwagę), wynik CI commita merge'u
+     na `main` (SHA, numer przebiegu) i `ci-time` po merge'u, plik przebiegu, rekord i sesje epiku, wersja procesu
+     z odstępstwami oraz, w całości, uwagi
      właściciela, które padły po ostatniej edycji opisu PR;
    - kończy komunikatem: „Epik zakończony. Uruchom /retro <epik> w nowej sesji. Tę sesję można zarchiwizować”.
 
@@ -190,7 +217,8 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    uwaga i jeden incydent w `/retro`, bez limitu długości: punktów nie dzieli się ze względu na długość. Uwagę
    właściciela o procesie sesja zapisuje w całości jako jeden punkt „Problemów i zastojów” albo „Luk
    w instrukcjach”, z początkiem „Uwaga właściciela:”. „Punkt odniesienia i przebieg” podaje wersję procesu:
-   oczekiwaną, stan na dysku i potwierdzenie wersji załadowanej (`metrics.py process <epik>`), z odstępstwami.
+   oczekiwaną, stan na dysku i potwierdzenie wersji załadowanej (`metrics.py process <epik>`), z odstępstwami, oraz
+   wynik `metrics.py ci-time <epik>`. Pozycja „Odroczonych uwag” kończy się podstawą oceny z kroku 4.
 
    Sekcja „Kryteria akceptacji” to tabela z jednym wierszem na kryterium:
 
@@ -203,7 +231,7 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    | 4 | niezweryfikowane: brak stosu z kolejką | do decyzji |
    ```
 
-   Sposób to jedno z: „stos” (polecenie albo scenariusz), „CI” (nazwa testu i zielony przebieg na czole gałęzi),
+   Sposób to jedno z: „stos” (polecenie albo scenariusz), „CI” (nazwa testu i zielony przebieg czoła gałęzi: SHA),
    „po wdrożeniu”, „niezweryfikowane” (z powodem). Kryteria „niezweryfikowane” są też na początku opisu PR jako
    decyzja dla użytkownika. Kryteria „po wdrożeniu” sesja sprawdza po wdrożeniu zleconym przez użytkownika i dopisuje
    wynik w komentarzu PR. Kryterium procesu, które wymaga RED przed zmianą, ma wynik rozdzielony na zachowanie

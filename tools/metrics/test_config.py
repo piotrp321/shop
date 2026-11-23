@@ -34,6 +34,13 @@ class ReadCategoryTest(unittest.TestCase):
                         'cat < in', 'grep x f $(rm y)', 'ls `rm y`', 'cat a\nrm b'):
             self.assertFalse(matches(self.config, 'read', command), command)
 
+    def test_the_ci_wait_script_is_a_ci_watch(self):
+        for command in ('sh .github/scripts/ci-wait.sh "$(git rev-parse HEAD)"',
+                        'sh .github/scripts/ci-wait.sh --event push 0123456789abcdef0123456789abcdef01234567',
+                        'gh run watch 123 --exit-status', 'gh pr checks 7 --required --watch'):
+            self.assertTrue(matches(self.config, 'ci_watch', command), command)
+        self.assertFalse(matches(self.config, 'ci_watch', 'sh .github/scripts/test_ci_wait.sh'))
+
     def test_commands_of_other_categories_are_not_read(self):
         for command in ('make test', 'python3 -m unittest discover', 'git commit -m x', 'rm file'):
             self.assertFalse(matches(self.config, 'read', command), command)
