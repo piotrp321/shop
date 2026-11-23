@@ -1,11 +1,13 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import { documentWidths, expectControlsReachable, expectWithinWidth, settle, viewports, WCAG_TAGS } from "../support/panel-layout";
 import { closePanelContexts, go, inState, newPanelPage, type PanelState, signInPanelRoles, violationsOf } from "../support/panel-states";
 
 // The list and the form of the discount codes of the panel (docs/features/admin-screens/spec.md, „Promocje i kody
 // rabatowe”): the look and the accessibility of the list, of the form with the window of unsaved changes and of the
 // page of a code that does not exist, the state of the list in the address, and the check of the report #446. The tests
-// change nothing: the save of the form is in admin-screens-toasts.spec.ts and admin-design.spec.ts.
+// change nothing: the save of the form is in admin-screens-toasts.spec.ts and admin-design.spec.ts, and the tests of the
+// requests of the form (the lock while a save waits, an unknown result) answer the save themselves with `page.route`,
+// so the demo code is never written.
 
 // The demo codes (apps/api/fixtures/discount-codes.yaml): an active one with no end and an expired one.
 const ACTIVE_CODE = "WITAJ10";
@@ -373,6 +375,106 @@ test.describe("the form", () => {
       expect(visited, "the Tab key reaches the field „Kod”").toContain("code-input");
       expect(visited.indexOf("enabled"), `the switch comes before the field „Kod” (${visited.join(", ")})`).toBeGreaterThanOrEqual(0);
       expect(visited.indexOf("enabled")).toBeLessThan(visited.indexOf("code-input"));
+    } finally {
+      await page.close();
+    }
+  });
+});
+
+// ADMIN-UX-FIXES stage 2 (B1, B4): the form of a code does not lose what the staff member types while a save runs, and is
+// not blocked for good when the API does not answer. The answers of the save are given by the test, so nothing is written.
+test.describe("the requests of the form (stage 2)", () => {
+  const CODE_URL = (id: string) => `**/api/v1/admin/discount-codes/${id}`;
+
+  /** Opens the demo code with the PUT of its form answered by `answer`; returns the code as the API sent it. */
+  async function openWithPut(page: Page, answer: (route: Route, code: Record<string, unknown>, putIndex: number) => Promise<void>) {
+    let putIndex = 0;
+    let code: Record<string, unknown> = {};
+    await page.route(CODE_URL(activeCodeId), async (route) => {
+      if (route.request().method() === "GET") {
+        const response = await route.fetch();
+        code = (await response.json()) as Record<string, unknown>;
+        await route.fulfill({ response });
+        return;
+      }
+      if (route.request().method() !== "PUT") {
+        await route.fallback();
+        return;
+      }
+      await answer(route, code, putIndex++);
+    });
+    await go(page, `/discount-codes/${activeCodeId}`);
+    await expect(page.getByRole("heading", { level: 1, name: ACTIVE_CODE })).toBeVisible();
+    return code;
+  }
+
+  test("(a) the field „Koniec” is off while the answer of the save is 3 s late, and the answer gives the toast", async () => {
+    test.setTimeout(60_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await openWithPut(page, async (route, code) => {
+        const body = route.request().postDataJSON() as { endsAt: string };
+        await new Promise((resolve) => setTimeout(resolve, 3_000));
+        await route.fulfill({ status: 200, json: { ...code, endsAt: body.endsAt, version: (code.version as number) + 1 } });
+      });
+      const ends = page.getByTestId("ends-input");
+      await ends.fill("2036-12-31T23:59");
+
+      await page.getByTestId("save").click();
+
+      await expect(ends, "the field is off while the save waits for its answer").toBeDisabled();
+      await expect(page.getByTestId("limit-input")).toBeDisabled();
+      await expect(page.getByRole("switch", { name: "Aktywny" })).toBeDisabled();
+      await expect(page.getByRole("region", { name: "Powiadomienia", exact: true }).getByText("Kod rabatowy zapisany.")).toBeVisible();
+      await expect(ends).toBeEnabled();
+      await expect(ends).toHaveValue("2036-12-31T23:59");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("(d) a save without an answer says after 10 s that the result is unknown, „Sprawdź stan” unlocks the form with the draft, and a 409 of the next save keeps the change in the field", async () => {
+    test.setTimeout(90_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await openWithPut(page, async (route, _code, putIndex) => {
+        // The first save never gets an answer; the second is refused as stale.
+        if (putIndex === 0) return;
+        await route.fulfill({
+          status: 409,
+          contentType: "application/problem+json",
+          json: { type: "about:blank", title: "Conflict", status: 409, detail: "Kod rabatowy został w międzyczasie zmieniony." },
+        });
+      });
+      const reads: string[] = [];
+      page.on("request", (request) => {
+        if (request.method() === "GET" && new URL(request.url()).pathname.endsWith(`/discount-codes/${activeCodeId}`)) reads.push(request.url());
+      });
+      const ends = page.getByTestId("ends-input");
+      await ends.fill("2036-12-31T23:59");
+      await page.getByTestId("save").click();
+
+      const unknown = page.getByTestId("unknown-result");
+      await expect(unknown).toBeVisible({ timeout: 20_000 });
+      await expect(unknown).toContainText("Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.");
+      await expect(unknown).toBeFocused();
+      await expect(ends, "the fields stay locked while the save has no answer").toBeDisabled();
+
+      await unknown.getByRole("button", { name: "Sprawdź stan" }).click();
+
+      await expect(unknown).toContainText("Zapisu nie widać na serwerze. Może jeszcze dotrzeć.");
+      await expect(ends).toBeEnabled();
+      await expect(ends).toHaveValue("2036-12-31T23:59");
+
+      await ends.fill("2037-01-01T10:00");
+      const readsBeforeSave = reads.length;
+      await page.getByTestId("save").click();
+
+      await expect(page.getByTestId("form-error")).toContainText("Twoje zmiany zostają w formularzu.");
+      await expect(ends).toHaveValue("2037-01-01T10:00");
+      await expect(page.getByTestId("restore-state")).toBeVisible();
+      await page.waitForTimeout(1_500);
+      expect(reads.length, "a 409 reads nothing by itself").toBe(readsBeforeSave);
     } finally {
       await page.close();
     }
