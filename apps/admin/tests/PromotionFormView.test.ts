@@ -976,6 +976,37 @@ describe("PromotionFormView", () => {
       expect(document.activeElement).toBe(wrapper.get("[data-testid=read-failed]").element);
     });
 
+    it("moves the focus to the status region while „Odśwież” reads, and to the H1 after „Spróbuj ponownie” brought the promotion", async () => {
+      const wrapper = await saveNow();
+      serveRead(async () => {
+        throw new TypeError("network down");
+      });
+      await vi.advanceTimersByTimeAsync(2000);
+      await settle();
+      let release!: (value: unknown) => void;
+      serveRead(() => new Promise((resolve) => (release = resolve)));
+      const refresh = [...card("Status").querySelectorAll<HTMLButtonElement>("[role=alert] button")].find((button) => button.textContent?.trim() === "Odśwież")!;
+      refresh.focus();
+
+      refresh.click();
+      await settle();
+
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=safety-status]").element);
+      release({ data: undefined, error: {}, response: { status: 500 } });
+      await settle();
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=read-failed]").element);
+
+      readAs({ name: "Z serwera", status: "active", version: 10 });
+      wrapper.get<HTMLButtonElement>("[data-testid=retry-read]").element.focus();
+      await wrapper.get("[data-testid=retry-read]").trigger("click");
+      await settle();
+
+      expect(wrapper.find("[data-testid=read-failed]").exists()).toBe(false);
+      expect(input(wrapper, "name-input").value).toBe("Z serwera");
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement).toBe(heading("h1"));
+    });
+
     it("B3: says „Odświeżamy…” in a status region and locks the fields while „Odśwież” reads, and 10 s without an answer unlocks them with a message to try again", async () => {
       const wrapper = await saveNow();
       serveRead(async () => {

@@ -261,6 +261,162 @@ describe("FormSafetyNotices", () => {
     });
   });
 
+  describe("where the focus is while a request of a button runs, and after it", () => {
+    const focusOn = (wrapper: ReturnType<typeof mount>, testid: string) => {
+      const element = wrapper.get(`[data-testid=${testid}]`).element as HTMLElement;
+      element.focus();
+      return element;
+    };
+    const held = () => {
+      let release!: (value: { data: Doc } | { status: number } | null) => void;
+      const promise = new Promise<{ data: Doc } | { status: number } | null>((resolve) => (release = resolve));
+      return { promise, release };
+    };
+    const unknownResult = async (safety: ReturnType<typeof create>) => {
+      await safety.write(() => failing() as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+      await flushPromises();
+    };
+
+    it("„Sprawdź stan”: on the status region „Odświeżamy…” while it reads, then on what it found", async () => {
+      const safety = create();
+      const wrapper = await show(safety);
+      await unknownResult(safety);
+      const answer = held();
+      read.mockReturnValue(answer.promise);
+      focusOn(wrapper, "check-state");
+
+      await wrapper.get("[data-testid=check-state]").trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=safety-status]").element);
+      expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Odświeżamy…");
+      answer.release({ data: { id: "d1", version: 4, name: "Stara" } });
+      await flushPromises();
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=unknown-result]").element);
+    });
+
+    it("„Sprawdź stan”: on the message of a read that failed", async () => {
+      const safety = create();
+      const wrapper = await show(safety);
+      await unknownResult(safety);
+      read.mockRejectedValue(new TypeError("network down"));
+      focusOn(wrapper, "check-state");
+
+      await wrapper.get("[data-testid=check-state]").trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=read-failed]").element);
+    });
+
+    it("„Sprawdź stan”: on the status region after a match, which says so", async () => {
+      const safety = create();
+      const wrapper = await show(safety);
+      await unknownResult(safety);
+      read.mockResolvedValue({ data: { id: "d1", version: 5, name: "Pierwsza" } });
+      focusOn(wrapper, "check-state");
+
+      await wrapper.get("[data-testid=check-state]").trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=safety-status]").element);
+      expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
+    });
+
+    it("„Odblokuj formularz”: on the message that replaces it", async () => {
+      state.id = null;
+      const safety = create();
+      const wrapper = await show(safety);
+      void safety.write(() => new Promise(() => {}), { onSuccess: vi.fn(), onRefused: vi.fn() });
+      await vi.advanceTimersByTimeAsync(REQUEST_LIMIT_MS);
+      await flushPromises();
+      focusOn(wrapper, "unblock-form");
+
+      await wrapper.get("[data-testid=unblock-form]").trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=unknown-result]").element);
+    });
+
+    it("„Odrzuć moje zmiany…”: on the status region while it reads, and `restored` after the answer 200", async () => {
+      const safety = create();
+      const wrapper = await show(safety);
+      safety.offerRestore("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+      await flushPromises();
+      const answer = held();
+      read.mockReturnValue(answer.promise);
+      focusOn(wrapper, "restore-state");
+
+      await wrapper.get("[data-testid=restore-state]").trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=safety-status]").element);
+      expect(wrapper.emitted("restored")).toBeUndefined();
+      answer.release({ data: { id: "d1", version: 6, name: "Z serwera" } });
+      await flushPromises();
+      expect(wrapper.emitted("restored")).toHaveLength(1);
+    });
+
+    it("„Odrzuć moje zmiany…”: on the message of a read that failed, and `restored` only after the retry succeeds", async () => {
+      const safety = create();
+      const wrapper = await show(safety);
+      safety.offerRestore("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+      await flushPromises();
+      read.mockRejectedValueOnce(new TypeError("network down"));
+      focusOn(wrapper, "restore-state");
+      await wrapper.get("[data-testid=restore-state]").trigger("click");
+      await flushPromises();
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=read-failed]").element);
+      expect(wrapper.emitted("restored")).toBeUndefined();
+      read.mockResolvedValue({ data: { id: "d1", version: 6, name: "Z serwera" } });
+      focusOn(wrapper, "retry-read");
+
+      await wrapper.get("[data-testid=retry-read]").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.emitted("restored")).toHaveLength(1);
+      expect(wrapper.find("[data-testid=read-failed]").exists()).toBe(false);
+    });
+
+    it("„Spróbuj ponownie” after a failed „Sprawdź stan”: on the status region while it reads, then on what it found, without `restored`", async () => {
+      const safety = create();
+      const wrapper = await show(safety);
+      await unknownResult(safety);
+      read.mockRejectedValueOnce(new TypeError("network down"));
+      await safety.check();
+      await flushPromises();
+      const answer = held();
+      read.mockReturnValue(answer.promise);
+      focusOn(wrapper, "retry-read");
+
+      await wrapper.get("[data-testid=retry-read]").trigger("click");
+      await flushPromises();
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=safety-status]").element);
+      answer.release({ data: { id: "d1", version: 5, name: "Pierwsza" } });
+      await flushPromises();
+
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=safety-status]").element);
+      expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
+      expect(wrapper.emitted("restored")).toBeUndefined();
+    });
+
+    it("„Odrzuć moje zmiany…” whose answer comes after the form moved to another object: no `restored`", async () => {
+      const safety = create();
+      const wrapper = await show(safety);
+      safety.offerRestore("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+      await flushPromises();
+      const answer = held();
+      read.mockReturnValue(answer.promise);
+      await wrapper.get("[data-testid=restore-state]").trigger("click");
+      await flushPromises();
+
+      safety.reset();
+      answer.release({ data: { id: "d1", version: 6, name: "Spóźniona" } });
+      await flushPromises();
+
+      expect(wrapper.emitted("restored")).toBeUndefined();
+    });
+  });
+
   it("puts the button of the server state inside the alert of a version that differs, once", async () => {
     const safety = create();
     const wrapper = await show(safety);
