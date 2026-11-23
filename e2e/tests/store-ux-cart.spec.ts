@@ -817,15 +817,48 @@ async function failNextQuantityChange(page: Page): Promise<{ arm: () => void }> 
   return { arm: () => (armed = true) };
 }
 
-/** A click of a person: press, hold for 150 ms, release, at the centre the element has at the press. */
-async function clickWithHold(page: Page, target: Locator): Promise<void> {
+/** Presses the mouse at the centre the element has now; the test releases it. */
+async function pressOn(page: Page, target: Locator): Promise<void> {
   await target.scrollIntoViewIfNeeded();
   const box = await target.boundingBox();
   if (box === null) throw new Error("the control has no box");
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
+}
+
+/** A click of a person: press, hold for 150 ms, release, at the centre the element has at the press. */
+async function clickWithHold(page: Page, target: Locator): Promise<void> {
+  await pressOn(page, target);
   await page.waitForTimeout(150);
   await page.mouse.up();
+}
+
+/**
+ * Holds the answer to the first removal of the page in the browser: the server removes the line at once (`removed`
+ * settles then), the page gets the answer only after `deliver`, which settles when the page has read all of it.
+ */
+async function holdFirstRemovalAnswer(page: Page) {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let markRemoved: () => void = () => {};
+  const removed = new Promise<void>((resolve) => (markRemoved = resolve));
+  let url: string | null = null;
+  await page.route(ITEM_URL, async (route) => {
+    if (route.request().method() !== "DELETE" || url !== null) return route.fallback();
+    url = route.request().url();
+    const response = await route.fetch();
+    markRemoved();
+    await gate;
+    await route.fulfill({ response });
+  });
+  return {
+    removed,
+    deliver: async () => {
+      const finished = page.waitForEvent("requestfinished", (request) => request.method() === "DELETE" && request.url() === url);
+      release();
+      await finished;
+    },
+  };
 }
 
 const gestures = [
@@ -922,9 +955,18 @@ test.describe("an answer between the press and the release of a button does not 
     const [a, b, c] = await cartWithLines(page, 3);
     if (a === undefined || b === undefined || c === undefined) throw new Error("the cart needs three lines");
     const writes = countWrites(page);
+    // The answer to the removal of A comes while "Usuń" of B is pressed, every time: left to the network it may come
+    // before the press, and the page then rightly applies it, so the rows move up under the pointer.
+    const answer = await holdFirstRemovalAnswer(page);
 
     await removeOf(page, a).click();
-    await clickWithHold(page, removeOf(page, b));
+    await answer.removed;
+    await pressOn(page, removeOf(page, b));
+    await answer.deliver();
+    await page.waitForTimeout(150);
+    // Not applied while the button is pressed: A is still listed, so "Usuń" of B is still under the pointer.
+    await expect(rowOf(page, a)).toHaveCount(1);
+    await page.mouse.up();
 
     await expect(rowOf(page, a)).toHaveCount(0, { timeout: 30_000 });
     await expect(rowOf(page, b)).toHaveCount(0, { timeout: 30_000 });
