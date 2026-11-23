@@ -10,8 +10,9 @@
 #   --workflow           the workflow file (default ci.yml)
 #   --register-timeout   seconds to wait for the run to show up (default 300)
 #   --interval           seconds between two looks (default 10)
-# Prints one line `ci-wait: <conclusion> sha=<commit> run=<id> <url>` and a line `failed job: <name>` for every failed
-# job of a run that is not green.
+# Prints one line `ci-wait: <conclusion> sha=<commit> run=<id> <url>` and, for a run that is not green, a line
+# `failed job: <name> (<conclusion>)` for every job that ended red: failure, timed_out, startup_failure,
+# action_required, or cancelled (a job cancelled by fail-fast or by its own timeout is part of the picture).
 # Exit status: 0 the run succeeded, 1 it ended otherwise (failure, cancelled, ...), 2 wrong usage, 3 no run of this
 # commit showed up in time (GitHub lost the event, or the pull request conflicts with its base and gets no run until
 # the conflict is resolved; a merge commit on main cannot be pushed again: report it), 4 gh failed or its answer is
@@ -106,7 +107,7 @@ while :; do
     attempt=$((attempt + 1))
     gh run watch "$run" --exit-status --interval "$interval" > /dev/null 2>&1
     if ! state="$(gh run view "$run" --json status,conclusion,headSha,url,jobs -q \
-            '"\(.status) \(if (.conclusion // "") == "" then "-" else .conclusion end) \(.headSha) \(.url)", (.jobs[] | select(.conclusion == "failure") | .name)' 2>&1)"; then
+            '"\(.status) \(if (.conclusion // "") == "" then "-" else .conclusion end) \(.headSha) \(.url)", (.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "startup_failure" or .conclusion == "action_required" or .conclusion == "cancelled") | "\(.name) (\(.conclusion))")' 2>&1)"; then
         echo "ci-wait: gh run view failed: $state" >&2
         exit 4
     fi

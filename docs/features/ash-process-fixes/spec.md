@@ -194,7 +194,7 @@ i raport (bez osobnego rejestru):
 10. CI: testy skryptów (`.github/scripts/script-tests.sh`) i `make check` zielone na czole gałęzi.
 11. `ci-wait.sh` z podstawionym `gh`: przebieg zarejestrowany z opóźnieniem jest śledzony do końca; brak przebiegu
     w limicie daje kod 3; przebieg innego commita nie potwierdza podanego (kod 4); przebieg czerwony albo anulowany
-    daje kod 1 z nazwami nieudanych jobów; błąd `gh` kod 4; błędne użycie kod 2.
+    daje kod 1 z nazwami i wynikami nieudanych jobów (także `timed_out`); błąd `gh` kod 4; błędne użycie kod 2.
 12. `metrics.py epic` tuż po merge'u, gdy przebieg CI commita merge'u trwa albo nie istnieje, zapisuje
     `regressions.ci_red: null` z luką i otwartym oknem; kolejne uruchomienie po końcu przebiegu zapisuje wynik.
 13. `metrics.py ci-time`: kryterium 18 specyfikacji `docs/features/metrics/spec.md`.

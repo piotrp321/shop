@@ -94,7 +94,9 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   progi swojego rodzaju; lista w `exceeded`) albo `no_data` z `reason` (za mało przebiegów bazy, brak pełnego
   zielonego, nieponowionego przebiegu końcowego SHA, po merge'u brak zakończonego zielonego przebiegu na `main`, brak danych w pliku
   przebiegu, błąd `gh`). Przy przekroczeniu `reason` podaje, czego jeszcze brakuje. Przebieg ponowiony (`attempt` > 1) nie jest
-  porównywalny; przy zmienionej macierzy części E2E (`e2e_parts_changed`) części nie są porównywane z bazą. Rozrzut części E2E
+  porównywalny; przy zmienionej macierzy części E2E (`e2e_parts_changed`) część jest porównywana, a jej mediany i rozrzut
+  liczone, tylko z przebiegów o macierzy przebiegu po epiku (za mało takich: brak danych). Progi sprawdza się na
+  wartościach niezaokrąglonych. Rozrzut części E2E
   (`e2e_spread`) liczy się z median ostatnich przebiegów PR i od progu rekomenduje osobny PR wyrównania wag. Kody:
   `0`, `3` przy błędzie `gh` (raport „brak danych”, komunikat na stderr), `2` bez pliku przebiegu. Progi są startowe
   i leżą w `config.json` (`ci_time`).

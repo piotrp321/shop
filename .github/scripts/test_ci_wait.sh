@@ -93,10 +93,23 @@ if grep -q "run watch" "$CASE/calls"; then echo "FAIL nothing is watched without
 new_case red
 echo 333 > "$CASE/run-list.last"
 echo 1 > "$CASE/watch.rc"
-printf 'completed failure %s https://example.test/runs/333\ne2e shard 2\nchecks part apps\n' "$sha" > "$CASE/run-view.last"
+printf 'completed failure %s https://example.test/runs/333\ne2e shard 2 (failure)\nchecks part apps (failure)\n' "$sha" > "$CASE/run-view.last"
 run_script "$sha"
 expect "a red run" 1 "failure sha=$sha run=333"
-expect "a red run names its failed jobs" 1 "failed job: e2e shard 2"
+expect "a red run names its failed jobs" 1 "failed job: e2e shard 2 (failure)"
+
+new_case timed-out
+echo 334 > "$CASE/run-list.last"
+echo 1 > "$CASE/watch.rc"
+printf 'completed failure %s https://example.test/runs/334\ne2e shard 2 (timed_out)\nchecks part apps (failure)\nchecks (failure)\n' "$sha" > "$CASE/run-view.last"
+run_script "$sha"
+expect "a job that timed out is listed with its conclusion" 1 "failed job: e2e shard 2 (timed_out)"
+expect "a failed job is listed with its conclusion" 1 "failed job: checks part apps (failure)"
+if grep -q 'run view 334 .*timed_out' "$CASE/calls" && grep -q 'run view 334 .*startup_failure' "$CASE/calls" \
+        && grep -q 'run view 334 .*cancelled' "$CASE/calls"; then
+    echo "ok   the query asks for every conclusion that is not a success"; else
+    echo "FAIL the query asks for every conclusion that is not a success: $(grep 'run view' "$CASE/calls" | head -1)"
+    failures=$((failures + 1)); fi
 
 new_case cancelled
 echo 444 > "$CASE/run-list.last"

@@ -2308,12 +2308,14 @@ def _ci_median(entries, name, least=1):
 
 def _ci_compare(base, value, settings, kind):
     """(diff_s, diff_pct, exceeded) of a value against the baseline; all None without one of them. Exceeded only when
-    both the seconds and the percent of the thresholds of the kind (run, job) are reached."""
+    both the seconds and the percent of the thresholds of the kind (run, job) are reached. The decision is made on
+    the values as they are: the rounded ones are for the report only (19.96% shown as 20.0 is still below 20)."""
     if base is None or value is None or base <= 0:
         return None, None, None
-    diff = round(value - base, 1)
-    pct = round(100.0 * diff / base, 1)
-    return diff, pct, diff >= settings['%s_min_s' % kind] and pct >= settings['%s_min_pct' % kind]
+    diff = value - base
+    pct = 100.0 * diff / base
+    exceeded = diff >= settings['%s_min_s' % kind] and pct >= settings['%s_min_pct' % kind]
+    return round(diff, 1), round(pct, 1), exceeded
 
 
 def _ci_steps(base_runs, measured, name):
@@ -2444,28 +2446,38 @@ def ci_time_of(run, repo, config, run_file):
     def e2e_parts(entries):
         return {n for e in entries for n in e['measured']['jobs'] if n.startswith(settings['e2e_job_prefix'])}
 
-    # another matrix of e2e parts: a part of the same name is another set of spec files, so the parts are shown but
-    # not compared with the baseline. Every baseline run is looked at by itself: a baseline that holds both matrices
-    # is another matrix too.
-    result['e2e_parts_changed'] = bool(after) and any(e2e_parts([r]) != e2e_parts([after]) for r in base_runs)
+    # In another matrix of e2e parts a part of the same name is another set of spec files. An e2e part is therefore
+    # compared, and its medians and the spread are taken, only among the runs with the matrix of the run after the
+    # epic (the final commit, else the newest PR run); too few of them is no data. The other jobs and the whole run
+    # use every run.
+    matrix = e2e_parts([after]) if after else set()
+
+    def same_matrix(entries, name):
+        if not name.startswith(settings['e2e_job_prefix']):
+            return entries
+        return [e for e in entries if e2e_parts([e]) == matrix]
+
+    result['e2e_parts_changed'] = bool(after) and any(
+        e2e_parts([e]) != matrix for e in base_runs + recent + during + ([merged] if merged else []))
     for name in ['run'] + sorted(names):
         kind = 'run' if name == 'run' else 'job'
         # a job needs its own minimum of baseline runs: one that only a part of them has (a new job) has no baseline
-        row = {'name': name, 'kind': kind, 'steps': [],
-               'base_s': _ci_median(base_runs, name, least=settings['min_baseline_runs']) if enough else None}
-        comparable = not (result['e2e_parts_changed'] and name.startswith(settings['e2e_job_prefix']))
+        row = {'name': name, 'kind': kind, 'steps': [], 'base_s': _ci_median(
+            same_matrix(base_runs, name), name, least=settings['min_baseline_runs']) if enough else None}
         values = {'final': _ci_value(final['measured'], name) if final else None,
-                  'recent': _ci_median(recent, name, least=2),
-                  'during': _ci_median(during, name),
-                  'merge': _ci_value(merged['measured'], name) if merged else None}
+                  'recent': _ci_median(same_matrix(recent, name), name, least=2),
+                  'during': _ci_median(same_matrix(during, name), name),
+                  'merge': _ci_value(merged['measured'], name) if same_matrix([merged] if merged else [], name)
+                  else None}
         for source, value in values.items():
-            diff, pct, exceeded = _ci_compare(row['base_s'] if comparable else None, value, settings, kind)
+            diff, pct, exceeded = _ci_compare(row['base_s'], value, settings, kind)
             row.update({'%s_s' % source: value, '%s_diff_s' % source: diff, '%s_diff_pct' % source: pct,
                         '%s_exceeded' % source: exceeded})
             if exceeded and source in CI_TIME_SOURCES:
                 result['exceeded'].append({'name': name, 'source': source})
         if kind == 'job' and (row['final_exceeded'] or row['merge_exceeded']):
-            row['steps'] = _ci_steps(base_runs, (final if row['final_exceeded'] else merged)['measured'], name)
+            row['steps'] = _ci_steps(same_matrix(base_runs, name),
+                                     (final if row['final_exceeded'] else merged)['measured'], name)
         result['rows'].append(row)
     result['exceeded'].sort(key=lambda e: (CI_TIME_SOURCES.index(e['source']), e['name'] != 'run', e['name']))
     if after is not None:
@@ -2580,14 +2592,18 @@ def render_ci_time(epic, result):
                     '%s %s → %s' % (s['name'], _ci_minutes(s['base_s']), _ci_minutes(s['final_s']))
                     for s in row['steps'])))
     spread = result['e2e_spread']
+    if spread['seconds'] is None and result['rows']:
+        lines.append('Rozrzut części E2E: brak danych (mniej niż dwa ostatnie przebiegi PR o macierzy części końcowego '
+                     'SHA).')
     if spread['seconds'] is not None:
         lines.append('Rozrzut części E2E (mediany ostatnich przebiegów PR): %s między %s a %s%s.' % (
             _ci_minutes(spread['seconds']), spread['longest'], spread['shortest'],
             ' – ponad progiem: rekomendacja osobnego PR wyrównania wag (e2e/CLAUDE.md, „CI”)'
             if spread['exceeded'] else ''))
     if result['e2e_parts_changed']:
-        lines.append('Zmieniła się macierz części E2E: części E2E nie są porównywane z bazą (część o tej samej nazwie '
-                     'to inny zestaw plików); liczy się cały przebieg i rozrzut części.')
+        lines.append('Zmieniła się macierz części E2E (część o tej samej nazwie to inny zestaw plików): części są '
+                     'porównywane tylko z przebiegami o tej samej macierzy co końcowy SHA, a gdy jest ich za mało, '
+                     'mają „brak danych”. Cały przebieg i pozostałe joby liczą się ze wszystkich przebiegów.')
     changed = result['jobs_changed']
     if changed['only_baseline'] or changed['only_final']:
         lines.append('Zmiana zestawu jobów (możliwa zmiana workflowu): tylko w bazie: %s; tylko po epiku: %s.' % (

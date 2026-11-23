@@ -687,14 +687,17 @@ danych”. Ten sam wynik jest w rekordzie epiku natywnego (`ci.time`).
   to możliwy wpływ zewnętrzny, spoza epiku.
 - **Progi (startowe, do oceny po trzech kolejnych epikach):** pozycja przekracza próg, gdy różnica względem bazy
   osiąga oba warunki naraz: cały przebieg `run_min_s` (180 s) i `run_min_pct` (20%), job `job_min_s` (240 s)
-  i `job_min_pct` (30%). Wartości pochodzą z 203 pełnych zielonych przebiegów z 16–23.11.2026: przy niezmienionym
+  i `job_min_pct` (30%). Decyzja zapada na wartościach niezaokrąglonych; zaokrąglone są tylko liczby w raporcie. Wartości pochodzą z 203 pełnych zielonych przebiegów z 16–23.11.2026: przy niezmienionym
   kodzie mediany przebiegu różniły się do 2,4 min (18%), a mediany jednego joba do ok. 2 min (20%); znane realne
   wzrosty to +3,8 do +6,2 min (+31 do +50%) dla przebiegu i +5,8 do +9,4 min dla joba.
-- **Zmieniona macierz części E2E:** gdy zestaw części choć jednego przebiegu bazy jest inny niż po epiku, część
-  o tej samej nazwie to inny zestaw plików: części są pokazane, ale nie porównywane z bazą i nie przekraczają progu;
-  liczy się cały przebieg i rozrzut części. Zmiany samych wag (wyrównanie na `main` przy tej samej liczbie części)
+- **Zmieniona macierz części E2E:** w innej macierzy część o tej samej nazwie to inny zestaw plików. Część E2E jest
+  więc porównywana, a jej mediany i rozrzut liczone, tylko z przebiegów o tej samej macierzy co przebieg po epiku
+  (końcowy SHA, a bez niego najnowszy przebieg PR): dotyczy to bazy, ostatnich przebiegów PR, `main` w trakcie epiku
+  i przebiegu commita merge'u. Za mało takich przebiegów to brak danych dla części. Cały przebieg i pozostałe joby
+  liczą się ze wszystkich przebiegów. Zmiany samych wag (wyrównanie na `main` przy tej samej liczbie części)
   narzędzie nie wykrywa: to jedna z przyczyn, które sprawdza sesja.
-- **Rozrzut części E2E:** różnica median ostatnich przebiegów PR między najdłuższą a najkrótszą częścią; od
+- **Rozrzut części E2E:** różnica median ostatnich przebiegów PR (tej samej macierzy, od dwóch przebiegów; inaczej
+  brak danych) między najdłuższą a najkrótszą częścią; od
   `e2e_spread_s` (240 s) raport rekomenduje osobny PR wyrównania wag (`e2e/CLAUDE.md`, „CI”). Poniżej tego zysk
   z wyrównania mieści się w rozrzucie pojedynczych przebiegów.
 - **Raport** (Markdown do opisu PR albo `--json`): baza, wynik, różnica w minutach i procentach dla każdej pozycji,
@@ -1002,8 +1005,8 @@ użytkownika.
 18. `ci-time` z podstawionym `gh`: baza tylko z pełnych zielonych przebiegów `push` na `main` sprzed startu epiku;
     końcowy SHA osobno od mediany ostatnich przebiegów PR (regresja tylko na końcowym SHA jest przekroczeniem);
     przebieg commita merge'u liczony dopiero po zakończeniu; próg wymaga obu warunków (sam procent ani sam czas nie
-    wystarcza); `main` w trakcie epiku osobno; przebieg ponowiony nie jest porównywalny; części E2E innej macierzy
-    nie są porównywane; za mało przebiegów, brak przebiegu końcowego SHA, błąd `gh` (kod 3)
+    wystarcza, a decyzja nie zależy od zaokrąglenia); `main` w trakcie epiku osobno; przebieg ponowiony nie jest
+    porównywalny; części E2E są porównywane i mają rozrzut tylko z przebiegów tej samej macierzy; za mało przebiegów, brak przebiegu końcowego SHA, błąd `gh` (kod 3)
     i brak danych w pliku przebiegu dają „brak danych”, nigdy „bez przekroczenia”; brak pliku przebiegu to kod 2.
     Czerwone CI commita merge'u: przebieg w toku, brak przebiegu i sam przebieg anulowany dają `ci_red: null`
     i otwarte okno.

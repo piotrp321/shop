@@ -235,6 +235,16 @@ class ThresholdTest(CiTimeEnv):
         self.assertIn({'name': 'run', 'source': 'final'}, result['exceeded'])
         self.assertIn({'name': 'e2e shard 1', 'source': 'final'}, result['exceeded'])
 
+    def test_the_decision_is_made_on_the_percent_before_it_is_rounded(self):
+        settings = metrics.load_config(os.path.join(HERE, 'config.json'))['ci_time']
+        # +180 s is 19.96% of 902 s and +240 s is 29.96% of 801 s: shown as 20.0 and 30.0, but below the thresholds
+        self.assertEqual(metrics._ci_compare(902, 1082, settings, 'run'), (180, 20.0, False))
+        self.assertEqual(metrics._ci_compare(801, 1041, settings, 'job'), (240, 30.0, False))
+        self.assertEqual(metrics._ci_compare(900, 1080, settings, 'run'), (180, 20.0, True))
+        self.assertEqual(metrics._ci_compare(800, 1040, settings, 'job'), (240, 30.0, True))
+        # the seconds too: a difference a hair under the threshold is not rounded up to it
+        self.assertEqual(metrics._ci_compare(600, 779.96, settings, 'run'), (180.0, 30.0, False))
+
     def test_the_thresholds_are_in_the_result_and_marked_as_starting_values_in_the_text(self):
         self.baseline()
         self.final()
@@ -432,12 +442,12 @@ class JobsTest(CiTimeEnv):
         result = self.result()
         self.assertTrue(result['e2e_parts_changed'])
         row = self.row(result, 'e2e shard 1')
-        self.assertEqual((row['base_s'], row['final_s']), (10 * 60, 16 * 60))            # both still shown
+        self.assertEqual((row['base_s'], row['final_s']), (None, 16 * 60))      # no baseline run of this matrix
         self.assertEqual((row['final_diff_s'], row['final_exceeded']), (None, None))
         self.assertEqual(self.row(result, 'checks part apps')['final_diff_s'], 30)      # other jobs are compared
         self.assertNotIn({'name': 'e2e shard 1', 'source': 'final'}, result['exceeded'])
         self.assertIn({'name': 'run', 'source': 'final'}, result['exceeded'])           # the run itself: 11 -> 17
-        self.assertIn('części E2E nie są porównywane', self.cli()[1])
+        self.assertIn('tylko z przebiegami o tej samej macierzy', self.cli()[1])
 
     def test_a_baseline_of_both_matrices_is_another_matrix_too(self):
         # the matrix changed inside the baseline: three runs with three parts, then two with four, four after the epic
@@ -449,6 +459,55 @@ class JobsTest(CiTimeEnv):
         self.assertTrue(result['e2e_parts_changed'])
         self.assertEqual(self.row(result, 'e2e shard 1')['final_exceeded'], None)
         self.assertNotIn({'name': 'e2e shard 1', 'source': 'final'}, result['exceeded'])
+
+    def test_the_baseline_runs_of_the_same_matrix_are_the_baseline_of_the_e2e_parts(self):
+        # two old runs with three slow parts, then three with the four parts of today: those three are enough
+        three = {k: (30 if k.startswith('e2e') else v) for k, v in JOBS.items() if k != 'e2e shard 4'}
+        for i in range(5):
+            self.add(self.main, START - 100 + i * 10, three if i < 2 else JOBS)
+        self.final(e2e_shard_1=16)
+        result = self.result()
+        self.assertTrue(result['e2e_parts_changed'])
+        row = self.row(result, 'e2e shard 1')
+        self.assertEqual((row['base_s'], row['final_diff_s'], row['final_exceeded']), (10 * 60, 360, True))
+        self.assertEqual(self.row(result, 'e2e shard 4')['base_s'], 10 * 60)
+        self.assertEqual(self.row(result, 'checks part k8s')['base_s'], 9 * 60)         # from all five runs
+
+    def test_the_last_runs_of_another_matrix_do_not_hide_an_uneven_split(self):
+        # the matrix changed inside the PR: two even runs with three parts, then the final run with four uneven ones
+        self.baseline()
+        three = {k: v for k, v in JOBS.items() if k != 'e2e shard 4'}
+        self.add(self.branch, START + 100, three, sha='e' * 40, event='pull_request')
+        self.add(self.branch, START + 150, three, sha='e' * 40, event='pull_request')
+        self.final(e2e_shard_1=18)
+        result = self.result()
+        self.assertTrue(result['e2e_parts_changed'])
+        # one run of the matrix of the final commit: no median and no spread, never the even split of the old matrix
+        self.assertIsNone(self.row(result, 'e2e shard 1')['recent_s'])
+        self.assertEqual(result['e2e_spread'], {'seconds': None, 'exceeded': None, 'longest': None, 'shortest': None})
+        self.assertEqual(self.row(result, 'checks part apps')['recent_s'], 6 * 60)      # other jobs: all three runs
+        self.assertIn('Rozrzut części E2E: brak danych', self.cli()[1])
+
+    def test_the_spread_comes_from_the_last_runs_of_the_matrix_of_the_final_commit(self):
+        self.baseline()
+        three = {k: v for k, v in JOBS.items() if k != 'e2e shard 4'}
+        self.add(self.branch, START + 100, three, sha='e' * 40, event='pull_request')
+        self.earlier(START + 150, e2e_shard_1=18)
+        self.final(e2e_shard_1=18)
+        result = self.result()
+        self.assertEqual(self.row(result, 'e2e shard 1')['recent_s'], 18 * 60)
+        self.assertEqual((result['e2e_spread']['seconds'], result['e2e_spread']['exceeded']), (480, True))
+
+    def test_a_merge_run_of_another_matrix_is_not_compared_part_by_part(self):
+        self.baseline()
+        self.final()
+        three = {k: (20 if k.startswith('e2e') else v) for k, v in JOBS.items() if k != 'e2e shard 4'}
+        self.pr.update(state='MERGED', mergedAt=at(START + 260), mergeCommit={'oid': MERGE})
+        self.add(self.merge_runs, START + 260, three, sha=MERGE)
+        result = self.result()
+        row = self.row(result, 'e2e shard 1')
+        self.assertEqual((row['merge_s'], row['merge_exceeded']), (None, None))
+        self.assertEqual(self.row(result, 'run')['merge_s'], 21 * 60)                   # the run itself is measured
 
     def test_the_same_e2e_parts_are_compared(self):
         self.baseline()
