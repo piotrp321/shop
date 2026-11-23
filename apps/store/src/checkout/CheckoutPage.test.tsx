@@ -1285,8 +1285,97 @@ describe("CheckoutPage after a 409 of a changed cart or total (#852)", () => {
       expect(placeOrder).toHaveBeenCalledTimes(1);
       expect(items()).toEqual([QUANTITY, `Do zapłaty: było ${price(39998)}, jest ${price(59997)}`]);
     });
+
+    // The delivery method is not locked while a code is checked: the list and the announcement are of the method the
+    // customer has chosen when the answer comes, the one the summary and the next order have.
+    const withMethods = (view: CartView, standard: number, express: number): CartView => ({
+      ...view,
+      delivery: delivery([option(STANDARD, "Kurier standardowy", standard, view.totals.gross + standard), option(EXPRESS, "Kurier ekspresowy", express, view.totals.gross + express)]),
+    });
+
+    /** Out of date with the standard method chosen, then a code applied with its read held; answers the release. */
+    async function holdCodeOutOfDate(): Promise<(answer: Read) => Promise<void>> {
+      await renderCheckout(withMethods(cart(), 0, 1999));
+      fillGuestForm();
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+      await submit(conflict("cart_changed"));
+      expect(alert().textContent).toBe(READ_FAILED);
+      const release = holdRead();
+      fireEvent.change(codeField(), { target: { value: "witaj10" } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+      });
+      return release;
+    }
+
+    it("tells the total to pay of the method chosen while the code was checked", async () => {
+      const release = await holdCodeOutOfDate();
+      fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+      await release({ status: "ok", data: withMethods(three(), 0, 1999) });
+
+      expect(deliveryRadio("Kurier ekspresowy").checked).toBe(true);
+      expect(screen.getByTestId("checkout-total").textContent).toBe(price(61996));
+      expect(items()).toEqual([QUANTITY, `Do zapłaty: było ${price(41997)}, jest ${price(61996)}`]);
+    });
+
+    it("does not tell a method as gone when the customer chose another one while the code was checked", async () => {
+      const release = await holdCodeOutOfDate();
+      fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+      const onlyExpress: CartView = { ...three(), delivery: delivery([option(EXPRESS, "Kurier ekspresowy", 1999, 61996)]) };
+      await release({ status: "ok", data: onlyExpress });
+
+      expect(deliveryRadio("Kurier ekspresowy").checked).toBe(true);
+      expect(items()).toEqual([QUANTITY, `Do zapłaty: było ${price(41997)}, jest ${price(61996)}`]);
+    });
+
+    it("tells the changes when a code is applied after the failed read and before the next render", async () => {
+      // The read after the refusal fails; in the same turn, before React renders that answer, the customer applies a
+      // code: its read of the summary is a read of a summary out of date too.
+      await renderCheckout();
+      fillGuestForm();
+      fireEvent.change(codeField(), { target: { value: "LATO15" } });
+      let answerRead: (answer: Read) => void = () => {};
+      vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (answerRead = resolve)));
+      await submit(conflict("cart_changed"));
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: three() });
+      await act(async () => {
+        answerRead({ status: "failed" });
+        for (let tick = 0; tick < 20; tick++) await Promise.resolve();
+        fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+      });
+      await act(async () => {});
+
+      expect(vi.mocked(loadCart).mock.calls.at(-1)).toEqual(["LATO15"]);
+      expect(screen.getAllByTestId("checkout-line-quantity").map((node) => node.textContent)).toEqual(["3 szt."]);
+      expect(alert().textContent).not.toContain(READ_FAILED);
+      expect(items()).toEqual([QUANTITY, `Do zapłaty: było ${price(39998)}, jest ${price(59997)}`]);
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("announces the delivery of the method chosen while a code was checked, not of the one chosen before", async () => {
+    // Standard is free and express paid; with the code the goods are below the threshold: standard is paid, express free.
+    await renderCheckout(withDeliveries(0, 1999, 39998));
+    const release = holdRead();
+    fireEvent.change(codeField(), { target: { value: "witaj10" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+    });
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+    await release({ status: "ok", data: withDeliveries(1999, 0, 35998) });
+
+    expect(deliveryRadio("Kurier ekspresowy").checked).toBe(true);
+    expect(screen.getByTestId("checkout-summary-status").textContent).toBe("Dostawa „Kurier ekspresowy” jest teraz darmowa.");
   });
 });
+
+/** A cart of the goods `gross` with the standard and the express method at the given costs; the totals are the API's. */
+function withDeliveries(standard: number, express: number, gross: number): CartView {
+  return {
+    ...cart(gross),
+    delivery: delivery([option(STANDARD, "Kurier standardowy", standard, gross + standard), option(EXPRESS, "Kurier ekspresowy", express, gross + express)]),
+  };
+}
 
 describe("CheckoutPage while the order is being placed", () => {
   const PLACING = "Składamy zamówienie…";
