@@ -173,6 +173,9 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
    (sekcja „Pomiar i decyzje optymalizacyjne”) i dla epiku natywnego `handoff` i `materials` (sekcja „Źródła”).
    Najpierw sprawdza wersję procesu (sekcja „Wersja procesu”); odmowę kontroli sesja pokazuje użytkownikowi, nie
    odracza retro.
+   Dla epiku natywnego raport ma sekcję „Zewnętrzne review”: potwierdzone znaleziska review Codexa z „Problemów
+   i zastojów” końcowego PR w dwóch grupach z liczbami, „nowe” i „powtarza odroczoną uwagę” (z podstawą odroczenia:
+   sprawdzone albo założenie niesprawdzone). Tylko druga grupa jest incydentem problemu odroczenia bez sprawdzenia.
 3. **Agent `retro-analyst`** (`.claude/agents/retro-analyst.md`, model Opus, narzędzia Read, Grep, Glob, Bash tylko
    do odczytu, Write tylko w katalogu przebiegu) dostaje ścieżki `input.json` i worktree i zwraca `proposals.json`.
    Zasady agenta:

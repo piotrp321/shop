@@ -104,7 +104,12 @@ i raport (bez osobnego rejestru):
 - **O2.** Przed odroczeniem sesja zapisuje przy uwadze w „Odroczonych uwagach” krótką ocenę: rzeczywisty skutek,
   naruszona gwarancja, odwracalność.
 - **O3.** Istotne podejrzenie oparte na niesprawdzonym założeniu („nie odtwarzałem”, założenie o działaniu
-  zależności) sesja sprawdza w kodzie albo eksperymentem, zanim je odroczy.
+  zależności, własne założenie sesji o skutku) sesja sprawdza w kodzie albo eksperymentem, zanim je odroczy.
+- **O6.** Ocena kończy się podstawą: „sprawdzone: <próba albo miejsce w kodzie i wynik>” albo „założenie
+  niesprawdzone: <jakie>”. Ocena z niesprawdzonym założeniem nie stwierdza braku skutku.
+- **O7.** Uwagę z niesprawdzonym założeniem sesja przekazuje do przeglądu epiku jako scenariusz do wykonania (wejście
+  albo przeplot i co zaobserwować), bez własnej oceny i bez oczekiwanego wyniku. `qa-adversarial` podaje wynik
+  każdego scenariusza z dowodem; wynik zastępuje podstawę w opisie PR.
 - **O4.** Wąskie okno wyścigu nie obniża wagi. Równoległe żądania, równoległe sesje i edycja formularza w trakcie
   zapisu to zwykłe użycie.
 - **O5.** Styl, drobne sugestie i przypadki bez istotnego skutku nadal odracza się bez pytania; zasada nie jest
@@ -131,17 +136,32 @@ i raport (bez osobnego rejestru):
 
 ## C: zewnętrzne review
 
-- **C1.** Przez trzy kolejne epiki końcowy PR przechodzi niezależne review Codexa: po przeglądzie epiku, przed
-  oznaczeniem PR jako gotowego. Review obejmuje całą zmianę i osobno podważa „Odroczone uwagi”.
+- **C1.** Końcowy PR każdego epiku przechodzi niezależne review Codexa: po przeglądzie epiku, przed oznaczeniem PR
+  jako gotowego. Review obejmuje całą zmianę i osobno podważa „Odroczone uwagi”.
 - **C2.** Sesja nie uruchamia Codexa: przekazuje właścicielowi gotowe zlecenie i stan PR, a po poprawkach i zielonym
   wymaganym CI oznacza PR jako gotowy.
-- **C3.** Po trzech epikach ocena obejmuje wszystkie potwierdzone znaleziska (także powtarzające odroczoną uwagę),
-  czas, koszt i udział właściciela, z uwzględnieniem różnic zakresu i ryzyka. Bez automatycznego ograniczenia review.
+- **C3.** Każde potwierdzone znalezisko jest w opisie PR oznaczone jako „nowe” albo „powtarza odroczoną uwagę”
+  (z podstawą odroczenia). `/retro` podaje obie grupy osobno w sekcji „Zewnętrzne review” raportu: pierwsza mierzy,
+  co wykrywa tylko zewnętrzne review, druga, ile kosztuje odroczenie bez sprawdzenia. Trzy epiki od 2026-11-21 dały
+  cztery potwierdzone znaleziska, w tym dwa powtarzające odroczoną uwagę, więc review zostaje bez ograniczenia.
 
 ## T: czas i pomiar
 
-- **T1.** Po pushu, na którego wynik czeka, sesja śledzi wymagane checki poleceniem w tle, które kończy się razem
-  z nimi, i w tym czasie robi pracę niezależną od wyniku.
+- **T1.** Po pushu, na którego wynik czeka, sesja śledzi w tle przebieg CI wypchniętego commita
+  (`.github/scripts/ci-wait.sh <sha>`) i w tym czasie robi pracę niezależną od wyniku. Polecenie czeka na
+  zarejestrowanie przebiegu dokładnie tego SHA (kod 3, gdy się nie pojawi), kończy się razem z nim i podaje wynik
+  z SHA i numerem przebiegu; wynik starszego commita nie potwierdza bieżącego czoła.
+- **T4.** Po merge'u sesja czeka na koniec przebiegu CI commita merge'u na `main` i dopiero wtedy zapisuje rekord
+  i przekazanie do retro. Przebieg w toku albo jego brak to w rekordzie wynik nieznany (`regressions.ci_red: null`,
+  otwarte okno), nie zero.
+- **T5.** Na końcu epiku `metrics.py ci-time <epik>` porównuje czas CI ze stanem sprzed epiku
+  (`docs/features/metrics/spec.md`, „Czas CI po epiku”): baza z przebiegów `main` sprzed startu, końcowy SHA osobno,
+  pomiar na commicie merge'u po merge'u, `main` w trakcie epiku jako możliwy wpływ zewnętrzny. Progi są startowe i do
+  oceny po trzech kolejnych epikach. Przekroczenie sesja wyjaśnia z dowodem i kończy rekomendacją; kontrola nie
+  blokuje PR, nie uruchamia CI dla pomiaru i brak danych podaje jako brak danych.
+- **T6.** Wag części E2E (`E2E_SHARD_WEIGHTS`) epik nie zmienia: dodane testy biegną bez zmiany wag, a wyrównanie to
+  osobny PR do `main` z czasów testów (`e2e/CLAUDE.md`, „CI”). Jedną dodatnią wagę na część macierzy sprawdza test
+  skilla `integration`; powód do wyrównania podaje rozrzut części E2E z T5.
 - **T2.** `qa-adversarial` i `ux-reviewer` nie pracują naraz na jednym stosie; `AGENT_DIR` leży w katalogu
   udostępnionym Dockerowi; przed falą sesja gasi stosy zakończonych zadań. Reviewer, który zmienia commit
   w worktree z istniejącym cache testów API, czyści ten cache przed testami (#645 zostaje do naprawy w `Makefile`).
@@ -172,6 +192,14 @@ i raport (bez osobnego rejestru):
 9. ADR „Przebieg epiku” zawiera kroki W, E, P, O, C i T; `CLAUDE.md`, pliki agentów, `/brainstorm` i `/planner` nie
    zawierają zdań sprzecznych z O i D (sprawdzenie wyszukiwaniem).
 10. CI: testy skryptów (`.github/scripts/script-tests.sh`) i `make check` zielone na czole gałęzi.
+11. `ci-wait.sh` z podstawionym `gh`: przebieg zarejestrowany z opóźnieniem jest śledzony do końca; brak przebiegu
+    w limicie daje kod 3; przebieg innego commita nie potwierdza podanego (kod 4); przebieg czerwony albo anulowany
+    daje kod 1 z nazwami nieudanych jobów; błąd `gh` kod 4; błędne użycie kod 2.
+12. `metrics.py epic` tuż po merge'u, gdy przebieg CI commita merge'u trwa albo nie istnieje, zapisuje
+    `regressions.ci_red: null` z luką i otwartym oknem; kolejne uruchomienie po końcu przebiegu zapisuje wynik.
+13. `metrics.py ci-time`: kryterium 18 specyfikacji `docs/features/metrics/spec.md`.
+14. Test skilla `integration` przechodzi po zmianie wag w kopii `ci.yml` i nie przechodzi, gdy liczba wag różni się
+    od liczby części macierzy `e2e-shard`; `e2e/CLAUDE.md` nie każe zmieniać wag w epiku.
 
 ## Ograniczenia
 

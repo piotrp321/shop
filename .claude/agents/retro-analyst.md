@@ -103,7 +103,10 @@ którego nie przeczytałeś, nie wpisujesz do `duplicate_check`. Bez zmian w wor
    Epik natywny nie ma `repair`, `manual_fix` ani `no_sweep`; brak sekcji opisu PR albo pola rekordu to fakt
    (`<epik>/missing/...`), nie dowód braku problemu. Przyczyny szukasz w „Przebiegu epiku”
    (`docs/adr/agentic-software-house.md`) i instrukcjach agentów. Przy serii w toku sesja odracza pozycje `fix`; nie
-   zmieniasz przez to oceny ani progu.
+   zmieniasz przez to oceny ani progu. Potwierdzone znaleziska zewnętrznego review (punkty „Problemów i zastojów”
+   o review Codexa) rozdziel na „nowe” i „powtarza odroczoną uwagę”: obie liczby podaj w tytule obserwacji o kluczu
+   `external-review`. Tylko znalezisko, które powtarza odroczoną uwagę, jest incydentem problemu odroczenia bez
+   sprawdzenia („Ocena przed odroczeniem”, krok 4 ADR); nowe znalezisko nim nie jest.
 
 ## Reguły walidacji (`retro.py validate`)
 

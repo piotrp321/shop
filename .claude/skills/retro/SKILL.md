@@ -61,8 +61,10 @@ Powiadomienie push to `PushNotification` (do 200 znaków). Limit i procesy spraw
   sesji; sesja prowadząca epik go nie uruchamia, tylko zostawia w końcowym PR komentarz „Przekazanie do retro”
   (ADR, krok 7, „Po merge'u”). Gdy skill wywołano w sesji, która prowadziła ten epik (jej identyfikator jest
   w pliku przebiegu), powiedz to użytkownikowi i poproś o nową sesję zamiast zaczynać. `pending` wymienia taki
-  epik po merge'u jego końcowego PR. Retro trzeciego epiku natywnego zmergowanego po 2026-11-21 przypomina
-  w raporcie o ocenie zewnętrznego review (`docs/features/ash-process-fixes/spec.md`, C3).
+  epik po merge'u jego końcowego PR. Raport retro epiku natywnego ma sekcję `## Zewnętrzne review`: potwierdzone
+  znaleziska z „Problemów i zastojów” końcowego PR w dwóch grupach, „nowe” i „powtarza odroczoną uwagę” (z podstawą
+  odroczenia: sprawdzone albo założenie niesprawdzone), z liczbą każdej grupy; bez znalezisk „brak”, a gdy opis PR
+  nie podaje grupy, „nieokreślone” (`docs/features/ash-process-fixes/spec.md`, C3).
 - **Nierozstrzygnięte decyzje** (krok 7) to `decisions_open` (propozycje issues) i pozycje PR retro bez `outcome` w
   `$RETRO_HOME/*/state.json`. Pokaż je tylko do odczytu (opcjonalny drugi argument to epik pomijany, bo jego pozycje są
   w propozycjach bieżącego przebiegu, krok 6):
@@ -292,8 +294,9 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    obserwacje, propozycje issues z numerami (repo, tytuł, `existing_issue` albo nowe, dowody), `overflow`, zmiany
    „Statusu”, PR, ostrzeżenie `warning` z `lock` (jeśli było), wersja procesu z faktu `<epik>/process/check` albo
    `<epik>/process/missing/check` (przy akceptacji różnica i powód), przy serii w toku sekcja `## Odroczone do końca serii`
-   (krok 5), nierozstrzygnięte decyzje poprzednich przebiegów (niżej), sekcja `## Zużycie` (krok 8) i
-   na samym końcu sekcja `## Decyzje optymalizacyjne` (niżej).
+   (krok 5), dla epiku natywnego sekcja `## Zewnętrzne review` (wyżej, „Epik natywny”), nierozstrzygnięte decyzje
+   poprzednich przebiegów (niżej), sekcja `## Zużycie` (krok 8) i na samym końcu sekcja `## Decyzje optymalizacyjne`
+   (niżej).
    Numery to
    `n` z `proposals.json` (wspólna numeracja pozycji `fix`,
    `issue` i `status`, bez przenumerowania); `issues --approve` i decyzje używają tych `n`. Nierozstrzygnięte decyzje
