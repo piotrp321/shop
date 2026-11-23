@@ -665,7 +665,7 @@ describe("PromotionFormView", () => {
         expect(document.activeElement).toBe(heading("h2", "Status"));
       });
 
-      it("#304: puts the focus on the H1 when „Odśwież” fails as well, as the form and its button give way to the message", async () => {
+      it("#304: keeps the form and puts the focus on the message to try again when „Odśwież” fails as well, as its button gives way to it (B3)", async () => {
         const wrapper = await endAndWait();
         mocks.get.mockResolvedValue({ data: undefined, error: {}, response: { status: 500 } });
         await vi.advanceTimersByTimeAsync(2000);
@@ -676,10 +676,14 @@ describe("PromotionFormView", () => {
         await refresh.trigger("click");
         await settle();
 
-        expect(wrapper.get("[data-testid=load-error]").text()).toContain("Nie udało się pobrać promocji (HTTP 500).");
+        expect(wrapper.find("[data-testid=load-error]").exists()).toBe(false);
+        expect(wrapper.find("[data-testid=promotion-fields]").exists()).toBe(true);
+        const alert = wrapper.get("[data-testid=read-failed]");
+        expect(alert.text()).toContain("Nie udało się odczytać stanu. Spróbuj ponownie.");
+        expect(alert.attributes("role")).toBe("alert");
         expect(wrapper.find("[data-testid=end-error]").exists()).toBe(false);
         expect(document.activeElement).not.toBe(document.body);
-        expect(document.activeElement).toBe(heading("h1"));
+        expect(document.activeElement).toBe(alert.element);
       });
 
       it("#304: makes no request after the form is left", async () => {
@@ -763,7 +767,7 @@ describe("PromotionFormView", () => {
       expect(document.activeElement).toBe(wrapper.get("[data-testid=percent-input]").element);
     });
 
-    it("unlocks the fields with the values that were sent after a save that does not reach the API", async () => {
+    it("unlocks the fields with the values that were sent after a save that does not reach the API, and says the result is unknown", async () => {
       const { wrapper, reject } = await saveHeld();
 
       reject(new TypeError("network down"));
@@ -774,7 +778,11 @@ describe("PromotionFormView", () => {
       expect(off(wrapper, "add-variant")).toBe(false);
       expect(input(wrapper, "name-input").value).toBe("Wysłana nazwa");
       expect(input(wrapper, "percent-input").value).toBe("35");
-      expect(wrapper.get("[data-testid=form-error]").text()).toContain("połączenie");
+      expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+      const alert = wrapper.get("[data-testid=unknown-result]");
+      expect(alert.text()).toContain("Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.");
+      expect(alert.attributes("role")).toBe("alert");
+      expect(document.activeElement).toBe(alert.element);
     });
 
     it("ignores the answer of a save that comes after another promotion was opened: no change, no toast, no move and no wait", async () => {
@@ -948,7 +956,7 @@ describe("PromotionFormView", () => {
       expect(badge()).toBe("Aktywna");
     });
 
-    it("gives the message of the load and the focus on the H1 when „Odśwież” fails as well", async () => {
+    it("keeps the form and gives the focus to the message to try again when „Odśwież” fails as well", async () => {
       const wrapper = await saveNow();
       serveRead(async () => {
         throw new TypeError("network down");
@@ -963,9 +971,52 @@ describe("PromotionFormView", () => {
       refresh!.click();
       await settle();
 
-      expect(wrapper.get("[data-testid=load-error]").text()).toContain("Nie udało się pobrać promocji (HTTP 500).");
-      expect(wrapper.find("[data-testid=back-to-list]").exists()).toBe(true);
-      expect(document.activeElement).toBe(heading("h1"));
+      expect(wrapper.find("[data-testid=load-error]").exists()).toBe(false);
+      expect(wrapper.get("[data-testid=read-failed]").text()).toContain("Nie udało się odczytać stanu. Spróbuj ponownie.");
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=read-failed]").element);
+    });
+
+    it("B3: says „Odświeżamy…” in a status region and locks the fields while „Odśwież” reads, and 10 s without an answer unlocks them with a message to try again", async () => {
+      const wrapper = await saveNow();
+      serveRead(async () => {
+        throw new TypeError("network down");
+      });
+      await vi.advanceTimersByTimeAsync(2000);
+      await settle();
+      let release!: (value: unknown) => void;
+      serveRead(() => new Promise((resolve) => (release = resolve)));
+      const refresh = [...card("Status").querySelectorAll<HTMLButtonElement>("[role=alert] button")].find((button) => button.textContent?.trim() === "Odśwież");
+
+      refresh!.click();
+      await settle();
+
+      const region = wrapper.get("[data-testid=safety-status]");
+      expect(region.attributes("role")).toBe("status");
+      expect(region.text()).toBe("Odświeżamy…");
+      expect(off(wrapper, "name-input")).toBe(true);
+      await wrapper.get("[data-testid=name-input]").setValue("Wpisana w trakcie");
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+
+      expect(region.text()).toBe("");
+      expect(off(wrapper, "name-input")).toBe(false);
+      const alert = wrapper.get("[data-testid=read-failed]");
+      expect(alert.attributes("role")).toBe("alert");
+      expect(alert.text()).toContain("Nie udało się odczytać stanu. Spróbuj ponownie.");
+      expect(alert.get("[data-testid=retry-read]").text()).toBe("Spróbuj ponownie");
+      await wrapper.get("[data-testid=name-input]").setValue("Zmieniona po limicie");
+      release({ data: promotion({ name: "Spóźniona", status: "active", version: 9 }), response: { status: 200 } });
+      await settle();
+      expect(input(wrapper, "name-input").value).toBe("Zmieniona po limicie");
+      expect(badge()).toBe("Zaplanowana");
+
+      readAs({ name: "Z serwera", status: "active", version: 10 });
+      await alert.get("[data-testid=retry-read]").trigger("click");
+      await settle();
+
+      expect(wrapper.find("[data-testid=read-failed]").exists()).toBe(false);
+      expect(input(wrapper, "name-input").value).toBe("Z serwera");
+      expect(badge()).toBe("Aktywna");
     });
 
     it("gives up 10 s after the answer of the save when a read has no answer, and the late active answer changes nothing", async () => {
@@ -1551,28 +1602,51 @@ describe("PromotionFormView", () => {
       expect(input(wrapper, "name-input").value).toBe("Inna");
     });
 
-    it("reloads the promotion when the version changed", async () => {
+    it("keeps what was typed and does not read the promotion when the version changed, and offers the server state", async () => {
       const wrapper = await open();
       await wrapper.get("[data-testid=name-input]").setValue("Inna");
       mocks.put.mockResolvedValue(conflict("about:blank", "Ktoś zmienił."));
       serve(promotion({ name: "Zmieniona przez kogoś", version: 9 }));
+      mocks.get.mockClear();
 
       await click(wrapper, "save");
+      await vi.advanceTimersByTimeAsync(30_000);
 
       expect(wrapper.get("[data-testid=form-error]").text()).toContain("Promocja została w międzyczasie zmieniona");
-      expect(input(wrapper, "name-input").value).toBe("Zmieniona przez kogoś");
+      expect(input(wrapper, "name-input").value).toBe("Inna");
+      expect(mocks.get).not.toHaveBeenCalled();
+      expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Odrzuć moje zmiany i pokaż stan z serwera");
     });
 
-    it("shows the detail of another 409 and reloads", async () => {
+    it("shows the state of the server only after „Odrzuć moje zmiany i pokaż stan z serwera”, with the focus on the H1", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=name-input]").setValue("Inna");
+      mocks.put.mockResolvedValue(conflict("about:blank", "Ktoś zmienił."));
+      await click(wrapper, "save");
+      serve(promotion({ name: "Zmieniona przez kogoś", version: 9 }));
+      (wrapper.get("[data-testid=restore-state]").element as HTMLElement).focus();
+
+      await click(wrapper, "restore-state");
+
+      expect(input(wrapper, "name-input").value).toBe("Zmieniona przez kogoś");
+      expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=restore-state]").exists()).toBe(false);
+      expect(document.activeElement).toBe(heading("h1"));
+    });
+
+    it("shows the detail of another 409 and does not read the promotion", async () => {
       const wrapper = await open();
       await wrapper.get("[data-testid=name-input]").setValue("Inna");
       mocks.put.mockResolvedValue(conflict("promotion-not-editable", "Rozpoczętej promocji nie można zmienić."));
       serve(promotion({ status: "active" }));
+      mocks.get.mockClear();
 
       await click(wrapper, "save");
 
       expect(wrapper.get("[data-testid=form-error]").text()).toContain("Rozpoczętej promocji nie można zmienić.");
-      expect(text(card("Status").querySelector("[data-testid=promotion-status]"))).toBe("Aktywna");
+      expect(text(card("Status").querySelector("[data-testid=promotion-status]"))).toBe("Zaplanowana");
+      expect(input(wrapper, "name-input").value).toBe("Inna");
+      expect(mocks.get).not.toHaveBeenCalled();
     });
   });
 
@@ -1636,5 +1710,176 @@ describe("PromotionFormView", () => {
         expect(variantRows(wrapper)[0]!.get("[data-testid=variant-promotional]").text()).toMatch(/80,00/);
       },
     );
+  });
+
+  describe("the unknown result of a save (stage 2, B4)", () => {
+    const UNKNOWN = "Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.";
+    const alert = (wrapper: Wrapper) => wrapper.get("[data-testid=unknown-result]");
+
+    /** A planned promotion with a changed name and a save whose answer waits for the test; `calls[n]` answers the n-th. */
+    async function saveHeld(path = "/promotions/promo-1") {
+      const wrapper = await open(path);
+      if (path.endsWith("/new")) {
+        await wrapper.get("[data-testid=name-input]").setValue("Nowa");
+        await wrapper.get("[data-testid=percent-input]").setValue("10");
+        await wrapper.get("[data-testid=starts-input]").setValue("2026-11-20T00:00");
+        await wrapper.get("[data-testid=ends-input]").setValue("2026-11-30T00:00");
+        await click(wrapper, "open-picker");
+        await pickerRows(wrapper)[0]!.get("[data-testid=add-variant]").trigger("click");
+        await settle();
+      } else {
+        await wrapper.get("[data-testid=name-input]").setValue("Pierwsza");
+      }
+      const calls: { resolve: (value: unknown) => void; reject: (reason: unknown) => void }[] = [];
+      const hold = () =>
+        new Promise((resolve, reject) => {
+          calls.push({ resolve, reject });
+        });
+      mocks.put.mockImplementation(hold);
+      mocks.post.mockImplementation(hold);
+      await wrapper.get("[data-testid=save]").trigger("click");
+      await settle();
+      return { wrapper, calls };
+    }
+
+    it("says after 10 s that the result is unknown, with „Sprawdź stan” and the focus on the message, and keeps the fields locked", async () => {
+      const { wrapper } = await saveHeld();
+
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await settle();
+
+      expect(alert(wrapper).text()).toContain(UNKNOWN);
+      expect(alert(wrapper).attributes("role")).toBe("alert");
+      expect(alert(wrapper).get("[data-testid=check-state]").text()).toBe("Sprawdź stan");
+      expect(wrapper.find("[data-testid=unblock-form]").exists()).toBe(false);
+      expect(document.activeElement).toBe(alert(wrapper).element);
+      expect(input(wrapper, "name-input").disabled).toBe(true);
+      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+    });
+
+    it("„Sprawdź stan” takes the promotion from the server when it equals the form, says so in a status region and sends no write", async () => {
+      const { wrapper } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      serve(promotion({ name: "Pierwsza", version: 5 }));
+
+      await click(wrapper, "check-state");
+
+      expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+      expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
+      expect(wrapper.get("[data-testid=safety-status]").attributes("role")).toBe("status");
+      expect(input(wrapper, "name-input").disabled).toBe(false);
+      expect(input(wrapper, "name-input").value).toBe("Pierwsza");
+      expect(saveBar()).toBeNull();
+      expect(mocks.put).toHaveBeenCalledTimes(1);
+    });
+
+    it("„Sprawdź stan” says the write is not on the server when the version is the same and the values are not", async () => {
+      const { wrapper } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+
+      await click(wrapper, "check-state");
+
+      expect(alert(wrapper).text()).toContain("Zapisu nie widać na serwerze. Może jeszcze dotrzeć.");
+      expect(document.activeElement).toBe(alert(wrapper).element);
+      expect(input(wrapper, "name-input").value).toBe("Pierwsza");
+      expect(input(wrapper, "name-input").disabled).toBe(false);
+    });
+
+    it("„Sprawdź stan” offers „Odrzuć moje zmiany i pokaż stan z serwera” when the version on the server is another", async () => {
+      const { wrapper } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      serve(promotion({ name: "Cudza", version: 8 }));
+
+      await click(wrapper, "check-state");
+
+      expect(alert(wrapper).text()).toContain("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+      expect(input(wrapper, "name-input").value).toBe("Pierwsza");
+      await click(wrapper, "restore-state");
+      expect(input(wrapper, "name-input").value).toBe("Cudza");
+      expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+    });
+
+    it("says in a toast that the earlier save was done when its answer comes after „Sprawdź stan”, and changes nothing in the form", async () => {
+      const { wrapper, calls } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      await click(wrapper, "check-state");
+      await wrapper.get("[data-testid=name-input]").setValue("Druga");
+
+      calls[0]!.resolve({ data: promotion({ name: "Pierwsza", version: 5 }), response: { status: 200 } });
+      await settle();
+
+      expect(successToast).toHaveBeenCalledWith("Wcześniejszy zapis został wykonany.");
+      expect(successToast).not.toHaveBeenCalledWith("Promocja zapisana.");
+      expect(input(wrapper, "name-input").value).toBe("Druga");
+      expect(input(wrapper, "name-input").disabled).toBe(false);
+    });
+
+    it("gives an ordinary result, with the toast, when the answer comes after the limit but before „Sprawdź stan”", async () => {
+      const { wrapper, calls } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+
+      calls[0]!.resolve({ data: promotion({ name: "Pierwsza", version: 5 }), response: { status: 200 } });
+      await settle();
+
+      expect(successToast).toHaveBeenCalledWith("Promocja zapisana.");
+      expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+      expect(input(wrapper, "name-input").disabled).toBe(false);
+    });
+
+    it("moves the focus to the message after an error that does not reach the API, with the fields unlocked", async () => {
+      const { wrapper, calls } = await saveHeld();
+
+      calls[0]!.reject(new TypeError("network down"));
+      await settle();
+
+      expect(alert(wrapper).text()).toContain(UNKNOWN);
+      expect(document.activeElement).toBe(alert(wrapper).element);
+      expect(input(wrapper, "name-input").disabled).toBe(false);
+      expect(input(wrapper, "name-input").value).toBe("Pierwsza");
+    });
+
+    describe("a new promotion", () => {
+      it("says after 10 s that the result is unknown, with „Odblokuj formularz” instead of „Sprawdź stan”", async () => {
+        const { wrapper } = await saveHeld("/promotions/new");
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+
+        expect(alert(wrapper).text()).toContain(UNKNOWN);
+        expect(wrapper.find("[data-testid=check-state]").exists()).toBe(false);
+        expect(alert(wrapper).get("[data-testid=unblock-form]").text()).toBe("Odblokuj formularz");
+        expect(input(wrapper, "name-input").disabled).toBe(true);
+      });
+
+      it("unlocks the form with the message about the list and a link to it in a new tab, and a late success only gives a toast", async () => {
+        const { wrapper, calls } = await saveHeld("/promotions/new");
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+
+        await click(wrapper, "unblock-form");
+
+        expect(alert(wrapper).text()).toContain("Nie wiemy, czy promocja została utworzona. Wcześniejszy zapis może się jeszcze wykonać. Sprawdź listę przed ponownym zapisem.");
+        const link = alert(wrapper).get("[data-testid=list-link]");
+        expect(link.attributes("href")).toBe("/promotions");
+        expect(link.attributes("target")).toBe("_blank");
+        expect(link.attributes("rel")).toContain("noopener");
+        expect(link.text()).toContain("Lista promocji");
+        expect(input(wrapper, "name-input").disabled).toBe(false);
+        await wrapper.get("[data-testid=name-input]").setValue("Inna nazwa");
+
+        calls[0]!.resolve({ data: promotion({ id: "created" }), response: { status: 201 } });
+        await settle();
+
+        expect(successToast).toHaveBeenCalledWith("Wcześniejszy zapis został wykonany.");
+        expect(mounted!.router.currentRoute.value.name).toBe("promotion-new");
+        expect(input(wrapper, "name-input").value).toBe("Inna nazwa");
+      });
+    });
   });
 });
