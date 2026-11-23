@@ -31,6 +31,9 @@
 #   orders as a guest 3 units of the mat Dravik Podłoże 10 and 1 unit of Hantle regulowane Dravik Para 24, which no other
 #   test orders, and its test of a change given while the checkout loads orders 4 units of the same mat; both reject the
 #   payment at the simulator: the unpaid order expires and gives the units back.
+#   The cart-order consistency test (cart-order-consistency.spec.ts) orders and pays as a guest 3 units of Hala 500 in
+#   two variants of the same price (R1) and 1 unit (R3); its other tests put Hala 500 and the map Norvane Atlas Karkonosze
+#   1:35 000 in a guest cart and order nothing.
 # Products with variants both in and out of stock: kajak-turystyczny-dravik-rzeka-2, narty-skiturowe-stavro-gran-95.
 
 # Out of stock

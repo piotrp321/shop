@@ -500,15 +500,16 @@ describe("CheckoutPage placing the order", () => {
     ]);
   });
 
-  it("on a 409 of a changed content shows the detail without a link to the cart, loads the new summary and keeps the form; the next order has a new key and the lines of the new summary", async () => {
+  it("on a 409 of a changed content says what changed with a link to the cart, loads the new summary and keeps the form; the next order has a new key and the lines of the new summary", async () => {
     await renderCheckout();
     fillGuestForm();
     vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart(19999, [line(A, "Buty trailowe", "czarne, 42", 1, 19999)]) });
     await submit({ status: "conflict", reason: "cart_changed", detail: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie." });
 
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("Zawartość koszyka się zmieniła. Sprawdź podsumowanie.");
-    expect(within(alert).queryByRole("link")).toBeNull();
+    expect(alert.textContent).toContain("Zawartość koszyka zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.");
+    expect(alert.textContent).toContain("Buty trailowe, czarne, 42: było 2 szt., jest 1 szt.");
+    expect(within(alert).getByRole("link", { name: "Przejdź do koszyka" }).getAttribute("href")).toBe("/cart");
     expect(screen.getByTestId("checkout-total").textContent).toBe(price(19999));
     expect(field("Telefon").value).toBe("600 100 200");
     expect(placeOrder).toHaveBeenCalledTimes(1);
@@ -636,15 +637,16 @@ describe("CheckoutPage placing the order", () => {
     expect(screen.getByRole("alert").textContent).toContain("Nieprawidłowe dane.");
   });
 
-  it("on a 409 of a changed total shows the detail without a link to the cart, loads the new summary and keeps the form; the next order has a new key and the new total", async () => {
+  it("on a 409 of a changed total says what changed with a link to the cart, loads the new summary and keeps the form; the next order has a new key and the new total", async () => {
     await renderCheckout();
     fillGuestForm();
     vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart(41000) });
     await submit({ status: "conflict", reason: "total_changed", detail: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie." });
 
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("Kwota zamówienia się zmieniła. Sprawdź podsumowanie.");
-    expect(within(alert).queryByRole("link")).toBeNull();
+    expect(alert.textContent).toContain("Kwota zamówienia zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.");
+    expect(alert.textContent).toContain(`Do zapłaty: było ${price(39998)}, jest ${price(41000)}`);
+    expect(within(alert).getByRole("link", { name: "Przejdź do koszyka" }).getAttribute("href")).toBe("/cart");
     expect(screen.getByTestId("checkout-total").textContent).toBe(price(41000));
     expect(field("Telefon").value).toBe("600 100 200");
     expect(submitButton().disabled).toBe(false);
@@ -834,6 +836,348 @@ describe("CheckoutPage placing the order", () => {
     expect(screen.getByRole("alert").textContent).toBe(SUBMIT_FAILED);
     expect(push).not.toHaveBeenCalled();
     expect(announced).toEqual([]);
+  });
+});
+
+describe("CheckoutPage after a 409 of a changed cart or total (#852)", () => {
+  const PLACING = "Składamy zamówienie…";
+  const FIRST = {
+    cart_changed: "Zawartość koszyka zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.",
+    total_changed: "Kwota zamówienia zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.",
+  } as const;
+  const DETAIL = {
+    cart_changed: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie.",
+    total_changed: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie.",
+  } as const;
+  const LAST = "Sprawdź podsumowanie i zamów ponownie.";
+  const READ_FAILED = "Koszyk albo kwota zamówienia się zmieniły, ale nie udało się wczytać aktualnego podsumowania. Spróbuj ponownie.";
+  type Reason = keyof typeof FIRST;
+  type Read = Awaited<ReturnType<typeof loadCart>>;
+
+  /** The cart after the change in another tab: three pairs instead of two, the total of the API. */
+  const three = (): CartView => cart(59997, [line(A, "Buty trailowe", "czarne, 42", 3, 59997)]);
+  const conflict = (reason: Reason): PlaceOrderResult => ({ status: "conflict", reason, detail: DETAIL[reason] });
+  /** The message above the form (the code may have an alert of its own). */
+  const alert = () => {
+    const message = screen.getAllByRole("alert").find((node) => node.id === "checkout-failure");
+    if (message === undefined) throw new Error("no message above the form");
+    return message;
+  };
+  const items = () => within(alert()).queryAllByRole("listitem").map((item) => item.textContent);
+  const providerRadio = (name: string) => screen.getByRole("radio", { name }) as HTMLInputElement;
+  const codeField = () => screen.getByLabelText("Kod rabatowy") as HTMLInputElement;
+  const status = () => screen.getByTestId("checkout-status").textContent;
+
+  /** Holds the next read of the cart; the returned function gives its answer. */
+  function holdRead(): (answer: Read) => Promise<void> {
+    let release: (answer: Read) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+    return (answer) => act(async () => release(answer));
+  }
+
+  /**
+   * Notes what the summary shows when the message first appears in the DOM: the message and the summary come with one
+   * render, so the first frame of the message already has the summary of the read.
+   */
+  function watchFirstMessage(): () => { quantities: string[]; total: string | null } | null {
+    let seen: { quantities: string[]; total: string | null } | null = null;
+    const observer = new MutationObserver(() => {
+      if (seen !== null || document.getElementById("checkout-failure") === null) return;
+      seen = {
+        quantities: Array.from(document.querySelectorAll('[data-testid="checkout-line-quantity"]'), (node) => node.textContent ?? ""),
+        total: document.querySelector('[data-testid="checkout-total"]')?.textContent ?? null,
+      };
+    });
+    observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+    return () => {
+      observer.disconnect();
+      return seen;
+    };
+  }
+
+  /** A guest's form filled in, a code typed but not applied, and the order sent from the focused button, refused. */
+  async function refuseHeld(reason: Reason, view: CartView = cart()): Promise<(answer: Read) => Promise<void>> {
+    await renderCheckout(view);
+    fillGuestForm();
+    fireEvent.change(codeField(), { target: { value: "LATO15" } });
+    const release = holdRead();
+    submitButton().focus();
+    await submit(conflict(reason));
+    return release;
+  }
+
+  it.each<Reason>(["cart_changed", "total_changed"])("after %s keeps the form locked and shows no message until the cart is read", async (reason) => {
+    await refuseHeld(reason);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(status()).toBe(PLACING);
+    expect(loadCart).toHaveBeenLastCalledWith();
+    for (const label of ["E-mail", "Imię i nazwisko", "Telefon", "Ulica i numer", "Kod pocztowy", "Miejscowość", "Kod rabatowy"]) {
+      expect(field(label).getAttribute("aria-disabled")).toBe("true");
+      expect(field(label).readOnly).toBe(true);
+    }
+    for (const radio of [deliveryRadio("Kurier standardowy"), providerRadio("Szybki przelew (demo)"), providerRadio("Karta płatnicza (demo)")]) {
+      expect(radio.getAttribute("aria-disabled")).toBe("true");
+    }
+    expect(submitButton().getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByRole("button", { name: "Zastosuj" }).getAttribute("aria-disabled")).toBe("true");
+
+    // Nothing the customer does meanwhile changes the form or sends anything.
+    type("Telefon", "600 100 201");
+    fireEvent.change(codeField(), { target: { value: "LATO20" } });
+    fireEvent.click(providerRadio("Karta płatnicza (demo)"));
+    await act(async () => {
+      fireEvent.click(submitButton());
+      fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+    });
+    expect(field("Telefon").value).toBe("600 100 200");
+    expect(codeField().value).toBe("LATO15");
+    expect(providerRadio("Szybki przelew (demo)").checked).toBe(true);
+    expect(placeOrder).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(loadCart).mock.calls.filter((call) => call.length > 0)).toEqual([]);
+    expect(screen.getAllByTestId("checkout-line-quantity").map((node) => node.textContent)).toEqual(["2 szt."]);
+  });
+
+  it.each<Reason>(["cart_changed", "total_changed"])("after %s shows the message with the changes and the summary of the read in one render, and unlocks the form with its data", async (reason) => {
+    const release = await refuseHeld(reason);
+    const firstMessage = watchFirstMessage();
+    await release({ status: "ok", data: three() });
+
+    expect(firstMessage()).toEqual({ quantities: ["3 szt."], total: price(59997) });
+    const paragraphs = Array.from(alert().querySelectorAll("p"), (node) => node.textContent);
+    expect(paragraphs[0]).toBe(FIRST[reason]);
+    expect(items()).toEqual(["Buty trailowe, czarne, 42: było 2 szt., jest 3 szt.", `Do zapłaty: było ${price(39998)}, jest ${price(59997)}`]);
+    expect(paragraphs.at(-1)).toBe(`${LAST} Przejdź do koszyka`);
+    expect(within(alert()).getByRole("link", { name: "Przejdź do koszyka" }).getAttribute("href")).toBe("/cart");
+    expect(alert().textContent).not.toContain(DETAIL[reason]);
+    expect(document.activeElement).toBe(alert());
+    expect(status()).toBe("");
+    expect(submitButton().getAttribute("aria-disabled")).toBeNull();
+    for (const [label, value] of [["E-mail", "anna.nowak@example.com"], ["Telefon", "600 100 200"], ["Miejscowość", "Warszawa"], ["Kod rabatowy", "LATO15"]]) {
+      expect(field(label).readOnly).toBe(false);
+      expect(field(label).value).toBe(value);
+    }
+    expect(deliveryRadio("Kurier standardowy").checked).toBe(true);
+    expect(providerRadio("Szybki przelew (demo)").checked).toBe(true);
+    expect(placeOrder).toHaveBeenCalledTimes(1);
+
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+    const [first, second] = vi.mocked(placeOrder).mock.calls;
+    expect(second[1]).not.toBe(first[1]);
+    expect(second[0]).toMatchObject({ expectedTotalGross: 59997, expectedLines: [{ variantId: A, quantity: 3 }] });
+  });
+
+  it("leaves the focus where the customer moved it during the read; the message is an alert", async () => {
+    const release = await refuseHeld("cart_changed");
+    field("Kod pocztowy").focus();
+    await release({ status: "ok", data: three() });
+
+    expect(document.activeElement).toBe(field("Kod pocztowy"));
+    expect(alert().getAttribute("role")).toBe("alert");
+    expect(items()).toHaveLength(2);
+  });
+
+  it("moves the focus to the message when it was lost during the read", async () => {
+    const release = await refuseHeld("cart_changed");
+    submitButton().blur();
+    await release({ status: "ok", data: three() });
+
+    expect(document.activeElement).toBe(alert());
+  });
+
+  it("moves the focus to the message after an order sent with Enter from „Miejscowość” when it stayed there", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    const release = holdRead();
+    field("Miejscowość").focus();
+    vi.mocked(placeOrder).mockResolvedValueOnce(conflict("cart_changed"));
+    await act(async () => {
+      fireEvent.submit(submitButton().form as HTMLFormElement);
+    });
+    expect(document.activeElement).toBe(field("Miejscowość"));
+    await release({ status: "ok", data: three() });
+
+    expect(document.activeElement).toBe(alert());
+  });
+
+  it("says only that nothing was ordered when the read finds the summary that was shown", async () => {
+    const release = await refuseHeld("cart_changed");
+    await release({ status: "ok", data: cart() });
+
+    expect(Array.from(alert().querySelectorAll("p"), (node) => node.textContent)).toEqual([FIRST.cart_changed, `${LAST} Przejdź do koszyka`]);
+    expect(items()).toEqual([]);
+    expect(alert().querySelector("ul")).toBeNull();
+  });
+
+  it("shows the empty cart instead of the form, with the changes and one link to the cart", async () => {
+    const release = await refuseHeld("cart_changed");
+    await release({ status: "ok", data: cart(0, []) });
+
+    expect(alert().textContent).toContain(FIRST.cart_changed);
+    expect(items()).toEqual(["Buty trailowe, czarne, 42: usunięto z koszyka"]);
+    expect(screen.getByText("Twój koszyk jest pusty.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeNull();
+    expect(screen.getAllByRole("link", { name: /koszyka/ })).toHaveLength(1);
+    expect(status()).toBe("");
+  });
+
+  it("shows the lines that cannot be bought instead of the form, with one link to the cart", async () => {
+    const release = await refuseHeld("total_changed");
+    const excluded = cart(39998, [line(A, "Buty trailowe", "czarne, 42", 2, 39998), line(B, "Baton", "", 1, 0, { state: "no_price", unitPrice: null, lineTotal: null })], true);
+    await release({ status: "ok", data: excluded });
+
+    expect(alert().textContent).toContain(FIRST.total_changed);
+    expect(items()).toEqual(["Baton: dodano, 1 szt."]);
+    expect(screen.getByText("Część pozycji w koszyku nie może zostać kupiona. Usuń albo popraw oznaczone pozycje.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeNull();
+    expect(screen.getAllByRole("link", { name: /koszyka/ })).toHaveLength(1);
+  });
+
+  it("says the session expired when the read answers 401", async () => {
+    const release = await refuseHeld("cart_changed");
+    await release({ status: "unauthorized" });
+
+    expect(alert().textContent).toContain("Twoja sesja wygasła. Zaloguj się ponownie.");
+    expect(alert().textContent).not.toContain(FIRST.cart_changed);
+    expect(status()).toBe("");
+  });
+
+  it("shows the code rejected after the change at its field, and the lost discount in the list", async () => {
+    await renderCheckout();
+    const discounted: CartView = {
+      ...cart(35998),
+      totals: { subtotalGross: 39998, discountGross: 4000, gross: 35998, currency: "PLN", itemCount: 2 },
+      discount: { status: "applied", code: "WITAJ10", amountGross: 4000, kind: "percent", value: 10 },
+    };
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: discounted });
+    fireEvent.change(codeField(), { target: { value: "witaj10" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+    });
+    fillGuestForm();
+    const below = "Ten kod działa przy zamówieniu od 300,00 zł.";
+    const one: CartView = {
+      ...cart(19999, [line(A, "Buty trailowe", "czarne, 42", 1, 19999)]),
+      discount: { status: "rejected", code: "WITAJ10", reason: "below_minimum", detail: below, minimumOrderGross: 30000 },
+    };
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: one });
+    await submit(conflict("cart_changed"));
+
+    expect(loadCart).toHaveBeenLastCalledWith("witaj10");
+    const messages = screen.getAllByRole("alert");
+    expect(messages.map((node) => node.textContent)).toContain(below);
+    expect(codeField().getAttribute("aria-describedby")).toBe(messages.find((node) => node.textContent === below)?.id);
+    expect(items()).toEqual([
+      "Buty trailowe, czarne, 42: było 2 szt., jest 1 szt.",
+      `Rabat: był ${price(4000)}, jest ${price(0)}`,
+      `Do zapłaty: było ${price(35998)}, jest ${price(19999)}`,
+    ]);
+    expect(screen.queryByTestId("checkout-discount")).toBeNull();
+  });
+
+  it("lists the chosen delivery method that is gone and drops the choice", async () => {
+    const twoMethods: CartView = { ...cart(), delivery: delivery([option(STANDARD, "Kurier standardowy", 0, 39998), option(EXPRESS, "Kurier ekspresowy", 1999, 41997)]) };
+    const release = await refuseHeld("total_changed", twoMethods);
+    await release({ status: "ok", data: { ...cart(), delivery: delivery([option(EXPRESS, "Kurier ekspresowy", 1999, 41997)]) } });
+
+    expect(items()).toEqual(["Dostawa „Kurier standardowy” nie jest już dostępna. Wybierz sposób dostawy."]);
+    expect(deliveryRadio("Kurier ekspresowy").checked).toBe(false);
+    expect(screen.getByTestId("checkout-total").textContent).toBe("Wybierz sposób dostawy");
+  });
+
+  it("announces a changed delivery in the live region of the summary, as after every read", async () => {
+    const paid = (gross: number, cost: number): CartView => ({ ...cart(gross), delivery: delivery([option(STANDARD, "Kurier standardowy", cost, gross + cost, { freeFromGross: 30000, missingToFreeGross: cost === 0 ? null : 30000 - gross })]) });
+    const release = await refuseHeld("cart_changed", paid(39998, 0));
+    await release({ status: "ok", data: { ...paid(19999, 1499), lines: [line(A, "Buty trailowe", "czarne, 42", 1, 19999)] } });
+
+    expect(screen.getByTestId("checkout-summary-status").textContent).toBe(
+      `Dostawa „Kurier standardowy” nie jest już darmowa, kosztuje ${price(1499)}. Do darmowej dostawy brakuje ${price(10001)}.`,
+    );
+  });
+
+  describe("when the cart cannot be read after the refusal", () => {
+    async function refuseUnread(reason: Reason = "cart_changed") {
+      const release = await refuseHeld(reason);
+      await release({ status: "failed" });
+    }
+
+    it("says so, keeps the summary that was shown and unlocks the form", async () => {
+      await refuseUnread();
+
+      expect(alert().textContent).toBe(READ_FAILED);
+      expect(document.activeElement).toBe(alert());
+      expect(screen.getAllByTestId("checkout-line-quantity").map((node) => node.textContent)).toEqual(["2 szt."]);
+      expect(status()).toBe("");
+      expect(field("Telefon").readOnly).toBe(false);
+      expect(submitButton().getAttribute("aria-disabled")).toBeNull();
+    });
+
+    it("reads the cart with the next click instead of ordering, locked meanwhile, then shows the changes", async () => {
+      await refuseUnread("total_changed");
+      const release = holdRead();
+      const reads = vi.mocked(loadCart).mock.calls.length;
+      submitButton().focus();
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+
+      expect(vi.mocked(loadCart).mock.calls.length).toBe(reads + 1);
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(status()).toBe("Wczytywanie…");
+      expect(field("Telefon").getAttribute("aria-disabled")).toBe("true");
+      expect(submitButton().getAttribute("aria-disabled")).toBe("true");
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+      expect(vi.mocked(loadCart).mock.calls.length).toBe(reads + 1);
+
+      const firstMessage = watchFirstMessage();
+      await release({ status: "ok", data: three() });
+
+      expect(firstMessage()).toEqual({ quantities: ["3 szt."], total: price(59997) });
+      expect(alert().querySelector("p")?.textContent).toBe(FIRST.total_changed);
+      expect(items()).toEqual(["Buty trailowe, czarne, 42: było 2 szt., jest 3 szt.", `Do zapłaty: było ${price(39998)}, jest ${price(59997)}`]);
+      expect(document.activeElement).toBe(alert());
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+      expect(status()).toBe("");
+
+      // Only the click after it orders, with a new key and the summary read.
+      await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+      const [first, second] = vi.mocked(placeOrder).mock.calls;
+      expect(second[1]).not.toBe(first[1]);
+      expect(second[0]).toMatchObject({ expectedTotalGross: 59997, expectedLines: [{ variantId: A, quantity: 3 }] });
+    });
+
+    it("stays out of date when the read fails again: the message comes back and the next click reads again", async () => {
+      await refuseUnread();
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+
+      expect(alert().textContent).toBe(READ_FAILED);
+      const reads = vi.mocked(loadCart).mock.calls.length;
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: three() });
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+
+      expect(vi.mocked(loadCart).mock.calls.length).toBe(reads + 1);
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+      expect(items()).toHaveLength(2);
+    });
+
+    it("says the session expired when the read of the click answers 401", async () => {
+      await refuseUnread();
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "unauthorized" });
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+
+      expect(alert().textContent).toContain("Twoja sesja wygasła. Zaloguj się ponownie.");
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
@@ -2032,7 +2376,7 @@ describe("CheckoutPage discount code", () => {
     expect(loadCart).toHaveBeenLastCalledWith("witaj10");
     expect(total()).toBe(price(37798));
     expect(screen.getByTestId("checkout-discount").textContent).toBe(`Kod WITAJ10: −${price(4200)}`);
-    expect(screen.getByRole("alert").textContent).toContain("Kwota zamówienia się zmieniła.");
+    expect(screen.getByRole("alert").textContent).toContain("Kwota zamówienia zmieniła się od wczytania kasy.");
     expect(placeOrder).toHaveBeenCalledTimes(1);
 
     await submit({ status: "ok", number: "R-100001", redirectUrl: null });
