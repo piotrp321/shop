@@ -612,7 +612,8 @@ final class PlaceOrderHandlerTest extends TestCase
 
     public function testTheSizeIsCheckedBeforeTheOtherRefusalsOfTheCart(): void
     {
-        // 11 lines, the last one without a price (not orderable): the size comes first (D5).
+        // 11 lines, the last one without a price (not orderable), and the list of the cart: after the empty cart and the
+        // content, the size comes before the refusals of the quote (D5).
         $lines = $this->lines(10, 1) + ['0192f0c4-7c1a-7c4e-9a6e-0000000000ff' => 1];
         $this->carts->put(self::guest(), $lines);
 

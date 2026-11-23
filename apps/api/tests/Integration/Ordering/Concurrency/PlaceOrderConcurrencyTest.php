@@ -30,7 +30,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Uid\Uuid;
 
 /**
- * Scenarios O1 to O11 of the Checkout specification ("Testy – Współbieżność") on PostgreSQL: every participant is
+ * Scenarios O1 to O12 of the Checkout specification ("Testy – Współbieżność") on PostgreSQL: every participant is
  * a process of its own dispatching PlaceOrder (or MergeGuestCart) on command.bus (ConcurrentCommands of the Inventory
  * tests), all start at once. Each scenario runs 5 rounds on fresh variants, carts and keys; after every round the
  * reserved units of every variant of the test are the sum of its active reservations, and every order of the test
@@ -173,9 +173,11 @@ final class PlaceOrderConcurrencyTest extends KernelTestCase
     }
 
     /**
-     * The placement expects the list and the total the checkout showed before the merge (the customer's own line), so
-     * whichever runs first, it places an order of exactly that line or finds the content changed; the guest line is
-     * never lost.
+     * Odd rounds: the placement expects the list and the total the checkout showed before the merge (the customer's own
+     * line), so it places an order of exactly that line when it runs first and finds the content changed after the
+     * merge. Even rounds: the list and the total of a checkout read after the merge (both lines), so it finds the
+     * content changed when it runs first and places an order of both lines after the merge. The guest line is never
+     * lost and an order always has the lines of its list.
      */
     public function testO5APlacementOfACustomerAtOnceWithAMergeIntoThatCustomerLosesNoLine(): void
     {
@@ -185,11 +187,13 @@ final class PlaceOrderConcurrencyTest extends KernelTestCase
             $guestVariant = $this->variant(10);
             $this->carts[] = CartFixture::cart($this->control, customerId: $customer, expiresAt: '+180 days', lines: [[$own, 1]]);
             $guest = $this->guestCart([[$guestVariant, 2]]);
-            $placement = $this->place(CartReference::customer($customer), self::GROSS, [[$own, 1]]);
+            $placement = 1 === $round % 2
+                ? $this->place(CartReference::customer($customer), self::GROSS, [[$own, 1]])
+                : $this->place(CartReference::customer($customer), 3 * self::GROSS, [[$own, 1], [$guestVariant, 2]]);
 
             $outcomes = ConcurrentCommands::run($this->control, [$placement, new MergeGuestCart($customer, $guest)]);
 
-            $message = 'O5 round '.$round;
+            $message = 'O5 round '.$round.(1 === $round % 2 ? ' (list before the merge)' : ' (list after the merge)');
             [$placed, $merge] = $outcomes;
             self::assertSame(Outcome::SUCCESS, $merge->kind, $message.': '.$merge->message);
             self::assertSame('merged', $merge->result['result'] ?? null, $message);
@@ -395,6 +399,52 @@ final class PlaceOrderConcurrencyTest extends KernelTestCase
             self::assertSame(0, $this->orderCount($stale->idempotencyKey), $message);
             self::assertSame([$variant => 2], OrderingFixture::orderLines($this->control, (string) self::orderIdOf($currentOutcome)), $message);
             self::assertSame([10, 2], OrderingFixture::stock($this->control, $variant), $message.': one reservation');
+            $this->assertInvariant($message);
+        }
+    }
+
+    /**
+     * O12: the gap the expected lines close (R1 of docs/features/cart-order-consistency/spec.md). Two variants of the same
+     * price; the checkout showed A × 2 and B × 1, and another tab turns the cart into A × 1 and B × 2, the same total.
+     * The change takes two commands (B to 2, A to 1) and the state between them has another total, which the total
+     * check alone would catch; so in odd rounds B is changed before the round (the cart is A × 2, B × 2 when it starts)
+     * and only the change of A runs at once with the placement: the placement sees either the state between or the
+     * final state with the same total. Even rounds run both changes at once with the placement from A × 2, B × 1, so
+     * the placement can also come first. Whatever runs first, an order has exactly the lines of the list and both
+     * changes then find the emptied cart, or the placement is refused as changed and both changes are in the cart;
+     * never an order of A × 1 and B × 2.
+     */
+    public function testO12SwappedQuantitiesAtTheSameTotalInAnotherTabNeverGiveAnOrderOfOtherLines(): void
+    {
+        for ($round = 1; $round <= self::ROUNDS; ++$round) {
+            $a = $this->variant(10);
+            $b = $this->variant(10);
+            $odd = 1 === $round % 2;
+            $cart = $this->guestCart($odd ? [[$a, 2], [$b, 2]] : [[$a, 2], [$b, 1]]);
+            $changes = $odd
+                ? [new ChangeCartItemQuantity(CartRef::guest($cart), $a, 1)]
+                : [new ChangeCartItemQuantity(CartRef::guest($cart), $a, 1), new ChangeCartItemQuantity(CartRef::guest($cart), $b, 2)];
+
+            $outcomes = ConcurrentCommands::run($this->control, [$this->place(CartReference::guest($cart), 3 * self::GROSS, [[$a, 2], [$b, 1]]), ...$changes]);
+
+            $message = 'O12 round '.$round.($odd ? ' (B changed before, A at once)' : ' (A and B at once)');
+            $placed = $outcomes[0];
+            $outcomes = \array_slice($outcomes, 1);
+            if (Outcome::SUCCESS === $placed->kind) {
+                self::assertSame(self::sorted([$a => 2, $b => 1]), OrderingFixture::orderLines($this->control, (string) self::orderIdOf($placed)), $message.': an order of other lines than the list');
+            }
+            self::assertContains($placed->kind, [Outcome::SUCCESS, CartContentChanged::class], $message.': '.$placed->message);
+            if (Outcome::SUCCESS === $placed->kind) {
+                foreach ($outcomes as $change) {
+                    self::assertSame(CartLineNotFound::class, $change->kind, $message.': a change after the order finds the emptied cart: '.$change->message);
+                }
+                self::assertSame([], CartFixture::lines($this->control, $cart), $message);
+            } else {
+                foreach ($outcomes as $change) {
+                    self::assertSame(Outcome::SUCCESS, $change->kind, $message.': '.$change->message);
+                }
+                self::assertSame([[$a, 1], [$b, 2]], CartFixture::lines($this->control, $cart), $message.': the changes are in the cart');
+            }
             $this->assertInvariant($message);
         }
     }
