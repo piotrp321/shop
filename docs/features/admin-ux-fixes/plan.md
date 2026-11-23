@@ -41,6 +41,7 @@ Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja or
       "depends_on": [],
       "paths": [
         "apps/admin/src/composables/",
+        "apps/admin/src/components/FormSafetyNotices.vue",
         "apps/admin/src/promotions/",
         "apps/admin/src/views/PromotionFormView.vue",
         "apps/admin/tests/",

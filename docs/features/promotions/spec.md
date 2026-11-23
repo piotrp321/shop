@@ -270,8 +270,14 @@ pozostali 403; odczyt: każdy pracownik):
   odczytu daje odczyt ze statusem `ended` albo odpowiedź `PUT` z `ended`. Po wyczerpaniu ponowień promocja zostaje
   aktywna z komunikatem „Koniec promocji ustawiony na <czas>.”, a formularz pokazuje stan z ostatniej odpowiedzi; do tego czasu „Zapisz” i „Zakończ teraz” są
   wyłączone z opisem „Promocja kończy się.”. Pola niedostępne dla aktywnej promocji są zablokowane. 409
-  `promotion-overlap` oznacza kolidujące warianty, inne 409: komunikat z `detail` i odświeżenie. Promocja, która nie
-  istnieje: komunikat „Ta promocja nie istnieje.” z linkiem do listy.
+  `promotion-overlap` oznacza kolidujące warianty, inne 409 zapisu: komunikat z `detail` (wersji: „Promocja została
+  w międzyczasie zmieniona. Twoje zmiany zostają w formularzu.”), szkic, stan bazowy i wersja zostają, bez automatycznego
+  odczytu, z przyciskiem „Odrzuć moje zmiany i pokaż stan z serwera” (stan z serwera zastępuje szkic dopiero po
+  odpowiedzi 200); po 409 „Zakończ teraz” i „Usuń” panel pokazuje promocję z API. Zapis bez odpowiedzi w 10 s, błąd sieci
+  i odpowiedź 5xx to nieznany wynik: „Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.” z przyciskiem
+  „Sprawdź stan” (dla nowej promocji „Odblokuj formularz” i link do listy); szczegóły i reguły:
+  `docs/features/admin-ux-fixes/spec.md`, „Etap 2”. Promocja, która nie istnieje: komunikat „Ta promocja nie istnieje.”
+  z linkiem do listy.
 - Ceny (`PricesView`): 409 `price-locked-by-promotion` pokazuje `detail` przy polu ceny bez komunikatu o zmianie
   w międzyczasie i bez odświeżania wiersza (pozostałe 409 jak dziś); rozróżnienie po `type`.
 
