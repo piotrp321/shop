@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { GUEST_BUYER } from "./buyer";
 import { cartChanges } from "./cart-changes";
 import { navigateTo } from "./navigate";
 import type { PaymentProvider } from "./payment-api";
@@ -41,10 +42,15 @@ type FieldName = keyof Form;
 /** The refusals after which the checkout reads the cart and tells what changed (#852). */
 type ChangeReason = "cart_changed" | "total_changed";
 
+/** Why the checkout is out of date: a changed cart or total, or a changed buyer (the session and the cart are read). */
+type StaleReason = ChangeReason | "buyer_changed";
+
 /** Why the last order was not placed; each is shown above the form (see the UI table of the checkout spec). */
 type Failure =
   | { kind: "conflict"; detail: string; offersCart: boolean }
   | { kind: "changed"; reason: ChangeReason; changes: string[] }
+  /** The buyer changed: `email` is the account of the session read, null when it is signed out. */
+  | { kind: "buyer"; email: string | null }
   | { kind: "not_found" }
   | { kind: "unauthorized" }
   | { kind: "message"; text: string };
@@ -77,6 +83,10 @@ const CHANGED: Record<ChangeReason, string> = {
 };
 const CHANGED_LAST = "Sprawdź podsumowanie i zamów ponownie.";
 const CHANGES_NOT_READ = "Koszyk albo kwota zamówienia się zmieniły, ale nie udało się wczytać aktualnego podsumowania. Spróbuj ponownie.";
+const SIGNED_IN_AS = (email: string) =>
+  `Od wczytania kasy zmieniło się konto: teraz to ${email}. Nie złożyliśmy zamówienia. Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
+const SIGNED_OUT = "Od wczytania kasy nastąpiło wylogowanie. Nie złożyliśmy zamówienia. Podaj adres e-mail, sprawdź dane i podsumowanie, potem zamów ponownie.";
+const BUYER_NOT_READ = "Kupujący się zmienił, ale nie udało się wczytać kasy. Spróbuj ponownie.";
 const FIELD_ID_PREFIX = "checkout-";
 const FAILURE_ID = "checkout-failure";
 const TITLE_ID = "checkout-title";
@@ -153,9 +163,10 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // The summary is out of date: a refusal for a changed cart or total could not read the cart. Until the customer is
   // told what changed against `shown`, the summary of the refused order, nothing is ordered: the next click on the
   // order button reads the cart and tells the changes instead (`checking` is that read, with the form locked), and any
-  // other read of the summary (a code) tells them at once (`showCart`). A ref, not a state: a read of a code started
-  // after the failed read but before its render must see it.
-  const outOfDate = useRef<{ reason: ChangeReason; shown: CartView } | null>(null);
+  // other read of the summary (a code) tells them at once (`showCart`). The same after a refusal for a changed buyer
+  // whose reads failed: the next click reads the session and the cart (a read of a code reads no session, so it leaves
+  // the state). A ref, not a state: a read of a code, or a click, after the failed read but before its render must see it.
+  const outOfDate = useRef<{ reason: StaleReason; shown: CartView } | null>(null);
   const [checking, setChecking] = useState(false);
   // The discount code lives in this component only (D3): a reload of the page starts without one. `appliedCode` is the
   // code the summary of `loaded` was priced with; `codeInput` is what the customer types.
@@ -240,7 +251,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     if (loaded.status === "ready") setSummaryStatus(deliveryAnnouncement(loaded.cart, next, chosen));
     setLoaded({ status: "ready", cart: next, session });
     const stale = outOfDate.current;
-    if (stale !== null) {
+    if (stale !== null && stale.reason !== "buyer_changed") {
       setFailure({ kind: "changed", reason: stale.reason, changes: cartChanges(stale.shown, next, chosen) });
       outOfDate.current = null;
     }
@@ -298,6 +309,28 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     } else {
       showPreview(preview, session);
       setFailure({ kind: "changed", reason, changes: cartChanges(shown, preview.cart, chosenId) });
+    }
+    unlockOrder();
+    return FAILURE_ID;
+  }
+
+  /**
+   * Reads the session and the cart, with the code applied, after a refusal for a changed buyer, or for a click on a
+   * checkout out of date for one, and only then shows the message: the buyer of the session read (the address of the
+   * account, or the e-mail field), the summary read and the message come in one render, and so does the end of the
+   * lock of the order. The form keeps what was typed; the next order carries `buyer` of this read. A read that fails
+   * (the session or the cart), or a 401 of the cart, leaves the checkout out of date. Answers the id of the element
+   * that gets the focus.
+   */
+  async function readBuyer(shown: CartView): Promise<string> {
+    const [preview, session] = await Promise.all([loadPreview(appliedCode), loadAccountSession()]);
+    if (preview.status === "ok" && session.status === "ok") {
+      outOfDate.current = null;
+      showPreview(preview, session.session);
+      setFailure({ kind: "buyer", email: session.session?.email ?? null });
+    } else {
+      outOfDate.current = { reason: "buyer_changed", shown };
+      setFailure(preview.status === "unauthorized" ? { kind: "unauthorized" } : { kind: "message", text: BUYER_NOT_READ });
     }
     unlockOrder();
     return FAILURE_ID;
@@ -404,7 +437,10 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       setSubmitting(true);
       setChecking(true);
       setFailure(null);
-      const target = await readChanges(stale.reason, stale.shown, chosenMethod.current, loaded.session);
+      const target =
+        stale.reason === "buyer_changed"
+          ? await readBuyer(stale.shown)
+          : await readChanges(stale.reason, stale.shown, chosenMethod.current, loaded.session);
       focusAfterAnswer(origin, target);
       return;
     }
@@ -437,6 +473,8 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       expectedLines: loaded.cart.lines.map((line) => ({ variantId: line.variantId, quantity: line.quantity })),
       provider,
       ...(appliedCode === null ? {} : { discountCode: appliedCode }),
+      // The buyer of the render the click came from: the one on the screen, from the last read of the session.
+      buyer: loaded.session === null ? GUEST_BUYER : loaded.session.buyer,
     };
     const result = await placeOrder(input, idempotencyKey);
     if (result.status === "ok") {
@@ -517,6 +555,12 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           setIdempotencyKey(newIdempotencyKey());
           setFailure({ kind: "conflict", detail, offersCart: false });
           return FAILURE_ID;
+        }
+        if (result.reason === "buyer_changed") {
+          // Nothing was placed: the session is of another buyer than the one shown. The form stays locked while the
+          // session and the cart are read; then the message tells who buys now. The request carries another buyer.
+          setIdempotencyKey(newIdempotencyKey());
+          return readBuyer(shown);
         }
         if (result.reason === "cart_changed" || result.reason === "total_changed") {
           // Nothing was placed, and from now on the request carries other lines or another total. The form stays locked
@@ -741,6 +785,8 @@ function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLink
           </p>
         ) : failure.kind === "message" ? (
           <p>{failure.text}</p>
+        ) : failure.kind === "buyer" ? (
+          <p>{failure.email === null ? SIGNED_OUT : SIGNED_IN_AS(failure.email)}</p>
         ) : failure.kind === "changed" ? (
           <>
             <p>{CHANGED[failure.reason]}</p>

@@ -288,6 +288,14 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `email`), z wartościami, jakie przysłała przeglądarka: sprawdza je API. `cartId` pochodzi wyłącznie z ciasteczka;
   ceny i inne pola przeglądarki są pomijane. Pozycje i ilości (`expectedLines`, linie podsumowania pokazanego w kasie)
   API tylko porównuje z koszykiem; zamówienie powstaje z koszyka (`docs/features/checkout/spec.md`, P2a).
+- Pole `buyer` (kupujący pokazany w kasie: `"guest"` z `src/checkout/buyer.ts` przy polu e-mail albo znacznik z
+  `/auth/session`, z którego pochodzi pokazany adres konta) BFF sprawdza przed listą dostawców, scaleniem koszyka
+  i API (`checkBuyer` w `src/checkout/bff.ts`) i nigdy nie przekazuje do API: konto zamówienia wynika wyłącznie z sesji.
+  Brak albo nie-tekst: 422. Bez sesji kasa konta dostaje 401, nigdy zamówienie gościa. Przy sesji BFF zostawia
+  odświeżanie tokenu bez zmian (`freshAccessToken`), potem czyta `sub` tej samej sesji i porównuje znacznik w stałym
+  czasie (`isBuyerOf` w `src/auth/buyer.ts`); inny kupujący to własny 409 `checkout-buyer-changed`
+  (`CHECKOUT_BUYER_CHANGED_TYPE`, poza mapą typów API w `src/checkout/problems.ts`). Tabela przypadków:
+  `docs/features/checkout/spec.md`, „BFF”.
 - Sukces (201 albo 200 przy powtórzeniu z tym samym kluczem): ciasteczko `store_order_confirmation` z `{orderId,
   number, email, totalGross, currency, accessToken}` z `OrderView` (gość ma `accessToken`, klient `null`; JSON
   w base64url, podpisany jak `store_cart`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina; stare ciasteczko
@@ -320,6 +328,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (Redis, OIDC, klient API) z `getAuthDeps()` w `src/auth/deps.ts`, a przy ich braku odpowiada 503 z `no-store`.
   `getCartDeps()` bierze z nich sesje, `freshAccessToken`, klienta API i konfigurację. Testy podmieniają zależności
   dublerami z `src/auth/test-support.ts` (domyślny klient API odrzuca każde wywołanie).
+- `GET /auth/session` zwraca obok `name` i `email` znacznik kupującego `buyer` (`buyerTag` w `src/auth/buyer.ts`:
+  HMAC-SHA256 tekstu `checkout-buyer:<sub>` kluczem `STORE_SESSION_SECRET`, base64url) z `sub` tej samej sesji, której
+  token odczytał `/api/v1/me`. Znacznik niczego nie otwiera i służy tylko porównaniu w BFF kasy. Odpowiedź nie zawiera
+  `sub`, identyfikatora sesji ani tokenów; znacznika, `sub` ani tokenów nie zapisuj w logach.
 - Nie loguj obiektów błędów openid-client (ich `cause` zawiera odpowiedzi z tokenami). Użyj `logFailure`.
 - `returnTo` przechodzi zawsze przez `sanitizeReturnTo`.
 - Limit `GET /auth/login` (`src/auth/login-rate-limit.ts`; licznik, klucz i okno: `docs/features/hardening/spec.md`,

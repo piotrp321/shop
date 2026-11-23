@@ -1501,8 +1501,8 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
     const [first, second] = vi.mocked(placeOrder).mock.calls;
     expect(first[0].buyer).toBe("guest");
     expect(second[1]).not.toBe(first[1]);
-    const { email: _email, ...contact } = GUEST_INPUT;
-    expect(second[0]).toEqual({ ...contact, buyer: JAN.buyer, expectedTotalGross: 19999, expectedLines: [{ variantId: A, quantity: 1 }] });
+    expect(second[0]).not.toHaveProperty("email");
+    expect(second[0]).toEqual({ ...GUEST_INPUT, email: undefined, buyer: JAN.buyer, expectedTotalGross: 19999, expectedLines: [{ variantId: A, quantity: 1 }] });
   });
 
   it("names account B after the checkout of account A, and the next click carries the tag of B", async () => {

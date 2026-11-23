@@ -33,7 +33,7 @@ describe("AccountMenu", () => {
   });
 
   it("shows the name and a logout form that POSTs to /auth/logout", async () => {
-    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com" } });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com", buyer: "buyer-tag-of-jan" } });
     render(<AccountMenu />);
 
     expect(await screen.findByText("Zalogowany jako Jan")).toBeTruthy();
@@ -113,7 +113,7 @@ describe("AccountMenu with the site switches", () => {
 
   it("still shows a signed-in customer and the logout form when the customer accounts are off", async () => {
     vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: false, customerAccounts: false });
-    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com" } });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com", buyer: "buyer-tag-of-jan" } });
     renderOnSite();
 
     expect(await screen.findByText("Zalogowany jako Jan")).toBeTruthy();
@@ -123,7 +123,7 @@ describe("AccountMenu with the site switches", () => {
 
 describe("AccountMenu: the order history", () => {
   it("links a signed-in customer to their orders", async () => {
-    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com" } });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com", buyer: "buyer-tag-of-jan" } });
     render(<AccountMenu />);
 
     const link = await screen.findByRole("link", { name: "Moje zamówienia" });
