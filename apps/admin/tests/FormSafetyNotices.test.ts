@@ -197,6 +197,70 @@ describe("FormSafetyNotices", () => {
     expect(document.activeElement).toBe(alert.element);
   });
 
+  describe("the focus does not depend on the text changing", () => {
+    const blur = () => (document.activeElement as HTMLElement | null)?.blur();
+
+    it("goes to the context of a 409 each time the draft is discarded, also with the same text", async () => {
+      const safety = create();
+      const wrapper = await show(safety);
+      safety.offerRestore("Rozpoczętej promocji nie można zmienić.");
+      safety.draftDiscarded();
+      await flushPromises();
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=restore-note]").element);
+      blur();
+
+      safety.draftDiscarded();
+      await flushPromises();
+
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=restore-note]").element);
+    });
+
+    it("goes to the message of an unknown result each time the draft is discarded", async () => {
+      const safety = create();
+      const wrapper = await show(safety);
+      await safety.write(() => failing() as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+      safety.draftDiscarded();
+      await flushPromises();
+      blur();
+
+      safety.draftDiscarded();
+      await flushPromises();
+
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=unknown-result]").element);
+    });
+
+    it("goes to what „Sprawdź stan” found each time, also when it finds the same", async () => {
+      const safety = create();
+      const wrapper = await show(safety);
+      await safety.write(() => failing() as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+      read.mockResolvedValue({ data: { id: "d1", version: 4, name: "Stara" } });
+      await safety.check();
+      await flushPromises();
+      expect(wrapper.get("[data-testid=unknown-result]").text()).toContain("Zapisu nie widać na serwerze");
+      blur();
+
+      await safety.check();
+      await flushPromises();
+
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=unknown-result]").element);
+    });
+
+    it("goes to the message of a read that failed again with the same text", async () => {
+      const safety = create();
+      const wrapper = await show(safety);
+      read.mockRejectedValue(new TypeError("network down"));
+      await safety.restore();
+      await flushPromises();
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=read-failed]").element);
+      blur();
+
+      await safety.retryRead();
+      await flushPromises();
+
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=read-failed]").element);
+    });
+  });
+
   it("puts the button of the server state inside the alert of a version that differs, once", async () => {
     const safety = create();
     const wrapper = await show(safety);

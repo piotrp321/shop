@@ -1654,6 +1654,25 @@ describe("PromotionFormView", () => {
       expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Odrzuć moje zmiany i pokaż stan z serwera");
     });
 
+    it("puts the focus on the context of the 409 every time „Odrzuć” is used, also the second time with the same text", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=name-input]").setValue("Inna");
+      mocks.put.mockResolvedValue(conflict("promotion-not-editable", "Rozpoczętej promocji nie można zmienić."));
+      await click(wrapper, "save");
+      barButton("Odrzuć")!.focus();
+      barButton("Odrzuć")!.click();
+      await settle();
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=restore-note]").element);
+
+      await wrapper.get("[data-testid=name-input]").setValue("Jeszcze inna");
+      barButton("Odrzuć")!.focus();
+      barButton("Odrzuć")!.click();
+      await settle();
+
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=restore-note]").element);
+    });
+
     it("shows the detail of another 409 and does not read the promotion", async () => {
       const wrapper = await open();
       await wrapper.get("[data-testid=name-input]").setValue("Inna");
