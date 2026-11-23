@@ -2168,7 +2168,7 @@ describe("usePromotionForm", () => {
     });
 
     describe("discarding the draft after a 409 or an unknown result", () => {
-      it("keeps the way to the server state after a 409, with the context that the version on the server is another", async () => {
+      it("keeps the way to the server state after a 409 of the version, with the context that the version is another, and nothing unknown", async () => {
         const { form } = await open();
         form.form.value.name = "Moja";
         mocks.put.mockResolvedValue(conflict("about:blank", "Ktoś zmienił."));
@@ -2180,7 +2180,22 @@ describe("usePromotionForm", () => {
         expect(form.error.value).toBeNull();
         expect(form.form.value.name).toBe("Jesień w górach");
         expect(form.safety.restoreOffered.value).toBe(true);
-        expect(form.safety.unknown.value).toMatchObject({ kind: "otherVersion", text: OTHER_VERSION });
+        expect(form.safety.restoreNote.value).toBe(OTHER_VERSION);
+        expect(form.safety.unknown.value).toBeNull();
+      });
+
+      it("gives a 409 of another kind its own context, not the version, and nothing unknown", async () => {
+        const { form } = await open();
+        form.form.value.percentOff = "30";
+        mocks.put.mockResolvedValue(conflict("promotion-not-editable", "Rozpoczętej promocji nie można zmienić."));
+        await form.save();
+
+        form.discard();
+
+        expect(form.safety.restoreOffered.value).toBe(true);
+        expect(form.safety.restoreNote.value).toBe("Rozpoczętej promocji nie można zmienić.");
+        expect(form.safety.restoreNote.value).not.toContain("inna wersja");
+        expect(form.safety.unknown.value).toBeNull();
       });
 
       it("keeps the unknown result of a save after a 502, without the sentence that the changes stay, and „Sprawdź stan” compares the restored base", async () => {

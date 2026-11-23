@@ -693,7 +693,7 @@ describe("useFormSafety", () => {
     it("keeps the draft until the answer, replaces it with the 200 answer and clears the messages", async () => {
       const safety = create();
       await safety.write(() => Promise.resolve(refused(503)) as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
-      safety.offerRestore();
+      safety.offerRestore("Na serwerze jest inna wersja niż ta, którą edytujesz.");
       const reading = held<ReadResult<Doc>>();
       read.mockReturnValue(reading.promise);
 
@@ -714,7 +714,7 @@ describe("useFormSafety", () => {
     ])("keeps the draft and the messages after %s, and the button stays", async (_name, answer) => {
       const safety = create();
       await safety.write(() => Promise.resolve(refused(503)) as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
-      safety.offerRestore();
+      safety.offerRestore("Na serwerze jest inna wersja niż ta, którą edytujesz.");
       read.mockImplementation(answer);
 
       await safety.restore();
@@ -728,7 +728,7 @@ describe("useFormSafety", () => {
 
     it("keeps them after the limit too", async () => {
       const safety = create();
-      safety.offerRestore();
+      safety.offerRestore("Na serwerze jest inna wersja niż ta, którą edytujesz.");
       read.mockReturnValue(new Promise(() => {}));
       void safety.restore();
 
@@ -880,14 +880,15 @@ describe("useFormSafety", () => {
       expect(safety.restoreOffered.value).toBe(true);
     });
 
-    it("gives the button of the server state after a 409 its context: the version on the server is another", () => {
+    it("keeps the way to the server state after a 409 with the context the 409 gave, and says nothing is unknown", () => {
       const safety = create();
-      safety.offerRestore();
-      expect(safety.unknown.value).toBeNull();
+      safety.offerRestore("Rozpoczętej promocji nie można zmienić.");
+      expect(safety.restoreNote.value).toBeNull();
 
       safety.draftDiscarded();
 
-      expect(safety.unknown.value).toMatchObject({ kind: "otherVersion", pending: false, created: false, discarded: true, text: OTHER_VERSION_MESSAGE });
+      expect(safety.unknown.value).toBeNull();
+      expect(safety.restoreNote.value).toBe("Rozpoczętej promocji nie można zmienić.");
       expect(safety.restoreOffered.value).toBe(true);
     });
 
@@ -897,6 +898,7 @@ describe("useFormSafety", () => {
       safety.draftDiscarded();
 
       expect(safety.unknown.value).toBeNull();
+      expect(safety.restoreNote.value).toBeNull();
       expect(safety.restoreOffered.value).toBe(false);
     });
 

@@ -126,7 +126,7 @@ describe("FormSafetyNotices", () => {
   it("offers „Odrzuć moje zmiany i pokaż stan z serwera” on its own when only the 409 asks for it, and says it was done", async () => {
     const safety = create();
     const wrapper = await show(safety);
-    safety.offerRestore();
+    safety.offerRestore("Na serwerze jest inna wersja niż ta, którą edytujesz.");
     await flushPromises();
     read.mockResolvedValue({ data: { id: "d1", version: 6, name: "Z serwera" } });
 
@@ -141,7 +141,7 @@ describe("FormSafetyNotices", () => {
   it("does not say it was restored when the read failed, and shows the message to try again with the focus on it", async () => {
     const safety = create();
     const wrapper = await show(safety);
-    safety.offerRestore();
+    safety.offerRestore("Na serwerze jest inna wersja niż ta, którą edytujesz.");
     await flushPromises();
     read.mockRejectedValue(new TypeError("network down"));
 
@@ -160,19 +160,41 @@ describe("FormSafetyNotices", () => {
     expect(state.draft).toEqual({ name: "Z serwera" });
   });
 
-  it("calls the button „Pokaż stan z serwera” once the draft is discarded: there are no changes to discard", async () => {
+  it("keeps the label of the button after the draft is discarded, with the context of the 409 and the focus on it", async () => {
     const safety = create();
     const wrapper = await show(safety);
-    safety.offerRestore();
+    safety.offerRestore("Rozpoczętej promocji nie można zmienić.");
     await flushPromises();
     expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Odrzuć moje zmiany i pokaż stan z serwera");
+    expect(wrapper.find("[data-testid=restore-note]").exists()).toBe(false);
 
     safety.draftDiscarded();
     await flushPromises();
 
-    expect(wrapper.get("[data-testid=unknown-result]").text()).toContain("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+    const note = wrapper.get("[data-testid=restore-note]");
+    expect(note.attributes("role")).toBe("alert");
+    expect(note.text()).toContain("Rozpoczętej promocji nie można zmienić.");
+    expect(wrapper.find("[data-testid=check-state]").exists()).toBe(false);
+    expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
     expect(wrapper.findAll("[data-testid=restore-state]")).toHaveLength(1);
-    expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Pokaż stan z serwera");
+    expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Odrzuć moje zmiany i pokaż stan z serwera");
+    expect(document.activeElement).toBe(note.element);
+  });
+
+  it("moves the focus to the message of an unknown result when the draft is discarded", async () => {
+    const safety = create();
+    const wrapper = await show(safety);
+    await safety.write(() => failing() as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+    await flushPromises();
+    (document.body as HTMLElement).focus();
+
+    safety.draftDiscarded();
+    await flushPromises();
+
+    const alert = wrapper.get("[data-testid=unknown-result]");
+    expect(alert.text()).toContain("Nie wiemy, czy zapis się powiódł.");
+    expect(alert.text()).not.toContain("Twoje zmiany zostają");
+    expect(document.activeElement).toBe(alert.element);
   });
 
   it("puts the button of the server state inside the alert of a version that differs, once", async () => {
