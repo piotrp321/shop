@@ -208,14 +208,14 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
    Koszyk jest częścią odcisku, więc dwa koszyki gości z tym samym kluczem i tymi samymi danymi dostają 409, a nie
    cudze zamówienie.
 3. Brak linii: `CartEmpty` (409), także gdy `expectedLines` wymienia pozycje.
-3b. **Zawartość koszyka** (P2a). Linie zablokowanego koszyka (wariant i ilość) inne niż `expectedLines` (inna ilość,
+3a. **Zawartość koszyka** (P2a). Linie zablokowanego koszyka (wariant i ilość) inne niż `expectedLines` (inna ilość,
    brak linii, linia dodatkowa, inny wariant): `CartContentChanged` (409 `cart-changed`), zaraz po `CartEmpty`, przed
    limitem zamówienia gościa, limitem nieopłaconych zamówień, wyceną, kodem, numerem i rezerwacją. Porównanie działa
    pod blokadą koszyka z kroku 1, więc żadna zmiana koszyka nie wchodzi między porównanie a opróżnienie koszyka.
    Odrzucenie niczego nie zapisuje (koszyk bez zmian, bez numeru, rezerwacji, użycia kodu i roszczenia limitu).
    `expectedLines` nie trafia do zamówienia.
-3c. Zamówienie gościa większe niż 10 linii albo 10 sztuk jednej linii: `GuestOrderTooLarge` (409, reguła domeny `GuestOrderSize`), zaraz po porównaniu zawartości, przed wyceną, kodem, numerem i rezerwacją, więc przed `CartNotOrderable`, `DiscountCodeRejected`, `OrderTotalChanged` i niedoborem. Zamówienie klienta nie podlega tej regule (do 50 linii po 99 sztuk, jak koszyk).
-3a. **Limit nieopłaconych zamówień** (`docs/features/abuse-limits/spec.md`, L6, D6–D8; `UnpaidOrderLimit`). Blokady
+3b. Zamówienie gościa większe niż 10 linii albo 10 sztuk jednej linii: `GuestOrderTooLarge` (409, reguła domeny `GuestOrderSize`), zaraz po porównaniu zawartości, przed wyceną, kodem, numerem i rezerwacją, więc przed `CartNotOrderable`, `DiscountCodeRejected`, `OrderTotalChanged` i niedoborem. Zamówienie klienta nie podlega tej regule (do 50 linii po 99 sztuk, jak koszyk).
+3c. **Limit nieopłaconych zamówień** (`docs/features/abuse-limits/spec.md`, L6, D6–D8; `UnpaidOrderLimit`). Blokady
    doradcze transakcji na adres klienta (`ClientIp`, z kontrolera w komendzie, poza odciskiem żądania), potem na
    tożsamość (`email:<klucz>` gościa albo `customer:<sub>`), i pod nimi liczenie roszczeń z `expires_at` po teraz:
    co najmniej 5 z adresu albo 3 tej tożsamości (`config/packages/ordering.yaml`): `TooManyUnpaidOrders` (409), przed
@@ -281,7 +281,7 @@ Idempotencja a dane innych klientów:
   działa bez koszyka, ale tylko z tym samym `cartId` i tą samą treścią.
 
 Ceny i kwoty liczy wyłącznie serwer:
-- Żądanie nie niesie cen. Pozycje i ilości niesie tylko do porównania (`expectedLines`, krok 3b): linie i ilości
+- Żądanie nie niesie cen. Pozycje i ilości niesie tylko do porównania (`expectedLines`, krok 3a): linie i ilości
   zamówienia pochodzą wyłącznie z zablokowanego koszyka, ceny, rabat i wartości linii z wyceny Pricing w chwili
   złożenia (krok 4), koszt dostawy z wyceny Delivery i podziału Pricing (krok 4a), a sumy liczy domena (`OrderTotals`).
 - `expectedTotalGross` służy wyłącznie do porównania (P2) i nie trafia do zamówienia. Kwota niższa albo wyższa od
