@@ -40,8 +40,10 @@ epic: prints the record of the epic run as one JSON line and stores it in <state
 AO directory --ao-home (default: ao-<EPIC> under $SHOP_METRICS_AO_ROOT or ~/.local/state), `source: ao`; without it the
 run file of a native epic, `source: native` (the transcripts of its sessions and their subagents only, the messages
 from the start to the merge of the final PR, every message id once, the value from the API price list `pricing` of
-config.json, always an estimate; the time breakdown and the human messages from the lines of the transcripts, the
-reviews from the `SubagentHandback` reports of the review roles (the verdict only), the acceptance criteria from the
+config.json, always an estimate; every subagent run split into its orders (the resumes confirmed by the `SendMessage`
+calls of the lead), each with its own task, time, tokens and value; the time breakdown and the human messages from the
+lines of the transcripts, the reviews from the `SubagentHandback` reports of the review roles (the verdict only, with
+the task of their order), the acceptance criteria from the
 description of the final PR read through the origin gate (numbers only), the subscription from the two readings of
 the run file and the tokens of all local sessions; fields without a native source are null with a gap); without
 both exit 2. Fields
@@ -117,6 +119,7 @@ trend, render and decide also end with 2 without a stored record (or without the
 or --at or without a stored record of a merged epic.
 """
 import argparse
+import bisect
 import contextlib
 import errno
 import fcntl
@@ -3834,6 +3837,11 @@ AGENT_META = re.compile(r'^agent-(.+)\.meta\.json$')
 
 HANDBACK = 'SubagentHandback'               # the tool call with which a subagent hands its report back (M4)
 AGENT_CALL = 'Agent'                        # the tool call with which the lead session starts a subagent
+SEND_MESSAGE = 'SendMessage'                # the tool call with which the lead writes to (or resumes) a subagent
+COORDINATOR = 'coordinator'                 # the `origin.kind` of the line that resumes a subagent in its transcript
+RESUME_WINDOW_S = 60                        # the most a resume of the lead may lie from the line it confirms
+EPIC_MARKER = 'EPIC'                        # `<EPIC>-EPIC`: an order of the review of the whole change (no task)
+UNKNOWN_TASK = 'unknown_task'               # the key of the orders whose task is unknown (a resume without an id)
 VERDICT_TOKENS = ('CHANGES_REQUIRED', 'INVESTIGATE', 'SIMPLIFY', 'REWORK', 'BLOCK', 'PASS', 'KEEP')
 _VERDICT_WORDS = '|'.join(VERDICT_TOKENS)
 _VERDICT_LABEL = r'(?i:werdykt|verdict)'
@@ -3883,14 +3891,18 @@ def read_native(path, seen_tools):
     key)] of the user and assistant lines with a timestamp (`line_mark`; key: the `uuid` of a human line), `untimed_human`
     (human lines without a timestamp), `user_lines` and `origin_lines` (the user lines that are no tool result, and
     those of them with an `origin`: without any, a human message cannot be told apart) and `reports` [(at, verdict word
-    or None)] of the `SubagentHandback` calls in file order and `launched` [(at, agent id)] of the subagents the file
-    starts (`toolUseResult.agentId` of the result of an `Agent` call) and `skipped` (the lines that are no JSON object,
-    blank lines aside); (None, reason) when the file is missing, unreadable, empty or has no line that is a JSON
-    object."""
+    or None, line)] of the `SubagentHandback` calls in file order and `launched` [(at, agent id)] of the subagents the
+    file starts (`toolUseResult.agentId` of the result of an `Agent` call) and `skipped` (the lines that are no JSON
+    object, blank lines aside). For the orders of a subagent (`native_orders`): `timed` [(line, at)] of the user and
+    assistant lines with a timestamp, `positions` {message id: its first line}, `candidates` [(line, at)] of the user
+    lines from the coordinator (`origin.kind` `coordinator`, no tool result: a resume), `resumes` [{id, agent, at,
+    summary}] of the `SendMessage` calls whose result resumed a subagent (`toolUseResult.resumedAgentId`; the summary
+    only for the task id, never stored). A line is its number among the JSON object lines of the file. (None, reason)
+    when the file is missing, unreadable, empty or has no line that is a JSON object."""
     data = {'messages': {}, 'inits': [], 'results': [], 'retries': [], 'denials': {}, 'tools': [], 'times': [],
             'marks': [], 'untimed_human': 0, 'user_lines': 0, 'origin_lines': 0, 'reports': [], 'launched': [],
-            'skipped': 0}
-    versions, reports, agent_calls, lines = set(), set(), set(), 0
+            'skipped': 0, 'timed': [], 'positions': {}, 'candidates': [], 'resumes': []}
+    versions, reports, agent_calls, send_calls, lines = set(), set(), set(), {}, 0
     try:
         with open(path, encoding='utf-8', errors='replace') as f:
             for raw in f:
@@ -3909,15 +3921,21 @@ def read_native(path, seen_tools):
                     continue
                 at = _timestamp(line.get('timestamp'))
                 mark = line_mark(line)
+                origin = line.get('origin')
                 if line['type'] == 'user' and mark != 'work':
                     data['user_lines'] += 1
-                    data['origin_lines'] += isinstance(line.get('origin'), dict)
+                    data['origin_lines'] += isinstance(origin, dict)
+                    if isinstance(origin, dict) and origin.get('kind') == COORDINATOR:
+                        data['candidates'].append((lines, at))
                 if at is not None:
                     data['times'].append(at)
+                    data['timed'].append((lines, at))
                     data['marks'].append((at, mark, line.get('uuid') if isinstance(line.get('uuid'), str) else None))
                 elif mark == 'human':
                     data['untimed_human'] += 1
                 message = line.get('message') if isinstance(line.get('message'), dict) else {}
+                if line['type'] == 'assistant' and isinstance(message.get('id'), str):
+                    data['positions'].setdefault(message['id'], lines)
                 launch = line.get('toolUseResult') if isinstance(line.get('toolUseResult'), dict) else {}
                 for block in message.get('content') if isinstance(message.get('content'), list) else []:
                     if not isinstance(block, dict):
@@ -3927,11 +3945,21 @@ def read_native(path, seen_tools):
                     if block.get('type') == 'tool_result' and block.get('tool_use_id') in agent_calls \
                             and isinstance(launch.get('agentId'), str):
                         data['launched'].append((at, launch['agentId']))
+                    if block.get('type') == 'tool_use' and block.get('name') == SEND_MESSAGE \
+                            and isinstance(block.get('id'), str):
+                        tool_input = block.get('input') if isinstance(block.get('input'), dict) else {}
+                        summary = tool_input.get('summary')
+                        send_calls.setdefault(block['id'], (at, summary if isinstance(summary, str) else None))
+                    if block.get('type') == 'tool_result' and block.get('tool_use_id') in send_calls \
+                            and isinstance(launch.get('resumedAgentId'), str):
+                        called, summary = send_calls[block['tool_use_id']]
+                        data['resumes'].append({'id': block['tool_use_id'], 'agent': launch['resumedAgentId'],
+                                                'at': at if at is not None else called, 'summary': summary})
                     if block.get('type') == 'tool_use' and block.get('name') == HANDBACK \
                             and block.get('id') not in reports:
                         reports.add(block.get('id'))
                         tool_input = block.get('input') if isinstance(block.get('input'), dict) else {}
-                        data['reports'].append((at, verdict_token(tool_input.get('message'))))
+                        data['reports'].append((at, verdict_token(tool_input.get('message')), lines))
     except FileNotFoundError:
         return None, 'brak pliku transkryptu'
     except OSError as e:
@@ -3975,12 +4003,55 @@ def read_meta(path, label, gaps):
     return found
 
 
-def task_of(description, epic_id):
-    """The task of a subagent run (D4): the first `<EPIC>-<n>` in the description of its call, else None."""
-    if not isinstance(description, str):
-        return None
-    found = re.search(r'(?<![A-Za-z0-9])%s-(\d+)(?![0-9])' % re.escape(epic_id), description, re.IGNORECASE)
-    return '%s-%s' % (epic_id.upper(), found.group(1)) if found else None
+def order_ref(text, epic_id):
+    """(kind, ref) of the source of an order (D4: the `description` of a run, the `summary` of a resume): the first
+    `<EPIC>-<id>` in it, case-insensitive, in upper case, whose id is letters and digits with a digit (`plan` when it is
+    digits only, else `outside_plan`), or the marker of the review of the whole change `<EPIC>-EPIC` (`epic`, no ref),
+    whichever comes first; any other word after the epic name and the name alone mean nothing: (None, None). The text
+    is only read, never stored."""
+    if not isinstance(text, str):
+        return None, None
+    for found in re.finditer(r'(?<![A-Za-z0-9])%s-([A-Za-z0-9]+)' % re.escape(epic_id), text, re.IGNORECASE):
+        word = found.group(1).upper()
+        if word == EPIC_MARKER:
+            return 'epic', None
+        if any(c.isdigit() for c in word):
+            return 'plan' if word.isdigit() else 'outside_plan', '%s-%s' % (epic_id.upper(), word)
+    return None, None
+
+
+def order_assignment(order, description, epic_id):
+    """{assignment, task, ref, task_source} of an order (spec: Identyfikator i przypisanie zlecenia): the first order
+    from the description of the run, a resume from the `summary` of the `SendMessage` call that confirmed it. `plan`
+    (a plan task), `outside_plan` (a known id outside the plan: `no_task` in the sections), `no_task` (the marker
+    `<EPIC>-EPIC`, or a description without an id) and `unknown`: a resume without an id or a marker, or a boundary
+    without a resume of the lead (`unknown_task` in the sections; the reason is added to the `notes` of the order).
+    The task is never taken from the order before."""
+    if order['boundary'] == 'launch':
+        kind, ref = order_ref(description, epic_id)
+        source = 'description'
+    elif order['resume'] is not None:
+        kind, ref = order_ref(order['resume']['summary'], epic_id)
+        source = 'summary'
+        if kind is None:
+            order['notes'].append('zlecenie %d: summary wznowienia bez ID zadania ani oznaczenia <EPIK>-EPIC: '
+                                  'zadanie nieustalone (unknown_task)' % order['n'])
+            return {'assignment': 'unknown', 'task': None, 'ref': None, 'task_source': None}
+    else:
+        order['notes'].append('zlecenie %d: wznowienie bez potwierdzenia w sesji prowadzącej: zadanie nieustalone '
+                              '(unknown_task)' % order['n'])
+        return {'assignment': 'unknown', 'task': None, 'ref': None, 'task_source': None}
+    if kind in ('plan', 'outside_plan'):
+        return {'assignment': kind, 'task': ref if kind == 'plan' else None, 'ref': ref, 'task_source': source}
+    return {'assignment': 'no_task', 'task': None, 'ref': None, 'task_source': source}
+
+
+def order_key(order):
+    """The key of an order in the sections by task: its plan task, `no_task` (also `outside_plan`, decision D2) or
+    `unknown_task`."""
+    if order['assignment'] == 'unknown':
+        return UNKNOWN_TASK
+    return order['task'] or NO_TASK
 
 
 def message_value(message, pricing):
@@ -4077,27 +4148,174 @@ def in_window(at, low, high):
     return at is None or ((low is None or at >= low) and (high is None or at <= high))
 
 
+def lead_resumes(datas):
+    """{agent id: [resume]} of the `SendMessage` calls of the lead transcripts that resumed a subagent (`read_native`),
+    every call once by its id (a resumed or forked lead session repeats the lines), in the order of their time; a
+    resume without a time cannot confirm a line and is left out."""
+    found, seen = {}, set()
+    for data in datas:
+        for resume in data['resumes']:
+            if resume['id'] in seen or resume['at'] is None:
+                continue
+            seen.add(resume['id'])
+            found.setdefault(resume['agent'], []).append(resume)
+    for resumes in found.values():
+        resumes.sort(key=lambda r: (r['at'], r['id']))
+    return found
+
+
+def native_orders(data, resumes):
+    """(orders, unmatched) of a subagent run: the orders [{n, start, boundary, resume, notes}] in the order of its
+    transcript and the resumes of the lead for it that confirmed no line. The first order starts at its first line
+    (`launch`); a line from the coordinator (`candidates`) starts the next one when the next resume of the lead for
+    this subagent lies at most RESUME_WINDOW_S from it (`resume`; without a report of the current order
+    `resume_unreported`) or, without such a resume, when the current order has a report (`resume_unconfirmed`); a line
+    with neither stays in the current order. `notes`: the gaps of an order (the last two kinds of a boundary, a line
+    that splits nothing), added only for the orders of the record (`native_fields`)."""
+    orders = [{'n': 1, 'start': 0, 'boundary': 'launch', 'resume': None, 'notes': []}]
+    reports = [line for _, _, line in data['reports']]
+    unmatched, following = [], 0
+    for line, at in data['candidates']:
+        matched = None
+        if at is not None:
+            while following < len(resumes) and resumes[following]['at'] < at - RESUME_WINDOW_S:
+                unmatched.append(resumes[following])
+                following += 1
+            if following < len(resumes) and resumes[following]['at'] <= at + RESUME_WINDOW_S:
+                matched = resumes[following]
+                following += 1
+        reported = any(orders[-1]['start'] <= report < line for report in reports)
+        n, notes = len(orders) + 1, []
+        if matched is not None and reported:
+            boundary = 'resume'
+        elif matched is not None:
+            boundary = 'resume_unreported'
+            notes.append('zlecenie %d: wznowienie bez raportu %s poprzedniego zlecenia (resume_unreported)'
+                         % (n, HANDBACK))
+        elif reported:
+            boundary = 'resume_unconfirmed'
+            notes.append('zlecenie %d: granica po raporcie bez potwierdzenia wznowienia w transkryptach sesji '
+                         'prowadzącej (resume_unconfirmed)' % n)
+        else:
+            orders[-1]['notes'].append('zlecenie %d: linia coordinator bez raportu poprzedniego zlecenia i bez '
+                                       'wznowienia w sesji prowadzącej: nie dzieli zlecenia' % orders[-1]['n'])
+            continue
+        orders.append({'n': n, 'start': line, 'boundary': boundary, 'resume': matched, 'notes': notes})
+    return orders, unmatched + resumes[following:]
+
+
+def unmatched_resumes(unmatched, data, started, until, agent, gaps):
+    """Gaps for the resumes of the lead in the interval of the epic that confirmed no line of the subagent: in the time
+    of its transcript (another format of the line that resumes it, a lost line) its orders may be unsplit and the time
+    of the run may hold the gaps between them; after its last line (an interrupted write) the order after the resume
+    has no line in the transcript, so its time and tokens are lost."""
+    times = [at for _, at in data['timed']]
+    found = [r for r in unmatched if times and r['at'] >= min(times) and in_window(r['at'], started, until)]
+    inside = sum(1 for r in found if r['at'] <= max(times))
+    if inside:
+        gaps.add('attempts.%s' % agent, 'wznowienia w sesji prowadzącej bez linii coordinator w transkrypcie '
+                                        'subagenta (%d): zlecenia mogą być niepodzielone, wall_s może zawierać '
+                                        'odstępy' % inside)
+    if len(found) > inside:
+        gaps.add('attempts.%s' % agent, 'wznowienia w sesji prowadzącej po ostatniej linii transkryptu subagenta (%d): '
+                                        'zlecenie po wznowieniu bez linii w transkrypcie, jego czas i tokeny utracone'
+                                        % (len(found) - inside))
+
+
+def order_parts(data, orders, started, until):
+    """[(order, times, messages, reports)] of the orders that have a line or a message in the interval: the timestamps
+    of their user and assistant lines in it, their counted messages (`data['messages']`, already cut to the interval;
+    a message belongs to the order of its first line) and their reports in it."""
+    starts = [order['start'] for order in orders]
+
+    def index(line):
+        return bisect.bisect_right(starts, line) - 1
+
+    parts = [([], [], []) for _ in orders]
+    for line, at in data['timed']:
+        if in_window(at, started, until):
+            parts[index(line)][0].append(at)
+    for message_id, message in data['messages'].items():
+        parts[index(data['positions'].get(message_id, 0))][1].append(message)
+    for at, token, line in data['reports']:
+        if in_window(at, started, until):
+            parts[index(line)][2].append((at, token))
+    return [(order,) + part for order, part in zip(orders, parts) if part[0] or part[1]]
+
+
+def run_time(orders, start, end, agent, gaps):
+    """{wall_s, idle_s} of a subagent run from its orders (decision D1): `wall_s` the sum of the time of its orders,
+    `idle_s` the rest of its span (the gaps between the orders). An order without a timestamp makes the sum a lower
+    bound (`incomplete`, a gap) and the rest unknown; a run without any timestamp has neither."""
+    if start is None:
+        return {'wall_s': None, 'idle_s': None}
+    walls = [order['wall_s'] for order in orders]
+    found = {'wall_s': round(sum(w for w in walls if w is not None), 3)}
+    if None in walls:
+        found['idle_s'] = None
+        found['incomplete'] = True
+        for order in orders:
+            if order['wall_s'] is None:
+                gaps.add('attempts.%s' % agent, 'zlecenie %d bez czasu wiadomości: wall_s przebiegu to dolna granica'
+                         % order['n'])
+    else:
+        found['idle_s'] = round(round(end - start, 3) - found['wall_s'], 3)
+        if found['idle_s'] < 0:
+            found['idle_s'] = None
+            gaps.add('attempts.%s' % agent, 'zlecenia nachodzą na siebie (znaczniki czasu nie po kolei): idle_s '
+                                            'nieznane, wall_s może liczyć część czasu podwójnie')
+    return found
+
+
+def native_by_task(runs, gaps):
+    """`by_task` of a native record from [(attempt, [(key, order number, wall_s)])]: per key the time of its orders
+    (`work`), the runs with an order of it (`attempts`) and its orders (`orders`); an order without a timestamp is left
+    out of `work` (`incomplete`, a gap)."""
+    by_task = {}
+    for attempt, rows in runs:
+        for key in sorted({row[0] for row in rows}):
+            by_task.setdefault(key, {'kind': None, 'work': 0.0, 'attempts': 0, 'orders': 0})['attempts'] += 1
+        for key, n, wall in rows:
+            entry = by_task[key]
+            entry['orders'] += 1
+            if wall is not None:
+                entry['work'] = round(entry['work'] + wall, 3)
+                continue
+            entry['incomplete'] = True
+            if attempt['wall_s'] is None:
+                gaps.add('by_task', 'przebieg %s bez czasu wiadomości: pominięty w czasie' % attempt['agent_id'])
+            else:
+                gaps.add('by_task', 'zlecenie %d przebiegu %s bez czasu wiadomości: pominięte w czasie (suma to '
+                                    'dolna granica)' % (n, attempt['agent_id']))
+    return by_task
+
+
 def native_fields(epic_id, projects, sessions, started, until, config, gaps):
     """{attempts, by_task, value, in_attempts, versions, marks, untimed_human, reviews, messages} of a native epic
     from the transcripts of its sessions: the messages from `started` to `until` (the merge of the final PR; None: no
     bound), every message id once (its first occurrence, also in a resumed or forked session), the lead session as
     `orchestrator` without a task, every subagent run one attempt with its role (agentType), task (D4), model and
-    effort. `marks`: the marks of every transcript (`read_native`, not cut to the interval); `reviews`: the reports
-    of the review roles in the interval (M4); `messages`: {message id: timestamp} of the counted messages; `coverage`:
-    `none` (no transcript of a session of the run file was read), `partial` (only some, or a subagent transcript of a
-    session read is lost: missing, empty or unreadable, also one the lead session started in the interval without
-    any file of it) or `full`; `no_origin`: the lead sessions have user lines but none with an `origin` (a change of
-    the transcript format); `transcripts_read`: the number of transcripts read (sessions and subagents, also those
-    without a line in the interval)."""
+    effort, split into its orders (`native_orders`; the time of the run is the sum of their time, `run_time`). The
+    lead transcripts are read before the subagents: their resumes confirm the orders. `marks`: the marks of every
+    transcript (`read_native`, not cut to the interval); `reviews`: the reports of the review roles in the interval
+    (M4); `messages`: {message id: timestamp} of the counted messages; `coverage`: `none` (no transcript of a session
+    of the run file was read), `partial` (only some, or a subagent transcript of a session read is lost: missing,
+    empty or unreadable, also one the lead session started in the interval without any file of it) or `full`;
+    `no_origin`: the lead sessions have user lines but none with an `origin` (a change of the transcript format);
+    `transcripts_read`: the number of transcripts read (sessions and subagents, also those without a line in the
+    interval)."""
     pricing = config['pricing']
     seen_ids, seen_tools = set(), set()
     attempts, items, datas, marks, reviews, messages = [], [], [], [], [], {}
     untimed_human, user_lines, origin_lines, read, lost, launched = 0, 0, 0, set(), set(), set()
     transcripts_read = 0
     transcripts = native_transcripts(projects, sessions, gaps)
-    for kind, session, agent, path, meta_path in transcripts:
+    loaded = [(kind, session, agent, meta_path) + read_native(path, seen_tools)
+              for kind, session, agent, path, meta_path in transcripts]
+    resumes = lead_resumes([data for kind, _, _, _, data, _ in loaded if kind == 'session' and data is not None])
+    runs = []
+    for kind, session, agent, meta_path, data, reason in loaded:
         label = 'sesja %s' % session if kind == 'session' else 'agent %s' % agent
-        data, reason = read_native(path, seen_tools)
         if data is None:
             gaps.add('sessions', '%s: %s' % (label, reason))
             if kind == 'agent':
@@ -4129,10 +4347,7 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
             items += native_items(NO_TASK, known, unknown)
             continue
         meta = read_meta(meta_path, 'attempts.%s' % agent, gaps)
-        task = task_of(meta['description'], epic_id)
         role = meta['role'] or SUBAGENT
-        known, unknown, usage_missing = native_cells(data['messages'].values(), role, pricing, label, gaps)
-        items += native_items(task or NO_TASK, known, unknown)
         models = {}
         for message in data['messages'].values():
             if message['model']:
@@ -4140,31 +4355,50 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
         model = max(sorted(models), key=lambda m: models[m]) if models else None
         if model is None:
             gaps.add('attempts.%s' % agent, 'brak message.model w wiadomościach przebiegu: model nieznany')
-        tokens = dict(ZERO_TOKENS)
-        for cells in (known, unknown):
-            for cell in cells.get(role, {}).values():
-                for key in ZERO_TOKENS:
-                    tokens[key] += cell['tokens'][key]
+        every, unmatched = native_orders(data, resumes.get(agent, []))
+        unmatched_resumes(unmatched, data, started, until, agent, gaps)
+        for order in every:
+            order.update(order_assignment(order, meta['description'], epic_id))
+        task = every[0]['task']
+        reviews += reviews_of_run(agent, meta['role'], data['reports'], every, started, until, gaps)
+        orders, rows, tokens, usd, usage_missing, unknown_value = [], [], dict(ZERO_TOKENS), 0.0, False, False
+        for order, times, found, reports in order_parts(data, every, started, until):
+            for note in order['notes']:
+                gaps.add('attempts.%s' % agent, note)
+            known, unknown, missing = native_cells(found, role, pricing, label, gaps)
+            items += native_items(order_key(order), known, unknown)
+            own = dict(ZERO_TOKENS)
+            for cells in (known, unknown):
+                for cell in cells.get(role, {}).values():
+                    for key in ZERO_TOKENS:
+                        own[key] += cell['tokens'][key]
+                        tokens[key] += cell['tokens'][key]
+            own_usd = sum(c['usd'] for c in known.get(role, {}).values())
+            usd += own_usd
+            usage_missing, unknown_value = usage_missing or missing, unknown_value or bool(unknown)
+            wall = round(max(times) - min(times), 3) if times else None
+            rows.append((order_key(order), order['n'], wall))
+            orders.append({'n': order['n'], 'boundary': order['boundary'], 'assignment': order['assignment'],
+                           'task': order['task'], 'ref': order['ref'], 'task_source': order['task_source'],
+                           'started_at': iso(min(times)) if times else None,
+                           'ended_at': iso(max(times)) if times else None, 'wall_s': wall,
+                           'reported_at': iso(reports[0][0]) if reports else None,
+                           'tokens': None if missing else _tokens_out(own),
+                           'value': None if unknown else _round_usd(own_usd), 'estimated': True})
         start, end = (min(data['times']), max(data['times'])) if data['times'] else (None, None)
-        value = None if unknown else _round_usd(sum(c['usd'] for c in known.get(role, {}).values()))
-        reviews += reviews_of_run(agent, task, meta['role'], data['reports'], started, until, gaps)
-        attempts.append({'agent_id': agent, 'task': task, 'role': meta['role'],
-                         'model': model if model is None or SAFE_NAME.match(model) else 'unknown',
-                         'effort': meta['effort'], 'started_at': iso(start), 'ended_at': iso(end),
-                         'wall_s': None if start is None else round(end - start, 3), 'value': value, 'estimated': True,
-                         'tokens': None if usage_missing else _tokens_out(tokens), 'finished': meta['finished']})
+        attempt = {'agent_id': agent, 'task': task, 'role': meta['role'],
+                   'model': model if model is None or SAFE_NAME.match(model) else 'unknown',
+                   'effort': meta['effort'], 'started_at': iso(start), 'ended_at': iso(end)}
+        attempt.update(run_time(orders, start, end, agent, gaps))
+        attempt.update({'value': None if unknown_value else _round_usd(usd), 'estimated': True,
+                        'tokens': None if usage_missing else _tokens_out(tokens), 'finished': meta['finished'],
+                        'orders': orders})
+        attempts.append(attempt)
+        runs.append((attempt, rows))
     for agent in sorted(launched - {t[2] for t in transcripts}):
         gaps.add('sessions', 'agent %s: uruchomiony w sesji prowadzącej, brak jego transkryptu i meta.json' % agent)
         lost.add(agent)
-    by_task = {}
-    for attempt in attempts:
-        entry = by_task.setdefault(attempt['task'] or NO_TASK, {'kind': None, 'work': 0.0, 'attempts': 0})
-        entry['attempts'] += 1
-        if attempt['wall_s'] is None:
-            entry['incomplete'] = True
-            gaps.add('by_task', 'przebieg %s bez czasu wiadomości: pominięty w czasie' % attempt['agent_id'])
-        else:
-            entry['work'] = round(entry['work'] + attempt['wall_s'], 3)
+    by_task = native_by_task(runs, gaps)
     compiled = compile_categories(config)
     in_attempts = in_attempts_of([commands_of(d, config, compiled) for d in datas])
     if not datas:
@@ -4189,24 +4423,35 @@ INTEGRATION_ROLES = ('architecture-reviewer', 'qa-adversarial', 'ux-reviewer')  
 NO_BREAKDOWN_SOURCE = ('limit_wait', 'ci_wait', 'host_pause', 'github_wait')
 
 
-def reviews_of_run(agent, task, role, reports, started, until, gaps):
-    """The reviews (M4) of one subagent run of a review role: one per report handed back in the interval, the first
-    report of the transcript `FULL`, every later one (after a resume) `DELTA`; the verdict only when it is one of the
-    role's contract (else None with a gap), never the text."""
+def reviews_of_run(agent, role, reports, orders, started, until, gaps):
+    """The reviews (M4) of one subagent run of a review role: one per report handed back in the interval, with the
+    task, the ref and the assignment of the order it lies in (`order_assignment`); `FULL` for the first report of the
+    run with that ref (for `no_task`: the first report of the run in that state), `DELTA` for the later ones, None with
+    a gap in an order whose task is unknown; the verdict only when it is one of the role's contract (else None with a
+    gap), never the text."""
     if role not in REVIEW_VERDICTS:
         return []
     if not reports:
         gaps.add('reviews', 'przebieg %s (%s) bez raportu %s' % (agent, role, HANDBACK))
         return []
-    found = []
-    for index, (at, token) in enumerate(reports):
+    starts = [order['start'] for order in orders]
+    found, seen = [], set()
+    for at, token, line in reports:
+        order = orders[bisect.bisect_right(starts, line) - 1]
+        key = None if order['assignment'] == 'unknown' else ('ref', order['ref']) if order['ref'] else (NO_TASK,)
+        mode = None if key is None else 'DELTA' if key in seen else 'FULL'
+        seen.add(key)
         if not in_window(at, started, until):
             continue
         verdict = token if token in REVIEW_VERDICTS[role] else None
         if verdict is None:
             gaps.add('reviews', 'raport %s (%s) bez rozpoznanego werdyktu: werdykt null' % (agent, role))
-        found.append({'task': task, 'role': role, 'agent_id': agent, 'at': iso(at), 'mode': 'DELTA' if index else 'FULL',
-                      'verdict': verdict, 'blocking': None if verdict is None else verdict in BLOCKING_VERDICTS})
+        if mode is None:
+            gaps.add('reviews', 'raport %s (%s) w zleceniu %d z zadaniem nieustalonym: tryb null'
+                     % (agent, role, order['n']))
+        found.append({'task': order['task'], 'ref': order['ref'], 'assignment': order['assignment'], 'role': role,
+                      'agent_id': agent, 'at': iso(at), 'mode': mode, 'verdict': verdict,
+                      'blocking': None if verdict is None else verdict in BLOCKING_VERDICTS})
     return found
 
 
@@ -4319,6 +4564,9 @@ def native_integration(attempts, reviews, gaps):
     if any(a['wall_s'] is None for a in runs):
         found['incomplete'] = True
         gaps.add('integration', 'przebieg bez czasu wiadomości: pominięty w czasie')
+    elif any(a.get('incomplete') is True for a in runs):
+        found['incomplete'] = True
+        gaps.add('integration', 'zlecenie przebiegu bez czasu wiadomości: pominięte w czasie')
     return found
 
 
@@ -4332,6 +4580,9 @@ def native_retries(attempts, reviews, gaps):
     tasks = [r for r in reviews if r['task'] is not None]
     if any(r['verdict'] is None for r in tasks):
         gaps.add('retries.fix', 'przegląd zadania bez rozpoznanego werdyktu: liczba to dolna granica')
+    if any(r.get('assignment') == 'unknown' and r['blocking'] is not False for r in reviews):
+        gaps.add('retries.fix', 'blokujący albo nierozpoznany przegląd w zleceniu z zadaniem nieustalonym nie jest '
+                                'liczony: liczba to dolna granica')
     for field in ('attempts', 'repair', 'sync_prs'):
         gaps.add('retries.%s' % field, NATIVE_SOURCE)
     return {'attempts': None, 'failed_by_outcome': {'unfinished': unfinished} if unfinished else {}, 'repair': None,

@@ -95,6 +95,13 @@ Rekordów AO (`source` inne niż `native`, także rekord bez pola `source`) dash
   i kategorie bez źródła jako „brak danych”), wartość tokenów razem, według modelu, roli, zadania oraz roli i modelu,
   tokeny według rodzaju, odczyty limitów i ich przyrost, przeglądy, rundy poprawek, kryteria akceptacji, CI końcowego
   PR, regresje i znaleziska po merge'u, powtórzone uruchomienia testów, wąskie gardła, przebiegi subagentów.
+  Czas przebiegu subagenta i czas zadania to czas realizacji zleceń (`attempts[].wall_s`, `by_task[].work`); tabela
+  „Przebiegi subagentów” ma kolumnę „Odstępy” (`attempts[].idle_s`), a pod nią jest tabela „Zlecenia”: wiersz na
+  zlecenie przebiegu (`attempts[].orders`) z numerem, granicą, przypisaniem, zadaniem, identyfikatorem, rolą, modelem,
+  startem, czasem i wartością. Tabela „Zadania” ma kolumnę „Zlecenia” (`by_task[].orders`), a klucz `unknown_task`
+  etykietę „zadanie nieustalone (wznowienie bez ID)” obok etykiety `no_task`. W „Przeglądach według roli i werdyktu”
+  przegląd z `mode: null` jest osobnym wierszem „tryb nieustalony”, nie wierszem `FULL` ani `DELTA`. Rekord bez
+  `orders` (zbudowany starszym narzędziem) daje w tych kolumnach i w tabeli „Zlecenia” „brak danych”.
 - **Wersja ASH i instrukcje**, trzy poziomy osobno: oczekiwana baza (`process.expected`: `describe`, commit), pliki na
   dysku w miejscach ładowania (`process.disk`: worktree epiku i główny checkout, z oceną każdej różnicy; niezgodne
   pliki przy kontroli i niezgodne zmiany dysku w trakcie epiku z `process.changes`, bez powrotów do bazy; gdy dysku
@@ -137,7 +144,13 @@ Zmiana nazwy albo znaczenia pola, które dashboard pokazuje, wymaga zmiany ekspo
 `in_attempts` (`categories`, `repeat_runs`, `api_retry`), `by_task`, `versions`, `attempts`, `value`, `reviews`,
 `acceptance`, `sessions`, `transcripts_read`, `pricing.read_at`, `ci.final`, `regressions`, `found_after_merge`,
 `bottlenecks`, `process` i `gaps`; z pliku przebiegu: `epic`, `started_at`, `done_at`, `base_sha`, `branch`, `pr`,
-`tasks`, `sessions[].id`, `usage_start`, `usage_done` i `process`. Wybór nowszych danych pola `process` opiera się na
+`tasks`, `sessions[].id`, `usage_start`, `usage_done` i `process`. Z przebiegów subagentów i zadań eksporter podaje
+`attempts[].wall_s` (czas realizacji zleceń) jako `ash_epic_attempt_wall_seconds`, `attempts[].idle_s` jako
+`ash_epic_attempt_idle_seconds`, `by_task[].work` jako `ash_epic_task_work_seconds`, `by_task[].orders` jako
+`ash_epic_task_orders` i każde zlecenie `attempts[].orders[]` jako `ash_epic_order_wall_seconds`,
+`ash_epic_order_value_usd` i `ash_epic_order_started_timestamp_seconds` z etykietami `agent`, `order`, `assignment`,
+`task`, `ref`, `role`, `model`, `boundary`; przegląd ma etykietę trybu z `reviews[].mode` (`null` jako osobna
+wartość). Brak `orders`, `idle_s` albo `by_task[].orders` to brak danych, nie zero. Wybór nowszych danych pola `process` opiera się na
 tym, że rekord kopiuje stan kontroli pliku przebiegu, `changes` jest tylko dopisywane, odczyt nie jest cofany do „nie
 sprawdzono”, `loaded.agents` ma wpis na każdy przebieg subagenta (`session`, `agent_id`), a każdy zapis zostawia
 znacznik czasu (`checked_at`, `rechecked_at`, `shown.at`, `changes[].at`, `loaded.checked_at`): zmiana którejkolwiek

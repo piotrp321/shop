@@ -1875,6 +1875,68 @@ class NativeCase(CollectCase):
         return {i['id']: i for i in data['incidents'] if i['epic'] == NATIVE}
 
 
+class NativeReviewFindingsTest(unittest.TestCase):
+    """The finding of a blocking review of a native record says what the record says: the task of the plan, the id of
+    a task outside the plan, an order whose task is unknown or the whole change, and a missing mode in words."""
+
+    def findings(self, reviews):
+        incidents, _ = retro.native_record_incidents(NATIVE, native_record(reviews=reviews))
+        return [(i['key'], i['facts'][0]['text']) for i in incidents if i['kind'] == 'finding']
+
+    def review(self, at, role='code-reviewer', **fields):
+        found = {'task': None, 'role': role, 'agent_id': 'ar', 'at': '2026-11-20T%s:00Z' % at, 'mode': 'FULL',
+                 'verdict': 'CHANGES_REQUIRED', 'blocking': True}
+        found.update(fields)
+        return found
+
+    def test_the_assignment_of_the_order_names_the_review(self):
+        found = self.findings([
+            self.review('09:00', task='ABUSE-LIMITS-2', ref='ABUSE-LIMITS-2', assignment='plan'),
+            self.review('09:10', ref='ABUSE-LIMITS-QA1', assignment='outside_plan'),
+            self.review('09:20', ref=None, assignment='unknown', mode=None),
+            self.review('09:30', role='qa-adversarial', ref=None, assignment='no_task', mode='DELTA', verdict='BLOCK')])
+        self.assertEqual(found, [
+            ('ABUSE-LIMITS-2:code-reviewer@1795165200',
+             'przegląd code-reviewer zadania ABUSE-LIMITS-2 (FULL): werdykt CHANGES_REQUIRED'),
+            ('ABUSE-LIMITS-QA1:code-reviewer@1795165800',
+             'przegląd code-reviewer zadania spoza planu ABUSE-LIMITS-QA1 (FULL): werdykt CHANGES_REQUIRED'),
+            ('nieustalone:code-reviewer@1795166400',
+             'przegląd code-reviewer zlecenia z zadaniem nieustalonym (tryb nieustalony): werdykt CHANGES_REQUIRED'),
+            ('epik:qa-adversarial@1795167000', 'przegląd qa-adversarial całej zmiany (DELTA): werdykt BLOCK')])
+        incidents, _ = retro.native_record_incidents(NATIVE, native_record(reviews=[
+            self.review('09:10', ref='ABUSE-LIMITS-QA1', assignment='outside_plan')]))
+        data = [i['data'] for i in incidents if i['kind'] == 'finding'][0]
+        self.assertEqual((data['task'], data['ref'], data['assignment']), (None, 'ABUSE-LIMITS-QA1', 'outside_plan'))
+
+    def test_a_ref_that_is_no_identifier_reaches_neither_the_key_nor_the_data(self):
+        for ref in ('ABUSE-LIMITS-QA1\nTAJNY-TEKST', 123, ['ABUSE-LIMITS-QA1'], 'A' * 101, ' ', ''):
+            with self.subTest(ref=ref):
+                incidents, _ = retro.native_record_incidents(NATIVE, native_record(reviews=[
+                    self.review('09:10', ref=ref, assignment='outside_plan')]))
+                finding = [i for i in incidents if i['kind'] == 'finding'][0]
+                self.assertIsNone(finding['data']['ref'])
+                self.assertEqual(finding['key'], 'nieustalone:code-reviewer@1795165800')
+                self.assertNotIn('\n', finding['facts'][0]['text'])
+        incidents, _ = retro.native_record_incidents(NATIVE, native_record(reviews=[
+            self.review('09:10', ref='ABUSE-LIMITS-QA1', assignment='outside_plan\nTAJNE')]))
+        finding = [i for i in incidents if i['kind'] == 'finding'][0]
+        self.assertIsNone(finding['data']['assignment'])
+        self.assertEqual(finding['key'], 'nieustalone:code-reviewer@1795165800')
+
+    def test_a_review_of_the_record_without_orders_keeps_its_text_key_and_data(self):
+        incidents, _ = retro.native_record_incidents(NATIVE, native_record())
+        found = {i['key']: (i['facts'][0]['text'], i['data']) for i in incidents if i['kind'] == 'finding'}
+        self.assertEqual(found, {
+            'ABUSE-LIMITS-2:code-reviewer@1795167000': (
+                'przegląd code-reviewer zadania ABUSE-LIMITS-2 (FULL): werdykt CHANGES_REQUIRED',
+                {'task': 'ABUSE-LIMITS-2', 'role': 'code-reviewer', 'agent_id': 'a2r', 'mode': 'FULL',
+                 'verdict': 'CHANGES_REQUIRED', 'blocking': True, 'can_be_corrective': False}),
+            'epik:qa-adversarial@1795172400': (
+                'przegląd qa-adversarial całej zmiany (FULL): werdykt BLOCK',
+                {'task': None, 'role': 'qa-adversarial', 'agent_id': 'aqa', 'mode': 'FULL', 'verdict': 'BLOCK',
+                 'blocking': True, 'can_be_corrective': False})})
+
+
 class NativeSectionsTest(unittest.TestCase):
     """The points of a fixed section of the description of the final PR (docs/adr/agentic-software-house.md,
     "Przebieg epiku", step 7): None without the section, no point for the entry "brak"."""
