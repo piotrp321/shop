@@ -147,9 +147,11 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // "Spróbuj ponownie" reads the checkout again while the error stays (the button keeps the focus); `loaded` says
   // "loading" only for the first read.
   const [retrying, setRetrying] = useState(false);
-  // The summary is out of date: a refusal for a changed cart or total could not read the cart. The next click on the
-  // order button reads it and tells the changes instead of ordering; `checking` is that read, with the form locked.
-  const [outOfDate, setOutOfDate] = useState<ChangeReason | null>(null);
+  // The summary is out of date: a refusal for a changed cart or total could not read the cart. Until the customer is
+  // told what changed against `shown`, the summary of the refused order, nothing is ordered: the next click on the
+  // order button reads the cart and tells the changes instead (`checking` is that read, with the form locked), and any
+  // other read of the summary (a code) tells them at once (`showCart`).
+  const [outOfDate, setOutOfDate] = useState<{ reason: ChangeReason; shown: CartView } | null>(null);
   const [checking, setChecking] = useState(false);
   // The discount code lives in this component only (D3): a reload of the page starts without one. `appliedCode` is the
   // code the summary of `loaded` was priced with; `codeInput` is what the customer types.
@@ -220,12 +222,18 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
 
   /**
    * Shows the summary read again. The chosen delivery method stays only while the new summary offers it (a method that
-   * is gone is not chosen again when it comes back), and a changed delivery is announced in the live region.
+   * is gone is not chosen again when it comes back), and a changed delivery is announced in the live region. Every
+   * read of the summary goes through here: one read while the summary is out of date comes with the message of what
+   * changed against the summary of the refused order (the method is the one chosen now, which the customer sees), so a
+   * summary the customer was not told about is never ordered and the message of the failed read does not stay.
    */
   function showCart(next: CartView, session: AccountSession) {
     if (loaded.status === "ready") setSummaryStatus(deliveryAnnouncement(loaded.cart, next, deliveryMethodId));
     setLoaded({ status: "ready", cart: next, session });
-    setOutOfDate(null);
+    if (outOfDate !== null) {
+      setFailure({ kind: "changed", reason: outOfDate.reason, changes: cartChanges(outOfDate.shown, next, deliveryMethodId) });
+      setOutOfDate(null);
+    }
     setDeliveryMethodId((current) => (next.delivery?.options.some((option) => option.methodId === current) ? current : null));
   }
 
@@ -262,19 +270,28 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   /**
    * Reads the cart, with the code applied, after a refusal for a changed cart or total, or for a click on a summary out
    * of date, and only then shows the message: the changes between the summary `shown` (with the method `chosenId`) and
-   * the one read, and that summary, come in one render. A read that fails, or answers 401, leaves the summary out of
-   * date. Answers the id of the element that gets the focus.
+   * the one read, and that summary, come in one render, and so does the end of the lock of the order. A read that
+   * fails, or answers 401, leaves the summary out of date against `shown`. Answers the id of the element that gets the
+   * focus.
    */
   async function readChanges(reason: ChangeReason, shown: CartView, chosenId: string | null, session: AccountSession): Promise<string> {
     const preview = await loadPreview(appliedCode);
     if (preview.status !== "ok") {
-      setOutOfDate(reason);
+      setOutOfDate({ reason, shown });
       setFailure(preview.status === "unauthorized" ? { kind: "unauthorized" } : { kind: "message", text: CHANGES_NOT_READ });
-      return FAILURE_ID;
+    } else {
+      showPreview(preview, session);
+      setFailure({ kind: "changed", reason, changes: cartChanges(shown, preview.cart, chosenId) });
     }
-    showPreview(preview, session);
-    setFailure({ kind: "changed", reason, changes: cartChanges(shown, preview.cart, chosenId) });
+    unlockOrder();
     return FAILURE_ID;
+  }
+
+  /** Ends the lock of the form taken for an order, or for the read of a summary out of date. */
+  function unlockOrder() {
+    running.current = null;
+    setSubmitting(false);
+    setChecking(false);
   }
 
   async function applyCode(event: FormEvent<HTMLFormElement>) {
@@ -370,10 +387,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       setSubmitting(true);
       setChecking(true);
       setFailure(null);
-      const target = await readChanges(outOfDate, loaded.cart, deliveryMethodId, loaded.session);
-      running.current = null;
-      setSubmitting(false);
-      setChecking(false);
+      const target = await readChanges(outOfDate.reason, outOfDate.shown, deliveryMethodId, loaded.session);
       focusAfterAnswer(origin, target);
       return;
     }

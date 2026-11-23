@@ -646,8 +646,13 @@ Rozbieżność koszyka i kwoty (409 `cart-changed` i `order-total-changed`; `doc
    się wczytać aktualnego podsumowania. Spróbuj ponownie.”, a podsumowanie jest nieaktualne (także po 401): następne
    kliknięcie „Zamawiam z obowiązkiem zapłaty” niczego nie zamawia, tylko czyta koszyk z tą samą blokadą formularza
    (region statusu: „Wczytywanie…”) i pokazuje komunikat z punktu 3 (albo znowu ten o nieudanym odczycie); dopiero
-   kolejne kliknięcie składa zamówienie. Udany odczyt podsumowania w inny sposób (kod rabatowy) też kończy stan
-   nieaktualny.
+   kolejne kliknięcie składa zamówienie. Reguła: dopóki klient nie zobaczył listy zmian względem podsumowania
+   odrzuconego zamówienia (albo komunikatu bez listy, gdy różnic nie ma), kliknięcie nie zamawia, a komunikat na
+   ekranie jest prawdziwy. Dlatego udany odczyt podsumowania w inny sposób w stanie nieaktualnym (zastosowanie kodu,
+   „Usuń kod”, kod odrzucony przez podsumowanie albo przez 400, po którym kasa czyta podsumowanie bez kodu) od razu
+   zastępuje komunikat o nieudanym odczycie komunikatem z punktu 3: lista zmian względem podsumowania odrzuconego
+   zamówienia i metody wybranej w chwili odczytu, z tym samym pierwszym akapitem; dopiero kolejne kliknięcie zamawia.
+   Nieudane albo 401 sprawdzenie kodu zostawia stan nieaktualny.
 
 Po odrzuceniu fokus przechodzi na komunikat błędu (`role="alert"`, `tabIndex=-1`); po 422 z błędami pól na pierwsze
 błędne pole (w kolejności formularza), które ma `aria-invalid` i `aria-describedby` na swój komunikat; po odrzuconym
@@ -808,7 +813,9 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   „Składamy zamówienie…”, zmiana pola i wyboru nic nie zmienia; potem komunikat z listą i nowe podsumowanie w jednym
   renderze, sprawdzane obserwatorem DOM; fokus według F2; pusty koszyk, `hasExcludedLines`, 401, kod odrzucony przy
   odczycie, metoda dostawy znika, brak różnic; odczyt nieudany i podsumowanie nieaktualne: kliknięcie czyta koszyk
-  i nie wysyła zamówienia, ponowny błąd, 401), funkcja różnic `cart-changes.test.ts` (każdy wiersz tabeli, kolejność,
+  i nie wysyła zamówienia, ponowny błąd, 401; kod zastosowany, usunięty, odrzucony przez podsumowanie i przez 400
+  w stanie nieaktualnym: od razu lista zmian względem podsumowania odrzuconego zamówienia i zamawia dopiero kolejne
+  kliknięcie; nieudane i 401 sprawdzenie kodu: stan zostaje, kliknięcie tylko czyta), funkcja różnic `cart-changes.test.ts` (każdy wiersz tabeli, kolejność,
   brak różnic, pozycja bez produktu, kwoty z API bez sumowania), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
   danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`, region statusu (ten sam węzeł od wczytywania do treści),
   „Spróbuj ponownie” (przycisk z `aria-disabled` w trakcie, fokus po sukcesie, ponownym błędzie i przeniesiony w trakcie),
