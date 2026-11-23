@@ -37,8 +37,9 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
   dokumenty HTML i wywołania API sklepu, bez plików statycznych i zdjęć.
 - Checkout: dodanie losowego wariantu możliwego do kupienia (ilość 1), odczyt koszyka i `POST /api/checkout` z losowym
   dostawcą płatności. Zamówienie z rozpoczętą płatnością (`redirectUrl`) to sukces.
-  Zamówienie dostaje listę pozycji odczytanego koszyka; odpowiedź 422 albo 409 `cart-changed` to błąd skryptu, więc kończy
-  przebieg (kod 108) komunikatem ze statusem, typem i polami naruszeń.
+  Zamówienie dostaje listę pozycji odczytanego koszyka i kupującego `buyer: "guest"` (jak kasa gościa); odpowiedź 422
+  albo 409 `cart-changed` to błąd skryptu, więc kończy przebieg (kod 108) komunikatem ze statusem, typem i polami
+  naruszeń.
 - Dane wejściowe czyta `setup()` (`lib/data.js`) z publicznego API; pusty katalog przerywa przebieg. Katalog nie jest
   nigdy listowany w całości, więc liczba żądań w `setup()` nie zależy od jego rozmiaru:
   - kategorie: drzewo `GET /api/v1/categories` (ścieżki do stron `/c/<ścieżka>`) i dostawcy płatności;
