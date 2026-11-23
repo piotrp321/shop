@@ -710,7 +710,11 @@ z którego wyszło kliknięcie).
    i podsumowanie z odczytu, odblokowany formularz. Wpisane pola (imię i nazwisko, telefon, adres), wybór płatności
    i dostawy (gdy metoda jest nadal wśród opcji) zostają; imię nie jest wypełniane od nowa z drugiego konta. Pole
    e-mail pojawia się albo znika według nowej sesji. Koszyk innego konta jest pokazany bez listy zmian (pusty albo
-   z pozycjami nie do kupienia: widok tych stanów).
+   z pozycjami nie do kupienia: widok tych stanów). W tym samym czasie nagłówek pokazuje sesję z tego odczytu
+   („Zalogowany jako …” albo link „Zaloguj się”; kasa przekazuje ją zdarzeniem `announceSession`, bez drugiego
+   żądania `/auth/session`), a fokus się nie przenosi. Tak samo po każdym 401, po którym kasa pokazuje wygasłą sesję
+   (zamówienie, odczyt koszyka, kod rabatowy, wczytanie kasy): sklep usunął sesję, więc nagłówek pokazuje link
+   „Zaloguj się”.
 3. Tekst: „Od wczytania kasy zmieniło się konto: teraz to <adres konta>. Nie złożyliśmy zamówienia. Zamówienie będzie
    zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.”, a bez sesji po odczycie: „Od
    wczytania kasy nastąpiło wylogowanie. Nie złożyliśmy zamówienia. Podaj adres e-mail, sprawdź dane i podsumowanie,
@@ -958,7 +962,8 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   z kasą, spóźniony zapis dostaje 404) oraz komunikat R1 z najdłuższą nazwą produktu danych demo przy 375 px z dotykiem
   i przy 320 px: bez przewijania poziomego, link „Przejdź do koszyka” osiągalny Tabem z komunikatu i działający
   dotykiem albo Enterem. W tym samym pliku zmiana kupującego w drugiej karcie na kontach demo Jan i Anna (każdy test
-  przygotowuje potrzebne koszyki, a po każdym koszyki obu kont są opróżniane): R4 (kasa gościa, logowanie Jana: 409,
+  przygotowuje potrzebne koszyki, a po każdym koszyki obu kont są opróżniane; w R4, R5 i R6 nagłówek po komunikacie
+  pokazuje tę samą sesję co kasa): R4 (kasa gościa, logowanie Jana: 409,
   komunikat z adresem Jana, formularz bez pola e-mail z zachowanymi danymi; drugie kliknięcie składa zamówienie Jana,
   na adres z kasy nie przychodzi nic), R5 (kasa Jana, wylogowanie i logowanie Anny z tymi samymi pozycjami i kwotą:
   409, komunikat z adresem Anny, koszyk Anny bez zmian; drugie kliknięcie składa zamówienie Anny, koszyk Jana zostaje)

@@ -12,6 +12,7 @@ import {
   type PlaceOrderResult,
   placeOrder,
 } from "@/api/client";
+import { announceSession } from "@/account/session-events";
 import { actionsFinished } from "@/cart/cart-actions";
 import { announceCartChange } from "@/cart/events";
 import { SessionExpired } from "@/cart/messages";
@@ -212,6 +213,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       .then((result) => {
         if (!active) return;
         setLoaded(result);
+        if (result.status === "unauthorized") announceSession(null);
         if (result.status === "ready") {
           setForm(prefilled(result.session));
           // `chooseMethod`, spelled out: the effect runs once and depends on nothing of the render.
@@ -245,6 +247,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     const keepsFocus = focusStayed(document.getElementById(RETRY_ID));
     setRetrying(false);
     setLoaded(result);
+    if (result.status === "unauthorized") announceSession(null);
     if (result.status === "ready") {
       setForm(prefilled(result.session));
       chooseMethod(onlyMethod(result.cart));
@@ -311,7 +314,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   async function reloadPreview(code: string | null, session: AccountSession): Promise<Preview["status"]> {
     const preview = await loadPreview(code);
     if (preview.status === "unauthorized") {
-      setFailure({ kind: "unauthorized" });
+      showExpired();
       return "unauthorized";
     }
     if (preview.status === "failed") return "failed";
@@ -330,7 +333,8 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     const preview = await loadPreview(appliedCode);
     if (preview.status !== "ok") {
       outOfDate.current = { reason, shown };
-      setFailure(preview.status === "unauthorized" ? { kind: "unauthorized" } : { kind: "message", text: CHANGES_NOT_READ });
+      if (preview.status === "unauthorized") showExpired();
+      else setFailure({ kind: "message", text: CHANGES_NOT_READ });
     } else {
       showPreview(preview, session);
       setFailure({ kind: "changed", reason, changes: cartChanges(shown, preview.cart, chosenId) });
@@ -353,12 +357,24 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       outOfDate.current = null;
       showPreview(preview, session.session);
       setFailure({ kind: "buyer", email: session.session?.email ?? null, mayHavePlaced });
+      // The header shows the buyer the checkout shows now, without a read of its own.
+      announceSession(session.session);
     } else {
       outOfDate.current = { reason: "buyer_changed", shown, mayHavePlaced };
-      setFailure(preview.status === "unauthorized" ? { kind: "unauthorized" } : { kind: "message", text: BUYER_NOT_READ });
+      if (preview.status === "unauthorized") showExpired();
+      else setFailure({ kind: "message", text: BUYER_NOT_READ });
     }
     unlockOrder();
     return FAILURE_ID;
+  }
+
+  /**
+   * Shows the expired session: a 401 of the store means it ended the session (the cookie is gone), so the header is
+   * told that nobody is signed in, as the message says.
+   */
+  function showExpired() {
+    setFailure({ kind: "unauthorized" });
+    announceSession(null);
   }
 
   /** Ends the lock of the form taken for an order, or for the read of a summary out of date. */
@@ -398,7 +414,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         target = CODE_REMOVE_ID;
       }
     } else if (preview.status === "unauthorized") {
-      setFailure({ kind: "unauthorized" });
+      showExpired();
       target = FAILURE_ID;
     } else {
       setCodeError(CODE_NOT_CHECKED);
@@ -425,7 +441,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       renewKey();
       target = CODE_INPUT_ID;
     } else if (preview.status === "unauthorized") {
-      setFailure({ kind: "unauthorized" });
+      showExpired();
       target = FAILURE_ID;
     } else {
       setCodeError(CODE_NOT_REMOVED);
@@ -618,7 +634,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         setFailure({ kind: "not_found" });
         return FAILURE_ID;
       case "unauthorized":
-        setFailure({ kind: "unauthorized" });
+        showExpired();
         return FAILURE_ID;
       case "rate_limited":
         // Nothing was placed: the form stays, and so does the key for the retry in a few minutes.
