@@ -297,6 +297,40 @@ Poza gwarancją:
 - `make load-smoke` i testy `infra/k8s` (`make -C infra/k8s check`) przechodzą; ścieżka błędu: żądanie bez
   `expectedLines` daje 422, a skrypt kończy się błędem z tym statusem.
 
+## Kryteria akceptacji
+
+1. Przebieg R1 (ilości dwóch wariantów w tej samej cenie zamienione w innej karcie po wczytaniu kasy): zamówienie nie
+   powstaje, kasa pokazuje obie zmienione pozycje i nowe podsumowanie, a drugie kliknięcie składa zamówienie o
+   ilościach z nowego podsumowania (e-mail zamówienia).
+2. API odrzuca złożenie 409 `cart-changed`, gdy koszyk ma inną ilość, brakującą albo dodatkową pozycję względem
+   `expectedLines`; po odrzuceniu koszyk, stany, numeracja, użycia kodów i roszczenia limitu są bez zmian. Lista
+   zgodna bez względu na kolejność i wielkość liter składa zamówienie.
+3. Każde naruszenie `expectedLines` z tabeli Z1 daje 422 z polem i komunikatem po polsku na obu endpointach, nigdy 500.
+4. Powtórzenie z tym samym kluczem i treścią zwraca to samo zamówienie także po opróżnieniu koszyka; ten sam klucz
+   z inną listą daje 409 `idempotency-key-reused`.
+5. Równoległe złożenie i zmiana koszyka (O5, O8–O12) nigdy nie dają zamówienia o liniach innych niż lista żądania, nie
+   gubią linii i nie zakleszczają się.
+6. Po 409 `cart-changed` albo `order-total-changed` komunikat z listą zmian, linkiem „Przejdź do koszyka” i
+   podsumowanie z serwera pojawiają się razem; do końca odczytu formularz jest zablokowany, a wpisane dane zostają
+   (przebieg R2).
+7. Po nieudanym odczycie koszyka kolejne kliknięcie „Zamawiam z obowiązkiem zapłaty” czyta koszyk i niczego nie
+   zamawia; klient widzi listę zmian przed zamówieniem także wtedy, gdy podsumowanie odświeżył kod rabatowy.
+8. Kasa gościa wysłana po zalogowaniu w innej karcie (R4) i kasa konta A wysłana po przelogowaniu na konto B z tymi
+   samymi pozycjami i kwotą (R5) nie składają zamówienia i nie scalają koszyka; kasa pokazuje komunikat z adresem
+   konta, a drugie kliknięcie składa zamówienie tego konta.
+9. Kasa konta wysłana bez sesji (R6: wylogowanie, zły podpis, sesja usunięta, token nie do odświeżenia) dostaje widok
+   wygasłej sesji, a przy niedostępnym Redisie albo Keycloaku błąd do ponowienia; w żadnym z tych przypadków nie
+   powstaje zamówienie gościa.
+10. `GET /auth/session` zwraca znacznik kupującego bez `sub`, identyfikatora sesji i tokenów; odświeżenie tokenu
+    i ponowne logowanie na to samo konto nie dają konfliktu; znacznik nie jest poprawnym podpisem żadnego ciasteczka.
+11. Komunikaty rozbieżności i zmiany kupującego nie powodują przewijania poziomego przy 375 i 320 px (długa nazwa
+    produktu, długi adres konta) i są osiągalne z klawiatury.
+12. `make load-smoke` i `make -C infra/k8s check` przechodzą; odrzucone zamówienie kończy skrypt k6 i test dymny
+    błędem ze statusem i typem odpowiedzi.
+13. Istniejące przepływy zamówień E2E przechodzą bez zmiany asercji i helperów `e2e/support`.
+14. Zamówienie zgodne z kasą z innej karty przy zapisie koszyka w drodze (R3) powstaje jak dotąd, a spóźniony zapis
+    go nie zmienia (granica ochrony).
+
 ## Zależności i równoległość
 
 - **API-INPUT-CONTRACT:** naruszenia nowego pola są w `OrderRequestViolationCases` (treść żądania); zestaw

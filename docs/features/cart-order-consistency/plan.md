@@ -92,8 +92,7 @@ klucza; znacznik kupującego: obcy znacznik, znacznik innego konta, brak sesji z
         "infra/k8s/tests/test_smoke_messaging.py"
       ],
       "parallel_with": [
-        "CART-ORDER-CONSISTENCY-3",
-        "CART-ORDER-CONSISTENCY-4"
+        "CART-ORDER-CONSISTENCY-3"
       ]
     },
     {
