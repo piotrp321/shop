@@ -76,7 +76,10 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    z `isolation: worktree`. Jego worktree startuje z `origin/main`, nie z gałęzi epiku, więc zlecenie każe zacząć od
    `git fetch origin && git switch -c task/<ID> origin/<gałąź epiku>`. `description` wywołania subagenta zaczyna
    się od ID zadania (`<EPIK>-<n>`); w przeglądzie całej zmiany zawiera nazwę epiku i rolę. Po ID pomiar przypisuje
-   przebieg do zadania, bez niego trafia on do pozycji „bez zadania”. Zlecenie podaje ID zadania, ścieżkę planu
+   przebieg do zadania, bez niego trafia on do pozycji „bez zadania”. `summary` wiadomości, która wznawia subagenta
+   (`SendMessage`), zaczyna się od ID zadania, którego dotyczy wznowienie (`<EPIK>-<n>`, dla zadania poprawkowego jego
+   identyfikator, np. `<EPIK>-QA1`), a przy przeglądzie całej zmiany od `<EPIK>-EPIC`. Wznowienie bez jednego z nich
+   pomiar zapisuje jako „zadanie nieustalone”: sama nazwa epiku nie wystarcza. Zlecenie podaje ID zadania, ścieżkę planu
    i specyfikacji, a gdy zadanie potrzebuje stosu (testy na bazie, kolejce, przeglądarce): nazwę projektu Compose
    i pierwszy z 7 wolnych portów (`AO_COMPOSE_PROJECT=<nazwa> AO_PORT_BASE=<port> .ao/setup`; stos gasi
    `AO_COMPOSE_PROJECT=<nazwa> .ao/teardown`). Subagent commituje na gałęzi zadania i nie pushuje.

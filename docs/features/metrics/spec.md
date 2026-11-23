@@ -441,19 +441,61 @@ z pozycją `sessions` w `gaps`), każdy `message.id` raz: pierwsze wystąpienie 
 z pozycją w `gaps`. Linia transkryptu, która nie jest obiektem JSON, jest pomijana z pozycją `sessions` w `gaps`
 z liczbą takich linii; transkrypt bez żadnej linii będącej obiektem JSON (pusty albo całkiem uszkodzony) jest
 nieczytelny: sesja prowadząca bez przeczytanego transkryptu, subagent z utraconym. Czytane pola: wiadomości `assistant` (`message.id`, `message.model`, `message.usage`, `timestamp`,
-bloki `tool_use`, w tym `SubagentHandback` z tekstem raportu), `tool_result` w wiadomościach użytkownika (przy wyniku
-wywołania `Agent` także `toolUseResult.agentId`), `origin.kind`
-i `uuid` linii użytkownika, `timestamp` linii i `version` (wersja CLI); z `meta.json` `agentType`, `description`,
-`effort`, `finished`; model przebiegu pochodzi z jego wiadomości, a pole `model` z `meta.json` nie jest czytane (przebieg
-uruchomiony z domyślnymi ustawieniami go nie ma). Opis zlecenia służy tylko do ustalenia zadania, a tekst raportu tylko do odczytu
-werdyktu; żaden nie trafia do rekordu. Transkrypt subagenta jest utracony, gdy jest tylko jego `meta.json`, plik jest
+bloki `tool_use`, w tym `SubagentHandback` z tekstem raportu i `SendMessage` z polem `summary`), `tool_result`
+w wiadomościach użytkownika (przy wyniku wywołania `Agent` także `toolUseResult.agentId`, przy wyniku `SendMessage`
+`toolUseResult.resumedAgentId`), `origin.kind` i `uuid` linii użytkownika, `timestamp` linii i `version` (wersja CLI);
+z `meta.json` `agentType`, `description`, `effort`, `finished`; model przebiegu pochodzi z jego wiadomości, a pole
+`model` z `meta.json` nie jest czytane (przebieg uruchomiony z domyślnymi ustawieniami go nie ma). `description`
+i `summary` służą tylko do ustalenia zadania, a tekst raportu tylko do odczytu werdyktu; żaden nie trafia do rekordu. Transkrypt subagenta jest utracony, gdy jest tylko jego `meta.json`, plik jest
 nieczytelny (także pusty albo uszkodzony), albo gdy sesja prowadząca uruchomiła go w przedziale epiku (wynik wywołania `Agent`
 z `toolUseResult.agentId`), a w katalogach sesji epiku nie ma żadnego jego pliku; utracony transkrypt to pozycja
 `sessions` w `gaps` i liczy się jak brak transkryptu części sesji (niżej, „Brak transkryptów”).
 
-**Rola i zadanie (D4).** Sesja prowadząca to rola `orchestrator` bez zadania; przebieg subagenta to rola z `agentType`
-i zadanie, którego ID (`<EPIK>-<n>`, wielkość liter bez znaczenia) występuje w `description` jako pierwsze. Bez ID
-przebieg należy do pozycji `no_task` („bez zadania”), tak jak sesja prowadząca.
+**Rola i zadanie (D4).** Sesja prowadząca to rola `orchestrator` bez zadania (pozycja `no_task`, „bez zadania”);
+przebieg subagenta to rola z `agentType` podzielona na zlecenia, a zadanie ma każde zlecenie osobno.
+
+*Zlecenie* to odcinek transkryptu subagenta od linii, która go zaczyna, do linii przed następnym zleceniem. Pierwsze
+zlecenie (`boundary: "launch"`) zaczyna pierwsza linia transkryptu. Kandydatem na kolejne jest linia `user`
+z `origin.kind = "coordinator"`, która nie jest wynikiem narzędzia. Wznowienie po stronie prowadzącego to wynik
+wywołania `SendMessage` z `toolUseResult.resumedAgentId` tego subagenta w transkryptach sesji epiku, kolejny
+w kolejności czasu i nie dalej niż 60 s od kandydata; każde wywołanie liczy się raz (`id` bloku `tool_use`), także gdy
+wznowiona albo rozgałęziona sesja prowadząca powtarza linie.
+
+| Wznowienie u prowadzącego | Raport `SubagentHandback` poprzedniego zlecenia | Wynik |
+|---|---|---|
+| jest | jest | granica, `boundary: "resume"` |
+| jest | brak | granica, `boundary: "resume_unreported"`, pozycja w `gaps` |
+| brak | jest | granica, `boundary: "resume_unconfirmed"`, pozycja w `gaps` |
+| brak | brak | nie jest granicą: linia należy do trwającego zlecenia, pozycja w `gaps` |
+
+Linia `attachment` typu `queued_command` (wiadomość do pracującego subagenta, powiadomienie zadania w tle) nigdy nie
+jest granicą, tak jak wynik `SendMessage` bez `resumedAgentId` (wiadomość do pracującego subagenta). Wiadomość należy
+do zlecenia, w którym jest jej pierwsza linia; czas zlecenia to różnica między ostatnią i pierwszą linią `user` albo
+`assistant` zlecenia w przedziale epiku. Zlecenie w całości poza przedziałem nie wchodzi do rekordu; przecięte jego
+granicą liczy tylko linie z przedziału. Utracony albo nieczytelny transkrypt sesji prowadzącej daje granice z samych
+raportów (`resume_unconfirmed`).
+
+*Identyfikator (`ref`).* Źródłem zlecenia jest `description` przebiegu (pierwsze zlecenie) albo `summary` wywołania
+`SendMessage`, które potwierdza wznowienie; tekst wiadomości nie jest źródłem. W źródle liczy się pierwsze wystąpienie
+`<EPIK>-<identyfikator>` (identyfikator: litery i cyfry z co najmniej jedną cyfrą, np. `2`, `QA1`) albo oznaczenia
+przeglądu całej zmiany `<EPIK>-EPIC`, bez rozróżniania wielkości liter, zapisane wielkimi literami. Każdy inny wyraz po
+nazwie epiku i sama nazwa epiku niczego nie oznaczają.
+
+| Źródło | `assignment` | `task` | `ref` | Klucz w przekrojach |
+|---|---|---|---|---|
+| `ref` z samych cyfr po nazwie epiku | `plan` | `<EPIK>-<n>` | ten sam | `<EPIK>-<n>` |
+| `ref` z innym identyfikatorem (`QA1`, `CX2`) | `outside_plan` | `null` | pełny identyfikator | `no_task` |
+| oznaczenie `<EPIK>-EPIC` (start albo wznowienie) | `no_task` | `null` | `null` | `no_task` |
+| start: `description` bez `ref` i bez oznaczenia (także bez `meta.json`) | `no_task` | `null` | `null` | `no_task` |
+| wznowienie: `summary` bez `ref` i bez oznaczenia (także sama nazwa epiku albo brak `summary`) | `unknown` | `null` | `null` | `unknown_task` |
+| granica bez wznowienia u prowadzącego (`resume_unconfirmed`) | `unknown` | `null` | `null` | `unknown_task` |
+
+Zadanie nie jest dziedziczone z poprzedniego zlecenia: bez dowodu przypisanie jest nieznane (`unknown`), z pozycją
+w `gaps`. Czas, tokeny i wartość takiego zlecenia są w sumie epiku i w przekrojach według roli i modelu, a w przekrojach
+według zadania pod kluczem `unknown_task`, nigdy pod zadaniem planu ani w `no_task`. Klucze `no_task` i `unknown_task`
+oraz zlecenia `outside_plan` nie są próbkami zadań planu w `decide`, `effect` ani w wąskich gardłach: te reguły
+wybierają wpisy `by_task` po `kind`, a w rekordzie natywnym `kind` ma `null`. Rekord zbudowany starszą wersją narzędzia
+nie ma `orders`, `idle_s`, `by_task.orders` ani `unknown_task`; czytające go komendy traktują brak pola jak brak danych.
 
 **Wartość (D3).** Transkrypt sesji natywnej nie ma kosztu policzonego przez CLI, więc wartość wiadomości to suma tokenów
 każdego rodzaju razy stawka cennika API z `config.json` (`pricing`: dla każdego modelu USD za milion tokenów wejścia,
@@ -471,9 +513,10 @@ w sumie) i pozycja `value` w `gaps`; wiadomość bez tokenów (np. `<synthetic>`
 | `source` | `native` |
 | `tasks`, `started_at`, `done_at` | plik przebiegu (brak: `null` i pozycja w `gaps`) |
 | `final_pr`, `issue`, `merged_at`, `wall` | `pr` z pliku przebiegu i `gh pr view`, jak w AO; `to_done` to `started_at` → `done_at` |
-| `value` | przekroje jak w AO (`total`, `by_role`, `by_model`, `by_task`, `by_role_model`, `by_task_role`), wartość z cennika |
-| `attempts` | jeden wpis na przebieg subagenta: `agent_id`, `task`, `role` (`agentType`), `model` (najczęstszy model jego wiadomości; `null` z pozycją w `gaps`, gdy żadna wiadomość go nie ma), `effort`, `started_at` i `ended_at` (pierwsza i ostatnia wiadomość w przedziale epiku), `wall_s`, `tokens`, `value`, `estimated`, `finished` (z `meta.json`), `instructions` (status `loaded.agents` przebiegu; `null` dla roli wbudowanej; tylko w rekordzie z odczytem `process`); bez `meta.json` rola, zadanie, effort i `finished` to `null` z pozycją w `gaps` (w przekrojach `value` rola `subagent`) |
-| `by_task` | `{zadanie: {kind: null, work, attempts}}`: suma `wall_s` i liczba przebiegów na zadanie (`no_task` dla przebiegów bez zadania) |
+| `value` | przekroje jak w AO (`total`, `by_role`, `by_model`, `by_task`, `by_role_model`, `by_task_role`), wartość z cennika; w `by_task` i `by_task_role` wiadomość liczy się do klucza zlecenia, w którym leży (zadanie planu, `no_task`, `unknown_task`), a suma kluczy `by_task` równa się `total` |
+| `attempts` | jeden wpis na przebieg subagenta: `agent_id`, `task` (zadanie planu pierwszego zlecenia albo `null`), `role` (`agentType`), `model` (najczęstszy model jego wiadomości; `null` z pozycją w `gaps`, gdy żadna wiadomość go nie ma), `effort`, `started_at` i `ended_at` (pierwsza i ostatnia linia w przedziale epiku), `wall_s` (czas realizacji: suma `wall_s` zleceń), `idle_s` (odstępy między zleceniami: `ended_at − started_at − wall_s`), `tokens`, `value`, `estimated`, `finished` (z `meta.json`), `orders`, `instructions` (status `loaded.agents` przebiegu; `null` dla roli wbudowanej; tylko w rekordzie z odczytem `process`); bez `meta.json` rola, zadanie, effort i `finished` to `null` z pozycją w `gaps` (w przekrojach `value` rola `subagent`). Zlecenie bez linii ze znacznikiem czasu ma `wall_s`, `started_at` i `ended_at` `null`; wtedy `wall_s` przebiegu jest dolną granicą (`incomplete: true`, `idle_s` `null`, pozycja w `gaps`) |
+| `attempts[].orders` | zlecenia w kolejności transkryptu (wyżej, „Rola i zadanie”): `n` (numer zlecenia w transkrypcie, od 1), `boundary` (`launch`, `resume`, `resume_unreported`, `resume_unconfirmed`), `assignment`, `task`, `ref`, `task_source` (`description`, `summary`, przy `unknown` `null`), `started_at`, `ended_at`, `wall_s`, `reported_at` (pierwszy raport zlecenia w przedziale albo `null`), `tokens`, `value`, `estimated`; suma tokenów i wartości zleceń równa się tokenom i wartości przebiegu |
+| `by_task` | `{klucz: {kind: null, work, attempts, orders}}`, klucze: zadania planu, `no_task`, `unknown_task` (tylko gdy są takie zlecenia): `work` to suma `wall_s` zleceń klucza, `attempts` liczba przebiegów ze zleceniem tego klucza, `orders` liczba zleceń; zlecenie bez czasu daje `incomplete: true` z pozycją w `gaps` |
 | `in_attempts`, `versions` | polecenia powłoki i wersja CLI ze wszystkich transkryptów epiku (prowadzący i subagenci), reguły jak w AO |
 | `ci` | `final`: przebiegi CI gałęzi `branch` z pliku przebiegu i PR `pr`; `tasks`: `null` |
 | `regressions`, `found_after_merge`, `bottlenecks` | jak w AO |
@@ -484,8 +527,8 @@ w sumie) i pozycja `value` w `gaps`; wiadomość bez tokenów (np. `<synthetic>`
 | `process` | pole `process` pliku przebiegu (wyżej, „Wersja procesu”) z `loaded` policzonym od nowa ze wszystkich transkryptów epiku (sesje i przebiegi subagentów od `started_at` do merge'u; repozytorium do odczytu treści bazy: `--worktree`, domyślnie bieżący katalog; baza niedostępna w repozytorium daje `unconfirmed` z powodem) oraz `loaded.summary` (`{confirmed, differs, unconfirmed}` wszystkich wpisów i `confirmed_epic`: potwierdzone w wersji epiku) i `loaded.by_role` (to samo na rolę agenta); odczyt z kontrolą dysku ma `disk_checked: true`. Plik przebiegu bez kontroli dysku (bez pola `process`, `not_checked`, `check_failed`) z `base_sha`, który repozytorium zna: `status` (`not_checked`, także bez pola, albo `check_failed`), `expected` liczone z `base_sha` w chwili budowy rekordu, `disk: null`, `disk_checked: false`, `disk_reason` (start sprzed kontroli, `--at` albo błąd kontroli), `user_level` i `match` `null`, `loaded` jak wyżej; plik przebiegu się nie zmienia. Bez `base_sha` albo z commitem nieznanym w repozytorium: pole pliku przebiegu bez zmian (bez pola: `null`) |
 | `human` | `interventions` (szacunek, `interventions_estimated: true`), `waits`, `wait_s`, `events` (`[{at, wait_s}]`), `manual_fixes` z `--manual-fixes` (bez opcji `null` z pozycją w `gaps`) |
 | `reviews` | lista przeglądów (niżej, „Przeglądy”); pusta bez przebiegów ról przeglądowych |
-| `integration` | `work_s` (suma `wall_s`) i `attempts` przebiegów `architecture-reviewer`, `qa-adversarial`, `ux-reviewer`; `rounds`: największa liczba raportów jednej z tych ról; bez takich przebiegów `null` z pozycją w `gaps` |
-| `retries` | `fix`: przeglądy zadań (`reviews` z zadaniem) z werdyktem blokującym; `failed_by_outcome`: `{unfinished: n}` przebiegów z `finished: false` (`{}` bez nich; przebieg bez `finished` to pozycja w `gaps`, liczba jest dolną granicą); `attempts`, `repair`, `sync_prs` `null` z pozycją w `gaps` |
+| `integration` | `work_s` (suma `wall_s`, czyli bez odstępów między zleceniami) i `attempts` przebiegów `architecture-reviewer`, `qa-adversarial`, `ux-reviewer`; `rounds`: największa liczba raportów jednej z tych ról; bez takich przebiegów `null` z pozycją w `gaps` |
+| `retries` | `fix`: przeglądy zadań planu (`reviews` z `task`) z werdyktem blokującym; blokujący przegląd w zleceniu `unknown` nie jest liczony, a pozycja w `gaps` mówi, że liczba jest dolną granicą; `failed_by_outcome`: `{unfinished: n}` przebiegów z `finished: false` (`{}` bez nich; przebieg bez `finished` to pozycja w `gaps`, liczba jest dolną granicą); `attempts`, `repair`, `sync_prs` `null` z pozycją w `gaps` |
 | `acceptance` | liczby z tabeli kryteriów opisu końcowego PR (niżej, „Kryteria akceptacji”); brak: `null` z pozycją w `gaps` |
 | `subscription` | `windows`: przyrost każdego okna limitu między `usage_start` i `usage_done` (reguły `night_queue._window_deltas`: okno odnowione między odczytami albo stan inny niż `ok` daje `null` z pozycją w `gaps`); `share`: udział tokenów epiku w tokenach sesji lokalnych (niżej), `share_estimated: true`; `overlap` `null` z pozycją w `gaps`; bez obu odczytów całe `null` z pozycją w `gaps` |
 | `parallel`, `gate_wait`, `waste` | `null`, pozycja w `gaps` („brak źródła w przebiegu natywnym”) |
@@ -553,9 +596,11 @@ tych pól i jego liczbę, z pozycją w `gaps` („zachowano poprzednią wartoś�
 `transcripts_read` tego porównania nie ma.
 
 **Przeglądy (M4).** Raport to wywołanie `SubagentHandback` w transkrypcie subagenta roli `code-reviewer`,
-`qa-adversarial`, `architecture-reviewer` albo `ux-reviewer`, w przedziale epiku. Wpis: `task` (zadanie według D4,
-`null` dla przeglądu całej zmiany), `role`, `agent_id`, `at`, `mode` (pierwszy raport transkryptu `FULL`, każdy
-kolejny, po wznowieniu subagenta, `DELTA`), `verdict` i `blocking`. Werdykt to słowo werdyktu tuż po etykiecie
+`qa-adversarial`, `architecture-reviewer` albo `ux-reviewer`, w przedziale epiku. Wpis: `task`, `ref` i `assignment`
+zlecenia, w którym jest raport (wyżej, „Rola i zadanie”; `task` `null` poza zadaniem planu), `role`, `agent_id`, `at`,
+`mode` (`FULL` dla pierwszego raportu przebiegu z danym `ref`, a przy `no_task` dla pierwszego raportu przebiegu w tym
+stanie; `DELTA` dla kolejnych; `null` z pozycją `reviews` w `gaps` dla raportu w zleceniu `unknown`), `verdict`
+i `blocking`. Werdykt to słowo werdyktu tuż po etykiecie
 „Werdykt” albo „Verdict” w tekście raportu (między nimi tylko odstępy, dwukropek, myślnik, odwrócone apostrofy,
 pogrubienie, znaki nagłówka i jedno słowo `to`, `jest` albo `is`). Raport podaje werdykt na początku, więc wygrywa
 pierwsza etykieta na początku linii (po znaczniku listy, nagłówka, cytatu lub pogrubienia), także gdy dalej cytuje
@@ -584,7 +629,8 @@ się raz, tokeny są ważone `token_weights` (wejście 1, zapis cache 5 min 1,25
 Transkrypt zmodyfikowany ostatnio przed `started_at` nie jest czytany. Użycia z innych urządzeń nie widać, więc `share`
 jest szacunkiem (`share_estimated: true`); bez tokenów w przedziale `share` ma `null` z pozycją w `gaps`.
 
-Rekord natywny nie zawiera treści wiadomości, zleceń, raportów, opisu PR, poleceń ani instrukcji; ścieżki katalogów
+Rekord natywny nie zawiera treści wiadomości, zleceń, `description` ani `summary` (tylko identyfikator `ref`),
+raportów, opisu PR, poleceń ani instrukcji; ścieżki katalogów
 roboczych ma tylko pole `process` (pochodzenie plików instrukcji: miejsca ładowania i ścieżki z dowodu), którego
 komentarz po merge'u nie wypisuje. Format transkryptów nie
 jest stabilnym interfejsem CLI: brak pola daje `null` i pozycję w `gaps`, nie błąd. Testy używają syntetycznych

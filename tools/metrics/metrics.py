@@ -40,8 +40,10 @@ epic: prints the record of the epic run as one JSON line and stores it in <state
 AO directory --ao-home (default: ao-<EPIC> under $SHOP_METRICS_AO_ROOT or ~/.local/state), `source: ao`; without it the
 run file of a native epic, `source: native` (the transcripts of its sessions and their subagents only, the messages
 from the start to the merge of the final PR, every message id once, the value from the API price list `pricing` of
-config.json, always an estimate; the time breakdown and the human messages from the lines of the transcripts, the
-reviews from the `SubagentHandback` reports of the review roles (the verdict only), the acceptance criteria from the
+config.json, always an estimate; every subagent run split into its orders (the resumes confirmed by the `SendMessage`
+calls of the lead), each with its own task, time, tokens and value; the time breakdown and the human messages from the
+lines of the transcripts, the reviews from the `SubagentHandback` reports of the review roles (the verdict only, with
+the task of their order), the acceptance criteria from the
 description of the final PR read through the origin gate (numbers only), the subscription from the two readings of
 the run file and the tokens of all local sessions; fields without a native source are null with a gap); without
 both exit 2. Fields
