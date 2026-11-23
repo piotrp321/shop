@@ -5,6 +5,7 @@ import copy
 import json
 import unittest
 
+import metrics
 import testkit
 from testkit import OPUS, Native, NativeEnv, iso_at
 
@@ -79,6 +80,13 @@ class BoundariesTest(OrdersEnv):
         self.assertEqual((attempt['started_at'], attempt['ended_at']), (iso_at(1000), iso_at(13226)))
         self.assertFalse(gaps_of(record, 'zlecenie'), record['gaps'])
         self.assertFalse(gaps_of(record, 'coordinator'), record['gaps'])
+        self.assertEqual([(o.get('assignment'), o.get('task'), o.get('ref'), o.get('task_source')) for o in orders],
+                         [('plan', 'DEMO-1', 'DEMO-1', 'description'), ('plan', 'DEMO-1', 'DEMO-1', 'summary'),
+                          ('outside_plan', None, 'DEMO-QA1', 'summary'),
+                          ('outside_plan', None, 'DEMO-QA1', 'summary')])
+        self.assertEqual(attempt['task'], 'DEMO-1')
+        self.assertEqual(record['by_task'], {'DEMO-1': {'kind': None, 'work': 720, 'attempts': 1, 'orders': 2},
+                                             'no_task': {'kind': None, 'work': 768, 'attempts': 1, 'orders': 2}})
 
     def one_order_epic(self):
         self.write_run(started=0, done=4000, tasks=3)
@@ -102,10 +110,14 @@ class BoundariesTest(OrdersEnv):
                     'started_at': iso_at(500), 'ended_at': iso_at(800), 'wall_s': 300.0, 'value': 1.22,
                     'estimated': True, 'tokens': {'input': 300000, 'output': 1000, 'cache_read': 0, 'cache_write': 0},
                     'finished': True}}
+        ids = {'ad2': ('plan', 'DEMO-2', 'DEMO-2'), 'aq1': ('outside_plan', None, 'DEMO-QA1')}
         for attempt in record['attempts']:
             orders = self.orders(record, attempt['agent_id'])
             self.assertEqual(len(orders), 1)
             self.assertEqual(orders[0]['boundary'], 'launch')
+            self.assertEqual((orders[0].get('assignment'), orders[0].get('task'), orders[0].get('ref')),
+                             ids[attempt['agent_id']])
+            self.assertEqual((orders[0].get('tokens'), orders[0].get('value')), (attempt['tokens'], attempt['value']))
             self.assertEqual(orders[0]['wall_s'], attempt['wall_s'])
             self.assertEqual(attempt['idle_s'], 0)
             rest = {k: v for k, v in attempt.items() if k not in ('orders', 'idle_s')}
@@ -242,6 +254,8 @@ class BoundariesTest(OrdersEnv):
         orders = self.orders(record, 'ad1')
         self.assertEqual([(o['boundary'], o['wall_s']) for o in orders], [('launch', 100), ('resume', 40)])
         self.assertEqual(self.attempt(record, 'ad1')['tokens']['input'], MILLION + 18)
+        self.assertEqual([(o.get('tokens') or {}).get('input') for o in orders], [MILLION, 18])
+        self.assertEqual(record['value']['total']['tokens']['input'], MILLION + 18 + 5 + 5)
 
     def test_order_without_timestamps_is_incomplete(self):
         self.write_run(started=0, done=4000)
@@ -288,6 +302,225 @@ class BoundariesTest(OrdersEnv):
         record = self.native_record()
         self.assertEqual(self.attempt(record, 'aqa')['wall_s'], 400)
         self.assertEqual(record['integration'], {'work_s': 400, 'attempts': 1, 'rounds': 2})
+
+
+def assigned(orders):
+    return [(o.get('assignment'), o.get('task'), o.get('ref')) for o in orders]
+
+
+class AssignmentTest(OrdersEnv):
+    """The identifier of an order (`ref`) and its assignment, and the tokens, the value and the reviews of the order."""
+
+    def resumed(self, description, summary, kind='developer', reports=('Gotowe', 'Gotowe'), lead=True):
+        """A run of two orders: 100-300 s (input 1M Opus tokens) and 1000-1200 s (input 3M), the second resumed by
+        the lead with `summary` (lead False: no resume in the lead transcript)."""
+        self.write_run(started=0, done=4000)
+        session = Native('s1').assistant(10, input=1000)
+        if lead:
+            session.resume(1000, 'ad1', summary)
+        self.write_session('s1', session)
+        self.write_subagent('s1', 'ad1', Native('s1', 'ad1').assistant(100, model=OPUS, input=MILLION)
+                            .handback(300, reports[0], model=OPUS).order(1000)
+                            .assistant(1100, model=OPUS, input=3 * MILLION).handback(1200, reports[1], model=OPUS),
+                            meta(kind, description))
+        return self.native_record()
+
+    def test_value_and_tokens_follow_the_order(self):
+        record = self.reproduction()
+        attempt = self.attempt(record, 'arv')
+        orders = self.orders(record, 'arv')
+        self.assertEqual([o.get('tokens') for o in orders],
+                         [{'input': i, 'output': o, 'cache_read': 0, 'cache_write': 0}
+                          for i, o in ((2 * MILLION, 10000), (MILLION, 5000), (3 * MILLION, 20000), (MILLION, 10000))])
+        for order, usd in zip(orders, (8.2, 4.1, 12.4, 4.2)):
+            self.assertAlmostEqual(order.get('value'), usd)
+            self.assertIs(order.get('estimated'), True)
+        for kind in ('input', 'output', 'cache_read', 'cache_write'):
+            self.assertEqual(sum(o['tokens'][kind] for o in orders), attempt['tokens'][kind])
+        self.assertAlmostEqual(sum(o['value'] for o in orders), attempt['value'])
+        value = record['value']
+        self.assertAlmostEqual(value['total']['usd'], 29.7)          # as without the orders: 0.8 lead + 28.9 reviewer
+        self.assertAlmostEqual(value['by_task']['DEMO-1']['usd'], 12.3)
+        self.assertAlmostEqual(value['by_task']['no_task']['usd'], 0.8 + 16.6)
+        self.assertAlmostEqual(sum(c['usd'] for c in value['by_task'].values()), value['total']['usd'])
+        self.assertEqual(value['by_task']['DEMO-1']['tokens']['input'], 3 * MILLION)
+        self.assertEqual(set(value['by_task_role']['DEMO-1']), {'code-reviewer'})
+        self.assertAlmostEqual(value['by_task_role']['DEMO-1']['code-reviewer']['usd'], 12.3)
+        self.assertAlmostEqual(value['by_task_role']['no_task']['code-reviewer']['usd'], 16.6)
+        self.assertAlmostEqual(value['by_role']['code-reviewer']['usd'], 28.9)
+        self.assertAlmostEqual(value['by_model'][OPUS]['usd'], 28.9)
+
+    def test_resume_to_another_task_without_id_is_unknown(self):
+        record = self.resumed('DEMO-1 developer', 'popraw jeszcze test')
+        orders = self.orders(record, 'ad1')
+        self.assertEqual(assigned(orders), [('plan', 'DEMO-1', 'DEMO-1'), ('unknown', None, None)])
+        self.assertEqual([o.get('task_source') for o in orders], ['description', None])
+        self.assertEqual(record['by_task'], {'DEMO-1': {'kind': None, 'work': 200, 'attempts': 1, 'orders': 1},
+                                             'unknown_task': {'kind': None, 'work': 200, 'attempts': 1, 'orders': 1}})
+        value = record['value']
+        self.assertAlmostEqual(value['by_task']['DEMO-1']['usd'], 4.0)
+        self.assertAlmostEqual(value['by_task']['unknown_task']['usd'], 12.0)
+        self.assertAlmostEqual(value['by_task']['no_task']['usd'], 0.008)        # the lead only
+        self.assertAlmostEqual(value['total']['usd'], 16.008)
+        self.assertEqual(set(value['by_task_role']['unknown_task']), {'developer'})
+        self.assertTrue([g for g in gaps_of(record, 'ad1') if 'nieustalone' in g], record['gaps'])
+
+    def test_resume_missing_in_the_lead_transcript_is_unknown(self):
+        record = self.resumed('DEMO-1 developer', None, lead=False)
+        orders = self.orders(record, 'ad1')
+        self.assertEqual([o['boundary'] for o in orders], ['launch', 'resume_unconfirmed'])
+        self.assertEqual(assigned(orders), [('plan', 'DEMO-1', 'DEMO-1'), ('unknown', None, None)])
+        self.assertEqual(sorted(record['by_task']), ['DEMO-1', 'unknown_task'])
+        self.assertTrue([g for g in gaps_of(record, 'ad1') if 'nieustalone' in g], record['gaps'])
+        self.setUp()
+        self.resumed('DEMO-1 developer', 'DEMO-1 popraw')
+        self.write_session('s1', ['{cut', 'not json'])            # the lead transcript is unreadable
+        record = self.native_record()
+        orders = self.orders(record, 'ad1')
+        self.assertEqual(assigned(orders), [('plan', 'DEMO-1', 'DEMO-1'), ('unknown', None, None)])
+        self.assertTrue([g for g in gaps_of(record, 'ad1') if 'nieustalone' in g], record['gaps'])
+
+    def test_first_order_of_a_task_outside_the_plan_and_its_next_round(self):
+        record = self.resumed('DEMO-QA1 code-reviewer FULL', 'DEMO-QA1 code-reviewer DELTA', kind='code-reviewer',
+                              reports=('Werdykt: CHANGES_REQUIRED', 'Werdykt: PASS'))
+        orders = self.orders(record, 'ad1')
+        self.assertEqual(assigned(orders), [('outside_plan', None, 'DEMO-QA1')] * 2)
+        self.assertEqual([(r['task'], r.get('ref'), r.get('assignment'), r['mode'], r['verdict'])
+                          for r in record['reviews']],
+                         [(None, 'DEMO-QA1', 'outside_plan', 'FULL', 'CHANGES_REQUIRED'),
+                          (None, 'DEMO-QA1', 'outside_plan', 'DELTA', 'PASS')])
+        self.assertEqual(record['by_task'], {'no_task': {'kind': None, 'work': 400, 'attempts': 1, 'orders': 2}})
+        self.assertNotIn('DEMO-QA1', record['value']['by_task'])
+        self.assertNotIn('DEMO-QA1', record['value']['by_task_role'])
+        self.assertEqual(record['retries']['fix'], 0)                # no review of a plan task
+        self.assertIsNone(self.attempt(record, 'ad1')['task'])
+
+    def test_ref_is_the_first_identifier_not_the_first_number(self):
+        record = self.resumed('DEMO-QA1 code-reviewer FULL po DEMO-1', 'DEMO-QA1 DELTA', kind='code-reviewer',
+                              reports=('Werdykt: PASS', 'Werdykt: PASS'))
+        orders = self.orders(record, 'ad1')
+        self.assertEqual(assigned(orders)[0], ('outside_plan', None, 'DEMO-QA1'))
+        self.assertIsNone(self.attempt(record, 'ad1')['task'])
+        self.assertNotIn('DEMO-1', record['by_task'])
+        self.assertNotIn('DEMO-1', record['value']['by_task'])
+        self.assertEqual([r['task'] for r in record['reviews']], [None, None])
+
+    def test_plan_task_is_read_the_same_at_launch_and_resume(self):
+        for description, summary in (('DEMO-2 developer', 'DEMO-2 popraw'), ('demo-2 developer', 'Demo-2: popraw')):
+            with self.subTest(description=description, summary=summary):
+                self.setUp()
+                record = self.resumed(description, summary)
+                orders = self.orders(record, 'ad1')
+                self.assertEqual(assigned(orders), [('plan', 'DEMO-2', 'DEMO-2')] * 2)
+                self.assertEqual([o['task_source'] for o in orders], ['description', 'summary'])
+                self.assertEqual(record['by_task'], {'DEMO-2': {'kind': None, 'work': 400, 'attempts': 1,
+                                                                'orders': 2}})
+
+    def test_summary_with_the_epic_marker_is_no_task(self):
+        for summary in ('DEMO-EPIC qa-adversarial DELTA', 'demo-epic qa-adversarial DELTA'):
+            with self.subTest(summary=summary):
+                self.setUp()
+                record = self.resumed('DEMO-EPIC qa-adversarial FULL', summary, kind='qa-adversarial',
+                                      reports=('Werdykt: BLOCK', 'Werdykt: PASS'))
+                orders = self.orders(record, 'ad1')
+                self.assertEqual(assigned(orders), [('no_task', None, None)] * 2)
+                self.assertEqual([o['task_source'] for o in orders], ['description', 'summary'])
+                self.assertEqual([(r.get('assignment'), r['mode']) for r in record['reviews']],
+                                 [('no_task', 'FULL'), ('no_task', 'DELTA')])
+                self.assertEqual(record['by_task'], {'no_task': {'kind': None, 'work': 400, 'attempts': 1,
+                                                                 'orders': 2}})
+                self.assertFalse([g for g in gaps_of(record, 'ad1') if 'nieustalone' in g], record['gaps'])
+
+    def test_summary_with_only_the_epic_name_is_unknown(self):
+        for summary in ('DEMO: popraw uwagi', 'DEMO qa-adversarial DELTA', None):
+            with self.subTest(summary=summary):
+                self.setUp()
+                record = self.resumed('DEMO-EPIC qa-adversarial FULL', summary, kind='qa-adversarial',
+                                      reports=('Werdykt: BLOCK', 'Werdykt: PASS'))
+                orders = self.orders(record, 'ad1')
+                self.assertEqual(assigned(orders), [('no_task', None, None), ('unknown', None, None)])
+                self.assertEqual(record['by_task'], {
+                    'no_task': {'kind': None, 'work': 200, 'attempts': 1, 'orders': 1},
+                    'unknown_task': {'kind': None, 'work': 200, 'attempts': 1, 'orders': 1}})
+                self.assertAlmostEqual(record['value']['by_task']['unknown_task']['usd'], 12.0)
+                self.assertTrue([g for g in gaps_of(record, 'ad1') if 'nieustalone' in g], record['gaps'])
+
+    def test_launch_without_id_stays_no_task(self):
+        record = self.resumed('Przegląd UX całej zmiany', 'DEMO-EPIC ux DELTA', kind='ux-reviewer')
+        orders = self.orders(record, 'ad1')
+        self.assertEqual(assigned(orders), [('no_task', None, None)] * 2)
+        self.assertEqual([o['task_source'] for o in orders], ['description', 'summary'])
+        self.assertEqual(record['by_task'], {'no_task': {'kind': None, 'work': 400, 'attempts': 1, 'orders': 2}})
+        self.assertFalse([g for g in gaps_of(record, 'ad1') if 'nieustalone' in g], record['gaps'])
+
+    def test_reviews_take_the_assignment_of_their_order(self):
+        record = self.reproduction()
+        self.assertEqual([(r['task'], r.get('ref'), r.get('assignment'), r['mode'], r['verdict'])
+                          for r in record['reviews']],
+                         [('DEMO-1', 'DEMO-1', 'plan', 'FULL', 'CHANGES_REQUIRED'),
+                          ('DEMO-1', 'DEMO-1', 'plan', 'DELTA', 'PASS'),
+                          (None, 'DEMO-QA1', 'outside_plan', 'FULL', 'CHANGES_REQUIRED'),
+                          (None, 'DEMO-QA1', 'outside_plan', 'DELTA', 'PASS')])
+        self.assertEqual(record['retries']['fix'], 1)            # the blocking review of QA1 is no round of DEMO-1
+        self.assertFalse([g for g in record['gaps'] if g.startswith('retries.fix')], record['gaps'])
+        self.setUp()
+        record = self.resumed('DEMO-1 code-reviewer FULL', 'jeszcze raz', kind='code-reviewer',
+                              reports=('Werdykt: CHANGES_REQUIRED', 'Werdykt: CHANGES_REQUIRED'))
+        self.assertEqual([(r['task'], r.get('ref'), r.get('assignment'), r['mode']) for r in record['reviews']],
+                         [('DEMO-1', 'DEMO-1', 'plan', 'FULL'), (None, None, 'unknown', None)])
+        self.assertTrue([g for g in gaps_of(record, 'ad1') if g.startswith('reviews') and 'tryb' in g],
+                        record['gaps'])
+        self.assertEqual(record['retries']['fix'], 1)
+        self.assertTrue([g for g in record['gaps'] if g.startswith('retries.fix') and 'dolna granica' in g],
+                        record['gaps'])
+
+    def test_record_holds_no_text_of_summaries_or_orders(self):
+        self.write_run(started=0, done=20000, tasks=3)
+        self.write_session('s1', Native('s1').assistant(10, input=5)
+                           .resume(1000, 'ad1', 'DEMO-QA1 TAJNE-STRESZCZENIE-A')
+                           .resume(2000, 'ad1', 'TAJNE-STRESZCZENIE-B bez identyfikatora'))
+        self.write_subagent('s1', 'ad1', Native('s1', 'ad1').assistant(100, model=OPUS, input=5)
+                            .handback(300, 'Werdykt: PASS TAJNY-RAPORT', model=OPUS)
+                            .order(1000, 'TAJNE-ZLECENIE-A').assistant(1100, model=OPUS, input=5)
+                            .handback(1200, 'Werdykt: PASS TAJNY-RAPORT', model=OPUS)
+                            .order(2000, 'TAJNE-ZLECENIE-B', blocks=True).assistant(2100, model=OPUS, input=5)
+                            .handback(2200, 'Werdykt: PASS TAJNY-RAPORT', model=OPUS),
+                            meta('code-reviewer', 'DEMO-1 TAJNY-OPIS przeglądu'))
+        record = self.native_record()
+        self.assertEqual(assigned(self.orders(record, 'ad1')),
+                         [('plan', 'DEMO-1', 'DEMO-1'), ('outside_plan', None, 'DEMO-QA1'), ('unknown', None, None)])
+        self.assertIn('unknown_task', record['by_task'])
+        text = json.dumps(record, ensure_ascii=False)
+        for secret in ('TAJN', 'STRESZCZENIE', 'bez identyfikatora', 'Resuming', 'queued'):
+            self.assertNotIn(secret, text)
+
+
+class OrderRefTest(unittest.TestCase):
+    """Step 1 of the assignment: the identifier `<EPIC>-<id>` (letters and digits with a digit) or the marker
+    `<EPIC>-EPIC` that comes first in the text; any other word after the epic name and the name alone mean nothing."""
+
+    def test_identifier_and_marker(self):
+        for text, epic, found in (
+                ('DEMO-2 developer', 'demo', ('plan', 'DEMO-2')),
+                ('demo-2', 'demo', ('plan', 'DEMO-2')),
+                ('Przegląd DEMO-12, potem DEMO-3', 'demo', ('plan', 'DEMO-12')),
+                ('DEMO-QA1 code-reviewer FULL po DEMO-1', 'demo', ('outside_plan', 'DEMO-QA1')),
+                ('demo-cx2', 'demo', ('outside_plan', 'DEMO-CX2')),
+                ('DEMO-1a', 'demo', ('outside_plan', 'DEMO-1A')),
+                ('DEMO-FULL przegląd DEMO-2', 'demo', ('plan', 'DEMO-2')),
+                ('DEMO-EPIC qa-adversarial DELTA', 'demo', ('epic', None)),
+                ('qa demo-epic po DEMO-3', 'demo', ('epic', None)),
+                ('DEMO-3 po DEMO-EPIC', 'demo', ('plan', 'DEMO-3')),
+                ('STORE-UX-FIXES-QA1 code-reviewer', 'store-ux-fixes', ('outside_plan', 'STORE-UX-FIXES-QA1')),
+                ('STORE-UX-FIXES-2', 'store-ux-fixes', ('plan', 'STORE-UX-FIXES-2')),
+                ('DEMO: popraw uwagi', 'demo', (None, None)),
+                ('DEMO qa-adversarial DELTA', 'demo', (None, None)),
+                ('DEMO-EPICS DEMO-FIX', 'demo', (None, None)),
+                ('XDEMO-1 i DEMOX-2', 'demo', (None, None)),
+                ('OTHER-1', 'demo', (None, None)),
+                ('', 'demo', (None, None)),
+                (None, 'demo', (None, None))):
+            self.assertEqual(metrics.order_ref(text, epic), found, text)
 
 
 if __name__ == '__main__':
