@@ -4020,13 +4020,13 @@ def order_ref(text, epic_id):
     return None, None
 
 
-def order_assignment(order, description, epic_id, agent, gaps):
+def order_assignment(order, description, epic_id):
     """{assignment, task, ref, task_source} of an order (spec: Identyfikator i przypisanie zlecenia): the first order
     from the description of the run, a resume from the `summary` of the `SendMessage` call that confirmed it. `plan`
     (a plan task), `outside_plan` (a known id outside the plan: `no_task` in the sections), `no_task` (the marker
     `<EPIC>-EPIC`, or a description without an id) and `unknown`: a resume without an id or a marker, or a boundary
-    without a resume of the lead (`unknown_task` in the sections, a gap). The task is never taken from the order
-    before."""
+    without a resume of the lead (`unknown_task` in the sections; the reason is added to the `notes` of the order).
+    The task is never taken from the order before."""
     if order['boundary'] == 'launch':
         kind, ref = order_ref(description, epic_id)
         source = 'description'
@@ -4034,12 +4034,12 @@ def order_assignment(order, description, epic_id, agent, gaps):
         kind, ref = order_ref(order['resume']['summary'], epic_id)
         source = 'summary'
         if kind is None:
-            gaps.add('attempts.%s' % agent, 'zlecenie %d: summary wznowienia bez ID zadania ani oznaczenia '
-                                            '<EPIK>-EPIC: zadanie nieustalone (unknown_task)' % order['n'])
+            order['notes'].append('zlecenie %d: summary wznowienia bez ID zadania ani oznaczenia <EPIK>-EPIC: '
+                                  'zadanie nieustalone (unknown_task)' % order['n'])
             return {'assignment': 'unknown', 'task': None, 'ref': None, 'task_source': None}
     else:
-        gaps.add('attempts.%s' % agent, 'zlecenie %d: wznowienie bez potwierdzenia w sesji prowadzącej: zadanie '
-                                        'nieustalone (unknown_task)' % order['n'])
+        order['notes'].append('zlecenie %d: wznowienie bez potwierdzenia w sesji prowadzącej: zadanie nieustalone '
+                              '(unknown_task)' % order['n'])
         return {'assignment': 'unknown', 'task': None, 'ref': None, 'task_source': None}
     if kind in ('plan', 'outside_plan'):
         return {'assignment': kind, 'task': ref if kind == 'plan' else None, 'ref': ref, 'task_source': source}
@@ -4164,41 +4164,57 @@ def lead_resumes(datas):
     return found
 
 
-def native_orders(data, resumes, agent, gaps):
-    """The orders of a subagent run [{n, start, boundary, resume}] in the order of its transcript: the first starts at
-    its first line (`launch`); a line from the coordinator (`candidates`) starts the next one when the next resume of
-    the lead for this subagent lies at most RESUME_WINDOW_S from it (`resume`; without a report of the current order
+def native_orders(data, resumes):
+    """(orders, unmatched) of a subagent run: the orders [{n, start, boundary, resume, notes}] in the order of its
+    transcript and the resumes of the lead for it that confirmed no line. The first order starts at its first line
+    (`launch`); a line from the coordinator (`candidates`) starts the next one when the next resume of the lead for
+    this subagent lies at most RESUME_WINDOW_S from it (`resume`; without a report of the current order
     `resume_unreported`) or, without such a resume, when the current order has a report (`resume_unconfirmed`); a line
-    with neither stays in the current order. The last two kinds and the line that splits nothing are gaps."""
-    orders = [{'n': 1, 'start': 0, 'boundary': 'launch', 'resume': None}]
+    with neither stays in the current order. `notes`: the gaps of an order (the last two kinds of a boundary, a line
+    that splits nothing), added only for the orders of the record (`native_fields`)."""
+    orders = [{'n': 1, 'start': 0, 'boundary': 'launch', 'resume': None, 'notes': []}]
     reports = [line for _, _, line in data['reports']]
-    field, following = 'attempts.%s' % agent, 0
+    unmatched, following = [], 0
     for line, at in data['candidates']:
         matched = None
         if at is not None:
             while following < len(resumes) and resumes[following]['at'] < at - RESUME_WINDOW_S:
+                unmatched.append(resumes[following])
                 following += 1
             if following < len(resumes) and resumes[following]['at'] <= at + RESUME_WINDOW_S:
                 matched = resumes[following]
                 following += 1
         reported = any(orders[-1]['start'] <= report < line for report in reports)
-        n = len(orders) + 1
+        n, notes = len(orders) + 1, []
         if matched is not None and reported:
             boundary = 'resume'
         elif matched is not None:
             boundary = 'resume_unreported'
-            gaps.add(field, 'zlecenie %d: wznowienie bez raportu %s poprzedniego zlecenia (resume_unreported)'
-                     % (n, HANDBACK))
+            notes.append('zlecenie %d: wznowienie bez raportu %s poprzedniego zlecenia (resume_unreported)'
+                         % (n, HANDBACK))
         elif reported:
             boundary = 'resume_unconfirmed'
-            gaps.add(field, 'zlecenie %d: granica po raporcie bez potwierdzenia wznowienia w transkryptach sesji '
-                            'prowadzącej (resume_unconfirmed)' % n)
+            notes.append('zlecenie %d: granica po raporcie bez potwierdzenia wznowienia w transkryptach sesji '
+                         'prowadzącej (resume_unconfirmed)' % n)
         else:
-            gaps.add(field, 'linia coordinator bez raportu poprzedniego zlecenia i bez wznowienia w sesji '
-                            'prowadzącej: nie dzieli zlecenia')
+            orders[-1]['notes'].append('zlecenie %d: linia coordinator bez raportu poprzedniego zlecenia i bez '
+                                       'wznowienia w sesji prowadzącej: nie dzieli zlecenia' % orders[-1]['n'])
             continue
-        orders.append({'n': n, 'start': line, 'boundary': boundary, 'resume': matched})
-    return orders
+        orders.append({'n': n, 'start': line, 'boundary': boundary, 'resume': matched, 'notes': notes})
+    return orders, unmatched + resumes[following:]
+
+
+def unmatched_resumes(unmatched, data, started, until, agent, gaps):
+    """A gap for the resumes of the lead that confirmed no line of the subagent (another format of the line that
+    resumes it, a lost line), counting those in the interval of the epic and in the time of its transcript: its
+    orders may be unsplit and the time of the run may hold the gaps between them."""
+    times = [at for _, at in data['timed']]
+    found = [r for r in unmatched
+             if times and min(times) <= r['at'] <= max(times) and in_window(r['at'], started, until)]
+    if found:
+        gaps.add('attempts.%s' % agent, 'wznowienia w sesji prowadzącej bez linii coordinator w transkrypcie '
+                                        'subagenta (%d): zlecenia mogą być niepodzielone, wall_s może zawierać '
+                                        'odstępy' % len(found))
 
 
 def order_parts(data, orders, started, until):
@@ -4239,6 +4255,10 @@ def run_time(orders, start, end, agent, gaps):
                          % order['n'])
     else:
         found['idle_s'] = round(round(end - start, 3) - found['wall_s'], 3)
+        if found['idle_s'] < 0:
+            found['idle_s'] = None
+            gaps.add('attempts.%s' % agent, 'zlecenia nachodzą na siebie (znaczniki czasu nie po kolei): idle_s '
+                                            'nieznane')
     return found
 
 
@@ -4330,13 +4350,16 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
         model = max(sorted(models), key=lambda m: models[m]) if models else None
         if model is None:
             gaps.add('attempts.%s' % agent, 'brak message.model w wiadomościach przebiegu: model nieznany')
-        every = native_orders(data, resumes.get(agent, []), agent, gaps)
+        every, unmatched = native_orders(data, resumes.get(agent, []))
+        unmatched_resumes(unmatched, data, started, until, agent, gaps)
         for order in every:
-            order.update(order_assignment(order, meta['description'], epic_id, agent, gaps))
+            order.update(order_assignment(order, meta['description'], epic_id))
         task = every[0]['task']
         reviews += reviews_of_run(agent, meta['role'], data['reports'], every, started, until, gaps)
         orders, rows, tokens, usd, usage_missing, unknown_value = [], [], dict(ZERO_TOKENS), 0.0, False, False
         for order, times, found, reports in order_parts(data, every, started, until):
+            for note in order['notes']:
+                gaps.add('attempts.%s' % agent, note)
             known, unknown, missing = native_cells(found, role, pricing, label, gaps)
             items += native_items(order_key(order), known, unknown)
             own = dict(ZERO_TOKENS)
