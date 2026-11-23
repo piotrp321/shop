@@ -17,8 +17,6 @@ export const OTHER_VERSION_MESSAGE = "Na serwerze jest inna wersja niż ta, któ
 export const MATCHES_MESSAGE = "Stan na serwerze odpowiada formularzowi.";
 export const LATE_SAVE_MESSAGE = "Wcześniejszy zapis został wykonany.";
 export const RESTORE_LABEL = "Odrzuć moje zmiany i pokaż stan z serwera";
-/** The same button once the draft is discarded: there are no changes left to discard. */
-export const SHOW_SERVER_STATE_LABEL = "Pokaż stan z serwera";
 /** After the message of a new object: the staff member must look at the list before saving again. */
 export const CHECK_LIST_MESSAGE = "Wcześniejszy zapis może się jeszcze wykonać. Sprawdź listę przed ponownym zapisem.";
 

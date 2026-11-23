@@ -4,7 +4,7 @@ import type { RouteLocationRaw } from "vue-router";
 import { useRouter } from "vue-router";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { MATCHES_MESSAGE, READ_FAILED_MESSAGE, RESTORE_LABEL, SHOW_SERVER_STATE_LABEL } from "@/composables/formRequests";
+import { MATCHES_MESSAGE, READ_FAILED_MESSAGE, RESTORE_LABEL } from "@/composables/formRequests";
 import type { FormSafetyState } from "@/composables/useFormSafety";
 
 /**
@@ -31,6 +31,7 @@ const listHref = computed(() => router.resolve(props.listTo).href);
 const unknown = computed(() => props.safety.unknown.value);
 const readFailed = computed(() => props.safety.readFailed.value);
 const restoreOffered = computed(() => props.safety.restoreOffered.value);
+const restoreNote = computed(() => props.safety.restoreNote.value);
 const reading = computed(() => props.safety.reading.value);
 const status = computed(() => props.safety.status.value);
 
@@ -39,6 +40,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
 const statusRegion = ref<HTMLElement | null>(null);
 const unknownAlert = ref<InstanceType<typeof Alert> | null>(null);
 const readFailedAlert = ref<InstanceType<typeof Alert> | null>(null);
+const restoreNoteAlert = ref<InstanceType<typeof Alert> | null>(null);
 
 // A message that is not focusable by itself (-1: a target for the script, not a stop for the keyboard).
 async function focusLater(target: () => HTMLElement | null | undefined): Promise<void> {
@@ -53,6 +55,11 @@ async function focusLater(target: () => HTMLElement | null | undefined): Promise
 watch(unknown, (value) => {
   if (value !== null) {
     void focusLater(() => unknownAlert.value?.$el as HTMLElement | undefined);
+  }
+});
+watch(restoreNote, (value) => {
+  if (value !== null) {
+    void focusLater(() => restoreNoteAlert.value?.$el as HTMLElement | undefined);
   }
 });
 watch(readFailed, (value) => {
@@ -138,7 +145,29 @@ async function restore(): Promise<void> {
           :disabled="reading"
           @click="restore"
         >
-          {{ unknown.discarded ? SHOW_SERVER_STATE_LABEL : RESTORE_LABEL }}
+          {{ RESTORE_LABEL }}
+        </Button>
+      </AlertDescription>
+    </Alert>
+    <Alert
+      v-else-if="restoreNote"
+      ref="restoreNoteAlert"
+      tabindex="-1"
+      data-testid="restore-note"
+      variant="destructive"
+      :class="ERROR_ALERT"
+    >
+      <AlertDescription class="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span>{{ restoreNote }}</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid="restore-state"
+          :disabled="reading"
+          @click="restore"
+        >
+          {{ RESTORE_LABEL }}
         </Button>
       </AlertDescription>
     </Alert>

@@ -112,6 +112,9 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   const readFailed = ref(false);
   const matched = ref(false);
   const restoreOffered = ref(false);
+  // What the 409 that offered the server state says about it; shown once the draft is discarded and the 409's own message goes.
+  let restoreContext: string | null = null;
+  const restoreNote = ref<string | null>(null);
   const unknownState = shallowRef<UnknownState<TView> | null>(null);
   // An earlier creation ended without a trusted answer: the next conflict may be the object that creation made.
   const earlierCreationUnknown = ref(false);
@@ -146,6 +149,8 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     unknownState.value = null;
     matched.value = false;
     restoreOffered.value = false;
+    restoreContext = null;
+    restoreNote.value = null;
     readFailed.value = false;
   }
 
@@ -190,15 +195,15 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   /**
    * „Odrzuć” of the draft: the form shows its base again. What the form knows about the server stays true and stays:
    * an unknown result (without the promise that the changes stay; „Sprawdź stan” then compares the restored base), what
-   * „Sprawdź stan” found and the way to the server state. A 409 whose message goes away with the draft gets the context
-   * that the version on the server is another. Nothing about the requests in flight changes: a late answer is still only a toast.
+   * „Sprawdź stan” found and the way to the server state. After a 409 only the way stays, with the context the 409 gave
+   * (`restoreNote`), because its own message goes with the draft; nothing is unknown then. Nothing about the requests in flight changes: a late answer is still only a toast.
    */
   function draftDiscarded(): void {
     const current = unknownState.value;
     if (current !== null) {
       unknownState.value = { ...current, discarded: true };
     } else if (restoreOffered.value) {
-      unknownState.value = { pending: false, kind: "otherVersion", created: false, discarded: true };
+      restoreNote.value = restoreContext;
     }
   }
 
@@ -360,9 +365,14 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     await retry?.();
   }
 
-  /** A 409 that the staff member can answer with „Odrzuć moje zmiany i pokaż stan z serwera”. */
-  function offerRestore(): void {
+  /**
+   * A 409 that the staff member can answer with „Odrzuć moje zmiany i pokaż stan z serwera”. `context` is what that 409
+   * says about the server (for the version „Na serwerze jest inna wersja niż ta, którą edytujesz.”, for another 409 its
+   * own message); it stays visible with the button after the draft is discarded.
+   */
+  function offerRestore(context: string): void {
     restoreOffered.value = true;
+    restoreContext = context;
   }
 
   /** The message of a conflict, with the note that an earlier unknown creation may have made the object. */
@@ -378,6 +388,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     unknown,
     readFailed,
     restoreOffered,
+    restoreNote,
     write,
     check,
     unblock,
@@ -398,6 +409,7 @@ export interface FormSafetyState {
   unknown: Readonly<Ref<UnknownResult | null>>;
   readFailed: Readonly<Ref<boolean>>;
   restoreOffered: Readonly<Ref<boolean>>;
+  restoreNote: Readonly<Ref<string | null>>;
   reading: Readonly<Ref<boolean>>;
   status: Readonly<Ref<string>>;
   check: () => Promise<void>;

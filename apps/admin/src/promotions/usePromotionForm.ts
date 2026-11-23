@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
-import type { ReadResult } from "@/composables/formRequests";
+import { OTHER_VERSION_MESSAGE, type ReadResult } from "@/composables/formRequests";
 import { useFormSafety } from "@/composables/useFormSafety";
 import { formatDateTime } from "@/prices/format";
 import { instantToWarsaw, warsawToInstant } from "./time";
@@ -574,7 +574,9 @@ export function usePromotionForm(options: PromotionFormOptions) {
         },
         onRefused: (refusedStatus, refusedBody) => {
           if (failure(refusedStatus, refusedBody, true)) {
-            safety.offerRestore();
+            // What this 409 says about the server, for the button that stays after „Odrzuć”.
+            const ofVersion = problemField(refusedBody, "type") === "about:blank";
+            safety.offerRestore(ofVersion || error.value === null ? OTHER_VERSION_MESSAGE : error.value);
           }
         },
       },

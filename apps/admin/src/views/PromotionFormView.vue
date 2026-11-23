@@ -149,11 +149,14 @@ async function run(action: () => Promise<ActionResult>, after: "page" | "status"
   target.scrollIntoView({ block: "center" });
 }
 
-// The bar goes away with „Odrzuć”, so the focus goes to the H1.
+// The bar goes away with „Odrzuć”, so the focus goes to the H1; when a message about the server stays (an unknown result,
+// the way to its state after a 409), `FormSafetyNotices` puts the focus on it.
 async function discardChanges(): Promise<void> {
   discard();
   await nextTick();
-  header.value?.focus();
+  if (safety.unknown.value === null && safety.restoreNote.value === null) {
+    header.value?.focus();
+  }
 }
 
 // „Odśwież” is gone with the message about a failed read (of the end or of the start), so the focus goes to the heading

@@ -506,9 +506,11 @@ wiedza o serwerze zostaje.
 - Nieznany wynik zostaje ze „Sprawdź stan”, bez zdania „Twoje zmiany zostają w formularzu.” (komunikat „Nie wiemy, czy
   zapis się powiódł.”); „Sprawdź stan” porównuje wtedy przywrócony stan bazowy z serwerem. Wynik „Sprawdź stan”
   (brak zapisu na serwerze, inna wersja) zostaje.
-- Po 409, którego komunikat znika razem ze szkicem, zostaje droga do stanu z serwera: komunikat „Na serwerze jest inna
-  wersja niż ta, którą edytujesz.” z przyciskiem „Pokaż stan z serwera” (po odrzuceniu nie ma już zmian do odrzucenia,
-  więc przycisk nie nazywa się „Odrzuć moje zmiany…”).
+- Po 409 komunikat 409 znika razem ze szkicem, ale zostaje droga do stanu z serwera: przycisk „Odrzuć moje zmiany i pokaż
+  stan z serwera” z komunikatem, co ten 409 mówi o serwerze: dla 409 wersji „Na serwerze jest inna wersja niż ta, którą
+  edytujesz.”, dla innego 409 (np. `promotion-not-editable`) jego `detail`. Po takim 409 nic nie jest nieznane, więc nie
+  ma „Sprawdź stan”. Komunikat dostaje fokus. Przycisk ma zawsze tę samą etykietę, także gdy szkic jest czysty: etykieta
+  zależna od stanu mogłaby zastąpić zmiany wpisane po odrzuceniu bez zapowiedzi.
 - Spóźniona odpowiedź zapisu nadal tylko toast, bez wpływu na pola.
 
 **Spóźniona odpowiedź wcześniejszego zapisu** (po „Sprawdź stan”, „Odblokuj formularz”, po nowszym zapisie albo po
