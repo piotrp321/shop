@@ -329,9 +329,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `getCartDeps()` bierze z nich sesje, `freshAccessToken`, klienta API i konfigurację. Testy podmieniają zależności
   dublerami z `src/auth/test-support.ts` (domyślny klient API odrzuca każde wywołanie).
 - `GET /auth/session` zwraca obok `name` i `email` znacznik kupującego `buyer` (`buyerTag` w `src/auth/buyer.ts`:
-  HMAC-SHA256 tekstu `checkout-buyer:<sub>` kluczem `STORE_SESSION_SECRET`, base64url) z `sub` tej samej sesji, której
-  token odczytał `/api/v1/me`. Znacznik niczego nie otwiera i służy tylko porównaniu w BFF kasy. Odpowiedź nie zawiera
-  `sub`, identyfikatora sesji ani tokenów; znacznika, `sub` ani tokenów nie zapisuj w logach.
+  HMAC-SHA256 z `sub` kluczem wyprowadzonym z `STORE_SESSION_SECRET` przez HKDF-SHA256, info `checkout-buyer`,
+  base64url) z `sub` tej samej sesji, której token odczytał `/api/v1/me`. Znacznik niczego nie otwiera i służy tylko
+  porównaniu w BFF kasy. Klucz znaczników jest inny niż klucz podpisów ciasteczek (`signValue` podpisuje samym
+  sekretem): żaden znacznik nie jest podpisem żadnej wartości ciasteczka. Nie licz znaczników ani innych wartości
+  pokazywanych przeglądarce samym `STORE_SESSION_SECRET`. Odpowiedź nie zawiera `sub`, identyfikatora sesji ani
+  tokenów; znacznika, `sub` ani tokenów nie zapisuj w logach.
 - Nie loguj obiektów błędów openid-client (ich `cause` zawiera odpowiedzi z tokenami). Użyj `logFailure`.
 - `returnTo` przechodzi zawsze przez `sanitizeReturnTo`.
 - Limit `GET /auth/login` (`src/auth/login-rate-limit.ts`; licznik, klucz i okno: `docs/features/hardening/spec.md`,

@@ -507,8 +507,10 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   scalony) usuwa też `store_cart`, jak BFF koszyka; 401 sesji kończy sesję; 503 przy niedostępnym API lub
   zależnościach (także 400 i 415 API oraz 401 endpointu gościa).
 - `/auth/session` zwraca `{name, email, buyer}` (`email` z `GET /api/v1/me`, `buyer`: znacznik kupującego,
-  HMAC-SHA256 tekstu `checkout-buyer:<sub>` kluczem `STORE_SESSION_SECRET` w base64url, `buyerTag` w
-  `src/auth/buyer.ts`, z `sub` tej samej sesji, której token odczytał `/api/v1/me`); typ `AccountSession`
+  HMAC-SHA256 z `sub` kluczem wyprowadzonym z `STORE_SESSION_SECRET` przez HKDF-SHA256 (bez soli, info
+  `checkout-buyer`, 32 bajty), w base64url, `buyerTag` w `src/auth/buyer.ts`, z `sub` tej samej sesji, której token
+  odczytał `/api/v1/me`; klucz znaczników jest inny niż klucz podpisów ciasteczek, więc żaden znacznik nie jest
+  podpisem żadnej wartości ciasteczka); typ `AccountSession`
   w `src/api/client.ts`. Ten sam `sub` daje ten sam znacznik w każdej sesji i po odświeżeniu tokenu. Odpowiedź nie
   zawiera `sub`, identyfikatora sesji ani tokenów; gość dostaje `null`.
 - `src/api/client.ts`: `placeOrder(input, idempotencyKey)` (wynik `ok` z `number` i `redirectUrl`), `startPayment`
@@ -871,7 +873,8 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
 - `/auth/session` (`app/auth/session`): `{name, email, buyer}`; znacznik równy HMAC liczonemu w teście, ten sam dla
   tego samego `sub` w dwóch sesjach i po odświeżeniu tokenu w trakcie żądania, inny dla innego `sub`; bez `sub`,
   identyfikatora sesji i tokenów; sesja usunięta między odczytem tokenu a `sub`: `null`; błąd Redisa: 503.
-- `src/auth/buyer.test.ts`: znacznik i porównanie (obcy znacznik, inny klucz, `guest`, sam `sub`, wielkość liter, znaki
+- `src/auth/buyer.test.ts`: znacznik (także: nie przechodzi `readSignedValue` jako podpis wartości zbudowanej z `sub`,
+  w tym `checkout-buyer:<sub>` i samego `sub`) i porównanie (obcy znacznik, inny klucz, `guest`, sam `sub`, wielkość liter, znaki
   sterujące, białe znaki Unicode, bardzo długi i pusty tekst), jedno wywołanie `timingSafeEqual` na buforach równej
   długości dla każdego tekstu. `src/checkout/problems.test.ts`: przyczynę `buyer_changed` wyznacza tylko `type`.
 - BFF, kupujący (`app/api/checkout/route.test.ts`): każdy wiersz tabeli kupującego z liczbą wywołań API (zero przy
