@@ -611,9 +611,19 @@ def check_image():
     expect(status == 200 and headers.get("Content-Type", "").startswith("image/"), "imgproxy serves the product image")
 
 
+def problem_type(text):
+    """The `type` of a problem answer, '(none)' for a body that has none or is not JSON."""
+    try:
+        value = json.loads(text).get("type")
+    except (ValueError, AttributeError):
+        return "(none)"
+    return value if isinstance(value, str) else "(none)"
+
+
 def place_order(email):
     """Places an order of one unit of the first product that can be bought, as a guest with the address <email> and the first
-    delivery method the cart offers; returns its number."""
+    delivery method the cart offers, for the lines of the cart read just before (`expectedLines`); returns its number. A refusal
+    (422 for the list, 409 cart-changed for another cart) fails the check with its status and type."""
     status, _, text = through_ingress("/api/v1/guest-carts", "api", method="POST")
     expect(status == 201, "a guest cart is created")
     cart = json.loads(text)["id"]
@@ -633,6 +643,10 @@ def place_order(email):
     expect(delivery is not None, "a product is added to the cart")
     expect(bool(delivery["options"]), "the cart offers a delivery method of the seed")
     option = delivery["options"][0]
+    status, _, text = through_ingress(f"/api/v1/guest-carts/{cart}", "api")
+    expect(status == 200, f"the cart is read before the order (got {status}: {text[:200]})")
+    lines = [{"variantId": line["variantId"], "quantity": line["quantity"]} for line in json.loads(text)["lines"]]
+    expect(bool(lines), "the cart read before the order has lines")
     order = {
         "cartId": cart,
         "email": email,
@@ -642,12 +656,13 @@ def place_order(email):
         "postalCode": "00-950",
         "city": "Warszawa",
         "deliveryMethodId": option["methodId"],
+        "expectedLines": lines,
         "expectedTotalGross": option["totalGross"],
     }
     status, _, text = through_ingress(
         "/api/v1/orders", "api", method="POST", body=order, headers={"Idempotency-Key": f"smoke-{time.time_ns()}"}
     )
-    expect(status == 201, f"the order is placed (got {status}: {text[:200]})")
+    expect(status == 201, f"the order is placed (got {status}, type {problem_type(text)}: {text[:200]})")
     return json.loads(text)["number"]
 
 
