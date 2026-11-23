@@ -92,10 +92,15 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    końcowego PR.
 4. **Przegląd zadania.** `FAST`: sesja sama sprawdza diff i wyniki testów, w tym trzy kontrole z punktu 4 agenta
    `code-reviewer` (istniejące testy, zakres, RED). `STANDARD` i `CRITICAL`: `code-reviewer` w trybie FULL; zlecenie
-   podaje worktree zadania jako katalog przeglądu, `head_sha` i `base_sha` (`git merge-base task/<ID> <gałąź epiku>`).
+   podaje worktree zadania jako katalog przeglądu, `head_sha` i `base_sha` (`git merge-base task/<ID> <gałąź epiku>`)
+   oraz ścieżkę transkryptu wykonawcy jako zapis uruchomień testów
+   (`~/.claude/projects/*/<sesja>/subagents/agent-<id>.jsonl`).
    Poprawki robi `developer`, po nich przegląd różnicy (DELTA). Zlecenie poprawek przekazuje ustalenia reviewera;
    to, co sesja dodaje od siebie (własna reguła, zawężenie albo rozszerzenie poprawki), oznacza jako decyzję sesji
-   w zleceniu poprawek i w zleceniu przeglądu. Zlecenie przeglądu (tu i w kroku 6) podaje fakty i decyzje do oceny:
+   w zleceniu poprawek i w zleceniu przeglądu. Dla każdego ustalenia zlecenie podaje jego dowód (reprodukcję albo
+   ścieżkę w kodzie; sondę albo skrypt reviewera, jeśli jest) i gwarancję, którą poprawka ma przywrócić
+   (specyfikacja, lista jakości, kontrakt). Sposób naprawy, który sesja proponuje, jest hipotezą do sprawdzenia, nie
+   zakresem. Zlecenie przeglądu (tu i w kroku 6) podaje fakty i decyzje do oceny:
    nie zawęża przeglądu i nie mówi, czego nie sprawdzać, a reviewer ma obowiązek aktywnie kwestionować założenia
    i decyzje sesji tak samo jak kod. Gdy zadanie z TDD nie ma fazy RED, sesja uruchamia test na kodzie bazowym (ma
    nie przechodzić) i zapisuje wynik w opisie PR; RED nie odtwarza się po fakcie. Takie uruchomienie, tak samo jak
