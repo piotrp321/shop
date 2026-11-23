@@ -389,18 +389,29 @@ main_pid=$$
 space_reason_file="$KUBE_DIR/space-reason"
 space_warned_file="$KUBE_DIR/space-log-warned"
 
-# k6 (its container and the docker client that waits for it) stops; the container is removed first, so the client ends by itself.
+# k6 (the client of docker run and its container) stops. The client is killed and waited for first, and only then the container
+# is removed by its name: a stop that comes while Docker is still making the container finds no container to remove, and a
+# client left running would make it afterwards and start k6 against a cluster that is being deleted.
 stop_k6() {
-  [ -z "$k6_pid" ] || docker rm -f "$k6_name" >/dev/null 2>&1 || true
-  [ -z "$k6_pid" ] || kill "$k6_pid" 2>/dev/null || true
+  [ -n "$k6_pid" ] || return 0
+  kill -KILL "$k6_pid" 2>/dev/null || true
+  wait "$k6_pid" 2>/dev/null || true
+  docker rm -f "$k6_name" >/dev/null 2>&1 || true
   k6_pid=""
 }
 
 cleanup() {
   status=$?
-  [ -z "$guard_pid" ] || kill "$guard_pid" 2>/dev/null || true
+  # The guard is stopped and waited for: a reading it has begun goes to its end (its shell runs the trap of TERM only after the
+  # command it is in) and writes its row of space.log, which must come before the summary. TERM is ignored meanwhile, so that
+  # a fall that this last reading finds does not cut the cleanup short.
+  trap '' TERM
+  if [ -n "$guard_pid" ]; then
+    kill "$guard_pid" 2>/dev/null || true
+    wait "$guard_pid" 2>/dev/null || true
+  fi
   trap - EXIT INT TERM
-  # The guard is stopped: its last reading is in space.log, and the summary closes it (also when the run did not succeed). The
+  # The guard is gone: its last reading is in space.log, and the summary closes it (also when the run did not succeed). The
   # pauses of the host are looked for first, so that the summary names them.
   host_sleep_check || true
   [ "$LOAD_DATA" = seed ] || space_log_summary || true
@@ -410,7 +421,11 @@ cleanup() {
     status=1
     sleep_failed=1
   fi
-  [ -z "$caffeinate_pid" ] || kill "$caffeinate_pid" 2>/dev/null || true
+  # Stopped and waited for, so that no caffeinate outlives the run.
+  if [ -n "$caffeinate_pid" ]; then
+    kill "$caffeinate_pid" 2>/dev/null || true
+    wait "$caffeinate_pid" 2>/dev/null || true
+  fi
   [ -z "$nap_pid" ] || kill "$nap_pid" 2>/dev/null || true
   stop_k6
   for pid in $sampler_pids; do kill "$pid" 2>/dev/null || true; done
@@ -564,9 +579,13 @@ run_k6() {
   k6_status=0
   # shellcheck disable=SC2046 # script_settings prints options
   # In the background and waited for with `wait`, so that the guard of the free space can end the wait; the container has a name,
-  # so that it can be removed (stop_k6).
-  k6_run "$KUBE_NETWORK" "$out" "$script" --name "$k6_name" -e "STORE_URL=http://$node:$traefik_port" -e STORE_HOST=localhost -e "API_URL=http://$node:$traefik_port" \
-    -e API_HOST=api.localhost -e STORE_ORIGIN=http://localhost $(script_settings) "$@" > "$out/$logname.txt" 2>&1 &
+  # so that it can be removed (stop_k6). The background process is the client of docker run itself (docker is exec'd in place of
+  # the shell of the subshell), so that stop_k6 can kill it: killing a shell around it would leave the client running.
+  (
+    docker() { exec docker "$@"; }
+    k6_run "$KUBE_NETWORK" "$out" "$script" --name "$k6_name" -e "STORE_URL=http://$node:$traefik_port" -e STORE_HOST=localhost -e "API_URL=http://$node:$traefik_port" \
+      -e API_HOST=api.localhost -e STORE_ORIGIN=http://localhost $(script_settings) "$@"
+  ) > "$out/$logname.txt" 2>&1 &
   k6_pid=$!
   wait "$k6_pid" || k6_status=$?
   k6_pid=""
