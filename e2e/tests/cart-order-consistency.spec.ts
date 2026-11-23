@@ -22,6 +22,10 @@ const MAP = { name: "Mapa turystyczna Norvane Atlas Karkonosze 1:35 000", slug: 
 const ORDER_BUTTON = "Zamawiam z obowiązkiem zapłaty";
 const PLACING = "Składamy zamówienie…";
 const CART_CHANGED = "Zawartość koszyka zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.";
+const SIGNED_IN_AS = (email: string) =>
+  `Od wczytania kasy zmieniło się konto: teraz to ${email}. Nie złożyliśmy zamówienia. Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
+// 60 characters without a space or a hyphen: the address must wrap on a narrow screen. The demo accounts have short ones.
+const LONG_EMAIL = "bardzodlugiadresklientasklepunorvanetestowykonto@example.com";
 
 type Variant = { variantId: string; label: string; gross: number; purchasable: boolean };
 
@@ -263,11 +267,31 @@ for (const { width, touch } of [
       else await checkout.keyboard.press("Enter");
       await expect(checkout).toHaveURL(/\/cart$/);
     });
+
+    test("the message of a changed buyer with a long address of the account causes no horizontal scrolling", async ({ context, request }) => {
+      const [a] = await twoVariants(request, MAP.slug);
+      const checkout = await guestCheckout(context, [[a, 1]], `e2e-spojnosc-waski-kupujacy+${Date.now()}@example.com`);
+      // The order is refused for a changed buyer without reaching the server (nothing is ordered), and the session read
+      // after it is of an account with a long address.
+      await checkout.route("**/api/checkout", (route) =>
+        route.request().method() === "POST"
+          ? route.fulfill({
+              status: 409,
+              json: { type: "tag:piotrp321.github.io,2026:shop/problems/checkout-buyer-changed", detail: "Od wczytania kasy zmienił się kupujący. Nie złożyliśmy zamówienia." },
+            })
+          : route.fallback(),
+      );
+      await checkout.route("**/auth/session", (route) => route.fulfill({ json: { name: LONG_EMAIL, email: LONG_EMAIL, buyer: "buyer-tag-of-the-account" } }));
+      if (touch) await orderButton(checkout).tap();
+      else await orderButton(checkout).click();
+
+      await expect(orderMessage(checkout)).toHaveText(SIGNED_IN_AS(LONG_EMAIL));
+      await expect(checkout.getByTestId("account-email")).toHaveText(LONG_EMAIL);
+      expect(await overflows(checkout)).toBe(false);
+    });
   });
 }
 
-const SIGNED_IN_AS = (email: string) =>
-  `Od wczytania kasy zmieniło się konto: teraz to ${email}. Nie złożyliśmy zamówienia. Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
 const SESSION_EXPIRED = "Twoja sesja wygasła. Zaloguj się ponownie.";
 
 type Account = (typeof customers)[keyof typeof customers];

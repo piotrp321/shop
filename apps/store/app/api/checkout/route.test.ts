@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, hkdfSync } from "node:crypto";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "@/api/schema";
@@ -69,7 +69,8 @@ const EXPECTED_LINES = [{ variantId: "00000000-0000-4000-8000-00000000000a", qua
 const GUEST_ORDER = { email: "anna.nowak@example.com", ...CONTACT, expectedTotalGross: 39998, deliveryMethodId: DELIVERY_METHOD, expectedLines: EXPECTED_LINES };
 const CUSTOMER_ORDER = { ...CONTACT, expectedTotalGross: 39998, deliveryMethodId: DELIVERY_METHOD, expectedLines: EXPECTED_LINES };
 /** The buyer tag of the checkout of `sub`, computed here as the spec defines it, not by the code under test. */
-const buyerOf = (sub: string, secret = testConfig.sessionSecret) => createHmac("sha256", secret).update(`checkout-buyer:${sub}`).digest("base64url");
+const buyerOf = (sub: string, secret = testConfig.sessionSecret) =>
+  createHmac("sha256", Buffer.from(hkdfSync("sha256", secret, Buffer.alloc(0), "checkout-buyer", 32))).update(sub).digest("base64url");
 /** The account of `signedIn()` (the sub of `sessionData`). */
 const JAN = buyerOf("user-1");
 const GUEST_FORM = { ...GUEST_ORDER, provider: PROVIDER, buyer: "guest" };

@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, hkdfSync } from "node:crypto";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SESSION_COOKIE, signValue } from "@/auth/cookies";
@@ -20,7 +20,8 @@ const session = (cookie?: string) =>
   GET(new NextRequest("http://0.0.0.0:3000/auth/session", { headers: cookie ? { cookie } : {} }));
 
 /** The buyer tag of the checkout, computed here as the spec defines it, not by the code under test. */
-const buyerOf = (sub: string) => createHmac("sha256", testConfig.sessionSecret).update(`checkout-buyer:${sub}`).digest("base64url");
+const buyerOf = (sub: string) =>
+  createHmac("sha256", Buffer.from(hkdfSync("sha256", testConfig.sessionSecret, Buffer.alloc(0), "checkout-buyer", 32))).update(sub).digest("base64url");
 
 const clearedSessionCookie = (response: Response) =>
   response.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=;`) && c.includes("Max-Age=0"));
