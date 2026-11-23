@@ -184,8 +184,8 @@ expect_k8s() {
 new_repo q-app; change apps/api/src/A.php apps/store/src/x.tsx e2e/tests/a.spec.ts
 expect_k8s "app code and tests only" no
 
-new_repo q-infra; change infra/docker-compose.yml .github/workflows/ci.yml Makefile
-expect_k8s "other infrastructure, a workflow and the Makefile" no
+new_repo q-infra; change infra/docker-compose.yml infra/keycloak/realms/shop.json Makefile
+expect_k8s "other infrastructure and the Makefile" no
 
 new_repo q-chart; change infra/k8s/charts/shop/values.yaml
 expect_k8s "the chart only" yes
@@ -219,6 +219,20 @@ expect_k8s "a file of infra/k8s deleted" yes
 
 new_repo q-control; mkdir -p "$repo/infra/k8s"; printf x > "$repo/infra/k8s/a$(printf '\t')b.sh"; change
 expect_k8s "a file of infra/k8s with a control character in its name (git quotes the path)" yes
+
+# The workflows are checked by `make -C infra/k8s check` alone (actionlint, secrets only in main-only environments, no
+# deletion of package versions, the deployment waits for the check): a change of a workflow runs it in its own PR.
+new_repo q-workflow; change .github/workflows/deploy.yml
+expect_k8s "a workflow only" yes
+
+new_repo q-workflow-mixed; change .github/workflows/release.yml apps/api/src/A.php
+expect_k8s "a new workflow mixed with app code" yes
+
+new_repo q-workflow-control; mkdir -p "$repo/.github/workflows"; printf x > "$repo/.github/workflows/a$(printf '\t')b.yml"; change
+expect_k8s "a workflow with a control character in its name (git quotes the path)" yes
+
+new_repo q-workflow-like; change .github/scripts/scope.sh .github/workflows-old/a.yml x/.github/workflows/a.yml
+expect_k8s "CI scripts and paths that only look like the workflows" no
 
 new_repo q-empty; change
 expect_k8s "empty diff" yes
