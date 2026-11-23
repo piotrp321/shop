@@ -7,7 +7,7 @@ import unittest
 
 import metrics
 import testkit
-from testkit import OPUS, Native, NativeEnv, iso_at
+from testkit import OPUS, Native, NativeEnv, iso_at, run_cli
 
 MILLION = 1000000
 REVIEWER = {'agentType': 'code-reviewer', 'description': 'DEMO-1 code-reviewer FULL', 'model': 'opus',
@@ -494,6 +494,107 @@ class AssignmentTest(OrdersEnv):
         text = json.dumps(record, ensure_ascii=False)
         for secret in ('TAJN', 'STRESZCZENIE', 'bez identyfikatora', 'Resuming', 'queued'):
             self.assertNotIn(secret, text)
+
+
+def as_before(record):
+    """The record of `CompatibilityTest.mixed` in the shape of the parser before the orders: no `orders`, `idle_s`,
+    `by_task.orders`, `ref` or `assignment`; every order under the task of its run (no `unknown_task`), the time of a
+    run its span, the mode of a review by its place in the run."""
+    before = copy.deepcopy(record)
+    tasks, by_task = {}, {}
+    for attempt in before['attempts']:
+        for field in ('orders', 'idle_s', 'incomplete'):
+            attempt.pop(field, None)
+        started, ended = (metrics.night_queue.parse_time(attempt[f]).timestamp() for f in ('started_at', 'ended_at'))
+        attempt['wall_s'] = round(ended - started, 3)
+        tasks[attempt['agent_id']] = attempt['task']
+        entry = by_task.setdefault(attempt['task'] or 'no_task', {'kind': None, 'work': 0.0, 'attempts': 0})
+        entry['work'] = round(entry['work'] + attempt['wall_s'], 3)
+        entry['attempts'] += 1
+    before['by_task'] = by_task
+    by_role = before['value']['by_role']                # the scenario: the lead and one reviewer of DEMO-1
+    before['value']['by_task'] = {'DEMO-1': by_role['code-reviewer'], 'no_task': by_role['orchestrator']}
+    before['value']['by_task_role'] = {'DEMO-1': {'code-reviewer': by_role['code-reviewer']},
+                                       'no_task': {'orchestrator': by_role['orchestrator']}}
+    seen = set()
+    for review in before['reviews']:
+        review.pop('ref', None)
+        review.pop('assignment', None)
+        review['task'] = tasks[review['agent_id']]
+        review['mode'] = 'DELTA' if review['agent_id'] in seen else 'FULL'
+        seen.add(review['agent_id'])
+    before['retries']['fix'] = sum(1 for r in before['reviews'] if r['task'] and r['blocking'] is True)
+    before['gaps'] = [g for g in before['gaps'] if 'zleceni' not in g and 'tryb null' not in g]
+    return before
+
+
+class CompatibilityTest(OrdersEnv):
+    """`trend`, `decide`, `effect` and the bottlenecks do not take `unknown_task`, `outside_plan` or the orders for
+    samples of plan tasks, and a record without the orders (built before them) still works everywhere."""
+
+    AT = '2026-12-01T00:00:00Z'
+    COMMANDS = (['trend', '--json', '--no-gh'], ['decide', 'demo'], ['effect', 'D1:code-reviewer', '--at', AT],
+                ['effect', 'D2:plan_split', '--at', AT], ['effect', 'D3:gate_wait', '--at', AT],
+                ['effect', 'D4:review', '--at', AT], ['effect', 'D4:human_wait', '--at', AT])
+
+    def mixed(self):
+        """The reproduction with a third reviewer order resumed without an id: plan, outside_plan and unknown."""
+        self.write_run(started=0, done=20000, tasks=3)
+        lead = (Native('s1').assistant(10, input=100000).resume(1891, 'arv', 'DEMO-1 code-reviewer DELTA')
+                .resume(11556, 'arv', 'DEMO-QA1 code-reviewer FULL').resume(12930, 'arv', 'popraw jeszcze'))
+        self.write_session('s1', lead)
+        self.write_subagent('s1', 'arv', Native('s1', 'arv').assistant(1000, model=OPUS, input=2 * MILLION)
+                            .handback(1554, 'Werdykt: CHANGES_REQUIRED', model=OPUS, output=10000)
+                            .order(1891).assistant(1900, model=OPUS, input=MILLION)
+                            .handback(2057, 'Werdykt: PASS', model=OPUS, output=5000)
+                            .order(11556).assistant(11600, model=OPUS, input=3 * MILLION)
+                            .handback(12028, 'Werdykt: CHANGES_REQUIRED', model=OPUS, output=20000)
+                            .order(12930).assistant(13000, model=OPUS, input=MILLION)
+                            .handback(13226, 'Werdykt: CHANGES_REQUIRED', model=OPUS, output=10000), REVIEWER)
+        record = self.native_record()
+        self.assertIn('unknown_task', record['by_task'])
+        self.assertEqual([o['assignment'] for o in record['attempts'][0]['orders']],
+                         ['plan', 'plan', 'outside_plan', 'unknown'])
+        record['merged_at'] = '2027-01-16T10:00:00Z'
+        return record
+
+    def history(self):
+        return [testkit.fake_record('h%d' % n, merged='2026-11-%02dT10:00:00Z' % (10 + n), source='native',
+                                    started_at='2026-11-%02dT10:00:00Z' % (9 + n), work=(10 + n) * 3600.0,
+                                    human_wait=n * 1800.0, review=n * 900.0, value=10.0 + n)
+                for n in range(1, 5)]
+
+    def outputs(self, record):
+        testkit.store_records(self.state, record, *self.history())
+        found = []
+        for command in self.COMMANDS:
+            code, out, err = run_cli(command + ['--state', self.state, '--night', self.night])
+            self.assertEqual(code, 0, (command, err))
+            found.append(json.loads(out))
+        config = metrics.load_config(metrics.DEFAULT_CONFIG)
+        records = metrics.read_records(self.state)
+        found.append(metrics.bottlenecks_of(records['demo'], metrics.history_of(records['demo'], records), config,
+                                            metrics.Gaps()))
+        return found
+
+    def test_unknown_task_is_no_sample_of_plan_tasks(self):
+        record = self.mixed()
+        before = as_before(record)
+        self.assertNotIn('unknown_task', json.dumps(before))
+        self.assertEqual(self.outputs(record), self.outputs(before))
+
+    def test_record_without_orders_still_renders(self):
+        before = as_before(self.mixed())
+        self.outputs(before)
+        for kind in ('report', 'comment'):
+            code, out, err = run_cli(['render', 'demo', '--format', kind, '--state', self.state, '--night',
+                                      self.night])
+            self.assertEqual(code, 0, err)
+            self.assertIn('Integracja', out) if kind == 'report' else self.assertIn('Pomiar epiku', out)
+        testkit.store_records(self.state, self.mixed())
+        code, out, err = run_cli(['render', 'demo', '--state', self.state, '--night', self.night])
+        self.assertEqual(code, 0, err)
+        self.assertIn('najdroższe zadanie', out)
 
 
 class OrderRefTest(unittest.TestCase):
