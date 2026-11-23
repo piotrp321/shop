@@ -6,9 +6,9 @@
 #                       commit SHA and writes the images values file (the revision and the four digests,
 #                       infra/k8s/scripts/images-values.sh) once. The smoke test installs the chart with that very file, so
 #                       the cluster pulls the images from the registry by digest. k8s-check runs `make -C infra/k8s check`
-#                       on the commit: CI runs it only for a change under infra/k8s/**, so a change elsewhere that the
-#                       chart must mirror (compose, Keycloak realms) is caught here. Only after both pass, and after the
-#                       render of prod with that file is checked, does one atomic push move
+#                       on the commit: CI runs it only for a change under infra/k8s/** or .github/workflows/**, so a
+#                       change elsewhere that the chart must mirror (compose, Keycloak realms) is caught here. Only after
+#                       both pass, and after the render of prod with that file is checked, does one atomic push move
 #                       the branch `deploy` to the commit by fast-forward and add a snapshot commit (the commit plus the
 #                       file) to the branch `deploy-images`, which Argo CD tracks (.github/scripts/deploy-ref.sh, deploy
 #                       key from the secret DEPLOY_KEY of the environment production; without the secret it ends with a

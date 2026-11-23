@@ -15,7 +15,7 @@ serwera” i „Smoke test i check”).
   `make -C infra/k8s check` (każdy klucz z `init-env.sh` jest w szablonie sekretu, obrazy usług bez naszego kodu mają
   tag jak w compose i digest, Elasticsearch to obraz z `infra/elasticsearch/Dockerfile` jak w compose) i test dymny;
   nowej zmiennej z wartością domyślną ani zmiany istniejącego klienta realmu żaden z nich nie wyłapie. `check` biegnie
-  w CI tylko przy zmianie w `infra/k8s/**` (`.github/scripts/scope.sh --k8s`), zawsze przed wdrożeniem z `main` (job
+  w CI tylko przy zmianie w `infra/k8s/**` albo `.github/workflows/**` (`.github/scripts/scope.sh --k8s`), zawsze przed wdrożeniem z `main` (job
   `k8s-check` w `deploy.yml`, którego wymaga `deploy`) i lokalnie w głównym `make check`. Zmiana compose albo realmów
   bez zmiany chartu przechodzi więc CI swojego PR i wychodzi dopiero przed wdrożeniem, które wtedy się nie odbywa.
   Nowy sekret (klucz w `infra/scripts/init-env.sh`) trafia do szablonu sekretu chartu i, gdy w repo jest certyfikat Sealed Secrets,
