@@ -79,7 +79,7 @@ const REDIRECT_URL = "http://localhost:8000/payment-simulator/demo-transfer/pay/
 
 const SWITCHES_ON = { demoNotice: false, customerAccounts: true, loaded: true };
 
-const JAN = { name: "Jan Kowalski", email: "jan.kowalski@example.com" };
+const JAN = { name: "Jan Kowalski", email: "jan.kowalski@example.com", buyer: "buyer-tag-of-jan" };
 
 const announced: number[] = [];
 let unsubscribe: () => void;
@@ -115,7 +115,7 @@ type PageProps = Parameters<typeof CheckoutPage>[0];
  */
 async function renderCheckout(
   view: CartView = cart(),
-  session: { name: string; email: string } | null = null,
+  session: { name: string; email: string; buyer: string } | null = null,
   props: PageProps = { providers: PROVIDERS, pendingOrderNumber: null },
   chooseDelivery = true,
 ) {
@@ -165,6 +165,7 @@ const GUEST_INPUT = {
   provider: "demo-transfer",
   deliveryMethodId: STANDARD,
   expectedLines: [{ variantId: A, quantity: 2 }],
+  buyer: "guest",
 };
 
 async function submit(result: PlaceOrderResult) {
@@ -429,7 +430,7 @@ describe("CheckoutPage content", () => {
   });
 
   it("does not fill the name in with the e-mail of an account without a name", async () => {
-    await renderCheckout(cart(), { name: JAN.email, email: JAN.email });
+    await renderCheckout(cart(), { ...JAN, name: JAN.email });
 
     expect(field("Imię i nazwisko").value).toBe("");
   });
@@ -482,6 +483,7 @@ describe("CheckoutPage placing the order", () => {
         provider: "demo-transfer",
         deliveryMethodId: STANDARD,
         expectedLines: [{ variantId: A, quantity: 2 }],
+        buyer: JAN.buyer,
       },
       expect.any(String),
     );
@@ -1376,6 +1378,321 @@ function withDeliveries(standard: number, express: number, gross: number): CartV
     delivery: delivery([option(STANDARD, "Kurier standardowy", standard, gross + standard), option(EXPRESS, "Kurier ekspresowy", express, gross + express)]),
   };
 }
+
+// docs/features/cart-order-consistency/spec.md, Z4, „Kasa po checkout-buyer-changed”.
+describe("CheckoutPage after a 409 of a changed buyer", () => {
+  const PLACING = "Składamy zamówienie…";
+  const ANNA = { name: "Anna Nowak", email: "anna.nowak@example.com", buyer: "buyer-tag-of-anna" };
+  const SIGNED_IN_AS = (email: string) =>
+    `Od wczytania kasy zmieniło się konto: teraz to ${email}. Nie złożyliśmy zamówienia. Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
+  const SIGNED_OUT = "Od wczytania kasy nastąpiło wylogowanie. Nie złożyliśmy zamówienia. Podaj adres e-mail, sprawdź dane i podsumowanie, potem zamów ponownie.";
+  const NOT_READ = "Kupujący się zmienił, ale nie udało się wczytać kasy. Spróbuj ponownie.";
+  type CartRead = Awaited<ReturnType<typeof loadCart>>;
+  type SessionRead = Awaited<ReturnType<typeof loadAccountSession>>;
+
+  const buyerChanged: PlaceOrderResult = { status: "conflict", reason: "buyer_changed", detail: "Od wczytania kasy zmienił się kupujący. Nie złożyliśmy zamówienia." };
+  /** The cart of the account after the change: one pair, the total of the API. */
+  const one = (): CartView => cart(19999, [line(A, "Buty trailowe", "czarne, 42", 1, 19999)]);
+  const alert = () => {
+    const message = document.getElementById("checkout-failure");
+    if (message === null) throw new Error("no message above the form");
+    return message;
+  };
+  const status = () => screen.getByTestId("checkout-status").textContent;
+  const providerRadio = (name: string) => screen.getByRole("radio", { name }) as HTMLInputElement;
+
+  /** Holds the next read of the cart; the returned function gives its answer. */
+  function holdCart(): (answer: CartRead) => Promise<void> {
+    let release: (answer: CartRead) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+    return (answer) => act(async () => release(answer));
+  }
+
+  /** Holds the next read of the session; the returned function gives its answer. */
+  function holdSession(): (answer: SessionRead) => Promise<void> {
+    let release: (answer: SessionRead) => void = () => {};
+    vi.mocked(loadAccountSession).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+    return (answer) => act(async () => release(answer));
+  }
+
+  /** Notes the buyer and the summary shown when the message first appears in the DOM. */
+  function watchFirstMessage(): () => { account: string | null; emailField: boolean; quantities: string[] } | null {
+    let seen: { account: string | null; emailField: boolean; quantities: string[] } | null = null;
+    const observer = new MutationObserver(() => {
+      if (seen !== null || document.getElementById("checkout-failure") === null) return;
+      seen = {
+        account: document.querySelector('[data-testid="account-email"]')?.textContent ?? null,
+        emailField: document.getElementById("checkout-email") !== null,
+        quantities: Array.from(document.querySelectorAll('[data-testid="checkout-line-quantity"]'), (node) => node.textContent ?? ""),
+      };
+    });
+    observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+    return () => {
+      observer.disconnect();
+      return seen;
+    };
+  }
+
+  /** The guest's form filled in and the order sent from the focused button, refused for a changed buyer, both reads held. */
+  async function refuseGuestHeld() {
+    await renderCheckout();
+    fillGuestForm();
+    const session = holdSession();
+    const read = holdCart();
+    submitButton().focus();
+    await submit(buyerChanged);
+    return { session, read };
+  }
+
+  it("keeps the form locked and shows no message until both the session and the cart are read again", async () => {
+    const { session } = await refuseGuestHeld();
+
+    expect(document.getElementById("checkout-failure")).toBeNull();
+    expect(status()).toBe(PLACING);
+    expect(loadAccountSession).toHaveBeenCalledTimes(2);
+    expect(loadCart).toHaveBeenLastCalledWith();
+    for (const label of ["E-mail", "Imię i nazwisko", "Telefon", "Ulica i numer", "Kod pocztowy", "Miejscowość", "Kod rabatowy"]) {
+      expect(field(label).getAttribute("aria-disabled")).toBe("true");
+    }
+    expect(deliveryRadio("Kurier standardowy").getAttribute("aria-disabled")).toBe("true");
+    expect(providerRadio("Karta płatnicza (demo)").getAttribute("aria-disabled")).toBe("true");
+    expect(submitButton().getAttribute("aria-disabled")).toBe("true");
+
+    // Nothing the customer does meanwhile changes the form or sends anything.
+    type("Telefon", "600 100 201");
+    fireEvent.click(providerRadio("Karta płatnicza (demo)"));
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+    expect(field("Telefon").value).toBe("600 100 200");
+    expect(providerRadio("Szybki przelew (demo)").checked).toBe(true);
+    expect(placeOrder).toHaveBeenCalledTimes(1);
+
+    // The session alone is not shown: the buyer and the summary come together.
+    await session({ status: "ok", session: JAN });
+    expect(document.getElementById("checkout-failure")).toBeNull();
+    expect(screen.queryByTestId("account-email")).toBeNull();
+    expect(field("E-mail").value).toBe("anna.nowak@example.com");
+    expect(status()).toBe(PLACING);
+  });
+
+  it("shows the message with the account, the buyer and the summary of the read in one render, keeps the data, and the next click orders for that buyer with a new key", async () => {
+    const { session, read } = await refuseGuestHeld();
+    const firstMessage = watchFirstMessage();
+    await session({ status: "ok", session: JAN });
+    await read({ status: "ok", data: one() });
+
+    expect(firstMessage()).toEqual({ account: JAN.email, emailField: false, quantities: ["1 szt."] });
+    expect(alert().getAttribute("role")).toBe("alert");
+    expect(alert().textContent).toBe(SIGNED_IN_AS(JAN.email));
+    expect(document.activeElement).toBe(alert());
+    expect(status()).toBe("");
+    expect(screen.queryByLabelText("E-mail")).toBeNull();
+    for (const [label, value] of [["Imię i nazwisko", "Anna Nowak"], ["Telefon", "600 100 200"], ["Ulica i numer", "ul. Długa 5/3"], ["Kod pocztowy", "00-950"], ["Miejscowość", "Warszawa"]]) {
+      expect(field(label).value).toBe(value);
+      expect(field(label).readOnly).toBe(false);
+    }
+    expect(deliveryRadio("Kurier standardowy").checked).toBe(true);
+    expect(providerRadio("Szybki przelew (demo)").checked).toBe(true);
+    expect(submitButton().getAttribute("aria-disabled")).toBeNull();
+    expect(placeOrder).toHaveBeenCalledTimes(1);
+
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+    const [first, second] = vi.mocked(placeOrder).mock.calls;
+    expect(first[0].buyer).toBe("guest");
+    expect(second[1]).not.toBe(first[1]);
+    expect(second[0]).not.toHaveProperty("email");
+    expect(second[0]).toEqual({ ...GUEST_INPUT, email: undefined, buyer: JAN.buyer, expectedTotalGross: 19999, expectedLines: [{ variantId: A, quantity: 1 }] });
+  });
+
+  it("names account B after the checkout of account A, and the next click carries the tag of B", async () => {
+    await renderCheckout(cart(), JAN);
+    fillContact();
+    vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "ok", session: ANNA });
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+    await submit(buyerChanged);
+
+    expect(alert().textContent).toBe(SIGNED_IN_AS(ANNA.email));
+    expect(screen.getByTestId("account-email").textContent).toBe(ANNA.email);
+    // The name typed for the order stays; it is not taken again from the other account.
+    expect(field("Imię i nazwisko").value).toBe("Jan Kowalski");
+
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+    const [first, second] = vi.mocked(placeOrder).mock.calls;
+    expect(first[0].buyer).toBe(JAN.buyer);
+    expect(second[0].buyer).toBe(ANNA.buyer);
+    expect(second[0]).not.toHaveProperty("email");
+    expect(second[1]).not.toBe(first[1]);
+  });
+
+  it("tells the logout after the checkout of an account, shows the e-mail field, and the next click orders as the guest", async () => {
+    await renderCheckout(cart(), JAN);
+    fillContact();
+    vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "ok", session: null });
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+    await submit(buyerChanged);
+
+    expect(alert().textContent).toBe(SIGNED_OUT);
+    expect(screen.queryByTestId("account-email")).toBeNull();
+    expect(field("E-mail").value).toBe("");
+    expect(field("Telefon").value).toBe("600 100 200");
+    type("E-mail", "jan.prywatny@example.com");
+
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+    const second = vi.mocked(placeOrder).mock.calls[1][0];
+    expect(second.buyer).toBe("guest");
+    expect(second.email).toBe("jan.prywatny@example.com");
+  });
+
+  it("gives a second 409 and a second read when the account changes again between the read and the next click", async () => {
+    await renderCheckout(cart(), JAN);
+    fillContact();
+    vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "ok", session: ANNA });
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+    await submit(buyerChanged);
+    vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "ok", session: JAN });
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: one() });
+    await submit(buyerChanged);
+
+    expect(loadAccountSession).toHaveBeenCalledTimes(3);
+    expect(placeOrder).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(placeOrder).mock.calls.map(([input]) => input.buyer)).toEqual([JAN.buyer, ANNA.buyer]);
+    expect(alert().textContent).toBe(SIGNED_IN_AS(JAN.email));
+    expect(screen.getAllByTestId("checkout-line-quantity").map((node) => node.textContent)).toEqual(["1 szt."]);
+
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+    const third = vi.mocked(placeOrder).mock.calls[2];
+    expect(third[0]).toMatchObject({ buyer: JAN.buyer, expectedTotalGross: 19999, expectedLines: [{ variantId: A, quantity: 1 }] });
+    expect(new Set(vi.mocked(placeOrder).mock.calls.map(([, key]) => key)).size).toBe(3);
+  });
+
+  it("reads the cart with the applied code", async () => {
+    await renderCheckout();
+    const discounted: CartView = {
+      ...cart(35998),
+      totals: { subtotalGross: 39998, discountGross: 4000, gross: 35998, currency: "PLN", itemCount: 2 },
+      discount: { status: "applied", code: "WITAJ10", amountGross: 4000, kind: "percent", value: 10 },
+    };
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: discounted });
+    fireEvent.change(field("Kod rabatowy"), { target: { value: "witaj10" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+    });
+    fillGuestForm();
+    vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "ok", session: JAN });
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: discounted });
+    await submit(buyerChanged);
+
+    expect(loadCart).toHaveBeenLastCalledWith("witaj10");
+    expect(screen.getByTestId("checkout-discount").textContent).toContain("WITAJ10");
+    expect(alert().textContent).toBe(SIGNED_IN_AS(JAN.email));
+  });
+
+  it("leaves the focus where the customer moved it during the read", async () => {
+    const { session, read } = await refuseGuestHeld();
+    field("Kod pocztowy").focus();
+    await session({ status: "ok", session: JAN });
+    await read({ status: "ok", data: one() });
+
+    expect(document.activeElement).toBe(field("Kod pocztowy"));
+    expect(alert().getAttribute("role")).toBe("alert");
+    expect(alert().textContent).toBe(SIGNED_IN_AS(JAN.email));
+  });
+
+  it("shows the empty cart of the account instead of the form, with the message", async () => {
+    const { session, read } = await refuseGuestHeld();
+    await session({ status: "ok", session: JAN });
+    await read({ status: "ok", data: cart(0, []) });
+
+    expect(alert().textContent).toBe(SIGNED_IN_AS(JAN.email));
+    expect(screen.getByText("Twój koszyk jest pusty.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeNull();
+  });
+
+  it("says the session expired when the read of the cart answers 401", async () => {
+    const { session, read } = await refuseGuestHeld();
+    await session({ status: "ok", session: JAN });
+    await read({ status: "unauthorized" });
+
+    expect(loadAccountSession).toHaveBeenCalledTimes(2);
+    expect(alert().textContent).toContain("Twoja sesja wygasła. Zaloguj się ponownie.");
+    expect(status()).toBe("");
+  });
+
+  describe("when the session or the cart cannot be read after the refusal", () => {
+    it.each<[string, SessionRead, CartRead]>([
+      ["the session", { status: "unavailable" }, { status: "ok", data: one() }],
+      ["the cart", { status: "ok", session: JAN }, { status: "failed" }],
+    ])("says so when %s cannot be read, keeps the buyer and the summary that were shown and unlocks the form", async (_name, sessionAnswer, cartAnswer) => {
+      const { session, read } = await refuseGuestHeld();
+      await session(sessionAnswer);
+      await read(cartAnswer);
+
+      expect(alert().textContent).toBe(NOT_READ);
+      expect(document.activeElement).toBe(alert());
+      expect(field("E-mail").value).toBe("anna.nowak@example.com");
+      expect(screen.getAllByTestId("checkout-line-quantity").map((node) => node.textContent)).toEqual(["2 szt."]);
+      expect(status()).toBe("");
+      expect(submitButton().getAttribute("aria-disabled")).toBeNull();
+    });
+
+    it("reads the session and the cart with the next click instead of ordering, locked meanwhile, then tells the buyer; only the click after it orders", async () => {
+      const { session, read } = await refuseGuestHeld();
+      await session({ status: "unavailable" });
+      await read({ status: "ok", data: cart() });
+      const sessionAgain = holdSession();
+      const readAgain = holdCart();
+      submitButton().focus();
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+
+      expect(loadAccountSession).toHaveBeenCalledTimes(3);
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+      expect(document.getElementById("checkout-failure")).toBeNull();
+      expect(status()).toBe("Wczytywanie…");
+      expect(field("Telefon").getAttribute("aria-disabled")).toBe("true");
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+      expect(loadAccountSession).toHaveBeenCalledTimes(3);
+
+      const firstMessage = watchFirstMessage();
+      await sessionAgain({ status: "ok", session: JAN });
+      await readAgain({ status: "ok", data: one() });
+
+      expect(firstMessage()).toEqual({ account: JAN.email, emailField: false, quantities: ["1 szt."] });
+      expect(alert().textContent).toBe(SIGNED_IN_AS(JAN.email));
+      expect(document.activeElement).toBe(alert());
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+      expect(status()).toBe("");
+
+      await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+      const [first, second] = vi.mocked(placeOrder).mock.calls;
+      expect(second[1]).not.toBe(first[1]);
+      expect(second[0]).toMatchObject({ buyer: JAN.buyer, expectedLines: [{ variantId: A, quantity: 1 }] });
+    });
+
+    it("stays out of date after a discount code read, which reads the cart but not the session", async () => {
+      const { session, read } = await refuseGuestHeld();
+      await session({ status: "unavailable" });
+      await read({ status: "ok", data: cart() });
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+      fireEvent.change(field("Kod rabatowy"), { target: { value: "LATO15" } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+      });
+      vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "ok", session: JAN });
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: one() });
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+      expect(alert().textContent).toBe(SIGNED_IN_AS(JAN.email));
+    });
+  });
+});
 
 describe("CheckoutPage while the order is being placed", () => {
   const PLACING = "Składamy zamówienie…";

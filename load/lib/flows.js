@@ -139,6 +139,8 @@ export function checkout(ctx, data) {
       expectedLines: lines,
       expectedTotalGross: option.totalGross,
       provider: pick(data.providers),
+      // The buyer the checkout of the store shows a guest: without a session the store places only a guest order for it.
+      buyer: 'guest',
     },
     { 'Idempotency-Key': key },
   );

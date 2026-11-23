@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import type { ApiClient } from "@/api/client";
+import { GUEST_BUYER, isBuyerOf } from "@/auth/buyer";
 import { readSignedValue, SESSION_COOKIE } from "@/auth/cookies";
 import { clearSessionCookie, json, logFailure, noStore } from "@/auth/responses";
 import { invalidBody, readJsonObject, refuseForeignWrite } from "@/cart/bff";
@@ -20,9 +21,10 @@ import {
 import { forwardingClientIp } from "./client-ip";
 import { setOrderConfirmation } from "./cookies";
 import { listPaymentProviders, startCustomerPayment, startGuestPayment } from "./payment-api";
-import { CART_EMPTY_TYPE } from "./problems";
+import { CART_EMPTY_TYPE, CHECKOUT_BUYER_CHANGED_TYPE } from "./problems";
 
 const CART_EMPTY = "Koszyk jest pusty.";
+const BUYER_CHANGED = "Od wczytania kasy zmienił się kupujący. Nie złożyliśmy zamówienia.";
 const CHOOSE_PROVIDER = "Wybierz sposób płatności.";
 
 type Outcome = { status: number; body: unknown; retryAfter?: string };
@@ -31,6 +33,9 @@ type Effects = { clearCart?: boolean; merge?: GuestCartMerge; endedSession?: boo
 
 /** The browser's choice of the provider, checked against the list of the API before anything is placed. */
 type Choice = { provider: string };
+
+/** Who the order is placed for: the guest of `store_cart`, or the customer of the session with its fresh token. */
+type Buyer = { kind: "guest" } | { kind: "customer"; sessionId: string; accessToken: string };
 
 /**
  * `POST /api/checkout`: places the order of the whole cart and starts its payment at the provider the browser chose
@@ -44,6 +49,10 @@ type Choice = { provider: string };
  * with its `detail` and `Retry-After` (nothing is placed, so the browser retries with its key), 401 when the session
  * ended and 503 for the rest. Every call of the API carries the address of the client (`forwardingClientIp`). Nothing
  * here computes a price or a total: the API takes lines and prices from the cart and Pricing.
+ *
+ * Before anything else the BFF checks the buyer (`checkBuyer`): `buyer` of the body is the buyer the checkout showed,
+ * and the order is placed only when it is the one of the session; the account of the order still comes from the
+ * session alone, and `buyer` never reaches the API.
  */
 export async function runCheckout(request: NextRequest, cartDeps: CartDeps): Promise<Response> {
   const deps: CartDeps = { ...cartDeps, api: (accessToken) => forwardingClientIp(cartDeps.api(accessToken), request) };
@@ -56,7 +65,7 @@ export async function runCheckout(request: NextRequest, cartDeps: CartDeps): Pro
   if (body instanceof Response) {
     return body;
   }
-  if (!idempotencyKey || !body) {
+  if (!idempotencyKey || !body || typeof body.buyer !== "string" || body.buyer === "") {
     return invalidBody();
   }
 
@@ -64,6 +73,11 @@ export async function runCheckout(request: NextRequest, cartDeps: CartDeps): Pro
   const cartCookie = request.cookies.get(CART_COOKIE)?.value;
   let outcome: Outcome;
   try {
+    const sessionId = readSignedValue(request.cookies.get(SESSION_COOKIE)?.value, deps.config.sessionSecret);
+    const buyer = await checkBuyer(body.buyer, sessionId, deps, effects);
+    if ("status" in buyer) {
+      return finish(buyer, effects, deps);
+    }
     const providers = await listPaymentProviders(deps.api());
     if (providers === null) {
       console.error("The list of payment providers is not available.");
@@ -73,10 +87,10 @@ export async function runCheckout(request: NextRequest, cartDeps: CartDeps): Pro
       return finish({ status: 422, body: { violations: [{ propertyPath: "provider", title: CHOOSE_PROVIDER }] } }, effects, deps);
     }
     const choice: Choice = { provider: body.provider };
-    const sessionId = readSignedValue(request.cookies.get(SESSION_COOKIE)?.value, deps.config.sessionSecret);
-    outcome = sessionId
-      ? await placeForCustomer(sessionId, cartCookie, idempotencyKey, body, choice, deps, effects)
-      : await placeForGuest(cartCookie, idempotencyKey, body, choice, deps, effects);
+    outcome =
+      buyer.kind === "customer"
+        ? await placeForCustomer(buyer, cartCookie, idempotencyKey, body, choice, deps, effects)
+        : await placeForGuest(cartCookie, idempotencyKey, body, choice, deps, effects);
   } catch (error) {
     logFailure("Checkout request failed", error);
     outcome = { status: 503, body: {} };
@@ -146,8 +160,49 @@ async function startPayment(api: ApiClient, order: OrderView, idempotencyKey: st
   return null;
 }
 
+/** Deletes the session and answers 401: the browser drops its cookie and shows the expired session. */
+async function endSession(sessionId: string, deps: CartDeps, effects: Effects): Promise<Outcome> {
+  await deps.sessions.delete(sessionId);
+  effects.endedSession = true;
+  return { status: 401, body: {} };
+}
+
+/**
+ * Compares `shown`, the buyer the checkout showed (`"guest"` or the tag of an account from `/auth/session`), with the
+ * session of the request, before any call of the API (docs/features/cart-order-consistency/spec.md, Z4):
+ *
+ * - no session (no cookie, or one the store did not sign): the guest order for the guest; for an account a 401 that
+ *   drops the cookie, never a guest order;
+ * - a session: its token is refreshed as before every call of the API (`freshAccessToken`, which may read Redis on
+ *   its own), then the sub is read from the same session and compared in constant time (`isBuyerOf`). The token and
+ *   the sub are of one session id, and a refresh keeps the sub, so a refresh is never a change of the buyer. Another
+ *   buyer (the guest, another account) is a 409 `checkout-buyer-changed` with nothing merged or sent; a session that
+ *   is gone or cannot be refreshed a 401 that ends it; Redis or Keycloak down throws (503, the session stays).
+ */
+async function checkBuyer(shown: string, sessionId: string | null, deps: CartDeps, effects: Effects): Promise<Buyer | Outcome> {
+  if (sessionId === null) {
+    if (shown === GUEST_BUYER) {
+      return { kind: "guest" };
+    }
+    effects.endedSession = true;
+    return { status: 401, body: {} };
+  }
+  const accessToken = await deps.freshAccessToken(sessionId);
+  if (!accessToken) {
+    return endSession(sessionId, deps, effects);
+  }
+  const session = await deps.sessions.get(sessionId);
+  if (!session) {
+    return endSession(sessionId, deps, effects);
+  }
+  if (!isBuyerOf(shown, session.sub, deps.config.sessionSecret)) {
+    return { status: 409, body: { type: CHECKOUT_BUYER_CHANGED_TYPE, detail: BUYER_CHANGED } };
+  }
+  return { kind: "customer", sessionId, accessToken };
+}
+
 async function placeForCustomer(
-  sessionId: string,
+  { sessionId, accessToken }: Extract<Buyer, { kind: "customer" }>,
   cartCookie: string | undefined,
   idempotencyKey: string,
   body: Record<string, unknown>,
@@ -155,25 +210,15 @@ async function placeForCustomer(
   deps: CartDeps,
   effects: Effects,
 ): Promise<Outcome> {
-  const endSession = async (): Promise<Outcome> => {
-    await deps.sessions.delete(sessionId);
-    effects.endedSession = true;
-    return { status: 401, body: {} };
-  };
-
-  const accessToken = await deps.freshAccessToken(sessionId);
-  if (!accessToken) {
-    return endSession();
-  }
   const api = deps.api(accessToken);
   // A failed merge keeps `store_cart` for the next request; the order is of the customer's cart as it is.
   effects.merge = await mergeGuestCart(cartCookie, deps.config.sessionSecret, api);
   if (effects.merge.kind === "rejected") {
-    return endSession();
+    return endSession(sessionId, deps, effects);
   }
   const result = await placeCustomerOrder(api, idempotencyKey, pickFields(body, CUSTOMER_ORDER_FIELDS));
   if (!result.ok && result.status === 401) {
-    return endSession();
+    return endSession(sessionId, deps, effects);
   }
   return toOutcome(result, effects, api, idempotencyKey, choice);
 }

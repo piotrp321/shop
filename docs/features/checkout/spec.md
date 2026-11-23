@@ -465,6 +465,29 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   pola formularza do API, które go waliduje i normalizuje: `docs/features/discount-codes/spec.md`).
 - Body niesie `expectedLines` (linie pokazanego podsumowania, P2a); `CUSTOMER_ORDER_FIELDS` przepuszcza je do API bez
   zmian, także wartość, której API nie przyjmie (wtedy 422 API).
+- Body niesie `buyer`: kupującego, którego pokazała kasa (`"guest"` przy polu e-mail albo znacznik konta z
+  `/auth/session`; `docs/features/cart-order-consistency/spec.md`, Z4). Pole służy tylko do porównania: nie trafia do
+  API, a konto zamówienia wynika wyłącznie z sesji. Brak pola, wartość niebędąca tekstem albo pusty tekst: 422
+  „Nieprawidłowe dane.” bez API. Sprawdzenie (`checkBuyer` w `src/checkout/bff.ts`) jest przed listą dostawców,
+  scaleniem koszyka i złożeniem, więc odrzucenie nie woła API:
+
+  | Kasa pokazała | Sesja przy wysłaniu | Odpowiedź BFF |
+  |---|---|---|
+  | gość | brak ciasteczka sesji albo ciasteczko z obcym podpisem | zamówienie gościa |
+  | gość albo konto A | sesja innego kupującego (klient przy kasie gościa, konto B przy kasie konta A) | 409 `checkout-buyer-changed`, bez scalenia, sesja i `store_cart` zostają |
+  | konto A | sesja konta A (także po odświeżeniu tokenu i w nowej sesji tego konta) | zamówienie konta A |
+  | konto A | brak ciasteczka sesji, obcy podpis, sesji nie ma w Redisie albo tokenu nie da się odświeżyć | 401, ciasteczko sesji usunięte (sesja także); nigdy zamówienie gościa, także z `store_cart` i polem `email` w żądaniu |
+  | gość | sesji nie ma w Redisie albo tokenu nie da się odświeżyć | 401 jak wyżej |
+  | dowolne | Redis albo Keycloak niedostępny przy odczycie sesji | 503, sesja zostaje, bez przejścia do zamówienia gościa |
+
+  BFF najpierw odświeża token sesji (`freshAccessToken`, jak przed każdym wywołaniem API; może czytać Redis), potem
+  czyta `sub` z tej samej sesji i porównuje znacznik w stałym czasie (`isBuyerOf` w `src/auth/buyer.ts`: skróty SHA-256
+  obu tekstów i `timingSafeEqual`). Token i `sub` pochodzą z jednej sesji, a odświeżenie zachowuje `sub`, więc samo
+  odświeżenie nie daje konfliktu. Każdy tekst inny niż znacznik konta sesji (znacznik innego konta, z innym kluczem,
+  sam `sub`, inna wielkość liter, znaki sterujące, bardzo długi tekst w granicy 16 KiB treści) to inny kupujący. 409
+  `checkout-buyer-changed` (własny typ BFF `CHECKOUT_BUYER_CHANGED_TYPE` poza mapą typów API w
+  `src/checkout/problems.ts`) ma tylko `type` i `detail` „Od wczytania kasy zmienił się kupujący. Nie złożyliśmy
+  zamówienia.”, bez adresu i znacznika drugiego konta.
 - `GET /api/cart` (BFF koszyka) przyjmuje jeden parametr, `discountCode` (podgląd kodu na kasie), i przekazuje go do
   API; inne parametry pomija. 400 API na kod (za długi, nie tekst) trafia do przeglądarki jako 400 `{detail}` z tekstem
   API; w innych odczytach 400 API to 503.
@@ -483,7 +506,13 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   brak, gdy tak odpowiedziało API); 404 gościa (koszyk zniknął: nieznany, wygasły,
   scalony) usuwa też `store_cart`, jak BFF koszyka; 401 sesji kończy sesję; 503 przy niedostępnym API lub
   zależnościach (także 400 i 415 API oraz 401 endpointu gościa).
-- `/auth/session` zwraca `{name, email}` (`email` z `GET /api/v1/me`); typ `AccountSession` w `src/api/client.ts`.
+- `/auth/session` zwraca `{name, email, buyer}` (`email` z `GET /api/v1/me`, `buyer`: znacznik kupującego,
+  HMAC-SHA256 z `sub` kluczem wyprowadzonym z `STORE_SESSION_SECRET` przez HKDF-SHA256 (bez soli, info
+  `checkout-buyer`, 32 bajty), w base64url, `buyerTag` w `src/auth/buyer.ts`, z `sub` tej samej sesji, której token
+  odczytał `/api/v1/me`; klucz znaczników jest inny niż klucz podpisów ciasteczek, więc żaden znacznik nie jest
+  podpisem żadnej wartości ciasteczka); typ `AccountSession`
+  w `src/api/client.ts`. Ten sam `sub` daje ten sam znacznik w każdej sesji i po odświeżeniu tokenu. Odpowiedź nie
+  zawiera `sub`, identyfikatora sesji ani tokenów; gość dostaje `null`.
 - `src/api/client.ts`: `placeOrder(input, idempotencyKey)` (wynik `ok` z `number` i `redirectUrl`), `startPayment`
   i `getPaymentStatus` (jedyne miejsce `fetch`). Wynik 409 to `conflict` z `reason`
   wyznaczonym wyłącznie z `type` (`src/checkout/problems.ts`: mapa typów ze schematu OpenAPI `OrderConflictProblem`
@@ -566,7 +595,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   ponowieniu niepewnego wyniku (błąd sieci, 403, 5xx, 503). Klucz należy do jednej logicznej próby: nowy powstaje
   po zmianie danych formularza, po zastosowaniu i usunięciu kodu rabatowego (żądanie niesie inny kod i kwotę), po 409
   `IdempotencyKeyReused`, po 409 `OrderTotalChanged` i `CartContentChanged` (żądanie niesie wtedy inną kwotę albo
-  inne linie, które należą do odcisku żądania, a nic nie zostało złożone) i po 409 kodu rabatowego. Odrzucony podgląd kodu klucza nie zmienia (żądanie
+  inne linie, które należą do odcisku żądania, a nic nie zostało złożone), po 409 `checkout-buyer-changed` (inny
+  kupujący) i po 409 kodu rabatowego. Odrzucony podgląd kodu klucza nie zmienia (żądanie
   zostaje, jakie było). Po 409 `CartEmpty`, `CartNotOrderable`,
   `InsufficientStockForOrder` i po nieznanym 409 klucz zostaje: ponowienie tym samym kluczem po ewentualnym sukcesie
   da powtórzenie 200, nie drugie zamówienie. Strona niczego nie ponawia sama: każdy POST to kliknięcie klienta.
@@ -603,6 +633,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 |---|---|
 | 422 | komunikaty przy polach (`violations`) |
 | 409 `OrderTotalChanged`, `CartContentChanged` | nowy klucz i najpierw ponowne wczytanie podsumowania z tym samym kodem, potem w jednym renderze komunikat z listą zmian, nowe podsumowanie i odblokowany formularz z zachowanymi danymi (akapit „Rozbieżność koszyka i kwoty” niżej) |
+| 409 `checkout-buyer-changed` (BFF) | nowy klucz i najpierw ponowne wczytanie sesji i podsumowania z tym samym kodem, potem w jednym renderze komunikat, kupujący i podsumowanie z odczytu oraz odblokowany formularz z zachowanymi danymi (akapit „Zmiana kupującego” niżej) |
 | 409 `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` (Q6) | `detail` przy polu kodu, kod zdjęty, podsumowanie wczytane bez kodu (nowa kwota), nowy klucz, nic nie składa się samo: zamówienie składa dopiero kolejne kliknięcie; gdy podsumowania nie da się wczytać, ekran zostaje taki jak był (kod zastosowany, „Usuń kod” z fokusem) z `detail` i komunikatem o odświeżeniu, a 401 pokazuje komunikat sesji |
 | 409 `CartEmpty`, `GuestOrderTooLarge`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka”, ponowne wczytanie podsumowania, klucz zostaje; gdy przeładowane podsumowanie zastępuje formularz komunikatem z własnym linkiem, bez drugiego linku |
 | 409 `IdempotencyKeyReused` | `detail`, nowy klucz, formularz zostaje, bez linku do koszyka (kolejne kliknięcie składa zamówienie z nowym kluczem) |
@@ -657,6 +688,37 @@ Rozbieżność koszyka i kwoty (409 `cart-changed` i `order-total-changed`; `doc
    zamawia. Dotyczy to także kodu zastosowanego po nieudanym odczycie, zanim strona go wyrenderowała (stan nieaktualny
    jest ustawiany od razu, nie dopiero z renderem). Nieudane albo 401 sprawdzenie kodu zostawia stan nieaktualny.
 
+Zmiana kupującego (409 `checkout-buyer-changed`: logowanie, wylogowanie albo inne konto w innej karcie;
+`docs/features/cart-order-consistency/spec.md`, Z4). Kasa wysyła w `buyer` kupującego, którego pokazuje: `"guest"`
+przy polu e-mail albo `buyer` z odczytu `/auth/session`, z którego pochodzi pokazany adres konta (wartość z renderu,
+z którego wyszło kliknięcie).
+
+1. Formularz zostaje zablokowany jak w trakcie składania zamówienia, region statusu mówi dalej „Składamy
+   zamówienie…”. Kasa czyta od nowa sesję (`/auth/session`) i koszyk z zastosowanym kodem; komunikatu jeszcze nie ma,
+   a sama odpowiedź sesji niczego nie zmienia na ekranie.
+2. Po obu odczytach, w jednym renderze: komunikat (`role="alert"`, `tabIndex=-1`, fokus według F2), kupujący
+   i podsumowanie z odczytu, odblokowany formularz. Wpisane pola (imię i nazwisko, telefon, adres), wybór płatności
+   i dostawy (gdy metoda jest nadal wśród opcji) zostają; imię nie jest wypełniane od nowa z drugiego konta. Pole
+   e-mail pojawia się albo znika według nowej sesji. Koszyk innego konta jest pokazany bez listy zmian (pusty albo
+   z pozycjami nie do kupienia: widok tych stanów).
+3. Tekst: „Od wczytania kasy zmieniło się konto: teraz to <adres konta>. Nie złożyliśmy zamówienia. Zamówienie będzie
+   zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.”, a bez sesji po odczycie: „Od
+   wczytania kasy nastąpiło wylogowanie. Nie złożyliśmy zamówienia. Podaj adres e-mail, sprawdź dane i podsumowanie,
+   potem zamów ponownie.”.
+4. Następne kliknięcie to nowa próba: nowy klucz, `buyer` i `expectedLines` z ostatniego odczytu. Kolejna zmiana konta
+   między odczytem a kliknięciem daje kolejne 409 i kolejny odczyt.
+5. Odczyt nieudany (sesja albo koszyk): „Kupujący się zmienił, ale nie udało się wczytać kasy. Spróbuj ponownie.”,
+   kupujący i podsumowanie zostają jak były, a kasa jest nieaktualna (stan ustawiany od razu, jak w punkcie 5
+   rozbieżności): następne kliknięcie „Zamawiam z obowiązkiem zapłaty” niczego nie zamawia, tylko czyta sesję i koszyk
+   z blokadą formularza (region „Wczytywanie…”) i pokazuje komunikat z punktu 3. Odczyt podsumowania przez kod
+   rabatowy nie czyta sesji, więc stanu nie zmienia. 401 odczytu koszyka: komunikat wygasłej sesji, kasa nieaktualna.
+
+Granica ochrony zamówienia: zamówienie powstaje tylko wtedy, gdy w chwili złożenia koszyk na serwerze ma te same
+pozycje i ilości co podsumowanie pokazane w kasie, ta sama jest kwota do zapłaty i ten sam kupujący (gość albo to samo
+konto); inaczej 409 (kasa konta bez sesji: 401), a kasa pokazuje, co się zmieniło. Kasa konta wysłana bez sesji nigdy
+nie staje się zamówieniem gościa. Poza gwarancją: `docs/features/cart-order-consistency/spec.md`, „Granica ochrony
+zamówienia”.
+
 Po odrzuceniu fokus przechodzi na komunikat błędu (`role="alert"`, `tabIndex=-1`); po 422 z błędami pól na pierwsze
 błędne pole (w kolejności formularza), które ma `aria-invalid` i `aria-describedby` na swój komunikat; po odrzuconym
 kodzie na pole kodu; po rozbieżności koszyka albo kwoty dopiero po odczycie koszyka. Dzieje się tak tylko wtedy, gdy
@@ -675,6 +737,7 @@ zmiany wyglądu). Gdy fokus idzie na pierwsze błędne pole, błędy przy polach
 | Ten sam klucz z inną treścią albo z innego koszyka | 409 `IdempotencyKeyReused` |
 | Dwa złożenia z różnymi kluczami z jednego koszyka (dwie karty) | jedno zamówienie, drugie 409 `CartEmpty` |
 | Zmiana pozycji albo ilości w koszyku (inna karta, przeglądarka, urządzenie) między podsumowaniem a złożeniem, także przy tej samej kwocie | 409 `CartContentChanged`, bez zamówienia, rezerwacji, użycia kodu, roszczenia limitu i numeru; koszyk bez zmian |
+| Logowanie, wylogowanie albo zmiana konta w innej karcie między wczytaniem kasy a złożeniem, także przy tych samych pozycjach i kwocie | sklep: 409 `checkout-buyer-changed` (inny kupujący) albo 401 (kasa konta bez sesji), bez wywołania API i bez scalenia koszyka; nigdy zamówienie gościa z kasy konta |
 | Ostatnia sztuka kupowana równolegle przez wielu klientów | tylu zamawiających, ile sztuk; reszta 409 `InsufficientStockForOrder`, ich koszyki bez zmian |
 | Zmiana ceny między podsumowaniem a złożeniem | 409 `OrderTotalChanged`, bez rezerwacji i zamówienia |
 | Pozycja bez ceny, nieznany wariant | 409 `CartNotOrderable` |
@@ -807,7 +870,17 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   przeglądarki, np. ceny, są pomijane; `expectedLines` przechodzi bez zmian dla gościa i klienta), 201 i 200 ustawiają `store_order_confirmation`
   (z walutą), 404 gościa usuwa `store_cart`, 409 (przekazuje `type` każdej z pięciu przyczyn, `about:blank` i brak),
   422, 401, 503, `no-store`.
-- `/auth/session` (`app/auth/session`): `{name, email}`.
+- `/auth/session` (`app/auth/session`): `{name, email, buyer}`; znacznik równy HMAC liczonemu w teście, ten sam dla
+  tego samego `sub` w dwóch sesjach i po odświeżeniu tokenu w trakcie żądania, inny dla innego `sub`; bez `sub`,
+  identyfikatora sesji i tokenów; sesja usunięta między odczytem tokenu a `sub`: `null`; błąd Redisa: 503.
+- `src/auth/buyer.test.ts`: znacznik (także: nie przechodzi `readSignedValue` jako podpis wartości zbudowanej z `sub`,
+  w tym `checkout-buyer:<sub>` i samego `sub`) i porównanie (obcy znacznik, inny klucz, `guest`, sam `sub`, wielkość liter, znaki
+  sterujące, białe znaki Unicode, bardzo długi i pusty tekst), jedno wywołanie `timingSafeEqual` na buforach równej
+  długości dla każdego tekstu. `src/checkout/problems.test.ts`: przyczynę `buyer_changed` wyznacza tylko `type`.
+- BFF, kupujący (`app/api/checkout/route.test.ts`): każdy wiersz tabeli kupującego z liczbą wywołań API (zero przy
+  409, 401, 503 i 422, także listy dostawców) i stanem ciasteczek; `buyer` nie trafia do API; 422 dla braku, `null`,
+  liczby, `true`, obiektu, tablicy i pustego tekstu; 409 przy sesji i 401 bez niej dla obcych wartości; zmiana `sub`
+  po odświeżeniu: 409; logi bez znacznika, `sub`, identyfikatora sesji i tokenów.
 - `CheckoutPage`: pierwszy odczyt po zakończeniu akcji strony koszyka (do tego czasu „Wczytywanie…”), od razu bez
   akcji i po akcjach porzuconych; formularz gościa i klienta (e-mail z sesji), podsumowanie, blokada przycisku, każdy wiersz tabeli
   UI (pięć przyczyn 409 i nieznany 409: komunikat, link do koszyka, formularz, ten sam albo nowy klucz przy kolejnym
@@ -819,7 +892,12 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   odczycie, metoda dostawy znika, brak różnic; odczyt nieudany i podsumowanie nieaktualne: kliknięcie czyta koszyk
   i nie wysyła zamówienia, ponowny błąd, 401; kod zastosowany, usunięty, odrzucony przez podsumowanie i przez 400
   w stanie nieaktualnym: od razu lista zmian względem podsumowania odrzuconego zamówienia i zamawia dopiero kolejne
-  kliknięcie; nieudane i 401 sprawdzenie kodu: stan zostaje, kliknięcie tylko czyta), funkcja różnic `cart-changes.test.ts` (każdy wiersz tabeli, kolejność,
+  kliknięcie; nieudane i 401 sprawdzenie kodu: stan zostaje, kliknięcie tylko czyta), 409 `checkout-buyer-changed` na
+  wstrzymanych odczytach sesji i koszyka (blokada do końca obu odczytów, sama odpowiedź sesji niczego nie pokazuje;
+  komunikat, kupujący i podsumowanie w jednym renderze; gość → konto, konto A → konto B, konto → wylogowanie; zachowane
+  pola; następne wysłanie z nowym znacznikiem, kluczem i liniami; drugie 409 i drugi odczyt; kod w odczycie; fokus F2;
+  pusty koszyk; 401; odczyt nieudany i kasa nieaktualna: kliknięcie czyta sesję i koszyk, nie zamawia, a odczyt kodu
+  stanu nie zmienia), funkcja różnic `cart-changes.test.ts` (każdy wiersz tabeli, kolejność,
   brak różnic, pozycja bez produktu, kwoty z API bez sumowania), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
   danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`, region statusu (ten sam węzeł od wczytywania do treści),
   „Spróbuj ponownie” (przycisk z `aria-disabled` w trakcie, fokus po sukcesie, ponownym błędzie i przeniesiony w trakcie),
@@ -863,7 +941,15 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   koszyka), R3 (granica: zmiana ilości ze strony koszyka wstrzymana w drodze, zamówienie z drugiej karty zgodne
   z kasą, spóźniony zapis dostaje 404) oraz komunikat R1 z najdłuższą nazwą produktu danych demo przy 375 px z dotykiem
   i przy 320 px: bez przewijania poziomego, link „Przejdź do koszyka” osiągalny Tabem z komunikatu i działający
-  dotykiem albo Enterem.
+  dotykiem albo Enterem. W tym samym pliku zmiana kupującego w drugiej karcie na kontach demo Jan i Anna (każdy test
+  przygotowuje potrzebne koszyki, a po każdym koszyki obu kont są opróżniane): R4 (kasa gościa, logowanie Jana: 409,
+  komunikat z adresem Jana, formularz bez pola e-mail z zachowanymi danymi; drugie kliknięcie składa zamówienie Jana,
+  na adres z kasy nie przychodzi nic), R5 (kasa Jana, wylogowanie i logowanie Anny z tymi samymi pozycjami i kwotą:
+  409, komunikat z adresem Anny, koszyk Anny bez zmian; drugie kliknięcie składa zamówienie Anny, koszyk Jana zostaje)
+  i R6 (kasa Jana, wylogowanie i koszyk gościa w drugiej karcie: 401, widok wygasłej sesji, żaden koszyk nie został
+  zamówiony). Przy 375 px z dotykiem i przy 320 px komunikat zmiany kupującego i wiersz „Potwierdzenie wyślemy na adres”
+  z adresem konta o 60 znakach bez spacji (odpowiedź 409 i `/auth/session` podstawione w przeglądarce) nie powodują
+  przewijania poziomego.
 - `payment-resume.spec.ts`: powrót ze strony symulatora na `/checkout`, link „Opłać zamówienie R-…”, „Wróć do
   płatności” otwiera tę samą sesję, płatność się udaje.
 - E2E składają zamówienia na wariantach z dużym stanem i je opłacają; rezerwacje opłaconych zamówień zostają do

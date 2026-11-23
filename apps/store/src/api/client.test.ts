@@ -441,6 +441,7 @@ describe("placeOrder", () => {
     provider: "demo-transfer",
     deliveryMethodId: "00000000-0000-4000-8000-0000000000d1",
     expectedLines: [{ variantId: "00000000-0000-4000-8000-00000000000a", quantity: 2 }],
+    buyer: "guest",
   };
   const REDIRECT_URL = "http://localhost:8000/payment-simulator/demo-transfer/pay/7d3f0a8e-4a1b-4c55-9f1e-2b3c4d5e6f70";
 
