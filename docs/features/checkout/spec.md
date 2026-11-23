@@ -706,7 +706,13 @@ z którego wyszło kliknięcie).
 3. Tekst: „Od wczytania kasy zmieniło się konto: teraz to <adres konta>. Nie złożyliśmy zamówienia. Zamówienie będzie
    zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.”, a bez sesji po odczycie: „Od
    wczytania kasy nastąpiło wylogowanie. Nie złożyliśmy zamówienia. Podaj adres e-mail, sprawdź dane i podsumowanie,
-   potem zamów ponownie.”.
+   potem zamów ponownie.”. Gdy odrzucone żądanie niosło klucz próby o niepewnym wyniku (wynik `failed`: błąd sieci,
+   403, 5xx, 503 albo odpowiedź bez numeru zamówienia; klucz zostaje do ponowienia także po 429 i innych odrzuceniach,
+   które go nie zmieniają), ta próba mogła złożyć zamówienie poprzedniego kupującego, a BFF, który odrzuca przed API,
+   tego nie wie. Wtedy zamiast zdania „Nie złożyliśmy zamówienia.” komunikat mówi „Poprzednia próba mogła złożyć
+   zamówienie dla poprzedniego kupującego. Sprawdź pocztę, zanim zamówisz ponownie.”, w obu wariantach. Kasa
+   pamięta klucz ostatniej próby o niepewnym wyniku do czasu powstania nowego klucza; komunikat po nieudanym odczycie
+   (punkt 5) zachowuje tę informację do odczytu z kolejnego kliknięcia.
 4. Następne kliknięcie to nowa próba: nowy klucz, `buyer` i `expectedLines` z ostatniego odczytu. Kolejna zmiana konta
    między odczytem a kliknięciem daje kolejne 409 i kolejny odczyt.
 5. Odczyt nieudany (sesja albo koszyk): „Kupujący się zmienił, ale nie udało się wczytać kasy. Spróbuj ponownie.”,
