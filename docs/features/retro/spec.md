@@ -241,7 +241,7 @@ Wiersze tabeli wyżej poza `optimization` dotyczą epików AO. Epik natywny (sek
 | Rodzaj | Kotwica i klucz | Fakty dołączane do incydentu |
 |---|---|---|
 | `wait` | zdarzenie `human.events` rekordu (wiadomość człowieka, `wait_s`: czekanie przed nią); działanie człowieka (`human_action`), więc może być naprawczy; klucz `human@<czas wiadomości>` | czas czekania |
-| `finding` | przegląd z `reviews` z `blocking: true` (`CHANGES_REQUIRED`, `BLOCK`, `REWORK`); klucz `<zadanie albo epik>:<rola>@<czas raportu>` | rola, zadanie, tryb (`FULL`/`DELTA`), werdykt |
+| `finding` | przegląd z `reviews` z `blocking: true` (`CHANGES_REQUIRED`, `BLOCK`, `REWORK`); klucz `<przedmiot>:<rola>@<czas raportu>`, przedmiot według zlecenia przeglądu (`docs/features/metrics/spec.md`, „Rola i zadanie (D4)”): zadanie planu, identyfikator zadania spoza planu (`assignment: outside_plan`, `ref`), `nieustalone` (zlecenie z zadaniem nieustalonym) albo `epik` (przegląd całej zmiany: `assignment: no_task`, a w rekordzie bez pola `assignment` przegląd bez zadania) | rola, zadanie, identyfikator i przypisanie (w rekordzie z polem `assignment`; wartość innej postaci niż identyfikator albo znane przypisanie to `null`, a przedmiot `nieustalone`), tryb (`FULL`/`DELTA`, bez trybu „tryb nieustalony”), werdykt |
 | `failed_attempt` | przebieg subagenta z `attempts` z `finished: false` (`null` nie daje incydentu); klucz `<zadanie albo bez-zadania>:<agent>` | rola |
 | `escaped` | numer zgłoszenia `bug` z `regressions.issues` (okno regresji rekordu); klucz `issue<numer>` | numer; otwarte okno to fakt `<epik>/native/regression-window` |
 | `unasked` | punkt sekcji „Decyzje bez pytania” opisu końcowego PR; klucz `pr<numer>#<pozycja>` | PR |

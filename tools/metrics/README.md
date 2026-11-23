@@ -335,12 +335,41 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   uruchomiony w przedziale epiku przez sesję prowadzącą: wynik wywołania `Agent` z `toolUseResult.agentId`, bez
   żadnego pliku w katalogach sesji epiku) to pozycja `sessions` w `gaps` i pokrycie `partial`, jak brak transkryptu
   sesji.
-- **Rola i zadanie:** prowadzący `orchestrator` bez zadania; subagent: rola `agentType`, zadanie to pierwsze
-  `<EPIK>-<n>` w `description` (bez rozróżniania wielkości liter, zapisane wielkimi literami), bez niego `no_task`.
-  `meta.json` brakujący albo nieczytelny daje `role`, `task`, `effort`, `finished` `null` i pozycję `attempts.<agent>`
-  w `gaps`; brakujące pole tak samo dla tego pola. `description` nie trafia do rekordu. Pola `model` z `meta.json` nie
-  czyta się (przebiegi uruchomione z domyślnymi ustawieniami go nie mają): `model` próby to najczęstszy model jej
-  wiadomości, a gdy żadna go nie ma, `null` z pozycją `attempts.<agent>` w `gaps`.
+- **Rola i zadanie:** prowadzący `orchestrator` bez zadania; subagent: rola `agentType`, przebieg podzielony na
+  zlecenia (niżej), a zadanie ma każde zlecenie. `meta.json` brakujący albo nieczytelny daje `role`, `task`, `effort`,
+  `finished` `null` i pozycję `attempts.<agent>` w `gaps`; brakujące pole tak samo dla tego pola. `description`
+  i `summary` nie trafiają do rekordu. Pola `model` z `meta.json` nie czyta się (przebiegi uruchomione z domyślnymi
+  ustawieniami go nie mają): `model` próby to najczęstszy model jej wiadomości, a gdy żadna go nie ma, `null` z pozycją
+  `attempts.<agent>` w `gaps`.
+- **Zlecenia** (`native_orders`, `order_parts`): pierwsze zlecenie (`boundary: launch`) zaczyna pierwsza linia
+  transkryptu subagenta. Kandydat na kolejne to linia `user` z `origin.kind = "coordinator"`, która nie jest wynikiem
+  narzędzia. Wznowienie u prowadzącego (`lead_resumes`): wynik wywołania `SendMessage` z
+  `toolUseResult.resumedAgentId` w transkryptach sesji epiku (każde wywołanie raz po `id`), kolejny w kolejności czasu
+  i najwyżej `RESUME_WINDOW_S` (60 s) od kandydata. Wznowienie i raport `SubagentHandback` poprzedniego zlecenia:
+  `resume`; samo wznowienie: `resume_unreported`; sam raport: `resume_unconfirmed`; żadne: linia nie dzieli zlecenia.
+  Trzy ostatnie przypadki to pozycja `attempts.<agent>` w `gaps`, tylko dla zleceń, które są w rekordzie.
+  Wznowienie u prowadzącego w przedziale epiku, które nie potwierdziło żadnej linii (`unmatched_resumes`), też jest
+  pozycją `attempts.<agent>`: w czasie transkryptu subagenta zlecenia mogą być niepodzielone, a po jego ostatniej
+  linii (przerwany zapis) zlecenie po wznowieniu nie ma linii, więc jego czas i tokeny są utracone. `queued_command`
+  (wiadomość do pracującego subagenta) i wynik `SendMessage` bez `resumedAgentId` granicą nie są. Wiadomość należy do zlecenia swojej pierwszej
+  linii; czas zlecenia to ostatnia minus pierwsza linia `user`/`assistant` zlecenia w przedziale epiku; zlecenie bez
+  linii i wiadomości w przedziale nie wchodzi do rekordu.
+- **Identyfikator i przypisanie** (`order_ref`, `order_assignment`): źródło to `description` (pierwsze zlecenie) albo
+  `summary` wywołania `SendMessage`, które potwierdziło wznowienie. Liczy się pierwsze `<EPIK>-<id>` (litery i cyfry
+  z co najmniej jedną cyfrą) albo `<EPIK>-EPIC`, bez rozróżniania wielkości liter, zapisane wielkimi literami; inne
+  wyrazy i sama nazwa epiku nic nie znaczą. Same cyfry: `assignment: plan`, `task` = `ref`; inny identyfikator
+  (`QA1`): `outside_plan`, `task: null`, `ref` pełny, w przekrojach `no_task`; `<EPIK>-EPIC` albo opis startu bez ID:
+  `no_task`; wznowienie z `summary` bez ID (także sama nazwa epiku, brak `summary`) i granica `resume_unconfirmed`:
+  `unknown`, klucz `unknown_task` w `by_task`, `value.by_task` i `value.by_task_role`, pozycja `attempts.<agent>`
+  w `gaps`. Zadanie nie przechodzi z poprzedniego zlecenia. `attempts[].task` to zadanie planu pierwszego zlecenia.
+- **Czas przebiegu** (`run_time`, `native_by_task`): `attempts[].wall_s` to suma `wall_s` zleceń, `idle_s` reszta
+  rozpiętości (`ended_at − started_at − wall_s`); zlecenie bez czasu daje `incomplete: true`, `idle_s: null` i pozycję
+  w `gaps` (suma to dolna granica); ujemny odstęp (znaczniki czasu nie po kolei) daje `idle_s: null` z pozycją
+  w `gaps`. `attempts[].orders`: `{n, boundary, assignment, task, ref, task_source, started_at, ended_at, wall_s,
+  reported_at, tokens, value, estimated}`. `by_task`: `{klucz: {kind: null, work, attempts,
+  orders}}` z kluczami zadań planu, `no_task` i `unknown_task`; `work` to suma `wall_s` zleceń klucza. Rekord
+  zbudowany starszym narzędziem nie ma `orders`, `idle_s` ani `by_task.orders`: komendy czytające traktują to jak brak
+  danych.
 - **Wartość:** suma po rodzajach tokenów wiadomości razy stawka `pricing.models.<model>` (USD za milion;
   `cache_write_5m` i `cache_write_1h` z `usage.cache_creation`). Każda komórka ma `estimated: true`, rekord ma
   `pricing` (`source`, `read_at`). Wartość nieznana (brak `message.usage`, `message.model`, stawek modelu, stawki
@@ -371,16 +400,20 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   rekordzie natywnym zachowuje jego wartości tych pól i jego liczbę (`_keep_stored`, pozycja „zachowano poprzednią
   wartość”), a pozycja o dolnej granicy dotyczy tylko pól niezachowanych.
 - **Przeglądy:** każde wywołanie `SubagentHandback` w transkrypcie roli `code-reviewer`, `qa-adversarial`,
-  `architecture-reviewer`, `ux-reviewer` w przedziale epiku to wpis `reviews` `{task, role, agent_id, at, mode,
-  verdict, blocking}`: `mode` `FULL` dla pierwszego raportu transkryptu, `DELTA` dla kolejnych; `verdict` to słowo
+  `architecture-reviewer`, `ux-reviewer` w przedziale epiku to wpis `reviews` `{task, ref, assignment, role, agent_id,
+  at, mode, verdict, blocking}` (`task`, `ref`, `assignment` zlecenia, w którym jest raport): `mode` `FULL` dla
+  pierwszego raportu przebiegu z danym `ref` (przy `no_task`: pierwszego w tym stanie), `DELTA` dla kolejnych, `null`
+  z pozycją `reviews` w `gaps` w zleceniu `unknown`; `verdict` to słowo
   werdyktu tuż po etykiecie „Werdykt”/„Verdict” (`verdict_token`; między nimi separatory, pogrubienie i jedno słowo
   `to`/`jest`/`is`): wygrywa pierwsza etykieta na początku linii (po znaczniku listy, nagłówka, cytatu lub pogrubienia),
   a gdy żadnej takiej nie ma, ostatnia etykieta w tekście poza cytatem (etykieta tuż po cudzysłowie albo odwróconym
   apostrofie się nie liczy); przyjęte tylko z kontraktu roli (`REVIEW_VERDICTS`),
   `blocking` dla `CHANGES_REQUIRED`, `BLOCK`, `REWORK`; bez rozpoznanego werdyktu (`ux-reviewer`) `null` i pozycja
-  `reviews` w `gaps`. `integration`: `work_s`, `attempts` przebiegów `architecture-reviewer`, `qa-adversarial`,
-  `ux-reviewer` i `rounds` (największa liczba raportów jednej z tych ról); bez nich `null`. `retries`: `fix` (przeglądy
-  z zadaniem i werdyktem blokującym), `failed_by_outcome` (`{unfinished: n}` przebiegów z `finished: false`),
+  `reviews` w `gaps`. `integration`: `work_s` (suma `wall_s`, bez odstępów między zleceniami), `attempts` przebiegów
+  `architecture-reviewer`, `qa-adversarial`, `ux-reviewer` i `rounds` (największa liczba raportów jednej z tych ról);
+  bez nich `null`. `retries`: `fix` (przeglądy z zadaniem planu i werdyktem blokującym; blokujący przegląd w zleceniu
+  `unknown` nie jest liczony, pozycja `retries.fix` o dolnej granicy), `failed_by_outcome` (`{unfinished: n}`
+  przebiegów z `finished: false`),
   `attempts`, `repair`, `sync_prs` `null`.
 - **Kryteria akceptacji:** opis końcowego PR przez bramkę pochodzenia (`github_trust.Gate.prs(state='all',
   head=<gałąź>, fields=('body',))`, runner metryk przez `gate_runner`); w sekcji „Kryteria akceptacji” tabela `| Numer

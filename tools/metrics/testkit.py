@@ -555,6 +555,40 @@ class Native:
         self.lines.append(line)
         return self
 
+    def order(self, at, text='TAJNE-ZLECENIE wznowienia', blocks=False):
+        """The line that resumes a subagent in its own transcript: a meta `user` line with `origin.kind`
+        `coordinator`, the message as a text (blocks: as a list of text blocks); no tool result."""
+        line = self._line('user', at)
+        content = [{'type': 'text', 'text': text}] if blocks else text
+        line.update(isMeta=True, origin={'kind': 'coordinator'}, message={'role': 'user', 'content': content})
+        self.lines.append(line)
+        return self
+
+    def queued(self, at, prompt='TAJNA-WIADOMOSC w trakcie pracy'):
+        """A message the subagent gets while it works (an `attachment` line of type `queued_command`)."""
+        line = self._line('attachment', at)
+        line['attachment'] = {'type': 'queued_command', 'prompt': prompt}
+        self.lines.append(line)
+        return self
+
+    def resume(self, at, agent_id, summary='TAJNE-STRESZCZENIE', message='TAJNE-ZLECENIE wznowienia', resumed=True,
+               model=FABLE):
+        """The lead session sends a message to a subagent: a `SendMessage` call at `at` and its result at the same
+        time; `resumed`: the subagent had handed its report back and is resumed (`toolUseResult.resumedAgentId`), else
+        the message is queued for a subagent that works. summary None: the call has no `summary`."""
+        tool_input = {'to': agent_id, 'message': message, 'recipient_kind': 'agent'}
+        if summary is not None:
+            tool_input['summary'] = summary
+        self.assistant(at, model=model, tools=[('SendMessage', tool_input)])
+        line = self._line('user', at)
+        line['message'] = {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': self.last_tools[0],
+                                                        'content': 'TAJNY-WYNIK'}]}
+        line['toolUseResult'] = ({'success': True, 'message': 'Resuming agent %s' % agent_id,
+                                  'resumedAgentId': agent_id, 'revivedAgentId': agent_id} if resumed else
+                                 {'success': True, 'message': 'Message queued for delivery to %s' % agent_id})
+        self.lines.append(line)
+        return self
+
 
 def write_lines(path, lines):
     os.makedirs(os.path.dirname(path), exist_ok=True)

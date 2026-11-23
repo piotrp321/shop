@@ -45,13 +45,28 @@ REVIEWS = [
 
 
 class ProcessEnv(NativeEnv):
-    def subagent(self, agent, kind, description, reports, start, session='s1', finished=True, model=OPUS):
-        """A subagent run from `start`: one report per text, each after a resume (a `coordinator` line) except the
-        first."""
+    def setUp(self):
+        super().setUp()
+        self.leads = {}
+
+    def write_session(self, session, transcript, worktree=None, mtime=None):
+        """Also remembers the lead transcript: `subagent` adds the resumes of its subagents to it."""
+        self.leads[session] = (transcript, worktree, mtime)
+        return super().write_session(session, transcript, worktree=worktree, mtime=mtime)
+
+    def subagent(self, agent, kind, description, reports, start, session='s1', finished=True, model=OPUS,
+                 summary=None):
+        """A subagent run from `start`: one report per text, each after a resume except the first: a `coordinator`
+        line in the subagent transcript and the `SendMessage` call of the lead session (written before) that resumed
+        it, with `summary` (default: the description)."""
         transcript = Native(session, agent).assistant(start, model=model, input=100)
         at = start
         for index, text in enumerate(reports):
             if index:
+                self.assertIn(session, self.leads, 'write the lead session before a resumed subagent')
+                lead, worktree, mtime = self.leads[session]
+                lead.resume(at + 30, agent, description if summary is None else summary)
+                super().write_session(session, lead, worktree=worktree, mtime=mtime)
                 transcript.notice(at + 30, 'coordinator').assistant(at + 40, model=model, input=10)
                 at += 40
             transcript.handback(at + 60, text, model=model, output=5)
@@ -123,7 +138,8 @@ class ReviewsTest(ProcessEnv):
         self.write_run(done=20000)
         self.write_session('s1', Native('s1').assistant(10, input=100))
         self.subagent('aqa', 'qa-adversarial', 'QA całej zmiany DEMO',
-                      ['## 5. Werdykt\n\n**BLOCK**: TAJNY-RAPORT', 'Werdykt: INVESTIGATE', 'Werdykt: PASS'], 100)
+                      ['## 5. Werdykt\n\n**BLOCK**: TAJNY-RAPORT', 'Werdykt: INVESTIGATE', 'Werdykt: PASS'], 100,
+                      summary='DEMO-EPIC qa-adversarial DELTA')
         self.subagent('aar1', 'architecture-reviewer', 'Architektura DEMO', ['Werdykt: REWORK'], 1000)
         self.subagent('aar2', 'architecture-reviewer', 'Architektura DEMO', ['**Werdykt:** SIMPLIFY'], 2000)
         self.subagent('aar3', 'architecture-reviewer', 'Architektura DEMO', ['verdict: KEEP'], 3000)
