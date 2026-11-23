@@ -372,7 +372,8 @@ final class GenerateDemoScriptTest extends TestCase
     /**
      * @param list<string>          $arguments
      * @param array<string, string> $env
-     * @param string|null           $hang      `|`-separated parts of the arguments of the calls that wait for a minute
+     * @param string|null           $hang      `|`-separated parts of the arguments of the calls that wait for a minute; the
+     *                                         call that fails (FAKE_FAIL_ON) then fails only after all of them started
      *
      * @return array{int, string} exit code and standard error
      */
@@ -385,6 +386,7 @@ final class GenerateDemoScriptTest extends TestCase
         if ([] !== $calls) {
             // One fake console that hangs on every named call: rewrite it with a case on the arguments.
             $patterns = implode('|', array_map(static fn (string $part): string => '*"'.$part.'"*', $calls));
+            $count = \count($calls);
             file_put_contents($this->dir.'/bin/console', <<<SH
                 #!/bin/sh
                 echo "\$*" >> "\$(dirname "\$0")/calls.log"
@@ -395,6 +397,14 @@ final class GenerateDemoScriptTest extends TestCase
                         ;;
                 esac
                 if [ -n "\${FAKE_FAIL_ON:-}" ] && case "\$*" in *"\$FAKE_FAIL_ON"*) true;; *) false;; esac; then
+                    # The script stops the other parts as soon as it sees this one fail, also a part that has not yet
+                    # recorded its process id. So the failing call waits (10 s at most) until every hanging call has
+                    # recorded itself: then the test knows each part the script had to stop.
+                    n=0
+                    while [ "\$(cat "\$(dirname "\$0")/hung.log" 2>/dev/null | wc -l)" -lt $count ]; do
+                        n=\$((n + 1)); [ "\$n" -gt 200 ] && break
+                        sleep 0.05
+                    done
                     echo "boom in \$*" >&2
                     exit "\${FAKE_FAIL_CODE:-3}"
                 fi
