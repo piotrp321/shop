@@ -277,7 +277,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 ## 7. Eksploatacja
 
 - **Nowa wersja**: merge PR do `main` niczego nie wdraża. Wdrożenie startuje tylko na życzenie: **zgoda użytkownika**, potem
-  `gh workflow run deploy.yml --ref main` (obrazy, smoke test, publikacja snapshotu; postęp: `gh run list --workflow deploy.yml`,
+  `gh workflow run deploy.yml --ref main` (obrazy, smoke test i `make -C infra/k8s check`, publikacja snapshotu; postęp: `gh run list --workflow deploy.yml`,
   `gh run watch`), a Argo CD synchronizuje klaster. Job `deploy` czeka na zatwierdzenie w środowisku `production`: **użytkownik**
   zatwierdza je na stronie przebiegu (Review deployments), z powiadomienia albo w aplikacji mobilnej GitHuba; agent tego nie robi.
   Wdraża się bieżący commit `main`; przebieg czekający na zatwierdzenie zajmuje grupę `concurrency` dla `main`, więc nowsze
