@@ -1739,6 +1739,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
   describe("the session told to the header", () => {
     let told: unknown[];
     let stop: () => void;
+    // The first read of the checkout tells its session too; the tests below clear it after the render.
     beforeEach(() => {
       told = [];
       stop = subscribeToSession((session) => told.push(session));
@@ -1747,6 +1748,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
 
     it("tells the account read after the refusal, with the message and not before", async () => {
       const { session, read } = await refuseGuestHeld();
+      told.length = 0;
       await session({ status: "ok", session: JAN });
       expect(told).toEqual([]);
       await read({ status: "ok", data: one() });
@@ -1757,6 +1759,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
 
     it("tells nobody after a logout", async () => {
       await renderCheckout(cart(), JAN);
+      told.length = 0;
       fillContact();
       vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "ok", session: null });
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
@@ -1767,6 +1770,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
 
     it("tells nothing when the session or the cart cannot be read", async () => {
       const { session, read } = await refuseGuestHeld();
+      told.length = 0;
       await session({ status: "ok", session: JAN });
       await read({ status: "failed" });
 
@@ -1776,6 +1780,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
 
     it("tells nobody with the expired session after a 401 of the read of the cart", async () => {
       const { session, read } = await refuseGuestHeld();
+      told.length = 0;
       await session({ status: "ok", session: JAN });
       await read({ status: "unauthorized" });
 
@@ -1784,6 +1789,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
 
     it("tells nobody with the expired session after a 401 of the order", async () => {
       await renderCheckout(cart(), JAN);
+      told.length = 0;
       fillContact();
       await submit({ status: "unauthorized" });
 
@@ -1793,6 +1799,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
 
     it("tells nobody with the expired session after a 401 of the check of a code", async () => {
       await renderCheckout(cart(), JAN);
+      told.length = 0;
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "unauthorized" });
       fireEvent.change(field("Kod rabatowy"), { target: { value: "witaj10" } });
       await act(async () => {

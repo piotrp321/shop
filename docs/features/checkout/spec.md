@@ -710,7 +710,8 @@ z którego wyszło kliknięcie).
    i podsumowanie z odczytu, odblokowany formularz. Wpisane pola (imię i nazwisko, telefon, adres), wybór płatności
    i dostawy (gdy metoda jest nadal wśród opcji) zostają; imię nie jest wypełniane od nowa z drugiego konta. Pole
    e-mail pojawia się albo znika według nowej sesji. Koszyk innego konta jest pokazany bez listy zmian (pusty albo
-   z pozycjami nie do kupienia: widok tych stanów). W tym samym czasie nagłówek pokazuje sesję z tego odczytu
+   z pozycjami nie do kupienia: widok tych stanów). W tym samym czasie (i tak samo po wczytaniu kasy i po „Spróbuj
+   ponownie”) nagłówek pokazuje sesję z tego odczytu
    („Zalogowany jako …” albo link „Zaloguj się”; kasa przekazuje ją zdarzeniem `announceSession`, bez drugiego
    żądania `/auth/session`), a fokus się nie przenosi. Tak samo po każdym 401, po którym kasa pokazuje wygasłą sesję
    (zamówienie, odczyt koszyka, kod rabatowy, wczytanie kasy): sklep usunął sesję, więc nagłówek pokazuje link
@@ -718,13 +719,17 @@ z którego wyszło kliknięcie).
 3. Tekst: „Od wczytania kasy zmieniło się konto: teraz to <adres konta>. Nie złożyliśmy zamówienia. Zamówienie będzie
    zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.”, a bez sesji po odczycie: „Od
    wczytania kasy nastąpiło wylogowanie. Nie złożyliśmy zamówienia. Podaj adres e-mail, sprawdź dane i podsumowanie,
-   potem zamów ponownie.”. Gdy odrzucone żądanie niosło klucz próby o niepewnym wyniku (wynik `failed`: błąd sieci,
-   403, 5xx, 503 albo odpowiedź bez numeru zamówienia; klucz zostaje do ponowienia także po 429 i innych odrzuceniach,
-   które go nie zmieniają), ta próba mogła złożyć zamówienie poprzedniego kupującego, a BFF, który odrzuca przed API,
-   tego nie wie. Wtedy zamiast zdania „Nie złożyliśmy zamówienia.” komunikat mówi „Poprzednia próba mogła złożyć
-   zamówienie dla poprzedniego kupującego. Sprawdź pocztę, zanim zamówisz ponownie.”, w obu wariantach. Kasa
-   pamięta klucz ostatniej próby o niepewnym wyniku do czasu powstania nowego klucza; komunikat po nieudanym odczycie
-   (punkt 5) zachowuje tę informację do odczytu z kolejnego kliknięcia.
+   potem zamów ponownie.”. Wcześniejsza próba mogła jednak złożyć zamówienie, czego BFF, który odrzuca przed API, nie
+   wie. Kasa pamięta klucze takich prób: wynik `failed` (błąd sieci, 403, 5xx, 503 albo odpowiedź bez numeru
+   zamówienia) i 409 `IdempotencyKeyReused` (zamówienie z tym kluczem istnieje). Nowy klucz (zmiana formularza,
+   dostawy, kodu) niczego o nich nie rozstrzyga. Niepewność klucza kończy tylko odrzucenie API na ten sam klucz
+   wydane po sprawdzeniu powtórzenia pod blokadą koszyka (`PlaceOrderHandler`): `CartContentChanged`,
+   `GuestOrderTooLarge`, `TooManyUnpaidOrders`, `CartNotOrderable`, odrzucenie kodu rabatowego,
+   `DeliveryMethodUnavailable`, `OrderTotalChanged`, `InsufficientStockForOrder`; `CartEmpty` nie, bo ten sam typ
+   wysyła BFF przed API przy braku ciasteczka koszyka; odrzucenia BFF przed API (401, 422, 503, zmiana kupującego)
+   i odpowiedzi na inny klucz też nie. Dopóki zostaje choć jeden taki klucz, komunikat w obu wariantach (także
+   z odczytu w kasie nieaktualnej, punkt 5) mówi zamiast „Nie złożyliśmy zamówienia.”: „Wcześniejsza próba mogła
+   złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.”.
 4. Następne kliknięcie to nowa próba: nowy klucz, `buyer` i `expectedLines` z ostatniego odczytu. Kolejna zmiana konta
    między odczytem a kliknięciem daje kolejne 409 i kolejny odczyt.
 5. Odczyt nieudany (sesja albo koszyk): „Kupujący się zmienił, ale nie udało się wczytać kasy. Spróbuj ponownie.”,
@@ -974,7 +979,7 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   wariantu i nazwą metody dostawy bez spacji dłuższymi niż ekran i kodem rabatowym o 64 znakach (odczyty koszyka
   i odpowiedź 409 `cart-changed` podstawione w przeglądarce, nic nie jest zamawiane). R7 (kasa Jana, odpowiedź na
   zamówienie utracona po jego złożeniu, logowanie Anny w drugiej karcie przed ponowieniem: 409 na ten sam klucz,
-  komunikat „Poprzednia próba mogła złożyć zamówienie…” z adresem Anny; zamówienie Jana istnieje i jest opłacane).
+  komunikat „Wcześniejsza próba mogła złożyć zamówienie…” z adresem Anny; zamówienie Jana istnieje i jest opłacane).
 - `payment-resume.spec.ts`: powrót ze strony symulatora na `/checkout`, link „Opłać zamówienie R-…”, „Wróć do
   płatności” otwiera tę samą sesję, płatność się udaje.
 - E2E składają zamówienia na wariantach z dużym stanem i je opłacają; rezerwacje opłaconych zamówień zostają do

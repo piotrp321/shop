@@ -30,6 +30,7 @@ import { GUEST_BUYER } from "./buyer";
 import { cartChanges } from "./cart-changes";
 import { navigateTo } from "./navigate";
 import type { PaymentProvider } from "./payment-api";
+import type { OrderConflictReason } from "./problems";
 
 type Loaded =
   | { status: "loading" }
@@ -43,13 +44,16 @@ type FieldName = keyof Form;
 /** The refusals after which the checkout reads the cart and tells what changed (#852). */
 type ChangeReason = "cart_changed" | "total_changed";
 
+/** Why the checkout is out of date: a changed cart or total, or a changed buyer (the session and the cart are read). */
+type StaleReason = ChangeReason | "buyer_changed";
+
 /** Why the last order was not placed; each is shown above the form (see the UI table of the checkout spec). */
 type Failure =
   | { kind: "conflict"; detail: string; offersCart: boolean }
   | { kind: "changed"; reason: ChangeReason; changes: string[] }
   /**
-   * The buyer changed: `email` is the account of the session read, null when it is signed out. `mayHavePlaced`: the
-   * refused request had the key of an attempt whose result was uncertain, which may have placed the order.
+   * The buyer changed: `email` is the account of the session read, null when it is signed out. `mayHavePlaced`: an
+   * attempt whose result was uncertain, and which the API has not settled since, may have placed an order.
    */
   | { kind: "buyer"; email: string | null; mayHavePlaced: boolean }
   | { kind: "not_found" }
@@ -86,7 +90,22 @@ const CHANGED_LAST = "Sprawdź podsumowanie i zamów ponownie.";
 const CHANGES_NOT_READ = "Koszyk albo kwota zamówienia się zmieniły, ale nie udało się wczytać aktualnego podsumowania. Spróbuj ponownie.";
 /** What a refusal for a changed buyer says of the order: none was placed, or the attempt before may have placed one. */
 const PLACED_NOTHING = "Nie złożyliśmy zamówienia.";
-const MAY_HAVE_PLACED = "Poprzednia próba mogła złożyć zamówienie dla poprzedniego kupującego. Sprawdź pocztę, zanim zamówisz ponownie.";
+const MAY_HAVE_PLACED = "Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.";
+/**
+ * The refusals of the API that settle the key they answer: the API gives them only after its check of a repetition of
+ * that key under the lock of the cart (`PlaceOrderHandler`), so no order with the key exists. A `cart_empty` is not one
+ * of them: the BFF answers it too, before the API, when there is no cart cookie.
+ */
+const SETTLING: ReadonlySet<OrderConflictReason> = new Set<OrderConflictReason>([
+  "cart_changed",
+  "total_changed",
+  "guest_order_too_large",
+  "too_many_unpaid_orders",
+  "cart_not_orderable",
+  "discount_code_rejected",
+  "delivery_method_unavailable",
+  "insufficient_stock",
+]);
 const SIGNED_IN_AS = (email: string, placed: string) =>
   `Od wczytania kasy zmieniło się konto: teraz to ${email}. ${placed} Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
 const SIGNED_OUT = (placed: string) => `Od wczytania kasy nastąpiło wylogowanie. ${placed} Podaj adres e-mail, sprawdź dane i podsumowanie, potem zamów ponownie.`;
@@ -169,10 +188,8 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // order button reads the cart and tells the changes instead (`checking` is that read, with the form locked), and any
   // other read of the summary (a code) tells them at once (`showCart`). The same after a refusal for a changed buyer
   // whose reads failed: the next click reads the session and the cart (a read of a code reads no session, so it leaves
-  // the state), and its message keeps what the refusal knew of an uncertain attempt before. A ref, not a state: a read of a code, or a click, after the failed read but before its render must see it.
-  const outOfDate = useRef<
-    { reason: ChangeReason; shown: CartView } | { reason: "buyer_changed"; shown: CartView; mayHavePlaced: boolean } | null
-  >(null);
+  // the state). A ref, not a state: a read of a code, or a click, after the failed read but before its render must see it.
+  const outOfDate = useRef<{ reason: StaleReason; shown: CartView } | null>(null);
   const [checking, setChecking] = useState(false);
   // The discount code lives in this component only (D3): a reload of the page starts without one. `appliedCode` is the
   // code the summary of `loaded` was priced with; `codeInput` is what the customer types.
@@ -193,14 +210,14 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // total) and an unavailable delivery method, and when a code is applied or removed or refused (the request carries
   // another code and total).
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
-  // The key of the last attempt whose result was uncertain (`failed`: a network error, 403, 5xx, an answer without the
-  // order), which may have placed the order; null after a new key. A refusal of the BFF before the API on that key (a
-  // changed buyer) cannot tell whether that attempt placed it. A ref: read when the answer comes, not from the render.
-  const uncertainKey = useRef<string | null>(null);
+  // The keys of the attempts that may have placed an order no answer told of: an uncertain result (`failed`: a network
+  // error, 403, 5xx, an answer without the order), or a 409 `IdempotencyKeyReused` (an order with the key exists). A
+  // new key settles nothing of them; only a refusal of the API to the same key in `SETTLING` does. While one is left,
+  // the message of a changed buyer does not say that nothing was placed. A ref: read when the message is shown.
+  const uncertainKeys = useRef(new Set<string>());
 
-  /** Starts a new attempt: a new key, of which nothing is uncertain yet. */
+  /** Starts a new attempt with a new key; the keys of uncertain attempts stay. */
   function renewKey() {
-    uncertainKey.current = null;
     setIdempotencyKey(newIdempotencyKey());
   }
 
@@ -215,6 +232,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         setLoaded(result);
         if (result.status === "unauthorized") announceSession(null);
         if (result.status === "ready") {
+          announceSession(result.session);
           setForm(prefilled(result.session));
           // `chooseMethod`, spelled out: the effect runs once and depends on nothing of the render.
           chosenMethod.current = onlyMethod(result.cart);
@@ -249,6 +267,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setLoaded(result);
     if (result.status === "unauthorized") announceSession(null);
     if (result.status === "ready") {
+      announceSession(result.session);
       setForm(prefilled(result.session));
       chooseMethod(onlyMethod(result.cart));
     }
@@ -351,16 +370,16 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
    * (the session or the cart), or a 401 of the cart, leaves the checkout out of date. Answers the id of the element
    * that gets the focus.
    */
-  async function readBuyer(shown: CartView, mayHavePlaced: boolean): Promise<string> {
+  async function readBuyer(shown: CartView): Promise<string> {
     const [preview, session] = await Promise.all([loadPreview(appliedCode), loadAccountSession()]);
     if (preview.status === "ok" && session.status === "ok") {
       outOfDate.current = null;
       showPreview(preview, session.session);
-      setFailure({ kind: "buyer", email: session.session?.email ?? null, mayHavePlaced });
+      setFailure({ kind: "buyer", email: session.session?.email ?? null, mayHavePlaced: uncertainKeys.current.size > 0 });
       // The header shows the buyer the checkout shows now, without a read of its own.
       announceSession(session.session);
     } else {
-      outOfDate.current = { reason: "buyer_changed", shown, mayHavePlaced };
+      outOfDate.current = { reason: "buyer_changed", shown };
       if (preview.status === "unauthorized") showExpired();
       else setFailure({ kind: "message", text: BUYER_NOT_READ });
     }
@@ -483,7 +502,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       setFailure(null);
       const target =
         stale.reason === "buyer_changed"
-          ? await readBuyer(stale.shown, stale.mayHavePlaced)
+          ? await readBuyer(stale.shown)
           : await readChanges(stale.reason, stale.shown, chosenMethod.current, loaded.session);
       focusAfterAnswer(origin, target);
       return;
@@ -578,6 +597,8 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       case "conflict": {
         // Told by the type of the problem only. Nothing is ordered again by itself.
         const detail = result.detail || SUBMIT_FAILED;
+        if (SETTLING.has(result.reason)) uncertainKeys.current.delete(key);
+        if (result.reason === "key_reused") uncertainKeys.current.add(key);
         if (result.reason === "discount_code_rejected") {
           // The code does not work any more. It comes off, the summary is read without it, and nothing is ordered:
           // the customer sees the new total and clicks again. When the summary cannot be read, the screen stays as it
@@ -604,13 +625,12 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           return FAILURE_ID;
         }
         if (result.reason === "buyer_changed") {
-          // This request placed nothing: the session is of another buyer than the one shown. An earlier attempt with the
-          // same key and an uncertain result may have placed the order of the buyer shown, which the BFF, refusing before
-          // the API, cannot know: the message then says so. The form stays locked while the session and the cart are
-          // read; then the message tells who buys now. The request carries another buyer.
-          const mayHavePlaced = uncertainKey.current === key;
+          // This request placed nothing: the session is of another buyer than the one shown. An earlier attempt with an
+          // uncertain result may have placed an order, which the BFF, refusing before the API, cannot know: the message
+          // then says so (`uncertainKeys`). The form stays locked while the session and the cart are read; then the
+          // message tells who buys now. The request carries another buyer.
           renewKey();
-          return readBuyer(shown, mayHavePlaced);
+          return readBuyer(shown);
         }
         if (result.reason === "cart_changed" || result.reason === "total_changed") {
           // Nothing was placed, and from now on the request carries other lines or another total. The form stays locked
@@ -642,7 +662,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         return FAILURE_ID;
       case "failed":
         // The order may have been placed (the answer was lost): the retry goes with the same key.
-        uncertainKey.current = key;
+        uncertainKeys.current.add(key);
         setFailure({ kind: "message", text: SUBMIT_FAILED });
         return FAILURE_ID;
     }

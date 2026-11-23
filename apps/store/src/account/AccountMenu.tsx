@@ -16,9 +16,9 @@ const accountLink =
  * Account box in the header. Loads the session in the browser from `/auth/session`, so the catalog HTML stays the
  * same for everybody. Shows nothing while loading or when the session cannot be checked. A store without customer
  * accounts (`customerAccounts` of `/api/site`) has no login link; the link also waits for the switches, so it never
- * shows up and disappears. A session another part of the page read later (`announceSession`: the checkout after a
- * changed buyer or an ended session) replaces it, also when the own read answers after it, so that the header never
- * names another buyer than the page.
+ * shows up and disappears. A session another part of the page read later (`announceSession`: every read of the
+ * session by the checkout, and its 401 that ended the session) replaces it, also when the own read answers after it,
+ * so that on the checkout the header shows the buyer the checkout shows.
  */
 export function AccountMenu() {
   const pathname = usePathname();
