@@ -283,7 +283,7 @@ class PlaceOrder(unittest.TestCase):
     checks = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(checks)
 
-    def fake(self, order_status=201, options=None):
+    def fake(self, order_status=201, options=None, order_body=None):
         calls = []
         if options is None:
             options = [{"methodId": "method-1", "totalGross": 14299}, {"methodId": "method-2", "totalGross": 16299}]
@@ -297,9 +297,13 @@ class PlaceOrder(unittest.TestCase):
             if path == "/api/v1/products/shirt":
                 return 200, {}, json.dumps({"variants": [{"variantId": "v-1"}]})
             if path.endswith("/items"):
-                return 200, {}, json.dumps({"totals": {"gross": 12300}, "delivery": {"options": options}})
+                # The answer of the addition is not the cart the order is placed for: the lines come from the read below.
+                return 200, {}, json.dumps({"lines": [], "totals": {"gross": 12300}, "delivery": {"options": options}})
+            if path == "/api/v1/guest-carts/cart-1" and kwargs.get("method") is None:
+                lines = [{"variantId": "v-1", "quantity": 1, "unitPrice": {"gross": 12300}, "state": "purchasable"}]
+                return 200, {}, json.dumps({"id": "cart-1", "lines": lines, "totals": {"gross": 12300}, "delivery": {"options": options}})
             if path == "/api/v1/orders":
-                return order_status, {}, json.dumps({"number": "ZAM-0042"})
+                return order_status, {}, json.dumps(order_body or {"number": "ZAM-0042"})
             raise AssertionError(path)
 
         return through_ingress, calls
@@ -318,6 +322,7 @@ class PlaceOrder(unittest.TestCase):
         self.assertEqual("method-1", order["body"]["deliveryMethodId"])
         self.assertEqual(14299, order["body"]["expectedTotalGross"])
         self.assertEqual("cart-1", order["body"]["cartId"])
+        self.assertEqual([{"variantId": "v-1", "quantity": 1}], order["body"]["expectedLines"])
         self.assertTrue(order["headers"]["Idempotency-Key"])
 
     def test_a_cart_without_a_delivery_method_fails_the_check_before_the_order(self):
@@ -340,6 +345,23 @@ class PlaceOrder(unittest.TestCase):
                 self.checks.place_order("smoke-expiry@example.com")
         finally:
             self.checks.through_ingress = original
+
+    def test_a_refused_list_of_lines_fails_the_check_with_the_status_and_the_type(self):
+        refusals = (
+            (409, {"type": "tag:piotrp321.github.io,2026:shop/problems/cart-changed", "detail": "Zawartość koszyka się zmieniła."}),
+            (422, {"type": "tag:piotrp321.github.io,2026:shop/problems/validation-failed", "violations": [{"propertyPath": "expectedLines"}]}),
+        )
+        for status, body in refusals:
+            with self.subTest(status):
+                fake, _ = self.fake(order_status=status, order_body=body)
+                original = self.checks.through_ingress
+                self.checks.through_ingress = fake
+                try:
+                    with self.assertRaises(AssertionError) as raised:
+                        self.checks.place_order("smoke-expiry@example.com")
+                finally:
+                    self.checks.through_ingress = original
+                self.assertIn(f"got {status}, type {body['type']}", str(raised.exception))
 
     def test_the_command_is_dispatched_and_documented(self):
         text = (REPO / "infra/k8s/smoke/checks.py").read_text()
