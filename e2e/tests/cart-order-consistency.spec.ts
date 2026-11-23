@@ -9,10 +9,10 @@ import { urls } from "../support/urls";
 // changes of the cart made in another tab of the same browser. The other tab changes the cart through the store's cart
 // endpoints, as its cart page would. Each test has its own context, so a guest cart of its own.
 //
-// Stock (apps/api/fixtures/stock.yaml): R1 orders and pays 3 units of Buty trailowe Norvane Hala 500, R3, R4 and R5 1
-// unit each; R2, R6 and the narrow screens order nothing (the change is refused and the test ends there).
+// Stock (apps/api/fixtures/stock.yaml): R1 orders and pays 3 units of Buty trailowe Norvane Hala 500, R3, R4, R5 and
+// R7 1 unit each; R2, R6 and the narrow screens order nothing (the change is refused and the test ends there).
 //
-// R4, R5 and R6 change the buyer in the other tab with the demo accounts Jan and Anna, which the whole suite shares:
+// R4 to R7 change the buyer in the other tab with the demo accounts Jan and Anna, which the whole suite shares:
 // each of them prepares the carts it needs, and both carts are emptied after it, also after a failure.
 
 const SHOES = { name: "Buty trailowe Norvane Hala 500", slug: "buty-trailowe-norvane-hala-500" };
@@ -24,6 +24,9 @@ const PLACING = "Składamy zamówienie…";
 const CART_CHANGED = "Zawartość koszyka zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.";
 const SIGNED_IN_AS = (email: string) =>
   `Od wczytania kasy zmieniło się konto: teraz to ${email}. Nie złożyliśmy zamówienia. Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
+// The same after a retry of an uncertain result: the attempt before may have placed the order.
+const MAYBE_SIGNED_IN_AS = (email: string) =>
+  `Od wczytania kasy zmieniło się konto: teraz to ${email}. Poprzednia próba mogła złożyć zamówienie dla poprzedniego kupującego. Sprawdź pocztę, zanim zamówisz ponownie. Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
 // 60 characters without a space or a hyphen: the address must wrap on a narrow screen. The demo accounts have short ones.
 const LONG_EMAIL = "bardzodlugiadresklientasklepunorvanetestowykonto@example.com";
 
@@ -436,6 +439,55 @@ test.describe("the buyer changed in another tab", () => {
     // Jan's cart was never ordered: an order empties the cart it is placed from.
     await signInAs(other, customers.jan);
     expect(await cartLinesOf(other)).toEqual([{ variantId: a.variantId, quantity: 1 }]);
+  });
+
+  test("R7: Jan's checkout whose answer was lost, retried after another tab signs in as Anna, does not say that nothing was ordered: the lost attempt placed Jan's order", async ({ context, request }) => {
+    const [a] = await twoVariants(request, SHOES.slug);
+    const page = await context.newPage();
+    await signInAs(page, customers.anna);
+    await emptyCart(page);
+    await signInAs(page, customers.jan);
+    await emptyCart(page);
+    await addLines(page, [[a, 1]]);
+    await customerCheckout(page, customers.jan);
+
+    // The first order reaches the server, which places it and starts its payment, but its answer never reaches the
+    // page (the connection fails): an uncertain result, retried with the same key.
+    const keys: string[] = [];
+    const statuses: number[] = [];
+    const lost: { answer?: { number: string; redirectUrl: string | null } } = {};
+    await page.route("**/api/checkout", async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      keys.push(route.request().headers()["idempotency-key"] ?? "");
+      const response = await route.fetch();
+      statuses.push(response.status());
+      if (lost.answer === undefined) {
+        lost.answer = (await response.json()) as { number: string; redirectUrl: string | null };
+        return route.abort("failed");
+      }
+      return route.fulfill({ response });
+    });
+    await orderButton(page).click();
+    await expect(orderMessage(page)).toHaveText("Nie udało się złożyć zamówienia. Spróbuj ponownie.");
+
+    // Jan's order was placed: it is paid at once, in another tab, so the test leaves no unpaid order whatever follows.
+    // The retry below is refused before the API, so the payment does not change it.
+    const placed = lost.answer;
+    if (placed?.redirectUrl == null) throw new Error("the lost attempt placed no order with a payment to decide");
+    const other = await context.newPage();
+    await other.goto(placed.redirectUrl);
+    await decideAtSimulator(other, "Zapłać");
+
+    await signInAs(other, customers.anna);
+    await orderButton(page).click();
+
+    await expect(orderMessage(page)).toHaveText(MAYBE_SIGNED_IN_AS(customers.anna.email));
+    expect(statuses).toEqual([201, 409]);
+    expect(keys[1]).toBe(keys[0]);
+    await expect(page.getByTestId("account-email")).toHaveText(customers.anna.email);
+    // The message is true: the lost attempt placed Jan's order.
+    await waitForOrderEmail(customers.jan.email, placed.number);
+    await waitForOrderEmail(customers.jan.email, placed.number, "payment");
   });
 
   test("R6: Jan's checkout after a logout in another tab shows the expired session and places no order, not even one of the guest cart the browser has", async ({ context, request }) => {
