@@ -4,7 +4,7 @@ import type { RouteLocationRaw } from "vue-router";
 import { useRouter } from "vue-router";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { MATCHES_MESSAGE, READ_FAILED_MESSAGE, RESTORE_LABEL } from "@/composables/formRequests";
+import { MATCHES_MESSAGE, READ_FAILED_MESSAGE, RESTORE_LABEL, SHOW_SERVER_STATE_LABEL } from "@/composables/formRequests";
 import type { FormSafetyState } from "@/composables/useFormSafety";
 
 /**
@@ -138,7 +138,7 @@ async function restore(): Promise<void> {
           :disabled="reading"
           @click="restore"
         >
-          {{ RESTORE_LABEL }}
+          {{ unknown.discarded ? SHOW_SERVER_STATE_LABEL : RESTORE_LABEL }}
         </Button>
       </AlertDescription>
     </Alert>

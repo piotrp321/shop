@@ -164,6 +164,7 @@ describe("FormSafetyNotices", () => {
     const safety = create();
     const wrapper = await show(safety);
     safety.offerRestore();
+    await flushPromises();
     expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Odrzuć moje zmiany i pokaż stan z serwera");
 
     safety.draftDiscarded();

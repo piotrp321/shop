@@ -7,6 +7,7 @@ import {
   READING_MESSAGE,
   MATCHES_MESSAGE,
   REQUEST_LIMIT_MS,
+  UNKNOWN_DISCARDED_MESSAGE,
   UNKNOWN_RESULT_MESSAGE,
   type ReadResult,
   type RequestComparison,
@@ -47,6 +48,8 @@ export interface UnknownResult {
   kind: "unknown" | "missing" | "otherVersion";
   /** The write was the creation of an object: there is no „Sprawdź stan”, only the list. */
   created: boolean;
+  /** The draft was discarded after this was said: the message no longer promises that the changes stay. */
+  discarded: boolean;
   text: string;
 }
 
@@ -74,6 +77,7 @@ interface UnknownState<TView> {
   pending: boolean;
   kind: UnknownResult["kind"];
   created: boolean;
+  discarded?: boolean;
   confirmedBy?: (served: TView) => boolean;
 }
 
@@ -92,8 +96,8 @@ interface UnknownState<TView> {
  * - `restore` is „Odrzuć moje zmiany i pokaż stan z serwera” (and „Odśwież”): the draft is replaced after the answer 200.
  * - Every read that locks the form gives up after `REQUEST_LIMIT_MS` (`readFailed`, `retryRead`); its late answer is ignored.
  * - `write` starts nothing while a read locks the form (`reading`); a creation confirmed after an earlier one that was given up
- *   makes the answer of the earlier one silent (the form shows the new object). `dismiss` is for „Odrzuć” of the draft: the
- *   messages about the requests of the discarded changes go away; a late answer is still only a toast.
+ *   makes the answer of the earlier one silent (the form shows the new object). `draftDiscarded` is for „Odrzuć” of the
+ *   draft: what the form knows about the server stays, only the promise that the changes stay goes; a late answer is still only a toast.
  * - `reset` is called when the form moves to another object (or to the form of a new one), `dispose` when it is left: the
  *   answers still on their way are ignored then, without a message, and nothing stays locked.
  *
@@ -132,8 +136,10 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
       text = OTHER_VERSION_MESSAGE;
     } else if (state.created && !state.pending) {
       text = `${options.newObject.unknownMessage} ${CHECK_LIST_MESSAGE}`;
+    } else if (state.discarded) {
+      text = UNKNOWN_DISCARDED_MESSAGE;
     }
-    return { pending: state.pending, kind: state.kind, created: state.created, text };
+    return { pending: state.pending, kind: state.kind, created: state.created, discarded: state.discarded === true, text };
   });
 
   function clearNotices(): void {
@@ -181,9 +187,19 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     retry = null;
   }
 
-  /** The draft was discarded: what was said about the requests of the discarded changes is not true any more. */
-  function dismiss(): void {
-    clearNotices();
+  /**
+   * „Odrzuć” of the draft: the form shows its base again. What the form knows about the server stays true and stays:
+   * an unknown result (without the promise that the changes stay; „Sprawdź stan” then compares the restored base), what
+   * „Sprawdź stan” found and the way to the server state. A 409 whose message goes away with the draft gets the context
+   * that the version on the server is another. Nothing about the requests in flight changes: a late answer is still only a toast.
+   */
+  function draftDiscarded(): void {
+    const current = unknownState.value;
+    if (current !== null) {
+      unknownState.value = { ...current, discarded: true };
+    } else if (restoreOffered.value) {
+      unknownState.value = { pending: false, kind: "otherVersion", created: false, discarded: true };
+    }
   }
 
   /** The form is left. */
@@ -372,7 +388,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     context,
     stale,
     reset,
-    dismiss,
+    draftDiscarded,
     dispose,
   };
 }

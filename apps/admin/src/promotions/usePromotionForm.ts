@@ -366,7 +366,7 @@ export function usePromotionForm(options: PromotionFormOptions) {
     }
     form.value = fromView(current);
     clearFeedback();
-    safety.dismiss();
+    safety.draftDiscarded();
   }
 
   /** A time as the API gets it: the stored moment when the text is what it shows, else the typed time as UTC. */

@@ -501,6 +501,16 @@ z komunikatem „Nie wiemy, czy <obiekt> został utworzony. Wcześniejszy zapis 
 przed ponownym zapisem.” i linkiem do listy (nowa karta). Gdy kolejny zapis dostanie 409 pola unikalnego albo
 `promotion-overlap`, komunikat dodaje „Możliwe, że utworzył go Twój wcześniejszy zapis.”.
 
+**„Odrzuć” szkic** (przycisk paska zapisu) przywraca stan bazowy i usuwa tylko to, co po odrzuceniu przestaje być prawdą;
+wiedza o serwerze zostaje.
+- Nieznany wynik zostaje ze „Sprawdź stan”, bez zdania „Twoje zmiany zostają w formularzu.” (komunikat „Nie wiemy, czy
+  zapis się powiódł.”); „Sprawdź stan” porównuje wtedy przywrócony stan bazowy z serwerem. Wynik „Sprawdź stan”
+  (brak zapisu na serwerze, inna wersja) zostaje.
+- Po 409, którego komunikat znika razem ze szkicem, zostaje droga do stanu z serwera: komunikat „Na serwerze jest inna
+  wersja niż ta, którą edytujesz.” z przyciskiem „Pokaż stan z serwera” (po odrzuceniu nie ma już zmian do odrzucenia,
+  więc przycisk nie nazywa się „Odrzuć moje zmiany…”).
+- Spóźniona odpowiedź zapisu nadal tylko toast, bez wpływu na pola.
+
 **Spóźniona odpowiedź wcześniejszego zapisu** (po „Sprawdź stan”, „Odblokuj formularz”, po nowszym zapisie albo po
 odblokowaniu z innego powodu): nie zmienia pól, wersji, stanu bazowego ani `dirty`, nie czyści błędów i komunikatów
 nowszego żądania, nie zdejmuje jego blokady i nie nawiguje. Sukces pokazuje toast „Wcześniejszy zapis został
