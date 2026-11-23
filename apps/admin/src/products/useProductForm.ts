@@ -1,6 +1,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { OTHER_VERSION_MESSAGE, type ReadResult, type WriteOutcome } from "@/composables/formRequests";
+import { useFormSafety } from "@/composables/useFormSafety";
 import { type FormImage, useImageUpload } from "./useImageUpload";
 import { fetchTaxClasses, type TaxClass } from "./taxClasses";
 
@@ -42,6 +44,11 @@ export interface ProductFormOptions {
   canManage: () => boolean;
   /** Called with the id of a product just created, so that the view can move to its page. */
   onCreated: (id: string) => void;
+  /**
+   * Called with „Wcześniejszy zapis został wykonany.” when the answer of an earlier save, which the staff member left behind
+   * with „Sprawdź stan” or „Odblokuj formularz”, turns out to be a success: the view says so in a toast. Nothing else changes.
+   */
+  onLateSaved?: (message: string) => void;
 }
 
 const PROBLEM_PREFIX = "tag:piotrp321.github.io,2026:shop/problems/";
@@ -50,7 +57,8 @@ const FIELD_ROOTS = new Set(["name", "slug", "shortDescription", "mainCategoryId
 export const MAX_AXES = 2;
 export const MAX_VARIANTS = 100;
 
-export const MODIFIED_MESSAGE = "Produkt został w międzyczasie zmieniony – odśwież";
+/** The version of a product changed while the staff member edited it: the draft stays. */
+export const MODIFIED_MESSAGE = "Produkt został w międzyczasie zmieniony. Twoje zmiany zostają w formularzu.";
 export const SLUG_TAKEN_MESSAGE = "Ten slug ma już inny produkt. Podaj własny slug.";
 export const NOT_PUBLISHABLE_MESSAGE = "Dodaj co najmniej jedno zdjęcie przed publikacją.";
 export const LAST_IMAGE_MESSAGE = "Opublikowany produkt musi mieć co najmniej jedno zdjęcie.";
@@ -59,12 +67,6 @@ type Action = "save" | "publish" | "unpublish";
 
 /** How an action ended; null when it did not start or its answer came after the form was left. */
 export type ActionResult = "success" | "failure" | null;
-
-interface Outcome {
-  data?: ProductEditView;
-  error?: unknown;
-  response: { status: number };
-}
 
 function emptyForm(): ProductFormData {
   return {
@@ -107,6 +109,8 @@ function stateOf(view: ProductEditView): ProductState {
 }
 
 /** What the API gets of the form; the previews are not part of it, so they do not count as a change either. */
+export type ProductBody = ReturnType<typeof toBody>;
+
 function toBody(form: ProductFormData) {
   return {
     name: form.name,
@@ -119,6 +123,14 @@ function toBody(form: ProductFormData) {
     variantAxes: form.variantAxes,
     variants: form.variants.map((variant) => ({ variantId: variant.variantId, values: variant.values })),
   };
+}
+
+/**
+ * The request the form sends for `form` (without the version), or null when the server decides part of it: an empty slug is
+ * derived from the name, so such a draft is never the same as an object on the server (`useFormSafety`, „Sprawdź stan”).
+ */
+function requestOf(form: ProductFormData): ProductBody | null {
+  return form.slug === "" ? null : toBody(form);
 }
 
 /** The toast after the first save: a product without a price is unavailable in the shop (the price is set on the card „Ceny i stany”). */
@@ -150,6 +162,14 @@ function violationsOf(body: unknown): { propertyPath: string; title: string }[] 
  *
  * Every action is off while a request or an image upload runs, and publishing or withdrawing is off while there are
  * unsaved changes (the API acts on the saved product). Without the permission to manage products the form is read-only.
+ *
+ * The draft is only changed by the staff member (docs/features/admin-ux-fixes/spec.md, „Etap 2”). A save, a publication and a
+ * withdrawal are run by `safety` (`useFormSafety`): from the request to its answer, and while a read replaces the form
+ * („Odśwież”, „Odrzuć moje zmiany i pokaż stan z serwera”), the fields and the editors are locked (`locked`; the editors below
+ * change nothing) and the actions are off. A 409 of the version shows its message, keeps the draft, the base and the
+ * version, offers „Odrzuć moje zmiany i pokaż stan z serwera” (`safety.restore`) and reads nothing by itself. No answer in
+ * 10 s, an error before the answer and a 5xx are an unknown result (`safety.unknown`), never a message that the request
+ * failed. The answer of a request for a product the form no longer shows is ignored.
  */
 export function useProductForm(options: ProductFormOptions) {
   const form = ref<ProductFormData>(emptyForm());
@@ -159,10 +179,8 @@ export function useProductForm(options: ProductFormOptions) {
   const taxClassesError = ref<string | null>(null);
   const loaded = ref(false);
   const loadError = ref<string | null>(null);
-  const busy = ref(false);
   const message = ref<string | null>(null);
   const error = ref<string | null>(null);
-  const conflict = ref(false);
   const fieldErrors = ref<Record<string, string[]>>({});
   const variantsConflict = ref<string | null>(null);
 
@@ -178,12 +196,35 @@ export function useProductForm(options: ProductFormOptions) {
   let latest = 0;
   // The product as the API last sent it, which „discard” restores without a request.
   let source: ProductEditView | null = null;
-  // Set when the form is left: an answer that arrives later must not change it or send the staff member back to it.
-  let disposed = false;
 
+  // The requests that may replace the draft: a save, a publication, a withdrawal, and the reads that lock the form
+  // (`safety`). Opening another product, or the form of a new one, resets it, and the answer of a request sent for the
+  // previous one is then ignored; moving to the page of the product just created does not (`open`). Leaving the form
+  // disposes it.
+  const safety = useFormSafety<ProductEditView, ProductBody>({
+    id: () => view.value?.id ?? options.productId(),
+    read: fetchProduct,
+    version: () => view.value?.version ?? null,
+    draftRequest: () => requestOf(form.value),
+    servedRequest: (served) => requestOf(fromView(served)),
+    adopt: (served) => {
+      apply(served);
+      clearFeedback();
+    },
+    onLateSuccess: (text) => options.onLateSaved?.(text),
+    // A row of a variant that is new in the draft has no id; the server gives it one.
+    compare: { serverAssigned: ["variantId"] },
+    newObject: { unknownMessage: "Nie wiemy, czy produkt został utworzony.", ownNote: "Możliwe, że utworzył go Twój wcześniejszy zapis." },
+  });
+
+  const busy = computed(() => safety.writing.value);
+  /** Whether the fields and the editors are off: while a request runs (also past the limit, until the answer or „Sprawdź stan”) and while a read replaces the form. */
+  const locked = computed(() => safety.locked.value);
   const readOnly = computed(() => !options.canManage());
+  /** Whether the staff member can change the draft now: the permission, and no request that would replace it. */
+  const editable = computed(() => !readOnly.value && !locked.value);
   const dirty = computed(() => JSON.stringify(toBody(form.value)) !== baseline.value);
-  const idle = computed(() => !readOnly.value && !busy.value && !upload.uploading.value);
+  const idle = computed(() => !readOnly.value && !busy.value && !upload.uploading.value && !safety.reading.value);
   const canSave = idle;
   const canPublish = computed(() => idle.value && !dirty.value && view.value?.status === "draft");
   const canUnpublish = computed(() => idle.value && !dirty.value && view.value?.status === "published");
@@ -217,7 +258,6 @@ export function useProductForm(options: ProductFormOptions) {
   function clearFeedback(): void {
     message.value = null;
     error.value = null;
-    conflict.value = false;
     fieldErrors.value = {};
     variantsConflict.value = null;
   }
@@ -238,24 +278,30 @@ export function useProductForm(options: ProductFormOptions) {
     loaded.value = true;
   }
 
+  /** The product as the API has it: the object, the status of any other answer, or null when the request did not reach the API. */
+  async function fetchProduct(id: string): Promise<ReadResult<ProductEditView>> {
+    try {
+      const result = await getApiClient().GET("/api/v1/admin/products/{id}", { params: { path: { id } } });
+      return result.data ? { data: result.data } : { status: result.response.status };
+    } catch {
+      return null;
+    }
+  }
+
   async function loadProduct(id: string): Promise<void> {
     const request = ++latest;
     loadError.value = null;
-    try {
-      const result = await getApiClient().GET("/api/v1/admin/products/{id}", { params: { path: { id } } });
-      if (request !== latest) {
-        return;
-      }
-      if (result.data) {
-        apply(result.data);
-        loaded.value = true;
-      } else {
-        loadError.value = result.response.status === 404 ? "Ten produkt nie istnieje." : `Nie udało się pobrać produktu (HTTP ${result.response.status}).`;
-      }
-    } catch {
-      if (request === latest) {
-        loadError.value = "Nie udało się pobrać produktu. Sprawdź połączenie z API.";
-      }
+    const result = await fetchProduct(id);
+    if (request !== latest) {
+      return;
+    }
+    if (result !== null && "data" in result) {
+      apply(result.data);
+      loaded.value = true;
+    } else if (result === null) {
+      loadError.value = "Nie udało się pobrać produktu. Sprawdź połączenie z API.";
+    } else {
+      loadError.value = result.status === 404 ? "Ten produkt nie istnieje." : `Nie udało się pobrać produktu (HTTP ${result.status}).`;
     }
   }
 
@@ -274,6 +320,8 @@ export function useProductForm(options: ProductFormOptions) {
     if (id !== null && view.value?.id === id) {
       return;
     }
+    // A request for the previous product no longer holds this one: its answer is ignored (`safety`).
+    safety.reset();
     clearFeedback();
     // The uploads were sent for the product that was shown; their answers must not reach the next one.
     upload.abandon();
@@ -282,6 +330,7 @@ export function useProductForm(options: ProductFormOptions) {
       startNew();
     } else {
       loaded.value = false;
+      view.value = null;
       void loadProduct(id);
     }
   }
@@ -291,31 +340,32 @@ export function useProductForm(options: ProductFormOptions) {
     void loadTaxClasses();
   });
   onBeforeUnmount(() => {
-    disposed = true;
     latest++;
     upload.abandon();
+    safety.dispose();
   });
   watch(
     () => options.productId(),
     (id) => open(id),
   );
 
-  /** Discards the changes and shows the product as the API has it now. */
+  /**
+   * Discards the changes and shows the product as the API has it now (`safety.restore`). The fields stay locked until the
+   * answer, so nothing typed meanwhile is replaced by it; after 10 s, an error or an answer other than 200 the form stays
+   * as it was, unlocked, with `safety.readFailed`.
+   */
   async function refresh(): Promise<void> {
-    const id = view.value?.id ?? options.productId();
-    clearFeedback();
-    if (id !== null) {
-      await loadProduct(id);
-    }
+    await safety.restore();
   }
 
   /** Throws away the unsaved changes: the form goes back to the product as the API last sent it, without a request. */
   function discard(): void {
-    if (source === null || busy.value) {
+    if (source === null || busy.value || locked.value) {
       return;
     }
     form.value = fromView(source);
     clearFeedback();
+    safety.draftDiscarded();
   }
 
   function failure(action: Action, status: number, body: unknown): void {
@@ -331,9 +381,6 @@ export function useProductForm(options: ProductFormOptions) {
         return;
       case 404:
         error.value = "Ten produkt już nie istnieje.";
-        return;
-      case 503:
-        error.value = "Usługa jest chwilowo niedostępna. Spróbuj ponownie.";
         return;
       default:
         error.value = `Nie udało się wykonać operacji (HTTP ${status}).`;
@@ -362,11 +409,12 @@ export function useProductForm(options: ProductFormOptions) {
     const detail = problemField(body, "detail");
     switch (type) {
       case "product-modified":
-        conflict.value = true;
         error.value = MODIFIED_MESSAGE;
+        // What this 409 says about the server, for the button that stays after „Odrzuć”.
+        safety.offerRestore(OTHER_VERSION_MESSAGE);
         return;
       case "slug-taken":
-        addFieldError("slug", SLUG_TAKEN_MESSAGE);
+        addFieldError("slug", safety.withDuplicateNote(SLUG_TAKEN_MESSAGE));
         return;
       case "slug-locked":
         addFieldError("slug", detail ?? "Slug nie może się zmienić po pierwszej publikacji.");
@@ -383,37 +431,35 @@ export function useProductForm(options: ProductFormOptions) {
     }
   }
 
-  async function perform(action: Action, allowed: boolean, request: () => Promise<Outcome>, success: string): Promise<ActionResult> {
+  /**
+   * Runs an action through `safety.write`. A refusal (4xx) shows its message and keeps the draft; an unknown result is
+   * `safety.unknown` ("failure" for the view, which moves the focus to that message); null when the action did not start or
+   * its answer is not the form's any more (another product was opened, the form was left).
+   */
+  async function perform(
+    action: Action,
+    allowed: boolean,
+    request: () => Promise<WriteOutcome<ProductEditView>>,
+    success: string,
+    confirmedBy?: (served: ProductEditView) => boolean,
+  ): Promise<ActionResult> {
     if (!allowed) {
       return null;
     }
     clearFeedback();
-    busy.value = true;
-    try {
-      const result = await request();
-      if (disposed) {
-        return null;
-      }
-      if (result.data) {
+    const result = await safety.write(request, {
+      onSuccess: (data) => {
         const created = view.value === null;
-        apply(result.data);
+        apply(data);
         message.value = created ? CREATED_MESSAGE : success;
         if (created) {
-          options.onCreated(result.data.id);
+          options.onCreated(data.id);
         }
-        return "success";
-      }
-      failure(action, result.response.status, result.error);
-      return "failure";
-    } catch {
-      if (disposed) {
-        return null;
-      }
-      error.value = "Nie udało się wykonać operacji. Sprawdź połączenie z API.";
-      return "failure";
-    } finally {
-      busy.value = false;
-    }
+      },
+      onRefused: (status, body) => failure(action, status, body),
+      confirmedBy,
+    });
+    return result === null ? null : result === "success" ? "success" : "failure";
   }
 
   function save(): Promise<ActionResult> {
@@ -437,6 +483,8 @@ export function useProductForm(options: ProductFormOptions) {
       canPublish.value && current !== null,
       () => getApiClient().POST("/api/v1/admin/products/{id}/publish", { params: { path: { id: current!.id } }, body: { version: current!.version } }),
       "Produkt opublikowany.",
+      // The fields of a published product equal the draft's: only the status shows that the publication was done.
+      (served) => served.status === "published",
     );
   }
 
@@ -447,6 +495,7 @@ export function useProductForm(options: ProductFormOptions) {
       canUnpublish.value && current !== null,
       () => getApiClient().POST("/api/v1/admin/products/{id}/unpublish", { params: { path: { id: current!.id } }, body: { version: current!.version } }),
       "Produkt wycofany z publikacji.",
+      (served) => served.status === "draft",
     );
   }
 
@@ -454,7 +503,7 @@ export function useProductForm(options: ProductFormOptions) {
   function moveImage(index: number, direction: -1 | 1): void {
     const target = index + direction;
     const list = form.value.images;
-    if (index < 0 || index >= list.length || target < 0 || target >= list.length) {
+    if (!editable.value || index < 0 || index >= list.length || target < 0 || target >= list.length) {
       return;
     }
     const moved = [...list];
@@ -464,6 +513,9 @@ export function useProductForm(options: ProductFormOptions) {
   }
 
   function removeImage(index: number): void {
+    if (!editable.value) {
+      return;
+    }
     form.value.images = form.value.images.filter((_, position) => position !== index);
     clearImageErrors();
   }
@@ -482,7 +534,7 @@ export function useProductForm(options: ProductFormOptions) {
     form.value.variants = form.value.variants.map((row) => ({ variantId: row.variantId, values: change(row.values) }));
   }
 
-  const canEditAxes = () => !readOnly.value && !axesLocked.value;
+  const canEditAxes = () => editable.value && !axesLocked.value;
 
   /** Appends an axis with an empty name and an empty value in every row. */
   function addAxis(): void {
@@ -495,7 +547,7 @@ export function useProductForm(options: ProductFormOptions) {
   }
 
   function setAxis(index: number, name: string): void {
-    if (readOnly.value || index < 0 || index >= form.value.variantAxes.length) {
+    if (!editable.value || index < 0 || index >= form.value.variantAxes.length) {
       return;
     }
     form.value.variantAxes = form.value.variantAxes.map((axis, position) => (position === index ? name : axis));
@@ -537,7 +589,7 @@ export function useProductForm(options: ProductFormOptions) {
 
   /** Appends a new row (no id) with an empty value per axis; a product without axes has only the default variant. */
   function addVariant(): void {
-    if (readOnly.value || form.value.variantAxes.length === 0 || form.value.variants.length >= MAX_VARIANTS) {
+    if (!editable.value || form.value.variantAxes.length === 0 || form.value.variants.length >= MAX_VARIANTS) {
       return;
     }
     form.value.variants = [...form.value.variants, { variantId: null, values: form.value.variantAxes.map(() => "") }];
@@ -546,7 +598,7 @@ export function useProductForm(options: ProductFormOptions) {
 
   /** Removes a row; the product keeps at least one. Asking for confirmation before an existing variant goes is up to the view. */
   function removeVariant(index: number): void {
-    if (readOnly.value || form.value.variants.length <= 1 || index < 0 || index >= form.value.variants.length) {
+    if (!editable.value || form.value.variants.length <= 1 || index < 0 || index >= form.value.variants.length) {
       return;
     }
     form.value.variants = form.value.variants.filter((_, position) => position !== index);
@@ -555,7 +607,7 @@ export function useProductForm(options: ProductFormOptions) {
 
   function setValue(row: number, position: number, value: string): void {
     const target = form.value.variants[row];
-    if (readOnly.value || !target || position < 0 || position >= target.values.length) {
+    if (!editable.value || !target || position < 0 || position >= target.values.length) {
       return;
     }
     target.values = target.values.map((current, index) => (index === position ? value : current));
@@ -569,6 +621,8 @@ export function useProductForm(options: ProductFormOptions) {
     loaded,
     loadError,
     busy,
+    locked,
+    safety,
     dirty,
     readOnly,
     canSave,
@@ -576,7 +630,6 @@ export function useProductForm(options: ProductFormOptions) {
     canUnpublish,
     message,
     error,
-    conflict,
     imagesErrors,
     variantsErrors,
     axesLocked,

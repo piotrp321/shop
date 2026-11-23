@@ -370,8 +370,10 @@ do adresu trafia dopiero zastosowana fraza.
   (publikacja, wycofanie, zakończenie, usunięcie) są w karcie bocznej „Status”, nie w pasku.
 - **Po zapisie**: toast („Produkt zapisany.”, „Promocja zapisana.”, „Kod rabatowy zapisany.”), pasek znika, a fokus
   przechodzi na H1 formularza (`tabindex="-1"`), bo przycisk „Zapisz” zniknął razem z paskiem. Wyjątek (#250 F16):
-  gdy w trakcie żądania pracownik przeniósł fokus do pola, fokus zostaje w tym polu. Wyjątek nie dotyczy zapisu
-  formularza promocji: w jego trakcie pola są wyłączone (dotyczy akcji karty „Status”). Po nieudanym zapisie fokus trafia
+  gdy w trakcie żądania pracownik przeniósł fokus do pola, fokus zostaje w tym polu. Wyjątek nie dotyczy zapisu żadnego
+  z formularzy (produkt, promocja, kod rabatowy, metoda dostawy) ani publikacji i wycofania produktu: w ich trakcie pola
+  są wyłączone, więc fokus nie jest w polu (wyjątek zostaje dla akcji, które pól nie wyłączają: „Zakończ teraz” i „Usuń”
+  promocji w karcie „Status”). Po nieudanym zapisie fokus trafia
   na pierwsze pole z błędem albo komunikat formularza, a komunikat jest przewinięty do widoku (#304 F3).
 - **Strażnik niezapisanych zmian** we wszystkich trzech formularzach (produkt, promocja, kod rabatowy), jeden composable `useUnsavedChangesGuard` (globalny `router.beforeEach`) z oknem
   `UnsavedChangesDialog`: przejście na inną trasę panelu z niezapisanymi zmianami otwiera okno „Masz niezapisane
@@ -482,6 +484,10 @@ o stanie systemu. Ten ekran jest dla administratorów.”.
   „Zdjęcia”, „Warianty”. Kolumna boczna: „Status” (etykieta, „Opublikuj” albo „Wycofaj z publikacji”, wyłączone przy
   niezapisanych zmianach z widocznym powodem „Najpierw zapisz zmiany.”; karta tylko dla zapisanego produktu),
   „Organizacja” (kategoria główna i dodatkowe).
+  Na czas zapisu, publikacji, wycofania i odczytu stanu z serwera („Odrzuć moje zmiany i pokaż stan z serwera”) pola,
+  wybór kategorii, edytor wariantów i zdjęcia (opis, kolejność, usuwanie, dodawanie plików) są wyłączone; karta „Ceny
+  i stany” nie, bo ma własne żądania i nie należy do szkicu. Szkic zmienia tylko pracownik: 409 wersji zostawia go
+  i nie czyta produktu sam, brak odpowiedzi przez 10 s, błąd sieci i 5xx to nieznany wynik zapisu (`FormSafetyNotices`).
   Zachowanie zapisu, błędów 409/422 i ról opisuje kod: `apps/admin/src/products/useProductForm.ts` i `permissions.ts`.
 - **Zdjęcia**: po usunięciu zdjęcia fokus przechodzi na przycisk usuwania zdjęcia, które zajęło jego miejsce, a bez
   następnego na „Dodaj zdjęcia”; po ukryciu wyniku wysyłania („Ukryj: <plik>”) na następny wynik albo „Dodaj zdjęcia”,
