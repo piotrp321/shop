@@ -53,8 +53,8 @@ echo "overlay         1056557396 138733784 $value      14% /"
 """
 
 # The generator and the seed: STUB_STEPS is a list of <label>:<seconds> (an underscore is a space in the label): each step sleeps, then
-# prints its [OK] line as SymfonyStyle does. Then, with STUB_CONSOLE_SECONDS, bin/console runs in the foreground; the exit code is
-# STUB_EXIT. The trap of TERM is that of bin/generate-demo: it runs only when the command in the foreground has ended.
+# prints its [OK] line as SymfonyStyle does. Then, with STUB_CONSOLE_SECONDS, bin/console runs in the foreground (that long, or with
+# STUB_CONSOLE_READINGS until df was read that many times); the exit code is STUB_EXIT. The trap of TERM is that of bin/generate-demo: it runs only when the command in the foreground has ended.
 GENERATOR = r"""#!/bin/sh
 echo "${0##*/} $*" >> "$STUB_DIR/calls"
 echo $$ > "$STUB_DIR/generator.pid"
@@ -78,7 +78,17 @@ CONSOLE = r"""#!/bin/sh
 echo "console $*" >> "$STUB_DIR/calls"
 echo $$ > "$STUB_DIR/console.pid"
 [ -z "${STUB_CONSOLE_IGNORES_TERM:-}" ] || trap '' TERM
-sleep "${STUB_CONSOLE_SECONDS:-1}"
+if [ -z "${STUB_CONSOLE_READINGS:-}" ]; then
+  sleep "${STUB_CONSOLE_SECONDS:-1}"
+  exit 0
+fi
+# Ends once df was read STUB_CONSOLE_READINGS times (the first reading before the start and those of the guard), or after
+# STUB_CONSOLE_SECONDS when the guard reads no more: a reading takes DEMO_DATA_SPACE_POLL seconds plus its own time, which a busy
+# runner stretches, so a test of the readings waits for them and not for a time it guesses they take.
+deadline=$(($(date +%s) + ${STUB_CONSOLE_SECONDS:-1}))
+while [ "$(wc -l < "$STUB_DIR/df.log")" -lt "$STUB_CONSOLE_READINGS" ] && [ "$(date +%s)" -lt "$deadline" ]; do
+  sleep 0.1
+done
 """
 
 PSQL = r"""#!/bin/sh
@@ -336,7 +346,8 @@ class GuardTest(Script):
         self.assertIn("3 times in a row", self.reason(75, out))
 
     def test_failed_readings_that_are_not_three_in_a_row_do_not_stop_it(self):
-        code, out, _ = self.run_script(STUB_DF=f"{PLENTY} fail fail {PLENTY} fail fail {PLENTY}", STUB_CONSOLE_SECONDS="7")
+        code, out, _ = self.run_script(STUB_DF=f"{PLENTY} fail fail {PLENTY} fail fail {PLENTY}", STUB_CONSOLE_READINGS="7",
+                                       STUB_CONSOLE_SECONDS="30")
         self.assertEqual(0, code, out)
         self.assertGreaterEqual(len((self.base / "df.log").read_text().splitlines()), 7, out)
         self.reason(0)
@@ -360,7 +371,7 @@ class GuardTest(Script):
         self.assertIn("TERM", self.reason(75, out))
 
     def test_every_tenth_reading_is_in_the_log(self):
-        code, out, _ = self.run_script(STUB_CONSOLE_SECONDS="13")
+        code, out, _ = self.run_script(STUB_CONSOLE_READINGS="11", STUB_CONSOLE_SECONDS="30")
         self.assertEqual(0, code, out)
         readings = len((self.base / "df.log").read_text().splitlines())
         self.assertGreaterEqual(readings, 11, out)
@@ -399,7 +410,8 @@ class SeedFloorTest(Script):
                 self.reason(74, out)
 
     def test_the_guard_of_the_seed_does_not_stop_it_on_a_low_reading(self):
-        code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_DF="1000 500 0", STUB_CONSOLE_SECONDS="4")
+        code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_DF="1000 500 0", STUB_CONSOLE_READINGS="3",
+                                       STUB_CONSOLE_SECONDS="30")
         self.assertEqual(0, code, out)
         self.assertGreaterEqual(len((self.base / "df.log").read_text().splitlines()), 3, out)
         self.reason(0, out)
