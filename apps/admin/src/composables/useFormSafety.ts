@@ -64,6 +64,8 @@ interface WriteHandlers<TView> {
 
 interface Run {
   context: number;
+  /** `confirmedCreations` when it started: a creation confirmed since then makes its answer silent. */
+  confirmedCreations: number;
   created: boolean;
   timer?: ReturnType<typeof setTimeout>;
 }
@@ -89,6 +91,9 @@ interface UnknownState<TView> {
  *   equals the one built from the object (`sameRequest`); otherwise the draft, its base and the version stay.
  * - `restore` is „Odrzuć moje zmiany i pokaż stan z serwera” (and „Odśwież”): the draft is replaced after the answer 200.
  * - Every read that locks the form gives up after `REQUEST_LIMIT_MS` (`readFailed`, `retryRead`); its late answer is ignored.
+ * - `write` starts nothing while a read locks the form (`reading`); a creation confirmed after an earlier one that was given up
+ *   makes the answer of the earlier one silent (the form shows the new object). `dismiss` is for „Odrzuć” of the draft: the
+ *   messages about the requests of the discarded changes go away; a late answer is still only a toast.
  * - `reset` is called when the form moves to another object (or to the form of a new one), `dispose` when it is left: the
  *   answers still on their way are ignored then, without a message, and nothing stays locked.
  *
@@ -106,6 +111,8 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   const unknownState = shallowRef<UnknownState<TView> | null>(null);
   // An earlier creation ended without a trusted answer: the next conflict may be the object that creation made.
   const earlierCreationUnknown = ref(false);
+  // Creations confirmed so far: after one, the form shows that object, so an earlier creation that answers late says nothing.
+  let confirmedCreations = 0;
   let readSequence = 0;
   let readTimer: ReturnType<typeof setTimeout> | undefined;
   let retry: (() => Promise<void>) | null = null;
@@ -174,6 +181,11 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     retry = null;
   }
 
+  /** The draft was discarded: what was said about the requests of the discarded changes is not true any more. */
+  function dismiss(): void {
+    clearNotices();
+  }
+
   /** The form is left. */
   function dispose(): void {
     disposed = true;
@@ -185,9 +197,13 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
    * form that started it, or null when its answer is late or the form was left (nothing was done with it).
    */
   async function write(request: () => Promise<WriteOutcome<TView>>, handlers: WriteHandlers<TView>): Promise<WriteResult> {
+    if (reading.value) {
+      // The form is locked by a read whose answer may replace it: nothing is sent meanwhile.
+      return null;
+    }
     abandon();
     clearNotices();
-    const run: Run = { context: generation, created: options.id() === null };
+    const run: Run = { context: generation, confirmedCreations, created: options.id() === null };
     active.value = run;
     run.timer = setTimeout(() => {
       if (active.value === run) {
@@ -206,7 +222,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
       return null;
     }
     if (active.value !== run) {
-      if (verdict.kind === "success") {
+      if (verdict.kind === "success" && run.confirmedCreations === confirmedCreations) {
         options.onLateSuccess(LATE_SAVE_MESSAGE);
       }
       return null;
@@ -216,6 +232,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     if (verdict.kind === "success") {
       if (run.created) {
         earlierCreationUnknown.value = false;
+        confirmedCreations++;
       }
       handlers.onSuccess(verdict.data);
       return "success";
@@ -355,6 +372,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     context,
     stale,
     reset,
+    dismiss,
     dispose,
   };
 }
