@@ -650,7 +650,8 @@ czasu), potencjalnie −4,1 h (D4)”.
 W oknie 14 dni od merge'u końcowego PR (`regressions.until`):
 
 - czerwony przebieg CI na `main` dla commita merge'u epiku (`gh run list --commit`). Liczy się tylko zakończony
-  przebieg `push`: dopóki któryś trwa albo żadnego jeszcze nie ma, wynik jest nieznany (`ci_red: null` z luką,
+  przebieg `push` z wynikiem czerwonym (`failure`, `timed_out`, `startup_failure`) albo zielonym: dopóki któryś
+  trwa, żadnego jeszcze nie ma albo jedyny został anulowany, wynik jest nieznany (`ci_red: null` z luką,
   `complete: false`, okno zostaje otwarte i przelicza je kolejne `trend` albo `epic`), nie zero;
 - commit na `main`, który wycofuje końcowy PR (`Revert` z jego numerem);
 - issue `bug`, którego nowe pole „Wprowadzone przez (epik albo PR, jeśli znane)” w formularzu `bug`
@@ -668,13 +669,15 @@ uruchamia i nie blokuje merge'u: wynik to „bez przekroczenia progów”, „pr
 danych”. Ten sam wynik jest w rekordzie epiku natywnego (`ci.time`).
 
 - **Przebieg porównywalny:** zakończony, zielony przebieg workflowu `ci_workflow`, pełny: część E2E wykonała krok
-  `full_step` (`make e2e`). Przebiegi o ograniczonym zakresie (dokumentacja, narzędzia, k8s), czerwone, anulowane
-  i w toku nie wchodzą do porównania.
+  `full_step` (`make e2e`). Przebiegi o ograniczonym zakresie (dokumentacja, narzędzia, k8s), czerwone, anulowane,
+  w toku i ponowione (`attempt` > 1: joby zachowane z pierwszej próby mają stare czasy, więc czas przebiegu obejmuje
+  czerwoną próbę i przerwę przed ponowieniem) nie wchodzą do porównania.
 - **Dwie miary, nigdy sumowane:** czas całego przebiegu, od startu pierwszego joba do końca ostatniego (zawiera
   oczekiwanie na runner między jobami, więc nie jest czasem „bez kolejek”), i czas wykonania każdego joba (`checks part
   *`, `e2e shard *`; bez jobów zbiorczych `aggregate_jobs`).
 - **Baza:** mediana `baseline_runs` (5) ostatnich porównywalnych przebiegów `push` na `base_branch` utworzonych przed
-  startem epiku (`started_at` pliku przebiegu). Mniej niż `min_baseline_runs` (3): brak danych.
+  startem epiku (`started_at` pliku przebiegu). Mniej niż `min_baseline_runs` (3): brak danych; to samo minimum
+  dotyczy każdego joba osobno (job obecny tylko w części przebiegów bazy nie ma bazy).
 - **Po epiku, trzy osobne pozycje:** przebieg końcowego SHA końcowego PR (pojedynczy przebieg, pokazany osobno, żeby
   mediana wcześniejszych wersji nie ukryła regresji), mediana `recent_runs` (3) ostatnich porównywalnych przebiegów PR
   (od dwóch przebiegów) i, po merge'u, przebieg `push` commita merge'u na `main`. Przebieg merge'u w toku, czerwony,
@@ -687,6 +690,9 @@ danych”. Ten sam wynik jest w rekordzie epiku natywnego (`ci.time`).
   i `job_min_pct` (30%). Wartości pochodzą z 203 pełnych zielonych przebiegów z 16–23.11.2026: przy niezmienionym
   kodzie mediany przebiegu różniły się do 2,4 min (18%), a mediany jednego joba do ok. 2 min (20%); znane realne
   wzrosty to +3,8 do +6,2 min (+31 do +50%) dla przebiegu i +5,8 do +9,4 min dla joba.
+- **Zmieniona macierz części E2E:** gdy zestaw części przed epikiem i po nim jest inny, część o tej samej nazwie
+  to inny zestaw plików: części są pokazane, ale nie porównywane z bazą i nie przekraczają progu; liczy się cały
+  przebieg i rozrzut części.
 - **Rozrzut części E2E:** różnica median ostatnich przebiegów PR między najdłuższą a najkrótszą częścią; od
   `e2e_spread_s` (240 s) raport rekomenduje osobny PR wyrównania wag (`e2e/CLAUDE.md`, „CI”). Poniżej tego zysk
   z wyrównania mieści się w rozrzucie pojedynczych przebiegów.
@@ -696,6 +702,7 @@ danych”. Ten sam wynik jest w rekordzie epiku natywnego (`ci.time`).
 - **Przyczyna** nie jest ustalana automatycznie: przekroczenie sesja wyjaśnia z dowodem (nowe testy, nierówny podział,
   wolniejsze testy, infrastruktura, zmiana workflowu) według „Przebiegu epiku” w ADR.
 - Kody wyjścia: `0` (każdy wynik raportu), `3` przy błędzie `gh` (raport „brak danych”), `2` bez pliku przebiegu.
+  W rekordzie błąd `gh` nie zastępuje zapisanego, zmierzonego `ci.time`: zostaje poprzednia wartość z luką.
 
 ### Bezproduktywne zużycie
 
@@ -994,9 +1001,11 @@ użytkownika.
 18. `ci-time` z podstawionym `gh`: baza tylko z pełnych zielonych przebiegów `push` na `main` sprzed startu epiku;
     końcowy SHA osobno od mediany ostatnich przebiegów PR (regresja tylko na końcowym SHA jest przekroczeniem);
     przebieg commita merge'u liczony dopiero po zakończeniu; próg wymaga obu warunków (sam procent ani sam czas nie
-    wystarcza); `main` w trakcie epiku osobno; za mało przebiegów, brak przebiegu końcowego SHA, błąd `gh` (kod 3)
+    wystarcza); `main` w trakcie epiku osobno; przebieg ponowiony nie jest porównywalny; części E2E innej macierzy
+    nie są porównywane; za mało przebiegów, brak przebiegu końcowego SHA, błąd `gh` (kod 3)
     i brak danych w pliku przebiegu dają „brak danych”, nigdy „bez przekroczenia”; brak pliku przebiegu to kod 2.
-    Czerwone CI commita merge'u: przebieg w toku i brak przebiegu dają `ci_red: null` i otwarte okno.
+    Czerwone CI commita merge'u: przebieg w toku, brak przebiegu i sam przebieg anulowany dają `ci_red: null`
+    i otwarte okno.
 
 ## Ryzyka
 

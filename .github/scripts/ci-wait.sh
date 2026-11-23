@@ -13,8 +13,9 @@
 # Prints one line `ci-wait: <conclusion> sha=<commit> run=<id> <url>` and a line `failed job: <name>` for every failed
 # job of a run that is not green.
 # Exit status: 0 the run succeeded, 1 it ended otherwise (failure, cancelled, ...), 2 wrong usage, 3 no run of this
-# commit showed up in time (GitHub can lose a push event: check `gh run list --commit <commit>` and push again),
-# 4 gh failed or its answer is not the run of this commit.
+# commit showed up in time (GitHub lost the event, or the pull request conflicts with its base and gets no run until
+# the conflict is resolved; a merge commit on main cannot be pushed again: report it), 4 gh failed or its answer is
+# not the run of this commit.
 set -u
 
 usage() {
@@ -84,7 +85,12 @@ if [ -z "$run" ]; then
         echo "ci-wait: gh run list failed: $error" >&2
         exit 4
     fi
-    echo "ci-wait: no CI run of $event for $sha within $timeout s: the event may be lost, check 'gh run list --commit $sha' and push again" >&2
+    if [ "$event" = push ]; then
+        hint="the event may be lost and this commit cannot be pushed again: report it, the result of CI stays unknown"
+    else
+        hint="the event may be lost (push again), or the pull request has a conflict with its base (GitHub starts no run until it is resolved)"
+    fi
+    echo "ci-wait: no CI run of $event for $sha within $timeout s: $hint; check 'gh run list --commit $sha'" >&2
     exit 3
 fi
 case "$run" in

@@ -108,6 +108,21 @@ class RedCiTest(RegressionEnv):
         self.assert_unsettled([], 'brak przebiegu')
         self.assert_unsettled([{'conclusion': 'success', 'event': 'pull_request'}], 'brak przebiegu')
 
+    def test_a_cancelled_run_alone_is_unknown_not_green(self):
+        for conclusion in ('cancelled', 'skipped', 'neutral'):
+            with self.subTest(conclusion=conclusion):
+                self.assert_unsettled([{'conclusion': conclusion, 'status': 'completed', 'event': 'push'}],
+                                      'bez rozstrzygnięcia')
+
+    def test_a_cancelled_run_next_to_a_green_one_is_green_and_a_timed_out_one_is_red(self):
+        runs = [{'conclusion': 'cancelled', 'status': 'completed', 'event': 'push'},
+                {'conclusion': 'success', 'status': 'completed', 'event': 'push'}]
+        self.assertEqual(self.record(self.gh(runs={SHA: runs}))['regressions']['ci_red'], 0)
+        for conclusion in ('timed_out', 'startup_failure'):
+            with self.subTest(conclusion=conclusion):
+                runs = [{'conclusion': conclusion, 'status': 'completed', 'event': 'push'}]
+                self.assertEqual(self.record(self.gh(runs={SHA: runs}))['regressions']['ci_red'], 1)
+
     def test_an_unsettled_run_keeps_the_window_open_after_its_end_and_drops_a_stored_zero(self):
         self.assertEqual(self.record(self.gh(runs={SHA: [{'conclusion': 'success', 'event': 'push'}]}))
                          ['regressions']['ci_red'], 0)

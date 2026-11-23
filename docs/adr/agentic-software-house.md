@@ -182,8 +182,9 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    sukcesie: powiadomienie aplikacji o błędach CI (Auto-fix) nie zgłasza zielonego wyniku. Po pushu, na którego wynik
    czeka, uruchamia w tle jedno polecenie, które kończy się razem z przebiegiem CI wypchniętego commita
    (`sh .github/scripts/ci-wait.sh "$(git rev-parse HEAD)"`), i w tym czasie robi pracę niezależną od wyniku.
-   Polecenie czeka, aż GitHub zarejestruje przebieg dokładnie tego SHA (kod 3: przebieg się nie pojawił, zdarzenie
-   mogło zaginąć: sprawdzić i wypchnąć ponownie), i podaje wynik z SHA i numerem przebiegu. Wynik przebiegu
+   Polecenie czeka, aż GitHub zarejestruje przebieg dokładnie tego SHA (kod 3: przebieg się nie pojawił, bo
+   zdarzenie zaginęło albo PR ma konflikt z `main`: sprawdzić, rozwiązać konflikt albo wypchnąć ponownie),
+   i podaje wynik z SHA i numerem przebiegu. Wynik przebiegu
    starszego commita nie potwierdza bieżącego czoła: zielone CI sesja stwierdza tylko z linii `ci-wait:` dla SHA,
    które jest czołem gałęzi. Gdy środowisko sesji nie pozwala jej śledzić CI, mówi użytkownikowi przed końcem tury,
    że czeka na CI, i sprawdza stan PR na początku każdej kolejnej tury.
@@ -194,7 +195,9 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    - po zakończeniu przebiegu CI commita merge'u na `main` zapisuje rekord
      (`python3 tools/metrics/metrics.py epic <epik>`: czerwone CI po merge'u i pomiar czasu CI na `main`). Wyniku CI
      na `main` nie podaje i nie zapisuje wcześniej: przebieg w toku to wynik nieznany. Czerwony przebieg zgłasza
-     użytkownikowi z nazwą joba i oceną, czy dotyczy zmiany epiku; sama go nie naprawia;
+     użytkownikowi z nazwą joba i oceną, czy dotyczy zmiany epiku; sama go nie naprawia. Gdy przebieg się nie
+     pojawił albo `gh` zawiódł (kody 3 i 4), zgłasza to użytkownikowi, zapisuje rekord z wynikiem nieznanym
+     i podaje tę lukę w przekazaniu do retro;
    - dodaje do końcowego PR komentarz, którego treść zaczyna się od `## Przekazanie do retro`: nazwa epiku i polecenie
      `/retro <epik>`, numer PR i commit merge'u, ścieżka specyfikacji, plan (commit, w którym jeszcze istnieje:
      `git show <sha>:docs/features/<epik>/plan.md`), przeglądy i poprawki (role, rundy, zewnętrzne review

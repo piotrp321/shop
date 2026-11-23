@@ -135,6 +135,25 @@ echo "in_progress - $sha https://example.test/runs/888" > "$CASE/run-view.last"
 run_script "$sha"
 expect "a watch that ended before the run did" 4 "run 888 is still in_progress"
 
+new_case watch-again
+echo 999 > "$CASE/run-list.last"
+echo "in_progress - $sha https://example.test/runs/999" > "$CASE/run-view.1"
+echo "completed success $sha https://example.test/runs/999" > "$CASE/run-view.last"
+run_script "$sha"
+expect "a watch that ended early is repeated until the run is over" 0 "success sha=$sha run=999"
+if [ "$(grep -c 'run watch 999 ' "$CASE/calls")" = 2 ]; then echo "ok   the run was watched twice"; else
+    echo "FAIL the run was watched twice: $(cat "$CASE/calls" | tr '\n' '|')"; failures=$((failures + 1)); fi
+
+new_case never-push
+: > "$CASE/run-list.last"
+run_script --event push --register-timeout 10 --interval 10 "$sha"
+expect "no push run: the commit cannot be pushed again" 3 "report it"
+
+new_case never-pr
+: > "$CASE/run-list.last"
+run_script --register-timeout 10 --interval 10 "$sha"
+expect "no pull request run: a conflict with the base is a cause too" 3 "conflict"
+
 new_case no-sha
 run_script
 expect "no commit given" 2 "usage"

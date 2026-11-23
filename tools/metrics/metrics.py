@@ -1943,8 +1943,9 @@ class Unsettled(Exception):
 
 
 def red_ci(run, repo, config, sha):
-    """The number of failed CI runs (push) of the merge commit. Unsettled while one of them is not over, or while there
-    is none: a run in progress or not registered yet must not be read as a green one."""
+    """The number of red CI runs (push) of the merge commit. Unsettled while one of them is not over, while there is
+    none, or when none of the finished ones is red or green (cancelled only): a run in progress, not registered yet or
+    cancelled must not be read as a green one."""
     runs = gh_json(run, ['run', 'list', '--workflow', config['ci_workflow'], '--commit', sha, '--json',
                          'conclusion,event,status', '--limit', '50'], repo)
     if not isinstance(runs, list):
@@ -1954,7 +1955,14 @@ def red_ci(run, repo, config, sha):
         raise Unsettled('brak przebiegu CI (push) na commicie merge\'u: wynik nieznany, nie zero')
     if any(not r.get('conclusion') or r.get('status') not in (None, 'completed') for r in pushes):
         raise Unsettled('przebieg CI (push) na commicie merge\'u w toku: wynik nieznany, nie zero')
-    return sum(1 for r in pushes if r.get('conclusion') == 'failure')
+    red = sum(1 for r in pushes if r.get('conclusion') in CI_RED)
+    if not red and not any(r.get('conclusion') == 'success' for r in pushes):
+        raise Unsettled('przebieg CI (push) na commicie merge\'u bez rozstrzygnięcia (anulowany albo pominięty): '
+                        'wynik nieznany, nie zero')
+    return red
+
+
+CI_RED = ('failure', 'timed_out', 'startup_failure')       # the conclusions of a run that count as a red CI
 
 
 def commits_of_window(run, repo, low, high, gaps, truncated):
@@ -2185,7 +2193,7 @@ def ci_of(run, repo, config, epic_id, tasks, final_pr, previous, gaps, errors):
 
 # ------------------------------------------------------------------------------------- CI time of an epic (ci-time)
 
-CI_RUN_FIELDS = 'databaseId,createdAt,conclusion,status,headSha,event,url'
+CI_RUN_FIELDS = 'databaseId,createdAt,conclusion,status,headSha,event,url,attempt'
 CI_TIME_SOURCES = ('final', 'recent', 'merge')      # what is compared with the baseline, in the order of the report
 
 
@@ -2198,7 +2206,7 @@ def _ci_epoch(text):
 
 def ci_runs(run, repo, config, extra):
     """The runs of the CI workflow that `gh run list` answers for the filter `extra`, newest first: {id, created
-    (epoch), sha, event, conclusion, status, url}. An entry without an id or a time is skipped."""
+    (epoch), sha, event, conclusion, status, url, attempt}. An entry without an id or a time is skipped."""
     data = gh_json(run, ['run', 'list', '--workflow', config['ci_workflow']] + extra
                    + ['--json', CI_RUN_FIELDS, '--limit', '100'], repo)
     if not isinstance(data, list):
@@ -2210,8 +2218,13 @@ def ci_runs(run, repo, config, extra):
             continue
         found.append({'id': item['databaseId'], 'created': created, 'sha': item.get('headSha'),
                       'event': item.get('event'), 'conclusion': item.get('conclusion') or None,
-                      'status': item.get('status'), 'url': item.get('url')})
+                      'status': item.get('status'), 'url': item.get('url'),
+                      'attempt': item['attempt'] if _is_int(item.get('attempt')) else 1})
     return sorted(found, key=lambda r: (r['created'], r['id']), reverse=True)
+
+
+def _ci_green(entry):
+    return entry['conclusion'] == 'success' and entry['status'] in (None, 'completed')
 
 
 def _span(item):
@@ -2262,13 +2275,15 @@ class _CiMeasurer:
         return self.cache[entry['id']]
 
     def comparable(self, entries, count):
-        """The first `count` of `entries` (newest first) that are green, over and full, each with its measurement;
-        at most `scan_limit` runs are read."""
+        """The first `count` of `entries` (newest first) that are green, over, run once and full, each with its
+        measurement; at most `scan_limit` runs are read. A run that was run again is not comparable: the jobs kept
+        from its first attempt have their old times, so its span holds the red attempt and the pause before the
+        rerun."""
         found, scanned = [], 0
         for entry in entries:
             if len(found) >= count or scanned >= self.settings['scan_limit']:
                 break
-            if entry['conclusion'] != 'success' or entry['status'] not in (None, 'completed'):
+            if not _ci_green(entry) or entry['attempt'] > 1:
                 continue
             scanned += 1
             measured = self.of(entry)
@@ -2325,11 +2340,13 @@ def _ci_final(candidates, head, measurer):
     own = [c for c in candidates if c['sha'] == head]
     if not own:
         return None, 'brak przebiegu CI końcowego SHA %s' % (head[:8] if isinstance(head, str) else head)
-    green = [c for c in own if c['conclusion'] == 'success' and c['status'] in (None, 'completed')]
-    for entry in green[:measurer.settings['scan_limit']]:
+    green = [c for c in own if _ci_green(c)]
+    for entry in [c for c in green if c['attempt'] == 1][:measurer.settings['scan_limit']]:
         measured = measurer.of(entry)
         if measured is not None and measured['full']:
             return dict(entry, measured=measured), None
+    if any(c['attempt'] > 1 for c in green):
+        return None, 'przebieg końcowego SHA był ponowiony: jego czasy obejmują wcześniejszą próbę'
     if green:
         return None, 'przebieg końcowego SHA ma ograniczony zakres (bez pełnego CI)'
     if any(not c['conclusion'] or c['status'] not in (None, 'completed') for c in own):
@@ -2349,14 +2366,17 @@ def _ci_merge(run, repo, config, sha, measurer):
         return {'sha': sha, 'state': 'in_progress', 'run': None}, None
     found = measurer.comparable(pushes, 1)
     if not found:
-        green = any(r['conclusion'] == 'success' for r in pushes)
-        return {'sha': sha, 'state': 'limited' if green else 'not_green', 'run': None}, None
+        green = [r for r in pushes if _ci_green(r)]
+        state = 'not_green' if not green else 'rerun' if all(r['attempt'] > 1 for r in green) else 'limited'
+        return {'sha': sha, 'state': state, 'run': None}, None
     return {'sha': sha, 'state': 'measured', 'run': _ci_ref(found[0])}, found[0]
 
 
 CI_MERGE_REASONS = {'missing': 'brak przebiegu CI na commicie merge\'u w main',
                     'in_progress': 'przebieg CI na commicie merge\'u w main w toku',
                     'not_green': 'przebieg CI na commicie merge\'u w main nie jest zielony',
+                    'rerun': 'przebieg CI na commicie merge\'u w main był ponowiony: jego czasy obejmują wcześniejszą '
+                             'próbę',
                     'limited': 'przebieg CI na commicie merge\'u w main ma ograniczony zakres'}
 
 
@@ -2364,7 +2384,7 @@ def _ci_no_data(settings, reason):
     return {'status': 'no_data', 'reason': reason, 'thresholds': {k: settings[k] for k in CI_TIME_THRESHOLDS},
             'baseline': {'before': None, 'runs': []}, 'final': {'sha': None, 'run': None, 'reason': None},
             'recent': {'runs': []}, 'during': {'runs': []}, 'merge': {'sha': None, 'state': None, 'run': None},
-            'rows': [], 'jobs_changed': {'only_baseline': [], 'only_final': []},
+            'rows': [], 'jobs_changed': {'only_baseline': [], 'only_final': []}, 'e2e_parts_changed': False,
             'e2e_spread': {'seconds': None, 'exceeded': None, 'longest': None, 'shortest': None}, 'exceeded': []}
 
 
@@ -2419,15 +2439,26 @@ def ci_time_of(run, repo, config, run_file):
     for entry in base_runs + recent + during + [e for e in (final, merged) if e]:
         names.update(entry['measured']['jobs'])
     enough = len(base_runs) >= settings['min_baseline_runs']
+    after = final or (recent[0] if recent else None)
+
+    def e2e_parts(entries):
+        return {n for e in entries for n in e['measured']['jobs'] if n.startswith(settings['e2e_job_prefix'])}
+
+    # another matrix of e2e parts: a part of the same name is another set of spec files, so the parts are shown but
+    # not compared with the baseline
+    result['e2e_parts_changed'] = bool(base_runs and after and e2e_parts(base_runs) != e2e_parts([after]))
     for name in ['run'] + sorted(names):
         kind = 'run' if name == 'run' else 'job'
-        row = {'name': name, 'kind': kind, 'base_s': _ci_median(base_runs, name) if enough else None, 'steps': []}
+        # a job needs its own minimum of baseline runs: one that only a part of them has (a new job) has no baseline
+        row = {'name': name, 'kind': kind, 'steps': [],
+               'base_s': _ci_median(base_runs, name, least=settings['min_baseline_runs']) if enough else None}
+        comparable = not (result['e2e_parts_changed'] and name.startswith(settings['e2e_job_prefix']))
         values = {'final': _ci_value(final['measured'], name) if final else None,
                   'recent': _ci_median(recent, name, least=2),
                   'during': _ci_median(during, name),
                   'merge': _ci_value(merged['measured'], name) if merged else None}
         for source, value in values.items():
-            diff, pct, exceeded = _ci_compare(row['base_s'], value, settings, kind)
+            diff, pct, exceeded = _ci_compare(row['base_s'] if comparable else None, value, settings, kind)
             row.update({'%s_s' % source: value, '%s_diff_s' % source: diff, '%s_diff_pct' % source: pct,
                         '%s_exceeded' % source: exceeded})
             if exceeded and source in CI_TIME_SOURCES:
@@ -2436,7 +2467,6 @@ def ci_time_of(run, repo, config, run_file):
             row['steps'] = _ci_steps(base_runs, (final if row['final_exceeded'] else merged)['measured'], name)
         result['rows'].append(row)
     result['exceeded'].sort(key=lambda e: (CI_TIME_SOURCES.index(e['source']), e['name'] != 'run', e['name']))
-    after = final or (recent[0] if recent else None)
     if after is not None:
         before = set().union(*[set(r['measured']['jobs']) for r in base_runs]) if base_runs else set()
         result['jobs_changed'] = {'only_baseline': sorted(before - set(after['measured']['jobs'])),
@@ -2499,8 +2529,11 @@ def render_ci_time(epic, result):
     """The Markdown block of `ci-time` for the description of the final PR."""
     limits = result['thresholds']
     head = result['final']['sha']
+    title = CI_TIME_TITLES[result['status']]
+    if result['status'] == 'ok' and result['e2e_spread']['exceeded']:
+        title = 'bez przekroczenia progów czasu; rozrzut części E2E ponad progiem'
     lines = ['**Czas CI** (`metrics.py ci-time %s`): %s%s' % (
-        epic, CI_TIME_TITLES[result['status']], ' (%s)' % result['reason'] if result['reason'] else '')]
+        epic, title, ' (%s)' % result['reason'] if result['reason'] else '')]
     lines.append('Progi startowe, do oceny po trzech kolejnych epikach (oba warunki naraz): przebieg %s i +%d%%, job '
                  '%s i +%d%%, rozrzut części E2E %s.' % (
                      ('+%.1f min' % (limits['run_min_s'] / 60.0)).replace('.', ','), limits['run_min_pct'],
@@ -2551,6 +2584,9 @@ def render_ci_time(epic, result):
             _ci_minutes(spread['seconds']), spread['longest'], spread['shortest'],
             ' – ponad progiem: rekomendacja osobnego PR wyrównania wag (e2e/CLAUDE.md, „CI”)'
             if spread['exceeded'] else ''))
+    if result['e2e_parts_changed']:
+        lines.append('Zmieniła się macierz części E2E: części E2E nie są porównywane z bazą (część o tej samej nazwie '
+                     'to inny zestaw plików); liczy się cały przebieg i rozrzut części.')
     changed = result['jobs_changed']
     if changed['only_baseline'] or changed['only_final']:
         lines.append('Zmiana zestawu jobów (możliwa zmiana workflowu): tylko w bazie: %s; tylko po epiku: %s.' % (
@@ -4644,9 +4680,17 @@ def build_native_record(epic_id, run_file, config, projects, now, run=None, no_g
                 if not record['ci']['final']['runs']:
                     gaps.add('ci', 'brak przebiegów CI gałęzi: %s' % branch)
                 record['ci']['time'], time_error = ci_time_of(run, repo, config, run_file)
+                stored = _get(previous, ('ci', 'time'))
                 if time_error:
                     errors.append(time_error)
-                if record['ci']['time']['status'] == 'no_data':
+                    if isinstance(stored, dict) and stored.get('status') != 'no_data':
+                        # a gh error must not replace a measured result with "no data" (like the other gh fields)
+                        gaps.add('ci.time', 'błąd gh: %s; źródło niedostępne: zachowano poprzednią wartość' % time_error)
+                        record['ci']['time'] = stored
+                    else:
+                        gaps.add('ci.time', record['ci']['time']['reason'])
+                elif record['ci']['time']['reason']:
+                    # also next to `exceeded`: what could not be measured must be visible in the gaps
                     gaps.add('ci.time', record['ci']['time']['reason'])
             except GhError as e:
                 errors.append(str(e))

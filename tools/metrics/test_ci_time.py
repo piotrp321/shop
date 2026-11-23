@@ -22,9 +22,9 @@ def at(minutes):
     return metrics.iso(T0 + minutes * 60)
 
 
-def ci_run(run_id, minute, sha='a' * 40, event='push', conclusion='success', status='completed'):
+def ci_run(run_id, minute, sha='a' * 40, event='push', conclusion='success', status='completed', attempt=1):
     return {'databaseId': run_id, 'createdAt': at(minute), 'conclusion': conclusion, 'status': status,
-            'headSha': sha, 'event': event, 'url': 'https://example.test/runs/%d' % run_id}
+            'headSha': sha, 'event': event, 'url': 'https://example.test/runs/%d' % run_id, 'attempt': attempt}
 
 
 def jobs_of(minute, durations=None, full=True, wait=0, steps=None, **changed):
@@ -79,10 +79,11 @@ class CiTimeEnv(NativeEnv):
         return self.add(self.branch, minute, dict(JOBS, **{k.replace('_', ' '): v for k, v in changed.items()}),
                         sha='e' * 40, event='pull_request')
 
-    def merged(self, minute=START + 260, conclusion='success', status='completed', measured=True, **changed):
+    def merged(self, minute=START + 260, conclusion='success', status='completed', measured=True, attempt=1,
+               **changed):
         self.pr.update(state='MERGED', mergedAt=at(minute), mergeCommit={'oid': MERGE})
         return self.add(self.merge_runs, minute, dict(JOBS, **{k.replace('_', ' '): v for k, v in changed.items()}),
-                        sha=MERGE, conclusion=conclusion, status=status, measured=measured)
+                        sha=MERGE, conclusion=conclusion, status=status, measured=measured, attempt=attempt)
 
     def gh(self, **kwargs):
         runs = {'main': self.main + self.merge_runs, BRANCH: self.branch, MERGE: self.merge_runs}
@@ -137,6 +138,30 @@ class BaselineTest(CiTimeEnv):
         for call in gh.calls:
             if call[:3] == ['gh', 'run', 'list'] and '--created' in call:
                 self.assertEqual((call[call.index('--branch') + 1], call[call.index('--event') + 1]), ('main', 'push'))
+
+    def test_a_run_that_was_run_again_is_not_comparable(self):
+        # after "Re-run failed jobs" the jobs kept from the first attempt have their old times: the span of the run
+        # holds the red attempt and the pause before the rerun
+        self.baseline()
+        self.add(self.main, START - 5, dict(JOBS, **{'checks part k8s': 40}), attempt=2)
+        self.earlier(START + 100)
+        self.add(self.branch, START + 150, dict(JOBS, **{'e2e shard 1': 40}), sha='e' * 40, event='pull_request',
+                 attempt=2)
+        self.final()
+        result = self.result()
+        self.assertEqual(result['status'], 'ok')
+        self.assertEqual(self.row(result, 'checks part k8s')['base_s'], 9 * 60)
+        self.assertEqual(len(result['recent']['runs']), 2)
+        self.assertEqual(self.row(result, 'e2e shard 1')['recent_s'], 10 * 60)
+
+    def test_a_job_in_fewer_baseline_runs_than_the_minimum_has_no_baseline(self):
+        for i in range(5):                              # the job is new: only the two last baseline runs have it
+            self.add(self.main, START - 100 + i * 10, dict(JOBS, **({'checks part new': 1} if i >= 3 else {})))
+        self.final(checks_part_new=30)
+        result = self.result()
+        row = self.row(result, 'checks part new')
+        self.assertEqual((row['base_s'], row['final_s'], row['final_exceeded']), (None, 30 * 60, None))
+        self.assertNotIn({'name': 'checks part new', 'source': 'final'}, result['exceeded'])
 
     def test_fewer_than_three_baseline_runs_is_no_data_never_ok(self):
         self.baseline(2)
@@ -271,6 +296,15 @@ class FinalShaTest(CiTimeEnv):
                 self.assertIsNone(self.row(result, 'run')['final_s'])
                 self.assertEqual(self.row(result, 'run')['recent_s'], 11 * 60)          # still shown
 
+    def test_a_final_run_that_was_run_again_is_no_data_with_the_reason(self):
+        self.baseline()
+        self.add(self.branch, START + 200, dict(JOBS, **{'e2e shard 1': 40}), sha=HEAD, event='pull_request',
+                 attempt=2)
+        result = self.result()
+        self.assertEqual((result['status'], result['exceeded']), ('no_data', []))
+        self.assertIn('ponowion', result['final']['reason'])
+        self.assertIn('ponowion', self.cli()[1])
+
     def test_a_final_run_of_a_limited_scope_is_no_data(self):
         self.baseline()
         self.add(self.branch, START + 200, full=False, sha=HEAD, event='pull_request')
@@ -345,6 +379,14 @@ class MergeTest(CiTimeEnv):
                 self.assertEqual(result['status'], 'no_data')                 # merged, but not confirmed on main yet
                 self.assertIn('main', result['reason'])
 
+    def test_a_merge_run_that_was_run_again_is_not_measured(self):
+        self.baseline()
+        self.final()
+        self.merged(attempt=2, e2e_shard_1=40)
+        result = self.result()
+        self.assertEqual((result['merge']['state'], result['status'], result['exceeded']), ('rerun', 'no_data', []))
+        self.assertIn('ponowion', result['reason'])
+
     def test_a_merged_pull_request_without_a_run_on_main_is_no_data(self):
         self.baseline()
         self.final()
@@ -381,6 +423,27 @@ class JobsTest(CiTimeEnv):
         names = [r['name'] for r in self.result()['rows']]
         self.assertEqual(names, ['run'] + sorted(JOBS))
 
+    def test_the_e2e_parts_of_another_matrix_are_not_compared(self):
+        # three parts before the epic, four after it: "e2e shard 1" is another set of spec files on each side
+        three = {k: v for k, v in JOBS.items() if k != 'e2e shard 4'}
+        for i in range(5):
+            self.add(self.main, START - 100 + i * 10, three)
+        self.final(e2e_shard_1=16, checks_part_apps=6.5)
+        result = self.result()
+        self.assertTrue(result['e2e_parts_changed'])
+        row = self.row(result, 'e2e shard 1')
+        self.assertEqual((row['base_s'], row['final_s']), (10 * 60, 16 * 60))            # both still shown
+        self.assertEqual((row['final_diff_s'], row['final_exceeded']), (None, None))
+        self.assertEqual(self.row(result, 'checks part apps')['final_diff_s'], 30)      # other jobs are compared
+        self.assertNotIn({'name': 'e2e shard 1', 'source': 'final'}, result['exceeded'])
+        self.assertIn({'name': 'run', 'source': 'final'}, result['exceeded'])           # the run itself: 11 -> 17
+        self.assertIn('części E2E nie są porównywane', self.cli()[1])
+
+    def test_the_same_e2e_parts_are_compared(self):
+        self.baseline()
+        self.final()
+        self.assertFalse(self.result()['e2e_parts_changed'])
+
     def test_the_spread_of_the_e2e_parts_comes_from_the_median_of_the_last_runs(self):
         self.baseline()
         self.earlier(START + 100, e2e_shard_1=15)
@@ -390,6 +453,18 @@ class JobsTest(CiTimeEnv):
         self.assertEqual(result['e2e_spread'], {'seconds': 300, 'exceeded': True, 'longest': 'e2e shard 1',
                                                 'shortest': 'e2e shard 2'})
         self.assertIn('wyrównani', self.cli()[1])
+
+    def test_a_spread_over_the_threshold_is_named_in_the_title_of_a_result_within_the_thresholds(self):
+        slow_first = dict(JOBS, **{'e2e shard 1': 15})          # uneven before the epic too: nothing got slower
+        for i in range(5):
+            self.add(self.main, START - 100 + i * 10, slow_first)
+        self.earlier(START + 150, e2e_shard_1=15)
+        self.final(e2e_shard_1=15)
+        result = self.result()
+        self.assertEqual((result['status'], result['e2e_spread']['exceeded']), ('ok', True))
+        title = self.cli()[1].splitlines()[0]
+        self.assertIn('bez przekroczenia progów czasu', title)
+        self.assertIn('rozrzut części E2E ponad progiem', title)
 
     def test_one_run_gives_no_spread_of_the_e2e_parts(self):
         self.baseline()
@@ -483,6 +558,16 @@ class RecordTest(CiTimeEnv):
         time = record['ci']['time']
         self.assertEqual((time['status'], time['merge']['state']), ('exceeded', 'measured'))
         self.assertEqual(record['ci']['final']['pr'], PR)
+        self.assertFalse(any(g.startswith('ci.time') for g in record['gaps']), record['gaps'])
+
+    def test_an_exceeded_ci_time_with_a_missing_measurement_still_leaves_a_gap(self):
+        self.write_session('s1', testkit.Native().assistant(START * 60 + 10))
+        self.baseline()
+        self.final(e2e_shard_1=16)
+        self.merged(conclusion='failure')
+        record = self.native_record(runner=self.gh(), no_gh=False)
+        self.assertEqual(record['ci']['time']['status'], 'exceeded')
+        self.assertTrue(any(g.startswith('ci.time') and 'main' in g for g in record['gaps']), record['gaps'])
 
     def test_a_failing_ci_time_leaves_the_rest_of_ci_and_a_gap(self):
         self.write_session('s1', testkit.Native().assistant(START * 60 + 10))
@@ -491,6 +576,27 @@ class RecordTest(CiTimeEnv):
         record = self.native_record(runner=self.gh(), no_gh=False)
         self.assertEqual(record['ci']['time']['status'], 'no_data')
         self.assertTrue(any(g.startswith('ci.time') for g in record['gaps']), record['gaps'])
+
+    def test_a_gh_error_in_the_ci_time_alone_keeps_the_stored_one(self):
+        self.write_session('s1', testkit.Native().assistant(START * 60 + 10))
+        self.baseline()
+        self.final(e2e_shard_1=16)
+        first = self.native_record(runner=self.gh(), no_gh=False)['ci']['time']
+        self.assertEqual(first['status'], 'exceeded')
+
+        class HeadFails(FakeGh):                        # only the call of ci-time fails: `pr view` for the head commit
+            def __call__(self, command):
+                if command[:3] == ['gh', 'pr', 'view'] and 'headRefOid' in command[command.index('--json') + 1]:
+                    self.calls.append(list(command))
+                    return testkit.result(1, '', 'HTTP 502')
+                return super().__call__(command)
+
+        gh = HeadFails(prs={PR: self.pr}, runs={'main': self.main, BRANCH: self.branch}, jobs=self.jobs)
+        code, out, err = self.native(runner=gh, no_gh=False)
+        self.assertEqual(code, 3, err)
+        record = json.loads(out)
+        self.assertEqual(record['ci']['time'], first)
+        self.assertTrue(any(g.startswith('ci.time') and 'zachowano' in g for g in record['gaps']), record['gaps'])
 
     def test_without_gh_there_is_no_ci_time(self):
         self.write_session('s1', testkit.Native().assistant(START * 60 + 10))
