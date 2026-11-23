@@ -1219,8 +1219,11 @@ describe("ProductFormView", () => {
       expect(elements.length, `an element ${testid}`).toBeGreaterThan(0);
       return elements.every((element) => element.element.matches(":disabled"));
     }
-    const states = (wrapper: Wrapper) => Object.fromEntries(CONTROLS.map((testid) => [testid, off(wrapper, testid)]));
-    const all = (value: boolean) => Object.fromEntries(CONTROLS.map((testid) => [testid, value]));
+    // The only axis of the product is the first and the last: its buttons that move it are off whatever the state of the form.
+    const BY_POSITION = ["axis-move-up", "axis-move-down"];
+    const states = (wrapper: Wrapper, unlocked = false) =>
+      Object.fromEntries(CONTROLS.filter((testid) => !unlocked || !BY_POSITION.includes(testid)).map((testid) => [testid, off(wrapper, testid)]));
+    const all = (value: boolean) => Object.fromEntries(CONTROLS.filter((testid) => value || !BY_POSITION.includes(testid)).map((testid) => [testid, value]));
     const categoriesOff = () => [field("Kategoria główna"), field("Kategorie dodatkowe")].map((input) => input!.matches(":disabled"));
     const inputOf = (wrapper: Wrapper, testid: string) => wrapper.get(`[data-testid=${testid}]`).element as HTMLInputElement;
     const alertOf = (wrapper: Wrapper) => wrapper.get("[data-testid=unknown-result]");
@@ -1278,7 +1281,7 @@ describe("ProductFormView", () => {
         await settle();
 
         expect(successToast).toHaveBeenCalledWith("Produkt zapisany.");
-        expect(states(wrapper)).toEqual(all(false));
+        expect(states(wrapper, true)).toEqual(all(false));
         expect(categoriesOff()).toEqual([false, false]);
       });
 
@@ -1339,7 +1342,7 @@ describe("ProductFormView", () => {
         await wrapper.get("[data-testid=save]").trigger("click");
         await settle();
 
-        expect(states(wrapper)).toEqual(all(false));
+        expect(states(wrapper, true)).toEqual(all(false));
         expect(inputOf(wrapper, "short-description").value).toBe("Nowy opis.");
         expect(inputOf(wrapper, "name").value).toBe("");
       });

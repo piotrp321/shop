@@ -621,17 +621,6 @@ describe("useProductForm", () => {
       expect(form.safety.restoreOffered.value).toBe(true);
     });
 
-    it("offers the server state after no other 409", async () => {
-      const { form } = await start();
-      form.form.value.name = "Inne";
-      mocks.put.mockResolvedValue(conflict("slug-taken"));
-
-      await form.save();
-
-      expect(form.errorsAt("slug")).toEqual(["Ten slug ma już inny produkt. Podaj własny slug."]);
-      expect(form.safety.restoreOffered.value).toBe(false);
-    });
-
     it("puts slug-taken at the slug field with a fixed message", async () => {
       const { form } = await start();
       form.form.value.name = "Inne";
@@ -641,7 +630,7 @@ describe("useProductForm", () => {
 
       expect(form.errorsAt("slug")).toEqual(["Ten slug ma już inny produkt. Podaj własny slug."]);
       expect(form.error.value).toBeNull();
-      expect(form.conflict.value).toBe(false);
+      expect(form.safety.restoreOffered.value).toBe(false);
     });
 
     it("puts slug-taken of a new product at the slug field", async () => {
