@@ -115,6 +115,9 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   // What the 409 that offered the server state says about it; shown once the draft is discarded and the 409's own message goes.
   let restoreContext: string | null = null;
   const restoreNote = ref<string | null>(null);
+  // A message appeared or was said again: the one who shows it moves the focus to it. A new object each time, so the focus
+  // does not depend on the text or the state changing (the same text twice is still a message the staff member must find).
+  const focusRequest = shallowRef<{ kind: "unknown" | "restoreNote" | "readFailed" | "matched" } | null>(null);
   const unknownState = shallowRef<UnknownState<TView> | null>(null);
   // An earlier creation ended without a trusted answer: the next conflict may be the object that creation made.
   const earlierCreationUnknown = ref(false);
@@ -145,6 +148,10 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     return { pending: state.pending, kind: state.kind, created: state.created, discarded: state.discarded === true, text };
   });
 
+  function announce(kind: "unknown" | "restoreNote" | "readFailed" | "matched"): void {
+    focusRequest.value = { kind };
+  }
+
   function clearNotices(): void {
     unknownState.value = null;
     matched.value = false;
@@ -167,6 +174,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     }
     if (unknownState.value?.pending) {
       unknownState.value = { ...unknownState.value, pending: false };
+      announce("unknown");
     }
   }
 
@@ -202,8 +210,10 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     const current = unknownState.value;
     if (current !== null) {
       unknownState.value = { ...current, discarded: true };
+      announce("unknown");
     } else if (restoreOffered.value) {
       restoreNote.value = restoreContext;
+      announce("restoreNote");
     }
   }
 
@@ -229,6 +239,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     run.timer = setTimeout(() => {
       if (active.value === run) {
         unknownState.value = { pending: true, kind: "unknown", created: run.created, confirmedBy: handlers.confirmedBy };
+        announce("unknown");
       }
     }, REQUEST_LIMIT_MS);
     let pending: Promise<WriteOutcome<TView>>;
@@ -263,6 +274,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
       return "refused";
     }
     unknownState.value = { pending: false, kind: "unknown", created: run.created, confirmedBy: handlers.confirmedBy };
+    announce("unknown");
     if (run.created) {
       earlierCreationUnknown.value = true;
     }
@@ -308,10 +320,12 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
       // The request goes on, its answer is ignored: the sequence moves on.
       readSequence++;
       readFailed.value = true;
+      announce("readFailed");
     } else if (result !== null && "data" in result) {
       onData(result.data);
     } else {
       readFailed.value = true;
+      announce("readFailed");
     }
   }
 
@@ -346,10 +360,13 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
         options.adopt(view);
         clearNotices();
         matched.value = true;
+        announce("matched");
       } else if (view.version === options.version()) {
         unknownState.value = { ...current, pending: false, kind: "missing" };
+        announce("unknown");
       } else {
         unknownState.value = { ...current, pending: false, kind: "otherVersion" };
+        announce("unknown");
         restoreOffered.value = true;
       }
     }, check);
@@ -389,6 +406,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     readFailed,
     restoreOffered,
     restoreNote,
+    focusRequest,
     write,
     check,
     unblock,
@@ -410,6 +428,8 @@ export interface FormSafetyState {
   readFailed: Readonly<Ref<boolean>>;
   restoreOffered: Readonly<Ref<boolean>>;
   restoreNote: Readonly<Ref<string | null>>;
+  /** Set to a new object whenever a message appears or is said again; `FormSafetyNotices` moves the focus to it. */
+  focusRequest: Readonly<Ref<{ kind: "unknown" | "restoreNote" | "readFailed" | "matched" } | null>>;
   reading: Readonly<Ref<boolean>>;
   status: Readonly<Ref<string>>;
   check: () => Promise<void>;

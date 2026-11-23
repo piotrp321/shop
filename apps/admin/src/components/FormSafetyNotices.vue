@@ -4,7 +4,7 @@ import type { RouteLocationRaw } from "vue-router";
 import { useRouter } from "vue-router";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { MATCHES_MESSAGE, READ_FAILED_MESSAGE, RESTORE_LABEL } from "@/composables/formRequests";
+import { READ_FAILED_MESSAGE, RESTORE_LABEL } from "@/composables/formRequests";
 import type { FormSafetyState } from "@/composables/useFormSafety";
 
 /**
@@ -52,26 +52,21 @@ async function focusLater(target: () => HTMLElement | null | undefined): Promise
   }
 }
 
-watch(unknown, (value) => {
-  if (value !== null) {
-    void focusLater(() => unknownAlert.value?.$el as HTMLElement | undefined);
-  }
-});
-watch(restoreNote, (value) => {
-  if (value !== null) {
-    void focusLater(() => restoreNoteAlert.value?.$el as HTMLElement | undefined);
-  }
-});
-watch(readFailed, (value) => {
-  if (value) {
-    void focusLater(() => readFailedAlert.value?.$el as HTMLElement | undefined);
-  }
-});
-watch(status, (value) => {
-  if (value === MATCHES_MESSAGE) {
-    void focusLater(() => statusRegion.value);
-  }
-});
+// Every time a message appears or is said again (also with the same text), not only when its value changes.
+watch(
+  () => props.safety.focusRequest.value,
+  (request) => {
+    if (request?.kind === "unknown") {
+      void focusLater(() => unknownAlert.value?.$el as HTMLElement | undefined);
+    } else if (request?.kind === "restoreNote") {
+      void focusLater(() => restoreNoteAlert.value?.$el as HTMLElement | undefined);
+    } else if (request?.kind === "readFailed") {
+      void focusLater(() => readFailedAlert.value?.$el as HTMLElement | undefined);
+    } else if (request?.kind === "matched") {
+      void focusLater(() => statusRegion.value);
+    }
+  },
+);
 
 async function restore(): Promise<void> {
   await props.safety.restore();
