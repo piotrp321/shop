@@ -1,15 +1,19 @@
 import { type APIRequestContext, type BrowserContext, expect, type Page, type Route, test } from "@playwright/test";
+import { customers } from "../support/accounts";
 import { waitForOrderEmail } from "../support/mailpit";
 import { decideAtSimulator, expectSimulatorPage } from "../support/payment";
-import { chooseDelivery, chooseProvider, fillAddress } from "../support/shop";
+import { chooseDelivery, chooseProvider, emptyCart, fillAddress, logInAs } from "../support/shop";
 import { urls } from "../support/urls";
 
 // CART-ORDER-CONSISTENCY (docs/features/cart-order-consistency/spec.md, "Testy", E2E): the checkout of one tab and
 // changes of the cart made in another tab of the same browser. The other tab changes the cart through the store's cart
 // endpoints, as its cart page would. Each test has its own context, so a guest cart of its own.
 //
-// Stock (apps/api/fixtures/stock.yaml): R1 orders and pays 3 units of Buty trailowe Norvane Hala 500 and R3 1 unit; R2
-// and the narrow screens order nothing (the change is refused and the test ends there).
+// Stock (apps/api/fixtures/stock.yaml): R1 orders and pays 3 units of Buty trailowe Norvane Hala 500, R3, R4 and R5 1
+// unit each; R2, R6 and the narrow screens order nothing (the change is refused and the test ends there).
+//
+// R4, R5 and R6 change the buyer in the other tab with the demo accounts Jan and Anna, which the whole suite shares:
+// each of them prepares the carts it needs, and both carts are emptied after it, also after a failure.
 
 const SHOES = { name: "Buty trailowe Norvane Hala 500", slug: "buty-trailowe-norvane-hala-500" };
 // The longest product name of the demo data: the message must fit a narrow screen with it.
@@ -261,3 +265,177 @@ for (const { width, touch } of [
     });
   });
 }
+
+const SIGNED_IN_AS = (email: string) =>
+  `Od wczytania kasy zmieniło się konto: teraz to ${email}. Nie złożyliśmy zamówienia. Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
+const SESSION_EXPIRED = "Twoja sesja wygasła. Zaloguj się ponownie.";
+
+type Account = (typeof customers)[keyof typeof customers];
+type CartLine = { variantId: string; quantity: number };
+
+/** Signs out of the store when signed in; ends on the home page with the login link. */
+async function logOut(page: Page): Promise<void> {
+  await page.goto("/");
+  const login = page.getByRole("banner").getByRole("link", { name: "Zaloguj się" });
+  const logout = page.getByRole("banner").getByRole("button", { name: "Wyloguj się" });
+  await expect(login.or(logout)).toBeVisible();
+  if (await logout.isVisible()) await logout.click();
+  await expect(login).toBeVisible();
+}
+
+/** Signs in as `account`, signing out of any other account first. */
+async function signInAs(page: Page, account: Account): Promise<void> {
+  await logOut(page);
+  await logInAs(page, account);
+}
+
+/** Adds the lines to the cart of the page (the account's when signed in) through the store's cart endpoints. */
+async function addLines(page: Page, lines: [Variant, number][]): Promise<void> {
+  await page.goto("/cart");
+  for (const [variant, quantity] of lines) {
+    expect(await cartWrite(page, "POST", "/api/cart/items", { variantId: variant.variantId, quantity })).toBe(true);
+  }
+}
+
+/** The lines of the cart of the page as the store's cart endpoint answers them. */
+const cartLinesOf = (page: Page): Promise<CartLine[]> =>
+  page.evaluate(async () => {
+    const view = (await (await fetch("/api/cart", { cache: "no-store" })).json()) as { lines: CartLine[] };
+    return view.lines.map(({ variantId, quantity }) => ({ variantId, quantity }));
+  });
+
+/** The checkout of the signed-in customer of the page, with the address, the standard delivery and the transfer. */
+async function customerCheckout(page: Page, account: Account): Promise<void> {
+  await page.goto("/checkout");
+  await expect(page.getByTestId("account-email")).toHaveText(account.email);
+  await page.getByLabel("Imię i nazwisko").fill("Klient Testowy");
+  await fillAddress(page);
+  await chooseDelivery(page);
+  await chooseProvider(page, "Szybki przelew (demo)");
+}
+
+/** How many order confirmations Mailpit has for `to`. */
+async function confirmationCount(to: string): Promise<number> {
+  const query = `to:"${to}" subject:"Potwierdzenie zamówienia"`;
+  const response = await fetch(`${urls.mailpit}/api/v1/search?query=${encodeURIComponent(query)}`);
+  expect(response.ok).toBe(true);
+  return ((await response.json()) as { messages_count: number }).messages_count;
+}
+
+test.describe("the buyer changed in another tab", () => {
+  test.afterEach(async ({ context }) => {
+    // The demo accounts are shared by the whole suite: no line of these tests stays in their carts.
+    const page = await context.newPage();
+    for (const account of [customers.jan, customers.anna]) {
+      await signInAs(page, account);
+      await emptyCart(page);
+    }
+    await logOut(page);
+  });
+
+  test("R4: a guest's checkout is not ordered after Jan logs in in another tab; the message names his account, the form keeps its data without the e-mail, and the next click orders for his account", async ({ context, request }) => {
+    const [a] = await twoVariants(request, SHOES.slug);
+    // Jan starts with an empty cart: after his login his cart is the guest's, merged.
+    const setupPage = await context.newPage();
+    await signInAs(setupPage, customers.jan);
+    await emptyCart(setupPage);
+    await logOut(setupPage);
+    await setupPage.close();
+    const email = `e2e-spojnosc-r4+${Date.now()}@example.com`;
+    const checkout = await guestCheckout(context, [[a, 1]], email);
+    const total = (await checkout.getByTestId("checkout-total").innerText()).trim();
+    const orders = await watchOrders(checkout);
+
+    const other = await context.newPage();
+    await other.goto("/");
+    await logInAs(other, customers.jan);
+    await orderButton(checkout).click();
+
+    const message = orderMessage(checkout);
+    await expect(message).toHaveText(SIGNED_IN_AS(customers.jan.email));
+    expect(orders()).toEqual([409]);
+    await expect(checkout.getByTestId("account-email")).toHaveText(customers.jan.email);
+    await expect(checkout.getByLabel("E-mail")).toHaveCount(0);
+    await expect(checkout.getByLabel("Imię i nazwisko")).toHaveValue("Anna Testowa");
+    await expect(checkout.getByLabel("Miejscowość")).toHaveValue("Warszawa");
+    await expect(checkout.getByRole("radio", { name: "Szybki przelew (demo)" })).toBeChecked();
+    await expect(quantities(checkout)).toHaveText(["1 szt."]);
+    await expect(checkout.getByTestId("checkout-total")).toHaveText(total);
+
+    // The customer saw the account: the next click orders for it.
+    await orderButton(checkout).click();
+    await expectSimulatorPage(checkout, "demo-transfer");
+    expect(orders()).toEqual([409, 201]);
+    await decideAtSimulator(checkout, "Zapłać");
+    const number = (await checkout.getByTestId("order-number").innerText()).trim();
+    const confirmation = await waitForOrderEmail(customers.jan.email, number);
+    expect(confirmation.text).toContain(`${SHOES.name}, ${a.label} × 1: `);
+    expect(await confirmationCount(email)).toBe(0);
+  });
+
+  test("R5: Jan's checkout is not ordered after another tab signs out and in as Anna with the same lines and total; neither account orders, Anna's cart stays, and the next click orders for Anna", async ({ context, request }) => {
+    const [a] = await twoVariants(request, SHOES.slug);
+    const page = await context.newPage();
+    // Anna's cart has the same line as Jan's checkout: the same lines and the same total.
+    await signInAs(page, customers.anna);
+    await emptyCart(page);
+    await addLines(page, [[a, 1]]);
+    await signInAs(page, customers.jan);
+    await emptyCart(page);
+    await addLines(page, [[a, 1]]);
+    await customerCheckout(page, customers.jan);
+    const total = (await page.getByTestId("checkout-total").innerText()).trim();
+    const orders = await watchOrders(page);
+
+    const other = await context.newPage();
+    await signInAs(other, customers.anna);
+    await orderButton(page).click();
+
+    const message = orderMessage(page);
+    await expect(message).toHaveText(SIGNED_IN_AS(customers.anna.email));
+    expect(orders()).toEqual([409]);
+    await expect(page.getByTestId("account-email")).toHaveText(customers.anna.email);
+    await expect(quantities(page)).toHaveText(["1 szt."]);
+    await expect(page.getByTestId("checkout-total")).toHaveText(total);
+    await expect(page.getByLabel("Imię i nazwisko")).toHaveValue("Klient Testowy");
+    // Nothing was ordered: Anna's cart is as it was.
+    expect(await cartLinesOf(other)).toEqual([{ variantId: a.variantId, quantity: 1 }]);
+
+    await orderButton(page).click();
+    await expectSimulatorPage(page, "demo-transfer");
+    expect(orders()).toEqual([409, 201]);
+    await decideAtSimulator(page, "Zapłać");
+    const number = (await page.getByTestId("order-number").innerText()).trim();
+    const confirmation = await waitForOrderEmail(customers.anna.email, number);
+    expect(confirmation.text).toContain(`${SHOES.name}, ${a.label} × 1: `);
+
+    // Jan's cart was never ordered: an order empties the cart it is placed from.
+    await signInAs(other, customers.jan);
+    expect(await cartLinesOf(other)).toEqual([{ variantId: a.variantId, quantity: 1 }]);
+  });
+
+  test("R6: Jan's checkout after a logout in another tab shows the expired session and places no order, not even one of the guest cart the browser has", async ({ context, request }) => {
+    const [a] = await twoVariants(request, SHOES.slug);
+    const page = await context.newPage();
+    await signInAs(page, customers.jan);
+    await emptyCart(page);
+    await addLines(page, [[a, 1]]);
+    await customerCheckout(page, customers.jan);
+    const orders = await watchOrders(page);
+
+    const other = await context.newPage();
+    await logOut(other);
+    // A guest cart with the same line: a guest order of it would be possible.
+    await addLines(other, [[a, 1]]);
+    expect((await context.cookies()).map((cookie) => cookie.name)).toContain("store_cart");
+    await orderButton(page).click();
+
+    await expect(orderMessage(page)).toContainText(SESSION_EXPIRED);
+    expect(orders()).toEqual([401]);
+    await expect(page).toHaveURL(/\/checkout$/);
+    // Neither cart was ordered: the guest cart keeps its line, and Jan's has both after the merge of his login.
+    expect(await cartLinesOf(other)).toEqual([{ variantId: a.variantId, quantity: 1 }]);
+    await signInAs(other, customers.jan);
+    expect(await cartLinesOf(other)).toEqual([{ variantId: a.variantId, quantity: 2 }]);
+  });
+});
