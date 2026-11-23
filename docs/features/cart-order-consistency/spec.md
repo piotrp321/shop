@@ -225,7 +225,7 @@ otwarcia kasy (link, nowa karta, wstecz i dalej) i zmianę z innej karty, przegl
 Poza gwarancją:
 
 - Zmiana zlecona w innej karcie, która nie dotarła do serwera przed zamówieniem (R3): zamówienie jest zgodne z kasą,
-  a spóźniony zapis trafia w opróżniony koszyk (zmiana ilości i usunięcie: 404, dodanie: nowa pozycja w koszyku).
+  a spóźniony zapis trafia w opróżniony koszyk (zmiana ilości: 404, usunięcie: 200 bez zmian, dodanie: nowa pozycja w koszyku).
 - Dwie zmiany cen, które się znoszą przy tej samej kwocie i tych samych ilościach.
 - Przeładowanie albo zamknięcie karty koszyka w trakcie zapisu: akcje jeszcze niewysłane przepadają (bez zmian).
 
@@ -238,8 +238,8 @@ Poza gwarancją:
   z listą (ten sam klucz z inną listą → `IdempotencyKeyReused`, z tą samą → powtórzenie).
 - **Integracyjne (PostgreSQL):** przebieg R1 (ilości zamienione przy tej samej kwocie → `CartContentChanged`, koszyk,
   stany, sekwencja kodu i roszczenia bez zmian); powtórzenie po opróżnieniu koszyka.
-- **Funkcjonalne:** wiersze kontraktu wejścia dla każdego naruszenia z tabeli Z1 (`OrderRequestViolationCases`,
-  `InputContract/OrderingCases`), 409 `cart-changed` dla gościa i klienta, dopasowanie bez względu na wielkość liter
+- **Funkcjonalne:** wiersz dla każdego naruszenia z tabeli Z1 na obu endpointach (`OrderRequestViolationCases`;
+  zestaw `InputContract` obejmuje tylko parametry zapytania i nagłówki, nie treść żądania), 409 `cart-changed` dla gościa i klienta, dopasowanie bez względu na wielkość liter
   i kolejność.
 - **Współbieżność** (`PlaceOrderConcurrencyTest`, osobne procesy, 5 rund, kontrole po rundzie jak O1–O7):
 
@@ -247,7 +247,7 @@ Poza gwarancją:
   |---|---|---|
   | O8 | złożenie z listą sprzed zmiany równolegle ze zmianą ilości tej linii | albo zamówienie z ilością z listy i `CartLineNotFound` zmiany, albo `CartContentChanged`, brak zamówienia i koszyk z nową ilością; nigdy zamówienie z nową ilością |
   | O9 | złożenie równolegle z dodaniem innego wariantu | albo zamówienie z liniami z listy i koszyk z samą nową linią, albo `CartContentChanged` i koszyk z obiema; nigdy zamówienie z dodaną linią ani utracona linia |
-  | O10 | złożenie koszyka z dwiema liniami równolegle z usunięciem jednej | albo zamówienie z obiema i `CartLineNotFound` usunięcia, albo `CartContentChanged` i koszyk z jedną linią |
+  | O10 | złożenie koszyka z dwiema liniami równolegle z usunięciem jednej | albo zamówienie z obiema i pusty koszyk (usunięcie brakującej linii kończy się bez zmian), albo `CartContentChanged` i koszyk z jedną linią |
   | O11 | dwa złożenia z różnymi kluczami z jednego koszyka: lista aktualna i lista nieaktualna | dokładnie jedno zamówienie, z listą aktualną; nieaktualne dostaje `CartContentChanged` albo `CartEmpty` |
   | O5 (zmiana) | złożenie klienta z listą sprzed scalenia równolegle ze scaleniem koszyka gościa | albo zamówienie dokładnie z listy i linie gościa w koszyku, albo `CartContentChanged` i wszystkie linie w koszyku; brak zakleszczeń |
 
@@ -295,9 +295,9 @@ Poza gwarancją:
 
 ## Zależności i równoległość
 
-- **API-INPUT-CONTRACT:** nowe pole dostaje wiersze kontraktu wejścia w istniejącym zestawie
-  (`tests/Functional/Shared/InputContract`). Przed startem sprawdzić, czy kolejny etap tego epiku nie zmienia
-  `OrderRequestViolationCases` ani `OrderingCases`.
+- **API-INPUT-CONTRACT:** naruszenia nowego pola są w `OrderRequestViolationCases` (treść żądania); zestaw
+  `tests/Functional/Shared/InputContract` nie obejmuje treści żądań i dostaje tylko poprawną listę w ciałach swoich
+  wierszy. Kolejny etap tego epiku, który zmieni te pliki, uwzględnia nowe pole.
 - **STORE-UX-FIXES etap 1** jest na `main`: reguły F1, F2 i blokada formularza w trakcie zamówienia (S5) obowiązują
   i ten epik je rozszerza o czas odczytu po 409.
 - **ADMIN-UX-FIXES etap 2** (przygotowywany równolegle; zakres według komentarza w #778: #573, #574, #576, #581

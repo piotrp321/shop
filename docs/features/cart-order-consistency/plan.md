@@ -9,7 +9,7 @@ epiku i wypycha ją. Zadania nie mają własnych PR. Plan jest dokumentem robocz
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | CART-ORDER-CONSISTENCY-1 | |
+| 1 | CART-ORDER-CONSISTENCY-1 | zmergowane, 60664561 (zadanie 7540e646; przegląd FULL: PASS) |
 | 2 | CART-ORDER-CONSISTENCY-2, CART-ORDER-CONSISTENCY-3 | |
 | 3 | CART-ORDER-CONSISTENCY-4 | |
 
@@ -45,7 +45,7 @@ klucza; znacznik kupującego: obcy znacznik, znacznik innego konta, brak sesji z
       "title": "API i kasa: zamówienie tylko z koszyka zgodnego z listą pokazaną w kasie",
       "scope": "Spec, Z1 i pierwsze dwa punkty Z2 (decyzje D1, D2, D3, D8). API: pole expectedLines w obu żądaniach złożenia, value object ExpectedLines w Ordering, krok porównania w PlaceOrderHandler, wyjątek CartContentChanged (409 cart-changed), odcisk żądania z listą, eksport OpenAPI i wygenerowany klient sklepu. Sklep, tylko tyle, żeby zamówienia działały: kasa wysyła expectedLines z pokazanego podsumowania, BFF przekazuje pole (pickFields), problems.ts ma przyczynę cart_changed obsłużoną dzisiejszą gałęzią konfliktu (komunikat detail z API i ponowny odczyt koszyka). Poza zadaniem: lista zmian w komunikacie i kolejność odczytu przed komunikatem (zadanie 3), buyer (zadanie 4), k6 i test dymny (zadanie 2), blokada placeOrder z zapisami koszyka (D4), Cart i jego widok (bez zmian), openapi-admin.json.",
       "acceptance_criteria": [
-        "Kontrakt: expectedLines wymagane w PlaceGuestOrderRequest i PlaceCustomerOrderRequest; każde naruszenie z tabeli Z1 specyfikacji daje 422 z podanym propertyPath i tytułem po polsku, nigdy 500 (brak klucza, null, nie lista, lista pusta, 51 elementów, element nie obiekt, zły variantId, quantity: tekst, ułamek, true, 0, -1, 100, duplikat wariantu także różniący się wielkością liter). Wiersze są w OrderRequestViolationCases i InputContract/OrderingCases.",
+        "Kontrakt: expectedLines wymagane w PlaceGuestOrderRequest i PlaceCustomerOrderRequest; każde naruszenie z tabeli Z1 specyfikacji daje 422 z podanym propertyPath i tytułem po polsku, nigdy 500 (brak klucza, null, nie lista, lista pusta, 51 elementów, element nie obiekt, zły variantId, quantity: tekst, ułamek, true, 0, -1, 100, duplikat wariantu także różniący się wielkością liter). Wiersze są w OrderRequestViolationCases (oba endpointy); zestaw InputContract nie obejmuje treści żądań.",
         "PlaceOrder: linie zablokowanego koszyka inne niż expectedLines (inna ilość, brak linii, dodatkowa linia) dają CartContentChanged (409, type cart-changed, detail ze specyfikacji) po CartEmpty i przed limitem zamówienia gościa, limitem nieopłaconych zamówień i wyceną. Po odrzuceniu: koszyk bez zmian, brak zamówienia, rezerwacji, użycia kodu, roszczenia limitu i wiersza outboxa, numer z sekwencji niepobrany. Lista zgodna bez względu na kolejność i wielkość liter UUID składa zamówienie jak dziś.",
         "Test integracyjny przebiegu R1: koszyk A × 1 i B × 2 w tej samej cenie, żądanie z A × 2 i B × 1 i z kwotą równą sumie koszyka daje CartContentChanged.",
         "Idempotencja: ten sam klucz i ta sama treść po złożeniu zwraca to samo zamówienie także przy opróżnionym koszyku (kroki 0 i 2 przed porównaniem); ten sam klucz z inną listą daje IdempotencyKeyReused; RequestFingerprint obejmuje listę w postaci kanonicznej.",
