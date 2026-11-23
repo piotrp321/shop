@@ -689,6 +689,11 @@ Rozbieżność koszyka i kwoty (409 `cart-changed` i `order-total-changed`; `doc
    zamówienia i metody wybranej w chwili odpowiedzi odczytu, z tym samym pierwszym akapitem; dopiero kolejne kliknięcie
    zamawia. Dotyczy to także kodu zastosowanego po nieudanym odczycie, zanim strona go wyrenderowała (stan nieaktualny
    jest ustawiany od razu, nie dopiero z renderem). Nieudane albo 401 sprawdzenie kodu zostawia stan nieaktualny.
+6. Komunikat z listą zmian opisuje różnicę z chwili odrzuconego zamówienia. Znika, gdy po jego pokazaniu klient sam
+   zmieni podsumowanie: udane zastosowanie kodu, „Usuń kod” albo wybór innej metody dostawy; inaczej przeczyłby
+   podsumowaniu obok. Zostaje przy edycji pól, wyborze płatności, kodzie odrzuconym (przez podsumowanie albo 400)
+   i nieudanym sprawdzeniu kodu. Zniknięcie nie przenosi fokusu, a fokus i ogłoszenia kodu i dostawy są jak zawsze.
+   Komunikaty innego rodzaju zostają, a odczyt przez kod w stanie nieaktualnym pokazuje listę zmian (punkt 5).
 
 Zmiana kupującego (409 `checkout-buyer-changed`: logowanie, wylogowanie albo inne konto w innej karcie;
 `docs/features/cart-order-consistency/spec.md`, Z4). Kasa wysyła w `buyer` kupującego, którego pokazuje: `"guest"`

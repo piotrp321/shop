@@ -273,6 +273,16 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     chooseMethod(next.delivery?.options.some((option) => option.methodId === chosen) ? chosen : null);
   }
 
+  /**
+   * Takes off the message of the changes (`changed`) when the customer changed the summary after it (a code applied or
+   * removed, another delivery method): it tells the difference at the moment of the refused order and would contradict
+   * the summary next to it. Other messages stay, and so does the focus. Called before a read shows its summary, so that a
+   * read of a summary out of date still shows its own list (`showCart`); the message is the one at that moment.
+   */
+  function dismissChanges() {
+    setFailure((current) => (current?.kind === "changed" ? null : current));
+  }
+
   /** Chooses the delivery method (none: `null`); the only place that changes the choice. */
   function chooseMethod(methodId: string | null) {
     chosenMethod.current = methodId;
@@ -377,6 +387,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setCodeBusy(false);
     let target = CODE_INPUT_ID;
     if (preview.status === "ok") {
+      if (preview.appliedCode !== null) dismissChanges();
       showCart(preview.cart, loaded.session);
       setAppliedCode(preview.appliedCode);
       setCodeError(preview.codeError);
@@ -406,6 +417,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setCodeBusy(false);
     let target = CODE_REMOVE_ID;
     if (preview.status === "ok") {
+      dismissChanges();
       showCart(preview.cart, loaded.session);
       setAppliedCode(null);
       setCodeInput("");
@@ -423,6 +435,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
 
   function chooseDelivery(methodId: string) {
     if (running.current === "order") return;
+    if (methodId !== chosenMethod.current) dismissChanges();
     chooseMethod(methodId);
     setDeliveryError(null);
     renewKey();
