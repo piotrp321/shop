@@ -1369,11 +1369,20 @@ describe("CartPage status region", () => {
 });
 
 describe("CartPage focus after removing a line (criterion 12)", () => {
+  // The focus moves in an effect, a task after the commit that takes the row out of the page: a check that polls for the
+  // row (vi.waitFor) can run between the two on a busy machine and find the focus on the body (#869). The operations
+  // are given and answered inside act, which ends only after the renders and the effects of every answer.
+  const untilAnswered = (start: () => void) =>
+    act(async () => {
+      start();
+      await actionsFinished();
+    });
+
   const removeAndWait = async (name: string, next: CartView) => {
     vi.mocked(removeCartItem).mockResolvedValue(ok(next));
     removeOf(name).focus();
-    fireEvent.click(removeOf(name));
-    await vi.waitFor(() => expect(screen.queryByText(name)).toBeNull());
+    await untilAnswered(() => fireEvent.click(removeOf(name)));
+    expect(screen.queryByText(name)).toBeNull();
   };
 
   it("goes to Usuń of the next line after a line of several is removed", async () => {
@@ -1405,9 +1414,9 @@ describe("CartPage focus after removing a line (criterion 12)", () => {
 
     vi.mocked(removeCartItem).mockResolvedValue(ok(view([])));
     removeOf("Produkt A").focus();
-    fireEvent.click(removeOf("Produkt A"));
+    await untilAnswered(() => fireEvent.click(removeOf("Produkt A")));
 
-    const empty = await screen.findByText("Twój koszyk jest pusty");
+    const empty = screen.getByText("Twój koszyk jest pusty");
     expect(screen.getAllByText("Twój koszyk jest pusty")).toHaveLength(1);
     expect(document.activeElement).toBe(empty);
     expect(empty.getAttribute("tabindex")).toBe("-1");
@@ -1540,9 +1549,9 @@ describe("CartPage focus after removing a line (criterion 12)", () => {
     vi.mocked(loadCart).mockResolvedValue(ok(without("Produkt A")));
     removeOf("Produkt A").focus();
 
-    fireEvent.click(removeOf("Produkt A"));
+    await untilAnswered(() => fireEvent.click(removeOf("Produkt A")));
 
-    await vi.waitFor(() => expect(screen.queryByText("Produkt A")).toBeNull());
+    expect(screen.queryByText("Produkt A")).toBeNull();
     expect(document.activeElement).toBe(removeOf("Produkt B"));
   });
 
@@ -1553,10 +1562,12 @@ describe("CartPage focus after removing a line (criterion 12)", () => {
 
     // Tab leaves the field (which commits it) for Usuń of the same line, before the answer comes.
     fireEvent.change(qty("Produkt A"), { target: { value: "3" } });
-    fireEvent.blur(qty("Produkt A"));
-    removeOf("Produkt A").focus();
+    await untilAnswered(() => {
+      fireEvent.blur(qty("Produkt A"));
+      removeOf("Produkt A").focus();
+    });
 
-    await vi.waitFor(() => expect(screen.queryByText("Produkt A")).toBeNull());
+    expect(screen.queryByText("Produkt A")).toBeNull();
     expect(statusRegion().textContent).toBe("Pozycja została już usunięta");
     expect(document.activeElement).toBe(removeOf("Produkt B"));
   });
