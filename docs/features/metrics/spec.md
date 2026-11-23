@@ -175,7 +175,7 @@ kwoty w USD, przyrosty limitu w pp:
   z pozycją `final_pr` w `gaps`; brak takiego PR albo kilka dają `null`.
 - `in_attempts`: czas poleceń powłoki w próbach (nazwy narzędzi powłoki w `config.json`: `Bash`, `bash`) według
   kategorii z `config.json` (`test`, `e2e`, `check`, `selftest`, `stack` dla `make up` i `.ao/setup`, `ci_watch` dla
-  `gh pr checks --watch` i `gh run watch`, `read` dla poleceń tylko do odczytu, `other` dla reszty), od `tool_use` do
+  `gh pr checks --watch`, `gh run watch` i `ci-wait.sh`, `read` dla poleceń tylko do odczytu, `other` dla reszty), od `tool_use` do
   `tool_result` o tym samym identyfikatorze; polecenia w tle (`run_in_background`) liczone tylko jako liczba; do tego:
   - `repeat_runs` (heurystyka, dolna granica): liczba i czas uruchomień polecenia z kategorii `test`, `e2e` albo `check`, którego
     klucz jest taki sam jak wcześniejszego uruchomienia w tej samej próbie, bez zmiany kodu pomiędzy nimi. Klucz to
@@ -649,7 +649,9 @@ czasu), potencjalnie −4,1 h (D4)”.
 
 W oknie 14 dni od merge'u końcowego PR (`regressions.until`):
 
-- czerwony przebieg CI na `main` dla commita merge'u epiku (`gh run list --commit`);
+- czerwony przebieg CI na `main` dla commita merge'u epiku (`gh run list --commit`). Liczy się tylko zakończony
+  przebieg `push`: dopóki któryś trwa albo żadnego jeszcze nie ma, wynik jest nieznany (`ci_red: null` z luką,
+  `complete: false`, okno zostaje otwarte i przelicza je kolejne `trend` albo `epic`), nie zero;
 - commit na `main`, który wycofuje końcowy PR (`Revert` z jego numerem);
 - issue `bug`, którego nowe pole „Wprowadzone przez (epik albo PR, jeśli znane)” w formularzu `bug`
   (`.github/ISSUE_TEMPLATE/bug.yml`) wskazuje ID epiku albo numer jego PR, założone albo ostatnio zmienione przez
@@ -658,6 +660,42 @@ W oknie 14 dni od merge'u końcowego PR (`regressions.until`):
 
 `found_after_merge`: issues z propozycji `/sweep` tego epiku (raport przeglądu z nazwą epiku) w tym samym oknie,
 osobno od regresji, bo przegląd znajduje też stare problemy.
+
+### Czas CI po epiku
+
+`metrics.py ci-time <epik>` porównuje czas CI po epiku ze stanem sprzed epiku. Tylko odczyt (`gh`), niczego nie
+uruchamia i nie blokuje merge'u: wynik to „bez przekroczenia progów”, „przekroczony próg, do wyjaśnienia” albo „brak
+danych”. Ten sam wynik jest w rekordzie epiku natywnego (`ci.time`).
+
+- **Przebieg porównywalny:** zakończony, zielony przebieg workflowu `ci_workflow`, pełny: część E2E wykonała krok
+  `full_step` (`make e2e`). Przebiegi o ograniczonym zakresie (dokumentacja, narzędzia, k8s), czerwone, anulowane
+  i w toku nie wchodzą do porównania.
+- **Dwie miary, nigdy sumowane:** czas całego przebiegu, od startu pierwszego joba do końca ostatniego (zawiera
+  oczekiwanie na runner między jobami, więc nie jest czasem „bez kolejek”), i czas wykonania każdego joba (`checks part
+  *`, `e2e shard *`; bez jobów zbiorczych `aggregate_jobs`).
+- **Baza:** mediana `baseline_runs` (5) ostatnich porównywalnych przebiegów `push` na `base_branch` utworzonych przed
+  startem epiku (`started_at` pliku przebiegu). Mniej niż `min_baseline_runs` (3): brak danych.
+- **Po epiku, trzy osobne pozycje:** przebieg końcowego SHA końcowego PR (pojedynczy przebieg, pokazany osobno, żeby
+  mediana wcześniejszych wersji nie ukryła regresji), mediana `recent_runs` (3) ostatnich porównywalnych przebiegów PR
+  (od dwóch przebiegów) i, po merge'u, przebieg `push` commita merge'u na `main`. Przebieg merge'u w toku, czerwony,
+  o ograniczonym zakresie albo niezarejestrowany to brak danych, nie potwierdzenie.
+- **`main` w trakcie epiku:** mediana porównywalnych przebiegów `push` na `main` od startu epiku do jego ostatniego
+  przebiegu, bez commita merge'u epiku. Przebieg PR testuje scalenie z bieżącym `main`, więc wzrost widoczny też tutaj
+  to możliwy wpływ zewnętrzny, spoza epiku.
+- **Progi (startowe, do oceny po trzech kolejnych epikach):** pozycja przekracza próg, gdy różnica względem bazy
+  osiąga oba warunki naraz: cały przebieg `run_min_s` (180 s) i `run_min_pct` (20%), job `job_min_s` (240 s)
+  i `job_min_pct` (30%). Wartości pochodzą z 203 pełnych zielonych przebiegów z 16–23.11.2026: przy niezmienionym
+  kodzie mediany przebiegu różniły się do 2,4 min (18%), a mediany jednego joba do ok. 2 min (20%); znane realne
+  wzrosty to +3,8 do +6,2 min (+31 do +50%) dla przebiegu i +5,8 do +9,4 min dla joba.
+- **Rozrzut części E2E:** różnica median ostatnich przebiegów PR między najdłuższą a najkrótszą częścią; od
+  `e2e_spread_s` (240 s) raport rekomenduje osobny PR wyrównania wag (`e2e/CLAUDE.md`, „CI”). Poniżej tego zysk
+  z wyrównania mieści się w rozrzucie pojedynczych przebiegów.
+- **Raport** (Markdown do opisu PR albo `--json`): baza, wynik, różnica w minutach i procentach dla każdej pozycji,
+  joby tylko po jednej stronie (możliwa zmiana workflowu), dla joba ponad progiem kroki z największą różnicą, linki
+  do wszystkich użytych przebiegów. Brak wartości to „brak danych”, nigdy zero ani PASS.
+- **Przyczyna** nie jest ustalana automatycznie: przekroczenie sesja wyjaśnia z dowodem (nowe testy, nierówny podział,
+  wolniejsze testy, infrastruktura, zmiana workflowu) według „Przebiegu epiku” w ADR.
+- Kody wyjścia: `0` (każdy wynik raportu), `3` przy błędzie `gh` (raport „brak danych”), `2` bez pliku przebiegu.
 
 ### Bezproduktywne zużycie
 
@@ -953,6 +991,12 @@ użytkownika.
     z efektem z `metrics.py effect` dla kluczy z `applied.jsonl` albo „za mało danych”.
 17. Skrypty mają testy ścieżek błędu (nieczytelna albo zajęta baza, brak katalogu, błąd `gh`, nieczytelny
     `waste.json`, zły `config.json`) z kodem i komunikatem; skan fixture'ów w repo przechodzi.
+18. `ci-time` z podstawionym `gh`: baza tylko z pełnych zielonych przebiegów `push` na `main` sprzed startu epiku;
+    końcowy SHA osobno od mediany ostatnich przebiegów PR (regresja tylko na końcowym SHA jest przekroczeniem);
+    przebieg commita merge'u liczony dopiero po zakończeniu; próg wymaga obu warunków (sam procent ani sam czas nie
+    wystarcza); `main` w trakcie epiku osobno; za mało przebiegów, brak przebiegu końcowego SHA, błąd `gh` (kod 3)
+    i brak danych w pliku przebiegu dają „brak danych”, nigdy „bez przekroczenia”; brak pliku przebiegu to kod 2.
+    Czerwone CI commita merge'u: przebieg w toku i brak przebiegu dają `ci_red: null` i otwarte okno.
 
 ## Ryzyka
 
