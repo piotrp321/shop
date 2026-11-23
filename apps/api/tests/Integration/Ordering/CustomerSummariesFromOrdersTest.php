@@ -29,6 +29,8 @@ final class CustomerSummariesFromOrdersTest extends KernelTestCase
 
     private Connection $connection;
     private MessageBusInterface $bus;
+    /** @var list<array{string, int}> the lines of the cart of the customer of placeAsCustomer() */
+    private array $customerLines = [];
 
     protected function setUp(): void
     {
@@ -44,7 +46,7 @@ final class CustomerSummariesFromOrdersTest extends KernelTestCase
     public function testAnOrderOfACustomerIsAddedOnceAndAReplayAddsNothing(): void
     {
         $placed = $this->placeAsCustomer('key-summary-1');
-        $replayed = $this->place(CartReference::customer(self::CUSTOMER), 'key-summary-1');
+        $replayed = $this->place(CartReference::customer(self::CUSTOMER), 'key-summary-1', $this->customerLines);
 
         self::assertTrue($replayed->replayed);
         self::assertSame([[self::CUSTOMER, 'anna@example.com', 'Anna Nowak', '+48600100200', 1, 0, 0, $placed->order->orderId]], $this->summaries());
@@ -66,7 +68,7 @@ final class CustomerSummariesFromOrdersTest extends KernelTestCase
     {
         [$variant] = OrderingFixture::variant($this->connection, 10_000, 5);
         $cart = CartFixture::cart($this->connection, lines: [[$variant, 1]]);
-        $placed = $this->place(CartReference::guest($cart), 'key-summary-3');
+        $placed = $this->place(CartReference::guest($cart), 'key-summary-3', [[$variant, 1]]);
         $this->pay($placed->order->orderId, Uuid::v7()->toRfc4122());
 
         self::assertSame([], $this->summaries());
@@ -84,17 +86,21 @@ final class CustomerSummariesFromOrdersTest extends KernelTestCase
     private function placeAsCustomer(string $key): PlacedOrder
     {
         [$variant] = OrderingFixture::variant($this->connection, 10_000, 5);
-        CartFixture::cart($this->connection, customerId: self::CUSTOMER, lines: [[$variant, 1]]);
+        $this->customerLines = [[$variant, 1]];
+        CartFixture::cart($this->connection, customerId: self::CUSTOMER, lines: $this->customerLines);
 
-        $placed = $this->place(CartReference::customer(self::CUSTOMER), $key);
+        $placed = $this->place(CartReference::customer(self::CUSTOMER), $key, $this->customerLines);
         self::assertFalse($placed->replayed);
 
         return $placed;
     }
 
-    private function place(CartReference $cart, string $key): PlacedOrder
+    /**
+     * @param list<array{string, int}> $expectedLines the lines the checkout showed: variant id and quantity
+     */
+    private function place(CartReference $cart, string $key, array $expectedLines): PlacedOrder
     {
-        $placed = $this->bus->dispatch(new PlaceOrder($cart, 'anna@example.com', 'Anna Nowak', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->connection), self::GROSS, OrderingFixture::expectedOfCustomerCart($this->connection, (string) $cart->customerId), $key))->last(HandledStamp::class)?->getResult();
+        $placed = $this->bus->dispatch(new PlaceOrder($cart, 'anna@example.com', 'Anna Nowak', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->connection), self::GROSS, OrderingFixture::expected($expectedLines), $key))->last(HandledStamp::class)?->getResult();
         self::assertInstanceOf(PlacedOrder::class, $placed);
 
         return $placed;
