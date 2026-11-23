@@ -53,7 +53,8 @@ final class ExpectedLinesTest extends TestCase
     {
         $canonical = ExpectedLines::of([self::line(strtoupper(self::MAP), 3), self::line(self::SHOES, 2), self::line(self::CAP, 1)])->canonical();
 
-        self::assertSame(self::CAP.'*1,'.self::MAP.'*3,'.self::SHOES.'*2', $canonical);
+        // …00a, …00b, …00c
+        self::assertSame(self::SHOES.'*2,'.self::CAP.'*1,'.self::MAP.'*3', $canonical);
         self::assertSame($canonical, ExpectedLines::of([self::line(self::CAP, 1), self::line(self::SHOES, 2), self::line(self::MAP, 3)])->canonical());
     }
 

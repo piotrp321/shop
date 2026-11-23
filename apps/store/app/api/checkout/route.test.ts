@@ -63,8 +63,9 @@ const GUEST_CONFIRMATION = {
 const CONTACT = { fullName: "Anna Nowak", phone: "600 100 200", street: "ul. Długa 5/3", postalCode: "00-950", city: "Warszawa" };
 /** What the API receives of the form: the provider is the BFF's business. */
 const DELIVERY_METHOD = "00000000-0000-4000-8000-0000000000d1";
-const GUEST_ORDER = { email: "anna.nowak@example.com", ...CONTACT, expectedTotalGross: 39998, deliveryMethodId: DELIVERY_METHOD };
-const CUSTOMER_ORDER = { ...CONTACT, expectedTotalGross: 39998, deliveryMethodId: DELIVERY_METHOD };
+const EXPECTED_LINES = [{ variantId: "00000000-0000-4000-8000-00000000000a", quantity: 2 }];
+const GUEST_ORDER = { email: "anna.nowak@example.com", ...CONTACT, expectedTotalGross: 39998, deliveryMethodId: DELIVERY_METHOD, expectedLines: EXPECTED_LINES };
+const CUSTOMER_ORDER = { ...CONTACT, expectedTotalGross: 39998, deliveryMethodId: DELIVERY_METHOD, expectedLines: EXPECTED_LINES };
 const GUEST_FORM = { ...GUEST_ORDER, provider: PROVIDER };
 const CUSTOMER_FORM = { ...CUSTOMER_ORDER, provider: PROVIDER };
 
@@ -294,6 +295,35 @@ describe("POST /api/checkout as a guest", () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ type: `${PROBLEMS}${slug}`, detail });
+  });
+
+  it("passes the expected lines to the API as the browser sent them, for a guest and for a customer", async () => {
+    const lines = [
+      { variantId: "00000000-0000-4000-8000-00000000000B", quantity: 1, name: "Czapka" },
+      { variantId: "00000000-0000-4000-8000-00000000000a", quantity: 2 },
+    ];
+    setup.answer("POST", GUEST_ORDERS, () => Response.json(orderView(), { status: 201 }));
+    setup.answer("POST", GUEST_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+    await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body: { ...GUEST_FORM, expectedLines: lines } });
+    const { cookie } = await signedIn();
+    setup.answer("POST", CUSTOMER_ORDERS, () => Response.json(orderView({ accessToken: null }), { status: 201 }));
+    setup.answer("POST", CUSTOMER_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+    await checkout({ cookie, body: { ...CUSTOMER_FORM, expectedLines: "nie lista" } });
+
+    const orders = orderCalls().filter((call) => call.path === GUEST_ORDERS || call.path === CUSTOMER_ORDERS);
+    expect(orders.map((call) => call.body)).toEqual([
+      { cartId: GUEST_CART_ID, ...GUEST_ORDER, expectedLines: lines },
+      { ...CUSTOMER_ORDER, expectedLines: "nie lista" },
+    ]);
+  });
+
+  it("passes the 409 cart-changed with its type and detail only, keeps store_cart and starts no payment", async () => {
+    setup.answer("POST", GUEST_ORDERS, () => conflict("cart-changed", "Zawartość koszyka się zmieniła. Sprawdź podsumowanie."));
+    const response = await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body: GUEST_FORM });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ type: `${PROBLEMS}cart-changed`, detail: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie." });
+    expect(setup.calls.filter((call) => call.path === GUEST_PAYMENTS)).toEqual([]);
   });
 
   it("passes the values of the browser as they are, so that the API names what is wrong", async () => {
