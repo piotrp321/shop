@@ -514,8 +514,9 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   strony dostawcy bez decyzji, `docs/features/payment/spec.md`, P7).
 - Status i ponowienie wczytania (`CheckoutPage.tsx`): jeden region `role="status"` (`data-testid="checkout-status"`)
   istnieje od pierwszego renderu przez wszystkie stany ekranu (wczytywanie, błąd, treść, pusty koszyk, wygasła sesja);
-  zmienia się tylko jego tekst („Wczytywanie…” w trakcie odczytu, „Składamy zamówienie…” w trakcie składania
-  zamówienia, poza tym pusty) i jest jedynym miejscem tego tekstu. Region podsumowania (`checkout-summary-status`) i kodu rabatowego (`checkout-code-status`) są osobne. Po nieudanym
+  zmienia się tylko jego tekst („Wczytywanie…” w trakcie odczytu, także odczytu nieaktualnego podsumowania po kliknięciu
+  przycisku zamówienia, „Składamy zamówienie…” w trakcie składania zamówienia i odczytu koszyka po jego odrzuceniu za
+  rozbieżność koszyka albo kwoty, poza tym pusty) i jest jedynym miejscem tego tekstu. Region podsumowania (`checkout-summary-status`) i kodu rabatowego (`checkout-code-status`) są osobne. Po nieudanym
   odczycie kasy (`/api/cart` albo `/auth/session`) komunikat „Nie udało się wczytać kasy” jest w `role="alert"`,
   a „Spróbuj ponownie” poza nim. Na czas ponowienia przycisk zostaje na ekranie z `aria-disabled="true"` (nie
   `disabled`, więc zachowuje fokus; ponowna aktywacja nie wysyła żądania), komunikat znika, a region mówi
@@ -551,7 +552,9 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
     „Dostawa „<nazwa>” nie jest już darmowa, kosztuje X zł. Do darmowej dostawy brakuje Y zł.”, „Dostawa „<nazwa>” jest
     teraz darmowa.” albo przy zmianie samej brakującej kwoty „Dostawa „<nazwa>”: Do darmowej dostawy brakuje Y zł.”.
     Mowa o wybranej metodzie, a bez wyboru o każdej, której dotyczy zmiana; przy zmianie, która niczego takiego nie
-    zmienia, obszar jest pusty. Kwoty są z API.
+    zmienia, obszar jest pusty. Kwoty są z API. Wybór dostawy nie jest zablokowany w trakcie sprawdzania kodu: wybrana
+    metoda to ta wybrana w chwili odpowiedzi odczytu (ta sama, którą pokazuje podsumowanie i niesie następne
+    zamówienie), także dla listy zmian w stanie nieaktualnym.
   - Opcja z kosztem 0 pokazuje „Darmowa” i nie pokazuje „Do darmowej dostawy brakuje”, nawet gdy API poda brakującą kwotę.
   - Brak aktywnych metod (`options` puste) albo odczyt koszyka bez `delivery` (API sprzed dostawy): zamiast grupy
     `Alert` („Nie możemy teraz przyjąć zamówienia: brak dostępnych sposobów dostawy. Spróbuj później.”,
@@ -578,8 +581,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   a fokus idzie na pierwszą opcję pierwszej grupy z błędem (dostawa przed płatnością). Zmiana metody daje nowy klucz
   (inna treść żądania); po 409 `delivery-method-unavailable` komunikat jest nad formularzem, podsumowanie wczytuje się
   od nowa i powstaje nowy klucz.
-- Składanie zamówienia: od wysłania `POST /api/checkout` do odpowiedzi z błędem albo, po sukcesie, do opuszczenia
-  strony formularz jest zablokowany i nic w nim się nie zmienia. Pola formularza i pole kodu są tylko do odczytu
+- Składanie zamówienia: od wysłania `POST /api/checkout` do odpowiedzi z błędem (po rozbieżności koszyka albo kwoty: do
+  końca odczytu koszyka) albo, po sukcesie, do opuszczenia strony formularz jest zablokowany i nic w nim się nie zmienia. Pola formularza i pole kodu są tylko do odczytu
   z `aria-disabled="true"` i wyglądem nieaktywnym; wybór dostawy i płatności ma `aria-disabled="true"` bez `disabled`
   i nie zmienia się po kliknięciu, dotyku, strzałkach ani Spacji; „Zastosuj”, „Usuń kod” i przycisk zamówienia mają
   `aria-disabled="true"` zamiast `disabled` i nie wysyłają żądania. Każda z tych kontrolek zachowuje fokus. Enter w polu,
@@ -599,7 +602,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | Sytuacja | UI na `/checkout` |
 |---|---|
 | 422 | komunikaty przy polach (`violations`) |
-| 409 `OrderTotalChanged`, `CartContentChanged` | `detail`, ponowne wczytanie podsumowania z tym samym kodem (nowa kwota albo nowe linie), formularz zostaje, nowy klucz, bez linku do koszyka (pusty koszyk albo `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem) |
+| 409 `OrderTotalChanged`, `CartContentChanged` | nowy klucz i najpierw ponowne wczytanie podsumowania z tym samym kodem, potem w jednym renderze komunikat z listą zmian, nowe podsumowanie i odblokowany formularz z zachowanymi danymi (akapit „Rozbieżność koszyka i kwoty” niżej) |
 | 409 `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` (Q6) | `detail` przy polu kodu, kod zdjęty, podsumowanie wczytane bez kodu (nowa kwota), nowy klucz, nic nie składa się samo: zamówienie składa dopiero kolejne kliknięcie; gdy podsumowania nie da się wczytać, ekran zostaje taki jak był (kod zastosowany, „Usuń kod” z fokusem) z `detail` i komunikatem o odświeżeniu, a 401 pokazuje komunikat sesji |
 | 409 `CartEmpty`, `GuestOrderTooLarge`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka”, ponowne wczytanie podsumowania, klucz zostaje; gdy przeładowane podsumowanie zastępuje formularz komunikatem z własnym linkiem, bez drugiego linku |
 | 409 `IdempotencyKeyReused` | `detail`, nowy klucz, formularz zostaje, bez linku do koszyka (kolejne kliknięcie składa zamówienie z nowym kluczem) |
@@ -608,9 +611,56 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | 401 | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem (`returnTo=/checkout`) |
 | 403, 503, 5xx, błąd sieci | „Nie udało się złożyć zamówienia. Spróbuj ponownie.” (ponowienie z tym samym kluczem) |
 
+Rozbieżność koszyka i kwoty (409 `cart-changed` i `order-total-changed`; `docs/features/cart-order-consistency/spec.md`,
+„Z2 i Z3”):
+
+1. Formularz zostaje zablokowany jak w trakcie składania zamówienia (pola, dostawa, płatność, kod, przycisk), a region
+   statusu mówi dalej „Składamy zamówienie…”. Kasa czyta koszyk z zastosowanym kodem; komunikatu jeszcze nie ma.
+2. Po odczycie, w jednym renderze: komunikat (`role="alert"`, `tabIndex=-1`) z listą zmian, podsumowanie z odczytu
+   i odblokowany formularz. Dane formularza, wybór płatności i dostawy (gdy metoda jest nadal wśród opcji) zostają;
+   region podsumowania ogłasza dostawę jak po każdym odczycie. Następne kliknięcie to nowa próba z nowym kluczem
+   i z liniami oraz kwotą nowego podsumowania.
+3. Komunikat: pierwszy akapit „Zawartość koszyka zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.”
+   (`cart-changed`) albo „Kwota zamówienia zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.”
+   (`order-total-changed`; `detail` API nie jest pokazywany), potem lista zmian (`src/checkout/cart-changes.ts`, czysta
+   funkcja dwóch `CartView` i wybranej metody: porównuje wartości z API, niczego nie liczy), potem „Sprawdź podsumowanie
+   i zamów ponownie.” z linkiem „Przejdź do koszyka”. Gdy porównanie nie znajduje różnic, bez listy. Pozycja listy (po
+   jednej na zmianę, w kolejności podsumowania: linie pokazane, nowe linie, rabat, dostawa, kwota; `<nazwa>` to nazwa
+   produktu i etykieta wariantu po przecinku, jak w koszyku, a dla wariantu nieznanego w obu podsumowaniach „Nieznany
+   produkt”):
+
+   | Zmiana | Tekst |
+   |---|---|
+   | inna ilość | „<nazwa>: było 2 szt., jest 1 szt.” |
+   | pozycji już nie ma | „<nazwa>: usunięto z koszyka” |
+   | nowa pozycja | „<nazwa>: dodano, 1 szt.” |
+   | inna wartość linii przy tej samej ilości (obie z ceną) | „<nazwa>: wartość była 549,00 zł, jest 499,00 zł” |
+   | inny rabat kodu (`totals.discountGross`) | „Rabat: był 50,00 zł, jest 0,00 zł” |
+   | inny koszt wybranej dostawy | „Dostawa „<metoda>”: była 0,00 zł, jest 14,99 zł” |
+   | wybrana metoda zniknęła z opcji | „Dostawa „<metoda>” nie jest już dostępna. Wybierz sposób dostawy.” (wybór zdjęty) |
+   | inna `totalGross` wybranej metody w obu podsumowaniach | „Do zapłaty: było 549,00 zł, jest 1 647,00 zł” |
+
+   Bez wybranej metody i dla koszyka bez nic do kupienia (`delivery: null`) lista nie mówi o dostawie ani kwocie.
+4. Koszyk pusty albo z `hasExcludedLines` po odczycie: zamiast formularza widok tych stanów z własnym linkiem do
+   koszyka, a komunikat ma pierwszy akapit i listę, bez ostatniego akapitu i bez drugiego linku. Kod odrzucony przy
+   odczycie: komunikat przy polu kodu jak przy każdym odczycie, kod zdjęty, wiersz „Rabat” w liście.
+5. 401 odczytu: komunikat wygasłej sesji. Odczyt nieudany: „Koszyk albo kwota zamówienia się zmieniły, ale nie udało
+   się wczytać aktualnego podsumowania. Spróbuj ponownie.”, a podsumowanie jest nieaktualne (także po 401): następne
+   kliknięcie „Zamawiam z obowiązkiem zapłaty” niczego nie zamawia, tylko czyta koszyk z tą samą blokadą formularza
+   (region statusu: „Wczytywanie…”) i pokazuje komunikat z punktu 3 (albo znowu ten o nieudanym odczycie); dopiero
+   kolejne kliknięcie składa zamówienie. Reguła: dopóki klient nie zobaczył listy zmian względem podsumowania
+   odrzuconego zamówienia (albo komunikatu bez listy, gdy różnic nie ma), kliknięcie nie zamawia, a komunikat na
+   ekranie jest prawdziwy. Dlatego udany odczyt podsumowania w inny sposób w stanie nieaktualnym (zastosowanie kodu,
+   „Usuń kod”, kod odrzucony przez podsumowanie albo przez 400, po którym kasa czyta podsumowanie bez kodu) od razu
+   zastępuje komunikat o nieudanym odczycie komunikatem z punktu 3: lista zmian względem podsumowania odrzuconego
+   zamówienia i metody wybranej w chwili odpowiedzi odczytu, z tym samym pierwszym akapitem; dopiero kolejne kliknięcie
+   zamawia. Dotyczy to także kodu zastosowanego po nieudanym odczycie, zanim strona go wyrenderowała (stan nieaktualny
+   jest ustawiany od razu, nie dopiero z renderem). Nieudane albo 401 sprawdzenie kodu zostawia stan nieaktualny.
+
 Po odrzuceniu fokus przechodzi na komunikat błędu (`role="alert"`, `tabIndex=-1`); po 422 z błędami pól na pierwsze
 błędne pole (w kolejności formularza), które ma `aria-invalid` i `aria-describedby` na swój komunikat; po odrzuconym
-kodzie na pole kodu. Dzieje się tak tylko wtedy, gdy w chwili odpowiedzi fokus jest nadal na elemencie, z którego
+kodzie na pole kodu; po rozbieżności koszyka albo kwoty dopiero po odczycie koszyka. Dzieje się tak tylko wtedy, gdy
+w chwili odpowiedzi (po rozbieżności: w chwili końca odczytu) fokus jest nadal na elemencie, z którego
 wyszło wysłanie (przycisk albo pole, w którym naciśnięto Enter), albo na `<body>`. Gdy klient przeszedł w tym czasie
 do innej kontrolki, fokus zostaje tam, a odrzucenie ogłasza `role="alert"`: komunikat nad formularzem, a po 422
 z błędami pól albo dostawcy same teksty tych błędów przy polach i przy grupie „Sposób płatności” (te same teksty, bez
@@ -762,8 +812,15 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   akcji i po akcjach porzuconych; formularz gościa i klienta (e-mail z sesji), podsumowanie, blokada przycisku, każdy wiersz tabeli
   UI (pięć przyczyn 409 i nieznany 409: komunikat, link do koszyka, formularz, ten sam albo nowy klucz przy kolejnym
   kliknięciu, brak automatycznego drugiego POST), `expectedLines` równe liniom pokazanego podsumowania (w jego
-  kolejności, także po zastosowaniu i usunięciu kodu i po odczycie po 409), 409 `cart-changed` (komunikat API, nowe
-  podsumowanie, nowy klucz, bez linku), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
+  kolejności, także po zastosowaniu i usunięciu kodu i po odczycie po 409), 409 `cart-changed`
+  i `order-total-changed` na wstrzymanym odczycie koszyka (do odpowiedzi formularz zablokowany, bez komunikatu, region
+  „Składamy zamówienie…”, zmiana pola i wyboru nic nie zmienia; potem komunikat z listą i nowe podsumowanie w jednym
+  renderze, sprawdzane obserwatorem DOM; fokus według F2; pusty koszyk, `hasExcludedLines`, 401, kod odrzucony przy
+  odczycie, metoda dostawy znika, brak różnic; odczyt nieudany i podsumowanie nieaktualne: kliknięcie czyta koszyk
+  i nie wysyła zamówienia, ponowny błąd, 401; kod zastosowany, usunięty, odrzucony przez podsumowanie i przez 400
+  w stanie nieaktualnym: od razu lista zmian względem podsumowania odrzuconego zamówienia i zamawia dopiero kolejne
+  kliknięcie; nieudane i 401 sprawdzenie kodu: stan zostaje, kliknięcie tylko czyta), funkcja różnic `cart-changes.test.ts` (każdy wiersz tabeli, kolejność,
+  brak różnic, pozycja bez produktu, kwoty z API bez sumowania), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
   danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`, region statusu (ten sam węzeł od wczytywania do treści),
   „Spróbuj ponownie” (przycisk z `aria-disabled` w trakcie, fokus po sukcesie, ponownym błędzie i przeniesiony w trakcie),
   link „Zaloguj się” według przełączników (przed odczytem, wyłączone konta, włączone konta), blokada w trakcie
@@ -798,6 +855,15 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   pola jest w `role="alert"`); pusty formularz przy 375 px
   z dotykiem: oba błędy wyboru, fokus na pierwszym sposobie dostawy w widoku, bez POST; brak przewijania poziomego
   przy 320 i 375 px.
+- `cart-order-consistency.spec.ts` (dwie karty jednego kontekstu, zmiany koszyka w drugiej karcie żądaniami do BFF
+  koszyka, gość): R1 (ilości dwóch wariantów zamienione przy tej samej kwocie: 409, komunikat wymienia obie pozycje,
+  podsumowanie ma nowe ilości, drugie kliknięcie składa zamówienie, a e-mail ma ilości nowego podsumowania), R2 (ilość
+  zmieniona, odczyt koszyka po 409 wstrzymany: bez komunikatu, „Składamy zamówienie…”, formularz zablokowany; po
+  zwolnieniu komunikat i nowe podsumowanie w tej samej klatce, „było 1 szt., jest 3 szt.”, „Do zapłaty”, link do
+  koszyka), R3 (granica: zmiana ilości ze strony koszyka wstrzymana w drodze, zamówienie z drugiej karty zgodne
+  z kasą, spóźniony zapis dostaje 404) oraz komunikat R1 z najdłuższą nazwą produktu danych demo przy 375 px z dotykiem
+  i przy 320 px: bez przewijania poziomego, link „Przejdź do koszyka” osiągalny Tabem z komunikatu i działający
+  dotykiem albo Enterem.
 - `payment-resume.spec.ts`: powrót ze strony symulatora na `/checkout`, link „Opłać zamówienie R-…”, „Wróć do
   płatności” otwiera tę samą sesję, płatność się udaje.
 - E2E składają zamówienia na wariantach z dużym stanem i je opłacają; rezerwacje opłaconych zamówień zostają do
