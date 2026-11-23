@@ -11,7 +11,7 @@ epiku i wypycha ją. Zadania nie mają własnych PR. Plan jest dokumentem robocz
 |---|---|---|
 | 1 | CART-ORDER-CONSISTENCY-1 | zmergowane, 60664561 i poprawki po przeglądzie d87c0206 (FULL: PASS, DELTA: PASS) |
 | 2 | CART-ORDER-CONSISTENCY-2, CART-ORDER-CONSISTENCY-3 | zadanie 2 zmergowane (f862efb2; FULL: PASS); zadanie 3 zmergowane (752dafd9; FULL: CHANGES_REQUIRED, DELTA 1: CHANGES_REQUIRED, DELTA 2: PASS) |
-| 3 | CART-ORDER-CONSISTENCY-4 | |
+| 3 | CART-ORDER-CONSISTENCY-4 | zmergowane (8ff8aae3; FULL: CHANGES_REQUIRED, DELTA: PASS) |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
@@ -134,7 +134,7 @@ klucza; znacznik kupującego: obcy znacznik, znacznik innego konta, brak sesji z
       "title": "Kasa: zamówienie tylko dla kupującego pokazanego w kasie (gość, konto A, konto B)",
       "scope": "Spec, Z4 (decyzja D6; przebiegi R4, R5, R6). Sklep: GET /auth/session zwraca znacznik kupującego (HMAC z SessionData.sub), kasa odsyła go w polu buyer (albo guest), BFF porównuje go z sub sesji z chwili wysłania przed scaleniem koszyka i przed API, własny typ 409 checkout-buyer-changed, kasa czyta sesję i koszyk od nowa i pokazuje komunikat. Konto zamówienia nadal wynika wyłącznie z sesji; pole nie trafia do API. Bez zmian API i bez zmiany SessionData.",
       "acceptance_criteria": [
-        "GET /auth/session (Vitest): klient dostaje buyer = HMAC-SHA256 z „checkout-buyer:<sub>” kluczem STORE_SESSION_SECRET w base64url; ten sam sub w dwóch sesjach i po odświeżeniu tokenu daje ten sam znacznik, inny sub inny; odpowiedź nie zawiera sub, identyfikatora sesji ani tokenów; gość dostaje null; 503 i wygasła sesja jak dziś.",
+        "GET /auth/session (Vitest): klient dostaje buyer = HMAC-SHA256 z sub kluczem wyprowadzonym z STORE_SESSION_SECRET przez HKDF-SHA256 (info „checkout-buyer”) w base64url, który nie jest poprawnym podpisem żadnego ciasteczka; ten sam sub w dwóch sesjach i po odświeżeniu tokenu daje ten sam znacznik, inny sub inny; odpowiedź nie zawiera sub, identyfikatora sesji ani tokenów; gość dostaje null; 503 i wygasła sesja jak dziś.",
         "BFF (Vitest, dubler API i sesji): każdy wiersz tabeli Z4 specyfikacji z liczbą wywołań API i scalenia koszyka gościa (zero przy 409, 401, 503 i 422) i ze stanem ciasteczek; porównanie znacznika w stałym czasie; buyer nie jest w treści żądania do API; 409 ma tylko type i detail.",
         "Zmiana konta: kasa konta A wysłana przy sesji konta B z identycznymi pozycjami i kwotą daje 409 checkout-buyer-changed, bez zamówienia i bez scalenia. Niedostępność sesji: kasa konta A bez ciasteczka sesji, ze złym podpisem, z sesją usuniętą z Redisa albo z tokenem nie do odświeżenia daje 401, a przy błędzie Redisa albo Keycloaka 503; w żadnym z tych przypadków nie powstaje zamówienie gościa, także gdy żądanie niesie email, a przeglądarka ma ciasteczko koszyka gościa. Odświeżenie tokenu w trakcie żądania nie daje konfliktu.",
         "Kasa (Vitest, wstrzymane obietnice): po 409 checkout-buyer-changed formularz jest zablokowany do końca ponownego odczytu sesji i koszyka, a zmiana pola w tym czasie nic nie zmienia; potem w jednym renderze komunikat ze specyfikacji z adresem konta (albo tekst o wylogowaniu), kupujący i podsumowanie z odczytu, zachowane pola i wybory; następne wysłanie niesie znacznik z ostatniego odczytu, nowy Idempotency-Key i expectedLines nowego podsumowania. Kolejna zmiana konta między odczytem a wysłaniem daje drugie 409 i drugi odczyt. Odczyt nieudany: komunikat ze specyfikacji, kasa nieaktualna, kolejne kliknięcie czyta sesję i koszyk i nie wysyła POST /api/checkout.",
@@ -155,11 +155,11 @@ klucza; znacznik kupującego: obcy znacznik, znacznik innego konta, brak sesji z
         "apps/store/app/auth/session/",
         "apps/store/CLAUDE.md",
         "e2e/tests/cart-order-consistency.spec.ts",
-        "docs/features/checkout/spec.md"
+        "docs/features/checkout/spec.md",
+        "load/",
+        "apps/api/fixtures/stock.yaml"
       ],
-      "parallel_with": [
-        "CART-ORDER-CONSISTENCY-2"
-      ]
+      "parallel_with": []
     }
   ]
 }

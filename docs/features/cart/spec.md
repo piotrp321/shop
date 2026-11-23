@@ -597,7 +597,7 @@ zwracana.
   Granica ochrony: kasa otwarta tym linkiem w tej samej karcie otwiera się dopiero po zakończeniu wszystkich zmian
   zleconych na tej stronie koszyka (niezatwierdzony wpis, operacja w drodze, akcje czekające). Zamówienie powstaje
   tylko wtedy, gdy koszyk na serwerze ma w chwili złożenia te same pozycje i ilości co podsumowanie pokazane w kasie
-  i ta sama jest kwota do zapłaty, także gdy kasę otwarto inną drogą (nowa karta albo okno, menu kontekstowe, adres
+  i ta sama jest kwota do zapłaty, a kupujący jest ten sam (gość albo to samo konto), także gdy kasę otwarto inną drogą (nowa karta albo okno, menu kontekstowe, adres
   wpisany ręcznie, wstecz i dalej) albo koszyk zmieniono w innej karcie, przeglądarce lub na innym urządzeniu po
   wczytaniu kasy; inaczej 409 i kasa pokazuje, co się zmieniło (`docs/features/cart-order-consistency/spec.md`,
   „Granica ochrony zamówienia”). Poza gwarancją: zmiana zlecona w innej karcie, która nie dotarła do serwera przed

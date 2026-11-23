@@ -333,7 +333,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   base64url) z `sub` tej samej sesji, której token odczytał `/api/v1/me`. Znacznik niczego nie otwiera i służy tylko
   porównaniu w BFF kasy. Klucz znaczników jest inny niż klucz podpisów ciasteczek (`signValue` podpisuje samym
   sekretem): żaden znacznik nie jest podpisem żadnej wartości ciasteczka. Nie licz znaczników ani innych wartości
-  pokazywanych przeglądarce samym `STORE_SESSION_SECRET`. Odpowiedź nie zawiera `sub`, identyfikatora sesji ani
+  pokazywanych przeglądarce samym `STORE_SESSION_SECRET` (poza podpisami ciasteczek z `signValue`). Odpowiedź nie zawiera `sub`, identyfikatora sesji ani
   tokenów; znacznika, `sub` ani tokenów nie zapisuj w logach.
 - Nie loguj obiektów błędów openid-client (ich `cause` zawiera odpowiedzi z tokenami). Użyj `logFailure`.
 - `returnTo` przechodzi zawsze przez `sanitizeReturnTo`.

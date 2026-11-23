@@ -419,7 +419,7 @@ Kasę otwartą inną drogą niż link w tej karcie (nowa karta albo okno: Ctrl, 
 ręcznie; przyciski wstecz i dalej) i zmianę koszyka w innej karcie, przeglądarce albo na innym urządzeniu po wczytaniu
 kasy obejmuje gwarancja zamówienia z `docs/features/cart-order-consistency/spec.md` („Granica ochrony zamówienia”):
 zamówienie powstaje tylko wtedy, gdy koszyk na serwerze ma w chwili złożenia te same pozycje i ilości co podsumowanie
-pokazane w kasie i ta sama jest kwota do zapłaty; inaczej 409, a kasa po odczycie koszyka pokazuje, co się zmieniło.
+pokazane w kasie, ta sama jest kwota do zapłaty i ten sam kupujący (gość albo to samo konto); inaczej 409, a kasa po odczycie koszyka pokazuje, co się zmieniło.
 
 Poza gwarancją:
 
