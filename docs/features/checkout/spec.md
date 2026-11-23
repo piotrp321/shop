@@ -39,6 +39,7 @@ Decyzje użytkownika:
 |---|---|
 | P1 | Zamówienie obejmuje cały koszyk. Koszyk z pozycją, której nie da się kupić (`hasExcludedLines`), blokuje złożenie: klient najpierw usuwa pozycję albo zmniejsza ilość. |
 | P2 | Żądanie złożenia niesie oczekiwaną kwotę brutto z podsumowania, które widział klient. Inna kwota w chwili złożenia: 409, bez zamówienia; sklep pokazuje nowe podsumowanie. |
+| P2a | Żądanie złożenia niesie też linie podsumowania, które widział klient (`expectedLines`: wariant i ilość każdej linii; `docs/features/cart-order-consistency/spec.md`, D1–D3, D8). Koszyk z innymi pozycjami albo ilościami w chwili złożenia: 409 `cart-changed`, także przy tej samej kwocie, bez zamówienia; sklep pokazuje nowe podsumowanie. Zamówienie powstaje wyłącznie z koszyka. |
 | P3 | Klient wybiera w kasie metodę dostawy (kurier), a zamówienie ma jej kopię i koszt: suma zamówienia = suma pozycji po rabacie + koszt dostawy (`docs/features/delivery/spec.md`, W5, W6). Zamówienia sprzed dostawy nie mają metody i kosztują tyle, co ich pozycje. |
 | P4 | Dane: e-mail, imię i nazwisko, telefon (wymagany), adres w Polsce: ulica i numer, kod pocztowy `NN-NNN`, miejscowość. |
 | P5 | Klient zalogowany: e-mail z konta (bez edycji), imię i nazwisko wstępnie z konta, adres wpisywany przy każdym zamówieniu (bez zapisywania na koncie). |
@@ -121,6 +122,11 @@ Reguły Deptrac (nowe warstwy `Ordering_Domain`, `Ordering_Application`, `Orderi
   z wyceny, nie mnożenie ceny jednostkowej.
 - `OrderDiscount {code, kind (percent | amount), value, amount}`: kopia kodu rabatowego, którym złożono zamówienie
   (tekst 1–32 znaki, wartość ≥ 1, kwota ≥ 1 gr), albo brak.
+- `ExpectedLines`: linie podsumowania z żądania (P2a): 1–50 wariantów (`Order::MAX_LINES`), każdy raz (porównanie bez
+  wielkości liter, zapis małymi literami), po 1–99 sztuk (`OrderLine::MAX_QUANTITY`); inaczej `InvalidOrderInput`
+  „Nieprawidłowa lista pozycji zamówienia. Odśwież stronę.”. `matches(linie koszyka)` porównuje zbiory par wariant
+  i ilość (kolejność bez znaczenia; koszyk z powtórzonym wariantem nigdy się nie zgadza), `canonical()` to
+  `<variantId>*<ilość>` posortowane po wariancie i złączone przecinkami (do odcisku).
 - `DiscountCodeText`: kod z żądania przed wyceną i odciskiem: poprawny UTF-8, przycięty z białych znaków Unicode
   i niewidocznych znaków formatu, litery ASCII wielkie; pusty to brak kodu; ponad 64 znaki (przed przycięciem):
   `InvalidOrderInput` „Kod rabatowy może mieć najwyżej 64 znaki.”.
@@ -157,6 +163,7 @@ Komunikaty `detail` (po polsku, bez danych wejściowych) i `type` problemu (RFC 
 | Wyjątek | Rodzaj | `detail` | `type` (prefiks `tag:piotrp321.github.io,2026:shop/problems/`) |
 |---|---|---|---|
 | `CartEmpty` | `Conflict` (409) | „Koszyk jest pusty.” | `…/cart-empty` |
+| `CartContentChanged` | `Conflict` (409) | „Zawartość koszyka się zmieniła. Sprawdź podsumowanie.” | `…/cart-changed` |
 | `GuestOrderTooLarge` | `Conflict` (409) | „Zamówienie bez konta może mieć najwyżej 10 różnych produktów, po 10 sztuk każdego. Zmniejsz ilości w koszyku.” | `…/guest-order-too-large` |
 | `TooManyUnpaidOrders` | `Conflict` (409) | „Nie możemy teraz przyjąć kolejnego zamówienia, bo z tych danych albo z tej sieci czeka już kilka nieopłaconych. Spróbuj ponownie za ok. 35 minut.” (ten sam dla limitu adresu, e-maila i konta) | `…/too-many-unpaid-orders` |
 | `CartNotOrderable` | `Conflict` (409) | „Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.” | `…/cart-not-orderable` |
@@ -173,8 +180,9 @@ serwowane.
 
 ## Złożenie zamówienia (`PlaceOrder`)
 
-Komenda `PlaceOrder(cartRef, contact, address, deliveryMethodId, expectedTotalGross, idempotencyKey, discountCode | null, clientAddress)` na
-`command.bus` (kod normalizuje `DiscountCodeText`; pusty albo biały to brak kodu), gdzie `cartRef`
+Komenda `PlaceOrder(cartRef, contact, address, deliveryMethodId, expectedTotalGross, expectedLines, idempotencyKey, discountCode | null, clientAddress)` na
+`command.bus` (kod normalizuje `DiscountCodeText`; pusty albo biały to brak kodu; `expectedLines` to lista
+`{variantId, quantity}`, z której handler buduje `ExpectedLines` przed pierwszym portem), gdzie `cartRef`
 to `guest(cartId)` albo `customer(customerId)`; wynik `PlacedOrder {order: OrderView, replayed: bool}`. Jedna
 transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
 
@@ -193,12 +201,20 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
    - zamówienie istnieje z innym odciskiem (inny koszyk, inny klient albo inna treść): `IdempotencyKeyReused` (409).
    Odcisk żądania (`requestFingerprint`): SHA-256 znormalizowanych `cartRef` (`guest:<cartId>` albo
    `customer:<sub>`), danych kontaktowych, adresu i `expectedTotalGross` (po przycięciu i normalizacji telefonu),
-   znormalizowanego kodu rabatowego, dopisanego tylko wtedy, gdy jest, i `delivery:<deliveryMethodId>` (UUID małymi
-   literami) po nim; bez kodu składnik kodu jest pominięty. Ten sam klucz z inną metodą
-   dostawy to inne żądanie (`IdempotencyKeyReused`).
+   znormalizowanego kodu rabatowego, dopisanego tylko wtedy, gdy jest, `delivery:<deliveryMethodId>` (UUID małymi
+   literami) po nim i `lines:<ExpectedLines::canonical()>` na końcu; bez kodu składnik kodu jest pominięty. Ten sam
+   klucz z inną metodą dostawy albo inną listą linii (inne ilości, inne warianty; ta sama lista w innej kolejności
+   albo wielkości liter to ta sama lista) to inne żądanie (`IdempotencyKeyReused`).
    Koszyk jest częścią odcisku, więc dwa koszyki gości z tym samym kluczem i tymi samymi danymi dostają 409, a nie
    cudze zamówienie.
-3. Brak linii: `CartEmpty` (409). Zamówienie gościa większe niż 10 linii albo 10 sztuk jednej linii: `GuestOrderTooLarge` (409, reguła domeny `GuestOrderSize`), zaraz po `CartEmpty`, przed wyceną, kodem, numerem i rezerwacją, więc przed `CartNotOrderable`, `DiscountCodeRejected`, `OrderTotalChanged` i niedoborem. Zamówienie klienta nie podlega tej regule (do 50 linii po 99 sztuk, jak koszyk).
+3. Brak linii: `CartEmpty` (409), także gdy `expectedLines` wymienia pozycje.
+3b. **Zawartość koszyka** (P2a). Linie zablokowanego koszyka (wariant i ilość) inne niż `expectedLines` (inna ilość,
+   brak linii, linia dodatkowa, inny wariant): `CartContentChanged` (409 `cart-changed`), zaraz po `CartEmpty`, przed
+   limitem zamówienia gościa, limitem nieopłaconych zamówień, wyceną, kodem, numerem i rezerwacją. Porównanie działa
+   pod blokadą koszyka z kroku 1, więc żadna zmiana koszyka nie wchodzi między porównanie a opróżnienie koszyka.
+   Odrzucenie niczego nie zapisuje (koszyk bez zmian, bez numeru, rezerwacji, użycia kodu i roszczenia limitu).
+   `expectedLines` nie trafia do zamówienia.
+3c. Zamówienie gościa większe niż 10 linii albo 10 sztuk jednej linii: `GuestOrderTooLarge` (409, reguła domeny `GuestOrderSize`), zaraz po porównaniu zawartości, przed wyceną, kodem, numerem i rezerwacją, więc przed `CartNotOrderable`, `DiscountCodeRejected`, `OrderTotalChanged` i niedoborem. Zamówienie klienta nie podlega tej regule (do 50 linii po 99 sztuk, jak koszyk).
 3a. **Limit nieopłaconych zamówień** (`docs/features/abuse-limits/spec.md`, L6, D6–D8; `UnpaidOrderLimit`). Blokady
    doradcze transakcji na adres klienta (`ClientIp`, z kontrolera w komendzie, poza odciskiem żądania), potem na
    tożsamość (`email:<klucz>` gościa albo `customer:<sub>`), i pod nimi liczenie roszczeń z `expires_at` po teraz:
@@ -265,11 +281,12 @@ Idempotencja a dane innych klientów:
   działa bez koszyka, ale tylko z tym samym `cartId` i tą samą treścią.
 
 Ceny i kwoty liczy wyłącznie serwer:
-- Żądanie nie niesie cen, ilości ani pozycji (tylko opcjonalny tekst kodu i identyfikator metody dostawy). Linie
-  i ilości pochodzą z zablokowanego koszyka, ceny, rabat i wartości linii z wyceny Pricing w chwili złożenia (krok 4),
-  koszt dostawy z wyceny Delivery i podziału Pricing (krok 4a), a sumy liczy domena (`OrderTotals`).
+- Żądanie nie niesie cen. Pozycje i ilości niesie tylko do porównania (`expectedLines`, krok 3b): linie i ilości
+  zamówienia pochodzą wyłącznie z zablokowanego koszyka, ceny, rabat i wartości linii z wyceny Pricing w chwili
+  złożenia (krok 4), koszt dostawy z wyceny Delivery i podziału Pricing (krok 4a), a sumy liczy domena (`OrderTotals`).
 - `expectedTotalGross` służy wyłącznie do porównania (P2) i nie trafia do zamówienia. Kwota niższa albo wyższa od
-  sumy liczonej przez serwer daje 409 bez zamówienia.
+  sumy liczonej przez serwer daje 409 bez zamówienia. Tak samo `expectedLines` (P2a): inne linie dają 409 bez
+  zamówienia, także przy tej samej kwocie.
 - Nieznane pola treści żądania są ignorowane (jak w koszyku, `MapRequestPayload`): pola typu `lines`, `totals`,
   `unitGross` nie mają wpływu na zamówienie. BFF sklepu przekazuje do API tylko pola z kontraktu.
 
@@ -369,8 +386,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
-| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross, deliveryMethodId, discountCode?}` | 201 `OrderView` (z `delivery: {methodName, gross}`), nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią (bez drugiego użycia kodu) | 400 brak lub zły klucz, zły JSON; 401 niepoprawny token; 404 koszyk; 409 z `type` przyczyny (`CartEmpty`, `GuestOrderTooLarge` tylko dla gościa, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`, `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` z rozszerzeniem `minimumOrderGross`, `delivery-method-unavailable`; schemat OpenAPI `OrderConflictProblem` z `enum` wartości `type`); 415; 422; 503 (token wysłany, klucze wystawcy niedostępne) |
-| `POST /api/v1/me/orders` (klient), nagłówek `Idempotency-Key`, body `{fullName, phone, street, postalCode, city, expectedTotalGross, deliveryMethodId, discountCode?}` | jak wyżej; e-mail z tokena | 401 (bez tokena, token `backoffice`), 503 (klucze wystawcy niedostępne), pozostałe jak wyżej bez 404 |
+| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross, deliveryMethodId, expectedLines: [{variantId, quantity}], discountCode?}` | 201 `OrderView` (z `delivery: {methodName, gross}`), nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią (bez drugiego użycia kodu) | 400 brak lub zły klucz, zły JSON; 401 niepoprawny token; 404 koszyk; 409 z `type` przyczyny (`CartEmpty`, `CartContentChanged` (`cart-changed`, odpowiedź tylko z `type` i `detail`, bez rozszerzeń), `GuestOrderTooLarge` tylko dla gościa, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`, `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` z rozszerzeniem `minimumOrderGross`, `delivery-method-unavailable`; schemat OpenAPI `OrderConflictProblem` z `enum` wartości `type`); 415; 422; 503 (token wysłany, klucze wystawcy niedostępne) |
+| `POST /api/v1/me/orders` (klient), nagłówek `Idempotency-Key`, body `{fullName, phone, street, postalCode, city, expectedTotalGross, deliveryMethodId, expectedLines: [{variantId, quantity}], discountCode?}` | jak wyżej; e-mail z tokena | 401 (bez tokena, token `backoffice`), 503 (klucze wystawcy niedostępne), pozostałe jak wyżej bez 404 |
 
 `OrderView`:
 
@@ -417,8 +434,16 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | `expectedTotalGross` | brak, `null` / nie liczba całkowita / ujemna | Kwota zamówienia jest wymagana. / Kwota zamówienia musi być liczbą całkowitą. / Kwota zamówienia nie może być ujemna. |
 | `deliveryMethodId` | brak, `null` / nie tekst, pusty albo nie UUID (8-4-4-4-12 cyfr szesnastkowych, dowolna wielkość liter) | Kasa została zaktualizowana. Odśwież stronę i wybierz sposób dostawy. / Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie. |
 | `discountCode` | nie tekst (liczba, tablica, `true`) / > 64 znaki | Kod rabatowy musi być tekstem. / Kod rabatowy może mieć najwyżej 64 znaki. |
+| `expectedLines` | brak, `null` | Kasa została zaktualizowana. Odśwież stronę. |
+| `expectedLines` | nie lista (tekst, liczba, `true`, obiekt), lista pusta, ponad 50 elementów, ten sam `variantId` dwa razy (także w innej wielkości liter) | Nieprawidłowa lista pozycji zamówienia. Odśwież stronę. |
+| `expectedLines[n]` | element nie jest obiektem (liczba, tekst, `null`, lista) | Nieprawidłowa lista pozycji zamówienia. Odśwież stronę. |
+| `expectedLines[n].variantId` | brak, nie tekst, nie UUID (8-4-4-4-12 cyfr szesnastkowych, dowolna wielkość liter; także ze spacją, końcem linii, NUL, U+2028, NBSP) | Nieprawidłowa lista pozycji zamówienia. Odśwież stronę. |
+| `expectedLines[n].quantity` | brak, nie liczba całkowita (tekst, ułamek, także `2.0`, `true`), 0, ujemna, > 99 | Nieprawidłowa lista pozycji zamówienia. Odśwież stronę. |
 
 - `discountCode` jest opcjonalny: brak klucza, `null`, `""` i same białe znaki to złożenie bez kodu.
+- `expectedLines` daje najwyżej jedno naruszenie (ograniczenie `ExpectedLinesFormat`): pierwszy zły element, a w nim
+  pierwsze złe pole. Kolejność elementów nie ma znaczenia. UUID spoza wersji (nil, max) jest poprawnym elementem: daje
+  409 `cart-changed`, bo koszyk go nie ma. Pusty obiekt `{}` to element bez `variantId`.
 
 - Nagłówek `Idempotency-Key` brak albo zły format: 400 z naruszeniem nagłówka (jak przyjęcie magazynowe).
 - `cartId` wskazujący koszyk klienta: 404 (jak endpointy koszyka gościa).
@@ -438,6 +463,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   składania zamówienia.
 - Body może nieść `discountCode` (zastosowany kod; `CUSTOMER_ORDER_FIELDS` w `src/checkout/api.ts` przepuszcza go jak
   pola formularza do API, które go waliduje i normalizuje: `docs/features/discount-codes/spec.md`).
+- Body niesie `expectedLines` (linie pokazanego podsumowania, P2a); `CUSTOMER_ORDER_FIELDS` przepuszcza je do API bez
+  zmian, także wartość, której API nie przyjmie (wtedy 422 API).
 - `GET /api/cart` (BFF koszyka) przyjmuje jeden parametr, `discountCode` (podgląd kodu na kasie), i przekazuje go do
   API; inne parametry pomija. 400 API na kod (za długi, nie tekst) trafia do przeglądarki jako 400 `{detail}` z tekstem
   API; w innych odczytach 400 API to 503.
@@ -461,7 +488,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   i `getPaymentStatus` (jedyne miejsce `fetch`). Wynik 409 to `conflict` z `reason`
   wyznaczonym wyłącznie z `type` (`src/checkout/problems.ts`: mapa typów ze schematu OpenAPI `OrderConflictProblem`
   na przyczyny, kompilator wymaga wpisu dla każdego typu schematu; inny albo brakujący `type` to `unknown`; trzy typy
-  kodu rabatowego to jedna przyczyna `discount_code_rejected`). `detail` służy tylko do wyświetlenia.
+  kodu rabatowego to jedna przyczyna `discount_code_rejected`, `cart-changed` to `cart_changed`). `detail` służy tylko
+  do wyświetlenia.
 - `loadCart(discountCode?)` w tym samym pliku wysyła kod w zapytaniu `/api/cart?discountCode=…` (kodowanie, które nie
   rzuca na samotnym surogacie UTF-16: zamienia go na U+FFFD) i mapuje 400 na `invalid` z `detail`.
 
@@ -534,8 +562,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 - `Idempotency-Key`: UUID (`crypto.randomUUID`) tworzony przy wejściu na `/checkout` i używany ponownie przy
   ponowieniu niepewnego wyniku (błąd sieci, 403, 5xx, 503). Klucz należy do jednej logicznej próby: nowy powstaje
   po zmianie danych formularza, po zastosowaniu i usunięciu kodu rabatowego (żądanie niesie inny kod i kwotę), po 409
-  `IdempotencyKeyReused`, po 409 `OrderTotalChanged` (żądanie niesie wtedy inną kwotę, która należy do odcisku
-  żądania, a nic nie zostało złożone) i po 409 kodu rabatowego. Odrzucony podgląd kodu klucza nie zmienia (żądanie
+  `IdempotencyKeyReused`, po 409 `OrderTotalChanged` i `CartContentChanged` (żądanie niesie wtedy inną kwotę albo
+  inne linie, które należą do odcisku żądania, a nic nie zostało złożone) i po 409 kodu rabatowego. Odrzucony podgląd kodu klucza nie zmienia (żądanie
   zostaje, jakie było). Po 409 `CartEmpty`, `CartNotOrderable`,
   `InsufficientStockForOrder` i po nieznanym 409 klucz zostaje: ponowienie tym samym kluczem po ewentualnym sukcesie
   da powtórzenie 200, nie drugie zamówienie. Strona niczego nie ponawia sama: każdy POST to kliknięcie klienta.
@@ -543,7 +571,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   403), a zamówienie jednak powstało, zmiana pola i ponowne kliknięcie dają 409 `CartEmpty` (pusty koszyk), a nie
   potwierdzenie. Drugiego zamówienia nie ma, bo koszyk jest pusty.
 - `expectedTotalGross` = `totalGross` wybranej opcji dostawy z ostatnio wczytanego podsumowania, `deliveryMethodId` =
-  jej `methodId`. Bez wybranej metody (także gdy wybranej nie ma już wśród opcji podsumowania) albo bez dostawcy
+  jej `methodId`, `expectedLines` = `variantId` i `quantity` każdej linii tego samego podsumowania, w jego kolejności
+  (także podsumowania wczytanego z kodem, bez kodu i po 409). Bez wybranej metody (także gdy wybranej nie ma już wśród opcji podsumowania) albo bez dostawcy
   płatności żądania nie ma: „Wybierz sposób dostawy.” i „Wybierz sposób płatności.” przy grupach, których dotyczą,
   jednym kliknięciem także oba naraz; każda z nich ma wtedy `aria-invalid` i `aria-describedby` na swój komunikat,
   a fokus idzie na pierwszą opcję pierwszej grupy z błędem (dostawa przed płatnością). Zmiana metody daje nowy klucz
@@ -570,7 +599,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | Sytuacja | UI na `/checkout` |
 |---|---|
 | 422 | komunikaty przy polach (`violations`) |
-| 409 `OrderTotalChanged` | `detail`, ponowne wczytanie podsumowania z tym samym kodem (nowa kwota), formularz zostaje, nowy klucz, bez linku do koszyka (pusty koszyk albo `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem) |
+| 409 `OrderTotalChanged`, `CartContentChanged` | `detail`, ponowne wczytanie podsumowania z tym samym kodem (nowa kwota albo nowe linie), formularz zostaje, nowy klucz, bez linku do koszyka (pusty koszyk albo `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem) |
 | 409 `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` (Q6) | `detail` przy polu kodu, kod zdjęty, podsumowanie wczytane bez kodu (nowa kwota), nowy klucz, nic nie składa się samo: zamówienie składa dopiero kolejne kliknięcie; gdy podsumowania nie da się wczytać, ekran zostaje taki jak był (kod zastosowany, „Usuń kod” z fokusem) z `detail` i komunikatem o odświeżeniu, a 401 pokazuje komunikat sesji |
 | 409 `CartEmpty`, `GuestOrderTooLarge`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka”, ponowne wczytanie podsumowania, klucz zostaje; gdy przeładowane podsumowanie zastępuje formularz komunikatem z własnym linkiem, bez drugiego linku |
 | 409 `IdempotencyKeyReused` | `detail`, nowy klucz, formularz zostaje, bez linku do koszyka (kolejne kliknięcie składa zamówienie z nowym kluczem) |
@@ -595,10 +624,11 @@ zmiany wyglądu). Gdy fokus idzie na pierwsze błędne pole, błędy przy polach
 | Podwójne kliknięcie, ponowienie po zgubionej odpowiedzi | jedno zamówienie; ponowienie dostaje 200 z tym samym zamówieniem, także gdy koszyk gościa w międzyczasie wygasł albo został scalony |
 | Ten sam klucz z inną treścią albo z innego koszyka | 409 `IdempotencyKeyReused` |
 | Dwa złożenia z różnymi kluczami z jednego koszyka (dwie karty) | jedno zamówienie, drugie 409 `CartEmpty` |
+| Zmiana pozycji albo ilości w koszyku (inna karta, przeglądarka, urządzenie) między podsumowaniem a złożeniem, także przy tej samej kwocie | 409 `CartContentChanged`, bez zamówienia, rezerwacji, użycia kodu, roszczenia limitu i numeru; koszyk bez zmian |
 | Ostatnia sztuka kupowana równolegle przez wielu klientów | tylu zamawiających, ile sztuk; reszta 409 `InsufficientStockForOrder`, ich koszyki bez zmian |
 | Zmiana ceny między podsumowaniem a złożeniem | 409 `OrderTotalChanged`, bez rezerwacji i zamówienia |
 | Pozycja bez ceny, nieznany wariant | 409 `CartNotOrderable` |
-| Dodanie do koszyka równolegle ze złożeniem | blokada koszyka: dodanie przed złożeniem jest w zamówieniu, po złożeniu zostaje w pustym koszyku |
+| Dodanie do koszyka równolegle ze złożeniem | blokada koszyka: dodanie przed złożeniem daje 409 `CartContentChanged` (koszyk z obiema liniami), po złożeniu zostaje w pustym koszyku; dodana linia nigdy nie trafia do zamówienia |
 | Błąd w trakcie złożenia (np. zapis zamówienia) | całość wycofana: koszyk bez zmian, brak rezerwacji, brak zdarzenia |
 | Błąd wysyłki e-maila | zamówienie złożone; ponowienia transportu, potem `failed` |
 | Zdarzenie dostarczone dwa razy, jedno po drugim albo równolegle | jeden e-mail (znacznik i zajęcie wysyłki w tabeli powiadomień) |
@@ -615,8 +645,9 @@ zmiany wyglądu). Gdy fokus idzie na pierwsze błędne pole, błędy przy polach
 3. `Idempotency-Key`: ponowienie z tym samym kluczem i treścią zwraca to samo zamówienie bez drugiej rezerwacji, także
    równolegle (O2) i po wygaśnięciu albo scaleniu koszyka gościa (O6); inna treść, inny koszyk albo inny klient: 409
    bez danych cudzego zamówienia (O7).
-4. Kwota inna niż oczekiwana, pusty koszyk i pozycje niemożliwe do kupienia dają 409 bez zmian. Ceny, ilości i sumy
-   zamówienia pochodzą wyłącznie z koszyka, Pricing i domeny; pola żądania ich nie zmieniają.
+4. Kwota inna niż oczekiwana, linie koszyka inne niż `expectedLines`, pusty koszyk i pozycje niemożliwe do kupienia
+   dają 409 bez zmian. Ceny, ilości i sumy zamówienia pochodzą wyłącznie z koszyka, Pricing i domeny; pola żądania
+   ich nie zmieniają.
 5. Po złożeniu przychodzi jeden e-mail z potwierdzeniem do Mailpit, także przy powtórzonej dostawie zdarzenia po
    kolei; wycofane złożenie nie zostawia zdarzenia w outboxie.
 6. Strona potwierdzenia pokazuje numer, kwotę i status płatności (e-mail po opłaceniu); strony kasy mają `noindex`, odpowiedzi `private, no-store`.
@@ -636,6 +667,11 @@ zmiany wyglądu). Gdy fokus idzie na pierwsze błędne pole, błędy przy polach
   z inną treścią, z innego koszyka gościa przy tych samych danych i innego klienta (409), kolejność kroków (rezerwacja
   po sprawdzeniu kwoty, numerze i opróżnieniu koszyka; zapis na końcu).
 - `PlaceOrder` liczy kwoty z portu `OrderPrices` niezależnie od `expectedTotalGross` (kwota niższa i wyższa: 409).
+- `ExpectedLines` (duplikat, wielkość liter, granice 1, 50, 99, kolejność bez znaczenia, postać kanoniczna);
+  `PlaceOrder`: inna zawartość (inna ilość, zamienione ilości przy tej samej kwocie, brak linii, linia dodatkowa, inny
+  wariant) daje `CartContentChanged` po `CartEmpty`, przed limitem gościa, limitem nieopłaconych zamówień i wyceną,
+  bez żadnego zapisu; odcisk kończy się `lines:…`; ten sam klucz z inną listą to `IdempotencyKeyReused`, z tą samą
+  (także w innej kolejności i wielkości liter) powtórzenie, także po opróżnieniu koszyka.
 - `SendOrderConfirmation`: przypadki z `docs/features/order-management/spec.md` („Znaczniki wysyłki poza
   agregatem”, testy jednostkowe); `OrderConfirmationText`
   (treść, formatowanie kwot, data w `Europe/Warsaw`, wariant domyślny bez etykiety).
@@ -648,6 +684,9 @@ zmiany wyglądu). Gdy fokus idzie na pierwsze błędne pole, błędy przy polach
 - `PlaceOrder` na prawdziwej bazie: sukces (zamówienie, linie, rezerwacja z kluczem `orderId`, koszyk pusty,
   wiersz outboxa); niedobór i wymuszony błąd zapisu zamówienia wycofują wszystko (koszyk z liniami, brak rezerwacji,
   brak zamówienia, brak wiersza outboxa).
+- Przebieg R1 (`docs/features/cart-order-consistency/spec.md`): koszyk A × 1 i B × 2 w tej samej cenie, żądanie
+  z A × 2 i B × 1 i tą samą kwotą daje `CartContentChanged`; koszyk, stany, sekwencja numerów, roszczenia i użycia
+  kodów bez zmian. Powtórzenie zaraz po złożeniu (koszyk pusty) zwraca to samo zamówienie.
 - Atomowy rollback: koszyk z 3 pozycjami, niedobór tylko ostatniej; `reserved` i `on_hand` wszystkich trzech
   wariantów bez zmian, brak rezerwacji, koszyk z 3 liniami i tym samym `expiresAt`, brak zamówienia, linii i wiersza
   outboxa. To samo przy wymuszonym błędzie zapisu wiersza outboxa.
@@ -671,12 +710,16 @@ zmiany wyglądu). Gdy fokus idzie na pierwsze błędne pole, błędy przy polach
 | O2 | 10 równoległych złożeń z tym samym kluczem i koszykiem | 1 zamówienie, 1 × 201 i 9 × powtórzenie z tym samym `orderId`, rezerwacja raz |
 | O3 | 2 równoległe złożenia z różnymi kluczami z jednego koszyka | 1 zamówienie, 1 × `CartEmpty` |
 | O4 | 2 koszyki `[A, B]` i `[B, A]` równolegle, stan A = B = 1 | dokładnie 1 zamówienie, brak zakleszczeń |
-| O5 | złożenie klienta równolegle ze scaleniem koszyka gościa do tego klienta | brak zakleszczeń; linie gościa są w zamówieniu albo w koszyku klienta po złożeniu, nigdy utracone |
+| O5 | złożenie klienta z listą sprzed scalenia równolegle ze scaleniem koszyka gościa do tego klienta | brak zakleszczeń; albo zamówienie dokładnie z listy i linie gościa w koszyku, albo `CartContentChanged` i wszystkie linie w koszyku; nigdy utracone |
 | O6 | po złożeniu koszyk gościa scalony do konta (osobna runda: wygasły); 10 równoległych powtórzeń z tym samym kluczem, `cartId` i treścią | 10 × powtórzenie z tym samym `orderId`, żadnego 404, żadnej nowej rezerwacji |
 | O7 | ten sam klucz równolegle z dwóch różnych koszyków gości (osobna runda: dwóch klientów), te same dane | 1 zamówienie, 1 × `IdempotencyKeyReused` bez danych zamówienia; koszyk przegranego z liniami, jedna rezerwacja |
+| O8 | złożenie z listą sprzed zmiany równolegle ze zmianą ilości tej linii | albo zamówienie z ilością z listy i `CartLineNotFound` zmiany, albo `CartContentChanged`, brak zamówienia i koszyk z nową ilością; nigdy zamówienie z nową ilością |
+| O9 | złożenie równolegle z dodaniem innego wariantu | albo zamówienie z liniami z listy i koszyk z samą nową linią, albo `CartContentChanged` i koszyk z obiema; nigdy zamówienie z dodaną linią ani utracona linia |
+| O10 | złożenie koszyka z dwiema liniami równolegle z usunięciem jednej | albo zamówienie z obiema (usunięcie spóźnione niczego nie zmienia: `RemoveCartItem` brakującej linii to sukces), albo `CartContentChanged` i koszyk z jedną linią |
+| O11 | dwa złożenia z różnymi kluczami z jednego koszyka: lista aktualna i lista nieaktualna | dokładnie jedno zamówienie, z listą aktualną; nieaktualne dostaje `CartContentChanged` albo `CartEmpty` |
 
 Po każdej rundzie: `reserved` każdego wariantu = suma ilości aktywnych rezerwacji, każde zamówienie ma rezerwację
-o kluczu `orderId` z tymi samymi liniami.
+o kluczu `orderId` z tymi samymi liniami, a jego linie są równe `expectedLines` żądania, które je złożyło.
 
 ### Funkcjonalne API (`apps/api/tests/Functional/Ordering`)
 
@@ -692,8 +735,12 @@ private, no-store`.
   z ilościami z koszyka i cenami z Pricing; `expectedTotalGross` niższe (także 0) i wyższe od sumy daje 409
   `OrderTotalChanged` bez zamówienia i rezerwacji.
 - Idempotencja: 409 `IdempotencyKeyReused` nie zawiera `orderId`, numeru ani e-maila zamówienia, które użyło klucza
-  (inny koszyk gościa, inny klient, ta sama treść z innym `cartId`); powtórzenie po scaleniu i wygaśnięciu koszyka
-  gościa daje 200.
+  (inny koszyk gościa, inny klient, ta sama treść z innym `cartId`, inna lista linii); powtórzenie po scaleniu
+  i wygaśnięciu koszyka gościa daje 200.
+- Zawartość (P2a): 409 `cart-changed` tylko z `type`, `title`, `status` i `detail` dla gościa i klienta (zamienione
+  ilości przy tej samej kwocie, inna ilość, brak linii, linia dodatkowa, inny wariant), bez zamówienia, rezerwacji
+  i roszczenia; lista w innej kolejności i wielkości liter UUID składa zamówienie; UUID spoza wersji (nil, max) i lista
+  50 linii po 99 sztuk to 409, nie 422; pusty koszyk to `cart-empty` przy każdej liście.
 
 ### Architektura
 
@@ -706,14 +753,16 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
 - BFF `app/api/checkout/route.test.ts`: gość, sesja (ze scaleniem `store_cart`), brak `store_cart` (409 z `type`
   `CartEmpty`), 403 `Origin`
   i `Content-Type`, brak `Idempotency-Key`, przekazanie klucza, do API trafiają tylko pola kontraktu (dodatkowe pola
-  przeglądarki, np. ceny, są pomijane), 201 i 200 ustawiają `store_order_confirmation`
+  przeglądarki, np. ceny, są pomijane; `expectedLines` przechodzi bez zmian dla gościa i klienta), 201 i 200 ustawiają `store_order_confirmation`
   (z walutą), 404 gościa usuwa `store_cart`, 409 (przekazuje `type` każdej z pięciu przyczyn, `about:blank` i brak),
   422, 401, 503, `no-store`.
 - `/auth/session` (`app/auth/session`): `{name, email}`.
 - `CheckoutPage`: pierwszy odczyt po zakończeniu akcji strony koszyka (do tego czasu „Wczytywanie…”), od razu bez
   akcji i po akcjach porzuconych; formularz gościa i klienta (e-mail z sesji), podsumowanie, blokada przycisku, każdy wiersz tabeli
   UI (pięć przyczyn 409 i nieznany 409: komunikat, link do koszyka, formularz, ten sam albo nowy klucz przy kolejnym
-  kliknięciu, brak automatycznego drugiego POST), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
+  kliknięciu, brak automatycznego drugiego POST), `expectedLines` równe liniom pokazanego podsumowania (w jego
+  kolejności, także po zastosowaniu i usunięciu kodu i po odczycie po 409), 409 `cart-changed` (komunikat API, nowe
+  podsumowanie, nowy klucz, bez linku), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
   danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`, region statusu (ten sam węzeł od wczytywania do treści),
   „Spróbuj ponownie” (przycisk z `aria-disabled` w trakcie, fokus po sukcesie, ponownym błędzie i przeniesiony w trakcie),
   link „Zaloguj się” według przełączników (przed odczytem, wyłączone konta, włączone konta), blokada w trakcie
@@ -723,7 +772,8 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
 - `/checkout/confirmation` i `PaymentConfirmation`: z ciasteczkiem, bez, z niepoprawnym podpisem, każdy stan płatności
   (`docs/features/payment/spec.md`).
 - `CartPage`: przycisk „Przejdź do kasy” aktywny i nieaktywny.
-- `src/api/client.test.ts`: `placeOrder`, `startPayment`, `getPaymentStatus`.
+- `src/api/client.test.ts`: `placeOrder` (także mapowanie `type` każdej przyczyny 409 na `reason`), `startPayment`,
+  `getPaymentStatus`.
 
 ### E2E (Playwright)
 

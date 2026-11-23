@@ -87,6 +87,11 @@ final class InvalidOrderInput extends \DomainException implements InvalidInput
         return new self('Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie.');
     }
 
+    public static function expectedLines(): self
+    {
+        return new self('Nieprawidłowa lista pozycji zamówienia. Odśwież stronę.');
+    }
+
     public static function idempotencyKey(): self
     {
         return new self('Nieprawidłowy klucz żądania.');

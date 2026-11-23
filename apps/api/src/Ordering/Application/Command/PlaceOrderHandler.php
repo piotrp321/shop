@@ -19,6 +19,7 @@ use App\Ordering\Application\Port\UnpaidOrderExpiry;
 use App\Ordering\Application\UnpaidOrderLimit;
 use App\Ordering\Application\View\OrderView;
 use App\Ordering\Domain\AccessToken;
+use App\Ordering\Domain\CartContentChanged;
 use App\Ordering\Domain\CartEmpty;
 use App\Ordering\Domain\CartNotOrderable;
 use App\Ordering\Domain\Contact;
@@ -26,6 +27,7 @@ use App\Ordering\Domain\DeliveryMethodUnavailable;
 use App\Ordering\Domain\DiscountCodeRejected;
 use App\Ordering\Domain\DiscountCodeText;
 use App\Ordering\Domain\EmailAddress;
+use App\Ordering\Domain\ExpectedLines;
 use App\Ordering\Domain\GuestOrderSize;
 use App\Ordering\Domain\GuestOrderTooLarge;
 use App\Ordering\Domain\IdempotencyKey;
@@ -63,8 +65,9 @@ use Symfony\Component\Uid\Uuid;
  * The steps follow the specification ("Złożenie zamówienia"): the replay check before the cart lock (so a replay
  * works also once the guest cart expired or was merged), the lock, the replay check under the lock (a concurrent
  * request with the same key may have placed the order meanwhile), the copies from one quote of Pricing with the code
- * (a rejected code is refused before the total is compared; the size of a guest order is checked right after the
- * empty cart, then the limit of unpaid orders under the locks of the address and of the identity, before the quote),
+ * (a rejected code is refused before the total is compared; the lines of the cart are compared with the expected
+ * lines right after the empty cart, under the lock of the cart, then the size of a guest order is checked, then the
+ * limit of unpaid orders under the locks of the address and of the identity, before the quote),
  * the delivery (docs/features/delivery/spec.md, W5: the chosen method quoted by Delivery for the goods after the
  * discount, refused when unknown or not active, its cost split over the VAT rates of the lines by Pricing; reads
  * without locks), the total after the discount with the delivery, the order id and the usage of the code (Pricing locks a code with a limit: the locks
@@ -97,6 +100,7 @@ final readonly class PlaceOrderHandler
      * @throws NotFound                  the guest cart is not available (from Cart)
      * @throws IdempotencyKeyReused
      * @throws CartEmpty
+     * @throws CartContentChanged        the lines of the cart are not the expected ones, refused before the limits and the quote
      * @throws GuestOrderTooLarge        a guest cart over the size of a guest order, refused before the quote
      * @throws TooManyUnpaidOrders       the address, the email of the guest or the account has its limit of unpaid orders
      * @throws CartNotOrderable
@@ -112,8 +116,9 @@ final readonly class PlaceOrderHandler
         $address = ShippingAddress::inPoland($command->street, $command->postalCode, $command->city);
         $code = DiscountCodeText::normalised($command->discountCode);
         $deliveryMethodId = self::deliveryMethodId($command->deliveryMethodId);
+        $expectedLines = ExpectedLines::of($command->expectedLines);
         $owner = $command->cart->owner();
-        $fingerprint = RequestFingerprint::of($command->cart->normalised(), $contact, $address, $command->expectedTotalGross, $code, $deliveryMethodId);
+        $fingerprint = RequestFingerprint::of($command->cart->normalised(), $contact, $address, $command->expectedTotalGross, $code, $deliveryMethodId, $expectedLines);
 
         $earlier = $this->orders->findByIdempotencyKey($key);
         if (null !== $earlier && $earlier->isReplayOf($fingerprint)) {
@@ -133,6 +138,9 @@ final readonly class PlaceOrderHandler
 
         if ([] === $cartLines) {
             throw new CartEmpty();
+        }
+        if (!$expectedLines->matches(array_map(static fn (CartLineToOrder $line): array => [$line->variantId, $line->quantity], $cartLines))) {
+            throw new CartContentChanged();
         }
         if ($owner->isGuest()) {
             GuestOrderSize::ensureWithin(array_map(static fn (CartLineToOrder $line): int => $line->quantity, $cartLines));
