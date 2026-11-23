@@ -1179,6 +1179,113 @@ describe("CheckoutPage after a 409 of a changed cart or total (#852)", () => {
       expect(placeOrder).toHaveBeenCalledTimes(1);
     });
   });
+
+  // The rule of the summary out of date: until the customer has seen the changes against the summary of the refused
+  // order (or the message without a list when there are none), no click orders and the message on the screen is true.
+  // A read of the code is a read of the summary too.
+  describe("when the summary out of date is read again by the discount code", () => {
+    const applied = (lines: CartView["lines"], subtotal: number, amount: number): CartView => ({
+      ...cart(subtotal - amount, lines),
+      totals: { subtotalGross: subtotal, discountGross: amount, gross: subtotal - amount, currency: "PLN", itemCount: lines.reduce((sum, l) => sum + l.quantity, 0) },
+      discount: { status: "applied", code: "WITAJ10", amountGross: amount, kind: "percent", value: 10 },
+    });
+    const twoPairs = () => [line(A, "Buty trailowe", "czarne, 42", 2, 39998)];
+    const threePairs = () => [line(A, "Buty trailowe", "czarne, 42", 3, 59997)];
+    const QUANTITY = "Buty trailowe, czarne, 42: było 2 szt., jest 3 szt.";
+    const BELOW = "Ten kod działa przy zamówieniu od 1 000,00 zł.";
+
+    /** A refusal for a changed cart whose read failed: the summary of the order (with a code, or without) is out of date. */
+    async function outOfDate(withCode: boolean) {
+      await renderCheckout();
+      if (withCode) {
+        vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: applied(twoPairs(), 39998, 4000) });
+        fireEvent.change(codeField(), { target: { value: "witaj10" } });
+        await act(async () => {
+          fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+        });
+      }
+      fillGuestForm();
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+      await submit(conflict("cart_changed"));
+      expect(alert().textContent).toBe(READ_FAILED);
+    }
+
+    async function applyCode(code: string, ...reads: Read[]) {
+      for (const read of reads) vi.mocked(loadCart).mockResolvedValueOnce(read);
+      fireEvent.change(codeField(), { target: { value: code } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+      });
+    }
+
+    async function removeCode(read: Read) {
+      vi.mocked(loadCart).mockResolvedValueOnce(read);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Usuń kod" }));
+      });
+    }
+
+    it.each<[string, boolean, () => Promise<void>, string[]]>([
+      [
+        "a code applied",
+        false,
+        () => applyCode("witaj10", { status: "ok", data: applied(threePairs(), 59997, 6000) }),
+        [QUANTITY, `Rabat: był ${price(0)}, jest ${price(6000)}`, `Do zapłaty: było ${price(39998)}, jest ${price(53997)}`],
+      ],
+      [
+        "the code removed",
+        true,
+        () => removeCode({ status: "ok", data: three() }),
+        [QUANTITY, `Rabat: był ${price(4000)}, jest ${price(0)}`, `Do zapłaty: było ${price(35998)}, jest ${price(59997)}`],
+      ],
+      [
+        "a code rejected by the summary",
+        false,
+        () => applyCode("lato15", { status: "ok", data: { ...three(), discount: { status: "rejected", code: "LATO15", reason: "below_minimum", detail: BELOW, minimumOrderGross: 100000 } } }),
+        [QUANTITY, `Do zapłaty: było ${price(39998)}, jest ${price(59997)}`],
+      ],
+      [
+        "a code refused with a 400 (the summary read without it)",
+        false,
+        () => applyCode("x".repeat(10), { status: "invalid", detail: "Kod rabatowy może mieć najwyżej 64 znaki." }, { status: "ok", data: three() }),
+        [QUANTITY, `Do zapłaty: było ${price(39998)}, jest ${price(59997)}`],
+      ],
+    ])("after %s tells the changes against the summary of the refused order at once, and only then a click orders", async (_name, withCode, read, changes) => {
+      await outOfDate(withCode);
+      await read();
+
+      expect(screen.getAllByTestId("checkout-line-quantity").map((node) => node.textContent)).toEqual(["3 szt."]);
+      expect(alert().textContent).not.toContain(READ_FAILED);
+      expect(alert().querySelector("p")?.textContent).toBe(FIRST.cart_changed);
+      expect(items()).toEqual(changes);
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+
+      // The customer has seen the changes: the next click orders the summary shown, with a new key.
+      await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+      const [first, second] = vi.mocked(placeOrder).mock.calls;
+      expect(second[0].expectedLines).toEqual([{ variantId: A, quantity: 3 }]);
+      expect(second[1]).not.toBe(first[1]);
+    });
+
+    it.each<[string, Read]>([
+      ["fails", { status: "failed" }],
+      ["answers 401", { status: "unauthorized" }],
+    ])("stays out of date when the check of a code %s: the next click reads the cart and orders nothing", async (_name, answer) => {
+      await outOfDate(false);
+      await applyCode("witaj10", answer);
+
+      expect(screen.getAllByTestId("checkout-line-quantity").map((node) => node.textContent)).toEqual(["2 szt."]);
+      const reads = vi.mocked(loadCart).mock.calls.length;
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: three() });
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+
+      expect(vi.mocked(loadCart).mock.calls.length).toBe(reads + 1);
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+      expect(items()).toEqual([QUANTITY, `Do zapłaty: było ${price(39998)}, jest ${price(59997)}`]);
+    });
+  });
 });
 
 describe("CheckoutPage while the order is being placed", () => {
