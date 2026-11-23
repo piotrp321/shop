@@ -117,7 +117,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   const restoreNote = ref<string | null>(null);
   // A message appeared or was said again: the one who shows it moves the focus to it. A new object each time, so the focus
   // does not depend on the text or the state changing (the same text twice is still a message the staff member must find).
-  const focusRequest = shallowRef<{ kind: "unknown" | "restoreNote" | "readFailed" | "matched" } | null>(null);
+  const focusRequest = shallowRef<{ kind: "unknown" | "restoreNote" | "readFailed" | "matched" | "reading" } | null>(null);
   const unknownState = shallowRef<UnknownState<TView> | null>(null);
   // An earlier creation ended without a trusted answer: the next conflict may be the object that creation made.
   const earlierCreationUnknown = ref(false);
@@ -125,7 +125,8 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   let confirmedCreations = 0;
   let readSequence = 0;
   let readTimer: ReturnType<typeof setTimeout> | undefined;
-  let retry: (() => Promise<void>) | null = null;
+  // What „Spróbuj ponownie” repeats; true when it brought the object and replaced the draft.
+  let retry: (() => Promise<boolean>) | null = null;
 
   const writing = computed(() => active.value !== null);
   const locked = computed(() => writing.value || reading.value);
@@ -148,7 +149,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     return { pending: state.pending, kind: state.kind, created: state.created, discarded: state.discarded === true, text };
   });
 
-  function announce(kind: "unknown" | "restoreNote" | "readFailed" | "matched"): void {
+  function announce(kind: "unknown" | "restoreNote" | "readFailed" | "matched" | "reading"): void {
     focusRequest.value = { kind };
   }
 
@@ -284,12 +285,14 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   /**
    * Reads the object with the fields locked and hands it to `onData`. After `REQUEST_LIMIT_MS`, on an error and on any
    * answer but 200 the lock goes away and `readFailed` is set; `again` is what `retryRead` repeats. The answer of a read
-   * that was given up, replaced or left behind by the form is ignored.
+   * that was given up, replaced or left behind by the form is ignored. The button that started it is gone or off while it
+   * runs, so the focus moves to the status region („Odświeżamy…”) at once and to the result when it comes. Returns whether
+   * `onData` got the object.
    */
-  async function readState(onData: (view: TView) => void, again: () => Promise<void>): Promise<void> {
+  async function readState(onData: (view: TView) => void, again: () => Promise<boolean>): Promise<boolean> {
     const id = options.id();
     if (id === null) {
-      return;
+      return false;
     }
     const sequence = ++readSequence;
     const context = generation;
@@ -297,6 +300,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     reading.value = true;
     readFailed.value = false;
     retry = again;
+    announce("reading");
     const limit = new Promise<"limit">((resolve) => {
       readTimer = setTimeout(() => resolve("limit"), REQUEST_LIMIT_MS);
     });
@@ -312,7 +316,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     );
     const result = await Promise.race([answer, limit]);
     if (sequence !== readSequence || context !== generation || disposed) {
-      return;
+      return false;
     }
     clearTimeout(readTimer);
     reading.value = false;
@@ -321,16 +325,19 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
       readSequence++;
       readFailed.value = true;
       announce("readFailed");
-    } else if (result !== null && "data" in result) {
-      onData(result.data);
-    } else {
-      readFailed.value = true;
-      announce("readFailed");
+      return false;
     }
+    if (result !== null && "data" in result) {
+      onData(result.data);
+      return true;
+    }
+    readFailed.value = true;
+    announce("readFailed");
+    return false;
   }
 
   /** „Odrzuć moje zmiany i pokaż stan z serwera” and „Odśwież”: the draft is replaced after the answer 200 only. */
-  function restore(): Promise<void> {
+  function restore(): Promise<boolean> {
     return readState(
       (view) => {
         options.adopt(view);
@@ -369,7 +376,11 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
         announce("unknown");
         restoreOffered.value = true;
       }
-    }, check);
+    }, async () => {
+      await check();
+      // It says what it found itself (the status region, the message): there is nothing to move to the heading.
+      return false;
+    });
   }
 
   /** „Odblokuj formularz” (a new object): the write that has no answer is given up; its answer is late from now on. */
@@ -377,9 +388,9 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     abandon();
   }
 
-  /** Repeats the read that failed (the button of the message). */
-  async function retryRead(): Promise<void> {
-    await retry?.();
+  /** Repeats the read that failed (the button of the message); true when it brought the object and replaced the draft. */
+  async function retryRead(): Promise<boolean> {
+    return (await retry?.()) ?? false;
   }
 
   /**
@@ -429,11 +440,11 @@ export interface FormSafetyState {
   restoreOffered: Readonly<Ref<boolean>>;
   restoreNote: Readonly<Ref<string | null>>;
   /** Set to a new object whenever a message appears or is said again; `FormSafetyNotices` moves the focus to it. */
-  focusRequest: Readonly<Ref<{ kind: "unknown" | "restoreNote" | "readFailed" | "matched" } | null>>;
+  focusRequest: Readonly<Ref<{ kind: "unknown" | "restoreNote" | "readFailed" | "matched" | "reading" } | null>>;
   reading: Readonly<Ref<boolean>>;
   status: Readonly<Ref<string>>;
   check: () => Promise<void>;
   unblock: () => void;
-  restore: () => Promise<void>;
-  retryRead: () => Promise<void>;
+  restore: () => Promise<boolean>;
+  retryRead: () => Promise<boolean>;
 }

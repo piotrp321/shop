@@ -62,15 +62,21 @@ watch(
       void focusLater(() => restoreNoteAlert.value?.$el as HTMLElement | undefined);
     } else if (request?.kind === "readFailed") {
       void focusLater(() => readFailedAlert.value?.$el as HTMLElement | undefined);
-    } else if (request?.kind === "matched") {
+    } else if (request?.kind === "matched" || request?.kind === "reading") {
       void focusLater(() => statusRegion.value);
     }
   },
 );
 
+// The button that was pressed is gone when the object arrives: the form says where the focus goes (`restored`).
 async function restore(): Promise<void> {
-  await props.safety.restore();
-  if (!readFailed.value) {
+  if (await props.safety.restore()) {
+    emit("restored");
+  }
+}
+
+async function retryRead(): Promise<void> {
+  if (await props.safety.retryRead()) {
     emit("restored");
   }
 }
@@ -195,7 +201,7 @@ async function restore(): Promise<void> {
           size="sm"
           data-testid="retry-read"
           :disabled="reading"
-          @click="safety.retryRead()"
+          @click="retryRead"
         >
           Spróbuj ponownie
         </Button>
