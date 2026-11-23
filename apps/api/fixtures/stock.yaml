@@ -32,8 +32,9 @@
 #   test orders, and its test of a change given while the checkout loads orders 4 units of the same mat; both reject the
 #   payment at the simulator: the unpaid order expires and gives the units back.
 #   The cart-order consistency test (cart-order-consistency.spec.ts) orders and pays as a guest 3 units of Hala 500 in
-#   two variants of the same price (R1) and 1 unit (R3); its other tests put Hala 500 and the map Norvane Atlas Karkonosze
-#   1:35 000 in a guest cart and order nothing.
+#   two variants of the same price (R1) and 1 unit (R3), and 1 unit each as the demo customers Jan (R4) and Anna (R5);
+#   its other tests (R2, R6 and the narrow screens) put Hala 500 and the map Norvane Atlas Karkonosze 1:35 000 in a
+#   guest or customer cart and order nothing.
 # Products with variants both in and out of stock: kajak-turystyczny-dravik-rzeka-2, narty-skiturowe-stavro-gran-95.
 
 # Out of stock
