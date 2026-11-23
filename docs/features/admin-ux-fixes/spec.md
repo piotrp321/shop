@@ -116,8 +116,9 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
   `PromotionFormView.test.ts` i zdanie o nim w `docs/features/admin-design/spec.md` („Po zapisie”: wyjątek nie
   dotyczy zapisu formularza promocji) zmieniają się razem z zachowaniem. Przy akcjach karty „Status” („Zakończ
   teraz”, „Usuń”) pola nie są blokowane i wyjątek działa jak dotąd. Po odpowiedzi udany zapis pokazuje promocję z API; 422 odblokowuje pola z wartościami,
-  które pracownik wysłał; 409, błąd sieci i 5xx nie zastępują szkicu, a brak odpowiedzi w limicie, błąd sieci i 5xx to
-  nieznany wynik zapisu (B4 w „Etapie 2”; pola zostają zablokowane do odpowiedzi albo „Sprawdź stan”).
+  które pracownik wysłał; 409 nie zastępuje szkicu (E7). Brak odpowiedzi w limicie 10 s, błąd sieci i 5xx to nieznany wynik zapisu (B4 w
+  „Etapie 2”): po limicie pola zostają zablokowane do odpowiedzi, „Sprawdź stan” (edycja) albo „Odblokuj formularz”
+  (nowa promocja); po błędzie sieci i 5xx pola są odblokowane ze szkicem.
 - **Oczekiwanie na początek.** Gdy udany zapis (utworzenie albo zmiana) był wysłany z „Od teraz”, a odpowiedź ma
   `status: planned`, blokada trwa dalej, region `role="status"` karty „Status” pokazuje „Promocja rozpoczyna się.”,
   a panel czyta promocję (`GET /api/v1/admin/promotions/{id}`). Pierwszy odczyt wychodzi sekundę po `startsAt`
@@ -375,7 +376,7 @@ implementacji etapu 2 sekcje etapu 1 opisują stan obecny; zadania etapu 2 zmien
 dokumentacji”). Twierdzenia o kodzie dotyczą `origin/main` z 2026-11-23 (`00f1fe6f`).
 
 Issues: #837, #866 (w całości).
-Zakres: `apps/admin/src/composables`, `apps/admin/src/promotions`, `apps/admin/src/discount-codes`, `apps/admin/src/products`, `apps/admin/src/delivery`, `apps/admin/src/views/PromotionFormView.vue`, `apps/admin/src/views/DiscountCodeFormView.vue`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/src/views/DeliveryMethodFormView.vue`, `apps/admin/tests`, `apps/admin/CLAUDE.md`, `e2e/tests/admin-screens-discount-codes.spec.ts`, `e2e/tests/catalog-admin.spec.ts`, `docs/features/admin-ux-fixes`, `docs/features/admin-design/spec.md`, `docs/features/promotions/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/delivery/spec.md`
+Zakres: `apps/admin/src/composables`, `apps/admin/src/components/FormSafetyNotices.vue`, `apps/admin/src/promotions`, `apps/admin/src/discount-codes`, `apps/admin/src/products`, `apps/admin/src/delivery`, `apps/admin/src/views/PromotionFormView.vue`, `apps/admin/src/views/DiscountCodeFormView.vue`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/src/views/DeliveryMethodFormView.vue`, `apps/admin/tests`, `apps/admin/CLAUDE.md`, `e2e/tests/admin-screens-discount-codes.spec.ts`, `e2e/tests/catalog-admin.spec.ts`, `docs/features/admin-ux-fixes`, `docs/features/admin-design/spec.md`, `docs/features/promotions/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/delivery/spec.md`
 
 Etap nie zmienia API, `apps/api/openapi*.json` ani `apps/admin/src/api/schema.d.ts`.
 
@@ -460,7 +461,7 @@ zostają jak po etapie 1.
 
 **Wynik zapisu.**
 - Potwierdzony sukces: odpowiedź 2xx z danymi. Formularz pokazuje obiekt z odpowiedzi jak dotąd.
-- Potwierdzona odmowa: odpowiedź 4xx. 422, 403 i 404 jak dotąd; 409 według E7: komunikat jak dotąd, szkic, stan bazowy
+- Potwierdzona odmowa: odpowiedź 4xx. 422, 403 i 404 jak dotąd; 409 według E7: komunikat z `detail` albo, dla wersji, komunikat że zmiany zostają w formularzu (bez zapowiedzi pokazania stanu z serwera), szkic, stan bazowy
   i wersja zostają, bez odczytu. Przy 409 wersji (i każdym 409, po którym formularz dziś czyta obiekt ponownie)
   komunikat ma przycisk „Odrzuć moje zmiany i pokaż stan z serwera”.
 - Nieznany wynik: brak odpowiedzi przez 10 s, błąd sieci albo odpowiedź 5xx.
