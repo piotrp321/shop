@@ -3,14 +3,17 @@
 # it needs (no full stack: app containers start with --no-deps); the `checks` job only reports their joint result.
 # The `e2e-shard` jobs are the exception: each starts the full stack and runs one part of the Playwright tests; the
 # `e2e` job only reports their joint result.
-# `checks` and `e2e` run for every change, so they can be required status checks. For a pull request the `scope` job
-# says what it changes (.github/scripts/scope.sh): documentation only (docs/**, *.md outside .github/ and
+# `checks` and `e2e` run for every change, so they can be required status checks. The `scope` job says what the change
+# touches (.github/scripts/scope.sh): for a pull request against its base, for a push to main by the commits the push
+# adds (github.event.before to github.sha). Documentation only (docs/**, *.md outside .github/ and
 # .github/ISSUE_TEMPLATE/**) skips every step; repository tooling only (.claude/**, .ao/**, tools/**, possibly with
 # documentation) runs just the script tests (in the `apps` part); the Kubernetes deployment only (infra/k8s/**,
-# possibly with documentation) runs just `make -C infra/k8s check` (in the `k8s` part). Skipped steps
-# let the other jobs pass within seconds. Anything else,
-# and every push, runs it all. A full run uses 1 + 6 + 4 runners for its work (`scope`, the `checks-part` and
-# `e2e-shard` parts) and two more for the short `checks` and `e2e` reports.
+# possibly with documentation) runs just `make -C infra/k8s check` (in the `k8s` part). Skipped steps let the other jobs
+# pass within seconds. Anything else, and every push to an epic branch, runs it all, except the `k8s` part, which runs
+# only when the change touches infra/k8s/** (scope.sh --k8s; deploy.yml runs the same check before every deployment).
+# An error of scope.sh, also a push whose earlier commit is unknown, gives the full CI with the `k8s` part. A full run
+# uses 1 + 6 + 4 runners for its work (`scope`, the `checks-part` and `e2e-shard` parts) and two more for the short
+# `checks` and `e2e` reports.
 name: CI
 
 on:
@@ -47,6 +50,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       scope: ${{ steps.scope.outputs.scope }}
+      k8s: ${{ steps.scope.outputs.k8s }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -55,18 +59,27 @@ jobs:
       - name: Scope script tests
         run: sh .github/scripts/test_scope.sh
 
-      # Pushes (main, epic/**) always run the full CI.
+      # A pull request against its base, a push to main by the commits it adds (`before` is all zeros or unknown when
+      # there is no earlier commit to compare with: scope.sh then answers full and yes). Pushes to epic/** run the full
+      # CI with the `k8s` part.
       - name: Detect the scope of the change
         id: scope
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           scope=full
+          k8s=yes
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            scope="$(sh .github/scripts/scope.sh "$BASE_SHA" "$HEAD_SHA")"
+            scope="$(sh .github/scripts/scope.sh "$PR_BASE_SHA" "$PR_HEAD_SHA")"
+            k8s="$(sh .github/scripts/scope.sh --k8s "$PR_BASE_SHA" "$PR_HEAD_SHA")"
+          elif [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+            scope="$(sh .github/scripts/scope.sh "$PUSH_BEFORE_SHA" "$GITHUB_SHA")"
+            k8s="$(sh .github/scripts/scope.sh --k8s "$PUSH_BEFORE_SHA" "$GITHUB_SHA")"
           fi
           echo "scope=$scope" | tee -a "$GITHUB_OUTPUT"
+          echo "k8s=$k8s" | tee -a "$GITHUB_OUTPUT"
 
   # The checks and the app tests in parts (matrix.include), each on its own runner with only the images and services it
   # needs, so the parts run side by side:
@@ -96,7 +109,8 @@ jobs:
       matrix:
         include:
           # apps: the CI images the part pulls; stack: `full` starts the services of the api tests, `redis` only Redis;
-          # also: the scope (besides `full`) in which the part still has work.
+          # also: the scope (besides `full`) in which the part still has work; in the full CI the `k8s` part works only
+          # when the change touches infra/k8s/**.
           - name: k8s
             apps: ''
             stack: none
@@ -130,10 +144,12 @@ jobs:
       # Whether the part runs the steps with the app images, dependencies and services: in the full CI, and only the
       # parts that use an app image.
       FULL_CI: ${{ needs.scope.outputs.scope == 'full' && matrix.apps != '' }}
-      # Whether the part has work for the scope of the change: all parts in the full CI; in a tooling-only change the
-      # script tests (`apps`), in a Kubernetes-only one `make -C infra/k8s check` (`k8s`). The other parts only report
-      # success within seconds; a documentation-only change has no work for any part.
-      PART_ACTIVE: ${{ needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == matrix.also }}
+      # Whether the part has work for the scope of the change: in the full CI all parts, the `k8s` part only when the
+      # change touches infra/k8s/** (`k8s` is `yes`); in a tooling-only change the script tests (`apps`), in a
+      # Kubernetes-only one `make -C infra/k8s check` (`k8s`). The other parts only report success within seconds; a
+      # documentation-only change has no work for any part.
+      PART_ACTIVE: ${{ (needs.scope.outputs.scope == 'full' && (matrix.name != 'k8s' || needs.scope.outputs.k8s == 'yes')) || needs.scope.outputs.scope == matrix.also }}
+      K8S: ${{ needs.scope.outputs.k8s }}
       APPS: ${{ matrix.apps }}
     steps:
       - name: Require the scope job
@@ -142,14 +158,15 @@ jobs:
 
       - name: Nothing to run in this part for the scope of the change
         if: env.PART_ACTIVE != 'true'
-        run: echo "The change is $SCOPE only"
+        run: echo "Nothing to run in this part (scope $SCOPE, infra/k8s touched $K8S)"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.PART_ACTIVE == 'true'
 
       # The compose stack of the app tests and E2E does not use infra/k8s: a change limited to it needs only these checks
-      # of the chart, environments, sealed secrets and server scripts, and a change that leaves it alone needs no
-      # `make -C infra/k8s check` in `check-code`: the part runs it in the full CI as well.
+      # of the chart, environments, sealed secrets and server scripts, and `check-code` leaves them to this part. The part
+      # runs them only when the change touches infra/k8s/**; a change elsewhere that the chart must mirror (compose,
+      # Keycloak realms) is caught by the same check in deploy.yml before the deployment.
       - name: make -C infra/k8s check
         if: matrix.name == 'k8s' && env.PART_ACTIVE == 'true'
         run: make -C infra/k8s check
