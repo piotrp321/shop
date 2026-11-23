@@ -170,8 +170,8 @@ kasa pokazała.
 ### Znacznik kupującego
 
 - `GET /auth/session` dla zalogowanego klienta zwraca obok `name` i `email` pole `buyer`: HMAC-SHA256 z `sub` kluczem
-  wyprowadzonym z `STORE_SESSION_SECRET` (osobnym od klucza podpisów ciasteczek, więc znacznik nie jest poprawnym
-  podpisem żadnego ciasteczka), w base64url. `sub` pochodzi z `SessionData` tej samej sesji,
+  wyprowadzonym z `STORE_SESSION_SECRET` przez HKDF-SHA256 (info `checkout-buyer`; klucz osobny od klucza podpisów
+  ciasteczek, więc znacznik nie jest poprawnym podpisem żadnego ciasteczka), w base64url. `sub` pochodzi z `SessionData` tej samej sesji,
   z której pochodzi token użyty do odczytu `/api/v1/me`. Gość dostaje jak dziś `null`.
 - Znacznik nie jest danymi uwierzytelniającymi: niczego nie otwiera i nie zastępuje sesji. Odpowiedź nie zawiera
   identyfikatora sesji, tokenów ani `sub`. Ten sam `sub` daje zawsze ten sam znacznik, także po odświeżeniu tokenu
