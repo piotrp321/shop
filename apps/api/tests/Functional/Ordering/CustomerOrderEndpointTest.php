@@ -31,7 +31,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
         $map = $this->variant(1_230, 5, 'Mapa');
         $cart = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 1], [$map, 3]]);
 
-        $order = $this->place(self::PATH, [...self::details(12_300 + 3 * 1_230), 'email' => 'someone.else@example.com'], token: TestTokenFactory::customer());
+        $order = $this->place(self::PATH, [...self::details(12_300 + 3 * 1_230, [[$shoes, 1], [$map, 3]]), 'email' => 'someone.else@example.com'], token: TestTokenFactory::customer());
 
         self::assertResponseStatusCodeSame(201);
         $this->assertNoStore();
@@ -57,11 +57,11 @@ final class CustomerOrderEndpointTest extends WebTestCase
     {
         $shoes = $this->variant(12_300, 10);
         $cart = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 1]]);
-        $first = $this->place(self::PATH, self::details(12_300), token: TestTokenFactory::customer());
+        $first = $this->place(self::PATH, self::details(12_300, [[$shoes, 1]]), token: TestTokenFactory::customer());
         self::assertResponseStatusCodeSame(201);
         CartFixture::line($this->connection, $cart, $shoes, 2);
 
-        $repeated = $this->place(self::PATH, self::details(12_300), token: TestTokenFactory::customer());
+        $repeated = $this->place(self::PATH, self::details(12_300, [[$shoes, 1]]), token: TestTokenFactory::customer());
 
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
@@ -79,10 +79,10 @@ final class CustomerOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 10);
         CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 1]]);
         $other = CartFixture::cart($this->connection, customerId: self::OTHER_CUSTOMER, lines: [[$shoes, 1]]);
-        $earlier = $this->place(self::PATH, self::details(12_300), token: TestTokenFactory::customer());
+        $earlier = $this->place(self::PATH, self::details(12_300, [[$shoes, 1]]), token: TestTokenFactory::customer());
         self::assertResponseStatusCodeSame(201);
 
-        $this->assertKeyReused($this->place(self::PATH, self::details(12_300), token: TestTokenFactory::customer(['sub' => self::OTHER_CUSTOMER, 'email' => 'anna@example.com'])), $earlier);
+        $this->assertKeyReused($this->place(self::PATH, self::details(12_300, [[$shoes, 1]]), token: TestTokenFactory::customer(['sub' => self::OTHER_CUSTOMER, 'email' => 'anna@example.com'])), $earlier);
 
         self::assertSame([[$shoes, 1]], CartFixture::lines($this->connection, $other));
         self::assertSame(1, $this->orders());
@@ -94,16 +94,16 @@ final class CustomerOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 10);
         $guestCart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
         $cart = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 1]]);
-        $guestOrder = $this->place('/api/v1/orders', ['cartId' => $guestCart, 'email' => self::TOKEN_EMAIL, ...self::details(12_300)]);
+        $guestOrder = $this->place('/api/v1/orders', ['cartId' => $guestCart, 'email' => self::TOKEN_EMAIL, ...self::details(12_300, [[$shoes, 1]])]);
         self::assertResponseStatusCodeSame(201);
 
-        $this->assertKeyReused($this->place(self::PATH, self::details(12_300), token: TestTokenFactory::customer()), $guestOrder);
+        $this->assertKeyReused($this->place(self::PATH, self::details(12_300, [[$shoes, 1]]), token: TestTokenFactory::customer()), $guestOrder);
 
-        $own = $this->place(self::PATH, self::details(12_300), key: 'own-key', token: TestTokenFactory::customer());
+        $own = $this->place(self::PATH, self::details(12_300, [[$shoes, 1]]), key: 'own-key', token: TestTokenFactory::customer());
         self::assertResponseStatusCodeSame(201);
         CartFixture::line($this->connection, $cart, $shoes, 1);
-        $this->assertKeyReused($this->place(self::PATH, [...self::details(12_300), 'phone' => '600100201'], key: 'own-key', token: TestTokenFactory::customer()), $own);
-        $this->assertKeyReused($this->place(self::PATH, self::details(12_300), key: 'own-key', token: TestTokenFactory::customer(['email' => 'jan@example.com'])), $own);
+        $this->assertKeyReused($this->place(self::PATH, [...self::details(12_300, [[$shoes, 1]]), 'phone' => '600100201'], key: 'own-key', token: TestTokenFactory::customer()), $own);
+        $this->assertKeyReused($this->place(self::PATH, self::details(12_300, [[$shoes, 1]]), key: 'own-key', token: TestTokenFactory::customer(['email' => 'jan@example.com'])), $own);
 
         self::assertSame([[$shoes, 1]], CartFixture::lines($this->connection, $cart));
         self::assertSame(2, $this->orders());
@@ -111,11 +111,11 @@ final class CustomerOrderEndpointTest extends WebTestCase
 
     public function testACustomerWithoutACartOrWithAnExpiredOneHasAnEmptyCart(): void
     {
-        $this->assertConflict('cart-empty', 'Koszyk jest pusty.', $this->place(self::PATH, self::details(0), token: TestTokenFactory::customer()));
+        $this->assertConflict('cart-empty', 'Koszyk jest pusty.', $this->place(self::PATH, self::details(0, [[self::LINE_VARIANT, 1]]), token: TestTokenFactory::customer()));
 
         $shoes = $this->variant(12_300, 10);
         CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, expiresAt: '-1 second', lines: [[$shoes, 1]]);
-        $this->assertConflict('cart-empty', 'Koszyk jest pusty.', $this->place(self::PATH, self::details(12_300), token: TestTokenFactory::customer()));
+        $this->assertConflict('cart-empty', 'Koszyk jest pusty.', $this->place(self::PATH, self::details(12_300, [[$shoes, 1]]), token: TestTokenFactory::customer()));
 
         self::assertSame(0, $this->orders());
         self::assertSame(0, $this->reservations());
@@ -127,7 +127,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
         $unpriced = $this->variant(null, 10);
         $cart = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 1], [$unpriced, 1]]);
 
-        $this->assertConflict('cart-not-orderable', 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', $this->place(self::PATH, self::details(12_300), token: TestTokenFactory::customer()));
+        $this->assertConflict('cart-not-orderable', 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', $this->place(self::PATH, self::details(12_300, [[$shoes, 1], [$unpriced, 1]]), token: TestTokenFactory::customer()));
 
         self::assertSame([[$shoes, 1], [$unpriced, 1]], CartFixture::lines($this->connection, $cart));
         self::assertSame(0, $this->orders());
@@ -138,7 +138,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 1);
         $cart = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 2]]);
 
-        $this->assertConflict('insufficient-stock-for-order', 'Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.', $this->place(self::PATH, self::details(24_600), token: TestTokenFactory::customer()));
+        $this->assertConflict('insufficient-stock-for-order', 'Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.', $this->place(self::PATH, self::details(24_600, [[$shoes, 2]]), token: TestTokenFactory::customer()));
 
         self::assertSame([[$shoes, 2]], CartFixture::lines($this->connection, $cart));
         self::assertSame([1, 0], OrderingFixture::stock($this->connection, $shoes));
@@ -162,12 +162,36 @@ final class CustomerOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 10);
         $cart = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 1]]);
 
-        $this->assertConflict('order-total-changed', 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', $this->place(self::PATH, self::details($expected), token: TestTokenFactory::customer()));
+        $this->assertConflict('order-total-changed', 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', $this->place(self::PATH, self::details($expected, [[$shoes, 1]]), token: TestTokenFactory::customer()));
 
         self::assertSame([[$shoes, 1]], CartFixture::lines($this->connection, $cart));
         self::assertSame([10, 0], OrderingFixture::stock($this->connection, $shoes));
         self::assertSame(0, $this->orders());
         self::assertSame(0, $this->reservations());
+    }
+
+    /**
+     * The cart of the customer on the server is not the one the checkout showed (spec cart-order-consistency, Z1).
+     */
+    public function testAnotherContentOfTheCartIsAConflictWithoutOrderReservationOrChange(): void
+    {
+        $a = $this->variant(12_300, 10);
+        $b = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$a, 1], [$b, 2]]);
+
+        $problem = $this->place(self::PATH, self::details(3 * 12_300, [[$a, 2], [$b, 1]]), token: TestTokenFactory::customer());
+
+        $this->assertConflict('cart-changed', 'Zawartość koszyka się zmieniła. Sprawdź podsumowanie.', $problem);
+        self::assertSame(['type', 'title', 'status', 'detail'], array_keys($problem));
+        self::assertSame([[$a, 1], [$b, 2]], CartFixture::lines($this->connection, $cart));
+        self::assertSame([10, 0], OrderingFixture::stock($this->connection, $a));
+        self::assertSame(0, $this->orders());
+        self::assertSame(0, $this->reservations());
+
+        $order = $this->place(self::PATH, self::details(3 * 12_300, [[strtoupper($b), 2], [$a, 1]]), key: 'key-2', token: TestTokenFactory::customer());
+        self::assertResponseStatusCodeSame(201);
+        self::assertIsString($order['orderId']);
+        self::assertSame([], CartFixture::lines($this->connection, $cart), 'the list in another order and letter case is the cart');
     }
 
     public function testLinesQuantitiesAndPricesInTheBodyAreIgnored(): void
@@ -176,7 +200,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
         CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 1]]);
 
         $order = $this->place(self::PATH, [
-            ...self::details(12_300),
+            ...self::details(12_300, [[$shoes, 1]]),
             'lines' => [['variantId' => $shoes, 'quantity' => 5, 'unitGross' => 100]],
             'totals' => ['net' => 81, 'vat' => 19, 'gross' => 100, 'currency' => 'PLN'],
             'unitGross' => 100,
@@ -208,7 +232,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 10);
         $cart = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 1]]);
 
-        $problem = $this->place(self::PATH, self::details(12_300), key: $key, token: TestTokenFactory::customer());
+        $problem = $this->place(self::PATH, self::details(12_300, [[$shoes, 1]]), key: $key, token: TestTokenFactory::customer());
 
         $this->assertProblem(400, null, $problem);
         self::assertIsArray($problem['violations'] ?? null);
@@ -223,7 +247,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
 
         $this->assertProblem(400, null, $this->place(self::PATH, '{"fullName": ', token: $token));
         $this->assertProblem(415, null, $this->place(self::PATH, 'fullName=Anna', token: $token, contentType: 'application/x-www-form-urlencoded'));
-        $this->assertProblem(415, null, $this->place(self::PATH, (string) json_encode(self::details(0)), token: $token, contentType: 'text/plain'));
+        $this->assertProblem(415, null, $this->place(self::PATH, (string) json_encode(self::details(0, [[self::LINE_VARIANT, 1]])), token: $token, contentType: 'text/plain'));
         self::assertSame(0, $this->orders());
     }
 
@@ -234,8 +258,9 @@ final class CustomerOrderEndpointTest extends WebTestCase
     #[DataProvider('invalidCustomerBodies')]
     public function testAnInvalidBodyGivesPolishViolationsAndPlacesNothing(array $changes, array $violations): void
     {
-        CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$this->variant(12_300, 10), 1]]);
-        $body = self::changed(self::details(12_300), $changes);
+        $shoes = $this->variant(12_300, 10);
+        CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 1]]);
+        $body = self::changed(self::details(12_300, [[$shoes, 1]]), $changes);
 
         $this->assertViolations($violations, $this->place(self::PATH, [] === $body ? '{}' : $body, token: TestTokenFactory::customer()));
 
@@ -264,7 +289,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
             default => $token,
         };
 
-        $this->assertProblem(401, 'Wymagane jest uwierzytelnienie.', $this->place(self::PATH, self::details(12_300), token: $token));
+        $this->assertProblem(401, 'Wymagane jest uwierzytelnienie.', $this->place(self::PATH, self::details(12_300, [[$shoes, 1]]), token: $token));
 
         self::assertSame('Bearer', $this->response()->headers->get('WWW-Authenticate'));
         self::assertSame([[$shoes, 1]], CartFixture::lines($this->connection, $cart));

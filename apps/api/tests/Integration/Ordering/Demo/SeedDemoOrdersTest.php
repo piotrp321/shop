@@ -119,7 +119,7 @@ final class SeedDemoOrdersTest extends KernelTestCase
     {
         $bus = self::getContainer()->get('command.bus');
         self::assertInstanceOf(MessageBusInterface::class, $bus);
-        $command = new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', $deliveryMethodId, 2 * 1_230 + 1_999, 'seed-'.$cart);
+        $command = new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', $deliveryMethodId, 2 * 1_230 + 1_999, OrderingFixture::expectedOfCart($this->connection, $cart), 'seed-'.$cart);
         $result = $bus->dispatch($command)->last(HandledStamp::class)?->getResult();
         self::assertInstanceOf(PlacedOrder::class, $result);
 

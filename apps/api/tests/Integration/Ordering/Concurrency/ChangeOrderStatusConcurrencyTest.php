@@ -188,7 +188,7 @@ final class ChangeOrderStatusConcurrencyTest extends KernelTestCase
             $key = 'status-concurrency-'.Uuid::v7()->toRfc4122();
             $this->keys[] = $key;
             $gross = array_sum(array_map(static fn (array $line): int => $line[1] * self::GROSS, $lines));
-            $commands[] = new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->control), $gross, $key);
+            $commands[] = new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->control), $gross, OrderingFixture::expectedOfCart($this->control, $cart), $key);
         }
         $outcomes = ConcurrentCommands::run($this->control, $commands);
         self::assertSame([Outcome::SUCCESS => \count($orders)], self::kinds($outcomes), self::messages($outcomes));

@@ -101,7 +101,7 @@ final class GuestOrderSizeEndpointTest extends WebTestCase
         $variants = $this->variantsOfOneGross(50, 100);
         CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: array_map(static fn (string $id): array => [$id, 99], $variants));
 
-        $order = $this->place(self::CUSTOMER_PATH, self::details(50 * 99 * 1_000), token: TestTokenFactory::customer());
+        $order = $this->place(self::CUSTOMER_PATH, self::details(50 * 99 * 1_000, array_map(static fn (string $id): array => [$id, 99], $variants)), token: TestTokenFactory::customer());
 
         self::assertResponseStatusCodeSame(201);
         self::assertIsArray($order['lines']);
@@ -151,6 +151,6 @@ final class GuestOrderSizeEndpointTest extends WebTestCase
      */
     private function body(string $cartId, int $expectedTotalGross): array
     {
-        return ['cartId' => $cartId, 'email' => self::EMAIL, ...self::details($expectedTotalGross)];
+        return ['cartId' => $cartId, 'email' => self::EMAIL, ...self::details($expectedTotalGross, CartFixture::lines($this->connection, $cartId))];
     }
 }

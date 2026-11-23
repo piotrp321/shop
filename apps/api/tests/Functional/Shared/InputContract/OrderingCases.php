@@ -56,7 +56,7 @@ final class OrderingCases
         yield ValidatorRows::ofAnotherKind(self::CUSTOMERS, $staff, $none, 'perPage', 'perPage=100', 'Liczba wyników na stronie to liczba całkowita od 1 do 100.');
 
         // One unit of 12,30 zł with the free delivery method of the fixture.
-        $details = '"fullName":"Anna Nowak","phone":"600100200","street":"ul. Długa 5/3","postalCode":"00-950","city":"Warszawa","expectedTotalGross":1230,"deliveryMethodId":"{deliveryMethodId}"';
+        $details = '"fullName":"Anna Nowak","phone":"600100200","street":"ul. Długa 5/3","postalCode":"00-950","city":"Warszawa","expectedTotalGross":1230,"deliveryMethodId":"{deliveryMethodId}","expectedLines":[{"variantId":"{variantId}","quantity":1}]';
         yield from IdempotencyKeyRows::of('POST /api/v1/orders', null, 'guestCheckout', '{"cartId":"{cartId}","email":"anna.nowak@example.com",'.$details.'}');
         yield from IdempotencyKeyRows::of('POST /api/v1/me/orders', InputCase::CUSTOMER, 'customerCheckout', '{'.$details.'}');
     }

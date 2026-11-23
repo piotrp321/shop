@@ -31,7 +31,7 @@ final class GuestOrderEndpointTest extends WebTestCase
         $map = $this->variant(1_230, 5, 'Mapa');
         $cart = CartFixture::cart($this->connection, lines: [[$size43, 2], [$map, 1], [$size42, 1]]);
 
-        $order = $this->place(self::PATH, $this->body($cart, 3 * 12_300 + 1_230));
+        $order = $this->place(self::PATH, $this->body($cart, 3 * 12_300 + 1_230, [[$size43, 2], [$map, 1], [$size42, 1]]));
 
         self::assertResponseStatusCodeSame(201);
         $this->assertNoStore();
@@ -69,7 +69,7 @@ final class GuestOrderEndpointTest extends WebTestCase
         $cart = CartFixture::cart($this->connection, lines: [[$promoted, 2], [$map, 1]]);
 
         // 12 300 − floor(12 300 × 20 / 100) = 9 840: net 8 000 and VAT 1 840 at 23%.
-        $order = $this->place(self::PATH, $this->body($cart, 2 * 9_840 + 1_230));
+        $order = $this->place(self::PATH, $this->body($cart, 2 * 9_840 + 1_230, [[$promoted, 2], [$map, 1]]));
 
         self::assertResponseStatusCodeSame(201);
         self::assertIsArray($order['lines']);
@@ -81,11 +81,11 @@ final class GuestOrderEndpointTest extends WebTestCase
     {
         $shoes = $this->variant(12_300, 10);
         $cart = CartFixture::cart($this->connection, lines: [[$shoes, 2]]);
-        $first = $this->place(self::PATH, $this->body($cart, 24_600));
+        $first = $this->place(self::PATH, $this->body($cart, 24_600, [[$shoes, 2]]));
         self::assertResponseStatusCodeSame(201);
         CartFixture::line($this->connection, $cart, $shoes, 3);
 
-        $repeated = $this->place(self::PATH, $this->body($cart, 24_600));
+        $repeated = $this->place(self::PATH, $this->body($cart, 24_600, [[$shoes, 2]]));
 
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
@@ -102,15 +102,15 @@ final class GuestOrderEndpointTest extends WebTestCase
     {
         $shoes = $this->variant(12_300, 10);
         $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
-        $first = $this->place(self::PATH, $this->body($cart, 12_300));
+        $first = $this->place(self::PATH, $this->body($cart, 12_300, [[$shoes, 1]]));
         self::assertResponseStatusCodeSame(201);
 
         $this->connection->executeStatement("UPDATE cart_cart SET status = 'merged', merged_into = ?, merged_at = now() WHERE id = ?", [(string) Uuid::v4(), $cart]);
-        self::assertSame($first, $this->place(self::PATH, $this->body($cart, 12_300)));
+        self::assertSame($first, $this->place(self::PATH, $this->body($cart, 12_300, [[$shoes, 1]])));
         self::assertResponseStatusCodeSame(200);
 
         $this->connection->executeStatement("UPDATE cart_cart SET status = 'open', merged_into = NULL, merged_at = NULL, expires_at = now() - interval '1 second' WHERE id = ?", [$cart]);
-        self::assertSame($first, $this->place(self::PATH, $this->body($cart, 12_300)));
+        self::assertSame($first, $this->place(self::PATH, $this->body($cart, 12_300, [[$shoes, 1]])));
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
 
@@ -123,10 +123,10 @@ final class GuestOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 10);
         $first = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
         $other = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
-        $earlier = $this->place(self::PATH, $this->body($first, 12_300));
+        $earlier = $this->place(self::PATH, $this->body($first, 12_300, [[$shoes, 1]]));
         self::assertResponseStatusCodeSame(201);
 
-        $this->assertKeyReused($this->place(self::PATH, $this->body($other, 12_300)), $earlier);
+        $this->assertKeyReused($this->place(self::PATH, $this->body($other, 12_300, [[$shoes, 1]])), $earlier);
 
         self::assertSame([[$shoes, 1]], CartFixture::lines($this->connection, $other));
         self::assertSame(1, $this->orders());
@@ -137,11 +137,11 @@ final class GuestOrderEndpointTest extends WebTestCase
     {
         $shoes = $this->variant(12_300, 10);
         $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
-        $earlier = $this->place(self::PATH, $this->body($cart, 12_300));
+        $earlier = $this->place(self::PATH, $this->body($cart, 12_300, [[$shoes, 1]]));
         CartFixture::line($this->connection, $cart, $this->variant(1_230, 5), 1);
 
-        foreach ([['fullName' => 'Jan Nowak'], ['email' => 'jan@example.com'], ['city' => 'Kraków'], ['expectedTotalGross' => 1_230]] as $change) {
-            $this->assertKeyReused($this->place(self::PATH, [...$this->body($cart, 12_300), ...$change]), $earlier);
+        foreach ([['fullName' => 'Jan Nowak'], ['email' => 'jan@example.com'], ['city' => 'Kraków'], ['expectedTotalGross' => 1_230], ['expectedLines' => OrderingFixture::expected([[$shoes, 2]])]] as $change) {
+            $this->assertKeyReused($this->place(self::PATH, [...$this->body($cart, 12_300, [[$shoes, 1]]), ...$change]), $earlier);
         }
 
         self::assertCount(1, CartFixture::lines($this->connection, $cart));
@@ -159,7 +159,7 @@ final class GuestOrderEndpointTest extends WebTestCase
         ];
 
         foreach ($carts as $kind => $cartId) {
-            $this->assertProblem(404, 'Koszyk nie jest już dostępny.', $this->place(self::PATH, $this->body($cartId, 12_300), key: 'key-'.$kind));
+            $this->assertProblem(404, 'Koszyk nie jest już dostępny.', $this->place(self::PATH, $this->body($cartId, 12_300, [[$shoes, 1]]), key: 'key-'.$kind));
         }
 
         self::assertSame([[$shoes, 1]], CartFixture::lines($this->connection, $carts['expired']));
@@ -175,19 +175,20 @@ final class GuestOrderEndpointTest extends WebTestCase
     public function testAnIdOfTheFormatOfCartWithoutACartIsNotFound(): void
     {
         foreach (['00000000-0000-0000-0000-000000000000', '0192f0c4-7c1a-0c4e-0a6e-000000000001'] as $cartId) {
-            $this->assertProblem(404, 'Koszyk nie jest już dostępny.', $this->place(self::PATH, $this->body($cartId, 12_300), key: 'key-'.$cartId));
+            $this->assertProblem(404, 'Koszyk nie jest już dostępny.', $this->place(self::PATH, $this->body($cartId, 12_300, [[(string) Uuid::v7(), 1]]), key: 'key-'.$cartId));
         }
         self::assertSame(0, $this->orders());
     }
 
     public function testTheIdOfTheCartInUpperCaseIsTheSameCart(): void
     {
-        $cart = CartFixture::cart($this->connection, lines: [[$this->variant(12_300, 10), 1]]);
+        $shoes = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
 
-        $order = $this->place(self::PATH, $this->body(strtoupper($cart), 12_300));
+        $order = $this->place(self::PATH, $this->body(strtoupper($cart), 12_300, [[$shoes, 1]]));
 
         self::assertResponseStatusCodeSame(201);
-        self::assertSame($order, $this->place(self::PATH, $this->body($cart, 12_300)), 'a repeat with the id in lower case');
+        self::assertSame($order, $this->place(self::PATH, $this->body($cart, 12_300, [[$shoes, 1]])), 'a repeat with the id in lower case');
         self::assertResponseStatusCodeSame(200);
     }
 
@@ -195,7 +196,7 @@ final class GuestOrderEndpointTest extends WebTestCase
     {
         $cart = CartFixture::cart($this->connection);
 
-        $this->assertConflict('cart-empty', 'Koszyk jest pusty.', $this->place(self::PATH, $this->body($cart, 0)));
+        $this->assertConflict('cart-empty', 'Koszyk jest pusty.', $this->place(self::PATH, $this->body($cart, 0, [[(string) Uuid::v7(), 1]])));
         self::assertSame(0, $this->orders());
     }
 
@@ -205,7 +206,7 @@ final class GuestOrderEndpointTest extends WebTestCase
         foreach (['no price' => $this->variant(null, 10), 'unknown to Catalog' => (string) Uuid::v7(), 'of a draft' => $this->draftVariant(12_300, 10)] as $kind => $variant) {
             $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1], [$variant, 1]]);
 
-            $this->assertConflict('cart-not-orderable', 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', $this->place(self::PATH, $this->body($cart, 12_300), key: 'key-'.$cart));
+            $this->assertConflict('cart-not-orderable', 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', $this->place(self::PATH, $this->body($cart, 12_300, [[$shoes, 1], [$variant, 1]]), key: 'key-'.$cart));
 
             self::assertSame([[$shoes, 1], [$variant, 1]], CartFixture::lines($this->connection, $cart), $kind);
         }
@@ -219,7 +220,7 @@ final class GuestOrderEndpointTest extends WebTestCase
         $last = $this->variant(1_230, 1);
         $cart = CartFixture::cart($this->connection, lines: [[$shoes, 2], [$last, 2]]);
 
-        $this->assertConflict('insufficient-stock-for-order', 'Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.', $this->place(self::PATH, $this->body($cart, 2 * 12_300 + 2 * 1_230)));
+        $this->assertConflict('insufficient-stock-for-order', 'Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.', $this->place(self::PATH, $this->body($cart, 2 * 12_300 + 2 * 1_230, [[$shoes, 2], [$last, 2]])));
 
         self::assertSame([[$shoes, 2], [$last, 2]], CartFixture::lines($this->connection, $cart));
         self::assertSame([10, 0], OrderingFixture::stock($this->connection, $shoes));
@@ -245,12 +246,97 @@ final class GuestOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 10);
         $cart = CartFixture::cart($this->connection, lines: [[$shoes, 2]]);
 
-        $this->assertConflict('order-total-changed', 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', $this->place(self::PATH, $this->body($cart, $expected)));
+        $this->assertConflict('order-total-changed', 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', $this->place(self::PATH, $this->body($cart, $expected, [[$shoes, 2]])));
 
         self::assertSame([[$shoes, 2]], CartFixture::lines($this->connection, $cart));
         self::assertSame([10, 0], OrderingFixture::stock($this->connection, $shoes));
         self::assertSame(0, $this->orders());
         self::assertSame(0, $this->reservations());
+    }
+
+    /**
+     * R1 of CART-ORDER-CONSISTENCY and its kin: the cart on the server is not the one the checkout showed, also at the
+     * same total. Nothing is ordered, reserved or changed; the problem has only its type and detail.
+     */
+    public function testAnotherContentOfTheCartIsAConflictWithoutOrderReservationOrChange(): void
+    {
+        $a = $this->variant(12_300, 10);
+        $b = $this->variant(12_300, 10);
+        $c = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$a, 1], [$b, 2]]);
+
+        foreach ([
+            'the quantities swapped at the same total' => [[$a, 2], [$b, 1]],
+            'another quantity' => [[$a, 1], [$b, 1]],
+            'a line missing' => [[$b, 2]],
+            'an extra line' => [[$a, 1], [$b, 2], [$c, 1]],
+            'another variant' => [[$a, 1], [$c, 2]],
+        ] as $kind => $lines) {
+            $problem = $this->place(self::PATH, $this->body($cart, 3 * 12_300, $lines), key: 'key-'.str_replace(' ', '-', $kind));
+
+            $this->assertConflict('cart-changed', 'Zawartość koszyka się zmieniła. Sprawdź podsumowanie.', $problem);
+            self::assertSame(['type', 'title', 'status', 'detail'], array_keys($problem), $kind);
+        }
+
+        self::assertSame([[$a, 1], [$b, 2]], CartFixture::lines($this->connection, $cart));
+        self::assertSame([10, 0], OrderingFixture::stock($this->connection, $a));
+        self::assertSame([10, 0], OrderingFixture::stock($this->connection, $b));
+        self::assertSame(0, $this->orders());
+        self::assertSame(0, $this->reservations());
+        self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_unpaid_order_claim'));
+    }
+
+    public function testTheListInAnotherOrderAndLetterCaseIsTheContentOfTheCart(): void
+    {
+        $a = $this->variant(12_300, 10);
+        $b = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$a, 1], [$b, 2]]);
+        $notations = iterator_to_array(InputValues::equivalentUuidForms($b));
+
+        $order = $this->place(self::PATH, $this->body($cart, 3 * 12_300, [[$notations['upper case'][0], 2], [$a, 1]]));
+
+        self::assertResponseStatusCodeSame(201);
+        self::assertIsString($order['orderId']);
+        $reserved = [$a => 1, $b => 2];
+        ksort($reserved);
+        self::assertSame($reserved, OrderingFixture::reservation($this->connection, $order['orderId']));
+        self::assertSame($order, $this->place(self::PATH, $this->body($cart, 3 * 12_300, [[$a, 1], [$b, 2]])), 'the same list in its canonical form is a repeat');
+        self::assertResponseStatusCodeSame(200);
+    }
+
+    /**
+     * A variant id of the format of a UUID outside the versions is a valid line of the list: no violation, but a cart
+     * without it.
+     */
+    public function testAVariantIdOutsideTheVersionsIsAnotherContentNotAViolation(): void
+    {
+        $shoes = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
+
+        foreach (InputValues::uuidsOutsideTheVersions() as $label => [$uuid]) {
+            $this->assertConflict('cart-changed', 'Zawartość koszyka się zmieniła. Sprawdź podsumowanie.', $this->place(self::PATH, $this->body($cart, 12_300, [[$uuid, 1]]), key: 'key-'.str_replace(' ', '-', $label)));
+        }
+        self::assertSame([[$shoes, 1]], CartFixture::lines($this->connection, $cart));
+        self::assertSame(0, $this->orders());
+    }
+
+    public function testAListOfFiftyLinesOfNinetyNineUnitsIsNoViolation(): void
+    {
+        $shoes = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
+        $lines = [];
+        for ($i = 1; $i <= 50; ++$i) {
+            $lines[] = [\sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $i), 99];
+        }
+
+        $this->assertConflict('cart-changed', 'Zawartość koszyka się zmieniła. Sprawdź podsumowanie.', $this->place(self::PATH, $this->body($cart, 12_300, $lines)));
+    }
+
+    public function testAnEmptyCartIsEmptyWhateverTheList(): void
+    {
+        $cart = CartFixture::cart($this->connection);
+
+        $this->assertConflict('cart-empty', 'Koszyk jest pusty.', $this->place(self::PATH, $this->body($cart, 12_300, [[$this->variant(12_300, 10), 1]])));
     }
 
     public function testLinesQuantitiesAndPricesInTheBodyAreIgnored(): void
@@ -259,7 +345,7 @@ final class GuestOrderEndpointTest extends WebTestCase
         $cart = CartFixture::cart($this->connection, lines: [[$shoes, 2]]);
 
         $order = $this->place(self::PATH, [
-            ...$this->body($cart, 24_600),
+            ...$this->body($cart, 24_600, [[$shoes, 2]]),
             'lines' => [['variantId' => $shoes, 'quantity' => 9, 'unitGross' => 1, 'lineGross' => 9]],
             'totals' => ['net' => 1, 'vat' => 0, 'gross' => 1, 'currency' => 'PLN'],
             'unitGross' => 1,
@@ -280,7 +366,7 @@ final class GuestOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 10);
         $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
 
-        $order = $this->place(self::PATH, $this->body($cart, 12_300), token: TestTokenFactory::customer());
+        $order = $this->place(self::PATH, $this->body($cart, 12_300, [[$shoes, 1]]), token: TestTokenFactory::customer());
 
         self::assertResponseStatusCodeSame(201);
         self::assertSame(self::EMAIL, $order['email']);
@@ -306,7 +392,7 @@ final class GuestOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 10);
         $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
 
-        $problem = $this->place(self::PATH, $this->body($cart, 12_300), key: $key);
+        $problem = $this->place(self::PATH, $this->body($cart, 12_300, [[$shoes, 1]]), key: $key);
 
         $this->assertProblem(400, null, $problem);
         self::assertIsArray($problem['violations'] ?? null);
@@ -317,20 +403,22 @@ final class GuestOrderEndpointTest extends WebTestCase
 
     public function testAKeyOfOneHundredAllowedCharactersIsAccepted(): void
     {
-        $cart = CartFixture::cart($this->connection, lines: [[$this->variant(12_300, 10), 1]]);
+        $shoes = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
 
-        $this->place(self::PATH, $this->body($cart, 12_300), key: 'Az09._:-'.str_repeat('k', 92));
+        $this->place(self::PATH, $this->body($cart, 12_300, [[$shoes, 1]]), key: 'Az09._:-'.str_repeat('k', 92));
 
         self::assertResponseStatusCodeSame(201);
     }
 
     public function testBadJsonIs400AndAnotherContentTypeIs415(): void
     {
-        $cart = CartFixture::cart($this->connection, lines: [[$this->variant(12_300, 10), 1]]);
+        $shoes = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
 
         $this->assertProblem(400, null, $this->place(self::PATH, '{"cartId": '));
         $this->assertProblem(415, null, $this->place(self::PATH, 'cartId='.$cart, contentType: 'application/x-www-form-urlencoded'));
-        $this->assertProblem(415, null, $this->place(self::PATH, (string) json_encode($this->body($cart, 12_300)), contentType: 'text/plain'));
+        $this->assertProblem(415, null, $this->place(self::PATH, (string) json_encode($this->body($cart, 12_300, [[$shoes, 1]])), contentType: 'text/plain'));
         self::assertSame(0, $this->orders());
     }
 
@@ -341,8 +429,9 @@ final class GuestOrderEndpointTest extends WebTestCase
     #[DataProvider('invalidGuestBodies')]
     public function testAnInvalidBodyGivesPolishViolationsAndPlacesNothing(array $changes, array $violations): void
     {
-        $cart = CartFixture::cart($this->connection, lines: [[$this->variant(12_300, 10), 1]]);
-        $body = self::changed($this->body($cart, 12_300), $changes);
+        $shoes = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
+        $body = self::changed($this->body($cart, 12_300, [[$shoes, 1]]), $changes);
 
         $this->assertViolations($violations, $this->place(self::PATH, [] === $body ? '{}' : $body));
 
@@ -367,9 +456,10 @@ final class GuestOrderEndpointTest extends WebTestCase
     #[DataProvider('formattedFieldsOfBlankUnicodeText')]
     public function testAFormattedFieldOfUnicodeWhiteSpaceOnlyIsAViolationOfThatFieldAndPlacesNothing(string $field, string $text): void
     {
-        $cart = CartFixture::cart($this->connection, lines: [[$this->variant(12_300, 10), 1]]);
+        $shoes = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
 
-        $problem = $this->place(self::PATH, [$field => $text] + $this->body($cart, 12_300));
+        $problem = $this->place(self::PATH, [$field => $text] + $this->body($cart, 12_300, [[$shoes, 1]]));
 
         $this->assertProblem(422, null, $problem);
         self::assertIsArray($problem['violations'] ?? null);
@@ -387,16 +477,17 @@ final class GuestOrderEndpointTest extends WebTestCase
 
         $this->assertProblem(422, null, $problem);
         self::assertIsArray($problem['violations'] ?? null);
-        self::assertSame(['cartId', 'email', 'fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross', 'deliveryMethodId'], array_column($problem['violations'], 'propertyPath'));
+        self::assertSame(['cartId', 'email', 'fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross', 'deliveryMethodId', 'expectedLines'], array_column($problem['violations'], 'propertyPath'));
     }
 
     public function testTheLongestValidValuesAreAccepted(): void
     {
-        $cart = CartFixture::cart($this->connection, lines: [[$this->variant(12_300, 10), 1]]);
+        $shoes = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
         $email = str_repeat('a', 242).'@example.com';
 
         $order = $this->place(self::PATH, [
-            ...$this->body($cart, 12_300),
+            ...$this->body($cart, 12_300, [[$shoes, 1]]),
             'email' => ' '.$email.' ',
             'fullName' => str_repeat('ż', 100),
             'phone' => '+48 600 100 200',
@@ -422,24 +513,27 @@ final class GuestOrderEndpointTest extends WebTestCase
     #[DataProvider('refusedTokens')]
     public function testAnInvalidTokenIs401AndPlacesNothing(string $token): void
     {
-        $cart = CartFixture::cart($this->connection, lines: [[$this->variant(12_300, 10), 1]]);
+        $shoes = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
         $token = match ($token) {
             'staff' => TestTokenFactory::staff(['admin']),
             'expired' => TestTokenFactory::customer(['iat' => time() - 600, 'exp' => time() - 1]),
             default => $token,
         };
 
-        $this->assertProblem(401, 'Wymagane jest uwierzytelnienie.', $this->place(self::PATH, $this->body($cart, 12_300), token: $token));
+        $this->assertProblem(401, 'Wymagane jest uwierzytelnienie.', $this->place(self::PATH, $this->body($cart, 12_300, [[$shoes, 1]]), token: $token));
 
         self::assertSame('Bearer', $this->response()->headers->get('WWW-Authenticate'));
         self::assertSame(0, $this->orders());
     }
 
     /**
+     * @param list<array{string, int}> $expectedLines variant id and quantity the checkout showed
+     *
      * @return array<string, mixed>
      */
-    private function body(string $cartId, int $expectedTotalGross): array
+    private function body(string $cartId, int $expectedTotalGross, array $expectedLines): array
     {
-        return ['cartId' => $cartId, 'email' => self::EMAIL, ...self::details($expectedTotalGross)];
+        return ['cartId' => $cartId, 'email' => self::EMAIL, ...self::details($expectedTotalGross, $expectedLines)];
     }
 }

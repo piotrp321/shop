@@ -8,6 +8,7 @@ use App\Ordering\Application\CartReference;
 use App\Ordering\Application\Command\ExpireUnpaidOrder;
 use App\Ordering\Application\Command\PlacedOrder;
 use App\Ordering\Application\Command\PlaceOrder;
+use App\Ordering\Domain\CartContentChanged;
 use App\Ordering\Domain\InsufficientStockForOrder;
 use App\Ordering\Domain\OrderPlaced;
 use App\Tests\Integration\Cart\CartFixture;
@@ -42,7 +43,7 @@ final class PlaceOrderTest extends MessagingKernelTestCase
         [$map] = OrderingFixture::variant($this->db, 1_000, 5);
         $cart = CartFixture::cart($this->db, expiresAt: '+3 days', lines: [[$shoes, 2], [$map, 1]]);
 
-        $placed = $this->place($cart, 2 * 12_300 + 1_230);
+        $placed = $this->place($cart, 2 * 12_300 + 1_230, [[$shoes, 2], [$map, 1]]);
 
         self::assertFalse($placed->replayed);
         $orderId = $placed->order->orderId;
@@ -67,7 +68,7 @@ final class PlaceOrderTest extends MessagingKernelTestCase
         [$shoes] = OrderingFixture::variant($this->db, 10_000, 5);
         $cart = CartFixture::cart($this->db, expiresAt: '+3 days', lines: [[$shoes, 1]]);
 
-        $placed = $this->place($cart, 12_300);
+        $placed = $this->place($cart, 12_300, [[$shoes, 1]]);
 
         self::assertSame(1, $this->rows('scheduled'));
         $row = $this->db->fetchAssociative("SELECT body, EXTRACT(EPOCH FROM available_at - created_at)::float8 AS delay, EXTRACT(EPOCH FROM available_at)::bigint AS available_at, delivered_at FROM messenger_messages WHERE queue_name = 'scheduled'");
@@ -90,10 +91,10 @@ final class PlaceOrderTest extends MessagingKernelTestCase
     {
         [$shoes] = OrderingFixture::variant($this->db, 10_000, 5);
         $cart = CartFixture::cart($this->db, expiresAt: '+3 days', lines: [[$shoes, 1]]);
-        $first = $this->place($cart, 12_300);
+        $first = $this->place($cart, 12_300, [[$shoes, 1]]);
         CartFixture::line($this->db, $cart, $shoes, 3);
 
-        $replayed = $this->place($cart, 12_300);
+        $replayed = $this->place($cart, 12_300, [[$shoes, 1]]);
 
         self::assertTrue($replayed->replayed);
         self::assertSame($first->order->orderId, $replayed->order->orderId);
@@ -104,6 +105,50 @@ final class PlaceOrderTest extends MessagingKernelTestCase
         self::assertSame(1, $this->rows('scheduled'), 'one expiry for the order');
     }
 
+    public function testAReplayRightAfterThePlacementFindsTheEmptiedCartAndGivesTheSameOrder(): void
+    {
+        [$shoes] = OrderingFixture::variant($this->db, 10_000, 5);
+        $cart = CartFixture::cart($this->db, expiresAt: '+3 days', lines: [[$shoes, 2]]);
+        $first = $this->place($cart, 2 * 12_300, [[$shoes, 2]]);
+        self::assertSame([], CartFixture::lines($this->db, $cart));
+
+        $replayed = $this->place($cart, 2 * 12_300, [[$shoes, 2]]);
+
+        self::assertTrue($replayed->replayed);
+        self::assertSame($first->order->orderId, $replayed->order->orderId);
+        self::assertSame(1, OrderingFixture::count($this->db, 'SELECT COUNT(*) FROM ordering_order'));
+        self::assertSame([5, 2], OrderingFixture::stock($this->db, $shoes));
+    }
+
+    /**
+     * R1 of the specification of CART-ORDER-CONSISTENCY: the quantities of two variants of the same price were swapped
+     * in another tab after the checkout was loaded, so the total is the same and only the lines tell the difference.
+     * Nothing is written: no order, reservation, usage of the code, claim of the limit, outbox row or number.
+     */
+    public function testSwappedQuantitiesAtTheSameTotalAreRefusedAndChangeNothing(): void
+    {
+        [$a] = OrderingFixture::variant($this->db, 10_000, 5);
+        [$b] = OrderingFixture::variant($this->db, 10_000, 5);
+        $cart = CartFixture::cart($this->db, expiresAt: '+3 days', lines: [[$a, 1], [$b, 2]]);
+        $before = $this->snapshot($cart, [$a, $b, $b]);
+        $claims = OrderingFixture::count($this->db, 'SELECT COUNT(*) FROM ordering_unpaid_order_claim');
+        $usages = OrderingFixture::count($this->db, 'SELECT COUNT(*) FROM pricing_discount_code_usage');
+        $number = $this->db->fetchAssociative('SELECT last_value, is_called FROM ordering_order_number_seq');
+
+        $failure = $this->failure($cart, 3 * 12_300, [[$a, 2], [$b, 1]]);
+
+        self::assertInstanceOf(CartContentChanged::class, $failure);
+        self::assertSame('Zawartość koszyka się zmieniła. Sprawdź podsumowanie.', $failure->getMessage());
+        self::assertSame($before, $this->snapshot($cart, [$a, $b, $b]));
+        self::assertSame([[$a, 1], [$b, 2]], CartFixture::lines($this->db, $cart), 'the cart keeps its lines');
+        self::assertSame($claims, OrderingFixture::count($this->db, 'SELECT COUNT(*) FROM ordering_unpaid_order_claim'), 'no claim of the limit');
+        self::assertSame($usages, OrderingFixture::count($this->db, 'SELECT COUNT(*) FROM pricing_discount_code_usage'), 'no usage of a code');
+        self::assertSame($number, $this->db->fetchAssociative('SELECT last_value, is_called FROM ordering_order_number_seq'), 'no number taken from the sequence');
+
+        $placed = $this->place($cart, 3 * 12_300, [[$b, 2], [$a, 1]]);
+        self::assertSame(self::sorted([$a => 1, $b => 2]), OrderingFixture::orderLines($this->db, $placed->order->orderId), 'the list of the cart in another order is placed');
+    }
+
     public function testAShortageOfTheLastOfThreeLinesLeavesEverythingAsItWas(): void
     {
         [$a] = OrderingFixture::variant($this->db, 10_000, 5);
@@ -112,7 +157,7 @@ final class PlaceOrderTest extends MessagingKernelTestCase
         $cart = CartFixture::cart($this->db, expiresAt: '+3 days', lines: [[$a, 1], [$b, 2], [$c, 2]]);
         $before = $this->snapshot($cart, [$a, $b, $c]);
 
-        $failure = $this->failure($cart, 12_300 + 2 * 2_460 + 2 * 1_230);
+        $failure = $this->failure($cart, 12_300 + 2 * 2_460 + 2 * 1_230, [[$a, 1], [$b, 2], [$c, 2]]);
 
         self::assertInstanceOf(InsufficientStockForOrder::class, $failure);
         self::assertSame('Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.', $failure->getMessage());
@@ -128,7 +173,7 @@ final class PlaceOrderTest extends MessagingKernelTestCase
         $before = $this->snapshot($cart, [$a, $b, $c]);
         $this->refuseInsertsInto('ordering_order');
 
-        $failure = $this->failure($cart, 12_300 + 2 * 2_460 + 2 * 1_230);
+        $failure = $this->failure($cart, 12_300 + 2 * 2_460 + 2 * 1_230, [[$a, 1], [$b, 2], [$c, 2]]);
 
         self::assertStringContainsString('forced failure', $failure->getMessage());
         self::assertSame($before, $this->snapshot($cart, [$a, $b, $c]));
@@ -143,7 +188,7 @@ final class PlaceOrderTest extends MessagingKernelTestCase
         $before = $this->snapshot($cart, [$a, $b, $c]);
         $this->refuseInsertsInto('messenger_messages');
 
-        $failure = $this->failure($cart, 12_300 + 2 * 2_460 + 2 * 1_230);
+        $failure = $this->failure($cart, 12_300 + 2 * 2_460 + 2 * 1_230, [[$a, 1], [$b, 2], [$c, 2]]);
 
         self::assertStringContainsString('forced failure', $failure->getMessage().' '.$failure->getPrevious()?->getMessage());
         self::assertSame($before, $this->snapshot($cart, [$a, $b, $c]));
@@ -157,7 +202,7 @@ final class PlaceOrderTest extends MessagingKernelTestCase
         $this->db->executeStatement("CREATE FUNCTION test_refuse_insert() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RAISE EXCEPTION 'forced failure'; END \$\$");
         $this->db->executeStatement("CREATE TRIGGER test_refuse_insert BEFORE INSERT ON messenger_messages FOR EACH ROW WHEN (NEW.queue_name = 'scheduled') EXECUTE FUNCTION test_refuse_insert()");
 
-        $failure = $this->failure($cart, 2 * 12_300);
+        $failure = $this->failure($cart, 2 * 12_300, [[$a, 2]]);
 
         self::assertStringContainsString('forced failure', $failure->getMessage().' '.$failure->getPrevious()?->getMessage());
         self::assertSame($before, $this->snapshot($cart, [$a, $a, $a]), 'no order, reservation or outbox row without its expiry');
@@ -176,18 +221,24 @@ final class PlaceOrderTest extends MessagingKernelTestCase
         self::assertEquals($event->occurredAt(), $decoded->occurredAt());
     }
 
-    private function place(string $cart, int $expectedTotalGross): PlacedOrder
+    /**
+     * @param list<array{string, int}> $expectedLines the lines the checkout showed: variant id and quantity
+     */
+    private function place(string $cart, int $expectedTotalGross, array $expectedLines): PlacedOrder
     {
-        $result = $this->bus()->dispatch(self::command($cart, $expectedTotalGross))->last(HandledStamp::class)?->getResult();
+        $result = $this->bus()->dispatch(self::command($cart, $expectedTotalGross, $expectedLines))->last(HandledStamp::class)?->getResult();
         self::assertInstanceOf(PlacedOrder::class, $result);
 
         return $result;
     }
 
-    private function failure(string $cart, int $expectedTotalGross): \Throwable
+    /**
+     * @param list<array{string, int}> $expectedLines the lines the checkout showed: variant id and quantity
+     */
+    private function failure(string $cart, int $expectedTotalGross, array $expectedLines): \Throwable
     {
         try {
-            $this->bus()->dispatch(self::command($cart, $expectedTotalGross));
+            $this->bus()->dispatch(self::command($cart, $expectedTotalGross, $expectedLines));
         } catch (HandlerFailedException $failed) {
             $wrapped = array_values($failed->getWrappedExceptions());
             self::assertCount(1, $wrapped);
@@ -197,9 +248,12 @@ final class PlaceOrderTest extends MessagingKernelTestCase
         self::fail('Expected the placement to fail.');
     }
 
-    private static function command(string $cart, int $expectedTotalGross): PlaceOrder
+    /**
+     * @param list<array{string, int}> $expectedLines variant id and quantity
+     */
+    private static function command(string $cart, int $expectedTotalGross, array $expectedLines): PlaceOrder
     {
-        return new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::FREE_DELIVERY_METHOD, $expectedTotalGross, 'key-'.$cart);
+        return new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::FREE_DELIVERY_METHOD, $expectedTotalGross, OrderingFixture::expected($expectedLines), 'key-'.$cart);
     }
 
     /**

@@ -191,7 +191,7 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
         $bus = self::getContainer()->get('command.bus');
         self::assertInstanceOf(MessageBusInterface::class, $bus);
 
-        $result = $bus->dispatch(new PlaceOrder(CartReference::guest($cart), $this->inbox->recipient, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($db), 12_300, 'key-'.$cart))
+        $result = $bus->dispatch(new PlaceOrder(CartReference::guest($cart), $this->inbox->recipient, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($db), 12_300, OrderingFixture::expectedOfCart($db, $cart), 'key-'.$cart))
             ->last(HandledStamp::class)?->getResult();
         self::assertInstanceOf(PlacedOrder::class, $result);
         self::assertSame(1, $this->rows('outbox'));

@@ -60,11 +60,14 @@ trait OrderEndpointTestTrait
 
     /**
      * The fields of the contact and the address of a valid body, as a customer sends them (with spaces to trim and
-     * a phone with separators), with the given expected total and the free delivery method.
+     * a phone with separators), with the given expected total, the free delivery method and the lines the checkout
+     * showed (spec cart-order-consistency, Z1).
+     *
+     * @param list<array{string, int}> $expectedLines variant id and quantity, as CartFixture takes the lines of a cart
      *
      * @return array<string, mixed>
      */
-    private static function details(int $expectedTotalGross): array
+    private static function details(int $expectedTotalGross, array $expectedLines): array
     {
         return [
             'fullName' => '  Anna Nowak ',
@@ -74,6 +77,7 @@ trait OrderEndpointTestTrait
             'city' => 'Warszawa ',
             'expectedTotalGross' => $expectedTotalGross,
             'deliveryMethodId' => self::FREE_DELIVERY,
+            'expectedLines' => OrderingFixture::expected($expectedLines),
         ];
     }
 
