@@ -28,7 +28,10 @@ SCRIPT = REPO / "infra/k8s/scripts/load.sh"
 # the generator answers with a Job and `kubectl set env --local` gives its input back. The Job of the
 # generator is in the state STUB_DATA_JOB (Complete by default) with the log STUB_DATA_LOG; curl answers the chunks of the
 # sitemap with STUB_CHUNKS (exit STUB_CHUNKS_STATUS); k6 writes its results to STUB_K6_OUT when it is set, and with
-# STUB_K6_SLEEP it runs that many seconds (its pid in $STUB_SPACE_DIR/k6.pid, `docker rm -f k6-...` ends it). The free space
+# STUB_K6_SLEEP its container runs that many seconds (the pid of the client of docker run in $STUB_SPACE_DIR/k6-client.pid, that
+# of the container in k6.pid; `docker rm -f k6-...` ends the container); with STUB_K6_MADE_AFTER_RM Docker makes the container
+# only once the script has called `docker rm -f k6-...` (a stop that came while Docker was still making it). With STUB_SPACE_HOLD
+# k6 starts only once the reading of the guard that the df of the host holds has begun (see DF). The free space
 # of the disks (the checks of W2) comes from STUBSPACE (see there); `df -Pk` of the host is the stub DF. A `docker run` that
 # mounts the directory STUB_MOUNT_DENIED (-v <directory>:...) is refused as Docker Desktop refuses a path that is not shared
 # (exit 125, "mounts denied"); k6 ends with <code> when STUB_K6_FAIL is <script>:<code> (125: the docker run itself failed).
@@ -55,7 +58,19 @@ case "$1" in
   stats) printf '1.00%% 100MiB / 1GiB\n' ;;
   rm)
     case "$*" in
-      *k6-ld-loadtest*) [ ! -f "$STUB_SPACE_DIR/k6.pid" ] || kill "$(cat "$STUB_SPACE_DIR/k6.pid")" 2>/dev/null || true ;;
+      *k6-ld-loadtest*)
+        # The container of k6 is removed: its process ends, and as the real `docker rm -f`, the stub returns once it is gone
+        # (a zombie that no parent reaps is gone).
+        if [ -f "$STUB_SPACE_DIR/k6.pid" ]; then
+          container="$(cat "$STUB_SPACE_DIR/k6.pid")"
+          kill "$container" 2>/dev/null || true
+          i=0
+          while [ "$i" -lt 100 ] && state="$(sed -n 's/.*) \(.\) .*/\1/p' "/proc/$container/stat" 2>/dev/null)" \
+            && [ -n "$state" ] && [ "$state" != Z ]; do
+            sleep 0.1
+            i=$((i + 1))
+          done
+        fi ;;
     esac ;;
   run)
     case "$*" in
@@ -105,11 +120,30 @@ case "$1" in
         printf '%s' "${STUB_CHUNKS:-}"
         exit "${STUB_CHUNKS_STATUS:-0}" ;;
       *grafana/k6*)
-        stubdrop k6
+        if [ -n "${STUB_SPACE_HOLD:-}" ]; then
+          i=0
+          until [ -f "$STUB_SPACE_DIR/held" ] || [ "$i" -ge 300 ]; do sleep 0.1; i=$((i + 1)); done
+        fi
+        [ -n "${STUB_K6_SLEEP:-}" ] || stubdrop k6
         case "${STUB_K6_FAIL:-}" in
           ?*:*) case "$*" in *"${STUB_K6_FAIL%:*}"*) echo "stub k6 failed" >&2; exit "${STUB_K6_FAIL#*:}" ;; esac ;;
         esac
-        if [ -n "${STUB_K6_SLEEP:-}" ]; then echo $$ > "$STUB_SPACE_DIR/k6.pid"; exec sleep "$STUB_K6_SLEEP"; fi
+        if [ -n "${STUB_K6_SLEEP:-}" ]; then
+          # The client of docker run (this process) and the container of k6 (a sleep, its pid in k6.pid) are two processes, as
+          # with Docker: a client that is killed leaves its container running, and `docker rm -f` ends the container and with it
+          # the client. The pid files are written whole (a rename), so that no reader sees one half written.
+          echo $$ > "$STUB_SPACE_DIR/k6-client.pid.tmp" && mv "$STUB_SPACE_DIR/k6-client.pid.tmp" "$STUB_SPACE_DIR/k6-client.pid"
+          stubdrop k6-client
+          if [ -n "${STUB_K6_MADE_AFTER_RM:-}" ]; then
+            i=0
+            until grep -q "rm -f k6-" "$STUB_LOG" || [ "$i" -ge 300 ]; do sleep 0.1; i=$((i + 1)); done
+          fi
+          sleep "$STUB_K6_SLEEP" &
+          echo $! > "$STUB_SPACE_DIR/k6.pid.tmp" && mv "$STUB_SPACE_DIR/k6.pid.tmp" "$STUB_SPACE_DIR/k6.pid"
+          stubdrop k6
+          wait "$!"
+          exit "$?"
+        fi
         [ -n "${STUB_K6_OUT:-}" ] || exit 0
         case "$*" in
           *saturate.js*) echo '{}' > "$STUB_K6_OUT/ramp.json"; echo 5 > "$STUB_K6_OUT/steady-rate" ;;
@@ -160,7 +194,8 @@ printf 'stub 1000000000 1 %s 1%% /stub mount\n' "$value"
 """
 
 # STUBDROP <phase>: when STUB_SPACE_DROP is <phase>:<vm|host>:<value> the free space of that disk is that value from now on
-# (the phase is `job`, a poll of the Job of the generator, or `k6`, a start of k6).
+# (the phase is `job`, a poll of the Job of the generator, `k6`, a start of k6 (with STUB_K6_SLEEP: its container runs), or
+# `k6-client`, the start of the client of docker run of k6 with STUB_K6_SLEEP, before its container is made).
 STUBDROP = r"""#!/bin/sh
 case "${STUB_SPACE_DROP:-}" in
   "$1":*)
@@ -169,9 +204,18 @@ case "${STUB_SPACE_DROP:-}" in
 esac
 """
 
-# The stub of the df of the host: the call is kept in $STUB_SPACE_DIR/host.calls.
+# The stub of the df of the host: the call is kept in $STUB_SPACE_DIR/host.calls. With STUB_SPACE_HOLD=<KiB> the second call (the
+# first reading of the guard; the first call is the reading before the start) answers <KiB> only once the summary of space.log is
+# written or 5 s have passed: it marks the hold with $STUB_SPACE_DIR/held, and k6 waits for that mark, so the run ends while the guard
+# is in the middle of a reading.
 DF = r"""#!/bin/sh
 echo "$*" >> "$STUB_SPACE_DIR/host.calls"
+if [ -n "${STUB_SPACE_HOLD:-}" ] && [ "$(wc -l < "$STUB_SPACE_DIR/host.calls")" -eq 2 ]; then
+  : > "$STUB_SPACE_DIR/held"
+  i=0
+  until grep -q '^# .*least' "$LOAD_OUT/space.log" 2>/dev/null || [ "$i" -ge 50 ]; do sleep 0.1; i=$((i + 1)); done
+  printf '%s' "$STUB_SPACE_HOLD" > "$STUB_SPACE_DIR/host"
+fi
 exec stubspace host
 """
 
@@ -190,7 +234,8 @@ esac
 
 # caffeinate of macOS (only the tests of the sleep lock install it): the arguments are kept in $STUB_SPACE_DIR/caffeinate.calls, and
 # a process that `-w` waits for must exist (caffeinate.waited), as with the real one. It runs, as the real one does, until it is
-# stopped (its pid in caffeinate.pid), unless STUB_CAFFEINATE_FAIL makes it fail at once.
+# stopped (its pid in caffeinate.pid), unless STUB_CAFFEINATE_FAIL makes it fail at once. With STUB_CAFFEINATE_SLOW_STOP=<s> it
+# ends <s> seconds after its TERM (a process does not end at the instant it is signalled).
 CAFFEINATE = r"""#!/bin/sh
 echo "$*" >> "$STUB_SPACE_DIR/caffeinate.calls"
 [ -z "${STUB_CAFFEINATE_FAIL:-}" ] || { echo "caffeinate: stub failure" >&2; exit 1; }
@@ -199,7 +244,11 @@ while [ $# -gt 0 ]; do
   shift
 done
 echo $$ > "$STUB_SPACE_DIR/caffeinate.pid"
-exec sleep 300
+[ -n "${STUB_CAFFEINATE_SLOW_STOP:-}" ] || exec sleep 300
+trap 'kill "$nap" 2>/dev/null; sleep "$STUB_CAFFEINATE_SLOW_STOP"; exit 0' TERM
+sleep 300 &
+nap=$!
+wait "$nap"
 """
 
 # The read access of the photo pool as the file of the user has it, with the token that writes next to it.
@@ -870,7 +919,7 @@ class LoadScript(unittest.TestCase):
 
     def drop(self, disk, value):
         """STUB_SPACE_DROP of the free space of a disk (vm or host) to value from the first poll of the Job on."""
-        for name in ("vm", "host", "k6.pid"):
+        for name in ("vm", "host", "k6.pid", "k6-client.pid"):
             (self.space / name).unlink(missing_ok=True)
         self.log.write_text("")
         return f"job:{disk}:{value}"
@@ -894,6 +943,11 @@ class LoadScript(unittest.TestCase):
                 self.assertIn("cluster delete", [call for call in self.calls() if "k3d-io/k3d" in call][-1])
                 self.assertIn("ld-loadtest", self.cluster_calls("delete")[-1])
 
+    def k6_alive(self):
+        """The processes of k6 that still run: the client of docker run and the container it made (the pids the stub keeps)."""
+        pids = [int(path.read_text()) for path in (self.space / "k6-client.pid", self.space / "k6.pid") if path.exists()]
+        return [pid for pid in pids if process_alive(pid)]
+
     def test_a_fall_of_the_space_while_k6_runs_stops_k6_and_deletes_the_cluster(self):
         peak = disk_peak_gb("medium")
         for disk, word, other in (("vm", "the Docker VM", "the disk of the host"), ("host", "the disk of the host", "the Docker VM")):
@@ -906,9 +960,27 @@ class LoadScript(unittest.TestCase):
                 self.assertNotIn(other, result.stderr)
                 self.assertEqual(1, len(self.k6_calls()))
                 self.assertEqual(1, len([call for call in self.calls() if "rm -f k6-ld-loadtest" in call]), self.calls())
-                self.assertFalse(process_alive(int((self.space / "k6.pid").read_text())), "k6 still runs")
+                # The space fell while the container ran (the stub drops it once the container is made).
+                self.assertTrue((self.space / "k6.pid").exists(), "the container of k6 was not made")
+                self.assertEqual([], self.k6_alive(), "k6 still runs")
                 self.assertIn("cluster delete", [call for call in self.calls() if "k3d-io/k3d" in call][-1])
                 self.assertEqual(1, len(self.cluster_calls("create")))
+
+    def test_a_fall_of_the_space_while_docker_still_makes_the_container_of_k6_leaves_no_k6_behind(self):
+        """The guard can stop the run after `docker run` of k6 started and before Docker made its container: `docker rm -f`
+        finds no container then, so the client of docker run must be ended first, or it makes the container afterwards and k6
+        runs against a deleted cluster."""
+        for disk, word in (("vm", "the Docker VM"), ("host", "the disk of the host")):
+            with self.subTest(disk=disk):
+                self.drop(disk, 0)
+                result = self.run_data("medium", LOAD_SPACE_POLL="1", STUB_K6_SLEEP="120", STUB_K6_MADE_AFTER_RM="1",
+                                       STUB_SPACE_DROP=f"k6-client:{disk}:0")
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertIn(word, result.stderr)
+                self.assertEqual(1, len(self.k6_calls()))
+                self.assertEqual(1, len([call for call in self.calls() if "rm -f k6-ld-loadtest" in call]), self.calls())
+                self.assertEqual([], self.k6_alive(), "k6 still runs")
+                self.assertIn("cluster delete", [call for call in self.calls() if "k3d-io/k3d" in call][-1])
 
     def test_the_space_at_the_threshold_does_not_stop_the_run_and_a_kib_below_it_does(self):
         threshold_kib = kib(disk_peak_gb("medium") * 0.1)
@@ -1024,6 +1096,26 @@ class LoadScript(unittest.TestCase):
         self.assertEqual((900_000_000, 950_000_000), rows[0][1:])
         self.assertEqual(1, len(re.findall(r"(?m)^# .*least", text)), text)
         self.assertFalse(text.splitlines()[-1][0].isdigit(), "a reading follows the summary")
+
+    def test_a_reading_of_the_guard_that_is_under_way_when_the_run_ends_comes_before_the_summary(self):
+        """The guard can be in the middle of a reading when the run ends: the reading goes to its end (a shell runs the trap of
+        TERM only after the command it is in), so the cleanup waits for the guard before the summary. Also when that last reading
+        found the space fallen: the cleanup goes to its end (the cluster is deleted)."""
+        low = kib(disk_peak_gb("medium") * 0.1) - 1
+        for held in (800_000_000, low):
+            with self.subTest(held=held):
+                for name in ("held", "host", "host.calls"):
+                    (self.space / name).unlink(missing_ok=True)
+                self.log.write_text("")
+                result = self.run_data("medium", LOAD_SPACE_POLL="1", STUB_SPACE_HOLD=str(held))
+                self.assertEqual(0, result.returncode, result.stderr)
+                text = (self.out / "space.log").read_text()
+                rows, comments = self.space_rows()
+                self.assertIn(held, [row[2] for row in rows], text)
+                self.assertFalse(text.splitlines()[-1][0].isdigit(), "a reading follows the summary\n" + text)
+                self.assertEqual(1, len(re.findall(r"(?m)^# .*least", text)), text)
+                self.assertIn(f"{held * 1024 / 1e9:.2f} GB on the disk of the host", text)
+                self.assertIn("cluster delete", [call for call in self.calls() if "k3d-io/k3d" in call][-1])
 
     def test_space_log_after_a_fall_of_the_space_has_the_fallen_value_as_the_least(self):
         peak = disk_peak_gb("medium")
@@ -1175,6 +1267,13 @@ class LoadScript(unittest.TestCase):
         self.assertIn("not ready", result.stderr)
         self.assertTrue((self.space / "caffeinate.calls").exists(), "caffeinate was not started")
         self.assertEqual(1, len((self.space / "caffeinate.calls").read_text().splitlines()))
+        self.assertFalse(process_alive(int((self.space / "caffeinate.pid").read_text())), "caffeinate still runs")
+
+    def test_caffeinate_has_ended_when_the_run_returns(self):
+        """The run waits for the caffeinate it stops: a process that takes a moment to end after its TERM is gone all the same."""
+        self.install_caffeinate()
+        result = self.run_data("medium", STUB_CAFFEINATE_SLOW_STOP="3")
+        self.assertEqual(0, result.returncode, result.stderr)
         self.assertFalse(process_alive(int((self.space / "caffeinate.pid").read_text())), "caffeinate still runs")
 
     def test_without_caffeinate_the_run_goes_on_without_an_error_and_environment_says_so(self):
