@@ -601,15 +601,11 @@ jobs:
         run: make seed RUN="docker compose exec -T"
 
       # This part of the suite: `--shard=<index>/<number of parts>` runs whole spec files in file order. The weights (one
-      # per part, 105:129:126:124 of 484 tests) put the boundaries after 105 tests (inside admin-screens-inventory),
-      # after 234 (inside catalog-admin) and after 360 (inside search). The parts, with the time of their tests in CI
-      # runs 45063420116 (panel files) and 45066634806 (store files): admin-customers to admin-screens-inventory (119
-      # tests, ~565 s, with admin-design), admin-screens-orders to catalog-admin (126, ~545 s), catalog to search (120,
-      # ~470 s, with delivery-checkout and request-body-limit) and seo to visual-screens (119, ~295 s), which also runs
-      # the checks after the tests (~3 min). A spec file belongs to the part in which its first test starts before the
-      # boundary. When tests are added, move the boundaries so that the parts end about together: count by the times of
-      # the files in the log of the parts, not by the number of tests (a panel test takes several times as long as a
-      # store test), and keep every boundary inside a file of at least 8 tests.
+      # per part of the matrix) are the shares of the tests of the parts, so added tests run exactly once without a change
+      # here. A feature change does not move them: the parts are rebalanced in a change of its own, from the times of the
+      # spec files in the logs of the parts of full runs on main (a panel test takes several times as long as a store
+      # test), with every boundary inside a file of at least 8 tests (e2e/CLAUDE.md, "CI"). A spec file belongs to the
+      # part in which its first test starts before the boundary. The last part also runs the checks after the tests.
       - name: make e2e
         if: env.FULL_CI == 'true'
         env:
