@@ -820,7 +820,10 @@ function buyerMessage({ email, mayHavePlaced }: Extract<Failure, { kind: "buyer"
 function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLinkShown: boolean }) {
   return (
     <Alert id={FAILURE_ID} variant="destructive" tabIndex={-1}>
-      <AlertDescription>
+      {/* Texts of the data (an address, a product, a variant, a delivery method) can be one word longer than the screen:
+          `wrap-anywhere` (not `break-words`) also lets the grid of the alert shrink to a narrow screen, as it counts in
+          the width the text needs at least. */}
+      <AlertDescription className="wrap-anywhere">
         {failure.kind === "unauthorized" ? (
           <p>
             <SessionExpired returnTo="/checkout" />
@@ -828,9 +831,7 @@ function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLink
         ) : failure.kind === "message" ? (
           <p>{failure.text}</p>
         ) : failure.kind === "buyer" ? (
-          // An address of an account is one long word: `wrap-anywhere` (not `break-words`) also lets the grid of the alert
-          // shrink to a narrow screen, as it counts in the width the text needs at least.
-          <p className="wrap-anywhere">{buyerMessage(failure)}</p>
+          <p>{buyerMessage(failure)}</p>
         ) : failure.kind === "changed" ? (
           <>
             <p>{CHANGED[failure.reason]}</p>
@@ -838,9 +839,7 @@ function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLink
               <ul className="list-disc pl-5 not-last:mb-4">
                 {/* Two lines without a known product can say the same: the position is the key. */}
                 {failure.changes.map((change, index) => (
-                  <li key={index} className="break-words">
-                    {change}
-                  </li>
+                  <li key={index}>{change}</li>
                 ))}
               </ul>
             ) : null}
@@ -1119,10 +1118,10 @@ function DeliveryChoice({
           />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex flex-wrap justify-between gap-x-4">
-              <span className="font-semibold break-words">{option.name}</span>
+              <span className="font-semibold wrap-anywhere">{option.name}</span>
               <span>{option.costGross === 0 ? "Darmowa" : formatPrice(option.costGross, currency)}</span>
             </span>
-            {option.description ? <span className="text-sm text-muted-foreground break-words">{option.description}</span> : null}
+            {option.description ? <span className="text-sm text-muted-foreground wrap-anywhere">{option.description}</span> : null}
             {option.costGross !== 0 && option.missingToFreeGross !== null ? (
               <span className="text-sm text-muted-foreground">Do darmowej dostawy brakuje {formatPrice(option.missingToFreeGross, currency)}</span>
             ) : null}
@@ -1271,7 +1270,8 @@ function OrderSummary({ cart, delivery, status }: { cart: CartView; delivery: De
           <ul className="flex flex-col divide-y divide-border">
             {cart.lines.map((line) => (
               <li key={line.variantId} className="flex justify-between gap-4 py-2 first:pt-0">
-                <div className="flex flex-col">
+                {/* A name or a label of the data can be one word longer than the screen: `wrap-anywhere` breaks it. */}
+                <div className="flex min-w-0 flex-col wrap-anywhere">
                   <span className="font-semibold">{line.product?.name}</span>
                   {line.product?.variantLabel ? (
                     <span data-testid="checkout-line-variant" className="text-sm text-muted-foreground">
@@ -1283,7 +1283,7 @@ function OrderSummary({ cart, delivery, status }: { cart: CartView; delivery: De
                   </span>
                 </div>
                 {line.lineTotal ? (
-                  <span data-testid="checkout-line-total" className="font-semibold">
+                  <span data-testid="checkout-line-total" className="shrink-0 font-semibold">
                     {formatPrice(line.lineTotal.gross, line.lineTotal.currency)}
                   </span>
                 ) : null}
@@ -1291,7 +1291,7 @@ function OrderSummary({ cart, delivery, status }: { cart: CartView; delivery: De
             ))}
           </ul>
           {cart.discount?.status === "applied" ? (
-            <p data-testid="checkout-discount" className="flex justify-between text-sm">
+            <p data-testid="checkout-discount" className="flex justify-between text-sm wrap-anywhere">
               Kod {cart.discount.code}: −{formatPrice(cart.discount.amountGross, cart.totals.currency)}
             </p>
           ) : null}

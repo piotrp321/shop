@@ -543,6 +543,9 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   Pusty koszyk albo `hasExcludedLines`: zamiast formularza komunikat i link do koszyka; przy pustym koszyku
   i poprawnym `store_order_confirmation` także link „Opłać zamówienie R-…” na `/checkout/confirmation` (powrót ze
   strony dostawcy bez decyzji, `docs/features/payment/spec.md`, P7).
+- Teksty z danych w podsumowaniu, w wyborze dostawy i w komunikacie nad formularzem (nazwa produktu, etykieta
+  wariantu, nazwa i opis metody dostawy, kod rabatowy, adres konta) łamią się także w środku słowa (`wrap-anywhere`),
+  więc słowo dłuższe niż ekran nie powoduje przewijania poziomego przy 320 i 375 px.
 - Status i ponowienie wczytania (`CheckoutPage.tsx`): jeden region `role="status"` (`data-testid="checkout-status"`)
   istnieje od pierwszego renderu przez wszystkie stany ekranu (wczytywanie, błąd, treść, pusty koszyk, wygasła sesja);
   zmienia się tylko jego tekst („Wczytywanie…” w trakcie odczytu, także odczytu nieaktualnego podsumowania po kliknięciu
@@ -962,7 +965,11 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   i R6 (kasa Jana, wylogowanie i koszyk gościa w drugiej karcie: 401, widok wygasłej sesji, żaden koszyk nie został
   zamówiony). Przy 375 px z dotykiem i przy 320 px komunikat zmiany kupującego i wiersz „Potwierdzenie wyślemy na adres”
   z adresem konta o 60 znakach bez spacji (odpowiedź 409 i `/auth/session` podstawione w przeglądarce) nie powodują
-  przewijania poziomego.
+  przewijania poziomego; tak samo podsumowanie, wybór dostawy i komunikat z listą zmian z nazwą produktu, etykietą
+  wariantu i nazwą metody dostawy bez spacji dłuższymi niż ekran i kodem rabatowym o 64 znakach (odczyty koszyka
+  i odpowiedź 409 `cart-changed` podstawione w przeglądarce, nic nie jest zamawiane). R7 (kasa Jana, odpowiedź na
+  zamówienie utracona po jego złożeniu, logowanie Anny w drugiej karcie przed ponowieniem: 409 na ten sam klucz,
+  komunikat „Poprzednia próba mogła złożyć zamówienie…” z adresem Anny; zamówienie Jana istnieje i jest opłacane).
 - `payment-resume.spec.ts`: powrót ze strony symulatora na `/checkout`, link „Opłać zamówienie R-…”, „Wróć do
   płatności” otwiera tę samą sesję, płatność się udaje.
 - E2E składają zamówienia na wariantach z dużym stanem i je opłacają; rezerwacje opłaconych zamówień zostają do
