@@ -1,0 +1,115 @@
+# Merge override (docs/features/agent-security/spec.md, R8): merges one pull request into main although its required
+# checks (`checks`, `e2e`) are not green. For a broken CI, an outage of GitHub Actions or an urgent fix; a red test is
+# normally fixed with another commit.
+#
+#   gh workflow run merge-override.yml --ref main -f pr=<number> -f sha=<head commit> -f reason=<why>
+#
+# validate   no environment, no secret: checks the inputs and the pull request (open, not a draft, into main, not from a
+#            fork, the head commit is the given one, the required checks are not green) and writes what would be merged
+#            to the run summary. A refusal ends the run before anybody is asked to approve.
+# merge      waits in the environment `merge-override` until the user approves it (GitHub: the run page, the
+#            notification or the mobile app), then squash-merges the pull request pinned to the given head commit, deletes
+#            its branch and leaves a comment with the link of this run.
+#
+# Who may bypass: the ruleset `main-merge` (tools/rulesets/main-merge.json) has one bypass actor, a GitHub App installed
+# on this repository only, in the mode "pull requests only". Its private key is the secret MERGE_APP_PRIVATE_KEY of the
+# environment `merge-override`, which admits main only and requires the approval of the user, so a workflow on any
+# other branch gets neither the key nor the approval, and no other job of any workflow may use that environment
+# (infra/k8s/README.md; tests/test_deploy_workflow.py). The role of the repository admin has no bypass, so no token of the
+# user's account merges past the checks by itself: it takes the approval of this environment.
+#
+# The title of the run names the pull request and the commit, so the request the user approves from a notification is
+# the one they mean. Two requests for one pull request do not cancel each other: both are pinned to their commit, and
+# the one approved second ends with a refusal (already merged, or another head commit).
+#
+# The jobs run .github/scripts/merge-override.sh from main and only call the API of GitHub: the code of the pull request
+# is never checked out or run. The inputs reach the script through `env`, never through an expression inside a script.
+# The merge is made with the token of the app, not GITHUB_TOKEN, so the push to main starts the CI of main as usual.
+name: Merge override
+run-name: 'Merge override of #${{ inputs.pr }} at ${{ inputs.sha }}'
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Number of the pull request into main'
+        required: true
+        type: string
+      sha:
+        description: 'Head commit of the pull request (full SHA)'
+        required: true
+        type: string
+      reason:
+        description: 'Why the required checks are skipped'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    steps:
+      # The environment of the job `merge` refuses any other ref anyway; this says so before the user is asked.
+      - name: Only on main
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::merge-override runs on main only (--ref main), not on $GITHUB_REF"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the request
+        env:
+          PR: ${{ inputs.pr }}
+          SHA: ${{ inputs.sha }}
+          REASON: ${{ inputs.reason }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: sh .github/scripts/merge-override.sh validate
+
+  merge:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The user approves the merge here (Settings > Environments > merge-override: required reviewer, branch policy main
+    # only), and MERGE_APP_PRIVATE_KEY is a secret of this environment (infra/k8s/README.md, "Merge override").
+    environment: merge-override
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The installation token of the app, for this repository only; the action revokes it when the job ends.
+      - name: Token of the merge app
+        id: app
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.MERGE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MERGE_APP_PRIVATE_KEY }}
+
+      - name: Merge the pull request
+        env:
+          PR: ${{ inputs.pr }}
+          SHA: ${{ inputs.sha }}
+          REASON: ${{ inputs.reason }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MERGE_TOKEN: ${{ steps.app.outputs.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: sh .github/scripts/merge-override.sh merge

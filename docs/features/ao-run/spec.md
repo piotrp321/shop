@@ -237,7 +237,8 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
    jeszcze sondy, więc sesja uruchamia ją z HEAD końcowego PR w osobnym worktree, w przebiegu domyślnym i `--mode ao`
    (oba z kodem 0, wynik, czas i koszt w raporcie), a tokenem użytkownika odczytuje rulesety `main-merge`
    i `epic-merge` (`gh api repos/piotrp321/shop/rulesets`, potem `…/rulesets/<id>`): `current_user_can_bypass` musi
-   być `never`, a `bypass_actors` puste, tak jak `never` tokenu wykonawcy z przypadku sondy `rulesets_bypass_never`.
+   być `never`, a `bypass_actors` puste (w `main-merge` wyłącznie GitHub App workflowu `merge-override`), tak jak
+   `never` tokenu wykonawcy z przypadku sondy `rulesets_bypass_never`.
    Inna wartość (także `pull_requests_only` tokenu użytkownika), brak rulesetu albo nieudana sonda to bloker dla
    użytkownika: rekomendacja „najpierw sprawdź”, push i brak merge'u także na polecenie, do ponownego odbioru.
    Odbiór epiku TELEMETRY (`docs/features/telemetry/spec.md`, R7; przed jego raportem odbioru i przed merge'em jego
