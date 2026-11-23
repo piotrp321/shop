@@ -11,7 +11,7 @@ mogą iść naraz. Plan jest dokumentem roboczym: po ukończeniu epiku usuń go.
 | Fala | Zadania | Status |
 |---|---|---|
 | 1 | ADMIN-UX-2-1 | zmergowane do gałęzi epiku, commit 238373aa (czoło zadania 7be9a92e) |
-| 2 | ADMIN-UX-2-2, ADMIN-UX-2-3, ADMIN-UX-2-4 | po kolei (decyzja właściciela 2026-11-23); ADMIN-UX-2-2 zmergowane, commit f605aad4 (czoło zadania c6509bb4); ADMIN-UX-2-3 zmergowane, commit 5145dcd8 (czoło zadania 5d9e23ba); ADMIN-UX-2-4 w toku |
+| 2 | ADMIN-UX-2-2, ADMIN-UX-2-3, ADMIN-UX-2-4 | po kolei (decyzja właściciela 2026-11-23); ADMIN-UX-2-2 zmergowane, commit f605aad4 (czoło zadania c6509bb4); ADMIN-UX-2-3 zmergowane, commit 5145dcd8 (czoło zadania 5d9e23ba); ADMIN-UX-2-4 zmergowane, commit 9df9855b (czoło zadania b2d9a0ac) |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 

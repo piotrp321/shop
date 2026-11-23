@@ -385,14 +385,14 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
   przesyłki”. Naruszenia API przy polach, 409 nad formularzem z focusem na komunikacie, zapis z komunikatem jak inne
   formularze panelu i powrotem do listy. Kwoty w zł z przecinkiem (`parseGross`); puste „Darmowa od” → `null`.
   Bezpieczeństwo zmian w formularzu (`docs/features/admin-ux-fixes/spec.md`, „Etap 2”: B3, B4): szkic zmienia tylko
-  pracownik. Pola są wyłączone od wysłania zapisu do jego wyniku. 409 wersji pokazuje „Metoda dostawy została
+  pracownik. Pola są wyłączone od wysłania zapisu do jego wyniku i na czas odczytu stanu z serwera („Sprawdź stan”, „Odrzuć moje zmiany i pokaż stan z serwera”). 409 wersji pokazuje „Metoda dostawy została
   w międzyczasie zmieniona. Twoje zmiany zostają w formularzu.”, zostawia szkic i wersję, niczego nie czyta sam i daje
   przycisk „Odrzuć moje zmiany i pokaż stan z serwera” (odczyt, a szkic zastępuje dopiero odpowiedź 200); 409 nazwy
   i limitu zostawiają to, co wpisano. Brak odpowiedzi przez 10 s, błąd sieci i każde 5xx to nieznany wynik zapisu,
   nigdy komunikat, że się nie udał: „Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.” ze „Sprawdź
   stan” (zmiana) albo „Odblokuj formularz” i linkiem do listy (nowa metoda, „Nie wiemy, czy metoda dostawy została
   utworzona.”). Limit nie przerywa żądania, a panel niczego nie ponawia sam; spóźniony sukces to tylko toast
-  „Wcześniejszy zapis został wykonany.”. Po „Odblokuj formularz” (albo błędzie sieci) kolejny zapis, który dostanie 409
+  „Wcześniejszy zapis został wykonany.”. Po „Odblokuj formularz” (albo błędzie sieci lub 5xx) kolejny zapis, który dostanie 409
   nazwy, dopisuje „Możliwe, że utworzył ją Twój wcześniejszy zapis.”.
 - Szczegóły zamówienia (`OrderDetailView.vue`): wiersz dostawy (nazwa metody i koszt) w podsumowaniu kwot, gdy
   zamówienie ma metodę; numer przesyłki i link śledzenia (nowa karta) tylko, gdy jest `shipment`. Okno „Wyślij” (`useOrderDetail.ts:210-222`) ma opcjonalne pole
