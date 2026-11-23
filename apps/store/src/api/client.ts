@@ -242,6 +242,11 @@ export type PlaceOrderInput = {
   expectedTotalGross: number;
   /** `methodId` of the delivery option the customer chose; the API checks that it is still available. */
   deliveryMethodId: string;
+  /**
+   * `variantId` and `quantity` of every line of the summary the customer saw; the API only compares them with the lines
+   * of the cart, which the order is placed from.
+   */
+  expectedLines: components["schemas"]["PlaceGuestOrderRequest"]["expectedLines"];
   /** Code of the payment provider chosen from `GET /api/v1/payment-providers`; the BFF checks it. */
   provider: string;
   /** The discount code the customer applied in the checkout, as typed; the API judges it. Absent without a code. */

@@ -40,6 +40,9 @@ final class UnpaidOrderLimitEndpointTest extends WebTestCase
     private const string CUSTOMER_EMAIL = 'jan.kowalski@example.com';
     private const string DETAIL = 'Nie możemy teraz przyjąć kolejnego zamówienia, bo z tych danych albo z tej sieci czeka już kilka nieopłaconych. Spróbuj ponownie za ok. 35 minut.';
 
+    /** @var array<string, list<array{string, int}>> the lines of each guest cart when its checkout was loaded */
+    private array $shown = [];
+
     private ?string $variant = null;
 
     public function testAnOrderOverTheLimitOfTheAddressIsAConflictAndChangesNothing(): void
@@ -243,8 +246,9 @@ final class UnpaidOrderLimitEndpointTest extends WebTestCase
     {
         $placed = [];
         for ($i = 0; $i < $count; ++$i) {
+            $cart = $this->cart();
             $result = $this->dispatch(new PlaceOrder(
-                CartReference::guest($this->cart()),
+                CartReference::guest($cart),
                 null === $email ? 'buyer-'.bin2hex(random_bytes(4)).'@example.com' : $email($i),
                 'Jan Kowalski',
                 '600100200',
@@ -253,6 +257,7 @@ final class UnpaidOrderLimitEndpointTest extends WebTestCase
                 'Warszawa',
                 OrderingFixture::freeDeliveryMethod($this->connection),
                 self::GROSS,
+                OrderingFixture::expectedOfCart($this->connection, $cart),
                 'earlier-'.Uuid::v7()->toRfc4122(),
                 null,
                 $address ?? \sprintf('192.0.2.%d', \count($placed) + 1),
@@ -273,7 +278,7 @@ final class UnpaidOrderLimitEndpointTest extends WebTestCase
     {
         for ($i = 0; $i < $count; ++$i) {
             $this->refillCustomerCart();
-            $result = $this->dispatch(new PlaceOrder(CartReference::customer(TestTokenFactory::CUSTOMER_ID), self::CUSTOMER_EMAIL, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->connection), self::GROSS, 'earlier-'.Uuid::v7()->toRfc4122(), null, \sprintf('192.0.2.%d', 100 + $i)));
+            $result = $this->dispatch(new PlaceOrder(CartReference::customer(TestTokenFactory::CUSTOMER_ID), self::CUSTOMER_EMAIL, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->connection), self::GROSS, OrderingFixture::expectedOfCustomerCart($this->connection, TestTokenFactory::CUSTOMER_ID), 'earlier-'.Uuid::v7()->toRfc4122(), null, \sprintf('192.0.2.%d', 100 + $i)));
             self::assertInstanceOf(PlacedOrder::class, $result);
         }
         $this->entityManager->clear();
@@ -285,8 +290,10 @@ final class UnpaidOrderLimitEndpointTest extends WebTestCase
     private function placeGuest(string $cart, string $email = self::EMAIL, string $address = self::CLIENT, string $key = self::KEY): array
     {
         $this->client->setServerParameter('REMOTE_ADDR', $address);
+        // The checkout of a cart is loaded once: a repeat sends the lines it showed, also once the cart is emptied.
+        $this->shown[$cart] ??= CartFixture::lines($this->connection, $cart);
 
-        return $this->place('/api/v1/orders', ['cartId' => $cart, 'email' => $email, ...self::details(self::GROSS)], key: $key);
+        return $this->place('/api/v1/orders', ['cartId' => $cart, 'email' => $email, ...self::details(self::GROSS, $this->shown[$cart])], key: $key);
     }
 
     /**
@@ -296,8 +303,10 @@ final class UnpaidOrderLimitEndpointTest extends WebTestCase
     {
         $this->refillCustomerCart();
         $this->client->setServerParameter('REMOTE_ADDR', $address);
+        $cart = $this->connection->fetchOne('SELECT id FROM cart_cart WHERE customer_id = ?', [TestTokenFactory::CUSTOMER_ID]);
+        \assert(\is_string($cart));
 
-        return $this->place('/api/v1/me/orders', self::details(self::GROSS), key: 'customer-'.bin2hex(random_bytes(6)), token: TestTokenFactory::customer());
+        return $this->place('/api/v1/me/orders', self::details(self::GROSS, CartFixture::lines($this->connection, $cart)), key: 'customer-'.bin2hex(random_bytes(6)), token: TestTokenFactory::customer());
     }
 
     private function refillCustomerCart(): void

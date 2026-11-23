@@ -247,7 +247,7 @@ final class DiscountCodePlacementConcurrencyTest extends KernelTestCase
         $key = 'concurrency-'.Uuid::v7()->toRfc4122();
         $this->keys[] = $key;
 
-        return new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->control), $expectedTotalGross, $key, $code);
+        return new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->control), $expectedTotalGross, OrderingFixture::expectedOfCart($this->control, $cart), $key, $code);
     }
 
     private function variant(int $stock): string

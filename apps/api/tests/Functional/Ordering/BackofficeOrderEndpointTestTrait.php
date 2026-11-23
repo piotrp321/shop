@@ -58,7 +58,7 @@ trait BackofficeOrderEndpointTestTrait
     {
         [$variant] = OrderingFixture::variant($this->connection, 10_000, 5);
         $cart = CartFixture::cart($this->connection, expiresAt: '+3 days', lines: [[$variant, 2]]);
-        $placed = $this->dispatch(new PlaceOrder(CartReference::guest($cart), $email, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->connection), 2 * 12_300, 'key-'.$cart));
+        $placed = $this->dispatch(new PlaceOrder(CartReference::guest($cart), $email, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->connection), 2 * 12_300, OrderingFixture::expectedOfCart($this->connection, $cart), 'key-'.$cart));
         self::assertInstanceOf(PlacedOrder::class, $placed);
         $this->dispatch(new MarkOrderPaid($placed->order->orderId, Uuid::v7()->toRfc4122(), 2 * 12_300, 'PLN', new \DateTimeImmutable()));
         $this->entityManager->clear();

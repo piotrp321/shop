@@ -298,7 +298,7 @@ final class ExpireOverdueConcurrencyTest extends KernelTestCase
         $key = 'expire-overdue-concurrency-'.Uuid::v7()->toRfc4122();
         $this->keys[] = $key;
         $outcomes = ConcurrentCommands::run($this->control, [
-            new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->control), 2 * self::GROSS, $key),
+            new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->control), 2 * self::GROSS, OrderingFixture::expectedOfCart($this->control, $cart), $key),
         ]);
         self::assertSame(Outcome::SUCCESS, $outcomes[0]->kind, (string) $outcomes[0]->message);
         $order = $outcomes[0]->result['order'] ?? null;

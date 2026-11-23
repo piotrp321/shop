@@ -284,8 +284,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
   testy) albo bez nagłówka w żądaniu nic nie jest dodawane, a API liczy limity po adresie serwera sklepu. Wartość idzie
   bez zmian: API bierze ją tylko jako jeden poprawny adres IP (`docs/features/hardening/spec.md`, D2).
 - Do API trafiają tylko pola kontraktu (`pickFields` w `src/checkout/api.ts`: gość `email`, `fullName`, `phone`,
-  `street`, `postalCode`, `city`, `expectedTotalGross`, `discountCode`, klient bez `email`), z wartościami, jakie przysłała przeglądarka:
-  sprawdza je API. `cartId` pochodzi wyłącznie z ciasteczka; ceny, linie i inne pola przeglądarki są pomijane.
+  `street`, `postalCode`, `city`, `expectedTotalGross`, `deliveryMethodId`, `expectedLines`, `discountCode`, klient bez
+  `email`), z wartościami, jakie przysłała przeglądarka: sprawdza je API. `cartId` pochodzi wyłącznie z ciasteczka;
+  ceny i inne pola przeglądarki są pomijane. Pozycje i ilości (`expectedLines`, linie podsumowania pokazanego w kasie)
+  API tylko porównuje z koszykiem; zamówienie powstaje z koszyka (`docs/features/checkout/spec.md`, P2a).
 - Sukces (201 albo 200 przy powtórzeniu z tym samym kluczem): ciasteczko `store_order_confirmation` z `{orderId,
   number, email, totalGross, currency, accessToken}` z `OrderView` (gość ma `accessToken`, klient `null`; JSON
   w base64url, podpisany jak `store_cart`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina; stare ciasteczko

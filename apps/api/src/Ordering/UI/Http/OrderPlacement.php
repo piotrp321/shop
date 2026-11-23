@@ -52,11 +52,28 @@ final readonly class OrderPlacement
         $key = self::idempotencyKey($request);
 
         $placed = $this->commandBus
-            ->dispatch(new PlaceOrder($cart, $email, $details->fullName, $details->phone, $details->street, $details->postalCode, $details->city, $details->deliveryMethodId, $details->expectedTotalGross, $key, $details->discountCode, $this->clientIp->of($request)))
+            ->dispatch(new PlaceOrder($cart, $email, $details->fullName, $details->phone, $details->street, $details->postalCode, $details->city, $details->deliveryMethodId, $details->expectedTotalGross, self::expectedLines($details->expectedLines), $key, $details->discountCode, $this->clientIp->of($request)))
             ->last(HandledStamp::class)?->getResult();
         \assert($placed instanceof PlacedOrder);
 
         return new JsonResponse(self::body($placed->order), $placed->replayed ? Response::HTTP_OK : Response::HTTP_CREATED);
+    }
+
+    /**
+     * The list as validated by the payload mapping (ExpectedLinesFormat): objects with a string `variantId` and an
+     * integer `quantity`; other keys of an element are dropped.
+     *
+     * @return list<array{variantId: string, quantity: int}>
+     */
+    private static function expectedLines(mixed $value): array
+    {
+        \assert(\is_array($value) && array_is_list($value));
+
+        return array_map(static function (mixed $line): array {
+            \assert(\is_array($line) && \is_string($line['variantId'] ?? null) && \is_int($line['quantity'] ?? null));
+
+            return ['variantId' => $line['variantId'], 'quantity' => $line['quantity']];
+        }, $value);
     }
 
     /**

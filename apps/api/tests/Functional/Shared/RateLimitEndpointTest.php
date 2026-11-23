@@ -31,6 +31,9 @@ final class RateLimitEndpointTest extends WebTestCase
     private const string TOO_MANY = 'Zbyt wiele prób. Spróbuj ponownie za kilka minut.';
     private const string OTHER_CUSTOMER = '0b0f6c0e-2f43-4c8a-9d4e-7a1b2c3d4e5f';
 
+    /** @var array<string, list<array{string, int}>> the lines of each cart when its checkout was loaded */
+    private array $shown = [];
+
     protected function tearDown(): void
     {
         unset($_SERVER['CLIENT_IP_HEADER'], $_ENV['CLIENT_IP_HEADER']);
@@ -259,11 +262,16 @@ final class RateLimitEndpointTest extends WebTestCase
     }
 
     /**
+     * The body of the checkout of the cart, with the lines the cart had when its checkout was loaded (the first body of
+     * the cart): a repeat sends the same body, also once the cart is emptied.
+     *
      * @return array<string, mixed>
      */
     private function guestBody(string $cart): array
     {
-        return ['cartId' => $cart, 'email' => 'anna.nowak@example.com', ...self::details(self::GROSS)];
+        $this->shown[$cart] ??= CartFixture::lines($this->connection, $cart);
+
+        return ['cartId' => $cart, 'email' => 'anna.nowak@example.com', ...self::details(self::GROSS, $this->shown[$cart])];
     }
 
     /**

@@ -37,6 +37,10 @@ trait OrderRequestViolationCases
     private const string CODE_TOO_LONG = 'Kod rabatowy może mieć najwyżej 64 znaki.';
     private const string DELIVERY_REQUIRED = 'Kasa została zaktualizowana. Odśwież stronę i wybierz sposób dostawy.';
     private const string DELIVERY_INVALID = 'Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie.';
+    private const string LINES_REQUIRED = 'Kasa została zaktualizowana. Odśwież stronę.';
+    private const string LINES_INVALID = 'Nieprawidłowa lista pozycji zamówienia. Odśwież stronę.';
+    /** A variant id of the right format; the cases are refused before any cart is read. */
+    private const string LINE_VARIANT = '0192f0c4-7c1a-7c4e-9a6e-00000000a001';
 
     /**
      * The fields both endpoints take: contact (without the email) and address, and the expected total.
@@ -131,10 +135,76 @@ trait OrderRequestViolationCases
         yield 'deliveryMethodId with a NUL' => [['deliveryMethodId' => "0192f0c4-7c1a-7c4e-9a6e-00000000de10\0"], [['deliveryMethodId', self::DELIVERY_INVALID]]];
         yield 'deliveryMethodId with U+2028' => [['deliveryMethodId' => "0192f0c4-7c1a-7c4e-9a6e-00000000de10\u{2028}"], [['deliveryMethodId', self::DELIVERY_INVALID]]];
         yield 'deliveryMethodId of 37 characters' => [['deliveryMethodId' => '0192f0c4-7c1a-7c4e-9a6e-00000000de100'], [['deliveryMethodId', self::DELIVERY_INVALID]]];
+        yield from self::invalidExpectedLines();
         yield 'several fields wrong' => [
             ['fullName' => '', 'phone' => '123', 'expectedTotalGross' => '1', 'discountCode' => str_repeat('A', 65)],
             [['fullName', self::NAME_REQUIRED], ['phone', self::PHONE_INVALID], ['expectedTotalGross', self::TOTAL_INTEGER], ['discountCode', self::CODE_TOO_LONG]],
         ];
+    }
+
+    /**
+     * The lines the checkout showed (spec cart-order-consistency, Z1): a list of 1 to 50 objects with a UUID
+     * `variantId` (any letter case, each variant once) and a whole `quantity` of 1 to 99. A request without the key (a
+     * checkout from before the list) is asked to refresh the page; every other wrong value names the list, the element
+     * or its field, and only the first wrong element.
+     *
+     * @return iterable<string, array{array<string, mixed>, list<array{string, string}>}>
+     */
+    public static function invalidExpectedLines(): iterable
+    {
+        $valid = ['variantId' => self::LINE_VARIANT, 'quantity' => 1];
+        yield 'no expectedLines' => [['expectedLines' => self::MISSING], [['expectedLines', self::LINES_REQUIRED]]];
+        yield 'null expectedLines' => [['expectedLines' => null], [['expectedLines', self::LINES_REQUIRED]]];
+        yield 'expectedLines a text' => [['expectedLines' => 'x'], [['expectedLines', self::LINES_INVALID]]];
+        yield 'expectedLines a number' => [['expectedLines' => 5], [['expectedLines', self::LINES_INVALID]]];
+        yield 'expectedLines a boolean' => [['expectedLines' => true], [['expectedLines', self::LINES_INVALID]]];
+        yield 'expectedLines an object' => [['expectedLines' => ['line' => $valid]], [['expectedLines', self::LINES_INVALID]]];
+        yield 'expectedLines empty' => [['expectedLines' => []], [['expectedLines', self::LINES_INVALID]]];
+        $fiftyOne = [];
+        for ($i = 1; $i <= 51; ++$i) {
+            $fiftyOne[] = ['variantId' => \sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $i), 'quantity' => 1];
+        }
+        yield 'expectedLines of 51 lines' => [['expectedLines' => $fiftyOne], [['expectedLines', self::LINES_INVALID]]];
+        yield 'a line a number' => [['expectedLines' => [5]], [['expectedLines[0]', self::LINES_INVALID]]];
+        yield 'a line a text' => [['expectedLines' => [self::LINE_VARIANT]], [['expectedLines[0]', self::LINES_INVALID]]];
+        yield 'a line null' => [['expectedLines' => [null]], [['expectedLines[0]', self::LINES_INVALID]]];
+        yield 'a line a list' => [['expectedLines' => [[self::LINE_VARIANT, 1]]], [['expectedLines[0]', self::LINES_INVALID]]];
+        yield 'a line without variantId' => [['expectedLines' => [['quantity' => 1]]], [['expectedLines[0].variantId', self::LINES_INVALID]]];
+        foreach ([
+            'null' => null,
+            'a number' => 5,
+            'a boolean' => true,
+            'an array' => [self::LINE_VARIANT],
+            'empty' => '',
+            'of a no-break space' => "\u{00A0}",
+            'not a uuid' => 'buty',
+            'without hyphens' => str_replace('-', '', self::LINE_VARIANT),
+            'in braces' => '{'.self::LINE_VARIANT.'}',
+            'with a leading space' => ' '.self::LINE_VARIANT,
+            'with a trailing line break' => self::LINE_VARIANT."\n",
+            'with a NUL' => self::LINE_VARIANT."\0",
+            'with U+2028' => self::LINE_VARIANT."\u{2028}",
+            'of 37 characters' => self::LINE_VARIANT.'0',
+        ] as $label => $variantId) {
+            yield "variantId $label" => [['expectedLines' => [['variantId' => $variantId, 'quantity' => 1]]], [['expectedLines[0].variantId', self::LINES_INVALID]]];
+        }
+        yield 'a line without quantity' => [['expectedLines' => [['variantId' => self::LINE_VARIANT]]], [['expectedLines[0].quantity', self::LINES_INVALID]]];
+        foreach ([
+            'null' => null,
+            'in a text' => '1',
+            'a fraction' => 1.5,
+            'a whole fraction' => 2.0,
+            'a boolean' => true,
+            'an array' => [1],
+            '0' => 0,
+            'negative' => -1,
+            '100' => 100,
+        ] as $label => $quantity) {
+            yield "quantity $label" => [['expectedLines' => [['variantId' => self::LINE_VARIANT, 'quantity' => $quantity]]], [['expectedLines[0].quantity', self::LINES_INVALID]]];
+        }
+        yield 'the second line wrong' => [['expectedLines' => [$valid, ['variantId' => 'buty', 'quantity' => 0]]], [['expectedLines[1].variantId', self::LINES_INVALID]]];
+        yield 'the same variant twice' => [['expectedLines' => [$valid, ['variantId' => self::LINE_VARIANT, 'quantity' => 2]]], [['expectedLines', self::LINES_INVALID]]];
+        yield 'the same variant twice in another letter case' => [['expectedLines' => [$valid, ['variantId' => strtoupper(self::LINE_VARIANT), 'quantity' => 1]]], [['expectedLines', self::LINES_INVALID]]];
     }
 
     /**
@@ -176,7 +246,7 @@ trait OrderRequestViolationCases
         yield 'email an array' => [['email' => ['anna@example.com']], [['email', self::EMAIL_INVALID]]];
         yield from self::invalidDetails();
         yield 'every field missing' => [
-            array_fill_keys(['cartId', 'email', 'fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross', 'deliveryMethodId'], self::MISSING),
+            array_fill_keys(['cartId', 'email', 'fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross', 'deliveryMethodId', 'expectedLines'], self::MISSING),
             [
                 ['cartId', self::CART_REQUIRED],
                 ['email', self::EMAIL_REQUIRED],
@@ -187,6 +257,7 @@ trait OrderRequestViolationCases
                 ['city', self::CITY_REQUIRED],
                 ['expectedTotalGross', self::TOTAL_REQUIRED],
                 ['deliveryMethodId', self::DELIVERY_REQUIRED],
+                ['expectedLines', self::LINES_REQUIRED],
             ],
         ];
     }
@@ -198,7 +269,7 @@ trait OrderRequestViolationCases
     {
         yield from self::invalidDetails();
         yield 'every field missing' => [
-            array_fill_keys(['fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross', 'deliveryMethodId'], self::MISSING),
+            array_fill_keys(['fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross', 'deliveryMethodId', 'expectedLines'], self::MISSING),
             [
                 ['fullName', self::NAME_REQUIRED],
                 ['phone', self::PHONE_REQUIRED],
@@ -207,6 +278,7 @@ trait OrderRequestViolationCases
                 ['city', self::CITY_REQUIRED],
                 ['expectedTotalGross', self::TOTAL_REQUIRED],
                 ['deliveryMethodId', self::DELIVERY_REQUIRED],
+                ['expectedLines', self::LINES_REQUIRED],
             ],
         ];
     }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Ordering;
 
+use App\Tests\Integration\Cart\CartFixture;
 use App\Tests\Integration\Inventory\CatalogFixture;
 use App\Tests\Integration\Inventory\StockFixture;
 use Doctrine\DBAL\ArrayParameterType;
@@ -126,6 +127,40 @@ final class OrderingFixture
         }
 
         return $lines;
+    }
+
+    /**
+     * The `expectedLines` of a placement (spec cart-order-consistency, Z1) from lines in the form of CartFixture.
+     *
+     * @param list<array{string, int}> $lines variant id and quantity
+     *
+     * @return list<array{variantId: string, quantity: int}>
+     */
+    public static function expected(array $lines): array
+    {
+        return array_map(static fn (array $line): array => ['variantId' => $line[0], 'quantity' => $line[1]], $lines);
+    }
+
+    /**
+     * The `expectedLines` the checkout of the cart shows now: its lines read from the database.
+     *
+     * @return list<array{variantId: string, quantity: int}>
+     */
+    public static function expectedOfCart(Connection $connection, string $cartId): array
+    {
+        return self::expected(CartFixture::lines($connection, $cartId));
+    }
+
+    /**
+     * The `expectedLines` the checkout of the cart of the customer shows now; none without a cart.
+     *
+     * @return list<array{variantId: string, quantity: int}>
+     */
+    public static function expectedOfCustomerCart(Connection $connection, string $customerId): array
+    {
+        $cartId = $connection->fetchOne('SELECT id FROM cart_cart WHERE customer_id = ?', [$customerId]);
+
+        return \is_string($cartId) ? self::expectedOfCart($connection, $cartId) : [];
     }
 
     /**

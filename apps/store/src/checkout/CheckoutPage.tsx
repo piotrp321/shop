@@ -348,6 +348,8 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       ...contact,
       expectedTotalGross: delivery.totalGross,
       deliveryMethodId: delivery.methodId,
+      // The lines of the summary shown, only compared by the API with the cart.
+      expectedLines: loaded.cart.lines.map((line) => ({ variantId: line.variantId, quantity: line.quantity })),
       provider,
       ...(appliedCode === null ? {} : { discountCode: appliedCode }),
     };
@@ -423,9 +425,9 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           setFailure({ kind: "conflict", detail, offersCart: false });
           return FAILURE_ID;
         }
-        // Nothing was placed; the summary below is the new total, or has the methods available now (a method that is
-        // gone is no longer chosen), so the next click is a new request.
-        const fixedInTheCheckout = result.reason === "total_changed" || result.reason === "delivery_method_unavailable";
+        // Nothing was placed; the summary below is the new total or the new lines, or has the methods available now (a
+        // method that is gone is no longer chosen), so the next click is a new request.
+        const fixedInTheCheckout = result.reason === "total_changed" || result.reason === "cart_changed" || result.reason === "delivery_method_unavailable";
         if (fixedInTheCheckout) {
           setIdempotencyKey(newIdempotencyKey());
         }

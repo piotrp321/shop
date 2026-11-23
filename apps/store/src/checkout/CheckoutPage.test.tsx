@@ -164,6 +164,7 @@ const GUEST_INPUT = {
   expectedTotalGross: 39998,
   provider: "demo-transfer",
   deliveryMethodId: STANDARD,
+  expectedLines: [{ variantId: A, quantity: 2 }],
 };
 
 async function submit(result: PlaceOrderResult) {
@@ -480,10 +481,54 @@ describe("CheckoutPage placing the order", () => {
         expectedTotalGross: 39998,
         provider: "demo-transfer",
         deliveryMethodId: STANDARD,
+        expectedLines: [{ variantId: A, quantity: 2 }],
       },
       expect.any(String),
     );
     expect(push).toHaveBeenCalledWith("/checkout/confirmation");
+  });
+
+  it("sends the lines of the summary it showed as the expected lines, in the order of the summary, and nothing else of them", async () => {
+    const lines = [line(B, "Czapka", "", 1, 4999), line(A, "Buty trailowe", "czarne, 42", 2, 39998)];
+    await renderCheckout(cart(44997, lines));
+    fillGuestForm();
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+
+    expect(vi.mocked(placeOrder).mock.calls[0][0].expectedLines).toEqual([
+      { variantId: B, quantity: 1 },
+      { variantId: A, quantity: 2 },
+    ]);
+  });
+
+  it("on a 409 of a changed content shows the detail without a link to the cart, loads the new summary and keeps the form; the next order has a new key and the lines of the new summary", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart(19999, [line(A, "Buty trailowe", "czarne, 42", 1, 19999)]) });
+    await submit({ status: "conflict", reason: "cart_changed", detail: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie." });
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Zawartość koszyka się zmieniła. Sprawdź podsumowanie.");
+    expect(within(alert).queryByRole("link")).toBeNull();
+    expect(screen.getByTestId("checkout-total").textContent).toBe(price(19999));
+    expect(field("Telefon").value).toBe("600 100 200");
+    expect(placeOrder).toHaveBeenCalledTimes(1);
+    expect(push).not.toHaveBeenCalled();
+
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+    const [first, second] = vi.mocked(placeOrder).mock.calls;
+    expect(first[0].expectedLines).toEqual([{ variantId: A, quantity: 2 }]);
+    expect(second[0]).toMatchObject({ expectedTotalGross: 19999, expectedLines: [{ variantId: A, quantity: 1 }] });
+    expect(second[1]).not.toBe(first[1]);
+  });
+
+  it("after a 409 of a changed total sends the lines of the summary read again", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart(59997, [line(A, "Buty trailowe", "czarne, 42", 3, 59997)]) });
+    await submit({ status: "conflict", reason: "total_changed", detail: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie." });
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+
+    expect(vi.mocked(placeOrder).mock.calls[1][0]).toMatchObject({ expectedTotalGross: 59997, expectedLines: [{ variantId: A, quantity: 3 }] });
   });
 
   it("locks the button while the request runs: aria-disabled, not disabled, and a second click orders nothing", async () => {
@@ -1831,6 +1876,22 @@ describe("CheckoutPage discount code", () => {
 
     expect(vi.mocked(placeOrder).mock.calls[0][0]).toEqual(GUEST_INPUT);
     expect("discountCode" in vi.mocked(placeOrder).mock.calls[0][0]).toBe(false);
+  });
+
+  it("sends the lines of the summary read with the code, and of the one read after it is removed", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", { ...discounted("WITAJ10", 59997, 6000), lines: [line(A, "Buty trailowe", "czarne, 42", 3, 59997)] });
+    fillGuestForm();
+    await submit({ status: "failed" });
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart(19999, [line(A, "Buty trailowe", "czarne, 42", 1, 19999)]) });
+    await act(async () => {
+      fireEvent.click(removeButton());
+    });
+    await submit({ status: "failed" });
+
+    const [withCode, withoutCode] = vi.mocked(placeOrder).mock.calls;
+    expect(withCode[0]).toMatchObject({ discountCode: "witaj10", expectedLines: [{ variantId: A, quantity: 3 }] });
+    expect(withoutCode[0].expectedLines).toEqual([{ variantId: A, quantity: 1 }]);
   });
 
   it("orders without the code after it is removed", async () => {

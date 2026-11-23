@@ -43,6 +43,9 @@ final class DeliveryOrderEndpointTest extends WebTestCase
     private const string UNAVAILABLE = 'Wybrany sposób dostawy jest niedostępny. Wybierz inny.';
     private const string TOTAL_CHANGED = 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.';
 
+    /** @var array<string, list<array{string, int}>> the lines of each guest cart of the test, as its checkout shows them */
+    private array $shown = [];
+
     public function testAGuestOrderKeepsTheCopyOfTheMethodItsCostSplitAtTheRateOfTheGoodsAndTheTotalWithIt(): void
     {
         $method = OrderingFixture::deliveryMethod($this->connection, self::COST, 30_000, trackingUrlTemplate: self::TEMPLATE, name: 'Kurier standardowy');
@@ -75,7 +78,7 @@ final class DeliveryOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 10);
         CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 2]]);
 
-        $order = $this->place(self::CUSTOMER_PATH, [...self::details(self::GOODS + self::COST), 'deliveryMethodId' => $method], token: TestTokenFactory::customer());
+        $order = $this->place(self::CUSTOMER_PATH, [...self::details(self::GOODS + self::COST, [[$shoes, 2]]), 'deliveryMethodId' => $method], token: TestTokenFactory::customer());
 
         self::assertResponseStatusCodeSame(201);
         $this->assertOrderView($order);
@@ -163,7 +166,7 @@ final class DeliveryOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 10);
         $cart = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 2]]);
 
-        $problem = $this->place(self::CUSTOMER_PATH, [...self::details(self::GOODS + self::COST), 'deliveryMethodId' => $method], token: TestTokenFactory::customer());
+        $problem = $this->place(self::CUSTOMER_PATH, [...self::details(self::GOODS + self::COST, [[$shoes, 2]]), 'deliveryMethodId' => $method], token: TestTokenFactory::customer());
 
         $this->assertConflict('delivery-method-unavailable', self::UNAVAILABLE, $problem);
         self::assertSame(0, $this->orders());
@@ -230,6 +233,7 @@ final class DeliveryOrderEndpointTest extends WebTestCase
         $method = OrderingFixture::deliveryMethod($this->connection, self::COST);
         $last = $this->variant(12_300, 1);
         $cart = CartFixture::cart($this->connection, lines: [[$last, 2]]);
+        $this->shown[$cart] = [[$last, 2]];
 
         $this->assertConflict('order-total-changed', self::TOTAL_CHANGED, $this->place(self::PATH, $this->body($cart, self::GOODS, $method)));
         $this->assertConflict('insufficient-stock-for-order', 'Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.', $this->place(self::PATH, $this->body($cart, self::GOODS + self::COST, $method), key: 'key-shortage'));
@@ -271,8 +275,10 @@ final class DeliveryOrderEndpointTest extends WebTestCase
     private function cart(): array
     {
         $shoes = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$shoes, 2]]);
+        $this->shown[$cart] = [[$shoes, 2]];
 
-        return [$shoes, CartFixture::cart($this->connection, lines: [[$shoes, 2]])];
+        return [$shoes, $cart];
     }
 
     /**
@@ -295,10 +301,12 @@ final class DeliveryOrderEndpointTest extends WebTestCase
     }
 
     /**
+     * The body of the checkout of a guest cart of the test, with the lines the cart was created with.
+     *
      * @return array<string, mixed>
      */
     private function body(string $cartId, int $expectedTotalGross, string $deliveryMethodId): array
     {
-        return ['cartId' => $cartId, 'email' => self::EMAIL, ...self::details($expectedTotalGross), 'deliveryMethodId' => $deliveryMethodId];
+        return ['cartId' => $cartId, 'email' => self::EMAIL, ...self::details($expectedTotalGross, $this->shown[$cartId]), 'deliveryMethodId' => $deliveryMethodId];
     }
 }
