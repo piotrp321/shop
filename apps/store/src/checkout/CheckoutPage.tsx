@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { cartChanges } from "./cart-changes";
 import { navigateTo } from "./navigate";
 import type { PaymentProvider } from "./payment-api";
 
@@ -37,9 +38,13 @@ type Loaded =
 type Form = { email: string; fullName: string; phone: string; street: string; postalCode: string; city: string };
 type FieldName = keyof Form;
 
+/** The refusals after which the checkout reads the cart and tells what changed (#852). */
+type ChangeReason = "cart_changed" | "total_changed";
+
 /** Why the last order was not placed; each is shown above the form (see the UI table of the checkout spec). */
 type Failure =
   | { kind: "conflict"; detail: string; offersCart: boolean }
+  | { kind: "changed"; reason: ChangeReason; changes: string[] }
   | { kind: "not_found" }
   | { kind: "unauthorized" }
   | { kind: "message"; text: string };
@@ -65,6 +70,13 @@ const NO_METHODS = "Nie możemy teraz przyjąć zamówienia: brak dostępnych sp
 const SUBMIT_FAILED = "Nie udało się złożyć zamówienia. Spróbuj ponownie.";
 const RATE_LIMITED = "Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut.";
 const CART_GONE = "Koszyk nie jest już dostępny.";
+/** The first paragraph of the message of a changed cart or total; the API's `detail` is not shown. */
+const CHANGED: Record<ChangeReason, string> = {
+  cart_changed: "Zawartość koszyka zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.",
+  total_changed: "Kwota zamówienia zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.",
+};
+const CHANGED_LAST = "Sprawdź podsumowanie i zamów ponownie.";
+const CHANGES_NOT_READ = "Koszyk albo kwota zamówienia się zmieniły, ale nie udało się wczytać aktualnego podsumowania. Spróbuj ponownie.";
 const FIELD_ID_PREFIX = "checkout-";
 const FAILURE_ID = "checkout-failure";
 const TITLE_ID = "checkout-title";
@@ -135,6 +147,10 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // "Spróbuj ponownie" reads the checkout again while the error stays (the button keeps the focus); `loaded` says
   // "loading" only for the first read.
   const [retrying, setRetrying] = useState(false);
+  // The summary is out of date: a refusal for a changed cart or total could not read the cart. The next click on the
+  // order button reads it and tells the changes instead of ordering; `checking` is that read, with the form locked.
+  const [outOfDate, setOutOfDate] = useState<ChangeReason | null>(null);
+  const [checking, setChecking] = useState(false);
   // The discount code lives in this component only (D3): a reload of the page starts without one. `appliedCode` is the
   // code the summary of `loaded` was priced with; `codeInput` is what the customer types.
   const [codeInput, setCodeInput] = useState("");
@@ -209,6 +225,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   function showCart(next: CartView, session: AccountSession) {
     if (loaded.status === "ready") setSummaryStatus(deliveryAnnouncement(loaded.cart, next, deliveryMethodId));
     setLoaded({ status: "ready", cart: next, session });
+    setOutOfDate(null);
     setDeliveryMethodId((current) => (next.delivery?.options.some((option) => option.methodId === current) ? current : null));
   }
 
@@ -219,6 +236,17 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setIdempotencyKey(newIdempotencyKey());
   }
 
+  /** Shows a summary read again and what the API says of its code. */
+  function showPreview(preview: Extract<Preview, { status: "ok" }>, session: AccountSession) {
+    showCart(preview.cart, session);
+    setAppliedCode(preview.appliedCode);
+    setCodeError(preview.codeError);
+    // A code that came off the order other than by „Usuń kod” must not stay announced as applied; the message at the
+    // field (role="alert") tells why. A read that failed shows nothing and leaves the announcement: the code is still on.
+    if (preview.appliedCode === null && appliedCode !== null) setCodeStatus("");
+    announceCartChange(preview.cart.totals.itemCount);
+  }
+
   /** Reads the summary again with `code` and shows what the API says of it; answers how the read ended. */
   async function reloadPreview(code: string | null, session: AccountSession): Promise<Preview["status"]> {
     const preview = await loadPreview(code);
@@ -227,14 +255,26 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       return "unauthorized";
     }
     if (preview.status === "failed") return "failed";
-    showCart(preview.cart, session);
-    setAppliedCode(preview.appliedCode);
-    setCodeError(preview.codeError);
-    // A code that came off the order other than by „Usuń kod” must not stay announced as applied; the message at the
-    // field (role="alert") tells why. A read that failed returns above and leaves the announcement: the code is still on.
-    if (preview.appliedCode === null && appliedCode !== null) setCodeStatus("");
-    announceCartChange(preview.cart.totals.itemCount);
+    showPreview(preview, session);
     return "ok";
+  }
+
+  /**
+   * Reads the cart, with the code applied, after a refusal for a changed cart or total, or for a click on a summary out
+   * of date, and only then shows the message: the changes between the summary `shown` (with the method `chosenId`) and
+   * the one read, and that summary, come in one render. A read that fails, or answers 401, leaves the summary out of
+   * date. Answers the id of the element that gets the focus.
+   */
+  async function readChanges(reason: ChangeReason, shown: CartView, chosenId: string | null, session: AccountSession): Promise<string> {
+    const preview = await loadPreview(appliedCode);
+    if (preview.status !== "ok") {
+      setOutOfDate(reason);
+      setFailure(preview.status === "unauthorized" ? { kind: "unauthorized" } : { kind: "message", text: CHANGES_NOT_READ });
+      return FAILURE_ID;
+    }
+    showPreview(preview, session);
+    setFailure({ kind: "changed", reason, changes: cartChanges(shown, preview.cart, chosenId) });
+    return FAILURE_ID;
   }
 
   async function applyCode(event: FormEvent<HTMLFormElement>) {
@@ -323,6 +363,20 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     event.preventDefault();
     if (loaded.status !== "ready" || running.current !== null || providers === null || providers.length === 0) return;
     if (offersNoMethods(loaded.cart)) return;
+    if (outOfDate !== null) {
+      // The summary shown may not be the cart any more: this click reads it and tells the changes, and orders nothing.
+      const origin = document.activeElement;
+      running.current = "order";
+      setSubmitting(true);
+      setChecking(true);
+      setFailure(null);
+      const target = await readChanges(outOfDate, loaded.cart, deliveryMethodId, loaded.session);
+      running.current = null;
+      setSubmitting(false);
+      setChecking(false);
+      focusAfterAnswer(origin, target);
+      return;
+    }
     const delivery = chosenOption(loaded.cart, deliveryMethodId);
     // Both missing choices are told at once; the focus goes to the first group with a message.
     if (delivery === null || provider === null) {
@@ -366,14 +420,22 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     }
     // Set with the errors themselves (the 422 is shown without waiting), so that they are rendered as alerts at once.
     setErrorsAnnounced(result.status === "invalid" && !focusStayed(origin));
-    const target = await showFailure(result, loaded.session);
+    const target = await showFailure(result, loaded.session, loaded.cart, delivery.methodId);
     running.current = null;
     setSubmitting(false);
     focusAfterAnswer(origin, target);
   }
 
-  /** Shows why the order was not placed; answers the id of the element that gets the focus. */
-  async function showFailure(result: Exclude<PlaceOrderResult, { status: "ok" }>, session: AccountSession): Promise<string> {
+  /**
+   * Shows why the order was not placed; answers the id of the element that gets the focus. `shown` is the summary the
+   * order was sent with and `chosenId` its delivery method.
+   */
+  async function showFailure(
+    result: Exclude<PlaceOrderResult, { status: "ok" }>,
+    session: AccountSession,
+    shown: CartView,
+    chosenId: string,
+  ): Promise<string> {
     switch (result.status) {
       case "invalid": {
         const errors: Partial<Record<FieldName, string>> = {};
@@ -425,9 +487,15 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           setFailure({ kind: "conflict", detail, offersCart: false });
           return FAILURE_ID;
         }
-        // Nothing was placed; the summary below is the new total or the new lines, or has the methods available now (a
-        // method that is gone is no longer chosen), so the next click is a new request.
-        const fixedInTheCheckout = result.reason === "total_changed" || result.reason === "cart_changed" || result.reason === "delivery_method_unavailable";
+        if (result.reason === "cart_changed" || result.reason === "total_changed") {
+          // Nothing was placed, and from now on the request carries other lines or another total. The form stays locked
+          // while the cart is read; then the message tells what changed, with the summary read (#852).
+          setIdempotencyKey(newIdempotencyKey());
+          return readChanges(result.reason, shown, chosenId, session);
+        }
+        // Nothing was placed; the summary below has the methods available now (a method that is gone is no longer
+        // chosen), so the next click is a new request.
+        const fixedInTheCheckout = result.reason === "delivery_method_unavailable";
         if (fixedInTheCheckout) {
           setIdempotencyKey(newIdempotencyKey());
         }
@@ -457,7 +525,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   const showsForm = loaded.status === "ready" && loaded.cart.lines.length > 0 && !loaded.cart.hasExcludedLines;
   // The one status region of the screen says what the screen is doing; it is there in every state and only its text
   // changes, so that a screen reader announces the text each time it is set.
-  const operation = loaded.status === "loading" || retrying ? LOADING : submitting ? PLACING : "";
+  const operation = loaded.status === "loading" || retrying || checking ? LOADING : submitting ? PLACING : "";
 
   return (
     <ScreenMain>
@@ -642,6 +710,26 @@ function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLink
           </p>
         ) : failure.kind === "message" ? (
           <p>{failure.text}</p>
+        ) : failure.kind === "changed" ? (
+          <>
+            <p>{CHANGED[failure.reason]}</p>
+            {failure.changes.length > 0 ? (
+              <ul className="list-disc pl-5 not-last:mb-4">
+                {/* Two lines without a known product can say the same: the position is the key. */}
+                {failure.changes.map((change, index) => (
+                  <li key={index} className="break-words">
+                    {change}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {/* Without the form the message of the summary has its own link to the cart: no second one. */}
+            {cartLinkShown ? (
+              <p>
+                {CHANGED_LAST} <Link href="/cart">Przejdź do koszyka</Link>
+              </p>
+            ) : null}
+          </>
         ) : (
           <>
             <p>{failure.kind === "conflict" ? failure.detail : CART_GONE}</p>
