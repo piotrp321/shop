@@ -9,9 +9,11 @@
 #   full     anything else (application code, other infra, Makefile, .github/), or a mix of tooling and k8s: the full CI
 # Any error prints `full` with a ::warning::, so it can only cost a full CI run.
 #
-# With --k8s it answers instead whether the change touches infra/k8s at all (any file under it, also documentation, on
-# either side of a move): `yes` or `no`. In the full CI it decides whether `make -C infra/k8s check` runs; deploy.yml runs
-# that check before every deployment anyway. Any error prints `yes` with a ::warning::.
+# With --k8s it answers instead whether the change touches infra/k8s or the workflows at all (any file under
+# infra/k8s/ or .github/workflows/, also documentation, on either side of a move): `yes` or `no`. In the full CI it
+# decides whether `make -C infra/k8s check` runs, which holds the only tests of the workflows (actionlint, secrets only in
+# main-only environments, no deletion of package versions); deploy.yml runs that check before every deployment anyway.
+# Any error prints `yes` with a ::warning::.
 #
 # Usage: scope.sh [--k8s] <base-sha> <head-sha>
 set -u
@@ -45,7 +47,7 @@ if [ "$mode" = k8s ]; then
     if echo "$files" | {
         while IFS= read -r file; do
             case "$file" in
-                infra/k8s/* | '"infra/k8s/'*) exit 1 ;;
+                infra/k8s/* | '"infra/k8s/'* | .github/workflows/* | '".github/workflows/'*) exit 1 ;;
             esac
         done
     }; then
