@@ -367,12 +367,24 @@ class AssignmentTest(OrdersEnv):
         self.assertTrue([g for g in gaps_of(record, 'ad1') if 'nieustalone' in g], record['gaps'])
 
     def test_resume_missing_in_the_lead_transcript_is_unknown(self):
-        record = self.resumed('DEMO-1 developer', None, lead=False)
+        record = self.resumed('DEMO-1 code-reviewer FULL', None, kind='code-reviewer', lead=False,
+                              reports=('Werdykt: CHANGES_REQUIRED', 'Werdykt: CHANGES_REQUIRED'))
         orders = self.orders(record, 'ad1')
         self.assertEqual([o['boundary'] for o in orders], ['launch', 'resume_unconfirmed'])
         self.assertEqual(assigned(orders), [('plan', 'DEMO-1', 'DEMO-1'), ('unknown', None, None)])
-        self.assertEqual(sorted(record['by_task']), ['DEMO-1', 'unknown_task'])
+        self.assertEqual(record['by_task'], {'DEMO-1': {'kind': None, 'work': 200, 'attempts': 1, 'orders': 1},
+                                             'unknown_task': {'kind': None, 'work': 200, 'attempts': 1, 'orders': 1}})
+        value = record['value']
+        self.assertAlmostEqual(value['by_task']['DEMO-1']['usd'], 4.0)
+        self.assertAlmostEqual(value['by_task']['unknown_task']['usd'], 12.0)
+        self.assertAlmostEqual(value['by_task']['no_task']['usd'], 0.008)          # the lead only
+        self.assertAlmostEqual(value['total']['usd'], 16.008)
+        self.assertEqual([(r['task'], r['assignment'], r['mode']) for r in record['reviews']],
+                         [('DEMO-1', 'plan', 'FULL'), (None, 'unknown', None)])
+        self.assertEqual(record['retries']['fix'], 1)
         self.assertTrue([g for g in gaps_of(record, 'ad1') if 'nieustalone' in g], record['gaps'])
+        self.assertTrue([g for g in gaps_of(record, 'ad1') if g.startswith('reviews') and 'tryb' in g],
+                        record['gaps'])
         self.setUp()
         self.resumed('DEMO-1 developer', 'DEMO-1 popraw', build=False)
         self.write_session('s1', ['{cut', 'not json'])            # the lead transcript is unreadable
@@ -494,6 +506,67 @@ class AssignmentTest(OrdersEnv):
         text = json.dumps(record, ensure_ascii=False)
         for secret in ('TAJN', 'STRESZCZENIE', 'bez identyfikatora', 'Resuming', 'queued'):
             self.assertNotIn(secret, text)
+
+
+class GapsOfOrdersTest(OrdersEnv):
+    """The gaps say what the record cannot know about its orders, and only about the orders in it."""
+
+    def test_resume_without_a_coordinator_line_is_a_gap(self):
+        self.write_run(started=0, done=4000)
+        self.write_session('s1', Native('s1').assistant(10, input=5).resume(1000, 'ad1', 'DEMO-QA1 popraw'))
+        self.write_subagent('s1', 'ad1', Native('s1', 'ad1').assistant(100, model=OPUS, input=5)
+                            .handback(200, 'Gotowe', model=OPUS).notice(1000, None)       # another line format
+                            .assistant(1050, model=OPUS, input=5).handback(1100, 'Gotowe', model=OPUS), meta())
+        record = self.native_record()
+        self.assertEqual([o['boundary'] for o in self.orders(record, 'ad1')], ['launch'])
+        self.assertEqual(self.attempt(record, 'ad1')['wall_s'], 1000)
+        self.assertTrue([g for g in gaps_of(record, 'ad1') if 'bez linii coordinator' in g], record['gaps'])
+
+    def test_every_resume_matched_or_outside_the_run_is_no_gap(self):
+        record = self.reproduction()
+        self.assertFalse(gaps_of(record, 'bez linii coordinator'), record['gaps'])
+        self.setUp()
+        self.write_run(started=0, done=4000)
+        # a resume after the end of the transcript (its lines are lost) and one after the merge
+        self.write_session('s1', Native('s1').assistant(10, input=5).resume(3000, 'ad1', 'DEMO-1 popraw')
+                           .resume(6000, 'ad2', 'DEMO-2 popraw'))
+        self.write_subagent('s1', 'ad1', Native('s1', 'ad1').assistant(100, model=OPUS, input=5)
+                            .handback(200, 'Gotowe', model=OPUS), meta(description='DEMO-1 developer'))
+        self.write_subagent('s1', 'ad2', Native('s1', 'ad2').assistant(4800, model=OPUS, input=5)
+                            .handback(4900, 'Gotowe', model=OPUS).notice(6000, None)
+                            .assistant(6100, model=OPUS, input=5), meta())
+        gh = testkit.FakeGh(prs={752: testkit.merged_pr(merged_at=iso_at(5000))})
+        record = self.native_record(runner=gh, no_gh=False)
+        self.assertFalse(gaps_of(record, 'bez linii coordinator'), record['gaps'])
+
+    def test_orders_outside_the_epic_window_have_no_gaps(self):
+        self.write_run(started=0, done=4000)
+        self.write_session('s1', Native('s1').assistant(10, input=5).resume(4800, 'ad1', 'DEMO-1 popraw')
+                           .resume(6000, 'ad1', 'popraw jeszcze'))
+        transcript = (Native('s1', 'ad1').assistant(100, model=OPUS, input=5).handback(300, 'Gotowe', model=OPUS)
+                      .order(4800).assistant(4900, model=OPUS, input=5).handback(4950, 'Gotowe', model=OPUS)
+                      .order(6000).assistant(6100, model=OPUS, input=5)                     # unknown, after the merge
+                      .order(6200).assistant(6300, model=OPUS, input=5)                     # splits nothing
+                      .handback(6400, 'Gotowe', model=OPUS).order(6500)                     # no resume of the lead
+                      .assistant(6600, model=OPUS, input=5))
+        self.write_subagent('s1', 'ad1', transcript, meta(description='DEMO-1 developer'))
+        gh = testkit.FakeGh(prs={752: testkit.merged_pr(merged_at=iso_at(5000))})
+        record = self.native_record(runner=gh, no_gh=False)
+        self.assertEqual([o['n'] for o in self.orders(record, 'ad1')], [1, 2])
+        self.assertNotIn('unknown_task', record['by_task'])
+        self.assertFalse(gaps_of(record, 'ad1'), record['gaps'])
+
+    def test_orders_out_of_order_have_no_idle_time(self):
+        self.write_run(started=0, done=4000)
+        self.write_session('s1', Native('s1').assistant(10, input=5).resume(250, 'ad1', 'DEMO-1 popraw'))
+        self.write_subagent('s1', 'ad1', Native('s1', 'ad1').assistant(100, model=OPUS, input=5)
+                            .handback(300, 'Gotowe', model=OPUS).order(250).assistant(260, model=OPUS, input=5)
+                            .handback(320, 'Gotowe', model=OPUS), meta(description='DEMO-1 developer'))
+        record = self.native_record()
+        attempt = self.attempt(record, 'ad1')
+        self.assertEqual([(o['boundary'], o['wall_s']) for o in attempt['orders']], [('launch', 200), ('resume', 70)])
+        self.assertIsNone(attempt['idle_s'])
+        self.assertTrue([g for g in gaps_of(record, 'ad1') if 'nie po kolei' in g], record['gaps'])
 
 
 def as_before(record):
