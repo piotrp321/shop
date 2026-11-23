@@ -282,10 +282,11 @@ brevo_without_secret_allowed() { replace infra/k8s/charts/shop/values.schema.jso
 keycloak_config_prints_a_secret() { replace infra/k8s/charts/shop/files/scripts/keycloak-config.sh 'echo "keycloak-config: done"' 'echo "keycloak-config: done $STORE_CLIENT_SECRET"'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
 create_admin_without_confirmation() { replace infra/k8s/scripts/create-admin.sh 'if [ "$answer" != tak ]; then' 'if [ "$answer" = never ]; then'; }
-deploy_needs_a_missing_job() { replace .github/workflows/deploy.yml 'needs: [images, smoke]' 'needs: [images, smok]'; }
+deploy_needs_a_missing_job() { replace .github/workflows/deploy.yml 'needs: [images, smoke, k8s-check]' 'needs: [images, smok, k8s-check]'; }
 # shellcheck disable=SC2016 # the texts are lines of the workflow, with their variables
 deploy_script_unquoted() { replace .github/workflows/deploy.yml '-u "$GITHUB_ACTOR" --password-stdin' '-u $GITHUB_ACTOR --password-stdin'; }
-deploy_without_the_smoke_test() { replace .github/workflows/deploy.yml 'needs: [images, smoke]' 'needs: [images]'; }
+deploy_without_the_smoke_test() { replace .github/workflows/deploy.yml 'needs: [images, smoke, k8s-check]' 'needs: [images, k8s-check]'; }
+deploy_without_the_k8s_check() { replace .github/workflows/deploy.yml 'needs: [images, smoke, k8s-check]' 'needs: [images, smoke]'; }
 deploy_images_pushed_for_every_event() { replace .github/workflows/deploy.yml "    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'" "    if: github.event_name != 'schedule'"; }
 deploy_on_every_push() { replace .github/workflows/deploy.yml '  pull_request:' '  push:
     branches: [main]
@@ -498,6 +499,7 @@ run_case "create-admin going on without tak" "test_without_the_word_tak_nothing_
 run_case "deploy.yml needing a job that does not exist" "needs job \"smok\"" "actionlint" deploy_needs_a_missing_job
 run_case "unquoted variable in a run script of deploy.yml (shellcheck)" "SC2086" "actionlint" deploy_script_unquoted
 run_case "deploy without waiting for the smoke test" "test_it_needs_a_green_smoke_test_and_the_images" "tests" deploy_without_the_smoke_test
+run_case "deploy without waiting for make -C infra/k8s check" "test_deploy_waits_for_the_check" "tests" deploy_without_the_k8s_check
 run_case "images pushed for every event" "test_images_are_pushed_and_deploy_moves_only_for_a_dispatch_on_main" "tests" deploy_images_pushed_for_every_event
 run_case "deploy.yml triggered by a push to main" "test_there_is_no_push_trigger" "tests" deploy_on_every_push
 run_case "deployment for a dispatch on any branch" "test_images_are_pushed_and_deploy_moves_only_for_a_dispatch_on_main" "tests" deploy_for_a_dispatch_on_any_branch

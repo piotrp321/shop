@@ -8,12 +8,30 @@
 #            infra/k8s; deploy.yml runs its own smoke test of the chart for such a change.
 #   full     anything else (application code, other infra, Makefile, .github/), or a mix of tooling and k8s: the full CI
 # Any error prints `full` with a ::warning::, so it can only cost a full CI run.
-# Usage: scope.sh <base-sha> <head-sha>
+#
+# With --k8s it answers instead whether the change touches infra/k8s or the workflows at all (any file under
+# infra/k8s/ or .github/workflows/, also documentation, on either side of a move): `yes` or `no`. In the full CI it
+# decides whether `make -C infra/k8s check` runs, which holds the only tests of the workflows (actionlint, secrets only in
+# main-only environments, no deletion of package versions); deploy.yml runs that check before every deployment anyway.
+# Any error prints `yes` with a ::warning::.
+#
+# Usage: scope.sh [--k8s] <base-sha> <head-sha>
 set -u
 
+mode=scope
+if [ "${1:-}" = --k8s ]; then
+    mode=k8s
+    shift
+fi
+
 fail() {
-    echo "::warning::scope: $1, running the full CI" >&2
-    echo full
+    if [ "$mode" = k8s ]; then
+        echo "::warning::scope: $1, running make -C infra/k8s check" >&2
+        echo yes
+    else
+        echo "::warning::scope: $1, running the full CI" >&2
+        echo full
+    fi
     exit 0
 }
 
@@ -23,6 +41,22 @@ fail() {
 # Paths with control characters stay quoted ("...") and match no pattern below.
 files="$(git -c core.quotePath=false diff --no-renames --name-only "$1...$2")" || fail "git diff $1...$2 failed"
 [ -n "$files" ] || fail "empty diff"
+
+# A quoted path keeps its directories after the opening quote. Any failure of the loop answers yes.
+if [ "$mode" = k8s ]; then
+    if echo "$files" | {
+        while IFS= read -r file; do
+            case "$file" in
+                infra/k8s/* | '"infra/k8s/'* | .github/workflows/* | '".github/workflows/'*) exit 1 ;;
+            esac
+        done
+    }; then
+        echo no
+    else
+        echo yes
+    fi
+    exit 0
+fi
 
 # The loop runs in a subshell (pipe): its exit status carries the result. 0 docs, 1 tooling, 3 k8s, 2 full.
 # Tooling and k8s in one change is full: each scope runs only its own checks.

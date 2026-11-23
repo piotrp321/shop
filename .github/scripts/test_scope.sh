@@ -168,5 +168,98 @@ if [ "$actual" = full ]; then echo "ok   missing arguments"; else
     failures=$((failures + 1))
 fi
 
+# The second question, `scope.sh --k8s`: does the change touch infra/k8s or the workflows at all? In the full CI it
+# decides whether the part `k8s` (`make -C infra/k8s check`) has work; an error answers yes.
+# expect_k8s <name> <expected> [base]
+expect_k8s() {
+    actual="$(cd "$repo" && sh "$script" --k8s "${3:-$base}" "$head" 2>"$tmp/stderr")"
+    if [ "$actual" = "$2" ]; then
+        echo "ok   k8s: $1"
+    else
+        echo "FAIL k8s: $1: expected '$2', got '$actual'"
+        failures=$((failures + 1))
+    fi
+}
+
+new_repo q-app; change apps/api/src/A.php apps/store/src/x.tsx e2e/tests/a.spec.ts
+expect_k8s "app code and tests only" no
+
+new_repo q-infra; change infra/docker-compose.yml infra/keycloak/realms/shop.json Makefile
+expect_k8s "other infrastructure and the Makefile" no
+
+new_repo q-chart; change infra/k8s/charts/shop/values.yaml
+expect_k8s "the chart only" yes
+
+new_repo q-mixed; change infra/k8s/scripts/status.sh apps/api/src/A.php
+expect_k8s "the chart mixed with app code" yes
+expect "the chart mixed with app code is still the full CI" full
+
+new_repo q-mixed-tooling; change infra/k8s/charts/shop/values.yaml tools/rulesets/epic.json
+expect_k8s "the chart mixed with tooling" yes
+
+new_repo q-md; change infra/k8s/README.md apps/api/src/A.php
+expect_k8s "a document under infra/k8s mixed with app code" yes
+
+new_repo q-prefix; change infra/k8s-extra/run.sh infra/k8sx
+expect_k8s "paths that only start like infra/k8s" no
+
+new_repo q-nested; change x/infra/k8s/run.sh
+expect_k8s "infra/k8s nested in another directory" no
+
+new_repo q-rename-in; mkdir -p "$repo/infra/k8s"; git -C "$repo" mv apps/api/src/A.php infra/k8s/A.php; change
+expect_k8s "a file moved into infra/k8s" yes
+
+new_repo q-rename-out; change infra/k8s/scripts/run.sh
+base="$head"; git -C "$repo" mv infra/k8s/scripts/run.sh apps/api/src/run.sh; change
+expect_k8s "a file moved out of infra/k8s" yes
+
+new_repo q-delete; change infra/k8s/scripts/run.sh
+base="$head"; git -C "$repo" rm -q infra/k8s/scripts/run.sh; change
+expect_k8s "a file of infra/k8s deleted" yes
+
+new_repo q-control; mkdir -p "$repo/infra/k8s"; printf x > "$repo/infra/k8s/a$(printf '\t')b.sh"; change
+expect_k8s "a file of infra/k8s with a control character in its name (git quotes the path)" yes
+
+# The workflows are checked by `make -C infra/k8s check` alone (actionlint, secrets only in main-only environments, no
+# deletion of package versions, the deployment waits for the check): a change of a workflow runs it in its own PR.
+new_repo q-workflow; change .github/workflows/deploy.yml
+expect_k8s "a workflow only" yes
+
+new_repo q-workflow-mixed; change .github/workflows/release.yml apps/api/src/A.php
+expect_k8s "a new workflow mixed with app code" yes
+
+new_repo q-workflow-control; mkdir -p "$repo/.github/workflows"; printf x > "$repo/.github/workflows/a$(printf '\t')b.yml"; change
+expect_k8s "a workflow with a control character in its name (git quotes the path)" yes
+
+new_repo q-workflow-like; change .github/scripts/scope.sh .github/workflows-old/a.yml x/.github/workflows/a.yml
+expect_k8s "CI scripts and paths that only look like the workflows" no
+
+new_repo q-empty; change
+expect_k8s "empty diff" yes
+
+new_repo q-bad-base; change apps/api/src/A.php
+expect_k8s "unknown base commit" yes 0000000000000000000000000000000000000000
+if ! grep -q '::warning::' "$tmp/stderr"; then
+    echo "FAIL k8s: unknown base commit: no ::warning:: on stderr"
+    failures=$((failures + 1))
+fi
+
+new_repo q-no-args; change apps/api/src/A.php
+actual="$(cd "$repo" && sh "$script" --k8s 2>/dev/null)"
+if [ "$actual" = yes ]; then echo "ok   k8s: missing arguments"; else
+    echo "FAIL k8s: missing arguments: expected 'yes', got '$actual'"
+    failures=$((failures + 1))
+fi
+
+# A push to main is scoped by the commits it adds: the same script with the commit before the push as the base.
+new_repo push-docs; change apps/api/src/A.php
+base="$head"; change docs/features/x/spec.md
+expect "a push of a documentation commit on top of a code commit" docs
+expect_k8s "a push of a documentation commit on top of a code commit" no
+
+new_repo push-many; change docs/a.md
+base="$head"; change docs/b.md; change apps/api/src/A.php; change docs/c.md
+expect "a push of several commits, one of them code" full
+
 [ "$failures" -eq 0 ] || { echo "$failures failure(s)"; exit 1; }
 echo "all passed"

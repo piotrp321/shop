@@ -30,7 +30,8 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
 - Ograniczenia startowe sterowane konfiguracją: pasek demonstracji, `X-Robots-Tag: noindex`, rejestracja
   i logowanie klientów, poczta zamówień; Cloudflare Access przed panelem.
 - Brzeg sieci: Cloudflare; origin przyjmuje HTTP(S) tylko od Cloudflare.
-- Weryfikacja bez serwera: statyczny check chartu w wymaganym CI i smoke test na k3d na standardowym runnerze.
+- Weryfikacja bez serwera: statyczny check chartu w wymaganym CI (przy zmianie `infra/k8s/**` albo workflowów) i przed każdym
+  wdrożeniem oraz smoke test na k3d na standardowym runnerze.
 - Bootstrap czystego VPS-a i wdrożenie wykonywalne przez Claude Code po SSH, z jawnymi punktami zgody i krokami
   użytkownika.
 
@@ -246,7 +247,8 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
    drugiego digestu.
 3. Smoke test na k3d (niżej) instaluje chart z tym plikiem: klaster pobiera obrazy z GHCR po digeście i test sprawdza,
    że pody api, store, admin i elasticsearch działają na tych digestach.
-4. Po zielonym smoke teście workflow sprawdza render `prod` z tym plikiem (każdy obraz własny to dokładnie
+4. Po zielonym smoke teście i zielonym `make -C infra/k8s check` (job `k8s-check`, równolegle z obrazami i smoke
+   testem; czerwony albo anulowany zatrzymuje wdrożenie) workflow sprawdza render `prod` z tym plikiem (każdy obraz własny to dokładnie
    `ghcr.io/piotrp321/shop/<app>:<sha>@<digest>` z pliku) i jednym atomowym pushem przesuwa `deploy` fast-forwardem na ten
    commit oraz dodaje snapshot do `deploy-images` (D4). Ten job (`deploy`, jedyny z sekretem `DEPLOY_KEY`) działa w środowisku
    GitHub `production`: wymaga zatwierdzenia przez użytkownika (wymagany recenzent, „Prevent self-review” wyłączone, bo
@@ -466,7 +468,10 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   instalatora; prawdziwe są sprawdzenia, zapisy plików i idempotencja), z odmową bez roota i na innym systemie przed
   zmianami. Ostatni krok sprawdza gitem na hoście, że `.gitignore` nie ignoruje certyfikatu
   `environments/prod/sealed-secrets.pem`. `check` chartu działa w części `checks part k8s` wymaganego
-  checku `checks`, a lokalnie i w bramkach AO woła go główny `make check`. Testy skryptu `.github/scripts/deploy-ref.sh` (lokalne repo bare, także odrzucony
+  checku `checks`, gdy zmiana dotyka `infra/k8s/**` albo `.github/workflows/**` (`.github/scripts/scope.sh --k8s`; push na `epic/**` i błąd skryptu:
+  zawsze), w jobie `k8s-check` przy każdym wdrożeniu (`deploy` go wymaga), a lokalnie i w bramkach AO woła go główny
+  `make check`. Zmiana compose albo realmów, której chart nie odzwierciedla, przechodzi więc CI swojego PR, gdy nie
+  zmienia `infra/k8s/**` ani workflowów, i zatrzymuje dopiero wdrożenie. Testy skryptu `.github/scripts/deploy-ref.sh` (lokalne repo bare, także odrzucony
   non-fast-forward) i struktury rulesetów (`tools/rulesets`) uruchamia job narzędzi repo w `ci.yml`.
 - `make -C infra/k8s smoke`: buduje cztery obrazy produkcyjne lokalnie i importuje je do k3d (bez wypychania; nazwa
   klastra i porty z `COMPOSE_PROJECT_NAME` i `.env` worktree), instaluje chart z profilem `ci` na pustym klastrze,
@@ -500,7 +505,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   `apps/api/config/**`, `apps/api/bin/**`, `apps/api/composer.lock`, `apps/store/package-lock.json`,
   `apps/admin/package-lock.json`, `apps/store/next.config.ts`, `apps/admin/vite.config.ts` oraz sam workflow i `deploy-ref.sh` (obrazy z cache GHA)
   i na `workflow_dispatch` na innej gałęzi niż `main` (próba: tylko smoke, nic nie jest wypychane i `deploy` się nie
-  przesuwa), oraz zawsze przed wdrożeniem (`workflow_dispatch` na `main`: obrazy, smoke, `deploy`). Push do `main` nie
+  przesuwa), oraz zawsze przed wdrożeniem (`workflow_dispatch` na `main`: obrazy, smoke i obok nich `k8s-check`, potem `deploy`). Push do `main` nie
   uruchamia `deploy.yml`. `workflow_dispatch` GitHub oferuje dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`);
   wcześniej próbę daje zdarzenie `pull_request` (PR zmienia `deploy.yml`, który jest w filtrze ścieżek).
   `smoke` nie jest wymaganym checkiem `main`.
