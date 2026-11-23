@@ -1918,12 +1918,24 @@ COMMIT_LIMIT = 100              # commits per page of `gh api .../commits`
 COMMIT_PAGE_LIMIT = 10          # pages read at most: 1000 commits of the window
 
 
+class Unsettled(Exception):
+    """A source of the regressions has no settled answer yet (the CI run of the merge commit is not over or not
+    registered): the value is unknown, not zero, and the window stays open until a later run of the script settles it."""
+
+
 def red_ci(run, repo, config, sha):
+    """The number of failed CI runs (push) of the merge commit. Unsettled while one of them is not over, or while there
+    is none: a run in progress or not registered yet must not be read as a green one."""
     runs = gh_json(run, ['run', 'list', '--workflow', config['ci_workflow'], '--commit', sha, '--json',
-                         'conclusion,event', '--limit', '50'], repo)
+                         'conclusion,event,status', '--limit', '50'], repo)
     if not isinstance(runs, list):
         raise GhError('gh run list: nieoczekiwany kształt odpowiedzi')
-    return sum(1 for r in runs if isinstance(r, dict) and r.get('event') == 'push' and r.get('conclusion') == 'failure')
+    pushes = [r for r in runs if isinstance(r, dict) and r.get('event') == 'push']
+    if not pushes:
+        raise Unsettled('brak przebiegu CI (push) na commicie merge\'u: wynik nieznany, nie zero')
+    if any(not r.get('conclusion') or r.get('status') not in (None, 'completed') for r in pushes):
+        raise Unsettled('przebieg CI (push) na commicie merge\'u w toku: wynik nieznany, nie zero')
+    return sum(1 for r in pushes if r.get('conclusion') == 'failure')
 
 
 def commits_of_window(run, repo, low, high, gaps, truncated):
@@ -2072,6 +2084,9 @@ def regressions_of(run, repo, config, epic_id, final_pr, merge_sha, merged, now,
             continue
         try:
             values[key] = compute()
+        except Unsettled as e:
+            complete = False
+            gaps.add(field, str(e))
         except GhError as e:
             complete = False
             errors.append(str(e))

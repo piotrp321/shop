@@ -49,6 +49,9 @@ class RegressionEnv(Env):
 
     def gh(self, **kwargs):
         kwargs.setdefault('prs', {476: merged_pr(MERGED, sha=SHA)})
+        # the CI run of the merge commit is over and green unless the test says otherwise: without a finished run the
+        # value is unknown and the window stays open
+        kwargs.setdefault('runs', {SHA: [{'conclusion': 'success', 'status': 'completed', 'event': 'push'}]})
         return FakeGh(**kwargs)
 
     def record(self, gh, now=NOW, *extra):
@@ -74,8 +77,55 @@ class RedCiTest(RegressionEnv):
         self.assertEqual((regressions['ci_red'], regressions['count']), (0, 0))
 
     def test_red_run_of_a_pull_request_event_is_not_counted(self):
-        gh = self.gh(runs={SHA: [{'conclusion': 'failure', 'event': 'pull_request'}]})
+        gh = self.gh(runs={SHA: [{'conclusion': 'failure', 'event': 'pull_request'},
+                                 {'conclusion': 'success', 'event': 'push'}]})
         self.assertEqual(self.record(gh)['regressions']['ci_red'], 0)
+
+    def assert_unsettled(self, runs, reason, now=NOW):
+        code, out, err = self.deploy_ops(self.gh(runs={SHA: runs}), now)
+        self.assertEqual(code, 0, err)
+        record = json.loads(out)
+        regressions = record['regressions']
+        self.assertIsNone(regressions['ci_red'])
+        self.assertIsNone(regressions['count'])
+        self.assertFalse(regressions['complete'])
+        self.assertTrue(regressions['open'])
+        self.assertTrue(any(g.startswith('regressions.ci_red') and reason in g for g in record['gaps']), record['gaps'])
+        return record
+
+    def test_a_push_run_still_in_progress_is_unknown_not_green(self):
+        for run in ({'conclusion': '', 'status': 'in_progress', 'event': 'push'},
+                    {'conclusion': None, 'status': 'queued', 'event': 'push'},
+                    {'status': 'in_progress', 'event': 'push'}):
+            with self.subTest(run=run):
+                self.assert_unsettled([run], 'w toku')
+
+    def test_a_finished_run_next_to_one_in_progress_is_unknown(self):
+        self.assert_unsettled([{'conclusion': 'success', 'status': 'completed', 'event': 'push'},
+                               {'conclusion': '', 'status': 'in_progress', 'event': 'push'}], 'w toku')
+
+    def test_no_push_run_of_the_merge_commit_is_unknown_not_green(self):
+        self.assert_unsettled([], 'brak przebiegu')
+        self.assert_unsettled([{'conclusion': 'success', 'event': 'pull_request'}], 'brak przebiegu')
+
+    def test_an_unsettled_run_keeps_the_window_open_after_its_end_and_drops_a_stored_zero(self):
+        self.assertEqual(self.record(self.gh(runs={SHA: [{'conclusion': 'success', 'event': 'push'}]}))
+                         ['regressions']['ci_red'], 0)
+        record = self.assert_unsettled([{'conclusion': '', 'status': 'in_progress', 'event': 'push'}], 'w toku', LATE)
+        self.assertFalse(any('zachowano' in g for g in record['gaps'] if g.startswith('regressions.ci_red')),
+                         record['gaps'])
+
+    def test_a_run_that_ended_after_the_first_look_is_counted_on_the_next_one(self):
+        self.assert_unsettled([{'conclusion': '', 'status': 'in_progress', 'event': 'push'}], 'w toku')
+        regressions = self.record(self.gh(runs={SHA: [{'conclusion': 'failure', 'status': 'completed',
+                                                       'event': 'push'}]}))['regressions']
+        self.assertEqual((regressions['ci_red'], regressions['count'], regressions['complete']), (1, 1, True))
+
+    def test_the_run_list_asks_for_the_status(self):
+        gh = self.gh(runs={SHA: [{'conclusion': 'success', 'status': 'completed', 'event': 'push'}]})
+        self.record(gh)
+        call = next(c for c in gh.calls if c[:3] == ['gh', 'run', 'list'] and '--commit' in c)
+        self.assertIn('status', call[call.index('--json') + 1].split(','))
 
     def test_window_fields(self):
         regressions = self.record(self.gh())['regressions']
