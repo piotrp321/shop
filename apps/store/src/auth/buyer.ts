@@ -1,7 +1,5 @@
 import { createHash, createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
 
-export { GUEST_BUYER } from "@/checkout/buyer";
-
 /**
  * The key of the buyer tags: HKDF-SHA256 of the session secret (no salt, info `checkout-buyer`), 32 bytes. The cookies
  * are signed with the secret itself (`signValue`), so no tag is the signature of any cookie value and no signature a

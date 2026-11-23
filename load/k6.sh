@@ -10,7 +10,8 @@ LOAD_DIR="${LOAD_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 # k6_run <docker network> <results directory or ""> <script> [docker run options...]
 # Runs /load/<script> with the directory of the scripts read-only and, when given, the results directory writable at /out.
 # The settings of the script (STORE_URL, ...) are passed as `-e NAME=value` options. Exit code of k6: 0, 99 when a threshold
-# failed (saturate.js ends this way on saturation), another one for a script that could not run.
+# failed (saturate.js ends this way on saturation), 108 when the script aborted the run (`exec.test.abort`), another one for
+# a script that could not run.
 k6_run() {
   k6_network="$1" k6_out="$2" k6_script="$3"
   shift 3

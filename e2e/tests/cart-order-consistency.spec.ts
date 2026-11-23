@@ -9,10 +9,10 @@ import { urls } from "../support/urls";
 // changes of the cart made in another tab of the same browser. The other tab changes the cart through the store's cart
 // endpoints, as its cart page would. Each test has its own context, so a guest cart of its own.
 //
-// Stock (apps/api/fixtures/stock.yaml): R1 orders and pays 3 units of Buty trailowe Norvane Hala 500, R3, R4 and R5 1
-// unit each; R2, R6 and the narrow screens order nothing (the change is refused and the test ends there).
+// Stock (apps/api/fixtures/stock.yaml): R1 orders and pays 3 units of Buty trailowe Norvane Hala 500, R3, R4, R5 and
+// R7 1 unit each; R2, R6 and the narrow screens order nothing (the change is refused and the test ends there).
 //
-// R4, R5 and R6 change the buyer in the other tab with the demo accounts Jan and Anna, which the whole suite shares:
+// R4 to R7 change the buyer in the other tab with the demo accounts Jan and Anna, which the whole suite shares:
 // each of them prepares the carts it needs, and both carts are emptied after it, also after a failure.
 
 const SHOES = { name: "Buty trailowe Norvane Hala 500", slug: "buty-trailowe-norvane-hala-500" };
@@ -24,6 +24,9 @@ const PLACING = "Składamy zamówienie…";
 const CART_CHANGED = "Zawartość koszyka zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.";
 const SIGNED_IN_AS = (email: string) =>
   `Od wczytania kasy zmieniło się konto: teraz to ${email}. Nie złożyliśmy zamówienia. Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
+// The same after a retry of an uncertain result: the attempt before may have placed the order.
+const MAYBE_SIGNED_IN_AS = (email: string) =>
+  `Od wczytania kasy zmieniło się konto: teraz to ${email}. Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie. Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
 // 60 characters without a space or a hyphen: the address must wrap on a narrow screen. The demo accounts have short ones.
 const LONG_EMAIL = "bardzodlugiadresklientasklepunorvanetestowykonto@example.com";
 
@@ -289,7 +292,83 @@ for (const { width, touch } of [
       await expect(checkout.getByTestId("account-email")).toHaveText(LONG_EMAIL);
       expect(await overflows(checkout)).toBe(false);
     });
+
+    test("long texts without a space from the data (product, variant, delivery method, code) cause no horizontal scrolling in the summary and in the message of the changes", async ({ context, request }) => {
+      const [a] = await twoVariants(request, SHOES.slug);
+      const page = await context.newPage();
+      await page.goto("/cart");
+      expect(await cartWrite(page, "POST", "/api/cart/items", { variantId: a.variantId, quantity: 1 })).toBe(true);
+      // The demo data has no such texts: every read of the cart gets them, and after the refusal also another quantity
+      // and another cost of the delivery, so that the message lists the line and the method.
+      const reads = { refused: false };
+      await page.route("**/api/cart", async (route) => {
+        if (route.request().method() !== "GET") return route.fallback();
+        const response = await route.fetch();
+        const view = (await response.json()) as LongCart;
+        lengthen(view, reads.refused);
+        return route.fulfill({ response, json: view });
+      });
+      // The order is refused for a changed cart without reaching the server: nothing is ordered.
+      await page.route("**/api/checkout", (route) => {
+        if (route.request().method() !== "POST") return route.fallback();
+        reads.refused = true;
+        return route.fulfill({ status: 409, json: { type: "tag:piotrp321.github.io,2026:shop/problems/cart-changed", detail: "Zawartość koszyka się zmieniła." } });
+      });
+      await page.goto("/checkout");
+      await expect(page.getByLabel("E-mail")).toBeVisible();
+      await page.getByLabel("E-mail").fill(`e2e-spojnosc-dlugie+${Date.now()}@example.com`);
+      await page.getByLabel("Imię i nazwisko").fill("Anna Testowa");
+      await fillAddress(page);
+      await chooseDelivery(page, LONG_METHOD);
+      await chooseProvider(page, "Szybki przelew (demo)");
+      await expect(page.getByTestId("checkout-discount")).toContainText(LONG_CODE);
+      expect(await overflows(page)).toBe(false);
+
+      if (touch) await orderButton(page).tap();
+      else await orderButton(page).click();
+      const message = orderMessage(page);
+      await expect(message).toContainText(CART_CHANGED);
+      await expect(message.getByRole("listitem")).toHaveText([
+        new RegExp(`^${LONG_PRODUCT}, ${LONG_LABEL}: było 1 szt., jest 2 szt.$`),
+        new RegExp(`^Dostawa „${LONG_METHOD}”: `),
+        /^Do zapłaty: /,
+      ]);
+      expect(await overflows(page)).toBe(false);
+    });
   });
+}
+
+// Texts of the data without a space, longer than a narrow screen: the product name of 78 characters of the review (U1).
+const LONG_PRODUCT = "Superdluganazwaproduktubezspacjiwogolenienadajacasiedozawinieciaanijednejlinii";
+const LONG_LABEL = "Wariantobardzodlugiejetykieciebezspacjiktorytezniezmiesciesiewjednejlinii";
+const LONG_METHOD = "Kurierstandardowyzbardzodlugananazwabezspacjiktoranieznajdziemiejscawlinii";
+// The longest code the field takes (64 characters).
+const LONG_CODE = "KODRABATOWYBEZSPACJIDOKLADNIESZESCDZIESIATCZTERYZNAKIDLUGOSCI123";
+
+type LongCart = {
+  lines: { quantity: number; product: { name: string; variantLabel: string | null } | null }[];
+  totals: { discountGross: number };
+  discount: unknown;
+  delivery: { options: { name: string; description: string | null; costGross: number; totalGross: number }[] } | null;
+};
+
+/** Gives a read of the cart the long texts (and an applied code of the longest length); `changed`: after the refusal. */
+function lengthen(view: LongCart, changed: boolean): void {
+  for (const line of view.lines) {
+    if (line.product !== null) line.product = { ...line.product, name: LONG_PRODUCT, variantLabel: LONG_LABEL };
+    if (changed) line.quantity = 2;
+  }
+  view.totals.discountGross = 1000;
+  view.discount = { status: "applied", code: LONG_CODE, amountGross: 1000, kind: "amount", value: 1000 };
+  const standard = view.delivery?.options[0];
+  if (standard !== undefined) {
+    standard.name = LONG_METHOD;
+    standard.description = LONG_LABEL;
+    if (changed) {
+      standard.costGross += 1000;
+      standard.totalGross += 1000;
+    }
+  }
 }
 
 const SESSION_EXPIRED = "Twoja sesja wygasła. Zaloguj się ponownie.";
@@ -338,6 +417,14 @@ async function customerCheckout(page: Page, account: Account): Promise<void> {
   await chooseProvider(page, "Szybki przelew (demo)");
 }
 
+/** The header names the account `name` and offers its logout, not the login. */
+async function expectHeaderSignedInAs(page: Page, name: string): Promise<void> {
+  const banner = page.getByRole("banner");
+  await expect(banner).toContainText(`Zalogowany jako ${name}`);
+  await expect(banner.getByRole("button", { name: "Wyloguj się" })).toBeVisible();
+  await expect(banner.getByRole("link", { name: "Zaloguj się" })).toHaveCount(0);
+}
+
 /** How many order confirmations Mailpit has for `to`. */
 async function confirmationCount(to: string): Promise<number> {
   const query = `to:"${to}" subject:"Potwierdzenie zamówienia"`;
@@ -380,6 +467,8 @@ test.describe("the buyer changed in another tab", () => {
     expect(orders()).toEqual([409]);
     await expect(checkout.getByTestId("account-email")).toHaveText(customers.jan.email);
     await expect(checkout.getByLabel("E-mail")).toHaveCount(0);
+    // The header shows the same account as the checkout.
+    await expectHeaderSignedInAs(checkout, "Jan Kowalski");
     await expect(checkout.getByLabel("Imię i nazwisko")).toHaveValue("Anna Testowa");
     await expect(checkout.getByLabel("Miejscowość")).toHaveValue("Warszawa");
     await expect(checkout.getByRole("radio", { name: "Szybki przelew (demo)" })).toBeChecked();
@@ -419,6 +508,8 @@ test.describe("the buyer changed in another tab", () => {
     await expect(message).toHaveText(SIGNED_IN_AS(customers.anna.email));
     expect(orders()).toEqual([409]);
     await expect(page.getByTestId("account-email")).toHaveText(customers.anna.email);
+    await expectHeaderSignedInAs(page, "Anna Nowak");
+    await expect(page.getByRole("banner")).not.toContainText("Jan Kowalski");
     await expect(quantities(page)).toHaveText(["1 szt."]);
     await expect(page.getByTestId("checkout-total")).toHaveText(total);
     await expect(page.getByLabel("Imię i nazwisko")).toHaveValue("Klient Testowy");
@@ -436,6 +527,56 @@ test.describe("the buyer changed in another tab", () => {
     // Jan's cart was never ordered: an order empties the cart it is placed from.
     await signInAs(other, customers.jan);
     expect(await cartLinesOf(other)).toEqual([{ variantId: a.variantId, quantity: 1 }]);
+  });
+
+  test("R7: Jan's checkout whose answer was lost, retried after another tab signs in as Anna, does not say that nothing was ordered: the lost attempt placed Jan's order", async ({ context, request }) => {
+    const [a] = await twoVariants(request, SHOES.slug);
+    const page = await context.newPage();
+    await signInAs(page, customers.anna);
+    await emptyCart(page);
+    await signInAs(page, customers.jan);
+    await emptyCart(page);
+    await addLines(page, [[a, 1]]);
+    await customerCheckout(page, customers.jan);
+
+    // The first order reaches the server, which places it and starts its payment, but its answer never reaches the
+    // page (the connection fails): an uncertain result, retried with the same key.
+    const keys: string[] = [];
+    const statuses: number[] = [];
+    const lost: { answer?: { number: string; redirectUrl: string | null } } = {};
+    await page.route("**/api/checkout", async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      keys.push(route.request().headers()["idempotency-key"] ?? "");
+      const response = await route.fetch();
+      statuses.push(response.status());
+      if (lost.answer === undefined) {
+        lost.answer = (await response.json()) as { number: string; redirectUrl: string | null };
+        return route.abort("failed");
+      }
+      return route.fulfill({ response });
+    });
+    await orderButton(page).click();
+    await expect(orderMessage(page)).toHaveText("Nie udało się złożyć zamówienia. Spróbuj ponownie.");
+
+    // Jan's order was placed: it is paid at once, in another tab, so the test leaves no unpaid order whatever follows.
+    // The retry below is refused before the API, so the payment does not change it.
+    const placed = lost.answer;
+    if (placed?.redirectUrl == null) throw new Error("the lost attempt placed no order with a payment to decide");
+    const other = await context.newPage();
+    await other.goto(placed.redirectUrl);
+    await decideAtSimulator(other, "Zapłać");
+
+    await signInAs(other, customers.anna);
+    await orderButton(page).click();
+
+    await expect(orderMessage(page)).toHaveText(MAYBE_SIGNED_IN_AS(customers.anna.email));
+    expect(statuses).toEqual([201, 409]);
+    expect(keys[1]).toBe(keys[0]);
+    // Anna's cart is empty: the checkout shows it instead of the form, so the next click cannot order anything.
+    await expect(page.getByText("Twój koszyk jest pusty.")).toBeVisible();
+    // The message is true: the lost attempt placed Jan's order.
+    await waitForOrderEmail(customers.jan.email, placed.number);
+    await waitForOrderEmail(customers.jan.email, placed.number, "payment");
   });
 
   test("R6: Jan's checkout after a logout in another tab shows the expired session and places no order, not even one of the guest cart the browser has", async ({ context, request }) => {
@@ -456,6 +597,9 @@ test.describe("the buyer changed in another tab", () => {
 
     await expect(orderMessage(page)).toContainText(SESSION_EXPIRED);
     expect(orders()).toEqual([401]);
+    // The header shows nobody signed in, as the checkout does.
+    await expect(page.getByRole("banner").getByRole("link", { name: "Zaloguj się" })).toBeVisible();
+    await expect(page.getByRole("banner").getByRole("button", { name: "Wyloguj się" })).toHaveCount(0);
     await expect(page).toHaveURL(/\/checkout$/);
     // Neither cart was ordered: the guest cart keeps its line, and Jan's has both after the merge of his login.
     expect(await cartLinesOf(other)).toEqual([{ variantId: a.variantId, quantity: 1 }]);

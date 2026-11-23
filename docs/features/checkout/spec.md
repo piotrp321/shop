@@ -467,8 +467,10 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   zmian, także wartość, której API nie przyjmie (wtedy 422 API).
 - Body niesie `buyer`: kupującego, którego pokazała kasa (`"guest"` przy polu e-mail albo znacznik konta z
   `/auth/session`; `docs/features/cart-order-consistency/spec.md`, Z4). Pole służy tylko do porównania: nie trafia do
-  API, a konto zamówienia wynika wyłącznie z sesji. Brak pola, wartość niebędąca tekstem albo pusty tekst: 422
-  „Nieprawidłowe dane.” bez API. Sprawdzenie (`checkBuyer` w `src/checkout/bff.ts`) jest przed listą dostawców,
+  API, a konto zamówienia wynika wyłącznie z sesji. Brak pola (żądanie strony kasy otwartej przed wdrożeniem tego
+  sprawdzenia): 422 „Kasa została zaktualizowana. Odśwież stronę.” bez `violations`, którego `detail` taka strona
+  pokazuje nad formularzem; wartość niebędąca tekstem albo pusty tekst: 422 „Nieprawidłowe dane.”; w obu przypadkach
+  bez API. Sprawdzenie (`checkBuyer` w `src/checkout/bff.ts`) jest przed listą dostawców,
   scaleniem koszyka i złożeniem, więc odrzucenie nie woła API:
 
   | Kasa pokazała | Sesja przy wysłaniu | Odpowiedź BFF |
@@ -541,6 +543,9 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   Pusty koszyk albo `hasExcludedLines`: zamiast formularza komunikat i link do koszyka; przy pustym koszyku
   i poprawnym `store_order_confirmation` także link „Opłać zamówienie R-…” na `/checkout/confirmation` (powrót ze
   strony dostawcy bez decyzji, `docs/features/payment/spec.md`, P7).
+- Teksty z danych w podsumowaniu, w wyborze dostawy i w komunikacie nad formularzem (nazwa produktu, etykieta
+  wariantu, nazwa i opis metody dostawy, kod rabatowy, adres konta) łamią się także w środku słowa (`wrap-anywhere`),
+  więc słowo dłuższe niż ekran nie powoduje przewijania poziomego przy 320 i 375 px.
 - Status i ponowienie wczytania (`CheckoutPage.tsx`): jeden region `role="status"` (`data-testid="checkout-status"`)
   istnieje od pierwszego renderu przez wszystkie stany ekranu (wczytywanie, błąd, treść, pusty koszyk, wygasła sesja);
   zmienia się tylko jego tekst („Wczytywanie…” w trakcie odczytu, także odczytu nieaktualnego podsumowania po kliknięciu
@@ -687,6 +692,11 @@ Rozbieżność koszyka i kwoty (409 `cart-changed` i `order-total-changed`; `doc
    zamówienia i metody wybranej w chwili odpowiedzi odczytu, z tym samym pierwszym akapitem; dopiero kolejne kliknięcie
    zamawia. Dotyczy to także kodu zastosowanego po nieudanym odczycie, zanim strona go wyrenderowała (stan nieaktualny
    jest ustawiany od razu, nie dopiero z renderem). Nieudane albo 401 sprawdzenie kodu zostawia stan nieaktualny.
+6. Komunikat z listą zmian opisuje różnicę z chwili odrzuconego zamówienia. Znika, gdy po jego pokazaniu klient sam
+   zmieni podsumowanie: udane zastosowanie kodu, „Usuń kod” albo wybór innej metody dostawy; inaczej przeczyłby
+   podsumowaniu obok. Zostaje przy edycji pól, wyborze płatności, kodzie odrzuconym (przez podsumowanie albo 400)
+   i nieudanym sprawdzeniu kodu. Zniknięcie nie przenosi fokusu, a fokus i ogłoszenia kodu i dostawy są jak zawsze.
+   Komunikaty innego rodzaju zostają, a odczyt przez kod w stanie nieaktualnym pokazuje listę zmian (punkt 5).
 
 Zmiana kupującego (409 `checkout-buyer-changed`: logowanie, wylogowanie albo inne konto w innej karcie;
 `docs/features/cart-order-consistency/spec.md`, Z4). Kasa wysyła w `buyer` kupującego, którego pokazuje: `"guest"`
@@ -700,11 +710,26 @@ z którego wyszło kliknięcie).
    i podsumowanie z odczytu, odblokowany formularz. Wpisane pola (imię i nazwisko, telefon, adres), wybór płatności
    i dostawy (gdy metoda jest nadal wśród opcji) zostają; imię nie jest wypełniane od nowa z drugiego konta. Pole
    e-mail pojawia się albo znika według nowej sesji. Koszyk innego konta jest pokazany bez listy zmian (pusty albo
-   z pozycjami nie do kupienia: widok tych stanów).
+   z pozycjami nie do kupienia: widok tych stanów). W tym samym czasie (i tak samo po wczytaniu kasy i po „Spróbuj
+   ponownie”) nagłówek pokazuje sesję z tego odczytu
+   („Zalogowany jako …” albo link „Zaloguj się”; kasa przekazuje ją zdarzeniem `announceSession`, bez drugiego
+   żądania `/auth/session`), a fokus się nie przenosi. Tak samo po każdym 401, po którym kasa pokazuje wygasłą sesję
+   (zamówienie, odczyt koszyka, kod rabatowy, wczytanie kasy): sklep usunął sesję, więc nagłówek pokazuje link
+   „Zaloguj się”.
 3. Tekst: „Od wczytania kasy zmieniło się konto: teraz to <adres konta>. Nie złożyliśmy zamówienia. Zamówienie będzie
    zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.”, a bez sesji po odczycie: „Od
    wczytania kasy nastąpiło wylogowanie. Nie złożyliśmy zamówienia. Podaj adres e-mail, sprawdź dane i podsumowanie,
-   potem zamów ponownie.”.
+   potem zamów ponownie.”. Wcześniejsza próba mogła jednak złożyć zamówienie, czego BFF, który odrzuca przed API, nie
+   wie. Kasa pamięta klucze takich prób: wynik `failed` (błąd sieci, 403, 5xx, 503 albo odpowiedź bez numeru
+   zamówienia) i 409 `IdempotencyKeyReused` (zamówienie z tym kluczem istnieje). Nowy klucz (zmiana formularza,
+   dostawy, kodu) niczego o nich nie rozstrzyga. Niepewność klucza kończy tylko odrzucenie API na ten sam klucz
+   wydane po sprawdzeniu powtórzenia pod blokadą koszyka (`PlaceOrderHandler`): `CartContentChanged`,
+   `GuestOrderTooLarge`, `TooManyUnpaidOrders`, `CartNotOrderable`, odrzucenie kodu rabatowego,
+   `DeliveryMethodUnavailable`, `OrderTotalChanged`, `InsufficientStockForOrder`; `CartEmpty` nie, bo ten sam typ
+   wysyła BFF przed API przy braku ciasteczka koszyka; odrzucenia BFF przed API (401, 422, 503, zmiana kupującego)
+   i odpowiedzi na inny klucz też nie. Dopóki zostaje choć jeden taki klucz, komunikat w obu wariantach (także
+   z odczytu w kasie nieaktualnej, punkt 5) mówi zamiast „Nie złożyliśmy zamówienia.”: „Wcześniejsza próba mogła
+   złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.”.
 4. Następne kliknięcie to nowa próba: nowy klucz, `buyer` i `expectedLines` z ostatniego odczytu. Kolejna zmiana konta
    między odczytem a kliknięciem daje kolejne 409 i kolejny odczyt.
 5. Odczyt nieudany (sesja albo koszyk): „Kupujący się zmienił, ale nie udało się wczytać kasy. Spróbuj ponownie.”,
@@ -942,14 +967,19 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   z kasą, spóźniony zapis dostaje 404) oraz komunikat R1 z najdłuższą nazwą produktu danych demo przy 375 px z dotykiem
   i przy 320 px: bez przewijania poziomego, link „Przejdź do koszyka” osiągalny Tabem z komunikatu i działający
   dotykiem albo Enterem. W tym samym pliku zmiana kupującego w drugiej karcie na kontach demo Jan i Anna (każdy test
-  przygotowuje potrzebne koszyki, a po każdym koszyki obu kont są opróżniane): R4 (kasa gościa, logowanie Jana: 409,
+  przygotowuje potrzebne koszyki, a po każdym koszyki obu kont są opróżniane; w R4, R5 i R6 nagłówek po komunikacie
+  pokazuje tę samą sesję co kasa): R4 (kasa gościa, logowanie Jana: 409,
   komunikat z adresem Jana, formularz bez pola e-mail z zachowanymi danymi; drugie kliknięcie składa zamówienie Jana,
   na adres z kasy nie przychodzi nic), R5 (kasa Jana, wylogowanie i logowanie Anny z tymi samymi pozycjami i kwotą:
   409, komunikat z adresem Anny, koszyk Anny bez zmian; drugie kliknięcie składa zamówienie Anny, koszyk Jana zostaje)
   i R6 (kasa Jana, wylogowanie i koszyk gościa w drugiej karcie: 401, widok wygasłej sesji, żaden koszyk nie został
   zamówiony). Przy 375 px z dotykiem i przy 320 px komunikat zmiany kupującego i wiersz „Potwierdzenie wyślemy na adres”
   z adresem konta o 60 znakach bez spacji (odpowiedź 409 i `/auth/session` podstawione w przeglądarce) nie powodują
-  przewijania poziomego.
+  przewijania poziomego; tak samo podsumowanie, wybór dostawy i komunikat z listą zmian z nazwą produktu, etykietą
+  wariantu i nazwą metody dostawy bez spacji dłuższymi niż ekran i kodem rabatowym o 64 znakach (odczyty koszyka
+  i odpowiedź 409 `cart-changed` podstawione w przeglądarce, nic nie jest zamawiane). R7 (kasa Jana, odpowiedź na
+  zamówienie utracona po jego złożeniu, logowanie Anny w drugiej karcie przed ponowieniem: 409 na ten sam klucz,
+  komunikat „Wcześniejsza próba mogła złożyć zamówienie…” z adresem Anny; zamówienie Jana istnieje i jest opłacane).
 - `payment-resume.spec.ts`: powrót ze strony symulatora na `/checkout`, link „Opłać zamówienie R-…”, „Wróć do
   płatności” otwiera tę samą sesję, płatność się udaje.
 - E2E składają zamówienia na wariantach z dużym stanem i je opłacają; rezerwacje opłaconych zamówień zostają do

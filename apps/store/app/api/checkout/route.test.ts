@@ -722,8 +722,34 @@ describe("POST /api/checkout: the buyer shown in the checkout", () => {
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 
+  // A checkout page opened before the deployment of the buyer check sends no `buyer` (nor `expectedLines`): it is told
+  // to reload, and its page shows the `detail` of a 422 without violations.
   it.each([
-    ["missing", undefined],
+    ["without the buyer", { ...GUEST_ORDER, provider: PROVIDER }],
+    ["without the buyer and the expected lines", Object.fromEntries(Object.entries({ ...GUEST_ORDER, provider: PROVIDER }).filter(([name]) => name !== "expectedLines"))],
+  ])("answers 422 „Kasa została zaktualizowana. Odśwież stronę.” without asking the API to a checkout %s", async (_name, body) => {
+    answerGuestOrder();
+    const { cookie } = await signedIn();
+    for (const cookies of [signedCartCookie(GUEST_CART_ID), `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`]) {
+      const response = await checkout({ cookie: cookies, body });
+
+      expect(response.status).toBe(422);
+      expect(await response.json()).toEqual({ detail: "Kasa została zaktualizowana. Odśwież stronę." });
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("set-cookie")).toBeNull();
+    }
+    expect(paths()).toEqual([]);
+  });
+
+  it("answers 422 „Nieprawidłowe dane.” to a request without the buyer and without the Idempotency-Key", async () => {
+    const response = await checkout({ cookie: signedCartCookie(GUEST_CART_ID), key: null, body: { ...GUEST_ORDER, provider: PROVIDER } });
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ detail: "Nieprawidłowe dane." });
+    expect(paths()).toEqual([]);
+  });
+
+  it.each([
     ["null", null],
     ["a number", 5],
     ["true", true],

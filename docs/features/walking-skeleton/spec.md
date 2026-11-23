@@ -835,7 +835,9 @@ Tokeny nigdy nie trafiają do przeglądarki. Serwer sklepu jest klientem confide
   traktowana jak wylogowana. Ciasteczko się nie zmienia.
 - Wszystkie odpowiedzi `/auth/*` mają `Cache-Control: private, no-store`, także 503, gdy brakuje konfiguracji.
 - Komponent konta w nagłówku to Client Component, który woła `/auth/session` i pokazuje „Zaloguj się” albo
-  „Zalogowany jako …” z przyciskiem wylogowania. HTML katalogu nie zależy od sesji.
+  „Zalogowany jako …” z przyciskiem wylogowania. HTML katalogu nie zależy od sesji. Sesję odczytaną później przez
+  stronę (kasa po zmianie kupującego albo po 401: `announceSession` w `apps/store/src/account/session-events.ts`)
+  pokazuje bez własnego żądania, także gdy jego własny odczyt odpowie po niej.
 
 ## Panel (`apps/admin`)
 
