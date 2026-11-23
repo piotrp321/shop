@@ -292,7 +292,83 @@ for (const { width, touch } of [
       await expect(checkout.getByTestId("account-email")).toHaveText(LONG_EMAIL);
       expect(await overflows(checkout)).toBe(false);
     });
+
+    test("long texts without a space from the data (product, variant, delivery method, code) cause no horizontal scrolling in the summary and in the message of the changes", async ({ context, request }) => {
+      const [a] = await twoVariants(request, SHOES.slug);
+      const page = await context.newPage();
+      await page.goto("/cart");
+      expect(await cartWrite(page, "POST", "/api/cart/items", { variantId: a.variantId, quantity: 1 })).toBe(true);
+      // The demo data has no such texts: every read of the cart gets them, and after the refusal also another quantity
+      // and another cost of the delivery, so that the message lists the line and the method.
+      const reads = { refused: false };
+      await page.route("**/api/cart", async (route) => {
+        if (route.request().method() !== "GET") return route.fallback();
+        const response = await route.fetch();
+        const view = (await response.json()) as LongCart;
+        lengthen(view, reads.refused);
+        return route.fulfill({ response, json: view });
+      });
+      // The order is refused for a changed cart without reaching the server: nothing is ordered.
+      await page.route("**/api/checkout", (route) => {
+        if (route.request().method() !== "POST") return route.fallback();
+        reads.refused = true;
+        return route.fulfill({ status: 409, json: { type: "tag:piotrp321.github.io,2026:shop/problems/cart-changed", detail: "Zawartość koszyka się zmieniła." } });
+      });
+      await page.goto("/checkout");
+      await expect(page.getByLabel("E-mail")).toBeVisible();
+      await page.getByLabel("E-mail").fill(`e2e-spojnosc-dlugie+${Date.now()}@example.com`);
+      await page.getByLabel("Imię i nazwisko").fill("Anna Testowa");
+      await fillAddress(page);
+      await chooseDelivery(page, LONG_METHOD);
+      await chooseProvider(page, "Szybki przelew (demo)");
+      await expect(page.getByTestId("checkout-discount")).toContainText(LONG_CODE);
+      expect(await overflows(page)).toBe(false);
+
+      if (touch) await orderButton(page).tap();
+      else await orderButton(page).click();
+      const message = orderMessage(page);
+      await expect(message).toContainText(CART_CHANGED);
+      await expect(message.getByRole("listitem")).toHaveText([
+        new RegExp(`^${LONG_PRODUCT}, ${LONG_LABEL}: było 1 szt., jest 2 szt.$`),
+        new RegExp(`^Dostawa „${LONG_METHOD}”: `),
+        /^Do zapłaty: /,
+      ]);
+      expect(await overflows(page)).toBe(false);
+    });
   });
+}
+
+// Texts of the data without a space, longer than a narrow screen: the product name of 78 characters of the review (U1).
+const LONG_PRODUCT = "Superdluganazwaproduktubezspacjiwogolenienadajacasiedozawinieciaanijednejlinii";
+const LONG_LABEL = "Wariantobardzodlugiejetykieciebezspacjiktorytezniezmiesciesiewjednejlinii";
+const LONG_METHOD = "Kurierstandardowyzbardzodlugananazwabezspacjiktoranieznajdziemiejscawlinii";
+// The longest code the field takes (64 characters).
+const LONG_CODE = "KODRABATOWYBEZSPACJIDOKLADNIESZESCDZIESIATCZTERYZNAKIDLUGOSCI123";
+
+type LongCart = {
+  lines: { quantity: number; product: { name: string; variantLabel: string | null } | null }[];
+  totals: { discountGross: number };
+  discount: unknown;
+  delivery: { options: { name: string; description: string | null; costGross: number; totalGross: number }[] } | null;
+};
+
+/** Gives a read of the cart the long texts (and an applied code of the longest length); `changed`: after the refusal. */
+function lengthen(view: LongCart, changed: boolean): void {
+  for (const line of view.lines) {
+    if (line.product !== null) line.product = { ...line.product, name: LONG_PRODUCT, variantLabel: LONG_LABEL };
+    if (changed) line.quantity = 2;
+  }
+  view.totals.discountGross = 1000;
+  view.discount = { status: "applied", code: LONG_CODE, amountGross: 1000, kind: "amount", value: 1000 };
+  const standard = view.delivery?.options[0];
+  if (standard !== undefined) {
+    standard.name = LONG_METHOD;
+    standard.description = LONG_LABEL;
+    if (changed) {
+      standard.costGross += 1000;
+      standard.totalGross += 1000;
+    }
+  }
 }
 
 const SESSION_EXPIRED = "Twoja sesja wygasła. Zaloguj się ponownie.";
