@@ -2167,6 +2167,40 @@ describe("usePromotionForm", () => {
       });
     });
 
+    describe("discarding the draft after a 409 or an unknown result", () => {
+      it("takes the message and the button of the server state away with the draft", async () => {
+        const { form } = await open();
+        form.form.value.name = "Moja";
+        mocks.put.mockResolvedValue(conflict("about:blank", "Ktoś zmienił."));
+        await form.save();
+        expect(form.safety.restoreOffered.value).toBe(true);
+
+        form.discard();
+
+        expect(form.error.value).toBeNull();
+        expect(form.safety.restoreOffered.value).toBe(false);
+        expect(form.form.value.name).toBe("Jesień w górach");
+      });
+
+      it("takes the unknown result away, and the answer of that save that comes later is only a toast", async () => {
+        const { form, puts, saving, onLateSaved } = await savingFirst();
+        await advance(10_000);
+        mocks.get.mockResolvedValue(ok(promotion({ name: "Stara", version: 4 })));
+        await form.safety.check();
+        expect(form.safety.unknown.value?.kind).toBe("missing");
+
+        form.discard();
+
+        expect(form.safety.unknown.value).toBeNull();
+        puts[0]!.resolve(ok(promotion({ name: "Pierwsza", version: 5 })));
+        await saving;
+        expect(onLateSaved).toHaveBeenCalledTimes(1);
+        expect(form.form.value.name).toBe("Jesień w górach");
+        expect(form.view.value?.version).toBe(4);
+        expect(form.dirty.value).toBe(false);
+      });
+    });
+
     describe("B4 (l): a new promotion", () => {
       const UNKNOWN_NEW =
         "Nie wiemy, czy promocja została utworzona. Wcześniejszy zapis może się jeszcze wykonać. Sprawdź listę przed ponownym zapisem.";
@@ -2235,6 +2269,26 @@ describe("usePromotionForm", () => {
 
         expect(form.error.value).toBe("Kolizja. Możliwe, że utworzył ją Twój wcześniejszy zapis.");
         expect(form.isConflicting("v-1")).toBe(true);
+      });
+
+      it("says nothing when the earlier creation answers after a later one made the promotion and the route moved to it", async () => {
+        const { form, id, posts, saving, onLateSaved } = await fillNew();
+        await advance(10_000);
+        form.safety.unblock();
+        form.form.value.name = "Druga";
+        const second = form.save();
+        posts[1]!.resolve(ok(promotion({ id: "promo-b", name: "Druga" }), 201));
+        await second;
+        servePromotion(promotion({ id: "promo-b", name: "Druga" }));
+        id.value = "promo-b";
+        await flushPromises();
+
+        posts[0]!.resolve(ok(promotion({ id: "promo-a", name: "Nowa" }), 201));
+        await saving;
+
+        expect(onLateSaved).not.toHaveBeenCalled();
+        expect(form.view.value?.id).toBe("promo-b");
+        expect(form.form.value.name).toBe("Druga");
       });
 
       it("adds no such note to a 409 when no earlier save ended unknown", async () => {

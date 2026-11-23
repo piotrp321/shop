@@ -804,6 +804,36 @@ describe("useFormSafety", () => {
       expect(read).not.toHaveBeenCalled();
     });
 
+    it("says nothing about an earlier creation that answers after a later one was confirmed: the form shows that object now", async () => {
+      const safety = create();
+      const first = startWrite(safety);
+      await vi.advanceTimersByTimeAsync(REQUEST_LIMIT_MS);
+      safety.unblock();
+      const second = startWrite(safety);
+      second.request.resolve(ok(doc("Druga", 1), 201));
+      expect(await second.result).toBe("success");
+      state.id = "d2";
+
+      first.request.resolve(ok(doc("Pierwsza", 1)));
+      await first.result;
+
+      expect(late).toEqual([]);
+      expect(first.onSuccess).not.toHaveBeenCalled();
+    });
+
+    it("still toasts an earlier creation that answers before a later one is confirmed", async () => {
+      const safety = create();
+      const first = startWrite(safety);
+      await vi.advanceTimersByTimeAsync(REQUEST_LIMIT_MS);
+      safety.unblock();
+      startWrite(safety);
+
+      first.request.resolve(ok(doc("Pierwsza", 1)));
+      await first.result;
+
+      expect(late).toEqual([LATE_SAVE_MESSAGE]);
+    });
+
     it("does not toast a late success after the form of the new object was left", async () => {
       const safety = create();
       const first = startWrite(safety);
@@ -815,6 +845,53 @@ describe("useFormSafety", () => {
       await first.result;
 
       expect(late).toEqual([]);
+    });
+  });
+
+  describe("dismissing the messages when the draft is discarded", () => {
+    it("clears the unknown result, the offer of the server state and the notices, and a late success is still only a toast", async () => {
+      const safety = create();
+      const first = startWrite(safety);
+      await vi.advanceTimersByTimeAsync(REQUEST_LIMIT_MS);
+      read.mockResolvedValue({ data: doc("Cudza", 6) });
+      await safety.check();
+      expect(safety.unknown.value).not.toBeNull();
+      expect(safety.restoreOffered.value).toBe(true);
+
+      safety.dismiss();
+
+      expect(safety.unknown.value).toBeNull();
+      expect(safety.restoreOffered.value).toBe(false);
+      expect(safety.readFailed.value).toBe(false);
+      first.request.resolve(ok(doc("Pierwsza", 5)));
+      await first.result;
+      expect(late).toEqual([LATE_SAVE_MESSAGE]);
+      expect(first.onSuccess).not.toHaveBeenCalled();
+      expect(adopted).toEqual([]);
+    });
+
+    it("clears the offer that only a 409 made", () => {
+      const safety = create();
+      safety.offerRestore();
+
+      safety.dismiss();
+
+      expect(safety.restoreOffered.value).toBe(false);
+    });
+  });
+
+  describe("a write while a read locks the form", () => {
+    it("is not started: the request is not made", async () => {
+      const safety = create();
+      read.mockReturnValue(new Promise(() => {}));
+      void safety.restore();
+      const request = vi.fn();
+
+      const result = await safety.write(request as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+
+      expect(result).toBeNull();
+      expect(request).not.toHaveBeenCalled();
+      expect(safety.writing.value).toBe(false);
     });
   });
 
