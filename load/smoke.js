@@ -1,7 +1,8 @@
 // The smoke run (make load-smoke): one virtual user, one iteration of every scenario against the running stack of
 // compose: the pages of the catalog, the search with and without a filter, the cart and a guest checkout of one unit. It
 // keeps the scripts working; it measures nothing and has no limits of time. Any answer other than the expected one, any
-// request that fails and a checkout that placed no order with a started payment fail the run (exit 99).
+// request that fails and a checkout that placed no order with a started payment fail the run (exit 99); an order refused
+// with a 422 or a 409 cart-changed aborts it (exit 108, `abortOnRefusedOrder` in lib/flows.js).
 import { check } from 'k6';
 import { discover } from './lib/data.js';
 import { cart, category, checkout, home, product, search } from './lib/flows.js';
