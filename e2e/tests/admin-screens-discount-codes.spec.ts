@@ -436,10 +436,15 @@ test.describe("the requests of the form (stage 2)", () => {
   test("(d) a save without an answer says after 10 s that the result is unknown, „Sprawdź stan” unlocks the form with the draft, and a 409 of the next save keeps the change in the field", async () => {
     test.setTimeout(90_000);
     const page = await newPanelPage("admin", viewports.desktop);
+    // The save that never gets an answer: the request must not reach the API when the page closes (Playwright would let it go on).
+    const unanswered: Route[] = [];
     try {
       await openWithPut(page, async (route, _code, putIndex) => {
         // The first save never gets an answer; the second is refused as stale.
-        if (putIndex === 0) return;
+        if (putIndex === 0) {
+          unanswered.push(route);
+          return;
+        }
         await route.fulfill({
           status: 409,
           contentType: "application/problem+json",
@@ -476,6 +481,7 @@ test.describe("the requests of the form (stage 2)", () => {
       await page.waitForTimeout(1_500);
       expect(reads.length, "a 409 reads nothing by itself").toBe(readsBeforeSave);
     } finally {
+      await Promise.all(unanswered.map((route) => route.abort().catch(() => undefined)));
       await page.close();
     }
   });
