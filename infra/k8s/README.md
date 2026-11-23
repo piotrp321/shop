@@ -5,7 +5,7 @@ Uruchomienie środowiska wdrożeniowego (`docs/features/deploy/spec.md`) po merg
 - **agent** – wykonuje go Claude Code celem Makefile albo zmianą w repo (PR), gdy użytkownik zlecił uruchomienie środowiska;
 - **zgoda użytkownika** – agent opisuje, co zrobi, pyta w rozmowie i czeka na odpowiedź; dopiero potem uruchamia (firewall,
   operacje kasujące dane, zakładanie kont);
-- **użytkownik** – robi to użytkownik sam (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare, ruleset, środowiska `production` i `sentry`, deploy key,
+- **użytkownik** – robi to użytkownik sam (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare, ruleset, środowiska `production` i `sentry`, klucz GitHub App i sekret środowiska `merge-override`, deploy key,
   backup VPS-a); agent tego nie wykonuje i nie podejmuje tych decyzji.
 
 Agent wykonuje operacje na serwerze wyłącznie celami `make -C infra/k8s …` (`bootstrap`, `kubeconfig`, `status`, `rerun`,
@@ -29,9 +29,9 @@ Aplikacje Argo CD, Jobów, fale i reszta mechanizmu: `docs/features/deploy/spec.
    buduje i testuje obrazy, a job `deploy` czeka na zatwierdzenie w środowisku `production` (1.3); bez sekretu `DEPLOY_KEY`
    tego środowiska kończy się po nim z ostrzeżeniem (nic nie publikuje).
 
-## 1. GitHub: obrazy, ruleset, środowiska `production` i `sentry`, deploy key
+## 1. GitHub: obrazy, ruleset, środowiska `production`, `sentry` i `merge-override`, deploy key
 
-Wszystko **użytkownik** (wymaga uprawnień administratora repo).
+Wszystko **użytkownik** (wymaga uprawnień administratora repo), poza częścią kroku 6 oznaczoną inaczej.
 
 1. Widoczność pakietów GHCR: po pierwszym udanym wdrożeniu (**zgoda użytkownika**, `gh workflow run deploy.yml --ref main`, sekcja 7) pakiety `shop/api`, `shop/store`, `shop/admin`
    i `shop/elasticsearch` ustaw na **publiczne** (Packages → pakiet → Package settings → Change visibility), żeby k3s
@@ -90,6 +90,47 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo).
    | usunięcie: `git push origin :refs/heads/deploy` (i `:refs/heads/deploy-images`) | odrzucone |
    | force push starszego commita: `git push --force origin origin/main~1:refs/heads/deploy` (i `deploy-images`) | odrzucony |
    | push deploy keyem | przyjęty: to udany krok `Publish deploy and deploy-images` ze zwykłego runu; ręcznie na `deploy-images` nie pushujemy (snapshot tworzy tylko workflow) |
+6. Merge override: merge PR do `main` z pominięciem wymaganych checków (`docs/features/agent-security/spec.md`, R8).
+   Kolejność ma znaczenie: środowisko musi istnieć **przed** pierwszym przebiegiem workflowu `merge-override.yml`,
+   bo GitHub zakłada brakujące środowisko sam i bez zabezpieczeń. App i środowisko bez klucza (formularz App,
+   zatwierdzający, polityka gałęzi, zmienna) agent może założyć na wyraźne polecenie w rozmowie (**zgoda
+   użytkownika**). Klucz prywatny App, sekret `MERGE_APP_PRIVATE_KEY`, ruleset i zatwierdzanie przebiegów to zawsze
+   **użytkownik**: agent klucza nie generuje, nie pobiera i nie wpisuje.
+   1. GitHub App: Settings (konta) → Developer settings → GitHub Apps → New GitHub App. Nazwa dowolna, Homepage URL
+      adres repozytorium, **Webhook** wyłączony, **Repository permissions**: Contents „Read and write”, Pull requests
+      „Read and write”, Workflows „Read and write”; „Only on this account”. Po utworzeniu: zapisz **App ID** (liczba)
+      i **Client ID**, wygeneruj klucz prywatny (plik `.pem`; GitHub wymaga go przed instalacją), a w **Install App**
+      zainstaluj ją tylko na `piotrp321/shop` („Only select repositories”). App ID jest w `tools/rulesets/main-merge.json` i w jego teście
+      (`MERGE_APP_ID`): nowa App to PR zmieniający oba miejsca, a test z innym identyfikatorem nie przechodzi.
+   2. Środowisko: Settings → Environments → New environment `merge-override`:
+      - **Required reviewers**: użytkownik; **Prevent self-review** wyłączone (jak w `production`);
+      - **Deployment branches and tags** → Selected branches and tags → reguła `main`;
+      - **Environment secrets**: `MERGE_APP_PRIVATE_KEY` (cała treść pliku `.pem`);
+      - **Environment variables**: `MERGE_APP_CLIENT_ID` (Client ID App).
+
+      Po zapisaniu sekretu usuń plik `.pem` z dysku: klucz pozwala zmergować dowolny PR z pominięciem checków.
+   3. Ruleset, po merge'u zmiany pliku do `main` (agent rulesetów nie zmienia):
+
+      ```sh
+      id="$(gh api repos/piotrp321/shop/rulesets --jq '.[] | select(.name == "main-merge") | .id')"
+      gh api -X PUT "repos/piotrp321/shop/rulesets/$id" --input tools/rulesets/main-merge.json
+      gh api "repos/piotrp321/shop/rulesets/$id" --jq '{bypass_actors, current_user_can_bypass}'
+      ```
+
+      Oczekiwane: jeden aktor `Integration` w trybie `pull_request` i `current_user_can_bypass` równe `never`
+      (bypass ma App, nie konto).
+   4. Użycie: `gh workflow run merge-override.yml --ref main -f pr=<nr> -f sha=<commit głowy PR> -f reason=<powód>`
+      (użytkownik albo sesja na jego wyraźne polecenie w rozmowie) albo Actions → Merge override → Run workflow. Job
+      `validate` pokazuje w podsumowaniu, co zostanie zmergowane; job `merge` czeka na zatwierdzenie: **użytkownik**
+      zatwierdza je na stronie przebiegu (Review deployments), z powiadomienia albo w aplikacji mobilnej GitHuba; agent
+      tego nie robi. Odrzucenie (Reject) kończy przebieg bez merge'a. Tytuł przebiegu podaje numer PR i SHA: zatwierdzaj
+      tylko przebieg, który sam zleciłeś, a po pushu do PR odrzuć stary przebieg i uruchom nowy z nowym SHA.
+   5. Wyciek albo podejrzenie wycieku klucza: od razu usuń klucz w ustawieniach App (Private keys → Delete) albo
+      odinstaluj App; od tej chwili nikt nim nie zmerguje. Potem wygeneruj nowy klucz i podmień sekret
+      `MERGE_APP_PRIVATE_KEY` albo wycofaj obejście (niżej).
+   6. Wycofanie: odinstaluj App i usuń środowisko `merge-override` (obejście przestaje działać), potem PR, który
+      przywraca w `tools/rulesets/main-merge.json` i teście pustą listę `bypass_actors` i usuwa workflow, a po jego
+      merge'u wgraj plik jak w kroku 3.
 
 ## 2. Serwer: bootstrap
 

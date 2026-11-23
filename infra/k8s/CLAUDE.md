@@ -100,7 +100,8 @@ serwera” i „Smoke test i check”).
   `seal-secrets` i `cloudflare-ips` zmieniają pliki w repo.
   Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki runbooka `infra/k8s/README.md` oznaczone „zgoda
   użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone „użytkownik” (zakupy, konta zewnętrzne, wartości
-  sekretów, Cloudflare Access, ruleset, środowiska `production` i `sentry`, deploy key, backup VPS-a) nie są jego decyzją
+  sekretów, Cloudflare Access, ruleset, środowiska `production` i `sentry`, klucz GitHub App i sekret środowiska
+  `merge-override`, deploy key, backup VPS-a) nie są jego decyzją
   ani czynnością.
 
 ## Gałęzie `deploy` i `deploy-images`

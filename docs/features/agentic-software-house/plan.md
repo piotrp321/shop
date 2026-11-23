@@ -340,7 +340,8 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
      `cat` w Bash;
    - testy prób obejścia w prawdziwych procesach AO, także przez Bash i procesy potomne;
    - agent nie wykonuje samodzielnie destrukcyjnych operacji produkcyjnych;
-   - nikt, także użytkownik, nie zmerguje do `main` ani `epic/*` bez zielonego CI (rulesety bez aktora bypass).
+   - nikt, także użytkownik, nie zmerguje do `main` ani `epic/*` bez zielonego CI własnym tokenem (rola admin bez
+     bypassu); jedyne obejście to workflow `merge-override` zatwierdzany przez użytkownika.
 17. **Evale agentów i workflowów.** Realizuje komponent „Metryki i evale” z ADR przez EVALS 2.0
    (`docs/features/evals-2/spec.md`, narzędzie `tools/evals-pilot/`):
    - evale pojedynczych agentów na prawdziwych zadaniach z `/delivery`: produkcyjna definicja agenta, wynik z etykiet

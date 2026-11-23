@@ -501,10 +501,12 @@ cd "$SHOP" && for name in main-merge epic-merge; do
 done
 ```
 
-Oczekiwane dla obu rulesetów: `current_user_can_bypass` równe `never` i `bypass_actors` równe `[]` (token użytkownika),
-a w przebiegu domyślnym sondy przypadek `rulesets_bypass_never` ze statusem `pass` (`never` dla tokenu wykonawcy).
-Podaj w raporcie odbioru obie wartości. Każdy inny wynik, także `pull_requests_only` dla tokenu użytkownika, niepuste
-`bypass_actors`, brak rulesetu, kod sondy różny od 0 albo błąd `gh`, to bloker dla użytkownika: rekomendacja
+Oczekiwane dla obu rulesetów: `current_user_can_bypass` równe `never` (token użytkownika) i `bypass_actors` równe `[]`
+w `epic-merge`, a w `main-merge` równe dokładnie aktorowi z `tools/rulesets/main-merge.json` (GitHub App workflowu
+`merge-override`, tryb `pull_request`); w przebiegu domyślnym sondy przypadek `rulesets_bypass_never` ze statusem
+`pass` (`never` dla tokenu wykonawcy).
+Podaj w raporcie odbioru obie wartości. Każdy inny wynik, także `pull_requests_only` dla tokenu użytkownika, inny albo
+dodatkowy aktor w `bypass_actors`, brak rulesetu, kod sondy różny od 0 albo błąd `gh`, to bloker dla użytkownika: rekomendacja
 „najpierw sprawdź: odbiór bezpieczeństwa: <wynik>”, push „AGENT-SECURITY: odbiór bezpieczeństwa nie przeszedł
 (<przyczyna>)”, a końcowego PR nie mergujesz także na polecenie, dopóki użytkownik nie usunie przyczyny i odbiór nie
 przejdzie od nowa. Rulesetów nie zmieniasz (zasada `CLAUDE.md`).
