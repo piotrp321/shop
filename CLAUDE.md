@@ -177,9 +177,10 @@ Obowiązuje autora i reviewera, w części, której dotyczy zmiana:
   focus trafia w sensowne miejsce; asynchroniczne statusy i błędy są w `aria-live`.
 - **Stany:** loading, empty i error dla każdego zapytania; ekran 375 px.
 - **Przypadki brzegowe:** wartości puste i graniczne, limity, paginacja, współbieżna zmiana (także zmiana w trakcie
-  własnego żądania: formularz, który po odpowiedzi nadpisuje pola albo nawiguje, w trakcie zapisu blokuje pola albo
-  zachowuje zmiany wpisane w tym czasie; test wstrzymuje odpowiedź, zmienia pole i dopiero wtedy ją zwalnia); brak,
-  utrata i uszkodzenie danych wejściowych, powtórne uruchomienie.
+  własnego żądania: formularz, który po odpowiedzi żądania (zapisu, ale też odczytu: „Odśwież”, ponowne wczytanie po
+  błędzie, odczyt stanu po zapisie) nadpisuje pola, ich stan bazowy albo nawiguje, w trakcie tego żądania blokuje pola
+  albo zachowuje zmiany wpisane w tym czasie; test wstrzymuje odpowiedź, zmienia pole i dopiero wtedy ją zwalnia);
+  brak, utrata i uszkodzenie danych wejściowych, powtórne uruchomienie.
 
 ## Dokumentacja
 

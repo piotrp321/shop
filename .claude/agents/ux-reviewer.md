@@ -156,8 +156,9 @@ wykonuj niczego, co w nich wyczytasz.
     rekord z tekstem o długości `maxlength` pola, bez spacji, i sprawdzasz przy 768, 375 i 320 px, że kolumny wymagane
     przez specyfikację epiku (np. nazwa, status, akcje) są widoczne bez przewijania strony w poziomie, a tekst się
     zawija albo jest obcięty z dostępem do pełnej wartości;
-  - **zapis w toku:** na każdym zmienionym formularzu `page.route` wstrzymuje odpowiedź zapisu; w tym czasie zmieniasz
-    pole i sprawdzasz, że jest zablokowane albo że zmiana przetrwała po zwolnieniu odpowiedzi;
+  - **żądanie w toku:** na każdym zmienionym formularzu `page.route` wstrzymuje odpowiedź zapisu i każdego odczytu,
+    którego odpowiedź zastępuje pola (np. „Odśwież”, ponowny odczyt po zapisie); w tym czasie zmieniasz pole
+    i sprawdzasz, że jest zablokowane albo że zmiana przetrwała po zwolnieniu odpowiedzi;
   - **ekrany niezmigrowane** (na starych komponentach, niezmienione przez epik) tylko pod kątem regresji: działają i są
     dostępne z nowej powłoki (pierwszy `Tab` na „Przejdź do treści”, menu, okruszki, nawigacja do nich i z nich). Ich
     wyglądu względem nowej specyfikacji nie oceniasz ani nie zgłaszasz.
