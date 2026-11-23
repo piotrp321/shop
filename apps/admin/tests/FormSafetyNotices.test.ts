@@ -160,6 +160,20 @@ describe("FormSafetyNotices", () => {
     expect(state.draft).toEqual({ name: "Z serwera" });
   });
 
+  it("calls the button „Pokaż stan z serwera” once the draft is discarded: there are no changes to discard", async () => {
+    const safety = create();
+    const wrapper = await show(safety);
+    safety.offerRestore();
+    expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Odrzuć moje zmiany i pokaż stan z serwera");
+
+    safety.draftDiscarded();
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid=unknown-result]").text()).toContain("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+    expect(wrapper.findAll("[data-testid=restore-state]")).toHaveLength(1);
+    expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Pokaż stan z serwera");
+  });
+
   it("puts the button of the server state inside the alert of a version that differs, once", async () => {
     const safety = create();
     const wrapper = await show(safety);

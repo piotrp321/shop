@@ -848,35 +848,72 @@ describe("useFormSafety", () => {
     });
   });
 
-  describe("dismissing the messages when the draft is discarded", () => {
-    it("clears the unknown result, the offer of the server state and the notices, and a late success is still only a toast", async () => {
+  describe("after the draft is discarded", () => {
+    async function unknownResult(safety: ReturnType<typeof create>) {
+      await safety.write(() => Promise.resolve(refused(502)) as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+    }
+
+    it("keeps the unknown result of a save, without the sentence that the changes stay, with „Sprawdź stan” still possible", async () => {
+      const safety = create();
+      await unknownResult(safety);
+
+      safety.draftDiscarded();
+
+      expect(safety.unknown.value).toMatchObject({ kind: "unknown", pending: false, created: false, discarded: true, text: "Nie wiemy, czy zapis się powiódł." });
+      state.draft = { name: "Stara" };
+      read.mockResolvedValue({ data: doc("Stara", 4) });
+      await safety.check();
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(adopted).toEqual([doc("Stara", 4)]);
+      expect(safety.unknown.value).toBeNull();
+    });
+
+    it("keeps what „Sprawdź stan” found about the server", async () => {
+      const safety = create();
+      await unknownResult(safety);
+      read.mockResolvedValue({ data: doc("Cudza", 6) });
+      await safety.check();
+
+      safety.draftDiscarded();
+
+      expect(safety.unknown.value).toMatchObject({ kind: "otherVersion", discarded: true, text: OTHER_VERSION_MESSAGE });
+      expect(safety.restoreOffered.value).toBe(true);
+    });
+
+    it("gives the button of the server state after a 409 its context: the version on the server is another", () => {
+      const safety = create();
+      safety.offerRestore();
+      expect(safety.unknown.value).toBeNull();
+
+      safety.draftDiscarded();
+
+      expect(safety.unknown.value).toMatchObject({ kind: "otherVersion", pending: false, created: false, discarded: true, text: OTHER_VERSION_MESSAGE });
+      expect(safety.restoreOffered.value).toBe(true);
+    });
+
+    it("does nothing when there is nothing to say about the server", () => {
+      const safety = create();
+
+      safety.draftDiscarded();
+
+      expect(safety.unknown.value).toBeNull();
+      expect(safety.restoreOffered.value).toBe(false);
+    });
+
+    it("keeps a late success a toast that changes nothing", async () => {
       const safety = create();
       const first = startWrite(safety);
       await vi.advanceTimersByTimeAsync(REQUEST_LIMIT_MS);
       read.mockResolvedValue({ data: doc("Cudza", 6) });
       await safety.check();
-      expect(safety.unknown.value).not.toBeNull();
-      expect(safety.restoreOffered.value).toBe(true);
 
-      safety.dismiss();
-
-      expect(safety.unknown.value).toBeNull();
-      expect(safety.restoreOffered.value).toBe(false);
-      expect(safety.readFailed.value).toBe(false);
+      safety.draftDiscarded();
       first.request.resolve(ok(doc("Pierwsza", 5)));
       await first.result;
+
       expect(late).toEqual([LATE_SAVE_MESSAGE]);
       expect(first.onSuccess).not.toHaveBeenCalled();
       expect(adopted).toEqual([]);
-    });
-
-    it("clears the offer that only a 409 made", () => {
-      const safety = create();
-      safety.offerRestore();
-
-      safety.dismiss();
-
-      expect(safety.restoreOffered.value).toBe(false);
     });
   });
 

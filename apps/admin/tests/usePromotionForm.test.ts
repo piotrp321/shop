@@ -2168,7 +2168,7 @@ describe("usePromotionForm", () => {
     });
 
     describe("discarding the draft after a 409 or an unknown result", () => {
-      it("takes the message and the button of the server state away with the draft", async () => {
+      it("keeps the way to the server state after a 409, with the context that the version on the server is another", async () => {
         const { form } = await open();
         form.form.value.name = "Moja";
         mocks.put.mockResolvedValue(conflict("about:blank", "Ktoś zmienił."));
@@ -2178,11 +2178,29 @@ describe("usePromotionForm", () => {
         form.discard();
 
         expect(form.error.value).toBeNull();
-        expect(form.safety.restoreOffered.value).toBe(false);
         expect(form.form.value.name).toBe("Jesień w górach");
+        expect(form.safety.restoreOffered.value).toBe(true);
+        expect(form.safety.unknown.value).toMatchObject({ kind: "otherVersion", text: OTHER_VERSION });
       });
 
-      it("takes the unknown result away, and the answer of that save that comes later is only a toast", async () => {
+      it("keeps the unknown result of a save after a 502, without the sentence that the changes stay, and „Sprawdź stan” compares the restored base", async () => {
+        const { form } = await open();
+        form.form.value.percentOff = "35";
+        mocks.put.mockResolvedValue(problem(502));
+        await form.save();
+
+        form.discard();
+
+        expect(form.form.value.percentOff).toBe("20");
+        expect(form.safety.unknown.value?.text).toBe("Nie wiemy, czy zapis się powiódł.");
+        mocks.get.mockResolvedValue(ok(promotion({ percentOff: 35, version: 5 })));
+        await form.safety.check();
+        expect(form.safety.unknown.value).toMatchObject({ kind: "otherVersion" });
+        expect(form.form.value.percentOff).toBe("20");
+        expect(form.view.value?.version).toBe(4);
+      });
+
+      it("keeps what „Sprawdź stan” found, and the answer of that save that comes later is only a toast", async () => {
         const { form, puts, saving, onLateSaved } = await savingFirst();
         await advance(10_000);
         mocks.get.mockResolvedValue(ok(promotion({ name: "Stara", version: 4 })));
@@ -2191,7 +2209,7 @@ describe("usePromotionForm", () => {
 
         form.discard();
 
-        expect(form.safety.unknown.value).toBeNull();
+        expect(form.safety.unknown.value).toMatchObject({ kind: "missing", text: NOT_ON_SERVER });
         puts[0]!.resolve(ok(promotion({ name: "Pierwsza", version: 5 })));
         await saving;
         expect(onLateSaved).toHaveBeenCalledTimes(1);

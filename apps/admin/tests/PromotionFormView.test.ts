@@ -1634,6 +1634,21 @@ describe("PromotionFormView", () => {
       expect(document.activeElement).toBe(heading("h1"));
     });
 
+    it("keeps the way to the server state with its context after „Odrzuć”, and calls it „Pokaż stan z serwera”", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=name-input]").setValue("Inna");
+      mocks.put.mockResolvedValue(conflict("about:blank", "Ktoś zmienił."));
+      await click(wrapper, "save");
+
+      barButton("Odrzuć")!.click();
+      await settle();
+
+      expect(input(wrapper, "name-input").value).toBe("Jesień w górach");
+      expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+      expect(wrapper.get("[data-testid=unknown-result]").text()).toContain("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+      expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Pokaż stan z serwera");
+    });
+
     it("shows the detail of another 409 and does not read the promotion", async () => {
       const wrapper = await open();
       await wrapper.get("[data-testid=name-input]").setValue("Inna");
