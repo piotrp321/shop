@@ -1031,17 +1031,28 @@ def _epoch(value):
     return int(at) if at is not None else None
 
 
+ASSIGNMENTS = ('plan', 'outside_plan', 'no_task', 'unknown')     # of an order of a native record (metrics, D4)
+REF = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,99}')                # the id of the task of an order (`<EPIC>-<id>`)
+
+
+def review_order(review):
+    """(ref, assignment) of the order of a review of a native record: each only when it is one the record writes (an
+    id, a known assignment), else None, so a value of another shape reaches neither the key, the text nor the data."""
+    ref, assignment = review.get('ref'), review.get('assignment')
+    return (ref if isinstance(ref, str) and REF.fullmatch(ref) else None,
+            assignment if assignment in ASSIGNMENTS else None)
+
+
 def review_subject(review, task):
     """(key prefix, words) of what a review of a native record reviewed, by the assignment of its order
     (docs/features/metrics/spec.md, "Rola i zadanie (D4)"): a plan task, a task outside the plan by its id, an order
     whose task is unknown or the whole change (`no_task`; a record without the orders: a review without a task)."""
-    assignment = review.get('assignment')
-    ref = cut(review.get('ref'), 100) if filled(review.get('ref')) else None
+    ref, assignment = review_order(review)
     if task:
         return task, 'zadania %s' % task
     if assignment == 'outside_plan' and ref:
         return ref, 'zadania spoza planu %s' % ref
-    if assignment is None and 'assignment' not in review or assignment == 'no_task':
+    if 'assignment' not in review or assignment == 'no_task':
         return 'epik', 'całej zmiany'
     return 'nieustalone', 'zlecenia z zadaniem nieustalonym'      # unknown, or an assignment the record cannot back
 
@@ -1085,7 +1096,7 @@ def native_record_incidents(epic_id, record):
         data = {'task': task, 'role': role, 'agent_id': review.get('agent_id'), 'mode': review.get('mode'),
                 'verdict': review.get('verdict'), 'blocking': True, 'can_be_corrective': False}
         if 'assignment' in review:          # a record with the orders of the subagent runs (metrics, spec D4)
-            data.update(ref=review.get('ref'), assignment=review.get('assignment'))
+            data['ref'], data['assignment'] = review_order(review)
         mode = review.get('mode') if review.get('mode') is not None else 'tryb nieustalony'
         text = 'przegląd %s %s (%s): werdykt %s' % (role, what, mode, review.get('verdict'))
         incidents.append(_incident(epic_id, 'finding', key, at, data, [{'source': 'rekord metryk', 'text': text}]))
