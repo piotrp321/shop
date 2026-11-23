@@ -31,8 +31,10 @@ Zakres: `CLAUDE.md`, `tools/metrics`, `.claude/skills/retro`, `.claude/agents/re
   (wejście, wyjście, odczyt cache, zapis cache 5 min, zapis cache 1 h), ze źródłem i datą odczytu. Stawki są
   wpisywane z aktualnego cennika dostawcy przy implementacji, nie wyliczane z proporcji `token_weights`. Wartość jest
   zawsze oznaczona jako szacunek. Model albo rodzaj tokenów bez stawki daje `null` i wpis w `gaps`.
-- **D4. Zadanie z opisu zlecenia.** Przebieg subagenta należy do zadania, którego ID (`<EPIK>-<n>`) występuje
-  w `description` wywołania; rola to `agentType`. Bez ID przebieg trafia do pozycji „bez zadania”.
+- **D4. Zadanie z opisu zlecenia.** Przebieg subagenta dzieli się na zlecenia (start i każde wznowienie); zadanie
+  zlecenia pochodzi z ID w `description` wywołania (start) albo w `summary` wiadomości wznawiającej; rola to
+  `agentType`. Start bez ID trafia do pozycji „bez zadania”, wznowienie bez ID do „zadania nieustalonego”. Reguły:
+  `docs/features/metrics/spec.md`, „Rola i zadanie (D4)”.
 - **D5. `/retro` czyta rekord i opis końcowego PR.** Incydenty epiku natywnego pochodzą z rekordu metryk i z sekcji
   opisu końcowego PR. Progi, limity, rejestry i walidacja propozycji zostają bez zmian.
 - **D6. Zamrożenie na czas serii.** W trakcie serii `/retro` zapisuje propozycje, ale nie wprowadza poprawek procesu.
@@ -84,8 +86,8 @@ w kilku plikach (sesja wznowiona albo rozgałęziona), liczy się jego pierwsze 
 | `tasks`, `started_at`, `done_at` | plik przebiegu | `null`, wpis w `gaps` |
 | `final_pr`, `issue`, `merged_at`, `wall` | numer PR z pliku przebiegu i GitHub | jak dziś |
 | `value` (`total`, `by_role`, `by_model`, `by_task`, `by_role_model`, `by_task_role`) i tokeny | `message.usage` wiadomości `assistant`; rola prowadzącego `orchestrator`, subagenta `agentType`; zadanie według D4; cena według D3 | `null` dla modelu bez ceny |
-| `attempts` | jeden wpis na przebieg subagenta: zadanie, rola, model, effort, czas od pierwszej do ostatniej wiadomości, tokeny, wartość, czy zakończony | – |
-| `by_task` | suma czasu i liczba przebiegów na zadanie | – |
+| `attempts` | jeden wpis na przebieg subagenta: zadanie, rola, model, effort, czas realizacji (suma czasu zleceń) i odstępy między zleceniami, zlecenia, tokeny, wartość, czy zakończony | – |
+| `by_task` | suma czasu zleceń, liczba przebiegów i liczba zleceń na zadanie | – |
 | `breakdown` | `work`: suma przedziałów, w których działa prowadzący albo subagent; `human_wait`: przerwy zakończone wiadomością człowieka; `idle`: reszta czasu do `done_at` | `limit_wait`, `ci_wait`, `host_pause`, `github_wait`: `null`; `breakdown_incomplete: true` |
 | `human` | `interventions`: liczba wiadomości człowieka po starcie, bez polecenia startu; `waits`, `wait_s` z przerw jak wyżej; lista zdarzeń z czasem i długością czekania, bez treści; `manual_fixes` z `--manual-fixes` | – |
 | `integration` | czas i liczba przebiegów ról `architecture-reviewer`, `qa-adversarial`, `ux-reviewer`; `rounds`: największa liczba raportów jednej z tych ról | `null` bez takich przebiegów |
@@ -103,10 +105,10 @@ koniecznych; rekord oznacza ją jako szacunek. Rekord nie zawiera treści wiadom
 
 ### M4. Przeglądy
 
-Dla przebiegów ról przeglądowych rekord zapisuje każdy raport: zadanie (albo cała zmiana), rolę, tryb, werdykt i czy
-blokuje. Raport to treść, którą subagent oddaje sesji prowadzącej na końcu pracy (w transkrypcie SMALL-FIXES:
-wywołanie `SubagentHandback`). Pierwszy raport transkryptu ma tryb `FULL`, każdy kolejny (po wznowieniu subagenta)
-`DELTA`. Werdykty według kontraktów agentów: `code-reviewer` `PASS` / `CHANGES_REQUIRED`, `qa-adversarial` `PASS` /
+Dla przebiegów ról przeglądowych rekord zapisuje każdy raport: zadanie, identyfikator i przypisanie zlecenia, w którym
+jest raport, rolę, tryb, werdykt i czy blokuje. Raport to treść, którą subagent oddaje sesji prowadzącej na końcu pracy
+(wywołanie `SubagentHandback`). Tryb: `FULL` dla pierwszego raportu przebiegu z danym zadaniem, `DELTA` dla kolejnych,
+`null` w zleceniu z zadaniem nieustalonym (`docs/features/metrics/spec.md`, „Przeglądy (M4)”). Werdykty według kontraktów agentów: `code-reviewer` `PASS` / `CHANGES_REQUIRED`, `qa-adversarial` `PASS` /
 `INVESTIGATE` / `BLOCK`, `architecture-reviewer` `KEEP` / `SIMPLIFY` / `REWORK`. Blokują `CHANGES_REQUIRED`, `BLOCK`
 i `REWORK`. Raport bez rozpoznanego werdyktu (dziś `ux-reviewer`) ma werdykt `null` i wpis w `gaps`. Rekord zapisuje
 sam werdykt, bez treści raportu.
