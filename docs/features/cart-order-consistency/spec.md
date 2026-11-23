@@ -249,7 +249,8 @@ Poza gwarancją:
   | O9 | złożenie równolegle z dodaniem innego wariantu | albo zamówienie z liniami z listy i koszyk z samą nową linią, albo `CartContentChanged` i koszyk z obiema; nigdy zamówienie z dodaną linią ani utracona linia |
   | O10 | złożenie koszyka z dwiema liniami równolegle z usunięciem jednej | albo zamówienie z obiema i pusty koszyk (usunięcie brakującej linii kończy się bez zmian), albo `CartContentChanged` i koszyk z jedną linią |
   | O11 | dwa złożenia z różnymi kluczami z jednego koszyka: lista aktualna i lista nieaktualna | dokładnie jedno zamówienie, z listą aktualną; nieaktualne dostaje `CartContentChanged` albo `CartEmpty` |
-  | O5 (zmiana) | złożenie klienta z listą sprzed scalenia równolegle ze scaleniem koszyka gościa | albo zamówienie dokładnie z listy i linie gościa w koszyku, albo `CartContentChanged` i wszystkie linie w koszyku; brak zakleszczeń |
+  | O5 (zmiana) | złożenie klienta równolegle ze scaleniem koszyka gościa; rundy nieparzyste z listą sprzed scalenia, parzyste z listą po scaleniu | zamówienie dokładnie z listy żądania albo `CartContentChanged` i wszystkie linie w koszyku; żadna linia nie ginie, brak zakleszczeń |
+  | O12 | dwa warianty w tej samej cenie, złożenie z listą A × 2, B × 1 równolegle ze zmianą ilości na A × 1, B × 2 (ta sama kwota) | albo zamówienie dokładnie z listy i `CartLineNotFound` zmian, albo `CartContentChanged` i koszyk A × 1, B × 2; nigdy zamówienie A × 1, B × 2 |
 
   Po każdej rundzie dodatkowo: linie każdego zamówienia testu są równe `expectedLines` żądania, które je złożyło.
 

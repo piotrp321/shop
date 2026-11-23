@@ -9,7 +9,7 @@ epiku i wypycha ją. Zadania nie mają własnych PR. Plan jest dokumentem robocz
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | CART-ORDER-CONSISTENCY-1 | zmergowane, 60664561 (zadanie 7540e646; przegląd FULL: PASS) |
+| 1 | CART-ORDER-CONSISTENCY-1 | zmergowane, 60664561 i poprawki po przeglądzie d87c0206 (FULL: PASS, DELTA: PASS) |
 | 2 | CART-ORDER-CONSISTENCY-2, CART-ORDER-CONSISTENCY-3 | |
 | 3 | CART-ORDER-CONSISTENCY-4 | |
 
@@ -49,7 +49,7 @@ klucza; znacznik kupującego: obcy znacznik, znacznik innego konta, brak sesji z
         "PlaceOrder: linie zablokowanego koszyka inne niż expectedLines (inna ilość, brak linii, dodatkowa linia) dają CartContentChanged (409, type cart-changed, detail ze specyfikacji) po CartEmpty i przed limitem zamówienia gościa, limitem nieopłaconych zamówień i wyceną. Po odrzuceniu: koszyk bez zmian, brak zamówienia, rezerwacji, użycia kodu, roszczenia limitu i wiersza outboxa, numer z sekwencji niepobrany. Lista zgodna bez względu na kolejność i wielkość liter UUID składa zamówienie jak dziś.",
         "Test integracyjny przebiegu R1: koszyk A × 1 i B × 2 w tej samej cenie, żądanie z A × 2 i B × 1 i z kwotą równą sumie koszyka daje CartContentChanged.",
         "Idempotencja: ten sam klucz i ta sama treść po złożeniu zwraca to samo zamówienie także przy opróżnionym koszyku (kroki 0 i 2 przed porównaniem); ten sam klucz z inną listą daje IdempotencyKeyReused; RequestFingerprint obejmuje listę w postaci kanonicznej.",
-        "Współbieżność (PlaceOrderConcurrencyTest, osobne procesy, 5 rund): O8, O9, O10 i O11 z tabeli specyfikacji oraz O5 z listą sprzed scalenia; po każdej rundzie kontrole O1–O7 i dodatkowo linie każdego zamówienia równe expectedLines żądania, które je złożyło. Żadna runda nie kończy się zakleszczeniem ani zamówieniem o liniach innych niż lista.",
+        "Współbieżność (PlaceOrderConcurrencyTest, osobne procesy, 5 rund): O8–O12 z tabeli specyfikacji oraz O5 naprzemiennie z listą sprzed scalenia i po scaleniu; po każdej rundzie kontrole O1–O7 i dodatkowo linie każdego zamówienia równe expectedLines żądania, które je złożyło. Żadna runda nie kończy się zakleszczeniem ani zamówieniem o liniach innych niż lista.",
         "Sklep: treść POST /api/checkout ma expectedLines równe liniom pokazanego podsumowania (variantId, quantity), także po zastosowaniu i usunięciu kodu rabatowego i po ponownym odczycie po 409; BFF przekazuje pole do API bez zmian dla gościa i klienta; 409 cart-changed nie składa zamówienia, pokazuje detail z API i odświeża podsumowanie (Vitest: CheckoutPage.test.tsx, app/api/checkout/route.test.ts, client.test.ts).",
         "apps/api/openapi.json i apps/store/src/api/schema.d.ts są wygenerowane (make -C apps/api openapi, make api-client) w tym samym commicie co zmiana API; apps/api/openapi-admin.json i apps/admin bez różnic.",
         "Istniejące testy złożenia zamówienia (jednostkowe, integracyjne, funkcjonalne, współbieżności, kodu rabatowego, dostawy) dostają tylko nowe pole w żądaniu, bez zmiany asercji; istniejące E2E zamówień przechodzą bez zmiany asercji i helperów e2e/support.",
