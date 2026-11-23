@@ -425,7 +425,7 @@ describe("DiscountCodeFormView", () => {
       expect(heading("h1")?.getAttribute("tabindex")).toBe("-1");
     });
 
-    it("leaves the focus in a field the staff member moved to while the save was running", async () => {
+    it("#580: the focus cannot move to a field while the save runs, as the fields are off, so it goes to the H1 after the save", async () => {
       const wrapper = await open();
       await wrapper.get("[data-testid=value-input]").setValue("15");
       let release!: (value: unknown) => void;
@@ -433,11 +433,12 @@ describe("DiscountCodeFormView", () => {
 
       await wrapper.get("[data-testid=save]").trigger("click");
       (wrapper.get("[data-testid=limit-input]").element as HTMLElement).focus();
+      expect(document.activeElement).not.toBe(wrapper.get("[data-testid=limit-input]").element);
       release({ data: code({ value: 15, version: 4 }), response: { status: 200 } });
       await settle();
 
       expect(successToast).toHaveBeenCalledWith("Kod rabatowy zapisany.");
-      expect(document.activeElement).toBe(wrapper.get("[data-testid=limit-input]").element);
+      expect(document.activeElement).toBe(heading("h1"));
     });
 
     it("shows the save bar when only the switch „Aktywny” changes, and sends the change only with „Zapisz”", async () => {
@@ -557,23 +558,25 @@ describe("DiscountCodeFormView", () => {
       expect(disabled(before, "limit-input")).toBe(false);
     });
 
-    it("shows the detail of a 409 not-editable and the code as the API has it, with the focus on the message", async () => {
+    it("shows the detail of a 409 not-editable, keeps the draft and does not read the code, with the focus on the message", async () => {
       const wrapper = await open();
       await wrapper.get("[data-testid=value-input]").setValue("15");
       mocks.put.mockResolvedValue(
         conflict("discount-code-not-editable", "Tej zmiany nie można wprowadzić w kodzie, który już obowiązuje albo był użyty."),
       );
       serve(started({ version: 6 }));
+      mocks.get.mockClear();
 
       await click(wrapper, "save");
 
       expect(wrapper.get("[data-testid=form-error]").text()).toBe(
         "Tej zmiany nie można wprowadzić w kodzie, który już obowiązuje albo był użyty.",
       );
-      expect(wrapper.get("[data-testid=code-status]").text()).toBe("Aktywny");
-      expect(disabled(wrapper, "value-input")).toBe(true);
-      expect(input(wrapper, "value-input").value).toBe("10");
+      expect(wrapper.get("[data-testid=code-status]").text()).toBe("Zaplanowany");
+      expect(disabled(wrapper, "value-input")).toBe(false);
+      expect(input(wrapper, "value-input").value).toBe("15");
       expect(document.activeElement).toBe(wrapper.get("[data-testid=form-error]").element);
+      expect(mocks.get).not.toHaveBeenCalled();
       expect(successToast).not.toHaveBeenCalled();
     });
   });
@@ -628,17 +631,19 @@ describe("DiscountCodeFormView", () => {
   });
 
   describe("conflicts and read-only", () => {
-    it("shows the detail of a 409 on the version and refreshes the form", async () => {
+    it("says the changes stay after a 409 on the version, and does not refresh the form (E7)", async () => {
       const wrapper = await open();
       await toggleEnabled(wrapper, false);
       mocks.put.mockResolvedValue(conflict("about:blank", "Kod rabatowy został w międzyczasie zmieniony. Odśwież go i spróbuj ponownie."));
       serve(code({ usageLimit: 10, version: 8 }));
+      mocks.get.mockClear();
 
       await click(wrapper, "save");
 
-      expect(wrapper.get("[data-testid=form-error]").text()).toBe("Kod rabatowy został w międzyczasie zmieniony. Odśwież go i spróbuj ponownie.");
-      expect(input(wrapper, "limit-input").value).toBe("10");
-      expect(isEnabled(wrapper)).toBe(true);
+      expect(wrapper.get("[data-testid=form-error]").text()).toBe("Kod rabatowy został w międzyczasie zmieniony. Twoje zmiany zostają w formularzu.");
+      expect(input(wrapper, "limit-input").value).toBe("");
+      expect(isEnabled(wrapper)).toBe(false);
+      expect(mocks.get).not.toHaveBeenCalled();
     });
 
     it("says so when the code does not exist: the heading, the message with the colour of an error, and a link to the list (#446)", async () => {
@@ -693,6 +698,363 @@ describe("DiscountCodeFormView", () => {
 
       expect(wrapper.find("[data-testid=save]").exists()).toBe(true);
       expect(wrapper.find("[data-testid=read-only-note]").exists()).toBe(false);
+    });
+  });
+
+  describe("the lock while a save runs (B1)", () => {
+    const FIELDS = ["code-input", "kind-percent", "kind-amount", "value-input", "minimum-input", "starts-input", "ends-input", "limit-input", "enabled"];
+    // Whether the browser would refuse input in every element of the test id now (its own `disabled` or a disabled fieldset).
+    const off = (wrapper: Wrapper, testid: string) => {
+      const elements = wrapper.findAll(`[data-testid=${testid}]`);
+      expect(elements.length, `an element ${testid}`).toBeGreaterThan(0);
+      return elements.every((element) => element.element.matches(":disabled"));
+    };
+    const lockedState = (wrapper: Wrapper, testids = FIELDS) => Object.fromEntries(testids.map((testid) => [testid, off(wrapper, testid)]));
+    const allAre = (testids: string[], value: boolean) => Object.fromEntries(testids.map((testid) => [testid, value]));
+
+    /** A new code with the fields filled and a save whose answer waits for the test. */
+    async function createHeld() {
+      const wrapper = await open("/discount-codes/new");
+      await wrapper.get("[data-testid=code-input]").setValue("minus50");
+      await wrapper.get("[data-testid=value-input]").setValue("50");
+      await wrapper.get("[data-testid=starts-input]").setValue("2026-11-21T00:00");
+      let release!: (value: unknown) => void;
+      let reject!: (reason: unknown) => void;
+      mocks.post.mockImplementation(() => new Promise((resolve, fail) => ((release = resolve), (reject = fail))));
+      await wrapper.get("[data-testid=save]").trigger("click");
+      await settle();
+      return { wrapper, release: (value: unknown) => release(value), reject: (reason: unknown) => reject(reason) };
+    }
+
+    /** A planned code with a changed end and limit and a save whose answer waits for the test. */
+    async function saveHeld() {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=ends-input]").setValue("2026-12-31T23:59");
+      await wrapper.get("[data-testid=limit-input]").setValue("5");
+      let release!: (value: unknown) => void;
+      let reject!: (reason: unknown) => void;
+      mocks.put.mockImplementation(() => new Promise((resolve, fail) => ((release = resolve), (reject = fail))));
+      await wrapper.get("[data-testid=save]").trigger("click");
+      await settle();
+      return { wrapper, release: (value: unknown) => release(value), reject: (reason: unknown) => reject(reason) };
+    }
+
+    it("disables every field, the switch and the kind of a new code from the save to its answer, and a second „Zapisz” sends nothing", async () => {
+      const { wrapper, release } = await createHeld();
+
+      expect(lockedState(wrapper)).toEqual(allAre(FIELDS, true));
+      expect(barButton("Zapisz")?.disabled).toBe(true);
+      barButton("Zapisz")!.click();
+      await wrapper.get("[data-testid=save]").trigger("click");
+      await settle();
+      expect(mocks.post).toHaveBeenCalledTimes(1);
+
+      release({ data: code({ id: "created", code: "MINUS50", version: 1 }), response: { status: 201 } });
+      await settle();
+
+      expect(successToast).toHaveBeenCalledWith("Kod rabatowy zapisany.");
+    });
+
+    it("disables every field of a planned code that the staff member edits, and the field „Koniec” cannot be typed in", async () => {
+      const { wrapper, release } = await saveHeld();
+
+      expect(lockedState(wrapper, FIELDS.filter((testid) => testid !== "code-input"))).toEqual(allAre(FIELDS.filter((testid) => testid !== "code-input"), true));
+      (wrapper.get("[data-testid=ends-input]").element as HTMLElement).focus();
+      expect(document.activeElement).not.toBe(wrapper.get("[data-testid=ends-input]").element);
+
+      release({ data: code({ endsAt: "2026-12-31T22:59:00+00:00", usageLimit: 5, version: 4 }), response: { status: 200 } });
+      await settle();
+
+      expect(successToast).toHaveBeenCalledWith("Kod rabatowy zapisany.");
+      expect(input(wrapper, "ends-input").value).toBe("2026-12-31T23:59");
+      expect(off(wrapper, "ends-input")).toBe(false);
+    });
+
+    it("unlocks the fields with the values that were sent after a 422, with the focus on the field with the error", async () => {
+      const { wrapper, release } = await saveHeld();
+
+      release({
+        data: undefined,
+        error: { status: 422, violations: [{ propertyPath: "usageLimit", title: "Limit nie może być mniejszy od liczby użyć (5)." }] },
+        response: { status: 422 },
+      });
+      await settle();
+
+      expect(lockedState(wrapper, FIELDS.filter((testid) => testid !== "code-input"))).toEqual(allAre(FIELDS.filter((testid) => testid !== "code-input"), false));
+      expect(input(wrapper, "ends-input").value).toBe("2026-12-31T23:59");
+      expect(input(wrapper, "limit-input").value).toBe("5");
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=limit-input]").element);
+    });
+
+    it("unlocks the fields with the values that were sent after a save that does not reach the API, and says the result is unknown", async () => {
+      const { wrapper, reject } = await saveHeld();
+
+      reject(new TypeError("network down"));
+      await settle();
+
+      expect(off(wrapper, "ends-input")).toBe(false);
+      expect(input(wrapper, "ends-input").value).toBe("2026-12-31T23:59");
+      expect(input(wrapper, "limit-input").value).toBe("5");
+      expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+      const alert = wrapper.get("[data-testid=unknown-result]");
+      expect(alert.text()).toContain("Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.");
+      expect(alert.attributes("role")).toBe("alert");
+      expect(document.activeElement).toBe(alert.element);
+    });
+
+    it("ignores the answer of a save that comes after another code was opened: no change, no toast, no move", async () => {
+      const { wrapper, release } = await saveHeld();
+      serve(code({ id: "code-2", code: "LATO15", version: 7 }));
+      const navigation = mounted!.router.push("/discount-codes/code-2");
+      await settle();
+      dialogButton("Opuść bez zapisu")!.click();
+      await navigation;
+      await settle();
+      expect(off(wrapper, "ends-input")).toBe(false);
+
+      release({ data: code({ usageLimit: 5, version: 4 }), response: { status: 200 } });
+      await settle();
+
+      expect(successToast).not.toHaveBeenCalled();
+      expect(wrapper.get("h1").text()).toBe("LATO15");
+      expect(mounted!.router.currentRoute.value.params.id).toBe("code-2");
+      expect(input(wrapper, "limit-input").value).toBe("");
+    });
+  });
+
+  describe("the unknown result of a save (stage 2, B4)", () => {
+    const UNKNOWN = "Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.";
+    const alert = (wrapper: Wrapper) => wrapper.get("[data-testid=unknown-result]");
+
+    /** A planned code with a changed end and a save whose answer waits for the test; `calls[n]` answers the n-th. */
+    async function saveHeld(path = "/discount-codes/code-1") {
+      const wrapper = await open(path);
+      if (path.endsWith("/new")) {
+        await wrapper.get("[data-testid=code-input]").setValue("NOWY");
+        await wrapper.get("[data-testid=value-input]").setValue("10");
+        await wrapper.get("[data-testid=starts-input]").setValue("2026-11-21T00:00");
+      } else {
+        await wrapper.get("[data-testid=limit-input]").setValue("5");
+      }
+      const calls: { resolve: (value: unknown) => void; reject: (reason: unknown) => void }[] = [];
+      const hold = () =>
+        new Promise((resolve, reject) => {
+          calls.push({ resolve, reject });
+        });
+      mocks.put.mockImplementation(hold);
+      mocks.post.mockImplementation(hold);
+      await wrapper.get("[data-testid=save]").trigger("click");
+      await settle();
+      return { wrapper, calls };
+    }
+
+    it("says after 10 s that the result is unknown, with „Sprawdź stan” and the focus on the message, and keeps the fields locked", async () => {
+      const { wrapper } = await saveHeld();
+
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await settle();
+
+      expect(alert(wrapper).text()).toContain(UNKNOWN);
+      expect(alert(wrapper).attributes("role")).toBe("alert");
+      expect(alert(wrapper).get("[data-testid=check-state]").text()).toBe("Sprawdź stan");
+      expect(wrapper.find("[data-testid=unblock-form]").exists()).toBe(false);
+      expect(document.activeElement).toBe(alert(wrapper).element);
+      expect(input(wrapper, "limit-input").matches(":disabled")).toBe(true);
+      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+    });
+
+    it("„Sprawdź stan” takes the code from the server when it equals the form, says so in a status region and sends no write", async () => {
+      const { wrapper } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      serve(code({ usageLimit: 5, version: 4 }));
+
+      await click(wrapper, "check-state");
+
+      expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+      expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
+      expect(wrapper.get("[data-testid=safety-status]").attributes("role")).toBe("status");
+      expect(input(wrapper, "limit-input").matches(":disabled")).toBe(false);
+      expect(input(wrapper, "limit-input").value).toBe("5");
+      expect(saveBar()).toBeNull();
+      expect(mocks.put).toHaveBeenCalledTimes(1);
+    });
+
+    it("„Sprawdź stan” says the write is not on the server when the version is the same and the values are not", async () => {
+      const { wrapper } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+
+      await click(wrapper, "check-state");
+
+      expect(alert(wrapper).text()).toContain("Zapisu nie widać na serwerze. Może jeszcze dotrzeć.");
+      expect(document.activeElement).toBe(alert(wrapper).element);
+      expect(input(wrapper, "limit-input").value).toBe("5");
+      expect(input(wrapper, "limit-input").matches(":disabled")).toBe(false);
+    });
+
+    it("„Sprawdź stan” offers „Odrzuć moje zmiany i pokaż stan z serwera” when the version on the server is another", async () => {
+      const { wrapper } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      serve(code({ usageLimit: 9, version: 8 }));
+
+      await click(wrapper, "check-state");
+
+      expect(alert(wrapper).text()).toContain("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+      expect(input(wrapper, "limit-input").value).toBe("5");
+      await click(wrapper, "restore-state");
+      expect(input(wrapper, "limit-input").value).toBe("9");
+      expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+    });
+
+    it("says in a toast that the earlier save was done when its answer comes after „Sprawdź stan”, and changes nothing in the form", async () => {
+      const { wrapper, calls } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      await click(wrapper, "check-state");
+      await wrapper.get("[data-testid=limit-input]").setValue("6");
+
+      calls[0]!.resolve({ data: code({ usageLimit: 5, version: 4 }), response: { status: 200 } });
+      await settle();
+
+      expect(successToast).toHaveBeenCalledWith("Wcześniejszy zapis został wykonany.");
+      expect(successToast).not.toHaveBeenCalledWith("Kod rabatowy zapisany.");
+      expect(input(wrapper, "limit-input").value).toBe("6");
+      expect(input(wrapper, "limit-input").matches(":disabled")).toBe(false);
+    });
+
+    it("gives an ordinary result, with the toast, when the answer comes after the limit but before „Sprawdź stan”", async () => {
+      const { wrapper, calls } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+
+      calls[0]!.resolve({ data: code({ usageLimit: 5, version: 4 }), response: { status: 200 } });
+      await settle();
+
+      expect(successToast).toHaveBeenCalledWith("Kod rabatowy zapisany.");
+      expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+      expect(input(wrapper, "limit-input").matches(":disabled")).toBe(false);
+    });
+
+    it("moves the focus to the message after an error that does not reach the API, with the fields unlocked", async () => {
+      const { wrapper, calls } = await saveHeld();
+
+      calls[0]!.reject(new TypeError("network down"));
+      await settle();
+
+      expect(alert(wrapper).text()).toContain(UNKNOWN);
+      expect(document.activeElement).toBe(alert(wrapper).element);
+      expect(input(wrapper, "limit-input").matches(":disabled")).toBe(false);
+      expect(input(wrapper, "limit-input").value).toBe("5");
+    });
+
+    describe("a new code", () => {
+      it("says after 10 s that the result is unknown, with „Odblokuj formularz” instead of „Sprawdź stan”", async () => {
+        const { wrapper } = await saveHeld("/discount-codes/new");
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+
+        expect(alert(wrapper).text()).toContain(UNKNOWN);
+        expect(wrapper.find("[data-testid=check-state]").exists()).toBe(false);
+        expect(alert(wrapper).get("[data-testid=unblock-form]").text()).toBe("Odblokuj formularz");
+        expect(input(wrapper, "code-input").matches(":disabled")).toBe(true);
+      });
+
+      it("unlocks the form with the message about the list and a link to it in a new tab, and a late success only gives a toast", async () => {
+        const { wrapper, calls } = await saveHeld("/discount-codes/new");
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+
+        await click(wrapper, "unblock-form");
+
+        expect(alert(wrapper).text()).toContain(
+          "Nie wiemy, czy kod rabatowy został utworzony. Wcześniejszy zapis może się jeszcze wykonać. Sprawdź listę przed ponownym zapisem.",
+        );
+        const link = alert(wrapper).get("[data-testid=list-link]");
+        expect(link.attributes("href")).toBe("/discount-codes");
+        expect(link.attributes("target")).toBe("_blank");
+        expect(link.attributes("rel")).toContain("noopener");
+        expect(link.text()).toContain("Lista kodów rabatowych");
+        expect(input(wrapper, "code-input").matches(":disabled")).toBe(false);
+        await wrapper.get("[data-testid=code-input]").setValue("INNY");
+
+        calls[0]!.resolve({ data: code({ id: "created", code: "NOWY" }), response: { status: 201 } });
+        await settle();
+
+        expect(successToast).toHaveBeenCalledWith("Wcześniejszy zapis został wykonany.");
+        expect(mounted!.router.currentRoute.value.name).toBe("discount-code-new");
+        expect(input(wrapper, "code-input").value).toBe("INNY");
+      });
+    });
+  });
+
+  describe("a 409 of a save and the way to the server state (E7)", () => {
+    it("keeps the form, shows „Odrzuć moje zmiany i pokaż stan z serwera” and reads nothing", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=limit-input]").setValue("5");
+      mocks.put.mockResolvedValue(conflict("about:blank", "Ktoś zmienił."));
+      serve(code({ usageLimit: 9, version: 9 }));
+      mocks.get.mockClear();
+
+      await click(wrapper, "save");
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(wrapper.get("[data-testid=form-error]").text()).toContain("w międzyczasie zmieniony");
+      expect(input(wrapper, "limit-input").value).toBe("5");
+      expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Odrzuć moje zmiany i pokaż stan z serwera");
+      expect(mocks.get).not.toHaveBeenCalled();
+    });
+
+    it("shows the state of the server only after „Odrzuć moje zmiany i pokaż stan z serwera”, with the focus on the H1", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=limit-input]").setValue("5");
+      mocks.put.mockResolvedValue(conflict("about:blank", "Ktoś zmienił."));
+      await click(wrapper, "save");
+      serve(code({ usageLimit: 9, version: 9 }));
+      (wrapper.get("[data-testid=restore-state]").element as HTMLElement).focus();
+
+      await click(wrapper, "restore-state");
+
+      expect(input(wrapper, "limit-input").value).toBe("9");
+      expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=restore-state]").exists()).toBe(false);
+      expect(document.activeElement).toBe(heading("h1"));
+    });
+
+    it("keeps the way to the server state with its context after „Odrzuć”, the label as it was, and the focus on the message", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=limit-input]").setValue("5");
+      mocks.put.mockResolvedValue(conflict("discount-code-not-editable", "Kodu, który już obowiązuje, nie można tak zmienić."));
+      await click(wrapper, "save");
+
+      barButton("Odrzuć")!.click();
+      await settle();
+
+      expect(input(wrapper, "limit-input").value).toBe("");
+      expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+      const note = wrapper.get("[data-testid=restore-note]");
+      expect(note.text()).toContain("Kodu, który już obowiązuje, nie można tak zmienić.");
+      expect(wrapper.find("[data-testid=check-state]").exists()).toBe(false);
+      expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Odrzuć moje zmiany i pokaż stan z serwera");
+      expect(document.activeElement).toBe(note.element);
+    });
+
+    it("puts a 409 discount-code-taken at the code field with the note of an earlier unknown creation", async () => {
+      const wrapper = await open("/discount-codes/new");
+      await wrapper.get("[data-testid=code-input]").setValue("NOWY");
+      await wrapper.get("[data-testid=value-input]").setValue("10");
+      await wrapper.get("[data-testid=starts-input]").setValue("2026-11-21T00:00");
+      mocks.post.mockRejectedValueOnce(new TypeError("network down"));
+      await click(wrapper, "save");
+      mocks.post.mockResolvedValue(conflict("discount-code-taken", "Taki kod już istnieje."));
+
+      await click(wrapper, "save");
+
+      expect(wrapper.get("[data-testid=code-error]").text()).toBe("Taki kod już istnieje. Możliwe, że utworzył go Twój wcześniejszy zapis.");
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=code-input]").element);
     });
   });
 });
