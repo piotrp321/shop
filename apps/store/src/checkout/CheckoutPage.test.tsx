@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { subscribeToSession } from "@/account/session-events";
 import { type CartView, loadAccountSession, loadCart, type PlaceOrderResult, placeOrder } from "@/api/client";
 import { runActions } from "@/cart/cart-actions";
 import { subscribeToCartChanges } from "@/cart/events";
@@ -1732,6 +1733,83 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
     expect(loadAccountSession).toHaveBeenCalledTimes(2);
     expect(alert().textContent).toContain("Twoja sesja wygasła. Zaloguj się ponownie.");
     expect(status()).toBe("");
+  });
+
+  // The header shows the session the checkout read, without a request of its own (U3).
+  describe("the session told to the header", () => {
+    let told: unknown[];
+    let stop: () => void;
+    beforeEach(() => {
+      told = [];
+      stop = subscribeToSession((session) => told.push(session));
+    });
+    afterEach(() => stop());
+
+    it("tells the account read after the refusal, with the message and not before", async () => {
+      const { session, read } = await refuseGuestHeld();
+      await session({ status: "ok", session: JAN });
+      expect(told).toEqual([]);
+      await read({ status: "ok", data: one() });
+
+      expect(told).toEqual([JAN]);
+      expect(loadAccountSession).toHaveBeenCalledTimes(2);
+    });
+
+    it("tells nobody after a logout", async () => {
+      await renderCheckout(cart(), JAN);
+      fillContact();
+      vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "ok", session: null });
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+      await submit(buyerChanged);
+
+      expect(told).toEqual([null]);
+    });
+
+    it("tells nothing when the session or the cart cannot be read", async () => {
+      const { session, read } = await refuseGuestHeld();
+      await session({ status: "ok", session: JAN });
+      await read({ status: "failed" });
+
+      expect(alert().textContent).toBe(NOT_READ);
+      expect(told).toEqual([]);
+    });
+
+    it("tells nobody with the expired session after a 401 of the read of the cart", async () => {
+      const { session, read } = await refuseGuestHeld();
+      await session({ status: "ok", session: JAN });
+      await read({ status: "unauthorized" });
+
+      expect(told).toEqual([null]);
+    });
+
+    it("tells nobody with the expired session after a 401 of the order", async () => {
+      await renderCheckout(cart(), JAN);
+      fillContact();
+      await submit({ status: "unauthorized" });
+
+      expect(alert().textContent).toContain("Twoja sesja wygasła. Zaloguj się ponownie.");
+      expect(told).toEqual([null]);
+    });
+
+    it("tells nobody with the expired session after a 401 of the check of a code", async () => {
+      await renderCheckout(cart(), JAN);
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "unauthorized" });
+      fireEvent.change(field("Kod rabatowy"), { target: { value: "witaj10" } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+      });
+
+      expect(told).toEqual([null]);
+    });
+
+    it("tells nobody when the first read of the checkout answers 401", async () => {
+      vi.mocked(loadCart).mockResolvedValue({ status: "unauthorized" });
+      vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: JAN });
+      render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
+      await screen.findByText(/Twoja sesja wygasła/);
+
+      expect(told).toEqual([null]);
+    });
   });
 
   // A retry of an uncertain result goes with the same key, and the attempt before it may have placed the order (the

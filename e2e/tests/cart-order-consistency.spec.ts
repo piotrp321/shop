@@ -417,6 +417,14 @@ async function customerCheckout(page: Page, account: Account): Promise<void> {
   await chooseProvider(page, "Szybki przelew (demo)");
 }
 
+/** The header names the account `name` and offers its logout, not the login. */
+async function expectHeaderSignedInAs(page: Page, name: string): Promise<void> {
+  const banner = page.getByRole("banner");
+  await expect(banner).toContainText(`Zalogowany jako ${name}`);
+  await expect(banner.getByRole("button", { name: "Wyloguj się" })).toBeVisible();
+  await expect(banner.getByRole("link", { name: "Zaloguj się" })).toHaveCount(0);
+}
+
 /** How many order confirmations Mailpit has for `to`. */
 async function confirmationCount(to: string): Promise<number> {
   const query = `to:"${to}" subject:"Potwierdzenie zamówienia"`;
@@ -459,6 +467,8 @@ test.describe("the buyer changed in another tab", () => {
     expect(orders()).toEqual([409]);
     await expect(checkout.getByTestId("account-email")).toHaveText(customers.jan.email);
     await expect(checkout.getByLabel("E-mail")).toHaveCount(0);
+    // The header shows the same account as the checkout.
+    await expectHeaderSignedInAs(checkout, "Jan Kowalski");
     await expect(checkout.getByLabel("Imię i nazwisko")).toHaveValue("Anna Testowa");
     await expect(checkout.getByLabel("Miejscowość")).toHaveValue("Warszawa");
     await expect(checkout.getByRole("radio", { name: "Szybki przelew (demo)" })).toBeChecked();
@@ -498,6 +508,8 @@ test.describe("the buyer changed in another tab", () => {
     await expect(message).toHaveText(SIGNED_IN_AS(customers.anna.email));
     expect(orders()).toEqual([409]);
     await expect(page.getByTestId("account-email")).toHaveText(customers.anna.email);
+    await expectHeaderSignedInAs(page, "Anna Nowak");
+    await expect(page.getByRole("banner")).not.toContainText("Jan Kowalski");
     await expect(quantities(page)).toHaveText(["1 szt."]);
     await expect(page.getByTestId("checkout-total")).toHaveText(total);
     await expect(page.getByLabel("Imię i nazwisko")).toHaveValue("Klient Testowy");
@@ -585,6 +597,9 @@ test.describe("the buyer changed in another tab", () => {
 
     await expect(orderMessage(page)).toContainText(SESSION_EXPIRED);
     expect(orders()).toEqual([401]);
+    // The header shows nobody signed in, as the checkout does.
+    await expect(page.getByRole("banner").getByRole("link", { name: "Zaloguj się" })).toBeVisible();
+    await expect(page.getByRole("banner").getByRole("button", { name: "Wyloguj się" })).toHaveCount(0);
     await expect(page).toHaveURL(/\/checkout$/);
     // Neither cart was ordered: the guest cart keeps its line, and Jan's has both after the merge of his login.
     expect(await cartLinesOf(other)).toEqual([{ variantId: a.variantId, quantity: 1 }]);
