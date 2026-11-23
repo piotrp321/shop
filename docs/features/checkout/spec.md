@@ -947,7 +947,9 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   na adres z kasy nie przychodzi nic), R5 (kasa Jana, wylogowanie i logowanie Anny z tymi samymi pozycjami i kwotą:
   409, komunikat z adresem Anny, koszyk Anny bez zmian; drugie kliknięcie składa zamówienie Anny, koszyk Jana zostaje)
   i R6 (kasa Jana, wylogowanie i koszyk gościa w drugiej karcie: 401, widok wygasłej sesji, żaden koszyk nie został
-  zamówiony).
+  zamówiony). Przy 375 px z dotykiem i przy 320 px komunikat zmiany kupującego i wiersz „Potwierdzenie wyślemy na adres”
+  z adresem konta o 60 znakach bez spacji (odpowiedź 409 i `/auth/session` podstawione w przeglądarce) nie powodują
+  przewijania poziomego.
 - `payment-resume.spec.ts`: powrót ze strony symulatora na `/checkout`, link „Opłać zamówienie R-…”, „Wróć do
   płatności” otwiera tę samą sesję, płatność się udaje.
 - E2E składają zamówienia na wariantach z dużym stanem i je opłacają; rezerwacje opłaconych zamówień zostają do

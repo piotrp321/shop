@@ -786,7 +786,9 @@ function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLink
         ) : failure.kind === "message" ? (
           <p>{failure.text}</p>
         ) : failure.kind === "buyer" ? (
-          <p>{failure.email === null ? SIGNED_OUT : SIGNED_IN_AS(failure.email)}</p>
+          // An address of an account is one long word: `wrap-anywhere` (not `break-words`) also lets the grid of the alert
+          // shrink to a narrow screen, as it counts in the width the text needs at least.
+          <p className="wrap-anywhere">{failure.email === null ? SIGNED_OUT : SIGNED_IN_AS(failure.email)}</p>
         ) : failure.kind === "changed" ? (
           <>
             <p>{CHANGED[failure.reason]}</p>
@@ -916,7 +918,7 @@ function CheckoutContent({
             </p>
           ) : null
         ) : (
-          <p className="text-sm">
+          <p className="text-sm wrap-anywhere">
             Potwierdzenie wyślemy na adres <span data-testid="account-email">{session.email}</span>
           </p>
         )}
