@@ -726,7 +726,7 @@ describe("POST /api/checkout: the buyer shown in the checkout", () => {
   // to reload, and its page shows the `detail` of a 422 without violations.
   it.each([
     ["without the buyer", { ...GUEST_ORDER, provider: PROVIDER }],
-    ["without the buyer and the expected lines", (({ expectedLines: _lines, ...rest }) => ({ ...rest, provider: PROVIDER }))(GUEST_ORDER)],
+    ["without the buyer and the expected lines", Object.fromEntries(Object.entries({ ...GUEST_ORDER, provider: PROVIDER }).filter(([name]) => name !== "expectedLines"))],
   ])("answers 422 „Kasa została zaktualizowana. Odśwież stronę.” without asking the API to a checkout %s", async (_name, body) => {
     answerGuestOrder();
     const { cookie } = await signedIn();

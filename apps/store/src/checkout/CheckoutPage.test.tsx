@@ -1431,11 +1431,21 @@ describe("CheckoutPage after a 409 of a changed cart or total (#852)", () => {
     });
 
     it.each<[string, () => Promise<void> | void]>([
-      ["a field is edited", () => type("Telefon", "600 100 201")],
-      ["a payment provider is chosen", () => choose("Karta płatnicza (demo)")],
+      [
+        "a field is edited",
+        () => {
+          type("Telefon", "600 100 201");
+        },
+      ],
+      [
+        "a payment provider is chosen",
+        () => {
+          choose("Karta płatnicza (demo)");
+        },
+      ],
       [
         "a code is rejected by the summary",
-        () => clickApply("lato15", { status: "ok", data: { ...three(), discount: { status: "rejected", code: "LATO15", reason: "invalid", detail: "Ten kod nie istnieje." } } }),
+        () => clickApply("lato15", { status: "ok", data: { ...three(), discount: { status: "rejected", code: "LATO15", reason: "invalid", detail: "Ten kod nie istnieje.", minimumOrderGross: null } } }),
       ],
       ["a code is refused with a 400", () => clickApply("x".repeat(10), { status: "invalid", detail: "Kod rabatowy może mieć najwyżej 64 znaki." }, { status: "ok", data: three() })],
       ["a code cannot be checked", () => clickApply("witaj10", { status: "failed" })],
