@@ -1,6 +1,8 @@
 #!/bin/sh
 # Tests of ci-wait.sh with a fake `gh` and a fake `sleep` on PATH: the answers of `gh run list` and `gh run view` come
-# from numbered files (the last one repeats), so a run can show up late, never, or end red.
+# from numbered files (the last one repeats), so a run can show up late, never, or end red. Those files hold the text
+# the query of the script would print, so the cases at the end give the fake the JSON of GitHub instead and run the
+# query of the script on it with jq (`gh -q` is jq): they test the queries themselves.
 set -u
 
 script="$(cd "$(dirname "$0")" && pwd)/ci-wait.sh"
@@ -17,6 +19,16 @@ cat > "$tmp/bin/gh" <<'GH'
 echo "$*" >> "$CASE/calls"
 kind="$1-$2"
 if [ -f "$CASE/$kind.fail" ]; then echo "HTTP 500: fake failure" >&2; exit 1; fi
+if [ -f "$CASE/$kind.json" ]; then
+    # the JSON as GitHub answers it: apply the query the script passed with -q
+    filter=""
+    prev=""
+    for arg in "$@"; do
+        [ "$prev" = "-q" ] && filter="$arg"
+        prev="$arg"
+    done
+    exec jq -r "$filter" "$CASE/$kind.json"
+fi
 case "$kind" in
     run-list|run-view)
         n=$(cat "$CASE/$kind.n" 2>/dev/null || echo 1)
@@ -182,6 +194,80 @@ expect "an unknown event" 2 "pull_request or push"
 new_case bad-number
 run_script --interval x "$sha"
 expect "an interval that is no number" 2 "whole number"
+
+# The queries of the script on the JSON of GitHub. jq is on the CI runner; without it the cases are skipped on a
+# developer machine and fail in CI, so the queries never go untested there.
+if command -v jq > /dev/null 2>&1; then
+    # expect_line / expect_no_line <name> <text>: a line of the output of the last run of the script
+    expect_line() {
+        if grep -q -x -F -- "$2" "$CASE/out"; then echo "ok   $1"; else
+            echo "FAIL $1: no line '$2' in: $(tr '\n' '|' < "$CASE/out")"; failures=$((failures + 1)); fi
+    }
+    expect_no_line() {
+        if grep -q -F -- "$2" "$CASE/out"; then
+            echo "FAIL $1: unexpected '$2' in: $(tr '\n' '|' < "$CASE/out")"; failures=$((failures + 1))
+        else echo "ok   $1"; fi
+    }
+
+    new_case jq-red
+    cat > "$CASE/run-list.json" <<'JSON'
+[{"databaseId": 10, "createdAt": "2026-01-01T10:00:00Z"},
+ {"databaseId": 20, "createdAt": "2026-01-01T11:00:00Z"},
+ {"databaseId": 15, "createdAt": "2026-01-01T10:30:00Z"}]
+JSON
+    cat > "$CASE/run-view.json" <<JSON
+{"status": "completed", "conclusion": "failure", "headSha": "$sha", "url": "https://example.test/runs/20",
+ "jobs": [{"name": "scope", "conclusion": "success"}, {"name": "e2e shard 1", "conclusion": "timed_out"},
+          {"name": "e2e shard 2", "conclusion": "failure"}, {"name": "e2e shard 3", "conclusion": "cancelled"},
+          {"name": "docs", "conclusion": "skipped"}, {"name": "setup", "conclusion": "startup_failure"},
+          {"name": "gate", "conclusion": "action_required"}, {"name": "note", "conclusion": "neutral"},
+          {"name": "late", "conclusion": null}, {"name": "checks", "conclusion": "failure"}]}
+JSON
+    echo 1 > "$CASE/watch.rc"
+    run_script "$sha"
+    expect "the queries on the JSON of a red run" 1 "failure sha=$sha run=20 https://example.test/runs/20"
+    expect_calls "the newest of the runs of the commit is the one watched" "run watch 20 "
+    expect_line "a job that timed out is listed" "failed job: e2e shard 1 (timed_out)"
+    expect_line "a failed job is listed" "failed job: e2e shard 2 (failure)"
+    expect_line "a cancelled job is listed" "failed job: e2e shard 3 (cancelled)"
+    expect_line "a job that did not start is listed" "failed job: setup (startup_failure)"
+    expect_line "a job that waits for an action is listed" "failed job: gate (action_required)"
+    expect_line "the aggregate job is listed" "failed job: checks (failure)"
+    for job in scope docs note late; do
+        expect_no_line "the job '$job' did not end red and is not listed" "failed job: $job"
+    done
+
+    new_case jq-green
+    echo '[{"databaseId": 30, "createdAt": "2026-01-01T10:00:00Z"}]' > "$CASE/run-list.json"
+    cat > "$CASE/run-view.json" <<JSON
+{"status": "completed", "conclusion": "success", "headSha": "$sha", "url": "https://example.test/runs/30",
+ "jobs": [{"name": "checks", "conclusion": "success"}, {"name": "docs", "conclusion": "skipped"}]}
+JSON
+    run_script "$sha"
+    expect "the queries on the JSON of a green run" 0 "success sha=$sha run=30 https://example.test/runs/30"
+    expect_no_line "a green run lists no job" "failed job"
+
+    new_case jq-none
+    echo '[]' > "$CASE/run-list.json"
+    run_script --register-timeout 10 --interval 10 "$sha"
+    expect "the query on an empty list of runs" 3 "no CI run"
+
+    for conclusion in null '""'; do
+        new_case "jq-progress-$conclusion"
+        echo '[{"databaseId": 40, "createdAt": "2026-01-01T10:00:00Z"}]' > "$CASE/run-list.json"
+        cat > "$CASE/run-view.json" <<JSON
+{"status": "in_progress", "conclusion": $conclusion, "headSha": "$sha", "url": "https://example.test/runs/40",
+ "jobs": [{"name": "checks", "conclusion": null}]}
+JSON
+        run_script "$sha"
+        expect "a run in progress with the conclusion $conclusion is not a result" 4 "run 40 is still in_progress"
+    done
+elif [ -n "${CI:-}" ]; then
+    echo "FAIL jq is missing in CI: the queries of ci-wait.sh are not tested"
+    failures=$((failures + 1))
+else
+    echo "skip the queries on the JSON of GitHub: jq is not installed"
+fi
 
 if [ "$failures" -gt 0 ]; then
     echo "test_ci_wait: $failures failure(s)" >&2

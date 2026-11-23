@@ -2548,7 +2548,8 @@ def render_ci_time(epic, result):
     lines = ['**Czas CI** (`metrics.py ci-time %s`): %s%s' % (
         epic, title, ' (%s)' % result['reason'] if result['reason'] else '')]
     lines.append('Progi startowe, do oceny po trzech kolejnych epikach (oba warunki naraz): przebieg %s i +%d%%, job '
-                 '%s i +%d%%, rozrzut części E2E %s.' % (
+                 '%s i +%d%%, rozrzut części E2E %s. Decyzja zapada na wartościach niezaokrąglonych, więc wynik '
+                 'pokazany jako równy progowi może być tuż pod nim.' % (
                      ('+%.1f min' % (limits['run_min_s'] / 60.0)).replace('.', ','), limits['run_min_pct'],
                      ('+%.1f min' % (limits['job_min_s'] / 60.0)).replace('.', ','), limits['job_min_pct'],
                      _ci_minutes(limits['e2e_spread_s'])))
@@ -2593,8 +2594,8 @@ def render_ci_time(epic, result):
                     for s in row['steps'])))
     spread = result['e2e_spread']
     if spread['seconds'] is None and result['rows']:
-        lines.append('Rozrzut części E2E: brak danych (mniej niż dwa ostatnie przebiegi PR o macierzy części końcowego '
-                     'SHA).')
+        lines.append('Rozrzut części E2E: brak danych (wśród ostatnich przebiegów PR mniej niż dwa o macierzy części '
+                     'przebiegu po epiku).')
     if spread['seconds'] is not None:
         lines.append('Rozrzut części E2E (mediany ostatnich przebiegów PR): %s między %s a %s%s.' % (
             _ci_minutes(spread['seconds']), spread['longest'], spread['shortest'],

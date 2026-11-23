@@ -693,7 +693,10 @@ danych”. Ten sam wynik jest w rekordzie epiku natywnego (`ci.time`).
 - **Zmieniona macierz części E2E:** w innej macierzy część o tej samej nazwie to inny zestaw plików. Część E2E jest
   więc porównywana, a jej mediany i rozrzut liczone, tylko z przebiegów o tej samej macierzy co przebieg po epiku
   (końcowy SHA, a bez niego najnowszy przebieg PR): dotyczy to bazy, ostatnich przebiegów PR, `main` w trakcie epiku
-  i przebiegu commita merge'u. Za mało takich przebiegów to brak danych dla części. Cały przebieg i pozostałe joby
+  i przebiegu commita merge'u. Okno przebiegów jest wybierane najpierw (ostatnie porównywalne: 5 bazy, 3 PR,
+  5 `main` w trakcie epiku), a przebiegi innej macierzy z niego odpadają; narzędzie nie sięga po starsze przebiegi
+  tej samej macierzy, bo starszy przebieg PR to starsza wersja zmiany. Za mało przebiegów w oknie to brak danych
+  dla części. Cały przebieg i pozostałe joby
   liczą się ze wszystkich przebiegów. Zmiany samych wag (wyrównanie na `main` przy tej samej liczbie części)
   narzędzie nie wykrywa: to jedna z przyczyn, które sprawdza sesja.
 - **Rozrzut części E2E:** różnica median ostatnich przebiegów PR (tej samej macierzy, od dwóch przebiegów; inaczej

@@ -252,6 +252,7 @@ class ThresholdTest(CiTimeEnv):
                                                        'job_min_pct': 30, 'e2e_spread_s': 240})
         out = self.cli()[1]
         self.assertIn('startowe', out)
+        self.assertIn('na wartościach niezaokrąglonych', out)
         self.assertIn('+3,0 min i +20%', out)
         self.assertIn('+4,0 min i +30%', out)
 
@@ -486,7 +487,9 @@ class JobsTest(CiTimeEnv):
         self.assertIsNone(self.row(result, 'e2e shard 1')['recent_s'])
         self.assertEqual(result['e2e_spread'], {'seconds': None, 'exceeded': None, 'longest': None, 'shortest': None})
         self.assertEqual(self.row(result, 'checks part apps')['recent_s'], 6 * 60)      # other jobs: all three runs
-        self.assertIn('Rozrzut części E2E: brak danych', self.cli()[1])
+        out = self.cli()[1]
+        self.assertIn('Rozrzut części E2E: brak danych', out)
+        self.assertIn('macierzy części przebiegu po epiku', out)
 
     def test_the_spread_comes_from_the_last_runs_of_the_matrix_of_the_final_commit(self):
         self.baseline()
@@ -497,6 +500,24 @@ class JobsTest(CiTimeEnv):
         result = self.result()
         self.assertEqual(self.row(result, 'e2e shard 1')['recent_s'], 18 * 60)
         self.assertEqual((result['e2e_spread']['seconds'], result['e2e_spread']['exceeded']), (480, True))
+
+    def test_the_window_of_the_last_runs_is_not_widened_to_older_runs_of_the_matrix(self):
+        # oldest to newest: two runs of the matrix of the final commit, two of another matrix, the final run. The
+        # window is the three last comparable runs; those of another matrix drop out of the e2e parts and no older
+        # run takes their place: an older run of the PR is an older version of the change.
+        self.baseline()
+        three = {k: v for k, v in JOBS.items() if k != 'e2e shard 4'}
+        self.earlier(START + 60, e2e_shard_1=18)
+        self.earlier(START + 80, e2e_shard_1=18)
+        self.add(self.branch, START + 100, three, sha='e' * 40, event='pull_request')
+        self.add(self.branch, START + 150, three, sha='e' * 40, event='pull_request')
+        self.final(e2e_shard_1=18)
+        result = self.result()
+        self.assertEqual([r['created_at'] for r in result['recent']['runs']],
+                         [at(START + 100), at(START + 150), at(START + 200)])
+        self.assertIsNone(self.row(result, 'e2e shard 1')['recent_s'])
+        self.assertIsNone(result['e2e_spread']['seconds'])
+        self.assertTrue(self.row(result, 'e2e shard 1')['final_exceeded'])      # the final commit is still judged
 
     def test_a_merge_run_of_another_matrix_is_not_compared_part_by_part(self):
         self.baseline()
