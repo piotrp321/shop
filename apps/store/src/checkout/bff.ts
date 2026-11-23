@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import type { ApiClient } from "@/api/client";
-import { GUEST_BUYER, isBuyerOf } from "@/auth/buyer";
+import { isBuyerOf } from "@/auth/buyer";
 import { readSignedValue, SESSION_COOKIE } from "@/auth/cookies";
 import { clearSessionCookie, json, logFailure, noStore } from "@/auth/responses";
 import { invalidBody, readJsonObject, refuseForeignWrite } from "@/cart/bff";
@@ -18,6 +18,7 @@ import {
   rateLimited,
   withRetryAfter,
 } from "./api";
+import { GUEST_BUYER } from "./buyer";
 import { forwardingClientIp } from "./client-ip";
 import { setOrderConfirmation } from "./cookies";
 import { listPaymentProviders, startCustomerPayment, startGuestPayment } from "./payment-api";

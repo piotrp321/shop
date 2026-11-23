@@ -1,6 +1,7 @@
 import { createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buyerTag, GUEST_BUYER, isBuyerOf } from "./buyer";
+import { GUEST_BUYER } from "@/checkout/buyer";
+import { buyerTag, isBuyerOf } from "./buyer";
 import { readSignedValue, signValue } from "./cookies";
 
 // The comparison is watched through the real function: it must be the one that decides, for every input.
