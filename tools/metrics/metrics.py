@@ -3837,7 +3837,7 @@ AGENT_META = re.compile(r'^agent-(.+)\.meta\.json$')
 
 HANDBACK = 'SubagentHandback'               # the tool call with which a subagent hands its report back (M4)
 AGENT_CALL = 'Agent'                        # the tool call with which the lead session starts a subagent
-SEND_MESSAGE = 'SendMessage'                # the tool call with which the lead session writes to (or resumes) a subagent
+SEND_MESSAGE = 'SendMessage'                # the tool call with which the lead writes to (or resumes) a subagent
 COORDINATOR = 'coordinator'                 # the `origin.kind` of the line that resumes a subagent in its transcript
 RESUME_WINDOW_S = 60                        # the most a resume of the lead may lie from the line it confirms
 EPIC_MARKER = 'EPIC'                        # `<EPIC>-EPIC`: an order of the review of the whole change (no task)
@@ -4034,8 +4034,8 @@ def order_assignment(order, description, epic_id, agent, gaps):
         kind, ref = order_ref(order['resume']['summary'], epic_id)
         source = 'summary'
         if kind is None:
-            gaps.add('attempts.%s' % agent, 'zlecenie %d: summary wznowienia bez ID zadania ani oznaczenia <EPIK>-EPIC: '
-                                            'zadanie nieustalone (unknown_task)' % order['n'])
+            gaps.add('attempts.%s' % agent, 'zlecenie %d: summary wznowienia bez ID zadania ani oznaczenia '
+                                            '<EPIK>-EPIC: zadanie nieustalone (unknown_task)' % order['n'])
             return {'assignment': 'unknown', 'task': None, 'ref': None, 'task_source': None}
     else:
         gaps.add('attempts.%s' % agent, 'zlecenie %d: wznowienie bez potwierdzenia w sesji prowadzącej: zadanie '
@@ -4260,8 +4260,8 @@ def native_by_task(runs, gaps):
             if attempt['wall_s'] is None:
                 gaps.add('by_task', 'przebieg %s bez czasu wiadomości: pominięty w czasie' % attempt['agent_id'])
             else:
-                gaps.add('by_task', 'zlecenie %d przebiegu %s bez czasu wiadomości: pominięte w czasie (suma to dolna '
-                                    'granica)' % (n, attempt['agent_id']))
+                gaps.add('by_task', 'zlecenie %d przebiegu %s bez czasu wiadomości: pominięte w czasie (suma to '
+                                    'dolna granica)' % (n, attempt['agent_id']))
     return by_task
 
 
@@ -4271,13 +4271,14 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
     bound), every message id once (its first occurrence, also in a resumed or forked session), the lead session as
     `orchestrator` without a task, every subagent run one attempt with its role (agentType), task (D4), model and
     effort, split into its orders (`native_orders`; the time of the run is the sum of their time, `run_time`). The
-    lead transcripts are read before the subagents: their resumes confirm the orders. `marks`: the marks of every transcript (`read_native`, not cut to the interval); `reviews`: the reports
-    of the review roles in the interval (M4); `messages`: {message id: timestamp} of the counted messages; `coverage`:
-    `none` (no transcript of a session of the run file was read), `partial` (only some, or a subagent transcript of a
-    session read is lost: missing, empty or unreadable, also one the lead session started in the interval without
-    any file of it) or `full`; `no_origin`: the lead sessions have user lines but none with an `origin` (a change of
-    the transcript format); `transcripts_read`: the number of transcripts read (sessions and subagents, also those
-    without a line in the interval)."""
+    lead transcripts are read before the subagents: their resumes confirm the orders. `marks`: the marks of every
+    transcript (`read_native`, not cut to the interval); `reviews`: the reports of the review roles in the interval
+    (M4); `messages`: {message id: timestamp} of the counted messages; `coverage`: `none` (no transcript of a session
+    of the run file was read), `partial` (only some, or a subagent transcript of a session read is lost: missing,
+    empty or unreadable, also one the lead session started in the interval without any file of it) or `full`;
+    `no_origin`: the lead sessions have user lines but none with an `origin` (a change of the transcript format);
+    `transcripts_read`: the number of transcripts read (sessions and subagents, also those without a line in the
+    interval)."""
     pricing = config['pricing']
     seen_ids, seen_tools = set(), set()
     attempts, items, datas, marks, reviews, messages = [], [], [], [], [], {}
