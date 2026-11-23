@@ -1355,6 +1355,111 @@ describe("CheckoutPage after a 409 of a changed cart or total (#852)", () => {
     });
   });
 
+  // The message tells the difference at the moment of the refused order; once the customer changes the summary
+  // (a code applied or removed, another delivery method), it would contradict the summary next to it (QA F5).
+  describe("when the customer changes the summary after the message", () => {
+    const failure = () => document.getElementById("checkout-failure");
+    const discounted = (view: CartView, amount: number): CartView => ({
+      ...view,
+      totals: { ...view.totals, discountGross: amount, gross: view.totals.gross - amount },
+      discount: { status: "applied", code: "WITAJ10", amountGross: amount, kind: "percent", value: 10 },
+      delivery: view.delivery && { ...view.delivery, options: view.delivery.options.map((o) => ({ ...o, totalGross: o.totalGross - amount })) },
+    });
+
+    /** A guest's order of `view` refused for a changed total, the cart read as `after`: the message with the changes. */
+    async function changed(view: CartView, after: CartView) {
+      await renderCheckout(view);
+      fillGuestForm();
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: after });
+      await submit(conflict("total_changed"));
+      expect(alert().querySelector("p")?.textContent).toBe(FIRST.total_changed);
+    }
+
+    async function clickApply(code: string, ...reads: Read[]) {
+      for (const read of reads) vi.mocked(loadCart).mockResolvedValueOnce(read);
+      fireEvent.change(codeField(), { target: { value: code } });
+      const apply = screen.getByRole("button", { name: "Zastosuj" });
+      apply.focus();
+      await act(async () => {
+        fireEvent.click(apply);
+      });
+    }
+
+    it("goes away when a code is applied; the focus and the announcement of the code are as always", async () => {
+      await changed(cart(), three());
+      await clickApply("witaj10", { status: "ok", data: discounted(three(), 6000) });
+
+      expect(failure()).toBeNull();
+      expect(screen.getByTestId("checkout-total").textContent).toBe(price(53997));
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Usuń kod" }));
+      expect(screen.getByTestId("checkout-code-status").textContent).toBe("Zastosowano kod WITAJ10.");
+    });
+
+    it("goes away when the code is removed", async () => {
+      await renderCheckout();
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: discounted(cart(), 4000) });
+      fireEvent.change(codeField(), { target: { value: "witaj10" } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+      });
+      fillGuestForm();
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: discounted(three(), 6000) });
+      await submit(conflict("total_changed"));
+      expect(alert().querySelector("p")?.textContent).toBe(FIRST.total_changed);
+
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: three() });
+      const remove = screen.getByRole("button", { name: "Usuń kod" });
+      remove.focus();
+      await act(async () => {
+        fireEvent.click(remove);
+      });
+
+      expect(failure()).toBeNull();
+      expect(screen.getByTestId("checkout-total").textContent).toBe(price(59997));
+      expect(document.activeElement).toBe(codeField());
+      expect(screen.getByTestId("checkout-code-status").textContent).toBe("Usunięto kod rabatowy.");
+    });
+
+    it("goes away when another delivery method is chosen, and the focus stays on it", async () => {
+      await changed(withDeliveries(0, 1999, 39998), withDeliveries(0, 1999, 59997));
+      deliveryRadio("Kurier ekspresowy").focus();
+      fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+
+      expect(failure()).toBeNull();
+      expect(screen.getByTestId("checkout-total").textContent).toBe(price(61996));
+      expect(document.activeElement).toBe(deliveryRadio("Kurier ekspresowy"));
+    });
+
+    it.each<[string, () => Promise<void> | void]>([
+      ["a field is edited", () => type("Telefon", "600 100 201")],
+      ["a payment provider is chosen", () => choose("Karta płatnicza (demo)")],
+      [
+        "a code is rejected by the summary",
+        () => clickApply("lato15", { status: "ok", data: { ...three(), discount: { status: "rejected", code: "LATO15", reason: "invalid", detail: "Ten kod nie istnieje." } } }),
+      ],
+      ["a code is refused with a 400", () => clickApply("x".repeat(10), { status: "invalid", detail: "Kod rabatowy może mieć najwyżej 64 znaki." }, { status: "ok", data: three() })],
+      ["a code cannot be checked", () => clickApply("witaj10", { status: "failed" })],
+    ])("stays when %s", async (_name, action) => {
+      await changed(cart(), three());
+      const text = alert().textContent;
+      await act(async () => {
+        await action();
+      });
+
+      expect(alert().textContent).toBe(text);
+    });
+
+    it("leaves a message of another kind when a code is applied", async () => {
+      await renderCheckout();
+      fillGuestForm();
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+      await submit({ status: "conflict", reason: "insufficient_stock", detail: "Brak wystarczającej liczby sztuk." });
+      await clickApply("witaj10", { status: "ok", data: discounted(cart(), 4000) });
+
+      expect(alert().textContent).toContain("Brak wystarczającej liczby sztuk.");
+    });
+  });
+
   it("announces the delivery of the method chosen while a code was checked, not of the one chosen before", async () => {
     // Standard is free and express paid; with the code the goods are below the threshold: standard is paid, express free.
     await renderCheckout(withDeliveries(0, 1999, 39998));
