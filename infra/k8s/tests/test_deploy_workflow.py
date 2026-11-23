@@ -75,7 +75,7 @@ class Triggers(unittest.TestCase):
 
     def test_the_conditions_hold_only_for_a_dispatch_on_main(self):
         for event, ref, expected in EVENTS:
-            for expression in (jobs["images"]["if"], jobs["deploy"]["if"], workflow["env"]["DEPLOY"]):
+            for expression in (jobs["images"]["if"], jobs["k8s-check"]["if"], jobs["deploy"]["if"], workflow["env"]["DEPLOY"]):
                 self.assertIs(expected, evaluate(expression, event, ref), f"{event} on {ref}: {expression}")
 
     def test_a_dispatch_on_another_branch_is_a_smoke_rehearsal_only(self):
@@ -275,7 +275,7 @@ class SmokeValues(unittest.TestCase):
 
 class Deploy(unittest.TestCase):
     def test_it_needs_a_green_smoke_test_and_the_images(self):
-        self.assertEqual(["images", "smoke"], jobs["deploy"]["needs"])
+        self.assertEqual(["images", "smoke", "k8s-check"], jobs["deploy"]["needs"])
         self.assertNotIn("continue-on-error", jobs["smoke"])
         self.assertNotIn("continue-on-error", jobs["deploy"])
 
@@ -351,6 +351,33 @@ class Retention(unittest.TestCase):
             "curl --method DELETE https://api.github.com/orgs/x/packages/container/shop%2Fapi/versions/2",
         ):
             self.assertTrue(any(re.search(p, example, re.I) for p in self.FORBIDDEN), example)
+
+
+class K8sCheck(unittest.TestCase):
+    """CI runs `make -C infra/k8s check` only for a change under infra/k8s/** (.github/scripts/scope.sh --k8s), so a change
+    elsewhere that the chart must mirror (compose, Keycloak realms) is caught only by this job: every deployment runs it and
+    nothing is published unless it passes."""
+
+    def test_deploy_waits_for_the_check(self):
+        self.assertIn("k8s-check", jobs["deploy"]["needs"])
+        # Without a status function in its condition `deploy` runs only when every job it needs succeeded: a failed,
+        # cancelled or skipped check publishes nothing.
+        self.assertNotRegex(jobs["deploy"]["if"], r"always\(|failure\(|cancelled\(|success\(|result")
+        self.assertNotIn("continue-on-error", jobs["k8s-check"])
+
+    def test_it_runs_the_check_on_every_deployment(self):
+        self.assertEqual(ON_MAIN, jobs["k8s-check"]["if"])
+        check = [s for s in steps("k8s-check") if s.get("run") == "make -C infra/k8s check"]
+        self.assertEqual(1, len(check))
+        self.assertNotIn("if", check[0])
+        self.assertNotIn("continue-on-error", check[0])
+
+    def test_it_runs_beside_the_images_and_the_smoke_test_with_read_access_only(self):
+        self.assertNotIn("needs", jobs["k8s-check"])
+        self.assertEqual({"contents": "read"}, jobs["k8s-check"]["permissions"])
+        self.assertNotIn("environment", jobs["k8s-check"])
+        checkout = next(s for s in steps("k8s-check") if uses(s, "actions/checkout"))
+        self.assertIs(False, checkout["with"]["persist-credentials"])
 
 
 class Shell(unittest.TestCase):
