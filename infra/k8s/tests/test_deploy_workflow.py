@@ -354,9 +354,9 @@ class Retention(unittest.TestCase):
 
 
 class K8sCheck(unittest.TestCase):
-    """CI runs `make -C infra/k8s check` only for a change under infra/k8s/** (.github/scripts/scope.sh --k8s), so a change
-    elsewhere that the chart must mirror (compose, Keycloak realms) is caught only by this job: every deployment runs it and
-    nothing is published unless it passes."""
+    """CI runs `make -C infra/k8s check` only for a change under infra/k8s/** or .github/workflows/**
+    (.github/scripts/scope.sh --k8s), so a change elsewhere that the chart must mirror (compose, Keycloak realms) is caught
+    only by this job: every deployment runs it and nothing is published unless it passes."""
 
     def test_deploy_waits_for_the_check(self):
         self.assertIn("k8s-check", jobs["deploy"]["needs"])

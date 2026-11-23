@@ -168,8 +168,8 @@ if [ "$actual" = full ]; then echo "ok   missing arguments"; else
     failures=$((failures + 1))
 fi
 
-# The second question, `scope.sh --k8s`: does the change touch infra/k8s at all? In the full CI it decides whether the
-# part `k8s` (`make -C infra/k8s check`) has work; an error answers yes.
+# The second question, `scope.sh --k8s`: does the change touch infra/k8s or the workflows at all? In the full CI it
+# decides whether the part `k8s` (`make -C infra/k8s check`) has work; an error answers yes.
 # expect_k8s <name> <expected> [base]
 expect_k8s() {
     actual="$(cd "$repo" && sh "$script" --k8s "${3:-$base}" "$head" 2>"$tmp/stderr")"
