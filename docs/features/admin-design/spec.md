@@ -484,7 +484,7 @@ o stanie systemu. Ten ekran jest dla administratorów.”.
   „Zdjęcia”, „Warianty”. Kolumna boczna: „Status” (etykieta, „Opublikuj” albo „Wycofaj z publikacji”, wyłączone przy
   niezapisanych zmianach z widocznym powodem „Najpierw zapisz zmiany.”; karta tylko dla zapisanego produktu),
   „Organizacja” (kategoria główna i dodatkowe).
-  Na czas zapisu, publikacji, wycofania i odczytu stanu z serwera („Odrzuć moje zmiany i pokaż stan z serwera”) pola,
+  Na czas zapisu, publikacji, wycofania i odczytu stanu z serwera („Sprawdź stan”, „Odrzuć moje zmiany i pokaż stan z serwera”, „Spróbuj ponownie”) pola,
   wybór kategorii, edytor wariantów i zdjęcia (opis, kolejność, usuwanie, dodawanie plików) są wyłączone; karta „Ceny
   i stany” nie, bo ma własne żądania i nie należy do szkicu. Szkic zmienia tylko pracownik: 409 wersji zostawia go
   i nie czyta produktu sam, brak odpowiedzi przez 10 s, błąd sieci i 5xx to nieznany wynik zapisu (`FormSafetyNotices`).

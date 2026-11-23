@@ -303,13 +303,17 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
   zmiany” z „Zostań” (domyślny fokus, także `Escape`) i „Opuść bez zapisu”, a zamknięcie karty ostrzega przeglądarka
   (nie przy wylogowaniu).
 - Błędy: 422 przy polach (`violations[].propertyPath`), 422 bez `violations` jako komunikat formularza;
-  409 po `type`: `product-modified` „Produkt został w międzyczasie zmieniony – odśwież” z przyciskiem odświeżenia
-  (odrzuca zmiany formularza), `slug-taken` przy polu slug („Ten slug ma już inny produkt. Podaj własny slug.”, także gdy slug wyliczyło API
+  409 po `type`: `product-modified` „Produkt został w międzyczasie zmieniony. Twoje zmiany zostają w formularzu.” bez
+  automatycznego odczytu, z przyciskiem „Odrzuć moje zmiany i pokaż stan z serwera” (szkic zastępuje dopiero odpowiedź
+  200 odczytu), `slug-taken` przy polu slug („Ten slug ma już inny produkt. Podaj własny slug.”, także gdy slug wyliczyło API
   z nazwy; bez automatycznego sufiksu), `slug-locked` przy polu slug,
   `product-not-publishable` „Dodaj co najmniej jedno zdjęcie przed publikacją.” (przy zapisie: „Opublikowany produkt
   musi mieć co najmniej jedno zdjęcie.”), `variant-locked` i `variant-in-use` z `detail` API przy sekcji
-  „Warianty”; 403 i inne błędy jako komunikat
-  bez utraty danych formularza.
+  „Warianty”; 403 i inne błędy 4xx jako komunikat
+  bez utraty danych formularza. Brak odpowiedzi przez 10 s, błąd sieci i 5xx zapisu, publikacji albo wycofania to
+  nieznany wynik (`docs/features/admin-ux-fixes/spec.md`, „B4: nieznany wynik zapisu”): szkic zostaje, pracownik
+  sprawdza stan („Sprawdź stan”) albo odrzuca zmiany. Na czas tych żądań i odczytu stanu z serwera pola, kategorie,
+  warianty i zdjęcia są zablokowane (karta „Ceny i stany” nie).
 - Panel niczego nie liczy: slug wylicza API, stan `slugLocked` i status pochodzą z odpowiedzi.
 
 ## Dane demo
@@ -323,7 +327,7 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 
 | Sytuacja | Zachowanie |
 |---|---|
-| Równoległa edycja (nieaktualna wersja) | 409 `product-modified`, komunikat z odświeżeniem |
+| Równoległa edycja (nieaktualna wersja) | 409 `product-modified`, komunikat bez odczytu; szkic zostaje, stan z serwera po „Odrzuć moje zmiany i pokaż stan z serwera” |
 | Slug zajęty przez inny produkt | 409 `slug-taken` przy polu slug |
 | Zmiana sluga po pierwszej publikacji | 409 `slug-locked` (panel i tak blokuje pole) |
 | Publikacja szkicu bez zdjęć albo usunięcie ostatniego zdjęcia opublikowanego produktu | 409 `product-not-publishable` |
@@ -331,7 +335,7 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 | Usunięcie wariantu ze stanem albo rezerwacją | 409 `variant-in-use` („Wariant ma stan magazynowy albo rezerwacje. Najpierw skoryguj stan do zera.”) |
 | Plik za duży, zły typ, za duża rozdzielczość, nieczytelny | 422 przy pliku, pozostałe pliki wysyłane dalej |
 | Klucz zdjęcia bez oryginału w Garage | 422 przy zdjęciu |
-| Garage niedostępny przy uploadzie albo zapisie produktu | 503 ogólny komunikat, plik albo zapis można ponowić |
+| Garage niedostępny przy uploadzie albo zapisie produktu | upload: 503 ogólny komunikat, plik można ponowić; zapis produktu: nieznany wynik (szkic zostaje, „Sprawdź stan”) |
 | Pracownik bez roli | 403; panel ukrywa akcje |
 | Unieważnienie sklepu nie powiodło się | ponowienia transportu `events`, potem `failed`; sklep pokazuje stary stan do `s-maxage`/`revalidate` (1 h) |
 | Reindeksacja nie powiodła się | ponowienia, potem `failed`; listy pokazują stary stan do kolejnej reindeksacji |

@@ -376,7 +376,7 @@ implementacji etapu 2 sekcje etapu 1 opisują stan obecny; zadania etapu 2 zmien
 dokumentacji”). Twierdzenia o kodzie dotyczą `origin/main` z 2026-11-23 (`00f1fe6f`).
 
 Issues: #837, #866 (w całości).
-Zakres: `apps/admin/src/composables`, `apps/admin/src/components/FormSafetyNotices.vue`, `apps/admin/src/promotions`, `apps/admin/src/discount-codes`, `apps/admin/src/products`, `apps/admin/src/delivery`, `apps/admin/src/views/PromotionFormView.vue`, `apps/admin/src/views/DiscountCodeFormView.vue`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/src/views/DeliveryMethodFormView.vue`, `apps/admin/tests`, `apps/admin/CLAUDE.md`, `e2e/tests/admin-screens-discount-codes.spec.ts`, `e2e/tests/catalog-admin.spec.ts`, `docs/features/admin-ux-fixes`, `docs/features/admin-design/spec.md`, `docs/features/promotions/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/delivery/spec.md`
+Zakres: `apps/admin/src/composables`, `apps/admin/src/components/FormSafetyNotices.vue`, `apps/admin/src/promotions`, `apps/admin/src/discount-codes`, `apps/admin/src/products`, `apps/admin/src/delivery`, `apps/admin/src/views/PromotionFormView.vue`, `apps/admin/src/views/DiscountCodeFormView.vue`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/src/views/DeliveryMethodFormView.vue`, `apps/admin/tests`, `apps/admin/CLAUDE.md`, `e2e/tests/admin-screens-discount-codes.spec.ts`, `e2e/tests/catalog-admin.spec.ts`, `docs/features/admin-ux-fixes`, `docs/features/admin-design/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/promotions/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/delivery/spec.md`
 
 Etap nie zmienia API, `apps/api/openapi*.json` ani `apps/admin/src/api/schema.d.ts`.
 
@@ -438,16 +438,18 @@ Właściciel zaakceptował 2026-11-23:
 
 ## B2: produkt (#837)
 
-- Na czas zapisu, publikacji, wycofania i „Odśwież” wyłączone są pola, wybór kategorii, edytor wariantów i zdjęcia
-  (opis, kolejność, usuwanie, dodawanie plików); „Zapisz”, „Opublikuj” i „Wycofaj” są nieaktywne także w trakcie
-  „Odśwież”.
+- Na czas zapisu, publikacji, wycofania i odczytu stanu z serwera (B3) wyłączone są pola, wybór kategorii, edytor
+  wariantów i zdjęcia (opis, kolejność, usuwanie, dodawanie plików); „Zapisz”, „Opublikuj” i „Wycofaj” są nieaktywne
+  także w trakcie odczytu. Stan z serwera pokazuje w produkcie przycisk „Odrzuć moje zmiany i pokaż stan z serwera”
+  (po 409 `product-modified`, B4); osobnego „Odśwież” produkt nie ma.
 - Karta „Ceny i stany” nie jest blokowana: ma własne żądania i nie należy do szkicu.
 - Odpowiedź zapisu po przejściu do innego produktu jest pomijana.
 
 ## B3: odczyty „Odśwież” (#866)
 
 - Dotyczy każdego odczytu wywołanego przez pracownika, który zastępuje formularz: „Odśwież” promocji (po nieudanym
-  odczycie początku albo końca), „Odśwież” produktu i odczyty B4.
+  odczycie początku albo końca) i odczyty B4 („Sprawdź stan”, „Odrzuć moje zmiany i pokaż stan z serwera”, także
+  w produkcie).
 - W trakcie odczytu region `role="status"` formularza pokazuje „Odświeżamy…”.
 - Po 10 s bez odpowiedzi: blokada znika, a komunikat błędu (`role="alert"`) „Nie udało się odczytać stanu. Spróbuj
   ponownie.” ma przycisk ponowienia. Formularz zostaje taki, jaki był przed odczytem. To samo po błędzie sieci
@@ -534,7 +536,7 @@ Testy Vitest używają wstrzymanych obietnic mocka i fałszywego zegara. „Każ
 promocja i metoda dostawy.
 
 1. **B1, B2.** Dla każdego żądania, które może zastąpić formularz (zapis; w produkcie także publikacja, wycofanie
-   i „Odśwież”): przy wstrzymanej odpowiedzi pola i kontrolki są wyłączone, wpisywanie niczego nie zmienia, drugie
+   i odczyt stanu z serwera): przy wstrzymanej odpowiedzi pola i kontrolki są wyłączone, wpisywanie niczego nie zmienia, drugie
    „Zapisz” nie wysyła żądania; po 422 pola mają wysłane wartości i są odblokowane. Nie przechodzi przed zmianą dla
    kodu i produktu.
 2. **B3.** Odczyt bez odpowiedzi: po 10 s blokada znika i widać komunikat z ponowieniem; odpowiedź zwolniona potem,
@@ -564,7 +566,7 @@ promocja i metoda dostawy.
    i pokazuje toast; 409 unikalności po nieznanym wyniku ma dopisane zdanie.
 4. **E2E** (`admin-screens-discount-codes.spec.ts`, `catalog-admin.spec.ts`; `page.route`, odpowiedzi zapisu
    podstawiane albo na obiekcie testu): (a) kod rabatowy i (b) produkt: odpowiedź zapisu wstrzymana o 3 s, w tym czasie
-   pole jest wyłączone, po odpowiedzi toast; (c) produkt: wstrzymane „Odśwież” po 409 blokuje pola; (d) kod rabatowy:
+   pole jest wyłączone, po odpowiedzi toast; (c) produkt: wstrzymany odczyt „Odrzuć moje zmiany i pokaż stan z serwera” po 409 blokuje pola; (d) kod rabatowy:
    zapis bez odpowiedzi daje po 10 s komunikat, „Sprawdź stan” odblokowuje pola ze szkicem, po zmianie pola zapis
    z odpowiedzią 409 zostawia zmianę w polu. Testy (a)–(d) nie przechodzą przed zmianą.
 5. Każde zadanie pokazuje komendy i wyniki RED i GREEN. Przechodzą `make -C apps/admin check`,
