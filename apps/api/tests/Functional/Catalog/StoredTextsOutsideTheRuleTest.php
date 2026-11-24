@@ -58,14 +58,14 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
         self::assertSame($expected['name'], $view['name']);
         self::assertSame($expected['axes'], $view['variantAxes']);
-        self::assertSame($expected['values'], array_merge(...array_column(self::list($view['variants']), 'values')));
+        self::assertSame($expected['values'], self::values($view['variants']));
         self::assertSame([$expected['alt']], array_column(self::list($view['images']), 'alt'));
 
         $page = $this->api('GET', '/api/v1/products/buty-biegowe', token: null);
         self::assertResponseStatusCodeSame(200);
         self::assertSame($expected['name'], $page['name']);
         self::assertSame($expected['axes'], $page['variantAxes']);
-        self::assertSame($expected['values'], array_merge(...array_column(self::list($page['variants']), 'values')));
+        self::assertSame($expected['values'], self::values($page['variants']));
         self::assertSame([$expected['alt']], array_column(self::list($page['images']), 'alt'));
 
         $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view));
@@ -151,6 +151,22 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
             'value' => 'value' === $field ? $text : 'M',
             'alt' => 'alt' === $field ? $text : 'Buty z boku',
         ];
+    }
+
+    /**
+     * @return list<mixed> the values of all variants, in their order
+     */
+    private static function values(mixed $variants): array
+    {
+        $values = [];
+        foreach (self::list($variants) as $variant) {
+            self::assertIsArray($variant['values'] ?? null);
+            foreach ($variant['values'] as $value) {
+                $values[] = $value;
+            }
+        }
+
+        return $values;
     }
 
     /**

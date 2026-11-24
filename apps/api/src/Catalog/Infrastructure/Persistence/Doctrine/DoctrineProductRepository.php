@@ -238,14 +238,14 @@ final readonly class DoctrineProductRepository implements ProductRepository
 
         $images = [];
         foreach ($record->images as $position => $image) {
-            $images[] = ProductImage::of(ImageKey::fromString($image['key']), $image['alt'], $position);
+            $images[] = ProductImage::reconstitute(ImageKey::fromString($image['key']), $image['alt'], $position);
         }
 
         return Product::reconstitute(
             ProductId::fromString($record->id),
-            ProductName::of($record->name),
+            ProductName::reconstitute($record->name),
             new Slug($record->slug),
-            ShortDescription::of($record->shortDescription),
+            ShortDescription::reconstitute($record->shortDescription),
             ProductCategories::create(
                 CategoryId::fromString($record->primaryCategory->id),
                 array_map(CategoryId::fromString(...), $additionalIds),
@@ -253,11 +253,11 @@ final readonly class DoctrineProductRepository implements ProductRepository
             TaxClassCode::from($record->taxClass),
             ProductImages::fromList($images),
             ProductVariants::create(
-                VariantAxes::fromList($record->variantAxes),
+                VariantAxes::reconstitute($record->variantAxes),
                 array_values($record->variants->map(
                     static fn (ProductVariantRecord $variant): ProductVariant => new ProductVariant(
                         VariantId::fromString($variant->id),
-                        VariantValues::fromList($variant->optionValues),
+                        VariantValues::reconstitute($variant->optionValues),
                     ),
                 )->toArray()),
             ),

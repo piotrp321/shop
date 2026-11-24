@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Catalog\Domain\Category;
 
-use App\Catalog\Domain\Product\ProductText;
+use App\Shared\Domain\Text;
 
 /**
- * 1 to 100 characters once trimmed of Unicode whitespace (also NBSP), without control characters (the rules of the
- * texts of a product, {@see ProductText}).
+ * The name of a category: a text by the rule of texts (Text: no control characters, trimmed ends, at least one visible
+ * character), 1 to 100 characters once trimmed.
  */
 final readonly class CategoryName
 {
@@ -23,10 +23,10 @@ final readonly class CategoryName
      */
     public static function of(string $value): self
     {
-        if (ProductText::hasForbiddenCharacters($value)) {
+        if (Text::hasForbiddenCharacters($value)) {
             throw new \InvalidArgumentException('CategoryName must not contain forbidden characters.');
         }
-        $value = ProductText::trim($value);
+        $value = Text::normalize($value);
         if ('' === $value) {
             throw new \InvalidArgumentException('CategoryName must not be empty.');
         }
@@ -34,6 +34,14 @@ final readonly class CategoryName
             throw new \InvalidArgumentException('CategoryName must have at most '.self::MAX_LENGTH.' characters.');
         }
 
+        return new self($value);
+    }
+
+    /**
+     * A name as stored, without the rule (spec api-input-contract, E7); only a write goes through of().
+     */
+    public static function reconstitute(string $value): self
+    {
         return new self($value);
     }
 

@@ -62,7 +62,7 @@ final readonly class GetVariantSummariesHandler
                 $key,
                 $row['productId'],
                 $row['name'],
-                new ProductVariant($ids[$key], VariantValues::fromList($row['values']))->label(),
+                new ProductVariant($ids[$key], VariantValues::reconstitute($row['values']))->label(),
                 null === $image ? null : ListingImage::view($this->imageUrls, $image['key'], $image['alt']),
             );
         }

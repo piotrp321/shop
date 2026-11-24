@@ -1104,7 +1104,7 @@ export interface components {
         /** @description A new category, placed at the end of its siblings. */
         CreateCategoryRequest: {
             /**
-             * @description 1 to 100 characters once trimmed of whitespace, without control characters.
+             * @description 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.
              * @example Namioty
              */
             name: string;
@@ -1140,7 +1140,7 @@ export interface components {
         /** @description The name and the slug of a category. A new slug changes the address of the category and its descendants; the old addresses redirect to the new ones. */
         ReviseCategoryRequest: {
             /**
-             * @description 1 to 100 characters once trimmed of whitespace, without control characters.
+             * @description 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.
              * @example Namioty
              */
             name: string;
@@ -3349,7 +3349,7 @@ export interface operations {
     listBackofficeProducts: {
         parameters: {
             query?: {
-                /** @description A part of the product name, 2 to 100 characters. */
+                /** @description A part of the product name, 2 to 100 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators. */
                 q?: string;
                 /** @description Category id (UUID). */
                 category?: string;

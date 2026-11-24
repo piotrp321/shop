@@ -51,7 +51,7 @@ final readonly class GetProductBySlugHandler
             $row['axes'],
             array_map(static function (array $variant): ProductDetailsVariant {
                 $id = VariantId::fromString($variant['id']);
-                $values = VariantValues::fromList($variant['values']);
+                $values = VariantValues::reconstitute($variant['values']);
 
                 return new ProductDetailsVariant($id->toString(), new ProductVariant($id, $values)->label(), $variant['values']);
             }, $row['variants']),

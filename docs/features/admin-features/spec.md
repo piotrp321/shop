@@ -280,8 +280,9 @@ Parametr `sort=<klucz>` z zamkniętą listą na endpoint; każdy klucz ma indeks
 
 ### Reguły
 
-- Kategoria: nazwa (1–100 znaków), slug (unikalny wśród rodzeństwa), rodzic albo korzeń, **pozycja** wśród rodzeństwa
-  (kolumna `position`, wartość domyślna 0) i `version` (domyślnie 1).
+- Kategoria: nazwa (1–100 znaków po przycięciu, według reguły tekstów z `docs/features/api-input-contract/spec.md`),
+  slug (unikalny wśród rodzeństwa), rodzic albo korzeń, **pozycja** wśród rodzeństwa (kolumna `position`, wartość
+  domyślna 0) i `version` (domyślnie 1).
 - Kolejność rodzeństwa (drzewo publiczne i panelu, `CategoryTreeBuilder`) to `position`, potem nazwa w `pl_PL`
   (`Collator`), potem `id`. Dopóki pracownik nie zmieni kolejności, wszystkie pozycje są 0, więc kolejność jest
   alfabetyczna, także po `make seed` (`DemoCatalogLoader` nie ustawia pozycji).
