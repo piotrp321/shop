@@ -223,15 +223,15 @@ export function useDeliveryMethodForm(options: DeliveryMethodFormOptions) {
     (id) => open(id),
   );
 
-  /** Throws away the unsaved changes: the form goes back to the method as the API last sent it, without a request. */
-  function discard(): void {
+  /** Throws away the unsaved changes (true when a message about the server took the focus): the form goes back to the method as the API last sent it, without a request. */
+  function discard(): boolean {
     const current = view.value;
     if (current === null || busy.value || locked.value) {
-      return;
+      return false;
     }
     form.value = fromView(current);
     clearFeedback();
-    safety.draftDiscarded();
+    return safety.draftDiscarded();
   }
 
   /** An amount typed in złoty as grosze, or null (with the error at the field). */

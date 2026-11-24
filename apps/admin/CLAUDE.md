@@ -34,7 +34,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `docs/features/dashboard-data-freshness/spec.md`.
 - `src/composables/` – współdzielona logika reaktywna. `useNameSearch({ initial, apply })`: jedyne miejsce reguł
   wyszukiwania po nazwie listy produktów, listy cen, listy stanów i wyboru wariantów promocji. Reguły są testowane raz,
-  w `tests/useNameSearch.test.ts`. Pozostałe composables (`useCursorPager`, `useListUrlState`, `useUnsavedChangesGuard`,
+  w `tests/useNameSearch.test.ts`. `useFormSafety` i `formRequests`: wspólna ochrona szkicu formularza przed jego własnymi żądaniami (patrz „Wygląd”).
+  Pozostałe composables (`useCursorPager`, `useListUrlState`, `useUnsavedChangesGuard`,
   `usePagerFocus`) opisują komentarze w ich plikach i `docs/features/admin-design/spec.md`.
 - `src/categories/` – ekran „Kategorie” (`/categories`, `CategoriesView`, menu Sklep › Katalog › Kategorie; docs/features/admin-features/spec.md,
   „Kategorie”). Panel nie liczy reguł drzewa (głębokość, cykl, pustość, unikalność sluga to API); wyłącza tylko to, co oczywiście niemożliwe: własne
@@ -201,7 +202,7 @@ Spec: `docs/features/sentry/spec.md`.
   `aria-invalid`. Akcje nieodwracalne pytają `ConfirmDialog`. W trakcie każdego żądania, którego odpowiedź
   zastępuje pola formularza albo jego stan bazowy (zapis, „Odśwież”, ponowny odczyt po zapisie), pola formularza są
   zablokowane, nie tylko przyciski paska zapisu (wzór zapisu i odczytu: `safety.locked` z `useFormSafety` w
-  `usePromotionForm`); sprawdza to test Vitest z niezałatwioną obietnicą mocka każdego takiego żądania.
+  `usePromotionForm`); sprawdza to test Vitest z niezałatwioną obietnicą mocka każdego takiego żądania. „Zapisz” paska zapisu jest wtedy nieaktywny przez `aria-disabled`, nie `disabled` (jak przycisk `ConfirmDialog`): przycisk, który pracownik nacisnął, zachowuje fokus do odpowiedzi.
 - Szkic formularza zmienia tylko pracownik: odczyt, 409 ani spóźniona odpowiedź go nie zastępują (wyjątki: potwierdzony
   sukces zapisu, zgodność przy „Sprawdź stan”, udany odczyt po „Odrzuć moje zmiany i pokaż stan z serwera”). Brak
   odpowiedzi przez 10 s, błąd sieci i każde 5xx to „nieznany wynik” zapisu, nigdy komunikat, że zapis się nie powiódł;

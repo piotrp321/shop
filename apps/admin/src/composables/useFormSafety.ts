@@ -1,4 +1,4 @@
-import { type Ref, computed, ref, shallowRef } from "vue";
+import { type Ref, computed, ref, shallowRef, watch } from "vue";
 import {
   CHECK_LIST_MESSAGE,
   LATE_SAVE_MESSAGE,
@@ -34,8 +34,11 @@ export interface FormSafetyOptions<TView extends { version: number }, TBody> {
   adopt: (view: TView) => void;
   /** Tells the staff member that an earlier save was done after all (a toast); gets `LATE_SAVE_MESSAGE`. */
   onLateSuccess: (message: string) => void;
-  /** The names of the fields that hold moments and of the ones the server fills in, for the comparison of requests. */
-  compare?: RequestComparison;
+  /**
+   * The names of the fields that hold moments and of the ones the server fills in, for the comparison of requests; a
+   * function when it depends on the base of the draft, read when the comparison is made.
+   */
+  compare?: RequestComparison | (() => RequestComparison);
   /** The texts for a new object: „Nie wiemy, czy <obiekt> został utworzony.” and „Możliwe, że utworzył go Twój wcześniejszy zapis.”. */
   newObject: { unknownMessage: string; ownNote: string };
 }
@@ -111,6 +114,8 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   const reading = ref(false);
   const readFailed = ref(false);
   const matched = ref(false);
+  // The draft „Sprawdź stan” found equal to the server: the message is true only for it.
+  let matchedDraft: string | null = null;
   const restoreOffered = ref(false);
   // What the 409 that offered the server state says about it; shown once the draft is discarded and the 409's own message goes.
   let restoreContext: string | null = null;
@@ -127,6 +132,16 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   let readTimer: ReturnType<typeof setTimeout> | undefined;
   // What „Spróbuj ponownie” repeats; true when it brought the object and replaced the draft.
   let retry: (() => Promise<boolean>) | null = null;
+
+  // A change of the draft the staff member makes after a match ends the message: the form no longer is what the server has.
+  watch(
+    () => (matched.value ? JSON.stringify(options.draftRequest()) : null),
+    (draft) => {
+      if (draft !== null && draft !== matchedDraft) {
+        matched.value = false;
+      }
+    },
+  );
 
   const writing = computed(() => active.value !== null);
   const locked = computed(() => writing.value || reading.value);
@@ -206,16 +221,22 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
    * an unknown result (without the promise that the changes stay; „Sprawdź stan” then compares the restored base), what
    * „Sprawdź stan” found and the way to the server state. After a 409 only the way stays, with the context the 409 gave
    * (`restoreNote`), because its own message goes with the draft; nothing is unknown then. Nothing about the requests in flight changes: a late answer is still only a toast.
+   * Returns whether a message about the server took the focus (`FormSafetyNotices`); when it did not, the form puts the focus
+   * where its standard says (the H1: the save bar went away with „Odrzuć”).
    */
-  function draftDiscarded(): void {
+  function draftDiscarded(): boolean {
     const current = unknownState.value;
     if (current !== null) {
       unknownState.value = { ...current, discarded: true };
       announce("unknown");
-    } else if (restoreOffered.value) {
+      return true;
+    }
+    if (restoreOffered.value) {
       restoreNote.value = restoreContext;
       announce("restoreNote");
+      return true;
     }
+    return false;
   }
 
   /** The form is left. */
@@ -363,10 +384,11 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
       const draft = options.draftRequest();
       const served = options.servedRequest(view);
       const confirmed = current.confirmedBy?.(view) ?? true;
-      if (draft !== null && served !== null && confirmed && sameRequest(draft, served, options.compare)) {
+      if (draft !== null && served !== null && confirmed && sameRequest(draft, served, typeof options.compare === "function" ? options.compare() : options.compare)) {
         options.adopt(view);
         clearNotices();
         matched.value = true;
+        matchedDraft = JSON.stringify(options.draftRequest());
         announce("matched");
       } else if (view.version === options.version()) {
         unknownState.value = { ...current, pending: false, kind: "missing" };

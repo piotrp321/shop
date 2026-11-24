@@ -1,3 +1,4 @@
+import { nextTick, reactive } from "vue";
 import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LATE_SAVE_MESSAGE,
@@ -120,6 +121,13 @@ describe("sameRequest", () => {
     expect(sameRequest({ rows: [{ variantId: "v-9", values: ["S"] }] }, { rows: [{ variantId: null, values: ["S"] }] }, options)).toBe(false);
     expect(sameRequest({ name: null }, { name: "x" }, options)).toBe(false);
   });
+
+  it("takes a null in the draft for a value the server assigned only when the base did not have that value", () => {
+    const options = { serverAssigned: ["variantId"], knownServerValues: ["v-1", "v-2"] };
+    expect(sameRequest({ rows: [{ variantId: null, values: ["S"] }] }, { rows: [{ variantId: "v-3", values: ["S"] }] }, options)).toBe(true);
+    expect(sameRequest({ rows: [{ variantId: null, values: ["S"] }] }, { rows: [{ variantId: "v-2", values: ["S"] }] }, options)).toBe(false);
+    expect(sameRequest({ rows: [{ variantId: "v-1", values: ["S"] }] }, { rows: [{ variantId: "v-1", values: ["S"] }] }, options)).toBe(true);
+  });
 });
 
 describe("useFormSafety", () => {
@@ -150,7 +158,7 @@ describe("useFormSafety", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    state = { id: "d1", version: 4, draft: { name: "Pierwsza" } };
+    state = reactive({ id: "d1", version: 4, draft: { name: "Pierwsza" } });
     adopted = [];
     late = [];
     read = vi.fn();
@@ -545,6 +553,33 @@ describe("useFormSafety", () => {
       expect(safety.locked.value).toBe(false);
     });
 
+    it("stops saying that the server matches the form as soon as the staff member changes the draft", async () => {
+      const safety = create();
+      await unknownResult(safety);
+      read.mockResolvedValue({ data: doc("Pierwsza", 5) });
+      await safety.check();
+      expect(safety.status.value).toBe(MATCHES_MESSAGE);
+
+      await nextTick();
+      expect(safety.status.value).toBe(MATCHES_MESSAGE);
+      state.draft = { name: "Druga" };
+      await nextTick();
+
+      expect(safety.status.value).toBe("");
+    });
+
+    it("keeps the message of a match while the draft is the one it was said for", async () => {
+      const safety = create();
+      await unknownResult(safety);
+      read.mockResolvedValue({ data: doc("Pierwsza", 5) });
+      await safety.check();
+
+      state.draft = { name: "Pierwsza" };
+      await nextTick();
+
+      expect(safety.status.value).toBe(MATCHES_MESSAGE);
+    });
+
     it("leaves the draft, the base and the version when the server has the same version and other values", async () => {
       const safety = create();
       await unknownResult(safety);
@@ -900,6 +935,19 @@ describe("useFormSafety", () => {
       expect(safety.unknown.value).toBeNull();
       expect(safety.restoreNote.value).toBeNull();
       expect(safety.restoreOffered.value).toBe(false);
+    });
+
+    it("says whether a message about the server took the focus: after an unknown result and after a 409, not otherwise", async () => {
+      const plain = create();
+      expect(plain.draftDiscarded()).toBe(false);
+
+      const unknown = create();
+      await unknownResult(unknown);
+      expect(unknown.draftDiscarded()).toBe(true);
+
+      const conflict = create();
+      conflict.offerRestore("Rozpoczętej promocji nie można zmienić.");
+      expect(conflict.draftDiscarded()).toBe(true);
     });
 
     it("keeps a late success a toast that changes nothing", async () => {

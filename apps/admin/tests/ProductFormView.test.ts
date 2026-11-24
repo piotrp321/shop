@@ -375,7 +375,7 @@ describe("ProductFormView", () => {
       await mounted.wrapper.get("[data-testid=save]").trigger("click");
       await flushPromises();
 
-      expect(mounted.wrapper.get("[data-testid=save]").attributes("disabled")).toBeDefined();
+      expect(mounted.wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBe("true");
       expect(mounted.wrapper.get("[data-testid=publish]").attributes("disabled")).toBeDefined();
       finish({ data: view({ version: 4 }), response: { status: 200 } });
       await flushPromises();
@@ -1079,7 +1079,7 @@ describe("ProductFormView", () => {
       await wrapper.findAll("[data-testid=variant-value]")[0]!.setValue("Czarne");
       await wrapper.get("[data-testid=add-variant]").trigger("click");
       await wrapper.findAll("[data-testid=variant-value]")[2]!.setValue("zielone");
-      expect(wrapper.get("[data-testid=save]").attributes("disabled")).toBeUndefined();
+      expect(wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBeUndefined();
       await wrapper.get("[data-testid=save]").trigger("click");
       await flushPromises();
 
@@ -1260,10 +1260,24 @@ describe("ProductFormView", () => {
       const wrapper = await open(path);
       await wrapper.get("[data-testid=name]").setValue("Pierwsza");
       const calls = hold(mocks.put);
+      wrapper.get<HTMLButtonElement>("[data-testid=save]").element.focus();
       await wrapper.get("[data-testid=save]").trigger("click");
       await settle();
       return { wrapper, calls };
     }
+
+    it("keeps the focus on „Zapisz” while the save runs, and pressing it again sends nothing", async () => {
+      const { wrapper } = await saveHeld();
+      const save = wrapper.get<HTMLButtonElement>("[data-testid=save]").element;
+      const writes = () => mocks.put.mock.calls.length + mocks.post.mock.calls.length;
+
+      expect(document.activeElement).toBe(save);
+      expect(save.disabled).toBe(false);
+      expect(save.getAttribute("aria-disabled")).toBe("true");
+      await wrapper.get("[data-testid=save]").trigger("click");
+      expect(writes()).toBe(1);
+      expect(document.activeElement).toBe(save);
+    });
 
     describe("B2: the lock", () => {
       it("turns off the fields, the categories, the images and the editor of the variants from the save to its answer, and a second „Zapisz” sends nothing", async () => {
@@ -1271,7 +1285,7 @@ describe("ProductFormView", () => {
 
         expect(states(wrapper)).toEqual(all(true));
         expect(categoriesOff()).toEqual([true, true]);
-        expect(barButton("Zapisz")?.disabled).toBe(true);
+        expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
         expect(barButton("Odrzuć")?.disabled).toBe(true);
         barButton("Zapisz")!.click();
         await settle();
@@ -1378,7 +1392,7 @@ describe("ProductFormView", () => {
 
         expect(states(wrapper)).toEqual(all(true));
         expect(categoriesOff()).toEqual([true, true]);
-        expect(barButton("Zapisz")?.disabled).toBe(true);
+        expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
         expect(wrapper.get("[data-testid=publish]").attributes("disabled")).toBeDefined();
         expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Odświeżamy…");
         expect(wrapper.get("[data-testid=safety-status]").attributes("role")).toBe("status");
@@ -1437,7 +1451,22 @@ describe("ProductFormView", () => {
         expect(wrapper.find("[data-testid=unblock-form]").exists()).toBe(false);
         expect(document.activeElement).toBe(alertOf(wrapper).element);
         expect(off(wrapper, "name")).toBe(true);
-        expect(barButton("Zapisz")?.disabled).toBe(true);
+        expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
+      });
+
+      it("„Sprawdź stan” stops saying that the server matches the form when the staff member changes a field afterwards", async () => {
+        const { wrapper } = await saveHeld();
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+        serve(view({ name: "Pierwsza", version: 4 }));
+        await alertOf(wrapper).get("[data-testid=check-state]").trigger("click");
+        await settle();
+        expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
+
+        await wrapper.get("[data-testid=name]").setValue("Druga");
+
+        expect(wrapper.get("[data-testid=safety-status]").text()).toBe("");
+        expect(inputOf(wrapper, "name").value).toBe("Druga");
       });
 
       it("„Sprawdź stan” takes the product from the server when it equals the form, says so in a status region and sends no write", async () => {

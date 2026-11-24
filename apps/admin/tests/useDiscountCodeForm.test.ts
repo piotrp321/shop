@@ -616,7 +616,7 @@ describe("useDiscountCodeForm", () => {
       form.form.value.enabled = false;
       serve(code({ version: 9 }));
 
-      await form.refresh();
+      await form.safety.restore();
 
       expect(form.form.value.enabled).toBe(true);
       expect(form.view.value?.version).toBe(9);
@@ -828,7 +828,7 @@ describe("useDiscountCodeForm", () => {
         let release!: (value: unknown) => void;
         mocks.get.mockImplementation(() => new Promise((resolve) => (release = resolve)));
 
-        const refreshing = form.refresh();
+        const refreshing = form.safety.restore();
 
         expect(form.safety.status.value).toBe("Odświeżamy…");
         expect(form.locked.value).toBe(true);
@@ -848,7 +848,7 @@ describe("useDiscountCodeForm", () => {
         form.form.value.usageLimit = "5";
         let release!: (value: unknown) => void;
         mocks.get.mockImplementation(() => new Promise((resolve) => (release = resolve)));
-        const refreshing = form.refresh();
+        const refreshing = form.safety.restore();
 
         await advance(9_999);
         expect(form.locked.value).toBe(true);

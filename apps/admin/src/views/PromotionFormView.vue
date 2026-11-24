@@ -152,9 +152,9 @@ async function run(action: () => Promise<ActionResult>, after: "page" | "status"
 // The bar goes away with „Odrzuć”, so the focus goes to the H1; when a message about the server stays (an unknown result,
 // the way to its state after a 409), `FormSafetyNotices` puts the focus on it.
 async function discardChanges(): Promise<void> {
-  discard();
+  const messageHasFocus = discard();
   await nextTick();
-  if (safety.unknown.value === null && safety.restoreNote.value === null) {
+  if (!messageHasFocus) {
     header.value?.focus();
   }
 }
@@ -439,116 +439,121 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
         <!-- While a save runs, while the form waits for the start of a promotion saved „od teraz” and while „Odśwież”
              reads the promotion, nothing can be typed or chosen: the answer rebuilds the form from the API and would
              overwrite it (#580). -->
-        <fieldset
-          data-testid="promotion-fields"
-          :disabled="locked"
-          class="flex min-w-0 flex-col gap-6 xl:col-start-1 xl:row-start-1"
-        >
-          <FormSection title="Dane promocji">
-            <p
-              v-if="scheduleLocked && !readOnly"
-              data-testid="schedule-locked-note"
-              class="text-sm text-muted-foreground"
-            >
-              Promocja trwa. Możesz zmienić jej nazwę i koniec; procent, początek i warianty są zablokowane.
-            </p>
+        <div class="flex min-w-0 flex-col gap-6 xl:col-start-1 xl:row-start-1">
+          <!-- The card „Warianty” is outside the disabled fieldset on purpose: its tables scroll in focusable regions, and
+               everything inside a disabled fieldset counts as not focusable (axe: `scrollable-region-focusable`). Its
+               controls are disabled one by one with `locked`. -->
+          <fieldset
+            data-testid="promotion-fields"
+            :disabled="locked"
+            class="flex min-w-0 flex-col gap-6"
+          >
+            <FormSection title="Dane promocji">
+              <p
+                v-if="scheduleLocked && !readOnly"
+                data-testid="schedule-locked-note"
+                class="text-sm text-muted-foreground"
+              >
+                Promocja trwa. Możesz zmienić jej nazwę i koniec; procent, początek i warianty są zablokowane.
+              </p>
 
-            <FormField
-              :control-id="ids.name"
-              label="Nazwa"
-              :errors="errorsAt('name')"
-              error-testid="name-error"
-            >
-              <template #default="{ describedBy, invalid }">
-                <Input
-                  :id="ids.name"
-                  v-model="data.name"
-                  data-testid="name-input"
-                  maxlength="100"
-                  autocomplete="off"
-                  :disabled="readOnly"
-                  :aria-invalid="invalid ? 'true' : undefined"
-                  :aria-describedby="describedBy"
-                />
-              </template>
-            </FormField>
-
-            <FormField
-              :control-id="ids.percent"
-              label="Obniżka (%)"
-              :errors="errorsAt('percentOff')"
-              error-testid="percent-error"
-            >
-              <template #default="{ describedBy, invalid }">
-                <Input
-                  :id="ids.percent"
-                  v-model="data.percentOff"
-                  data-testid="percent-input"
-                  inputmode="numeric"
-                  autocomplete="off"
-                  :disabled="variantsLocked"
-                  :aria-invalid="invalid ? 'true' : undefined"
-                  :aria-describedby="describedBy"
-                />
-              </template>
-            </FormField>
-
-            <FormField
-              :control-id="ids.starts"
-              label="Początek"
-              :errors="errorsAt('startsAt')"
-              error-testid="starts-error"
-            >
-              <template #default="{ describedBy, invalid }">
-                <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <FormField
+                :control-id="ids.name"
+                label="Nazwa"
+                :errors="errorsAt('name')"
+                error-testid="name-error"
+              >
+                <template #default="{ describedBy, invalid }">
                   <Input
-                    :id="ids.starts"
-                    v-model="data.startsAt"
-                    data-testid="starts-input"
-                    type="datetime-local"
-                    class="w-auto"
-                    :disabled="startDisabled"
+                    :id="ids.name"
+                    v-model="data.name"
+                    data-testid="name-input"
+                    maxlength="100"
+                    autocomplete="off"
+                    :disabled="readOnly"
                     :aria-invalid="invalid ? 'true' : undefined"
                     :aria-describedby="describedBy"
                   />
-                  <div class="flex items-center gap-3">
-                    <Switch
-                      :id="ids.startNow"
-                      v-model="data.startNow"
-                      data-testid="start-now"
-                      :disabled="variantsLocked"
-                    />
-                    <Label :for="ids.startNow">
-                      Od teraz
-                    </Label>
-                  </div>
-                </div>
-              </template>
-            </FormField>
+                </template>
+              </FormField>
 
-            <FormField
-              :control-id="ids.ends"
-              label="Koniec"
-              :errors="errorsAt('endsAt')"
-              error-testid="ends-error"
-            >
-              <template #default="{ describedBy, invalid }">
-                <Input
-                  :id="ids.ends"
-                  v-model="data.endsAt"
-                  data-testid="ends-input"
-                  type="datetime-local"
-                  class="w-auto"
-                  :disabled="readOnly"
-                  :aria-invalid="invalid ? 'true' : undefined"
-                  :aria-describedby="describedBy"
-                />
-              </template>
-            </FormField>
-            <p class="text-sm text-muted-foreground">
-              Czas w strefie Europe/Warsaw (czas polski).
-            </p>
-          </FormSection>
+              <FormField
+                :control-id="ids.percent"
+                label="Obniżka (%)"
+                :errors="errorsAt('percentOff')"
+                error-testid="percent-error"
+              >
+                <template #default="{ describedBy, invalid }">
+                  <Input
+                    :id="ids.percent"
+                    v-model="data.percentOff"
+                    data-testid="percent-input"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    :disabled="variantsLocked"
+                    :aria-invalid="invalid ? 'true' : undefined"
+                    :aria-describedby="describedBy"
+                  />
+                </template>
+              </FormField>
+
+              <FormField
+                :control-id="ids.starts"
+                label="Początek"
+                :errors="errorsAt('startsAt')"
+                error-testid="starts-error"
+              >
+                <template #default="{ describedBy, invalid }">
+                  <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <Input
+                      :id="ids.starts"
+                      v-model="data.startsAt"
+                      data-testid="starts-input"
+                      type="datetime-local"
+                      class="w-auto"
+                      :disabled="startDisabled"
+                      :aria-invalid="invalid ? 'true' : undefined"
+                      :aria-describedby="describedBy"
+                    />
+                    <div class="flex items-center gap-3">
+                      <Switch
+                        :id="ids.startNow"
+                        v-model="data.startNow"
+                        data-testid="start-now"
+                        :disabled="variantsLocked"
+                      />
+                      <Label :for="ids.startNow">
+                        Od teraz
+                      </Label>
+                    </div>
+                  </div>
+                </template>
+              </FormField>
+
+              <FormField
+                :control-id="ids.ends"
+                label="Koniec"
+                :errors="errorsAt('endsAt')"
+                error-testid="ends-error"
+              >
+                <template #default="{ describedBy, invalid }">
+                  <Input
+                    :id="ids.ends"
+                    v-model="data.endsAt"
+                    data-testid="ends-input"
+                    type="datetime-local"
+                    class="w-auto"
+                    :disabled="readOnly"
+                    :aria-invalid="invalid ? 'true' : undefined"
+                    :aria-describedby="describedBy"
+                  />
+                </template>
+              </FormField>
+              <p class="text-sm text-muted-foreground">
+                Czas w strefie Europe/Warsaw (czas polski).
+              </p>
+            </FormSection>
+          </fieldset>
 
           <FormSection title="Warianty">
             <div class="flex flex-wrap items-center justify-between gap-3">
@@ -564,6 +569,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
                 type="button"
                 variant="outline"
                 data-testid="open-picker"
+                :disabled="locked"
                 :aria-expanded="pickerOpen"
                 @click="togglePicker"
               >
@@ -585,6 +591,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
               v-if="pickerOpen && !variantsLocked"
               ref="picker"
               :chosen="chosenIds"
+              :locked="locked"
               @add="addVariants"
               @close="closePicker"
             />
@@ -688,6 +695,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
                         variant="outline"
                         size="sm"
                         data-testid="remove-variant"
+                        :disabled="locked"
                         :aria-label="`Usuń: ${chosenName(row.productName, row.label)}`"
                         @click="removeChosen(row.variantId)"
                       >
@@ -700,7 +708,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
               </table>
             </div>
           </FormSection>
-        </fieldset>
+        </div>
       </div>
 
       <SaveBar

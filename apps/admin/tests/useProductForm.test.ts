@@ -899,7 +899,7 @@ describe("useProductForm", () => {
     it("keeps the default variant, with its id, as the first row when the first axis is added", async () => {
       const { form } = await start({ id: "p-1" });
       serveReads(view({ variantAxes: [], variants: [{ variantId: "v-default", values: [] }] }));
-      await form.refresh();
+      await form.safety.restore();
 
       form.addAxis();
       form.setAxis(0, "Kolor");
@@ -1192,7 +1192,7 @@ describe("useProductForm", () => {
       it("locks the editors and the actions while „Odśwież” reads, and the card of prices is not part of the draft", async () => {
         const { form } = await open();
         const reads = holdCalls(mocks.get);
-        const refreshing = form.refresh();
+        const refreshing = form.safety.restore();
         const draft = JSON.stringify(form.form.value);
 
         tryToEdit(form);
@@ -1262,7 +1262,7 @@ describe("useProductForm", () => {
         form.form.value.name = "Moje";
         const reads = holdCalls(mocks.get);
 
-        const refreshing = form.refresh();
+        const refreshing = form.safety.restore();
 
         expect(form.safety.status.value).toBe("Odświeżamy…");
         expect(form.form.value.name).toBe("Moje");
@@ -1279,7 +1279,7 @@ describe("useProductForm", () => {
         const { form } = await open();
         form.form.value.name = "Moje";
         const reads = holdCalls(mocks.get);
-        const refreshing = form.refresh();
+        const refreshing = form.safety.restore();
         const state = trackSettled(refreshing);
 
         await advance(9_999);
@@ -1306,7 +1306,7 @@ describe("useProductForm", () => {
         form.form.value.name = "Moje";
         fail();
 
-        await form.refresh();
+        await form.safety.restore();
 
         expect(form.form.value.name).toBe("Moje");
         expect(form.view.value?.version).toBe(3);
@@ -1639,6 +1639,47 @@ describe("useProductForm", () => {
         expect(same.safety.unknown.value).toBeNull();
       });
 
+      it("is not the same for a row that is new in the draft when the server still has the row it replaced, even with the same values", async () => {
+        // The staff member removed the last row and added one with the same value: the request carries no id for it, so the
+        // server would give it a new id and drop the old one. A server that still has the old row did not do that save.
+        const base = view({ variantAxes: ["Kolor"], variants: [{ variantId: "v-1", values: ["czerwony"] }, { variantId: "v-2", values: ["zielony"] }] });
+        const { form } = await open(base);
+        form.removeVariant(1);
+        form.addVariant();
+        form.setValue(1, 0, "zielony");
+        mocks.put.mockResolvedValue(problem(502));
+        await form.save();
+        mocks.get.mockResolvedValue(ok(base));
+
+        await form.safety.check();
+
+        expect(form.safety.unknown.value?.kind).toBe("missing");
+        expect(form.safety.status.value).toBe("");
+        expect(form.view.value?.version).toBe(3);
+        expect(form.form.value.variants).toEqual([
+          { variantId: "v-1", values: ["czerwony"] },
+          { variantId: null, values: ["zielony"] },
+        ]);
+        expect(form.dirty.value).toBe(true);
+      });
+
+      it("is the same for that replacement when the server did it: the row has an id the base did not have", async () => {
+        const base = view({ variantAxes: ["Kolor"], variants: [{ variantId: "v-1", values: ["czerwony"] }, { variantId: "v-2", values: ["zielony"] }] });
+        const { form } = await open(base);
+        form.removeVariant(1);
+        form.addVariant();
+        form.setValue(1, 0, "zielony");
+        mocks.put.mockResolvedValue(problem(502));
+        await form.save();
+        mocks.get.mockResolvedValue(ok({ ...base, version: 4, variants: [{ variantId: "v-1", values: ["czerwony"] }, { variantId: "v-3", values: ["zielony"] }] }));
+
+        await form.safety.check();
+
+        expect(form.view.value?.version).toBe(4);
+        expect(form.safety.unknown.value).toBeNull();
+        expect(form.safety.status.value).toBe("Stan na serwerze odpowiada formularzowi.");
+      });
+
       it("is not the same for a row that is new in the draft when the server has another value in it or no such row", async () => {
         const added = (current: Form) => {
           current.addVariant();
@@ -1969,7 +2010,7 @@ describe("useProductForm", () => {
         const { form, id } = await open();
         form.form.value.name = "Moje";
         const reads = holdCalls(mocks.get);
-        const refreshing = form.refresh();
+        const refreshing = form.safety.restore();
         serveReads(view({ id: "p-2", name: "Drugi", slug: "drugi", version: 2 }));
         id.value = "p-2";
         await flushPromises();
@@ -2015,6 +2056,18 @@ describe("useProductForm", () => {
         expect(form.safety.unknown.value).toMatchObject({ kind: "otherVersion" });
         expect(form.form.value.name).toBe("Buty biegowe");
         expect(form.view.value?.version).toBe(3);
+      });
+
+      it("tells the view whether a message about the server took the focus", async () => {
+        const { form } = await open();
+        form.form.value.name = "Pierwsza";
+        expect(form.discard()).toBe(false);
+
+        form.form.value.name = "Pierwsza";
+        mocks.put.mockResolvedValue(problem(502));
+        await form.save();
+
+        expect(form.discard()).toBe(true);
       });
 
       it("keeps what „Sprawdź stan” found, and the answer of that save that comes later is only a toast", async () => {

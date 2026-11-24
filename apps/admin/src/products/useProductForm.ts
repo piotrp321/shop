@@ -212,8 +212,8 @@ export function useProductForm(options: ProductFormOptions) {
       clearFeedback();
     },
     onLateSuccess: (text) => options.onLateSaved?.(text),
-    // A row of a variant that is new in the draft has no id; the server gives it one.
-    compare: { serverAssigned: ["variantId"] },
+    // A row of a variant that is new in the draft has no id; the server gives it one, never one of the rows the draft started from.
+    compare: () => ({ serverAssigned: ["variantId"], knownServerValues: source?.variants.map((variant) => variant.variantId) ?? [] }),
     newObject: { unknownMessage: "Nie wiemy, czy produkt został utworzony.", ownNote: "Możliwe, że utworzył go Twój wcześniejszy zapis." },
   });
 
@@ -349,23 +349,14 @@ export function useProductForm(options: ProductFormOptions) {
     (id) => open(id),
   );
 
-  /**
-   * Discards the changes and shows the product as the API has it now (`safety.restore`). The fields stay locked until the
-   * answer, so nothing typed meanwhile is replaced by it; after 10 s, an error or an answer other than 200 the form stays
-   * as it was, unlocked, with `safety.readFailed`.
-   */
-  async function refresh(): Promise<void> {
-    await safety.restore();
-  }
-
-  /** Throws away the unsaved changes: the form goes back to the product as the API last sent it, without a request. */
-  function discard(): void {
+  /** Throws away the unsaved changes (true when a message about the server took the focus): the form goes back to the product as the API last sent it, without a request. */
+  function discard(): boolean {
     if (source === null || busy.value || locked.value) {
-      return;
+      return false;
     }
     form.value = fromView(source);
     clearFeedback();
-    safety.draftDiscarded();
+    return safety.draftDiscarded();
   }
 
   function failure(action: Action, status: number, body: unknown): void {
@@ -639,7 +630,6 @@ export function useProductForm(options: ProductFormOptions) {
     save,
     publish,
     unpublish,
-    refresh,
     discard,
     moveImage,
     removeImage,

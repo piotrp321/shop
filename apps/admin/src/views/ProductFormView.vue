@@ -130,9 +130,9 @@ async function run(action: () => Promise<ActionResult>, after: "page" | "status"
 // The bar goes away with „Odrzuć”, so the focus goes to the H1; when a message about the server stays (an unknown result,
 // the way to its state after a 409), `FormSafetyNotices` puts the focus on it.
 async function discardChanges(): Promise<void> {
-  discard();
+  const messageHasFocus = discard();
   await nextTick();
-  if (safety.unknown.value === null && safety.restoreNote.value === null) {
+  if (!messageHasFocus) {
     header.value?.focus();
   }
 }

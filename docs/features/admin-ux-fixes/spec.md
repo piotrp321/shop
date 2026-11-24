@@ -371,30 +371,12 @@ czytają odpowiedzi błędów. **Do ponownego sprawdzenia przed implementacją**
 # Etap 2: bezpieczeństwo formularzy
 
 Drugi etap epiku #778: cztery formularze panelu (produkt, kod rabatowy, promocja, metoda dostawy) nie gubią zmian
-pracownika w trakcie własnych żądań i nie zostają zablokowane, gdy API nie odpowiada. Sekcje B1–B4. Do czasu
-implementacji etapu 2 sekcje etapu 1 opisują stan obecny; zadania etapu 2 zmieniają je razem z kodem („Zadania
-dokumentacji”). Twierdzenia o kodzie dotyczą `origin/main` z 2026-11-23 (`00f1fe6f`).
+pracownika w trakcie własnych żądań i nie zostają zablokowane, gdy API nie odpowiada. Sekcje B1–B4.
 
 Issues: #837, #866 (w całości).
-Zakres: `apps/admin/src/composables`, `apps/admin/src/components/FormSafetyNotices.vue`, `apps/admin/src/promotions`, `apps/admin/src/discount-codes`, `apps/admin/src/products`, `apps/admin/src/delivery`, `apps/admin/src/views/PromotionFormView.vue`, `apps/admin/src/views/DiscountCodeFormView.vue`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/src/views/DeliveryMethodFormView.vue`, `apps/admin/tests`, `apps/admin/CLAUDE.md`, `e2e/tests/admin-screens-discount-codes.spec.ts`, `e2e/tests/catalog-admin.spec.ts`, `docs/features/admin-ux-fixes`, `docs/features/admin-design/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/promotions/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/delivery/spec.md`
+Zakres: `apps/admin/src/composables`, `apps/admin/src/components/FormSafetyNotices.vue`, `apps/admin/src/components/SaveBar.vue`, `apps/admin/src/promotions`, `apps/admin/src/discount-codes`, `apps/admin/src/products`, `apps/admin/src/delivery`, `apps/admin/src/views/PromotionFormView.vue`, `apps/admin/src/views/DiscountCodeFormView.vue`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/src/views/DeliveryMethodFormView.vue`, `apps/admin/tests`, `apps/admin/CLAUDE.md`, `e2e/tests/admin-screens-discount-codes.spec.ts`, `e2e/tests/admin-screens-promotions.spec.ts`, `e2e/tests/catalog-admin.spec.ts`, `docs/features/admin-ux-fixes`, `docs/features/admin-design/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/promotions/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/delivery/spec.md`
 
 Etap nie zmienia API, `apps/api/openapi*.json` ani `apps/admin/src/api/schema.d.ts`.
-
-## Stan przed etapem 2
-
-Odtworzone 2026-11-23 w przeglądarce (Chromium, lokalny stos z danymi demo, odpowiedzi wstrzymane przez `page.route`
-i podstawione, bez zmian danych), o ile nie napisano inaczej.
-
-| Formularz | Zapis | Odczyt, który zastępuje formularz | Żądanie bez odpowiedzi |
-|---|---|---|---|
-| Promocja | pola zablokowane (etap 1) | „Odśwież” blokuje pola | „Odśwież” bez limitu (`refresh`, `usePromotionForm.ts:324`; z kodu, w przeglądarce nieodtworzone); zapis bez limitu (D7) |
-| Metoda dostawy | pola zablokowane | odczyt po 409 w trakcie blokady zapisu | zapis i odczyt po 409 bez limitu (z kodu) |
-| Kod rabatowy | pole „Koniec” edytowalne przy wstrzymanym `PUT`, wpisana wartość znika po odpowiedzi | odczyt po 409 (`reloadQuietly`) nadpisuje pola (z kodu) | po 15 s bez odpowiedzi „Zapisz” wyłączony, żadnego komunikatu |
-| Produkt | pola edytowalne, opis wpisany w trakcie zapisu znika, toast „Produkt zapisany.”; tak samo publikacja i wycofanie (z kodu, wspólne `perform`) | „Odśwież” po konflikcie: pola edytowalne, „Zapisz” aktywny, wpisany tekst znika | zapis i „Odśwież” bez limitu |
-
-Klient API panelu (`apps/admin/src/api/client.ts`) nie ma limitu czasu ani przerywania żądań. Edycja wysyła `version`
-(409 przy nieaktualnej). Utworzenie nie ma klucza idempotencji; API odrzuca tylko duplikat pola unikalnego (kod, nazwa
-metody, slug) albo promocję o okresie nakładającym się na inną ze wspólnym wariantem (z opisów kontrolerów, bez próby).
 
 ## Decyzje etapu 2
 
@@ -408,7 +390,7 @@ Właściciel zaakceptował 2026-11-23:
 | E4 | #866, punkt 3 (zapis „Od teraz” z odpowiedzią `active`) | Bez zmian: toast wystarcza | Dodatkowe ogłoszenie |
 | E5 | Okna zamówienia przy zapisie bez odpowiedzi | Poza etapem; D7 obowiązuje dla nich dalej | Włączenie do etapu |
 | E6 | Co jest nieznanym wynikiem | Brak odpowiedzi w limicie, błąd sieci i każda odpowiedź 5xx | Tylko 502 i 504 |
-| E7 | 409 po zapisie | W czterech formularzach bez automatycznego odczytu: komunikat, szkic zostaje, stan z serwera pokazuje dopiero akcja pracownika (dzisiejszy wzór produktu) | Tylko po nieznanym wyniku |
+| E7 | 409 po zapisie | W czterech formularzach bez automatycznego odczytu: komunikat, szkic zostaje, stan z serwera pokazuje dopiero akcja pracownika | Tylko po nieznanym wyniku |
 | E8 | Spóźniony sukces wcześniejszego zapisu | Toast informacyjny, bez wpływu na formularz | Pomijanie bez informacji |
 
 ## Zasady wspólne
@@ -418,9 +400,17 @@ Właściciel zaakceptował 2026-11-23:
   wersji poza przypadkami nazwanymi niżej: potwierdzony sukces zapisu, zgodność przy „Sprawdź stan” i udany odczyt po
   „Odrzuć moje zmiany i pokaż stan z serwera”.
 - **Blokada.** W trakcie żądania, którego odpowiedź może zastąpić formularz, pola i kontrolki formularza są wyłączone
-  (`disabled`, wzór `DeliveryMethodFormView.vue:141`), a akcje zapisu i statusu nieaktywne.
+  (`disabled`; wzór: `fieldset` w `DeliveryMethodFormView.vue`), a akcje zapisu i statusu nieaktywne. W promocji karta
+  „Warianty” jest poza `fieldset` (regiony przewijania tabel muszą zostać fokusowalne dla axe), a jej kontrolki są
+  wyłączane po jednej. „Zapisz” paska zapisu jest wtedy nieaktywny
+  przez `aria-disabled`, nie `disabled` (jak przycisk `ConfirmDialog`): przycisk, który pracownik nacisnął, zachowuje
+  fokus do odpowiedzi, a kolejne naciśnięcie niczego nie wysyła.
 - **Limit odczytu.** Każdy odczyt, który blokuje formularz, kończy się najpóźniej po 10 s: blokada znika, a odpowiedź,
   która wróci później, jest pomijana.
+- **Opuszczenie w trakcie zapisu.** Przejście do innej trasy (także przyciskiem „Wstecz” przeglądarki) w trakcie zapisu
+  pyta o niezapisane zmiany jak zawsze: szkic jest niezapisany do odpowiedzi. „Zostań” zostawia formularz z blokadą,
+  a odpowiedź jest zwykłym wynikiem zapisu; „Opuść bez zapisu” opuszcza formularz, a odpowiedź jest pomijana (bez
+  toastu i nawigacji).
 - **Bez automatycznego zapisu.** Zapis wysyła wyłącznie „Zapisz” (albo akcja statusu) pracownika; odczyt ani przyjęcie
   wersji niczego nie wysyłają.
 - **Nieaktualne odpowiedzi.** Odpowiedź żądania wysłanego dla innego obiektu albo przed opuszczeniem formularza jest
@@ -433,8 +423,8 @@ Właściciel zaakceptował 2026-11-23:
 
 - Od wysłania zapisu do jego wyniku wszystkie pola są wyłączone; drugie „Zapisz” nie wysyła żądania.
 - Po 422 i po nieznanym wyniku pola mają wartości, które pracownik wysłał.
-- Odpowiedź zapisu, która wraca po przejściu do innego kodu albo formularza nowego, jest pomijana (dziś sprawdzane jest
-  tylko opuszczenie widoku, `useDiscountCodeForm.ts:400`).
+- Odpowiedź zapisu, która wraca po przejściu do innego kodu albo formularza nowego, jest pomijana, nie tylko po
+  opuszczeniu widoku.
 
 ## B2: produkt (#837)
 
@@ -462,10 +452,10 @@ Dotyczy zapisu czterech formularzy oraz publikacji i wycofania produktu. Akcje �
 zostają jak po etapie 1.
 
 **Wynik zapisu.**
-- Potwierdzony sukces: odpowiedź 2xx z danymi. Formularz pokazuje obiekt z odpowiedzi jak dotąd.
-- Potwierdzona odmowa: odpowiedź 4xx. 422, 403 i 404 jak dotąd; 409 według E7: komunikat z `detail` albo, dla wersji, komunikat że zmiany zostają w formularzu (bez zapowiedzi pokazania stanu z serwera), szkic, stan bazowy
-  i wersja zostają, bez odczytu. Przy 409 wersji (i każdym 409, po którym formularz dziś czyta obiekt ponownie)
-  komunikat ma przycisk „Odrzuć moje zmiany i pokaż stan z serwera”.
+- Potwierdzony sukces: odpowiedź 2xx z danymi. Formularz pokazuje obiekt z odpowiedzi.
+- Potwierdzona odmowa: odpowiedź 4xx. 422 pokazuje błędy przy polach, 403 i 404 swoje komunikaty; 409 według E7: komunikat z `detail` albo, dla wersji, komunikat że zmiany zostają w formularzu (bez zapowiedzi pokazania stanu z serwera), szkic, stan bazowy
+  i wersja zostają, bez odczytu. Przy 409 wersji (i każdym innym 409, który mówi, że obiekt na serwerze jest inny,
+  np. `promotion-not-editable`) komunikat ma przycisk „Odrzuć moje zmiany i pokaż stan z serwera”.
 - Nieznany wynik: brak odpowiedzi przez 10 s, błąd sieci albo odpowiedź 5xx.
 
 **Stan „nieznany wynik”.** Komunikat (`role="alert"`, z fokusem): „Nie wiemy, czy zapis się powiódł. Twoje zmiany
@@ -480,13 +470,16 @@ zostają w formularzu.”
 - Zgodność: żądanie zapisu zbudowane z aktualnego szkicu jest równe żądaniu zbudowanemu tą samą funkcją formularza
   z odpowiedzi odczytu, bez `version`. Porównanie jest ścisłe, pole po polu; daty jako momenty w czasie; listy (osie
   i wiersze wariantów, zdjęcia z opisami, kategorie dodatkowe, warianty promocji) w kolejności szkicu; wiersz wariantu
-  bez identyfikatora po wartościach. Nie ma zgodności, gdy ze szkicu nie da się zbudować żądania, gdy szkic zawiera
+  bez identyfikatora po wartościach i tylko z wierszem serwera, którego `variantId` nie występował w stanie bazowym
+  (wariant utworzony na serwerze): wiersz usunięty i dodany od nowa z tą samą wartością zostaje przy starym
+  identyfikatorze na serwerze, który nie wykonał zapisu, więc nie jest zgodny. Nie ma zgodności, gdy ze szkicu nie da się zbudować żądania, gdy szkic zawiera
   wartość nadawaną przez serwer (początek „Od teraz”, pusty slug) albo gdy nieznany wynik dotyczy publikacji lub
   wycofania, a status w odpowiedzi nie jest docelowy. Każda inna różnica, także przycięte spacje, to brak zgodności.
   Porównywany jest szkic z chwili odpowiedzi odczytu, nie treść wysłanego zapisu: zmiana wpisana po odblokowaniu,
   której serwer nie ma, daje brak zgodności.
 - Zgodne: formularz przyjmuje obiekt z odpowiedzi (wersja, status, stan bazowy), komunikat nieznanego wyniku znika,
-  a region statusu pokazuje „Stan na serwerze odpowiada formularzowi.”.
+  a region statusu pokazuje „Stan na serwerze odpowiada formularzowi.”
+  do pierwszej zmiany szkicu przez pracownika (komunikat znika wtedy bez przenoszenia fokusu).
 - Niezgodne, wersja jak w stanie bazowym: szkic, stan bazowy i wersja zostają, pola odblokowane; komunikat „Zapisu
   nie widać na serwerze. Może jeszcze dotrzeć.”.
 - Niezgodne, wersja inna: szkic, stan bazowy i wersja zostają, pola odblokowane; komunikat „Na serwerze jest inna
@@ -522,6 +515,10 @@ wykonany.”, tylko gdy formularz nadal pokazuje ten sam obiekt (dla nowego: ten
 i błąd są pomijane bez komunikatu.
 
 **Ograniczenia bez zmian API.**
+- Klient API panelu (`apps/admin/src/api/client.ts`) nie ma limitu czasu ani przerywania żądań; limit 10 s jest
+  w formularzach. Edycja wysyła `version` (409 przy nieaktualnej). Utworzenie nie ma klucza idempotencji; API odrzuca
+  tylko duplikat pola unikalnego (kod, nazwa metody, slug) albo promocję o okresie nakładającym się na inną ze wspólnym
+  wariantem.
 - Panel nie rozstrzyga losu żądania, na które nie dostał odpowiedzi; lista też nie, bo żądanie może się wykonać po jej
   sprawdzeniu.
 - Po nieznanym wyniku utworzenia pracownik może zmienić kod, nazwę, slug albo zakres promocji i zapisać ponownie:
@@ -568,7 +565,9 @@ promocja i metoda dostawy.
    podstawiane albo na obiekcie testu): (a) kod rabatowy i (b) produkt: odpowiedź zapisu wstrzymana o 3 s, w tym czasie
    pole jest wyłączone, po odpowiedzi toast; (c) produkt: wstrzymany odczyt „Odrzuć moje zmiany i pokaż stan z serwera” po 409 blokuje pola; (d) kod rabatowy:
    zapis bez odpowiedzi daje po 10 s komunikat, „Sprawdź stan” odblokowuje pola ze szkicem, po zmianie pola zapis
-   z odpowiedzią 409 zostawia zmianę w polu. Testy (a)–(d) nie przechodzą przed zmianą.
+   z odpowiedzią 409 zostawia zmianę w polu. Testy (a)–(d) nie przechodzą przed zmianą. (e) kod rabatowy:
+   „Wstecz” przeglądarki w trakcie zapisu (zasada „Opuszczenie w trakcie zapisu”, oba wyjścia z okna). (f) promocja
+   przy 375 px w trakcie zapisu: axe bez naruszeń (regiony przewijania tabel wariantów zostają fokusowalne).
 5. Każde zadanie pokazuje komendy i wyniki RED i GREEN. Przechodzą `make -C apps/admin check`,
    `make -C apps/admin test` i `make e2e`. `git diff` względem `main` nie zawiera `apps/api`,
    `apps/api/openapi*.json` ani `apps/admin/src/api/schema.d.ts`.

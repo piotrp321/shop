@@ -714,10 +714,24 @@ describe("DeliveryMethodFormView", () => {
         });
       mocks.put.mockImplementation(hold);
       mocks.post.mockImplementation(hold);
+      wrapper.get<HTMLButtonElement>("[data-testid=save]").element.focus();
       await wrapper.get("[data-testid=save]").trigger("click");
       await settle();
       return { wrapper, calls };
     }
+
+    it("keeps the focus on „Zapisz” while the save runs, and pressing it again sends nothing", async () => {
+      const { wrapper } = await saveHeld();
+      const save = wrapper.get<HTMLButtonElement>("[data-testid=save]").element;
+      const writes = () => mocks.put.mock.calls.length + mocks.post.mock.calls.length;
+
+      expect(document.activeElement).toBe(save);
+      expect(save.disabled).toBe(false);
+      expect(save.getAttribute("aria-disabled")).toBe("true");
+      await wrapper.get("[data-testid=save]").trigger("click");
+      expect(writes()).toBe(1);
+      expect(document.activeElement).toBe(save);
+    });
 
     it("says after 10 s that the result is unknown, with „Sprawdź stan” and the focus on the message, and keeps the fields locked", async () => {
       const { wrapper } = await saveHeld();
@@ -733,7 +747,7 @@ describe("DeliveryMethodFormView", () => {
       expect(wrapper.find("[data-testid=unblock-form]").exists()).toBe(false);
       expect(document.activeElement).toBe(alert(wrapper).element);
       expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => true));
-      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+      expect(wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBe("true");
     });
 
     it("„Sprawdź stan” takes the method from the server when it equals the form, says so in a status region and sends no write", async () => {
@@ -751,6 +765,20 @@ describe("DeliveryMethodFormView", () => {
       expect(input(wrapper, "name-input").value).toBe("Kurier DPD");
       expect(saveBar()).toBeNull();
       expect(mocks.put).toHaveBeenCalledTimes(1);
+    });
+
+    it("„Sprawdź stan” stops saying that the server matches the form when the staff member changes a field afterwards", async () => {
+      const { wrapper } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      serve(method({ name: "Kurier DPD", version: 4 }));
+      await click(wrapper, "check-state");
+      expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
+
+      await wrapper.get("[data-testid=name-input]").setValue("Kurier DHL");
+
+      expect(wrapper.get("[data-testid=safety-status]").text()).toBe("");
+      expect(input(wrapper, "name-input").value).toBe("Kurier DHL");
     });
 
     it("„Sprawdź stan” says the write is not on the server when the version is the same and the values are not", async () => {

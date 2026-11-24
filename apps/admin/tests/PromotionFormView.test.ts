@@ -590,7 +590,7 @@ describe("PromotionFormView", () => {
         expect(successToast).not.toHaveBeenCalled();
         // „Zapisz” shows with the first change typed meanwhile, off and with the same description.
         await wrapper.get("[data-testid=name-input]").setValue("Inna nazwa");
-        expect(barButton("Zapisz")?.disabled).toBe(true);
+        expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
         expect(barButton("Zapisz")?.getAttribute("aria-describedby")).toBe(reason?.id);
       });
 
@@ -729,10 +729,37 @@ describe("PromotionFormView", () => {
       let release!: (value: unknown) => void;
       let reject!: (reason: unknown) => void;
       mocks.put.mockImplementation(() => new Promise((resolve, fail) => ((release = resolve), (reject = fail))));
+      wrapper.get<HTMLButtonElement>("[data-testid=save]").element.focus();
       await wrapper.get("[data-testid=save]").trigger("click");
       await settle();
       return { wrapper, release: (value: unknown = failure) => release(value), reject: (reason: unknown) => reject(reason) };
     }
+
+    it("keeps the focus on „Zapisz” while the save runs, and pressing it again sends nothing", async () => {
+      const { wrapper } = await saveHeld();
+      const save = wrapper.get<HTMLButtonElement>("[data-testid=save]").element;
+      const writes = () => mocks.put.mock.calls.length + mocks.post.mock.calls.length;
+
+      expect(document.activeElement).toBe(save);
+      expect(save.disabled).toBe(false);
+      expect(save.getAttribute("aria-disabled")).toBe("true");
+      await wrapper.get("[data-testid=save]").trigger("click");
+      expect(writes()).toBe(1);
+      expect(document.activeElement).toBe(save);
+    });
+
+    it("keeps the scrolling regions of the chosen and the offered variants focusable while the form is locked: not inside the disabled fieldset", async () => {
+      const { wrapper } = await saveHeld();
+
+      // axe counts everything inside a disabled fieldset as not focusable, so a region there that scrolls fails
+      // `scrollable-region-focusable` at a width where the table is wider than the card.
+      for (const name of ["Wybrane warianty", "Warianty do wyboru"]) {
+        const region = wrapper.get<HTMLElement>(`[role=region][aria-label="${name}"]`).element;
+        expect(region.getAttribute("tabindex"), name).toBe("0");
+        expect(region.closest("fieldset:disabled"), name).toBeNull();
+      }
+      expect(wrapper.get<HTMLFieldSetElement>("[data-testid=promotion-fields]").element.disabled).toBe(true);
+    });
 
     it("disables the fields and the controls of the variants, keeps the open picker open, and a second „Zapisz” sends nothing", async () => {
       const { wrapper, release } = await saveHeld();
@@ -740,7 +767,7 @@ describe("PromotionFormView", () => {
       expect(lockedState(wrapper)).toEqual(Object.fromEntries([...FIELDS, ...VARIANT_CONTROLS].map((testid) => [testid, true])));
       expect(wrapper.find("[data-testid=picker]").exists()).toBe(true);
       expect(pickerRows(wrapper).length).toBeGreaterThan(0);
-      expect(barButton("Zapisz")?.disabled).toBe(true);
+      expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
       barButton("Zapisz")!.click();
       await wrapper.get("[data-testid=save]").trigger("click");
       await settle();
@@ -943,9 +970,9 @@ describe("PromotionFormView", () => {
       expect(fields().disabled).toBe(true);
       expect(off(wrapper, "name-input")).toBe(true);
       expect(off(wrapper, "remove-variant")).toBe(true);
-      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+      expect(wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBe("true");
       await wrapper.get("[data-testid=name-input]").setValue("Wpisana w trakcie odczytu");
-      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+      expect(wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBe("true");
 
       release({ data: promotion({ status: "active", name: "Z odczytu", version: 6 }), response: { status: 200 } });
       await settle();
@@ -1807,6 +1834,7 @@ describe("PromotionFormView", () => {
         });
       mocks.put.mockImplementation(hold);
       mocks.post.mockImplementation(hold);
+      wrapper.get<HTMLButtonElement>("[data-testid=save]").element.focus();
       await wrapper.get("[data-testid=save]").trigger("click");
       await settle();
       return { wrapper, calls };
@@ -1826,7 +1854,7 @@ describe("PromotionFormView", () => {
       expect(wrapper.find("[data-testid=unblock-form]").exists()).toBe(false);
       expect(document.activeElement).toBe(alert(wrapper).element);
       expect(input(wrapper, "name-input").matches(":disabled")).toBe(true);
-      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+      expect(wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBe("true");
     });
 
     it("„Sprawdź stan” takes the promotion from the server when it equals the form, says so in a status region and sends no write", async () => {
