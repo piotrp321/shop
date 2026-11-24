@@ -178,6 +178,12 @@ async function submit(result: PlaceOrderResult) {
 }
 
 const SUBMIT_FAILED = "Nie udało się złożyć zamówienia. Spróbuj ponownie.";
+/** The message of an uncertain result (a network error, 403, 5xx, 503): the order may have been placed. */
+const UNCERTAIN_RESULT = "Nie wiemy, czy zamówienie zostało złożone. Spróbuj ponownie: tego samego zamówienia nie złożymy drugi raz.";
+/** The sentence every message of a refusal or an error of the order adds while an uncertain attempt is left. */
+const EARLIER_MAY_HAVE_PLACED = "Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.";
+/** The texts of the paragraphs of the message above the form. */
+const failureParagraphs = () => Array.from(document.getElementById("checkout-failure")?.querySelectorAll("p") ?? [], (node) => node.textContent);
 
 describe("CheckoutPage loading", () => {
   it("says it is loading until the cart and the session arrive", async () => {
@@ -563,7 +569,7 @@ describe("CheckoutPage placing the order", () => {
     expect(formKey).not.toBe(entryKey);
 
     await submit({ status: "failed" });
-    expect(screen.getByRole("alert").textContent).toContain(SUBMIT_FAILED);
+    expect(screen.getByRole("alert").textContent).toBe(UNCERTAIN_RESULT);
     await submit({ status: "ok", number: "R-100001", redirectUrl: null });
 
     const used = vi.mocked(placeOrder).mock.calls.map((call) => call[1]);
@@ -832,14 +838,106 @@ describe("CheckoutPage placing the order", () => {
     expect(vi.mocked(placeOrder).mock.calls[1][0]).toEqual(GUEST_INPUT);
   });
 
-  it("on a 403, 503, 5xx or network error asks to try again", async () => {
+  it("on a 403, 503, 5xx or network error says it does not know whether the order was placed and asks to try again, without the warning of an earlier attempt", async () => {
     await renderCheckout();
     fillGuestForm();
     await submit({ status: "failed" });
 
-    expect(screen.getByRole("alert").textContent).toBe(SUBMIT_FAILED);
+    expect(screen.getByRole("alert").textContent).toBe(UNCERTAIN_RESULT);
     expect(push).not.toHaveBeenCalled();
     expect(announced).toEqual([]);
+  });
+});
+
+// While an attempt whose result was uncertain (an uncertain result, or a 409 of a reused key: an order with the key
+// exists) is left, every message of a refusal or an error of the order says that it may have placed an order; the
+// message of the uncertain result itself does not repeat it for its own attempt.
+describe("CheckoutPage while an attempt whose result was uncertain is left", () => {
+  const PHONE_INVALID = "Podaj 9-cyfrowy numer telefonu.";
+  const keysSent = () => vi.mocked(placeOrder).mock.calls.map(([, sent]) => sent);
+
+  /** A guest's order sent once with an uncertain result (the answer lost). */
+  async function guestFailed() {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "failed" });
+    expect(failureParagraphs()).toEqual([UNCERTAIN_RESULT]);
+  }
+
+  it("says only that it does not know when the retry with the same key fails too: no other attempt is uncertain", async () => {
+    await guestFailed();
+    await submit({ status: "failed" });
+
+    expect(new Set(keysSent()).size).toBe(1);
+    expect(failureParagraphs()).toEqual([UNCERTAIN_RESULT]);
+  });
+
+  it("adds the warning to the uncertain result of a new attempt when an earlier one is uncertain too", async () => {
+    await guestFailed();
+    type("Telefon", "600 100 201");
+    await submit({ status: "failed" });
+
+    expect(new Set(keysSent()).size).toBe(2);
+    expect(failureParagraphs()).toEqual([UNCERTAIN_RESULT, EARLIER_MAY_HAVE_PLACED]);
+  });
+
+  it("warns over the empty cart after the order of the lost answer emptied it and a changed field tried again", async () => {
+    await guestFailed();
+    type("Telefon", "600 100 201");
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart(0, []) });
+    await submit({ status: "conflict", reason: "cart_empty", detail: "Koszyk jest pusty." });
+
+    expect(failureParagraphs()).toEqual(["Koszyk jest pusty.", EARLIER_MAY_HAVE_PLACED]);
+    expect(screen.getByText("Twój koszyk jest pusty.")).toBeTruthy();
+  });
+
+  it("warns with a reused key, which says that an order with the key exists, also without an attempt before it", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "conflict", reason: "key_reused", detail: "Ten klucz żądania był już użyty dla innego zamówienia." });
+
+    expect(failureParagraphs()).toEqual(["Ten klucz żądania był już użyty dla innego zamówienia.", EARLIER_MAY_HAVE_PLACED]);
+  });
+
+  it.each<[string, PlaceOrderResult, string]>([
+    ["the 404 of the cart", { status: "not_found", detail: "Koszyk nie jest już dostępny." }, "Koszyk nie jest już dostępny."],
+    ["the 401", { status: "unauthorized" }, "Twoja sesja wygasła. Zaloguj się ponownie."],
+    ["a 422 that names no field", { status: "invalid", detail: "Nieprawidłowe dane.", violations: [] }, "Nieprawidłowe dane."],
+    ["a 429", { status: "rate_limited" }, "Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut."],
+  ])("adds the warning after the text of %s", async (_name, result, text) => {
+    await guestFailed();
+    await submit(result);
+
+    const [first, second] = failureParagraphs();
+    expect(first).toContain(text);
+    expect(second).toBe(EARLIER_MAY_HAVE_PLACED);
+  });
+
+  it("tells it above the form after a 422 of fields, whose errors stay at the fields with the focus on the first", async () => {
+    await guestFailed();
+    type("Telefon", "600");
+    submitButton().focus();
+    await submit({ status: "invalid", detail: "Nieprawidłowe dane.", violations: [{ propertyPath: "phone", title: PHONE_INVALID }] });
+
+    expect(failureParagraphs()).toEqual([EARLIER_MAY_HAVE_PLACED]);
+    expect(document.getElementById(field("Telefon").getAttribute("aria-describedby") ?? "")?.textContent).toBe(PHONE_INVALID);
+    expect(document.activeElement).toBe(field("Telefon"));
+  });
+
+  it("has no message above the form after a 422 of fields without an uncertain attempt", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "invalid", detail: "Nieprawidłowe dane.", violations: [{ propertyPath: "phone", title: PHONE_INVALID }] });
+
+    expect(document.getElementById("checkout-failure")).toBeNull();
+  });
+
+  it("tells it above the form after a refused code of the order, whose message stays at the code", async () => {
+    await guestFailed();
+    await submit({ status: "conflict", reason: "discount_code_rejected", detail: "Ten kod został już wykorzystany." });
+
+    expect(failureParagraphs()).toEqual([EARLIER_MAY_HAVE_PLACED]);
+    expect(screen.getByText("Ten kod został już wykorzystany.")).toBeTruthy();
   });
 });
 
@@ -1504,7 +1602,7 @@ describe("CheckoutPage after a 409 of a changed cart or total (#852)", () => {
       await renderCheckout();
       fillGuestForm();
       await submit({ status: "failed" });
-      expect(alert().textContent).toBe(SUBMIT_FAILED);
+      expect(alert().textContent).toBe(UNCERTAIN_RESULT);
     }
 
     it.each<Reason>(["cart_changed", "total_changed"])(
@@ -1554,7 +1652,7 @@ describe("CheckoutPage after a 409 of a changed cart or total (#852)", () => {
       type("Telefon", "600 100 201");
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
       await submit(conflict("total_changed"));
-      expect(alert().textContent).toBe(READ_FAILED);
+      expect(paragraphs()).toEqual([READ_FAILED, MAY_HAVE_PLACED]);
 
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: three() });
       await act(async () => {
@@ -1571,7 +1669,7 @@ describe("CheckoutPage after a 409 of a changed cart or total (#852)", () => {
       type("Telefon", "600 100 201");
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
       await submit(conflict("cart_changed"));
-      expect(alert().textContent).toBe(READ_FAILED);
+      expect(paragraphs()).toEqual([READ_FAILED, MAY_HAVE_PLACED]);
 
       // The code is refused with a 400: the summary is read without it, and that read shows the changes.
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "invalid", detail: "Kod rabatowy może mieć najwyżej 64 znaki." });
@@ -1968,7 +2066,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
       await renderCheckout(cart(), JAN);
       fillContact();
       await submit({ status: "failed" });
-      expect(alert().textContent).toBe(SUBMIT_FAILED);
+      expect(alert().textContent).toBe(UNCERTAIN_RESULT);
       vi.mocked(loadAccountSession).mockResolvedValueOnce(next);
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
     }
@@ -2006,7 +2104,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
     it("still does not claim it after a retry that kept the key without placing anything (a 429)", async () => {
       await janUncertain({ status: "ok", session: ANNA });
       await submit({ status: "rate_limited" });
-      expect(alert().textContent).toBe("Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut.");
+      expect(failureParagraphs()).toEqual(["Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut.", MAY_HAVE_PLACED]);
       await submit(buyerChanged);
 
       expect(new Set(vi.mocked(placeOrder).mock.calls.map(([, key]) => key)).size).toBe(1);
@@ -2020,7 +2118,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
       vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "unavailable" });
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
       await submit(buyerChanged);
-      expect(alert().textContent).toBe(NOT_READ);
+      expect(failureParagraphs()).toEqual([NOT_READ, MAY_HAVE_PLACED]);
 
       vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "ok", session: ANNA });
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
@@ -2196,11 +2294,13 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
   });
 });
 
-// The guard of the whole class: while an earlier attempt whose result was uncertain may have placed an order, no text
-// on the screen says that none was placed, after any refusal of an order the checkout tells of, on the key of that
-// attempt or on another one. The details are the API's and the BFF's own, so a detail shown as it came is checked too.
-describe("CheckoutPage after an attempt whose result was uncertain, on every refusal of an order", () => {
-  // `satisfies` makes the compiler demand a refusal for every reason the checkout handles, so a new one is not forgotten.
+// The guard of the whole class: while an attempt whose result was uncertain may have placed an order, no text on the
+// screen says or suggests that none was placed, after any answer to an order that is not a success: every status, every
+// reason of a 409, with the detail of the API or the BFF and without one; after an uncertain result and after a reused
+// key (the two sources of the uncertainty), on the key of that attempt or on another one. Each message has the warning,
+// or is the message of the uncertain result itself.
+describe("CheckoutPage after an attempt whose result was uncertain, on every answer that is not a success", () => {
+  // `satisfies` makes the compiler demand an entry for every reason the checkout handles, so a new one is not forgotten.
   const DETAILS = {
     cart_empty: "Koszyk jest pusty.",
     cart_changed: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie.",
@@ -2213,24 +2313,59 @@ describe("CheckoutPage after an attempt whose result was uncertain, on every ref
     discount_code_rejected: "Ten kod rabatowy jest nieprawidłowy.",
     delivery_method_unavailable: "Wybrany sposób dostawy jest niedostępny. Wybierz inny.",
     buyer_changed: "Od wczytania kasy zmienił się kupujący. Nie złożyliśmy zamówienia.",
-    unknown: "",
+    unknown: "Coś poszło nie tak.",
   } satisfies Record<OrderConflictReason, string>;
-  const cases = (Object.keys(DETAILS) as OrderConflictReason[]).flatMap((reason) =>
-    (["the same key", "another key"] as const).map((onKey) => [reason, onKey] as const),
-  );
+  const reasons = Object.keys(DETAILS) as OrderConflictReason[];
+  // Every status but the success, so a new status of `PlaceOrderResult` is not forgotten either.
+  const RESULTS = {
+    conflict: reasons.flatMap((reason): Extract<PlaceOrderResult, { status: "conflict" }>[] => [
+      { status: "conflict", reason, detail: DETAILS[reason] },
+      { status: "conflict", reason },
+    ]),
+    invalid: [
+      { status: "invalid", detail: "Nieprawidłowe dane.", violations: [{ propertyPath: "phone", title: "Podaj 9-cyfrowy numer telefonu." }] },
+      { status: "invalid", detail: "Nieprawidłowe dane.", violations: [{ propertyPath: "expectedLines", title: "Lista pozycji jest nieprawidłowa." }] },
+      { status: "invalid", detail: "Nieprawidłowe dane.", violations: [] },
+      { status: "invalid", violations: [] },
+    ],
+    not_found: [{ status: "not_found", detail: "Koszyk nie jest już dostępny." }],
+    unauthorized: [{ status: "unauthorized" }],
+    rate_limited: [{ status: "rate_limited" }],
+    failed: [{ status: "failed" }],
+  } satisfies { [S in Exclude<PlaceOrderResult["status"], "ok">]: Extract<PlaceOrderResult, { status: S }>[] };
+  const results: PlaceOrderResult[] = Object.values(RESULTS).flat();
+  const sources = [
+    ["an uncertain result", "the same key"],
+    ["an uncertain result", "another key"],
+    // A reused key makes a new key itself.
+    ["a reused key", "another key"],
+  ] as const;
+  const cases = sources.flatMap(([source, onKey]) => results.map((result) => [source, onKey, JSON.stringify(result), result] as const));
+  /** The texts that say or suggest that no order was placed. */
+  const FAILURE_TEXTS = ["Nie złożyliśmy zamówienia", "Nie udało się złożyć zamówienia"];
 
-  it.each(cases)("does not say that nothing was placed after %s on %s", async (reason, onKey) => {
+  it.each(cases)("after %s, on %s, %s has no text that says nothing was placed, and has the warning", async (source, onKey, _shown, result) => {
     await renderCheckout();
     fillGuestForm();
-    await submit({ status: "failed" });
-    if (onKey === "another key") type("Telefon", "600 100 201");
-    await submit({ status: "conflict", reason, detail: DETAILS[reason] });
+    await submit(source === "an uncertain result" ? { status: "failed" } : { status: "conflict", reason: "key_reused", detail: DETAILS.key_reused });
+    if (source === "an uncertain result" && onKey === "another key") type("Telefon", "600 100 201");
+    await submit(result);
     await act(async () => {});
 
     expect(placeOrder).toHaveBeenCalledTimes(2);
     const [first, second] = vi.mocked(placeOrder).mock.calls.map(([, sent]) => sent);
     expect(second === first).toBe(onKey === "the same key");
-    expect(document.body.textContent).not.toContain("Nie złożyliśmy zamówienia");
+    const text = document.body.textContent ?? "";
+    for (const failure of FAILURE_TEXTS) {
+      // The fallback of a refusal without a detail is the only text of the class that stays, always with the warning.
+      const withoutDetail = (result.status === "conflict" || result.status === "invalid") && !result.detail;
+      if (withoutDetail && failure === "Nie udało się złożyć zamówienia") continue;
+      expect(text).not.toContain(failure);
+    }
+    // Only the uncertain result of the attempt that was the only uncertain one does not repeat the warning.
+    const ownOnly = result.status === "failed" && source === "an uncertain result" && onKey === "the same key";
+    if (result.status === "failed") expect(text).toContain(UNCERTAIN_RESULT);
+    expect(text.includes(EARLIER_MAY_HAVE_PLACED)).toBe(!ownOnly);
   });
 });
 
@@ -2448,7 +2583,7 @@ describe("CheckoutPage while the order is being placed", () => {
 
       expect(document.activeElement).toBe(field("Kod pocztowy"));
       if (result.status === "failed") {
-        expect(alert().textContent).toBe(SUBMIT_FAILED);
+        expect(alert().textContent).toBe(UNCERTAIN_RESULT);
       } else {
         // The focus does not tell about the error of the field, so the error itself is announced.
         expect(field("Telefon").getAttribute("aria-invalid")).toBe("true");
