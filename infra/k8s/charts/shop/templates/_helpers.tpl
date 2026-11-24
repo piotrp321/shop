@@ -225,8 +225,8 @@ templates in the reverse order of their names, so the file with the rule is name
 {{- end }}
 
 {{/*
-A Deployment with one replica that never loses capacity during an update (maxUnavailable 0): a new pod that does not
-become ready leaves the old one serving.
+A Deployment with one replica that, unless recreate is set, never loses capacity during an update (maxUnavailable 0):
+a new pod that does not become ready leaves the old one serving.
 Parameters: root, name, wave, resources, container (YAML of the container without name, image and resources),
 image; optional: initContainers, volumes (YAML lists), podAnnotations (YAML map), recreate (true: the strategy Recreate,
 the old pod stops before the new one starts, for a service that must never run in two versions at once).
