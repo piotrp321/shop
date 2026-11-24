@@ -30,7 +30,6 @@ import { GUEST_BUYER } from "./buyer";
 import { cartChanges } from "./cart-changes";
 import { navigateTo } from "./navigate";
 import type { PaymentProvider } from "./payment-api";
-import type { OrderConflictReason } from "./problems";
 
 type Loaded =
   | { status: "loading" }
@@ -50,11 +49,12 @@ type StaleReason = ChangeReason | "buyer_changed";
 /** Why the last order was not placed; each is shown above the form (see the UI table of the checkout spec). */
 type Failure =
   | { kind: "conflict"; detail: string; offersCart: boolean }
-  | { kind: "changed"; reason: ChangeReason; changes: string[] }
   /**
-   * The buyer changed: `email` is the account of the session read, null when it is signed out. `mayHavePlaced`: an
-   * attempt whose result was uncertain, and which the API has not settled since, may have placed an order.
+   * `mayHavePlaced` here and below: an attempt of this page whose result was uncertain may have placed an order
+   * (`uncertainKeys` when the message is shown), so the message does not say that none was placed.
    */
+  | { kind: "changed"; reason: ChangeReason; changes: string[]; mayHavePlaced: boolean }
+  /** The buyer changed: `email` is the account of the session read, null when it is signed out. */
   | { kind: "buyer"; email: string | null; mayHavePlaced: boolean }
   | { kind: "not_found" }
   | { kind: "unauthorized" }
@@ -81,31 +81,22 @@ const NO_METHODS = "Nie możemy teraz przyjąć zamówienia: brak dostępnych sp
 const SUBMIT_FAILED = "Nie udało się złożyć zamówienia. Spróbuj ponownie.";
 const RATE_LIMITED = "Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut.";
 const CART_GONE = "Koszyk nie jest już dostępny.";
-/** The first paragraph of the message of a changed cart or total; the API's `detail` is not shown. */
+/**
+ * The start of the first paragraph of the message of a changed cart or total, followed by what it says of the order
+ * (`placedSentence`); the API's `detail` is not shown.
+ */
 const CHANGED: Record<ChangeReason, string> = {
-  cart_changed: "Zawartość koszyka zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.",
-  total_changed: "Kwota zamówienia zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.",
+  cart_changed: "Zawartość koszyka zmieniła się od wczytania kasy.",
+  total_changed: "Kwota zamówienia zmieniła się od wczytania kasy.",
 };
 const CHANGED_LAST = "Sprawdź podsumowanie i zamów ponownie.";
 const CHANGES_NOT_READ = "Koszyk albo kwota zamówienia się zmieniły, ale nie udało się wczytać aktualnego podsumowania. Spróbuj ponownie.";
-/** What a refusal for a changed buyer says of the order: none was placed, or the attempt before may have placed one. */
+/**
+ * What a refusal of a changed cart, total or buyer says of the order: none was placed, or an attempt before may have
+ * placed one. The only texts of the checkout that tell whether an order was placed; `placedSentence` chooses.
+ */
 const PLACED_NOTHING = "Nie złożyliśmy zamówienia.";
 const MAY_HAVE_PLACED = "Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.";
-/**
- * The refusals of the API that settle the key they answer: the API gives them only after its check of a repetition of
- * that key under the lock of the cart (`PlaceOrderHandler`), so no order with the key exists. A `cart_empty` is not one
- * of them: the BFF answers it too, before the API, when there is no cart cookie.
- */
-const SETTLING: ReadonlySet<OrderConflictReason> = new Set<OrderConflictReason>([
-  "cart_changed",
-  "total_changed",
-  "guest_order_too_large",
-  "too_many_unpaid_orders",
-  "cart_not_orderable",
-  "discount_code_rejected",
-  "delivery_method_unavailable",
-  "insufficient_stock",
-]);
 const SIGNED_IN_AS = (email: string, placed: string) =>
   `Od wczytania kasy zmieniło się konto: teraz to ${email}. ${placed} Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
 const SIGNED_OUT = (placed: string) => `Od wczytania kasy nastąpiło wylogowanie. ${placed} Podaj adres e-mail, sprawdź dane i podsumowanie, potem zamów ponownie.`;
@@ -211,10 +202,17 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // another code and total).
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
   // The keys of the attempts that may have placed an order no answer told of: an uncertain result (`failed`: a network
-  // error, 403, 5xx, an answer without the order), or a 409 `IdempotencyKeyReused` (an order with the key exists). A
-  // new key settles nothing of them; only a refusal of the API to the same key in `SETTLING` does. While one is left,
-  // the message of a changed buyer does not say that nothing was placed. A ref: read when the message is shown.
+  // error, 403, 5xx, an answer without the order), or a 409 `IdempotencyKeyReused` (an order with the key exists). They
+  // stay for the life of the page: a new key settles nothing of them, and neither does a refusal, even of the API to the
+  // same key, which tells only that no order with it existed when it was checked (the uncertain request may still be on
+  // its way to place it). Only a success tells the result, and the page leaves after it. While one is left, no message
+  // says that nothing was placed. A ref: read when the message is shown.
   const uncertainKeys = useRef(new Set<string>());
+
+  /** Whether an attempt of this page may have placed an order, at this moment. */
+  function mayHavePlaced(): boolean {
+    return uncertainKeys.current.size > 0;
+  }
 
   /** Starts a new attempt with a new key; the keys of uncertain attempts stay. */
   function renewKey() {
@@ -289,7 +287,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setLoaded({ status: "ready", cart: next, session });
     const stale = outOfDate.current;
     if (stale !== null && stale.reason !== "buyer_changed") {
-      setFailure({ kind: "changed", reason: stale.reason, changes: cartChanges(stale.shown, next, chosen) });
+      setFailure({ kind: "changed", reason: stale.reason, changes: cartChanges(stale.shown, next, chosen), mayHavePlaced: mayHavePlaced() });
       outOfDate.current = null;
     }
     chooseMethod(next.delivery?.options.some((option) => option.methodId === chosen) ? chosen : null);
@@ -356,7 +354,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       else setFailure({ kind: "message", text: CHANGES_NOT_READ });
     } else {
       showPreview(preview, session);
-      setFailure({ kind: "changed", reason, changes: cartChanges(shown, preview.cart, chosenId) });
+      setFailure({ kind: "changed", reason, changes: cartChanges(shown, preview.cart, chosenId), mayHavePlaced: mayHavePlaced() });
     }
     unlockOrder();
     return FAILURE_ID;
@@ -375,7 +373,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     if (preview.status === "ok" && session.status === "ok") {
       outOfDate.current = null;
       showPreview(preview, session.session);
-      setFailure({ kind: "buyer", email: session.session?.email ?? null, mayHavePlaced: uncertainKeys.current.size > 0 });
+      setFailure({ kind: "buyer", email: session.session?.email ?? null, mayHavePlaced: mayHavePlaced() });
       // The header shows the buyer the checkout shows now, without a read of its own.
       announceSession(session.session);
     } else {
@@ -597,7 +595,6 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       case "conflict": {
         // Told by the type of the problem only. Nothing is ordered again by itself.
         const detail = result.detail || SUBMIT_FAILED;
-        if (SETTLING.has(result.reason)) uncertainKeys.current.delete(key);
         if (result.reason === "key_reused") uncertainKeys.current.add(key);
         if (result.reason === "discount_code_rejected") {
           // The code does not work any more. It comes off, the summary is read without it, and nothing is ordered:
@@ -633,8 +630,10 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           return readBuyer(shown);
         }
         if (result.reason === "cart_changed" || result.reason === "total_changed") {
-          // Nothing was placed, and from now on the request carries other lines or another total. The form stays locked
-          // while the cart is read; then the message tells what changed, with the summary read (#852).
+          // This request placed nothing, and from now on the request carries other lines or another total; an earlier
+          // attempt with an uncertain result may still have placed an order, and the message then says so
+          // (`uncertainKeys`). The form stays locked while the cart is read; then the message tells what changed, with
+          // the summary read (#852).
           renewKey();
           return readChanges(result.reason, shown, chosenId, session);
         }
@@ -847,9 +846,14 @@ function prefilled(session: AccountSession): Form {
   return session === null || session.name === session.email ? emptyForm : { ...emptyForm, fullName: session.name };
 }
 
+/** What a message of a refusal says of the order: none was placed, or an attempt before may have placed one. */
+function placedSentence(mayHavePlaced: boolean): string {
+  return mayHavePlaced ? MAY_HAVE_PLACED : PLACED_NOTHING;
+}
+
 /** The message of a changed buyer: who buys now, and whether the order may have been placed by the attempt before. */
 function buyerMessage({ email, mayHavePlaced }: Extract<Failure, { kind: "buyer" }>): string {
-  const placed = mayHavePlaced ? MAY_HAVE_PLACED : PLACED_NOTHING;
+  const placed = placedSentence(mayHavePlaced);
   return email === null ? SIGNED_OUT(placed) : SIGNED_IN_AS(email, placed);
 }
 
@@ -870,7 +874,7 @@ function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLink
           <p>{buyerMessage(failure)}</p>
         ) : failure.kind === "changed" ? (
           <>
-            <p>{CHANGED[failure.reason]}</p>
+            <p>{`${CHANGED[failure.reason]} ${placedSentence(failure.mayHavePlaced)}`}</p>
             {failure.changes.length > 0 ? (
               <ul className="list-disc pl-5 not-last:mb-4">
                 {/* Two lines without a known product can say the same: the position is the key. */}

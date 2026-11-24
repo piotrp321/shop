@@ -658,7 +658,11 @@ Rozbieżność koszyka i kwoty (409 `cart-changed` i `order-total-changed`; `doc
    i z liniami oraz kwotą nowego podsumowania.
 3. Komunikat: pierwszy akapit „Zawartość koszyka zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.”
    (`cart-changed`) albo „Kwota zamówienia zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.”
-   (`order-total-changed`; `detail` API nie jest pokazywany), potem lista zmian (`src/checkout/cart-changes.ts`, czysta
+   (`order-total-changed`; `detail` API nie jest pokazywany). Gdy w chwili pokazania komunikatu zostaje niepewna
+   próba tej strony (reguła niepewnej próby w akapicie „Zmiana kupującego”, punkt 3, także z innym kluczem i także
+   z tym samym kluczem, który właśnie odrzucono), zamiast „Nie złożyliśmy zamówienia.” jest „Wcześniejsza próba mogła
+   złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.”; dotyczy to także komunikatu z odczytu w kasie
+   nieaktualnej (punkt 5, również przez kod rabatowy), a lista, podsumowanie, link i fokus są takie same. Potem lista zmian (`src/checkout/cart-changes.ts`, czysta
    funkcja dwóch `CartView` i wybranej metody: porównuje wartości z API, niczego nie liczy), potem „Sprawdź podsumowanie
    i zamów ponownie.” z linkiem „Przejdź do koszyka”. Gdy porównanie nie znajduje różnic, bez listy. Pozycja listy (po
    jednej na zmianę, w kolejności podsumowania: linie pokazane, nowe linie, rabat, dostawa, kwota; `<nazwa>` to nazwa
@@ -720,16 +724,17 @@ z którego wyszło kliknięcie).
    zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.”, a bez sesji po odczycie: „Od
    wczytania kasy nastąpiło wylogowanie. Nie złożyliśmy zamówienia. Podaj adres e-mail, sprawdź dane i podsumowanie,
    potem zamów ponownie.”. Wcześniejsza próba mogła jednak złożyć zamówienie, czego BFF, który odrzuca przed API, nie
-   wie. Kasa pamięta klucze takich prób: wynik `failed` (błąd sieci, 403, 5xx, 503 albo odpowiedź bez numeru
-   zamówienia) i 409 `IdempotencyKeyReused` (zamówienie z tym kluczem istnieje). Nowy klucz (zmiana formularza,
-   dostawy, kodu) niczego o nich nie rozstrzyga. Niepewność klucza kończy tylko odrzucenie API na ten sam klucz
-   wydane po sprawdzeniu powtórzenia pod blokadą koszyka (`PlaceOrderHandler`): `CartContentChanged`,
-   `GuestOrderTooLarge`, `TooManyUnpaidOrders`, `CartNotOrderable`, odrzucenie kodu rabatowego,
-   `DeliveryMethodUnavailable`, `OrderTotalChanged`, `InsufficientStockForOrder`; `CartEmpty` nie, bo ten sam typ
-   wysyła BFF przed API przy braku ciasteczka koszyka; odrzucenia BFF przed API (401, 422, 503, zmiana kupującego)
-   i odpowiedzi na inny klucz też nie. Dopóki zostaje choć jeden taki klucz, komunikat w obu wariantach (także
-   z odczytu w kasie nieaktualnej, punkt 5) mówi zamiast „Nie złożyliśmy zamówienia.”: „Wcześniejsza próba mogła
-   złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.”.
+   wie. Reguła niepewnej próby: kasa pamięta klucze takich prób do końca życia strony: wynik `failed` (błąd sieci,
+   403, 5xx, 503 albo odpowiedź bez numeru zamówienia) i 409 `IdempotencyKeyReused` (zamówienie z tym kluczem
+   istnieje). Nowy klucz (zmiana formularza, dostawy, kodu) niczego o nich nie rozstrzyga i żadne odrzucenie też nie:
+   odrzucenie API, także na ten sam klucz, dowodzi tylko, że zamówienia z tym kluczem nie było w chwili sprawdzenia,
+   a niepewne żądanie mogło jeszcze dotrzeć do API i je złożyć; odrzucenia BFF przed API i odpowiedzi na inny klucz
+   nie mówią o nim nic. Wynik zna tylko sukces (także powtórzenie 200), po którym strona i tak przechodzi dalej. Dopóki
+   zostaje choć jeden taki klucz, komunikat w obu wariantach (także z odczytu w kasie nieaktualnej, punkt 5) mówi
+   zamiast „Nie złożyliśmy zamówienia.”: „Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz
+   ponownie.”. Ta sama reguła obowiązuje w komunikacie rozbieżności koszyka i kwoty (akapit wyżej, punkt 3); innych
+   tekstów, które mówią, że zamówienia nie złożono, kasa nie pokazuje (`detail` 409 `checkout-buyer-changed` z BFF
+   nie jest pokazywany).
 4. Następne kliknięcie to nowa próba: nowy klucz, `buyer` i `expectedLines` z ostatniego odczytu. Kolejna zmiana konta
    między odczytem a kliknięciem daje kolejne 409 i kolejny odczyt.
 5. Odczyt nieudany (sesja albo koszyk): „Kupujący się zmienił, ale nie udało się wczytać kasy. Spróbuj ponownie.”,
@@ -922,7 +927,12 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   komunikat, kupujący i podsumowanie w jednym renderze; gość → konto, konto A → konto B, konto → wylogowanie; zachowane
   pola; następne wysłanie z nowym znacznikiem, kluczem i liniami; drugie 409 i drugi odczyt; kod w odczycie; fokus F2;
   pusty koszyk; 401; odczyt nieudany i kasa nieaktualna: kliknięcie czyta sesję i koszyk, nie zamawia, a odczyt kodu
-  stanu nie zmienia), funkcja różnic `cart-changes.test.ts` (każdy wiersz tabeli, kolejność,
+  stanu nie zmienia), niepewna próba (`failed` albo `IdempotencyKeyReused`) przed odrzuceniem: ostrzeżenie zamiast
+  „Nie złożyliśmy zamówienia.” po zmianie kupującego i w komunikacie rozbieżności (z innym kluczem, z tym samym
+  kluczem po odrzuceniu API, w kasie nieaktualnej, także przez kod rabatowy), bez niepewnej próby (także po 429)
+  zdanie „Nie złożyliśmy zamówienia.”, oraz strażnik: po niepewnej próbie żadne odrzucenie zamówienia (każda
+  przyczyna 409 i zmiana kupującego, ten sam i inny klucz) nie zostawia na ekranie „Nie złożyliśmy zamówienia”;
+  funkcja różnic `cart-changes.test.ts` (każdy wiersz tabeli, kolejność,
   brak różnic, pozycja bez produktu, kwoty z API bez sumowania), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
   danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`, region statusu (ten sam węzeł od wczytywania do treści),
   „Spróbuj ponownie” (przycisk z `aria-disabled` w trakcie, fokus po sukcesie, ponownym błędzie i przeniesiony w trakcie),
