@@ -423,6 +423,7 @@ test.describe("the requests of the form (stage 2)", () => {
       await page.getByTestId("save").click();
 
       await expect(ends, "the field is off while the save waits for its answer").toBeDisabled();
+      await expect(page.getByTestId("save"), "the focus stays on „Zapisz” while the save waits, not on the body").toBeFocused();
       await expect(page.getByTestId("limit-input")).toBeDisabled();
       await expect(page.getByRole("switch", { name: "Aktywny" })).toBeDisabled();
       await expect(page.getByRole("region", { name: "Powiadomienia", exact: true }).getByText("Kod rabatowy zapisany.")).toBeVisible();
