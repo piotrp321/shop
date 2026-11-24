@@ -375,7 +375,7 @@ describe("ProductFormView", () => {
       await mounted.wrapper.get("[data-testid=save]").trigger("click");
       await flushPromises();
 
-      expect(mounted.wrapper.get("[data-testid=save]").attributes("disabled")).toBeDefined();
+      expect(mounted.wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBe("true");
       expect(mounted.wrapper.get("[data-testid=publish]").attributes("disabled")).toBeDefined();
       finish({ data: view({ version: 4 }), response: { status: 200 } });
       await flushPromises();
@@ -1079,7 +1079,7 @@ describe("ProductFormView", () => {
       await wrapper.findAll("[data-testid=variant-value]")[0]!.setValue("Czarne");
       await wrapper.get("[data-testid=add-variant]").trigger("click");
       await wrapper.findAll("[data-testid=variant-value]")[2]!.setValue("zielone");
-      expect(wrapper.get("[data-testid=save]").attributes("disabled")).toBeUndefined();
+      expect(wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBeUndefined();
       await wrapper.get("[data-testid=save]").trigger("click");
       await flushPromises();
 
@@ -1285,7 +1285,7 @@ describe("ProductFormView", () => {
 
         expect(states(wrapper)).toEqual(all(true));
         expect(categoriesOff()).toEqual([true, true]);
-        expect(barButton("Zapisz")?.disabled).toBe(true);
+        expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
         expect(barButton("Odrzuć")?.disabled).toBe(true);
         barButton("Zapisz")!.click();
         await settle();
@@ -1392,7 +1392,7 @@ describe("ProductFormView", () => {
 
         expect(states(wrapper)).toEqual(all(true));
         expect(categoriesOff()).toEqual([true, true]);
-        expect(barButton("Zapisz")?.disabled).toBe(true);
+        expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
         expect(wrapper.get("[data-testid=publish]").attributes("disabled")).toBeDefined();
         expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Odświeżamy…");
         expect(wrapper.get("[data-testid=safety-status]").attributes("role")).toBe("status");
@@ -1451,7 +1451,7 @@ describe("ProductFormView", () => {
         expect(wrapper.find("[data-testid=unblock-form]").exists()).toBe(false);
         expect(document.activeElement).toBe(alertOf(wrapper).element);
         expect(off(wrapper, "name")).toBe(true);
-        expect(barButton("Zapisz")?.disabled).toBe(true);
+        expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
       });
 
       it("„Sprawdź stan” stops saying that the server matches the form when the staff member changes a field afterwards", async () => {

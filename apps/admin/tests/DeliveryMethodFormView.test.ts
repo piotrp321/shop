@@ -747,7 +747,7 @@ describe("DeliveryMethodFormView", () => {
       expect(wrapper.find("[data-testid=unblock-form]").exists()).toBe(false);
       expect(document.activeElement).toBe(alert(wrapper).element);
       expect(lockedFields(wrapper)).toEqual(FIELDS.map(() => true));
-      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+      expect(wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBe("true");
     });
 
     it("„Sprawdź stan” takes the method from the server when it equals the form, says so in a status region and sends no write", async () => {

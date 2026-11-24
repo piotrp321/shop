@@ -376,7 +376,7 @@ implementacji etapu 2 sekcje etapu 1 opisują stan obecny; zadania etapu 2 zmien
 dokumentacji”). Twierdzenia o kodzie dotyczą `origin/main` z 2026-11-23 (`00f1fe6f`).
 
 Issues: #837, #866 (w całości).
-Zakres: `apps/admin/src/composables`, `apps/admin/src/components/FormSafetyNotices.vue`, `apps/admin/src/promotions`, `apps/admin/src/discount-codes`, `apps/admin/src/products`, `apps/admin/src/delivery`, `apps/admin/src/views/PromotionFormView.vue`, `apps/admin/src/views/DiscountCodeFormView.vue`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/src/views/DeliveryMethodFormView.vue`, `apps/admin/tests`, `apps/admin/CLAUDE.md`, `e2e/tests/admin-screens-discount-codes.spec.ts`, `e2e/tests/catalog-admin.spec.ts`, `docs/features/admin-ux-fixes`, `docs/features/admin-design/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/promotions/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/delivery/spec.md`
+Zakres: `apps/admin/src/composables`, `apps/admin/src/components/FormSafetyNotices.vue`, `apps/admin/src/components/SaveBar.vue`, `apps/admin/src/promotions`, `apps/admin/src/discount-codes`, `apps/admin/src/products`, `apps/admin/src/delivery`, `apps/admin/src/views/PromotionFormView.vue`, `apps/admin/src/views/DiscountCodeFormView.vue`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/src/views/DeliveryMethodFormView.vue`, `apps/admin/tests`, `apps/admin/CLAUDE.md`, `e2e/tests/admin-screens-discount-codes.spec.ts`, `e2e/tests/catalog-admin.spec.ts`, `docs/features/admin-ux-fixes`, `docs/features/admin-design/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/promotions/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/delivery/spec.md`
 
 Etap nie zmienia API, `apps/api/openapi*.json` ani `apps/admin/src/api/schema.d.ts`.
 
@@ -418,7 +418,9 @@ Właściciel zaakceptował 2026-11-23:
   wersji poza przypadkami nazwanymi niżej: potwierdzony sukces zapisu, zgodność przy „Sprawdź stan” i udany odczyt po
   „Odrzuć moje zmiany i pokaż stan z serwera”.
 - **Blokada.** W trakcie żądania, którego odpowiedź może zastąpić formularz, pola i kontrolki formularza są wyłączone
-  (`disabled`, wzór `DeliveryMethodFormView.vue:141`), a akcje zapisu i statusu nieaktywne.
+  (`disabled`, wzór `DeliveryMethodFormView.vue:141`), a akcje zapisu i statusu nieaktywne. „Zapisz” paska zapisu jest wtedy nieaktywny
+  przez `aria-disabled`, nie `disabled` (jak przycisk `ConfirmDialog`): przycisk, który pracownik nacisnął, zachowuje
+  fokus do odpowiedzi, a kolejne naciśnięcie niczego nie wysyła.
 - **Limit odczytu.** Każdy odczyt, który blokuje formularz, kończy się najpóźniej po 10 s: blokada znika, a odpowiedź,
   która wróci później, jest pomijana.
 - **Bez automatycznego zapisu.** Zapis wysyła wyłącznie „Zapisz” (albo akcja statusu) pracownika; odczyt ani przyjęcie

@@ -590,7 +590,7 @@ describe("PromotionFormView", () => {
         expect(successToast).not.toHaveBeenCalled();
         // „Zapisz” shows with the first change typed meanwhile, off and with the same description.
         await wrapper.get("[data-testid=name-input]").setValue("Inna nazwa");
-        expect(barButton("Zapisz")?.disabled).toBe(true);
+        expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
         expect(barButton("Zapisz")?.getAttribute("aria-describedby")).toBe(reason?.id);
       });
 
@@ -754,7 +754,7 @@ describe("PromotionFormView", () => {
       expect(lockedState(wrapper)).toEqual(Object.fromEntries([...FIELDS, ...VARIANT_CONTROLS].map((testid) => [testid, true])));
       expect(wrapper.find("[data-testid=picker]").exists()).toBe(true);
       expect(pickerRows(wrapper).length).toBeGreaterThan(0);
-      expect(barButton("Zapisz")?.disabled).toBe(true);
+      expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
       barButton("Zapisz")!.click();
       await wrapper.get("[data-testid=save]").trigger("click");
       await settle();
@@ -957,9 +957,9 @@ describe("PromotionFormView", () => {
       expect(fields().disabled).toBe(true);
       expect(off(wrapper, "name-input")).toBe(true);
       expect(off(wrapper, "remove-variant")).toBe(true);
-      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+      expect(wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBe("true");
       await wrapper.get("[data-testid=name-input]").setValue("Wpisana w trakcie odczytu");
-      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+      expect(wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBe("true");
 
       release({ data: promotion({ status: "active", name: "Z odczytu", version: 6 }), response: { status: 200 } });
       await settle();
@@ -1841,7 +1841,7 @@ describe("PromotionFormView", () => {
       expect(wrapper.find("[data-testid=unblock-form]").exists()).toBe(false);
       expect(document.activeElement).toBe(alert(wrapper).element);
       expect(input(wrapper, "name-input").matches(":disabled")).toBe(true);
-      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+      expect(wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBe("true");
     });
 
     it("„Sprawdź stan” takes the promotion from the server when it equals the form, says so in a status region and sends no write", async () => {

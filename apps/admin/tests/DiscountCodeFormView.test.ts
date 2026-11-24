@@ -757,7 +757,7 @@ describe("DiscountCodeFormView", () => {
       const { wrapper, release } = await createHeld();
 
       expect(lockedState(wrapper)).toEqual(allAre(FIELDS, true));
-      expect(barButton("Zapisz")?.disabled).toBe(true);
+      expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
       barButton("Zapisz")!.click();
       await wrapper.get("[data-testid=save]").trigger("click");
       await settle();
@@ -877,7 +877,7 @@ describe("DiscountCodeFormView", () => {
       expect(wrapper.find("[data-testid=unblock-form]").exists()).toBe(false);
       expect(document.activeElement).toBe(alert(wrapper).element);
       expect(input(wrapper, "limit-input").matches(":disabled")).toBe(true);
-      expect(wrapper.get<HTMLButtonElement>("[data-testid=save]").element.disabled).toBe(true);
+      expect(wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBe("true");
     });
 
     it("„Sprawdź stan” takes the code from the server when it equals the form, says so in a status region and sends no write", async () => {

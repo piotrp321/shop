@@ -64,11 +64,11 @@ describe("SaveBar", () => {
 
   it("disables „Zapisz” when saving is not possible and shows the request in progress", async () => {
     const bar = render({ saveDisabled: true });
-    expect(button("Zapisz")?.disabled).toBe(true);
+    expect(button("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
 
     await bar.setProps({ saveDisabled: false, busy: true });
     expect(button("Zapisz")?.getAttribute("aria-busy")).toBe("true");
-    expect(button("Zapisz")?.disabled).toBe(true);
+    expect(button("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("keeps „Zapisz” focusable while a request runs: aria-disabled instead of disabled, and a press emits nothing", async () => {
