@@ -551,7 +551,8 @@ teksty z samego znaku Co i Cn, które nie są puste; teksty z T5; długość po 
   Dokumenty opisują 55 takich pól (48 tekstów treści i 7 fraz `q`): 40 ma wiersz, 15 jest na liście wyjątków. Kilka
   wierszy tej samej operacji i pola nie przeszkadza. Przerywają test (na kopiach danych, każda próba osobnym testem):
   pole bez wiersza i bez wpisu (bez formatu, z formatem spoza zamkniętej listy, w liście obiektów, parametr `q`
-  nowej listy), wiersz pola, którego dokumenty nie opisują, wpis bez powodu, wpis dla pola, którego dokumenty nie
+  nowej listy), wiersz pola, którego dokumenty nie opisują, wpis bez powodu (powód pusty według reguły tekstu, także
+  złożony z samych znaków niewidocznych, np. U+200B albo U+3164), wpis dla pola, którego dokumenty nie
   opisują, i tabela bez wiersza `POST /orders` `email` (test usuwa ten wiersz z kopii tabeli). Strażnik nie generuje
   przypadków i nie zmienia tabeli.
 - **Granice:** mechanizm nie mutuje innych pól, nie generuje wartości ze schematów i zawiera tylko przypadki tej

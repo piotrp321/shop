@@ -49,7 +49,7 @@ final class ClosedTextFieldListTest extends KernelTestCase
             array_column($exceptions, 'field'),
         );
         foreach ($exceptions as $exception) {
-            self::assertNotSame('', trim($exception['reason']), $exception['field']);
+            self::assertTrue(ClosedTextFieldList::hasReason($exception['reason']), $exception['field']);
         }
     }
 

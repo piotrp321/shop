@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Shared\InputContract;
 
+use App\Shared\Domain\Text;
+
 /**
  * The closed list of the text fields of the contract of texts (spec: docs/features/api-input-contract/spec.md,
  * "Testy", Strażnik zamkniętej listy pól tekstowych): every property of type string in the body of a request of the
@@ -116,7 +118,7 @@ final class ClosedTextFieldList
         foreach ($exceptions as $exception) {
             foreach ($exception['operations'] as $operation) {
                 $field = $operation.', '.$exception['field'];
-                if (1 === preg_match('/^[\s\p{Z}]*$/u', $exception['reason'])) {
+                if (!self::hasReason($exception['reason'])) {
                     $violations[] = $field.': an exception without a reason';
                 }
                 if (!isset($known[$field])) {
@@ -126,6 +128,15 @@ final class ClosedTextFieldList
         }
 
         return $violations;
+    }
+
+    /**
+     * Whether the reason of an exception says anything: by the rule of texts (Text) it is not empty, so a reason made
+     * only of white space and invisible characters is none.
+     */
+    public static function hasReason(string $reason): bool
+    {
+        return '' !== Text::normalize($reason);
     }
 
     /**
