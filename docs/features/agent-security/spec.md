@@ -543,7 +543,7 @@ i sam AO używają nadal tokenu użytkownika.
   `SENTRY_AUTH_TOKEN` ma `environment: sentry`); kolejny sekret stosuje tę zasadę: środowisko bez zatwierdzenia, tylko
   `main`, wpis w stałej i w runbooku (pozycja użytkownika). Środowisko `production` ma tylko job `deploy`: test odrzuca
   inny job z `environment: production` i ze środowiskiem spoza listy.
-- Cele `kubeconfig`, `rerun`, `create-admin`, `restore` i `backups` (zapisują albo montują `KUBE_DIR`; `reinitialize`
+- Cele `kubeconfig`, `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex` (zapisują albo montują `KUBE_DIR`; `reinitialize`
   i `status` działają przez SSH, a wykonawca nie ma `~/.ssh` ani `SSH_AUTH_SOCK`) wołają w Makefile najpierw
   `infra/k8s/scripts/ao-guard.sh <cel>` i odmawiają pracy (kod 1, bez zmian, komunikat na stderr: zatrzymaj AO albo
   poczekaj na koniec przebiegu), gdy lista procesów (`ps`) zawiera proces `python3 -m orchestrator … run`, runner AO

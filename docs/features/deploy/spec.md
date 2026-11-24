@@ -223,6 +223,10 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   `docs/features/demo-data/spec.md`.
 - CronJob `load` (każdy profil): zawieszony, obraz k6 z digestem w `images.k6`, Job uruchamia `load/smoke.js` na usługach
   klastra bez sekretów (sprawdzenie ścieżek sklepu po generowaniu danych przez `generate`).
+- CronJob `reindex` (każdy profil): zawieszony, obraz, środowisko i sekrety API, Job uruchamia `catalog:reindex` (limit
+  czasu `reindex.activeDeadlineSeconds`). Jego Joby tworzy wyłącznie `make -C infra/k8s reindex` po zgodzie
+  użytkownika. Liczbę shardów nowego indeksu daje `elasticsearch.shards` (`SEARCH_SHARDS` kontenerów z kodem API;
+  `prod` 4, pozostałe profile 1). Opis: `docs/features/search/spec.md`, „Infrastruktura”.
 - `rabbitmq-init` (vhost testów) nie istnieje.
 - Profile wartości:
   - `values.yaml` – wspólne; wymagane wartości walidowane schematem (`values.schema.json`), więc brak np. sekretu SMTP
@@ -425,15 +429,18 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
     `argocd-cm` ma standardową customizację zdrowia `Application`, więc `root` czeka na aplikacje-dzieci w falach, oraz
     customizację zdrowia PVC: `Bound` zdrowy, `Lost` zdegradowany, `Pending` zdrowy tylko z adnotacją
     `shop/bound-by-first-pod: "true"` (PVC wiązany przez pierwszy pod CronJoba, np. `backup-work`), inny `Pending` w toku.
-  - `kubeconfig`: kubeconfig klastra do katalogu poza repo (`KUBE_DIR`), dla `rerun`, `create-admin`, `restore` i `backups`.
+  - `kubeconfig`: kubeconfig klastra do katalogu poza repo (`KUBE_DIR`), dla `rerun`, `create-admin`, `restore`, `backups`,
+    `generate`, `open` i `reindex`.
     `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest usuwany po niej; trwałych kubeconfigów produkcji nie
     trzyma się w katalogach udostępnionych Dockerowi. Cel zapisuje bezwzględną ścieżkę w rejestrze
     `~/.local/state/shop-ops/kube-dirs`, z którego czyta start AO przez `/ao-run` (odmawia, dopóki zapisany katalog istnieje).
-    `kubeconfig`, `rerun`, `create-admin`, `restore` i `backups` odmawiają bez zmian (kod różny od 0, komunikat po angielsku: zatrzymaj AO albo
+    `kubeconfig`, `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex` odmawiają bez zmian (kod różny od 0, komunikat po angielsku: zatrzymaj AO albo
     poczekaj na koniec przebiegu), gdy działa AO albo jego wykonawca (`scripts/ao-guard.sh`, wołany w Makefile, nie w
     skryptach, więc test dymny działa jak dotąd); błąd listy procesów jest odmową.
   - `status`: stan aplikacji Argo, podów i Jobów (tylko odczyt).
   - `rerun JOB=…`: ponowienie Joba wersji (D11).
+  - `reindex`: przebudowa indeksu wyszukiwarki Jobem z CronJoba `reindex`, po potwierdzeniu słowem `tak`; agent uruchamia
+    go tylko po zgodzie użytkownika w rozmowie (`docs/features/search/spec.md`, „Infrastruktura”).
   - `create-admin`, `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa przez `bin/seed-demo` w podzie api):
     wypisują, co zrobią, i wymagają potwierdzenia słowem `tak`; agent uruchamia je tylko po zgodzie użytkownika w rozmowie.
   - `seal-secrets` (Sekrety) i `cloudflare-ips` (zakresy Cloudflare w `ipAllowList` z opublikowanych list; `CHECK=1`
@@ -485,7 +492,8 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   komponent klienta. Dalej: `create-admin` (bez słowa `tak` niczego nie zmienia; z nim zakłada administratora i wysyła e-mail do
   Mailpita; istniejący login kończy się kodem 3 bez zmian; wynik nie zawiera sekretów), upgrade
   z nową rewizją (`initialize` i `keycloak-config` nie zmieniają danych ani realmów), upgrade z klientem dodanym do pliku
-  realmu `shop` (`keycloak-config` dodaje go, użytkownicy zostają), `rerun` zakończonego Joba, upgrade ze zepsutą
+  realmu `shop` (`keycloak-config` dodaje go, użytkownicy zostają), `rerun` zakończonego Joba, `reindex` (bez słowa `tak`
+  nie powstaje żaden Job; z nim Job z CronJoba `reindex` przebudowuje indeks, a API listuje tyle samo produktów), upgrade ze zepsutą
   migracją (poprzednie `api`, `worker` i `worker-commands` działają) i upgrade na bazie z zamówieniami bez produktów (`initialize` kończy
   się błędem stanu mieszanego bez zmian). Ostatnia faza uruchamia `generate PROFILE=small` i `open` (zamknięcie sklepu, Job `demo-data-run`
   z CronJoba `demo-data`, sprawdzenie danych, Job `load`, otwarcie; `docs/features/demo-scale/spec.md`, kryterium 7),

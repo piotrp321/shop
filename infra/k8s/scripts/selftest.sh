@@ -467,6 +467,11 @@ open_without_the_lock() { replace infra/k8s/scripts/open.sh 'lock_take open || r
 # The CronJob load (docs/features/demo-scale/spec.md): a Job of it checkouts an order in the data, so a CronJob that is not suspended
 # would run on its schedule; the k6 image of the chart is the one of load/k6.sh (a new k6 is changed in both places).
 load_not_suspended() { replace_after infra/k8s/charts/shop/templates/load.yaml 'schedule: "0 0 1 1 *"' 'suspend: true' 'suspend: false'; }
+# The CronJob reindex (docs/features/search/spec.md, "Infrastruktura"): not suspended it would rebuild the index on its schedule, and
+# make reindex that goes on without the word tak would rebuild it without the confirmation.
+reindex_not_suspended() { replace_after infra/k8s/charts/shop/templates/reindex.yaml 'schedule: "0 0 1 1 *"' 'suspend: true' 'suspend: false'; }
+# shellcheck disable=SC2016 # the text is a line of the script, with its variables
+reindex_without_confirmation() { replace infra/k8s/scripts/reindex.sh '[ "$answer" = tak ] || refuse' '[ "$answer" = never ] && refuse'; }
 load_k6_digest_differs() { replace infra/k8s/charts/shop/values.yaml '@sha256:2dd4756ec6e1' '@sha256:2dd4756ec6e0'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 # The alert rules (docs/features/deploy-ops/spec.md, O6): the render test sees the rule without its absent, promtool sees an
@@ -586,6 +591,8 @@ run_case "make open after a Job demo-data-run that did not complete" "test_witho
 run_case "make open without the lock of make generate and make open" "test_make_open_keeps_the_rule_while_another_make_generate_would_replace_the_job" \
   "tests" open_without_the_lock
 run_case "load CronJob that is not suspended" "test_the_load_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" load_not_suspended
+run_case "reindex CronJob that is not suspended" "test_the_reindex_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" reindex_not_suspended
+run_case "make reindex going on without tak" "test_reindex_without_the_word_tak_creates_no_job" "tests" reindex_without_confirmation
 run_case "k6 image of the chart with another digest than load/k6.sh" "test_the_values_pin_the_image_of_the_runner_of_the_scripts" "tests" load_k6_digest_differs
 run_case "BackupMissing without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" backup_missing_without_absent
 run_case "RateLimitsOff without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" rate_limits_off_without_absent

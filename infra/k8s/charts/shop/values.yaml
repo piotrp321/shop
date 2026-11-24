@@ -219,6 +219,16 @@ storage:
 
 elasticsearch:
   javaOpts: -Xms1g -Xmx1g
+  # The primary shards of a new product index (SEARCH_SHARDS of the API, the workers and the Jobs; docs/features/search/spec.md,
+  # "Infrastruktura"). One shard is searched by one thread. A change reaches the cluster with the next index: make -C infra/k8s reindex.
+  shards: 1
+
+# The suspended CronJob reindex: its Jobs (make -C infra/k8s reindex) rebuild the search index with catalog:reindex of the deployed
+# revision. Every profile has it and it never runs by itself.
+reindex:
+  # The time limit of a Job, in seconds. The rebuild of a million products took 17 minutes on the demo server
+  # (docs/reports/demo-scale-medium-worf-2026-11-20.md).
+  activeDeadlineSeconds: 21600
 
 keycloak:
   javaHeap: -Xms256m -Xmx768m
