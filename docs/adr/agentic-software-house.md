@@ -87,8 +87,10 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    pamięć hosta (zwykle 2–3 stosy) i limity subskrypcji, które sesja sprawdza przed falą; płatnych przekroczeń nie
    włącza. Przed falą sesja sprawdza też wersję procesu (`metrics.py process <epik>`), wolną pamięć Dockera i działające
    projekty Compose innych sesji oraz gasi stosy własnych zakończonych zadań (`.ao/teardown`): każdy stos zajmuje sieć
-   z ograniczonej puli Dockera, a jej wyczerpanie kończy `make up` błędem. Gdy pamięci
-   nie wystarcza na planowaną liczbę stosów, zmniejsza równoległość i zapisuje to w „Problemach i zastojach” opisu
+   z ograniczonej puli Dockera, a jej wyczerpanie kończy `make up` błędem. Zasobów Dockera innych sesji (sieci,
+   kontenerów, wolumenów, także zatrzymanych projektów) nie usuwa ani sesja, ani subagent, także poleceniami `prune`.
+   Przy wyczerpanej puli albo pamięci sesja gasi własne zakończone stosy, czeka albo zmniejsza równoległość i zapisuje
+   to w „Problemach i zastojach”. Gdy pamięci nie wystarcza na planowaną liczbę stosów, zmniejsza równoległość i zapisuje to w „Problemach i zastojach” opisu
    końcowego PR.
 4. **Przegląd zadania.** `FAST`: sesja sama sprawdza diff i wyniki testów, w tym trzy kontrole z punktu 4 agenta
    `code-reviewer` (istniejące testy, zakres, RED). `STANDARD` i `CRITICAL`: `code-reviewer` w trybie FULL; zlecenie
