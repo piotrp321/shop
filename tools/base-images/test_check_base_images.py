@@ -183,6 +183,44 @@ class CheckBaseImages(unittest.TestCase):
         self.write("Dockerfile", "FROM node:24-alpine\n")
         self.assertIn("node:24-alpine", self.run_check().stdout)
 
+    # Ways of writing a reference that Docker accepts and a reader of lines could miss
+
+    def test_byte_order_mark_before_the_first_instruction_is_ignored(self):
+        self.assertViolation("﻿FROM node:24\n", 1)
+
+    def test_pinned_image_after_a_byte_order_mark_passes(self):
+        self.assertClean(f"﻿FROM node:24@{DIGEST}\n")
+
+    def test_empty_line_inside_a_continuation_does_not_end_the_instruction(self):
+        self.assertViolation("FROM \\\n\n  node:24\n", 1)
+
+    def test_empty_line_inside_a_continued_copy_does_not_end_the_instruction(self):
+        self.assertViolation("FROM scratch\nCOPY \\\n\n  --from=img:1 \\\n\n  /a /a\n", 2)
+
+    def test_comment_inside_a_continuation_does_not_end_the_instruction(self):
+        self.assertViolation("FROM scratch\nCOPY \\\n# note\n  --from=img:1 /a /a\n", 2)
+
+    def test_crlf_line_endings_are_read_like_lf(self):
+        self.assertViolation("FROM scratch\r\nCOPY \\\r\n  --from=img:1 /a /a\r\n", 2)
+
+    def test_onbuild_copy_from_image_fails(self):
+        self.assertViolation("FROM scratch\nONBUILD COPY --from=img:1 /a /a\n", 2)
+
+    def test_onbuild_add_and_run_mount_from_image_fail(self):
+        self.assertViolation("FROM scratch\nonbuild ADD --from=img:1 /a /a\n", 2)
+        self.assertViolation("FROM scratch\nONBUILD RUN --mount=type=bind,from=img:1,target=/b true\n", 2,
+                             path="b/Dockerfile")
+
+    def test_onbuild_copy_from_a_pinned_image_and_an_earlier_stage_pass(self):
+        self.assertClean(f"FROM node:24@{DIGEST} AS build\nFROM scratch\n"
+                         f"ONBUILD COPY --from=img:1@{DIGEST} /a /a\nONBUILD COPY --from=build /b /b\n")
+
+    def test_escape_directive_changes_the_continuation_character(self):
+        self.assertViolation("# escape=`\nFROM scratch\nCOPY `\n  --from=img:1 /a /a\n", 3)
+
+    def test_pinned_copy_with_the_escape_directive_passes(self):
+        self.assertClean(f"# escape=`\nFROM scratch\nCOPY `\n  --from=img:1@{DIGEST} /a /a\n")
+
     # Files that are checked
 
     def test_new_dockerfile_in_any_directory_is_checked(self):
