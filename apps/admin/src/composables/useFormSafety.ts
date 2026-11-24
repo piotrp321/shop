@@ -1,4 +1,4 @@
-import { type Ref, computed, ref, shallowRef } from "vue";
+import { type Ref, computed, ref, shallowRef, watch } from "vue";
 import {
   CHECK_LIST_MESSAGE,
   LATE_SAVE_MESSAGE,
@@ -114,6 +114,8 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   const reading = ref(false);
   const readFailed = ref(false);
   const matched = ref(false);
+  // The draft „Sprawdź stan” found equal to the server: the message is true only for it.
+  let matchedDraft: string | null = null;
   const restoreOffered = ref(false);
   // What the 409 that offered the server state says about it; shown once the draft is discarded and the 409's own message goes.
   let restoreContext: string | null = null;
@@ -130,6 +132,16 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   let readTimer: ReturnType<typeof setTimeout> | undefined;
   // What „Spróbuj ponownie” repeats; true when it brought the object and replaced the draft.
   let retry: (() => Promise<boolean>) | null = null;
+
+  // A change of the draft the staff member makes after a match ends the message: the form no longer is what the server has.
+  watch(
+    () => (matched.value ? JSON.stringify(options.draftRequest()) : null),
+    (draft) => {
+      if (draft !== null && draft !== matchedDraft) {
+        matched.value = false;
+      }
+    },
+  );
 
   const writing = computed(() => active.value !== null);
   const locked = computed(() => writing.value || reading.value);
@@ -370,6 +382,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
         options.adopt(view);
         clearNotices();
         matched.value = true;
+        matchedDraft = JSON.stringify(options.draftRequest());
         announce("matched");
       } else if (view.version === options.version()) {
         unknownState.value = { ...current, pending: false, kind: "missing" };
