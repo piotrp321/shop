@@ -7,46 +7,89 @@ namespace App\Catalog\Domain\Product;
 use App\Shared\Domain\Text;
 
 /**
- * What an axis name or a variant value keeps after the first publication of its product (K5): the text trimmed by the
- * rule of texts (Text), without regard to case, so a text stored with characters the rule trims is the same as the text
- * without them. A stored text the rule refuses (a forbidden character, or no visible character) has no identity to
- * keep: it may be corrected.
+ * What an axis name or a variant value keeps after the first publication of its product (K5).
+ *
+ * - A stored text the rule of texts takes keeps the text trimmed by the rule (Text), without regard to case, so a text
+ *   stored with characters the rule trims is the same as the text without them.
+ * - A stored text the rule refuses for a forbidden character (T1) keeps its correction: the text without the forbidden
+ *   characters and without white space, compared with the given text without white space, trimmed and without regard
+ *   to case ("czar" U+009F "ne" keeps „czarne” and „czar ne”, not „zielone”).
+ * - A stored text without a visible character, also once its forbidden characters are gone, has no text to keep: any
+ *   text may take its place.
  */
 final class IdentityText
 {
+    private const string WHITE_SPACE = '/[\s\p{Z}]+/u';
+
     private function __construct()
     {
     }
 
     /**
-     * @return string|null null for a text the rule refuses
+     * Whether the given text keeps the identity of the stored one.
      */
-    public static function of(string $text): ?string
+    public static function keeps(string $stored, string $given): bool
     {
-        if (Text::hasForbiddenCharacters($text)) {
-            return null;
-        }
-        $normalized = Text::normalize($text);
+        if (!Text::hasForbiddenCharacters($stored)) {
+            $identity = self::identity($stored);
 
-        return '' === $normalized ? null : mb_strtolower($normalized);
+            return null === $identity || $identity === self::identity($given);
+        }
+        $identity = self::identity(self::withoutWhiteSpace(self::withoutForbiddenCharacters($stored)));
+
+        return null === $identity || $identity === self::identity(self::withoutWhiteSpace($given));
     }
 
     /**
-     * Whether the texts given in place of the stored ones keep their identity: each stored text with an identity has
-     * the same one given in its place.
+     * Whether the stored text has an identity to keep: a text without a visible character, also once its forbidden
+     * characters are gone, has none.
+     */
+    public static function has(string $stored): bool
+    {
+        return null !== self::identity(self::withoutForbiddenCharacters($stored));
+    }
+
+    /**
+     * Whether the texts given in place of the stored ones keep their identity, position by position.
      *
      * @param list<string> $stored
      * @param list<string> $given
      */
     public static function kept(array $stored, array $given): bool
     {
+        if (\count($stored) !== \count($given)) {
+            return false;
+        }
         foreach ($stored as $position => $text) {
-            $identity = self::of($text);
-            if (null !== $identity && $identity !== self::of($given[$position] ?? '')) {
+            if (!self::keeps($text, $given[$position])) {
                 return false;
             }
         }
 
-        return \count($stored) === \count($given);
+        return true;
+    }
+
+    private static function identity(string $text): ?string
+    {
+        $normalized = Text::normalize($text);
+
+        return '' === $normalized ? null : mb_strtolower($normalized);
+    }
+
+    /**
+     * The text without the characters the rule forbids, one by one, so the rule stays only in Text. A stored text is
+     * valid UTF-8 (the database takes nothing else).
+     */
+    private static function withoutForbiddenCharacters(string $text): string
+    {
+        return implode('', array_filter(
+            mb_str_split($text, 1, 'UTF-8'),
+            static fn (string $character): bool => !Text::hasForbiddenCharacters($character),
+        ));
+    }
+
+    private static function withoutWhiteSpace(string $text): string
+    {
+        return preg_replace(self::WHITE_SPACE, '', $text) ?? $text;
     }
 }

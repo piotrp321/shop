@@ -229,8 +229,9 @@ final class Product
 
     /**
      * The same axes in the same order, each name with the same identity; every kept variant with the same identity of
-     * its values. The identity is the text trimmed by the rule of texts without regard to case, and a stored name or
-     * value the rule refuses has none, so it may be corrected ({@see IdentityText}). New variants are free.
+     * its values. The identity is the text trimmed by the rule of texts without regard to case; a stored name or value
+     * the rule refuses keeps only its correction, and one without a visible character has none ({@see IdentityText}).
+     * New variants are free.
      *
      * @throws VariantIdentityLocked
      */
@@ -238,17 +239,16 @@ final class Product
     {
         $stored = $this->variants->axes()->names();
         $given = $variants->axes()->names();
-        $storedKeys = array_map(IdentityText::of(...), $stored);
-        $givenKeys = array_map(IdentityText::of(...), $given);
         if (\count($stored) !== \count($given)) {
             throw VariantIdentityLocked::axes();
         }
-        foreach ($storedKeys as $position => $key) {
-            if (null === $key || $key === $givenKeys[$position]) {
+        foreach ($stored as $position => $name) {
+            if (IdentityText::keeps($name, $given[$position])) {
                 continue;
             }
             // A name that is still there, in another place, is a reordering; otherwise the axis was renamed.
-            throw \in_array($givenKeys[$position], $storedKeys, true) ? VariantIdentityLocked::axes() : VariantIdentityLocked::axisName($stored[$position]);
+            $elsewhere = array_any($stored, static fn (string $other): bool => IdentityText::has($other) && IdentityText::keeps($other, $given[$position]));
+            throw $elsewhere ? VariantIdentityLocked::axes() : VariantIdentityLocked::axisName($name);
         }
 
         $storedVariants = $this->variantsById();
