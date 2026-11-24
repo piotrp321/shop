@@ -607,7 +607,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   da powtórzenie 200, nie drugie zamówienie. Strona niczego nie ponawia sama: każdy POST to kliknięcie klienta.
   Znany skutek reguły „zmiana danych = nowy klucz”: gdy wynik poprzedniej próby był niepewny (błąd sieci, 5xx, 503,
   403), a zamówienie jednak powstało, zmiana pola i ponowne kliknięcie dają 409 `CartEmpty` (pusty koszyk), a nie
-  potwierdzenie. Drugiego zamówienia nie ma, bo koszyk jest pusty.
+  potwierdzenie; komunikat ma wtedy ostrzeżenie o wcześniejszej próbie (akapit „Niepewna próba” niżej). Drugiego
+  zamówienia nie ma, bo koszyk jest pusty.
 - `expectedTotalGross` = `totalGross` wybranej opcji dostawy z ostatnio wczytanego podsumowania, `deliveryMethodId` =
   jej `methodId`, `expectedLines` = `variantId` i `quantity` każdej linii tego samego podsumowania, w jego kolejności
   (także podsumowania wczytanego z kodem, bez kodu i po 409). Bez wybranej metody (także gdy wybranej nie ma już wśród opcji podsumowania) albo bez dostawcy
@@ -645,7 +646,33 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | 409 nieznany (inny `type` albo brak) | `detail` (bez niego „Nie udało się złożyć zamówienia. Spróbuj ponownie.”) i link „Wróć do koszyka”, klucz zostaje, bez automatycznego ponawiania |
 | 404 koszyka | „Koszyk nie jest już dostępny.” i link do sklepu |
 | 401 | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem (`returnTo=/checkout`) |
-| 403, 503, 5xx, błąd sieci | „Nie udało się złożyć zamówienia. Spróbuj ponownie.” (ponowienie z tym samym kluczem) |
+| 403, 503, 5xx, błąd sieci, odpowiedź bez numeru zamówienia | „Nie wiemy, czy zamówienie zostało złożone. Spróbuj ponownie: tego samego zamówienia nie złożymy drugi raz.” (ponowienie z tym samym kluczem) |
+
+Niepewna próba. Kasa pamięta do końca życia strony klucze prób, które mogły złożyć zamówienie, choć żadna odpowiedź
+o nim nie powiedziała: wynik niepewny (wiersz 403, 503, 5xx, błąd sieci) i 409 `IdempotencyKeyReused` (zamówienie
+z tym kluczem istnieje). Nowy klucz (zmiana formularza, dostawy, kodu) niczego o nich nie rozstrzyga i żadne
+odrzucenie też nie: odrzucenie API, także na ten sam klucz, dowodzi tylko, że zamówienia z tym kluczem nie było
+w chwili sprawdzenia, a niepewne żądanie mogło jeszcze dotrzeć do API i je złożyć; odrzucenia BFF przed API
+i odpowiedzi na inny klucz nie mówią o nim nic. Wynik zna tylko sukces (także powtórzenie 200), po którym strona i tak
+przechodzi dalej. Ostrzeżenie to „Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.”.
+Niezmiennik ekranu: dopóki zostaje choć jeden taki klucz, nad formularzem w każdym stanie kasy (także w trakcie
+żądania i odczytu, po zdjęciu komunikatu i po zmianie danych) jest dokładnie jedno z:
+
+- komunikat wyniku niepewnego bez ostrzeżenia, dopóki bieżący klucz jest kluczem tej próby (następne kliknięcie ją
+  ponawia) i nie ma innej niepewnej próby; przy innej niepewnej próbie ma po tekście akapit ostrzeżenia;
+- komunikat rozbieżności koszyka i kwoty albo zmiany kupującego z ostrzeżeniem zamiast „Nie złożyliśmy zamówienia.”;
+- każdy inny komunikat odrzucenia albo błędu zamówienia (każdy wiersz tabeli, także komunikaty o nieudanym odczycie
+  i wygasłej sesji) z akapitem ostrzeżenia po swoim tekście; odrzucenie pokazane tylko przy polach (422 z błędami pól,
+  409 kodu rabatowego przy polu kodu) ma nad formularzem komunikat z samym ostrzeżeniem;
+- samo ostrzeżenie w tym samym miejscu, gdy komunikatu nie ma (zdjęty przy zmianie podsumowania, przed wysłaniem
+  zamówienia, w trakcie żądania) albo gdy był to komunikat wyniku niepewnego, a klucz się zmienił (edycja pola,
+  dostawy, kodu): „Spróbuj ponownie: tego samego zamówienia nie złożymy drugi raz” nie mówi już prawdy o następnym
+  kliknięciu. To ostrzeżenie nie jest komunikatem `role="alert"` (`role="note"`): pojawia się bez ponownego ogłoszenia
+  i bez przenoszenia fokusu.
+
+Komunikaty z ostrzeżeniem są ogłaszane i dostają fokus jak każdy komunikat (F2). O ostrzeżeniu decyduje render ze stanu
+niepewnych kluczy, bieżącego klucza i komunikatu (`aboveTheForm` w `CheckoutPage.tsx`), a nie miejsce, które komunikat
+ustawia albo zdejmuje. Bez niepewnej próby teksty są takie, jak w tabeli, a ostrzeżenia nie ma.
 
 Rozbieżność koszyka i kwoty (409 `cart-changed` i `order-total-changed`; `docs/features/cart-order-consistency/spec.md`,
 „Z2 i Z3”):
@@ -658,7 +685,12 @@ Rozbieżność koszyka i kwoty (409 `cart-changed` i `order-total-changed`; `doc
    i z liniami oraz kwotą nowego podsumowania.
 3. Komunikat: pierwszy akapit „Zawartość koszyka zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.”
    (`cart-changed`) albo „Kwota zamówienia zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.”
-   (`order-total-changed`; `detail` API nie jest pokazywany), potem lista zmian (`src/checkout/cart-changes.ts`, czysta
+   (`order-total-changed`; `detail` API nie jest pokazywany). Gdy w chwili pokazania komunikatu zostaje niepewna
+   próba tej strony (reguła niepewnej próby w akapicie „Zmiana kupującego”, punkt 3, także z innym kluczem i także
+   z tym samym kluczem, który właśnie odrzucono), zamiast „Nie złożyliśmy zamówienia.” jest „Wcześniejsza próba mogła
+   złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.”; dotyczy to także komunikatu z odczytu w kasie
+   nieaktualnej (punkt 5, również przez kod rabatowy), a lista, podsumowanie, link i fokus są takie same (akapit
+   „Niepewna próba” wyżej). Potem lista zmian (`src/checkout/cart-changes.ts`, czysta
    funkcja dwóch `CartView` i wybranej metody: porównuje wartości z API, niczego nie liczy), potem „Sprawdź podsumowanie
    i zamów ponownie.” z linkiem „Przejdź do koszyka”. Gdy porównanie nie znajduje różnic, bez listy. Pozycja listy (po
    jednej na zmianę, w kolejności podsumowania: linie pokazane, nowe linie, rabat, dostawa, kwota; `<nazwa>` to nazwa
@@ -696,6 +728,7 @@ Rozbieżność koszyka i kwoty (409 `cart-changed` i `order-total-changed`; `doc
    zmieni podsumowanie: udane zastosowanie kodu, „Usuń kod” albo wybór innej metody dostawy; inaczej przeczyłby
    podsumowaniu obok. Zostaje przy edycji pól, wyborze płatności, kodzie odrzuconym (przez podsumowanie albo 400)
    i nieudanym sprawdzeniu kodu. Zniknięcie nie przenosi fokusu, a fokus i ogłoszenia kodu i dostawy są jak zawsze.
+   Przy niepewnej próbie na miejscu komunikatu zostaje samo ostrzeżenie (akapit „Niepewna próba” wyżej).
    Komunikaty innego rodzaju zostają, a odczyt przez kod w stanie nieaktualnym pokazuje listę zmian (punkt 5).
 
 Zmiana kupującego (409 `checkout-buyer-changed`: logowanie, wylogowanie albo inne konto w innej karcie;
@@ -720,16 +753,10 @@ z którego wyszło kliknięcie).
    zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.”, a bez sesji po odczycie: „Od
    wczytania kasy nastąpiło wylogowanie. Nie złożyliśmy zamówienia. Podaj adres e-mail, sprawdź dane i podsumowanie,
    potem zamów ponownie.”. Wcześniejsza próba mogła jednak złożyć zamówienie, czego BFF, który odrzuca przed API, nie
-   wie. Kasa pamięta klucze takich prób: wynik `failed` (błąd sieci, 403, 5xx, 503 albo odpowiedź bez numeru
-   zamówienia) i 409 `IdempotencyKeyReused` (zamówienie z tym kluczem istnieje). Nowy klucz (zmiana formularza,
-   dostawy, kodu) niczego o nich nie rozstrzyga. Niepewność klucza kończy tylko odrzucenie API na ten sam klucz
-   wydane po sprawdzeniu powtórzenia pod blokadą koszyka (`PlaceOrderHandler`): `CartContentChanged`,
-   `GuestOrderTooLarge`, `TooManyUnpaidOrders`, `CartNotOrderable`, odrzucenie kodu rabatowego,
-   `DeliveryMethodUnavailable`, `OrderTotalChanged`, `InsufficientStockForOrder`; `CartEmpty` nie, bo ten sam typ
-   wysyła BFF przed API przy braku ciasteczka koszyka; odrzucenia BFF przed API (401, 422, 503, zmiana kupującego)
-   i odpowiedzi na inny klucz też nie. Dopóki zostaje choć jeden taki klucz, komunikat w obu wariantach (także
-   z odczytu w kasie nieaktualnej, punkt 5) mówi zamiast „Nie złożyliśmy zamówienia.”: „Wcześniejsza próba mogła
-   złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.”.
+   wie: dopóki zostaje niepewna próba (akapit „Niepewna próba” wyżej), komunikat w obu wariantach (także z odczytu
+   w kasie nieaktualnej, punkt 5) mówi zamiast „Nie złożyliśmy zamówienia.”: „Wcześniejsza próba mogła złożyć
+   zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.”. `detail` 409 `checkout-buyer-changed` z BFF nie jest
+   pokazywany.
 4. Następne kliknięcie to nowa próba: nowy klucz, `buyer` i `expectedLines` z ostatniego odczytu. Kolejna zmiana konta
    między odczytem a kliknięciem daje kolejne 409 i kolejny odczyt.
 5. Odczyt nieudany (sesja albo koszyk): „Kupujący się zmienił, ale nie udało się wczytać kasy. Spróbuj ponownie.”,
@@ -922,7 +949,19 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   komunikat, kupujący i podsumowanie w jednym renderze; gość → konto, konto A → konto B, konto → wylogowanie; zachowane
   pola; następne wysłanie z nowym znacznikiem, kluczem i liniami; drugie 409 i drugi odczyt; kod w odczycie; fokus F2;
   pusty koszyk; 401; odczyt nieudany i kasa nieaktualna: kliknięcie czyta sesję i koszyk, nie zamawia, a odczyt kodu
-  stanu nie zmienia), funkcja różnic `cart-changes.test.ts` (każdy wiersz tabeli, kolejność,
+  stanu nie zmienia), niepewna próba (`failed` albo `IdempotencyKeyReused`) przed odrzuceniem: ostrzeżenie zamiast
+  „Nie złożyliśmy zamówienia.” po zmianie kupującego i w komunikacie rozbieżności (z innym kluczem, z tym samym
+  kluczem po odrzuceniu API, w kasie nieaktualnej, także przez kod rabatowy), ostrzeżenie po tekście pozostałych
+  komunikatów (pusty koszyk, klucz użyty, 404, 401, 422, 429, nieudany odczyt), nad formularzem po 422 pól i po 409
+  kodu, wynik niepewny bez ostrzeżenia przy jedynej niepewnej próbie i z nim przy wcześniejszej innej, bez niepewnej
+  próby (także po 429) teksty jak w tabeli, oraz strażnik: po niepewnej próbie (wynik niepewny albo klucz użyty, ten
+  sam i inny klucz) każdy wynik inny niż sukces (każdy status, każda przyczyna 409 z `detail` i bez) nie zostawia
+  na ekranie „Nie złożyliśmy zamówienia” ani, poza tekstem zastępczym odrzucenia bez `detail`, „Nie udało się złożyć
+  zamówienia”, i ma ostrzeżenie albo tekst wyniku niepewnego dokładnie raz; drugi strażnik dróg, które zmieniają
+  komunikat bez odpowiedzi na zamówienie, po niepewnej próbie (inna dostawa, zastosowanie i usunięcie kodu po
+  komunikacie zmian, 401 kodu, kliknięcie w kasie nieaktualnej, edycja pola po wyniku niepewnym, kolejne żądanie
+  w drodze): ostrzeżenie albo tekst wyniku niepewnego dokładnie raz, samo ostrzeżenie bez `role="alert"` i bez
+  przeniesienia fokusu, bez niepewnej próby żadnego ostrzeżenia; funkcja różnic `cart-changes.test.ts` (każdy wiersz tabeli, kolejność,
   brak różnic, pozycja bez produktu, kwoty z API bez sumowania), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
   danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`, region statusu (ten sam węzeł od wczytywania do treści),
   „Spróbuj ponownie” (przycisk z `aria-disabled` w trakcie, fokus po sukcesie, ponownym błędzie i przeniesiony w trakcie),

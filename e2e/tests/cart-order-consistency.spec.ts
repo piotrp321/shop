@@ -556,7 +556,7 @@ test.describe("the buyer changed in another tab", () => {
       return route.fulfill({ response });
     });
     await orderButton(page).click();
-    await expect(orderMessage(page)).toHaveText("Nie udało się złożyć zamówienia. Spróbuj ponownie.");
+    await expect(orderMessage(page)).toHaveText("Nie wiemy, czy zamówienie zostało złożone. Spróbuj ponownie: tego samego zamówienia nie złożymy drugi raz.");
 
     // Jan's order was placed: it is paid at once, in another tab, so the test leaves no unpaid order whatever follows.
     // The retry below is refused before the API, so the payment does not change it.

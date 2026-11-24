@@ -10,6 +10,7 @@ import { useSiteSwitches } from "@/components/SiteSwitches";
 import { CheckoutPage } from "./CheckoutPage";
 import { navigateTo } from "./navigate";
 import type { PaymentProvider } from "./payment-api";
+import type { OrderConflictReason } from "./problems";
 
 vi.mock("@/api/client", () => ({ loadCart: vi.fn(), loadAccountSession: vi.fn(), placeOrder: vi.fn() }));
 vi.mock("./navigate", () => ({ navigateTo: vi.fn() }));
@@ -177,6 +178,12 @@ async function submit(result: PlaceOrderResult) {
 }
 
 const SUBMIT_FAILED = "Nie udało się złożyć zamówienia. Spróbuj ponownie.";
+/** The message of an uncertain result (a network error, 403, 5xx, 503): the order may have been placed. */
+const UNCERTAIN_RESULT = "Nie wiemy, czy zamówienie zostało złożone. Spróbuj ponownie: tego samego zamówienia nie złożymy drugi raz.";
+/** The sentence every message of a refusal or an error of the order adds while an uncertain attempt is left. */
+const EARLIER_MAY_HAVE_PLACED = "Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.";
+/** The texts of the paragraphs of the message above the form. */
+const failureParagraphs = () => Array.from(document.getElementById("checkout-failure")?.querySelectorAll("p") ?? [], (node) => node.textContent);
 
 describe("CheckoutPage loading", () => {
   it("says it is loading until the cart and the session arrive", async () => {
@@ -562,7 +569,7 @@ describe("CheckoutPage placing the order", () => {
     expect(formKey).not.toBe(entryKey);
 
     await submit({ status: "failed" });
-    expect(screen.getByRole("alert").textContent).toContain(SUBMIT_FAILED);
+    expect(screen.getByRole("alert").textContent).toBe(UNCERTAIN_RESULT);
     await submit({ status: "ok", number: "R-100001", redirectUrl: null });
 
     const used = vi.mocked(placeOrder).mock.calls.map((call) => call[1]);
@@ -831,14 +838,106 @@ describe("CheckoutPage placing the order", () => {
     expect(vi.mocked(placeOrder).mock.calls[1][0]).toEqual(GUEST_INPUT);
   });
 
-  it("on a 403, 503, 5xx or network error asks to try again", async () => {
+  it("on a 403, 503, 5xx or network error says it does not know whether the order was placed and asks to try again, without the warning of an earlier attempt", async () => {
     await renderCheckout();
     fillGuestForm();
     await submit({ status: "failed" });
 
-    expect(screen.getByRole("alert").textContent).toBe(SUBMIT_FAILED);
+    expect(screen.getByRole("alert").textContent).toBe(UNCERTAIN_RESULT);
     expect(push).not.toHaveBeenCalled();
     expect(announced).toEqual([]);
+  });
+});
+
+// While an attempt whose result was uncertain (an uncertain result, or a 409 of a reused key: an order with the key
+// exists) is left, every message of a refusal or an error of the order says that it may have placed an order; the
+// message of the uncertain result itself does not repeat it for its own attempt.
+describe("CheckoutPage while an attempt whose result was uncertain is left", () => {
+  const PHONE_INVALID = "Podaj 9-cyfrowy numer telefonu.";
+  const keysSent = () => vi.mocked(placeOrder).mock.calls.map(([, sent]) => sent);
+
+  /** A guest's order sent once with an uncertain result (the answer lost). */
+  async function guestFailed() {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "failed" });
+    expect(failureParagraphs()).toEqual([UNCERTAIN_RESULT]);
+  }
+
+  it("says only that it does not know when the retry with the same key fails too: no other attempt is uncertain", async () => {
+    await guestFailed();
+    await submit({ status: "failed" });
+
+    expect(new Set(keysSent()).size).toBe(1);
+    expect(failureParagraphs()).toEqual([UNCERTAIN_RESULT]);
+  });
+
+  it("adds the warning to the uncertain result of a new attempt when an earlier one is uncertain too", async () => {
+    await guestFailed();
+    type("Telefon", "600 100 201");
+    await submit({ status: "failed" });
+
+    expect(new Set(keysSent()).size).toBe(2);
+    expect(failureParagraphs()).toEqual([UNCERTAIN_RESULT, EARLIER_MAY_HAVE_PLACED]);
+  });
+
+  it("warns over the empty cart after the order of the lost answer emptied it and a changed field tried again", async () => {
+    await guestFailed();
+    type("Telefon", "600 100 201");
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart(0, []) });
+    await submit({ status: "conflict", reason: "cart_empty", detail: "Koszyk jest pusty." });
+
+    expect(failureParagraphs()).toEqual(["Koszyk jest pusty.", EARLIER_MAY_HAVE_PLACED]);
+    expect(screen.getByText("Twój koszyk jest pusty.")).toBeTruthy();
+  });
+
+  it("warns with a reused key, which says that an order with the key exists, also without an attempt before it", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "conflict", reason: "key_reused", detail: "Ten klucz żądania był już użyty dla innego zamówienia." });
+
+    expect(failureParagraphs()).toEqual(["Ten klucz żądania był już użyty dla innego zamówienia.", EARLIER_MAY_HAVE_PLACED]);
+  });
+
+  it.each<[string, PlaceOrderResult, string]>([
+    ["the 404 of the cart", { status: "not_found", detail: "Koszyk nie jest już dostępny." }, "Koszyk nie jest już dostępny."],
+    ["the 401", { status: "unauthorized" }, "Twoja sesja wygasła. Zaloguj się ponownie."],
+    ["a 422 that names no field", { status: "invalid", detail: "Nieprawidłowe dane.", violations: [] }, "Nieprawidłowe dane."],
+    ["a 429", { status: "rate_limited" }, "Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut."],
+  ])("adds the warning after the text of %s", async (_name, result, text) => {
+    await guestFailed();
+    await submit(result);
+
+    const [first, second] = failureParagraphs();
+    expect(first).toContain(text);
+    expect(second).toBe(EARLIER_MAY_HAVE_PLACED);
+  });
+
+  it("tells it above the form after a 422 of fields, whose errors stay at the fields with the focus on the first", async () => {
+    await guestFailed();
+    type("Telefon", "600");
+    submitButton().focus();
+    await submit({ status: "invalid", detail: "Nieprawidłowe dane.", violations: [{ propertyPath: "phone", title: PHONE_INVALID }] });
+
+    expect(failureParagraphs()).toEqual([EARLIER_MAY_HAVE_PLACED]);
+    expect(document.getElementById(field("Telefon").getAttribute("aria-describedby") ?? "")?.textContent).toBe(PHONE_INVALID);
+    expect(document.activeElement).toBe(field("Telefon"));
+  });
+
+  it("has no message above the form after a 422 of fields without an uncertain attempt", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "invalid", detail: "Nieprawidłowe dane.", violations: [{ propertyPath: "phone", title: PHONE_INVALID }] });
+
+    expect(document.getElementById("checkout-failure")).toBeNull();
+  });
+
+  it("tells it above the form after a refused code of the order, whose message stays at the code", async () => {
+    await guestFailed();
+    await submit({ status: "conflict", reason: "discount_code_rejected", detail: "Ten kod został już wykorzystany." });
+
+    expect(failureParagraphs()).toEqual([EARLIER_MAY_HAVE_PLACED]);
+    expect(screen.getByText("Ten kod został już wykorzystany.")).toBeTruthy();
   });
 });
 
@@ -1485,6 +1584,120 @@ describe("CheckoutPage after a 409 of a changed cart or total (#852)", () => {
     expect(deliveryRadio("Kurier ekspresowy").checked).toBe(true);
     expect(screen.getByTestId("checkout-summary-status").textContent).toBe("Dostawa „Kurier ekspresowy” jest teraz darmowa.");
   });
+
+  // An attempt whose result was uncertain (the answer lost) may have placed an order no later answer tells of: while
+  // one is left, the message of the changes does not say that nothing was placed, whatever key the refusal answered.
+  describe("after an earlier attempt whose result was uncertain", () => {
+    const MAY_HAVE_PLACED = "Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.";
+    const MAYBE_FIRST = {
+      cart_changed: `Zawartość koszyka zmieniła się od wczytania kasy. ${MAY_HAVE_PLACED}`,
+      total_changed: `Kwota zamówienia zmieniła się od wczytania kasy. ${MAY_HAVE_PLACED}`,
+    } as const;
+    const CHANGES = ["Buty trailowe, czarne, 42: było 2 szt., jest 3 szt.", `Do zapłaty: było ${price(39998)}, jest ${price(59997)}`];
+    const keysSent = () => vi.mocked(placeOrder).mock.calls.map(([, sent]) => sent);
+    const paragraphs = () => Array.from(alert().querySelectorAll("p"), (node) => node.textContent);
+
+    /** A guest's order sent once with an uncertain result (the answer lost); the next order goes from the focused button. */
+    async function guestFailed() {
+      await renderCheckout();
+      fillGuestForm();
+      await submit({ status: "failed" });
+      expect(alert().textContent).toBe(UNCERTAIN_RESULT);
+    }
+
+    it.each<Reason>(["cart_changed", "total_changed"])(
+      "after %s of the next attempt, with another key, warns instead of saying nothing was placed; the changes, the summary, the link and the focus are as always",
+      async (reason) => {
+        await guestFailed();
+        type("Telefon", "600 100 201");
+        vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: three() });
+        submitButton().focus();
+        await submit(conflict(reason));
+
+        const [first, second] = keysSent();
+        expect(second).not.toBe(first);
+        expect(paragraphs()[0]).toBe(MAYBE_FIRST[reason]);
+        expect(alert().textContent).not.toContain("Nie złożyliśmy zamówienia.");
+        expect(items()).toEqual(CHANGES);
+        expect(paragraphs().at(-1)).toBe(`${LAST} Przejdź do koszyka`);
+        expect(within(alert()).getByRole("link", { name: "Przejdź do koszyka" }).getAttribute("href")).toBe("/cart");
+        expect(screen.getAllByTestId("checkout-line-quantity").map((node) => node.textContent)).toEqual(["3 szt."]);
+        expect(document.activeElement).toBe(alert());
+        expect(submitButton().getAttribute("aria-disabled")).toBeNull();
+
+        // The click after it is a deliberate new attempt: the summary shown, with a new key.
+        await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+        const third = keysSent()[2];
+        expect([first, second]).not.toContain(third);
+        expect(vi.mocked(placeOrder).mock.calls[2][0]).toMatchObject({ expectedTotalGross: 59997, expectedLines: [{ variantId: A, quantity: 3 }] });
+      },
+    );
+
+    it.each<Reason>(["cart_changed", "total_changed"])(
+      "after %s of the retry with the same key still warns: the refusal tells only that no order existed when it was checked",
+      async (reason) => {
+        await guestFailed();
+        vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: three() });
+        await submit(conflict(reason));
+
+        const [first, second] = keysSent();
+        expect(second).toBe(first);
+        expect(paragraphs()[0]).toBe(MAYBE_FIRST[reason]);
+        expect(items()).toEqual(CHANGES);
+      },
+    );
+
+    it("warns in the message of the click that reads the summary out of date", async () => {
+      await guestFailed();
+      type("Telefon", "600 100 201");
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+      await submit(conflict("total_changed"));
+      expect(paragraphs()).toEqual([READ_FAILED, MAY_HAVE_PLACED]);
+
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: three() });
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+
+      expect(placeOrder).toHaveBeenCalledTimes(2);
+      expect(paragraphs()[0]).toBe(MAYBE_FIRST.total_changed);
+      expect(items()).toEqual(CHANGES);
+    });
+
+    it("warns in the message of the summary out of date read by a discount code", async () => {
+      await guestFailed();
+      type("Telefon", "600 100 201");
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+      await submit(conflict("cart_changed"));
+      expect(paragraphs()).toEqual([READ_FAILED, MAY_HAVE_PLACED]);
+
+      // The code is refused with a 400: the summary is read without it, and that read shows the changes.
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "invalid", detail: "Kod rabatowy może mieć najwyżej 64 znaki." });
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: three() });
+      fireEvent.change(codeField(), { target: { value: "witaj10" } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+      });
+
+      expect(placeOrder).toHaveBeenCalledTimes(2);
+      expect(paragraphs()[0]).toBe(MAYBE_FIRST.cart_changed);
+      expect(items()).toEqual(CHANGES);
+    });
+
+    it.each<Reason>(["cart_changed", "total_changed"])(
+      "after %s says nothing was placed when the attempt before was refused, not uncertain (a 429)",
+      async (reason) => {
+        await renderCheckout();
+        fillGuestForm();
+        await submit({ status: "rate_limited" });
+        type("Telefon", "600 100 201");
+        vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: three() });
+        await submit(conflict(reason));
+
+        expect(paragraphs()[0]).toBe(FIRST[reason]);
+      },
+    );
+  });
 });
 
 /** A cart of the goods `gross` with the standard and the express method at the given costs; the totals are the API's. */
@@ -1853,7 +2066,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
       await renderCheckout(cart(), JAN);
       fillContact();
       await submit({ status: "failed" });
-      expect(alert().textContent).toBe(SUBMIT_FAILED);
+      expect(alert().textContent).toBe(UNCERTAIN_RESULT);
       vi.mocked(loadAccountSession).mockResolvedValueOnce(next);
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
     }
@@ -1891,7 +2104,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
     it("still does not claim it after a retry that kept the key without placing anything (a 429)", async () => {
       await janUncertain({ status: "ok", session: ANNA });
       await submit({ status: "rate_limited" });
-      expect(alert().textContent).toBe("Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut.");
+      expect(failureParagraphs()).toEqual(["Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut.", MAY_HAVE_PLACED]);
       await submit(buyerChanged);
 
       expect(new Set(vi.mocked(placeOrder).mock.calls.map(([, key]) => key)).size).toBe(1);
@@ -1905,7 +2118,7 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
       vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "unavailable" });
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
       await submit(buyerChanged);
-      expect(alert().textContent).toBe(NOT_READ);
+      expect(failureParagraphs()).toEqual([NOT_READ, MAY_HAVE_PLACED]);
 
       vi.mocked(loadAccountSession).mockResolvedValueOnce({ status: "ok", session: ANNA });
       vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
@@ -1917,8 +2130,9 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
       expect(alert().textContent).toBe(MAYBE_SIGNED_IN_AS(ANNA.email));
     });
 
-    // Only an answer of the API to the same key, given after its check of a repetition, settles that key; an answer to
-    // another key, or a refusal of the BFF before the API, settles nothing (QA I1).
+    // No refusal settles an uncertain key: a refusal of the API, even to the same key, tells only that no order with it
+    // existed when it was checked, and the uncertain request may still be on its way to place it; an answer to another
+    // key, or a refusal of the BFF before the API, tells nothing of it either. Only a success leaves the page.
     /** Jan's checkout sent once with an uncertain result; every later read of the cart answers the same cart. */
     async function janFailed() {
       await renderCheckout(cart(), JAN);
@@ -1959,14 +2173,14 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
     it.each<[string, PlaceOrderResult]>([
       ["cart-changed", { status: "conflict", reason: "cart_changed", detail: "Zawartość koszyka się zmieniła." }],
       ["insufficient-stock-for-order", { status: "conflict", reason: "insufficient_stock", detail: "Brak wystarczającej liczby sztuk." }],
-    ])("says nothing was placed after the API refused the same key with %s, after its check of a repetition", async (_name, refusal) => {
+    ])("still warns after the API refused the same key with %s: the uncertain request may place its order after that check", async (_name, refusal) => {
       await janFailed();
       await submit(refusal);
       await annaSignsIn();
 
       const [first, second] = keysSent();
       expect(second).toBe(first);
-      expect(alert().textContent).toBe(SIGNED_IN_AS(ANNA.email));
+      expect(alert().textContent).toBe(MAYBE_SIGNED_IN_AS(ANNA.email));
     });
 
     it("still warns after a cart-empty on the same key: the BFF answers it too, before the API", async () => {
@@ -2077,6 +2291,229 @@ describe("CheckoutPage after a 409 of a changed buyer", () => {
       expect(placeOrder).toHaveBeenCalledTimes(1);
       expect(alert().textContent).toBe(SIGNED_IN_AS(JAN.email));
     });
+  });
+});
+
+// The guard of the whole class: while an attempt whose result was uncertain may have placed an order, no text on the
+// screen says or suggests that none was placed, after any answer to an order that is not a success: every status, every
+// reason of a 409, with the detail of the API or the BFF and without one; after an uncertain result and after a reused
+// key (the two sources of the uncertainty), on the key of that attempt or on another one. Each message has the warning,
+// or is the message of the uncertain result itself.
+describe("CheckoutPage after an attempt whose result was uncertain, on every answer that is not a success", () => {
+  // `satisfies` makes the compiler demand an entry for every reason the checkout handles, so a new one is not forgotten.
+  const DETAILS = {
+    cart_empty: "Koszyk jest pusty.",
+    cart_changed: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie.",
+    guest_order_too_large: "Zamówienie gościa może mieć najwyżej 10 sztuk. Zaloguj się albo zmniejsz ilość.",
+    too_many_unpaid_orders: "Nie możemy teraz przyjąć kolejnego zamówienia, bo z tych danych albo z tej sieci czeka już kilka nieopłaconych. Spróbuj ponownie za ok. 35 minut.",
+    cart_not_orderable: "Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.",
+    insufficient_stock: "Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.",
+    total_changed: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie.",
+    key_reused: "Ten klucz żądania był już użyty dla innego zamówienia.",
+    discount_code_rejected: "Ten kod rabatowy jest nieprawidłowy.",
+    delivery_method_unavailable: "Wybrany sposób dostawy jest niedostępny. Wybierz inny.",
+    buyer_changed: "Od wczytania kasy zmienił się kupujący. Nie złożyliśmy zamówienia.",
+    unknown: "Coś poszło nie tak.",
+  } satisfies Record<OrderConflictReason, string>;
+  const reasons = Object.keys(DETAILS) as OrderConflictReason[];
+  // Every status but the success, so a new status of `PlaceOrderResult` is not forgotten either.
+  const RESULTS = {
+    conflict: reasons.flatMap((reason): Extract<PlaceOrderResult, { status: "conflict" }>[] => [
+      { status: "conflict", reason, detail: DETAILS[reason] },
+      { status: "conflict", reason },
+    ]),
+    invalid: [
+      { status: "invalid", detail: "Nieprawidłowe dane.", violations: [{ propertyPath: "phone", title: "Podaj 9-cyfrowy numer telefonu." }] },
+      { status: "invalid", detail: "Nieprawidłowe dane.", violations: [{ propertyPath: "expectedLines", title: "Lista pozycji jest nieprawidłowa." }] },
+      { status: "invalid", detail: "Nieprawidłowe dane.", violations: [] },
+      { status: "invalid", violations: [] },
+    ],
+    not_found: [{ status: "not_found", detail: "Koszyk nie jest już dostępny." }],
+    unauthorized: [{ status: "unauthorized" }],
+    rate_limited: [{ status: "rate_limited" }],
+    failed: [{ status: "failed" }],
+  } satisfies { [S in Exclude<PlaceOrderResult["status"], "ok">]: Extract<PlaceOrderResult, { status: S }>[] };
+  const results: PlaceOrderResult[] = Object.values(RESULTS).flat();
+  const sources = [
+    ["an uncertain result", "the same key"],
+    ["an uncertain result", "another key"],
+    // A reused key makes a new key itself.
+    ["a reused key", "another key"],
+  ] as const;
+  const cases = sources.flatMap(([source, onKey]) => results.map((result) => [source, onKey, JSON.stringify(result), result] as const));
+  /** The texts that say or suggest that no order was placed. */
+  const FAILURE_TEXTS = ["Nie złożyliśmy zamówienia", "Nie udało się złożyć zamówienia"];
+
+  it.each(cases)("after %s, on %s, %s has no text that says nothing was placed, and has the warning", async (source, onKey, _shown, result) => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit(source === "an uncertain result" ? { status: "failed" } : { status: "conflict", reason: "key_reused", detail: DETAILS.key_reused });
+    if (source === "an uncertain result" && onKey === "another key") type("Telefon", "600 100 201");
+    await submit(result);
+    await act(async () => {});
+
+    expect(placeOrder).toHaveBeenCalledTimes(2);
+    const [first, second] = vi.mocked(placeOrder).mock.calls.map(([, sent]) => sent);
+    expect(second === first).toBe(onKey === "the same key");
+    const text = document.body.textContent ?? "";
+    for (const failure of FAILURE_TEXTS) {
+      // The fallback of a refusal without a detail is the only text of the class that stays, always with the warning.
+      const withoutDetail = (result.status === "conflict" || result.status === "invalid") && !result.detail;
+      if (withoutDetail && failure === "Nie udało się złożyć zamówienia") continue;
+      expect(text).not.toContain(failure);
+    }
+    // Only the uncertain result of the attempt that was the only uncertain one does not repeat the warning.
+    const ownOnly = result.status === "failed" && source === "an uncertain result" && onKey === "the same key";
+    if (result.status === "failed") expect(text).toContain(UNCERTAIN_RESULT);
+    expect(text.split(EARLIER_MAY_HAVE_PLACED).length - 1).toBe(ownOnly ? 0 : 1);
+  });
+});
+
+// The second guard: the ways that change the message without an answer to an order. While an attempt whose result was
+// uncertain is left, the screen shows the warning, or the message of the uncertain result while the next click still
+// retries that attempt, exactly once, whatever took the message off or replaced it.
+describe("CheckoutPage after an attempt whose result was uncertain, on every way the message changes without an order", () => {
+  type Read = Awaited<ReturnType<typeof loadCart>>;
+  const count = (text: string) => (document.body.textContent ?? "").split(text).length - 1;
+  const note = () => document.getElementById("checkout-uncertain");
+  const withCode = (view: CartView): CartView => ({
+    ...view,
+    totals: { ...view.totals, discountGross: 4000, gross: view.totals.gross - 4000 },
+    discount: { status: "applied", code: "WITAJ10", amountGross: 4000, kind: "percent", value: 10 },
+    delivery: view.delivery && { ...view.delivery, options: view.delivery.options.map((o) => ({ ...o, totalGross: o.totalGross - 4000 })) },
+  });
+  const before = () => withDeliveries(0, 1999, 39998);
+  const after = () => ({ ...withDeliveries(0, 1999, 59997), lines: [line(A, "Buty trailowe", "czarne, 42", 3, 59997)] });
+
+  async function applyCode(read: Read) {
+    vi.mocked(loadCart).mockResolvedValueOnce(read);
+    fireEvent.change(screen.getByLabelText("Kod rabatowy"), { target: { value: "witaj10" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+    });
+  }
+
+  async function removeCode(read: Read) {
+    vi.mocked(loadCart).mockResolvedValueOnce(read);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Usuń kod" }));
+    });
+  }
+
+  /**
+   * A guest's order with an uncertain result (the answer lost), then a changed field and an order refused for a changed
+   * cart, whose read shows the message of the changes with the warning. With `code` a code is applied before it all.
+   */
+  async function changesAfterUncertain(code = false) {
+    await renderCheckout(before());
+    if (code) await applyCode({ status: "ok", data: withCode(before()) });
+    fillGuestForm();
+    await submit({ status: "failed" });
+    type("Telefon", "600 100 201");
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: code ? withCode(after()) : after() });
+    await submit({ status: "conflict", reason: "cart_changed", detail: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie." });
+    expect(count(EARLIER_MAY_HAVE_PLACED)).toBe(1);
+  }
+
+  function expectOneWarning() {
+    expect(count(EARLIER_MAY_HAVE_PLACED) + count(UNCERTAIN_RESULT)).toBe(1);
+    expect(count("Nie złożyliśmy zamówienia")).toBe(0);
+    expect(count("Nie udało się złożyć zamówienia")).toBe(0);
+  }
+
+  it.each<[string, boolean, () => Promise<void>]>([
+    [
+      "another delivery method chosen",
+      false,
+      async () => {
+        fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+      },
+    ],
+    ["a code applied", false, () => applyCode({ status: "ok", data: withCode(after()) })],
+    ["the code removed", true, () => removeCode({ status: "ok", data: after() })],
+    ["a 401 when a code is applied", false, () => applyCode({ status: "unauthorized" })],
+    ["a 401 when the code is removed", true, () => removeCode({ status: "unauthorized" })],
+  ])("after the message of the changes, %s keeps the warning on the screen once", async (_name, code, action) => {
+    await changesAfterUncertain(code);
+    await action();
+
+    expectOneWarning();
+    expect(count(EARLIER_MAY_HAVE_PLACED)).toBe(1);
+  });
+
+  it("keeps the warning once while a click reads the summary out of date, and after it", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "failed" });
+    type("Telefon", "600 100 201");
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+    await submit({ status: "conflict", reason: "cart_changed", detail: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie." });
+    expectOneWarning();
+
+    let release: (answer: Read) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+    expectOneWarning();
+
+    await act(async () => release({ status: "ok", data: cart(59997, [line(A, "Buty trailowe", "czarne, 42", 3, 59997)]) }));
+    expectOneWarning();
+    expect(placeOrder).toHaveBeenCalledTimes(2);
+  });
+
+  it("says the warning instead of the uncertain result once a field is edited: the next click is another attempt", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "failed" });
+    expect(count(UNCERTAIN_RESULT)).toBe(1);
+    type("Telefon", "600 100 201");
+
+    expectOneWarning();
+    expect(count(EARLIER_MAY_HAVE_PLACED)).toBe(1);
+  });
+
+  it.each<[string, boolean]>([
+    ["the retry with the same key", false],
+    ["a new attempt after a changed field", true],
+  ])("keeps the warning once while %s is on its way", async (_name, edit) => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "failed" });
+    if (edit) type("Telefon", "600 100 201");
+    let answer: (result: PlaceOrderResult) => void = () => {};
+    vi.mocked(placeOrder).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expectOneWarning();
+    expect(count(EARLIER_MAY_HAVE_PLACED)).toBe(1);
+    await act(async () => answer({ status: "failed" }));
+  });
+
+  it("leaves the warning without an alert and without moving the focus when the message of the changes goes away", async () => {
+    await changesAfterUncertain();
+    deliveryRadio("Kurier ekspresowy").focus();
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+
+    expect(document.getElementById("checkout-failure")).toBeNull();
+    expect(note()?.textContent).toBe(EARLIER_MAY_HAVE_PLACED);
+    expect(note()?.getAttribute("role")).not.toBe("alert");
+    expect(screen.queryAllByRole("alert").some((node) => node.textContent?.includes(EARLIER_MAY_HAVE_PLACED))).toBe(false);
+    expect(document.activeElement).toBe(deliveryRadio("Kurier ekspresowy"));
+  });
+
+  it("shows no warning without an uncertain attempt when the message of the changes goes away", async () => {
+    await renderCheckout(before());
+    fillGuestForm();
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: after() });
+    await submit({ status: "conflict", reason: "cart_changed", detail: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie." });
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+
+    expect(document.getElementById("checkout-failure")).toBeNull();
+    expect(note()).toBeNull();
+    expect(count(EARLIER_MAY_HAVE_PLACED)).toBe(0);
   });
 });
 
@@ -2294,7 +2731,7 @@ describe("CheckoutPage while the order is being placed", () => {
 
       expect(document.activeElement).toBe(field("Kod pocztowy"));
       if (result.status === "failed") {
-        expect(alert().textContent).toBe(SUBMIT_FAILED);
+        expect(alert().textContent).toBe(UNCERTAIN_RESULT);
       } else {
         // The focus does not tell about the error of the field, so the error itself is announced.
         expect(field("Telefon").getAttribute("aria-invalid")).toBe("true");
