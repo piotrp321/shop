@@ -10,8 +10,9 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * The search term of the customer list: a fragment of 3 to 100 characters once trimmed (also of the Unicode spaces),
- * Polish letters counted as one character each, without a control character anywhere.
+ * The search term of the customer list: a fragment of 3 to 100 characters once trimmed by the rule of texts (Unicode
+ * spaces and invisible characters at the ends), Polish letters counted as one character each, without a character
+ * the rule forbids anywhere.
  */
 final class BackofficeCustomerSearchTermTest extends TestCase
 {
@@ -24,6 +25,9 @@ final class BackofficeCustomerSearchTermTest extends TestCase
         yield 'a part of an email' => ['anna@gm', 'anna@gm'];
         yield 'trimmed' => ['  Nowak ', 'Nowak'];
         yield 'trimmed of no-break spaces' => ["\u{00A0}Łucja\u{2003}", 'Łucja'];
+        yield 'trimmed of invisible characters' => ["\u{200B}\u{FEFF}Łucja\u{2060}\u{00AD}", 'Łucja'];
+        yield 'an invisible character inside kept' => ["Łu\u{200B}cja", "Łu\u{200B}cja"];
+        yield 'a hundred characters between zero width spaces' => ["\u{200B}".str_repeat('ą', 100)."\u{200B}", str_repeat('ą', 100)];
         yield 'three Polish letters' => ['żół', 'żół'];
         yield 'a hundred characters' => [str_repeat('ą', 100), str_repeat('ą', 100)];
         yield 'the wildcards of LIKE as they are' => ['%_\\', '%_\\'];
@@ -44,6 +48,10 @@ final class BackofficeCustomerSearchTermTest extends TestCase
         yield 'two characters' => ['an'];
         yield 'two characters among spaces' => ['  an  '];
         yield 'only no-break spaces' => ["\u{00A0}\u{00A0}\u{00A0}\u{00A0}"];
+        yield 'three zero width spaces' => ["\u{200B}\u{200B}\u{200B}"];
+        yield 'three Hangul fillers' => ["\u{3164}\u{3164}\u{3164}"];
+        yield 'two characters between zero width spaces' => ["\u{200B}an\u{200B}"];
+        yield 'a C1 control' => ["ann\u{9F}a"];
         yield 'a hundred and one characters' => [str_repeat('a', 101)];
         yield 'a NUL' => ["ann\0a"];
         yield 'a NUL at the end' => ["anna\0"];

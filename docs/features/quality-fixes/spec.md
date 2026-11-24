@@ -25,7 +25,7 @@ Zakres: `apps/api/src/Cart/UI/Http`, `apps/api/tests/Functional/Cart`, `apps/api
 | #130 | Bez zadania: kryterium issue jest nieaktualne (CATALOG-ADMIN K5 celowo zmienia warianty przez `save()`); końcowy PR epiku zamyka issue. |
 | #248 | Klucz porównania liczy domena: `DROP EXPRESSION` na `values_key`, kolumna dopuszcza NULL, repozytorium zapisuje klucz z `comparisonKey()`; `NOT NULL` w osobnej, późniejszej zmianie. |
 | #257 | Brak dowolnego klucza (także takiego, który dopuszcza `null`) daje 422 „To pole jest wymagane.” przy kluczu; kontrakt OpenAPI bez zmian. Wszystkie siedem endpointów (Ordering, Inventory, Pricing), jeden wspólny mechanizm w `apps/api/src/Shared/UI/Http`. |
-| #256 | Ostrzejszy `ControlCharacters` obejmuje wszystkie jednoliniowe pola Ordering (notatka, dane kontaktowe, adres zamówienia). |
+| #256 | Ostrzejsza reguła znaków obejmuje wszystkie jednoliniowe pola Ordering (notatka, dane kontaktowe, adres zamówienia). |
 | #247 | Krótki opis może zawierać LF; z samych białych znaków jest pusty i przyjęty. Pozostałe teksty produktu są jednoliniowe. |
 | #341 | Poprawka obejmuje też `PromotionFormView.vue` i `ProductFormView.vue` (F9 z #251); #251 zostaje otwarte z pozostałymi punktami. |
 
@@ -152,19 +152,18 @@ zapisane, `values_key` to klucz porównania domeny, wiersze bez klucza pomijane 
 daje 200 i zapis.
 
 **Zachowanie.**
-- `ControlCharacters` odrzuca też U+0085, U+2028 i U+2029 (wzorzec z `/u`); niepoprawny UTF-8 (błąd wyrażenia) to znak
-  niedozwolony. Dotyczy wszystkich jednoliniowych pól Ordering, które go używają: notatki, danych kontaktowych (imię
-  i nazwisko, e-mail), adresu zamówienia (ulica, miejscowość, kod pocztowy) w `PlaceGuestOrderRequest`
-  i `PlaceCustomerOrderRequest`. `Assert\Length` pól imienia i nazwiska, ulicy, miejscowości, e-maila i notatki ma
-  `charsetMessage` z komunikatem pola, więc niepoprawny UTF-8 daje to samo naruszenie co znak niedozwolony. `docs/features/order-management/spec.md`
-  i `docs/features/checkout/spec.md` opisują regułę; opisy pól w OpenAPI
-  (`openapi.json`, `openapi-admin.json`) i kliencie panelu są wyeksportowane od nowa (wzorzec z `/u` nie trafia już do
-  specyfikacji jako `pattern`).
-- `StaffNote::trim()` przycina białe znaki Unicode (`\s` i `\p{Z}`, także NBSP), a `StaffNote::optional()` używa go przed
-  liczeniem długości; notatka z samych białych znaków jest brakiem notatki (dla anulowania i zwrotu 422 „Notatka jest
-  wymagana.”, dla pozostałych przejść bez notatki, jak pusta). `ChangeOrderStatusRequest` i `CompleteRefundRequest`
-  liczą długość po tym samym przycięciu (`normalizer: StaffNote::trim`); sama notatka z U+2028 itp. to „Notatka zawiera
-  niedozwolone znaki.”, nie „wymagana”.
+- Jednoliniowe pola Ordering (notatka, dane kontaktowe: imię i nazwisko, e-mail, telefon; adres zamówienia: ulica,
+  miejscowość, kod pocztowy) w `PlaceGuestOrderRequest`, `PlaceCustomerOrderRequest`, `ChangeOrderStatusRequest`,
+  `CompleteRefundRequest` i w value objectach podlegają regule tekstu `App\Shared\Domain\Text`
+  (`docs/features/api-input-contract/spec.md`, „Etap 2: reguła tekstu”): znaki niedozwolone (wszystkie znaki sterujące,
+  także C1, oraz U+2028 i U+2029; niepoprawny UTF-8) są szukane w wartości, jak przyszła, a brzegi tracą białe znaki
+  Unicode i znaki niewidoczne. `Assert\Length` pól imienia i nazwiska, ulicy, miejscowości, e-maila i notatki ma
+  `charsetMessage` z komunikatem pola, więc niepoprawny UTF-8 daje to samo naruszenie co znak niedozwolony.
+  `docs/features/order-management/spec.md` i `docs/features/checkout/spec.md` opisują regułę.
+- Notatka bez znaku widocznego (same białe znaki, także NBSP, albo same znaki niewidoczne) jest brakiem notatki (dla
+  anulowania i zwrotu 422 „Notatka jest wymagana.”, dla pozostałych przejść bez notatki, jak pusta).
+  `ChangeOrderStatusRequest` i `CompleteRefundRequest` liczą długość po tym samym przycięciu (normalizacja reguły);
+  sama notatka z U+2028 itp. to „Notatka zawiera niedozwolone znaki.”, nie „wymagana”.
 
 **Kryteria.** Testy 422 dla notatki z samym NBSP (przy anulowaniu i zwrocie) i z U+2028, U+2029, U+0085, w domenie
 (`OrderLifecycleTest`, `OrderValuesTest`) i w obu żądaniach (`ForbiddenCharactersInRequestsTest`,

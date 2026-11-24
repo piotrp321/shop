@@ -74,6 +74,35 @@ final class CustomerOrderEndpointTest extends WebTestCase
         self::assertSame([[$shoes, 2]], CartFixture::lines($this->connection, $cart));
     }
 
+    /**
+     * Like a guest: the texts between the characters the rule of texts trims are stored trimmed, and a repeat of the
+     * same request, with or without those characters, is the same request.
+     */
+    public function testARepeatOfTextsBetweenTheEdgesOfTheRuleAnswers200WithTheSameOrder(): void
+    {
+        $shoes = $this->variant(12_300, 10);
+        CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 1]]);
+        $plain = self::details(12_300, [[$shoes, 1]]);
+        $edges = [
+            ...$plain,
+            'fullName' => "\u{200B}Anna Nowak\u{A0}",
+            'phone' => "\u{A0}+48 600 100 200\u{A0}",
+            'street' => "\u{FEFF}ul. Długa 5/3\u{200B}",
+            'postalCode' => "\u{200B}00-950\u{200B}",
+            'city' => "\u{A0}Warszawa\u{A0}",
+        ];
+
+        $first = $this->place(self::PATH, $edges, token: TestTokenFactory::customer());
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame(self::CONTACT, array_intersect_key($first, self::CONTACT));
+
+        self::assertSame($first, $this->place(self::PATH, $edges, token: TestTokenFactory::customer()));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame($first, $this->place(self::PATH, $plain, token: TestTokenFactory::customer()));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $this->orders());
+    }
+
     public function testTheKeyOfAnotherCustomerIsAConflictWithoutTheDataOfItsOrder(): void
     {
         $shoes = $this->variant(12_300, 10);

@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Ordering\Application\Query;
 
-use App\Ordering\Domain\ControlCharacters;
+use App\Shared\Domain\Text;
 
 /**
- * What the search term of the order list asks for, once trimmed (also of the Unicode spaces): an exact order number
- * (`R-` and digits, any letter case), else an exact email when the text is a complete address (a domain with a dot and
- * a last label of 2 characters or more, so „jan@gm” is not one), else a fragment of 3 to 100 characters searched in the
- * number, the email and the name. Anything else, or any text with a control character, is refused. A complete address
+ * What the search term of the order list asks for, once trimmed by the rule of texts (Text: white space and invisible
+ * characters at the ends; a term without a visible character is empty): an exact order number (`R-` and digits, any
+ * letter case), else an exact email when the text is a complete address (a domain with a dot and a last label of
+ * 2 characters or more, so „jan@gm” is not one), else a fragment of 3 to 100 characters searched in the number, the
+ * email and the name. Anything else, or any text with a character the rule forbids, is refused. A complete address
  * stays exact, so the link „Inne zamówienia klienta” never lists the orders of „joanna@x.pl” for „anna@x.pl”.
  */
 final readonly class OrderSearchTerm
@@ -37,14 +38,11 @@ final readonly class OrderSearchTerm
      */
     public static function parse(string $q): self
     {
-        // The control characters are looked for in the term as it came: a trim would drop some of them at the ends.
-        if (ControlCharacters::in($q)) {
+        // The forbidden characters are looked for in the term as it came: the trim drops some of them at the ends.
+        if (Text::hasForbiddenCharacters($q)) {
             throw InvalidBackofficeOrderList::searchTerm();
         }
-        $term = preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', $q);
-        if (!\is_string($term)) {
-            throw InvalidBackofficeOrderList::searchTerm();
-        }
+        $term = Text::normalize($q);
         $length = mb_strlen($term);
         if ($length > ListBackofficeOrders::MAX_QUERY_LENGTH) {
             throw InvalidBackofficeOrderList::searchTerm();

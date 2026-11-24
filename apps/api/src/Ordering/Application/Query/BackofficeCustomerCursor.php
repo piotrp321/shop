@@ -69,7 +69,7 @@ final readonly class BackofficeCustomerCursor
 
         $value = match ($sort) {
             BackofficeCustomerSort::LastOrderDescending => self::decodeMoment($data['v']),
-            BackofficeCustomerSort::Name => self::isText($data['v'], self::MAX_NAME_LENGTH) ? $data['v'] : throw new InvalidBackofficeCustomerCursor(),
+            BackofficeCustomerSort::Name => self::isName($data['v']) ? $data['v'] : throw new InvalidBackofficeCustomerCursor(),
             BackofficeCustomerSort::OrderCountDescending, BackofficeCustomerSort::PaidGrossDescending => \is_int($data['v']) && $data['v'] >= 0 ? $data['v'] : throw new InvalidBackofficeCustomerCursor(),
         };
 
@@ -85,6 +85,18 @@ final readonly class BackofficeCustomerCursor
         ];
 
         return rtrim(strtr(base64_encode(json_encode($data, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE)), '+/', '-_'), '=');
+    }
+
+    /**
+     * The name of a cursor is the stored name of a customer in lower case, as the sort compares it: any text but one
+     * with a NUL (PostgreSQL has none in a text), also a name stored before the rule of texts (spec
+     * api-input-contract, E7), so the list pages over it.
+     *
+     * @phpstan-assert-if-true string $value
+     */
+    private static function isName(mixed $value): bool
+    {
+        return \is_string($value) && '' !== $value && mb_strlen($value) <= self::MAX_NAME_LENGTH && !str_contains($value, "\0");
     }
 
     /**

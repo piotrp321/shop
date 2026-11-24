@@ -19,8 +19,8 @@ use Doctrine\DBAL\Connection;
  *   allowed in the field (only with allowed characters), edges, preserved and wrong type. The read of the stored value
  *   is required: every 2xx compares the stored value.
  * - format() (F): a text of the body with a format of its own; the class empty, each case of the tables "Pola
- *   z formatem: przypadki" in place of the classes forbidden, edges and preserved, and wrong type; the read of the
- *   stored value is required.
+ *   z formatem: przypadki" in place of the classes forbidden, edges and preserved, the value of the first accepted
+ *   case with U+2028 at its end (added to every such row), and wrong type; the read of the stored value is required.
  * - phrase(): the query parameter `q` of a list; the classes empty, forbidden (inside and at the end) and preserved,
  *   and edges as one execution that compares the answers to the clean phrase and to the phrase between U+200B and
  *   between U+00A0.
@@ -114,15 +114,16 @@ final readonly class TextRow
      *
      * @param InputCase::STAFF|InputCase::CUSTOMER|null          $token
      * @param array<string, mixed>                               $body
-     * @param list<array{string, string, int, string}>           $cases   label, value sent, status, the stored value (2xx) or the title of the violation (4xx)
+     * @param list<array{string, string, int, string}>           $cases     label, value sent, status, the stored value (2xx) or the title of the violation (4xx)
+     * @param string                                             $forbidden the title of the format, the answer to a forbidden character (T1)
      * @param \Closure(Connection, array<string, string>): mixed $stored
      * @param array<string, string>                              $headers
      */
-    public static function format(string $operation, ?string $token, string $fixture, string $field, array $body, string $empty, string $wrongType, array $cases, \Closure $stored, array $headers = []): self
+    public static function format(string $operation, ?string $token, string $fixture, string $field, array $body, string $empty, string $forbidden, string $wrongType, array $cases, \Closure $stored, array $headers = []): self
     {
         [$method, $path] = explode(' ', $operation, 2);
 
-        return new self($method, $path, $token, $fixture, $field, self::FORMAT, '', $body, '', $headers, '', $empty, null, null, $wrongType, $stored, [], $cases, null);
+        return new self($method, $path, $token, $fixture, $field, self::FORMAT, '', $body, '', $headers, '', $empty, null, $forbidden, $wrongType, $stored, [], $cases, null);
     }
 
     /**
@@ -180,11 +181,18 @@ final readonly class TextRow
         }
 
         if (self::FORMAT === $this->kind) {
+            $valid = null;
             foreach ($this->cases as [$label, $value, $status, $expected]) {
-                yield from self::named($status >= 200 && $status < 300
+                $accepted = $status >= 200 && $status < 300;
+                $valid ??= $accepted ? $value : null;
+                yield from self::named($accepted
                     ? TextExecution::accepted(TextExecution::FORMAT, $label, $value, $reads, $expected, $status)
                     : TextExecution::refused(TextExecution::FORMAT, $label, $value, $status, $expected));
             }
+            // Added to every row, so none can leave it out: T1 looks at the value as it came, before the trim of the
+            // ends would drop the separator and leave a valid value.
+            yield from self::named(TextExecution::refused(TextExecution::FORBIDDEN, 'U+2028 at the end of a valid value',
+                ($valid ?? throw new \LogicException(\sprintf('The row %s has no accepted case.', $this->name())))."\u{2028}", $code, (string) $this->forbidden));
         } else {
             foreach (InputValues::forbiddenTextClass() as $label => [$character]) {
                 yield from self::named(TextExecution::refused(TextExecution::FORBIDDEN, $label.' inside', $this->inside($character), $code, (string) $this->forbidden));

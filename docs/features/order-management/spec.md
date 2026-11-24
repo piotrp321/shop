@@ -105,13 +105,15 @@ Decyzje użytkownika:
 - Agregat nie ma pól znaczników e-maili: są w tabeli powiadomień (A4, „E-maile”).
 - Metody pracownika: `ship(StaffActor, ?note, now)`, `deliver(StaffActor, ?note, now)`, `cancel(StaffActor, note,
   now)`, `registerReturn(StaffActor, note, now)`, `completeRefund(StaffActor, ?note, now)`. Notatka (`StaffNote`):
-  przycięta z białych znaków Unicode (`\s` i `\p{Z}`, także NBSP; `trim()` zna tylko ASCII), 1–500 znaków po
-  przycięciu, bez znaków sterujących `\x00-\x1F` i `\x7F` (także nowej linii), U+0085, U+2028 i U+2029, i tylko
-  poprawny UTF-8 (niepoprawny tekst to znak niedozwolony); znaki te są szukane w notatce w takiej postaci, w jakiej
-  przyszła. Wymagana przy `cancel` i `registerReturn` (P7); notatka z samych białych znaków (także NBSP) to brak
-  notatki: przy `cancel` i `registerReturn` „Notatka jest wymagana.”, przy pozostałych `null`; naruszenie to
-  `InvalidOrderInput` (422). Żądania `ChangeOrderStatusRequest` i `CompleteRefundRequest` stosują tę samą regułę (limit
-  długości liczony po tym samym przycięciu, „Notatka zawiera niedozwolone znaki.” przy `note`).
+  tekst według reguły tekstu (`App\Shared\Domain\Text`, `docs/features/api-input-contract/spec.md`, „Etap 2: reguła
+  tekstu”), jedna linia: bez znaków niedozwolonych (wszystkie znaki sterujące, także nowa linia, tabulator i C1,
+  U+2028, U+2029 i tekst, który nie jest poprawnym UTF-8), szukanych w notatce w takiej postaci, w jakiej przyszła;
+  brzegi przycięte z białych znaków Unicode i znaków niewidocznych (U+200B, U+2060, U+FEFF, U+00AD); 1–500 znaków po
+  przycięciu. Wymagana przy `cancel` i `registerReturn` (P7); notatka bez znaku widocznego (same białe znaki, także
+  NBSP, albo same znaki niewidoczne, np. U+200B, U+3164) to brak notatki: przy `cancel` i `registerReturn` „Notatka jest
+  wymagana.”, przy pozostałych `null`; naruszenie to `InvalidOrderInput` (422). Żądania `ChangeOrderStatusRequest`
+  i `CompleteRefundRequest` stosują tę samą regułę (limit długości liczony po tym samym przycięciu, „Notatka zawiera
+  niedozwolone znaki.” przy `note`).
 
 ### Zwrot pieniędzy (P3)
 
@@ -162,12 +164,12 @@ Decyzje użytkownika:
 - `CompleteRefund(orderId, expectedVersion, note, staffId, staffUsername)` (`command.bus`): blokada, wersja,
   `completeRefund`, zapis → `BackofficeOrderView`.
 - `ListBackofficeOrders(status?, refund?, q?, after?, perPage, sort?, placedFrom?, placedTo?)` (`query.bus`, DBAL, bez blokad):
-  - `q` (przycięte, także o spacje Unicode, najwyżej 254 znaki, dłuższe to 400): numer, gdy pasuje do `^[Rr]-[0-9]+$`; pełny adres e-mail (lokalna część, `@`,
+  - `q` (przycięte według reguły tekstu, także o spacje Unicode i znaki niewidoczne, najwyżej 254 znaki, dłuższe to 400): numer, gdy pasuje do `^[Rr]-[0-9]+$`; pełny adres e-mail (lokalna część, `@`,
     domena z kropką i ostatnim członem co najmniej 2 znaki, do 254 znaków); porównanie obu dokładne bez względu na
     wielkość liter (P9); inny tekst 3–100 znaków (także „jan@gm”) to fragment numeru, e-maila albo imienia i nazwiska
     bez względu na wielkość liter, `%` i `_` znaczą siebie (jeden indeks GIN trigram na `lower(number || U+001F || email ||
-    U+001F || full_name)`, więc fragment nie przechodzi przez granicę pól); inaczej (krótszy, dłuższy, znak sterujący) 400
-    przy `q`;
+    U+001F || full_name)`, więc fragment nie przechodzi przez granicę pól); inaczej (krótszy, dłuższy, bez znaku widocznego, znak
+    niedozwolony reguły tekstu) 400 przy `q`;
   - `placedFrom`, `placedTo` (`YYYY-MM-DD`, dni `Europe/Warsaw`, oba końce włącznie, zamieniane na chwile UTC; dzień zmiany
     czasu ma 23 albo 25 godzin); `placedFrom` po `placedTo` to 400 przy `placedTo`; łączą się ze `status`, `q` i sortem po
     dacie;
