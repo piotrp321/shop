@@ -15,12 +15,15 @@ use Doctrine\DBAL\Connection;
  * executions; each runs as a test of its own (TextContractTest).
  *
  * The kinds:
- * - required() (W) and optional() (O): a text of the body; the classes empty, forbidden, allowed in the field (only with
- *   allowed characters), edges, preserved and wrong type.
+ * - required() (W) and optional() (O): a text of the body; the classes empty, forbidden (inside and at the end),
+ *   allowed in the field (only with allowed characters), edges, preserved and wrong type. The read of the stored value
+ *   is required: every 2xx compares the stored value.
  * - format() (F): a text of the body with a format of its own; the class empty, each case of the tables "Pola
- *   z formatem: przypadki" in place of the classes forbidden, edges and preserved, and wrong type.
- * - phrase(): the query parameter `q` of a list; the classes empty, forbidden and preserved, and edges as one execution
- *   that compares the answers to the clean phrase and to the phrase between U+200B and between U+00A0.
+ *   z formatem: przypadki" in place of the classes forbidden, edges and preserved, and wrong type; the read of the
+ *   stored value is required.
+ * - phrase(): the query parameter `q` of a list; the classes empty, forbidden (inside and at the end) and preserved,
+ *   and edges as one execution that compares the answers to the clean phrase and to the phrase between U+200B and
+ *   between U+00A0.
  *
  * The body, the path, the base query and the headers may hold placeholders `{name}`: the values of the fixture and
  * `{idempotencyKey}`, a new key in every request. The value of the field never takes placeholders, except the clean
@@ -39,7 +42,7 @@ final readonly class TextRow
      * @param InputCase::STAFF|InputCase::CUSTOMER|null                                             $token
      * @param array<string, mixed>|null                                                             $body
      * @param array<string, string>                                                                 $headers
-     * @param (\Closure(Connection, array<string, string>): mixed)|null                             $stored
+     * @param (\Closure(Connection, array<string, string>): mixed)|null                             $stored    null only for a phrase
      * @param array<string, string>                                                                 $preserved
      * @param list<array{string, string, int, string}>                                              $cases     label, value sent, status, the stored value (2xx) or the title of the violation (4xx)
      * @param array{phrase: string, record: string, items: string, id: string, count: ?string}|null $result
@@ -70,17 +73,17 @@ final readonly class TextRow
     /**
      * A required text of the body (W): a text empty by T3 is the violation `$empty`.
      *
-     * @param string                                                    $operation "METHOD /path" as in the OpenAPI documents
-     * @param InputCase::STAFF|InputCase::CUSTOMER|null                 $token
-     * @param string                                                    $field     the path of the field in the body, e.g. `name` or `images[0].alt`
-     * @param string                                                    $sample    a valid text of the field (at least two characters); the forbidden characters go inside it, the edges around it
-     * @param array<string, mixed>                                      $body      a valid body; the field is set in it
-     * @param string                                                    $allowed   the characters of T1 the field allows, each one execution of the class "allowed in the field"
-     * @param (\Closure(Connection, array<string, string>): mixed)|null $stored    the read of the stored value of the field (see column())
-     * @param array<string, string>                                     $headers   other headers of the request, by name
-     * @param array<string, string>|null                                $preserved the texts of the class "preserved" when the field cannot take the common ones
+     * @param string                                             $operation "METHOD /path" as in the OpenAPI documents
+     * @param InputCase::STAFF|InputCase::CUSTOMER|null          $token
+     * @param string                                             $field     the path of the field in the body, e.g. `name` or `images[0].alt`
+     * @param string                                             $sample    a valid text of the field (at least two characters); the forbidden characters go inside it, the edges around it
+     * @param array<string, mixed>                               $body      a valid body; the field is set in it
+     * @param string                                             $allowed   the characters of T1 the field allows, each one execution of the class "allowed in the field"
+     * @param \Closure(Connection, array<string, string>): mixed $stored    the read of the stored value of the field (see column()); every 2xx compares it
+     * @param array<string, string>                              $headers   other headers of the request, by name
+     * @param array<string, string>|null                         $preserved the texts of the class "preserved" when the field cannot take the common ones
      */
-    public static function required(string $operation, ?string $token, string $fixture, string $field, string $sample, array $body, string $empty, string $forbidden, string $wrongType, ?\Closure $stored, string $allowed = '', array $headers = [], ?array $preserved = null): self
+    public static function required(string $operation, ?string $token, string $fixture, string $field, string $sample, array $body, string $empty, string $forbidden, string $wrongType, \Closure $stored, string $allowed = '', array $headers = [], ?array $preserved = null): self
     {
         [$method, $path] = explode(' ', $operation, 2);
 
@@ -90,15 +93,15 @@ final readonly class TextRow
     /**
      * An optional text of the body (O): a text empty by T3 is accepted and stored as `$noValue` (e.g. '' or null).
      *
-     * @param InputCase::STAFF|InputCase::CUSTOMER|null                 $token
-     * @param array<string, mixed>                                      $body
-     * @param (\Closure(Connection, array<string, string>): mixed)|null $stored
-     * @param array<string, string>                                     $headers
-     * @param array<string, string>|null                                $preserved
+     * @param InputCase::STAFF|InputCase::CUSTOMER|null          $token
+     * @param array<string, mixed>                               $body
+     * @param \Closure(Connection, array<string, string>): mixed $stored
+     * @param array<string, string>                              $headers
+     * @param array<string, string>|null                         $preserved
      *
      * @see required() for the other parameters
      */
-    public static function optional(string $operation, ?string $token, string $fixture, string $field, string $sample, array $body, mixed $noValue, string $forbidden, string $wrongType, ?\Closure $stored, string $allowed = '', array $headers = [], ?array $preserved = null): self
+    public static function optional(string $operation, ?string $token, string $fixture, string $field, string $sample, array $body, mixed $noValue, string $forbidden, string $wrongType, \Closure $stored, string $allowed = '', array $headers = [], ?array $preserved = null): self
     {
         [$method, $path] = explode(' ', $operation, 2);
 
@@ -109,13 +112,13 @@ final readonly class TextRow
      * A text of the body with a format of its own (F): a text empty by T3 is the violation `$empty`, and each case of
      * the tables of the spec is one execution.
      *
-     * @param InputCase::STAFF|InputCase::CUSTOMER|null                 $token
-     * @param array<string, mixed>                                      $body
-     * @param list<array{string, string, int, string}>                  $cases   label, value sent, status, the stored value (2xx) or the title of the violation (4xx)
-     * @param (\Closure(Connection, array<string, string>): mixed)|null $stored
-     * @param array<string, string>                                     $headers
+     * @param InputCase::STAFF|InputCase::CUSTOMER|null          $token
+     * @param array<string, mixed>                               $body
+     * @param list<array{string, string, int, string}>           $cases   label, value sent, status, the stored value (2xx) or the title of the violation (4xx)
+     * @param \Closure(Connection, array<string, string>): mixed $stored
+     * @param array<string, string>                              $headers
      */
-    public static function format(string $operation, ?string $token, string $fixture, string $field, array $body, string $empty, string $wrongType, array $cases, ?\Closure $stored, array $headers = []): self
+    public static function format(string $operation, ?string $token, string $fixture, string $field, array $body, string $empty, string $wrongType, array $cases, \Closure $stored, array $headers = []): self
     {
         [$method, $path] = explode(' ', $operation, 2);
 
@@ -185,6 +188,10 @@ final readonly class TextRow
         } else {
             foreach (InputValues::forbiddenTextClass() as $label => [$character]) {
                 yield from self::named(TextExecution::refused(TextExecution::FORBIDDEN, $label.' inside', $this->inside($character), $code, (string) $this->forbidden));
+            }
+            // T1 looks at the value as it came: a forbidden character a trim of the ends would drop is refused too.
+            foreach (InputValues::forbiddenAtTheEndTextClass() as $label => [$character]) {
+                yield from self::named(TextExecution::refused(TextExecution::FORBIDDEN, $label.' at the end', $this->sample.$character, $code, (string) $this->forbidden));
             }
             foreach (mb_str_split($this->allowed) as $character) {
                 $text = $this->inside($character);

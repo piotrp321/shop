@@ -93,13 +93,27 @@ final class InputValues
     {
         yield 'nothing' => [''];
         yield 'ASCII spaces' => ['   '];
-        foreach ([0xA0, 0x3000, 0x200B, 0xFEFF, 0xAD, 0x2060, 0x180E, 0x200D, 0x200E, 0x202E, 0xFE0F, 0x3164, 0x034F, 0xE0067] as $codePoint) {
+        foreach ([0xA0, 0x3000, 0x200B, 0xFEFF, 0xAD, 0x2060, 0x180E, 0x200D, 0x200E, 0x202E, 0xFE0F, 0x3164, 0x115F, 0xFFA0, 0x034F, 0xE0067] as $codePoint) {
             yield \sprintf('U+%04X', $codePoint) => [mb_chr($codePoint, 'UTF-8')];
         }
         yield 'zero width spaces and a Hangul filler' => ["\u{200B}\u{3164}\u{200B}"];
         yield 'joiners and marks of direction' => ["\u{200D}\u{200E}\u{202E}\u{200C}"];
         yield 'white space around a variation selector' => [" \u{A0}\u{FE0F}\u{3000} "];
         yield 'tag characters without their flag' => ["\u{E0067}\u{E0062}\u{E007F}"];
+    }
+
+    /**
+     * Texts of one character the rule of texts takes for visible (T3) although Unicode gives it no letter: private use
+     * (Co) and characters the Unicode of PCRE does not know (Cn: never assigned, or newer than PCRE, e.g. an emoji of
+     * Unicode 16).
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function visibleCharactersWithoutALetter(): iterable
+    {
+        foreach ([0xE000, 0xF8FF, 0x10FFFD, 0x0378, 0x1FAE9] as $codePoint) {
+            yield \sprintf('U+%04X', $codePoint) => [mb_chr($codePoint, 'UTF-8')];
+        }
     }
 
     /**
@@ -135,6 +149,17 @@ final class InputValues
     {
         yield 'U+0000' => ["\u{0}"];
         yield 'U+009F' => ["\u{9F}"];
+        yield 'U+2028' => ["\u{2028}"];
+    }
+
+    /**
+     * The characters of the class "forbidden" of the contract test of texts sent at the end of a text: a trim of the
+     * ends (`\s` with `/u`) would drop them, so they show that the characters are looked for in the value as it came.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function forbiddenAtTheEndTextClass(): iterable
+    {
         yield 'U+2028' => ["\u{2028}"];
     }
 

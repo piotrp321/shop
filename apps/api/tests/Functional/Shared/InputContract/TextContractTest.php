@@ -70,7 +70,8 @@ final class TextContractTest extends WebTestCase
         }
         self::assertGreaterThanOrEqual(200, $response->getStatusCode(), $content);
         self::assertLessThan(300, $response->getStatusCode(), $content);
-        if ($execution->readsStored && null !== $row->stored) {
+        if ($execution->readsStored) {
+            self::assertNotNull($row->stored);
             $answer = json_decode($content, true, flags: \JSON_THROW_ON_ERROR);
             self::assertIsArray($answer);
             foreach ($answer as $key => $value) {

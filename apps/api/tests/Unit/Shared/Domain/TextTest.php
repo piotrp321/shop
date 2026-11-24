@@ -148,6 +148,24 @@ final class TextTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{string}>
+     */
+    public static function visibleCharactersWithoutALetter(): iterable
+    {
+        yield from InputValues::visibleCharactersWithoutALetter();
+    }
+
+    #[DataProvider('visibleCharactersWithoutALetter')]
+    public function testAPrivateUseOrUnassignedCharacterIsVisible(string $character): void
+    {
+        self::assertFalse(Text::hasForbiddenCharacters($character));
+        self::assertSame($character, Text::normalize($character));
+        self::assertSame(1, Text::length($character));
+        self::assertSame($character, Text::normalize("\u{A0}\u{200B}".$character."\u{200B}\u{A0}"));
+        self::assertSame("\u{200D}".$character, Text::normalize("\u{200D}".$character));
+    }
+
+    /**
      * @return iterable<string, array{string, string}>
      */
     public static function invisibleCharactersNextToVisibleOnes(): iterable
