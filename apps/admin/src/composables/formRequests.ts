@@ -12,7 +12,10 @@ export const READ_FAILED_MESSAGE = "Nie udało się odczytać stanu. Spróbuj po
 export const UNKNOWN_RESULT_MESSAGE = "Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.";
 /** The unknown result after the draft was discarded: the changes no longer stay in the form. */
 export const UNKNOWN_DISCARDED_MESSAGE = "Nie wiemy, czy zapis się powiódł.";
+/** The unknown result of an earlier save, said again after a newer save was refused: the newer one is not the one in question. */
+export const UNKNOWN_EARLIER_MESSAGE = "Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu.";
 export const NOT_ON_SERVER_MESSAGE = "Zapisu nie widać na serwerze. Może jeszcze dotrzeć.";
+export const NOT_ON_SERVER_EARLIER_MESSAGE = "Wcześniejszego zapisu nie widać na serwerze. Może jeszcze dotrzeć.";
 export const OTHER_VERSION_MESSAGE = "Na serwerze jest inna wersja niż ta, którą edytujesz.";
 export const MATCHES_MESSAGE = "Stan na serwerze odpowiada formularzowi.";
 export const LATE_SAVE_MESSAGE = "Wcześniejszy zapis został wykonany.";

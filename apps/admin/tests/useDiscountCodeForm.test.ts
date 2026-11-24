@@ -1289,7 +1289,7 @@ describe("useDiscountCodeForm", () => {
         expect(form.safety.unknown.value?.kind).toBe("missing");
       });
 
-      it("(i) does not take the lock of the newer save and shows no message of the earlier one when its error and end come after the newer save started", async () => {
+      it("(i) does not take the lock of the newer save and adds no message of the earlier one when its error and end come after the newer save started: the one „Sprawdź stan” found stays as it was", async () => {
         const { form, puts, saving } = await savingFirst();
         await advance(10_000);
         mocks.get.mockResolvedValue(ok(code({ version: 3 })));
@@ -1297,13 +1297,14 @@ describe("useDiscountCodeForm", () => {
         form.form.value.usageLimit = "6";
         const second = form.save();
         expect(form.locked.value).toBe(true);
+const before = form.safety.unknown.value;
 
         puts[0]!.reject(new TypeError("network down"));
         await saving;
 
         expect(form.locked.value).toBe(true);
         expect(form.busy.value).toBe(true);
-        expect(form.safety.unknown.value).toBeNull();
+        expect(form.safety.unknown.value).toEqual(before);
         expect(form.error.value).toBeNull();
         puts[1]!.resolve(ok(code({ usageLimit: 6, version: 4 })));
         expect(await second).toBe("success");

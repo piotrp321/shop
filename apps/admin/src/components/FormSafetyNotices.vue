@@ -104,7 +104,7 @@ async function retryRead(): Promise<void> {
       ref="unknownAlert"
       tabindex="-1"
       data-testid="unknown-result"
-      data-form-error
+      :data-form-error="unknown.earlier ? undefined : ''"
       variant="destructive"
       :class="ERROR_ALERT"
     >

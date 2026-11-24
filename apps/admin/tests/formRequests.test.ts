@@ -260,14 +260,14 @@ describe("useFormSafety", () => {
       expect(onSuccess).not.toHaveBeenCalled();
     });
 
-    it("clears the message of the previous write when a new one starts", async () => {
+    it("keeps the message of the previous write as one about an earlier save when a new one starts", async () => {
       const safety = create();
       await safety.write(() => Promise.reject(new TypeError("down")), { onSuccess: vi.fn(), onRefused: vi.fn() });
       expect(safety.unknown.value).not.toBeNull();
 
       startWrite(safety);
 
-      expect(safety.unknown.value).toBeNull();
+      expect(safety.unknown.value).toMatchObject({ kind: "unknown", earlier: true });
     });
 
     it("ignores the answer after the form was reset for another object, with no lock and no message", async () => {
@@ -338,7 +338,7 @@ describe("useFormSafety", () => {
       expect(late).toEqual([]);
     });
 
-    it("does not take the lock of a newer write nor clear its messages when it fails after that write started", async () => {
+    it("does not take the lock of a newer write nor add a message when it fails after that write started", async () => {
       const safety = create();
       const first = startWrite(safety);
       await vi.advanceTimersByTimeAsync(REQUEST_LIMIT_MS);
@@ -346,13 +346,14 @@ describe("useFormSafety", () => {
       await safety.check();
       const second = startWrite(safety);
       expect(safety.writing.value).toBe(true);
+      const before = safety.unknown.value;
 
       first.request.reject(new TypeError("network down"));
       await first.result;
 
       expect(safety.writing.value).toBe(true);
       expect(safety.locked.value).toBe(true);
-      expect(safety.unknown.value).toBeNull();
+      expect(safety.unknown.value).toEqual(before);
       second.request.resolve(ok(doc("Druga", 6)));
       expect(await second.result).toBe("success");
     });
