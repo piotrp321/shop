@@ -232,7 +232,8 @@ test.describe("the login link of the checkout follows the switches", () => {
 
 const ORDER_BUTTON = "Zamawiam z obowiązkiem zapłaty";
 const PLACING = "Składamy zamówienie…";
-const SUBMIT_FAILED = "Nie udało się złożyć zamówienia. Spróbuj ponownie.";
+/** The message of an uncertain result (the server answers 500: the order may have been placed). */
+const UNCERTAIN_RESULT = "Nie wiemy, czy zamówienie zostało złożone. Spróbuj ponownie: tego samego zamówienia nie złożymy drugi raz.";
 const PHONE_INVALID = "Podaj 9-cyfrowy numer telefonu.";
 const TEXT_FIELDS = ["E-mail", "Imię i nazwisko", "Telefon", "Ulica i numer", "Kod pocztowy", "Miejscowość", "Kod rabatowy"];
 
@@ -241,7 +242,7 @@ const deliveryGroup = (page: Page) => page.getByRole("group", { name: "Sposób d
 const providerGroup = (page: Page) => page.getByRole("radiogroup", { name: "Sposób płatności" });
 const deliveryOption = (page: Page, name: string) => deliveryGroup(page).getByRole("radio", { name: new RegExp(`^${name}`) });
 const providerOption = (page: Page, name: string) => providerGroup(page).getByRole("radio", { name });
-const orderFailure = (page: Page) => page.getByRole("alert").filter({ hasText: SUBMIT_FAILED });
+const orderFailure = (page: Page) => page.getByRole("alert").filter({ hasText: UNCERTAIN_RESULT });
 const overflows = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
 const focusedId = (page: Page) => page.evaluate(() => document.activeElement?.id ?? "");
 

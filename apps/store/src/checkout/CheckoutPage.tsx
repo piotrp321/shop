@@ -46,19 +46,25 @@ type ChangeReason = "cart_changed" | "total_changed";
 /** Why the checkout is out of date: a changed cart or total, or a changed buyer (the session and the cart are read). */
 type StaleReason = ChangeReason | "buyer_changed";
 
-/** Why the last order was not placed; each is shown above the form (see the UI table of the checkout spec). */
+/** Why the last order was not placed, or that it may have been; each is shown above the form (the UI table of the checkout spec). */
 type Failure =
   | { kind: "conflict"; detail: string; offersCart: boolean }
-  /**
-   * `mayHavePlaced` here and below: an attempt of this page whose result was uncertain may have placed an order
-   * (`uncertainKeys` when the message is shown), so the message does not say that none was placed.
-   */
-  | { kind: "changed"; reason: ChangeReason; changes: string[]; mayHavePlaced: boolean }
+  | { kind: "changed"; reason: ChangeReason; changes: string[] }
   /** The buyer changed: `email` is the account of the session read, null when it is signed out. */
-  | { kind: "buyer"; email: string | null; mayHavePlaced: boolean }
+  | { kind: "buyer"; email: string | null }
   | { kind: "not_found" }
   | { kind: "unauthorized" }
-  | { kind: "message"; text: string };
+  | { kind: "message"; text: string }
+  /** The result of the order sent with `key` is uncertain (the answer was lost): it may have been placed. */
+  | { kind: "uncertain"; key: string }
+  /** A refusal told at the fields or at the code: above the form there is only the warning, when there is one. */
+  | { kind: "at_fields" };
+
+/**
+ * The message above the form. `mayHavePlaced`: an attempt of this page whose result was uncertain may have placed an
+ * order (`uncertainKeys` when the message was shown), so the message warns of it and does not say that none was placed.
+ */
+type ShownFailure = { failure: Failure; mayHavePlaced: boolean };
 
 const FIELDS: { name: FieldName; label: string; type: string; autoComplete: string }[] = [
   { name: "email", label: "E-mail", type: "email", autoComplete: "email" },
@@ -79,6 +85,8 @@ const PROVIDER_ID_PREFIX = "checkout-provider-";
 const PROVIDER_ERROR_ID = "checkout-provider-error";
 const NO_METHODS = "Nie możemy teraz przyjąć zamówienia: brak dostępnych sposobów dostawy. Spróbuj później.";
 const SUBMIT_FAILED = "Nie udało się złożyć zamówienia. Spróbuj ponownie.";
+/** The message of an uncertain result: a retry goes with the same key, so it never places a second order. */
+const UNCERTAIN_RESULT = "Nie wiemy, czy zamówienie zostało złożone. Spróbuj ponownie: tego samego zamówienia nie złożymy drugi raz.";
 const RATE_LIMITED = "Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut.";
 const CART_GONE = "Koszyk nie jest już dostępny.";
 /**
@@ -93,7 +101,8 @@ const CHANGED_LAST = "Sprawdź podsumowanie i zamów ponownie.";
 const CHANGES_NOT_READ = "Koszyk albo kwota zamówienia się zmieniły, ale nie udało się wczytać aktualnego podsumowania. Spróbuj ponownie.";
 /**
  * What a refusal of a changed cart, total or buyer says of the order: none was placed, or an attempt before may have
- * placed one. The only texts of the checkout that tell whether an order was placed; `placedSentence` chooses.
+ * placed one (`placedSentence`). Every other message of the order adds `MAY_HAVE_PLACED` after its text while an
+ * uncertain attempt is left (`FailureMessage`).
  */
 const PLACED_NOTHING = "Nie złożyliśmy zamówienia.";
 const MAY_HAVE_PLACED = "Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.";
@@ -153,7 +162,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
   const [form, setForm] = useState<Form>(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
-  const [failure, setFailure] = useState<Failure | null>(null);
+  const [shownFailure, setShownFailure] = useState<ShownFailure | null>(null);
   // No default: a customer chooses how to pay. The key of the order does not depend on it (the provider is not part of
   // the order, only of the payment started after it).
   const [provider, setProvider] = useState<string | null>(null);
@@ -205,13 +214,23 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // error, 403, 5xx, an answer without the order), or a 409 `IdempotencyKeyReused` (an order with the key exists). They
   // stay for the life of the page: a new key settles nothing of them, and neither does a refusal, even of the API to the
   // same key, which tells only that no order with it existed when it was checked (the uncertain request may still be on
-  // its way to place it). Only a success tells the result, and the page leaves after it. While one is left, no message
-  // says that nothing was placed. A ref: read when the message is shown.
+  // its way to place it). Only a success tells the result, and the page leaves after it. While one is left, every
+  // message of the order warns of it (`setFailure`). A ref: read when the message is shown.
   const uncertainKeys = useRef(new Set<string>());
 
-  /** Whether an attempt of this page may have placed an order, at this moment. */
-  function mayHavePlaced(): boolean {
-    return uncertainKeys.current.size > 0;
+  /**
+   * Shows `next` above the form, or nothing: the one place that decides whether a message warns that an attempt whose
+   * result was uncertain may have placed an order, from `uncertainKeys` at this moment. The message of an uncertain
+   * result does not repeat it for its own attempt; a refusal told at the fields shows nothing above the form without it.
+   */
+  function setFailure(next: Failure | null) {
+    if (next === null) {
+      setShownFailure(null);
+      return;
+    }
+    const own = next.kind === "uncertain" ? next.key : null;
+    const mayHavePlaced = [...uncertainKeys.current].some((key) => key !== own);
+    setShownFailure(next.kind === "at_fields" && !mayHavePlaced ? null : { failure: next, mayHavePlaced });
   }
 
   /** Starts a new attempt with a new key; the keys of uncertain attempts stay. */
@@ -287,7 +306,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setLoaded({ status: "ready", cart: next, session });
     const stale = outOfDate.current;
     if (stale !== null && stale.reason !== "buyer_changed") {
-      setFailure({ kind: "changed", reason: stale.reason, changes: cartChanges(stale.shown, next, chosen), mayHavePlaced: mayHavePlaced() });
+      setFailure({ kind: "changed", reason: stale.reason, changes: cartChanges(stale.shown, next, chosen) });
       outOfDate.current = null;
     }
     chooseMethod(next.delivery?.options.some((option) => option.methodId === chosen) ? chosen : null);
@@ -300,7 +319,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
    * read of a summary out of date still shows its own list (`showCart`); the message is the one at that moment.
    */
   function dismissChanges() {
-    setFailure((current) => (current?.kind === "changed" ? null : current));
+    setShownFailure((current) => (current?.failure.kind === "changed" ? null : current));
   }
 
   /** Chooses the delivery method (none: `null`); the only place that changes the choice. */
@@ -354,7 +373,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       else setFailure({ kind: "message", text: CHANGES_NOT_READ });
     } else {
       showPreview(preview, session);
-      setFailure({ kind: "changed", reason, changes: cartChanges(shown, preview.cart, chosenId), mayHavePlaced: mayHavePlaced() });
+      setFailure({ kind: "changed", reason, changes: cartChanges(shown, preview.cart, chosenId) });
     }
     unlockOrder();
     return FAILURE_ID;
@@ -373,7 +392,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     if (preview.status === "ok" && session.status === "ok") {
       outOfDate.current = null;
       showPreview(preview, session.session);
-      setFailure({ kind: "buyer", email: session.session?.email ?? null, mayHavePlaced: mayHavePlaced() });
+      setFailure({ kind: "buyer", email: session.session?.email ?? null });
       // The header shows the buyer the checkout shows now, without a read of its own.
       announceSession(session.session);
     } else {
@@ -587,6 +606,8 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         setProviderError(providerMessage);
         if (others.length > 0 || (Object.keys(errors).length === 0 && providerMessage === null)) {
           setFailure({ kind: "message", text: others.length > 0 ? others.join(" ") : result.detail || SUBMIT_FAILED });
+        } else {
+          setFailure({ kind: "at_fields" });
         }
         const first = FIELDS.find((candidate) => errors[candidate.name]);
         if (first) return `${FIELD_ID_PREFIX}${first.name}`;
@@ -602,11 +623,12 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           // was (the code applied, with its line and total) and the customer can take the code off by hand.
           renewKey();
           const read = await reloadPreview(null, session);
+          if (read === "unauthorized") return FAILURE_ID;
+          setFailure({ kind: "at_fields" });
           if (read === "ok") {
             setCodeError(detail);
             return CODE_INPUT_ID;
           }
-          if (read === "unauthorized") return FAILURE_ID;
           setCodeError(`${detail} ${CODE_NOT_REMOVED}`);
           return CODE_REMOVE_ID;
         }
@@ -662,7 +684,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       case "failed":
         // The order may have been placed (the answer was lost): the retry goes with the same key.
         uncertainKeys.current.add(key);
-        setFailure({ kind: "message", text: SUBMIT_FAILED });
+        setFailure({ kind: "uncertain", key });
         return FAILURE_ID;
     }
   }
@@ -709,7 +731,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           </Button>
         </div>
       ) : null}
-      {failure ? <FailureMessage failure={failure} cartLinkShown={showsForm} /> : null}
+      {shownFailure ? <FailureMessage shown={shownFailure} cartLinkShown={showsForm} /> : null}
       {loaded.status === "ready" ? (
         <CheckoutContent
           cart={loaded.cart}
@@ -852,12 +874,15 @@ function placedSentence(mayHavePlaced: boolean): string {
 }
 
 /** The message of a changed buyer: who buys now, and whether the order may have been placed by the attempt before. */
-function buyerMessage({ email, mayHavePlaced }: Extract<Failure, { kind: "buyer" }>): string {
+function buyerMessage({ email }: Extract<Failure, { kind: "buyer" }>, mayHavePlaced: boolean): string {
   const placed = placedSentence(mayHavePlaced);
   return email === null ? SIGNED_OUT(placed) : SIGNED_IN_AS(email, placed);
 }
 
-function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLinkShown: boolean }) {
+function FailureMessage({ shown: { failure, mayHavePlaced }, cartLinkShown }: { shown: ShownFailure; cartLinkShown: boolean }) {
+  // The messages of a changed cart, total or buyer say it instead of their sentence of the order; every other one
+  // adds it after its text.
+  const warning = mayHavePlaced && failure.kind !== "changed" && failure.kind !== "buyer" ? <p>{MAY_HAVE_PLACED}</p> : null;
   return (
     <Alert id={FAILURE_ID} variant="destructive" tabIndex={-1}>
       {/* Texts of the data (an address, a product, a variant, a delivery method) can be one word longer than the screen:
@@ -865,16 +890,24 @@ function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLink
           the width the text needs at least. */}
       <AlertDescription className="wrap-anywhere">
         {failure.kind === "unauthorized" ? (
-          <p>
-            <SessionExpired returnTo="/checkout" />
-          </p>
-        ) : failure.kind === "message" ? (
-          <p>{failure.text}</p>
+          <>
+            <p>
+              <SessionExpired returnTo="/checkout" />
+            </p>
+            {warning}
+          </>
+        ) : failure.kind === "message" || failure.kind === "uncertain" ? (
+          <>
+            <p>{failure.kind === "message" ? failure.text : UNCERTAIN_RESULT}</p>
+            {warning}
+          </>
+        ) : failure.kind === "at_fields" ? (
+          warning
         ) : failure.kind === "buyer" ? (
-          <p>{buyerMessage(failure)}</p>
+          <p>{buyerMessage(failure, mayHavePlaced)}</p>
         ) : failure.kind === "changed" ? (
           <>
-            <p>{`${CHANGED[failure.reason]} ${placedSentence(failure.mayHavePlaced)}`}</p>
+            <p>{`${CHANGED[failure.reason]} ${placedSentence(mayHavePlaced)}`}</p>
             {failure.changes.length > 0 ? (
               <ul className="list-disc pl-5 not-last:mb-4">
                 {/* Two lines without a known product can say the same: the position is the key. */}
@@ -893,6 +926,7 @@ function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLink
         ) : (
           <>
             <p>{failure.kind === "conflict" ? failure.detail : CART_GONE}</p>
+            {warning}
             {failure.kind === "not_found" ? (
               <p>
                 <Link href="/">Wróć do sklepu</Link>
