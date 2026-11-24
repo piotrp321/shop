@@ -77,11 +77,12 @@ używa `ApplicationTester` (`setAutoExit(false)`), bo `CommandTester` wyjątku n
 - Brak wspólnych value objectów między contextami. Każdy context ma własne (np. `Price` w Pricing i `Amount` w Payment).
   Wspólna jest tylko higiena tekstu, która nie jest pojęciem żadnego contextu: reguła tekstów wpisywanych przez ludzi
   (znaki niedozwolone, przycinanie brzegów, tekst pusty, długość) jest wyłącznie w `App\Shared\Domain\Text`. Value
-  objecty i klasy żądań wołają `Text` zamiast własnych wzorców, a same value objecty tekstów zostają własne dla
-  contextu (limity, komunikaty).
-- Odczyt z bazy nie waliduje tekstów: repozytoria i handlery odczytu odtwarzają je z wiersza nazwanym konstruktorem
-  bez walidacji i bez przycinania (`reconstitute`), więc wiersz zapisany przed ostrzejszą regułą daje się odczytać
-  i przetworzyć. Regułę stosuje zapis (żądanie, seed, generator danych demo).
+  objecty i klasy żądań tekstów pod tą regułą wołają `Text` zamiast własnych wzorców, a same value objecty zostają
+  własne dla contextu (limity, komunikaty). Pola z listy „Pola tekstowe poza regułą”
+  (`docs/features/api-input-contract/spec.md`) mają własne reguły w swoich value objectach.
+- Odczyt z bazy nie waliduje tekstów pod regułą `Text`: repozytoria i handlery odczytu odtwarzają je z wiersza
+  nazwanym konstruktorem bez walidacji i bez przycinania (`reconstitute`), więc wiersz zapisany przed ostrzejszą
+  regułą daje się odczytać i przetworzyć. Regułę stosuje zapis (żądanie, seed, generator danych demo).
 - Deptrac pilnuje tych granic. Jeśli Deptrac zgłasza błąd, popraw projekt, nie edytuj `deptrac.yaml`.
 
 ### Pułapki Doctrine (powód wyjątków niżej)

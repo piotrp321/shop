@@ -14,8 +14,9 @@ namespace App\Shared\Domain;
  * - T2: the ends lose Unicode white space (`\s` and the category Z) and U+200B, U+2060, U+FEFF and U+00AD; nothing
  *   inside the text is removed. Other format characters stay also at the ends, so the tags of a flag at the end of a
  *   text are kept (T5).
- * - T3: a text without a visible character once trimmed (only characters of the categories Z and C and default
- *   ignorable code points left) is empty.
+ * - T3: a text without a visible character once trimmed (only characters of the categories Z, Cc and Cf and default
+ *   ignorable code points left) is empty. A private use character (Co) and a character the Unicode of PCRE does not
+ *   know yet (Cn, e.g. a new emoji) count as visible.
  * - T4: the length counts code points after the trimming.
  */
 final class Text
@@ -23,7 +24,7 @@ final class Text
     private const string FORBIDDEN = '[\p{Cc}\x{2028}\x{2029}]';
     private const string EDGE = '[\s\p{Z}\x{200B}\x{2060}\x{FEFF}\x{00AD}]';
     private const string EDGES = '/^'.self::EDGE.'+|'.self::EDGE.'+$/Du';
-    private const string INVISIBLE_ONLY = '/^[\p{Z}\p{C}\p{DI}]*$/Du';
+    private const string INVISIBLE_ONLY = '/^[\p{Z}\p{Cc}\p{Cf}\p{DI}]*$/Du';
 
     /**
      * Whether the text breaks T1.
