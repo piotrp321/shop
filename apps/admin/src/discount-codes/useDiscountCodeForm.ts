@@ -253,15 +253,15 @@ export function useDiscountCodeForm(options: DiscountCodeFormOptions) {
     (id) => open(id),
   );
 
-  /** Throws away the unsaved changes: the form goes back to the code as the API last sent it, without a request. */
-  function discard(): void {
+  /** Throws away the unsaved changes (true when a message about the server took the focus): the form goes back to the code as the API last sent it, without a request. */
+  function discard(): boolean {
     const current = view.value;
     if (current === null || busy.value || locked.value) {
-      return;
+      return false;
     }
     form.value = fromView(current);
     clearFeedback();
-    safety.draftDiscarded();
+    return safety.draftDiscarded();
   }
 
   /** A time as the API gets it: the stored moment when the text is what it shows, else the typed time as UTC. */

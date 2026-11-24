@@ -349,14 +349,14 @@ export function useProductForm(options: ProductFormOptions) {
     (id) => open(id),
   );
 
-  /** Throws away the unsaved changes: the form goes back to the product as the API last sent it, without a request. */
-  function discard(): void {
+  /** Throws away the unsaved changes (true when a message about the server took the focus): the form goes back to the product as the API last sent it, without a request. */
+  function discard(): boolean {
     if (source === null || busy.value || locked.value) {
-      return;
+      return false;
     }
     form.value = fromView(source);
     clearFeedback();
-    safety.draftDiscarded();
+    return safety.draftDiscarded();
   }
 
   function failure(action: Action, status: number, body: unknown): void {

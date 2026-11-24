@@ -221,16 +221,22 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
    * an unknown result (without the promise that the changes stay; „Sprawdź stan” then compares the restored base), what
    * „Sprawdź stan” found and the way to the server state. After a 409 only the way stays, with the context the 409 gave
    * (`restoreNote`), because its own message goes with the draft; nothing is unknown then. Nothing about the requests in flight changes: a late answer is still only a toast.
+   * Returns whether a message about the server took the focus (`FormSafetyNotices`); when it did not, the form puts the focus
+   * where its standard says (the H1: the save bar went away with „Odrzuć”).
    */
-  function draftDiscarded(): void {
+  function draftDiscarded(): boolean {
     const current = unknownState.value;
     if (current !== null) {
       unknownState.value = { ...current, discarded: true };
       announce("unknown");
-    } else if (restoreOffered.value) {
+      return true;
+    }
+    if (restoreOffered.value) {
       restoreNote.value = restoreContext;
       announce("restoreNote");
+      return true;
     }
+    return false;
   }
 
   /** The form is left. */
