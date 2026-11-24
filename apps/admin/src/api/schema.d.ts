@@ -1326,12 +1326,12 @@ export interface components {
         /** @description A new delivery method. */
         CreateDeliveryMethodRequest: {
             /**
-             * @description 1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.
+             * @description 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators, unique among all methods without regard to case.
              * @example Kurier standardowy
              */
             name: string;
             /**
-             * @description The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.
+             * @description The time of the delivery: up to 200 characters once trimmed, without control characters or line separators. Null or a text without a visible character: no description.
              * @example Dostawa w 2–3 dni robocze
              */
             description: string | null;
@@ -1364,12 +1364,12 @@ export interface components {
         /** @description A delivery method as it should be. */
         ReviseDeliveryMethodRequest: {
             /**
-             * @description 1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.
+             * @description 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators, unique among all methods without regard to case.
              * @example Kurier standardowy
              */
             name: string;
             /**
-             * @description The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.
+             * @description The time of the delivery: up to 200 characters once trimmed, without control characters or line separators. Null or a text without a visible character: no description.
              * @example Dostawa w 2–3 dni robocze
              */
             description: string | null;
