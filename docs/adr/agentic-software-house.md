@@ -41,7 +41,7 @@ Audyt z 2026-11-18 (`docs/reports/agentic-software-house-audit-2026-11-18.md`) u
 3. **Polityka przeglądu.** Dwie rundy to domyślny budżet, nie twardy limit. Luki bezpieczeństwa, utrata danych, błędy
    logiki biznesowej i istotne regresje muszą być naprawione; drobne uwagi, hipotetyczne przypadki brzegowe i styl
    są odraczane bez pytania właściciela; kolejna runda wymaga konkretnego uzasadnienia. Wagę nadaje reviewer według
-   skutku w normalnym użyciu; definicje są w plikach agentów i w skillu `/integration`. Blokują
+   skutku w normalnym użyciu; definicje są w plikach agentów. Blokują
    `BLOCKER`, `Critical`, `IMPORTANT` i `Important` oraz werdykt `REWORK` agenta `architecture-reviewer`;
    `SUGGESTION` i `Minor` trafiają do opisu PR jako odroczone. Uwagi, która opisuje konkretną ścieżkę błędu, sesja nie
    odracza po samej etykiecie: najpierw ocenia ją według kroku 4 „Przebiegu epiku”.

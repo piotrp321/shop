@@ -12,12 +12,12 @@ summarize(). Python 3.9+, standard library only.
       or SIGINT.
   human FILE --action (answer|resume|release|epic-resume) [--task ID]
       Appends {"type": "human_action", "task_id": ID or null, "epic_id": null, "data": {"action"}, "at": <now>} to
-      FILE: /ao-run records each decision of the user it passes to AO (`ao answer`, `ao resume`, `ao release`,
+      FILE: the session of an AO run recorded each decision of the user it passed to AO (`ao answer`, `ao resume`, `ao release`,
       `ao epic resume`). A task decision has --task; a decision on the epic or the queue has none. Exit code 0 when the
       line was written, 1 (message on stderr) when it was not, 2 for invalid arguments.
   auto FILE --action (qa-round|fix-round) [--task ID]
-      Appends {"type": "auto_action", "at": <now>, "task_id": ID or null, "data": {"action"}} to FILE: /ao-run records
-      each automatic one-time extension (R2, auto_extend.py) it passes to AO instead of the user (qa-round: one more
+      Appends {"type": "auto_action", "at": <now>, "task_id": ID or null, "data": {"action"}} to FILE: the session of
+      an AO run recorded each automatic one-time extension it passed to AO instead of the user (qa-round: one more
       QA round of the epic, no --task; fix-round: one more fix round of the task). Exit codes as for `human`.
   summary FILE [--now EPOCH]
       Prints one JSON line {"interventions", "auto", "waits", "wait_s", "open": [{"task_id", "since", "wait_s"}]} for
@@ -26,7 +26,7 @@ summarize(). Python 3.9+, standard library only.
       next human_action or auto_action with the same key;
       wait_s is the wall-clock time covered by at least one ended wait (overlapping waits count once), `open` lists
       the waits not ended yet, each measured until the last epic_done after its start or else until --now (default:
-      the current time). `interventions` counts the decisions recorded by /ao-run; `ao report` counts AO's own. Lines that are not JSON objects are skipped. A missing or unreadable FILE is exit code 1 with a message on
+      the current time). `interventions` counts the decisions recorded by the session; `ao report` counts AO's own. Lines that are not JSON objects are skipped. A missing or unreadable FILE is exit code 1 with a message on
       stderr and nothing on stdout: no data is not zero.
 
 The module function waits(events) returns the windows of waiting for the user that `summary` is computed from (used by
