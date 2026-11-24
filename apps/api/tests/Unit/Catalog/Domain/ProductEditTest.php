@@ -303,6 +303,39 @@ final class ProductEditTest extends TestCase
         self::assertSame([self::BLACK_M => 'czarne, M', self::BLACK_XL => 'czarne, XL'], $this->labels($product));
     }
 
+    /**
+     * @return iterable<string, array{list<string>, list<array{id: string, values: list<string>}>, string}>
+     */
+    public static function changesOfAStoredTextTheRuleRefuses(): iterable
+    {
+        yield 'an axis with a tab renamed' => [['Materiał', 'Rozmiar'], self::VARIANTS, "Oś „Kol\tor” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter."];
+        yield 'reordered axes, one with a tab' => [['Rozmiar', 'Kolor'], [['id' => self::BLACK_M, 'values' => ['M', 'czarne']], ['id' => self::BLACK_XL, 'values' => ['XL', 'czarne']]], 'Po pierwszej publikacji nie można dodać, usunąć ani przestawić osi wariantów.'];
+        yield 'a value with U+009F changed' => [self::AXES, [['id' => self::BLACK_M, 'values' => ['zielone', 'M']], self::VARIANTS[1]], "Wariant „czar\u{9F}ne, M” nie może zmienić wartości po pierwszej publikacji. Popraw tylko wielkość liter albo dodaj nowy wariant i usuń stary."];
+    }
+
+    /**
+     * A stored text the rule refuses for a forbidden character keeps the text without forbidden characters and white
+     * space: any other text is a change of the identity.
+     *
+     * @param list<string>                                  $axes
+     * @param list<array{id: string, values: list<string>}> $variants
+     */
+    #[DataProvider('changesOfAStoredTextTheRuleRefuses')]
+    public function testAfterThePublicationAStoredTextTheRuleRefusesMayOnlyBeCorrected(array $axes, array $variants, string $message): void
+    {
+        $product = StoredProducts::publishedAsStored(["Kol\tor", 'Rozmiar'], [
+            ['id' => self::BLACK_M, 'values' => ["czar\u{9F}ne", 'M']],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL']],
+        ]);
+
+        try {
+            $this->edit($product, axes: $axes, variants: $variants);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame($message, $e->getMessage());
+        }
+    }
+
     public function testAfterThePublicationANewVariantIsAccepted(): void
     {
         $product = StoredProducts::published(axes: self::AXES, variants: self::VARIANTS);

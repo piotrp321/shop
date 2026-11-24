@@ -135,27 +135,28 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
     }
 
     /**
-     * @return iterable<string, array{string, string, string, string, bool}>
+     * @return iterable<string, array{string, string, string, string, bool, string}>
      */
     public static function textsToCorrect(): iterable
     {
         $axis = 'Nazwa osi zawiera niedozwolone znaki.';
         $value = 'Wartość wariantu zawiera niedozwolone znaki.';
-        yield 'U+009F in the axis' => ['axis', "Roz\u{9F}miar", 'variantAxes[0]', $axis, false];
-        yield 'a tab in the axis' => ['axis', "Roz\tmiar", 'variantAxes[0]', $axis, false];
-        yield 'U+200B as the axis' => ['axis', "\u{200B}", 'variantAxes[0]', 'Nazwa osi musi mieć od 1 do 30 znaków.', false];
-        yield 'U+009F in a value' => ['value', "M\u{9F}", 'variants[0].values[0]', $value, false];
-        yield 'a tab in a value' => ['value', "M\tL", 'variants[0].values[0]', $value, false];
-        yield 'U+200B as a value' => ['value', "\u{200B}", 'variants[0].values[0]', 'Wartość musi mieć od 1 do 40 znaków.', false];
-        yield 'U+009F in a value of a variant in stock' => ['value', "M\u{9F}", 'variants[0].values[0]', $value, true];
+        yield 'U+009F in the axis' => ['axis', "Roz\u{9F}miar", 'variantAxes[0]', $axis, false, 'Rozmiar'];
+        yield 'a tab in the axis' => ['axis', "Roz\tmiar", 'variantAxes[0]', $axis, false, 'Rozmiar'];
+        yield 'U+200B as the axis' => ['axis', "\u{200B}", 'variantAxes[0]', 'Nazwa osi musi mieć od 1 do 30 znaków.', false, 'Rozmiar'];
+        yield 'U+009F in a value' => ['value', "M\u{9F}", 'variants[0].values[0]', $value, false, 'M'];
+        yield 'a tab in a value' => ['value', "M\tL", 'variants[0].values[0]', $value, false, 'M L'];
+        yield 'U+200B as a value' => ['value', "\u{200B}", 'variants[0].values[0]', 'Wartość musi mieć od 1 do 40 znaków.', false, 'M'];
+        yield 'U+009F in a value of a variant in stock' => ['value', "M\u{9F}", 'variants[0].values[0]', $value, true, 'M'];
     }
 
     /**
-     * A stored axis or value the rule refuses has no identity to keep (K5): unchanged it is a 422 at its field, and its
-     * correction is saved, also for a variant in stock. From then on the corrected text is locked as any other.
+     * A stored axis or value the rule refuses is a 422 at its field until it is corrected (K5): the correction is the
+     * same text without the forbidden characters and white space, saved also for a variant in stock. From then on the
+     * corrected text is locked as any other.
      */
     #[DataProvider('textsToCorrect')]
-    public function testAPublishedProductStoredWithATextTheRuleRefusesIsSavedOnceTheTextIsCorrected(string $field, string $text, string $path, string $title, bool $inStock): void
+    public function testAPublishedProductStoredWithATextTheRuleRefusesIsSavedOnceTheTextIsCorrected(string $field, string $text, string $path, string $title, bool $inStock, string $corrected): void
     {
         $id = $this->publishedWith($field, $text);
         if ($inStock) {
@@ -167,7 +168,6 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
         $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view));
         self::assertSame([['propertyPath' => $path, 'title' => $title]], $this->violations());
 
-        $corrected = 'axis' === $field ? 'Rozmiar' : 'M';
         $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, $this->changed($view, $field, $corrected)));
         self::assertResponseStatusCodeSame(200);
         self::assertSame($this->storedAfter($id, $field, $corrected), $this->stored($id));
@@ -175,6 +175,99 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
         $saved = $this->api('GET', '/api/v1/admin/products/'.$id);
         $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($saved, $this->changed($saved, $field, 'axis' === $field ? 'Kolor' : 'XL')));
         $this->assertProblem(409, 'variant-locked');
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string, int, bool}>
+     */
+    public static function storedTextsAndTheirChanges(): iterable
+    {
+        // The text the rule refuses for a forbidden character keeps the text without forbidden characters and white space.
+        yield 'an axis with a tab, corrected' => ['axis', "Roz\tmiar", 'Rozmiar', 200, false];
+        yield 'an axis with a tab, corrected with a space' => ['axis', "Roz\tmiar", 'Roz miar', 200, true];
+        yield 'an axis with a tab, renamed' => ['axis', "Roz\tmiar", 'Materiał', 409, true];
+        yield 'an axis with U+009F, corrected' => ['axis', "Roz\u{9F}miar", 'Rozmiar', 200, false];
+        yield 'an axis with U+009F, renamed' => ['axis', "Roz\u{9F}miar", 'Materiał', 409, false];
+        yield 'a value with U+009F, corrected' => ['value', "czar\u{9F}ne", 'czarne', 200, true];
+        yield 'a value with U+009F, corrected with a space' => ['value', "czar\u{9F}ne", 'czar ne', 200, false];
+        yield 'a value with U+009F, changed' => ['value', "czar\u{9F}ne", 'zielone', 409, true];
+        yield 'a value with a tab, corrected with a space' => ['value', "M\tXL", 'M XL', 200, false];
+        yield 'a value with a tab, corrected without it' => ['value', "M\tXL", 'MXL', 200, true];
+        yield 'a value with a tab, changed' => ['value', "M\tXL", 'M/XL', 409, false];
+        // A text without a visible character has no text to keep.
+        yield 'an axis of U+200B, named' => ['axis', "\u{200B}", 'Materiał', 200, true];
+        yield 'an axis of U+3164, named' => ['axis', "\u{3164}", 'Materiał', 200, false];
+        yield 'a value of U+200B, given' => ['value', "\u{200B}", 'zielone', 200, true];
+        yield 'a value of U+3164, given' => ['value', "\u{3164}", 'zielone', 200, false];
+    }
+
+    /**
+     * A stored axis or value the rule refuses for a forbidden character may only be corrected (K5): the text without the
+     * forbidden characters and white space is kept, any other text is a change of the identity and changes nothing. A
+     * stored text without a visible character has no text to keep.
+     */
+    #[DataProvider('storedTextsAndTheirChanges')]
+    public function testAPublishedProductStoredWithATextTheRuleRefusesTakesOnlyItsCorrection(string $field, string $stored, string $given, int $status, bool $inStock): void
+    {
+        $id = $this->publishedWith($field, $stored);
+        if ($inStock) {
+            $this->api('POST', '/api/v1/admin/variants/'.$this->variant($id, 0).'/stock/receipts', ['quantity' => 24, 'note' => null], server: ['HTTP_IDEMPOTENCY_KEY' => Uuid::v4()->toRfc4122()]);
+            self::assertResponseStatusCodeSame(201);
+        }
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, $this->changed($view, $field, $given)));
+
+        if (409 === $status) {
+            $this->assertProblem(409, 'variant-locked');
+            self::assertSame($this->storedAfter($id, $field, $stored), $this->stored($id));
+            self::assertSame($view['version'], $this->connection->fetchOne('SELECT version FROM catalog_product WHERE id = ?', [$id]));
+
+            return;
+        }
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame($this->storedAfter($id, $field, $given), $this->stored($id));
+    }
+
+    /**
+     * Of two axes, the one stored with a forbidden character is corrected while the values of the variants stay; a
+     * reordering of the axes stays locked, and so does a renaming of the other axis.
+     */
+    public function testTheCorrectionOfOneOfTwoAxesKeepsTheOtherLocked(): void
+    {
+        $created = $this->publish($this->createProduct([
+            'variantAxes' => ['Kolor', 'Rozmiar'],
+            'variants' => [['variantId' => null, 'values' => ['czarne', 'M']], ['variantId' => null, 'values' => ['czarne', 'L']]],
+        ]));
+        $id = self::string($created['id']);
+        $this->connection->executeStatement("UPDATE catalog_product SET variant_axes = jsonb_build_array('Kol'||chr(9)||'or', 'Rozmiar') WHERE id = ?", [$id]);
+        $this->entityManager->clear();
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+        $variants = self::list($view['variants']);
+
+        $swapped = array_map(static fn (array $variant): array => [...$variant, 'values' => array_reverse(self::list($variant['values'] ?? null))], $variants);
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variantAxes' => ['Rozmiar', 'Kolor'], 'variants' => $swapped]));
+        self::assertSame('Po pierwszej publikacji nie można dodać, usunąć ani przestawić osi wariantów.', $this->assertProblem(409, 'variant-locked')['detail'] ?? null);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variantAxes' => ['Kolor', 'Wielkość']]));
+        $this->assertProblem(409, 'variant-locked');
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variantAxes' => ['Kolor', 'Rozmiar']]));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(['Kolor', 'Rozmiar'], json_decode(self::string($this->connection->fetchOne('SELECT variant_axes FROM catalog_product WHERE id = ?', [$id])), true));
+    }
+
+    /**
+     * A value stored with a forbidden character whose correction repeats another variant is a repeated variant.
+     */
+    public function testACorrectionThatRepeatsAnotherVariantIsARepeatedVariant(): void
+    {
+        $id = $this->publishedWith('value', "L\u{9F}");
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, $this->changed($view, 'value', 'L')));
+
+        self::assertSame([['propertyPath' => 'variants[1].values', 'title' => 'Taki wariant już istnieje.']], $this->violations());
     }
 
     /**
