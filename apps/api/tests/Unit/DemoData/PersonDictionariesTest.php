@@ -62,6 +62,22 @@ final class PersonDictionariesTest extends TestCase
         self::assertSame(['Żółć'], $people->surnames(true)->names());
     }
 
+    /**
+     * The generator writes the names, the streets and the cities of the people by COPY, past the rule of texts: every
+     * entry of the dictionaries is in the form the rule keeps (see GeneratedText).
+     */
+    public function testEveryTextOfThePeopleDictionariesIsInTheFormOfTheRule(): void
+    {
+        $people = new PersonDictionaries(self::FIXTURES);
+
+        foreach ([true, false] as $female) {
+            GeneratedText::assertAllInTheFormOfTheRule($people->firstNames($female)->names(), 'first name');
+            GeneratedText::assertAllInTheFormOfTheRule($people->surnames($female)->names(), 'surname');
+        }
+        GeneratedText::assertAllInTheFormOfTheRule(array_column($people->cities(), 'name'), 'city');
+        GeneratedText::assertAllInTheFormOfTheRule($people->streets(), 'street');
+    }
+
     public function testTheFingerprintIsStableAndChangesWithEveryDictionaryOfPeople(): void
     {
         $fingerprint = new PersonDictionaries(self::FIXTURES)->fingerprint();

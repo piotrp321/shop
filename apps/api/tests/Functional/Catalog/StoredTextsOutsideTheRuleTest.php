@@ -219,7 +219,10 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
         $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, $this->changed($view, $field, $given)));
 
         if (409 === $status) {
-            $this->assertProblem(409, 'variant-locked');
+            $detail = self::string($this->assertProblem(409, 'variant-locked')['detail'] ?? null);
+            // The detail names the text as a person reads it and says what the correction may be (K5).
+            self::assertSame(0, preg_match('/[\p{Cc}\p{Cf}\x{2028}\x{2029}]/u', $detail), 'the detail has a character the rule forbids');
+            self::assertStringContainsString('znaki niedozwolone: usuń je albo zastąp odstępem', $detail);
             self::assertSame($this->storedAfter($id, $field, $stored), $this->stored($id));
             self::assertSame($view['version'], $this->connection->fetchOne('SELECT version FROM catalog_product WHERE id = ?', [$id]));
 
@@ -293,7 +296,9 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
 
         $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, $this->changed($view, $field, $changed)));
 
-        $this->assertProblem(409, 'variant-locked');
+        $detail = self::string($this->assertProblem(409, 'variant-locked')['detail'] ?? null);
+        self::assertSame(0, preg_match('/[\p{Cc}\p{Cf}]/u', $detail), 'the detail has a character the rule forbids or trims');
+        self::assertStringContainsString('Popraw tylko wielkość liter', $detail);
         self::assertSame($this->storedAfter($id, $field, $stored), $this->stored($id));
     }
 

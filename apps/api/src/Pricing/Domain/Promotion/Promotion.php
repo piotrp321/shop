@@ -247,9 +247,12 @@ final class Promotion
     }
 
     /**
+     * The name of a promotion by the rule of the aggregate, also for the checks that run before a write (the demo
+     * seed): the name as the promotion keeps it.
+     *
      * @throws InvalidPromotion
      */
-    private static function validName(string $name): string
+    public static function validName(string $name): string
     {
         // The rule of texts (Text): a forbidden character anywhere in the name as it came, then the ends trimmed of
         // Unicode white space and invisible characters; a name without a visible character is empty. The name keeps

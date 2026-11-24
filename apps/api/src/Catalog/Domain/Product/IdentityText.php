@@ -7,7 +7,8 @@ namespace App\Catalog\Domain\Product;
 use App\Shared\Domain\Text;
 
 /**
- * What an axis name or a variant value keeps after the first publication of its product (K5).
+ * What an axis name or a variant value keeps after the first publication of its product (K5), and how the refusals
+ * and the conflicts of the variants name a stored text.
  *
  * - A stored text the rule of texts takes keeps the text trimmed by the rule (Text), without regard to case, so a text
  *   stored with characters the rule trims is the same as the text without them.
@@ -50,6 +51,40 @@ final class IdentityText
     }
 
     /**
+     * The stored text as a person reads it, for a message: without the characters the rule forbids (they are not
+     * visible in the panel, and a message must not carry them) and without the ones it trims from the ends.
+     */
+    public static function shown(string $stored): string
+    {
+        return Text::normalize(self::withoutForbiddenCharacters($stored));
+    }
+
+    /**
+     * Whether the stored text has a forbidden character: its correction is the text without it, or with a space in its
+     * place.
+     */
+    public static function isRefused(string $stored): bool
+    {
+        return Text::hasForbiddenCharacters($stored);
+    }
+
+    /**
+     * How a message names a variant by its stored values: the shown values joined with a comma, the default variant
+     * for no values and a variant without a visible value for values that show nothing.
+     *
+     * @param list<string> $storedValues
+     */
+    public static function variant(array $storedValues): string
+    {
+        if ([] === $storedValues) {
+            return 'Wariant domyślny';
+        }
+        $label = implode(', ', array_filter(array_map(self::shown(...), $storedValues), static fn (string $value): bool => '' !== $value));
+
+        return '' === $label ? 'Wariant bez widocznej wartości' : \sprintf('Wariant „%s”', $label);
+    }
+
+    /**
      * Whether the texts given in place of the stored ones keep their identity, position by position.
      *
      * @param list<string> $stored
@@ -67,6 +102,23 @@ final class IdentityText
         }
 
         return true;
+    }
+
+    /**
+     * The stored texts that do not keep their identity in the given ones, position by position: the cause of a refusal.
+     *
+     * @param list<string> $stored
+     * @param list<string> $given
+     *
+     * @return list<string>
+     */
+    public static function changed(array $stored, array $given): array
+    {
+        if (\count($stored) !== \count($given)) {
+            return $stored;
+        }
+
+        return array_values(array_filter($stored, static fn (string $text, int $position): bool => !self::keeps($text, $given[$position]), \ARRAY_FILTER_USE_BOTH));
     }
 
     private static function identity(string $text): ?string

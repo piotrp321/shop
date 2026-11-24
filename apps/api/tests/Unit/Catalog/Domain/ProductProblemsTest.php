@@ -46,7 +46,7 @@ final class ProductProblemsTest extends TestCase
             'Po pierwszej publikacji nie można dodać, usunąć ani przestawić osi wariantów.',
         ];
         yield 'variant in use' => [
-            static fn (): \Throwable => new VariantInUse('czarne, 42'),
+            static fn (): \Throwable => new VariantInUse(['czarne', '42']),
             'variant-in-use',
             'Wariant „czarne, 42” ma stan magazynowy albo rezerwacje. Najpierw skoryguj stan do zera.',
         ];

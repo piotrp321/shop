@@ -291,7 +291,9 @@ pozostali 403; odczyt: każdy pracownik):
   (źródło `seed`, więc zdarzenia nie unieważniają cache; robi to końcowe `storefront:cache:purge-all`), z wiadomościami
   końca promocji na kolejce `promotions`.
 - Wzorzec bez wariantu kończy seed błędem bez zmian w danych: `promotions.yaml` jest sprawdzany przed resetem i seedem
-  cen (jak dziś warianty bez wzorca ceny).
+  cen (jak dziś warianty bez wzorca ceny). Nazwę sprawdza ta sama reguła co zapis promocji (`Promotion::validName`,
+  reguła tekstu): nazwa, którą domena odrzuca (np. same znaki niewidoczne, U+2028, znak sterujący), kończy seed przed
+  resetem, a nazwa z białymi znakami albo znakami niewidocznymi na brzegach trafia do planu przycięta.
 - Promocje demo omijają produkty i kategorie używane przez E2E: produkty „Hantle regulowane Lumora Para 10”, „Buty
   szosowe Tarvik Asfalt 200”, produkt testu `promotions.spec.ts` i całą kategorię Bieganie > Buty biegowe
   (`listing-filters.spec.ts` sprawdza jej zakres cen); test kontraktu fixtures sprawdza tę listę.
