@@ -8,7 +8,12 @@
 #                               GENERATE_CLOSE_WAIT (120), GENERATE_OPEN_WAIT (300), GENERATE_POLL (30), GENERATE_PROBE_POLL (5)
 #   kc <arguments>              kubectl in the namespace
 #   active_jobs                 the Jobs of the namespace that run (neither Complete nor Failed), separated by spaces; a Job owned by
-#                               the CronJob rate-limit-check (every 5 minutes, at most a minute) is not counted
+#                               one of the CronJobs of the short checks (check_cronjobs: rate-limit-check, queue-check and
+#                               order-expiry, every 5 minutes for at most 60, 120 and 600 s) is not counted. The owner decides, not
+#                               the name: a Job made by hand counts. They may run while the data is replaced: rate-limit-check
+#                               writes only a control key of Redis, queue-check only reads the queues, and order-expiry changes only
+#                               new orders past their deadline and pending payments, which the generator never writes
+#                               (docs/features/demo-data/spec.md, P8)
 #   probe <closed|open> <s>     0 once every address says <state> in one round, 1 when <s> seconds passed first (probe_report: the
 #                               last round). 502, 503 and 504 are closed, a code below 500 is open; any other code and no answer are
 #                               a failed reading, tried again, never closed or open.
@@ -56,12 +61,17 @@ read_environment() {
 
 kc() { kubectl -n "$namespace" "$@"; }
 
+# The CronJobs of the short checks: the Redis of the rate limiters, the queues of messages, the expiry of the orders.
+check_cronjobs="rate-limit-check queue-check order-expiry"
+
 active_jobs() {
+  # shellcheck disable=SC2086 # the names of the CronJobs, one argument each
   kc get jobs -o json | py -c '
 import json, sys
+checks = set(sys.argv[1:])
 print(" ".join(j["metadata"]["name"] for j in json.load(sys.stdin)["items"]
     if not {c.get("type") for c in (j.get("status", {}).get("conditions") or []) if c.get("status") == "True"} & {"Complete", "Failed"}
-    and not any(o.get("kind") == "CronJob" and o.get("name") == "rate-limit-check" for o in j["metadata"].get("ownerReferences") or [])))'
+    and not any(o.get("kind") == "CronJob" and o.get("name") in checks for o in j["metadata"].get("ownerReferences") or [])))' $check_cronjobs
 }
 
 probe_round() {

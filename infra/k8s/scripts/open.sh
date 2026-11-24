@@ -3,7 +3,8 @@
 # ...' KUBE_DIR=<directory>; make generate runs it after a Job that completed. Idempotent. Run by hand, it takes the lock demo-data-lock
 # (scripts/shop-closed.sh) before its first change, holds it to its end and releases it on every exit (HUP, INT and TERM too; a KILL
 # leaves it); run by make generate, it goes on only while the lock of make generate is there (DEMO_DATA_LOCK_TOKEN). It refuses while
-# another holds the lock, while a Job runs and without a Job demo-data-run that completed (make generate deletes the one of the run before
+# another holds the lock, while a Job runs (active_jobs of scripts/shop-closed.sh: not one of the CronJobs of the short checks) and
+# without a Job demo-data-run that completed (make generate deletes the one of the run before
 # right before its new Job); a Secret of the photo pool that is left (make generate killed) is deleted once no Job runs. The checks and
 # the opening: docs/features/demo-scale/spec.md, "Cel make -C infra/k8s open".
 #
