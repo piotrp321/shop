@@ -68,6 +68,8 @@ final class InputValues
         yield 'a cut sequence' => ["Kurier\xC5"];
         yield 'a cut sequence inside' => ["Kur\xE2\x82ier"];
         yield 'bad bytes only' => ["\xFF\xFE"];
+        yield 'an overlong sequence' => ["a\xC0\xAFb"];
+        yield 'an encoded surrogate' => ["a\xED\xA0\x80b"];
     }
 
     /**
