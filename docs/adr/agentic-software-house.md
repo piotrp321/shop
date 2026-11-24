@@ -87,8 +87,10 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    pamięć hosta (zwykle 2–3 stosy) i limity subskrypcji, które sesja sprawdza przed falą; płatnych przekroczeń nie
    włącza. Przed falą sesja sprawdza też wersję procesu (`metrics.py process <epik>`), wolną pamięć Dockera i działające
    projekty Compose innych sesji oraz gasi stosy własnych zakończonych zadań (`.ao/teardown`): każdy stos zajmuje sieć
-   z ograniczonej puli Dockera, a jej wyczerpanie kończy `make up` błędem. Gdy pamięci
-   nie wystarcza na planowaną liczbę stosów, zmniejsza równoległość i zapisuje to w „Problemach i zastojach” opisu
+   z ograniczonej puli Dockera, a jej wyczerpanie kończy `make up` błędem. Zasobów Dockera innych sesji (sieci,
+   kontenerów, wolumenów, także zatrzymanych projektów) nie usuwa ani sesja, ani subagent, także poleceniami `prune`.
+   Przy wyczerpanej puli albo pamięci sesja gasi własne zakończone stosy, czeka albo zmniejsza równoległość i zapisuje
+   to w „Problemach i zastojach”. Gdy pamięci nie wystarcza na planowaną liczbę stosów, zmniejsza równoległość i zapisuje to w „Problemach i zastojach” opisu
    końcowego PR.
 4. **Przegląd zadania.** `FAST`: sesja sama sprawdza diff i wyniki testów, w tym trzy kontrole z punktu 4 agenta
    `code-reviewer` (istniejące testy, zakres, RED). `STANDARD` i `CRITICAL`: `code-reviewer` w trybie FULL; zlecenie
@@ -164,7 +166,11 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    oraz `Closes #N` dla issues z linii `Issues:` specyfikacji.
 
    **Zewnętrzne review.** Końcowy PR przechodzi niezależne review Codexa (`docs/features/ash-process-fixes/spec.md`,
-   C): po przeglądzie epiku i jego poprawkach, przed oznaczeniem PR jako gotowego. Sesja nie uruchamia Codexa. Przekazuje użytkownikowi stan PR (numer, czoło gałęzi, wynik CI) i gotowe
+   C): po przeglądzie epiku i jego poprawkach, przed oznaczeniem PR jako gotowego. Zanim sesja przekaże PR do
+   zewnętrznego review, sprawdza, czy „Odroczone uwagi” mają pozycję z podstawą „założenie niesprawdzone”. Każdą taką
+   pozycję sprawdza w kodzie albo eksperymentem (krok 4) i wpisuje wynik jako podstawę. Uwagę, która po sprawdzeniu
+   łamie gwarancję albo ma skutek widoczny dla klienta, zleca do poprawki. Wyczerpany limit subskrypcji nie jest
+   podstawą odroczenia: sesja mówi wtedy użytkownikowi, że epik czeka na sprawdzenie. Sesja nie uruchamia Codexa. Przekazuje użytkownikowi stan PR (numer, czoło gałęzi, wynik CI) i gotowe
    zlecenie: „Zrób niezależne review PR #N (`origin/main...<gałąź>`) względem `docs/features/<epik>/spec.md`. 1. Cała
    zmiana: błędy poprawności, współbieżności, danych i bezpieczeństwa, każdy z dowodem i wagą. 2. Osobno sekcja
    »Odroczone uwagi« opisu PR: dla każdej pozycji oceń, czy odroczenie jest uzasadnione, i wskaż te, które są błędem
