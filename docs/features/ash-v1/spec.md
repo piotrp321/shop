@@ -51,7 +51,7 @@ Zakres: `CLAUDE.md`, `tools/metrics`, `.claude/skills/retro`, `.claude/agents/re
 - Reguła rozmiaru zadania w `/planner` (#639) i archiwizacja AO (krok P6 planu).
 - Zmiany reguł projektu z audytu uproszczeń, redukcja agentów i skilli, hooki, nowe narzędzia pomiaru.
 - Błędy pomiaru dotyczące tylko danych AO (#703, #704) i eksport rekordów do stosu telemetrii (#689).
-- `/sweep`, `/delivery`, `/integration` i `/ao-run`: bez zmian, zamrożone.
+- `/sweep` i `/integration`: bez zmian, zamrożone.
 
 ## M: metryki epiku natywnego
 
@@ -168,7 +168,7 @@ i wpis w `gaps`, nie błąd.
 - **R7. Agent i specyfikacja.** `retro-analyst` i `docs/features/retro/spec.md` opisują incydenty epiku natywnego.
   `/retro <epik>` uruchamia użytkownik po merge'u końcowego PR.
 - **R8. `/retro` nie jest skillem zamrożonym.** Główny `CLAUDE.md`, decyzja o zamrożeniu w ADR i „Status” planu ASH
-  wymieniają jako zamrożone tylko `/ao-run`, `/delivery` i `/sweep`.
+  wymieniają jako zamrożony tylko `/sweep`.
 
 ## F: poprawki po SMALL-FIXES
 

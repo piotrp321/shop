@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Picks the next prepared epic from the GitHub Projects backlog board for the /ao-run skill.
-Python 3.9+, standard library only.
+"""Picks the next prepared epic from the GitHub Projects backlog board; /retro uses its board reading and command
+runner. Python 3.9+, standard library only.
 
   next_epic.py [--repo DIR]
 
@@ -34,7 +34,7 @@ import re
 import subprocess
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'tools', 'agent-security'))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'agent-security'))
 import github_trust  # noqa: E402  (the origin gate: issues of authors without write access come without content)
 
 OWNER = 'piotrp321'

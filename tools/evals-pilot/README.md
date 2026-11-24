@@ -55,13 +55,13 @@ Squash commit zadania z gałęzi epiku na commicie bazowym z nałożonym agentem
 wątek główny (`--agent code-reviewer`). W tym trybie powstał raport `docs/reports/evals-2-pilot-code-reviewer-2026-11-15.md`.
 Różni się od produkcji bardziej niż `replay` (inny stan repo, zlecenie bez wyników orkiestratora, brak subagenta).
 
-## Różnice wobec produkcyjnego `/delivery`, które zostają w trybie `replay`
+## Różnice wobec oryginalnego review z `/delivery`, które zostają w trybie `replay`
 
-- **Brak stosu Dockera i sieci.** W produkcji reviewer ma działający stos i może uruchamiać celowane testy; tutaj
+- **Brak stosu Dockera i sieci.** W oryginale reviewer ma działający stos i może uruchamiać celowane testy; tutaj
   czyta tylko kod i dziennik dowodów. Zlecenie mówi o tym w dopisanej uwadze.
 - **Wersja agenta i zleceń.** Testowany jest bieżący agent na zleceniach napisanych przez ówczesną wersję `/delivery`
   (np. inne nazwy wag w oczekiwanym wyniku).
-- **Sesja nadrzędna.** W produkcji to orkiestrator `/delivery` na Opus z kontekstem całego zadania; tutaj krótki
+- **Sesja nadrzędna.** W oryginale to orkiestrator `/delivery` na Opus z kontekstem całego zadania; tutaj krótki
   stały prompt na tańszym modelu. Model subagenta wynika z jego frontmattera i jest zapisany w `meta.json`
   (`subagent_model`).
 - **Profil sandboxa.** Ten sam szablon co u wykonawców AO, ale bez sieci, Dockera i tokenu GitHub.

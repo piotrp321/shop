@@ -433,7 +433,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
     `generate`, `open` i `reindex`.
     `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest usuwany po niej; trwałych kubeconfigów produkcji nie
     trzyma się w katalogach udostępnionych Dockerowi. Cel zapisuje bezwzględną ścieżkę w rejestrze
-    `~/.local/state/shop-ops/kube-dirs`, z którego czyta start AO przez `/ao-run` (odmawia, dopóki zapisany katalog istnieje).
+    `~/.local/state/shop-ops/kube-dirs`.
     `kubeconfig`, `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex` odmawiają bez zmian (kod różny od 0, komunikat po angielsku: zatrzymaj AO albo
     poczekaj na koniec przebiegu), gdy działa AO albo jego wykonawca (`scripts/ao-guard.sh`, wołany w Makefile, nie w
     skryptach, więc test dymny działa jak dotąd); błąd listy procesów jest odmową.

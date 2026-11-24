@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Night queue of several epics for the /ao-run skill. Python 3.9+, standard library only.
+"""Night queue and parallel gate of the AO runs, and the room in the usage limits. tools/metrics reads the measurements
+and the gate log of the historical AO runs with it; /retro calls `room` before it starts. Python 3.9+, standard
+library only.
 
   night_queue.py [--repo DIR] [--state DIR] scope <spec.md>
   night_queue.py [--repo DIR] [--state DIR] start <dir> [--claim TOKEN]  (stdin: the `plan` object of get_usage)

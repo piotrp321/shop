@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Events of an AO run for the /ao-run skill. Python 3.9+, standard library only.
+"""Events of an AO run (events.jsonl). tools/metrics and /retro read the historical AO runs with waits() and
+summarize(). Python 3.9+, standard library only.
 
   record FILE
       Used as AO's `--notify-cmd`: reads one JSON event from stdin and appends it as one line to FILE (parent

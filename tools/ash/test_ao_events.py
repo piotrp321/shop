@@ -1,4 +1,4 @@
-"""Tests of ao_events.py: python3 -m unittest discover -s .claude/skills/ao-run -p 'test_*.py'"""
+"""Tests of ao_events.py: python3 -m unittest discover -s tools/ash -p 'test_*.py'"""
 import importlib.util
 import json
 import os

@@ -4,12 +4,12 @@ Krok 18 planu Agentic Software House (`docs/features/agentic-software-house/plan
 ADR `docs/adr/agentic-software-house.md`. Epik daje każdemu przebiegowi epiku przez AO pełny, powtarzalny pomiar
 (czas zegarowy i jego rozkład, wartość tokenów i koszt subskrypcji, ponowienia, naprawy, konflikty, testy,
 interwencje, regresje po merge'u), pokazuje wąskie gardła czasu zegarowego, wykrywa bezproduktywne zużycie w trakcie
-przebiegu z pushem i kończy raport odbioru oraz `/retro` decyzjami optymalizacyjnymi z mierzonym efektem. Telemetria
+przebiegu z pushem i kończy raport `/retro` decyzjami optymalizacyjnymi z mierzonym efektem. Telemetria
 Claude Code w lokalnym stosie na Macu to osobny epik TELEMETRY (#577, część 2 kroku 18, po AGENT-SECURITY); METRICS od niej
 nie zależy.
 
 Issues: #496
-Zakres: `tools/metrics`, `.claude/skills/ao-run`, `.claude/skills/retro`, `.claude/agents/retro-analyst.md`, `.github/ISSUE_TEMPLATE/bug.yml`, `docs/features/ao-run/spec.md`, `docs/features/retro/spec.md`, `docs/adr/agentic-software-house.md`, `docs/features/agentic-software-house/plan.md`
+Zakres: `tools/metrics`, `.claude/skills/retro`, `.claude/agents/retro-analyst.md`, `.github/ISSUE_TEMPLATE/bug.yml`, `docs/features/retro/spec.md`, `docs/adr/agentic-software-house.md`, `docs/features/agentic-software-house/plan.md`
 
 ## Cel i kryteria sukcesu
 
@@ -24,7 +24,7 @@ Zakres: `tools/metrics`, `.claude/skills/ao-run`, `.claude/skills/retro`, `.clau
   zawsze pokazane osobno i nigdy nie są sumowane.
 - Bezproduktywne zużycie (zadanie zużywa wielokrotność mediany, pętla prób) jest widoczne w trakcie przebiegu jako
   push, a nie dopiero rano w raporcie.
-- Raport odbioru i raport `/retro` kończą się konkretnymi decyzjami optymalizacyjnymi: co zmienić, oczekiwany efekt
+- Raport `/retro` kończy się konkretnymi decyzjami optymalizacyjnymi: co zmienić, oczekiwany efekt
   w liczbach, dane i miara, po której kolejne epiki pokażą, czy zmiana zadziałała. Decyzję podejmuje użytkownik.
 - Efekt zastosowanej decyzji jest mierzony na podobnych zadaniach przed i po merge'u zmiany (mediana, rozrzut
   i liczebność próby, ze zmianami modeli i wersji CLI w oknie), a obok zostaje czas zegarowy całego epiku.
@@ -32,7 +32,7 @@ Zakres: `tools/metrics`, `.claude/skills/ao-run`, `.claude/skills/retro`, `.clau
 - Trend obejmuje wszystkie zmergowane epiki z danymi AO, więc pierwszy raport po wdrożeniu ma już tło porównawcze.
 - Rozwiązanie jest przenośne: `tools/metrics` czyta dane AO, Claude Code i GitHuba, nie sklepu.
 
-Sukces epiku: raport odbioru pierwszego epiku po merge'u ma sekcje „Pomiar” (z wąskimi gardłami) i „Decyzje
+Sukces epiku: raport odbioru ma sekcję „Pomiar” (z wąskimi gardłami), raport `/retro` sekcję „Decyzje
 optymalizacyjne”, a `metrics.py trend` pokazuje wszystkie zmergowane epiki.
 
 ## Decyzje użytkownika
@@ -42,8 +42,8 @@ Zatwierdzone 2026-11-15 (rekomendacje przyjęte w całości, z doprecyzowaniami)
 - Q0. Krok 18 podzielony na dwa niezależne epiki: METRICS (ta specyfikacja: pomiar, wąskie gardła, alarmy, decyzje,
   raport, `/retro`) i TELEMETRY (#577: telemetria Claude Code w lokalnym stosie na Macu, po AGENT-SECURITY). METRICS nie
   czeka na telemetrię ani na AGENT-SECURITY.
-- Q1. Decyzje optymalizacyjne przechodzą istniejący cykl `/retro` (próg, rejestry, skuteczność); raport odbioru
-  pokazuje kandydatów z rekomendacją, bez osobnego rejestru decyzji.
+- Q1. Decyzje optymalizacyjne przechodzą istniejący cykl `/retro` (próg, rejestry, skuteczność), bez osobnego
+  rejestru decyzji.
 - Q2. Alarm bezproduktywnego zużycia to tylko push. Alarmy kosztowe (W1, W4) wymagają przekroczenia 3× mediany
   i co najmniej 5 USD, alarm czasowy (W2) 3× mediany i ponad 1 h, a W3 (pętla prób) działa niezależnie od tych
   progów. Bez powiadomień o nieistotnych różnicach kosztu i bez szacowania kosztu trwającej próby.
@@ -51,7 +51,7 @@ Zatwierdzone 2026-11-15 (rekomendacje przyjęte w całości, z doprecyzowaniami)
   od autora z prawem zapisu; okno 14 dni; propozycje `/sweep` liczone osobno jako „znalezione po merge'u”.
 - Q4. Koszt subskrypcji tylko w pp, bez przeliczania na pieniądze.
 - Q8. Trend od pierwszego epiku z danymi AO (INVENTORY), także epiki zmergowane bez `epic_done`.
-- Q9. Pakiet oczyszczonych fixture'ów przygotowuje sesja poza sandboxem przed `/ao-run metrics` („Wymagane przed
+- Q9. Pakiet oczyszczonych fixture'ów przygotowuje sesja poza sandboxem przed startem epiku („Wymagane przed
   startem”).
 
 Decyzje Q5–Q7 (stos telemetrii, sesje interaktywne, dashboard) dotyczą epiku TELEMETRY i są zapisane w #577.
@@ -108,9 +108,8 @@ zmiana progu nie wymaga zmiany kodu). Stan lokalny w
 `~/.local/state/shop-metrics/` (poza katalogami `ao-*`, które są `AO_HOME` epików): `epics/<epik>.json` (rekordy),
 `runs/<epik>.json` (pliki przebiegu epików natywnych), `waste.json` (wysłane alarmy), `waste.lock`.
 
-Kod wspólny przez import, bez kopii reguł: interwały czekania na człowieka z `ao_events.waits`, przyrosty okien
-z `night_queue._window_deltas` i przedziały epików z `night_queue` (jak robi to `pairs.py`); `pairs.py` (tymczasowy)
-nie jest używany.
+Kod wspólny przez import z `tools/ash`, bez kopii reguł: interwały czekania na człowieka z `ao_events.waits`,
+przyrosty okien z `night_queue._window_deltas` i przedziały epików z `night_queue`.
 
 ### Źródła
 
@@ -122,7 +121,7 @@ nie jest używany.
 | Koszt subskrypcji, przedziały epików, nakładanie | `~/.local/state/ao-night/measurements.jsonl` (`start`, `done`) |
 | Czekanie w bramce pracy równoległej | `~/.local/state/ao-night/gate.jsonl` |
 | Merge końcowego PR, CI PR, PR `sync/<epik>-main`, regresje | `gh` (tylko odczyt) |
-| Ręczne poprawki | lista podana przez sesję `/ao-run` przy merge'u (`--manual-fixes FILE`; jak dziś do komentarza) |
+| Ręczne poprawki | lista podana przez sesję prowadzącą epik (`--manual-fixes FILE`) |
 | Epik natywny: start, gotowość PR, gałąź, PR, sesje, odczyty limitów | plik przebiegu `runs/<epik>.json` (`metrics.py start`, `done`) |
 | Epik natywny: tokeny, wartość, przebiegi subagentów, polecenia, wersja CLI, rozkład czasu, wiadomości człowieka, przeglądy | transkrypty sesji z pliku przebiegu w `~/.claude/projects/*/` i ich `subagents/` (sekcja „Epik natywny”), cennik `pricing` w `config.json` |
 | Epik natywny: kryteria akceptacji | opis końcowego PR przez bramkę pochodzenia `tools/agent-security/github_trust.py` |
@@ -212,9 +211,9 @@ kwoty w USD, przyrosty limitu w pp:
 - `parallel`: epiki, których przedział w `measurements.jsonl` przecinał się z tym epikiem, i REPAIR oraz sync
   w czasie nakładania (konflikty pary);
 - `gate_wait`: czas od decyzji o starcie epiku do jego startu, gdy bramka kazała mu czekać, i powody czekania.
-  Decyzja to pierwszy wpis `gate --dir <epik>` (`dir_arg`) w `gate.jsonl` przed startem: `/ao-run` wywołuje go
-  zaraz po prośbie użytkownika o start albo jego „tak” (sekcja 1), a w nocy zapisuje go `next` dla kandydata
-  zatwierdzonej nocy. Czekania z przeglądu tablicy przed decyzją (`gate` bez `--dir`, propozycja „Zacząć epik?”) się
+  Decyzja to pierwszy wpis `gate --dir <epik>` (`dir_arg`) w `gate.jsonl` przed startem: zapisuje go sesja
+  przebiegu AO zaraz po prośbie użytkownika o start albo jego „tak”, a w nocy `next` dla kandydata zatwierdzonej
+  nocy. Czekania z przeglądu tablicy przed decyzją (`gate` bez `--dir`, propozycja „Zacząć epik?”) się
   nie liczą. Bez wpisu `waiting` epiku między decyzją a startem 0; czekania bez wpisu decyzji dają `null` z pozycją
   w `gaps`;
 - `human`: liczba decyzji (`human_action`), liczba czekań i ich suma, czekania otwarte, ręczne poprawki;
@@ -644,7 +643,7 @@ transkryptów z samymi czytanymi polami; treść prawdziwych transkryptów nie t
 ### Historia i trend
 
 - `metrics.py backfill`: rekord każdego przebiegu epiku w `~/.local/state/ao-*` z końcowym PR `MERGED`; braki
-  starszych epików w `gaps`. Uruchamia go sesja `/ao-run`, gdy katalog rekordów jest pusty.
+  starszych epików w `gaps`.
 - `metrics.py trend [--last N]`: tabela zmergowanych epików (domyślnie 10 ostatnich) z wartościami na zadanie planu:
   czas do `epic_done`, `work`, `human_wait`, `review`, `gate_wait`, `repeat_runs`, wartość tokenów, pp okna tygodniowego (`share`), próby nieudane, REPAIR,
   interwencje, regresje; mediana każdej kolumny (z pominięciem `null`) i pozycja wskazanego epiku względem niej.
@@ -662,7 +661,7 @@ transkryptów z samymi czytanymi polami; treść prawdziwych transkryptów nie t
   odpowiedzi na blokadę) i `pp` (koszt subskrypcji z lokalnych transkryptów); raport nie zestawia ich jako równoważnych.
   `breakdown_incomplete: true` rekordu natywnego (bool; w AO lista kategorii) oznacza, że `idle` jest górną granicą,
   bo kategorie bez źródła mają `null`, a ich czas jest w `idle`.
-- Rekordy z otwartym oknem regresji przelicza każde `trend` (merge kolejnego epiku, start `/ao-run`).
+- Rekordy z otwartym oknem regresji przelicza każde `trend`.
 - Epik z inną wersją CLI albo innym zestawem modeli niż poprzedni ma w `trend` adnotację zmiany (bez korekty liczb).
 
 ### Wąskie gardła
@@ -772,7 +771,7 @@ danych”. Ten sam wynik jest w rekordzie epiku natywnego (`ci.time`).
 
 `metrics.py waste <AO_HOME>` czyta bieżący stan przebiegu (`busy_timeout`, ponowienie przy zajętej bazie) i historię
 rekordów i wypisuje nowe alarmy (JSON, po jednym w linii). `waste.json` zapisuje wysłane alarmy pod blokadą
-`waste.lock` (dwie sesje `/ao-run` przy pracy równoległej), więc każdy alarm idzie raz. Reguły (progi
+`waste.lock` (dwa wywołania naraz), więc każdy alarm idzie raz. Reguły (progi
 w `config.json`, Q2). Alarm kosztowy wymaga obu warunków: > 3× mediany i ≥ 5 USD; alarm czasowy: > 3× mediany
 i > 1 h:
 
@@ -785,12 +784,9 @@ i > 1 h:
   Zadanie z trwającą próbą ma sumę zakończonych prób, czyli dolną granicę: alarm ma `incomplete: true`, a push mówi
   „zakończone próby kosztują”. Zadanie historii z próbą bez `ended_at` nie jest pomiarem W4 (suma byłaby częściowa).
 
-Mediana wymaga co najmniej 5 pomiarów w historii; bez nich W1, W2 i W4 nie alarmują (pozycja w `gaps`). Sesja
-`/ao-run` wywołuje `waste` przy każdym wybudzeniu przez zdarzenie AO i przy każdym ponownym uzbrojeniu Monitora
-(najrzadziej co 30 minut). Alarm to push (do 200 znaków), np. „deploy-ops: DEPLOY-OPS-4 próba 3 trwa 4,1 h (3,2×
-mediany); 3. próba po 2 nieudanych”, i pozycja w sekcji „Pomiar” raportu odbioru. Sesja niczego nie zatrzymuje:
-`ao release` i inne komendy wykonuje tylko na polecenie użytkownika. Limity AO (`--max-budget-usd`, `--timeout`,
-`--epic-max-attempts`) działają jak dziś.
+Mediana wymaga co najmniej 5 pomiarów w historii; bez nich W1, W2 i W4 nie alarmują (pozycja w `gaps`). Alarm to
+push (do 200 znaków), np. „deploy-ops: DEPLOY-OPS-4 próba 3 trwa 4,1 h (3,2× mediany); 3. próba po 2 nieudanych”,
+i pozycja w sekcji „Pomiar” raportu odbioru. `waste` niczego nie zatrzymuje.
 
 ### Decyzje optymalizacyjne
 
@@ -810,7 +806,7 @@ efekt i miarę weryfikacji. `--history` wypisuje kandydatów każdego zmergowane
   - **porównanie wykonane** (są zaliczane przebiegi roli na tańszym modelu): bez propozycji, przyczyna „porównanie
     w EVALS 2.0, decyzja w jego raporcie”, w danych katalogi wyników i liczba przebiegów.
 
-  Kandydatem (kolejność, raport odbioru, `--history`) jest tylko wynik z propozycją; pozostałe są w wyniku `decide`
+  Kandydatem (kolejność, `--history`) jest tylko wynik z propozycją; pozostałe są w wyniku `decide`
   na liście pominiętych reguł z przyczyną. Efekt kandydata to potencjalna oszczędność, gdy porównanie wypadnie
   dobrze: wartość roli × (1 − stosunek mediany stawki tańszego modelu do droższego z historii).
 
@@ -828,8 +824,9 @@ efekt i miarę weryfikacji. `--history` wypisuje kandydatów każdego zmergowane
   nieudanymi. Propozycja: reguła podziału dla `/planner` z cechami zadania (liczba ścieżek `scope`, ryzyko, aplikacje,
   liczba zmienionych plików). Efekt: czas ponad medianę.
 - **D3 kolejka pracy równoległej:** `gate_wait` ≥ 1 h z powodu reguły plików bramki. Propozycja: zmiana linii
-  `Zakres:` przy przygotowaniu albo reguły plików (`docs/features/parallel-work/spec.md`, „Bramka”). Efekt: `gate_wait`.
-  Decyzji o 19b nie dotyczy: jej kryterium jest w planie (pomiar par, `pairs.py`).
+  `Zakres:` przy przygotowaniu albo reguły plików bramki (docstring `tools/ash/night_queue.py`, komenda `gate`).
+  Efekt: `gate_wait`.
+  Decyzji o 19b nie dotyczy: jej kryterium jest w planie (pomiar par).
 - **D4 czekanie:** `human_wait` ≥ 20% `to_done` (pytania przed startem, godzina startu), `ci_wait` +
   `in_attempts.ci_watch` ≥ 20% `work` (CI), `limit_wait` ≥ 10% `to_done` (planowanie nocy), `review` ≥ 20% `to_merge`
   (pora oddania do odbioru, rozmiar końcowego PR; tylko po merge'u). Efekt: udział × `to_done` (dla `review`:
@@ -860,11 +857,6 @@ i w procentach. Obok zawsze czas do `epic_done` na zadanie planu jako mediana 3 
 po zmianie. Wersje CLI i modele, które różnią okno przed od okna po (z `versions`), są wypisane obok efektu, bez
 korekty liczb.
 
-**Raport odbioru** (`/ao-run`, punkt 5) kończy się sekcją „Decyzje optymalizacyjne”: najwyżej 3 kandydaci z
-`decide`, każdy z rekomendacją, efektem i liczbą epików, w których reguła zadziałała (z `--history`). Decyzji
-w raporcie nie zapisujemy: zapada w `/retro`, które `/ao-run` uruchamia po merge'u (Q1). Sekcja jest też bez
-kandydatów („brak: żadna reguła nie zadziałała”, z regułami pominiętymi z braku danych).
-
 **`/retro`:** `retro.py collect` dołącza wynik `metrics.py decide --history` jako incydenty rodzaju `optimization`
 (ID `<epik>/optimization/<klucz>`, np. `deploy-ops/optimization/D1:code-reviewer`), a rekord retrospektywowanego
 epiku i `trend` jako fakty w `input.json`. Incydenty `optimization` przechodzą istniejący cykl `/retro` bez zmian:
@@ -879,23 +871,21 @@ obliczeń agenta: mediana, rozrzut i liczebność przed i po, czas epiku, zmiany
 
 ### Raport odbioru i komentarz w issue
 
-- Raport odbioru (`/ao-run`, punkt 5) dostaje sekcję „Pomiar” z `metrics.py render <epik> --format report`: czas do
+- Raport odbioru to sekcja „Pomiar” z `metrics.py render <epik> --format report`: czas do
   `epic_done` i rozkład, czas w próbach według kategorii (z powtórzonymi testami,
   ponowieniami API i odmowami), integracja, wartość tokenów (razem, role, modele, najdroższe zadanie; szacowane
   z „≈”), koszt subskrypcji w pp (z `share` przy nakładaniu), próby, REPAIR, FIX, sync, czekanie w bramce,
-  interwencje, alarmy, wersje CLI i modele, pozycja na tle mediany, braki danych; na początku wąskie gardła. Istniejące pozycje raportu
-  (interwencje, czas, koszt, czekanie) pochodzą z rekordu.
+  interwencje, alarmy, wersje CLI i modele, pozycja na tle mediany, braki danych; na początku wąskie gardła.
 - Raport i komentarz mówią, z jakiego źródła jest rekord (linia „Źródło pomiaru”), a historię w medianie wąskich gardeł
   i w „Pozycji na tle mediany” biorą z epików tego samego źródła. Pola rekordu natywnego liczone inaczej niż w AO (rozkład
   czasu, integracja i rundy przeglądu, wartość z cennika API, subskrypcja, FIX, interwencje i czekania człowieka) mają
   dopisek „(liczone inaczej niż w AO)”; pola bez źródła w przebiegu natywnym (próby, REPAIR, sync, bramka, alarmy,
   kategorie rozkładu bez źródła) to „brak danych”.
-- Komentarz po merge'u (`/ao-run`, punkt 6) to blok „Pomiar epiku” z `render --format comment`: te same liczby po
+- Komentarz po merge'u to blok „Pomiar epiku” z `render --format comment`: te same liczby po
   merge'u (z `to_merge` i `review`) i dotychczasowe linie (interwencje, czekanie, `Ręczne poprawki: N` z listą
   w formacie czytanym przez `retro.py collect`). Render przyjmuje tylko pola liczbowe, ID zadań, nazwy ról i modeli
   oraz numery PR; żaden tekst z danych przebiegu (komunikaty błędów, `result`, polecenia) nie trafia do publicznego
   komentarza.
-- Pomiar par 19a (`pairs.py`, blok „Para równoległa”) zostaje bez zmian do decyzji o 19b.
 
 ## Model zagrożeń
 
@@ -955,10 +945,10 @@ procesy użytkownika (ten sam poziom zaufania co stan AO).
   wzorca tokenu (`ghp_`, `gho_`, `github_pat_`, `sk-`, `Bearer`, `Basic`, ciąg base64 ≥ 32 znaków poza SHA
   i identyfikatorami UUID) ani wartości tekstowej dłuższej niż 120 znaków. `MANIFEST.json` wymienia każdy plik,
   źródło, listę pól, SHA-256 i wynik skanu. Sesja przygotowania pokazuje użytkownikowi wynik skanu przed
-  `/ao-run metrics`; skan pakietu `tools/metrics` w repo powtarza test (METRICS-1). Po co: testy zadań na
+  startem epiku; skan pakietu `tools/metrics` w repo powtarza test (METRICS-1). Po co: testy zadań na
   prawdziwym formacie (po AGENT-SECURITY wykonawca w sandboxie nie czyta `~/.local/state` poza katalogiem zadania).
   Źródło: użytkownik: zgoda na sesję przygotowania danych poza sandboxem (lista i reguły z tej sekcji) przed
-  `/ao-run metrics` (Q9; zgoda udzielona 2026-11-15).
+  startem epiku (Q9; zgoda udzielona 2026-11-15).
 - Reguła D1 czyta wyniki EVALS 2.0 (`tools/evals-pilot`, surowe wyniki poza repo), gdy są; bez nich D1 nie powstaje
   (pozycja w `gaps`), więc METRICS nie czeka na EVALS 2.0. `## Zależności` issue #496 nie wymienia ID innego epiku
   (lista nocy traktuje każde wymienione ID otwartego epiku jako zależność): telemetria jest tam opisana numerem #577.
@@ -966,17 +956,13 @@ procesy użytkownika (ten sam poziom zaufania co stan AO).
 Sekretów, kont i usług zewnętrznych epik nie potrzebuje: czyta lokalne dane AO i publiczny GitHub przez `gh`
 użytkownika.
 
-## Po merge'u
-
-`metrics.py backfill` uruchamia sesja `/ao-run` przy pierwszym starcie po merge'u (pusty katalog rekordów).
-
 ## Poza zakresem
 
 - Telemetria Claude Code w lokalnym stosie na Macu: epik TELEMETRY (#577).
 - Monitoring produkcji i dyżur agenta (krok 11), dokumentacja i studium przypadku (krok 21).
 - Pomiar `/sweep` i `/retro` w rekordzie epiku: mają własne sekcje `## Zużycie` (pp i czas).
 - Automatyczne zatrzymywanie prób przy alarmie i zmiany AO (zamrożone).
-- Decyzja o 19b (kryterium w planie, pomiar par `pairs.py`) i liczba zadań naraz po 19b.
+- Decyzja o 19b (kryterium w planie, pomiar par) i liczba zadań naraz po 19b.
 - Evale innych ról i zmiany EVALS 2.0 (format wyników, zapis decyzji o wariancie): D1 obejmie rolę po dopisaniu jej
   do listy ról EVALS 2.0 w `config.json`, gdy EVALS 2.0 będzie ją oceniać.
 - Gotowe narzędzia jako źródło (`ccusage` i podobne czytają sesje z `~/.claude/projects`, nie znają prób i ról AO),
@@ -990,9 +976,6 @@ użytkownika.
 
 ## Zmiany dokumentacji (razem z implementacją)
 
-- `docs/features/ao-run/spec.md` i `.claude/skills/ao-run/SKILL.md`: sekcje „Pomiar” (z wąskimi gardłami) i „Decyzje
-  optymalizacyjne” raportu odbioru, blok „Pomiar epiku” w komentarzu po merge'u, `waste` przy wybudzeniach, `trend`
-  przy merge'u i starcie, `backfill` przy pustym katalogu rekordów.
 - `docs/features/retro/spec.md`, `.claude/skills/retro/SKILL.md`, `.claude/agents/retro-analyst.md`: incydenty
   `optimization`, fakty z pomiaru w `input.json`, sekcja „Decyzje optymalizacyjne” raportu z efektem przed i po.
 - `.github/ISSUE_TEMPLATE/bug.yml`: pole „Wprowadzone przez (epik albo PR, jeśli znane)”.
@@ -1055,8 +1038,8 @@ użytkownika.
 14. Regresje: test z podstawionym `gh` dla czerwonego CI na commicie merge'u, revertu i issue `bug` z polem
     „Wprowadzone przez” od autora `write` (liczy się) i `read` (nie liczy się); poza oknem 14 dni się nie liczą;
     propozycje `/sweep` trafiają do `found_after_merge`.
-15. Raport odbioru `/ao-run` ma sekcje „Pomiar” (zaczynającą się od wąskich gardeł) i „Decyzje optymalizacyjne”,
-    a komentarz po merge'u blok „Pomiar epiku”.
+15. `render --format report` ma sekcję „Pomiar” zaczynającą się od wąskich gardeł, a `render --format comment` blok
+    „Pomiar epiku”.
 16. `/retro`: `input.json` ma incydenty `optimization` i fakty z pomiaru; pozycja oparta na dwóch incydentach
     `optimization` przechodzi `retro.py validate`, na jednym nie; raport kończy się sekcją „Decyzje optymalizacyjne”
     z efektem z `metrics.py effect` dla kluczy z `applied.jsonl` albo „za mało danych”.

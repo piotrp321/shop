@@ -1,6 +1,6 @@
-"""Low-level building blocks of the parallel epics gate for /ao-run. Python 3.9+, standard library only.
+"""Low-level building blocks of the parallel epics gate of the AO runs. Python 3.9+, standard library only.
 
-Imported by night_queue.py and pairs.py; never imports night_queue. Contents:
+Imported by night_queue.py; never imports night_queue. Contents:
 
 - state_lock: exclusive flock on <state>/gate.lock, polled until a timeout (LockTimeout on expiry).
 - write_atomic: temp file in the same directory plus os.replace (StateFileError, no temp file left on failure).
@@ -10,8 +10,7 @@ Imported by night_queue.py and pairs.py; never imports night_queue. Contents:
 - file classification of the gate (is_app_code, is_executable_code, is_allowed, is_claude_md, common_paths),
   GENERATED and REGISTRATION files, and the rule for tasks of one wave running at once (task_conflicts): defined in
   planner/plan_manifest.py, which validates plans and must not depend on this directory, and imported from there.
-- MAX_PARALLEL: the `--max-parallel` that /ao-run passes to AO (SKILL.md, section 4); the gate reserves that many
-  stacks for every active epic.
+- MAX_PARALLEL: the `--max-parallel` of the AO runs; the gate reserves that many stacks for every active epic.
 - Docker memory snapshot (docker_snapshot with an injected runner, DockerError) and free_mib.
 - orchestrator_running: probes <ao_home>/orchestrator.lock with a shared non-blocking flock; never creates the file.
 """
@@ -27,7 +26,7 @@ import time
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'planner'))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '.claude', 'skills', 'planner'))
 import next_epic  # noqa: E402
 # The file rule of parallel work lives in the plan validator, which must not depend on this directory; the names are
 # re-exported here for the AO helpers and their tests.

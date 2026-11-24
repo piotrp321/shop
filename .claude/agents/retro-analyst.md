@@ -116,7 +116,7 @@ Spełnij je od razu; to sprawdza skrypt, nie ty, a błąd kosztuje poprawkę:
   incydentów z `input.json`, tylko istniejących), `classes`, `cause`, `why_prevents` (dlaczego zapobiegnie podobnemu
   problemowi), `verify` (po czym w kolejnych epikach poznamy, że działa).
 - **`fix`:** dodatkowo `files` i `change`. `files` tylko z listy dozwolonej: `CLAUDE.md`, `apps/*/CLAUDE.md`,
-  `.claude/skills/*/SKILL.md`, `.claude/agents/*.md`, `docs/features/{ao-run,agent-tester-ux,retro}/spec.md`,
+  `.claude/skills/*/SKILL.md`, `.claude/agents/*.md`, `docs/features/{agent-tester-ux,retro}/spec.md`,
   `docs/adr/agentic-software-house.md` („Przebieg epiku”).
   Zmiana w innym pliku (np. skrypt, `retro.py`, `docs/` poza listą, plany) to `issue` z `repo: "shop"`.
 - **`issue`:** `repo` (`ao` albo `shop`), `duplicate_check` (numery sprawdzonych issues) i `body` albo
@@ -155,7 +155,7 @@ Zapisz `<run_dir>/proposals.json`:
   "items": [
     {"n": 1, "kind": "fix", "key": "...", "title": "...", "evidence": ["<ID incydentu>"],
      "classes": {"<ID incydentu>": {"class": "corrective", "corrective_reason": "..."}},
-     "cause": "...", "files": [".claude/skills/ao-run/SKILL.md"], "change": "...",
+     "cause": "...", "files": [".claude/skills/retro/SKILL.md"], "change": "...",
      "why_prevents": "...", "verify": "...", "previously_rejected": null, "previous_fix": null, "updates": null},
     {"n": 2, "kind": "issue", "key": "...", "repo": "ao", "title": "...", "existing_issue": 46, "body": null,
      "evidence": ["..."], "classes": {}, "cause": "...", "why_prevents": "...", "verify": "...",

@@ -1,6 +1,5 @@
 """Local OTLP/HTTP receiver for checks of the telemetry of Claude Code (spec docs/features/telemetry/spec.md, R3).
-Python 3.9+, standard library only. Used by probe.py (cases telemetry_export and telemetry_no_content); ao-prepare
-copies it next to probe.py.
+Python 3.9+, standard library only. Used by probe.py (cases telemetry_export and telemetry_no_content).
 
   Receiver(forward=None).start()   an HTTP server on 127.0.0.1 with a random port; `endpoint` is its address
                                    http://127.0.0.1:<port>, `requests` a copy of what it got, stop() ends it
@@ -129,7 +128,7 @@ def decompress(raw, encoding):
     if not name:
         return raw, None
     if name.lower() != 'gzip':
-        return None, 'nieznane Content-Encoding'   # never the value: the problem reaches the /ao-run session
+        return None, 'nieznane Content-Encoding'   # never the value: a session quotes the problem
     # Every member, like gzip.decompress: a later member must not carry what the check never sees.
     parts, total, rest = [], 0, raw
     while True:

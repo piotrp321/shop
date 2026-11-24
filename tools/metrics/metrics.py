@@ -135,8 +135,8 @@ import time
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, '..', '..', '.claude', 'skills', 'ao-run'))
-import ao_events  # noqa: E402  (waits: the windows of waiting for the user, shared with /ao-run and /retro)
+sys.path.insert(0, os.path.join(HERE, '..', 'ash'))
+import ao_events  # noqa: E402  (waits: the windows of waiting for the user, shared with /retro)
 import night_queue  # noqa: E402  (window deltas, measurement intervals and their time format)
 sys.path.insert(0, os.path.join(HERE, '..', 'agent-security'))
 import github_trust  # noqa: E402  (the origin gate: the description of the final PR of a native epic)
