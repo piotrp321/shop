@@ -49,6 +49,7 @@ final readonly class InputContractFixtures
             'categoryRedirect' => ['path' => $this->categoryRedirect()],
             'guestCart' => ['cartId' => CartFixture::cart($this->entityManager->getConnection())],
             'deliveryMethod' => ['id' => OrderingFixture::freeDeliveryMethod($this->entityManager->getConnection())],
+            'newDeliveryMethod' => ['id' => $this->deliveryMethod()],
             'discountCode' => ['id' => $this->discountCode()],
             'promotion' => ['id' => $this->promotion()],
             'guestCheckout' => $this->checkout(null),
@@ -106,6 +107,21 @@ final readonly class InputContractFixtures
         new DoctrineCategoryRedirectRepository($this->entityManager)->record([$path => $category->id()]);
 
         return $path;
+    }
+
+    /**
+     * A new active delivery method at version 1, named „Kurier do zmiany”.
+     */
+    private function deliveryMethod(): string
+    {
+        $id = Uuid::v7()->toRfc4122();
+        $this->entityManager->getConnection()->executeStatement(
+            "INSERT INTO delivery_method (id, name, description, price_gross, free_from_gross, active, position, tracking_url_template, created_at, updated_at, version)
+             VALUES (?, 'Kurier do zmiany', '', 1500, NULL, true, 20, NULL, now(), now(), 1)",
+            [$id],
+        );
+
+        return $id;
     }
 
     private function discountCode(): string

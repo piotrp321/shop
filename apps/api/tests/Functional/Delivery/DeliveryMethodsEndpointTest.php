@@ -146,6 +146,45 @@ final class DeliveryMethodsEndpointTest extends WebTestCase
         self::assertSame(['name' => 'Kurier ekspresowy', 'version' => 2], $this->connection->fetchAssociative('SELECT name, version FROM delivery_method WHERE id = ?', [$id]));
     }
 
+    /**
+     * Texts stored before the rule of texts that the rule refuses (docs/features/api-input-contract/spec.md, E7).
+     *
+     * @return iterable<string, array{string, string, string}>
+     */
+    public static function storedTextsOutsideTheRule(): iterable
+    {
+        yield 'U+200B as the whole name' => ["\u{200B}", 'Dostawa w 2–3 dni robocze', 'Nazwa jest wymagana.'];
+        yield 'U+009F in the name' => ["Kurier\u{9F}A", 'Dostawa w 2–3 dni robocze', 'Nazwa zawiera niedozwolone znaki.'];
+        yield 'a tab in the name and the description' => ["Kurier\tA", "Dostawa\tjutro", 'Nazwa zawiera niedozwolone znaki.'];
+    }
+
+    /**
+     * The read of a stored method does not check its texts again: the list and the method show them as stored, and only
+     * a change, which sends every field, has to fix the name.
+     */
+    #[DataProvider('storedTextsOutsideTheRule')]
+    public function testAMethodStoredWithATextOutsideTheRuleIsReadUnchangedAndItsChangeHasToFixTheName(string $name, string $description, string $title): void
+    {
+        $id = $this->stored($name, description: $description);
+
+        $list = $this->send('GET', self::PATH);
+        self::assertResponseStatusCodeSame(200);
+        self::assertIsArray($list['items']);
+        self::assertSame([[$id, $name, $description]], array_map(static fn (array $item): array => [$item['id'], $item['name'], $item['description']], $list['items']));
+
+        $method = $this->send('GET', self::PATH.'/'.$id);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([$id, $name, $description], [$method['id'], $method['name'], $method['description']]);
+
+        $this->send('PUT', self::PATH.'/'.$id, $this->body(['name' => $name, 'description' => 'Jutro', 'version' => 1]));
+        $this->assertViolation('name', $title);
+        self::assertSame(['name' => $name, 'description' => $description, 'version' => 1], $this->connection->fetchAssociative('SELECT name, description, version FROM delivery_method WHERE id = ?', [$id]));
+
+        $this->send('PUT', self::PATH.'/'.$id, $this->body(['name' => 'Kurier poprawiony', 'description' => 'Jutro', 'version' => 1]));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(['name' => 'Kurier poprawiony', 'description' => 'Jutro', 'version' => 2], $this->connection->fetchAssociative('SELECT name, description, version FROM delivery_method WHERE id = ?', [$id]));
+    }
+
     public function testAChangeKeepingItsOwnNameInAnotherCaseIsAllowed(): void
     {
         $id = $this->stored('kurier');
@@ -591,11 +630,11 @@ final class DeliveryMethodsEndpointTest extends WebTestCase
         return $ids;
     }
 
-    private function stored(string $name, bool $active = true, int $position = 10, int $price = 1999, int $version = 1): string
+    private function stored(string $name, bool $active = true, int $position = 10, int $price = 1999, int $version = 1, string $description = 'Dostawa w 2–3 dni robocze'): string
     {
         $id = Uuid::v7()->toRfc4122();
         $this->connection->insert('delivery_method', [
-            'id' => $id, 'name' => $name, 'description' => 'Dostawa w 2–3 dni robocze', 'price_gross' => $price, 'free_from_gross' => null,
+            'id' => $id, 'name' => $name, 'description' => $description, 'price_gross' => $price, 'free_from_gross' => null,
             'active' => $active, 'position' => $position, 'tracking_url_template' => null,
             'created_at' => '2026-11-20 10:00:00+00', 'updated_at' => '2026-11-20 10:00:00+00', 'version' => $version,
         ], ['active' => ParameterType::BOOLEAN]);
