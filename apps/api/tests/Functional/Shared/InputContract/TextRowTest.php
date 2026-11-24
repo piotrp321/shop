@@ -50,23 +50,44 @@ final class TextRowTest extends TestCase
         self::assertSame(['forbidden', "Notatka\u{2028}", 422, 'Znaki.', false, null], $executions['forbidden: U+2028 at the end']);
     }
 
+    /**
+     * The cases of the row come in place of the classes forbidden, edges and preserved; the mechanism adds the valid
+     * value of the first accepted case with U+2028 at its end, which the row cannot leave out: T1 looks at the value as
+     * it came, so the trim of the ends must not drop the character before the format is checked.
+     */
     public function testAFieldWithAFormatRunsItsCasesInPlaceOfTheClassesOfText(): void
     {
         $executions = $this->executions(TextRow::format(self::OPERATION, InputCase::STAFF, InputContractFixtures::NONE, 'address.postalCode', ['address' => ['postalCode' => '00-950']],
-            empty: 'Wymagany.', wrongType: 'Format.', stored: TextRow::column('SELECT 1', []), cases: [
-                ['00-950 between U+00A0', "\u{A0}00-950\u{A0}", 201, '00-950'],
+            empty: 'Wymagany.', forbidden: 'Format.', wrongType: 'Typ.', stored: TextRow::column('SELECT 1', []), cases: [
                 ['00950', '00950', 422, 'Format.'],
+                ['00-950 between U+00A0', "\u{A0}00-950\u{A0}", 201, '00-950'],
+                ['00-950', '00-950', 201, '00-950'],
             ]));
 
         self::assertSame([
             'empty: U+00A0' => ['empty', "\u{A0}", 422, 'Wymagany.', false, null],
             'empty: U+200B' => ['empty', "\u{200B}", 422, 'Wymagany.', false, null],
             'empty: U+3164' => ['empty', "\u{3164}", 422, 'Wymagany.', false, null],
-            'format: 00-950 between U+00A0' => ['format', "\u{A0}00-950\u{A0}", 201, null, true, '00-950'],
             'format: 00950' => ['format', '00950', 422, 'Format.', false, null],
-            'wrong type: a number' => ['wrong type', 123, 422, 'Format.', false, null],
-            'wrong type: a list' => ['wrong type', ['tekst'], 422, 'Format.', false, null],
+            'format: 00-950 between U+00A0' => ['format', "\u{A0}00-950\u{A0}", 201, null, true, '00-950'],
+            'format: 00-950' => ['format', '00-950', 201, null, true, '00-950'],
+            'forbidden: U+2028 at the end of a valid value' => ['forbidden', "\u{A0}00-950\u{A0}\u{2028}", 422, 'Format.', false, null],
+            'wrong type: a number' => ['wrong type', 123, 422, 'Typ.', false, null],
+            'wrong type: a list' => ['wrong type', ['tekst'], 422, 'Typ.', false, null],
         ], $executions);
+    }
+
+    /**
+     * Without an accepted case there is no valid value to end with U+2028: such a row is refused, not run without it.
+     */
+    public function testAFieldWithAFormatNeedsAnAcceptedCase(): void
+    {
+        $row = TextRow::format(self::OPERATION, InputCase::STAFF, InputContractFixtures::NONE, 'postalCode', ['postalCode' => '00-950'],
+            empty: 'Wymagany.', forbidden: 'Format.', wrongType: 'Typ.', stored: TextRow::column('SELECT 1', []), cases: [['00950', '00950', 422, 'Format.']]);
+
+        $this->expectException(\LogicException::class);
+
+        $this->executions($row);
     }
 
     public function testAPhraseIsA400AndItsEdgesAreOneComparisonOfTheAnswers(): void
