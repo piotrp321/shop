@@ -180,8 +180,17 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 
 - Usługi stanowe (Postgres, Elasticsearch, RabbitMQ, Redis, Garage) jako StatefulSety z PVC `local-path`.
   Elasticsearch `single-node`, bez security (bez publicznego adresu).
-- Bezstanowe (api, worker, worker-commands, store, admin, imgproxy, varnish, keycloak, mailpit) jako Deploymenty z jedną repliką,
-  `maxUnavailable: 0`, sondami jak health checki compose.
+- Bezstanowe (api, worker, worker-commands, store, admin, imgproxy, varnish, keycloak, mailpit) jako Deploymenty z jedną repliką
+  i sondami jak health checki compose. Wszystkie poza Keycloakiem mają `RollingUpdate` z `maxUnavailable: 0`
+  i `maxSurge: 1`: nowy pod, który nie staje się gotowy, zostawia działający stary.
+- Keycloak ma strategię `Recreate`: przy starcie migruje schemat swojej bazy i nie wspiera dwóch wersji na jednej bazie,
+  więc stary pod kończy działanie, zanim wystartuje nowy. Przy zmianie szablonu poda Keycloaka (obraz, zmienne, zasoby)
+  logowanie i odświeżanie tokenów nie działają od zatrzymania starego poda do gotowości nowego (pobranie obrazu, start,
+  migracja); sesje są w bazie i przetrwają restart. Wdrożenie, które Keycloaka nie zmienia, go nie restartuje (etykiety
+  poda nie zawierają rewizji). Nowy pod, który nie staje się gotowy, nie zostawia starego: logowanie nie działa do
+  naprawy, a wdrożenie zatrzymuje się na Jobie `keycloak-config`, który czeka na gotowego Keycloaka. Powrotu do starszej
+  wersji na zmigrowanej bazie nie ma: baza `keycloak` wraca z kopii (`restore`) albo powstaje od nowa (`keycloak-config`
+  zakłada realmy, `create-admin` konta personelu).
 - Keycloak w trybie `start`, za proxy (`KC_PROXY_HEADERS=xforwarded`, `KC_HTTP_ENABLED=true`),
   `KC_HOSTNAME=https://auth.<domena>`, `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`, bez `--import-realm` (D9).
 - Fale i Joby (D8, D11):

@@ -456,8 +456,9 @@ to kont pracowników (łagodzi TOTP).
 **Wymagane.** D11.
 
 **Kryteria akceptacji.**
-1. E2E (`e2e/tests/registration.spec.ts`): rejestracja z hasłem 11-znakowym, z hasłem równym e-mailowi i z hasłem `a`
-   kończy się komunikatem Keycloaka i bez konta; dotychczasowy scenariusz z hasłem 12+ znaków przechodzi.
+1. E2E (`e2e/tests/registration.spec.ts`): formularz rejestracji nie ma hasła; klient ustawia je na stronie Keycloaka
+   po otwarciu linku z e-maila weryfikacyjnego. Hasło 11-znakowe, równe e-mailowi i `a` jest tam odrzucane komunikatem
+   Keycloaka, strona zostaje, a klient nie jest zalogowany; hasło 12+ znaków podane potem na tej samej stronie loguje.
 2. Render chartu: `shop.settings.json` i `backoffice.settings.json` mają `passwordPolicy` równe wartości z plików
    realmów (test `infra/k8s/tests`), a test skryptu Joba na atrapie `kcadm` pokazuje, że wartość trafia do
    `update realms/<realm>`.

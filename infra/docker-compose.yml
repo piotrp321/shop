@@ -101,7 +101,7 @@ services:
           "$$api/permissions/test/$$RABBITMQ_DEFAULT_USER"
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.6.0
+    image: quay.io/keycloak/keycloak:26.8.2
     depends_on:
       postgres:
         condition: service_healthy
