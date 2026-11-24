@@ -10,7 +10,7 @@ jest dokumentem roboczym: po ukończeniu epiku usuń go.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | SECURITY-PATCHING-1, SECURITY-PATCHING-2, SECURITY-PATCHING-3, SECURITY-PATCHING-4 | w toku: epik natywny, gałąź `feat/security-patching`; SECURITY-PATCHING-2 zmergowane (1eb2b39c) |
+| 1 | SECURITY-PATCHING-1, SECURITY-PATCHING-2, SECURITY-PATCHING-3, SECURITY-PATCHING-4 | w toku: epik natywny, gałąź `feat/security-patching`; SECURITY-PATCHING-2 zmergowane (1eb2b39c); SECURITY-PATCHING-1 zmergowane (d97dc98a) |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
