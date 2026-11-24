@@ -747,7 +747,7 @@ czeka na L9. `open` zmienia serwer (otwiera sklep), więc też wymaga zgody, kt�
    `demo-data-run` (poprzedniego przebiegu), aktywne Joby, aplikacje `Synced` i `Healthy`, wszystkie Deploymenty
    i StatefulSety gotowe (generator potrzebuje Elasticsearcha, Postgresa, Keycloaka, `worker`, Varnisha i sklepu), żaden
    Job nie jest aktywny poza Jobami CronJobów `rate-limit-check`, `queue-check` i `order-expiry` (co 5 minut, najwyżej
-   kilka minut; `generate` i `open` je pomijają, bo generator nie zapisuje niczego, co zmieniają).
+   60, 120 i 600 s; `generate` i `open` je pomijają, bo generator nie zapisuje niczego, co zmieniają).
 4. **agent** – wolne miejsce: `medium` wymaga co najmniej 32 GB (`demoData.minFreeGb`; 1,25 × `diskPeakGb` `medium`, czyli
    26,25 GB, jest mniejsze), `server` co najmniej 120 GB (1,25 × `diskPeakGb` 96 GB; to szacunek z ekstrapolacji, nie
    pomiar). Odczytem miejsca jest kubelet; `generate` sam odmawia bez zapasu. Strażnik w Jobie zatrzymuje generator, gdy

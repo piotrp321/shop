@@ -178,9 +178,9 @@ Przebieg:
    - blokady `demo-data-lock` nie ma (odmowa podaje jej posiadacza);
    - `PROFILE` to `seed` albo profil wpisany w CronJobie `demo-data` wdrożonej rewizji (`demoData.profile`); inny
      profil wymaga zmiany wartości i wdrożenia;
-   - CronJob `demo-data` istnieje i jest zawieszony; żaden Job przestrzeni nie jest aktywny; każdy Deployment
-     i StatefulSet przestrzeni jest gotowy (generator kończy się błędem, gdy Elasticsearch, Postgres, Keycloak,
-     `worker`, Varnish albo sklep nie odpowiada);
+   - CronJob `demo-data` istnieje i jest zawieszony; żaden Job przestrzeni nie jest aktywny, poza Jobami CronJobów
+     krótkich sprawdzeń („Stan sklepu i blokada”); każdy Deployment i StatefulSet przestrzeni jest gotowy (generator
+     kończy się błędem, gdy Elasticsearch, Postgres, Keycloak, `worker`, Varnish albo sklep nie odpowiada);
    - gdy profil nie jest `seed`, a CronJob ma sekret puli zdjęć (`photosSecretName`): plik puli zdjęć
      (`DEMO_PHOTOS_ENV_FILE`, domyślnie `~/.config/shop/demo-photos.env`) ma cztery zmienne odczytu (brak: kod 2);
    - wolne miejsce każdego węzła (kubelet, `/api/v1/nodes/<węzeł>/proxy/stats/summary`) da się odczytać jako liczbę

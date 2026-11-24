@@ -65,13 +65,12 @@ kc() { kubectl -n "$namespace" "$@"; }
 check_cronjobs="rate-limit-check queue-check order-expiry"
 
 active_jobs() {
-  # shellcheck disable=SC2086 # the names of the CronJobs, one argument each
   kc get jobs -o json | py -c '
 import json, sys
-checks = set(sys.argv[1:])
+checks = set(sys.argv[1].split())
 print(" ".join(j["metadata"]["name"] for j in json.load(sys.stdin)["items"]
     if not {c.get("type") for c in (j.get("status", {}).get("conditions") or []) if c.get("status") == "True"} & {"Complete", "Failed"}
-    and not any(o.get("kind") == "CronJob" and o.get("name") in checks for o in j["metadata"].get("ownerReferences") or [])))' $check_cronjobs
+    and not any(o.get("kind") == "CronJob" and o.get("name") in checks for o in j["metadata"].get("ownerReferences") or [])))' "$check_cronjobs"
 }
 
 probe_round() {
