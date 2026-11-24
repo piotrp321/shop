@@ -313,12 +313,14 @@ Właściciel zaakceptował 2026-11-24 zakres etapu i decyzje E1–E7.
   i Cf i znaki o właściwości Unicode `Default_Ignorable_Code_Point` (m.in. U+200D, U+200E, U+202E, U+FE0F, U+3164). Pole
   wymagane odpowiada komunikatem braku wartości; pole opcjonalne zapisuje brak wartości. Znak prywatnego użytku (Co)
   i znak, którego wersja Unicode w PCRE jeszcze nie zna (Cn, np. nowe emoji), liczą się jako widoczne: tekst z samego
-  takiego znaku nie jest pusty.
+  takiego znaku nie jest pusty. Wyjątek: kod Cn z właściwością `Default_Ignorable_Code_Point` (np. U+2065, U+E0080)
+  jest niewidoczny jak pozostałe znaki tej właściwości.
 - **T4. Długość** liczy się po przycięciu.
 - **T5. Zachowane.** Znak formatujący obok znaku widocznego zostaje: U+200D w emoji, U+FE0F po znaku, znaki tagów
   flagi (U+E0020–U+E007F), także na końcu tekstu.
 
-Pole z formatem (`postalCode`, `phone`, `email`) stosuje T2, potem swój format; tekst pusty według T3 to brak wartości.
+Pole z formatem (`postalCode`, `phone`, `email`) sprawdza T1 na wartości, jak przyszła (komunikat formatu), potem
+stosuje T2, potem swój format; tekst pusty według T3 to brak wartości.
 Przypadki i zapisane wartości: „Pola z formatem: przypadki”.
 
 ### Pola treści JSON (status 422, jedno naruszenie przy polu)
@@ -354,8 +356,9 @@ zakończona flagą (#305).
 
 ### Pola z formatem: przypadki
 
-Pole z formatem jest przycinane według T2, potem sprawdzane swoim formatem; w środku wartości nic nie jest usuwane poza
-tym, co pomija sam format. Tabele podają wysłaną wartość, status i wartość zapisaną w zamówieniu albo komunikat
+Pole z formatem sprawdza znaki niedozwolone (T1) w wartości, jak przyszła, i odpowiada na nie komunikatem formatu;
+potem jest przycinane według T2 i sprawdzane swoim formatem. W środku wartości nic nie jest usuwane poza tym, co pomija
+sam format. Tabele podają wysłaną wartość, status i wartość zapisaną w zamówieniu albo komunikat
 naruszenia przy polu. „Między X” znaczy: znak X przed wartością i za nią.
 
 **`phone`** (`POST /orders`, `POST /me/orders`). Format: 9 cyfr, opcjonalnie po `+48`; spacje ASCII i łączniki `-`
@@ -504,7 +507,8 @@ test kontraktu.
   jest w tabeli etapu 1) ani odczytu zapisanej wartości.
 - **Wiersz pola z formatem** (`phone`, `postalCode`, `email`) wykonuje każdy przypadek tabel „Pola z formatem:
   przypadki” (wysłana wartość, status, zapisana wartość albo komunikat) w miejsce klas „niedozwolony”, „brzegi”
-  i „zachowany”; klasa „zły typ” zostaje.
+  i „zachowany”; klasa „zły typ” zostaje. Wykonanie „poprawna wartość i U+2028 na końcu” mechanizm dodaje każdemu
+  wierszowi pola z formatem sam, żeby wiersz nie mógł go pominąć.
 - **Wiersz frazy, klasa „brzegi”:** fikstura zakłada rekord, który fraza znajduje (produkt, klient z zamówieniem,
   zamówienie, kod rabatowy). Test wysyła frazę czystą, frazę między U+200B i frazę między U+00A0 i wymaga, żeby
   odpowiedź na frazę czystą zawierała ten rekord, a obie pozostałe odpowiedzi miały te same pozycje w tej samej

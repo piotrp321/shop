@@ -10,7 +10,7 @@ mogą iść naraz. Plan jest dokumentem roboczym: po ukończeniu epiku usuń go.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | API-INPUT-2-1 | |
+| 1 | API-INPUT-2-1 | zmergowane do gałęzi epiku, `a5c98b8b` (zadanie `c3bcecc9`) |
 | 2 | API-INPUT-2-2, API-INPUT-2-3, API-INPUT-2-4 | |
 | 3 | API-INPUT-2-5 | |
 
