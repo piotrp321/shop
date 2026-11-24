@@ -431,6 +431,13 @@ Właściciel zaakceptował 2026-11-23:
   wariantów i zdjęcia (opis, kolejność, usuwanie, dodawanie plików); „Zapisz”, „Opublikuj” i „Wycofaj” są nieaktywne
   także w trakcie odczytu. Stan z serwera pokazuje w produkcie przycisk „Odrzuć moje zmiany i pokaż stan z serwera”
   (po 409 `product-modified`, B4); osobnego „Odśwież” produkt nie ma.
+- Wysyłka pliku ze zdjęciem jest własnym żądaniem formularza, które po odpowiedzi dopisuje zdjęcie do szkicu. Dlatego
+  w jej trakcie odczyty, których odpowiedź może zastąpić szkic („Sprawdź stan”, „Odrzuć moje zmiany i pokaż stan
+  z serwera”, „Spróbuj ponownie”), i „Odrzuć” paska zapisu nie startują: przyciski są nieaktywne, a wywołanie z innego
+  miejsca niczego nie robi i niczego nie porzuca. Dopisane zdjęcie nie wpada więc do stanu z serwera ani nie znika razem
+  ze szkicem. Po zakończeniu wysyłki przyciski działają. Wysyłka nie startuje w trakcie blokady (pola wyłączone, pliki
+  wybrane w tym czasie są pomijane). Powód nieaktywnego przycisku widać na liście wysyłek („Wysyłanie”), tak jak dla „Zapisz”.
+  Wspólny kod nie zna zdjęć: formularz podaje mu warunek „mam własne żądanie w toku” (`hasOwnRequest`).
 - Karta „Ceny i stany” nie jest blokowana: ma własne żądania i nie należy do szkicu.
 - Odpowiedź zapisu po przejściu do innego produktu jest pomijana.
 
@@ -534,7 +541,9 @@ promocja i metoda dostawy.
 1. **B1, B2.** Dla każdego żądania, które może zastąpić formularz (zapis; w produkcie także publikacja, wycofanie
    i odczyt stanu z serwera): przy wstrzymanej odpowiedzi pola i kontrolki są wyłączone, wpisywanie niczego nie zmienia, drugie
    „Zapisz” nie wysyła żądania; po 422 pola mają wysłane wartości i są odblokowane. Nie przechodzi przed zmianą dla
-   kodu i produktu.
+   kodu i produktu. W produkcie także wysyłka pliku: przy wstrzymanej odpowiedzi wysyłki „Sprawdź stan”, „Odrzuć moje
+   zmiany i pokaż stan z serwera”, „Spróbuj ponownie” i „Odrzuć” nie wysyłają odczytu ani nie zmieniają szkicu, a po
+   odpowiedzi wysyłki zdjęcie jest w szkicu i przyciski znów działają; plik wybrany w trakcie odczytu nie jest wysyłany.
 2. **B3.** Odczyt bez odpowiedzi: po 10 s blokada znika i widać komunikat z ponowieniem; odpowiedź zwolniona potem,
    także po zmianie pola, niczego nie zmienia. W trakcie odczytu „Odświeżamy…” jest w `role="status"`.
 3. **B4, każdy formularz.**
@@ -576,7 +585,8 @@ promocja i metoda dostawy.
 - Okna zamówienia przy zapisie bez odpowiedzi (E5); okna kategorii, cen i stanów (przycisk `disabled`, okno zamykalne
   w trakcie zapisu; z kodu, nieodtwarzane).
 - Klucz idempotencji w API panelu; scalanie szkicu z nowszą wersją.
-- Akcje „Zakończ teraz” i „Usuń” promocji; karta „Ceny i stany” produktu; wysyłanie zdjęć.
+- Akcje „Zakończ teraz” i „Usuń” promocji; karta „Ceny i stany” produktu; mechanizm wysyłania zdjęć (jego związek z odczytami
+  formularza: B2).
 - Pozostałe pozycje #778: długie teksty (#573, #574, #628, #630, #581 F3), #629, #576, #581 F6–F8 i F11, reszta #584,
   #867.
 

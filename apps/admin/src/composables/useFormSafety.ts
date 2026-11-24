@@ -39,6 +39,13 @@ export interface FormSafetyOptions<TView extends { version: number }, TBody> {
    * function when it depends on the base of the draft, read when the comparison is made.
    */
   compare?: RequestComparison | (() => RequestComparison);
+  /**
+   * Whether the form has a request of its own that adds to the draft when it ends (the upload of a file). A read that may
+   * replace the draft does not start meanwhile (`check`, `restore`, `retryRead`; `readBlocked` is true for the buttons): the
+   * answer of the request would otherwise be dropped with the draft or added to the object the read brought. Read when a read
+   * starts and reactively for `readBlocked`.
+   */
+  hasOwnRequest?: () => boolean;
   /** The texts for a new object: „Nie wiemy, czy <obiekt> został utworzony.” and „Możliwe, że utworzył go Twój wcześniejszy zapis.”. */
   newObject: { unknownMessage: string; ownNote: string };
 }
@@ -98,7 +105,7 @@ interface UnknownState<TView> {
  *   equals the one built from the object (`sameRequest`); otherwise the draft, its base and the version stay.
  * - `restore` is „Odrzuć moje zmiany i pokaż stan z serwera” (and „Odśwież”): the draft is replaced after the answer 200.
  * - Every read that locks the form gives up after `REQUEST_LIMIT_MS` (`readFailed`, `retryRead`); its late answer is ignored.
- * - `write` starts nothing while a read locks the form (`reading`); a creation confirmed after an earlier one that was given up
+ * - A read starts nothing while the form has a request of its own (`hasOwnRequest`); `write` starts nothing while a read locks the form (`reading`); a creation confirmed after an earlier one that was given up
  *   makes the answer of the earlier one silent (the form shows the new object). `draftDiscarded` is for „Odrzuć” of the
  *   draft: what the form knows about the server stays, only the promise that the changes stay goes; a late answer is still only a toast.
  * - `reset` is called when the form moves to another object (or to the form of a new one), `dispose` when it is left: the
@@ -145,6 +152,8 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
 
   const writing = computed(() => active.value !== null);
   const locked = computed(() => writing.value || reading.value);
+  /** The buttons that start a read are off: a read runs, or the form has a request of its own. */
+  const readBlocked = computed(() => reading.value || (options.hasOwnRequest?.() ?? false));
   const status = computed(() => (reading.value ? READING_MESSAGE : matched.value ? MATCHES_MESSAGE : ""));
   const unknown = computed<UnknownResult | null>(() => {
     const state = unknownState.value;
@@ -312,7 +321,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
    */
   async function readState(onData: (view: TView) => void, again: () => Promise<boolean>): Promise<boolean> {
     const id = options.id();
-    if (id === null) {
+    if (id === null || options.hasOwnRequest?.()) {
       return false;
     }
     const sequence = ++readSequence;
@@ -371,7 +380,8 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   /** „Sprawdź stan”: see the description above. Only after an unknown result of a write to an existing object. */
   async function check(): Promise<void> {
     const state = unknownState.value;
-    if (state === null || state.created || options.id() === null) {
+    // Nothing is given up before the read is sure to start: a read that does not start leaves the write as it was.
+    if (state === null || state.created || options.id() === null || options.hasOwnRequest?.()) {
       return;
     }
     abandon();
@@ -433,6 +443,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   return {
     writing,
     reading,
+    readBlocked,
     locked,
     status,
     unknown,
@@ -464,6 +475,8 @@ export interface FormSafetyState {
   /** Set to a new object whenever a message appears or is said again; `FormSafetyNotices` moves the focus to it. */
   focusRequest: Readonly<Ref<{ kind: "unknown" | "restoreNote" | "readFailed" | "matched" | "reading" } | null>>;
   reading: Readonly<Ref<boolean>>;
+  /** The buttons that start a read are off: a read runs, or the form has a request of its own. */
+  readBlocked: Readonly<Ref<boolean>>;
   status: Readonly<Ref<string>>;
   check: () => Promise<void>;
   unblock: () => void;
