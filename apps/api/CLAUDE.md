@@ -82,7 +82,9 @@ używa `ApplicationTester` (`setAutoExit(false)`), bo `CommandTester` wyjątku n
   (`docs/features/api-input-contract/spec.md`) mają własne reguły w swoich value objectach.
 - Odczyt z bazy nie waliduje tekstów pod regułą `Text`: repozytoria i handlery odczytu odtwarzają je z wiersza
   nazwanym konstruktorem bez walidacji i bez przycinania (`stored()`), więc wiersz zapisany przed ostrzejszą
-  regułą daje się odczytać i przetworzyć. Regułę stosuje zapis (żądanie, seed, generator danych demo).
+  regułą daje się odczytać i przetworzyć. Regułę stosuje zapis przez domenę (żądanie, seedy). Generator danych demo pisze
+  przez COPY z pominięciem domeny, więc jego teksty pod regułą (nazwy, opisy, osie, wartości wariantów, kategorie, imię,
+  ulica, miejscowość) muszą być w postaci, którą reguła zachowuje; pilnują tego testy kontraktu (`GeneratedText`).
   `reconstitute()` zostaje nazwą odtworzenia agregatu, nie value objectu: po niej `DemoDataBoundaryTest` rozpoznaje
   agregaty.
 - Deptrac pilnuje tych granic. Jeśli Deptrac zgłasza błąd, popraw projekt, nie edytuj `deptrac.yaml`.

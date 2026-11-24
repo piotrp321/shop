@@ -39,6 +39,11 @@ final class CategoryTreeTest extends TestCase
         self::assertCount(array_sum(array_map(static fn (string $d): int => 1 + \count($dictionaries->groupSlugs($d)), $dictionaries->departmentSlugs())) + \count($leaves), $specs);
     }
 
+    public function testTheNamesOfTheCategoriesAreInTheFormOfTheRule(): void
+    {
+        GeneratedText::assertAllInTheFormOfTheRule(array_map(static fn (CategorySpec $c): string => $c->name, self::build()), 'category name');
+    }
+
     public function testTheIdsAreVersion5UuidsOfTheSlugPath(): void
     {
         foreach (self::build() as $spec) {
