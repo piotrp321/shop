@@ -7,7 +7,8 @@ in any directory. A new Dockerfile is therefore checked without a change of this
 
 Checked in each file: the image of every `FROM` (flags such as `--platform=` are skipped), the `--from=` of `COPY` and
 `ADD`, and the `from=` of a `RUN --mount`. A reference to an earlier stage (its `AS` name or its number) and `scratch`
-are allowed. Instruction names and `AS` are case-insensitive, like in Docker. The tag may not be `latest`, and no part of
+are allowed. Instruction names and `AS` are case-insensitive, like in Docker. The instruction after `ONBUILD` is checked like any
+other, a byte order mark is skipped and the `# escape=` directive sets the continuation character. The tag may not be `latest`, and no part of
 a reference may be a variable, because the value of a variable is not visible here. The text of a heredoc is not
 recognised as such: a line inside one that looks like an instruction is checked like any other.
 
@@ -51,18 +52,33 @@ def dockerfiles(root):
     return found
 
 
+ESCAPE_DIRECTIVE = re.compile(r"#\s*escape\s*=\s*(\\|`)\s*", re.IGNORECASE)
+
+
+def escape_character(text):
+    """The continuation character: the parser directive `# escape=` in the leading comments, else a backslash."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("#"):
+            break
+        directive = ESCAPE_DIRECTIVE.fullmatch(stripped)
+        if directive:
+            return directive.group(1)
+    return "\\"
+
+
 def instructions(text):
-    """Yields (first line number, text) of each logical line: continuations joined, comments and empty lines dropped."""
+    """Yields (first line number, text) of each logical line: continuations joined, comments and empty lines dropped
+    (also inside a continuation, like Docker)."""
+    escape = escape_character(text)
     start, parts = None, []
     for number, line in enumerate(text.splitlines(), 1):
         stripped = line.strip()
-        if stripped.startswith("#"):
-            continue
-        if not stripped and not parts:
+        if not stripped or stripped.startswith("#"):
             continue
         if start is None:
             start = number
-        if stripped.endswith("\\"):
+        if stripped.endswith(escape):
             parts.append(stripped[:-1])
             continue
         parts.append(stripped)
@@ -111,6 +127,10 @@ def check_file(path, text):
 
     for line, instruction in instructions(text):
         tokens = instruction.split()
+        if tokens[0].upper() == "ONBUILD":
+            tokens = tokens[1:]
+            if not tokens:
+                continue
         keyword = tokens[0].upper()
         flags = []
         rest = tokens[1:]
@@ -145,7 +165,7 @@ def main(argv):
         violations = []
         for path in paths:
             try:
-                with open(f"{root}/{path}", encoding="utf-8") as file:
+                with open(f"{root}/{path}", encoding="utf-8-sig") as file:
                     text = file.read()
             except (OSError, UnicodeDecodeError) as error:
                 raise CheckError(f"cannot read {path}: {error}") from None
