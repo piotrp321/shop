@@ -11,7 +11,7 @@ mogą iść naraz. Plan jest dokumentem roboczym: po ukończeniu epiku usuń go.
 | Fala | Zadania | Status |
 |---|---|---|
 | 1 | API-INPUT-2-1 | zmergowane do gałęzi epiku, `a5c98b8b` (zadanie `c3bcecc9`) |
-| 2 | API-INPUT-2-2, API-INPUT-2-3, API-INPUT-2-4 | API-INPUT-2-2: zmergowane do gałęzi epiku, `9d8c04f3` (zadanie `e16a481c`) |
+| 2 | API-INPUT-2-2, API-INPUT-2-3, API-INPUT-2-4 | API-INPUT-2-2: zmergowane do gałęzi epiku, `9d8c04f3` (zadanie `e16a481c`); API-INPUT-2-3: zmergowane, `2af1af78` (zadanie `fd03886a`) |
 | 3 | API-INPUT-2-5 | |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.

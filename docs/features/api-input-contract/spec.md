@@ -478,8 +478,11 @@ Po etapie:
   do tego samego commita.
 - **Skutek przy wdrożeniu.** Powtórzenie złożenia zamówienia z tym samym `Idempotency-Key` i treścią, wysłane po
   wdrożeniu dla żądania sprzed wdrożenia, w którym `fullName`, `street` albo `city` miały na brzegach biały znak inny
-  niż ASCII albo znak z T2, dostaje 409 zamiast 200: odcisk liczy się z wartości po normalizacji. Dotyczy tylko okna
-  wdrożenia i takich tekstów; na etapie demo bez działań.
+  niż ASCII albo znak z T2, dostaje 409 zamiast 200: odcisk liczy się z wartości po normalizacji. Powtórzenie żądania
+  sprzed wdrożenia z tekstem, który reguła teraz odrzuca (U+009F w `fullName`, `street` albo `city`; takie pole
+  z samego U+00A0 albo U+200B), dostaje 422 przy polu zamiast 200, bo walidacja żądania poprzedza sprawdzenie
+  `Idempotency-Key`; zamówienie z pierwszego żądania zostaje. Oba skutki dotyczą tylko okna wdrożenia i takich
+  tekstów; na etapie demo bez działań.
 - Wiersze zapisane przed etapem zostają, jak są (E7); etap niczego nie przepisuje w bazie.
 
 ### Testy
