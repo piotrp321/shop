@@ -356,6 +356,24 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   dla „kurtki” i „kurtka” (`ProductIndexDefinitionTest`).
 - `make seed`: `catalog:seed-demo`, `pricing:seed-demo`, `ordering:seed-demo`, `inventory:seed-demo`,
   `catalog:reindex`, `storefront:cache:purge-all`.
+- Liczba shardów nowego indeksu to zmienna `SEARCH_SHARDS` (parametr `app.search.shards`): w compose z `.env` worktree
+  (bez niej 1), w chartcie z `elasticsearch.shards` (domyślnie 1, w `prod` 4). Dostają ją wszystkie kontenery z kodem
+  API. Indeks, który istnieje, zachowuje swoją liczbę shardów (hash definicji jej nie obejmuje, więc `setup` go nie
+  odrzuca); nową dostaje dopiero indeks z następnej przebudowy. Wartość mniejsza od 1 kończy budowę definicji błędem
+  z nazwą zmiennej, pustą i nieliczbową odrzuca kontener, a schemat chartu przyjmuje tylko liczbę całkowitą od 1 do
+  1024.
+- Zapytanie przeszukuje jeden shard jednym wątkiem, więc agregacje faset szerokiego zbioru wyników liczą się na
+  kilku shardach równolegle. Czas CPU zapytania się przy tym nie zmniejsza, a przy wielu równoległych zapytaniach
+  shardy konkurują o te same rdzenie. Skutek 4 shardów na serwerze nie jest potwierdzony pomiarem na serwerze.
+- Przebudowa indeksu na klastrze: `make -C infra/k8s reindex KUBE_DIR=<katalog>`, tylko po zgodzie użytkownika
+  w rozmowie, która nazywa operację i host. Cel odmawia bez zmian, gdy w przestrzeni nazw działa Job (poza Jobami
+  CronJobów `rate-limit-check`, `queue-check` i `order-expiry`) albo nie da się odczytać indeksu aliasu `products`;
+  wypisuje bieżący indeks i liczbę shardów nowego, pyta o słowo `tak`, tworzy Job z zawieszonego CronJoba `reindex`
+  (`catalog:reindex` z obrazem, środowiskiem i sekretami wdrożonej rewizji), czeka na niego i sprawdza, że alias
+  wskazuje nowy indeks o liczbie shardów z `SEARCH_SHARDS`. Sklep działa w trakcie na starym indeksie; nieudany
+  przebieg zostawia alias bez zmian. Obowiązują ograniczenia przebudowy z `docs/features/walking-skeleton/spec.md`
+  („Ograniczenia tej przebudowy”): zmiana produktu, ceny albo poziomu stanu zapisana w trakcie budowy może nie trafić
+  do nowego indeksu aż do następnej zmiany tego produktu albo następnej przebudowy.
 
 ## Scenariusze błędów
 
@@ -448,6 +466,13 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 - `pairs` to obiekty `nested` w `nested`: każda para jest osobnym dokumentem Lucene, więc indeks ma więcej dokumentów
   (w danych demo ok. 2,4 raza) i jest większy. Produkt ma najwyżej 100 wariantów po 2 osie, czyli do 300 obiektów
   zagnieżdżonych, daleko od limitu `index.mapping.nested_objects.limit` (10 000).
-- `terms` sortowane po liczbie z `reverse_nested` jest dokładne przy jednym shardzie (`app.search.shards`). Przy kilku
-  shardach wymagałoby `shard_size` nie mniejszego niż liczba różnych osi i wartości na shardzie.
+- `terms` sortowane po liczbie z `reverse_nested` jest dokładne przy jednym shardzie. Przy kilku shardach
+  (`SEARCH_SHARDS` większe od 1) każdy shard oddaje tylko `shard_size` najliczniejszych kubełków (domyślnie
+  `size × 1,5 + 10`, czyli 25 osi i 55 wartości osi), więc faseta `options` jest dokładna, dopóki wyniki na jednym
+  shardzie mają najwyżej 25 różnych osi i najwyżej 55 różnych wartości jednej osi. Dane demo mieszczą się w tych
+  granicach: profil `medium` ma 21 osi i najwyżej 36 wartości jednej osi. Powyżej granic liczby i kolejność wartości
+  mogą się różnić od wyniku na jednym shardzie; pełna dokładność wymagałaby jawnego `shard_size` nie mniejszego niż
+  liczba różnych osi i wartości na shardzie. Granica 55 wartości dotyczy też listy wartości osi z wyborem. Fasety
+  `categories`, `price` i `availableCount` oraz liczby wartości wybranych w filtrze (`terms` z `include`) są
+  dokładne przy każdej liczbie shardów.
 - Obraz Elasticsearch budowany lokalnie pobiera wtyczkę z sieci przy pierwszym buildzie.

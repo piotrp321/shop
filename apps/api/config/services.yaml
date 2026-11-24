@@ -8,7 +8,10 @@ parameters:
     app.storefront_cache.retry_delay: 5.0
     # Search index (spec: "Indeks Elasticsearch"). The application reads and writes through the alias.
     app.search.alias: products
-    app.search.shards: 1
+    # The primary shards of an index that setup and catalog:reindex create: SEARCH_SHARDS of the environment, 1 without
+    # it. An index that exists keeps its own number until the next catalog:reindex.
+    env(SEARCH_SHARDS): '1'
+    app.search.shards: '%env(int:SEARCH_SHARDS)%'
     app.search.replicas: 0
     # Keycloak realms: tokens carry the public URL as issuer, keys are discovered through the internal URL
     # (the trailing slash is needed, discovery paths are resolved relative to it).

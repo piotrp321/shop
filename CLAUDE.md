@@ -40,7 +40,7 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 ## Serwer, GitHub i bezpieczeństwo agentów
 
 - Agent wykonuje operacje na serwerze wyłącznie celami `infra/k8s/Makefile`. Cele, które kasują albo zastępują dane,
-  zakładają konto albo zmieniają serwer (`reinitialize`, `restore`, `generate`, `open`, `create-admin`, `bootstrap`),
+  zakładają konto albo zmieniają serwer (`reinitialize`, `restore`, `generate`, `open`, `reindex`, `create-admin`, `bootstrap`),
   uruchamia tylko po zgodzie użytkownika w rozmowie, która nazywa tę operację, host i (dla `generate` i `open`) profil
   danych. Co
   uruchamia sam i czego nie ponawia przez `rerun`: `infra/k8s/CLAUDE.md`, „Cele Makefile”. Wdrożenie

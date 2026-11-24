@@ -106,8 +106,9 @@ class CronJobTest(unittest.TestCase):
     def test_cart_purge(self):
         for case in ("prod-backup", "ci"):
             crons = by_logical(case, "CronJob")
-            # load (tests/test_load_cronjob.py) and demo-data (tests/test_demo_data.py) are in every profile.
-            expected = {"cart-purge-expired", "rate-limit-check", "queue-check", "order-expiry", "backup", "backup-verify", "restore", "load", "demo-data"}
+            # load (tests/test_load_cronjob.py), demo-data (tests/test_demo_data.py) and reindex (tests/test_reindex.py) are in every profile.
+            expected = {"cart-purge-expired", "rate-limit-check", "queue-check", "order-expiry", "backup", "backup-verify", "restore", "load", "demo-data",
+                        "reindex"}
             self.assertEqual(expected, set(crons), case)
             cron = crons["cart-purge-expired"]
             self.assertEqual("0 * * * *", cron["spec"]["schedule"])

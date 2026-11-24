@@ -155,6 +155,22 @@ do_schema() {
       -f environments/ci/values.yaml --set image.tag=$rev --set demoData.terminationGracePeriodSeconds=30
     expect_failure "demoData.enabled that is not a boolean" "/demoData/enabled" -f environments/ci/values.yaml --set image.tag=$rev \
       --set-string demoData.enabled=true
+    # The shards of the search index (docs/features/search/spec.md, "Infrastruktura"): a whole number from 1, never a text, zero or
+    # a fraction, which the API would refuse only when it builds an index; the CronJob reindex has a time limit like load.
+    expect_failure "zero shards of the search index" "/elasticsearch/shards" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set elasticsearch.shards=0
+    expect_failure "shards of the search index that are a text" "/elasticsearch/shards" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set-string elasticsearch.shards=4
+    expect_failure "shards of the search index that are a fraction" "/elasticsearch/shards" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set-json elasticsearch.shards=1.5
+    expect_failure "more shards than Elasticsearch allows" "/elasticsearch/shards" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set elasticsearch.shards=1025
+    expect_failure "search index values without the shards" "missing property 'shards'" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set elasticsearch.shards=null
+    expect_failure "a time limit of the rebuild that is not a number" "/reindex/activeDeadlineSeconds" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set-string reindex.activeDeadlineSeconds=1h
+    expect_failure "a value of reindex that does not exist" "'schedule' not allowed" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set reindex.schedule=daily
     expect_failure "a profile of the generator that does not exist" "/demoData/profile" -f environments/ci/values.yaml --set image.tag=$rev \
       --set demoData.profile=huge
     expect_failure "an anchor that is not a date" "/demoData/anchor" -f environments/ci/values.yaml --set image.tag=$rev \
