@@ -136,7 +136,14 @@ koordynuje handler aplikacji w jednej transakcji bazy (moduły dzielą bazę; sa
 - `ReceiptKey`, `ReservationKey`: 1–100 znaków `[A-Za-z0-9._:-]`. Zły format: 422 w porcie, 400 w nagłówku HTTP.
 - `CorrectionReason`: `inventory_count` (inwentaryzacja), `damage` (uszkodzenie), `loss` (zaginięcie), `other` (inne).
   Przy `other` notatka jest wymagana.
-- `StockNote`: do 500 znaków, przycięta; pusta = brak notatki.
+- `StockNote`: tekst według reguły tekstu (`App\Shared\Domain\Text`, `docs/features/api-input-contract/spec.md`, „Etap 2:
+  reguła tekstu”), wielowierszowy: dozwolone są tabulator, koniec wiersza i powrót karetki (U+0009, U+000A, U+000D),
+  każdy inny znak sterujący (także C1: U+0085, U+009F), U+2028 i U+2029 daje 422 „Notatka nie może zawierać znaków
+  sterujących (poza tabulatorem i końcem wiersza).” (znaki szukane w notatce, jak przyszła, przed przycięciem); brzegi
+  przycięte z białych znaków Unicode i znaków niewidocznych (U+200B, U+2060, U+FEFF, U+00AD); do 500 znaków po
+  przycięciu; notatka bez znaku widocznego (same białe znaki, U+200B, U+3164) = brak notatki, a przy powodzie `other`
+  422 „Przy powodzie „inne” notatka jest wymagana.”. Notatka zapisana przed regułą (z brzegami, które zostawiał
+  `trim()`) jest odczytywana bez zmian; przy powtórzeniu przyjęcia porównuje się ją po tym samym przycięciu.
 - `StockChangeOrigin`: źródło (`staff`, `seed`, `system`) i aktor (`sub` i nazwa pracownika z tokena; `null` dla
   `seed` i `system`). Operacje portu rezerwacji mają źródło `system`.
 - `StockMovement` (wpis historii, tylko dopisywany): `type` (`receipt`, `correction`, `reservation`, `release`,
@@ -187,7 +194,7 @@ po jednym wpisie historii na linię. Powtórzenie tej samej operacji: sukces bez
 - Klucz przyjęcia jest wymagany (z panelu nagłówek `Idempotency-Key`).
 - Handler zakłada (jeśli trzeba) i blokuje wiersz `StockItem`, potem szuka klucza w historii (`type = 'receipt'`).
   Równoległe przyjęcia tego samego wariantu szereguje blokada wiersza.
-- Klucz istnieje z tym samym wariantem, ilością i notatką: zwracany jest bieżący stan bez zmiany (HTTP 200 zamiast
+- Klucz istnieje z tym samym wariantem, ilością i notatką (po przycięciu regułą tekstu): zwracany jest bieżący stan bez zmiany (HTTP 200 zamiast
   201). Klucz istnieje z inną ilością lub notatką albo dla innego wariantu: `ReceiptKeyReused` (409). Przypadek
   innego wariantu wykrywa także unikalny indeks częściowy `(reference) WHERE type = 'receipt'`.
 - Klucze przyjęć i rezerwacji są przechowywane na zawsze.
@@ -354,7 +361,7 @@ z tokenem realmu `shop`: 401):
 
 - Pozycja menu „Stany magazynowe” i trasa `/inventory`.
 - Lista (H1 „Stany magazynowe”, okruszki „Pulpit › Katalog › Stany magazynowe”, standard listy panelu:
-  `docs/features/admin-design/spec.md`): wyszukiwanie po nazwie produktu (od 2 do 100 znaków, z opóźnieniem), filtr
+  `docs/features/admin-design/spec.md`): wyszukiwanie po nazwie produktu (od 2 do 100 znaków po przycięciu regułą tekstu, bez znaków sterujących, z opóźnieniem), filtr
   kategorii `CategoryCombobox` (z podkategoriami), `Select` „Sortuj” produktów („Nazwa A–Z”, „Nazwa Z–A”, „Ostatnio
   zmienione”, „Najdawniej zmienione”; nazwa jest w wierszu grupy, więc nagłówki kolumn nie mają `aria-sort`), rozmiar
   strony 10, 25 albo 50 produktów (domyślnie 10; do API idzie zawsze) i „Wyczyść filtry”. Wyszukiwanie, kategoria,

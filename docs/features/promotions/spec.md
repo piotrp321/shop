@@ -76,7 +76,10 @@ Decyzje architektoniczne:
   sekundy (UTC). `isActiveAt(t)` = `startsAt ≤ t < endsAt`.
 - `startOfNow` = `now` ucięte do sekundy + 1 s. Historia cen ma `changed_at` z dokładnością do sekundy (ucięte), więc
   cena zapisana przed startem „od teraz” jest zawsze przed `startsAt`.
-- Agregat `Promotion` (identyfikator UUID v7): `name` (1–100 znaków po przycięciu, bez znaków sterujących),
+- Agregat `Promotion` (identyfikator UUID v7): `name` (tekst według reguły tekstu, `App\Shared\Domain\Text`, `docs/features/api-input-contract/spec.md`, „Etap 2:
+  reguła tekstu”: bez znaków sterujących i separatorów linii, szukanych w nazwie, jak przyszła; brzegi przycięte z białych
+  znaków Unicode i znaków niewidocznych; 1–100 znaków po przycięciu; nazwa bez znaku widocznego jest pusta; znaki
+  formatujące obok znaku widocznego zostają, także znaki tagów flagi na końcu),
   `percentOff`, `period`, `variantIds` (1–1000, bez powtórzeń), `createdBy` i `updatedBy` (aktor z tokena: `sub`
   i nazwa; seed: `null`), `updatedAt`, `version`. Status wyliczany z czasu: `planned` (`now < startsAt`), `active`,
   `ended` (`now ≥ endsAt`).

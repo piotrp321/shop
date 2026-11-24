@@ -6113,7 +6113,6 @@
                 "properties": {
                     "q": {
                         "type": "string",
-                        "pattern": "((?!\\0).)*",
                         "nullable": true,
                         "default": null,
                         "maxLength": 100,
@@ -6199,9 +6198,8 @@
                         ]
                     },
                     "note": {
-                        "description": "A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or blank for none.",
+                        "description": "A note, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or a text without a visible character for none.",
                         "type": "string",
-                        "pattern": "^[^\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]*$",
                         "example": "Inwentaryzacja roczna",
                         "nullable": true,
                         "maxLength": 500
@@ -6224,9 +6222,8 @@
                         "minimum": 1
                     },
                     "note": {
-                        "description": "A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; null or blank for none.",
+                        "description": "A note, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters other than tab and line breaks; null or a text without a visible character for none.",
                         "type": "string",
-                        "pattern": "^[^\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]*$",
                         "example": "Dostawa od Biegam sp. z o.o.",
                         "nullable": true,
                         "maxLength": 500
@@ -6462,7 +6459,6 @@
                 "properties": {
                     "q": {
                         "type": "string",
-                        "pattern": "((?!\\0).)*",
                         "nullable": true,
                         "default": null,
                         "maxLength": 100,
