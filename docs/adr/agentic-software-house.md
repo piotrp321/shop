@@ -186,10 +186,16 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    Werdyktu „naprawić” sesja sama nie uchyla: zleca poprawkę (zadanie z przeglądem różnicy) albo przedstawia
    właścicielowi obie oceny do decyzji. Uwaga z werdyktem „można odroczyć” zostaje w „Odroczonych uwagach”
    z dopiskiem „ocena odroczeń: można odroczyć”. W „Problemach i zastojach” sesja zapisuje liczbę ocenionych uwag
-   i werdyktów „naprawić” oraz dla każdego z nich, czy poprawka miała test RED potwierdzony zapisem uruchomienia
-   (potwierdzone błędne odroczenie), czy błąd się nie potwierdził. Przy znalezisku zewnętrznego review, które
-   powtarza odroczoną uwagę, podaje też, czy uwaga przeszła ocenę odroczeń i z jakim werdyktem. Potwierdzone błędne
-   odroczenia i nowe znaleziska zewnętrznego review to osobne liczby.
+   i werdyktów „naprawić”, a dla każdego takiego werdyktu dwie rzeczy osobno. Pierwsza to potwierdzenie błędu:
+   „potwierdzony” z dowodem wystąpienia na kodzie sprzed poprawki (odtworzenie przez QA albo sesję: kroki albo
+   skrypt i wynik, albo test, który na tym kodzie nie przechodzi) albo „niepotwierdzony” z dowodem, że przeplot jest
+   nieosiągalny lub skutek nie występuje; bez żadnego z tych dowodów: „nierozstrzygnięty”. Druga to przebieg TDD
+   poprawki, określeniem z przeglądu jej zadania (RED potwierdzony zapisem uruchomienia, RED niepotwierdzony, test
+   wykrywa błąd na kodzie bazowym) albo „brak testu”. Brak fazy RED jest odstępstwem TDD i nie zmienia
+   potwierdzenia błędu: błąd odtworzony przez QA zostaje potwierdzony, a brak RED sesja odnotowuje obok.
+   Potwierdzone błędne odroczenie to werdykt „naprawić” z błędem potwierdzonym. Przy znalezisku zewnętrznego
+   review, które powtarza odroczoną uwagę, sesja podaje też, czy uwaga przeszła ocenę odroczeń i z jakim
+   werdyktem. Potwierdzone błędne odroczenia i nowe znaleziska zewnętrznego review to osobne liczby.
 
    **Zewnętrzne review.** Końcowy PR przechodzi niezależne review Codexa (`docs/features/ash-process-fixes/spec.md`,
    C): po przeglądzie epiku i jego poprawkach, przed oznaczeniem PR jako gotowego. Zanim sesja przekaże PR do
@@ -243,9 +249,9 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
      `/retro <epik>`, numer PR i commit merge'u, ścieżka specyfikacji, plan (commit, w którym jeszcze istnieje:
      `git show <sha>:docs/features/<epik>/plan.md`), przeglądy i poprawki (role, rundy, zewnętrzne review
      z commitami poprawek i z podziałem znalezisk na nowe i powtarzające odroczoną uwagę; ocena odroczeń: liczba
-     ocenionych uwag, werdykty, potwierdzone błędne odroczenia albo powód, dla którego jej nie było), wynik CI
-     commita merge'u na `main` (SHA, numer przebiegu) i `ci-time` po merge'u, plik przebiegu, rekord i sesje epiku,
-     wersja procesu z odstępstwami oraz, w całości, uwagi
+     ocenionych uwag, werdykty, przy werdyktach „naprawić” potwierdzenie błędu z dowodem i osobno przebieg TDD,
+     albo powód, dla którego oceny nie było), wynik CI commita merge'u na `main` (SHA, numer przebiegu) i `ci-time`
+     po merge'u, plik przebiegu, rekord i sesje epiku, wersja procesu z odstępstwami oraz, w całości, uwagi
      właściciela, które padły po ostatniej edycji opisu PR;
    - kończy komunikatem: „Epik zakończony. Uruchom /retro <epik> w nowej sesji. Tę sesję można zarchiwizować”.
 
