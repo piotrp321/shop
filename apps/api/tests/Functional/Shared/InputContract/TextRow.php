@@ -114,7 +114,7 @@ final readonly class TextRow
      *
      * @param InputCase::STAFF|InputCase::CUSTOMER|null          $token
      * @param array<string, mixed>                               $body
-     * @param list<array{string, string, int, string}>           $cases   label, value sent, status, the stored value (2xx) or the title of the violation (4xx)
+     * @param list<array{string, string, int, string}>           $cases     label, value sent, status, the stored value (2xx) or the title of the violation (4xx)
      * @param string                                             $forbidden the title of the format, the answer to a forbidden character (T1)
      * @param \Closure(Connection, array<string, string>): mixed $stored
      * @param array<string, string>                              $headers
