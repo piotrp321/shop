@@ -1,5 +1,6 @@
 import { revalidateTag } from "next/cache";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { nextCacheTagOf } from "@/catalog/isr-tags";
 import { POST } from "./route";
 
 vi.mock("next/cache", () => ({ revalidateTag: vi.fn() }));
@@ -89,6 +90,8 @@ describe("the limit of the body of /api/revalidate (32 KiB)", () => {
     const response = await send(body);
 
     expect(response.status).toBe(200);
-    expect(revalidateTag).toHaveBeenCalledTimes(100);
+    expect(await response.json()).toEqual({ revalidated: 100 });
+    // One call for each different bucket of the 100 names.
+    expect(vi.mocked(revalidateTag).mock.calls.map(([tag]) => tag)).toEqual([...new Set(tags.map(nextCacheTagOf))]);
   });
 });

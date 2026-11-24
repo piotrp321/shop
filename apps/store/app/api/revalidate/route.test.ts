@@ -1,11 +1,29 @@
 import { revalidateTag } from "next/cache";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { nextCacheTagOf } from "@/catalog/isr-tags";
 import { POST } from "./route";
 
 vi.mock("next/cache", () => ({ revalidateTag: vi.fn() }));
 
 const SECRET = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
 const PRODUCT_TAG = "product-0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60";
+
+/**
+ * 50 slug tags and 50 product tags whose names all fall into one bucket (`product-bucket-72c4`), found once by trying
+ * `product-slug-k-<n>` and `product-00000000-0000-4000-8000-<n in hex>` for n from 0 in order.
+ */
+const SAME_BUCKET_SLUGS = [
+  241545, 275595, 284905, 494103, 587136, 645005, 700998, 785979, 996036, 1111696, 1330119, 1384048, 1528170, 1698592,
+  1723829, 1785455, 1906254, 1955214, 2078095, 2167807, 2253336, 2277597, 2403844, 2416672, 2526940, 2565354, 2631537,
+  2651706, 2672790, 2708596, 2740360, 2865194, 2878110, 2887572, 2925265, 3022706, 3148398, 3238009, 3278394, 3320361,
+  3400285, 3458881, 3511414, 3561080, 3577576, 3613441, 3679437, 3705411, 3794073, 3853993,
+].map((n) => `product-slug-k-${n}`);
+const SAME_BUCKET_IDS = [
+  54662, 158117, 256193, 268373, 382307, 422041, 425890, 526758, 558065, 593549, 639333, 741580, 785781, 970307, 980810,
+  1085437, 1143066, 1205704, 1370293, 1536529, 1538668, 1625649, 1641866, 1653450, 1674380, 1709383, 1793747, 1805194,
+  1837381, 1884289, 1972060, 2132668, 2141096, 2241354, 2287064, 2371178, 2523223, 2603128, 2609264, 2619567, 2736961,
+  2800220, 2805434, 2935017, 2998285, 3173278, 3194797, 3315837, 3355158, 3385255,
+].map((n) => `product-00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`);
 
 let logs: ReturnType<typeof vi.spyOn>[];
 
@@ -39,14 +57,49 @@ async function expectRefused(response: Response, status: number): Promise<void> 
 }
 
 describe("POST /api/revalidate", () => {
-  it("revalidates every tag with expire 0 and answers with their number", async () => {
+  it("revalidates the Next.js tag of every tag with expire 0 and answers with their number", async () => {
     const response = await revalidate({ tags: [PRODUCT_TAG, "catalog"] });
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(await response.json()).toEqual({ revalidated: 2 });
     expect(vi.mocked(revalidateTag).mock.calls).toEqual([
-      [PRODUCT_TAG, { expire: 0 }],
+      [nextCacheTagOf(PRODUCT_TAG), { expire: 0 }],
+      ["catalog", { expire: 0 }],
+    ]);
+    expect(nextCacheTagOf(PRODUCT_TAG)).toMatch(/^product-bucket-[0-9a-f]{4}$/);
+  });
+
+  it("never revalidates a tag with the id or the slug of a product", async () => {
+    await revalidate({ tags: [PRODUCT_TAG, "product-slug-kurtka-puchowa-2"] });
+
+    const revalidated = vi.mocked(revalidateTag).mock.calls.map(([tag]) => tag);
+    expect(revalidated).toHaveLength(2);
+    for (const tag of revalidated) {
+      expect(tag).toMatch(/^product-bucket-[0-9a-f]{4}$/);
+      expect(tag).not.toContain("0192f0c4");
+      expect(tag).not.toContain("kurtka");
+    }
+  });
+
+  it("revalidates one bucket once for 100 tags of that bucket, ids and slugs alike", async () => {
+    const tags = [...SAME_BUCKET_SLUGS, ...SAME_BUCKET_IDS];
+    expect(new Set(tags).size).toBe(100);
+    expect(new Set(tags.map(nextCacheTagOf))).toEqual(new Set(["product-bucket-72c4"]));
+
+    const response = await revalidate({ tags });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ revalidated: 100 });
+    expect(vi.mocked(revalidateTag).mock.calls).toEqual([["product-bucket-72c4", { expire: 0 }]]);
+  });
+
+  it("revalidates a tag repeated in the body once and counts every tag of the body", async () => {
+    const response = await revalidate({ tags: [PRODUCT_TAG, "catalog", PRODUCT_TAG, "catalog"] });
+
+    expect(await response.json()).toEqual({ revalidated: 4 });
+    expect(vi.mocked(revalidateTag).mock.calls).toEqual([
+      [nextCacheTagOf(PRODUCT_TAG), { expire: 0 }],
       ["catalog", { expire: 0 }],
     ]);
   });
@@ -59,13 +112,17 @@ describe("POST /api/revalidate", () => {
   });
 
   it("accepts the tag of a product slug", async () => {
-    const response = await revalidate({ tags: [PRODUCT_TAG, "product-slug-kurtka-puchowa-2", `product-slug-${"a".repeat(200)}`] });
+    const tags = [PRODUCT_TAG, "product-slug-kurtka-puchowa-2", `product-slug-${"a".repeat(200)}`];
+    // Three different buckets, so every tag shows up as its own call.
+    expect(new Set(tags.map(nextCacheTagOf)).size).toBe(3);
+
+    const response = await revalidate({ tags });
 
     expect(response.status).toBe(200);
     expect(vi.mocked(revalidateTag).mock.calls).toEqual([
-      [PRODUCT_TAG, { expire: 0 }],
-      ["product-slug-kurtka-puchowa-2", { expire: 0 }],
-      [`product-slug-${"a".repeat(200)}`, { expire: 0 }],
+      [nextCacheTagOf(PRODUCT_TAG), { expire: 0 }],
+      [nextCacheTagOf("product-slug-kurtka-puchowa-2"), { expire: 0 }],
+      [nextCacheTagOf(`product-slug-${"a".repeat(200)}`), { expire: 0 }],
     ]);
   });
 
@@ -73,6 +130,7 @@ describe("POST /api/revalidate", () => {
     const response = await revalidate({ tags: Array.from({ length: 100 }, () => "catalog") });
 
     expect(await response.json()).toEqual({ revalidated: 100 });
+    expect(vi.mocked(revalidateTag).mock.calls).toEqual([["catalog", { expire: 0 }]]);
   });
 
   it.each([
@@ -114,6 +172,9 @@ describe("POST /api/revalidate", () => {
     ["a slug tag with a line break", { tags: ["product-slug-kurtka\n"] }],
     ["a slug tag with a slash", { tags: ["product-slug-kurtka/puchowa"] }],
     ["a slug tag over 200 characters", { tags: [`product-slug-${"a".repeat(201)}`] }],
+    ["a Next.js bucket tag", { tags: ["product-bucket-0000"] }],
+    ["the bucket of a known tag", { tags: [nextCacheTagOf(PRODUCT_TAG)] }],
+    ["an empty tag", { tags: [""] }],
   ])("is 400 for %s", async (_case, body) => {
     await expectRefused(await revalidate(body), 400);
   });
