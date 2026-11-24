@@ -83,11 +83,11 @@ webhook secret”, bez słowa „signature”; niepusty sekret działa jak dotą
 
 ## #247: znaki sterujące i białe znaki Unicode w tekstach produktu
 
-**Problem.** `ValidProductWriteValidator` (`apps/api/src/Catalog/UI/Http/Validation/`) sprawdza pustkę przez `trim()` (tylko
-ASCII) i nie odrzuca znaków sterujących; value objecty domeny też używają `trim()`. NUL w `images[].alt`
-i `variantAxes[]` daje 500 (jsonb), w `name`, `shortDescription` i wartościach wariantów zapis z uciętą wartością.
-Nazwa, oś albo wartość z samych NBSP przechodzi (nazwa z NBSP daje naruszenie przy `slug`, nie przy `name`). Walidator
-kopiuje limity domeny jako literały.
+**Problem.** `ValidProductWriteValidator` (`apps/api/src/Catalog/UI/Http/Validation/`) sprawdzał pustkę przez `trim()`
+(tylko ASCII) i nie odrzucał znaków sterujących; value objecty domeny też używały `trim()`. NUL w `images[].alt`
+i `variantAxes[]` dawał 500 (jsonb), w `name`, `shortDescription` i wartościach wariantów zapis z uciętą wartością.
+Nazwa, oś albo wartość z samych NBSP przechodziła (nazwa z NBSP dawała naruszenie przy `slug`, nie przy `name`).
+Walidator kopiował limity domeny jako literały.
 
 **Zachowanie.**
 - Reguła tekstów produktu to wspólna reguła `App\Shared\Domain\Text` (`docs/features/api-input-contract/spec.md`,
@@ -147,9 +147,9 @@ zapisane, `values_key` to klucz porównania domeny, wiersze bez klucza pomijane 
 
 ## #256: notatka pracownika z białymi znakami Unicode
 
-**Problem.** `StaffNote::optional()` (`apps/api/src/Ordering/Domain/StaffNote.php`) przycina `trim()`, a
-`ControlCharacters::PATTERN` (`/[\x00-\x1F\x7F]/`) nie ma `/u` ani separatorów linii. Notatka z samym NBSP albo z U+2028
-daje 200 i zapis.
+**Problem.** `StaffNote::optional()` (`apps/api/src/Ordering/Domain/StaffNote.php`) przycinał `trim()`, a
+`ControlCharacters::PATTERN` (`/[\x00-\x1F\x7F]/`) nie miał `/u` ani separatorów linii. Notatka z samym NBSP albo
+z U+2028 dawała 200 i zapis.
 
 **Zachowanie.**
 - Jednoliniowe pola Ordering (notatka, dane kontaktowe: imię i nazwisko, e-mail, telefon; adres zamówienia: ulica,

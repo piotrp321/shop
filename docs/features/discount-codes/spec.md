@@ -377,11 +377,12 @@ pozostali 403; odczyt: każdy pracownik):
 
 - Menu „Kody rabatowe” (`/discount-codes`). Przyciski zmian widzą tylko `admin` i `marketing`.
 - Lista w standardzie listy (okruszki „Pulpit › Marketing › Kody rabatowe”): filtr statusu jako `Select` „Status”,
-  wyszukiwanie po początku kodu (1–32 znaki po przycięciu białych znaków, separatorów i znaków niewidocznych jak w API,
-  więc sam znak niewidoczny to puste wyszukiwanie), rozmiar strony 10/25/50 (domyślnie 25) i stronicowanie kursorami;
-  stan (`status`, `q`, `perPage`) jest w adresie. Kolumny: kod, rabat, minimum, okres (w `Europe/Warsaw`), użycia
-  (`activeUses` / limit), status jako `Badge`; minimum i okres poniżej 1024 px są liniami komórki kodu. Akcja wiersza
-  „Edytuj: <kod>” i „Dodaj kod” tylko dla `admin` i `marketing`.
+  wyszukiwanie po początku kodu (1–32 znaki po przycięciu z brzegów białych znaków, separatorów i znaków formatujących;
+  API przycina węższy zbiór (reguła tekstu, T2), a tekst bez znaku widocznego jest dla obu pustym wyszukiwaniem),
+  rozmiar strony 10/25/50 (domyślnie 25) i stronicowanie kursorami; stan (`status`, `q`, `perPage`) jest w adresie.
+  Kolumny: kod, rabat, minimum, okres (w `Europe/Warsaw`), użycia (`activeUses` / limit), status jako `Badge`; minimum
+  i okres poniżej 1024 px są liniami komórki kodu. Akcja wiersza „Edytuj: <kod>” i „Dodaj kod” tylko dla `admin`
+  i `marketing`.
 - Formularz w standardzie formularza: karty „Kod i rabat” (kod tylko przy tworzeniu, rodzaj rabatu jako grupa opcji
   Procent/Kwota, wartość, minimum) i „Okres i limit” (początek, koniec opcjonalny, limit opcjonalny) oraz boczna „Status”
   (etykieta, przełącznik „Aktywny” jako zwykłe pole formularza, aktywne użycia). Pola niedostępne według reguł edycji
