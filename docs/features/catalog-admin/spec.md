@@ -48,7 +48,7 @@ Poza zakresem:
 | K2 | Publikacja szkicu wymaga co najmniej jednego zdjęcia. Cena i stan nie są wymagane: opublikowany produkt bez ceny albo stanu jest w sklepie „Niedostępny” (E3 VARIANTS). Zapis opublikowanego produktu, który miał zdjęcia, nie może usunąć ostatniego. Opublikowany produkt bez zdjęć (dane demo `imagelessEvery: 50`, `PhotoPlaceholder` w sklepie) jest edytowalny bez dodawania zdjęcia. |
 | K3 | Uprawnienia: tworzenie, edycja, upload zdjęć, publikacja i wycofanie: role `admin` i `marketing`. Lista i podgląd produktu: każdy pracownik z rolą personelu (`admin`, `support`, `warehouse`, `marketing`). |
 | K4 | Slug: na tworzeniu opcjonalny (pusty: API wylicza go z nazwy); zmienny, dopóki produkt nie był nigdy opublikowany; od pierwszej publikacji stały (także po wycofaniu). Bez przekierowań 301. |
-| K5 | Warianty: osie, wartości i lista wariantów zmieniają się dowolnie, dopóki produkt nie był nigdy opublikowany. Po pierwszej publikacji: wariant zachowuje tożsamość, więc jego wartości mogą zmienić się tylko bez zmiany klucza porównania (`VariantValues::comparisonKey()`: wielkość liter i spacje na brzegach, np. „czarne” → „Czarne”); osi nie da się dodać, usunąć ani przestawić (zmiana nazwy osi tylko bez zmiany klucza porównania); nowy wariant można dodać; inna zmiana znaczenia to usunięcie starego wariantu i dodanie nowego (nowy identyfikator). Usunięcie wariantu jest zablokowane, gdy ma stan fizyczny > 0 albo zarezerwowany > 0. Cena, stan i historie usuniętego wariantu zostają w Pricing i Inventory, niewidoczne w panelu; linie koszyka z nim mają stan `unavailable_product`. |
+| K5 | Warianty: osie, wartości i lista wariantów zmieniają się dowolnie, dopóki produkt nie był nigdy opublikowany. Po pierwszej publikacji: wariant zachowuje tożsamość, więc jego wartości mogą zmienić się tylko bez zmiany tożsamości tekstu (tekst przycięty według reguły tekstów, bez względu na wielkość liter: wielkość liter i znaki przycinane z brzegów, np. „czarne” → „Czarne”); osi nie da się dodać, usunąć ani przestawić (zmiana nazwy osi tylko bez zmiany tożsamości tekstu); zapisana nazwa osi albo wartość, której reguła tekstów nie przyjmuje (znak niedozwolony albo brak znaku widocznego), nie ma tożsamości i można ją poprawić; nowy wariant można dodać; inna zmiana znaczenia to usunięcie starego wariantu i dodanie nowego (nowy identyfikator). Usunięcie wariantu jest zablokowane, gdy ma stan fizyczny > 0 albo zarezerwowany > 0. Cena, stan i historie usuniętego wariantu zostają w Pricing i Inventory, niewidoczne w panelu; linie koszyka z nim mają stan `unavailable_product`. |
 | K6 | Zmiana klasy podatkowej przelicza ceny wariantów produktu: to samo brutto, nowa stawka i netto, nowy wpis historii cen (Omnibus) ze źródłem systemowym `tax_reconciliation`, bez pracownika (pracownika zmiany klasy wskazuje `updated_by` produktu). |
 | K7 | Oryginały zdjęć w Garage nie są usuwane (także po usunięciu zdjęcia z produktu albo uploadzie bez zapisu produktu). Klucz wynika z treści, więc ten sam plik nie zajmuje miejsca dwa razy. |
 | K8 | Limity uploadu: 64 MB i 50 MP na plik, typy JPEG, PNG, WebP, AVIF, HEIC. Jeden plik na żądanie, panel wysyła kilka po kolei. |
@@ -96,9 +96,14 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   spoza produktu → `UnknownVariant` (`InvalidInput`, 422). Produkt bez osi, któremu dochodzą osie (tylko przed
   pierwszą publikacją), zachowuje identyfikator wariantu domyślnego w pierwszym wierszu, jeśli panel go odeśle.
 - Tożsamość wariantu po publikacji (K5), w `edit` dla `firstPublishedAt ≠ null`:
-  - osie: ta sama liczba i kolejność, każda nazwa z tym samym kluczem porównania co w `VariantAxes`
-    (`mb_strtolower` po przycięciu);
-  - wariant zachowany (ten sam `variantId`): `VariantValues::comparisonKey()` taki sam jak zapisanego wariantu;
+  - tożsamość tekstu (`IdentityText`): nazwa osi albo wartość przycięta według reguły tekstów, `mb_strtolower`.
+    Porównanie przycina obie strony, więc tekst zapisany przed regułą ze znakami, które reguła przycina (np. U+200B
+    na brzegu), ma tę samą tożsamość co tekst bez nich, a zapis zapisuje tekst przycięty. Zapisany tekst, którego
+    reguła nie przyjmuje (znak niedozwolony albo brak znaku widocznego), nie ma tożsamości: jego poprawienie nie jest
+    zmianą zablokowaną; po zapisie poprawiony tekst jest chroniony jak każdy inny;
+  - osie: ta sama liczba i kolejność, każda nazwa z tą samą tożsamością tekstu;
+  - wariant zachowany (ten sam `variantId`): każda wartość z tą samą tożsamością tekstu co wartość zapisana na tej
+    pozycji;
   - naruszenie → `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail` wskazującym etykietę
     wariantu albo nazwę osi; nowe warianty bez ograniczeń.
 - Usunięcie wariantu (każdy wariant produktu, którego nie ma w nowej liście; także przed publikacją): handler
@@ -230,8 +235,13 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
   U+3164) to jak puste pole (422 „wymagane” przy tym polu, nie przy `slug`); krótki opis bez znaku widocznego jest
   zapisany jako pusty. Zapisywane są teksty przycięte; powtórzona oś i kombinacja wartości są porównywane po
   przycięciu. Repozytorium i odczyty odtwarzają teksty zapisanego wiersza bez reguły i bez przycinania
-  (`stored()`), więc produkt zapisany przed ostrzejszą regułą jest czytany bez zmian, a jego zapis z panelu, który
-  wysyła wszystkie pola, wymaga poprawienia tekstu (422 przy polu).
+  (`stored()`), więc produkt zapisany przed ostrzejszą regułą jest czytany bez zmian. Zapis z panelu wysyła wszystkie
+  pola: tekst ze znakami, które reguła przycina, jest zapisany przycięty, a tekst, którego reguła nie przyjmuje, daje
+  422 przy polu, dopóki nie zostanie poprawiony; poprawienie osi albo wartości wariantu opublikowanego produktu nie
+  narusza tożsamości wariantu (K5). Klucz porównania wariantów (`VariantValues::comparisonKey()`, kolumna
+  `values_key`) liczy się z wartości, jak są zapisane, więc dwa warianty zapisane przed regułą, które po przycięciu są
+  jedną kombinacją, dają się odczytać, a ich zapis z panelu jest powtórzoną kombinacją (422 przy
+  `variants[i].values`).
   Niepoprawny UTF-8 w treści JSON nie dociera do walidatora: dekoder odpowiada 400 (bajt poza UTF-8 albo samotny
   surogat `\udc80` w ucieczce).
 - DTO sprawdza też reguły domeny, które bez tego dałyby 500 albo 422 bez ścieżki pola: format klucza zdjęcia

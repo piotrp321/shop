@@ -228,8 +228,9 @@ final class Product
     }
 
     /**
-     * The same axes in the same order, each name with the same comparison key; every kept variant with the same
-     * comparison key of its values. New variants are free.
+     * The same axes in the same order, each name with the same identity; every kept variant with the same identity of
+     * its values. The identity is the text trimmed by the rule of texts without regard to case, and a stored name or
+     * value the rule refuses has none, so it may be corrected ({@see IdentityText}). New variants are free.
      *
      * @throws VariantIdentityLocked
      */
@@ -237,13 +238,13 @@ final class Product
     {
         $stored = $this->variants->axes()->names();
         $given = $variants->axes()->names();
-        $storedKeys = array_map(mb_strtolower(...), $stored);
-        $givenKeys = array_map(mb_strtolower(...), $given);
+        $storedKeys = array_map(IdentityText::of(...), $stored);
+        $givenKeys = array_map(IdentityText::of(...), $given);
         if (\count($stored) !== \count($given)) {
             throw VariantIdentityLocked::axes();
         }
         foreach ($storedKeys as $position => $key) {
-            if ($key === $givenKeys[$position]) {
+            if (null === $key || $key === $givenKeys[$position]) {
                 continue;
             }
             // A name that is still there, in another place, is a reordering; otherwise the axis was renamed.
@@ -253,7 +254,7 @@ final class Product
         $storedVariants = $this->variantsById();
         foreach ($variants->toList() as $variant) {
             $kept = $storedVariants[$variant->id()->toString()] ?? null;
-            if (null !== $kept && $kept->values()->comparisonKey() !== $variant->values()->comparisonKey()) {
+            if (null !== $kept && !IdentityText::kept($kept->values()->toList(), $variant->values()->toList())) {
                 throw VariantIdentityLocked::variant($kept->label());
             }
         }
