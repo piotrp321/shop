@@ -2,8 +2,8 @@
 
 Epik #779 ma sprawić, że złe dane wejściowe dają zawsze 4xx z polem naruszenia i polskim komunikatem, a pilnuje tego
 wspólny test. Etap 1 (w kodzie) obejmuje wejścia poza polami treści JSON: odpowiedzi ogólne frameworka, parametry
-zapytań, nagłówek `Idempotency-Key` i `detail` trzech wyjątków. Etap 2 (sekcja „Etap 2: reguła tekstu” na końcu pliku,
-do implementacji) obejmuje treść tekstów: same białe i niewidoczne znaki, znaki sterujące i odczyt zapisanych wierszy.
+zapytań, nagłówek `Idempotency-Key` i `detail` trzech wyjątków. Etap 2 (w kodzie; sekcja „Etap 2: reguła tekstu” na
+końcu pliku) obejmuje treść tekstów: same białe i niewidoczne znaki, znaki sterujące i odczyt zapisanych wierszy.
 
 ## Etap 1: odpowiedź na błędne wejście poza treścią JSON
 
@@ -270,8 +270,11 @@ Wynik próby tekstów:
 | Tekst do zachowania | Nazwa promocji zakończona flagą Anglii traci znaki tagów (#305). Pozostałe pola zachowują flagę, serce z U+FE0F i emoji z U+200D. |
 
 Próba nie doszła do `POST /me/orders` (brak tokenu klienta) ani do notatek zmiany statusu i wykonania zwrotu (wymagają
-opłaconego zamówienia). Ich wiersze wynikają z kodu (`PlaceCustomerOrderRequest` ma reguły pól gościa, `StaffNote`
-przycina `\s` i `\p{Z}`, jak `ProductText`) i pierwszy raz sprawdza je test kontraktu.
+opłaconego zamówienia); sprawdza je dopiero test kontraktu tekstów.
+
+Odczyt zapisanych wierszy na `db954a20`: zamówienie z `full_name` zmienionym w bazie na tekst z tabulatorem
+odpowiadało 422 na `GET /admin/orders/{orderId}`, więc nie dało się go opłacić, wygasić ani zmienić (eksperyment na
+lokalnym stosie).
 
 ### Decyzje
 
@@ -286,7 +289,7 @@ Właściciel zaakceptował 2026-11-24 zakres etapu i decyzje E1–E7.
 - **E3. Jedna implementacja w `Shared\Domain`.** Reguła to funkcje bez stanu w `App\Shared\Domain\Text`, których używają
   value objecty i klasy żądań każdego modułu. Doprecyzowuje zasadę „brak wspólnych value objectów między contextami”
   (`apps/api/CLAUDE.md`): value objecty zostają własne, wspólna jest tylko higiena tekstu, która nie jest pojęciem
-  żadnego contextu. Alternatywa: kopie w pięciu modułach jak dziś (`ProductText`, `DeliveryText`, `ControlCharacters`
+  żadnego contextu. Alternatywa: osobne wzorce w pięciu modułach (klasy pomocnicze Catalog i Delivery, `ControlCharacters`
   ze `StaffNote`, `StockNote`, `Promotion::validName`); próba pokazuje pięć różnych wyników tych kopii.
 - **E4. Dane zamówienia (#443, p. 1).** `fullName`, `street` i `city` podlegają regule; `postalCode`, `phone` i `email`
   są przycinane według T2 przed sprawdzeniem formatu. Zmienia to zapis z `docs/features/checkout/spec.md`
@@ -393,9 +396,6 @@ Wielkość liter zostaje.
 | U+00A0; U+200B; U+3164 | 422 „Adres e-mail jest wymagany.” |
 | `anna` U+200B `nowak@example.com`; `anna nowak@example.com`; `anna.nowak@` U+00A0 `example.com`; `anna` U+009F `nowak@example.com`; `anna.nowak@example.com` i U+2028 na końcu | 422 „Podaj poprawny adres e-mail.” |
 
-Na `db954a20` wiersze „między U+00A0”, „między U+200B” i „po U+FEFF” dają 422 z komunikatem formatu, a pozostałe
-wiersze wynik z tabeli (raport, „Pola z formatem”).
-
 ### Frazy wyszukiwania (status 400, naruszenie przy `q`)
 
 | Operacja | Fraza pusta (T3) | Znak niedozwolony (T1) |
@@ -413,30 +413,34 @@ i `q[]=x` zostają jak w etapie 1 (tabela B1).
 
 ### Pola tekstowe poza regułą
 
-Lista wyjątków strażnika; każde pole ma własny kontrakt w specyfikacji modułu i nie zmienia się w etapie.
+Lista wyjątków strażnika (`TextFieldExceptions`); każde pole ma własny kontrakt w specyfikacji modułu i nie zmienia się
+w etapie. Ścieżki bez prefiksu `/api/v1`.
 
-| Pole | Powód |
-|---|---|
-| `slug` (kategoria, produkt), `taxClass`, `images[n].key` | zamknięty alfabet albo zamknięta lista wartości |
-| `code` (kod rabatowy), `trackingNumber`, `trackingUrlTemplate` | format z własnym przycinaniem (`discount-codes`, `order-management`, `delivery`) |
-| `discountCode` (treść zamówienia i parametr koszyka) | tekst pusty to złożenie bez kodu, a zły kod jest odrzuceniem kodu, nie błędem wejścia |
-| parametry `path`, `option`, `chunk`, `after`, `customerId` | kontrakt z etapu 1 (tabele B1 i B2) |
+| Pole | Operacje | Powód |
+|---|---|---|
+| `slug` | `POST /admin/categories`, `PUT /admin/categories/{id}`, `POST /admin/products`, `PUT /admin/products/{id}` | zamknięty alfabet albo zamknięta lista wartości |
+| `taxClass` | `POST /admin/products`, `PUT /admin/products/{id}` | zamknięty alfabet albo zamknięta lista wartości |
+| `images[n].key` | `POST /admin/products`, `PUT /admin/products/{id}` | zamknięty alfabet albo zamknięta lista wartości |
+| `code` (kod rabatowy) | `POST /admin/discount-codes` | format z własnym przycinaniem (`discount-codes`) |
+| `trackingNumber` | `POST /admin/orders/{orderId}/status-changes`, `PUT /admin/orders/{orderId}/tracking-number` | format z własnym przycinaniem (`order-management`) |
+| `trackingUrlTemplate` | `POST /admin/delivery-methods`, `PUT /admin/delivery-methods/{id}` | format z własnym przycinaniem (`delivery`) |
+| `discountCode` (treść zamówienia) | `POST /orders`, `POST /me/orders` | tekst pusty to złożenie bez kodu, a zły kod jest odrzuceniem kodu, nie błędem wejścia |
+
+Poza strażnikiem pól tekstowych są też parametry zapytań inne niż `q` (`path`, `option`, `chunk`, `after`,
+`customerId`, `discountCode` koszyka): nie są polami treści, a pilnuje ich strażnik etapu 1 (tabele B1 i B2).
 
 ### Odczyt zapisanych wierszy (E7)
 
-Dziś repozytoria budują value objecty tekstów z wiersza konstruktorami, które walidują (`DoctrineOrderRepository`:
-`Contact::of`, `ShippingAddress::inPoland`; `DoctrineProductRepository`: `ProductName`, `ShortDescription`,
-`ProductImage`, `VariantAxes`, `VariantValues`; `DoctrineCategoryRepository`: `CategoryName`;
-`DoctrineDeliveryMethodRepository`: `DeliveryMethodName`, `DeliveryMethodDescription`), a handlery odczytu Catalog
-budują `VariantValues` z wiersza tak samo. Eksperyment na lokalnym stosie: zamówienie z `full_name` zmienionym w bazie na tekst
-z tabulatorem odpowiada 422 na `GET /admin/orders/{orderId}`, więc nie da się go też opłacić, wygasić ani zmienić.
-Każde zaostrzenie reguły rozszerza ten skutek na wiersze, które wcześniej były poprawne.
+Repozytoria i handlery odczytu odtwarzają teksty z wiersza nazwanym konstruktorem `stored()`, który nie waliduje i nie
+przycina: `DoctrineOrderRepository` (`Contact::stored`, `EmailAddress::stored`, `ShippingAddress::stored`),
+`DoctrineProductRepository` (`ProductName`, `ShortDescription`, `ProductImage`, `VariantAxes`, `VariantValues`),
+`DoctrineCategoryRepository` (`CategoryName`), `DoctrineDeliveryMethodRepository` (`DeliveryMethodName`,
+`DeliveryMethodDescription`), handlery odczytu Catalog i odczyt generatora danych demo zamówień
+(`VariantValues::stored`). Walidują i przycinają tylko konstruktory zapisu (`of()`, `fromList()`, `fromString()`,
+`inPoland()`), których używają żądania, seedy i generator danych demo.
 
-Po etapie:
+Skutek:
 
-- Repozytoria i handlery odczytu Catalog, Delivery i Ordering budują teksty z wiersza nazwanym konstruktorem bez
-  walidacji i bez przycinania. Walidują i przycinają tylko konstruktory, których używa zapis z żądania, seedy
-  i generator danych demo.
 - Wiersz z tekstem, którego reguła nie przyjmuje (z NBSP zamiast nazwiska, z U+200B jako nazwą, z U+009F albo
   tabulatorem w nazwie), jest zwracany przez listy, szczegóły i sklep bez zmiany, a zamówienie przechodzi opłacenie,
   wygaszenie i zmianę statusu.
@@ -450,19 +454,25 @@ Po etapie:
 
 ### Rozwiązanie
 
-1. **`App\Shared\Domain\Text`** (czysty PHP, bez stanu): sprawdzenie znaków niedozwolonych z listą znaków dozwolonych
-   pola (T1), normalizacja (T2 i T3: tekst pusty wraca jako `''`) i długość po normalizacji (T4). Wzorce używają
-   właściwości `\p{Cc}`, `\p{Cf}`, `\p{Z}` i `\p{DI}` z flagą `/u`. `\p{DI}` (`Default_Ignorable_Code_Point`) działa
-   w PCRE2 10.44 z obrazu `api` (PHP 8.5.12); sprawdzone w kontenerze na znakach z tabeli dowodów.
-2. **Value objecty i reguły modułów** (`ProductText`, `CategoryName`, `DeliveryText`, `ControlCharacters`, `StaffNote`,
-   `Contact`, `ShippingAddress`, `EmailAddress`, `StockNote`, `Promotion::validName`, `OrderSearchTerm`,
-   `BackofficeCustomerSearchTerm`) wołają `Text` zamiast własnych wzorców. Klasa pomocnicza modułu, która po zmianie
-   tylko przekazuje wywołanie, znika.
-3. **Klasy żądań** (`PlaceGuestOrderRequest`, `PlaceCustomerOrderRequest`, `CorrectStockRequest`, `ReceiveStockRequest`,
-   `ChangeOrderStatusRequest`, `CompleteRefundRequest`, klasy żądań metod dostawy, `CategoryBodyRules`,
-   `ValidProductWriteValidator`, klasy zapytań list z `q`) używają normalizacji `Text` jako `normalizer` walidatora
-   i tego samego sprawdzenia znaków, więc naruszenie jest przy polu z komunikatem z tabeli, zanim żądanie dojdzie do
-   domeny.
+1. **`App\Shared\Domain\Text`** (czysty PHP, bez stanu): `hasForbiddenCharacters($text, $allowed)` (T1, z listą znaków
+   dozwolonych pola), `normalize()` (T2 i T3: tekst pusty wraca jako `''`) i `length()` (T4: długość po normalizacji).
+   Wzorce używają właściwości `\p{Cc}`, `\p{Cf}`, `\p{Z}` i `\p{DI}` z flagą `/u`. `\p{DI}`
+   (`Default_Ignorable_Code_Point`) działa w PCRE2 10.44 z obrazu `api` (PHP 8.5.12); sprawdzone w kontenerze na
+   znakach z tabeli dowodów.
+2. **Value objecty i reguły modułów** wołają `Text` zamiast własnych wzorców: Catalog (`ProductName`,
+   `ShortDescription`, `ProductImage`, `VariantAxes`, `VariantValues`, `CategoryName`; `IdentityText` dla blokady
+   tożsamości wariantu), Delivery (`DeliveryMethodName`, `DeliveryMethodDescription`), Inventory (`StockNote`), Ordering
+   (`StaffNote`, `Contact`, `ShippingAddress`, `EmailAddress`, `OrderSearchTerm`, `BackofficeCustomerSearchTerm`),
+   Pricing (`Promotion::validName`). Klasy pomocnicze modułów, które po zmianie tylko przekazywały wywołanie, zniknęły.
+   `ControlCharacters` (Ordering) zostaje tylko dla identyfikatorów kont (`sub` tokenu w filtrze i kursorze), nie dla
+   tekstów wpisywanych przez ludzi.
+3. **Klasy żądań i zapytań** pokazują naruszenie przy polu z komunikatem z tabeli, zanim żądanie dojdzie do domeny:
+   `PlaceGuestOrderRequest` i `PlaceCustomerOrderRequest` (ograniczenie `TextCharacters` i `Text::normalize` jako
+   `normalizer`), `ChangeOrderStatusRequest`, `CompleteRefundRequest`, `CorrectStockRequest` i `ReceiveStockRequest`
+   (`StockNoteRules`), `ValidProductWriteValidator`, zapytania z `q` (`ListProductsQuery`, `BackofficeProductsQuery`,
+   `BackofficeStockQuery`, `BackofficePricesQuery`, `DiscountCodeListQuery`). Kategorie (`CategoryBodyRules`), metody
+   dostawy (`DeliveryMethodBodyRules`) i promocje stosują reguły domeny, nie ich kopie. `BackofficeOrderListQuery` i
+   `BackofficeCustomerListQuery` sprawdzają `q` przez `OrderSearchTerm` i `BackofficeCustomerSearchTerm`.
 4. **Odczyt** według „Odczyt zapisanych wierszy”.
 5. **Bez zmian:** kształt żądań i odpowiedzi, komunikaty, `propertyPath`, liczba naruszeń pola, odcisk żądania
    złożenia (skład pól), reguły `expectedLines`.
@@ -473,9 +483,10 @@ Po etapie:
   i odpowiedzi mają ten sam kształt, a komunikaty etapu już istnieją. Sklep i panel przycinają pola przez `trim()`
   JavaScript (zna białe znaki Unicode), więc nowe 422 i 400 dotyczą tekstów, których formularze dziś nie wysyłają
   w zwykłym użyciu, albo znaków niewidocznych; odpowiedź trafia do pola jak każde inne naruszenie.
-- `openapi-admin.json` może zmienić wzorzec (`pattern`) notatki magazynu i opisy pól, `openapi.json` opis `q`. Zadanie,
-  które zmienia klasę żądania albo zapytania, uruchamia `make -C apps/api openapi` i `make api-client`; różnica wchodzi
-  do tego samego commita.
+- Opisy pól tekstowych w `openapi.json` i `openapi-admin.json` (także `q`) mówią o regule tekstu. Wzorce `pattern`
+  nazwy metody dostawy i notatek (magazynu, zmiany statusu, wykonania zwrotu) zniknęły: reguły nie da się zapisać
+  wzorcem, a sprawdza ją API. Zadanie, które zmienia klasę żądania albo zapytania, uruchamia `make -C apps/api openapi`
+  i `make api-client`; różnica wchodzi do tego samego commita.
 - **Skutek przy wdrożeniu.** Powtórzenie złożenia zamówienia z tym samym `Idempotency-Key` i treścią, wysłane po
   wdrożeniu dla żądania sprzed wdrożenia, w którym `fullName`, `street` albo `city` miały na brzegach biały znak inny
   niż ASCII albo znak z T2, dostaje 409 zamiast 200: odcisk liczy się z wartości po normalizacji. Powtórzenie żądania
@@ -490,24 +501,29 @@ Po etapie:
 
 ### Testy
 
-**Test jednostkowy reguły** (`Text`): pełna lista znaków. Każdy znak z T1 w środku, na początku i na końcu tekstu;
-znaki dozwolone pól wielowierszowych; niepoprawny UTF-8 (samotny bajt kontynuacji, ucięta sekwencja, same złe bajty);
-każdy znak z T2 na brzegach i w środku; teksty puste z T3 (pojedyncze znaki i mieszanki); teksty z samego znaku Co
-i Cn, które nie są puste; teksty z T5; długość po normalizacji. Wartości są we wspólnej klasie `InputValues` (`tests/Support/InputConformance`), z której korzysta też
-test kontraktu.
+**Test jednostkowy reguły** (`TextTest`, `tests/Unit/Shared/Domain`): pełna lista znaków. Każdy znak z T1 w środku, na
+początku i na końcu tekstu; znaki dozwolone pól wielowierszowych; niepoprawny UTF-8 (samotny bajt kontynuacji, ucięta
+sekwencja, same złe bajty); każdy znak z T2 na brzegach i w środku; teksty puste z T3 (pojedyncze znaki i mieszanki);
+teksty z samego znaku Co i Cn, które nie są puste; teksty z T5; długość po normalizacji. Wartości są we wspólnej klasie
+`InputValues` (`tests/Support/InputConformance`), z której korzysta też test kontraktu.
 
-**Test kontraktu tekstów** w `apps/api/tests/Functional/Shared/InputContract`, obok tabeli etapu 1:
+**Test kontraktu tekstów** (`TextContractTest`) w `apps/api/tests/Functional/Shared/InputContract`, obok tabeli etapu 1:
 
-- **Wiersz:** operacja, rodzaj tokenu, fikstura, pole (ścieżka w treści JSON albo `q`), rodzaj (W, O, F, fraza), znaki
-  dozwolone pola, komunikaty z tabel tej sekcji i sposób odczytu zapisanej wartości (obowiązkowy dla W, O i F). Wiersze są w plikach według
-  modułu właściciela operacji.
+- **Wiersz** (`TextRow`, fabryki `required()`, `optional()`, `format()` i `phrase()`): operacja, rodzaj tokenu,
+  fikstura (`InputContractFixtures`), pole (ścieżka w treści JSON albo `q`), rodzaj (W, O, F, fraza), znaki dozwolone
+  pola, komunikaty z tabel tej sekcji i sposób odczytu zapisanej wartości (obowiązkowy dla W, O i F). Dwa wiersze tej
+  samej operacji, pola i rodzaju (notatka zmiany statusu przy `cancel` i przy `return`) różnią się wariantem, częścią
+  nazwy wiersza, więc i nazwy każdego jego wykonania jako testu. Wiersze są w plikach według modułu właściciela operacji
+  (`CatalogTextRows`, `DeliveryTextRows`, `InventoryTextRows`, `OrderingTextRows`, `PricingTextRows`), a jedną listę
+  składa `TextRows`: 43 wiersze (23 W, 8 O, 5 F i 7 fraz), 40 par operacji i pola. Mechanizm wykonań (`TextExecution`)
+  sprawdza `TextRowTest`.
 - **Wykonania wiersza, każde jako osobny test na stanie zbudowanym od zera:**
 
   | Klasa | Wartości | Oczekiwane |
   |---|---|---|
   | pusty | U+00A0; U+200B; U+3164 | W: 422 z komunikatem „Tekst pusty”; O: 2xx i zapisany brak wartości; fraza: 400 |
   | niedozwolony | U+0000, U+009F i U+2028 w środku tekstu; U+2028 na końcu tekstu | 422 (fraza: 400) z komunikatem „Znak niedozwolony”; znak na końcu nie może zniknąć przez przycięcie (T1: wartość, jak przyszła) |
-  | dozwolony w polu | U+000A w krótkim opisie; U+0009 i U+000A w notatce magazynu | 2xx, zapisane bez zmian |
+  | dozwolony w polu | U+000A w krótkim opisie; U+0009, U+000A i U+000D w notatce magazynu | 2xx, zapisane bez zmian |
   | brzegi | tekst między U+00A0; tekst między U+200B | 2xx, zapisany sam tekst; F: poprawna wartość między U+00A0 jest przyjęta |
   | zachowany | tekst zakończony flagą Anglii; tekst z emoji z U+200D; tekst z polskimi znakami | 2xx, zapisane bez zmian; kontrola dodatnia wiersza |
   | zły typ | liczba; lista | 422 z komunikatem „Zły typ” przy polu |
@@ -522,18 +538,24 @@ test kontraktu.
   zamówienie, kod rabatowy). Test wysyła frazę czystą, frazę między U+200B i frazę między U+00A0 i wymaga, żeby
   odpowiedź na frazę czystą zawierała ten rekord, a obie pozostałe odpowiedzi miały te same pozycje w tej samej
   kolejności i ten sam licznik. Lista sklepu szuka w indeksie testowym, pozostałe w bazie.
-- **Strażnik zamkniętej listy pól tekstowych:** każda właściwość typu `string` w treści żądań obu dokumentów OpenAPI
-  i każdy parametr zapytania `q` ma wiersz albo wpis na liście „Pola tekstowe poza regułą” z powodem. Poza strażnikiem
-  są tylko właściwości z `enum` i z formatem z zamkniętej listy: `uuid`, `date-time`, `date`, `binary`. Każdy inny
-  format, w tym `email`, podlega strażnikowi, więc `POST /orders` `email` musi mieć wiersz. Przerywają test: pole bez
-  wiersza i bez wpisu, wiersz pola, którego dokumenty nie opisują, wpis bez powodu i tabela bez wiersza `POST /orders`
-  `email` (test usuwa ten wiersz z kopii tabeli). Strażnik nie generuje przypadków.
+- **Strażnik zamkniętej listy pól tekstowych** (`ClosedTextFieldListTest`, logika w `ClosedTextFieldList`, wyjątki
+  w `TextFieldExceptions`): każda właściwość typu `string` w treści żądań obu dokumentów OpenAPI (także zagnieżdżona,
+  w elementach list i z `null`) i każdy parametr zapytania `q` ma wiersz albo wpis na liście „Pola tekstowe poza regułą”
+  z powodem. Poza strażnikiem są tylko właściwości z `enum` i z formatem z zamkniętej listy: `uuid`, `date-time`,
+  `date`, `binary`. Każdy inny format, w tym `email`, podlega strażnikowi, więc `POST /orders` `email` musi mieć wiersz.
+  Dokumenty opisują 55 takich pól (48 tekstów treści i 7 fraz `q`): 40 ma wiersz, 15 jest na liście wyjątków. Kilka
+  wierszy tej samej operacji i pola nie przeszkadza. Przerywają test (na kopiach danych, każda próba osobnym testem):
+  pole bez wiersza i bez wpisu (bez formatu, z formatem spoza zamkniętej listy, w liście obiektów, parametr `q`
+  nowej listy), wiersz pola, którego dokumenty nie opisują, wpis bez powodu, wpis dla pola, którego dokumenty nie
+  opisują, i tabela bez wiersza `POST /orders` `email` (test usuwa ten wiersz z kopii tabeli). Strażnik nie generuje
+  przypadków i nie zmienia tabeli.
 - **Granice:** mechanizm nie mutuje innych pól, nie generuje wartości ze schematów i zawiera tylko przypadki tej
   sekcji.
 
-**Odczyt zapisanych wierszy:** test na moduł (Catalog, Delivery, Ordering) zapisuje rekord z tekstem, którego reguła nie
-przyjmuje, z pominięciem domeny, i sprawdza odczyt przez API (lista, szczegóły, dla produktu także sklep), dla
-zamówienia także opłacenie webhookiem i wygaszenie, a dla produktu 422 przy polu przy zapisie bez poprawki.
+**Odczyt zapisanych wierszy:** test na moduł (Catalog i Ordering: `StoredTextsOutsideTheRuleTest`; Delivery:
+`DeliveryMethodsEndpointTest`) zapisuje rekord z tekstem, którego reguła nie przyjmuje, z pominięciem domeny, i sprawdza
+odczyt przez API (lista, szczegóły, dla produktu także sklep), dla zamówienia także opłacenie webhookiem i wygaszenie,
+a dla produktu 422 przy polu przy zapisie bez poprawki.
 
 **Testy modułów:** istniejące testy jednostkowe value objectów i `ForbiddenCharactersInRequestsTest` zostają
 i dostają przypadki, których zadanie dotyczy; przypadek, który sprawdzał stare zachowanie (np. przyjęcie U+200B),
@@ -561,7 +583,8 @@ tabeli albo listy wyjątków).
    rabatowych.
 6. Wiersz zapisany z tekstem spoza reguły daje się odczytać i przetworzyć według „Odczyt zapisanych wierszy”.
 7. Strażnik zamkniętej listy pól tekstowych przechodzi na obu dokumentach OpenAPI, obejmuje `POST /orders` `email`
-   mimo `format: email` i przerywa test w czterech próbach obejścia, w tym po usunięciu wiersza tego pola.
+   mimo `format: email` i przerywa test w próbach obejścia (nowe pole tekstowe bez wiersza i bez wpisu, wiersz pola,
+   którego dokumenty nie opisują, wpis bez powodu), w tym po usunięciu wiersza tego pola.
 8. Żaden komunikat, `propertyPath` ani kształt żądania i odpowiedzi nie zmienia się poza tabelami tej sekcji;
    `make check` i `make test` przechodzą, a pliki OpenAPI i klienci TS są aktualne.
 9. Deptrac przechodzi bez zmiany `deptrac.yaml` (warstwy Domain mają już dostęp do `Shared_Domain`).
@@ -575,7 +598,7 @@ tabeli albo listy wyjątków).
 - Specyfikacje modułów: zdania, które po zmianie są nieprawdziwe (`checkout` o przycinaniu `trim()`, `quality-fixes`
   o kopiach wzorców w modułach, `catalog-admin`, `search`, `admin-features`, `delivery`, `inventory`,
   `order-management`, `promotions` o przycinaniu i znakach), w zadaniu, które zmienia dane zachowanie.
-- Ta sekcja po implementacji opisuje stan obecny: „Decyzje” jako decyzje właściciela, bez „do akceptacji”.
+- Ta sekcja opisuje stan obecny; zmiana reguły albo tabeli tekstów aktualizuje ją w tym samym commicie co kod.
 
 ### Poza etapem 2
 
@@ -603,18 +626,17 @@ Stan na 2026-11-24: oba epiki są na `main`, nie ma otwartych PR.
   zgłoszenia po tamtym epiku (#898–#903) nie dotyczą pól tekstowych; #903 jest w „Poza etapem 2”.
 - **ADMIN-UX-FIXES etap 2 (#896, `07be3bed`).** Zmienił tylko `apps/admin`, E2E i specyfikacje; formularze panelu
   czytają `violations[].propertyPath` i blokują pola na czas zapisu. Etap 2 nie zmienia `propertyPath`, liczby
-  naruszeń ani `detail`, których te formularze i ich testy używają; `apps/admin/src/api/schema.d.ts` zmienia się
-  tylko wtedy, gdy eksport OpenAPI da różnicę. #897 dotyczy samego panelu.
+  naruszeń ani `detail`, których te formularze i ich testy używają; `schema.d.ts` obu aplikacji zmieniły się tylko
+  o opisy pól. #897 dotyczy samego panelu.
 - **STORE-UX-FIXES.** Pozostała część #345 czeka na ten etap („o tym, które pole jest puste, rozstrzyga API”); etap
   jej nie realizuje.
 
 ### Ryzyka i założenia
 
-- **Czas CI.** 396 testów kontraktu etapu 1 trwa lokalnie 3,3 s (około 8 ms na test). Etap dodaje około 520 wykonań
-  funkcjonalnych (40 wierszy: 33 pola treści i 7 fraz, do 13 wartości na wiersz, około 70 przypadków pól z formatem)
-  i około 150 jednostkowych; wykonania
-  z fiksturą zamówienia są droższe niż średnia. Część CI `checks part api functional` trwa 176 s, najdłuższa część
-  `checks` 718 s, najdłuższa część E2E 883 s (przebieg `main` dla `07be3bed`). Etap nie dodaje testów E2E, usług ani
+- **Czas CI.** Test kontraktu tekstów to 616 wykonań funkcjonalnych (43 wiersze), lokalnie około 5,5 s (około 9 ms na
+  test; 396 testów kontraktu etapu 1 trwa 3,3 s), test jednostkowy `Text` to 321 przypadków; wykonania z fiksturą
+  zamówienia są droższe niż średnia. Część CI `checks part api functional` trwała 176 s, najdłuższa część `checks`
+  718 s, najdłuższa część E2E 883 s (przebieg `main` dla `07be3bed`, przed etapem). Etap nie dodaje testów E2E, usług ani
   części macierzy. Wzrost czasu tej jednej części nie wydłuża przebiegu, dopóki jest krótsza od najdłuższej; faktyczny
   czas pokaże `ci-time` po epiku.
 - **Zależność od PCRE.** Reguła wymaga `\p{DI}`; test jednostkowy przerywa się na obrazie, który jej nie zna.
@@ -622,5 +644,4 @@ Stan na 2026-11-24: oba epiki są na `main`, nie ma otwartych PR.
   testy (`demo-data`, `demo-data-orders`) i wymaga poprawki słownika w tym samym zadaniu.
 - **Unikalność po normalizacji.** Nazwa metody dostawy zapisana przed etapem z U+200B na brzegu i ta sama nazwa
   wpisana po etapie są różnymi tekstami; etap tego nie wyrównuje.
-- Założenia techniczne: nazwy metod `Text` i nazwanego konstruktora odczytu ustala implementacja; podział plików
-  wierszy według modułu jak w etapie 1.
+- Podział plików wierszy według modułu jest taki jak w etapie 1.
