@@ -6,6 +6,7 @@ namespace App\Inventory\UI\Http;
 
 use App\Inventory\Domain\Stock\StockItem;
 use App\Inventory\Domain\Stock\StockNote;
+use App\Shared\Domain\Text;
 use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -26,11 +27,11 @@ final readonly class ReceiveStockRequest
             new Assert\Range(notInRangeMessage: 'Ilość musi wynosić od 1 do 100 000 szt.', min: 1, max: StockItem::MAX_RECEIPT),
         ])]
         public mixed $quantity,
-        #[OA\Property(type: 'string', description: 'A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; null or blank for none.', maxLength: StockNote::MAX_LENGTH, nullable: true, example: 'Dostawa od Biegam sp. z o.o.')]
+        #[OA\Property(type: 'string', description: 'A note, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters other than tab and line breaks; null or a text without a visible character for none.', maxLength: StockNote::MAX_LENGTH, nullable: true, example: 'Dostawa od Biegam sp. z o.o.')]
         #[Assert\Sequentially([
             new Assert\Type('string', message: 'Notatka musi być tekstem.'),
-            new Assert\Length(max: StockNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', normalizer: 'trim'),
-            new Assert\Regex(pattern: StockNote::CONTROL_CHARACTERS, match: false, htmlPattern: '^[^\x00-\x08\x0B\x0C\x0E-\x1F\x7F]*$', message: 'Notatka nie może zawierać znaków sterujących (poza tabulatorem i końcem wiersza).'),
+            new Assert\Callback([StockNoteRules::class, 'validateCharacters']),
+            new Assert\Length(max: StockNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', normalizer: [Text::class, 'normalize']),
         ])]
         public mixed $note,
     ) {

@@ -632,6 +632,14 @@ final class ListStockEndpointTest extends WebTestCase
         yield 'empty term' => ['q='];
         yield 'term over 100 characters' => ['q='.str_repeat('a', 101)];
         yield 'term with a NUL character' => ['q=a%00zzzz'];
+        yield 'term of spaces only' => ['q=%20%20%20'];
+        yield 'term of no-break spaces only' => ['q=%C2%A0%C2%A0'];
+        yield 'term of zero width spaces only' => ['q=%E2%80%8B%E2%80%8B'];
+        yield 'term of hangul fillers only' => ['q=%E3%85%A4%E3%85%A4'];
+        yield 'term with a C1 control character' => ['q=a%C2%9Fzzzz'];
+        yield 'term with a line separator' => ['q=a%E2%80%A8zzzz'];
+        yield 'term with a line separator at the end' => ['q=abcd%E2%80%A8'];
+        yield 'term with a tab' => ['q=a%09zzzz'];
         yield 'zero per page' => ['perPage=0'];
         yield 'per page over 100' => ['perPage=101'];
         yield 'negative per page' => ['perPage=-1'];

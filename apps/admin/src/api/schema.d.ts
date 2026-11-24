@@ -1445,7 +1445,7 @@ export interface components {
              */
             reason: "inventory_count" | "damage" | "loss" | "other";
             /**
-             * @description A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or blank for none.
+             * @description A note, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or a text without a visible character for none.
              * @example Inwentaryzacja roczna
              */
             note: string | null;
@@ -1458,7 +1458,7 @@ export interface components {
              */
             quantity: number;
             /**
-             * @description A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; null or blank for none.
+             * @description A note, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters other than tab and line breaks; null or a text without a visible character for none.
              * @example Dostawa od Biegam sp. z o.o.
              */
             note: string | null;

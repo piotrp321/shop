@@ -27,6 +27,10 @@ final class StockNoteTest extends TestCase
         yield 'null' => [null];
         yield 'empty' => [''];
         yield 'only white space' => [" \t\n "];
+        yield 'only no-break spaces' => ["\u{A0}\u{A0}"];
+        yield 'only a zero width space' => ["\u{200B}"];
+        yield 'only a hangul filler, which is not seen' => ["\u{3164}"];
+        yield 'only a joiner and a mark of direction' => ["\u{200D}\u{200E}"];
     }
 
     #[DataProvider('noNotes')]
@@ -68,6 +72,13 @@ final class StockNoteTest extends TestCase
         yield 'escape' => ["a\x1Bb"];
         yield 'unit separator' => ["a\x1Fb"];
         yield 'delete' => ["a\x7Fb"];
+        yield 'next line (C1)' => ["a\u{85}b"];
+        yield 'application program command (C1)' => ["a\u{9F}b"];
+        yield 'C1 at the end, which trimming would drop' => ["a\u{85}"];
+        yield 'line separator inside' => ["a\u{2028}b"];
+        yield 'line separator at the end, which trimming would drop' => ["a\u{2028}"];
+        yield 'paragraph separator inside' => ["a\u{2029}b"];
+        yield 'paragraph separator at the end, which trimming would drop' => ["a\u{2029}"];
     }
 
     #[DataProvider('notesWithControlCharacters')]
@@ -84,6 +95,51 @@ final class StockNoteTest extends TestCase
     public function testTabsAndLineBreaksInsideANoteAreKept(): void
     {
         self::assertSame("Dostawa\r\n\tpaleta 2", StockNote::fromNullable("Dostawa\r\n\tpaleta 2")->toNullableString());
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function notesBetweenEdges(): iterable
+    {
+        yield 'no-break spaces' => ["\u{A0}Dostawa\u{A0}", 'Dostawa'];
+        yield 'zero width spaces' => ["\u{200B}Dostawa\u{200B}", 'Dostawa'];
+        yield 'a byte order mark and a soft hyphen' => ["\u{FEFF}Dostawa\u{AD}", 'Dostawa'];
+        yield 'ideographic spaces' => ["\u{3000}Dostawa\u{3000}", 'Dostawa'];
+        yield 'tabs and line breaks, which are white space' => ["\t\r\nDostawa\r\n\t", 'Dostawa'];
+        yield 'the ends only, the inside stays' => ["\u{A0}Dostawa\u{A0}paleta\u{A0}", "Dostawa\u{A0}paleta"];
+    }
+
+    #[DataProvider('notesBetweenEdges')]
+    public function testTheEndsLoseUnicodeWhiteSpaceAndInvisibleCharacters(string $text, string $expected): void
+    {
+        self::assertSame($expected, StockNote::fromNullable($text)->toNullableString());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function notesToKeep(): iterable
+    {
+        yield 'the flag of England at the end' => ["Paleta \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}"];
+        yield 'an emoji with a joiner' => ["Paleta \u{1F469}\u{200D}\u{1F4BB}"];
+        yield 'Polish letters' => ['Zażółć gęślą jaźń'];
+        yield 'a tab and line breaks inside' => ["Dostawa\tpaleta\r\n2\npaleta 3"];
+    }
+
+    #[DataProvider('notesToKeep')]
+    public function testANoteWithVisibleTextAndFormatCharactersInsideIsKeptAsItIs(string $text): void
+    {
+        self::assertSame($text, StockNote::fromNullable($text)->toNullableString());
+    }
+
+    public function testTheLengthIsCountedAfterTrimmingTheEnds(): void
+    {
+        $text = str_repeat('ż', 500);
+
+        self::assertSame($text, StockNote::fromNullable("\u{A0}\u{200B}".$text."\u{3000}")->toNullableString());
+        $this->expectException(InvalidStockNote::class);
+        StockNote::fromNullable("\u{A0}".$text.'ż');
     }
 
     public function testNotesAreEqualByTheirTrimmedText(): void

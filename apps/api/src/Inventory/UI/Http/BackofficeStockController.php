@@ -89,7 +89,7 @@ final class BackofficeStockController
 
         try {
             /** @var StockList $list */
-            $list = $this->handle(new ListBackofficeStock($query->q, $query->category, $query->after, $query->perPage, $sort, $level, $productId));
+            $list = $this->handle(new ListBackofficeStock($query->term(), $query->category, $query->after, $query->perPage, $sort, $level, $productId));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();
