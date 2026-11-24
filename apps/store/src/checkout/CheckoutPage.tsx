@@ -61,10 +61,10 @@ type Failure =
   | { kind: "at_fields" };
 
 /**
- * The message above the form. `mayHavePlaced`: an attempt of this page whose result was uncertain may have placed an
- * order (`uncertainKeys` when the message was shown), so the message warns of it and does not say that none was placed.
+ * What the screen shows above the form: a message, with `warns` when an attempt whose result was uncertain may have
+ * placed an order, or that warning alone (`aboveTheForm`).
  */
-type ShownFailure = { failure: Failure; mayHavePlaced: boolean };
+type AboveTheForm = { kind: "message"; failure: Failure; warns: boolean } | { kind: "warning" };
 
 const FIELDS: { name: FieldName; label: string; type: string; autoComplete: string }[] = [
   { name: "email", label: "E-mail", type: "email", autoComplete: "email" },
@@ -112,6 +112,7 @@ const SIGNED_OUT = (placed: string) => `Od wczytania kasy nastąpiło wylogowani
 const BUYER_NOT_READ = "Kupujący się zmienił, ale nie udało się wczytać kasy. Spróbuj ponownie.";
 const FIELD_ID_PREFIX = "checkout-";
 const FAILURE_ID = "checkout-failure";
+const UNCERTAIN_ID = "checkout-uncertain";
 const TITLE_ID = "checkout-title";
 const RETRY_ID = "checkout-retry";
 const LOAD_FAILED = "Nie udało się wczytać kasy";
@@ -162,7 +163,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
   const [form, setForm] = useState<Form>(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
-  const [shownFailure, setShownFailure] = useState<ShownFailure | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   // No default: a customer chooses how to pay. The key of the order does not depend on it (the provider is not part of
   // the order, only of the payment started after it).
   const [provider, setProvider] = useState<string | null>(null);
@@ -214,23 +215,14 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // error, 403, 5xx, an answer without the order), or a 409 `IdempotencyKeyReused` (an order with the key exists). They
   // stay for the life of the page: a new key settles nothing of them, and neither does a refusal, even of the API to the
   // same key, which tells only that no order with it existed when it was checked (the uncertain request may still be on
-  // its way to place it). Only a success tells the result, and the page leaves after it. While one is left, every
-  // message of the order warns of it (`setFailure`). A ref: read when the message is shown.
-  const uncertainKeys = useRef(new Set<string>());
+  // its way to place it). Only a success tells the result, and the page leaves after it. While one is left, the screen
+  // warns of it: the render decides that from this state (`aboveTheForm`), whatever set or took off the message. Only
+  // added to, with an update of the state as it is then, so a handler after an await adds to the latest set.
+  const [uncertainKeys, setUncertainKeys] = useState<ReadonlySet<string>>(() => new Set());
 
-  /**
-   * Shows `next` above the form, or nothing: the one place that decides whether a message warns that an attempt whose
-   * result was uncertain may have placed an order, from `uncertainKeys` at this moment. The message of an uncertain
-   * result does not repeat it for its own attempt; a refusal told at the fields shows nothing above the form without it.
-   */
-  function setFailure(next: Failure | null) {
-    if (next === null) {
-      setShownFailure(null);
-      return;
-    }
-    const own = next.kind === "uncertain" ? next.key : null;
-    const mayHavePlaced = [...uncertainKeys.current].some((key) => key !== own);
-    setShownFailure(next.kind === "at_fields" && !mayHavePlaced ? null : { failure: next, mayHavePlaced });
+  /** Notes the key of an attempt that may have placed an order no answer told of. */
+  function markUncertain(key: string) {
+    setUncertainKeys((current) => new Set(current).add(key));
   }
 
   /** Starts a new attempt with a new key; the keys of uncertain attempts stay. */
@@ -319,7 +311,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
    * read of a summary out of date still shows its own list (`showCart`); the message is the one at that moment.
    */
   function dismissChanges() {
-    setShownFailure((current) => (current?.failure.kind === "changed" ? null : current));
+    setFailure((current) => (current?.kind === "changed" ? null : current));
   }
 
   /** Chooses the delivery method (none: `null`); the only place that changes the choice. */
@@ -616,7 +608,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       case "conflict": {
         // Told by the type of the problem only. Nothing is ordered again by itself.
         const detail = result.detail || SUBMIT_FAILED;
-        if (result.reason === "key_reused") uncertainKeys.current.add(key);
+        if (result.reason === "key_reused") markUncertain(key);
         if (result.reason === "discount_code_rejected") {
           // The code does not work any more. It comes off, the summary is read without it, and nothing is ordered:
           // the customer sees the new total and clicks again. When the summary cannot be read, the screen stays as it
@@ -683,12 +675,14 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         return FAILURE_ID;
       case "failed":
         // The order may have been placed (the answer was lost): the retry goes with the same key.
-        uncertainKeys.current.add(key);
+        markUncertain(key);
         setFailure({ kind: "uncertain", key });
         return FAILURE_ID;
     }
   }
 
+  // The message above the form and the warning of an uncertain attempt, from the state of this render.
+  const above = aboveTheForm(failure, uncertainKeys, idempotencyKey);
   // The message that replaces the form has its own link to the cart, so a conflict does not add a second one.
   const showsForm = loaded.status === "ready" && loaded.cart.lines.length > 0 && !loaded.cart.hasExcludedLines;
   // The one status region of the screen says what the screen is doing; it is there in every state and only its text
@@ -731,7 +725,11 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           </Button>
         </div>
       ) : null}
-      {shownFailure ? <FailureMessage shown={shownFailure} cartLinkShown={showsForm} /> : null}
+      {above?.kind === "message" ? (
+        <FailureMessage failure={above.failure} warns={above.warns} cartLinkShown={showsForm} />
+      ) : above?.kind === "warning" ? (
+        <UncertainWarning />
+      ) : null}
       {loaded.status === "ready" ? (
         <CheckoutContent
           cart={loaded.cart}
@@ -879,10 +877,40 @@ function buyerMessage({ email }: Extract<Failure, { kind: "buyer" }>, mayHavePla
   return email === null ? SIGNED_OUT(placed) : SIGNED_IN_AS(email, placed);
 }
 
-function FailureMessage({ shown: { failure, mayHavePlaced }, cartLinkShown }: { shown: ShownFailure; cartLinkShown: boolean }) {
+/**
+ * What the screen shows above the form. While an attempt whose result was uncertain is left (`uncertain`), exactly one
+ * of: the message of the uncertain result of the attempt the next click retries (its key is still `currentKey`), with
+ * the warning only when another attempt is uncertain too; another message with the warning; or the warning alone, when
+ * there is no message (none yet, taken off, or the order on its way) or the message was of an uncertain result the next
+ * click no longer retries. Without an uncertain attempt: the message, if any, and no warning.
+ */
+function aboveTheForm(failure: Failure | null, uncertain: ReadonlySet<string>, currentKey: string): AboveTheForm | null {
+  const retried = failure?.kind === "uncertain" && failure.key === currentKey ? failure.key : null;
+  const warns = [...uncertain].some((key) => key !== retried);
+  if (failure === null || (failure.kind === "uncertain" && retried === null)) return warns ? { kind: "warning" } : null;
+  // A refusal told at the fields has nothing of its own above the form.
+  if (failure.kind === "at_fields" && !warns) return null;
+  return { kind: "message", failure, warns };
+}
+
+/**
+ * The warning left alone above the form. It was told when it appeared (in the message, or as an answer); it is not an
+ * alert, so a message taken off does not announce it again, and it never takes the focus.
+ */
+function UncertainWarning() {
+  return (
+    <Alert id={UNCERTAIN_ID} role="note" variant="destructive">
+      <AlertDescription className="wrap-anywhere">
+        <p>{MAY_HAVE_PLACED}</p>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function FailureMessage({ failure, warns, cartLinkShown }: { failure: Failure; warns: boolean; cartLinkShown: boolean }) {
   // The messages of a changed cart, total or buyer say it instead of their sentence of the order; every other one
   // adds it after its text.
-  const warning = mayHavePlaced && failure.kind !== "changed" && failure.kind !== "buyer" ? <p>{MAY_HAVE_PLACED}</p> : null;
+  const warning = warns && failure.kind !== "changed" && failure.kind !== "buyer" ? <p>{MAY_HAVE_PLACED}</p> : null;
   return (
     <Alert id={FAILURE_ID} variant="destructive" tabIndex={-1}>
       {/* Texts of the data (an address, a product, a variant, a delivery method) can be one word longer than the screen:
@@ -904,10 +932,10 @@ function FailureMessage({ shown: { failure, mayHavePlaced }, cartLinkShown }: { 
         ) : failure.kind === "at_fields" ? (
           warning
         ) : failure.kind === "buyer" ? (
-          <p>{buyerMessage(failure, mayHavePlaced)}</p>
+          <p>{buyerMessage(failure, warns)}</p>
         ) : failure.kind === "changed" ? (
           <>
-            <p>{`${CHANGED[failure.reason]} ${placedSentence(mayHavePlaced)}`}</p>
+            <p>{`${CHANGED[failure.reason]} ${placedSentence(warns)}`}</p>
             {failure.changes.length > 0 ? (
               <ul className="list-disc pl-5 not-last:mb-4">
                 {/* Two lines without a known product can say the same: the position is the key. */}

@@ -654,14 +654,25 @@ z tym kluczem istnieje). Nowy klucz (zmiana formularza, dostawy, kodu) niczego o
 odrzucenie też nie: odrzucenie API, także na ten sam klucz, dowodzi tylko, że zamówienia z tym kluczem nie było
 w chwili sprawdzenia, a niepewne żądanie mogło jeszcze dotrzeć do API i je złożyć; odrzucenia BFF przed API
 i odpowiedzi na inny klucz nie mówią o nim nic. Wynik zna tylko sukces (także powtórzenie 200), po którym strona i tak
-przechodzi dalej. Dopóki zostaje choć jeden taki klucz, każdy komunikat odrzucenia albo błędu zamówienia nad
-formularzem (każdy wiersz tabeli, także komunikaty o nieudanym odczycie i wygasłej sesji) ma po swoim tekście akapit
-„Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.”; w komunikatach rozbieżności
-koszyka i kwoty oraz zmiany kupującego to zdanie zastępuje „Nie złożyliśmy zamówienia.”. Odrzucenie pokazane tylko
-przy polach (422 z błędami pól, 409 kodu rabatowego przy polu kodu) ma wtedy nad formularzem komunikat z samym tym
-zdaniem; fokus jest jak zawsze. Wyjątek: komunikat wyniku niepewnego nie powtarza ostrzeżenia, gdy jedyną niepewną
-próbą jest ta, której dotyczy. Stan jest czytany w chwili pokazania komunikatu, a decyduje o nim jedno miejsce
-(`setFailure` w `CheckoutPage.tsx`). Bez niepewnej próby teksty są takie, jak w tabeli.
+przechodzi dalej. Ostrzeżenie to „Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.”.
+Niezmiennik ekranu: dopóki zostaje choć jeden taki klucz, nad formularzem w każdym stanie kasy (także w trakcie
+żądania i odczytu, po zdjęciu komunikatu i po zmianie danych) jest dokładnie jedno z:
+
+- komunikat wyniku niepewnego bez ostrzeżenia, dopóki bieżący klucz jest kluczem tej próby (następne kliknięcie ją
+  ponawia) i nie ma innej niepewnej próby; przy innej niepewnej próbie ma po tekście akapit ostrzeżenia;
+- komunikat rozbieżności koszyka i kwoty albo zmiany kupującego z ostrzeżeniem zamiast „Nie złożyliśmy zamówienia.”;
+- każdy inny komunikat odrzucenia albo błędu zamówienia (każdy wiersz tabeli, także komunikaty o nieudanym odczycie
+  i wygasłej sesji) z akapitem ostrzeżenia po swoim tekście; odrzucenie pokazane tylko przy polach (422 z błędami pól,
+  409 kodu rabatowego przy polu kodu) ma nad formularzem komunikat z samym ostrzeżeniem;
+- samo ostrzeżenie w tym samym miejscu, gdy komunikatu nie ma (zdjęty przy zmianie podsumowania, przed wysłaniem
+  zamówienia, w trakcie żądania) albo gdy był to komunikat wyniku niepewnego, a klucz się zmienił (edycja pola,
+  dostawy, kodu): „Spróbuj ponownie: tego samego zamówienia nie złożymy drugi raz” nie mówi już prawdy o następnym
+  kliknięciu. To ostrzeżenie nie jest komunikatem `role="alert"` (`role="note"`): pojawia się bez ponownego ogłoszenia
+  i bez przenoszenia fokusu.
+
+Komunikaty z ostrzeżeniem są ogłaszane i dostają fokus jak każdy komunikat (F2). O ostrzeżeniu decyduje render ze stanu
+niepewnych kluczy, bieżącego klucza i komunikatu (`aboveTheForm` w `CheckoutPage.tsx`), a nie miejsce, które komunikat
+ustawia albo zdejmuje. Bez niepewnej próby teksty są takie, jak w tabeli, a ostrzeżenia nie ma.
 
 Rozbieżność koszyka i kwoty (409 `cart-changed` i `order-total-changed`; `docs/features/cart-order-consistency/spec.md`,
 „Z2 i Z3”):
@@ -717,6 +728,7 @@ Rozbieżność koszyka i kwoty (409 `cart-changed` i `order-total-changed`; `doc
    zmieni podsumowanie: udane zastosowanie kodu, „Usuń kod” albo wybór innej metody dostawy; inaczej przeczyłby
    podsumowaniu obok. Zostaje przy edycji pól, wyborze płatności, kodzie odrzuconym (przez podsumowanie albo 400)
    i nieudanym sprawdzeniu kodu. Zniknięcie nie przenosi fokusu, a fokus i ogłoszenia kodu i dostawy są jak zawsze.
+   Przy niepewnej próbie na miejscu komunikatu zostaje samo ostrzeżenie (akapit „Niepewna próba” wyżej).
    Komunikaty innego rodzaju zostają, a odczyt przez kod w stanie nieaktualnym pokazuje listę zmian (punkt 5).
 
 Zmiana kupującego (409 `checkout-buyer-changed`: logowanie, wylogowanie albo inne konto w innej karcie;
@@ -945,7 +957,11 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   próby (także po 429) teksty jak w tabeli, oraz strażnik: po niepewnej próbie (wynik niepewny albo klucz użyty, ten
   sam i inny klucz) każdy wynik inny niż sukces (każdy status, każda przyczyna 409 z `detail` i bez) nie zostawia
   na ekranie „Nie złożyliśmy zamówienia” ani, poza tekstem zastępczym odrzucenia bez `detail`, „Nie udało się złożyć
-  zamówienia”, i ma ostrzeżenie albo tekst wyniku niepewnego; funkcja różnic `cart-changes.test.ts` (każdy wiersz tabeli, kolejność,
+  zamówienia”, i ma ostrzeżenie albo tekst wyniku niepewnego dokładnie raz; drugi strażnik dróg, które zmieniają
+  komunikat bez odpowiedzi na zamówienie, po niepewnej próbie (inna dostawa, zastosowanie i usunięcie kodu po
+  komunikacie zmian, 401 kodu, kliknięcie w kasie nieaktualnej, edycja pola po wyniku niepewnym, kolejne żądanie
+  w drodze): ostrzeżenie albo tekst wyniku niepewnego dokładnie raz, samo ostrzeżenie bez `role="alert"` i bez
+  przeniesienia fokusu, bez niepewnej próby żadnego ostrzeżenia; funkcja różnic `cart-changes.test.ts` (każdy wiersz tabeli, kolejność,
   brak różnic, pozycja bez produktu, kwoty z API bez sumowania), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
   danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`, region statusu (ten sam węzeł od wczytywania do treści),
   „Spróbuj ponownie” (przycisk z `aria-disabled` w trakcie, fokus po sukcesie, ponownym błędzie i przeniesiony w trakcie),

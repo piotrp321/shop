@@ -2422,7 +2422,13 @@ describe("CheckoutPage after an attempt whose result was uncertain, on every way
   }
 
   it.each<[string, boolean, () => Promise<void>]>([
-    ["another delivery method chosen", false, async () => fireEvent.click(deliveryRadio("Kurier ekspresowy"))],
+    [
+      "another delivery method chosen",
+      false,
+      async () => {
+        fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+      },
+    ],
     ["a code applied", false, () => applyCode({ status: "ok", data: withCode(after()) })],
     ["the code removed", true, () => removeCode({ status: "ok", data: after() })],
     ["a 401 when a code is applied", false, () => applyCode({ status: "unauthorized" })],
