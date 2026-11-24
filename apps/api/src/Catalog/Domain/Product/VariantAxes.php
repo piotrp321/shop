@@ -64,7 +64,7 @@ final readonly class VariantAxes
      *
      * @param list<string> $names
      */
-    public static function reconstitute(array $names): self
+    public static function stored(array $names): self
     {
         return new self($names);
     }

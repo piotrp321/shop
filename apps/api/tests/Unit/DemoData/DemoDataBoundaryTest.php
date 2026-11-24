@@ -4,15 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\DemoData;
 
-use App\Catalog\Domain\Category\Category;
-use App\Catalog\Domain\Category\CategoryName;
-use App\Catalog\Domain\Product\Product;
-use App\Catalog\Domain\Product\ProductName;
-use App\Catalog\Domain\Product\VariantValues;
-use App\Ordering\Domain\Order;
-use App\Pricing\Domain\DiscountCode\DiscountCode;
-use App\Pricing\Domain\Price\VariantPrice;
-use App\Pricing\Domain\Promotion\Promotion;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -64,33 +55,8 @@ final class DemoDataBoundaryTest extends TestCase
         foreach (self::namedClasses() as $class) {
             self::assertFalse(str_ends_with($class, 'Repository'), $class.' is a repository.');
             if (class_exists($class)) {
-                self::assertFalse(self::isAggregate($class), $class.' is an aggregate.');
+                self::assertFalse(method_exists($class, 'reconstitute'), $class.' is an aggregate.');
             }
         }
-    }
-
-    /**
-     * The test tells the aggregates of the contexts from their value objects, which a repository also rebuilds from a
-     * stored row with reconstitute() (spec api-input-contract, E7).
-     */
-    public function testTheAggregatesAreToldFromTheValueObjects(): void
-    {
-        foreach ([Product::class, Category::class, Order::class, VariantPrice::class, Promotion::class, DiscountCode::class] as $aggregate) {
-            self::assertTrue(self::isAggregate($aggregate), $aggregate);
-        }
-        foreach ([VariantValues::class, ProductName::class, CategoryName::class] as $valueObject) {
-            self::assertFalse(self::isAggregate($valueObject), $valueObject);
-        }
-    }
-
-    /**
-     * An aggregate is rebuilt from its stored state with reconstitute() and changes, so it is no readonly class; a
-     * value object never changes.
-     *
-     * @param class-string $class
-     */
-    private static function isAggregate(string $class): bool
-    {
-        return method_exists($class, 'reconstitute') && !new \ReflectionClass($class)->isReadOnly();
     }
 }

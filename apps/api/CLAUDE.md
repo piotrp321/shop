@@ -81,8 +81,10 @@ używa `ApplicationTester` (`setAutoExit(false)`), bo `CommandTester` wyjątku n
   własne dla contextu (limity, komunikaty). Pola z listy „Pola tekstowe poza regułą”
   (`docs/features/api-input-contract/spec.md`) mają własne reguły w swoich value objectach.
 - Odczyt z bazy nie waliduje tekstów pod regułą `Text`: repozytoria i handlery odczytu odtwarzają je z wiersza
-  nazwanym konstruktorem bez walidacji i bez przycinania (`reconstitute`), więc wiersz zapisany przed ostrzejszą
+  nazwanym konstruktorem bez walidacji i bez przycinania (`stored()`), więc wiersz zapisany przed ostrzejszą
   regułą daje się odczytać i przetworzyć. Regułę stosuje zapis (żądanie, seed, generator danych demo).
+  `reconstitute()` zostaje nazwą odtworzenia agregatu, nie value objectu: po niej `DemoDataBoundaryTest` rozpoznaje
+  agregaty.
 - Deptrac pilnuje tych granic. Jeśli Deptrac zgłasza błąd, popraw projekt, nie edytuj `deptrac.yaml`.
 
 ### Pułapki Doctrine (powód wyjątków niżej)

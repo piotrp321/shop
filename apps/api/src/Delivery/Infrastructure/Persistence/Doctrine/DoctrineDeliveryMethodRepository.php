@@ -130,8 +130,8 @@ final readonly class DoctrineDeliveryMethodRepository implements DeliveryMethodR
     {
         return DeliveryMethod::reconstitute(
             DeliveryMethodId::fromString($record->id),
-            DeliveryMethodName::reconstitute($record->name),
-            DeliveryMethodDescription::reconstitute($record->description),
+            DeliveryMethodName::stored($record->name),
+            DeliveryMethodDescription::stored($record->description),
             DeliveryPrice::of($record->priceGross),
             FreeDeliveryThreshold::optional($record->freeFromGross),
             $record->active,

@@ -108,10 +108,10 @@ final class CategoryTest extends TestCase
     /**
      * A name stored before a stricter rule is read as it is (spec api-input-contract, E7).
      */
-    public function testAStoredNameIsReconstitutedWithoutTheRule(): void
+    public function testAStoredNameIsReadWithoutTheRule(): void
     {
         foreach (["\u{200B}", "Sport\tZima", "Spo\u{9F}rt", ' Sport '] as $stored) {
-            self::assertSame($stored, CategoryName::reconstitute($stored)->value());
+            self::assertSame($stored, CategoryName::stored($stored)->value());
         }
     }
 

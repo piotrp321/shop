@@ -153,7 +153,7 @@ final readonly class DoctrineCategoryRepository implements CategoryRepository
     {
         return Category::reconstitute(
             CategoryId::fromString($record->id),
-            CategoryName::reconstitute($record->name),
+            CategoryName::stored($record->name),
             new CategorySlug($record->slug),
             null === $record->parent ? null : CategoryId::fromString($record->parent->id),
             CategoryPath::fromString($record->path),

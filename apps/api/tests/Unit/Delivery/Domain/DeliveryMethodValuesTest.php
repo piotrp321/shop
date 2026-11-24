@@ -135,8 +135,8 @@ final class DeliveryMethodValuesTest extends TestCase
     public function testAStoredNameAndDescriptionAreReadWithoutTheRule(): void
     {
         foreach (["\u{200B}", "Kurier\u{9F}", "Kurier\t", " Kurier\u{A0}"] as $stored) {
-            self::assertSame($stored, DeliveryMethodName::reconstitute($stored)->toString());
-            self::assertSame($stored, DeliveryMethodDescription::reconstitute($stored)->toString());
+            self::assertSame($stored, DeliveryMethodName::stored($stored)->toString());
+            self::assertSame($stored, DeliveryMethodDescription::stored($stored)->toString());
         }
     }
 

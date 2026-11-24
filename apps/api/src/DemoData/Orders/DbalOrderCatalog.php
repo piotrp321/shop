@@ -45,7 +45,7 @@ final readonly class DbalOrderCatalog implements OrderCatalog
             if (!\is_array($values)) {
                 throw new \RuntimeException('The values of a variant are not a list.');
             }
-            $variants[Sql::string($row['product_id'])][] = new CatalogVariant(Sql::string($row['id']), VariantValues::reconstitute(array_map(Sql::string(...), array_values($values)))->label());
+            $variants[Sql::string($row['product_id'])][] = new CatalogVariant(Sql::string($row['id']), VariantValues::stored(array_map(Sql::string(...), array_values($values)))->label());
         }
 
         $products = [];

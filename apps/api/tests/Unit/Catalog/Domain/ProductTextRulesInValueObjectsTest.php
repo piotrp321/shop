@@ -18,7 +18,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * The value objects apply the rule of texts (App\Shared\Domain\Text, the same as the validator of the write endpoints):
  * they trim Unicode whitespace and invisible characters from the ends, take a text without a visible character for
- * empty and refuse forbidden characters, looked for in the value as it came. reconstitute() reads a stored text as it
+ * empty and refuse forbidden characters, looked for in the value as it came. stored() reads a stored text as it
  * is (spec api-input-contract, E7).
  */
 final class ProductTextRulesInValueObjectsTest extends TestCase
@@ -117,13 +117,13 @@ final class ProductTextRulesInValueObjectsTest extends TestCase
     }
 
     #[DataProvider('storedOutsideTheRule')]
-    public function testStoredTextsAreReconstitutedWithoutTheRule(string $stored): void
+    public function testStoredTextsAreReadWithoutTheRule(string $stored): void
     {
-        self::assertSame($stored, ProductName::reconstitute($stored)->value());
-        self::assertSame($stored, ShortDescription::reconstitute($stored)->value());
-        self::assertSame($stored, ProductImage::reconstitute(ImageKey::fromString(self::KEY), $stored, 0)->alt());
-        self::assertSame([$stored], VariantAxes::reconstitute([$stored])->names());
-        self::assertSame([$stored], VariantValues::reconstitute([$stored])->toList());
+        self::assertSame($stored, ProductName::stored($stored)->value());
+        self::assertSame($stored, ShortDescription::stored($stored)->value());
+        self::assertSame($stored, ProductImage::stored(ImageKey::fromString(self::KEY), $stored, 0)->alt());
+        self::assertSame([$stored], VariantAxes::stored([$stored])->names());
+        self::assertSame([$stored], VariantValues::stored([$stored])->toList());
     }
 
     public function testProductNameTooLongIsRefused(): void

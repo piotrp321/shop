@@ -230,7 +230,7 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
   U+3164) to jak puste pole (422 „wymagane” przy tym polu, nie przy `slug`); krótki opis bez znaku widocznego jest
   zapisany jako pusty. Zapisywane są teksty przycięte; powtórzona oś i kombinacja wartości są porównywane po
   przycięciu. Repozytorium i odczyty odtwarzają teksty zapisanego wiersza bez reguły i bez przycinania
-  (`reconstitute`), więc produkt zapisany przed ostrzejszą regułą jest czytany bez zmian, a jego zapis z panelu, który
+  (`stored()`), więc produkt zapisany przed ostrzejszą regułą jest czytany bez zmian, a jego zapis z panelu, który
   wysyła wszystkie pola, wymaga poprawienia tekstu (422 przy polu).
   Niepoprawny UTF-8 w treści JSON nie dociera do walidatora: dekoder odpowiada 400 (bajt poza UTF-8 albo samotny
   surogat `\udc80` w ucieczce).

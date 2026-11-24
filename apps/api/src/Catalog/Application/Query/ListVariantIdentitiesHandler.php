@@ -31,7 +31,7 @@ final readonly class ListVariantIdentitiesHandler
         return array_map(
             static fn (array $row): VariantIdentity => new VariantIdentity(
                 $row['id'],
-                VariantKey::of($row['productSlug'], VariantValues::reconstitute($row['values'])),
+                VariantKey::of($row['productSlug'], VariantValues::stored($row['values'])),
                 $row['taxClass'],
             ),
             $this->source->page(null === $query->after ? null : VariantId::fromString($query->after), $query->limit),

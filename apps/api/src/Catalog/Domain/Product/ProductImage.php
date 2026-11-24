@@ -44,7 +44,7 @@ final readonly class ProductImage
      * An image as stored, without the rule of texts for its alt text (spec api-input-contract, E7); only a write goes
      * through of().
      */
-    public static function reconstitute(ImageKey $key, string $alt, int $position): self
+    public static function stored(ImageKey $key, string $alt, int $position): self
     {
         return new self($key, $alt, $position);
     }

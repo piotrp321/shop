@@ -49,7 +49,7 @@ final readonly class VariantValues
      *
      * @param list<string> $values
      */
-    public static function reconstitute(array $values): self
+    public static function stored(array $values): self
     {
         return new self($values);
     }

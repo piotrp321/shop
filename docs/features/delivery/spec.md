@@ -184,7 +184,7 @@ Założenia architektoniczne:
   free_from_gross BIGINT NULL, active BOOLEAN, position SMALLINT, tracking_url_template VARCHAR(500) NULL, version INT,
   created_at, updated_at)`, rekord ORM z `#[ORM\Version]` (wzorzec `DiscountCodeRecord.php:72`), indeks unikalny
   `lower(name)`, indeks `(active, position)`, CHECK zakresów ceny, progu i kolejności. Repozytorium odtwarza nazwę
-  i opis z wiersza bez reguły tekstu (`reconstitute`), więc metoda zapisana przed ostrzejszą regułą jest na liście
+  i opis z wiersza bez reguły tekstu (`stored()`), więc metoda zapisana przed ostrzejszą regułą jest na liście
   panelu, w szczegółach i w koszyku bez zmiany, a jej zmiana z panelu wymaga poprawienia pola. Mapowanie w
   `config/packages/doctrine.yaml`, warstwy `Delivery_*` w `deptrac.yaml` z zależnościami `Cart_Infrastructure` i
   `Ordering_Infrastructure → Delivery_Application`.

@@ -39,7 +39,7 @@ final readonly class ShortDescription
     /**
      * A description as stored, without the rule (spec api-input-contract, E7); only a write goes through of().
      */
-    public static function reconstitute(string $value): self
+    public static function stored(string $value): self
     {
         return new self($value);
     }
