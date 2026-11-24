@@ -339,10 +339,14 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   KUBE_DIR=<katalog z kubeconfigiem>`. Potrzebna po zmianie `elasticsearch.shards` (istniejący indeks zachowuje swoją
   liczbę shardów) i gdy indeks rozjechał się z bazą. Cel wypisuje indeks aliasu `products` i liczbę shardów nowego,
   pyta o `tak`, uruchamia Job `reindex-<czas UTC>` z zawieszonego CronJoba `reindex` i sprawdza indeks po nim.
-  Sklep działa w trakcie na starym indeksie; milion produktów to na serwerze ok. 17 minut. Odmowa (kod 1, „nothing
-  changed”): aktywny Job w przestrzeni nazw (poczekaj na koniec) albo nieczytelny indeks. Porażka (kod 1, „FAILED”):
-  alias zostaje na starym indeksie, log Joba jest w wyjściu celu i w Grafana Cloud; po usunięciu przyczyny uruchom cel
-  ponownie (nie `rerun`). Zmiana produktu, ceny albo stanu zapisana w trakcie budowy może nie trafić do nowego indeksu
+  Sklep działa w trakcie na starym indeksie; milion produktów to na serwerze ok. 17 minut. Cel trzyma do końca blokadę
+  `demo-data-lock`, więc `generate` i `open` w tym czasie odmawiają. **Nie wdrażaj nowej wersji w trakcie przebudowy**:
+  Job `migrate` wdrożenia kończy się wtedy błędem (`catalog:search-index:setup` odmawia przy trwającej przebudowie),
+  a po jej końcu trzeba go ponowić (`make -C infra/k8s rerun JOB=<migrate-…>`). Odmowa (kod 1, „nothing changed”):
+  aktywny Job w przestrzeni nazw (poczekaj na koniec), blokada `demo-data-lock` innego przebiegu albo nieczytelny
+  indeks. Porażka (kod 1, „FAILED”): komunikat mówi, na którym indeksie jest alias (nieudany Job zostawia go na starym),
+  log Joba jest w wyjściu celu i w Grafana Cloud; po usunięciu przyczyny uruchom cel ponownie (nie `rerun`). Liczba
+  dokumentów w wyjściu celu to dokumenty Lucene (razem z zagnieżdżonymi wariantami), więcej niż produktów w logu Joba. Zmiana produktu, ceny albo stanu zapisana w trakcie budowy może nie trafić do nowego indeksu
   do następnej zmiany tego produktu, więc przebudowę uruchamiaj poza godzinami zmian w panelu. Powrót do poprzedniej
   liczby shardów: zmiana `elasticsearch.shards`, wdrożenie i ponowna przebudowa.
 - **Argo CD i inne narzędzia** (bez publicznego adresu): `ssh -L 8080:localhost:8080 <user>@<adres> 'sudo k3s kubectl -n argocd
@@ -784,7 +788,7 @@ make -C infra/k8s generate PROFILE=medium \
   i restarcie Traefika), `GENERATE_OPEN_WAIT` 300 s (czas, w którym ma podać „otwarty” po usunięciu reguły),
   `GENERATE_POLL` 30 s (odstęp odczytów Joba), `GENERATE_PROBE_POLL` 5 s (odstęp rund sondy). Wartością jest liczba
   całkowita sekund; inna to kod 2.
-- `generate` i `open` działają pojedynczo: blokadą jest ConfigMap `demo-data-lock` (kto ją trzyma: polecenie, profil,
+- `generate`, `open` i `reindex` działają pojedynczo: blokadą jest ConfigMap `demo-data-lock` (kto ją trzyma: polecenie, profil,
   host operatora, pid, czas startu; `status` ją pokazuje). `generate` zakłada ją po `tak` i trzyma do końca, razem
   z `open`, który woła; `open` uruchomiony ręcznie zakłada ją na starcie. Drugi `generate` albo `open` odmawia w tym
   czasie bez zmian i podaje posiadacza. Oba cele zwalniają ją przy każdym wyjściu poza zabiciem sygnałem KILL (i utratą
@@ -834,8 +838,8 @@ generatora: odmawia kodem 3 i wskazuje `generate`.
   zmian; `make open` otwiera sklep na tym Jobie, jeśli jest `Complete`, a po poprawie adresów sondy można ponowić
   `generate`.
 - Pozostawiony sekret `demo-photos` (zabity skrypt; `status` go pokazuje): usuwa go `open`, gdy żaden Job nie działa.
-- Pozostawiona blokada `demo-data-lock` (`status`: `lock demo-data-lock: HELD by …`; `generate` i `open` odmawiają z jej
-  posiadaczem) po `generate` albo `open` zabitym sygnałem KILL albo bez połączenia przy zwalnianiu: **użytkownik**
+- Pozostawiona blokada `demo-data-lock` (`status`: `lock demo-data-lock: HELD by …`; `generate`, `open` i `reindex` odmawiają z jej
+  posiadaczem) po `generate`, `open` albo `reindex` zabitym sygnałem KILL albo bez połączenia przy zwalnianiu: **użytkownik**
   sprawdza, że żaden `generate` ani `open` nie działa (komputer i proces z danych posiadacza), i usuwa ją na serwerze:
 
   ```sh

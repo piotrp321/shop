@@ -150,11 +150,13 @@ open:
 
 # Rebuilds the search index of the cluster (docs/features/search/spec.md, "Infrastruktura"): make -C infra/k8s reindex KUBE_DIR=<directory>.
 # Only after the consent of the user in the conversation that names the operation and the host. Refuses without changes when a Job of
-# the namespace is active or the index of the alias products cannot be read; says which index the alias is on and how many shards the
-# new one gets (SEARCH_SHARDS of the deployed revision: elasticsearch.shards) and asks for the word tak; then runs a Job of the suspended
-# CronJob reindex (catalog:reindex) and checks the index the alias is on after it. The shop stays open; a change written during the build
-# may be missing from the new index until the next change of that product. Exit 1 when it refused or failed (the alias stays on the old
-# index), 2 without KUBE_DIR. KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
+# the namespace is active, make generate or make open holds the lock demo-data-lock, or the index of the alias products cannot be read;
+# says which index the alias is on and how many shards the new one gets (SEARCH_SHARDS of the deployed revision: elasticsearch.shards)
+# and asks for the word tak; then takes the lock (make generate and make open refuse meanwhile), reads the Jobs again, runs a Job of the
+# suspended CronJob reindex (catalog:reindex) and checks the index the alias is on after it. The shop stays open; a change written
+# during the build may be missing from the new index until the next change of that product, and no deployment may start until the Job
+# ends (its Job migrate would fail). Exit 1 when it refused (nothing changed) or failed (the message says where the alias is), 2
+# without KUBE_DIR. KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
 reindex:
 	@sh scripts/ao-guard.sh reindex
 	sh scripts/reindex.sh

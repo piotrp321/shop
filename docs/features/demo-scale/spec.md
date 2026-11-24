@@ -113,7 +113,8 @@ Stan nie jest zapisywany w osobnym obiekcie; wynika z obiektów klastra:
   Pody działają, więc alert `WorkloadNotReady` się nie odzywa. Regułę zakłada `generate`, usuwa wyłącznie `open`; nie
   jest częścią chartu i nie ma etykiet ani adnotacji śledzenia Argo CD, więc wdrożenie ani synchronizacja jej nie
   usuną (Z7). Cel `status` pokazuje, czy reguła istnieje.
-- **Blokada `demo-data-lock`.** `generate` i `open` działają pojedynczo. Blokadą jest ConfigMap `demo-data-lock`
+- **Blokada `demo-data-lock`.** `generate` i `open` działają pojedynczo; tę samą blokadę bierze na czas przebudowy indeksu
+  `make -C infra/k8s reindex` (`docs/features/search/spec.md`, „Infrastruktura”). Blokadą jest ConfigMap `demo-data-lock`
   w przestrzeni `shop` z dwoma polami: `holder` (polecenie, profil, host operatora, pid i czas UTC startu) i `token`
   (losowy). Nie ma etykiet ani adnotacji śledzenia Argo CD (jak reguła). Zakłada ją `kubectl create`, który przy
   istniejącej blokadzie kończy się błędem `AlreadyExists`, więc dostaje ją tylko jeden przebieg. `generate` sprawdza ją
@@ -338,7 +339,7 @@ używanym przez `load.sh`, `generate.sh` i `open.sh`.
 - `make -C infra/k8s rerun` odmawia Joba z etykietą generatora `app.kubernetes.io/name: demo-data` kodem 3 i wskazuje
   `make generate` (`rerun` odtworzyłby Job razem z `DEMO_DATA_CONFIRM`).
 - Cele `generate` i `open` wołają `ao-guard.sh` jak pozostałe cele z kubeconfigiem produkcji.
-- `generate` i `open` działają pojedynczo (blokada `demo-data-lock`, „Stan sklepu i blokada”).
+- `generate`, `open` i `reindex` działają pojedynczo (blokada `demo-data-lock`, „Stan sklepu i blokada”).
 
 ### Kolejne wdrożenia
 
@@ -368,7 +369,7 @@ Odzyskiwanie jest ręczne (U8): `make status`, potem ponowny `generate`, powrót
 |---|---|---|
 | Przerwany skrypt, utrata połączenia albo uśpienie komputera operatora | Job działa dalej, strażnik i zbieranie logów działają w klastrze; sklep zamknięty | Po końcu Joba `Complete`: `make open`; `Failed`: ponowny `generate` albo seed |
 | Drugi `generate` albo `open` w trakcie przebiegu | Odmowa bez zmian z posiadaczem blokady | Poczekać na koniec przebiegu (`make status`) |
-| `generate` albo `open` zabity sygnałem KILL albo bez połączenia przy zwalnianiu blokady | Blokada `demo-data-lock` zostaje; `generate` i `open` odmawiają z jej posiadaczem | Gdy żaden `generate` ani `open` nie działa, użytkownik usuwa blokadę (runbook), potem jak w pozostałych wierszach |
+| `generate`, `open` albo `reindex` zabity sygnałem KILL albo bez połączenia przy zwalnianiu blokady | Blokada `demo-data-lock` zostaje; `generate`, `open` i `reindex` odmawiają z jej posiadaczem | Gdy żaden `generate`, `open` ani `reindex` nie działa, użytkownik usuwa blokadę (runbook), potem jak w pozostałych wierszach |
 | `generate` przerwany po `tak`, przed usunięciem Joba poprzedniego przebiegu | Dane nietknięte, Job poprzedniego przebiegu zostaje, sklep może być zamknięty | `make open` (jeśli ten Job jest `Complete`) albo ponowny `generate` |
 | `generate` przerwany po usunięciu Joba poprzedniego przebiegu, przed końcem nowego | Joba `Complete` nie ma | `open` odmawia (brak Joba albo Job niezakończony); ponowny `generate` |
 | Usunięty albo zabity pod Joba (brak pamięci, eksmisja, limit czasu) | Job kończy się błędem i nie startuje ponownie (Z9); przy TERM skrypt zatrzymuje generator; sesje bazy generatora kończą się same także po zabiciu bez sygnału (Z11) | Dane niepełne, sklep zamknięty; ponowny `generate` albo seed; log z Grafana Cloud |

@@ -362,16 +362,21 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   odrzuca); nową dostaje dopiero indeks z następnej przebudowy. Wartość mniejsza od 1 kończy budowę definicji błędem
   z nazwą zmiennej, pustą i nieliczbową odrzuca kontener, a schemat chartu przyjmuje tylko liczbę całkowitą od 1 do
   1024.
-- Zapytanie przeszukuje jeden shard jednym wątkiem, więc agregacje faset szerokiego zbioru wyników liczą się na
-  kilku shardach równolegle. Czas CPU zapytania się przy tym nie zmniejsza, a przy wielu równoległych zapytaniach
-  shardy konkurują o te same rdzenie. Skutek 4 shardów na serwerze nie jest potwierdzony pomiarem na serwerze.
+- Agregacje faset zapytania listingu liczy na jednym shardzie jeden wątek (pomiar na kopii indeksu 1 mln produktów,
+  Elasticsearch 9.4.0: czas CPU zapytania równy czasowi jego wykonania), więc na kilku shardach liczą się równolegle.
+  Czas CPU zapytania się przy tym nie zmniejsza, a przy wielu równoległych zapytaniach shardy konkurują o te same
+  rdzenie. Skutek 4 shardów na serwerze nie jest potwierdzony pomiarem na serwerze.
 - Przebudowa indeksu na klastrze: `make -C infra/k8s reindex KUBE_DIR=<katalog>`, tylko po zgodzie użytkownika
   w rozmowie, która nazywa operację i host. Cel odmawia bez zmian, gdy w przestrzeni nazw działa Job (poza Jobami
-  CronJobów `rate-limit-check`, `queue-check` i `order-expiry`) albo nie da się odczytać indeksu aliasu `products`;
-  wypisuje bieżący indeks i liczbę shardów nowego, pyta o słowo `tak`, tworzy Job z zawieszonego CronJoba `reindex`
-  (`catalog:reindex` z obrazem, środowiskiem i sekretami wdrożonej rewizji), czeka na niego i sprawdza, że alias
-  wskazuje nowy indeks o liczbie shardów z `SEARCH_SHARDS`. Sklep działa w trakcie na starym indeksie; nieudany
-  przebieg zostawia alias bez zmian. Obowiązują ograniczenia przebudowy z `docs/features/walking-skeleton/spec.md`
+  CronJobów `rate-limit-check`, `queue-check` i `order-expiry`), gdy blokadę `demo-data-lock` trzyma `generate` albo
+  `open`, albo gdy nie da się odczytać indeksu aliasu `products`; wypisuje bieżący indeks i liczbę shardów nowego
+  i pyta o słowo `tak`. Po nim bierze blokadę `demo-data-lock` na czas przebiegu (`generate` i `open` wtedy
+  odmawiają), sprawdza Joby jeszcze raz (Job, który wystartował w czasie oczekiwania na odpowiedź, to odmowa), tworzy
+  Job z zawieszonego CronJoba `reindex` (`catalog:reindex` z obrazem, środowiskiem i sekretami wdrożonej rewizji),
+  czeka na niego i sprawdza, że alias wskazuje nowy indeks o liczbie shardów z `SEARCH_SHARDS`. Sklep działa w trakcie
+  na starym indeksie; nieudany przebieg zostawia alias bez zmian. Wdrożenie rozpoczęte w trakcie przebudowy kończy
+  się nieudanym Jobem `migrate` (`catalog:search-index:setup` odmawia przy zajętej blokadzie przebudowy), który po
+  końcu przebudowy ponawia `rerun`. Obowiązują ograniczenia przebudowy z `docs/features/walking-skeleton/spec.md`
   („Ograniczenia tej przebudowy”): zmiana produktu, ceny albo poziomu stanu zapisana w trakcie budowy może nie trafić
   do nowego indeksu aż do następnej zmiany tego produktu albo następnej przebudowy.
 
@@ -475,4 +480,7 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   liczba różnych osi i wartości na shardzie. Granica 55 wartości dotyczy też listy wartości osi z wyborem. Fasety
   `categories`, `price` i `availableCount` oraz liczby wartości wybranych w filtrze (`terms` z `include`) są
   dokładne przy każdej liczbie shardów.
+- Sortowanie po trafności przy kilku shardach: statystyki słów (IDF) liczy każdy shard z własnych dokumentów
+  (domyślne `query_then_fetch`), więc kolejność wyników frazy może się różnić od kolejności na jednym shardzie. Przy
+  dużym indeksie różnica jest mała, przy kilkuset produktach widoczna. Liczba trafień i fasety od tego nie zależą.
 - Obraz Elasticsearch budowany lokalnie pobiera wtyczkę z sieci przy pierwszym buildzie.

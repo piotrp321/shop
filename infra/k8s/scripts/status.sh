@@ -80,7 +80,7 @@ lock_path='{.metadata.name}{"/"}{.data.holder}'
 if lock="$(remote_root k3s kubectl -n shop get configmap demo-data-lock --ignore-not-found -o "jsonpath='$lock_path'")"; then
   if [ -n "$lock" ]; then
     lock="$(printf '%s' "${lock#*/}" | tr -d '\000-\037\177')"
-    echo "lock demo-data-lock: HELD by ${lock:-(no holder written)} (make generate and make open refuse while it is there; left by one killed with KILL, it is deleted only when neither runs: sudo k3s kubectl -n shop delete configmap demo-data-lock)"
+    echo "lock demo-data-lock: HELD by ${lock:-(no holder written)} (make generate, make open and make reindex refuse while it is there; left by one killed with KILL, it is deleted only when none of them runs: sudo k3s kubectl -n shop delete configmap demo-data-lock)"
   else
     echo "lock demo-data-lock: none"
   fi

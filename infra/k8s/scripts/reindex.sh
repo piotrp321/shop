@@ -5,13 +5,18 @@
 # builds a new index, checks it and only then moves the alias products, and a run that failed leaves the alias where it was. It is not
 # an online rebuild (docs/features/walking-skeleton/spec.md, "Ograniczenia tej przebudowy"): a change of a product, a price or a stock
 # level written while the index is built goes to the previous index and may be missing from the new one until the next change of
-# that product or the next rebuild.
+# that product or the next rebuild. A deployment started while the Job runs fails at its Job migrate (catalog:search-index:setup refuses
+# while a rebuild holds the lock of the index): it is run again after the rebuild (make rerun).
 # Steps:
-#   1. checks without changes: the CronJob reindex is there and says the shards of a new index; no Job of the namespace is active,
-#      except one of the CronJobs rate-limit-check, queue-check and order-expiry (short checks that run every five minutes); the index
-#      of the alias products can be read from Elasticsearch;
+#   1. checks without changes: the CronJob reindex is there and says the shards of a new index; nobody holds the lock demo-data-lock
+#      (make generate and make open: scripts/shop-closed.sh); no Job of the namespace is active, except one of the CronJobs
+#      rate-limit-check, queue-check and order-expiry (short checks that run every five minutes); the index of the alias products can
+#      be read from Elasticsearch;
 #   2. says which index the alias is on, how many shards the new one gets, and goes on only after `tak`;
-#   3. the Job reindex-<UTC time> from the CronJob, waited for until it completes or fails (at most its activeDeadlineSeconds);
+#   3. takes the lock demo-data-lock and holds it to its end (the trap releases it; a KILL leaves it), so that make generate and make
+#      open refuse without changes while the index is rebuilt, and reads the Jobs again: one that started while the script waited for
+#      the answer is a refusal; then the Job reindex-<UTC time> from the CronJob, waited for until it completes or fails (at most its
+#      activeDeadlineSeconds);
 #   4. the end of the log of the Job; after a Job that completed the index of the alias is read again: a new index with the shards
 #      of the CronJob is the success, anything else a failure.
 #
@@ -27,6 +32,11 @@ here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/tools.sh"
 # shellcheck source=kube-jobs.sh
 . "$here/kube-jobs.sh"
+# shellcheck source=shop-closed.sh
+. "$here/shop-closed.sh"
+# The name of this script in the messages of the lock (scripts/shop-closed.sh).
+# shellcheck disable=SC2034 # read by lock_release
+DEMO_DATA_TOOL=reindex
 
 if [ -z "${KUBE_DIR:-}" ]; then
   echo "reindex: set KUBE_DIR to the directory with the kubeconfig (file 'config') of the cluster" >&2
@@ -61,7 +71,8 @@ d = json.load(sys.stdin)
 print($1)"
 }
 
-# alias_index: "<index> <primary shards> <documents>" of the one index the alias is on; fails when Elasticsearch cannot be asked or the
+# alias_index: "<index> <primary shards> <Lucene documents>" of the one index the alias is on (the documents of Lucene count the nested
+# documents of the variants too, so they are more than the products of the log of the Job); fails when Elasticsearch cannot be asked or the
 # alias is not on exactly one index.
 alias_index() {
   kubectl -n "$namespace" exec statefulset/elasticsearch -- curl -fsS \
@@ -69,12 +80,29 @@ alias_index() {
     py_json '"%s %d %d" % (d[0]["index"], int(d[0]["pri"]), int(d[0]["docs.count"])) if len(d) == 1 else sys.exit(1)'
 }
 
-# A signal after the Job was created: the Job goes on in the cluster, which the message says.
+# running_jobs: the names of the Jobs of the namespace that run (neither Complete nor Failed), separated by spaces, without the Jobs of
+# the CronJobs of the short checks (by their owner: a Job someone made by hand is a Job like any other).
+running_jobs() {
+  kubectl -n "$namespace" get jobs -o json | py_json '" ".join(j["metadata"]["name"] for j in d["items"]
+    if not {c.get("type") for c in (j.get("status", {}).get("conditions") or []) if c.get("status") == "True"} & {"Complete", "Failed"}
+    and not any(o.get("kind") == "CronJob" and o.get("name") in "'"$check_cronjobs"'".split() for o in j["metadata"].get("ownerReferences") or []))'
+}
+
+# The lock of this run is released on every exit (lock_release deletes only a lock with the token of this run). A signal after the Job
+# was created: the Job goes on in the cluster, which the message says.
+cleanup() {
+  status=$?
+  trap '' HUP INT TERM
+  trap - EXIT
+  lock_release || echo "reindex: the lock $lock_name could not be released: $(lock_message)" >&2
+  exit "$status"
+}
 on_signal() {
   [ -z "$job" ] || echo "reindex: interrupted; the Job $job goes on in the cluster (kubectl -n $namespace get job $job)" >&2
   exit 130
 }
-trap on_signal INT TERM
+trap cleanup EXIT
+trap on_signal HUP INT TERM
 
 # ---------------------------------------------------------------------------------------------------------------
 # 1. Checks, without changes
@@ -88,10 +116,10 @@ case "$shards" in
   "" | *[!0-9]* | 0*) refuse "the CronJob $cronjob has no number of shards in SEARCH_SHARDS (got '$shards')" ;;
 esac
 
-active="$(kubectl -n "$namespace" get jobs -o json | py_json '" ".join(j["metadata"]["name"] for j in d["items"]
-    if not {c.get("type") for c in (j.get("status", {}).get("conditions") or []) if c.get("status") == "True"} & {"Complete", "Failed"}
-    and not any(o.get("kind") == "CronJob" and o.get("name") in "'"$check_cronjobs"'".split() for o in j["metadata"].get("ownerReferences") or []))')" ||
-  refuse "cannot read the Jobs of the namespace $namespace"
+lock_read || refuse "cannot read the lock $lock_name"
+[ -z "$lock_held_token" ] || refuse "the lock $lock_name is held by $lock_holder: make generate, make open and make reindex run one at a time; $(lock_message)"
+
+active="$(running_jobs)" || refuse "cannot read the Jobs of the namespace $namespace"
 [ -z "$active" ] || refuse "Jobs are active in the namespace $namespace: $active (wait for them to finish)"
 
 before="$(alias_index)" || refuse "cannot read the index of the alias $alias_name from Elasticsearch (the alias has to be on exactly one index)"
@@ -104,12 +132,15 @@ before_index="$1" before_shards="$2" before_documents="$3"
 # ---------------------------------------------------------------------------------------------------------------
 cat <<EOF
 reindex: in the namespace $namespace of the cluster of $KUBE_DIR/config:
-  - the alias $alias_name is on the index $before_index: $before_shards primary shard(s), $before_documents documents;
+  - the alias $alias_name is on the index $before_index: $before_shards primary shard(s), $before_documents Lucene documents (the
+    nested documents of the variants count too, so more than the products);
   - a Job of the CronJob $cronjob runs catalog:reindex of the deployed revision: a new index with $shards primary shard(s) is built from
     the database, checked, and only then the alias moves to it and the index $before_index is deleted;
   - the shop stays open and is served by the index $before_index until then; a run that fails leaves the alias on it.
   - a change of a product, a price or a stock level written during the build may be missing from the new index until the next
-    change of that product or the next rebuild.
+    change of that product or the next rebuild;
+  - no deployment until the Job ends: the Job migrate of a new revision fails while the index is rebuilt (its
+    catalog:search-index:setup refuses), and has to be run again after it (make -C infra/k8s rerun JOB=<migrate job>).
 EOF
 printf 'reindex: type tak to go on: '
 answer=""
@@ -118,8 +149,14 @@ echo
 [ "$answer" = tak ] || refuse "not confirmed (no 'tak')"
 
 # ---------------------------------------------------------------------------------------------------------------
-# 3. The Job
+# 3. The lock, the Jobs once more, the Job
 # ---------------------------------------------------------------------------------------------------------------
+# The answer may have taken long: the lock keeps make generate and make open out from here on (they refuse without changes), and a Job
+# that started since the checks (a deployment, a CronJob) is a refusal before anything is created.
+lock_take reindex || refuse "$lock_error"
+active="$(running_jobs)" || refuse "cannot read the Jobs of the namespace $namespace"
+[ -z "$active" ] || refuse "Jobs are active in the namespace $namespace: $active (they started after the checks; wait for them to finish)"
+
 job="reindex-$(date -u +%Y%m%d%H%M%S)"
 echo "reindex: the Job $job"
 cronjob_job "$cronjob" "$job" || {
@@ -135,7 +172,7 @@ wait_job "$job" || status=1
 job_logs "$job" reindex
 if [ "$status" -ne 0 ]; then
   echo "reindex: FAILED: the Job $job did not complete (its log is above); catalog:reindex moves the alias only to an index it built and checked" >&2
-  after="$(alias_index)" && echo "reindex: the alias $alias_name is on (index, primary shards, documents): $after" >&2
+  after="$(alias_index)" && echo "reindex: the alias $alias_name is on (index, primary shards, Lucene documents): $after" >&2
   exit 1
 fi
 
@@ -154,4 +191,4 @@ if [ "$after_shards" != "$shards" ]; then
   echo "reindex: FAILED: the new index $after_index has $after_shards primary shard(s), not the $shards of SEARCH_SHARDS" >&2
   exit 1
 fi
-echo "reindex: done: the alias $alias_name is on the index $after_index: $after_shards primary shard(s), $after_documents documents (before: $before_index, $before_shards primary shard(s), $before_documents documents)"
+echo "reindex: done: the alias $alias_name is on the index $after_index: $after_shards primary shard(s), $after_documents Lucene documents (before: $before_index, $before_shards primary shard(s), $before_documents Lucene documents)"

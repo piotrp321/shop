@@ -8,7 +8,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * The number of primary shards of a new product index comes from SEARCH_SHARDS of the environment (spec:
- * docs/features/search/spec.md, "Catalog: indeks wyszukiwania"); without the variable an index has one shard.
+ * docs/features/search/spec.md, "Infrastruktura"); without the variable an index has one shard.
  */
 final class SearchShardsConfigurationTest extends KernelTestCase
 {

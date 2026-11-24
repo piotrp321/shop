@@ -71,6 +71,18 @@ if verb == "get" and rest[1] == "cronjob":
                       "spec": {"jobTemplate": {"spec": {"template": {"spec": {"containers": [{"name": "reindex", "env": env}]}}}}}}))
 elif verb == "get" and rest[1] == "jobs":
     print(json.dumps({"items": [job_doc(name) for name in state["jobs"]]}))
+    # The Jobs that start after the first listing: while the script waits for the answer.
+    if state.get("late_jobs"):
+        state["jobs"].update(state.pop("late_jobs"))
+        save()
+elif verb == "get" and rest[1] == "configmap":
+    assert rest[2:4] == ["demo-data-lock", "--ignore-not-found"], rest
+    lock = state["lock"]
+    print("" if lock is None else "demo-data-lock/%s/%s" % (lock["token"], lock["holder"]), end="")
+    # A lock that another run takes after the first reading: while the script waits for the answer.
+    if state.get("late_lock"):
+        state["lock"] = state.pop("late_lock")
+        save()
 elif verb == "get" and rest[1] == "job":
     print(json.dumps(job_doc(rest[2])))
 elif verb == "exec":
@@ -89,10 +101,26 @@ elif verb == "create" and rest[1] == "job":
 elif verb == "create":
     assert rest[1:] == ["-f", "-"], rest
     doc = json.load(sys.stdin)
-    if state.get("create_fails"):
-        fail("Error from server (Forbidden): jobs.batch is forbidden")
-    state["jobs"][doc["metadata"]["name"]] = {"state": state["outcome"], "owner": "reindex", "log": state["log"]}
-    state["created"].append(doc["metadata"]["name"])
+    if doc["kind"] == "ConfigMap":
+        assert doc["metadata"] == {"name": "demo-data-lock"}, doc
+        if state["lock"] is not None:
+            fail('Error from server (AlreadyExists): configmaps "demo-data-lock" already exists')
+        state["lock"] = doc["data"]
+        state["taken_by"] = doc["data"]["holder"]
+        state["events"].append("lock taken")
+    else:
+        if state.get("create_fails"):
+            fail("Error from server (Forbidden): jobs.batch is forbidden")
+        state["jobs"][doc["metadata"]["name"]] = {"state": state["outcome"], "owner": "reindex", "log": state["log"]}
+        state["created"].append(doc["metadata"]["name"])
+        state["events"].append("job created")
+    save()
+elif verb == "delete":
+    assert rest[1:] == ["configmap", "demo-data-lock", "--ignore-not-found"], rest
+    if state.get("release_fails"):
+        fail("The connection to the server was refused")
+    state["lock"] = None
+    state["events"].append("lock released")
     save()
 elif verb == "logs":
     assert rest[2] == "--container=reindex", rest
@@ -116,10 +144,13 @@ def initial_state(**changes):
             "queue-check-29384755": {"state": "Running", "owner": "queue-check"},
         },
         # The answers of Elasticsearch for the index of the alias, one per question; the last one stays.
-        "indices": [index(OLD_INDEX, 1), index(NEW_INDEX, 4)],
+        "indices": [index(OLD_INDEX, 1), index(NEW_INDEX, 4, 2401957)],
         "outcome": "Complete",
         "log": REPORT,
         "created": [],
+        # The lock demo-data-lock of make generate and make open (a ConfigMap): none, or {"token": ..., "holder": ...}.
+        "lock": None,
+        "events": [],
     }
     state.update(changes)
     return state
@@ -162,15 +193,18 @@ class ReindexScriptTest(unittest.TestCase):
         return [json.loads(line)[2:] for line in self.log.read_text().splitlines()]
 
     def changes(self):
-        return [call for call in self.calls() if call[0] not in ("get", "logs", "exec") and "--dry-run=client" not in call]
+        """What the run did to the cluster besides reading: its lock, the Job."""
+        return self.state()["events"]
 
     def assert_refused(self, result, *parts):
         self.assertEqual(1, result.returncode, result.stdout + result.stderr)
         for part in parts:
             self.assertIn(part, result.stderr)
         self.assertIn("reindex: nothing changed", result.stderr)
-        self.assertEqual([], self.changes())
         self.assertEqual([], self.state()["created"])
+        self.assertNotIn("job created", self.changes())
+        # A lock this run took is released again; the lock of another run is never touched.
+        self.assertIn(self.changes(), ([], ["lock taken", "lock released"]))
 
     # --- the run that rebuilds ---
 
@@ -180,24 +214,28 @@ class ReindexScriptTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         (job,) = self.state()["created"]
         self.assertRegex(job, r"^reindex-[0-9]{14}$")
-        self.assertEqual([["create", "-f", "-"]], self.changes())
-        self.assertIn(f"the alias products is on the index {OLD_INDEX}: 1 primary shard(s), 1000191 documents", result.stdout)
+        self.assertEqual(["lock taken", "job created", "lock released"], self.changes())
+        self.assertIsNone(self.state()["lock"])
+        self.assertIn(f"the alias products is on the index {OLD_INDEX}: 1 primary shard(s), 1000191 Lucene documents", result.stdout)
         self.assertIn("a new index with 4 primary shard(s)", result.stdout)
         self.assertIn("[reindex] Search index rebuilt: 1000191 documents.", result.stdout)
-        self.assertIn(f"reindex: done: the alias products is on the index {NEW_INDEX}: 4 primary shard(s), 1000191 documents", result.stdout)
+        self.assertIn(f"reindex: done: the alias products is on the index {NEW_INDEX}: 4 primary shard(s), 2401957 Lucene documents", result.stdout)
         self.assertIn(f"before: {OLD_INDEX}, 1 primary shard(s)", result.stdout)
 
     def test_the_job_is_created_only_after_the_checks_and_the_answer(self):
         self.run_script()
 
         verbs = [" ".join(call[:2]) for call in self.calls()]
-        self.assertEqual(["get cronjob", "get jobs", "exec statefulset/elasticsearch", "create job", "create -f"], verbs[:5])
+        # The checks (the CronJob, the lock, the Jobs, the index), then after the answer the lock and the Jobs once more, then the Job.
+        self.assertEqual(["get cronjob", "get configmap", "get jobs", "exec statefulset/elasticsearch", "create -f", "get jobs", "create job", "create -f"],
+                         verbs[:8])
 
     def test_it_says_what_stays_on_the_old_index_during_the_build(self):
         result = self.run_script()
 
         self.assertIn("the shop stays open", result.stdout)
         self.assertIn("may be missing from the new index", result.stdout)
+        self.assertIn("no deployment until the Job ends", result.stdout)
 
     def test_a_job_of_a_short_check_is_no_reason_to_refuse(self):
         result = self.run_script()
@@ -261,6 +299,38 @@ class ReindexScriptTest(unittest.TestCase):
                 result = self.run_script(state)
                 self.assert_refused(result, f"Jobs are active in the namespace shop: {name}")
 
+    def test_the_lock_of_make_generate_is_refused_before_the_question(self):
+        held = {"token": "0f" * 16, "holder": "generate PROFILE=medium on laptop, pid 4242, since 2026-11-25T09:00:00Z"}
+        result = self.run_script(initial_state(lock=held))
+
+        self.assert_refused(result, "the lock demo-data-lock is held by generate PROFILE=medium on laptop")
+        self.assertNotIn("type tak", result.stdout)
+        self.assertEqual([], self.changes())
+        self.assertEqual(held, self.state()["lock"])
+
+    def test_a_lock_taken_while_it_waits_for_the_answer_is_refused_and_left(self):
+        held = {"token": "0f" * 16, "holder": "generate PROFILE=medium on laptop, pid 4242, since 2026-11-25T09:00:00Z"}
+        result = self.run_script(initial_state(late_lock=held))
+
+        self.assert_refused(result, "the lock demo-data-lock is held by generate PROFILE=medium on laptop")
+        self.assertIn("type tak", result.stdout)
+        self.assertEqual([], self.changes())
+        self.assertEqual(held, self.state()["lock"])
+
+    def test_a_job_that_started_while_it_waits_for_the_answer_is_refused(self):
+        result = self.run_script(initial_state(late_jobs={"migrate-9z": {"state": "Running"}}))
+
+        self.assert_refused(result, "Jobs are active in the namespace shop: migrate-9z")
+        self.assertIn("type tak", result.stdout)
+        self.assertEqual(["lock taken", "lock released"], self.changes())
+        self.assertIsNone(self.state()["lock"])
+
+    def test_the_lock_is_taken_before_the_job_and_names_this_run(self):
+        self.run_script()
+
+        self.assertEqual("lock taken", self.changes()[0])
+        self.assertRegex(self.state()["taken_by"], r"^reindex on \S+, pid [0-9]+, since 20[0-9-]+T[0-9:]+Z$")
+
     def test_an_index_that_cannot_be_read_is_refused(self):
         result = self.run_script(initial_state(indices=[None]))
 
@@ -288,8 +358,16 @@ class ReindexScriptTest(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("[reindex] Another rebuild or setup of the search index is running.", result.stdout)
         self.assertRegex(result.stderr, r"FAILED: the Job reindex-[0-9]{14} did not complete")
-        self.assertIn(f"the alias products is on (index, primary shards, documents): {OLD_INDEX} 1 1000191", result.stderr)
+        self.assertIn(f"the alias products is on (index, primary shards, Lucene documents): {OLD_INDEX} 1 1000191", result.stderr)
         self.assertNotIn("reindex: done", result.stdout)
+        self.assertEqual(["lock taken", "job created", "lock released"], self.changes())
+
+    def test_a_lock_that_cannot_be_released_is_said(self):
+        result = self.run_script(initial_state(release_fails=True))
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("reindex: done", result.stdout)
+        self.assertIn("the lock demo-data-lock could not be released", result.stderr)
 
     def test_a_failed_job_is_a_failure_also_when_the_index_cannot_be_read_after_it(self):
         result = self.run_script(initial_state(outcome="Failed", indices=[index(OLD_INDEX, 1), None]))
