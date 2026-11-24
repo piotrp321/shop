@@ -113,6 +113,56 @@ final class TextRowTest extends TestCase
     }
 
     /**
+     * Two rows of one operation and field of one kind (the note of a cancellation and of a return, both required) differ
+     * by the variant of the row: its name, which names each execution as a test, would be the same otherwise.
+     */
+    public function testRowsOfOneOperationAndFieldOfOneKindDifferByTheirVariant(): void
+    {
+        $note = static fn (string $variant): TextRow => TextRow::required(self::OPERATION, InputCase::STAFF, InputContractFixtures::NONE, 'note', 'Brak towaru', ['note' => null],
+            empty: 'Pusta.', forbidden: 'Znaki.', wrongType: 'Typ.', stored: TextRow::column('SELECT 1', []), variant: $variant);
+
+        self::assertSame('POST /api/v1/example, note (W)', $note('')->name());
+        self::assertSame('POST /api/v1/example, note (W, return)', $note('return')->name());
+        self::assertNotSame($note('cancel')->name(), $note('return')->name());
+        self::assertSame(array_keys(iterator_to_array($note('')->executions())), array_keys(iterator_to_array($note('return')->executions())), 'the variant changes the name of the row, not its executions');
+
+        $phrase = TextRow::phrase('GET /api/v1/example', InputCase::STAFF, 'product', 'namiot', empty: 'Krótka.', forbidden: 'Znaki.', phrase: '{productName}', record: '{productId}', variant: 'archive');
+        self::assertSame('GET /api/v1/example, q (phrase, archive)', $phrase->name());
+    }
+
+    /**
+     * An execution is a test named by its row and its own name: two rows of the table with the same name would run as
+     * one, or be refused by the data provider.
+     */
+    public function testTheRowsOfTheTableHaveNamesOfTheirOwn(): void
+    {
+        $names = array_map(static fn (TextRow $row): string => $row->name(), TextRows::all());
+
+        self::assertSame(array_values(array_unique($names)), $names);
+    }
+
+    /**
+     * The note of a status change is required for a cancellation and for a return, optional for a shipment: one row of
+     * each, as the table of the spec says.
+     */
+    public function testTheNoteOfAStatusChangeHasARowForACancellationAShipmentAndAReturn(): void
+    {
+        $notes = [];
+        foreach (TextRows::all() as $row) {
+            if ('POST' === $row->method && '/api/v1/admin/orders/{orderId}/status-changes' === $row->path && 'note' === $row->field) {
+                self::assertIsArray($row->body);
+                $notes[$row->name()] = $row->body['transition'] ?? null;
+            }
+        }
+
+        self::assertSame([
+            'POST /api/v1/admin/orders/{orderId}/status-changes, note (O)' => 'ship',
+            'POST /api/v1/admin/orders/{orderId}/status-changes, note (W)' => 'cancel',
+            'POST /api/v1/admin/orders/{orderId}/status-changes, note (W, return)' => 'return',
+        ], $notes);
+    }
+
+    /**
      * A row of a text of the body cannot skip the comparison of the stored value of a 2xx; only a phrase has none.
      */
     public function testEveryRowOfATextOfTheBodyReadsItsStoredValue(): void
