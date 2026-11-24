@@ -103,8 +103,9 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
     a z tekstu wysłanego białych znaków: przyjęta jest tylko jego poprawka (`czar` U+009F `ne` → „czarne” albo
     „czar ne”, `Kol` U+0009 `or` → „Kolor” albo „Kol or”; „zielone” albo „Materiał” to zmiana tożsamości, 409).
     Zapisany tekst bez znaku widocznego, także po usunięciu znaków niedozwolonych (np. U+200B, U+3164), nie ma
-    tożsamości: na jego miejsce wolno wpisać dowolny poprawny tekst. Po zapisie poprawiony tekst jest chroniony jak
-    każdy inny;
+    tożsamości: na jego miejsce wolno wpisać dowolny poprawny tekst. Poprawka jest jednorazowa i zapisuje tekst tak,
+    jak został wysłany: po zapisie „czar ne” wartość ma tę tożsamość i nie da się jej już zmienić na „czarne”. Po
+    zapisie poprawiony tekst jest chroniony jak każdy inny;
   - osie: ta sama liczba i kolejność, każda nazwa z tą samą tożsamością tekstu;
   - wariant zachowany (ten sam `variantId`): każda wartość z tą samą tożsamością tekstu co wartość zapisana na tej
     pozycji;

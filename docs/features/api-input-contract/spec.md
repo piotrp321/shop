@@ -441,7 +441,10 @@ Po etapie:
   tabulatorem w nazwie), jest zwracany przez listy, szczegóły i sklep bez zmiany, a zamówienie przechodzi opłacenie,
   wygaszenie i zmianę statusu.
 - Zapis produktu, kategorii albo metody dostawy z panelu wysyła wszystkie pola, więc niepoprawiony tekst daje 422 przy
-  swoim polu.
+  swoim polu. Poprawka tekstu przechodzi także tam, gdzie tekst jest chroniony blokadą tożsamości wariantu po
+  publikacji (nazwy osi i wartości wariantów): blokada porównuje teksty po przycięciu T2, a tekst odrzucany przez
+  regułę przyjmuje tylko swoją poprawkę, czyli ten sam tekst bez znaków niedozwolonych
+  (`docs/features/catalog-admin/spec.md`, K5; decyzja właściciela z 2026-11-24).
 - Pricing i Inventory nie wymagają zmiany: `Promotion::reconstitute` nie waliduje nazwy, notatka magazynu nie jest
   czytana przez value object, a reguła kodu rabatowego się nie zmienia.
 
