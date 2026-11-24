@@ -55,13 +55,25 @@ class WorkloadsTest(unittest.TestCase):
             for claim in claims:
                 self.assertEqual("local-path", claim["spec"]["storageClassName"], name)
 
-    def test_stateless_services_are_single_replica_deployments_that_never_lose_capacity(self):
+    def test_stateless_services_are_single_replica_deployments(self):
         found = by_logical("prod", "Deployment")
         self.assertEqual(STATELESS, set(found))
         for name, deployment in found.items():
             self.assertEqual(1, deployment["spec"]["replicas"], name)
-            self.assertEqual("RollingUpdate", deployment["spec"]["strategy"]["type"], name)
-            self.assertEqual(0, deployment["spec"]["strategy"]["rollingUpdate"]["maxUnavailable"], name)
+
+    def test_keycloak_is_recreated_and_every_other_deployment_never_loses_capacity(self):
+        # Keycloak does not support two versions on one database (its schema migrates at the start), so its old pod
+        # stops before the new one starts; the other Deployments keep the old pod until the new one is ready.
+        for case in ("prod", "ci"):
+            found = by_logical(case, "Deployment")
+            self.assertIn("keycloak", found, case)
+            for name, deployment in found.items():
+                strategy = deployment["spec"]["strategy"]
+                if name == "keycloak":
+                    self.assertEqual({"type": "Recreate"}, strategy, f"{case}: {name}")
+                else:
+                    self.assertEqual("RollingUpdate", strategy["type"], f"{case}: {name}")
+                    self.assertEqual(0, strategy["rollingUpdate"]["maxUnavailable"], f"{case}: {name}")
 
     def test_every_service_has_a_readiness_probe(self):
         for case in ("prod", "ci"):
