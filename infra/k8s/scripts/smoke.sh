@@ -37,7 +37,9 @@
 # and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
 # the users and their passwords stay); upgrade with an image whose migration fails (the previous api and both workers keep
 # serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
-# nothing). The last phase runs the demo data generator through make generate PROFILE=small (docs/features/demo-scale/spec.md): it
+# nothing); between the upgrades, on the revision r2, make reindex (without the word tak nothing is created; with it a Job of the
+# CronJob reindex rebuilds the search index and the API lists as many products as before). The last phase runs the demo data
+# generator through make generate PROFILE=small (docs/features/demo-scale/spec.md): it
 # waits until every StatefulSet and Deployment is rolled out and no Job runs (the upgrade before it ends on a failed job, with
 # Elasticsearch still on its way to the new image), and runs scripts/generate.sh (it prints the free space of the node) with the word tak
 # (without a file of the photo pool and without Argo CD, as in deploy.yml; generate runs make open after the Job) while requests go
@@ -355,6 +357,40 @@ wait_job_failed() {
 }
 
 job_name() { kc get jobs -l "app.kubernetes.io/name=$1" -o jsonpath='{.items[0].metadata.name}'; }
+
+# reindex <answer> <name of the log>: make -C infra/k8s reindex with the answer on the standard input.
+reindex() {
+  printf '%s\n' "$1" | KUBE_DIR="$KUBE_DIR" KUBE_NETWORK="$KUBE_NETWORK" KUBE_NAMESPACE="$namespace" RESTORE_POLL_SECONDS=2 \
+    sh "$here/reindex.sh" > "$work/reindex-$2.log" 2>&1
+}
+# listed_products: the number of products that the API lists through the ingress (the search index behind the alias products).
+listed_products() {
+  kc exec smoke-tools -- python -I -c "
+import json, urllib.request
+r = urllib.request.Request('http://traefik.kube-system.svc.cluster.local/api/v1/products?perPage=1', headers={'Host': 'api.localhost'})
+print(json.load(urllib.request.urlopen(r, timeout=30))['total'])"
+}
+# make reindex on the running shop: without tak no Job is created; with tak a Job of the CronJob reindex completes, the alias is on a
+# new index with the shards of the chart, and the API lists as many products as before.
+check_reindex() {
+  listed_before="$(listed_products)"
+  [ "$listed_before" -gt 0 ] || { echo "smoke: the API lists no products before the rebuild ($listed_before)" >&2; return 1; }
+  if reindex nie refused; then
+    echo "smoke: reindex went on without the word tak:" >&2; cat "$work/reindex-refused.log" >&2; return 1
+  fi
+  grep -q 'nothing changed' "$work/reindex-refused.log" || { cat "$work/reindex-refused.log" >&2; return 1; }
+  if kc get jobs -o name | grep -q '^job.batch/reindex-'; then
+    echo "smoke: reindex without tak created a Job" >&2; return 1
+  fi
+  echo "ok: reindex without tak changed nothing"
+  reindex tak rebuilt || { echo "smoke: reindex failed:" >&2; cat "$work/reindex-rebuilt.log" >&2; return 1; }
+  grep '^reindex: done: the alias products is on the index' "$work/reindex-rebuilt.log" ||
+    { echo "smoke: reindex did not say on which index the alias is:" >&2; cat "$work/reindex-rebuilt.log" >&2; return 1; }
+  listed_after="$(listed_products)"
+  [ "$listed_after" = "$listed_before" ] ||
+    { echo "smoke: the API lists $listed_after products after the rebuild, $listed_before before it" >&2; return 1; }
+  echo "ok: the API lists $listed_after products from the rebuilt index"
+}
 job_log() { kc logs "job/$1" --all-containers 2>&1 || true; }
 count() { kc exec statefulset/postgres -- psql -U shop -d shop -tAc "SELECT count(*) FROM $1" | tr -d '[:space:]'; }
 
@@ -1394,6 +1430,9 @@ KUBE_DIR="$KUBE_DIR" KUBE_NETWORK="$KUBE_NETWORK" KUBE_NAMESPACE="$namespace" sh
 kc wait --for=condition=complete "job/$new_keycloak_config" --timeout=300s >/dev/null
 job_log "$new_keycloak_config" | grep -q 'keycloak-config: done' || { echo "smoke: the rerun job did not run" >&2; exit 1; }
 echo "smoke: rerun of $new_keycloak_config completed"
+
+log "make reindex: the rebuild of the search index on the running shop"
+check_reindex
 
 log "upgrade r3: a migration that fails"
 retag r2 r3

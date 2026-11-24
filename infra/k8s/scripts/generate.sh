@@ -95,7 +95,7 @@ counts_sql="SELECT (SELECT count(*) FROM catalog_product), (SELECT count(*) FROM
 
 # 1. Checks, without changes. The lock first: another make generate or make open runs.
 lock_read || refuse "cannot read the lock $lock_name"
-[ -z "$lock_held_token" ] || refuse "the lock $lock_name is held by $lock_holder: make generate and make open run one at a time; $(lock_message)"
+[ -z "$lock_held_token" ] || refuse "the lock $lock_name is held by $lock_holder: make generate, make open and make reindex run one at a time; $(lock_message)"
 cron_json="$(kc get cronjob demo-data --ignore-not-found -o json)" || refuse "cannot read the CronJob demo-data"
 [ -n "$cron_json" ] || refuse "there is no CronJob demo-data in the namespace $namespace (demoData.enabled of the deployed values)"
 cron_fields="$(printf '%s' "$cron_json" | py -c '

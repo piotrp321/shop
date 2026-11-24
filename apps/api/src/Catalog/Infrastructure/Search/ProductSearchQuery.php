@@ -137,8 +137,10 @@ final readonly class ProductSearchQuery
         $selected = array_map(strval(...), array_keys($criteria->options));
         // The unselected axes of the variants that meet every condition, the ten with most products, each with its
         // thirty values with most products. The selected axes are left out: all of them have `total` products and
-        // their values come from the aggregation of the axis below. The index has one shard, so the sorted terms are
-        // exact; with more shards they would need a shard_size of at least the number of distinct buckets.
+        // their values come from the aggregation of the axis below. On one shard the sorted terms are exact. On more
+        // (SEARCH_SHARDS) every shard returns its shard_size largest buckets (by default size * 1.5 + 10: 25 axes, 55
+        // values), so they stay exact while a shard holds at most that many distinct axes and values of one axis; above
+        // that they would need a shard_size of at least the number of distinct buckets (spec: "Ryzyka i ograniczenia").
         $axes = [
             'terms' => ['field' => self::PAIRS.'.axis', 'size' => self::MAX_AXES, 'order' => self::BY_PRODUCTS],
             'aggs' => [

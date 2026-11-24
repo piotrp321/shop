@@ -31,6 +31,10 @@ The secrets come with envFrom (the .env.local of the compose file).
   value: /
 - name: ELASTICSEARCH_URL
   value: http://elasticsearch:9200
+# The primary shards of a product index that setup and catalog:reindex create (SEARCH_SHARDS of compose). An index that exists
+# keeps its own number until make -C infra/k8s reindex builds a new one.
+- name: SEARCH_SHARDS
+  value: {{ .Values.elasticsearch.shards | quote }}
 # Keycloak: tokens carry the public URL as issuer, discovery and JWKS are fetched through the internal one.
 - name: KEYCLOAK_PUBLIC_URL
   value: {{ include "shop.url" (dict "root" . "sub" "auth") | quote }}

@@ -29,6 +29,7 @@
     "queueCheck",
     "orderExpiry",
     "storage",
+    "reindex",
     "elasticsearch",
     "keycloak",
     "resources"
@@ -703,12 +704,19 @@
     "elasticsearch": {
       "type": "object",
       "required": [
-        "javaOpts"
+        "javaOpts",
+        "shards"
       ],
       "properties": {
         "javaOpts": {
           "type": "string",
           "minLength": 1
+        },
+        "shards": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024,
+          "description": "The primary shards of a new product index (SEARCH_SHARDS); Elasticsearch allows at most 1024."
         }
       }
     },
@@ -1088,6 +1096,20 @@
               "type": "object"
             }
           }
+        }
+      }
+    },
+    "reindex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activeDeadlineSeconds"
+      ],
+      "properties": {
+        "activeDeadlineSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "The time limit of a Job of the CronJob reindex, in seconds."
         }
       }
     }

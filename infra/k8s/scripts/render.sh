@@ -62,6 +62,8 @@ render ci ci --set image.tag=$rev1
 # shellcheck disable=SC2046 # smoke_pull_args prints options
 render ci-images-file ci -f "/cache/${out##*/}/values-images.yaml" $(smoke_pull_args)
 render ci-rev2 ci --set image.tag=$rev2
+# The shards of the search index from the values (tests/test_reindex.py): SEARCH_SHARDS of every container of the API.
+render ci-shards ci --set image.tag=$rev1 --set elasticsearch.shards=3
 # The alerts on a profile that has other workloads than prod (Mailpit): the rule follows the render (tests/test_alerts.py).
 render ci-alerts ci --set image.tag=$rev1 --set alerts.enabled=true
 render ci-accounts ci --set image.tag=$rev1 --set customerAccounts=true

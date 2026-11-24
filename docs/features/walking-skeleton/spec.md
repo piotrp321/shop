@@ -395,8 +395,8 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
 - Aplikacja czyta i zapisuje przez alias (`products` w dev, `test_products` w testach, z parametru). Alias wskazuje
   dokładnie jeden fizyczny indeks `<alias>_<UTC rrrrmmddggmmssmmm>_<6 znaków hex>`, więc kolejne przebudowy nie
   kolidują nazwami.
-- `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Shardy i repliki pochodzą z parametrów
-  (domyślnie 1 i 0). W `_meta.definition_hash` indeksu zapisany jest hash definicji (mapping i analiza, bez
+- `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Shardy pochodzą ze zmiennej `SEARCH_SHARDS`
+  (bez niej 1; `docs/features/search/spec.md`, „Infrastruktura”), repliki z parametru (0). W `_meta.definition_hash` indeksu zapisany jest hash definicji (mapping i analiza, bez
   shardów i replik), z którym porównujemy indeks przy `setup` i przed przepięciem.
 - Analiza: `polish_text` (tokenizer standardowy, `lowercase`, `polish_stem` z wtyczki `analysis-stempel`,
   `asciifolding`: „kurtki” i „kurtka” dają ten sam token) i `folded_text` (tokenizer standardowy, `lowercase`,

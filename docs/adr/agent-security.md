@@ -190,7 +190,8 @@ AGENT-ISOLATION (#498).
 - Bramka wykonuje jedno zapytanie o uprawnienia na autora w każdym wywołaniu; błąd API (sieć, limit) zatrzymuje
   `/sweep` i `/retro` jak dziś błąd `gh`.
 - Każde wdrożenie na produkcję wymaga zatwierdzenia przez użytkownika w GitHubie.
-- Awaria produkcji w trakcie przebiegu AO wymaga zatrzymania AO przed `restore`, `rerun`, `backups` i `create-admin`.
+- Awaria produkcji w trakcie przebiegu AO wymaga zatrzymania AO przed `restore`, `rerun`, `backups`, `create-admin`, `generate`, `open`
+  i `reindex`.
 - Sonda działa przed każdym startem AO (krótki przebieg Haiku, limit 1 USD jako zabezpieczenie).
 - Zbyt wąski profil psuje pracę wykonawcy w rzadkim przypadku: bloker z `Operation not permitted` i poprawka profilu
   w PR. Epik zmieniający `.claude/settings*.json` albo `.mcp.json` nie idzie przez AO.

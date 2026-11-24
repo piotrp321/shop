@@ -1,0 +1,44 @@
+{{- /*
+The CronJob reindex (docs/features/search/spec.md, "Infrastruktura"): the rebuild of the search index on the cluster. It never runs by
+itself (suspend: true): make -C infra/k8s reindex creates its Jobs (kubectl create job --from=cronjob/reindex), so a rebuild runs
+catalog:reindex with the image, the environment (SEARCH_SHARDS: elasticsearch.shards) and the secrets of the deployed revision. The
+command builds a new index, checks it and only then moves the alias, so the shop is served by the old index until the new one is ready
+and a failed run leaves the alias where it was. A failed run is reported, never repeated. The pod has no token of the Kubernetes API.
+*/ -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: reindex
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "reindex") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "1" | nindent 4 }}
+spec:
+  # Never by itself: make -C infra/k8s reindex creates its Jobs. The schedule is required, not used.
+  schedule: "0 0 1 1 *"
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: {{ .Values.reindex.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "shop.labels" (dict "root" . "name" "reindex") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          containers:
+            - name: reindex
+              image: {{ include "shop.appImage" (dict "root" . "app" "api") }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["php", "bin/console", "catalog:reindex"]
+              env:
+                {{- include "shop.apiEnv" . | nindent 16 }}
+              {{- include "shop.envFromSecret" . | nindent 14 }}
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "job") | nindent 16 }}

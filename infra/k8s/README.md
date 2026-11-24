@@ -9,7 +9,7 @@ Uruchomienie środowiska wdrożeniowego (`docs/features/deploy/spec.md`) po merg
   backup VPS-a); agent tego nie wykonuje i nie podejmuje tych decyzji.
 
 Agent wykonuje operacje na serwerze wyłącznie celami `make -C infra/k8s …` (`bootstrap`, `kubeconfig`, `status`, `rerun`,
-`create-admin`, `restore`, `backups`, `failed`, `failed-retry`, `failed-remove`, `reinitialize`, `generate`, `open`, `seal-secrets`, `cloudflare-ips`). Nie łączy się z serwerem inaczej i nie uruchamia `kubectl` ani
+`create-admin`, `restore`, `backups`, `failed`, `failed-retry`, `failed-remove`, `reinitialize`, `generate`, `open`, `reindex`, `seal-secrets`, `cloudflare-ips`). Nie łączy się z serwerem inaczej i nie uruchamia `kubectl` ani
 `helm` na serwerze. Wszystkie cele potrzebują tylko Dockera (oraz `ssh` na komputerze użytkownika). Opcje `ssh` (klucz, port):
 `SSH_OPTS="-i ~/.ssh/shop -p 2222"`.
 
@@ -172,7 +172,7 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo), poza części�
 
 5. **agent** – commituje certyfikat (jest publiczny) w PR do `main`; merge robi **użytkownik**.
 6. **agent** – `kubeconfig` pobiera kubeconfig klastra (dane administratora klastra, nie trafia do repo) do katalogu, z
-   którego korzystają `rerun`, `create-admin`, `restore` i `backups` (`KUBE_DIR`). Katalog powstaje na jedną operację i znika
+   którego korzystają `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex` (`KUBE_DIR`). Katalog powstaje na jedną operację i znika
    po niej:
 
    ```sh
@@ -188,11 +188,11 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo), poza części�
    - `kubeconfig` zapisuje bezwzględną ścieżkę `KUBE_DIR` w rejestrze `~/.local/state/shop-ops/kube-dirs` (prywatny plik, jedna
      ścieżka w wierszu). `ao-prepare` (start AO przez `/ao-run`) odmawia, dopóki któryś zapisany katalog istnieje, więc
      zapomniany `KUBE_DIR` zatrzymuje start AO, aż go usuniesz.
-   - `kubeconfig`, `rerun`, `create-admin`, `restore` i `backups` odmawiają pracy (kod różny od 0, bez żadnych zmian), gdy
+   - `kubeconfig`, `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex` odmawiają pracy (kod różny od 0, bez żadnych zmian), gdy
      działa AO (`python3 -m orchestrator … run`) albo jego wykonawca (proces `claude-agent` albo runner AO): zatrzymaj AO albo
      poczekaj na koniec przebiegu (wykonawca przeżywa śmierć AO, więc samo zatrzymanie AO nie zawsze wystarcza: poczekaj, aż
      skończą się jego procesy). Błąd `ps` też jest odmową. Test dymny (`smoke`) tych odmów nie dotyczy. Słowo `tak` w
-     `create-admin` i `restore` podaje się na standardowym wejściu tego celu.
+     `create-admin`, `restore`, `generate` i `reindex` podaje się na standardowym wejściu tego celu.
 
 ## 3. Sekrety
 
@@ -335,6 +335,20 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   na `main`, uruchamia wdrożenie (**zgoda użytkownika**, `gh workflow run deploy.yml --ref main`), a po opublikowaniu
   nowego snapshotu włącza automatyczną synchronizację `root` (z `prune` i `selfHeal`, jak w
   `argocd/root.yaml`): `root` przywraca z gita automatyczną synchronizację `shop`, która wdraża nowy snapshot.
+- **Przebudowa indeksu wyszukiwarki** – **zgoda użytkownika** (nazywa operację i host): `make -C infra/k8s reindex
+  KUBE_DIR=<katalog z kubeconfigiem>`. Potrzebna po zmianie `elasticsearch.shards` (istniejący indeks zachowuje swoją
+  liczbę shardów) i gdy indeks rozjechał się z bazą. Cel wypisuje indeks aliasu `products` i liczbę shardów nowego,
+  pyta o `tak`, uruchamia Job `reindex-<czas UTC>` z zawieszonego CronJoba `reindex` i sprawdza indeks po nim.
+  Sklep działa w trakcie na starym indeksie; milion produktów to na serwerze ok. 17 minut. Cel trzyma do końca blokadę
+  `demo-data-lock`, więc `generate` i `open` w tym czasie odmawiają. **Nie wdrażaj nowej wersji w trakcie przebudowy**:
+  Job `migrate` wdrożenia kończy się wtedy błędem (`catalog:search-index:setup` odmawia przy trwającej przebudowie),
+  a po jej końcu trzeba go ponowić (`make -C infra/k8s rerun JOB=<migrate-…>`). Odmowa (kod 1, „nothing changed”):
+  aktywny Job w przestrzeni nazw (poczekaj na koniec), blokada `demo-data-lock` innego przebiegu albo nieczytelny
+  indeks. Porażka (kod 1, „FAILED”): komunikat mówi, na którym indeksie jest alias (nieudany Job zostawia go na starym),
+  log Joba jest w wyjściu celu i w Grafana Cloud; po usunięciu przyczyny uruchom cel ponownie (nie `rerun`). Liczba
+  dokumentów w wyjściu celu to dokumenty Lucene (razem z zagnieżdżonymi wariantami), więcej niż produktów w logu Joba. Zmiana produktu, ceny albo stanu zapisana w trakcie budowy może nie trafić do nowego indeksu
+  do następnej zmiany tego produktu, więc przebudowę uruchamiaj poza godzinami zmian w panelu. Powrót do poprzedniej
+  liczby shardów: zmiana `elasticsearch.shards`, wdrożenie i ponowna przebudowa.
 - **Argo CD i inne narzędzia** (bez publicznego adresu): `ssh -L 8080:localhost:8080 <user>@<adres> 'sudo k3s kubectl -n argocd
   port-forward svc/argocd-server 8080:80'`, hasło w sekrecie `argocd-initial-admin-secret` (**użytkownik**).
 - **Utrata klucza Sealed Secrets**: bez kopii (2.4) sekretów z repo nie da się odszyfrować. Nowy certyfikat: usuń
@@ -774,7 +788,7 @@ make -C infra/k8s generate PROFILE=medium \
   i restarcie Traefika), `GENERATE_OPEN_WAIT` 300 s (czas, w którym ma podać „otwarty” po usunięciu reguły),
   `GENERATE_POLL` 30 s (odstęp odczytów Joba), `GENERATE_PROBE_POLL` 5 s (odstęp rund sondy). Wartością jest liczba
   całkowita sekund; inna to kod 2.
-- `generate` i `open` działają pojedynczo: blokadą jest ConfigMap `demo-data-lock` (kto ją trzyma: polecenie, profil,
+- `generate`, `open` i `reindex` działają pojedynczo: blokadą jest ConfigMap `demo-data-lock` (kto ją trzyma: polecenie, profil,
   host operatora, pid, czas startu; `status` ją pokazuje). `generate` zakłada ją po `tak` i trzyma do końca, razem
   z `open`, który woła; `open` uruchomiony ręcznie zakłada ją na starcie. Drugi `generate` albo `open` odmawia w tym
   czasie bez zmian i podaje posiadacza. Oba cele zwalniają ją przy każdym wyjściu poza zabiciem sygnałem KILL (i utratą
@@ -824,8 +838,8 @@ generatora: odmawia kodem 3 i wskazuje `generate`.
   zmian; `make open` otwiera sklep na tym Jobie, jeśli jest `Complete`, a po poprawie adresów sondy można ponowić
   `generate`.
 - Pozostawiony sekret `demo-photos` (zabity skrypt; `status` go pokazuje): usuwa go `open`, gdy żaden Job nie działa.
-- Pozostawiona blokada `demo-data-lock` (`status`: `lock demo-data-lock: HELD by …`; `generate` i `open` odmawiają z jej
-  posiadaczem) po `generate` albo `open` zabitym sygnałem KILL albo bez połączenia przy zwalnianiu: **użytkownik**
+- Pozostawiona blokada `demo-data-lock` (`status`: `lock demo-data-lock: HELD by …`; `generate`, `open` i `reindex` odmawiają z jej
+  posiadaczem) po `generate`, `open` albo `reindex` zabitym sygnałem KILL albo bez połączenia przy zwalnianiu: **użytkownik**
   sprawdza, że żaden `generate` ani `open` nie działa (komputer i proces z danych posiadacza), i usuwa ją na serwerze:
 
   ```sh
