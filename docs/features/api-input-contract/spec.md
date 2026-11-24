@@ -309,9 +309,11 @@ Właściciel zaakceptował 2026-11-24 zakres etapu i decyzje E1–E7.
   i U+000D.
 - **T2. Brzegi.** Z początku i końca znikają białe znaki Unicode (`\s` i kategoria Z, m.in. spacja, U+00A0, U+2003,
   U+202F, U+3000, U+180E) oraz U+200B, U+2060, U+FEFF i U+00AD. W środku tekstu nic nie jest usuwane.
-- **T3. Tekst pusty.** Tekst, w którym po przycięciu nie ma znaku widocznego: zostają najwyżej znaki kategorii Z i C
-  i znaki o właściwości Unicode `Default_Ignorable_Code_Point` (m.in. U+200D, U+200E, U+202E, U+FE0F, U+3164). Pole
-  wymagane odpowiada komunikatem braku wartości; pole opcjonalne zapisuje brak wartości.
+- **T3. Tekst pusty.** Tekst, w którym po przycięciu nie ma znaku widocznego: zostają najwyżej znaki kategorii Z, Cc
+  i Cf i znaki o właściwości Unicode `Default_Ignorable_Code_Point` (m.in. U+200D, U+200E, U+202E, U+FE0F, U+3164). Pole
+  wymagane odpowiada komunikatem braku wartości; pole opcjonalne zapisuje brak wartości. Znak prywatnego użytku (Co)
+  i znak, którego wersja Unicode w PCRE jeszcze nie zna (Cn, np. nowe emoji), liczą się jako widoczne: tekst z samego
+  takiego znaku nie jest pusty.
 - **T4. Długość** liczy się po przycięciu.
 - **T5. Zachowane.** Znak formatujący obok znaku widocznego zostaje: U+200D w emoji, U+FE0F po znaku, znaki tagów
   flagi (U+E0020–U+E007F), także na końcu tekstu.
@@ -364,7 +366,7 @@ są pomijane. Zamówienie zapisuje `+48` i 9 cyfr.
 | `600100200`; `+48600100200`; `600 100 200`; `600-100-200`; `+48 600-100-200` | 201, zapisane `+48600100200` |
 | `600100200` między U+00A0; między U+200B; po U+FEFF; `+48 600 100 200` między U+00A0 | 201, zapisane `+48600100200` |
 | U+00A0; U+200B; U+3164 | 422 „Numer telefonu jest wymagany.” |
-| `600` U+00A0 `100` U+00A0 `200`; `600` U+200B `100200`; `600` U+009F `100200` | 422 „Podaj 9-cyfrowy numer telefonu.” |
+| `600` U+00A0 `100` U+00A0 `200`; `600` U+200B `100200`; `600` U+009F `100200`; `600100200` i U+2028 na końcu | 422 „Podaj 9-cyfrowy numer telefonu.” |
 | `60010020`; `6001002000`; `+49600100200` | 422 „Podaj 9-cyfrowy numer telefonu.” |
 
 **`postalCode`** (`POST /orders`, `POST /me/orders`). Format: `NN-NNN`.
@@ -374,7 +376,7 @@ są pomijane. Zamówienie zapisuje `+48` i 9 cyfr.
 | `00-950` | 201, zapisane `00-950` |
 | `00-950` między spacjami ASCII; między U+00A0; między U+200B; po U+FEFF | 201, zapisane `00-950` |
 | U+00A0; U+200B; U+3164 | 422 „Kod pocztowy jest wymagany.” |
-| `00-` U+00A0 `950`; `00-` U+009F `950`; `00950`; `00 950`; `00` U+2013 `950`; `00-9500` | 422 „Podaj kod pocztowy w formacie 00-000.” |
+| `00-` U+00A0 `950`; `00-` U+009F `950`; `00-950` i U+2028 na końcu; `00950`; `00 950`; `00` U+2013 `950`; `00-9500` | 422 „Podaj kod pocztowy w formacie 00-000.” |
 
 **`email`** (`POST /orders`). Format: adres, który przyjmuje walidator i mailer, najwyżej 254 znaki po przycięciu.
 Wielkość liter zostaje.
@@ -386,7 +388,7 @@ Wielkość liter zostaje.
 | adres 254 znaków między U+00A0 | 201, zapisany sam adres |
 | adres 255 znaków | 422 „Podaj poprawny adres e-mail.” |
 | U+00A0; U+200B; U+3164 | 422 „Adres e-mail jest wymagany.” |
-| `anna` U+200B `nowak@example.com`; `anna nowak@example.com`; `anna.nowak@` U+00A0 `example.com`; `anna` U+009F `nowak@example.com` | 422 „Podaj poprawny adres e-mail.” |
+| `anna` U+200B `nowak@example.com`; `anna nowak@example.com`; `anna.nowak@` U+00A0 `example.com`; `anna` U+009F `nowak@example.com`; `anna.nowak@example.com` i U+2028 na końcu | 422 „Podaj poprawny adres e-mail.” |
 
 Na `db954a20` wiersze „między U+00A0”, „między U+200B” i „po U+FEFF” dają 422 z komunikatem formatu, a pozostałe
 wiersze wynik z tabeli (raport, „Pola z formatem”).
@@ -444,7 +446,7 @@ Po etapie:
 
 1. **`App\Shared\Domain\Text`** (czysty PHP, bez stanu): sprawdzenie znaków niedozwolonych z listą znaków dozwolonych
    pola (T1), normalizacja (T2 i T3: tekst pusty wraca jako `''`) i długość po normalizacji (T4). Wzorce używają
-   właściwości `\p{Cc}`, `\p{Z}`, `\p{C}` i `\p{DI}` z flagą `/u`. `\p{DI}` (`Default_Ignorable_Code_Point`) działa
+   właściwości `\p{Cc}`, `\p{Cf}`, `\p{Z}` i `\p{DI}` z flagą `/u`. `\p{DI}` (`Default_Ignorable_Code_Point`) działa
    w PCRE2 10.44 z obrazu `api` (PHP 8.5.12); sprawdzone w kontenerze na znakach z tabeli dowodów.
 2. **Value objecty i reguły modułów** (`ProductText`, `CategoryName`, `DeliveryText`, `ControlCharacters`, `StaffNote`,
    `Contact`, `ShippingAddress`, `EmailAddress`, `StockNote`, `Promotion::validName`, `OrderSearchTerm`,
@@ -478,21 +480,21 @@ Po etapie:
 
 **Test jednostkowy reguły** (`Text`): pełna lista znaków. Każdy znak z T1 w środku, na początku i na końcu tekstu;
 znaki dozwolone pól wielowierszowych; niepoprawny UTF-8 (samotny bajt kontynuacji, ucięta sekwencja, same złe bajty);
-każdy znak z T2 na brzegach i w środku; teksty puste z T3 (pojedyncze znaki i mieszanki); teksty z T5; długość po
-normalizacji. Wartości są we wspólnej klasie `InputValues` (`tests/Support/InputConformance`), z której korzysta też
+każdy znak z T2 na brzegach i w środku; teksty puste z T3 (pojedyncze znaki i mieszanki); teksty z samego znaku Co
+i Cn, które nie są puste; teksty z T5; długość po normalizacji. Wartości są we wspólnej klasie `InputValues` (`tests/Support/InputConformance`), z której korzysta też
 test kontraktu.
 
 **Test kontraktu tekstów** w `apps/api/tests/Functional/Shared/InputContract`, obok tabeli etapu 1:
 
 - **Wiersz:** operacja, rodzaj tokenu, fikstura, pole (ścieżka w treści JSON albo `q`), rodzaj (W, O, F, fraza), znaki
-  dozwolone pola, komunikaty z tabel tej sekcji i sposób odczytu zapisanej wartości. Wiersze są w plikach według
+  dozwolone pola, komunikaty z tabel tej sekcji i sposób odczytu zapisanej wartości (obowiązkowy dla W, O i F). Wiersze są w plikach według
   modułu właściciela operacji.
 - **Wykonania wiersza, każde jako osobny test na stanie zbudowanym od zera:**
 
   | Klasa | Wartości | Oczekiwane |
   |---|---|---|
   | pusty | U+00A0; U+200B; U+3164 | W: 422 z komunikatem „Tekst pusty”; O: 2xx i zapisany brak wartości; fraza: 400 |
-  | niedozwolony | U+0000, U+009F i U+2028 w środku tekstu | 422 (fraza: 400) z komunikatem „Znak niedozwolony” |
+  | niedozwolony | U+0000, U+009F i U+2028 w środku tekstu; U+2028 na końcu tekstu | 422 (fraza: 400) z komunikatem „Znak niedozwolony”; znak na końcu nie może zniknąć przez przycięcie (T1: wartość, jak przyszła) |
   | dozwolony w polu | U+000A w krótkim opisie; U+0009 i U+000A w notatce magazynu | 2xx, zapisane bez zmian |
   | brzegi | tekst między U+00A0; tekst między U+200B | 2xx, zapisany sam tekst; F: poprawna wartość między U+00A0 jest przyjęta |
   | zachowany | tekst zakończony flagą Anglii; tekst z emoji z U+200D; tekst z polskimi znakami | 2xx, zapisane bez zmian; kontrola dodatnia wiersza |
