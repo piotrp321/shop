@@ -12,7 +12,7 @@ mogą iść naraz. Plan jest dokumentem roboczym: po ukończeniu epiku usuń go.
 |---|---|---|
 | 1 | API-INPUT-2-1 | zmergowane do gałęzi epiku, `a5c98b8b` (zadanie `c3bcecc9`) |
 | 2 | API-INPUT-2-2, API-INPUT-2-3, API-INPUT-2-4 | API-INPUT-2-2: zmergowane do gałęzi epiku, `9d8c04f3` (zadanie `e16a481c`); API-INPUT-2-3: zmergowane, `2af1af78` (zadanie `fd03886a`); API-INPUT-2-4: zmergowane, `8923c17b` (zadanie `92e7c491`) |
-| 3 | API-INPUT-2-5 | |
+| 3 | API-INPUT-2-5 | zmergowane do gałęzi epiku, `ec5a05ff` (zadanie `ab31c13f`) |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
