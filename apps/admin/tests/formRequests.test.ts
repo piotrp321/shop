@@ -937,6 +937,19 @@ describe("useFormSafety", () => {
       expect(safety.restoreOffered.value).toBe(false);
     });
 
+    it("says whether a message about the server took the focus: after an unknown result and after a 409, not otherwise", async () => {
+      const plain = create();
+      expect(plain.draftDiscarded()).toBe(false);
+
+      const unknown = create();
+      await unknownResult(unknown);
+      expect(unknown.draftDiscarded()).toBe(true);
+
+      const conflict = create();
+      conflict.offerRestore("Rozpoczętej promocji nie można zmienić.");
+      expect(conflict.draftDiscarded()).toBe(true);
+    });
+
     it("keeps a late success a toast that changes nothing", async () => {
       const safety = create();
       const first = startWrite(safety);

@@ -2058,6 +2058,18 @@ describe("useProductForm", () => {
         expect(form.view.value?.version).toBe(3);
       });
 
+      it("tells the view whether a message about the server took the focus", async () => {
+        const { form } = await open();
+        form.form.value.name = "Pierwsza";
+        expect(form.discard()).toBe(false);
+
+        form.form.value.name = "Pierwsza";
+        mocks.put.mockResolvedValue(problem(502));
+        await form.save();
+
+        expect(form.discard()).toBe(true);
+      });
+
       it("keeps what „Sprawdź stan” found, and the answer of that save that comes later is only a toast", async () => {
         const { form, calls, running, onLateSaved } = await begin("save");
         await advance(10_000);
