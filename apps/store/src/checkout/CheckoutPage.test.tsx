@@ -2365,7 +2365,149 @@ describe("CheckoutPage after an attempt whose result was uncertain, on every ans
     // Only the uncertain result of the attempt that was the only uncertain one does not repeat the warning.
     const ownOnly = result.status === "failed" && source === "an uncertain result" && onKey === "the same key";
     if (result.status === "failed") expect(text).toContain(UNCERTAIN_RESULT);
-    expect(text.includes(EARLIER_MAY_HAVE_PLACED)).toBe(!ownOnly);
+    expect(text.split(EARLIER_MAY_HAVE_PLACED).length - 1).toBe(ownOnly ? 0 : 1);
+  });
+});
+
+// The second guard: the ways that change the message without an answer to an order. While an attempt whose result was
+// uncertain is left, the screen shows the warning, or the message of the uncertain result while the next click still
+// retries that attempt, exactly once, whatever took the message off or replaced it.
+describe("CheckoutPage after an attempt whose result was uncertain, on every way the message changes without an order", () => {
+  type Read = Awaited<ReturnType<typeof loadCart>>;
+  const count = (text: string) => (document.body.textContent ?? "").split(text).length - 1;
+  const note = () => document.getElementById("checkout-uncertain");
+  const withCode = (view: CartView): CartView => ({
+    ...view,
+    totals: { ...view.totals, discountGross: 4000, gross: view.totals.gross - 4000 },
+    discount: { status: "applied", code: "WITAJ10", amountGross: 4000, kind: "percent", value: 10 },
+    delivery: view.delivery && { ...view.delivery, options: view.delivery.options.map((o) => ({ ...o, totalGross: o.totalGross - 4000 })) },
+  });
+  const before = () => withDeliveries(0, 1999, 39998);
+  const after = () => ({ ...withDeliveries(0, 1999, 59997), lines: [line(A, "Buty trailowe", "czarne, 42", 3, 59997)] });
+
+  async function applyCode(read: Read) {
+    vi.mocked(loadCart).mockResolvedValueOnce(read);
+    fireEvent.change(screen.getByLabelText("Kod rabatowy"), { target: { value: "witaj10" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Zastosuj" }));
+    });
+  }
+
+  async function removeCode(read: Read) {
+    vi.mocked(loadCart).mockResolvedValueOnce(read);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Usuń kod" }));
+    });
+  }
+
+  /**
+   * A guest's order with an uncertain result (the answer lost), then a changed field and an order refused for a changed
+   * cart, whose read shows the message of the changes with the warning. With `code` a code is applied before it all.
+   */
+  async function changesAfterUncertain(code = false) {
+    await renderCheckout(before());
+    if (code) await applyCode({ status: "ok", data: withCode(before()) });
+    fillGuestForm();
+    await submit({ status: "failed" });
+    type("Telefon", "600 100 201");
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: code ? withCode(after()) : after() });
+    await submit({ status: "conflict", reason: "cart_changed", detail: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie." });
+    expect(count(EARLIER_MAY_HAVE_PLACED)).toBe(1);
+  }
+
+  function expectOneWarning() {
+    expect(count(EARLIER_MAY_HAVE_PLACED) + count(UNCERTAIN_RESULT)).toBe(1);
+    expect(count("Nie złożyliśmy zamówienia")).toBe(0);
+    expect(count("Nie udało się złożyć zamówienia")).toBe(0);
+  }
+
+  it.each<[string, boolean, () => Promise<void>]>([
+    ["another delivery method chosen", false, async () => fireEvent.click(deliveryRadio("Kurier ekspresowy"))],
+    ["a code applied", false, () => applyCode({ status: "ok", data: withCode(after()) })],
+    ["the code removed", true, () => removeCode({ status: "ok", data: after() })],
+    ["a 401 when a code is applied", false, () => applyCode({ status: "unauthorized" })],
+    ["a 401 when the code is removed", true, () => removeCode({ status: "unauthorized" })],
+  ])("after the message of the changes, %s keeps the warning on the screen once", async (_name, code, action) => {
+    await changesAfterUncertain(code);
+    await action();
+
+    expectOneWarning();
+    expect(count(EARLIER_MAY_HAVE_PLACED)).toBe(1);
+  });
+
+  it("keeps the warning once while a click reads the summary out of date, and after it", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "failed" });
+    type("Telefon", "600 100 201");
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+    await submit({ status: "conflict", reason: "cart_changed", detail: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie." });
+    expectOneWarning();
+
+    let release: (answer: Read) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+    expectOneWarning();
+
+    await act(async () => release({ status: "ok", data: cart(59997, [line(A, "Buty trailowe", "czarne, 42", 3, 59997)]) }));
+    expectOneWarning();
+    expect(placeOrder).toHaveBeenCalledTimes(2);
+  });
+
+  it("says the warning instead of the uncertain result once a field is edited: the next click is another attempt", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "failed" });
+    expect(count(UNCERTAIN_RESULT)).toBe(1);
+    type("Telefon", "600 100 201");
+
+    expectOneWarning();
+    expect(count(EARLIER_MAY_HAVE_PLACED)).toBe(1);
+  });
+
+  it.each<[string, boolean]>([
+    ["the retry with the same key", false],
+    ["a new attempt after a changed field", true],
+  ])("keeps the warning once while %s is on its way", async (_name, edit) => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "failed" });
+    if (edit) type("Telefon", "600 100 201");
+    let answer: (result: PlaceOrderResult) => void = () => {};
+    vi.mocked(placeOrder).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expectOneWarning();
+    expect(count(EARLIER_MAY_HAVE_PLACED)).toBe(1);
+    await act(async () => answer({ status: "failed" }));
+  });
+
+  it("leaves the warning without an alert and without moving the focus when the message of the changes goes away", async () => {
+    await changesAfterUncertain();
+    deliveryRadio("Kurier ekspresowy").focus();
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+
+    expect(document.getElementById("checkout-failure")).toBeNull();
+    expect(note()?.textContent).toBe(EARLIER_MAY_HAVE_PLACED);
+    expect(note()?.getAttribute("role")).not.toBe("alert");
+    expect(screen.queryAllByRole("alert").some((node) => node.textContent?.includes(EARLIER_MAY_HAVE_PLACED))).toBe(false);
+    expect(document.activeElement).toBe(deliveryRadio("Kurier ekspresowy"));
+  });
+
+  it("shows no warning without an uncertain attempt when the message of the changes goes away", async () => {
+    await renderCheckout(before());
+    fillGuestForm();
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: after() });
+    await submit({ status: "conflict", reason: "cart_changed", detail: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie." });
+    fireEvent.click(deliveryRadio("Kurier ekspresowy"));
+
+    expect(document.getElementById("checkout-failure")).toBeNull();
+    expect(note()).toBeNull();
+    expect(count(EARLIER_MAY_HAVE_PLACED)).toBe(0);
   });
 });
 
