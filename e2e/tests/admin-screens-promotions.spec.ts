@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import { documentWidths, expectControlsReachable, expectWithinWidth, settle, viewports, WCAG_TAGS } from "../support/panel-layout";
 import { closePanelContexts, go, inState, newPanelPage, type PanelState, signInPanelRoles, violationsOf } from "../support/panel-states";
 import { endActivePromotionsOf, PanelToken, toasts, warsawLocal } from "../support/promotions";
@@ -679,6 +679,34 @@ test.describe("the form", () => {
         await endActivePromotionsOf(page.request, await token.fresh(page), PRODUCT_NAME);
       }
     } finally {
+      await page.close();
+    }
+  });
+
+  test("a save whose answer is held locks the form of a new promotion at 375 px, and axe finds no violation: the scrolling tables of the variants stay focusable", async () => {
+    test.setTimeout(60_000);
+    const page = await newPanelPage("admin", viewports.phone);
+    // The save that never gets an answer: the request is aborted before the page closes, so it never reaches the API
+    // (a request left in a route would be sent on when the page closes and would create the promotion).
+    const unanswered: Route[] = [];
+    try {
+      await fillStartingNow(page, `E2E blokada ${Date.now()}`);
+      await page.route("**/api/v1/admin/promotions", async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.fallback();
+          return;
+        }
+        unanswered.push(route);
+      });
+
+      await page.getByTestId("save").click();
+
+      await expect(page.getByTestId("name-input"), "the form is locked while the save has no answer").toBeDisabled();
+      await expect(page.getByTestId("picker"), "the open choice of variants stays").toBeVisible();
+      expect(await violationsOf(page, WCAG_TAGS), "axe in the locked form at 375 px").toEqual([]);
+    } finally {
+      await Promise.all(unanswered.map((route) => route.abort().catch(() => undefined)));
+      await page.unrouteAll({ behavior: "ignoreErrors" });
       await page.close();
     }
   });

@@ -1,6 +1,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { OTHER_VERSION_MESSAGE, type ReadResult } from "@/composables/formRequests";
+import { useFormSafety } from "@/composables/useFormSafety";
 import { formatDateTime } from "@/prices/format";
 import { instantToWarsaw, warsawToInstant } from "./time";
 
@@ -33,6 +35,11 @@ export interface PromotionFormOptions {
    * result of the call.
    */
   onEnded?: (message: string) => void;
+  /**
+   * Called with „Wcześniejszy zapis został wykonany.” when the answer of an earlier save, which the staff member left behind
+   * with „Sprawdź stan” or „Odblokuj formularz”, turns out to be a success: the view says so in a toast. Nothing else changes.
+   */
+  onLateSaved?: (message: string) => void;
 }
 
 /** How an action ended; null when it did not start or its answer came after the form was left. */
@@ -41,7 +48,10 @@ export type ActionResult = "success" | "failure" | null;
 const PROBLEM_PREFIX = "tag:piotrp321.github.io,2026:shop/problems/";
 const FIELD_ROOTS = new Set(["name", "percentOff", "startsAt", "endsAt", "variantIds"]);
 
-export const MODIFIED_MESSAGE = "Promocja została w międzyczasie zmieniona – pokazujemy jej aktualny stan.";
+/** The version of a promotion changed while the staff member edited it: the draft stays. */
+export const MODIFIED_MESSAGE = "Promocja została w międzyczasie zmieniona. Twoje zmiany zostają w formularzu.";
+/** The same after an action that shows the promotion again („Zakończ teraz”, „Usuń”). */
+export const MODIFIED_RELOADED_MESSAGE = "Promocja została w międzyczasie zmieniona – pokazujemy jej aktualny stan.";
 const MISSING_END = "Podaj koniec promocji.";
 const MISSING_START = "Podaj początek promocji albo wybierz „od teraz”.";
 const IMPOSSIBLE_TIME = "Ta godzina nie istnieje w czasie polskim (zmiana czasu) albo data jest niepoprawna.";
@@ -108,6 +118,8 @@ function violationsOf(body: unknown): { propertyPath: string; title: string }[] 
   );
 }
 
+type Report = (path: string, title: string) => void;
+
 interface Body {
   name: string;
   percentOff: number;
@@ -128,8 +140,12 @@ interface Body {
  * edited is sent as the API had it, so its seconds are not lost. `endNow` sends the stored promotion with the end set
  * to the time of the browser.
  *
- * A 409 `promotion-overlap` marks the variants of `conflictingVariantIds` and keeps what was typed. Any other 409 (the
- * version changed, the status does not allow the change) shows its message and reloads the promotion.
+ * The draft is only changed by the staff member (spec „Etap 2”). A save is run by `safety` (`useFormSafety`): a 409 of
+ * a save (`promotion-overlap`, or the version changed, or the status does not allow the change) shows its message and
+ * keeps the draft, the base and the version; `promotion-overlap` marks the variants of `conflictingVariantIds`, any other
+ * 409 offers „Odrzuć moje zmiany i pokaż stan z serwera” (`safety.restore`) and reads nothing by itself. No answer in 10 s,
+ * an error before the answer and a 5xx are an unknown result (`safety.unknown`), never a message that the save failed.
+ * „Zakończ teraz” and „Usuń” show the promotion again after a 409, as before.
  */
 export function usePromotionForm(options: PromotionFormOptions) {
   const form = ref<PromotionFormData>(emptyForm());
@@ -137,13 +153,8 @@ export function usePromotionForm(options: PromotionFormOptions) {
   const baseline = ref(signature(emptyForm()));
   const loaded = ref(false);
   const loadError = ref<string | null>(null);
-  const busy = ref(false);
-  // A save runs: the fields are locked, because its answer rebuilds the form (the actions of „Status” do not lock them).
-  const saving = ref(false);
-  // „Odśwież” reads the promotion: the fields are locked too, because its answer replaces the whole form (the baseline too).
-  const refreshing = ref(false);
-  // Which „Odśwież” may end the lock: opening another promotion, leaving the form and a newer „Odśwież” make it stale.
-  let refreshRun = 0;
+  // „Zakończ teraz” or „Usuń” runs (they do not lock the fields); a save is `safety.writing`.
+  const actionBusy = ref(false);
   const message = ref<string | null>(null);
   const error = ref<string | null>(null);
   const fieldErrors = ref<Record<string, string[]>>({});
@@ -166,20 +177,38 @@ export function usePromotionForm(options: PromotionFormOptions) {
   let latest = 0;
   // Set when the form is left: an answer that arrives later must not change it or send the staff member anywhere.
   let disposed = false;
-  // Which promotion the form shows: opening another one, or the form of a new one, changes it, and the answer of a save
-  // or a deletion sent for the previous one is then ignored. Moving to the page of the promotion just created does not.
-  let shown = 0;
 
+  // The requests that may replace the draft: a save, and the reads that lock the form (`safety`). Opening another
+  // promotion, or the form of a new one, resets it, and the answer of a request sent for the previous one is then
+  // ignored; moving to the page of the promotion just created does not (`open`).
+  const safety = useFormSafety<PromotionView, Body>({
+    id: () => view.value?.id ?? options.promotionId(),
+    read: fetchPromotion,
+    version: () => view.value?.version ?? null,
+    // „Od teraz” is a start the server sets: no request equals it.
+    draftRequest: () => (form.value.startNow ? null : buildBody(form.value, view.value, null)),
+    servedRequest: (served) => buildBody(fromView(served), served, null),
+    adopt: (served) => {
+      apply(served);
+      clearFeedback();
+    },
+    onLateSuccess: (text) => options.onLateSaved?.(text),
+    compare: { instants: ["startsAt", "endsAt"] },
+    newObject: { unknownMessage: "Nie wiemy, czy promocja została utworzona.", ownNote: "Możliwe, że utworzył ją Twój wcześniejszy zapis." },
+  });
+
+  const busy = computed(() => actionBusy.value || safety.writing.value);
   const status = computed(() => view.value?.status ?? null);
   const readOnly = computed(() => !options.canManage() || status.value === "ended");
   const scheduleLocked = computed(() => status.value === "active");
   const dirty = computed(() => signature(form.value) !== baseline.value);
-  const idle = computed(() => !busy.value && loaded.value && !refreshing.value);
+  const idle = computed(() => !busy.value && loaded.value && !safety.reading.value);
   /**
-   * Whether the fields and the controls of the variants are off: while a save runs, while the form waits for the start
-   * and while „Odśwież” reads the promotion (its answer replaces the form).
+   * Whether the fields and the controls of the variants are off: while a save runs (also past the limit, until the
+   * answer or „Sprawdź stan”), while a read replaces the form („Odśwież”, „Sprawdź stan”, „Odrzuć moje zmiany…”) and
+   * while the form waits for the start.
    */
-  const locked = computed(() => saving.value || starting.value || refreshing.value);
+  const locked = computed(() => safety.locked.value || starting.value);
   const canSave = computed(() => idle.value && !ending.value && !starting.value && !readOnly.value && (view.value === null || dirty.value));
   const canEndNow = computed(() => idle.value && !ending.value && options.canManage() && status.value === "active" && !dirty.value);
   const canDelete = computed(() => idle.value && !starting.value && options.canManage() && status.value === "planned" && !dirty.value);
@@ -238,7 +267,7 @@ export function usePromotionForm(options: PromotionFormOptions) {
     loaded.value = true;
   }
 
-  async function fetchPromotion(id: string): Promise<{ data: PromotionView } | { status: number } | null> {
+  async function fetchPromotion(id: string): Promise<ReadResult<PromotionView>> {
     try {
       const result = await getApiClient().GET("/api/v1/admin/promotions/{id}", { params: { path: { id } } });
       return result.data ? { data: result.data } : { status: result.response.status };
@@ -282,12 +311,9 @@ export function usePromotionForm(options: PromotionFormOptions) {
     if (id !== null && view.value?.id === id) {
       return;
     }
-    shown++;
-    // A request for the previous promotion no longer holds this one: its answer is ignored (`perform`, `remove`).
-    busy.value = false;
-    saving.value = false;
-    refreshRun++;
-    refreshing.value = false;
+    // A request for the previous promotion no longer holds this one: its answer is ignored (`safety`, `perform`, `remove`).
+    safety.reset();
+    actionBusy.value = false;
     stopEnding();
     stopStarting();
     clearFeedback();
@@ -304,10 +330,8 @@ export function usePromotionForm(options: PromotionFormOptions) {
   onMounted(() => open(options.promotionId()));
   onBeforeUnmount(() => {
     disposed = true;
-    shown++;
     latest++;
-    refreshRun++;
-    refreshing.value = false;
+    safety.dispose();
     stopEnding();
     stopStarting();
   });
@@ -317,62 +341,59 @@ export function usePromotionForm(options: PromotionFormOptions) {
   );
 
   /**
-   * Discards the changes and shows the promotion as the API has it now. The fields stay locked until the answer, so
-   * nothing typed meanwhile is replaced by it; an answer that comes after another promotion was opened or the form was
-   * left is ignored and leaves no lock.
+   * „Odśwież”: discards the changes and shows the promotion as the API has it now (`safety.restore`). The fields stay
+   * locked until the answer, so nothing typed meanwhile is replaced by it; after 10 s, an error or an answer other than
+   * 200 the form stays as it was, unlocked, with `safety.readFailed`. An answer that comes after another promotion was
+   * opened, the form was left or the limit passed is ignored.
    */
   async function refresh(): Promise<void> {
-    const id = view.value?.id ?? options.promotionId();
     stopEnding();
     stopStarting();
-    clearFeedback();
-    if (id === null) {
-      return;
-    }
-    const run = ++refreshRun;
-    refreshing.value = true;
-    try {
-      await loadPromotion(id);
-    } finally {
-      if (run === refreshRun) {
-        refreshing.value = false;
-      }
-    }
+    // The reads of the end and of the start are stale now, and the messages of their failure are what „Odśwież” answers.
+    latest++;
+    endNotice.value = null;
+    endError.value = null;
+    startNotice.value = null;
+    startError.value = null;
+    await safety.restore();
   }
 
-  /** Throws away the unsaved changes: the form goes back to the promotion as the API last sent it, without a request. */
-  function discard(): void {
+  /** Throws away the unsaved changes (true when a message about the server took the focus): the form goes back to the promotion as the API last sent it, without a request. */
+  function discard(): boolean {
     const current = view.value;
     if (current === null || busy.value || locked.value) {
-      return;
+      return false;
     }
     form.value = fromView(current);
     clearFeedback();
+    return safety.draftDiscarded();
   }
 
   /** A time as the API gets it: the stored moment when the text is what it shows, else the typed time as UTC. */
-  function moment(path: "startsAt" | "endsAt", missing: string): string | null {
-    const local = form.value[path];
-    const stored = view.value?.[path];
+  function moment(typed: PromotionFormData, current: PromotionView | null, path: "startsAt" | "endsAt", missing: string, report: Report | null): string | null {
+    const local = typed[path];
+    const stored = current?.[path];
     if (stored !== undefined && local === instantToWarsaw(stored)) {
       return stored;
     }
     if (local.trim() === "") {
-      addFieldError(path, missing);
+      report?.(path, missing);
       return null;
     }
     const converted = warsawToInstant(local);
     if (converted === null) {
-      addFieldError(path, IMPOSSIBLE_TIME);
+      report?.(path, IMPOSSIBLE_TIME);
     }
     return converted;
   }
 
-  /** What the form sends, or null (with the errors at the fields) when a typed value cannot be sent at all. */
-  function buildBody(): Body | null {
-    const current = view.value;
-    const typed = form.value;
-    const endsAt = moment("endsAt", MISSING_END);
+  /**
+   * What the form sends for `typed` shown on `current`, or null when a typed value cannot be sent at all; `report`
+   * gets the error and its field (null: ask without saying anything, as „Sprawdź stan” does). The same function builds the
+   * request from the draft and from an object read from the API, which is how they are compared.
+   */
+  function buildBody(typed: PromotionFormData, current: PromotionView | null, report: Report | null): Body | null {
+    const endsAt = moment(typed, current, "endsAt", MISSING_END, report);
     if (current !== null && current.status === "active") {
       return endsAt === null
         ? null
@@ -387,12 +408,12 @@ export function usePromotionForm(options: PromotionFormOptions) {
     let valid = endsAt !== null;
     const percentText = typed.percentOff.trim();
     if (!/^\d+$/.test(percentText)) {
-      addFieldError("percentOff", PERCENT_NOT_WHOLE);
+      report?.("percentOff", PERCENT_NOT_WHOLE);
       valid = false;
     }
     let startsAt: string | null = null;
     if (!typed.startNow) {
-      startsAt = moment("startsAt", MISSING_START);
+      startsAt = moment(typed, current, "startsAt", MISSING_START, report);
       valid = valid && startsAt !== null;
     }
     if (!valid || endsAt === null) {
@@ -424,20 +445,20 @@ export function usePromotionForm(options: PromotionFormOptions) {
     }
   }
 
-  /** Returns whether the promotion should be shown again as the API has it. */
-  function conflictFailure(body: unknown): boolean {
+  /** Returns whether the promotion should be shown again as the API has it. `keepsDraft`: the 409 answers a save. */
+  function conflictFailure(body: unknown, keepsDraft: boolean): boolean {
     const type = problemField(body, "type")?.replace(PROBLEM_PREFIX, "") ?? null;
     const detail = problemField(body, "detail");
     switch (type) {
       case "promotion-overlap":
         conflicting.value = new Set(conflictingIds(body));
-        error.value = detail ?? "Część wariantów jest już w innej promocji w tym okresie.";
+        error.value = safety.withDuplicateNote(detail ?? "Część wariantów jest już w innej promocji w tym okresie.");
         return false;
       case "promotion-not-editable":
         error.value = detail ?? "Tej promocji nie można teraz zmienić.";
         return true;
       case "about:blank":
-        error.value = MODIFIED_MESSAGE;
+        error.value = keepsDraft ? MODIFIED_MESSAGE : MODIFIED_RELOADED_MESSAGE;
         return true;
       default:
         error.value = detail ?? "Nie udało się wykonać operacji (HTTP 409).";
@@ -445,11 +466,11 @@ export function usePromotionForm(options: PromotionFormOptions) {
     }
   }
 
-  /** Returns whether the promotion should be shown again as the API has it. */
-  function failure(status: number, body: unknown): boolean {
+  /** Returns whether the promotion should be shown again as the API has it. `keepsDraft`: the answer is to a save. */
+  function failure(status: number, body: unknown, keepsDraft = false): boolean {
     switch (status) {
       case 409:
-        return conflictFailure(body) && view.value !== null;
+        return conflictFailure(body, keepsDraft) && view.value !== null;
       case 422:
         validationFailure(body, status);
         return false;
@@ -471,14 +492,13 @@ export function usePromotionForm(options: PromotionFormOptions) {
   type Outcome = { data?: PromotionView; error?: unknown; response: { status: number } };
 
   /**
-   * Sends a change and shows its answer. `lock` locks the fields until the answer (a save). The answer is ignored when
-   * the form was left or shows another promotion by then; the request also makes older reads stale (`latest`).
+   * Sends a change that is not a save („Zakończ teraz”) and shows its answer. The fields are not locked. The answer is
+   * ignored when the form was left or shows another promotion by then; the request also makes older reads stale (`latest`).
    */
   async function perform(
     allowed: boolean,
     request: () => Promise<Outcome> | null,
     success: string | ((saved: PromotionView) => string | null),
-    lock = false,
   ): Promise<ActionResult> {
     if (!allowed) {
       return null;
@@ -488,22 +508,17 @@ export function usePromotionForm(options: PromotionFormOptions) {
     if (pending === null) {
       return "failure";
     }
-    const context = shown;
+    const context = safety.context();
     latest++;
-    busy.value = true;
-    saving.value = lock;
+    actionBusy.value = true;
     try {
       const result = await pending;
-      if (disposed || context !== shown) {
+      if (safety.stale(context)) {
         return null;
       }
       if (result.data) {
-        const created = view.value === null;
         apply(result.data);
         message.value = typeof success === "string" ? success : success(result.data);
-        if (created) {
-          options.onCreated(result.data.id);
-        }
         return "success";
       }
       if (failure(result.response.status, result.error)) {
@@ -511,43 +526,62 @@ export function usePromotionForm(options: PromotionFormOptions) {
       }
       return "failure";
     } catch {
-      if (disposed || context !== shown) {
+      if (safety.stale(context)) {
         return null;
       }
       error.value = "Nie udało się wykonać operacji. Sprawdź połączenie z API.";
       return "failure";
     } finally {
-      if (context === shown) {
-        busy.value = false;
-        saving.value = false;
+      if (!safety.stale(context)) {
+        actionBusy.value = false;
       }
     }
   }
 
-  /** Saves the form; a save „od teraz” that answers „planned” then waits for the start (`watchStart`). */
-  function save(): Promise<ActionResult> {
+  /**
+   * Saves the form through `safety.write`; a save „od teraz” that answers „planned” then waits for the start
+   * (`watchStart`). A 409 and a 422 show their message and keep the draft; an unknown result is `safety.unknown`.
+   */
+  async function save(): Promise<ActionResult> {
+    if (!canSave.value) {
+      return null;
+    }
     const current = view.value;
-    let startsNow = false;
-    return perform(
-      canSave.value,
-      () => {
-        const body = buildBody();
-        if (body === null) {
-          return null;
-        }
-        startsNow = body.startsAt === null;
-        return current === null
+    clearFeedback();
+    const body = buildBody(form.value, current, addFieldError);
+    if (body === null) {
+      return "failure";
+    }
+    const startsNow = body.startsAt === null;
+    // The request makes older reads stale.
+    latest++;
+    const result = await safety.write(
+      () =>
+        current === null
           ? getApiClient().POST("/api/v1/admin/promotions", { body })
-          : getApiClient().PUT("/api/v1/admin/promotions/{id}", { params: { path: { id: current.id } }, body: { ...body, version: current.version } });
+          : getApiClient().PUT("/api/v1/admin/promotions/{id}", { params: { path: { id: current.id } }, body: { ...body, version: current.version } }),
+      {
+        onSuccess: (saved) => {
+          const created = view.value === null;
+          apply(saved);
+          if (startsNow && saved.status === "planned") {
+            watchStart(saved);
+          }
+          message.value = "Promocja zapisana.";
+          if (created) {
+            options.onCreated(saved.id);
+          }
+        },
+        onRefused: (refusedStatus, refusedBody) => {
+          if (failure(refusedStatus, refusedBody, true)) {
+            // What this 409 says about the server, for the button that stays after „Odrzuć”.
+            const ofVersion = problemField(refusedBody, "type") === "about:blank";
+            safety.offerRestore(ofVersion || error.value === null ? OTHER_VERSION_MESSAGE : error.value);
+          }
+        },
       },
-      (saved) => {
-        if (startsNow && saved.status === "planned") {
-          watchStart(saved);
-        }
-        return "Promocja zapisana.";
-      },
-      true,
     );
+    return result === null ? null : result === "success" ? "success" : "failure";
   }
 
   /**
@@ -684,13 +718,13 @@ export function usePromotionForm(options: PromotionFormOptions) {
       return null;
     }
     clearFeedback();
-    const context = shown;
-    busy.value = true;
+    const context = safety.context();
+    actionBusy.value = true;
     try {
       const result = await getApiClient().DELETE("/api/v1/admin/promotions/{id}", {
         params: { path: { id: current.id }, query: { version: current.version } },
       });
-      if (disposed || context !== shown) {
+      if (safety.stale(context)) {
         return null;
       }
       if (result.response.status === 204) {
@@ -702,14 +736,14 @@ export function usePromotionForm(options: PromotionFormOptions) {
       }
       return "failure";
     } catch {
-      if (disposed || context !== shown) {
+      if (safety.stale(context)) {
         return null;
       }
       error.value = "Nie udało się wykonać operacji. Sprawdź połączenie z API.";
       return "failure";
     } finally {
-      if (context === shown) {
-        busy.value = false;
+      if (!safety.stale(context)) {
+        actionBusy.value = false;
       }
     }
   }
@@ -743,6 +777,7 @@ export function usePromotionForm(options: PromotionFormOptions) {
     loadError,
     busy,
     locked,
+    safety,
     dirty,
     status,
     readOnly,

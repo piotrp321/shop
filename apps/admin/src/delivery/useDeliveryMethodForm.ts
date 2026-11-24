@@ -1,6 +1,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { OTHER_VERSION_MESSAGE, type ReadResult } from "@/composables/formRequests";
+import { useFormSafety } from "@/composables/useFormSafety";
 import { groszeToInput } from "@/discount-codes/format";
 import { parseGross } from "@/prices/parseGross";
 
@@ -24,6 +26,11 @@ export interface DeliveryMethodFormOptions {
   methodId: () => string | null;
   /** Called after a save succeeded, so that the view can go back to the list. */
   onSaved: () => void;
+  /**
+   * Called with „Wcześniejszy zapis został wykonany.” when the answer of an earlier save, which the staff member left behind
+   * with „Sprawdź stan” or „Odblokuj formularz”, turns out to be a success: the view says so in a toast. Nothing else changes.
+   */
+  onLateSaved?: (message: string) => void;
 }
 
 /** How an action ended; null when it did not start or its answer came after the form was left. */
@@ -33,10 +40,13 @@ const PROBLEM_PREFIX = "tag:piotrp321.github.io,2026:shop/problems/";
 const FIELD_ROOTS = new Set(["name", "description", "priceGross", "freeFromGross", "active", "position", "trackingUrlTemplate"]);
 
 export const SAVED_MESSAGE = "Metoda dostawy zapisana.";
-export const MODIFIED_MESSAGE = "Metoda dostawy została w międzyczasie zmieniona. Odśwież ją i spróbuj ponownie.";
+/** The version of a method changed while the staff member edited it: the draft stays. */
+export const MODIFIED_MESSAGE = "Metoda dostawy została w międzyczasie zmieniona. Twoje zmiany zostają w formularzu.";
 const NAME_TAKEN_MESSAGE = "Metoda dostawy o tej nazwie już istnieje.";
 const LIMIT_REACHED_MESSAGE = "Aktywnych metod dostawy może być najwyżej 20. Wyłącz inną metodę.";
 const POSITION_MESSAGE = "Kolejność musi być liczbą całkowitą od 0 do 999.";
+
+type Report = (path: string, title: string) => void;
 
 function emptyForm(): DeliveryMethodFormData {
   return { name: "", description: "", price: "", freeFrom: "", active: true, position: "0", trackingUrlTemplate: "" };
@@ -87,8 +97,13 @@ interface Body {
  * (lengths, characters, ranges, the form of the link) is the API's: its 422 answers land at the field they name. The
  * version comes from the API and the form only sends it back.
  *
- * Every 409 is shown above the form: the name that is taken and the limit of active methods keep what was typed (the
- * staff member changes the name or switches another method off), a changed version reloads the method as the API has it.
+ * Every 409 is shown above the form and keeps what was typed (spec „Etap 2”): the name that is taken and the limit of active
+ * methods ask the staff member to change the name or to switch another method off; a changed version keeps the draft, the base
+ * and the version, offers „Odrzuć moje zmiany i pokaż stan z serwera” (`safety.restore`) and reads nothing by itself.
+ *
+ * The draft is only changed by the staff member. A save is run by `safety` (`useFormSafety`): the fields are locked from the
+ * save to its answer (`locked`). No answer in 10 s, an error before the answer and a 5xx are an unknown result
+ * (`safety.unknown`), never a message that the save failed.
  */
 export function useDeliveryMethodForm(options: DeliveryMethodFormOptions) {
   const form = ref<DeliveryMethodFormData>(emptyForm());
@@ -96,18 +111,34 @@ export function useDeliveryMethodForm(options: DeliveryMethodFormOptions) {
   const baseline = ref(JSON.stringify(emptyForm()));
   const loaded = ref(false);
   const loadError = ref<string | null>(null);
-  const busy = ref(false);
   const message = ref<string | null>(null);
   const error = ref<string | null>(null);
   const fieldErrors = ref<Record<string, string[]>>({});
 
   // Only the newest load may change the state; an older one that finishes late is ignored.
   let latest = 0;
-  // Set when the form is left: an answer that arrives later must not change it or send the staff member anywhere.
-  let disposed = false;
 
+  // The requests that may replace the draft: a save, and the reads that lock the form (`safety`). Opening another method, or
+  // the form of a new one, resets it, and the answer of a request sent for the previous one is then ignored.
+  const safety = useFormSafety<DeliveryMethodView, Body>({
+    id: () => view.value?.id ?? options.methodId(),
+    read: fetchMethod,
+    version: () => view.value?.version ?? null,
+    draftRequest: () => buildBody(form.value, null),
+    servedRequest: (served) => buildBody(fromView(served), null),
+    adopt: (served) => {
+      apply(served);
+      clearFeedback();
+    },
+    onLateSuccess: (text) => options.onLateSaved?.(text),
+    newObject: { unknownMessage: "Nie wiemy, czy metoda dostawy została utworzona.", ownNote: "Możliwe, że utworzył ją Twój wcześniejszy zapis." },
+  });
+
+  const busy = computed(() => safety.writing.value);
+  /** Whether the fields are off: while a save runs (also past the limit, until the answer or „Sprawdź stan”) and while a read replaces the form. */
+  const locked = computed(() => safety.locked.value);
   const dirty = computed(() => JSON.stringify(form.value) !== baseline.value);
-  const canSave = computed(() => !busy.value && loaded.value && (view.value === null || dirty.value));
+  const canSave = computed(() => !busy.value && !safety.reading.value && loaded.value && (view.value === null || dirty.value));
 
   /** The messages for a field path. */
   function errorsAt(path: string): string[] {
@@ -138,7 +169,7 @@ export function useDeliveryMethodForm(options: DeliveryMethodFormOptions) {
     loaded.value = true;
   }
 
-  async function fetchMethod(id: string): Promise<{ data: DeliveryMethodView } | { status: number } | null> {
+  async function fetchMethod(id: string): Promise<ReadResult<DeliveryMethodView>> {
     try {
       const result = await getApiClient().GET("/api/v1/admin/delivery-methods/{id}", { params: { path: { id } } });
       return result.data ? { data: result.data } : { status: result.response.status };
@@ -168,20 +199,9 @@ export function useDeliveryMethodForm(options: DeliveryMethodFormOptions) {
     }
   }
 
-  /** Shows the method as the API has it, keeping the message that explains why; a failed reload changes nothing. */
-  async function reloadQuietly(): Promise<void> {
-    const id = view.value?.id;
-    if (id === undefined) {
-      return;
-    }
-    const request = ++latest;
-    const result = await fetchMethod(id);
-    if (request === latest && !disposed && result !== null && "data" in result) {
-      apply(result.data);
-    }
-  }
-
   function open(id: string | null): void {
+    // A request for the previous method no longer holds this one: its answer is ignored (`safety`).
+    safety.reset();
     clearFeedback();
     if (id === null) {
       latest++;
@@ -195,43 +215,47 @@ export function useDeliveryMethodForm(options: DeliveryMethodFormOptions) {
 
   onMounted(() => open(options.methodId()));
   onBeforeUnmount(() => {
-    disposed = true;
     latest++;
+    safety.dispose();
   });
   watch(
     () => options.methodId(),
     (id) => open(id),
   );
 
-  /** Throws away the unsaved changes: the form goes back to the method as the API last sent it, without a request. */
-  function discard(): void {
+  /** Throws away the unsaved changes (true when a message about the server took the focus): the form goes back to the method as the API last sent it, without a request. */
+  function discard(): boolean {
     const current = view.value;
-    if (current === null || busy.value) {
-      return;
+    if (current === null || busy.value || locked.value) {
+      return false;
     }
     form.value = fromView(current);
     clearFeedback();
+    return safety.draftDiscarded();
   }
 
   /** An amount typed in złoty as grosze, or null (with the error at the field). */
-  function grosze(path: string, text: string): number | null {
+  function grosze(path: string, text: string, report: Report | null): number | null {
     const parsed = parseGross(text);
     if (!parsed.ok) {
-      addFieldError(path, parsed.message);
+      report?.(path, parsed.message);
       return null;
     }
     return parsed.grosze;
   }
 
-  /** What the form sends, or null (with the errors at the fields) when a typed value cannot be sent at all. */
-  function buildBody(): Body | null {
-    const typed = form.value;
-    const priceGross = grosze("priceGross", typed.price);
-    const freeFromGross = typed.freeFrom.trim() === "" ? null : grosze("freeFromGross", typed.freeFrom);
+  /**
+   * What the form sends for `typed`, or null when a typed value cannot be sent at all; `report` gets the error and its field
+   * (null: ask without saying anything, as „Sprawdź stan” does). The same function builds the request from the draft and
+   * from an object read from the API, which is how they are compared.
+   */
+  function buildBody(typed: DeliveryMethodFormData, report: Report | null): Body | null {
+    const priceGross = grosze("priceGross", typed.price, report);
+    const freeFromGross = typed.freeFrom.trim() === "" ? null : grosze("freeFromGross", typed.freeFrom, report);
     const positionText = typed.position.trim();
     const position = /^\d+$/.test(positionText) && Number.isSafeInteger(Number(positionText)) ? Number(positionText) : null;
     if (position === null) {
-      addFieldError("position", POSITION_MESSAGE);
+      report?.("position", POSITION_MESSAGE);
     }
     if (priceGross === null || position === null || (typed.freeFrom.trim() !== "" && freeFromGross === null)) {
       return null;
@@ -264,19 +288,19 @@ export function useDeliveryMethodForm(options: DeliveryMethodFormOptions) {
     }
   }
 
-  /** Returns whether the method should be shown again as the API has it. */
+  /** Returns whether the staff member may ask for the method as the API has it (`safety.offerRestore`). */
   function conflictFailure(body: unknown): boolean {
     const type = problemField(body, "type")?.replace(PROBLEM_PREFIX, "") ?? null;
     const detail = problemField(body, "detail");
     switch (type) {
       case "delivery-method-name-taken":
-        error.value = detail ?? NAME_TAKEN_MESSAGE;
+        error.value = safety.withDuplicateNote(detail ?? NAME_TAKEN_MESSAGE);
         return false;
       case "delivery-method-limit-reached":
         error.value = detail ?? LIMIT_REACHED_MESSAGE;
         return false;
       case "about:blank":
-        error.value = detail ?? MODIFIED_MESSAGE;
+        error.value = MODIFIED_MESSAGE;
         return true;
       default:
         error.value = detail ?? "Nie udało się zapisać metody dostawy (HTTP 409).";
@@ -284,7 +308,7 @@ export function useDeliveryMethodForm(options: DeliveryMethodFormOptions) {
     }
   }
 
-  /** Returns whether the method should be shown again as the API has it. */
+  /** Returns whether the staff member may ask for the method as the API has it. Only a 4xx reaches it: the rest is an unknown result. */
   function failure(status: number, body: unknown): boolean {
     switch (status) {
       case 409:
@@ -298,57 +322,50 @@ export function useDeliveryMethodForm(options: DeliveryMethodFormOptions) {
       case 404:
         error.value = "Ta metoda dostawy już nie istnieje.";
         return false;
-      case 503:
-        error.value = "Usługa jest chwilowo niedostępna. Spróbuj ponownie.";
-        return false;
       default:
         error.value = `Nie udało się zapisać metody dostawy (HTTP ${status}).`;
         return false;
     }
   }
 
+  /**
+   * Saves the form through `safety.write`. A 409 and a 422 show their message and keep the draft; an unknown result is
+   * `safety.unknown`; the answer of a save for a method the form no longer shows is ignored (`null`).
+   */
   async function save(): Promise<ActionResult> {
     if (!canSave.value) {
       return null;
     }
     const current = view.value;
     clearFeedback();
-    const body = buildBody();
+    const body = buildBody(form.value, addFieldError);
     if (body === null) {
       return "failure";
     }
-    busy.value = true;
-    try {
-      const result =
+    const result = await safety.write(
+      () =>
         current === null
-          ? await getApiClient().POST("/api/v1/admin/delivery-methods", { body })
-          : await getApiClient().PUT("/api/v1/admin/delivery-methods/{id}", {
+          ? getApiClient().POST("/api/v1/admin/delivery-methods", { body })
+          : getApiClient().PUT("/api/v1/admin/delivery-methods/{id}", {
               params: { path: { id: current.id } },
               body: { ...body, version: current.version },
-            });
-      if (disposed) {
-        return null;
-      }
-      if (result.data) {
-        apply(result.data);
-        message.value = SAVED_MESSAGE;
-        options.onSaved();
-        return "success";
-      }
-      if (failure(result.response.status, result.error)) {
-        await reloadQuietly();
-      }
-      return "failure";
-    } catch {
-      if (disposed) {
-        return null;
-      }
-      error.value = "Nie udało się zapisać metody dostawy. Sprawdź połączenie z API.";
-      return "failure";
-    } finally {
-      busy.value = false;
-    }
+            }),
+      {
+        onSuccess: (saved) => {
+          apply(saved);
+          message.value = SAVED_MESSAGE;
+          options.onSaved();
+        },
+        onRefused: (status, refusedBody) => {
+          if (failure(status, refusedBody)) {
+            // What this 409 says about the server, for the button that stays after „Odrzuć”.
+            safety.offerRestore(OTHER_VERSION_MESSAGE);
+          }
+        },
+      },
+    );
+    return result === null ? null : result === "success" ? "success" : "failure";
   }
 
-  return { form, view, loaded, loadError, busy, dirty, canSave, message, error, errorsAt, save, discard };
+  return { form, view, loaded, loadError, busy, locked, safety, dirty, canSave, message, error, errorsAt, save, discard };
 }

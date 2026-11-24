@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page, type Route } from "@playwright/test";
 import { staff } from "../support/accounts";
 import { createCategory, readToken, removeTestCategories, SLUG_PREFIX, testCategorySlugs } from "../support/categories";
 import { createDraftInPanel, newProduct, publishInPanel, receiveStockInPanel, solidPng, unpublishInPanel } from "../support/catalog-admin";
@@ -711,4 +711,143 @@ test.describe("categories screen", () => {
       });
     });
   }
+});
+
+// ADMIN-UX-FIXES stage 2 (B2, B3): the form of a product does not lose what the staff member types while a request runs.
+// The answers of the save and of the reads are given by the test (`page.route`), so no product is written; a request the
+// test holds is always answered or aborted at the end, so that it never reaches the API after the test.
+test.describe("the requests of the product form (stage 2)", () => {
+  let productId = "";
+  const PRODUCT_URL = () => `**/api/v1/admin/products/${productId}`;
+
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(120_000);
+    await signInPanelRoles(browser, ["admin"]);
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/products");
+      const link = page.getByTestId("product-link").first();
+      await expect(link, "the list has a demo product").toBeVisible();
+      productId = (await link.getAttribute("href"))!.split("/").pop()!;
+    } finally {
+      await page.close();
+    }
+  });
+
+  test.afterAll(closePanelContexts);
+
+  /** Whatever the test did, a read it holds is let go at the end. */
+  let releasers: (() => void)[] = [];
+
+  test.afterEach(() => {
+    releasers.forEach((release) => release());
+    releasers = [];
+  });
+
+  /**
+   * Opens the product with the PUT of its form answered by `answerPut` (the request never goes on to the API) and the reads
+   * after the first one answered by `answerRead`; returns the product as the API sent it.
+   */
+  async function openWith(
+    page: Page,
+    answerPut: (route: Route, product: Record<string, unknown>, index: number) => Promise<void>,
+    answerRead?: (route: Route, response: Awaited<ReturnType<Route["fetch"]>>) => Promise<void>,
+  ) {
+    let reads = 0;
+    let puts = 0;
+    let product: Record<string, unknown> = {};
+    await page.route(PRODUCT_URL(), async (route) => {
+      const method = route.request().method();
+      if (method === "GET") {
+        const response = await route.fetch();
+        if (reads++ === 0 || answerRead === undefined) {
+          product = (await response.json()) as Record<string, unknown>;
+          await route.fulfill({ response });
+        } else {
+          await answerRead(route, response);
+        }
+        return;
+      }
+      if (method !== "PUT") {
+        await route.fallback();
+        return;
+      }
+      await answerPut(route, product, puts++);
+    });
+    await go(page, `/products/${productId}`);
+    await expect(page.getByTestId("name")).toBeVisible();
+    return product;
+  }
+
+  test("(b) the fields are off while the answer of the save is 3 s late, and the answer gives the toast", async () => {
+    test.setTimeout(60_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await openWith(page, async (route, product) => {
+        const body = route.request().postDataJSON() as { shortDescription: string };
+        await new Promise((resolve) => setTimeout(resolve, 3_000));
+        await route.fulfill({ status: 200, json: { ...product, shortDescription: body.shortDescription, version: (product.version as number) + 1 } }).catch(() => undefined);
+      });
+      const description = page.getByTestId("short-description");
+      await description.fill("Opis wpisany przed zapisem.");
+
+      await page.getByTestId("save").click();
+
+      await expect(description, "the field is off while the save waits for its answer").toBeDisabled();
+      await expect(page.getByTestId("name")).toBeDisabled();
+      await expect(page.getByTestId("slug")).toBeDisabled();
+      await expect(page.getByTestId("image-alt").first()).toBeDisabled();
+      await expect(page.getByTestId("variant-value").first()).toBeDisabled();
+      await expect(toasts(page).getByText("Produkt zapisany.")).toBeVisible({ timeout: 10_000 });
+      await expect(description).toBeEnabled();
+      await expect(description).toHaveValue("Opis wpisany przed zapisem.");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("(c) „Odrzuć moje zmiany i pokaż stan z serwera” after a 409 keeps the fields off while the read is held, and the server state replaces the draft after its answer", async () => {
+    test.setTimeout(60_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      releasers.push(release);
+      await openWith(
+        page,
+        async (route) => {
+          await route.fulfill({
+            status: 409,
+            contentType: "application/problem+json",
+            json: { type: "tag:piotrp321.github.io,2026:shop/problems/product-modified", title: "Conflict", status: 409, detail: "Produkt został zmieniony." },
+          });
+        },
+        async (route, response) => {
+          await released;
+          await route.fulfill({ response }).catch(() => undefined);
+        },
+      );
+      const name = page.getByTestId("name");
+      const original = await name.inputValue();
+      await name.fill(`${original} (zmiana)`);
+      await page.getByTestId("save").click();
+
+      await expect(page.getByTestId("form-error")).toContainText("Twoje zmiany zostają w formularzu.");
+      await expect(name).toHaveValue(`${original} (zmiana)`);
+      await page.getByTestId("restore-state").click();
+
+      await expect(page.getByTestId("safety-status")).toHaveText("Odświeżamy…");
+      await expect(name, "the fields are off while the read waits for its answer").toBeDisabled();
+      await expect(page.getByTestId("short-description")).toBeDisabled();
+      await expect(page.getByTestId("variant-value").first()).toBeDisabled();
+      await expect(page.getByTestId("save")).toBeDisabled();
+
+      release();
+
+      await expect(name).toBeEnabled();
+      await expect(name).toHaveValue(original);
+    } finally {
+      await page.close();
+    }
+  });
 });

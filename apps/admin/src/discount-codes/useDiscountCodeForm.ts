@@ -1,6 +1,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { OTHER_VERSION_MESSAGE, type ReadResult } from "@/composables/formRequests";
+import { useFormSafety } from "@/composables/useFormSafety";
 import { parseGross } from "@/prices/parseGross";
 import { instantToWarsaw, warsawToInstant } from "@/promotions/time";
 import { groszeToInput } from "./format";
@@ -31,6 +33,11 @@ export interface DiscountCodeFormOptions {
   canManage: () => boolean;
   /** Called with the id of a code just created, so that the view can move to its page. */
   onCreated: (id: string) => void;
+  /**
+   * Called with „Wcześniejszy zapis został wykonany.” when the answer of an earlier save, which the staff member left behind
+   * with „Sprawdź stan” or „Odblokuj formularz”, turns out to be a success: the view says so in a toast. Nothing else changes.
+   */
+  onLateSaved?: (message: string) => void;
 }
 
 /** How an action ended; null when it did not start or its answer came after the form was left. */
@@ -39,7 +46,8 @@ export type ActionResult = "success" | "failure" | null;
 const PROBLEM_PREFIX = "tag:piotrp321.github.io,2026:shop/problems/";
 const FIELD_ROOTS = new Set(["code", "kind", "value", "minimumOrderGross", "startsAt", "endsAt", "usageLimit"]);
 
-export const MODIFIED_MESSAGE = "Kod rabatowy został w międzyczasie zmieniony – pokazujemy jego aktualny stan.";
+/** The version of a code changed while the staff member edited it: the draft stays. */
+export const MODIFIED_MESSAGE = "Kod rabatowy został w międzyczasie zmieniony. Twoje zmiany zostają w formularzu.";
 const MISSING_START = "Podaj początek kodu.";
 const IMPOSSIBLE_TIME = "Ta godzina nie istnieje w czasie polskim (zmiana czasu) albo data jest niepoprawna.";
 const PERCENT_NOT_WHOLE = "Podaj procent jako liczbę całkowitą.";
@@ -78,6 +86,8 @@ function violationsOf(body: unknown): { propertyPath: string; title: string }[] 
   );
 }
 
+type Report = (path: string, title: string) => void;
+
 interface Body {
   kind: Kind;
   value: number;
@@ -86,6 +96,14 @@ interface Body {
   endsAt: string | null;
   usageLimit: number | null;
   enabled: boolean;
+}
+
+/** Whether a code has started: only its end, `enabled` and a limit it already has can change then. */
+function hasStarted(current: DiscountCodeView | null): boolean {
+  if (current === null) {
+    return false;
+  }
+  return current.status === "disabled" ? Date.parse(current.startsAt) <= Date.now() : current.status === "active" || current.status === "expired";
 }
 
 /**
@@ -97,12 +115,16 @@ interface Body {
  * a planned code changes in everything else; once a code has started, only its end, `enabled` and a limit it already
  * has change (`termsLocked`: kind, value, minimum and start; `limitLocked`: a limit cannot be added). A started code is
  * `active` or `expired`; a disabled one is started when its start has passed by the clock of the browser, which only
- * decides which fields are offered (a wrong guess is answered by a 409 with a message and a reload). A locked field is
+ * decides which fields are offered (a wrong guess is answered by a 409 with a message). A locked field is
  * sent as stored, whatever it holds. Times are typed and shown in Polish time and sent as UTC moments; a time that was
  * not edited is sent as the API had it, so its seconds are not lost. Amounts are typed in złoty and sent in grosze.
  *
- * A 409 `discount-code-taken` is shown at the code field and keeps what was typed. Any other 409 (the version changed,
- * the change is not allowed) shows its message and reloads the code.
+ * The draft is only changed by the staff member (spec „Etap 2”). A save is run by `safety` (`useFormSafety`): the fields
+ * are locked from the save to its answer (`locked`); a 409 `discount-code-taken` is shown at the code field and keeps what
+ * was typed; any other 409 (the version changed, the change is not allowed) shows its message, keeps the draft, the base
+ * and the version, offers „Odrzuć moje zmiany i pokaż stan z serwera” (`safety.restore`) and reads nothing by itself. No
+ * answer in 10 s, an error before the answer and a 5xx are an unknown result (`safety.unknown`), never a message that the
+ * save failed.
  */
 export function useDiscountCodeForm(options: DiscountCodeFormOptions) {
   const form = ref<DiscountCodeFormData>(emptyForm());
@@ -110,30 +132,41 @@ export function useDiscountCodeForm(options: DiscountCodeFormOptions) {
   const baseline = ref(JSON.stringify(emptyForm()));
   const loaded = ref(false);
   const loadError = ref<string | null>(null);
-  const busy = ref(false);
   const message = ref<string | null>(null);
   const error = ref<string | null>(null);
   const fieldErrors = ref<Record<string, string[]>>({});
 
   // Only the newest load may change the state; an older one that finishes late is ignored.
   let latest = 0;
-  // Set when the form is left: an answer that arrives later must not change it or send the staff member anywhere.
-  let disposed = false;
 
+  // The requests that may replace the draft: a save, and the reads that lock the form (`safety`). Opening another code, or
+  // the form of a new one, resets it, and the answer of a request sent for the previous one is then ignored; moving to
+  // the page of the code just created does not (`open`).
+  const safety = useFormSafety<DiscountCodeView, Body>({
+    id: () => view.value?.id ?? options.discountCodeId(),
+    read: fetchCode,
+    version: () => view.value?.version ?? null,
+    draftRequest: () => buildBody(form.value, view.value, null),
+    servedRequest: (served) => buildBody(fromView(served), served, null),
+    adopt: (served) => {
+      apply(served);
+      clearFeedback();
+    },
+    onLateSuccess: (text) => options.onLateSaved?.(text),
+    compare: { instants: ["startsAt", "endsAt"] },
+    newObject: { unknownMessage: "Nie wiemy, czy kod rabatowy został utworzony.", ownNote: "Możliwe, że utworzył go Twój wcześniejszy zapis." },
+  });
+
+  const busy = computed(() => safety.writing.value);
   const status = computed(() => view.value?.status ?? null);
   const readOnly = computed(() => !options.canManage());
   const codeLocked = computed(() => view.value !== null);
-  const hasStarted = computed(() => {
-    const current = view.value;
-    if (current === null) {
-      return false;
-    }
-    return current.status === "disabled" ? Date.parse(current.startsAt) <= Date.now() : current.status === "active" || current.status === "expired";
-  });
-  const termsLocked = computed(() => hasStarted.value);
-  const limitLocked = computed(() => hasStarted.value && view.value?.usageLimit === null);
+  const termsLocked = computed(() => hasStarted(view.value));
+  const limitLocked = computed(() => hasStarted(view.value) && view.value?.usageLimit === null);
   const dirty = computed(() => JSON.stringify(form.value) !== baseline.value);
-  const idle = computed(() => !busy.value && loaded.value);
+  const idle = computed(() => !busy.value && loaded.value && !safety.reading.value);
+  /** Whether the fields are off: while a save runs (also past the limit, until the answer or „Sprawdź stan”) and while a read replaces the form. */
+  const locked = computed(() => safety.locked.value);
   const canSave = computed(() => idle.value && !readOnly.value && (view.value === null || dirty.value));
 
   /** The messages for a field path. */
@@ -165,7 +198,7 @@ export function useDiscountCodeForm(options: DiscountCodeFormOptions) {
     loaded.value = true;
   }
 
-  async function fetchCode(id: string): Promise<{ data: DiscountCodeView } | { status: number } | null> {
+  async function fetchCode(id: string): Promise<ReadResult<DiscountCodeView>> {
     try {
       const result = await getApiClient().GET("/api/v1/admin/discount-codes/{id}", { params: { path: { id } } });
       return result.data ? { data: result.data } : { status: result.response.status };
@@ -192,24 +225,13 @@ export function useDiscountCodeForm(options: DiscountCodeFormOptions) {
     }
   }
 
-  /** Shows the code as the API has it, keeping the message that explains why; a failed reload changes nothing. */
-  async function reloadQuietly(): Promise<void> {
-    const id = view.value?.id;
-    if (id === undefined) {
-      return;
-    }
-    const request = ++latest;
-    const result = await fetchCode(id);
-    if (request === latest && !disposed && result !== null && "data" in result) {
-      apply(result.data);
-    }
-  }
-
   function open(id: string | null): void {
     // The code just created is already shown; the route only moved to its page.
     if (id !== null && view.value?.id === id) {
       return;
     }
+    // A request for the previous code no longer holds this one: its answer is ignored (`safety`).
+    safety.reset();
     clearFeedback();
     if (id === null) {
       latest++;
@@ -223,101 +245,96 @@ export function useDiscountCodeForm(options: DiscountCodeFormOptions) {
 
   onMounted(() => open(options.discountCodeId()));
   onBeforeUnmount(() => {
-    disposed = true;
     latest++;
+    safety.dispose();
   });
   watch(
     () => options.discountCodeId(),
     (id) => open(id),
   );
 
-  /** Discards the changes and shows the code as the API has it now. */
-  async function refresh(): Promise<void> {
-    const id = view.value?.id ?? options.discountCodeId();
-    clearFeedback();
-    if (id !== null) {
-      await loadCode(id);
-    }
-  }
-
-  /** Throws away the unsaved changes: the form goes back to the code as the API last sent it, without a request. */
-  function discard(): void {
+  /** Throws away the unsaved changes (true when a message about the server took the focus): the form goes back to the code as the API last sent it, without a request. */
+  function discard(): boolean {
     const current = view.value;
-    if (current === null || busy.value) {
-      return;
+    if (current === null || busy.value || locked.value) {
+      return false;
     }
     form.value = fromView(current);
     clearFeedback();
+    return safety.draftDiscarded();
   }
 
   /** A time as the API gets it: the stored moment when the text is what it shows, else the typed time as UTC. */
-  function moment(path: "startsAt" | "endsAt"): string | null {
-    const local = form.value[path];
-    const stored = view.value?.[path];
+  function moment(typed: DiscountCodeFormData, current: DiscountCodeView | null, path: "startsAt" | "endsAt", report: Report | null): string | null {
+    const local = typed[path];
+    const stored = current?.[path];
     if (typeof stored === "string" && local === instantToWarsaw(stored)) {
       return stored;
     }
     const converted = warsawToInstant(local);
     if (converted === null) {
-      addFieldError(path, IMPOSSIBLE_TIME);
+      report?.(path, IMPOSSIBLE_TIME);
     }
     return converted;
   }
 
   /** An amount typed in złoty as grosze, or null (with the error at the field). */
-  function grosze(path: string, text: string): number | null {
+  function grosze(path: string, text: string, report: Report | null): number | null {
     const parsed = parseGross(text);
     if (!parsed.ok) {
-      addFieldError(path, parsed.message);
+      report?.(path, parsed.message);
       return null;
     }
     return parsed.grosze;
   }
 
-  function wholeNumber(path: string, text: string, notWhole: string): number | null {
+  function wholeNumber(path: string, text: string, notWhole: string, report: Report | null): number | null {
     const trimmed = text.trim();
     if (!/^\d+$/.test(trimmed) || !Number.isSafeInteger(Number(trimmed))) {
-      addFieldError(path, notWhole);
+      report?.(path, notWhole);
       return null;
     }
     return Number(trimmed);
   }
 
-  /** What the form sends, or null (with the errors at the fields) when a typed value cannot be sent at all. */
-  function buildBody(): Body | null {
-    const current = view.value;
-    const typed = form.value;
+  /**
+   * What the form sends for `typed` shown on `current`, or null when a typed value cannot be sent at all; `report` gets
+   * the error and its field (null: ask without saying anything, as „Sprawdź stan” does). The same function builds the
+   * request from the draft and from an object read from the API, which is how they are compared.
+   */
+  function buildBody(typed: DiscountCodeFormData, current: DiscountCodeView | null, report: Report | null): Body | null {
+    const started = hasStarted(current);
     let valid = true;
 
     let endsAt: string | null = null;
     if (typed.endsAt.trim() !== "") {
-      endsAt = moment("endsAt");
+      endsAt = moment(typed, current, "endsAt", report);
       valid = valid && endsAt !== null;
     }
 
     let usageLimit: number | null;
-    if (limitLocked.value) {
+    if (started && current?.usageLimit === null) {
       usageLimit = null;
     } else if (typed.usageLimit.trim() === "") {
       usageLimit = null;
     } else {
-      usageLimit = wholeNumber("usageLimit", typed.usageLimit, LIMIT_NOT_WHOLE);
+      usageLimit = wholeNumber("usageLimit", typed.usageLimit, LIMIT_NOT_WHOLE, report);
       valid = valid && usageLimit !== null;
     }
 
-    if (current !== null && termsLocked.value) {
+    if (current !== null && started) {
       return valid ? { kind: current.kind, value: current.value, minimumOrderGross: current.minimumOrderGross, startsAt: current.startsAt, endsAt, usageLimit, enabled: typed.enabled } : null;
     }
 
-    const value = typed.kind === "percent" ? wholeNumber("value", typed.value, PERCENT_NOT_WHOLE) : grosze("value", typed.value);
-    const minimum = typed.minimum.trim() === "" ? null : grosze("minimumOrderGross", typed.minimum);
+    const value = typed.kind === "percent" ? wholeNumber("value", typed.value, PERCENT_NOT_WHOLE, report) : grosze("value", typed.value, report);
+    const minimum = typed.minimum.trim() === "" ? null : grosze("minimumOrderGross", typed.minimum, report);
     valid = valid && value !== null && (typed.minimum.trim() === "" || minimum !== null);
     let startsAt: string | null = null;
     if (typed.startsAt.trim() === "") {
-      addFieldError("startsAt", MISSING_START);
+      report?.("startsAt", MISSING_START);
       valid = false;
     } else {
-      startsAt = moment("startsAt");
+      startsAt = moment(typed, current, "startsAt", report);
       valid = valid && startsAt !== null;
     }
     if (!valid || value === null || startsAt === null) {
@@ -343,19 +360,19 @@ export function useDiscountCodeForm(options: DiscountCodeFormOptions) {
     }
   }
 
-  /** Returns whether the code should be shown again as the API has it. */
+  /** Returns whether the staff member may ask for the code as the API has it (`safety.offerRestore`). */
   function conflictFailure(body: unknown): boolean {
     const type = problemField(body, "type")?.replace(PROBLEM_PREFIX, "") ?? null;
     const detail = problemField(body, "detail");
     if (type === "discount-code-taken") {
-      addFieldError("code", detail ?? "Taki kod już istnieje.");
+      addFieldError("code", safety.withDuplicateNote(detail ?? "Taki kod już istnieje."));
       return false;
     }
-    error.value = detail ?? (type === "about:blank" ? MODIFIED_MESSAGE : "Nie udało się wykonać operacji (HTTP 409).");
+    error.value = type === "about:blank" ? MODIFIED_MESSAGE : (detail ?? "Nie udało się wykonać operacji (HTTP 409).");
     return true;
   }
 
-  /** Returns whether the code should be shown again as the API has it. */
+  /** Returns whether the staff member may ask for the code as the API has it. Only a 4xx reaches it: the rest is an unknown result. */
   function failure(status: number, body: unknown): boolean {
     switch (status) {
       case 409:
@@ -369,58 +386,50 @@ export function useDiscountCodeForm(options: DiscountCodeFormOptions) {
       case 404:
         error.value = "Ten kod rabatowy już nie istnieje.";
         return false;
-      case 503:
-        error.value = "Usługa jest chwilowo niedostępna. Spróbuj ponownie.";
-        return false;
       default:
         error.value = `Nie udało się wykonać operacji (HTTP ${status}).`;
         return false;
     }
   }
 
+  /**
+   * Saves the form through `safety.write`. A 409 and a 422 show their message and keep the draft; an unknown result is
+   * `safety.unknown`; the answer of a save for a code the form no longer shows is ignored (`null`).
+   */
   async function save(): Promise<ActionResult> {
     if (!canSave.value) {
       return null;
     }
     const current = view.value;
     clearFeedback();
-    const body = buildBody();
+    const body = buildBody(form.value, current, addFieldError);
     if (body === null) {
       return "failure";
     }
-    busy.value = true;
-    try {
-      const result =
+    const result = await safety.write(
+      () =>
         current === null
-          ? await getApiClient().POST("/api/v1/admin/discount-codes", { body: { ...body, code: form.value.code } })
-          : await getApiClient().PUT("/api/v1/admin/discount-codes/{id}", {
-              params: { path: { id: current.id } },
-              body: { ...body, version: current.version },
-            });
-      if (disposed) {
-        return null;
-      }
-      if (result.data) {
-        apply(result.data);
-        message.value = "Kod rabatowy zapisany.";
-        if (current === null) {
-          options.onCreated(result.data.id);
-        }
-        return "success";
-      }
-      if (failure(result.response.status, result.error)) {
-        await reloadQuietly();
-      }
-      return "failure";
-    } catch {
-      if (disposed) {
-        return null;
-      }
-      error.value = "Nie udało się wykonać operacji. Sprawdź połączenie z API.";
-      return "failure";
-    } finally {
-      busy.value = false;
-    }
+          ? getApiClient().POST("/api/v1/admin/discount-codes", { body: { ...body, code: form.value.code } })
+          : getApiClient().PUT("/api/v1/admin/discount-codes/{id}", { params: { path: { id: current.id } }, body: { ...body, version: current.version } }),
+      {
+        onSuccess: (saved) => {
+          const created = view.value === null;
+          apply(saved);
+          message.value = "Kod rabatowy zapisany.";
+          if (created) {
+            options.onCreated(saved.id);
+          }
+        },
+        onRefused: (refusedStatus, refusedBody) => {
+          if (failure(refusedStatus, refusedBody)) {
+            // What this 409 says about the server, for the button that stays after „Odrzuć”.
+            const ofVersion = problemField(refusedBody, "type") === "about:blank";
+            safety.offerRestore(ofVersion || error.value === null ? OTHER_VERSION_MESSAGE : error.value);
+          }
+        },
+      },
+    );
+    return result === null ? null : result === "success" ? "success" : "failure";
   }
 
   return {
@@ -429,6 +438,8 @@ export function useDiscountCodeForm(options: DiscountCodeFormOptions) {
     loaded,
     loadError,
     busy,
+    locked,
+    safety,
     dirty,
     status,
     readOnly,
@@ -440,7 +451,6 @@ export function useDiscountCodeForm(options: DiscountCodeFormOptions) {
     error,
     errorsAt,
     save,
-    refresh,
     discard,
   };
 }

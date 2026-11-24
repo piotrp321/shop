@@ -27,8 +27,10 @@ import type { PromotionVariant } from "./usePromotionForm";
  * and the pager, which lie outside it, stay in the window together with it (#575). The 22 rem are what the rest of the
  * choice (its search, the buttons below it at 375 px, the pager and the padding), the top bar and the save bar take
  * together, so a phone window still holds the whole choice.
+ * While the form is locked (`locked`: a request that may replace it runs) its controls are off one by one, not by a
+ * disabled fieldset around the choice: the regions that scroll must stay focusable for the checks of accessibility.
  */
-const props = defineProps<{ chosen: string[] }>();
+const props = defineProps<{ chosen: string[]; locked?: boolean }>();
 const emit = defineEmits<{ add: [variants: PromotionVariant[]]; close: [] }>();
 
 const PICKER_PAGE_SIZE = 25;
@@ -130,6 +132,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
             placeholder="Szukaj produktu po nazwie"
             aria-label="Szukaj produktu po nazwie"
             :aria-describedby="hintId"
+            :disabled="locked"
           />
         </div>
         <p
@@ -145,6 +148,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
         type="button"
         variant="outline"
         data-testid="close-picker"
+        :disabled="locked"
         @click="emit('close')"
       >
         Zamknij wybór
@@ -165,6 +169,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
           variant="outline"
           size="sm"
           data-testid="picker-retry"
+          :disabled="locked"
           @click="retryAndRefocus()"
         >
           Spróbuj ponownie
@@ -244,7 +249,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
                     size="sm"
                     data-testid="add-variant"
                     :aria-label="`${isChosen(row) ? 'Dodano' : 'Dodaj'}: ${variantName(row)}`"
-                    :disabled="isChosen(row) || row.price === null"
+                    :disabled="locked || isChosen(row) || row.price === null"
                     @click="addVariant(row)"
                   >
                     <Check
@@ -264,7 +269,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
                     size="sm"
                     data-testid="add-product"
                     :aria-label="`Dodaj cały produkt: ${row.name}`"
-                    :disabled="addableOf(row.productId).length === 0"
+                    :disabled="locked || addableOf(row.productId).length === 0"
                     @click="addProduct(row.productId)"
                   >
                     <PlusCircle aria-hidden="true" />
@@ -299,7 +304,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
         variant="outline"
         size="sm"
         data-testid="picker-previous"
-        :disabled="!hasPrevious"
+        :disabled="locked || !hasPrevious"
         @click="goTo('previous')"
       >
         <ChevronLeft aria-hidden="true" />
@@ -312,7 +317,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
         variant="outline"
         size="sm"
         data-testid="picker-next"
-        :disabled="!hasNext"
+        :disabled="locked || !hasNext"
         @click="goTo('next')"
       >
         Następna

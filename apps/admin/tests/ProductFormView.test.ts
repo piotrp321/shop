@@ -328,17 +328,23 @@ describe("ProductFormView", () => {
       expect(successToast).toHaveBeenCalledWith("Produkt wycofany z publikacji.");
     });
 
-    it("asks to refresh after a conflict and discards the changes when asked", async () => {
+    it("keeps the draft after a conflict of the version, reads nothing, and shows the server state only after „Odrzuć moje zmiany i pokaż stan z serwera”", async () => {
       mounted = await mountForm("/products/p-1");
       mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
 
       await mounted.wrapper.get("[data-testid=name]").setValue("Moje");
+      mocks.get.mockClear();
       await mounted.wrapper.get("[data-testid=save]").trigger("click");
       await flushPromises();
-      expect(mounted.wrapper.get("[data-testid=form-error]").text()).toContain("Produkt został w międzyczasie zmieniony – odśwież");
+
+      expect(mounted.wrapper.get("[data-testid=form-error]").text()).toContain("Produkt został w międzyczasie zmieniony. Twoje zmiany zostają w formularzu.");
+      expect((mounted.wrapper.get("[data-testid=name]").element as HTMLInputElement).value).toBe("Moje");
+      expect(mounted.wrapper.find("[data-testid=refresh]").exists()).toBe(false);
+      expect(mocks.get).not.toHaveBeenCalledWith(PRODUCT, expect.anything());
 
       serve(view({ version: 7, name: "Cudza zmiana" }));
-      await mounted.wrapper.get("[data-testid=refresh]").trigger("click");
+      expect(mounted.wrapper.get("[data-testid=restore-state]").text()).toBe("Odrzuć moje zmiany i pokaż stan z serwera");
+      await mounted.wrapper.get("[data-testid=restore-state]").trigger("click");
       await flushPromises();
 
       expect((mounted.wrapper.get("[data-testid=name]").element as HTMLInputElement).value).toBe("Cudza zmiana");
@@ -369,7 +375,7 @@ describe("ProductFormView", () => {
       await mounted.wrapper.get("[data-testid=save]").trigger("click");
       await flushPromises();
 
-      expect(mounted.wrapper.get("[data-testid=save]").attributes("disabled")).toBeDefined();
+      expect(mounted.wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBe("true");
       expect(mounted.wrapper.get("[data-testid=publish]").attributes("disabled")).toBeDefined();
       finish({ data: view({ version: 4 }), response: { status: 200 } });
       await flushPromises();
@@ -457,13 +463,14 @@ describe("ProductFormView", () => {
       revealed("form-error");
     });
 
-    it("moves to the message of the form after a failure without a connection", async () => {
+    it("moves to the message that the result is unknown after a failure without a connection", async () => {
       await edited("/products/p-1");
       mocks.put.mockRejectedValue(new Error("offline"));
 
       await click("save");
 
-      revealed("form-error");
+      expect(mounted!.wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+      revealed("unknown-result");
     });
 
     it("moves to the error of the whole list of images", async () => {
@@ -514,7 +521,7 @@ describe("ProductFormView", () => {
     it("moves to the message of a failed withdrawal", async () => {
       serve(view({ status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }));
       mounted = await mountForm("/products/p-1");
-      mocks.post.mockResolvedValue(problem(503));
+      mocks.post.mockResolvedValue(problem(403));
 
       await click("unpublish");
 
@@ -562,7 +569,7 @@ describe("ProductFormView", () => {
       expect(document.activeElement).toBe(heading("h1"));
     });
 
-    it("#250 F16: leaves the focus in the field the staff member moved to while the request ran", async () => {
+    it("#250 F16 does not apply to a save: the fields are off while it runs, so the focus goes to the heading of the page", async () => {
       await edited("/products/p-1");
       let finish!: (value: unknown) => void;
       mocks.put.mockReturnValue(new Promise((resolve) => (finish = resolve)));
@@ -570,24 +577,39 @@ describe("ProductFormView", () => {
       await mounted!.wrapper.get("[data-testid=save]").trigger("click");
       const slug = mounted!.wrapper.get("[data-testid=slug]").element as HTMLInputElement;
       slug.focus();
+      expect(document.activeElement).not.toBe(slug);
       finish({ data: view({ version: 4, name: "Inne" }), response: { status: 200 } });
       await flushPromises();
 
-      expect(document.activeElement).toBe(slug);
+      expect(document.activeElement).toBe(heading("h1"));
       expect(successToast).toHaveBeenCalledWith("Produkt zapisany.");
     });
 
-    it("#250 F16: leaves the focus in the category field the staff member moved to while the request ran", async () => {
+    it("#250 F16 does not apply to a publication either: the focus goes to the heading of the card „Status”", async () => {
+      mounted = await mountForm("/products/p-1");
+      let finish!: (value: unknown) => void;
+      mocks.post.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+      (mounted.wrapper.get("[data-testid=slug]").element as HTMLInputElement).focus();
+
+      await mounted.wrapper.get("[data-testid=publish]").trigger("click");
+      finish({ data: view({ version: 4, status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }), response: { status: 200 } });
+      await flushPromises();
+
+      expect(document.activeElement).toBe(heading("h2", "Status"));
+    });
+
+    it("keeps the category field off while the request runs, so it cannot take the focus", async () => {
       await edited("/products/p-1");
       let finish!: (value: unknown) => void;
       mocks.put.mockReturnValue(new Promise((resolve) => (finish = resolve)));
 
       await mounted!.wrapper.get("[data-testid=save]").trigger("click");
       field("Kategoria główna")!.focus();
+      expect(document.activeElement).not.toBe(field("Kategoria główna"));
       finish({ data: view({ version: 4, name: "Inne" }), response: { status: 200 } });
       await flushPromises();
 
-      expect(document.activeElement).toBe(field("Kategoria główna"));
+      expect(document.activeElement).toBe(heading("h1"));
     });
   });
 
@@ -1057,7 +1079,7 @@ describe("ProductFormView", () => {
       await wrapper.findAll("[data-testid=variant-value]")[0]!.setValue("Czarne");
       await wrapper.get("[data-testid=add-variant]").trigger("click");
       await wrapper.findAll("[data-testid=variant-value]")[2]!.setValue("zielone");
-      expect(wrapper.get("[data-testid=save]").attributes("disabled")).toBeUndefined();
+      expect(wrapper.get("[data-testid=save]").attributes("aria-disabled")).toBeUndefined();
       await wrapper.get("[data-testid=save]").trigger("click");
       await flushPromises();
 
@@ -1139,6 +1161,635 @@ describe("ProductFormView", () => {
       await flushPromises();
 
       expect(mounted.wrapper.get("[data-testid=variants-error]").text()).toBe("Wariant ma stan magazynowy albo rezerwacje.");
+    });
+  });
+
+  describe("the requests of the form (stage 2: B2, B3 and B4)", () => {
+    const UNKNOWN = "Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.";
+    const PUBLISHED = { status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00", slugLocked: true } as const;
+    // The controls of the draft: the fields, the tax class, the images and the editor of the variants.
+    const CONTROLS = [
+      "name",
+      "slug",
+      "short-description",
+      "tax-class",
+      "image-alt",
+      "image-up",
+      "image-down",
+      "image-remove",
+      "add-images",
+      "image-input",
+      "axis-name",
+      "axis-move-up",
+      "axis-move-down",
+      "axis-remove",
+      "add-axis",
+      "variant-value",
+      "variant-remove",
+      "add-variant",
+    ];
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function settle() {
+      await vi.advanceTimersByTimeAsync(0);
+      await flushPromises();
+    }
+
+    type Wrapper = Awaited<ReturnType<typeof mountForm>>["wrapper"];
+
+    async function open(path = "/products/p-1", product?: ProductEditView) {
+      if (product) {
+        serve(product);
+      }
+      mounted = await mountForm(path);
+      await settle();
+      return mounted.wrapper;
+    }
+
+    // Whether the browser would refuse input in every element of the test id now (its own `disabled` or a disabled fieldset).
+    function off(wrapper: Wrapper, testid: string): boolean {
+      const elements = wrapper.findAll(`[data-testid=${testid}]`);
+      expect(elements.length, `an element ${testid}`).toBeGreaterThan(0);
+      return elements.every((element) => element.element.matches(":disabled"));
+    }
+    // The only axis of the product is the first and the last: its buttons that move it are off whatever the state of the form.
+    const BY_POSITION = ["axis-move-up", "axis-move-down"];
+    const states = (wrapper: Wrapper, unlocked = false) =>
+      Object.fromEntries(CONTROLS.filter((testid) => !unlocked || !BY_POSITION.includes(testid)).map((testid) => [testid, off(wrapper, testid)]));
+    const all = (value: boolean) => Object.fromEntries(CONTROLS.filter((testid) => value || !BY_POSITION.includes(testid)).map((testid) => [testid, value]));
+    const categoriesOff = () => [field("Kategoria główna"), field("Kategorie dodatkowe")].map((input) => input!.matches(":disabled"));
+    const inputOf = (wrapper: Wrapper, testid: string) => wrapper.get(`[data-testid=${testid}]`).element as HTMLInputElement;
+    const alertOf = (wrapper: Wrapper) => wrapper.get("[data-testid=unknown-result]");
+
+    /** Holds every answer of one of the calls of the client. */
+    function hold(mock: typeof mocks.put) {
+      const calls: { resolve: (value: unknown) => void; reject: (reason: unknown) => void }[] = [];
+      mock.mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            calls.push({ resolve, reject });
+          }),
+      );
+      return calls;
+    }
+
+    /** Holds the reads of the product only; the other reads of the form (categories, tax classes, prices) are answered. */
+    function holdProductReads() {
+      const calls: { resolve: (value: unknown) => void; reject: (reason: unknown) => void }[] = [];
+      const answer = mocks.get.getMockImplementation()!;
+      mocks.get.mockImplementation((path: string, ...rest: unknown[]) =>
+        path === PRODUCT
+          ? new Promise((resolve, reject) => {
+              calls.push({ resolve, reject });
+            })
+          : answer(path, ...rest),
+      );
+      return calls;
+    }
+
+    const okView = (data: ProductEditView) => ({ data, response: { status: 200 } });
+
+    async function saveHeld(path = "/products/p-1") {
+      const wrapper = await open(path);
+      await wrapper.get("[data-testid=name]").setValue("Pierwsza");
+      const calls = hold(mocks.put);
+      wrapper.get<HTMLButtonElement>("[data-testid=save]").element.focus();
+      await wrapper.get("[data-testid=save]").trigger("click");
+      await settle();
+      return { wrapper, calls };
+    }
+
+    it("keeps the focus on „Zapisz” while the save runs, and pressing it again sends nothing", async () => {
+      const { wrapper } = await saveHeld();
+      const save = wrapper.get<HTMLButtonElement>("[data-testid=save]").element;
+      const writes = () => mocks.put.mock.calls.length + mocks.post.mock.calls.length;
+
+      expect(document.activeElement).toBe(save);
+      expect(save.disabled).toBe(false);
+      expect(save.getAttribute("aria-disabled")).toBe("true");
+      await wrapper.get("[data-testid=save]").trigger("click");
+      expect(writes()).toBe(1);
+      expect(document.activeElement).toBe(save);
+    });
+
+    describe("B2: the lock", () => {
+      it("turns off the fields, the categories, the images and the editor of the variants from the save to its answer, and a second „Zapisz” sends nothing", async () => {
+        const { wrapper, calls } = await saveHeld();
+
+        expect(states(wrapper)).toEqual(all(true));
+        expect(categoriesOff()).toEqual([true, true]);
+        expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
+        expect(barButton("Odrzuć")?.disabled).toBe(true);
+        barButton("Zapisz")!.click();
+        await settle();
+        expect(mocks.put).toHaveBeenCalledTimes(1);
+
+        calls[0]!.resolve(okView(view({ name: "Pierwsza", version: 4 })));
+        await settle();
+
+        expect(successToast).toHaveBeenCalledWith("Produkt zapisany.");
+        expect(states(wrapper, true)).toEqual(all(false));
+        expect(categoriesOff()).toEqual([false, false]);
+      });
+
+      it("turns the same controls off while a publication runs", async () => {
+        const wrapper = await open();
+        const calls = hold(mocks.post);
+
+        await wrapper.get("[data-testid=publish]").trigger("click");
+        await settle();
+
+        expect(states(wrapper)).toEqual(all(true));
+        expect(categoriesOff()).toEqual([true, true]);
+        expect(wrapper.get("[data-testid=publish]").attributes("disabled")).toBeDefined();
+        calls[0]!.resolve(okView(view({ ...PUBLISHED, version: 4 })));
+        await settle();
+
+        expect(successToast).toHaveBeenCalledWith("Produkt opublikowany.");
+        expect(off(wrapper, "name")).toBe(false);
+      });
+
+      it("turns the same controls off while a withdrawal runs", async () => {
+        const wrapper = await open("/products/p-1", view(PUBLISHED));
+        const calls = hold(mocks.post);
+
+        await wrapper.get("[data-testid=unpublish]").trigger("click");
+        await settle();
+
+        expect(off(wrapper, "name")).toBe(true);
+        expect(off(wrapper, "image-remove")).toBe(true);
+        expect(off(wrapper, "variant-value")).toBe(true);
+        expect(categoriesOff()).toEqual([true, true]);
+        expect(wrapper.get("[data-testid=unpublish]").attributes("disabled")).toBeDefined();
+        calls[0]!.resolve(okView(view({ ...PUBLISHED, status: "draft", version: 4 })));
+        await settle();
+
+        expect(successToast).toHaveBeenCalledWith("Produkt wycofany z publikacji.");
+        expect(off(wrapper, "name")).toBe(false);
+      });
+
+      it("does not turn off the card „Ceny i stany”, which has its own requests and is not part of the draft", async () => {
+        const { wrapper, calls } = await saveHeld();
+
+        expect(heading("h2", "Dane produktu")!.closest("fieldset:disabled")).not.toBeNull();
+        expect(heading("h2", "Zdjęcia")!.closest("fieldset:disabled")).not.toBeNull();
+        expect(heading("h2", "Warianty")!.closest("fieldset:disabled")).not.toBeNull();
+        expect(heading("h2", "Ceny i stany")!.closest("fieldset:disabled")).toBeNull();
+        calls[0]!.resolve(okView(view({ name: "Pierwsza", version: 4 })));
+        await settle();
+        expect(wrapper.find("[data-testid=price-stock-empty]").exists()).toBe(true);
+      });
+
+      it("leaves the controls on after a 422, with the values that were sent", async () => {
+        const wrapper = await open();
+        await wrapper.get("[data-testid=name]").setValue("");
+        await wrapper.get("[data-testid=short-description]").setValue("Nowy opis.");
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Podaj nazwę." }] }));
+
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+
+        expect(states(wrapper, true)).toEqual(all(false));
+        expect(inputOf(wrapper, "short-description").value).toBe("Nowy opis.");
+        expect(inputOf(wrapper, "name").value).toBe("");
+      });
+
+      it("ignores the answer of a save that comes after the route moved to another product", async () => {
+        const { wrapper, calls } = await saveHeld();
+        serve(view({ id: "p-2", name: "Drugi", slug: "drugi", version: 7 }));
+        void mounted!.router.push("/products/p-2");
+        await settle();
+        // The window of unsaved changes asks first; leave.
+        dialogButton("Opuść bez zapisu")?.click();
+        await settle();
+        expect(mounted!.router.currentRoute.value.params.id).toBe("p-2");
+
+        calls[0]!.resolve(okView(view({ name: "Pierwsza", version: 4 })));
+        await settle();
+
+        expect(successToast).not.toHaveBeenCalled();
+        expect(inputOf(wrapper, "name").value).toBe("Drugi");
+        expect(off(wrapper, "name")).toBe(false);
+      });
+
+      it("turns the controls off while „Odśwież” (the server state after a conflict) reads, and says „Odświeżamy…” in a status region", async () => {
+        const wrapper = await open();
+        await wrapper.get("[data-testid=name]").setValue("Moje");
+        mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+        const reads = holdProductReads();
+
+        await wrapper.get("[data-testid=restore-state]").trigger("click");
+        await settle();
+
+        expect(states(wrapper)).toEqual(all(true));
+        expect(categoriesOff()).toEqual([true, true]);
+        expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
+        expect(wrapper.get("[data-testid=publish]").attributes("disabled")).toBeDefined();
+        expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Odświeżamy…");
+        expect(wrapper.get("[data-testid=safety-status]").attributes("role")).toBe("status");
+        expect(inputOf(wrapper, "name").value).toBe("Moje");
+        reads[0]!.resolve(okView(view({ name: "Cudze", version: 7 })));
+        await settle();
+
+        expect(inputOf(wrapper, "name").value).toBe("Cudze");
+        expect(off(wrapper, "name")).toBe(false);
+        expect(document.activeElement).toBe(heading("h1"));
+      });
+    });
+
+    describe("B2: an image upload and the reads that replace the draft", () => {
+      const stored = { data: { key: "originals/c.jpg", preview: { size: "thumbnail", aspectRatio: "1:1", variants: {} } }, response: { status: 201 } };
+      const offBy = (wrapper: Wrapper, testid: string) => wrapper.get(`[data-testid=${testid}]`).attributes("disabled") !== undefined;
+
+      /** The draft has a name and its save ended with the given answer. */
+      async function savedWith(answer: unknown) {
+        const wrapper = await open();
+        await wrapper.get("[data-testid=name]").setValue("Moje");
+        mocks.put.mockResolvedValue(answer);
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+        return wrapper;
+      }
+
+      it("turns „Sprawdź stan” off while a file is sent, so the image does not arrive in a draft that the answer of the read replaced", async () => {
+        const wrapper = await savedWith(problem(502));
+        expect(offBy(wrapper, "check-state")).toBe(false);
+        const uploads = hold(mocks.post);
+
+        await files(wrapper, [new File(["x"], "c.jpg")]);
+        await settle();
+
+        expect(offBy(wrapper, "check-state")).toBe(true);
+        uploads[0]!.resolve(stored);
+        await settle();
+        expect(wrapper.findAll("[data-testid=image-row]")).toHaveLength(3);
+        expect(offBy(wrapper, "check-state")).toBe(false);
+      });
+
+      it("turns „Odrzuć moje zmiany i pokaż stan z serwera” off while a file is sent", async () => {
+        const wrapper = await savedWith(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
+        expect(offBy(wrapper, "restore-state")).toBe(false);
+        const uploads = hold(mocks.post);
+
+        await files(wrapper, [new File(["x"], "c.jpg")]);
+        await settle();
+
+        expect(offBy(wrapper, "restore-state")).toBe(true);
+        uploads[0]!.resolve(stored);
+        await settle();
+        expect(offBy(wrapper, "restore-state")).toBe(false);
+      });
+
+      it("turns „Spróbuj ponownie” off while a file is sent", async () => {
+        const wrapper = await savedWith(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
+        mocks.get.mockImplementation(async () => problem(500));
+        await wrapper.get("[data-testid=restore-state]").trigger("click");
+        await settle();
+        expect(wrapper.find("[data-testid=read-failed]").exists()).toBe(true);
+        const uploads = hold(mocks.post);
+
+        await files(wrapper, [new File(["x"], "c.jpg")]);
+        await settle();
+
+        expect(offBy(wrapper, "retry-read")).toBe(true);
+        uploads[0]!.resolve(stored);
+        await settle();
+        expect(offBy(wrapper, "retry-read")).toBe(false);
+      });
+
+      it("turns „Odrzuć” of the save bar off while a file is sent", async () => {
+        const wrapper = await open();
+        await wrapper.get("[data-testid=name]").setValue("Moje");
+        const uploads = hold(mocks.post);
+
+        await files(wrapper, [new File(["x"], "c.jpg")]);
+        await settle();
+
+        expect(barButton("Odrzuć")?.disabled).toBe(true);
+        uploads[0]!.resolve(stored);
+        await settle();
+        expect(barButton("Odrzuć")?.disabled).toBe(false);
+      });
+
+      it("sends no file while a read replaces the form: a chosen one is dropped and the button that sends a failed one again is off", async () => {
+        const wrapper = await open();
+        mocks.post.mockResolvedValueOnce(problem(422, { detail: "Plik jest za duży." }));
+        await files(wrapper, [new File(["x"], "c.jpg")]);
+        await settle();
+        expect(wrapper.get("[data-testid=upload-entry]").text()).toContain("Plik jest za duży.");
+        await wrapper.get("[data-testid=name]").setValue("Moje");
+        mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+        const reads = holdProductReads();
+        await wrapper.get("[data-testid=restore-state]").trigger("click");
+        await settle();
+        const sent = mocks.post.mock.calls.length;
+
+        await files(wrapper, [new File(["y"], "d.jpg")]);
+        await settle();
+
+        expect(mocks.post.mock.calls.length).toBe(sent);
+        // A disabled fieldset refuses the click in a browser (jsdom would still deliver it, so the state is what is checked).
+        expect(off(wrapper, "upload-retry")).toBe(true);
+        expect(off(wrapper, "add-images")).toBe(true);
+        reads[0]!.resolve(okView(view({ name: "Cudze", version: 7 })));
+        await settle();
+        expect(inputOf(wrapper, "name").value).toBe("Cudze");
+        expect(wrapper.findAll("[data-testid=image-row]")).toHaveLength(2);
+      });
+    });
+
+    describe("B3: a read that does not answer", () => {
+      it("gives up after 10 s with a message and a button to try again, keeps the form, and ignores the answer that comes later, also after a change", async () => {
+        const wrapper = await open();
+        await wrapper.get("[data-testid=name]").setValue("Moje");
+        mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+        const reads = holdProductReads();
+        await wrapper.get("[data-testid=restore-state]").trigger("click");
+        await settle();
+
+        await vi.advanceTimersByTimeAsync(9_999);
+        expect(wrapper.find("[data-testid=read-failed]").exists()).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await settle();
+
+        const failed = wrapper.get("[data-testid=read-failed]");
+        expect(failed.text()).toContain("Nie udało się odczytać stanu. Spróbuj ponownie.");
+        expect(failed.attributes("role")).toBe("alert");
+        expect(failed.get("[data-testid=retry-read]").text()).toBe("Spróbuj ponownie");
+        expect(document.activeElement).toBe(failed.element);
+        expect(off(wrapper, "name")).toBe(false);
+        await wrapper.get("[data-testid=name]").setValue("Jeszcze inne");
+        reads[0]!.resolve(okView(view({ name: "Cudze", version: 7 })));
+        await settle();
+
+        expect(inputOf(wrapper, "name").value).toBe("Jeszcze inne");
+      });
+    });
+
+    describe("B4: the result of a write that is not known", () => {
+      it("says after 10 s that the result is unknown, with „Sprawdź stan” and the focus on the message, and keeps the fields locked", async () => {
+        const { wrapper } = await saveHeld();
+
+        await vi.advanceTimersByTimeAsync(9_999);
+        expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await settle();
+
+        expect(alertOf(wrapper).text()).toContain(UNKNOWN);
+        expect(alertOf(wrapper).attributes("role")).toBe("alert");
+        expect(alertOf(wrapper).get("[data-testid=check-state]").text()).toBe("Sprawdź stan");
+        expect(wrapper.find("[data-testid=unblock-form]").exists()).toBe(false);
+        expect(document.activeElement).toBe(alertOf(wrapper).element);
+        expect(off(wrapper, "name")).toBe(true);
+        expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
+      });
+
+      it("keeps the message about the earlier save when the next one gets a 422, with the focus on the first error of the fields and not on that message", async () => {
+        const wrapper = await open();
+        await wrapper.get("[data-testid=name]").setValue("Pierwsza");
+        mocks.put.mockResolvedValue(problem(502));
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+        expect(alertOf(wrapper).text()).toContain(UNKNOWN);
+        await wrapper.get("[data-testid=name]").setValue("");
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Podaj nazwę." }] }));
+
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+
+        expect(alertOf(wrapper).text()).toContain("Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu.");
+        expect(alertOf(wrapper).get("[data-testid=check-state]").attributes("disabled")).toBeUndefined();
+        expect(document.activeElement).toBe(wrapper.get("[data-testid=name]").element);
+        expect(wrapper.get("[data-testid=name]").attributes("aria-invalid")).toBe("true");
+      });
+
+      it("keeps the way to the server state after a 409 of the version when the next save gets a 422, with the focus on the first error of the fields and not on the note", async () => {
+        const wrapper = await open();
+        await wrapper.get("[data-testid=name]").setValue("Moje");
+        mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+        await wrapper.get("[data-testid=name]").setValue("");
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Podaj nazwę." }] }));
+
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+
+        const note = wrapper.get("[data-testid=restore-note]");
+        expect(note.text()).toContain("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+        expect(note.get("[data-testid=restore-state]").attributes("disabled")).toBeUndefined();
+        expect(note.attributes("data-form-error")).toBeUndefined();
+        expect(document.activeElement).toBe(wrapper.get("[data-testid=name]").element);
+        expect(wrapper.get("[data-testid=name]").attributes("aria-invalid")).toBe("true");
+      });
+
+      it("„Sprawdź stan” stops saying that the server matches the form when the staff member changes a field afterwards", async () => {
+        const { wrapper } = await saveHeld();
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+        serve(view({ name: "Pierwsza", version: 4 }));
+        await alertOf(wrapper).get("[data-testid=check-state]").trigger("click");
+        await settle();
+        expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
+
+        await wrapper.get("[data-testid=name]").setValue("Druga");
+
+        expect(wrapper.get("[data-testid=safety-status]").text()).toBe("");
+        expect(inputOf(wrapper, "name").value).toBe("Druga");
+      });
+
+      it("„Sprawdź stan” takes the product from the server when it equals the form, says so in a status region and sends no write", async () => {
+        const { wrapper } = await saveHeld();
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+        serve(view({ name: "Pierwsza", version: 4 }));
+
+        await alertOf(wrapper).get("[data-testid=check-state]").trigger("click");
+        await settle();
+
+        expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+        expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
+        expect(wrapper.get("[data-testid=safety-status]").attributes("role")).toBe("status");
+        expect(off(wrapper, "name")).toBe(false);
+        expect(inputOf(wrapper, "name").value).toBe("Pierwsza");
+        expect(saveBar()).toBeNull();
+        expect(mocks.put).toHaveBeenCalledTimes(1);
+      });
+
+      it("„Sprawdź stan” says the write is not on the server when the version is the same and the values are not, and the draft stays", async () => {
+        const { wrapper } = await saveHeld();
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+
+        await alertOf(wrapper).get("[data-testid=check-state]").trigger("click");
+        await settle();
+
+        expect(alertOf(wrapper).text()).toContain("Zapisu nie widać na serwerze. Może jeszcze dotrzeć.");
+        expect(document.activeElement).toBe(alertOf(wrapper).element);
+        expect(inputOf(wrapper, "name").value).toBe("Pierwsza");
+        expect(off(wrapper, "name")).toBe(false);
+      });
+
+      it("„Sprawdź stan” offers „Odrzuć moje zmiany i pokaż stan z serwera” when the version on the server is another", async () => {
+        const { wrapper } = await saveHeld();
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+        serve(view({ name: "Cudze", version: 8 }));
+
+        await alertOf(wrapper).get("[data-testid=check-state]").trigger("click");
+        await settle();
+
+        expect(alertOf(wrapper).text()).toContain("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+        expect(inputOf(wrapper, "name").value).toBe("Pierwsza");
+        await wrapper.get("[data-testid=restore-state]").trigger("click");
+        await settle();
+        expect(inputOf(wrapper, "name").value).toBe("Cudze");
+        expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
+      });
+
+      it("says in a toast that the earlier save was done when its answer comes after „Sprawdź stan”, and changes nothing in the form", async () => {
+        const { wrapper, calls } = await saveHeld();
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+        await alertOf(wrapper).get("[data-testid=check-state]").trigger("click");
+        await settle();
+        await wrapper.get("[data-testid=name]").setValue("Druga");
+
+        calls[0]!.resolve(okView(view({ name: "Pierwsza", version: 4 })));
+        await settle();
+
+        expect(successToast).toHaveBeenCalledWith("Wcześniejszy zapis został wykonany.");
+        expect(successToast).not.toHaveBeenCalledWith("Produkt zapisany.");
+        expect(inputOf(wrapper, "name").value).toBe("Druga");
+        expect(off(wrapper, "name")).toBe(false);
+      });
+
+      it("moves the focus to the message after an error that does not reach the API, with the fields unlocked", async () => {
+        const { wrapper, calls } = await saveHeld();
+
+        calls[0]!.reject(new TypeError("network down"));
+        await settle();
+
+        expect(alertOf(wrapper).text()).toContain(UNKNOWN);
+        expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+        expect(document.activeElement).toBe(alertOf(wrapper).element);
+        expect(off(wrapper, "name")).toBe(false);
+        expect(inputOf(wrapper, "name").value).toBe("Pierwsza");
+      });
+
+      it("has „Sprawdź stan” after a publication that ended unknown, and takes the published product when the server has it", async () => {
+        const wrapper = await open();
+        mocks.post.mockRejectedValue(new TypeError("network down"));
+        await wrapper.get("[data-testid=publish]").trigger("click");
+        await settle();
+        expect(alertOf(wrapper).text()).toContain(UNKNOWN);
+        serve(view({ ...PUBLISHED, version: 4 }));
+
+        await alertOf(wrapper).get("[data-testid=check-state]").trigger("click");
+        await settle();
+
+        expect(wrapper.get("[data-testid=product-status]").text()).toBe("Opublikowany");
+        expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
+        expect(mocks.post).toHaveBeenCalledTimes(1);
+      });
+
+      describe("a new product", () => {
+        async function createHeld() {
+          const wrapper = await open("/products/new");
+          await wrapper.get("[data-testid=name]").setValue("Nowy");
+          const calls = hold(mocks.post);
+          await wrapper.get("[data-testid=save]").trigger("click");
+          await settle();
+          return { wrapper, calls };
+        }
+
+        it("says after 10 s that the result is unknown, with „Odblokuj formularz” instead of „Sprawdź stan”", async () => {
+          const { wrapper } = await createHeld();
+          await vi.advanceTimersByTimeAsync(10_000);
+          await settle();
+
+          expect(alertOf(wrapper).text()).toContain(UNKNOWN);
+          expect(wrapper.find("[data-testid=check-state]").exists()).toBe(false);
+          expect(alertOf(wrapper).get("[data-testid=unblock-form]").text()).toBe("Odblokuj formularz");
+          expect(off(wrapper, "name")).toBe(true);
+        });
+
+        it("unlocks the form with the message about the list and a link to it in a new tab, and a late success only gives a toast", async () => {
+          const { wrapper, calls } = await createHeld();
+          await vi.advanceTimersByTimeAsync(10_000);
+          await settle();
+
+          await alertOf(wrapper).get("[data-testid=unblock-form]").trigger("click");
+          await settle();
+
+          expect(alertOf(wrapper).text()).toContain(
+            "Nie wiemy, czy produkt został utworzony. Wcześniejszy zapis może się jeszcze wykonać. Sprawdź listę przed ponownym zapisem.",
+          );
+          const link = alertOf(wrapper).get("[data-testid=list-link]");
+          expect(link.attributes("href")).toBe("/products");
+          expect(link.attributes("target")).toBe("_blank");
+          expect(link.attributes("rel")).toContain("noopener");
+          expect(link.text()).toContain("Lista produktów");
+          expect(off(wrapper, "name")).toBe(false);
+          await wrapper.get("[data-testid=name]").setValue("Inny");
+
+          calls[0]!.resolve({ data: view({ id: "created", name: "Nowy", version: 1 }), response: { status: 201 } });
+          await settle();
+
+          expect(successToast).toHaveBeenCalledWith("Wcześniejszy zapis został wykonany.");
+          expect(mounted!.router.currentRoute.value.name).toBe("product-new");
+          expect(inputOf(wrapper, "name").value).toBe("Inny");
+        });
+      });
+    });
+
+    describe("a 409 of the version and the way to the server state (E7)", () => {
+      it("keeps the way to the server state with its context after „Odrzuć”, the label as it was, and the focus on the message", async () => {
+        const wrapper = await open();
+        await wrapper.get("[data-testid=name]").setValue("Moje");
+        mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+
+        barButton("Odrzuć")!.click();
+        await settle();
+
+        expect(inputOf(wrapper, "name").value).toBe("Buty biegowe");
+        expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+        const note = wrapper.get("[data-testid=restore-note]");
+        expect(note.text()).toContain("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+        expect(wrapper.find("[data-testid=check-state]").exists()).toBe(false);
+        expect(wrapper.get("[data-testid=restore-state]").text()).toBe("Odrzuć moje zmiany i pokaż stan z serwera");
+        expect(document.activeElement).toBe(note.element);
+      });
+
+      it("puts a 409 slug-taken at the slug field with the note of an earlier unknown creation", async () => {
+        const wrapper = await open("/products/new");
+        await wrapper.get("[data-testid=name]").setValue("Nowy");
+        mocks.post.mockRejectedValueOnce(new TypeError("network down"));
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+        mocks.post.mockResolvedValue(problem(409, { type: `${PREFIX}slug-taken`, detail: "x" }));
+
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+
+        expect(wrapper.get("[data-testid=error-slug]").text()).toBe("Ten slug ma już inny produkt. Podaj własny slug. Możliwe, że utworzył go Twój wcześniejszy zapis.");
+        expect(document.activeElement).toBe(wrapper.get("[data-testid=slug]").element);
+      });
     });
   });
 });

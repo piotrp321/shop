@@ -1,11 +1,13 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import { documentWidths, expectControlsReachable, expectWithinWidth, settle, viewports, WCAG_TAGS } from "../support/panel-layout";
 import { closePanelContexts, go, inState, newPanelPage, type PanelState, signInPanelRoles, violationsOf } from "../support/panel-states";
 
 // The list and the form of the discount codes of the panel (docs/features/admin-screens/spec.md, „Promocje i kody
 // rabatowe”): the look and the accessibility of the list, of the form with the window of unsaved changes and of the
 // page of a code that does not exist, the state of the list in the address, and the check of the report #446. The tests
-// change nothing: the save of the form is in admin-screens-toasts.spec.ts and admin-design.spec.ts.
+// change nothing: the save of the form is in admin-screens-toasts.spec.ts and admin-design.spec.ts, and the tests of the
+// requests of the form (the lock while a save waits, an unknown result) answer the save themselves with `page.route`,
+// so the demo code is never written.
 
 // The demo codes (apps/api/fixtures/discount-codes.yaml): an active one with no end and an expired one.
 const ACTIVE_CODE = "WITAJ10";
@@ -376,5 +378,205 @@ test.describe("the form", () => {
     } finally {
       await page.close();
     }
+  });
+});
+
+// ADMIN-UX-FIXES stage 2 (B1, B4): the form of a code does not lose what the staff member types while a save runs, and is
+// not blocked for good when the API does not answer. The answers of the save are given by the test, so nothing is written.
+test.describe("the requests of the form (stage 2)", () => {
+  const CODE_URL = (id: string) => `**/api/v1/admin/discount-codes/${id}`;
+
+  /** Opens the demo code with the PUT of its form answered by `answer`; returns the code as the API sent it. */
+  async function openWithPut(page: Page, answer: (route: Route, code: Record<string, unknown>, putIndex: number) => Promise<void>) {
+    let putIndex = 0;
+    let code: Record<string, unknown> = {};
+    await page.route(CODE_URL(activeCodeId), async (route) => {
+      if (route.request().method() === "GET") {
+        const response = await route.fetch();
+        code = (await response.json()) as Record<string, unknown>;
+        await route.fulfill({ response });
+        return;
+      }
+      if (route.request().method() !== "PUT") {
+        await route.fallback();
+        return;
+      }
+      await answer(route, code, putIndex++);
+    });
+    await go(page, `/discount-codes/${activeCodeId}`);
+    await expect(page.getByRole("heading", { level: 1, name: ACTIVE_CODE })).toBeVisible();
+    return code;
+  }
+
+  test("(a) the field „Koniec” is off while the answer of the save is 3 s late, and the answer gives the toast", async () => {
+    test.setTimeout(60_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await openWithPut(page, async (route, code) => {
+        const body = route.request().postDataJSON() as { endsAt: string };
+        await new Promise((resolve) => setTimeout(resolve, 3_000));
+        await route.fulfill({ status: 200, json: { ...code, endsAt: body.endsAt, version: (code.version as number) + 1 } });
+      });
+      const ends = page.getByTestId("ends-input");
+      await ends.fill("2036-12-31T23:59");
+
+      await page.getByTestId("save").click();
+
+      await expect(ends, "the field is off while the save waits for its answer").toBeDisabled();
+      await expect(page.getByTestId("save"), "the focus stays on „Zapisz” while the save waits, not on the body").toBeFocused();
+      await expect(page.getByTestId("limit-input")).toBeDisabled();
+      await expect(page.getByRole("switch", { name: "Aktywny" })).toBeDisabled();
+      await expect(page.getByRole("region", { name: "Powiadomienia", exact: true }).getByText("Kod rabatowy zapisany.")).toBeVisible();
+      await expect(ends).toBeEnabled();
+      await expect(ends).toHaveValue("2036-12-31T23:59");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("(d) a save without an answer says after 10 s that the result is unknown, „Sprawdź stan” unlocks the form with the draft, and a 409 of the next save keeps the change in the field", async () => {
+    test.setTimeout(90_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    // The save that never gets an answer: the request must not reach the API when the page closes (Playwright would let it go on).
+    const unanswered: Route[] = [];
+    try {
+      await openWithPut(page, async (route, _code, putIndex) => {
+        // The first save never gets an answer; the second is refused as stale.
+        if (putIndex === 0) {
+          unanswered.push(route);
+          return;
+        }
+        await route.fulfill({
+          status: 409,
+          contentType: "application/problem+json",
+          json: { type: "about:blank", title: "Conflict", status: 409, detail: "Kod rabatowy został w międzyczasie zmieniony." },
+        });
+      });
+      const reads: string[] = [];
+      page.on("request", (request) => {
+        if (request.method() === "GET" && new URL(request.url()).pathname.endsWith(`/discount-codes/${activeCodeId}`)) reads.push(request.url());
+      });
+      const ends = page.getByTestId("ends-input");
+      await ends.fill("2036-12-31T23:59");
+      await page.getByTestId("save").click();
+
+      const unknown = page.getByTestId("unknown-result");
+      await expect(unknown).toBeVisible({ timeout: 20_000 });
+      await expect(unknown).toContainText("Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.");
+      await expect(unknown).toBeFocused();
+      await expect(ends, "the fields stay locked while the save has no answer").toBeDisabled();
+
+      await unknown.getByRole("button", { name: "Sprawdź stan" }).click();
+
+      await expect(unknown).toContainText("Zapisu nie widać na serwerze. Może jeszcze dotrzeć.");
+      await expect(ends).toBeEnabled();
+      await expect(ends).toHaveValue("2036-12-31T23:59");
+
+      await ends.fill("2037-01-01T10:00");
+      const readsBeforeSave = reads.length;
+      await page.getByTestId("save").click();
+
+      await expect(page.getByTestId("form-error")).toContainText("Twoje zmiany zostają w formularzu.");
+      await expect(ends).toHaveValue("2037-01-01T10:00");
+      await expect(page.getByTestId("restore-state")).toBeVisible();
+      await page.waitForTimeout(1_500);
+      expect(reads.length, "a 409 reads nothing by itself").toBe(readsBeforeSave);
+    } finally {
+      await Promise.all(unanswered.map((route) => route.abort().catch(() => undefined)));
+      await page.close();
+    }
+  });
+
+  // The button „Wstecz” of the browser while a save waits for its answer: the router asks about the unsaved changes like for
+  // any other leave (the draft is still unsaved until the answer), the form stays locked while the staff member decides, and the
+  // answer of the save is then handled by the form that is still shown („Zostań”) or ignored by the one that was left.
+  test.describe("the back button of the browser while a save waits", () => {
+    /** The expired code, then (through the list) the active one with its PUT held; the history is [expired, list, active]. */
+    async function openActiveAfterExpired(page: Page, held: Route[]) {
+      let code: Record<string, unknown> = {};
+      await page.route(CODE_URL(activeCodeId), async (route) => {
+        if (route.request().method() === "GET") {
+          const response = await route.fetch();
+          code = (await response.json()) as Record<string, unknown>;
+          await route.fulfill({ response });
+          return;
+        }
+        if (route.request().method() !== "PUT") {
+          await route.fallback();
+          return;
+        }
+        held.push(route);
+      });
+      await go(page, "/discount-codes?q=" + EXPIRED_CODE);
+      await page.getByTestId("code-link").filter({ hasText: EXPIRED_CODE }).first().click();
+      await expect(page.getByRole("heading", { level: 1, name: EXPIRED_CODE })).toBeVisible();
+      await page.getByRole("navigation", { name: "Okruszki" }).getByRole("link", { name: "Kody rabatowe" }).click();
+      await page.getByTestId("code-link").filter({ hasText: ACTIVE_CODE }).first().click();
+      await expect(page.getByRole("heading", { level: 1, name: ACTIVE_CODE })).toBeVisible();
+      return () => code;
+    }
+
+    async function saveAndGoBack(page: Page, held: Route[]) {
+      const ends = page.getByTestId("ends-input");
+      await ends.fill("2036-12-31T23:59");
+      await page.getByTestId("save").click();
+      await expect.poll(() => held.length, "the save is on its way").toBe(1);
+      await expect(ends).toBeDisabled();
+
+      await page.goBack();
+
+      const dialog = page.getByRole("alertdialog", { name: "Masz niezapisane zmiany" });
+      await expect(dialog, "the router asks before it leaves a form whose save has no answer").toBeVisible();
+      // The address already shows the list while the question is open (the browser moved it, the router has not decided yet).
+      await expect(ends, "the form stays locked while the question is open").toBeDisabled();
+      return { dialog, ends };
+    }
+
+    test("„Zostań” keeps the form and its lock, and the answer that comes then is the result of the save", async () => {
+      test.setTimeout(60_000);
+      const page = await newPanelPage("admin", viewports.desktop);
+      const held: Route[] = [];
+      try {
+        const code = await openActiveAfterExpired(page, held);
+        const { dialog, ends } = await saveAndGoBack(page, held);
+
+        await dialog.getByRole("button", { name: "Zostań" }).click();
+
+        await expect(dialog).toBeHidden();
+        await expect(page).toHaveURL(new RegExp(`/discount-codes/${activeCodeId}$`));
+        await expect(ends).toBeDisabled();
+        await held[0]!.fulfill({ status: 200, json: { ...code(), endsAt: "2036-12-31T22:59:00+00:00", version: (code().version as number) + 1 } });
+
+        await expect(page.getByRole("region", { name: "Powiadomienia", exact: true }).getByText("Kod rabatowy zapisany.")).toBeVisible();
+        await expect(ends).toBeEnabled();
+      } finally {
+        await Promise.all(held.map((route) => route.abort().catch(() => undefined)));
+        await page.close();
+      }
+    });
+
+    test("„Opuść bez zapisu” leaves the form, and the answer that comes after it changes nothing and says nothing", async () => {
+      test.setTimeout(60_000);
+      const page = await newPanelPage("admin", viewports.desktop);
+      const held: Route[] = [];
+      try {
+        const code = await openActiveAfterExpired(page, held);
+        const { dialog } = await saveAndGoBack(page, held);
+
+        await dialog.getByRole("button", { name: "Opuść bez zapisu" }).click();
+
+        await expect(page).toHaveURL(/\/discount-codes$/);
+        await expect(page.getByRole("heading", { level: 1, name: "Kody rabatowe" })).toBeVisible();
+        await held[0]!.fulfill({ status: 200, json: { ...code(), endsAt: "2036-12-31T22:59:00+00:00", version: (code().version as number) + 1 } });
+        await page.waitForTimeout(1_000);
+
+        await expect(page.getByRole("region", { name: "Powiadomienia", exact: true }).getByText("Kod rabatowy zapisany.")).toHaveCount(0);
+        await expect(page).toHaveURL(/\/discount-codes$/);
+        await expect(page.getByRole("heading", { level: 1, name: "Kody rabatowe" })).toBeVisible();
+      } finally {
+        await Promise.all(held.map((route) => route.abort().catch(() => undefined)));
+        await page.close();
+      }
+    });
   });
 });

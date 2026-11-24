@@ -1,7 +1,6 @@
 # ADMIN-UX-FIXES: poprawki UX panelu (etap 1 i etap 2)
 
-Etap 1 (K1–K6) jest w kodzie na `main` i opisany niżej; etap 2 (B1–B4, bezpieczeństwo formularzy) opisuje sekcja
-„Etap 2” na końcu pliku.
+Etap 1 (K1–K6) i etap 2 (B1–B4, bezpieczeństwo formularzy, sekcja „Etap 2” na końcu pliku) są w kodzie.
 
 Pierwszy etap epiku #778: sześć poprawek użyteczności panelu (`apps/admin`), które występują w codziennej pracy na
 desktopie przy zwykłych danych. Każda sekcja K1–K6 to jedna poprawka. Działanie ekranów opisują ich specyfikacje
@@ -42,7 +41,7 @@ Właściciel potwierdził 2026-11-22 także, jak długo pracownik czeka:
 | # | Decyzja | Przyjęty wariant | Odrzucone |
 |---|---|---|---|
 | D6 | K2: co dzieje się z formularzem promocji między udanym zapisem „Od teraz” a odczytem statusu | Blokada trwa dalej: zwykle 1–2 s, zawsze najwyżej 10 s od odpowiedzi zapisu (całkowity limit oczekiwania). Po zapisie nie da się wpisać zmiany, którą nadpisałby odczyt, i nie trzeba scalać formularza z odpowiedzią | Pola odblokowane od razu po zapisie, a odczyt zmienia tylko status i akcje (wymaga reguł dla pól zmienionych w tym czasie i dla pól, które aktywna promocja blokuje) |
-| D7 | K2 i K3: zapis, na który API nie odpowiada | Bez własnego limitu czasu zapisu: blokada trwa do odpowiedzi albo błędu sieci przeglądarki, a wyjściem jest opuszczenie ekranu: Wstecz przeglądarki przy otwartym oknie zamówienia (okno modalne zasłania menu panelu) albo opuszczenie formularza promocji. Opuszczenie ekranu nie anuluje operacji na serwerze: wynik takiego zapisu jest nieznany do ponownego wczytania zamówienia albo promocji, więc panel nie pozwala wysłać go drugi raz z tego samego okna | Limit czasu z odblokowaniem i ponowieniem (ponawia zmianę o nieznanym wyniku); brak blokady zamknięcia okna (wraca wada #581 F4) |
+| D7 | K3: zapis w oknie zamówienia, na który API nie odpowiada (formularze: E2, „Etap 2”) | Bez własnego limitu czasu zapisu: blokada trwa do odpowiedzi albo błędu sieci przeglądarki, a wyjściem jest Wstecz przeglądarki przy otwartym oknie zamówienia (okno modalne zasłania menu panelu). Opuszczenie ekranu nie anuluje operacji na serwerze: wynik takiego zapisu jest nieznany do ponownego wczytania zamówienia, więc panel nie pozwala wysłać go drugi raz z tego samego okna | Limit czasu z odblokowaniem i ponowieniem (ponawia zmianę o nieznanym wyniku); brak blokady zamknięcia okna (wraca wada #581 F4) |
 
 Zdania specyfikacji ekranów zostają prawdziwe po tym etapie; nowe zachowanie opisuje ta specyfikacja. Dwa wyjątki
 w `docs/features/admin-design/spec.md`: wyjątek #250 F16 w „Po zapisie” (zmienia K2) i opis kolumn „Ostatnich
@@ -62,7 +61,8 @@ zamówień” (zmienia K5).
 - **Pozostałe części #584:** wyłączenia `expectControlsReachable` dla drzewa, pól daty, grupy opcji i podpowiedzi oraz
   sprawdzenie podpowiedzi przy 320 px (z #576) i akcji schowanych w przewijaniu poziomym (z #629). Helper
   `e2e/support/panel-layout.ts` zostaje bez zmian.
-- Blokada pól w formularzach innych niż formularz promocji oraz oczekiwanie na koniec promocji (`watchEnd`).
+- Oczekiwanie na koniec promocji (`watchEnd`). Blokada pól w formularzach innych niż formularz promocji i limit zapisu
+  tych formularzy: „Etap 2”.
 
 ## K1: wybór w comboboxie kategorii (#572, #627)
 
@@ -114,8 +114,10 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
   żądania) nie występuje przy zapisie formularza promocji, bo pola są wyłączone, więc jego test w
   `PromotionFormView.test.ts` i zdanie o nim w `docs/features/admin-design/spec.md` („Po zapisie”: wyjątek nie
   dotyczy zapisu formularza promocji) zmieniają się razem z zachowaniem. Przy akcjach karty „Status” („Zakończ
-  teraz”, „Usuń”) pola nie są blokowane i wyjątek działa jak dotąd. Po odpowiedzi udany zapis i 409 pokazują promocję z API jak dotąd, a 422 i błąd
-  sieci odblokowują pola z wartościami, które pracownik wysłał.
+  teraz”, „Usuń”) pola nie są blokowane i wyjątek działa jak dotąd. Po odpowiedzi udany zapis pokazuje promocję z API; 422 odblokowuje pola z wartościami,
+  które pracownik wysłał; 409 nie zastępuje szkicu (E7). Brak odpowiedzi w limicie 10 s, błąd sieci i 5xx to nieznany wynik zapisu (B4 w
+  „Etapie 2”): po limicie pola zostają zablokowane do odpowiedzi, „Sprawdź stan” (edycja) albo „Odblokuj formularz”
+  (nowa promocja); po błędzie sieci i 5xx pola są odblokowane ze szkicem.
 - **Oczekiwanie na początek.** Gdy udany zapis (utworzenie albo zmiana) był wysłany z „Od teraz”, a odpowiedź ma
   `status: planned`, blokada trwa dalej, region `role="status"` karty „Status” pokazuje „Promocja rozpoczyna się.”,
   a panel czyta promocję (`GET /api/v1/admin/promotions/{id}`). Pierwszy odczyt wychodzi sekundę po `startsAt`
@@ -130,7 +132,9 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
     zapisie, a komunikat błędu (`role="alert"`) „Nie udało się odczytać statusu promocji. Odśwież, żeby zobaczyć jej
     stan.” ma przycisk „Odśwież”. „Odśwież” działa jak ten sam przycisk po nieudanym odczycie końca (`refresh`,
     `usePromotionForm.ts:266-273`): udany odczyt pokazuje promocję i przenosi fokus na nagłówek karty „Status”,
-    nieudany zastępuje formularz komunikatem wczytania z linkiem do listy promocji.
+    nieudany (błąd sieci, odpowiedź inna niż 200, brak odpowiedzi w 10 s) zostawia formularz i pokazuje komunikat „Nie
+    udało się odczytać stanu. Spróbuj ponownie.” z przyciskiem ponowienia (B3); w trakcie odczytu region
+    `role="status"` formularza mówi „Odświeżamy…”.
   - Całkowity limit: gdy 10 s po odpowiedzi zapisu oczekiwanie jeszcze trwa (odczyt bez odpowiedzi, wolne odczyty),
     kończy się tak jak po nieudanym odczycie: blokada znika, widać ten sam komunikat z „Odśwież”. Odpowiedź odczytu,
     która wróci po limicie, jest pomijana i nie zmienia formularza, statusu ani wersji, także gdy pracownik zdążył
@@ -147,8 +151,8 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
   promocję albo formularz nowej, albo formularz wysłał nowsze żądanie (zapis, „Odśwież”). Opuszczenie widoku
   i przejście do innej promocji zatrzymują oczekiwanie. Przejście z `/promotions/new` na `/promotions/:id` po
   utworzeniu go nie przerywa. To samo dotyczy odpowiedzi samego zapisu: gdy wraca po przejściu do innej promocji albo
-  formularza nowej, nie zmienia formularza, nie pokazuje toastu, nie nawiguje i nie uruchamia oczekiwania (dziś
-  `perform` sprawdza tylko opuszczenie widoku, `usePromotionForm.ts:420-423`).
+  formularza nowej, nie zmienia formularza, nie pokazuje toastu, nie nawiguje i nie uruchamia oczekiwania
+  (`useFormSafety`).
 - **Czas.** Liczony od chwili, w której przeglądarka dostała odpowiedź zapisu. Gdy zegary przeglądarki i serwera
   różnią się o mniej niż 0,5 s, pierwszy odczyt wychodzi najpóźniej po 2,5 s, więc „Aktywna” i „Zakończ teraz” są
   widoczne w ciągu 3 s, jeśli odczyt wraca w czasie poniżej 0,5 s. Niezależnie od zegarów i od czasu odpowiedzi API
@@ -161,7 +165,7 @@ a odpowiedź nadpisuje formularz (`apply`, `:184-188`), więc tekst wpisany w ty
    w `role="status"` i odblokowane pola; (b) `startsAt` minutę po odpowiedzi (spóźniony zegar przeglądarki) daje
    pierwszy `GET` 3 s po odpowiedzi; (c) sześć odpowiedzi `planned` kończy oczekiwanie komunikatem i odblokowaniem,
    dalszych `GET` nie ma; (d) nieudany odczyt pokazuje błąd z „Odśwież”; udane „Odśwież” pokazuje promocję z fokusem
-   na nagłówku karty „Status”, nieudane daje komunikat wczytania; (e) wstrzymana odpowiedź zapisu: pola i kontrolki
+   na nagłówku karty „Status”, nieudane zostawia formularz z komunikatem do ponowienia; (e) wstrzymana odpowiedź zapisu: pola i kontrolki
    wariantów są wyłączone, otwarty wybór zostaje otwarty, drugie „Zapisz” nie wysyła żądania; po 422 i po błędzie
    sieci pola mają wysłane wartości i są odblokowane; (f) w trakcie oczekiwania pola, kontrolki wariantów i akcje
    karty „Status” są wyłączone; (g) opuszczenie widoku i otwarcie innej promocji w trakcie oczekiwania: żadnego
@@ -353,10 +357,10 @@ czytają odpowiedzi błędów. **Do ponownego sprawdzenia przed implementacją**
 - **K2 (D6).** Formularz jest zablokowany przez oczekiwanie na początek: zwykle 1–2 s, najwyżej 10 s od odpowiedzi
   zapisu, także przy rozjechanych zegarach i odczycie bez odpowiedzi. Po limicie panel pokazuje „Zaplanowana”, choć
   promocja może już trwać; wyjaśnia to komunikat z „Odśwież”.
-- **K2 i K3 (D7).** Klient API panelu nie ma limitu czasu żądania. Zapis bez odpowiedzi trzyma blokadę do błędu sieci
-  przeglądarki: w oknie zamówienia wyjściem jest Wstecz przeglądarki (menu panelu jest pod oknem modalnym), które
-  zamyka okno i pomija odpowiedź; w formularzu promocji jego opuszczenie. Żadna z tych dróg nie anuluje zapisu na
-  serwerze, więc jego wynik jest nieznany do ponownego wczytania. Ten etap nie dodaje limitu czasu zapisu.
+- **K3 (D7).** Klient API panelu nie ma limitu czasu żądania. Zapis w oknie zamówienia bez odpowiedzi trzyma blokadę do
+  błędu sieci przeglądarki: wyjściem jest Wstecz przeglądarki (menu panelu jest pod oknem modalnym), które zamyka okno
+  i pomija odpowiedź. To nie anuluje zapisu na serwerze, więc jego wynik jest nieznany do ponownego wczytania. Okna
+  zamówienia nie mają limitu czasu zapisu. Zapis formularza promocji ma limit 10 s i stan „nieznany wynik” (E2).
 - **K3 i K5.** Dane demo nie mają zamówień: test E2E K3 składa własne zamówienie (`placeOrderAsJan`,
   `e2e/support/panel-orders.ts`, bez zmiany helpera), a test K5 podstawia odpowiedź listy.
 - Zadania zmieniają rozłączne pliki, poza K2 i K4, które dzielą wybór wariantów formularza promocji
@@ -366,30 +370,12 @@ czytają odpowiedzi błędów. **Do ponownego sprawdzenia przed implementacją**
 # Etap 2: bezpieczeństwo formularzy
 
 Drugi etap epiku #778: cztery formularze panelu (produkt, kod rabatowy, promocja, metoda dostawy) nie gubią zmian
-pracownika w trakcie własnych żądań i nie zostają zablokowane, gdy API nie odpowiada. Sekcje B1–B4. Do czasu
-implementacji etapu 2 sekcje etapu 1 opisują stan obecny; zadania etapu 2 zmieniają je razem z kodem („Zadania
-dokumentacji”). Twierdzenia o kodzie dotyczą `origin/main` z 2026-11-23 (`00f1fe6f`).
+pracownika w trakcie własnych żądań i nie zostają zablokowane, gdy API nie odpowiada. Sekcje B1–B4.
 
 Issues: #837, #866 (w całości).
-Zakres: `apps/admin/src/composables`, `apps/admin/src/promotions`, `apps/admin/src/discount-codes`, `apps/admin/src/products`, `apps/admin/src/delivery`, `apps/admin/src/views/PromotionFormView.vue`, `apps/admin/src/views/DiscountCodeFormView.vue`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/src/views/DeliveryMethodFormView.vue`, `apps/admin/tests`, `apps/admin/CLAUDE.md`, `e2e/tests/admin-screens-discount-codes.spec.ts`, `e2e/tests/catalog-admin.spec.ts`, `docs/features/admin-ux-fixes`, `docs/features/admin-design/spec.md`, `docs/features/promotions/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/delivery/spec.md`
+Zakres: `apps/admin/src/composables`, `apps/admin/src/components/FormSafetyNotices.vue`, `apps/admin/src/components/SaveBar.vue`, `apps/admin/src/promotions`, `apps/admin/src/discount-codes`, `apps/admin/src/products`, `apps/admin/src/delivery`, `apps/admin/src/views/PromotionFormView.vue`, `apps/admin/src/views/DiscountCodeFormView.vue`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/src/views/DeliveryMethodFormView.vue`, `apps/admin/tests`, `apps/admin/CLAUDE.md`, `e2e/tests/admin-screens-discount-codes.spec.ts`, `e2e/tests/admin-screens-promotions.spec.ts`, `e2e/tests/catalog-admin.spec.ts`, `docs/features/admin-ux-fixes`, `docs/features/admin-design/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/promotions/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/delivery/spec.md`
 
 Etap nie zmienia API, `apps/api/openapi*.json` ani `apps/admin/src/api/schema.d.ts`.
-
-## Stan przed etapem 2
-
-Odtworzone 2026-11-23 w przeglądarce (Chromium, lokalny stos z danymi demo, odpowiedzi wstrzymane przez `page.route`
-i podstawione, bez zmian danych), o ile nie napisano inaczej.
-
-| Formularz | Zapis | Odczyt, który zastępuje formularz | Żądanie bez odpowiedzi |
-|---|---|---|---|
-| Promocja | pola zablokowane (etap 1) | „Odśwież” blokuje pola | „Odśwież” bez limitu (`refresh`, `usePromotionForm.ts:324`; z kodu, w przeglądarce nieodtworzone); zapis bez limitu (D7) |
-| Metoda dostawy | pola zablokowane | odczyt po 409 w trakcie blokady zapisu | zapis i odczyt po 409 bez limitu (z kodu) |
-| Kod rabatowy | pole „Koniec” edytowalne przy wstrzymanym `PUT`, wpisana wartość znika po odpowiedzi | odczyt po 409 (`reloadQuietly`) nadpisuje pola (z kodu) | po 15 s bez odpowiedzi „Zapisz” wyłączony, żadnego komunikatu |
-| Produkt | pola edytowalne, opis wpisany w trakcie zapisu znika, toast „Produkt zapisany.”; tak samo publikacja i wycofanie (z kodu, wspólne `perform`) | „Odśwież” po konflikcie: pola edytowalne, „Zapisz” aktywny, wpisany tekst znika | zapis i „Odśwież” bez limitu |
-
-Klient API panelu (`apps/admin/src/api/client.ts`) nie ma limitu czasu ani przerywania żądań. Edycja wysyła `version`
-(409 przy nieaktualnej). Utworzenie nie ma klucza idempotencji; API odrzuca tylko duplikat pola unikalnego (kod, nazwa
-metody, slug) albo promocję o okresie nakładającym się na inną ze wspólnym wariantem (z opisów kontrolerów, bez próby).
 
 ## Decyzje etapu 2
 
@@ -403,7 +389,7 @@ Właściciel zaakceptował 2026-11-23:
 | E4 | #866, punkt 3 (zapis „Od teraz” z odpowiedzią `active`) | Bez zmian: toast wystarcza | Dodatkowe ogłoszenie |
 | E5 | Okna zamówienia przy zapisie bez odpowiedzi | Poza etapem; D7 obowiązuje dla nich dalej | Włączenie do etapu |
 | E6 | Co jest nieznanym wynikiem | Brak odpowiedzi w limicie, błąd sieci i każda odpowiedź 5xx | Tylko 502 i 504 |
-| E7 | 409 po zapisie | W czterech formularzach bez automatycznego odczytu: komunikat, szkic zostaje, stan z serwera pokazuje dopiero akcja pracownika (dzisiejszy wzór produktu) | Tylko po nieznanym wyniku |
+| E7 | 409 po zapisie | W czterech formularzach bez automatycznego odczytu: komunikat, szkic zostaje, stan z serwera pokazuje dopiero akcja pracownika | Tylko po nieznanym wyniku |
 | E8 | Spóźniony sukces wcześniejszego zapisu | Toast informacyjny, bez wpływu na formularz | Pomijanie bez informacji |
 
 ## Zasady wspólne
@@ -413,9 +399,17 @@ Właściciel zaakceptował 2026-11-23:
   wersji poza przypadkami nazwanymi niżej: potwierdzony sukces zapisu, zgodność przy „Sprawdź stan” i udany odczyt po
   „Odrzuć moje zmiany i pokaż stan z serwera”.
 - **Blokada.** W trakcie żądania, którego odpowiedź może zastąpić formularz, pola i kontrolki formularza są wyłączone
-  (`disabled`, wzór `DeliveryMethodFormView.vue:141`), a akcje zapisu i statusu nieaktywne.
+  (`disabled`; wzór: `fieldset` w `DeliveryMethodFormView.vue`), a akcje zapisu i statusu nieaktywne. W promocji karta
+  „Warianty” jest poza `fieldset` (regiony przewijania tabel muszą zostać fokusowalne dla axe), a jej kontrolki są
+  wyłączane po jednej. „Zapisz” paska zapisu jest wtedy nieaktywny
+  przez `aria-disabled`, nie `disabled` (jak przycisk `ConfirmDialog`): przycisk, który pracownik nacisnął, zachowuje
+  fokus do odpowiedzi, a kolejne naciśnięcie niczego nie wysyła.
 - **Limit odczytu.** Każdy odczyt, który blokuje formularz, kończy się najpóźniej po 10 s: blokada znika, a odpowiedź,
   która wróci później, jest pomijana.
+- **Opuszczenie w trakcie zapisu.** Przejście do innej trasy (także przyciskiem „Wstecz” przeglądarki) w trakcie zapisu
+  pyta o niezapisane zmiany jak zawsze: szkic jest niezapisany do odpowiedzi. „Zostań” zostawia formularz z blokadą,
+  a odpowiedź jest zwykłym wynikiem zapisu; „Opuść bez zapisu” opuszcza formularz, a odpowiedź jest pomijana (bez
+  toastu i nawigacji).
 - **Bez automatycznego zapisu.** Zapis wysyła wyłącznie „Zapisz” (albo akcja statusu) pracownika; odczyt ani przyjęcie
   wersji niczego nie wysyłają.
 - **Nieaktualne odpowiedzi.** Odpowiedź żądania wysłanego dla innego obiektu albo przed opuszczeniem formularza jest
@@ -428,26 +422,34 @@ Właściciel zaakceptował 2026-11-23:
 
 - Od wysłania zapisu do jego wyniku wszystkie pola są wyłączone; drugie „Zapisz” nie wysyła żądania.
 - Po 422 i po nieznanym wyniku pola mają wartości, które pracownik wysłał.
-- Odpowiedź zapisu, która wraca po przejściu do innego kodu albo formularza nowego, jest pomijana (dziś sprawdzane jest
-  tylko opuszczenie widoku, `useDiscountCodeForm.ts:400`).
+- Odpowiedź zapisu, która wraca po przejściu do innego kodu albo formularza nowego, jest pomijana, nie tylko po
+  opuszczeniu widoku.
 
 ## B2: produkt (#837)
 
-- Na czas zapisu, publikacji, wycofania i „Odśwież” wyłączone są pola, wybór kategorii, edytor wariantów i zdjęcia
-  (opis, kolejność, usuwanie, dodawanie plików); „Zapisz”, „Opublikuj” i „Wycofaj” są nieaktywne także w trakcie
-  „Odśwież”.
+- Na czas zapisu, publikacji, wycofania i odczytu stanu z serwera (B3) wyłączone są pola, wybór kategorii, edytor
+  wariantów i zdjęcia (opis, kolejność, usuwanie, dodawanie plików); „Zapisz”, „Opublikuj” i „Wycofaj” są nieaktywne
+  także w trakcie odczytu. Stan z serwera pokazuje w produkcie przycisk „Odrzuć moje zmiany i pokaż stan z serwera”
+  (po 409 `product-modified`, B4); osobnego „Odśwież” produkt nie ma.
+- Wysyłka pliku ze zdjęciem jest własnym żądaniem formularza, które po odpowiedzi dopisuje zdjęcie do szkicu. Dlatego
+  w jej trakcie odczyty, których odpowiedź może zastąpić szkic („Sprawdź stan”, „Odrzuć moje zmiany i pokaż stan
+  z serwera”, „Spróbuj ponownie”), i „Odrzuć” paska zapisu nie startują: przyciski są nieaktywne, a wywołanie z innego
+  miejsca niczego nie robi i niczego nie porzuca. Dopisane zdjęcie nie wpada więc do stanu z serwera ani nie znika razem
+  ze szkicem. Po zakończeniu wysyłki przyciski działają. Wysyłka nie startuje w trakcie blokady (pola wyłączone, pliki
+  wybrane w tym czasie są pomijane). Powód nieaktywnego przycisku widać na liście wysyłek („Wysyłanie”), tak jak dla „Zapisz”.
+  Wspólny kod nie zna zdjęć: formularz podaje mu warunek „mam własne żądanie w toku” (`hasOwnRequest`).
 - Karta „Ceny i stany” nie jest blokowana: ma własne żądania i nie należy do szkicu.
 - Odpowiedź zapisu po przejściu do innego produktu jest pomijana.
 
 ## B3: odczyty „Odśwież” (#866)
 
 - Dotyczy każdego odczytu wywołanego przez pracownika, który zastępuje formularz: „Odśwież” promocji (po nieudanym
-  odczycie początku albo końca), „Odśwież” produktu i odczyty B4.
+  odczycie początku albo końca) i odczyty B4 („Sprawdź stan”, „Odrzuć moje zmiany i pokaż stan z serwera”, także
+  w produkcie).
 - W trakcie odczytu region `role="status"` formularza pokazuje „Odświeżamy…”.
 - Po 10 s bez odpowiedzi: blokada znika, a komunikat błędu (`role="alert"`) „Nie udało się odczytać stanu. Spróbuj
   ponownie.” ma przycisk ponowienia. Formularz zostaje taki, jaki był przed odczytem. To samo po błędzie sieci
-  i odpowiedzi innej niż 200. W promocji zastępuje to dzisiejsze zachowanie nieudanego „Odśwież” (komunikat wczytania
-  zamiast formularza).
+  i odpowiedzi innej niż 200. W promocji nieudane „Odśwież” nie zastępuje formularza komunikatem wczytania.
 - #866, punkt 3: bez zmian (E4).
 
 ## B4: nieznany wynik zapisu
@@ -456,10 +458,10 @@ Dotyczy zapisu czterech formularzy oraz publikacji i wycofania produktu. Akcje �
 zostają jak po etapie 1.
 
 **Wynik zapisu.**
-- Potwierdzony sukces: odpowiedź 2xx z danymi. Formularz pokazuje obiekt z odpowiedzi jak dotąd.
-- Potwierdzona odmowa: odpowiedź 4xx. 422, 403 i 404 jak dotąd; 409 według E7: komunikat jak dotąd, szkic, stan bazowy
-  i wersja zostają, bez odczytu. Przy 409 wersji (i każdym 409, po którym formularz dziś czyta obiekt ponownie)
-  komunikat ma przycisk „Odrzuć moje zmiany i pokaż stan z serwera”.
+- Potwierdzony sukces: odpowiedź 2xx z danymi. Formularz pokazuje obiekt z odpowiedzi.
+- Potwierdzona odmowa: odpowiedź 4xx. 422 pokazuje błędy przy polach, 403 i 404 swoje komunikaty; 409 według E7: komunikat z `detail` albo, dla wersji, komunikat że zmiany zostają w formularzu (bez zapowiedzi pokazania stanu z serwera), szkic, stan bazowy
+  i wersja zostają, bez odczytu. Przy 409 wersji (i każdym innym 409, który mówi, że obiekt na serwerze jest inny,
+  np. `promotion-not-editable`) komunikat ma przycisk „Odrzuć moje zmiany i pokaż stan z serwera”.
 - Nieznany wynik: brak odpowiedzi przez 10 s, błąd sieci albo odpowiedź 5xx.
 
 **Stan „nieznany wynik”.** Komunikat (`role="alert"`, z fokusem): „Nie wiemy, czy zapis się powiódł. Twoje zmiany
@@ -474,13 +476,16 @@ zostają w formularzu.”
 - Zgodność: żądanie zapisu zbudowane z aktualnego szkicu jest równe żądaniu zbudowanemu tą samą funkcją formularza
   z odpowiedzi odczytu, bez `version`. Porównanie jest ścisłe, pole po polu; daty jako momenty w czasie; listy (osie
   i wiersze wariantów, zdjęcia z opisami, kategorie dodatkowe, warianty promocji) w kolejności szkicu; wiersz wariantu
-  bez identyfikatora po wartościach. Nie ma zgodności, gdy ze szkicu nie da się zbudować żądania, gdy szkic zawiera
+  bez identyfikatora po wartościach i tylko z wierszem serwera, którego `variantId` nie występował w stanie bazowym
+  (wariant utworzony na serwerze): wiersz usunięty i dodany od nowa z tą samą wartością zostaje przy starym
+  identyfikatorze na serwerze, który nie wykonał zapisu, więc nie jest zgodny. Nie ma zgodności, gdy ze szkicu nie da się zbudować żądania, gdy szkic zawiera
   wartość nadawaną przez serwer (początek „Od teraz”, pusty slug) albo gdy nieznany wynik dotyczy publikacji lub
   wycofania, a status w odpowiedzi nie jest docelowy. Każda inna różnica, także przycięte spacje, to brak zgodności.
   Porównywany jest szkic z chwili odpowiedzi odczytu, nie treść wysłanego zapisu: zmiana wpisana po odblokowaniu,
   której serwer nie ma, daje brak zgodności.
 - Zgodne: formularz przyjmuje obiekt z odpowiedzi (wersja, status, stan bazowy), komunikat nieznanego wyniku znika,
-  a region statusu pokazuje „Stan na serwerze odpowiada formularzowi.”.
+  a region statusu pokazuje „Stan na serwerze odpowiada formularzowi.”
+  do pierwszej zmiany szkicu przez pracownika (komunikat znika wtedy bez przenoszenia fokusu).
 - Niezgodne, wersja jak w stanie bazowym: szkic, stan bazowy i wersja zostają, pola odblokowane; komunikat „Zapisu
   nie widać na serwerze. Może jeszcze dotrzeć.”.
 - Niezgodne, wersja inna: szkic, stan bazowy i wersja zostają, pola odblokowane; komunikat „Na serwerze jest inna
@@ -497,6 +502,42 @@ z komunikatem „Nie wiemy, czy <obiekt> został utworzony. Wcześniejszy zapis 
 przed ponownym zapisem.” i linkiem do listy (nowa karta). Gdy kolejny zapis dostanie 409 pola unikalnego albo
 `promotion-overlap`, komunikat dodaje „Możliwe, że utworzył go Twój wcześniejszy zapis.”.
 
+**„Odrzuć” szkic** (przycisk paska zapisu) przywraca stan bazowy i usuwa tylko to, co po odrzuceniu przestaje być prawdą;
+wiedza o serwerze zostaje.
+- Nieznany wynik zostaje ze „Sprawdź stan”, bez zdania „Twoje zmiany zostają w formularzu.” (komunikat „Nie wiemy, czy
+  zapis się powiódł.”); „Sprawdź stan” porównuje wtedy przywrócony stan bazowy z serwerem. Wynik „Sprawdź stan”
+  (brak zapisu na serwerze, inna wersja) zostaje.
+- Po 409 komunikat 409 znika razem ze szkicem, ale zostaje droga do stanu z serwera: przycisk „Odrzuć moje zmiany i pokaż
+  stan z serwera” z komunikatem, co ten 409 mówi o serwerze: dla 409 wersji „Na serwerze jest inna wersja niż ta, którą
+  edytujesz.”, dla innego 409 (np. `promotion-not-editable`) jego `detail`. Po takim 409 nic nie jest nieznane, więc nie
+  ma „Sprawdź stan”. Komunikat dostaje fokus. Przycisk ma zawsze tę samą etykietę, także gdy szkic jest czysty: etykieta
+  zależna od stanu mogłaby zastąpić zmiany wpisane po odrzuceniu bez zapowiedzi.
+- Spóźniona odpowiedź zapisu nadal tylko toast, bez wpływu na pola.
+
+**Nowszy zapis po nieznanym wyniku i po 409.** Nieznany wynik zapisu (także wynik „Sprawdź stan”: brak zapisu na
+serwerze, inna wersja) i droga do stanu z serwera po 409 (przycisk „Odrzuć moje zmiany i pokaż stan z serwera” z kontekstem
+tego 409) są prawdą, dopóki ich nie rozstrzygnie potwierdzony sukces, zgodność przy „Sprawdź stan”, stan z serwera przyjęty
+przez „Odrzuć moje zmiany i pokaż stan z serwera” albo zmiana obiektu. Odpowiedź 4xx nowszego zapisu (API sprawdza treść
+przed wersją, więc 422 nie mówi nic o wersji, a wcześniejszy zapis mógł się wykonać u źródła mimo 502 albo 504) nie rozstrzyga
+niczego o serwerze. Dlatego nowszy zapis (także publikacja i wycofanie) tego nie kasuje:
+- W trakcie nowszego zapisu komunikat o wcześniejszym zapisie albo kontekst 409 zostaje widoczny, a jego przyciski („Sprawdź
+  stan”, „Odrzuć moje zmiany i pokaż stan z serwera”) są nieaktywne: nie porzucają nowszego zapisu. Własny komunikat nowszego
+  zapisu po 10 s zastępuje je do jego odpowiedzi.
+- Po odmowie nowszego zapisu (każde 4xx) wiedza jest widoczna obok jego błędów. Nieznany wynik w słowach o wcześniejszym
+  zapisie: „Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu.”, po „Sprawdź stan” z wynikiem
+  „brak zapisu” „Wcześniejszego zapisu nie widać na serwerze. Może jeszcze dotrzeć.” (inna wersja: bez zmiany, z przyciskiem);
+  dla nowego obiektu komunikat o utworzeniu z linkiem do listy. Droga do stanu z serwera po 409: kontekst tego 409 (np. „Na
+  serwerze jest inna wersja niż ta, którą edytujesz.”) z przyciskiem, jak po „Odrzuć” (komunikat 409 formularza zniknął ze
+  startem zapisu); „Odrzuć” paska zapisu pokazuje ten kontekst z fokusem. 409 nowszego zapisu z własną ofertą zastępuje
+  kontekst. „Sprawdź stan” porównuje szkic z chwili odpowiedzi odczytu. Fokus zostaje tam, gdzie stawia go formularz
+  (pierwszy błąd pola albo komunikat formularza): ani komunikat o wcześniejszym zapisie, ani kontekst 409 nie są celem tego
+  fokusu.
+- Zdanie „Twoje zmiany zostają w formularzu.” pada tylko, dopóki „Odrzuć” nie zabrał zmian: po „Odrzuć” wcześniejszy zapis
+  jest opisany bez niego („Nie wiemy, czy wcześniejszy zapis się powiódł.”), także w trakcie i po odmowie nowszej operacji
+  (publikacji, wycofania albo zapisu z nowymi zmianami; tekst nie twierdzi wtedy nic o zmianach, których nie wie).
+- Kończą ją: potwierdzony sukces nowszego zapisu, zgodność, udane „Odrzuć moje zmiany i pokaż stan z serwera”, zmiana
+  obiektu. Nieznany wynik nowszego zapisu zastępuje nieznany wynik (jeden komunikat) i kończy ofertę z 409.
+
 **Spóźniona odpowiedź wcześniejszego zapisu** (po „Sprawdź stan”, „Odblokuj formularz”, po nowszym zapisie albo po
 odblokowaniu z innego powodu): nie zmienia pól, wersji, stanu bazowego ani `dirty`, nie czyści błędów i komunikatów
 nowszego żądania, nie zdejmuje jego blokady i nie nawiguje. Sukces pokazuje toast „Wcześniejszy zapis został
@@ -504,6 +545,10 @@ wykonany.”, tylko gdy formularz nadal pokazuje ten sam obiekt (dla nowego: ten
 i błąd są pomijane bez komunikatu.
 
 **Ograniczenia bez zmian API.**
+- Klient API panelu (`apps/admin/src/api/client.ts`) nie ma limitu czasu ani przerywania żądań; limit 10 s jest
+  w formularzach. Edycja wysyła `version` (409 przy nieaktualnej). Utworzenie nie ma klucza idempotencji; API odrzuca
+  tylko duplikat pola unikalnego (kod, nazwa metody, slug) albo promocję o okresie nakładającym się na inną ze wspólnym
+  wariantem.
 - Panel nie rozstrzyga losu żądania, na które nie dostał odpowiedzi; lista też nie, bo żądanie może się wykonać po jej
   sprawdzeniu.
 - Po nieznanym wyniku utworzenia pracownik może zmienić kod, nazwę, slug albo zakres promocji i zapisać ponownie:
@@ -518,9 +563,11 @@ Testy Vitest używają wstrzymanych obietnic mocka i fałszywego zegara. „Każ
 promocja i metoda dostawy.
 
 1. **B1, B2.** Dla każdego żądania, które może zastąpić formularz (zapis; w produkcie także publikacja, wycofanie
-   i „Odśwież”): przy wstrzymanej odpowiedzi pola i kontrolki są wyłączone, wpisywanie niczego nie zmienia, drugie
+   i odczyt stanu z serwera): przy wstrzymanej odpowiedzi pola i kontrolki są wyłączone, wpisywanie niczego nie zmienia, drugie
    „Zapisz” nie wysyła żądania; po 422 pola mają wysłane wartości i są odblokowane. Nie przechodzi przed zmianą dla
-   kodu i produktu.
+   kodu i produktu. W produkcie także wysyłka pliku: przy wstrzymanej odpowiedzi wysyłki „Sprawdź stan”, „Odrzuć moje
+   zmiany i pokaż stan z serwera”, „Spróbuj ponownie” i „Odrzuć” nie wysyłają odczytu ani nie zmieniają szkicu, a po
+   odpowiedzi wysyłki zdjęcie jest w szkicu i przyciski znów działają; plik wybrany w trakcie odczytu nie jest wysyłany.
 2. **B3.** Odczyt bez odpowiedzi: po 10 s blokada znika i widać komunikat z ponowieniem; odpowiedź zwolniona potem,
    także po zmianie pola, niczego nie zmienia. W trakcie odczytu „Odświeżamy…” jest w `role="status"`.
 3. **B4, każdy formularz.**
@@ -546,32 +593,32 @@ promocja i metoda dostawy.
    i blokady.
    (l) Nowy obiekt: „Odblokuj formularz”, zmiana pola unikalnego, spóźniony sukces A nie zmienia pól ani trasy
    i pokazuje toast; 409 unikalności po nieznanym wyniku ma dopisane zdanie.
+   (m) Nowszy zapis po nieznanym wyniku (każdy formularz, wspólny kod szczegółowo): zapis A kończy się 502 albo błędem
+   sieci, zapis B dostaje 422, 409, 403 albo 404: komunikat o wcześniejszym zapisie jest widoczny, „Sprawdź stan” działa
+   i porównuje aktualny szkic; to samo po „Sprawdź stan” z wynikiem „brak zapisu” i „inna wersja” oraz dla nowego obiektu.
+   W trakcie B komunikat jest widoczny, a jego przyciski nieaktywne. Kończą go sukces B, zgodność, udane „Odrzuć moje
+   zmiany…” i zmiana obiektu; nieznany wynik B go zastępuje. Spóźniony sukces A w trakcie i po B to tylko toast. Po 422
+   B fokus jest na pierwszym błędzie pola, nie na komunikacie o A. To samo dla drogi do stanu z serwera po 409 wersji,
+   gdy kolejny zapis dostaje 422 (kontekst 409 z przyciskiem, „Odrzuć” w pasku go pokazuje); po „Odrzuć” i publikacji
+   albo wycofaniu z 409 lub 422 tekst o wcześniejszym zapisie nie obiecuje, że zmiany zostają.
 4. **E2E** (`admin-screens-discount-codes.spec.ts`, `catalog-admin.spec.ts`; `page.route`, odpowiedzi zapisu
    podstawiane albo na obiekcie testu): (a) kod rabatowy i (b) produkt: odpowiedź zapisu wstrzymana o 3 s, w tym czasie
-   pole jest wyłączone, po odpowiedzi toast; (c) produkt: wstrzymane „Odśwież” po 409 blokuje pola; (d) kod rabatowy:
+   pole jest wyłączone, po odpowiedzi toast; (c) produkt: wstrzymany odczyt „Odrzuć moje zmiany i pokaż stan z serwera” po 409 blokuje pola; (d) kod rabatowy:
    zapis bez odpowiedzi daje po 10 s komunikat, „Sprawdź stan” odblokowuje pola ze szkicem, po zmianie pola zapis
-   z odpowiedzią 409 zostawia zmianę w polu. Testy (a)–(d) nie przechodzą przed zmianą.
+   z odpowiedzią 409 zostawia zmianę w polu. Testy (a)–(d) nie przechodzą przed zmianą. (e) kod rabatowy:
+   „Wstecz” przeglądarki w trakcie zapisu (zasada „Opuszczenie w trakcie zapisu”, oba wyjścia z okna). (f) promocja
+   przy 375 px w trakcie zapisu: axe bez naruszeń (regiony przewijania tabel wariantów zostają fokusowalne).
 5. Każde zadanie pokazuje komendy i wyniki RED i GREEN. Przechodzą `make -C apps/admin check`,
    `make -C apps/admin test` i `make e2e`. `git diff` względem `main` nie zawiera `apps/api`,
    `apps/api/openapi*.json` ani `apps/admin/src/api/schema.d.ts`.
-
-## Zadania dokumentacji
-
-Razem ze zmianą zachowania:
-- ta specyfikacja: D7 (dotyczy już tylko okien zamówienia), K2 (nieudane „Odśwież”, „Ryzyka i założenia”) i „Poza
-  zakresem” etapu 1 (blokada pól innych formularzy);
-- `docs/features/promotions/spec.md` i `docs/features/discount-codes/spec.md`: „inne 409: `detail` i odświeżenie”;
-- `docs/features/delivery/spec.md`: 409 wersji w formularzu metody;
-- `docs/features/admin-design/spec.md`, „Po zapisie”: wyjątek #250 F16 nie dotyczy zapisu żadnego z formularzy;
-- `apps/admin/CLAUDE.md`, „Wygląd” (standard formularza): zasada szkicu i nieznanego wyniku ze wskazaniem wspólnego
-  kodu.
 
 ## Poza zakresem etapu 2
 
 - Okna zamówienia przy zapisie bez odpowiedzi (E5); okna kategorii, cen i stanów (przycisk `disabled`, okno zamykalne
   w trakcie zapisu; z kodu, nieodtwarzane).
 - Klucz idempotencji w API panelu; scalanie szkicu z nowszą wersją.
-- Akcje „Zakończ teraz” i „Usuń” promocji; karta „Ceny i stany” produktu; wysyłanie zdjęć.
+- Akcje „Zakończ teraz” i „Usuń” promocji; karta „Ceny i stany” produktu; mechanizm wysyłania zdjęć (jego związek z odczytami
+  formularza: B2).
 - Pozostałe pozycje #778: długie teksty (#573, #574, #628, #630, #581 F3), #629, #576, #581 F6–F8 i F11, reszta #584,
   #867.
 
