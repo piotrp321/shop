@@ -62,8 +62,8 @@ final class ClosedTextFieldListTest extends KernelTestCase
         self::assertSame(
             [
                 'POST /api/v1/orders, nickname'.self::NO_ROW,
-                'POST /api/v1/admin/promotions, label'.self::NO_ROW,
                 'PUT /api/v1/admin/promotions/{id}, subtitle'.self::NO_ROW,
+                'POST /api/v1/admin/promotions, label'.self::NO_ROW,
             ],
             ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
         );
