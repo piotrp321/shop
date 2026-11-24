@@ -35,6 +35,10 @@ const restoreNote = computed(() => props.safety.restoreNote.value);
 const reading = computed(() => props.safety.reading.value);
 const status = computed(() => props.safety.status.value);
 
+// The label of „Odrzuć moje zmiany i pokaż stan z serwera” is long: it wraps inside the message instead of sticking out of it
+// at 320 px (WCAG 1.4.10), and the button grows with its lines.
+const RESTORE_BUTTON = "h-auto min-h-8 max-w-full whitespace-normal py-1 text-left";
+
 const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-description]:text-status-danger";
 
 const statusRegion = ref<HTMLElement | null>(null);
@@ -143,6 +147,7 @@ async function retryRead(): Promise<void> {
           variant="outline"
           size="sm"
           data-testid="restore-state"
+          :class="RESTORE_BUTTON"
           :disabled="reading"
           @click="restore"
         >
@@ -165,6 +170,7 @@ async function retryRead(): Promise<void> {
           variant="outline"
           size="sm"
           data-testid="restore-state"
+          :class="RESTORE_BUTTON"
           :disabled="reading"
           @click="restore"
         >
@@ -178,6 +184,7 @@ async function retryRead(): Promise<void> {
         variant="outline"
         size="sm"
         data-testid="restore-state"
+        :class="RESTORE_BUTTON"
         :disabled="reading"
         @click="restore"
       >
