@@ -401,6 +401,9 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   je razem z `cart-purge-expired` i `backup`, czeka na ich aktywne Joby (najwyżej ich `activeDeadlineSeconds`) przed
   skalowaniem do zera i przywraca je jak pozostałe (także po przerwanej próbie). Test dymny sprawdza je w pętli CronJobów
   odmowy odtworzenia (`smoke.sh:790`).
+- Dane demo i indeks: `generate`, `open` i `reindex` też nie odmawiają z powodu aktywnych Jobów tych dwóch CronJobów
+  i `rate-limit-check` (Job rozpoznany po właścicielu, `active_jobs` w `infra/k8s/scripts/shop-closed.sh`), a CronJobów
+  nie wstrzymują: generator nie zapisuje zamówień `new` ani płatności `pending` (`docs/features/demo-scale/spec.md`).
 - Czas od wiadomości w `failed` do alertu: do 5 minut na Job, do kilku minut ewaluacji reguły; razem do 15 minut.
 
 ### W10. Cele make dla `failed` i runbook

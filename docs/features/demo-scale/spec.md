@@ -134,8 +134,11 @@ Stan nie jest zapisywany w osobnym obiekcie; wynika z obiektów klastra:
   żadnego `Complete`, więc `open` po przerwaniu nowego generowania odmawia: sukces poprzedniego przebiegu nie może
   zostać wzięty za sukces bieżącego. `open` otwiera sklep tylko po Jobie `demo-data-run`,
   który jest `Complete`. Przebieg trwa, dopóki Job jest aktywny; `generate` i `open` odmawiają przy aktywnym Jobie
-  przestrzeni (poza Jobami CronJoba `rate-limit-check`, który działa co 5 minut przez najwyżej minutę: zgodność
-  z ABUSE-LIMITS, L12).
+  przestrzeni poza Jobami CronJobów krótkich sprawdzeń `rate-limit-check`, `queue-check` i `order-expiry` (co 5 minut,
+  najwyżej 60, 120 i 600 s; ABUSE-LIMITS, L12, i ASYNC-RELIABILITY, W9). Jobem sprawdzenia jest Job, którego właścicielem
+  jest taki CronJob, nie Job o podobnej nazwie: Job utworzony ręcznie, Job innego CronJoba i Job, którego właścicielem nie
+  jest CronJob, blokują. Ten wyjątek obowiązuje w każdym odczycie aktywnych Jobów: przed `tak`, tuż przed nowym Jobem
+  `demo-data-run` i w `open`.
 - **Zakres zamknięcia.** Reguła obejmuje każdy pod przestrzeni, więc zamyka wszystkie publiczne wejścia naraz:
   sklep, API, panel (`admin.`), logowanie (`auth.`) i obrazy (`img.`); innych wejść nie ma (Z8). Połączenia otwarte
   przed regułą zrywa restart poda Traefika (Z2); tam też kończą się połączenia Cloudflare z serwerem.
@@ -175,9 +178,9 @@ Przebieg:
    - blokady `demo-data-lock` nie ma (odmowa podaje jej posiadacza);
    - `PROFILE` to `seed` albo profil wpisany w CronJobie `demo-data` wdrożonej rewizji (`demoData.profile`); inny
      profil wymaga zmiany wartości i wdrożenia;
-   - CronJob `demo-data` istnieje i jest zawieszony; żaden Job przestrzeni nie jest aktywny; każdy Deployment
-     i StatefulSet przestrzeni jest gotowy (generator kończy się błędem, gdy Elasticsearch, Postgres, Keycloak,
-     `worker`, Varnish albo sklep nie odpowiada);
+   - CronJob `demo-data` istnieje i jest zawieszony; żaden Job przestrzeni nie jest aktywny, poza Jobami CronJobów
+     krótkich sprawdzeń („Stan sklepu i blokada”); każdy Deployment i StatefulSet przestrzeni jest gotowy (generator
+     kończy się błędem, gdy Elasticsearch, Postgres, Keycloak, `worker`, Varnish albo sklep nie odpowiada);
    - gdy profil nie jest `seed`, a CronJob ma sekret puli zdjęć (`photosSecretName`): plik puli zdjęć
      (`DEMO_PHOTOS_ENV_FILE`, domyślnie `~/.config/shop/demo-photos.env`) ma cztery zmienne odczytu (brak: kod 2);
    - wolne miejsce każdego węzła (kubelet, `/api/v1/nodes/<węzeł>/proxy/stats/summary`) da się odczytać jako liczbę
@@ -216,6 +219,10 @@ po `Failed` albo gdy Jobu nie ma, wraca się do `generate`. Przerwanie przed usu
 nietknięte i ten Job (`open` otwiera sklep na nim); po usunięciu `open` odmawia do sukcesu nowego Joba.
 
 CronJob `cart-purge-expired` działa w trakcie bez zmian: usuwa tylko wygasłe koszyki, których generator nie pisze.
+CronJoby `rate-limit-check`, `queue-check` i `order-expiry` też: pierwszy zapisuje tylko klucz kontrolny w Redisie,
+drugi tylko czyta kolejki wiadomości, a trzeci zmienia tylko zamówienia `new` po terminie (`ordering:expire-overdue`)
+i płatności `pending` (`payment:close-abandoned`), a generator nie zapisuje ani jednych, ani drugich (zamówienia
+anulowane albo opłacone i dalej, płatności `succeeded`; `docs/features/demo-data/spec.md`, P8).
 
 ### Cel `make -C infra/k8s open`
 
@@ -449,8 +456,9 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
    ścieżek. Kontener CronJoba ma `PGOPTIONS` z `client_connection_check_interval`; na działającym stosie sesja procesu
    PHP z tą zmienną kończy się po zabiciu klienta sygnałem KILL w trakcie długiego zapytania (Z11).
 3. `generate` odmawia bez zmian (testy skryptu na atrapach `kubectl`): brak albo zły `PROFILE`, profil inny niż
-   w CronJobie, brak `tak`, aktywny Job (poza Jobami `rate-limit-check`), niegotowy Deployment albo StatefulSet, brak
-   pliku puli zdjęć albo zmiennej odczytu (tylko gdy CronJob ma sekret puli i profil nie jest `seed`), za mało
+   w CronJobie, brak `tak`, aktywny Job (poza Jobami CronJobów `rate-limit-check`, `queue-check` i `order-expiry`,
+   także tuż przed nowym Jobem `demo-data-run`; Job o podobnej nazwie bez takiego właściciela blokuje), niegotowy
+   Deployment albo StatefulSet, brak pliku puli zdjęć albo zmiennej odczytu (tylko gdy CronJob ma sekret puli i profil nie jest `seed`), za mało
    wolnego miejsca (próg `minFreeGb` dla każdego profilu poza `seed`, próg `diskPeakGb` tylko dla `medium` i `server`;
    `seed` odmawia tylko przy nieczytelnym odczycie), nieczytelny odczyt miejsca, brak `KUBE_DIR`, blokada innego
    przebiegu (przed `tak` i przy zakładaniu po `tak`).
@@ -462,8 +470,8 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
    powstaje, a Job poprzedniego przebiegu zostaje. Sekret jest usunięty także po HUP, INT i TERM; Job z poprzedniego
    przebiegu nigdy nie przechodzi do `open` jako sukces tego przebiegu (po jego usunięciu `open` odmawia do sukcesu
    nowego Joba).
-5. `open` odmawia bez zmian przy aktywnym Jobie, bez Joba `demo-data-run` i z Jobem innym niż `Complete`; usuwa
-   pozostawiony sekret puli zdjęć; po nieudanym sprawdzeniu (nieważny indeks, alias na zero albo wiele indeksów, stan
+5. `open` odmawia bez zmian przy aktywnym Jobie (z tym samym wyjątkiem co `generate`), bez Joba `demo-data-run`
+   i z Jobem innym niż `Complete`; usuwa pozostawiony sekret puli zdjęć; po nieudanym sprawdzeniu (nieważny indeks, alias na zero albo wiele indeksów, stan
    `red`, indeks bez aliasu, nieudany Job `load`) kończy się kodem 1 z regułą na miejscu; po udanych sprawdzeniach
    czyści pulę `cache.sitemap` w każdym podzie `api` przed Jobem `load`, usuwa regułę i kończy kodem 0 po „otwarty”
    od każdego adresu sondy; sonda bez „otwarty” to kod 1, a ponowne `open` kończy otwarcie. `open` odmawia bez zmian
