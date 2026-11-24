@@ -115,7 +115,13 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    (wejście albo przeplot zdarzeń i błędny wynik), sesja nie odracza na podstawie samej etykiety. Zapisuje przy niej
    krótką ocenę: rzeczywisty skutek (co zostaje zapisane, wysłane albo pokazane i komu), naruszona gwarancja
    (specyfikacja, lista jakości, kontrakt), odwracalność i podstawa oceny: „sprawdzone: <próba albo miejsce w kodzie
-   i wynik>” albo „założenie niesprawdzone: <jakie>”. Uwagę, która łamie gwarancję albo ma skutek nieodwracalny
+   i wynik>” albo „założenie niesprawdzone: <jakie>”. Etykieta zakresu (punkt „Poza zakresem” specyfikacji, „poza
+   zakresem etapu”, „sprzed epiku”, „sprzed zmiany”) też nie jest podstawą odroczenia. Pozycja „naruszona gwarancja”
+   podaje sekcję i punkt specyfikacji epiku, z którymi sesja zestawiła przeplot z uwagi (np. „B2: blokada pól
+   w trakcie żądania”). Gdy żadna gwarancja nie jest naruszona, pozycja brzmi „brak gwarancji specyfikacji epiku”, po
+   przejrzeniu sekcji, których dotyczą zdarzenia przeplotu. Uwaga o funkcji spoza zakresu, która w przeplocie
+   z działaniem w zakresie łamie jego gwarancję, należy do zakresu i idzie do poprawki. Uwagę, która łamie gwarancję
+   albo ma skutek nieodwracalny
    lub poza bazą (pieniądze, operator, wysłana wiadomość, stan widoczny dla klienta, utrata wpisanych danych), zleca
    do poprawki. Istotne podejrzenie oparte na niesprawdzonym założeniu („nie odtwarzałem”, założenie o działaniu
    frameworka, bazy albo brokera, nadzór, który może pokazać stan zdrowy w awarii, a także własne założenie sesji
