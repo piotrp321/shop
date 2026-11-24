@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Catalog\Domain\Product;
 
+use App\Shared\Domain\Text;
+
 /**
- * The names of the axes a product varies along, in presentation order (e.g. Kolor, Rozmiar). Up to two, each
- * 1 to 30 characters after trimming Unicode whitespace, without control characters (see ProductText), without a colon
- * (it separates the axis from the value in an axis filter), different without regard to case.
+ * The names of the axes a product varies along, in presentation order (e.g. Kolor, Rozmiar). Up to two, each a text by
+ * the rule of texts (Text) of 1 to 30 characters once trimmed, without a colon (it separates the axis from the value
+ * in an axis filter), different without regard to case.
  */
 final readonly class VariantAxes
 {
@@ -35,10 +37,10 @@ final readonly class VariantAxes
         $trimmed = [];
         $seen = [];
         foreach ($names as $name) {
-            if (ProductText::hasForbiddenCharacters($name)) {
+            if (Text::hasForbiddenCharacters($name)) {
                 throw InvalidVariantAxes::nameWithForbiddenCharacters();
             }
-            $name = ProductText::trim($name);
+            $name = Text::normalize($name);
             $length = mb_strlen($name);
             if ($length < 1 || $length > self::MAX_NAME_LENGTH) {
                 throw InvalidVariantAxes::nameLengthOutOfRange();
@@ -55,6 +57,16 @@ final readonly class VariantAxes
         }
 
         return new self($trimmed);
+    }
+
+    /**
+     * The names as stored, without the rule (spec api-input-contract, E7); only a write goes through fromList().
+     *
+     * @param list<string> $names
+     */
+    public static function stored(array $names): self
+    {
+        return new self($names);
     }
 
     /**

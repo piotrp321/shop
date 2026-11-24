@@ -2637,7 +2637,7 @@ export interface operations {
             query?: {
                 /** @description Category id (UUID). */
                 category?: string;
-                /** @description Search phrase, 2 to 100 characters after trimming. Every word must match (name, category names or short description), Polish inflection, missing Polish characters and small typos are tolerated. */
+                /** @description Search phrase, 2 to 100 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators. Every word must match (name, category names or short description), Polish inflection, missing Polish characters and small typos are tolerated. */
                 q?: string;
                 /** @description Wanted variant option as `<axis>:<value>`, split on the first colon (axis 1 to 30 characters, value 1 to 40), repeated for more; at most 50 entries of at most 5 different axes. */
                 option?: string[];

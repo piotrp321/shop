@@ -292,9 +292,9 @@ final class CatalogStepsTest extends KernelTestCase
 
         $product = Product::create(
             ProductId::fromString('00000000-0000-4000-8000-0000000000aa'),
-            new ProductName('Kontrakt'),
+            ProductName::of('Kontrakt'),
             new Slug('kontrakt-values-key'),
-            new ShortDescription(''),
+            ShortDescription::of(''),
             ProductCategories::create(CategoryId::fromString($category)),
             TaxClassCode::Standard,
             ProductImages::fromList([]),

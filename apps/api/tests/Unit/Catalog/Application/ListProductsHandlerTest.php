@@ -225,14 +225,14 @@ final class ListProductsHandlerTest extends TestCase
     private function handle(FakeProductSearch $search, ListProducts $query): ProductPage
     {
         $categories = new InMemoryCategoryRepository();
-        $root = Category::createRoot(CategoryId::fromString(self::CATEGORY), new CategoryName('Buty'), new CategorySlug('buty'));
+        $root = Category::createRoot(CategoryId::fromString(self::CATEGORY), CategoryName::of('Buty'), new CategorySlug('buty'));
         $categories->save($root);
         // Saved in the reverse of the tree order on purpose.
-        $trekking = Category::createChild(CategoryId::fromString(self::TREKKING), new CategoryName('Trekking'), new CategorySlug('trekking'), $root);
-        $running = Category::createChild(CategoryId::fromString(self::RUNNING), new CategoryName('Bieganie'), new CategorySlug('bieganie'), $root);
+        $trekking = Category::createChild(CategoryId::fromString(self::TREKKING), CategoryName::of('Trekking'), new CategorySlug('trekking'), $root);
+        $running = Category::createChild(CategoryId::fromString(self::RUNNING), CategoryName::of('Bieganie'), new CategorySlug('bieganie'), $root);
         $categories->save($trekking);
         $categories->save($running);
-        $categories->save(Category::createChild(CategoryId::fromString(self::GRANDCHILD), new CategoryName('Górskie'), new CategorySlug('gorskie'), $trekking));
+        $categories->save(Category::createChild(CategoryId::fromString(self::GRANDCHILD), CategoryName::of('Górskie'), new CategorySlug('gorskie'), $trekking));
 
         return (new ListProductsHandler($search, new class implements ImageUrlGenerator {
             public function url(string $imageKey, ImageSize $size, int $width, ImageFormat $format): string

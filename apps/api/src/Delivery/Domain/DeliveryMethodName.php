@@ -42,7 +42,7 @@ final readonly class DeliveryMethodName
      * A name as stored, without the rule: a name stored before a stricter rule is still read (spec api-input-contract,
      * E7); only a write goes through of().
      */
-    public static function reconstitute(string $name): self
+    public static function stored(string $name): self
     {
         return new self($name);
     }

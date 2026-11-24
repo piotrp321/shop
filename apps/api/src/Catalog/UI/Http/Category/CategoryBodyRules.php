@@ -28,7 +28,7 @@ final class CategoryBodyRules
     {
         if (\is_string($name)) {
             try {
-                new CategoryName($name);
+                CategoryName::of($name);
             } catch (\InvalidArgumentException) {
                 $context->buildViolation(self::NAME)->atPath('name')->addViolation();
             }

@@ -60,7 +60,7 @@ final class EditProductHandlerTest extends TestCase
     protected function setUp(): void
     {
         $categories = new InMemoryCategoryRepository();
-        $this->category = Category::createRoot(CategoryId::fromString(self::CATEGORY_ID), new CategoryName('Sport'), new CategorySlug('sport'));
+        $this->category = Category::createRoot(CategoryId::fromString(self::CATEGORY_ID), CategoryName::of('Sport'), new CategorySlug('sport'));
         $categories->save($this->category);
         $this->products = new InMemoryProductRepository();
         $this->images = new InMemoryProductImageStorage();
@@ -310,9 +310,9 @@ final class EditProductHandlerTest extends TestCase
     {
         return Product::create(
             ProductId::fromString($id),
-            new ProductName('Buty biegowe'),
+            ProductName::of('Buty biegowe'),
             new Slug($slug),
-            new ShortDescription(''),
+            ShortDescription::of(''),
             ProductCategories::create($this->category->id()),
             TaxClassCode::Standard,
             StoredProducts::images(['front']),

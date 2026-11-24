@@ -274,7 +274,7 @@ final class ProductVersionTest extends KernelTestCase
             $product->categories(),
             $product->taxClass(),
             ProductImages::fromList(array_map(
-                static fn (ProductImage $image, int $position): ProductImage => new ProductImage($image->key(), $image->alt(), $position),
+                static fn (ProductImage $image, int $position): ProductImage => ProductImage::of($image->key(), $image->alt(), $position),
                 $reversed,
                 array_keys($reversed),
             )),

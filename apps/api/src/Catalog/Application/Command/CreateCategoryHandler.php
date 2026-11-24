@@ -46,7 +46,7 @@ final readonly class CreateCategoryHandler
     public function __invoke(CreateCategory $command): void
     {
         $id = CategoryId::fromString($command->id);
-        $name = new CategoryName($command->name);
+        $name = CategoryName::of($command->name);
         $slug = new CategorySlug($command->slug);
         $parentId = CategoryTreeWrite::parentId($command->parentId);
 

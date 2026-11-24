@@ -44,7 +44,7 @@ final readonly class ReviseCategoryHandler
     public function __invoke(ReviseCategory $command): void
     {
         $id = CategoryTreeWrite::existingId($command->categoryId);
-        $name = new CategoryName($command->name);
+        $name = CategoryName::of($command->name);
         $slug = new CategorySlug($command->slug);
 
         $this->lock->exclusive();

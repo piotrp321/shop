@@ -51,8 +51,8 @@ final class CreateProductHandlerTest extends TestCase
     protected function setUp(): void
     {
         $this->categories = new InMemoryCategoryRepository();
-        $this->categories->save(Category::createRoot(CategoryId::fromString(self::MAIN_ID), new CategoryName('Sport'), new CategorySlug('sport')));
-        $this->categories->save(Category::createRoot(CategoryId::fromString(self::EXTRA_ID), new CategoryName('Obuwie'), new CategorySlug('obuwie')));
+        $this->categories->save(Category::createRoot(CategoryId::fromString(self::MAIN_ID), CategoryName::of('Sport'), new CategorySlug('sport')));
+        $this->categories->save(Category::createRoot(CategoryId::fromString(self::EXTRA_ID), CategoryName::of('Obuwie'), new CategorySlug('obuwie')));
         $this->products = new InMemoryProductRepository();
         $this->images = new InMemoryProductImageStorage();
         $this->images->existing = ['originals/'.str_repeat('a', 64).'.jpg'];

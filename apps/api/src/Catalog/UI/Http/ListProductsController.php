@@ -55,7 +55,7 @@ final class ListProductsController
         tags: ['Catalog'],
         parameters: [
             new OA\Parameter(name: 'category', in: 'query', required: false, description: 'Category id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
-            new OA\Parameter(name: 'q', in: 'query', required: false, description: 'Search phrase, 2 to 100 characters after trimming. Every word must match (name, category names or short description), Polish inflection, missing Polish characters and small typos are tolerated.', schema: new OA\Schema(type: 'string', minLength: 2, maxLength: 100)),
+            new OA\Parameter(name: 'q', in: 'query', required: false, description: 'Search phrase, 2 to 100 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators. Every word must match (name, category names or short description), Polish inflection, missing Polish characters and small typos are tolerated.', schema: new OA\Schema(type: 'string', minLength: 2, maxLength: 100)),
             new OA\Parameter(
                 name: 'option',
                 in: 'query',

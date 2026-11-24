@@ -43,7 +43,7 @@ final readonly class DeliveryMethodDescription
     /**
      * A description as stored, without the rule (spec api-input-contract, E7); only a write goes through of().
      */
-    public static function reconstitute(string $description): self
+    public static function stored(string $description): self
     {
         return new self($description);
     }

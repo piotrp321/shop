@@ -649,7 +649,7 @@
                     {
                         "name": "q",
                         "in": "query",
-                        "description": "A part of the product name, 2 to 100 characters.",
+                        "description": "A part of the product name, 2 to 100 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators.",
                         "required": false,
                         "schema": {
                             "type": "string",
@@ -5541,7 +5541,7 @@
                 ],
                 "properties": {
                     "name": {
-                        "description": "1 to 100 characters once trimmed of whitespace, without control characters.",
+                        "description": "1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.",
                         "type": "string",
                         "example": "Namioty",
                         "maxLength": 100
@@ -5601,7 +5601,7 @@
                 ],
                 "properties": {
                     "name": {
-                        "description": "1 to 100 characters once trimmed of whitespace, without control characters.",
+                        "description": "1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.",
                         "type": "string",
                         "example": "Namioty",
                         "maxLength": 100
@@ -5906,7 +5906,6 @@
                 "properties": {
                     "q": {
                         "type": "string",
-                        "pattern": "((?!\\0).)*",
                         "nullable": true,
                         "default": null,
                         "maxLength": 100,

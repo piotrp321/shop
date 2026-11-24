@@ -74,7 +74,7 @@ final class CategoryTreeTest extends TestCase
             self::root(self::RUN, 'Bieganie', 'bieganie'),
         ]);
 
-        $change = $tree->add(self::id(self::NEW), new CategoryName('Akcesoria'), new CategorySlug('akcesoria'), null);
+        $change = $tree->add(self::id(self::NEW), CategoryName::of('Akcesoria'), new CategorySlug('akcesoria'), null);
 
         self::assertSame(self::NEW, $change->category->id()->toString());
         self::assertSame(3, $change->category->position());
@@ -90,7 +90,7 @@ final class CategoryTreeTest extends TestCase
     {
         $tree = CategoryTree::of([self::root(self::SPORT, 'Sport', 'sport'), self::root(self::TOURISM, 'Turystyka', 'turystyka')]);
 
-        $change = $tree->add(self::id(self::NEW), new CategoryName('Akcesoria'), new CategorySlug('akcesoria'), null, append: false);
+        $change = $tree->add(self::id(self::NEW), CategoryName::of('Akcesoria'), new CategorySlug('akcesoria'), null, append: false);
 
         self::assertSame(0, $change->category->position());
         self::assertSame(['akcesoria' => 0], self::positions($change->saved));
@@ -100,7 +100,7 @@ final class CategoryTreeTest extends TestCase
     {
         $tree = $this->sportTree();
 
-        $change = $tree->add(self::id(self::NEW), new CategoryName('Kolce'), new CategorySlug('kolce'), self::id(self::RUN));
+        $change = $tree->add(self::id(self::NEW), CategoryName::of('Kolce'), new CategorySlug('kolce'), self::id(self::RUN));
 
         self::assertSame('/'.self::SPORT.'/'.self::RUN.'/'.self::NEW.'/', $change->category->path()->toString());
         self::assertSame(['sport/bieganie/kolce'], $change->restoredPaths);
@@ -111,14 +111,14 @@ final class CategoryTreeTest extends TestCase
         $tree = $this->sportTree();
 
         $this->expectExceptionObject(new CategoryTooDeep());
-        $tree->add(self::id(self::NEW), new CategoryName('Za głęboko'), new CategorySlug('za-gleboko'), self::id(self::TRAIL));
+        $tree->add(self::id(self::NEW), CategoryName::of('Za głęboko'), new CategorySlug('za-gleboko'), self::id(self::TRAIL));
     }
 
     public function testAChildOfTheThirdLevelIsAllowed(): void
     {
         $tree = $this->sportTree();
 
-        $change = $tree->add(self::id(self::NEW), new CategoryName('Kolce'), new CategorySlug('kolce'), self::id(self::SHOES));
+        $change = $tree->add(self::id(self::NEW), CategoryName::of('Kolce'), new CategorySlug('kolce'), self::id(self::SHOES));
 
         self::assertSame(4, \count($change->category->path()->ancestorIds()));
     }
@@ -128,7 +128,7 @@ final class CategoryTreeTest extends TestCase
         $tree = $this->sportTree();
 
         try {
-            $tree->add(self::id(self::NEW), new CategoryName('Kolce'), new CategorySlug('kolce'), self::id(self::NEW));
+            $tree->add(self::id(self::NEW), CategoryName::of('Kolce'), new CategorySlug('kolce'), self::id(self::NEW));
             self::fail('Expected ParentCategoryNotFound.');
         } catch (ParentCategoryNotFound $e) {
             self::assertContains(InvalidInput::class, class_implements($e));
@@ -141,7 +141,7 @@ final class CategoryTreeTest extends TestCase
         $tree = $this->sportTree();
 
         try {
-            $tree->add(self::id(self::NEW), new CategoryName('Bieg'), new CategorySlug('bieganie'), self::id(self::SPORT));
+            $tree->add(self::id(self::NEW), CategoryName::of('Bieg'), new CategorySlug('bieganie'), self::id(self::SPORT));
             self::fail('Expected CategorySlugTaken.');
         } catch (CategorySlugTaken $e) {
             self::assertContains(Conflict::class, class_implements($e));
@@ -156,14 +156,14 @@ final class CategoryTreeTest extends TestCase
         $tree = $this->sportTree();
 
         $this->expectException(CategoryAlreadyExists::class);
-        $tree->add(self::id(self::RUN), new CategoryName('Inna'), new CategorySlug('inna'), null);
+        $tree->add(self::id(self::RUN), CategoryName::of('Inna'), new CategorySlug('inna'), null);
     }
 
     public function testARenameWithoutASlugChangeRaisesTheVersionAndRedirectsNothing(): void
     {
         $tree = $this->sportTree();
 
-        $change = $tree->revise(self::id(self::RUN), 1, new CategoryName('Bieganie i trail'), new CategorySlug('bieganie'));
+        $change = $tree->revise(self::id(self::RUN), 1, CategoryName::of('Bieganie i trail'), new CategorySlug('bieganie'));
 
         self::assertSame('Bieganie i trail', $change->category->name()->value());
         self::assertSame(2, $change->category->version());
@@ -176,7 +176,7 @@ final class CategoryTreeTest extends TestCase
     {
         $tree = $this->sportTree();
 
-        $change = $tree->revise(self::id(self::RUN), 1, new CategoryName('Bieganie'), new CategorySlug('biegi'));
+        $change = $tree->revise(self::id(self::RUN), 1, CategoryName::of('Bieganie'), new CategorySlug('biegi'));
 
         self::assertSame([
             'sport/bieganie' => self::RUN,
@@ -192,7 +192,7 @@ final class CategoryTreeTest extends TestCase
         $tree = $this->sportTree();
 
         try {
-            $tree->revise(self::id(self::RUN), 2, new CategoryName('Bieganie'), new CategorySlug('turystyka'));
+            $tree->revise(self::id(self::RUN), 2, CategoryName::of('Bieganie'), new CategorySlug('turystyka'));
             self::fail('Expected CategoryModifiedConcurrently.');
         } catch (CategoryModifiedConcurrently $e) {
             self::assertContains(Conflict::class, class_implements($e));
@@ -205,10 +205,10 @@ final class CategoryTreeTest extends TestCase
     {
         $tree = CategoryTree::of([self::root(self::SPORT, 'Sport', 'sport'), self::root(self::TOURISM, 'Turystyka', 'turystyka')]);
 
-        $tree->revise(self::id(self::SPORT), 1, new CategoryName('Sporty'), new CategorySlug('sport'));
+        $tree->revise(self::id(self::SPORT), 1, CategoryName::of('Sporty'), new CategorySlug('sport'));
 
         $this->expectException(CategorySlugTaken::class);
-        $tree->revise(self::id(self::SPORT), 2, new CategoryName('Sporty'), new CategorySlug('turystyka'));
+        $tree->revise(self::id(self::SPORT), 2, CategoryName::of('Sporty'), new CategorySlug('turystyka'));
     }
 
     public function testAnUnknownCategoryIsNotFound(): void
@@ -216,7 +216,7 @@ final class CategoryTreeTest extends TestCase
         $tree = $this->sportTree();
 
         try {
-            $tree->revise(self::id(self::NEW), 1, new CategoryName('X'), new CategorySlug('x'));
+            $tree->revise(self::id(self::NEW), 1, CategoryName::of('X'), new CategorySlug('x'));
             self::fail('Expected CategoryNotFound.');
         } catch (CategoryNotFound $e) {
             self::assertSame('Kategoria nie istnieje.', $e->getMessage());
@@ -412,7 +412,7 @@ final class CategoryTreeTest extends TestCase
 
     private static function root(string $id, string $name, string $slug, int $position = 0): Category
     {
-        return Category::reconstitute(self::id($id), new CategoryName($name), new CategorySlug($slug), null, CategoryPath::fromString('/'.$id.'/'), $position, 1);
+        return Category::reconstitute(self::id($id), CategoryName::of($name), new CategorySlug($slug), null, CategoryPath::fromString('/'.$id.'/'), $position, 1);
     }
 
     /** @var array<string, string> the path of every category built by child() and root() */
@@ -424,7 +424,7 @@ final class CategoryTreeTest extends TestCase
         $path = $parentPath.$id.'/';
         self::$paths[$id] = $path;
 
-        return Category::reconstitute(self::id($id), new CategoryName($name), new CategorySlug($slug), self::id($parentId), CategoryPath::fromString($path), 0, 1);
+        return Category::reconstitute(self::id($id), CategoryName::of($name), new CategorySlug($slug), self::id($parentId), CategoryPath::fromString($path), 0, 1);
     }
 
     /**

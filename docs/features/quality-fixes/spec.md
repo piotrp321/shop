@@ -90,20 +90,21 @@ Nazwa, oś albo wartość z samych NBSP przechodzi (nazwa z NBSP daje naruszenie
 kopiuje limity domeny jako literały.
 
 **Zachowanie.**
-- Jedna klasa reguł tekstu, `ProductText`, w `apps/api/src/Catalog/Domain/Product` (własna kopia, wzorem
-  `Ordering\Domain\ControlCharacters`; bez wspólnych value objectów między modułami): przycinanie białych znaków Unicode
-  (`\s` i `\p{Z}` z `/u`), wykrywanie znaków niedozwolonych: C0 i DEL (U+0000–U+001F, U+007F) oraz U+0085, U+2028,
-  U+2029, z wyjątkiem LF (U+000A) w krótkim opisie. Niepoprawny UTF-8 (błąd wyrażenia) to znak niedozwolony. Używają jej
-  value objecty (`ProductName`, `ShortDescription`, `ProductImage`, `VariantAxes`, `VariantValues`) i walidator.
+- Reguła tekstów produktu to wspólna reguła `App\Shared\Domain\Text` (`docs/features/api-input-contract/spec.md`,
+  „Etap 2: reguła tekstu”): przycinanie białych znaków Unicode i czterech znaków niewidocznych z końców, wykrywanie
+  znaków niedozwolonych (wszystkie znaki sterujące, także C1, oraz U+2028 i U+2029), z wyjątkiem LF (U+000A) w krótkim
+  opisie. Niepoprawny UTF-8 to znak niedozwolony. Używają jej value objecty (`ProductName`, `ShortDescription`,
+  `ProductImage`, `VariantAxes`, `VariantValues`) i walidator.
 - Znak niedozwolony w `name`, `shortDescription`, `images[].alt`, `variantAxes[]` albo wartości wariantu → 422 przy polu
   z komunikatem „Nazwa produktu zawiera niedozwolone znaki.”, „Krótki opis zawiera niedozwolone znaki.”, „Tekst
   alternatywny zawiera niedozwolone znaki.”, „Nazwa osi zawiera niedozwolone znaki.” albo „Wartość wariantu zawiera
   niedozwolone znaki.” (styl Ordering). Niepoprawny UTF-8 w treści JSON (bajt poza UTF-8, samotny surogat `\udc80`)
   nie dociera do walidatora: dekoder odpowiada 400 i nic się nie zapisuje; reguła dla takiego tekstu działa w walidatorze
   i value objectach.
-- Tekst z samych białych znaków Unicode w `name`, `images[].alt`, osi albo wartości wariantu → 422 przy tym polu z tym
-  samym komunikatem co pusty („Podaj nazwę produktu.”, „Podaj tekst alternatywny zdjęcia.”, „Nazwa osi musi mieć od 1 do
-  30 znaków.”, „Wartość musi mieć od 1 do 40 znaków.”), nie przy `slug`. Krótki opis z samych białych znaków po
+- Tekst bez znaku widocznego (same białe znaki Unicode albo znaki niewidoczne) w `name`, `images[].alt`, osi albo
+  wartości wariantu → 422 przy tym polu z tym samym komunikatem co pusty („Podaj nazwę produktu.”, „Podaj tekst
+  alternatywny zdjęcia.”, „Nazwa osi musi mieć od 1 do 30 znaków.”, „Wartość musi mieć od 1 do 40 znaków.”), nie przy
+  `slug`. Krótki opis bez znaku widocznego po
   przycięciu jest pusty i zostaje przyjęty (pole opcjonalne). Zapisywane są teksty przycięte, a długość liczy się po
   przycięciu.
 - Limity długości walidator bierze ze stałych domeny (publicznych), bez literałów.
@@ -113,8 +114,8 @@ kopiuje limity domeny jako literały.
 końcu w każdym polu → 422 przy polu, LF odrzucony poza krótkim opisem; niepoprawny UTF-8 w treści JSON → 400, nic nie
 zapisane; same białe znaki Unicode (NBSP, U+3000) w polach wymaganych → 422 jak pusty tekst, w krótkim opisie → zapis
 pustego opisu; LF w krótkim opisie zapisany; zapis tekstów przyciętych i limity liczone po przycięciu. Testy
-jednostkowe klasy reguł (`ProductTextTest`), value objectów (`ProductTextRulesInValueObjectsTest`) i walidatora
-(`ProductWriteValidationTest`).
+jednostkowe reguły (`TextTest`), value objectów (`ProductTextRulesInValueObjectsTest`) i walidatora
+(`ProductWriteValidationTest`, `ProductWriteTextRulesTest`).
 
 ## #248: duplikat wariantu według bazy, nie domeny
 
