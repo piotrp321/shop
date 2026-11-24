@@ -221,6 +221,17 @@ class CheckBaseImages(unittest.TestCase):
     def test_pinned_copy_with_the_escape_directive_passes(self):
         self.assertClean(f"# escape=`\nFROM scratch\nCOPY `\n  --from=img:1@{DIGEST} /a /a\n")
 
+    def test_escape_directive_after_an_ordinary_comment_is_not_a_directive(self):
+        self.assertViolation(
+            f"# note\n# escape=`\nFROM node:24@{DIGEST} AS a`\nCOPY --from=img:1 /a /b\n", 4)
+
+    def test_escape_directive_after_an_empty_line_is_not_a_directive(self):
+        self.assertViolation(
+            f"\n# escape=`\nFROM node:24@{DIGEST} AS a`\nCOPY --from=img:1 /a /b\n", 4)
+
+    def test_escape_directive_after_another_directive_still_applies(self):
+        self.assertViolation("# syntax=docker/dockerfile:1\n# escape=`\nFROM scratch\nCOPY `\n  --from=img:1 /a /a\n", 4)
+
     # Files that are checked
 
     def test_new_dockerfile_in_any_directory_is_checked(self):
