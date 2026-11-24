@@ -899,7 +899,7 @@ describe("useProductForm", () => {
     it("keeps the default variant, with its id, as the first row when the first axis is added", async () => {
       const { form } = await start({ id: "p-1" });
       serveReads(view({ variantAxes: [], variants: [{ variantId: "v-default", values: [] }] }));
-      await form.refresh();
+      await form.safety.restore();
 
       form.addAxis();
       form.setAxis(0, "Kolor");
@@ -1192,7 +1192,7 @@ describe("useProductForm", () => {
       it("locks the editors and the actions while „Odśwież” reads, and the card of prices is not part of the draft", async () => {
         const { form } = await open();
         const reads = holdCalls(mocks.get);
-        const refreshing = form.refresh();
+        const refreshing = form.safety.restore();
         const draft = JSON.stringify(form.form.value);
 
         tryToEdit(form);
@@ -1262,7 +1262,7 @@ describe("useProductForm", () => {
         form.form.value.name = "Moje";
         const reads = holdCalls(mocks.get);
 
-        const refreshing = form.refresh();
+        const refreshing = form.safety.restore();
 
         expect(form.safety.status.value).toBe("Odświeżamy…");
         expect(form.form.value.name).toBe("Moje");
@@ -1279,7 +1279,7 @@ describe("useProductForm", () => {
         const { form } = await open();
         form.form.value.name = "Moje";
         const reads = holdCalls(mocks.get);
-        const refreshing = form.refresh();
+        const refreshing = form.safety.restore();
         const state = trackSettled(refreshing);
 
         await advance(9_999);
@@ -1306,7 +1306,7 @@ describe("useProductForm", () => {
         form.form.value.name = "Moje";
         fail();
 
-        await form.refresh();
+        await form.safety.restore();
 
         expect(form.form.value.name).toBe("Moje");
         expect(form.view.value?.version).toBe(3);
@@ -2010,7 +2010,7 @@ describe("useProductForm", () => {
         const { form, id } = await open();
         form.form.value.name = "Moje";
         const reads = holdCalls(mocks.get);
-        const refreshing = form.refresh();
+        const refreshing = form.safety.restore();
         serveReads(view({ id: "p-2", name: "Drugi", slug: "drugi", version: 2 }));
         id.value = "p-2";
         await flushPromises();

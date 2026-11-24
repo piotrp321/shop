@@ -349,15 +349,6 @@ export function useProductForm(options: ProductFormOptions) {
     (id) => open(id),
   );
 
-  /**
-   * Discards the changes and shows the product as the API has it now (`safety.restore`). The fields stay locked until the
-   * answer, so nothing typed meanwhile is replaced by it; after 10 s, an error or an answer other than 200 the form stays
-   * as it was, unlocked, with `safety.readFailed`.
-   */
-  async function refresh(): Promise<void> {
-    await safety.restore();
-  }
-
   /** Throws away the unsaved changes: the form goes back to the product as the API last sent it, without a request. */
   function discard(): void {
     if (source === null || busy.value || locked.value) {
@@ -639,7 +630,6 @@ export function useProductForm(options: ProductFormOptions) {
     save,
     publish,
     unpublish,
-    refresh,
     discard,
     moveImage,
     removeImage,
