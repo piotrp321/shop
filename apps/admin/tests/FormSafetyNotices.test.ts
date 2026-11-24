@@ -138,6 +138,39 @@ describe("FormSafetyNotices", () => {
     expect(state.draft).toEqual({ name: "Z serwera" });
   });
 
+  // jsdom has no layout: the classes are the contract that the long label wraps inside the message at 320 px (WCAG 1.4.10),
+  // measured in a browser when they were chosen (the default button never wraps and sticks out of the message).
+  it("lets the label of „Odrzuć moje zmiany i pokaż stan z serwera” wrap inside the message in each of its three places", async () => {
+    const wrapsInside = (button: { classes: () => string[] }) => {
+      const classes = button.classes();
+      expect(classes).toEqual(expect.arrayContaining(["whitespace-normal", "h-auto", "max-w-full"]));
+      expect(classes).not.toContain("whitespace-nowrap");
+    };
+
+    const alone = create();
+    const first = await show(alone);
+    alone.offerRestore("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+    await flushPromises();
+    wrapsInside(first.get("[data-testid=restore-state]"));
+    first.unmount();
+
+    const discarded = create();
+    const second = await show(discarded);
+    discarded.offerRestore("Rozpoczętej promocji nie można zmienić.");
+    discarded.draftDiscarded();
+    await flushPromises();
+    wrapsInside(second.get("[data-testid=restore-state]"));
+    second.unmount();
+
+    const unknown = create();
+    const third = await show(unknown);
+    await unknown.write(() => failing() as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+    read.mockResolvedValue({ data: { id: "d1", version: 6, name: "Cudza" } });
+    await unknown.check();
+    await flushPromises();
+    wrapsInside(third.get("[data-testid=restore-state]"));
+  });
+
   it("does not say it was restored when the read failed, and shows the message to try again with the focus on it", async () => {
     const safety = create();
     const wrapper = await show(safety);
