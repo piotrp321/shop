@@ -1,0 +1,40 @@
+| Punkt | RSS MiB | working set MiB | anon MiB | sterta po GC MB |
+|---|---|---|---|---|
+| start | 128 | 77 | 71 | 33 |
+| po rozgrzewce | 547 | 501 | 488 | 144 |
+| 500,300 tagów | 626 | 580 | 566 | 239 |
+| 1,000,300 tagów | 764 | 722 | 705 | 323 |
+| 1,500,400 tagów | 880 | 838 | 819 | 447 |
+| 2,000,400 tagów (początek pauzy) | 972 | 933 | 912 | 524 |
+| 2,000,400 tagów | 972 | 933 | 912 | 524 |
+| 2,000,600 tagów (koniec pauzy 60 s) | 841 | 804 | 782 | 506 |
+| 2,500,400 tagów | 1008 | 971 | 948 | 655 |
+| 3,000,400 tagów | 1075 | 1038 | 1014 | 723 |
+| revalidate-failed sent=3,121,500 | 1075 | 1040 | 1012 | 734 |
+| revalidate-failed sent=3,121,500 | 1075 | 1040 | 1012 | 734 |
+| revalidate-failed sent=3,121,500 | 1075 | 1040 | 1012 | 734 |
+| revalidate-failed sent=3,121,500 | 1075 | 1040 | 1012 | 734 |
+| revalidate-failed sent=3,121,500 | 1075 | 1040 | 1012 | 734 |
+| revalidate-failed sent=3,121,500 | 1075 | 1040 | 1012 | 734 |
+| done sent=3,121,500 | 1075 | 1040 | 1012 | 734 |
+
+events: [('seed', None, None), ('warm', None, None), ('pause-start', 2000400, None), ('pause-end', 2000600, None), ('revalidate-failed', 3121500, 'UND_ERR_SOCKET'), ('revalidate-failed', 3121500, 'UND_ERR_SOCKET'), ('revalidate-failed', 3121500, 'UND_ERR_SOCKET'), ('revalidate-failed', 3121500, 'UND_ERR_SOCKET'), ('revalidate-failed', 3121500, 'ECONNREFUSED'), ('revalidate-failed', 3121500, 'ECONNREFUSED'), ('done', 3121500, None)]
+peak RSS 1083 MiB, peak working set 1051 MiB, samples 120
+last sample: RSS 1075 MiB at +246 s
+Mark-Compact: 101, longest pause 322 ms, heap after last 734 MB, max heap after GC 739 MB
+Mark-Compact pauses >= 100 ms: 17; total Mark-Compact pause 4.6 s; scavenges 979
+rate to pause: 114,178 tags/s
+state: running=false oomkilled=false exit=139 restarts=0
+non-GC log lines (last 12):
+   2026-11-24T21:21:01.686663708Z ▲ Next.js 16.4.6
+   2026-11-24T21:21:01.686788208Z - Local:         http://localhost:3000
+   2026-11-24T21:21:01.686795041Z - Network:       http://0.0.0.0:3000
+   2026-11-24T21:21:01.686936958Z ✓ Ready in 0ms
+   2026-11-24T21:21:01.688219916Z ✓ Running next.config took 0.6ms
+   2026-11-24T21:25:11.011170879Z
+   2026-11-24T21:25:11.011193421Z <--- Last few GCs --->
+   2026-11-24T21:25:11.011194921Z
+   2026-11-24T21:25:11.011197129Z
+   2026-11-24T21:25:11.011345546Z FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory
+   2026-11-24T21:25:11.011358129Z ----- Native stack trace -----
+   2026-11-24T21:25:11.011359462Z
