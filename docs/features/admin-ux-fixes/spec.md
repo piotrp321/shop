@@ -514,21 +514,29 @@ wiedza o serwerze zostaje.
   zależna od stanu mogłaby zastąpić zmiany wpisane po odrzuceniu bez zapowiedzi.
 - Spóźniona odpowiedź zapisu nadal tylko toast, bez wpływu na pola.
 
-**Nowszy zapis po nieznanym wyniku.** Nieznany wynik zapisu (także wynik „Sprawdź stan”: brak zapisu na serwerze, inna
-wersja) jest prawdą, dopóki go nie rozstrzygnie potwierdzony sukces, zgodność przy „Sprawdź stan”, stan z serwera przyjęty
-przez „Odrzuć moje zmiany i pokaż stan z serwera” albo zmiana obiektu; odpowiedź 422 nowszego zapisu nie rozstrzyga niczego
-o wcześniejszym (API sprawdza treść przed wersją, a wcześniejszy zapis mógł się wykonać u źródła mimo 502 albo 504).
-- W trakcie nowszego zapisu komunikat o wcześniejszym zostaje widoczny, a jego przyciski („Sprawdź stan”, „Odrzuć moje
-  zmiany i pokaż stan z serwera”) są nieaktywne: nie porzucają nowszego zapisu.
-- Po odmowie nowszego zapisu (każde 4xx) komunikat jest widoczny obok jego błędów, w słowach o wcześniejszym zapisie:
-  „Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu.”, po „Sprawdź stan” z wynikiem „brak
-  zapisu” „Wcześniejszego zapisu nie widać na serwerze. Może jeszcze dotrzeć.” (inna wersja: bez zmiany, z przyciskiem
-  „Odrzuć moje zmiany…”); dla nowego obiektu komunikat o utworzeniu z linkiem do listy. „Sprawdź stan” porównuje wtedy
-  szkic z chwili odpowiedzi odczytu. Fokus zostaje tam, gdzie stawia go formularz (pierwszy błąd pola albo komunikat
-  formularza): komunikat o wcześniejszym zapisie nie jest celem tego fokusu.
-- Kończą go: potwierdzony sukces nowszego zapisu, zgodność, udane „Odrzuć moje zmiany i pokaż stan z serwera”, zmiana
-  obiektu. Nieznany wynik nowszego zapisu zastępuje go (jeden komunikat). Wiadomość o 409 i jej przycisk stanu z serwera
-  należą do wyniku nowszego zapisu i znikają ze startem kolejnego, bo 409 niczego nie zostawia nierozstrzygniętego.
+**Nowszy zapis po nieznanym wyniku i po 409.** Nieznany wynik zapisu (także wynik „Sprawdź stan”: brak zapisu na
+serwerze, inna wersja) i droga do stanu z serwera po 409 (przycisk „Odrzuć moje zmiany i pokaż stan z serwera” z kontekstem
+tego 409) są prawdą, dopóki ich nie rozstrzygnie potwierdzony sukces, zgodność przy „Sprawdź stan”, stan z serwera przyjęty
+przez „Odrzuć moje zmiany i pokaż stan z serwera” albo zmiana obiektu. Odpowiedź 4xx nowszego zapisu (API sprawdza treść
+przed wersją, więc 422 nie mówi nic o wersji, a wcześniejszy zapis mógł się wykonać u źródła mimo 502 albo 504) nie rozstrzyga
+niczego o serwerze. Dlatego nowszy zapis (także publikacja i wycofanie) tego nie kasuje:
+- W trakcie nowszego zapisu komunikat o wcześniejszym zapisie albo kontekst 409 zostaje widoczny, a jego przyciski („Sprawdź
+  stan”, „Odrzuć moje zmiany i pokaż stan z serwera”) są nieaktywne: nie porzucają nowszego zapisu. Własny komunikat nowszego
+  zapisu po 10 s zastępuje je do jego odpowiedzi.
+- Po odmowie nowszego zapisu (każde 4xx) wiedza jest widoczna obok jego błędów. Nieznany wynik w słowach o wcześniejszym
+  zapisie: „Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu.”, po „Sprawdź stan” z wynikiem
+  „brak zapisu” „Wcześniejszego zapisu nie widać na serwerze. Może jeszcze dotrzeć.” (inna wersja: bez zmiany, z przyciskiem);
+  dla nowego obiektu komunikat o utworzeniu z linkiem do listy. Droga do stanu z serwera po 409: kontekst tego 409 (np. „Na
+  serwerze jest inna wersja niż ta, którą edytujesz.”) z przyciskiem, jak po „Odrzuć” (komunikat 409 formularza zniknął ze
+  startem zapisu); „Odrzuć” paska zapisu pokazuje ten kontekst z fokusem. 409 nowszego zapisu z własną ofertą zastępuje
+  kontekst. „Sprawdź stan” porównuje szkic z chwili odpowiedzi odczytu. Fokus zostaje tam, gdzie stawia go formularz
+  (pierwszy błąd pola albo komunikat formularza): ani komunikat o wcześniejszym zapisie, ani kontekst 409 nie są celem tego
+  fokusu.
+- Zdanie „Twoje zmiany zostają w formularzu.” pada tylko, dopóki „Odrzuć” nie zabrał zmian: po „Odrzuć” wcześniejszy zapis
+  jest opisany bez niego („Nie wiemy, czy wcześniejszy zapis się powiódł.”), także w trakcie i po odmowie nowszej operacji
+  (publikacji, wycofania albo zapisu z nowymi zmianami; tekst nie twierdzi wtedy nic o zmianach, których nie wie).
+- Kończą ją: potwierdzony sukces nowszego zapisu, zgodność, udane „Odrzuć moje zmiany i pokaż stan z serwera”, zmiana
+  obiektu. Nieznany wynik nowszego zapisu zastępuje nieznany wynik (jeden komunikat) i kończy ofertę z 409.
 
 **Spóźniona odpowiedź wcześniejszego zapisu** (po „Sprawdź stan”, „Odblokuj formularz”, po nowszym zapisie albo po
 odblokowaniu z innego powodu): nie zmienia pól, wersji, stanu bazowego ani `dirty`, nie czyści błędów i komunikatów
@@ -590,7 +598,9 @@ promocja i metoda dostawy.
    i porównuje aktualny szkic; to samo po „Sprawdź stan” z wynikiem „brak zapisu” i „inna wersja” oraz dla nowego obiektu.
    W trakcie B komunikat jest widoczny, a jego przyciski nieaktywne. Kończą go sukces B, zgodność, udane „Odrzuć moje
    zmiany…” i zmiana obiektu; nieznany wynik B go zastępuje. Spóźniony sukces A w trakcie i po B to tylko toast. Po 422
-   B fokus jest na pierwszym błędzie pola, nie na komunikacie o A.
+   B fokus jest na pierwszym błędzie pola, nie na komunikacie o A. To samo dla drogi do stanu z serwera po 409 wersji,
+   gdy kolejny zapis dostaje 422 (kontekst 409 z przyciskiem, „Odrzuć” w pasku go pokazuje); po „Odrzuć” i publikacji
+   albo wycofaniu z 409 lub 422 tekst o wcześniejszym zapisie nie obiecuje, że zmiany zostają.
 4. **E2E** (`admin-screens-discount-codes.spec.ts`, `catalog-admin.spec.ts`; `page.route`, odpowiedzi zapisu
    podstawiane albo na obiekcie testu): (a) kod rabatowy i (b) produkt: odpowiedź zapisu wstrzymana o 3 s, w tym czasie
    pole jest wyłączone, po odpowiedzi toast; (c) produkt: wstrzymany odczyt „Odrzuć moje zmiany i pokaż stan z serwera” po 409 blokuje pola; (d) kod rabatowy:

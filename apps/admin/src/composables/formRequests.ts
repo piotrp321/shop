@@ -14,6 +14,8 @@ export const UNKNOWN_RESULT_MESSAGE = "Nie wiemy, czy zapis się powiódł. Twoj
 export const UNKNOWN_DISCARDED_MESSAGE = "Nie wiemy, czy zapis się powiódł.";
 /** The unknown result of an earlier save, said again after a newer save was refused: the newer one is not the one in question. */
 export const UNKNOWN_EARLIER_MESSAGE = "Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu.";
+/** The same after the draft was discarded: nothing stays in the form, so nothing is promised. */
+export const UNKNOWN_EARLIER_DISCARDED_MESSAGE = "Nie wiemy, czy wcześniejszy zapis się powiódł.";
 export const NOT_ON_SERVER_MESSAGE = "Zapisu nie widać na serwerze. Może jeszcze dotrzeć.";
 export const NOT_ON_SERVER_EARLIER_MESSAGE = "Wcześniejszego zapisu nie widać na serwerze. Może jeszcze dotrzeć.";
 export const OTHER_VERSION_MESSAGE = "Na serwerze jest inna wersja niż ta, którą edytujesz.";
