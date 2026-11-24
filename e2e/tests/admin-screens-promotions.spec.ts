@@ -683,6 +683,32 @@ test.describe("the form", () => {
     }
   });
 
+  test("a save whose answer is held locks the form of a new promotion at 375 px, and axe finds no violation: the scrolling tables of the variants stay focusable", async () => {
+    test.setTimeout(60_000);
+    const page = await newPanelPage("admin", viewports.phone);
+    try {
+      await fillStartingNow(page, `E2E blokada ${Date.now()}`);
+      // The answer never comes: the request is dropped after the check, so nothing is created.
+      await page.route("**/api/v1/admin/promotions", async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.fallback();
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 8_000));
+        await route.abort();
+      });
+
+      await page.getByTestId("save").click();
+
+      await expect(page.getByTestId("name-input"), "the form is locked while the save has no answer").toBeDisabled();
+      await expect(page.getByTestId("picker"), "the open choice of variants stays").toBeVisible();
+      expect(await violationsOf(page, WCAG_TAGS), "axe in the locked form at 375 px").toEqual([]);
+    } finally {
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+      await page.close();
+    }
+  });
+
   test("shows the promotion read-only to a role without the right to change it, without the save bar and the actions", async () => {
     test.setTimeout(60_000);
     const page = await newPanelPage("support", viewports.desktop);
