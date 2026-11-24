@@ -25,6 +25,9 @@ use Doctrine\DBAL\Connection;
  *   and edges as one execution that compares the answers to the clean phrase and to the phrase between U+200B and
  *   between U+00A0.
  *
+ * Two rows of one operation, field and kind (the note of a cancellation and of a return, both required) differ by their
+ * variant, a label that is part of the name of the row and so of the name of each of its executions as a test.
+ *
  * The body, the path, the base query and the headers may hold placeholders `{name}`: the values of the fixture and
  * `{idempotencyKey}`, a new key in every request. The value of the field never takes placeholders, except the clean
  * phrase of the edges of a phrase. The read of the stored value takes the placeholders of the fixture and
@@ -67,6 +70,7 @@ final readonly class TextRow
         public array $preserved,
         public array $cases,
         public ?array $result,
+        public string $variant,
     ) {
     }
 
@@ -82,12 +86,13 @@ final readonly class TextRow
      * @param \Closure(Connection, array<string, string>): mixed $stored    the read of the stored value of the field (see column()); every 2xx compares it
      * @param array<string, string>                              $headers   other headers of the request, by name
      * @param array<string, string>|null                         $preserved the texts of the class "preserved" when the field cannot take the common ones
+     * @param string                                             $variant   the label that tells the row from another of the same operation, field and kind, empty for the only one
      */
-    public static function required(string $operation, ?string $token, string $fixture, string $field, string $sample, array $body, string $empty, string $forbidden, string $wrongType, \Closure $stored, string $allowed = '', array $headers = [], ?array $preserved = null): self
+    public static function required(string $operation, ?string $token, string $fixture, string $field, string $sample, array $body, string $empty, string $forbidden, string $wrongType, \Closure $stored, string $allowed = '', array $headers = [], ?array $preserved = null, string $variant = ''): self
     {
         [$method, $path] = explode(' ', $operation, 2);
 
-        return new self($method, $path, $token, $fixture, $field, self::REQUIRED, $sample, $body, '', $headers, $allowed, $empty, null, $forbidden, $wrongType, $stored, $preserved ?? self::preservedTexts(), [], null);
+        return new self($method, $path, $token, $fixture, $field, self::REQUIRED, $sample, $body, '', $headers, $allowed, $empty, null, $forbidden, $wrongType, $stored, $preserved ?? self::preservedTexts(), [], null, $variant);
     }
 
     /**
@@ -101,11 +106,11 @@ final readonly class TextRow
      *
      * @see required() for the other parameters
      */
-    public static function optional(string $operation, ?string $token, string $fixture, string $field, string $sample, array $body, mixed $noValue, string $forbidden, string $wrongType, \Closure $stored, string $allowed = '', array $headers = [], ?array $preserved = null): self
+    public static function optional(string $operation, ?string $token, string $fixture, string $field, string $sample, array $body, mixed $noValue, string $forbidden, string $wrongType, \Closure $stored, string $allowed = '', array $headers = [], ?array $preserved = null, string $variant = ''): self
     {
         [$method, $path] = explode(' ', $operation, 2);
 
-        return new self($method, $path, $token, $fixture, $field, self::OPTIONAL, $sample, $body, '', $headers, $allowed, null, $noValue, $forbidden, $wrongType, $stored, $preserved ?? self::preservedTexts(), [], null);
+        return new self($method, $path, $token, $fixture, $field, self::OPTIONAL, $sample, $body, '', $headers, $allowed, null, $noValue, $forbidden, $wrongType, $stored, $preserved ?? self::preservedTexts(), [], null, $variant);
     }
 
     /**
@@ -119,11 +124,11 @@ final readonly class TextRow
      * @param \Closure(Connection, array<string, string>): mixed $stored
      * @param array<string, string>                              $headers
      */
-    public static function format(string $operation, ?string $token, string $fixture, string $field, array $body, string $empty, string $forbidden, string $wrongType, array $cases, \Closure $stored, array $headers = []): self
+    public static function format(string $operation, ?string $token, string $fixture, string $field, array $body, string $empty, string $forbidden, string $wrongType, array $cases, \Closure $stored, array $headers = [], string $variant = ''): self
     {
         [$method, $path] = explode(' ', $operation, 2);
 
-        return new self($method, $path, $token, $fixture, $field, self::FORMAT, '', $body, '', $headers, '', $empty, null, $forbidden, $wrongType, $stored, [], $cases, null);
+        return new self($method, $path, $token, $fixture, $field, self::FORMAT, '', $body, '', $headers, '', $empty, null, $forbidden, $wrongType, $stored, [], $cases, null, $variant);
     }
 
     /**
@@ -142,12 +147,12 @@ final readonly class TextRow
      * @param string                                    $query     other parameters of the query, already URL-encoded
      * @param array<string, string>|null                $preserved
      */
-    public static function phrase(string $operation, ?string $token, string $fixture, string $sample, string $empty, string $forbidden, string $phrase, string $record, string $items = 'items', string $id = 'id', ?string $count = 'total', string $query = '', ?array $preserved = null): self
+    public static function phrase(string $operation, ?string $token, string $fixture, string $sample, string $empty, string $forbidden, string $phrase, string $record, string $items = 'items', string $id = 'id', ?string $count = 'total', string $query = '', ?array $preserved = null, string $variant = ''): self
     {
         [$method, $path] = explode(' ', $operation, 2);
 
         return new self($method, $path, $token, $fixture, 'q', self::PHRASE, $sample, null, $query, [], '', $empty, null, $forbidden, null, null, $preserved ?? self::preservedTexts(),
-            [], ['phrase' => $phrase, 'record' => $record, 'items' => $items, 'id' => $id, 'count' => $count]);
+            [], ['phrase' => $phrase, 'record' => $record, 'items' => $items, 'id' => $id, 'count' => $count], $variant);
     }
 
     /**
@@ -225,7 +230,7 @@ final readonly class TextRow
 
     public function name(): string
     {
-        return \sprintf('%s %s, %s (%s)', $this->method, $this->path, $this->field, $this->kind);
+        return \sprintf('%s %s, %s (%s)', $this->method, $this->path, $this->field, '' === $this->variant ? $this->kind : $this->kind.', '.$this->variant);
     }
 
     /**

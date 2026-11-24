@@ -84,6 +84,7 @@ final readonly class InputContractFixtures
             'customerOrder' => ['orderId' => OrderingFixture::order($this->entityManager->getConnection(), customerId: TestTokenFactory::CUSTOMER_ID)],
             'paidOrder' => ['orderId' => $this->paidOrder()],
             'cancelledOrder' => ['orderId' => $this->cancelledOrder()],
+            'shippedOrder' => ['orderId' => $this->shippedOrder()],
             'searchedOrder' => $this->searchedOrder(),
             'searchedCustomer' => $this->searchedCustomer(),
             default => throw new \LogicException(\sprintf('No fixture "%s".', $fixture)),
@@ -304,6 +305,18 @@ final readonly class InputContractFixtures
     {
         $orderId = $this->paidOrder();
         $this->dispatch(new ChangeOrderStatus($orderId, StaffTransition::Cancel, 2, 'Brak towaru', 'kc-staff-1', 'anna'));
+        $this->entityManager->clear();
+
+        return $orderId;
+    }
+
+    /**
+     * A paid order shipped by a staff member (version 3), the state a return is registered from.
+     */
+    private function shippedOrder(): string
+    {
+        $orderId = $this->paidOrder();
+        $this->dispatch(new ChangeOrderStatus($orderId, StaffTransition::Ship, 2, null, 'kc-staff-1', 'anna'));
         $this->entityManager->clear();
 
         return $orderId;

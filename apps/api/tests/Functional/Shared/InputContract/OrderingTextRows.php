@@ -174,10 +174,9 @@ final class OrderingTextRows
     }
 
     /**
-     * The note of a change of the status (optional for a shipment, required for a cancellation) and of the completion
-     * of a refund (optional), each read from the row it is stored in. One operation and field has one row of each kind
-     * (the name of an execution), so the note required for a return, the rule of a cancellation, is stated by the
-     * tests of the endpoint and of its request.
+     * The note of a change of the status (optional for a shipment, required for a cancellation and for a return) and of
+     * the completion of a refund (optional), each read from the row it is stored in. The two required notes of one
+     * operation and field differ by the variant of the row.
      *
      * @return iterable<TextRow>
      */
@@ -192,6 +191,8 @@ final class OrderingTextRows
             noValue: null, forbidden: self::NOTE, wrongType: self::NOTE_TYPE, stored: $history);
         yield TextRow::required($statusChange, $staff, 'paidOrder', 'note', 'Brak towaru', ['transition' => 'cancel'] + $change,
             empty: 'Notatka jest wymagana.', forbidden: self::NOTE, wrongType: self::NOTE_TYPE, stored: $history);
+        yield TextRow::required($statusChange, $staff, 'shippedOrder', 'note', 'Towar uszkodzony', ['transition' => 'return', 'version' => 3] + $change,
+            empty: 'Notatka jest wymagana.', forbidden: self::NOTE, wrongType: self::NOTE_TYPE, stored: $history, variant: 'return');
         yield TextRow::optional('POST /api/v1/admin/orders/{orderId}/refund-completion', $staff, 'cancelledOrder', 'note', 'Przelew wysłany', ['version' => 3, 'note' => null],
             noValue: null, forbidden: self::NOTE, wrongType: self::NOTE_TYPE,
             stored: TextRow::column('SELECT refund_note FROM ordering_order WHERE id = :id', ['id' => '{orderId}']));
