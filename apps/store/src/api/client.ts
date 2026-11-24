@@ -21,10 +21,11 @@ export function createApiClient(options: { baseUrl: string; accessToken?: string
 }
 
 /**
- * Body of the store's own `GET /auth/session` (route handler in app/auth/session): never tokens. `name` falls back to
- * the e-mail when the account has no name; `email` is the address of the account (the checkout confirms orders to it).
+ * Body of the store's own `GET /auth/session` (route handler in app/auth/session): never tokens, the sub or the session
+ * id. `name` falls back to the e-mail when the account has no name; `email` is the address of the account (the checkout
+ * confirms orders to it); `buyer` is the tag of the account the checkout sends back with the order (`PlaceOrderInput`).
  */
-export type AccountSession = { name: string; email: string } | null;
+export type AccountSession = { name: string; email: string; buyer: string } | null;
 
 export type AccountSessionResult = { status: "ok"; session: AccountSession } | { status: "unavailable" };
 
@@ -242,10 +243,20 @@ export type PlaceOrderInput = {
   expectedTotalGross: number;
   /** `methodId` of the delivery option the customer chose; the API checks that it is still available. */
   deliveryMethodId: string;
+  /**
+   * `variantId` and `quantity` of every line of the summary the customer saw; the API only compares them with the lines
+   * of the cart, which the order is placed from.
+   */
+  expectedLines: components["schemas"]["PlaceGuestOrderRequest"]["expectedLines"];
   /** Code of the payment provider chosen from `GET /api/v1/payment-providers`; the BFF checks it. */
   provider: string;
   /** The discount code the customer applied in the checkout, as typed; the API judges it. Absent without a code. */
   discountCode?: string;
+  /**
+   * The buyer the checkout shows: `"guest"` with the e-mail field, else `buyer` of the session read that gave the address
+   * of the account shown. The BFF compares it with the session of the order and never passes it to the API.
+   */
+  buyer: string;
 };
 
 export type OrderViolation = NonNullable<components["schemas"]["Problem"]["violations"]>[number];

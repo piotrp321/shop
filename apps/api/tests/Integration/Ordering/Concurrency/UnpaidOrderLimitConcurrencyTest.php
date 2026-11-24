@@ -132,7 +132,7 @@ final class UnpaidOrderLimitConcurrencyTest extends KernelTestCase
         $key = 'unpaid-limit-'.Uuid::v7()->toRfc4122();
         $this->keys[] = $key;
 
-        return new PlaceOrder(CartReference::guest($cart), $email, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->control), self::GROSS, $key, null, $address);
+        return new PlaceOrder(CartReference::guest($cart), $email, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->control), self::GROSS, OrderingFixture::expectedOfCart($this->control, $cart), $key, null, $address);
     }
 
     private function variant(): string

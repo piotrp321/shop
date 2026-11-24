@@ -12,6 +12,7 @@ import {
   type PlaceOrderResult,
   placeOrder,
 } from "@/api/client";
+import { announceSession } from "@/account/session-events";
 import { actionsFinished } from "@/cart/cart-actions";
 import { announceCartChange } from "@/cart/events";
 import { SessionExpired } from "@/cart/messages";
@@ -25,6 +26,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { GUEST_BUYER } from "./buyer";
+import { cartChanges } from "./cart-changes";
 import { navigateTo } from "./navigate";
 import type { PaymentProvider } from "./payment-api";
 
@@ -37,12 +40,31 @@ type Loaded =
 type Form = { email: string; fullName: string; phone: string; street: string; postalCode: string; city: string };
 type FieldName = keyof Form;
 
-/** Why the last order was not placed; each is shown above the form (see the UI table of the checkout spec). */
+/** The refusals after which the checkout reads the cart and tells what changed (#852). */
+type ChangeReason = "cart_changed" | "total_changed";
+
+/** Why the checkout is out of date: a changed cart or total, or a changed buyer (the session and the cart are read). */
+type StaleReason = ChangeReason | "buyer_changed";
+
+/** Why the last order was not placed, or that it may have been; each is shown above the form (the UI table of the checkout spec). */
 type Failure =
   | { kind: "conflict"; detail: string; offersCart: boolean }
+  | { kind: "changed"; reason: ChangeReason; changes: string[] }
+  /** The buyer changed: `email` is the account of the session read, null when it is signed out. */
+  | { kind: "buyer"; email: string | null }
   | { kind: "not_found" }
   | { kind: "unauthorized" }
-  | { kind: "message"; text: string };
+  | { kind: "message"; text: string }
+  /** The result of the order sent with `key` is uncertain (the answer was lost): it may have been placed. */
+  | { kind: "uncertain"; key: string }
+  /** A refusal told at the fields or at the code: above the form there is only the warning, when there is one. */
+  | { kind: "at_fields" };
+
+/**
+ * What the screen shows above the form: a message, with `warns` when an attempt whose result was uncertain may have
+ * placed an order, or that warning alone (`aboveTheForm`).
+ */
+type AboveTheForm = { kind: "message"; failure: Failure; warns: boolean } | { kind: "warning" };
 
 const FIELDS: { name: FieldName; label: string; type: string; autoComplete: string }[] = [
   { name: "email", label: "E-mail", type: "email", autoComplete: "email" },
@@ -63,10 +85,34 @@ const PROVIDER_ID_PREFIX = "checkout-provider-";
 const PROVIDER_ERROR_ID = "checkout-provider-error";
 const NO_METHODS = "Nie możemy teraz przyjąć zamówienia: brak dostępnych sposobów dostawy. Spróbuj później.";
 const SUBMIT_FAILED = "Nie udało się złożyć zamówienia. Spróbuj ponownie.";
+/** The message of an uncertain result: a retry goes with the same key, so it never places a second order. */
+const UNCERTAIN_RESULT = "Nie wiemy, czy zamówienie zostało złożone. Spróbuj ponownie: tego samego zamówienia nie złożymy drugi raz.";
 const RATE_LIMITED = "Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut.";
 const CART_GONE = "Koszyk nie jest już dostępny.";
+/**
+ * The start of the first paragraph of the message of a changed cart or total, followed by what it says of the order
+ * (`placedSentence`); the API's `detail` is not shown.
+ */
+const CHANGED: Record<ChangeReason, string> = {
+  cart_changed: "Zawartość koszyka zmieniła się od wczytania kasy.",
+  total_changed: "Kwota zamówienia zmieniła się od wczytania kasy.",
+};
+const CHANGED_LAST = "Sprawdź podsumowanie i zamów ponownie.";
+const CHANGES_NOT_READ = "Koszyk albo kwota zamówienia się zmieniły, ale nie udało się wczytać aktualnego podsumowania. Spróbuj ponownie.";
+/**
+ * What a refusal of a changed cart, total or buyer says of the order: none was placed, or an attempt before may have
+ * placed one (`placedSentence`). Every other message of the order adds `MAY_HAVE_PLACED` after its text while an
+ * uncertain attempt is left (`FailureMessage`).
+ */
+const PLACED_NOTHING = "Nie złożyliśmy zamówienia.";
+const MAY_HAVE_PLACED = "Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.";
+const SIGNED_IN_AS = (email: string, placed: string) =>
+  `Od wczytania kasy zmieniło się konto: teraz to ${email}. ${placed} Zamówienie będzie zamówieniem tego konta: sprawdź dane i podsumowanie, potem zamów ponownie.`;
+const SIGNED_OUT = (placed: string) => `Od wczytania kasy nastąpiło wylogowanie. ${placed} Podaj adres e-mail, sprawdź dane i podsumowanie, potem zamów ponownie.`;
+const BUYER_NOT_READ = "Kupujący się zmienił, ale nie udało się wczytać kasy. Spróbuj ponownie.";
 const FIELD_ID_PREFIX = "checkout-";
 const FAILURE_ID = "checkout-failure";
+const UNCERTAIN_ID = "checkout-uncertain";
 const TITLE_ID = "checkout-title";
 const RETRY_ID = "checkout-retry";
 const LOAD_FAILED = "Nie udało się wczytać kasy";
@@ -125,6 +171,9 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // The id of the chosen delivery method, no default. The option is looked up in the summary shown: a method that is
   // no longer among its options is no choice.
   const [deliveryMethodId, setDeliveryMethodId] = useState<string | null>(null);
+  // The same choice as it is now, for what a read of the summary does when its answer comes: the method is not locked
+  // while a code is checked, so the render of the click may hold an older one. Set only by `chooseMethod`.
+  const chosenMethod = useRef<string | null>(null);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   // What the live region of the summary says about the delivery after the summary was read again (a code, a 409).
   const [summaryStatus, setSummaryStatus] = useState("");
@@ -135,6 +184,14 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // "Spróbuj ponownie" reads the checkout again while the error stays (the button keeps the focus); `loaded` says
   // "loading" only for the first read.
   const [retrying, setRetrying] = useState(false);
+  // The summary is out of date: a refusal for a changed cart or total could not read the cart. Until the customer is
+  // told what changed against `shown`, the summary of the refused order, nothing is ordered: the next click on the
+  // order button reads the cart and tells the changes instead (`checking` is that read, with the form locked), and any
+  // other read of the summary (a code) tells them at once (`showCart`). The same after a refusal for a changed buyer
+  // whose reads failed: the next click reads the session and the cart (a read of a code reads no session, so it leaves
+  // the state). A ref, not a state: a read of a code, or a click, after the failed read but before its render must see it.
+  const outOfDate = useRef<{ reason: StaleReason; shown: CartView } | null>(null);
+  const [checking, setChecking] = useState(false);
   // The discount code lives in this component only (D3): a reload of the page starts without one. `appliedCode` is the
   // code the summary of `loaded` was priced with; `codeInput` is what the customer types.
   const [codeInput, setCodeInput] = useState("");
@@ -154,6 +211,24 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // total) and an unavailable delivery method, and when a code is applied or removed or refused (the request carries
   // another code and total).
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
+  // The keys of the attempts that may have placed an order no answer told of: an uncertain result (`failed`: a network
+  // error, 403, 5xx, an answer without the order), or a 409 `IdempotencyKeyReused` (an order with the key exists). They
+  // stay for the life of the page: a new key settles nothing of them, and neither does a refusal, even of the API to the
+  // same key, which tells only that no order with it existed when it was checked (the uncertain request may still be on
+  // its way to place it). Only a success tells the result, and the page leaves after it. While one is left, the screen
+  // warns of it: the render decides that from this state (`aboveTheForm`), whatever set or took off the message. Only
+  // added to, with an update of the state as it is then, so a handler after an await adds to the latest set.
+  const [uncertainKeys, setUncertainKeys] = useState<ReadonlySet<string>>(() => new Set());
+
+  /** Notes the key of an attempt that may have placed an order no answer told of. */
+  function markUncertain(key: string) {
+    setUncertainKeys((current) => new Set(current).add(key));
+  }
+
+  /** Starts a new attempt with a new key; the keys of uncertain attempts stay. */
+  function renewKey() {
+    setIdempotencyKey(newIdempotencyKey());
+  }
 
   useEffect(() => {
     let active = true;
@@ -164,9 +239,13 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       .then((result) => {
         if (!active) return;
         setLoaded(result);
+        if (result.status === "unauthorized") announceSession(null);
         if (result.status === "ready") {
+          announceSession(result.session);
           setForm(prefilled(result.session));
-          setDeliveryMethodId(onlyMethod(result.cart));
+          // `chooseMethod`, spelled out: the effect runs once and depends on nothing of the render.
+          chosenMethod.current = onlyMethod(result.cart);
+          setDeliveryMethodId(chosenMethod.current);
         }
       });
     return () => {
@@ -195,46 +274,142 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     const keepsFocus = focusStayed(document.getElementById(RETRY_ID));
     setRetrying(false);
     setLoaded(result);
+    if (result.status === "unauthorized") announceSession(null);
     if (result.status === "ready") {
+      announceSession(result.session);
       setForm(prefilled(result.session));
-      setDeliveryMethodId(onlyMethod(result.cart));
+      chooseMethod(onlyMethod(result.cart));
     }
     if (keepsFocus) moveFocusTo(result.status === "error" ? RETRY_ID : TITLE_ID);
   }
 
   /**
    * Shows the summary read again. The chosen delivery method stays only while the new summary offers it (a method that
-   * is gone is not chosen again when it comes back), and a changed delivery is announced in the live region.
+   * is gone is not chosen again when it comes back), and a changed delivery is announced in the live region. Every
+   * read of the summary goes through here: one read while the summary is out of date comes with the message of what
+   * changed against the summary of the refused order, so a summary the customer was not told about is never ordered
+   * and the message of the failed read does not stay. The method of the announcement and of the list is the one chosen
+   * when the answer comes (`chosenMethod`), the one the summary and the next order have; the state out of date is the
+   * one at that moment too.
    */
   function showCart(next: CartView, session: AccountSession) {
-    if (loaded.status === "ready") setSummaryStatus(deliveryAnnouncement(loaded.cart, next, deliveryMethodId));
+    const chosen = chosenMethod.current;
+    if (loaded.status === "ready") setSummaryStatus(deliveryAnnouncement(loaded.cart, next, chosen));
     setLoaded({ status: "ready", cart: next, session });
-    setDeliveryMethodId((current) => (next.delivery?.options.some((option) => option.methodId === current) ? current : null));
+    const stale = outOfDate.current;
+    if (stale !== null && stale.reason !== "buyer_changed") {
+      setFailure({ kind: "changed", reason: stale.reason, changes: cartChanges(stale.shown, next, chosen) });
+      outOfDate.current = null;
+    }
+    chooseMethod(next.delivery?.options.some((option) => option.methodId === chosen) ? chosen : null);
+  }
+
+  /**
+   * Takes off the message of the changes (`changed`) when the customer changed the summary after it (a code applied or
+   * removed, another delivery method): it tells the difference at the moment of the refused order and would contradict
+   * the summary next to it. Other messages stay, and so does the focus. Called before a read shows its summary, so that a
+   * read of a summary out of date still shows its own list (`showCart`); the message is the one at that moment.
+   */
+  function dismissChanges() {
+    setFailure((current) => (current?.kind === "changed" ? null : current));
+  }
+
+  /** Chooses the delivery method (none: `null`); the only place that changes the choice. */
+  function chooseMethod(methodId: string | null) {
+    chosenMethod.current = methodId;
+    setDeliveryMethodId(methodId);
   }
 
   function change(name: FieldName, value: string) {
     if (running.current === "order") return;
     setForm((current) => ({ ...current, [name]: value }));
     setFieldErrors((current) => ({ ...current, [name]: undefined }));
-    setIdempotencyKey(newIdempotencyKey());
+    renewKey();
+  }
+
+  /** Shows a summary read again and what the API says of its code. */
+  function showPreview(preview: Extract<Preview, { status: "ok" }>, session: AccountSession) {
+    showCart(preview.cart, session);
+    setAppliedCode(preview.appliedCode);
+    setCodeError(preview.codeError);
+    // A code that came off the order other than by „Usuń kod” must not stay announced as applied; the message at the
+    // field (role="alert") tells why. A read that failed shows nothing and leaves the announcement: the code is still on.
+    if (preview.appliedCode === null && appliedCode !== null) setCodeStatus("");
+    announceCartChange(preview.cart.totals.itemCount);
   }
 
   /** Reads the summary again with `code` and shows what the API says of it; answers how the read ended. */
   async function reloadPreview(code: string | null, session: AccountSession): Promise<Preview["status"]> {
     const preview = await loadPreview(code);
     if (preview.status === "unauthorized") {
-      setFailure({ kind: "unauthorized" });
+      showExpired();
       return "unauthorized";
     }
     if (preview.status === "failed") return "failed";
-    showCart(preview.cart, session);
-    setAppliedCode(preview.appliedCode);
-    setCodeError(preview.codeError);
-    // A code that came off the order other than by „Usuń kod” must not stay announced as applied; the message at the
-    // field (role="alert") tells why. A read that failed returns above and leaves the announcement: the code is still on.
-    if (preview.appliedCode === null && appliedCode !== null) setCodeStatus("");
-    announceCartChange(preview.cart.totals.itemCount);
+    showPreview(preview, session);
     return "ok";
+  }
+
+  /**
+   * Reads the cart, with the code applied, after a refusal for a changed cart or total, or for a click on a summary out
+   * of date, and only then shows the message: the changes between the summary `shown` (with the method `chosenId`) and
+   * the one read, and that summary, come in one render, and so does the end of the lock of the order. A read that
+   * fails, or answers 401, leaves the summary out of date against `shown`. Answers the id of the element that gets the
+   * focus.
+   */
+  async function readChanges(reason: ChangeReason, shown: CartView, chosenId: string | null, session: AccountSession): Promise<string> {
+    const preview = await loadPreview(appliedCode);
+    if (preview.status !== "ok") {
+      outOfDate.current = { reason, shown };
+      if (preview.status === "unauthorized") showExpired();
+      else setFailure({ kind: "message", text: CHANGES_NOT_READ });
+    } else {
+      showPreview(preview, session);
+      setFailure({ kind: "changed", reason, changes: cartChanges(shown, preview.cart, chosenId) });
+    }
+    unlockOrder();
+    return FAILURE_ID;
+  }
+
+  /**
+   * Reads the session and the cart, with the code applied, after a refusal for a changed buyer, or for a click on a
+   * checkout out of date for one, and only then shows the message: the buyer of the session read (the address of the
+   * account, or the e-mail field), the summary read and the message come in one render, and so does the end of the
+   * lock of the order. The form keeps what was typed; the next order carries `buyer` of this read. A read that fails
+   * (the session or the cart), or a 401 of the cart, leaves the checkout out of date. Answers the id of the element
+   * that gets the focus.
+   */
+  async function readBuyer(shown: CartView): Promise<string> {
+    const [preview, session] = await Promise.all([loadPreview(appliedCode), loadAccountSession()]);
+    if (preview.status === "ok" && session.status === "ok") {
+      outOfDate.current = null;
+      showPreview(preview, session.session);
+      setFailure({ kind: "buyer", email: session.session?.email ?? null });
+      // The header shows the buyer the checkout shows now, without a read of its own.
+      announceSession(session.session);
+    } else {
+      outOfDate.current = { reason: "buyer_changed", shown };
+      if (preview.status === "unauthorized") showExpired();
+      else setFailure({ kind: "message", text: BUYER_NOT_READ });
+    }
+    unlockOrder();
+    return FAILURE_ID;
+  }
+
+  /**
+   * Shows the expired session: a 401 of the store means it ended the session (the cookie is gone), so the header is
+   * told that nobody is signed in, as the message says.
+   */
+  function showExpired() {
+    setFailure({ kind: "unauthorized" });
+    announceSession(null);
+  }
+
+  /** Ends the lock of the form taken for an order, or for the read of a summary out of date. */
+  function unlockOrder() {
+    running.current = null;
+    setSubmitting(false);
+    setChecking(false);
   }
 
   async function applyCode(event: FormEvent<HTMLFormElement>) {
@@ -256,17 +431,18 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setCodeBusy(false);
     let target = CODE_INPUT_ID;
     if (preview.status === "ok") {
+      if (preview.appliedCode !== null) dismissChanges();
       showCart(preview.cart, loaded.session);
       setAppliedCode(preview.appliedCode);
       setCodeError(preview.codeError);
       if (preview.appliedCode !== null) {
         // The request now carries a code and another total; a rejected code leaves it as it was.
-        setIdempotencyKey(newIdempotencyKey());
+        renewKey();
         setCodeStatus(`Zastosowano kod ${preview.cart.discount?.code ?? preview.appliedCode}.`);
         target = CODE_REMOVE_ID;
       }
     } else if (preview.status === "unauthorized") {
-      setFailure({ kind: "unauthorized" });
+      showExpired();
       target = FAILURE_ID;
     } else {
       setCodeError(CODE_NOT_CHECKED);
@@ -285,14 +461,15 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setCodeBusy(false);
     let target = CODE_REMOVE_ID;
     if (preview.status === "ok") {
+      dismissChanges();
       showCart(preview.cart, loaded.session);
       setAppliedCode(null);
       setCodeInput("");
       setCodeStatus("Usunięto kod rabatowy.");
-      setIdempotencyKey(newIdempotencyKey());
+      renewKey();
       target = CODE_INPUT_ID;
     } else if (preview.status === "unauthorized") {
-      setFailure({ kind: "unauthorized" });
+      showExpired();
       target = FAILURE_ID;
     } else {
       setCodeError(CODE_NOT_REMOVED);
@@ -302,9 +479,10 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
 
   function chooseDelivery(methodId: string) {
     if (running.current === "order") return;
-    setDeliveryMethodId(methodId);
+    if (methodId !== chosenMethod.current) dismissChanges();
+    chooseMethod(methodId);
     setDeliveryError(null);
-    setIdempotencyKey(newIdempotencyKey());
+    renewKey();
   }
 
   function chooseProvider(code: string) {
@@ -323,6 +501,21 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     event.preventDefault();
     if (loaded.status !== "ready" || running.current !== null || providers === null || providers.length === 0) return;
     if (offersNoMethods(loaded.cart)) return;
+    const stale = outOfDate.current;
+    if (stale !== null) {
+      // The summary shown may not be the cart any more: this click reads it and tells the changes, and orders nothing.
+      const origin = document.activeElement;
+      running.current = "order";
+      setSubmitting(true);
+      setChecking(true);
+      setFailure(null);
+      const target =
+        stale.reason === "buyer_changed"
+          ? await readBuyer(stale.shown)
+          : await readChanges(stale.reason, stale.shown, chosenMethod.current, loaded.session);
+      focusAfterAnswer(origin, target);
+      return;
+    }
     const delivery = chosenOption(loaded.cart, deliveryMethodId);
     // Both missing choices are told at once; the focus goes to the first group with a message.
     if (delivery === null || provider === null) {
@@ -348,10 +541,16 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       ...contact,
       expectedTotalGross: delivery.totalGross,
       deliveryMethodId: delivery.methodId,
+      // The lines of the summary shown, only compared by the API with the cart.
+      expectedLines: loaded.cart.lines.map((line) => ({ variantId: line.variantId, quantity: line.quantity })),
       provider,
       ...(appliedCode === null ? {} : { discountCode: appliedCode }),
+      // The buyer of the render the click came from: the one on the screen, from the last read of the session.
+      buyer: loaded.session === null ? GUEST_BUYER : loaded.session.buyer,
     };
-    const result = await placeOrder(input, idempotencyKey);
+    // The key of this request: the one of the render the click came from, which nothing changes while the form is locked.
+    const key = idempotencyKey;
+    const result = await placeOrder(input, key);
     if (result.status === "ok") {
       announceCartChange(0);
       // The form stays locked: the page of the provider, or the confirmation page, is on its way.
@@ -364,14 +563,23 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     }
     // Set with the errors themselves (the 422 is shown without waiting), so that they are rendered as alerts at once.
     setErrorsAnnounced(result.status === "invalid" && !focusStayed(origin));
-    const target = await showFailure(result, loaded.session);
+    const target = await showFailure(result, key, loaded.session, loaded.cart, delivery.methodId);
     running.current = null;
     setSubmitting(false);
     focusAfterAnswer(origin, target);
   }
 
-  /** Shows why the order was not placed; answers the id of the element that gets the focus. */
-  async function showFailure(result: Exclude<PlaceOrderResult, { status: "ok" }>, session: AccountSession): Promise<string> {
+  /**
+   * Shows why the order was not placed; answers the id of the element that gets the focus. `key` is the key the order
+   * was sent with, `shown` its summary and `chosenId` its delivery method.
+   */
+  async function showFailure(
+    result: Exclude<PlaceOrderResult, { status: "ok" }>,
+    key: string,
+    session: AccountSession,
+    shown: CartView,
+    chosenId: string,
+  ): Promise<string> {
     switch (result.status) {
       case "invalid": {
         const errors: Partial<Record<FieldName, string>> = {};
@@ -390,6 +598,8 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         setProviderError(providerMessage);
         if (others.length > 0 || (Object.keys(errors).length === 0 && providerMessage === null)) {
           setFailure({ kind: "message", text: others.length > 0 ? others.join(" ") : result.detail || SUBMIT_FAILED });
+        } else {
+          setFailure({ kind: "at_fields" });
         }
         const first = FIELDS.find((candidate) => errors[candidate.name]);
         if (first) return `${FIELD_ID_PREFIX}${first.name}`;
@@ -398,17 +608,19 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       case "conflict": {
         // Told by the type of the problem only. Nothing is ordered again by itself.
         const detail = result.detail || SUBMIT_FAILED;
+        if (result.reason === "key_reused") markUncertain(key);
         if (result.reason === "discount_code_rejected") {
           // The code does not work any more. It comes off, the summary is read without it, and nothing is ordered:
           // the customer sees the new total and clicks again. When the summary cannot be read, the screen stays as it
           // was (the code applied, with its line and total) and the customer can take the code off by hand.
-          setIdempotencyKey(newIdempotencyKey());
+          renewKey();
           const read = await reloadPreview(null, session);
+          if (read === "unauthorized") return FAILURE_ID;
+          setFailure({ kind: "at_fields" });
           if (read === "ok") {
             setCodeError(detail);
             return CODE_INPUT_ID;
           }
-          if (read === "unauthorized") return FAILURE_ID;
           setCodeError(`${detail} ${CODE_NOT_REMOVED}`);
           return CODE_REMOVE_ID;
         }
@@ -419,15 +631,31 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         }
         if (result.reason === "key_reused") {
           // The key belongs to another request: the form is fine, the next click is a new attempt.
-          setIdempotencyKey(newIdempotencyKey());
+          renewKey();
           setFailure({ kind: "conflict", detail, offersCart: false });
           return FAILURE_ID;
         }
-        // Nothing was placed; the summary below is the new total, or has the methods available now (a method that is
-        // gone is no longer chosen), so the next click is a new request.
-        const fixedInTheCheckout = result.reason === "total_changed" || result.reason === "delivery_method_unavailable";
+        if (result.reason === "buyer_changed") {
+          // This request placed nothing: the session is of another buyer than the one shown. An earlier attempt with an
+          // uncertain result may have placed an order, which the BFF, refusing before the API, cannot know: the message
+          // then says so (`uncertainKeys`). The form stays locked while the session and the cart are read; then the
+          // message tells who buys now. The request carries another buyer.
+          renewKey();
+          return readBuyer(shown);
+        }
+        if (result.reason === "cart_changed" || result.reason === "total_changed") {
+          // This request placed nothing, and from now on the request carries other lines or another total; an earlier
+          // attempt with an uncertain result may still have placed an order, and the message then says so
+          // (`uncertainKeys`). The form stays locked while the cart is read; then the message tells what changed, with
+          // the summary read (#852).
+          renewKey();
+          return readChanges(result.reason, shown, chosenId, session);
+        }
+        // Nothing was placed; the summary below has the methods available now (a method that is gone is no longer
+        // chosen), so the next click is a new request.
+        const fixedInTheCheckout = result.reason === "delivery_method_unavailable";
         if (fixedInTheCheckout) {
-          setIdempotencyKey(newIdempotencyKey());
+          renewKey();
         }
         setFailure({ kind: "conflict", detail, offersCart: !fixedInTheCheckout });
         // The cart as the API sees it now, with the same code; an empty or unorderable one replaces the form.
@@ -439,23 +667,27 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         setFailure({ kind: "not_found" });
         return FAILURE_ID;
       case "unauthorized":
-        setFailure({ kind: "unauthorized" });
+        showExpired();
         return FAILURE_ID;
       case "rate_limited":
         // Nothing was placed: the form stays, and so does the key for the retry in a few minutes.
         setFailure({ kind: "message", text: RATE_LIMITED });
         return FAILURE_ID;
       case "failed":
-        setFailure({ kind: "message", text: SUBMIT_FAILED });
+        // The order may have been placed (the answer was lost): the retry goes with the same key.
+        markUncertain(key);
+        setFailure({ kind: "uncertain", key });
         return FAILURE_ID;
     }
   }
 
+  // The message above the form and the warning of an uncertain attempt, from the state of this render.
+  const above = aboveTheForm(failure, uncertainKeys, idempotencyKey);
   // The message that replaces the form has its own link to the cart, so a conflict does not add a second one.
   const showsForm = loaded.status === "ready" && loaded.cart.lines.length > 0 && !loaded.cart.hasExcludedLines;
   // The one status region of the screen says what the screen is doing; it is there in every state and only its text
   // changes, so that a screen reader announces the text each time it is set.
-  const operation = loaded.status === "loading" || retrying ? LOADING : submitting ? PLACING : "";
+  const operation = loaded.status === "loading" || retrying || checking ? LOADING : submitting ? PLACING : "";
 
   return (
     <ScreenMain>
@@ -493,7 +725,11 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           </Button>
         </div>
       ) : null}
-      {failure ? <FailureMessage failure={failure} cartLinkShown={showsForm} /> : null}
+      {above?.kind === "message" ? (
+        <FailureMessage failure={above.failure} warns={above.warns} cartLinkShown={showsForm} />
+      ) : above?.kind === "warning" ? (
+        <UncertainWarning />
+      ) : null}
       {loaded.status === "ready" ? (
         <CheckoutContent
           cart={loaded.cart}
@@ -630,19 +866,95 @@ function prefilled(session: AccountSession): Form {
   return session === null || session.name === session.email ? emptyForm : { ...emptyForm, fullName: session.name };
 }
 
-function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLinkShown: boolean }) {
+/** What a message of a refusal says of the order: none was placed, or an attempt before may have placed one. */
+function placedSentence(mayHavePlaced: boolean): string {
+  return mayHavePlaced ? MAY_HAVE_PLACED : PLACED_NOTHING;
+}
+
+/** The message of a changed buyer: who buys now, and whether the order may have been placed by the attempt before. */
+function buyerMessage({ email }: Extract<Failure, { kind: "buyer" }>, mayHavePlaced: boolean): string {
+  const placed = placedSentence(mayHavePlaced);
+  return email === null ? SIGNED_OUT(placed) : SIGNED_IN_AS(email, placed);
+}
+
+/**
+ * What the screen shows above the form. While an attempt whose result was uncertain is left (`uncertain`), exactly one
+ * of: the message of the uncertain result of the attempt the next click retries (its key is still `currentKey`), with
+ * the warning only when another attempt is uncertain too; another message with the warning; or the warning alone, when
+ * there is no message (none yet, taken off, or the order on its way) or the message was of an uncertain result the next
+ * click no longer retries. Without an uncertain attempt: the message, if any, and no warning.
+ */
+function aboveTheForm(failure: Failure | null, uncertain: ReadonlySet<string>, currentKey: string): AboveTheForm | null {
+  const retried = failure?.kind === "uncertain" && failure.key === currentKey ? failure.key : null;
+  const warns = [...uncertain].some((key) => key !== retried);
+  if (failure === null || (failure.kind === "uncertain" && retried === null)) return warns ? { kind: "warning" } : null;
+  // A refusal told at the fields has nothing of its own above the form.
+  if (failure.kind === "at_fields" && !warns) return null;
+  return { kind: "message", failure, warns };
+}
+
+/**
+ * The warning left alone above the form. It was told when it appeared (in the message, or as an answer); it is not an
+ * alert, so a message taken off does not announce it again, and it never takes the focus.
+ */
+function UncertainWarning() {
+  return (
+    <Alert id={UNCERTAIN_ID} role="note" variant="destructive">
+      <AlertDescription className="wrap-anywhere">
+        <p>{MAY_HAVE_PLACED}</p>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function FailureMessage({ failure, warns, cartLinkShown }: { failure: Failure; warns: boolean; cartLinkShown: boolean }) {
+  // The messages of a changed cart, total or buyer say it instead of their sentence of the order; every other one
+  // adds it after its text.
+  const warning = warns && failure.kind !== "changed" && failure.kind !== "buyer" ? <p>{MAY_HAVE_PLACED}</p> : null;
   return (
     <Alert id={FAILURE_ID} variant="destructive" tabIndex={-1}>
-      <AlertDescription>
+      {/* Texts of the data (an address, a product, a variant, a delivery method) can be one word longer than the screen:
+          `wrap-anywhere` (not `break-words`) also lets the grid of the alert shrink to a narrow screen, as it counts in
+          the width the text needs at least. */}
+      <AlertDescription className="wrap-anywhere">
         {failure.kind === "unauthorized" ? (
-          <p>
-            <SessionExpired returnTo="/checkout" />
-          </p>
-        ) : failure.kind === "message" ? (
-          <p>{failure.text}</p>
+          <>
+            <p>
+              <SessionExpired returnTo="/checkout" />
+            </p>
+            {warning}
+          </>
+        ) : failure.kind === "message" || failure.kind === "uncertain" ? (
+          <>
+            <p>{failure.kind === "message" ? failure.text : UNCERTAIN_RESULT}</p>
+            {warning}
+          </>
+        ) : failure.kind === "at_fields" ? (
+          warning
+        ) : failure.kind === "buyer" ? (
+          <p>{buyerMessage(failure, warns)}</p>
+        ) : failure.kind === "changed" ? (
+          <>
+            <p>{`${CHANGED[failure.reason]} ${placedSentence(warns)}`}</p>
+            {failure.changes.length > 0 ? (
+              <ul className="list-disc pl-5 not-last:mb-4">
+                {/* Two lines without a known product can say the same: the position is the key. */}
+                {failure.changes.map((change, index) => (
+                  <li key={index}>{change}</li>
+                ))}
+              </ul>
+            ) : null}
+            {/* Without the form the message of the summary has its own link to the cart: no second one. */}
+            {cartLinkShown ? (
+              <p>
+                {CHANGED_LAST} <Link href="/cart">Przejdź do koszyka</Link>
+              </p>
+            ) : null}
+          </>
         ) : (
           <>
             <p>{failure.kind === "conflict" ? failure.detail : CART_GONE}</p>
+            {warning}
             {failure.kind === "not_found" ? (
               <p>
                 <Link href="/">Wróć do sklepu</Link>
@@ -749,7 +1061,7 @@ function CheckoutContent({
             </p>
           ) : null
         ) : (
-          <p className="text-sm">
+          <p className="text-sm wrap-anywhere">
             Potwierdzenie wyślemy na adres <span data-testid="account-email">{session.email}</span>
           </p>
         )}
@@ -908,10 +1220,10 @@ function DeliveryChoice({
           />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex flex-wrap justify-between gap-x-4">
-              <span className="font-semibold break-words">{option.name}</span>
+              <span className="font-semibold wrap-anywhere">{option.name}</span>
               <span>{option.costGross === 0 ? "Darmowa" : formatPrice(option.costGross, currency)}</span>
             </span>
-            {option.description ? <span className="text-sm text-muted-foreground break-words">{option.description}</span> : null}
+            {option.description ? <span className="text-sm text-muted-foreground wrap-anywhere">{option.description}</span> : null}
             {option.costGross !== 0 && option.missingToFreeGross !== null ? (
               <span className="text-sm text-muted-foreground">Do darmowej dostawy brakuje {formatPrice(option.missingToFreeGross, currency)}</span>
             ) : null}
@@ -1060,7 +1372,8 @@ function OrderSummary({ cart, delivery, status }: { cart: CartView; delivery: De
           <ul className="flex flex-col divide-y divide-border">
             {cart.lines.map((line) => (
               <li key={line.variantId} className="flex justify-between gap-4 py-2 first:pt-0">
-                <div className="flex flex-col">
+                {/* A name or a label of the data can be one word longer than the screen: `wrap-anywhere` breaks it. */}
+                <div className="flex min-w-0 flex-col wrap-anywhere">
                   <span className="font-semibold">{line.product?.name}</span>
                   {line.product?.variantLabel ? (
                     <span data-testid="checkout-line-variant" className="text-sm text-muted-foreground">
@@ -1072,7 +1385,7 @@ function OrderSummary({ cart, delivery, status }: { cart: CartView; delivery: De
                   </span>
                 </div>
                 {line.lineTotal ? (
-                  <span data-testid="checkout-line-total" className="font-semibold">
+                  <span data-testid="checkout-line-total" className="shrink-0 font-semibold">
                     {formatPrice(line.lineTotal.gross, line.lineTotal.currency)}
                   </span>
                 ) : null}
@@ -1080,7 +1393,7 @@ function OrderSummary({ cart, delivery, status }: { cart: CartView; delivery: De
             ))}
           </ul>
           {cart.discount?.status === "applied" ? (
-            <p data-testid="checkout-discount" className="flex justify-between text-sm">
+            <p data-testid="checkout-discount" className="flex justify-between text-sm wrap-anywhere">
               Kod {cart.discount.code}: −{formatPrice(cart.discount.amountGross, cart.totals.currency)}
             </p>
           ) : null}

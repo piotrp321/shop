@@ -37,6 +37,9 @@ final class DiscountCodeOrderEndpointTest extends WebTestCase
     private const string CUSTOMER_PATH = '/api/v1/me/orders';
     private const string EMAIL = 'anna.nowak@example.com';
 
+    /** @var array<string, list<array{string, int}>> the lines of each guest cart of the test, as its checkout shows them */
+    private array $shown = [];
+
     public function testAGuestPlacesAnOrderWithACodeAndItsUsageIsRecorded(): void
     {
         $code = $this->code(['code' => 'WITAJ-F1', 'value' => 10]);
@@ -193,7 +196,7 @@ final class DiscountCodeOrderEndpointTest extends WebTestCase
         CartFixture::cart($this->connection, customerId: 'kc-sub-discount', lines: [[$shoes, 2], [$map, 1]]);
         $token = TestTokenFactory::customer(['sub' => 'kc-sub-discount']);
 
-        $order = $this->place(self::CUSTOMER_PATH, [...self::details(20_830), 'discountCode' => 'klient-f9'], token: $token);
+        $order = $this->place(self::CUSTOMER_PATH, [...self::details(20_830, [[$shoes, 2], [$map, 1]]), 'discountCode' => 'klient-f9'], token: $token);
 
         self::assertResponseStatusCodeSame(201);
         self::assertIsString($order['orderId']);
@@ -217,6 +220,7 @@ final class DiscountCodeOrderEndpointTest extends WebTestCase
         $this->connection->executeStatement("INSERT INTO pricing_promotion (id, name, percent_off, starts_at, ends_at, created_at, updated_at, version) VALUES (?, 'Jesień', 20, NOW() - interval '1 hour', NOW() + interval '1 day', NOW(), NOW(), 1)", [$promotion]);
         $this->connection->executeStatement('INSERT INTO pricing_promotion_variant (promotion_id, variant_id) VALUES (?, ?)', [$promotion, $shoes]);
         $cart = CartFixture::cart($this->connection, lines: [[$shoes, 2], [$map, 1]]);
+        $this->shown[$cart] = [[$shoes, 2], [$map, 1]];
         // 2 × 98,40 (123,00 less 20 %) + 12,30 = 209,10 zł; 10 % is 20,91 zł.
         $order = $this->place(self::PATH, $this->body($cart, 20_910 - 2_091, 'PANEL-F10'));
         self::assertResponseStatusCodeSame(201);
@@ -283,8 +287,10 @@ final class DiscountCodeOrderEndpointTest extends WebTestCase
     private function cart(): array
     {
         [$shoes, $map] = $this->products();
+        $cart = CartFixture::cart($this->connection, lines: [[$shoes, 2], [$map, 1]]);
+        $this->shown[$cart] = [[$shoes, 2], [$map, 1]];
 
-        return [$shoes, $map, CartFixture::cart($this->connection, lines: [[$shoes, 2], [$map, 1]])];
+        return [$shoes, $map, $cart];
     }
 
     private function assertNothingPlaced(string $cart, string $shoes, int $ordersBefore = 0): void
@@ -331,6 +337,6 @@ final class DiscountCodeOrderEndpointTest extends WebTestCase
      */
     private function body(string $cartId, int $expectedTotalGross, ?string $discountCode = null): array
     {
-        return ['cartId' => $cartId, 'email' => self::EMAIL, ...self::details($expectedTotalGross), 'discountCode' => $discountCode];
+        return ['cartId' => $cartId, 'email' => self::EMAIL, ...self::details($expectedTotalGross, $this->shown[$cartId]), 'discountCode' => $discountCode];
     }
 }

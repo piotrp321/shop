@@ -8,7 +8,8 @@ namespace App\Ordering\Domain;
  * What tells a repeated placement from another one with the same Idempotency-Key: SHA-256 of the cart reference
  * (`guest:<cartId>` or `customer:<sub>`), the contact, the address and the expected gross total, as normalised by
  * their value objects (trimmed, the phone as +48 and 9 digits), the discount code (normalised) when there is one, and
- * `delivery:<id>` of the delivery method (in lower case) when there is one; the prefix keeps the id apart from a code.
+ * `delivery:<id>` of the delivery method (in lower case) when there is one; the prefix keeps the id apart from a code;
+ * then `lines:` with the canonical form of the expected lines when there are some (ExpectedLines::canonical()).
  * The cart is part of it, so the same key and data from another cart is another request. A field is added only when
  * the request has it, so the fields of a request without them are exactly those of the time before (apps/api/CLAUDE.md,
  * "Transakcje między contextami").
@@ -22,10 +23,11 @@ final readonly class RequestFingerprint
     }
 
     /**
-     * @param string|null $discountCode     trimmed, in upper case; null for none
-     * @param string|null $deliveryMethodId a UUID in lower case; null for none
+     * @param string|null        $discountCode     trimmed, in upper case; null for none
+     * @param string|null        $deliveryMethodId a UUID in lower case; null for none
+     * @param ExpectedLines|null $expectedLines    the lines the checkout showed; null for none
      */
-    public static function of(string $cartReference, Contact $contact, ShippingAddress $address, int $expectedTotalGross, ?string $discountCode = null, ?string $deliveryMethodId = null): self
+    public static function of(string $cartReference, Contact $contact, ShippingAddress $address, int $expectedTotalGross, ?string $discountCode = null, ?string $deliveryMethodId = null, ?ExpectedLines $expectedLines = null): self
     {
         $fields = [
             $cartReference,
@@ -43,6 +45,9 @@ final readonly class RequestFingerprint
         }
         if (null !== $deliveryMethodId) {
             $fields[] = 'delivery:'.$deliveryMethodId;
+        }
+        if (null !== $expectedLines) {
+            $fields[] = 'lines:'.$expectedLines->canonical();
         }
         $normalised = json_encode($fields, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE);
 

@@ -75,6 +75,28 @@ export function cart(ctx, data) {
 
 let counter = 0;
 
+const CART_CHANGED = 'problems/cart-changed';
+
+// A refusal that no load changes: the API took the list of the order for invalid (422) or for another cart than the one
+// read just before (409 cart-changed). Either is a bug of this script, so it ends the run and says what the shop answered
+// (status, type, detail and the fields of the violations) instead of hiding in a counter of 4xx or 409.
+function abortOnRefusedOrder(res) {
+  let body = {};
+  try {
+    body = res.json() || {};
+  } catch (e) {
+    body = {};
+  }
+  const type = typeof body.type === 'string' ? body.type : '';
+  if (res.status !== 422 && !(res.status === 409 && type.includes(CART_CHANGED))) {
+    return;
+  }
+  const fields = (Array.isArray(body.violations) ? body.violations : []).map((violation) => violation.propertyPath).join(', ');
+  exec.test.abort(
+    `the checkout order was refused: status ${res.status}, type ${type || '(none)'}, detail ${body.detail || '(none)'}, violations ${fields || '(none)'}`,
+  );
+}
+
 // The guest checkout through POST /api/checkout of the store: one unit of a purchasable variant, then the order with the
 // first delivery method of the cart and the start of its payment at a provider. The cart steps carry the kind checkout too, so the checkout scenario is one set of
 // numbers. Returns true when the order was placed.
@@ -83,6 +105,13 @@ export function checkout(ctx, data) {
   const cart = storeGet(ctx, '/api/cart', 'checkout_cart', 'checkout');
   ok(cart, 'checkout_cart', 'checkout');
   if (!added || cart.status !== 200) {
+    return false;
+  }
+  // The lines the order must be placed for: the ones of the cart just read (variant and quantity), as the checkout of the
+  // store sends the lines it shows.
+  const lines = (cart.json('lines') || []).map((line) => ({ variantId: line.variantId, quantity: line.quantity }));
+  const read = check(lines, { 'checkout_cart has lines': (l) => l.length > 0 }, { flow: 'checkout_cart', kind: 'checkout' });
+  if (!read) {
     return false;
   }
   // The first delivery method the cart offers (the seed has two); its total with the delivery is the expected total.
@@ -107,11 +136,15 @@ export function checkout(ctx, data) {
       postalCode: '00-950',
       city: 'Warszawa',
       deliveryMethodId: option.methodId,
+      expectedLines: lines,
       expectedTotalGross: option.totalGross,
       provider: pick(data.providers),
+      // The buyer the checkout of the store shows a guest: without a session the store places only a guest order for it.
+      buyer: 'guest',
     },
     { 'Idempotency-Key': key },
   );
+  abortOnRefusedOrder(res);
   const placed = ok(res, 'checkout', 'checkout', [200, 201]);
   if (placed) {
     const body = res.json();

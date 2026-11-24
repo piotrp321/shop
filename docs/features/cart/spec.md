@@ -595,14 +595,18 @@ zwracana.
   pozycjach nie do kupienia, na nagłówek „Koszyk”; fokus przeniesiony na inną kontrolkę zostaje tam.
 
   Granica ochrony: kasa otwarta tym linkiem w tej samej karcie otwiera się dopiero po zakończeniu wszystkich zmian
-  zleconych na tej stronie koszyka (niezatwierdzony wpis, operacja w drodze, akcje czekające). Poza tą gwarancją
-  (#853): kasa otwarta inną drogą (nowa karta albo okno, menu kontekstowe, adres wpisany ręcznie, wstecz i dalej),
-  zmiana koszyka w innej karcie, przeglądarce albo na innym urządzeniu po wczytaniu kasy oraz przeładowanie albo
-  zamknięcie karty w trakcie zapisu (akcje jeszcze niewysłane przepadają). Wtedy API zamawia aktualną zawartość
-  koszyka z serwera: 409 tylko przy innej kwocie (`expectedTotalGross`), a zmiana zawartości przy tej samej kwocie
-  przechodzi bez ostrzeżenia; zapisy koszyka i zamówienie nie mają wspólnej kolejności między kartami (`queueWrite`
-  obejmuje zapisy koszyka, nie `placeOrder`). Kasa czyta koszyk z serwera przy każdym wejściu, więc pokazuje stan
-  faktyczny, także po nieudanym zapisie.
+  zleconych na tej stronie koszyka (niezatwierdzony wpis, operacja w drodze, akcje czekające). Zamówienie powstaje
+  tylko wtedy, gdy koszyk na serwerze ma w chwili złożenia te same pozycje i ilości co podsumowanie pokazane w kasie
+  i ta sama jest kwota do zapłaty, a kupujący jest ten sam (gość albo to samo konto), także gdy kasę otwarto inną drogą (nowa karta albo okno, menu kontekstowe, adres
+  wpisany ręcznie, wstecz i dalej) albo koszyk zmieniono w innej karcie, przeglądarce lub na innym urządzeniu po
+  wczytaniu kasy; inaczej 409 i kasa pokazuje, co się zmieniło (`docs/features/cart-order-consistency/spec.md`,
+  „Granica ochrony zamówienia”). Poza gwarancją: zmiana zlecona w innej karcie, która nie dotarła do serwera przed
+  zamówieniem (zapisy koszyka i zamówienie nie mają wspólnej kolejności między kartami: `queueWrite` obejmuje zapisy
+  koszyka, nie `placeOrder`), więc zamówienie jest zgodne z kasą, a spóźniony zapis trafia w opróżniony koszyk (zmiana
+  ilości: 404, usunięcie: 200 bez zmian, dodanie: nowa pozycja w koszyku); dwie zmiany cen, które się znoszą przy tej
+  samej kwocie i tych samych ilościach; przeładowanie albo zamknięcie karty w trakcie zapisu (akcje jeszcze niewysłane
+  przepadają). Kasa czyta koszyk z serwera przy każdym wejściu, więc pokazuje stan faktyczny, także po nieudanym
+  zapisie.
 
 - Region statusu: jeden element `role="status"` (`data-testid="cart-status"`) jest ostatnim elementem ekranu (pojawienie się i zniknięcie
   jego tekstu, także przy naciśnięciu myszą, które zatwierdza pole ilości i zaczyna operację, nie przesuwa kontrolki, którą

@@ -107,7 +107,7 @@ final class ForbiddenCharactersInRequestsTest extends TestCase
         foreach (self::forbidden() as $name => [$value]) {
             $text = 'email' === $field ? 'jan'.$value.'@example.com' : $value;
             $fields = ['email' => 'jan@example.com', 'fullName' => 'Jan Kowalski', 'street' => 'Długa 1', 'postalCode' => '00-950', 'city' => 'Warszawa', $field => $text];
-            $request = new PlaceGuestOrderRequest('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', $fields['email'], $fields['fullName'], '600100200', $fields['street'], $fields['postalCode'], $fields['city'], 1000, '0192f0c4-7c1a-7c4e-9a6e-00000000de10');
+            $request = new PlaceGuestOrderRequest('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', $fields['email'], $fields['fullName'], '600100200', $fields['street'], $fields['postalCode'], $fields['city'], 1000, '0192f0c4-7c1a-7c4e-9a6e-00000000de10', [['variantId' => '0192f0c4-7c1a-7c4e-9a6e-00000000a001', 'quantity' => 1]]);
 
             self::assertSame([[$field, $message]], $this->violations($request), $name);
         }
@@ -130,7 +130,7 @@ final class ForbiddenCharactersInRequestsTest extends TestCase
     {
         foreach (self::forbidden() as $name => [$value]) {
             $fields = ['fullName' => 'Jan Kowalski', 'street' => 'Długa 1', 'postalCode' => '00-950', 'city' => 'Warszawa', $field => $value];
-            $request = new PlaceCustomerOrderRequest($fields['fullName'], '600100200', $fields['street'], $fields['postalCode'], $fields['city'], 1000, '0192f0c4-7c1a-7c4e-9a6e-00000000de10');
+            $request = new PlaceCustomerOrderRequest($fields['fullName'], '600100200', $fields['street'], $fields['postalCode'], $fields['city'], 1000, '0192f0c4-7c1a-7c4e-9a6e-00000000de10', [['variantId' => '0192f0c4-7c1a-7c4e-9a6e-00000000a001', 'quantity' => 1]]);
 
             self::assertSame([[$field, $message]], $this->violations($request), $name);
         }

@@ -10,6 +10,7 @@ use App\Ordering\Application\Command\PlaceOrder;
 use App\Ordering\Application\Command\PlaceOrderHandler;
 use App\Ordering\Application\UnpaidOrderLimit;
 use App\Ordering\Application\View\OrderLineView;
+use App\Ordering\Domain\CartContentChanged;
 use App\Ordering\Domain\CartEmpty;
 use App\Ordering\Domain\CartNotOrderable;
 use App\Ordering\Domain\DeliveryMethodUnavailable;
@@ -59,6 +60,8 @@ final class PlaceOrderHandlerTest extends TestCase
     private const string MAP_PRODUCT = 'c0ffee00-7c1a-7c4e-9a6e-00000000000c';
     /** 2 × 36 900 + 1 × 2 000 */
     private const int TOTAL = 75_800;
+    /** The lines of the cart of setUp(), the list the checkout showed for TOTAL. */
+    private const array LINES = [self::SHOES => 2, self::CAP => 1];
     private const string CODE_ID = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c6d00';
     /** 10 % of TOTAL */
     private const int DISCOUNT = 7_580;
@@ -170,7 +173,7 @@ final class PlaceOrderHandlerTest extends TestCase
         self::assertEquals(new \DateTimeImmutable('2026-11-05 12:30:00+00:00'), $view->paymentDeadline);
 
         $this->carts->put(CartReference::guest(self::OTHER_CART), [self::MAP => 1]);
-        $other = $this->place(self::command(cart: CartReference::guest(self::OTHER_CART), expectedTotalGross: 1_230, key: 'key-2'))->order;
+        $other = $this->place(self::command(cart: CartReference::guest(self::OTHER_CART), expectedTotalGross: 1_230, key: 'key-2', expectedLines: [self::MAP => 1]))->order;
         self::assertNotSame($view->accessToken, $other->accessToken, 'every guest order has a token of its own');
     }
 
@@ -178,7 +181,7 @@ final class PlaceOrderHandlerTest extends TestCase
     {
         $this->carts->put(CartReference::customer(self::CUSTOMER), [self::MAP => 3]);
 
-        $view = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 3_690))->order;
+        $view = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 3_690, expectedLines: [self::MAP => 3]))->order;
 
         self::assertNull($view->accessToken);
         self::assertNull($this->onlyOrder()->accessToken());
@@ -210,7 +213,7 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->place(self::command());
         $this->carts->put(CartReference::guest(self::OTHER_CART), [self::MAP => 1]);
         try {
-            $this->place(self::command(cart: CartReference::guest(self::OTHER_CART), expectedTotalGross: 1, key: 'key-2'));
+            $this->place(self::command(cart: CartReference::guest(self::OTHER_CART), expectedTotalGross: 1, key: 'key-2', expectedLines: [self::MAP => 1]));
             self::fail('Expected OrderTotalChanged.');
         } catch (OrderTotalChanged) {
             $this->addToAssertionCount(1);
@@ -347,17 +350,148 @@ final class PlaceOrderHandlerTest extends TestCase
         self::assertSame($first->order->orderId, $this->place(self::command(discountCode: ''))->order->orderId);
     }
 
-    public function testTheFingerprintOfAPlacementEndsWithTheDeliveryMethodAfterTheOptionalCode(): void
+    public function testTheFingerprintOfAPlacementEndsWithTheDeliveryMethodAfterTheOptionalCodeThenTheCanonicalLines(): void
     {
-        $this->place(self::command());
+        $this->place(self::command(expectedLines: [self::CAP => 1, self::SHOES => 2]));
 
         // The fields of a request before the delivery (the hash of a placement without a code before discount codes
-        // was 45d88911…), then `delivery:<id>`: a request without the method is refused before it (P15).
+        // was 45d88911…), then `delivery:<id>`: a request without the method is refused before it (P15); then
+        // `lines:` with the expected lines sorted by the variant (spec cart-order-consistency, Z1).
         $fields = ['guest:'.self::CART, 'jan@example.com', 'Jan Kowalski', '+48600100200', 'Długa 1', '00-950', 'Warszawa', 'PL'];
-        self::assertSame(hash('sha256', json_encode([...$fields, self::TOTAL, 'delivery:'.self::DELIVERY], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE)), $this->onlyOrder()->requestFingerprint()->toString());
+        $lines = 'lines:'.self::SHOES.'*2,'.self::CAP.'*1';
+        self::assertSame(hash('sha256', json_encode([...$fields, self::TOTAL, 'delivery:'.self::DELIVERY, $lines], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE)), $this->onlyOrder()->requestFingerprint()->toString());
         $this->setUp();
         $this->place(self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT, discountCode: 'witaj10'));
-        self::assertSame(hash('sha256', json_encode([...$fields, self::TOTAL - self::DISCOUNT, 'WITAJ10', 'delivery:'.self::DELIVERY], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE)), $this->onlyOrder()->requestFingerprint()->toString());
+        self::assertSame(hash('sha256', json_encode([...$fields, self::TOTAL - self::DISCOUNT, 'WITAJ10', 'delivery:'.self::DELIVERY, $lines], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE)), $this->onlyOrder()->requestFingerprint()->toString());
+    }
+
+    /**
+     * @return iterable<string, array{array<string, int>}>
+     */
+    public static function otherContents(): iterable
+    {
+        yield 'another quantity' => [[self::SHOES => 1, self::CAP => 1]];
+        yield 'the quantities swapped at the same total' => [[self::SHOES => 1, self::CAP => 2]];
+        yield 'a line missing' => [[self::SHOES => 2]];
+        yield 'an extra line' => [[self::SHOES => 2, self::CAP => 1, self::MAP => 1]];
+        yield 'another variant' => [[self::SHOES => 2, self::MAP => 1]];
+    }
+
+    /**
+     * @param array<string, int> $expectedLines
+     */
+    #[DataProvider('otherContents')]
+    public function testAnotherContentIsRefusedUnderTheCartLockBeforeTheLimitsAndTheQuoteWithoutAnyChange(array $expectedLines): void
+    {
+        $this->assertRefused(CartContentChanged::class, 'Zawartość koszyka się zmieniła. Sprawdź podsumowanie.', self::command(discountCode: 'WITAJ10', expectedTotalGross: self::TOTAL - self::DISCOUNT, expectedLines: $expectedLines));
+
+        self::assertSame(['find', 'lock', 'find'], $this->journal->calls, 'no limit, quote, usage, number, clear or reservation');
+        self::assertSame([self::SHOES => 2, self::CAP => 1], $this->carts->lines(self::guest()), 'the cart keeps its lines');
+        self::assertSame([], $this->redemptions->redeemed);
+        self::assertSame([], $this->stock->reservations);
+        self::assertSame([], $this->claims->claims);
+        self::assertSame([], $this->claims->locked);
+        self::assertSame([], $this->events->published);
+        self::assertSame([], $this->expiry->scheduled);
+        self::assertSame([], $this->customers->orders);
+        self::assertSame('tag:piotrp321.github.io,2026:shop/problems/cart-changed', new CartContentChanged()->problemType());
+    }
+
+    public function testTheSameLinesInAnotherOrderAndLetterCaseArePlaced(): void
+    {
+        $placed = $this->place(self::command(expectedLines: [strtoupper(self::CAP) => 1, strtoupper(self::SHOES) => 2]));
+
+        self::assertFalse($placed->replayed);
+        self::assertSame([self::SHOES => 2, self::CAP => 1], $this->stock->reservations[$placed->order->orderId]);
+    }
+
+    public function testTheLinesOfTheOrderComeFromTheCartNotFromTheList(): void
+    {
+        $placed = $this->place(self::command());
+
+        self::assertSame([[self::SHOES, 2, 36_900], [self::CAP, 1, 2_000]], array_map(static fn (OrderLineView $line): array => [$line->variantId, $line->quantity, $line->unitGross], $placed->order->lines));
+    }
+
+    public function testAnEmptyCartIsRefusedAsEmptyBeforeTheListIsCompared(): void
+    {
+        $this->carts->put(self::guest(), []);
+
+        $this->assertRefused(CartEmpty::class, 'Koszyk jest pusty.', self::command(expectedLines: [self::MAP => 1]));
+    }
+
+    public function testAnotherContentIsRefusedBeforeTheSizeOfAGuestOrder(): void
+    {
+        $this->carts->put(self::guest(), [self::SHOES => 11]);
+
+        $this->assertRefused(CartContentChanged::class, 'Zawartość koszyka się zmieniła. Sprawdź podsumowanie.', self::command(expectedLines: [self::SHOES => 10]));
+        self::assertSame(['find', 'lock', 'find'], $this->journal->calls);
+    }
+
+    public function testAnotherContentIsRefusedBeforeTheLimitOfUnpaidOrders(): void
+    {
+        $this->claims->existing(self::PER_ADDRESS, self::ADDRESS, 'email:other@example.com', $this->clock->now->modify('+35 minutes'));
+
+        $this->assertRefused(CartContentChanged::class, 'Zawartość koszyka się zmieniła. Sprawdź podsumowanie.', self::command(expectedLines: [self::SHOES => 1]));
+        self::assertSame(['find', 'lock', 'find'], $this->journal->calls);
+    }
+
+    public function testAnotherContentOfACustomerCartIsRefused(): void
+    {
+        $customer = CartReference::customer(self::CUSTOMER);
+        $this->carts->put($customer, [self::MAP => 3]);
+
+        $this->assertRefused(CartContentChanged::class, 'Zawartość koszyka się zmieniła. Sprawdź podsumowanie.', self::command(cart: $customer, expectedTotalGross: 3_690, expectedLines: [self::MAP => 2]));
+        self::assertSame([self::MAP => 3], $this->carts->lines($customer));
+        self::assertSame([], $this->customers->orders);
+    }
+
+    public function testAReplayWithTheSameListGivesTheOrderAlsoOnceTheCartWasEmptiedOrChanged(): void
+    {
+        $first = $this->place(self::command());
+        self::assertSame([], $this->carts->lines(self::guest()));
+
+        $replayed = $this->place(self::command(expectedLines: [self::CAP => 1, self::SHOES => 2]));
+        self::assertTrue($replayed->replayed);
+        self::assertSame($first->order->orderId, $replayed->order->orderId);
+
+        $this->carts->put(self::guest(), [self::MAP => 1]);
+        $replayed = $this->place(self::command());
+        self::assertTrue($replayed->replayed);
+        self::assertSame($first->order->orderId, $replayed->order->orderId);
+        self::assertCount(1, $this->orders->all());
+    }
+
+    public function testTheSameKeyWithAnotherListIsAnotherRequest(): void
+    {
+        $first = $this->place(self::command());
+        $this->carts->put(self::guest(), [self::SHOES => 1, self::CAP => 1]);
+
+        $this->assertRefused(IdempotencyKeyReused::class, 'Ten klucz żądania był już użyty dla innego zamówienia.', self::command(expectedLines: [self::SHOES => 1, self::CAP => 1]), $first);
+        $this->assertRefused(IdempotencyKeyReused::class, 'Ten klucz żądania był już użyty dla innego zamówienia.', self::command(expectedLines: [self::SHOES => 2]), $first);
+        self::assertSame([self::SHOES => 1, self::CAP => 1], $this->carts->lines(self::guest()), 'the cart is untouched');
+    }
+
+    /**
+     * @return iterable<string, array{list<array{variantId: string, quantity: int}>}>
+     */
+    public static function invalidLists(): iterable
+    {
+        yield 'no line' => [[]];
+        yield 'the same variant twice in another letter case' => [[['variantId' => self::SHOES, 'quantity' => 1], ['variantId' => strtoupper(self::SHOES), 'quantity' => 1]]];
+        yield '0 units' => [[['variantId' => self::SHOES, 'quantity' => 0]]];
+        yield '100 units' => [[['variantId' => self::SHOES, 'quantity' => 100]]];
+        yield 'a variant that is no UUID' => [[['variantId' => 'buty', 'quantity' => 1]]];
+    }
+
+    /**
+     * @param list<array{variantId: string, quantity: int}> $lines
+     */
+    #[DataProvider('invalidLists')]
+    public function testAnInvalidListIsRefusedBeforeAnyPort(array $lines): void
+    {
+        $command = self::command();
+        $this->assertRefused(InvalidOrderInput::class, 'Nieprawidłowa lista pozycji zamówienia. Odśwież stronę.', new PlaceOrder($command->cart, $command->email, $command->fullName, $command->phone, $command->street, $command->postalCode, $command->city, $command->deliveryMethodId, $command->expectedTotalGross, $lines, $command->idempotencyKey));
+        self::assertSame([], $this->journal->calls);
     }
 
     public function testACodeLongerThan64CharactersIsRefusedBeforeAnyPort(): void
@@ -379,7 +513,7 @@ final class PlaceOrderHandlerTest extends TestCase
     {
         $this->carts->put(CartReference::customer(self::CUSTOMER), [self::MAP => 3]);
 
-        $placed = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 3_690));
+        $placed = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 3_690, expectedLines: [self::MAP => 3]));
 
         self::assertSame(3_690, $placed->order->totals->gross);
         self::assertSame(self::CUSTOMER, $this->onlyOrder()->owner()->customerId());
@@ -391,7 +525,7 @@ final class PlaceOrderHandlerTest extends TestCase
     {
         $this->carts->put(CartReference::customer(self::CUSTOMER), [self::MAP => 3]);
 
-        $placed = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), email: 'anna@example.com', fullName: 'Anna Nowak', expectedTotalGross: 3_690));
+        $placed = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), email: 'anna@example.com', fullName: 'Anna Nowak', expectedTotalGross: 3_690, expectedLines: [self::MAP => 3]));
 
         self::assertEquals([[
             'customerId' => self::CUSTOMER,
@@ -407,9 +541,9 @@ final class PlaceOrderHandlerTest extends TestCase
     public function testAReplayOfAnOrderOfACustomerAddsNothingToTheCustomer(): void
     {
         $this->carts->put(CartReference::customer(self::CUSTOMER), [self::MAP => 3]);
-        $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 3_690));
+        $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 3_690, expectedLines: [self::MAP => 3]));
 
-        $replayed = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 3_690));
+        $replayed = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 3_690, expectedLines: [self::MAP => 3]));
 
         self::assertTrue($replayed->replayed);
         self::assertCount(1, $this->customers->orders, 'the replay is no new order');
@@ -421,11 +555,11 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->carts->put($customer, [self::MAP => 3]);
         $this->carts->whileLocking = function () use ($customer): void {
             $this->carts->whileLocking = null;
-            $this->place(self::command(cart: $customer, expectedTotalGross: 3_690));
+            $this->place(self::command(cart: $customer, expectedTotalGross: 3_690, expectedLines: [self::MAP => 3]));
             $this->carts->put($customer, []);
         };
 
-        $placed = $this->place(self::command(cart: $customer, expectedTotalGross: 3_690));
+        $placed = $this->place(self::command(cart: $customer, expectedTotalGross: 3_690, expectedLines: [self::MAP => 3]));
 
         self::assertTrue($placed->replayed);
         self::assertCount(1, $this->customers->orders);
@@ -441,9 +575,10 @@ final class PlaceOrderHandlerTest extends TestCase
 
     public function testAGuestCartOfElevenLinesIsRefusedAfterTheLockBeforeAnyQuoteCodeNumberOrReservation(): void
     {
-        $this->carts->put(self::guest(), $this->lines(11, 1));
+        $lines = $this->lines(11, 1);
+        $this->carts->put(self::guest(), $lines);
 
-        $this->assertRefused(GuestOrderTooLarge::class, self::TOO_LARGE, self::command(discountCode: 'WITAJ10'));
+        $this->assertRefused(GuestOrderTooLarge::class, self::TOO_LARGE, self::command(discountCode: 'WITAJ10', expectedLines: $lines));
         self::assertSame(['find', 'lock', 'find'], $this->journal->calls);
         self::assertSame([], $this->redemptions->redeemed);
         self::assertSame([], $this->stock->reservations);
@@ -454,15 +589,16 @@ final class PlaceOrderHandlerTest extends TestCase
     {
         $this->carts->put(self::guest(), [self::SHOES => 11]);
 
-        $this->assertRefused(GuestOrderTooLarge::class, self::TOO_LARGE, self::command());
+        $this->assertRefused(GuestOrderTooLarge::class, self::TOO_LARGE, self::command(expectedLines: [self::SHOES => 11]));
         self::assertSame(['find', 'lock', 'find'], $this->journal->calls);
     }
 
     public function testAGuestCartOfTenLinesOfTenUnitsIsPlaced(): void
     {
-        $this->carts->put(self::guest(), $this->lines(10, 10));
+        $lines = $this->lines(10, 10);
+        $this->carts->put(self::guest(), $lines);
 
-        $placed = $this->place(self::command(expectedTotalGross: 10 * 10 * 2_000));
+        $placed = $this->place(self::command(expectedTotalGross: 10 * 10 * 2_000, expectedLines: $lines));
 
         self::assertCount(10, $placed->order->lines);
     }
@@ -476,10 +612,12 @@ final class PlaceOrderHandlerTest extends TestCase
 
     public function testTheSizeIsCheckedBeforeTheOtherRefusalsOfTheCart(): void
     {
-        // 11 lines, the last one without a price (not orderable): the size comes first (D5).
-        $this->carts->put(self::guest(), $this->lines(10, 1) + ['0192f0c4-7c1a-7c4e-9a6e-0000000000ff' => 1]);
+        // 11 lines, the last one without a price (not orderable), and the list of the cart: after the empty cart and the
+        // content, the size comes before the refusals of the quote (D5).
+        $lines = $this->lines(10, 1) + ['0192f0c4-7c1a-7c4e-9a6e-0000000000ff' => 1];
+        $this->carts->put(self::guest(), $lines);
 
-        $this->assertRefused(GuestOrderTooLarge::class, self::TOO_LARGE, self::command());
+        $this->assertRefused(GuestOrderTooLarge::class, self::TOO_LARGE, self::command(expectedLines: $lines));
     }
 
     public function testThePlacementClaimsTheOrderForTheAddressAndTheEmailUntilItsExpiry(): void
@@ -494,7 +632,7 @@ final class PlaceOrderHandlerTest extends TestCase
     {
         $this->carts->put(CartReference::customer(self::CUSTOMER), [self::MAP => 1]);
 
-        $view = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 1_230))->order;
+        $view = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 1_230, expectedLines: [self::MAP => 1]))->order;
 
         self::assertSame('customer:'.self::CUSTOMER, $this->claims->claims[$view->orderId]['identity']);
     }
@@ -527,7 +665,7 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->assertRefused(CartEmpty::class, 'Koszyk jest pusty.', self::command());
 
         $this->carts->put(self::guest(), [self::SHOES => 11]);
-        $this->assertRefused(GuestOrderTooLarge::class, self::TOO_LARGE, self::command());
+        $this->assertRefused(GuestOrderTooLarge::class, self::TOO_LARGE, self::command(expectedLines: [self::SHOES => 11]));
     }
 
     public function testAReplayAtAnExhaustedLimitReturnsTheOrderAlsoFromAnotherAddress(): void
@@ -567,9 +705,10 @@ final class PlaceOrderHandlerTest extends TestCase
     public function testACustomerOrderIsNotLimitedToTheSizeOfAGuest(): void
     {
         $customer = CartReference::customer(self::CUSTOMER);
-        $this->carts->put($customer, $this->lines(11, 11));
+        $lines = $this->lines(11, 11);
+        $this->carts->put($customer, $lines);
 
-        $placed = $this->place(self::command(cart: $customer, expectedTotalGross: 11 * 11 * 2_000));
+        $placed = $this->place(self::command(cart: $customer, expectedTotalGross: 11 * 11 * 2_000, expectedLines: $lines));
 
         self::assertCount(11, $placed->order->lines);
     }
@@ -609,7 +748,7 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->carts->put(self::guest(), [self::SHOES => 1, '0192f0c4-7c1a-7c4e-9a6e-0000000000ff' => 1]);
         $this->catalog->variant('0192f0c4-7c1a-7c4e-9a6e-0000000000ff', self::MAP_PRODUCT, 'Bez ceny', '');
 
-        $this->assertRefused(CartNotOrderable::class, 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', self::command(expectedTotalGross: 36_900));
+        $this->assertRefused(CartNotOrderable::class, 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', self::command(expectedTotalGross: 36_900, expectedLines: [self::SHOES => 1, '0192f0c4-7c1a-7c4e-9a6e-0000000000ff' => 1]));
         self::assertSame([self::SHOES => 1, '0192f0c4-7c1a-7c4e-9a6e-0000000000ff' => 1], $this->carts->lines(self::guest()), 'the cart keeps its lines');
     }
 
@@ -618,7 +757,7 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->carts->put(self::guest(), [self::SHOES => 1, '0192f0c4-7c1a-7c4e-9a6e-0000000000ee' => 1]);
         $this->prices->price('0192f0c4-7c1a-7c4e-9a6e-0000000000ee', 100, 23);
 
-        $this->assertRefused(CartNotOrderable::class, 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', self::command(expectedTotalGross: 37_023));
+        $this->assertRefused(CartNotOrderable::class, 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', self::command(expectedTotalGross: 37_023, expectedLines: [self::SHOES => 1, '0192f0c4-7c1a-7c4e-9a6e-0000000000ee' => 1]));
     }
 
     public function testAnExpectedTotalLowerOrHigherThanTheComputedOneIsRefusedBeforeTheReservation(): void
@@ -685,7 +824,7 @@ final class PlaceOrderHandlerTest extends TestCase
     {
         $first = $this->place(self::command());
 
-        $replayed = $this->place(new PlaceOrder(CartReference::guest(strtoupper(self::CART)), ' jan@example.com ', ' Jan Kowalski ', '+48 600-100-200', ' Długa 1 ', '00-950', 'Warszawa ', strtoupper(self::DELIVERY), self::TOTAL, 'key-1'));
+        $replayed = $this->place(new PlaceOrder(CartReference::guest(strtoupper(self::CART)), ' jan@example.com ', ' Jan Kowalski ', '+48 600-100-200', ' Długa 1 ', '00-950', 'Warszawa ', strtoupper(self::DELIVERY), self::TOTAL, [['variantId' => strtoupper(self::CAP), 'quantity' => 1], ['variantId' => self::SHOES, 'quantity' => 2]], 'key-1'));
 
         self::assertTrue($replayed->replayed);
         self::assertSame($first->order->orderId, $replayed->order->orderId);
@@ -738,9 +877,9 @@ final class PlaceOrderHandlerTest extends TestCase
     {
         $this->carts->put(CartReference::customer(self::CUSTOMER), [self::MAP => 1]);
         $this->carts->put(CartReference::customer('kc-sub-2'), [self::MAP => 1]);
-        $first = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 1_230));
+        $first = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 1_230, expectedLines: [self::MAP => 1]));
 
-        $this->assertRefused(IdempotencyKeyReused::class, 'Ten klucz żądania był już użyty dla innego zamówienia.', self::command(cart: CartReference::customer('kc-sub-2'), expectedTotalGross: 1_230), $first);
+        $this->assertRefused(IdempotencyKeyReused::class, 'Ten klucz żądania był już użyty dla innego zamówienia.', self::command(cart: CartReference::customer('kc-sub-2'), expectedTotalGross: 1_230, expectedLines: [self::MAP => 1]), $first);
         self::assertSame([self::MAP => 1], $this->carts->lines(CartReference::customer('kc-sub-2')));
     }
 
@@ -921,6 +1060,9 @@ final class PlaceOrderHandlerTest extends TestCase
         return CartReference::guest(self::CART);
     }
 
+    /**
+     * @param array<string, int> $expectedLines units by variant id the checkout showed; LINES are those of the cart of setUp()
+     */
     private static function command(
         ?CartReference $cart = null,
         string $email = 'jan@example.com',
@@ -931,7 +1073,18 @@ final class PlaceOrderHandlerTest extends TestCase
         ?string $discountCode = null,
         string $address = self::ADDRESS,
         string $deliveryMethodId = self::DELIVERY,
+        array $expectedLines = self::LINES,
     ): PlaceOrder {
-        return new PlaceOrder($cart ?? self::guest(), $email, $fullName, $phone, 'Długa 1', '00-950', 'Warszawa', $deliveryMethodId, $expectedTotalGross, $key, $discountCode, $address);
+        return new PlaceOrder($cart ?? self::guest(), $email, $fullName, $phone, 'Długa 1', '00-950', 'Warszawa', $deliveryMethodId, $expectedTotalGross, self::expected($expectedLines), $key, $discountCode, $address);
+    }
+
+    /**
+     * @param array<string, int> $quantities units by variant id, as the in-memory cart takes them
+     *
+     * @return list<array{variantId: string, quantity: int}>
+     */
+    private static function expected(array $quantities): array
+    {
+        return array_map(static fn (string $variantId, int $quantity): array => ['variantId' => $variantId, 'quantity' => $quantity], array_keys($quantities), array_values($quantities));
     }
 }

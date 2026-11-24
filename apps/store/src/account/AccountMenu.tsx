@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { type AccountSessionResult, loadAccountSession } from "@/api/client";
 import { useSiteSwitches } from "@/components/SiteSwitches";
 import { Button } from "@/components/ui/button";
+import { subscribeToSession } from "./session-events";
 
 const accountLink =
   "inline-flex min-h-11 min-w-11 items-center justify-center gap-2 px-2.5 text-ui underline-offset-4 hover:underline";
@@ -15,7 +16,9 @@ const accountLink =
  * Account box in the header. Loads the session in the browser from `/auth/session`, so the catalog HTML stays the
  * same for everybody. Shows nothing while loading or when the session cannot be checked. A store without customer
  * accounts (`customerAccounts` of `/api/site`) has no login link; the link also waits for the switches, so it never
- * shows up and disappears.
+ * shows up and disappears. A session another part of the page read later (`announceSession`: every read of the
+ * session by the checkout, and its 401 that ended the session) replaces it, also when the own read answers after it,
+ * so that on the checkout the header shows the buyer the checkout shows.
  */
 export function AccountMenu() {
   const pathname = usePathname();
@@ -25,11 +28,17 @@ export function AccountMenu() {
 
   useEffect(() => {
     let active = true;
+    let announced = false;
+    const unsubscribe = subscribeToSession((session) => {
+      announced = true;
+      setResult({ status: "ok", session });
+    });
     void loadAccountSession().then((loaded) => {
-      if (active) setResult(loaded);
+      if (active && !announced) setResult(loaded);
     });
     return () => {
       active = false;
+      unsubscribe();
     };
   }, []);
 

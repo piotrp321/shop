@@ -248,7 +248,7 @@ final class ExpireOverdueOrdersCommandTest extends MessagingKernelTestCase
         [$shoes] = OrderingFixture::variant($this->db, 10_000, 5);
         $cart = CartFixture::cart($this->db, expiresAt: '+3 days', lines: [[$shoes, 2]]);
         $total = null === $discountCode ? 2 * 12_300 : 2 * 12_300 - 2_460;
-        $placed = $this->dispatch(new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->db), $total, 'key-'.$cart, $discountCode));
+        $placed = $this->dispatch(new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->db), $total, OrderingFixture::expectedOfCart($this->db, $cart), 'key-'.$cart, $discountCode));
         self::assertInstanceOf(PlacedOrder::class, $placed);
 
         return [$shoes, $placed->order->orderId];

@@ -240,7 +240,7 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         [$variant] = OrderingFixture::variant($db, 10_000, 5);
         $cart = CartFixture::cart($db, expiresAt: '+3 days', lines: [[$variant, 1]]);
 
-        $result = $this->bus()->dispatch(new PlaceOrder(CartReference::guest($cart), $this->inbox->recipient, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($db), 12_300, 'key-'.$cart))
+        $result = $this->bus()->dispatch(new PlaceOrder(CartReference::guest($cart), $this->inbox->recipient, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($db), 12_300, OrderingFixture::expectedOfCart($db, $cart), 'key-'.$cart))
             ->last(HandledStamp::class)?->getResult();
         self::assertInstanceOf(PlacedOrder::class, $result);
 

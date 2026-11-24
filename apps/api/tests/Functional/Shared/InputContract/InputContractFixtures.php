@@ -137,7 +137,7 @@ final readonly class InputContractFixtures
      * An open cart of a guest (null) or of the customer of TestTokenFactory with one unit of a variant of 12,30 zł,
      * and the free delivery method: what an order is placed from, for 12,30 zł.
      *
-     * @return array{cartId: string, deliveryMethodId: string}
+     * @return array{cartId: string, deliveryMethodId: string, variantId: string}
      */
     private function checkout(?string $customerId): array
     {
@@ -147,6 +147,7 @@ final readonly class InputContractFixtures
         return [
             'cartId' => CartFixture::cart($connection, customerId: $customerId, lines: [[$variantId, 1]]),
             'deliveryMethodId' => OrderingFixture::freeDeliveryMethod($connection),
+            'variantId' => $variantId,
         ];
     }
 

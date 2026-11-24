@@ -440,6 +440,8 @@ describe("placeOrder", () => {
     expectedTotalGross: 39998,
     provider: "demo-transfer",
     deliveryMethodId: "00000000-0000-4000-8000-0000000000d1",
+    expectedLines: [{ variantId: "00000000-0000-4000-8000-00000000000a", quantity: 2 }],
+    buyer: "guest",
   };
   const REDIRECT_URL = "http://localhost:8000/payment-simulator/demo-transfer/pay/7d3f0a8e-4a1b-4c55-9f1e-2b3c4d5e6f70";
 
@@ -481,6 +483,7 @@ describe("placeOrder", () => {
     [409, { type: `${PROBLEMS}cart-not-orderable`, detail: "x" }, { status: "conflict", reason: "cart_not_orderable", detail: "x" }],
     [409, { type: `${PROBLEMS}insufficient-stock-for-order`, detail: "x" }, { status: "conflict", reason: "insufficient_stock", detail: "x" }],
     [409, { type: `${PROBLEMS}order-total-changed`, detail: "x" }, { status: "conflict", reason: "total_changed", detail: "x" }],
+    [409, { type: `${PROBLEMS}cart-changed`, detail: "x" }, { status: "conflict", reason: "cart_changed", detail: "x" }],
     [409, { type: `${PROBLEMS}idempotency-key-reused`, detail: "x" }, { status: "conflict", reason: "key_reused", detail: "x" }],
     [409, { type: `${PROBLEMS}discount-code-invalid`, detail: "x" }, { status: "conflict", reason: "discount_code_rejected", detail: "x" }],
     [409, { type: `${PROBLEMS}discount-code-used-up`, detail: "x" }, { status: "conflict", reason: "discount_code_rejected", detail: "x" }],

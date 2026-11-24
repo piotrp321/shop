@@ -1,7 +1,9 @@
+import { createHmac, hkdfSync } from "node:crypto";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "@/api/schema";
 import { SESSION_COOKIE, signValue } from "@/auth/cookies";
+import { sessionFromTokens } from "@/auth/refresh";
 import { sessionData, testConfig } from "@/auth/test-support";
 import { CART_COOKIE } from "@/cart/cookies";
 import { getCartDeps } from "@/cart/deps";
@@ -63,10 +65,16 @@ const GUEST_CONFIRMATION = {
 const CONTACT = { fullName: "Anna Nowak", phone: "600 100 200", street: "ul. Długa 5/3", postalCode: "00-950", city: "Warszawa" };
 /** What the API receives of the form: the provider is the BFF's business. */
 const DELIVERY_METHOD = "00000000-0000-4000-8000-0000000000d1";
-const GUEST_ORDER = { email: "anna.nowak@example.com", ...CONTACT, expectedTotalGross: 39998, deliveryMethodId: DELIVERY_METHOD };
-const CUSTOMER_ORDER = { ...CONTACT, expectedTotalGross: 39998, deliveryMethodId: DELIVERY_METHOD };
-const GUEST_FORM = { ...GUEST_ORDER, provider: PROVIDER };
-const CUSTOMER_FORM = { ...CUSTOMER_ORDER, provider: PROVIDER };
+const EXPECTED_LINES = [{ variantId: "00000000-0000-4000-8000-00000000000a", quantity: 2 }];
+const GUEST_ORDER = { email: "anna.nowak@example.com", ...CONTACT, expectedTotalGross: 39998, deliveryMethodId: DELIVERY_METHOD, expectedLines: EXPECTED_LINES };
+const CUSTOMER_ORDER = { ...CONTACT, expectedTotalGross: 39998, deliveryMethodId: DELIVERY_METHOD, expectedLines: EXPECTED_LINES };
+/** The buyer tag of the checkout of `sub`, computed here as the spec defines it, not by the code under test. */
+const buyerOf = (sub: string, secret = testConfig.sessionSecret) =>
+  createHmac("sha256", Buffer.from(hkdfSync("sha256", secret, Buffer.alloc(0), "checkout-buyer", 32))).update(sub).digest("base64url");
+/** The account of `signedIn()` (the sub of `sessionData`). */
+const JAN = buyerOf("user-1");
+const GUEST_FORM = { ...GUEST_ORDER, provider: PROVIDER, buyer: "guest" };
+const CUSTOMER_FORM = { ...CUSTOMER_ORDER, provider: PROVIDER, buyer: JAN };
 
 const paymentView = (overrides: Record<string, unknown> = {}) => ({
   paymentId: "0199a0b0-0000-7000-8000-0000000000aa",
@@ -296,9 +304,38 @@ describe("POST /api/checkout as a guest", () => {
     expect(await response.json()).toMatchObject({ type: `${PROBLEMS}${slug}`, detail });
   });
 
+  it("passes the expected lines to the API as the browser sent them, for a guest and for a customer", async () => {
+    const lines = [
+      { variantId: "00000000-0000-4000-8000-00000000000B", quantity: 1, name: "Czapka" },
+      { variantId: "00000000-0000-4000-8000-00000000000a", quantity: 2 },
+    ];
+    setup.answer("POST", GUEST_ORDERS, () => Response.json(orderView(), { status: 201 }));
+    setup.answer("POST", GUEST_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+    await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body: { ...GUEST_FORM, expectedLines: lines } });
+    const { cookie } = await signedIn();
+    setup.answer("POST", CUSTOMER_ORDERS, () => Response.json(orderView({ accessToken: null }), { status: 201 }));
+    setup.answer("POST", CUSTOMER_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+    await checkout({ cookie, body: { ...CUSTOMER_FORM, expectedLines: "nie lista" } });
+
+    const orders = orderCalls().filter((call) => call.path === GUEST_ORDERS || call.path === CUSTOMER_ORDERS);
+    expect(orders.map((call) => call.body)).toEqual([
+      { cartId: GUEST_CART_ID, ...GUEST_ORDER, expectedLines: lines },
+      { ...CUSTOMER_ORDER, expectedLines: "nie lista" },
+    ]);
+  });
+
+  it("passes the 409 cart-changed with its type and detail only, keeps store_cart and starts no payment", async () => {
+    setup.answer("POST", GUEST_ORDERS, () => conflict("cart-changed", "Zawartość koszyka się zmieniła. Sprawdź podsumowanie."));
+    const response = await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body: GUEST_FORM });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ type: `${PROBLEMS}cart-changed`, detail: "Zawartość koszyka się zmieniła. Sprawdź podsumowanie." });
+    expect(setup.calls.filter((call) => call.path === GUEST_PAYMENTS)).toEqual([]);
+  });
+
   it("passes the values of the browser as they are, so that the API names what is wrong", async () => {
     setup.answer("POST", GUEST_ORDERS, () => problem(422));
-    await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body: { email: 5, phone: "", provider: PROVIDER } });
+    await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body: { email: 5, phone: "", provider: PROVIDER, buyer: "guest" } });
 
     expect(orderCalls()[0].body).toEqual({ cartId: GUEST_CART_ID, email: 5, phone: "" });
   });
@@ -378,7 +415,7 @@ describe("POST /api/checkout with a session", () => {
     setup.answer("POST", MERGE, () => mergeAnswer("merged"));
     setup.answer("POST", CUSTOMER_ORDERS, () => Response.json(orderView({ email: "jan.kowalski@example.com", accessToken: null }), { status: 201 }));
     setup.answer("POST", CUSTOMER_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
-    const response = await checkout({ cookie: `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`, body: GUEST_FORM });
+    const response = await checkout({ cookie: `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`, body: { ...GUEST_FORM, buyer: JAN } });
 
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({ number: "R-100001", redirectUrl: REDIRECT_URL });
@@ -516,16 +553,269 @@ describe("POST /api/checkout with a session", () => {
   });
 });
 
+// docs/features/cart-order-consistency/spec.md, Z4: the order is placed only for the buyer the checkout showed.
+describe("POST /api/checkout: the buyer shown in the checkout", () => {
+  const BUYER_CHANGED = { type: `${PROBLEMS}checkout-buyer-changed`, detail: "Od wczytania kasy zmienił się kupujący. Nie złożyliśmy zamówienia." };
+  const ANNA = buyerOf("user-2");
+
+  const answerCustomerOrder = () => {
+    setup.answer("POST", MERGE, () => mergeAnswer("merged"));
+    setup.answer("POST", CUSTOMER_ORDERS, () => Response.json(orderView({ email: "jan.kowalski@example.com", accessToken: null }), { status: 201 }));
+    setup.answer("POST", CUSTOMER_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+  };
+  const answerGuestOrder = () => {
+    setup.answer("POST", GUEST_ORDERS, () => Response.json(orderView(), { status: 201 }));
+    setup.answer("POST", GUEST_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+  };
+  /** Every call of the API, the list of providers included: a refused buyer asks the API nothing. */
+  const paths = () => setup.calls.map((call) => call.path);
+
+  it("places the guest order when the checkout showed the guest and there is no session", async () => {
+    answerGuestOrder();
+    const response = await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body: GUEST_FORM });
+
+    expect(response.status).toBe(201);
+    expect(paths()).toEqual([PROVIDERS, GUEST_ORDERS, GUEST_PAYMENTS]);
+    // The buyer is the BFF's business: it never reaches the API.
+    expect(orderCalls()[0].body).toEqual({ cartId: GUEST_CART_ID, ...GUEST_ORDER });
+  });
+
+  it("answers 409 checkout-buyer-changed without merging or asking the API when the checkout showed the guest and a customer is signed in", async () => {
+    answerCustomerOrder();
+    const { id, cookie } = await signedIn();
+    const response = await checkout({ cookie: `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`, body: GUEST_FORM });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual(BUYER_CHANGED);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(paths()).toEqual([]);
+    // Nothing changes: the guest cart stays unmerged and the session stays.
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(setup.sessions.has(id)).toBe(true);
+  });
+
+  it("places the order of account A for the checkout of account A, without the buyer in the request to the API", async () => {
+    answerCustomerOrder();
+    const { cookie } = await signedIn();
+    const response = await checkout({ cookie: `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`, body: CUSTOMER_FORM });
+
+    expect(response.status).toBe(201);
+    expect(paths()).toEqual([PROVIDERS, MERGE, CUSTOMER_ORDERS, CUSTOMER_PAYMENTS]);
+    expect(orderCalls()[1].body).toEqual(CUSTOMER_ORDER);
+    expect(JSON.stringify(setup.calls)).not.toContain(JAN);
+  });
+
+  it("places the order of account A in another session of account A (signed in again)", async () => {
+    answerCustomerOrder();
+    await signedIn("access-old");
+    const { cookie } = await signedIn("access-new");
+    const response = await checkout({ cookie, body: CUSTOMER_FORM });
+
+    expect(response.status).toBe(201);
+    expect(orderCalls().find((call) => call.path === CUSTOMER_ORDERS)?.authorization).toBe("Bearer access-new");
+  });
+
+  it("places the order of account A when its token is refreshed during the request: a refresh is no change of the buyer", async () => {
+    answerCustomerOrder();
+    const { id, cookie } = await signedIn("access-old");
+    // The refresh as getFreshAccessToken does it: new tokens, the sub of the session kept.
+    setup.deps.freshAccessToken.mockImplementationOnce(async (sessionId: string) => {
+      const current = (await setup.deps.sessions.get(sessionId))!;
+      const updated = sessionFromTokens(current.sub, { accessToken: "access-new", refreshToken: "refresh-new", expiresIn: 300, refreshExpiresIn: 1800 }, Date.now(), current);
+      await setup.deps.sessions.update(sessionId, updated);
+      return updated.accessToken;
+    });
+    const response = await checkout({ cookie, body: CUSTOMER_FORM });
+
+    expect(response.status).toBe(201);
+    expect(setup.deps.freshAccessToken).toHaveBeenCalledWith(id);
+    expect(orderCalls().filter((call) => call.path !== MERGE).map((call) => call.authorization)).toEqual(["Bearer access-new", "Bearer access-new"]);
+  });
+
+  it("answers 409 without merging or asking the API when the checkout of account A is sent with the session of account B, the same cart and total", async () => {
+    answerCustomerOrder();
+    const id = await setup.deps.sessions.create(sessionData({ sub: "user-2", accessToken: "access-anna" }));
+    const response = await checkout({ cookie: `${sessionCookie(id)}; ${signedCartCookie(GUEST_CART_ID)}`, body: CUSTOMER_FORM });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual(BUYER_CHANGED);
+    expect(paths()).toEqual([]);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(setup.sessions.has(id)).toBe(true);
+  });
+
+  it("answers 409 without asking the API when the sub of the session differs after the refresh from the sub compared", async () => {
+    answerCustomerOrder();
+    const { cookie } = await signedIn();
+    setup.deps.freshAccessToken.mockImplementationOnce(async (sessionId: string) => {
+      const current = (await setup.deps.sessions.get(sessionId))!;
+      await setup.deps.sessions.update(sessionId, { ...current, sub: "user-2", accessToken: "access-anna" });
+      return "access-anna";
+    });
+    const response = await checkout({ cookie, body: CUSTOMER_FORM });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual(BUYER_CHANGED);
+    expect(paths()).toEqual([]);
+  });
+
+  it.each([
+    ["without a session cookie", () => ""],
+    ["with a session cookie of a bad signature", () => `${SESSION_COOKIE}=${signValue("session-1", "x".repeat(64))}; `],
+    ["with a session gone from Redis", () => `${sessionCookie("session-gone")}; `],
+  ])(
+    "answers 401 for the checkout of account A %s, and never places a guest order, also with a guest cart and an e-mail in the request",
+    async (_name, sessionPart) => {
+      await signedIn();
+      answerGuestOrder();
+      const response = await checkout({ cookie: `${sessionPart()}${signedCartCookie(GUEST_CART_ID)}`, body: { ...CUSTOMER_FORM, email: "anna.nowak@example.com" } });
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({});
+      expect(paths()).toEqual([]);
+      expect(isCleared(setCookie(response, SESSION_COOKIE))).toBe(true);
+      // The guest cart is not touched.
+      expect(setCookie(response, CART_COOKIE)).toBeUndefined();
+      expect(setCookie(response, CONFIRMATION_COOKIE)).toBeUndefined();
+    },
+  );
+
+  it("answers 401 and ends the session without asking the API when the token of account A cannot be refreshed", async () => {
+    answerGuestOrder();
+    const { id, cookie } = await signedIn();
+    setup.deps.freshAccessToken.mockResolvedValue(null);
+    const response = await checkout({ cookie: `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`, body: { ...CUSTOMER_FORM, email: "anna.nowak@example.com" } });
+
+    expect(response.status).toBe(401);
+    expect(paths()).toEqual([]);
+    expect(setup.sessions.has(id)).toBe(false);
+    expect(isCleared(setCookie(response, SESSION_COOKIE))).toBe(true);
+  });
+
+  it.each([
+    ["the guest", GUEST_FORM],
+    ["account A", CUSTOMER_FORM],
+  ])("answers 503 and keeps the session, without the API and without a guest order, when Keycloak cannot refresh the token for %s", async (_name, body) => {
+    answerGuestOrder();
+    const { id, cookie } = await signedIn();
+    setup.deps.freshAccessToken.mockRejectedValue(new Error("Keycloak is down"));
+    const response = await checkout({ cookie: `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`, body });
+
+    expect(response.status).toBe(503);
+    expect(paths()).toEqual([]);
+    expect(setup.sessions.has(id)).toBe(true);
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("answers 503 and keeps the session, without the API, when Redis fails while the session is read", async () => {
+    answerGuestOrder();
+    const { id, cookie } = await signedIn();
+    // The read of the token goes through; Redis fails at the read of the sub after it.
+    const get = setup.deps.sessions.get;
+    setup.deps.sessions.get = vi.fn(get).mockImplementationOnce(get).mockRejectedValueOnce(new Error("Redis is down"));
+    const response = await checkout({ cookie: `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`, body: CUSTOMER_FORM });
+    setup.deps.sessions.get = get;
+
+    expect(response.status).toBe(503);
+    expect(paths()).toEqual([]);
+    expect(setup.sessions.has(id)).toBe(true);
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  // A checkout page opened before the deployment of the buyer check sends no `buyer` (nor `expectedLines`): it is told
+  // to reload, and its page shows the `detail` of a 422 without violations.
+  it.each([
+    ["without the buyer", { ...GUEST_ORDER, provider: PROVIDER }],
+    ["without the buyer and the expected lines", Object.fromEntries(Object.entries({ ...GUEST_ORDER, provider: PROVIDER }).filter(([name]) => name !== "expectedLines"))],
+  ])("answers 422 „Kasa została zaktualizowana. Odśwież stronę.” without asking the API to a checkout %s", async (_name, body) => {
+    answerGuestOrder();
+    const { cookie } = await signedIn();
+    for (const cookies of [signedCartCookie(GUEST_CART_ID), `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`]) {
+      const response = await checkout({ cookie: cookies, body });
+
+      expect(response.status).toBe(422);
+      expect(await response.json()).toEqual({ detail: "Kasa została zaktualizowana. Odśwież stronę." });
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("set-cookie")).toBeNull();
+    }
+    expect(paths()).toEqual([]);
+  });
+
+  it("answers 422 „Nieprawidłowe dane.” to a request without the buyer and without the Idempotency-Key", async () => {
+    const response = await checkout({ cookie: signedCartCookie(GUEST_CART_ID), key: null, body: { ...GUEST_ORDER, provider: PROVIDER } });
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ detail: "Nieprawidłowe dane." });
+    expect(paths()).toEqual([]);
+  });
+
+  it.each([
+    ["null", null],
+    ["a number", 5],
+    ["true", true],
+    ["an object", { sub: "user-1" }],
+    ["an array", [JAN]],
+    ["an empty text", ""],
+  ])("answers 422 „Nieprawidłowe dane.” without asking the API when the buyer is %s", async (_name, buyer) => {
+    answerGuestOrder();
+    const { cookie } = await signedIn();
+    for (const cookies of [signedCartCookie(GUEST_CART_ID), `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`]) {
+      const response = await checkout({ cookie: cookies, body: { ...GUEST_FORM, buyer } });
+
+      expect(response.status).toBe(422);
+      expect(await response.json()).toEqual({ detail: "Nieprawidłowe dane." });
+      expect(response.headers.get("set-cookie")).toBeNull();
+    }
+    expect(paths()).toEqual([]);
+  });
+
+  it.each([
+    ["the tag of account B", ANNA],
+    ["a tag made with another secret", buyerOf("user-1", "x".repeat(64))],
+    ["the sub itself", "user-1"],
+    ["the guest in capitals", "GUEST"],
+    ["the tag in capitals", JAN.toUpperCase()],
+    ["the tag with a NUL", `${JAN}\u0000`],
+    ["the tag with a line separator", `${JAN} `],
+    ["blank Unicode text", "  "],
+    // Within the limit of the body (16 KiB); a longer body is a 413 before anything is read.
+    ["a very long text", "A".repeat(12_000)],
+  ])("answers 409 for %s with the session of account A, and 401 without a session, never placing an order", async (_name, buyer) => {
+    answerCustomerOrder();
+    answerGuestOrder();
+    const { cookie } = await signedIn();
+    const withSession = await checkout({ cookie: `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`, body: { ...CUSTOMER_FORM, buyer } });
+    const withoutSession = await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body: { ...GUEST_FORM, buyer } });
+
+    expect(withSession.status).toBe(409);
+    expect(await withSession.json()).toEqual(BUYER_CHANGED);
+    expect(withoutSession.status).toBe(401);
+    expect(paths()).toEqual([]);
+  });
+
+  it("logs no buyer tag, sub, session id or token on any refusal of the buyer", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { id, cookie } = await signedIn("access-secret");
+    await checkout({ cookie, body: GUEST_FORM });
+    await checkout({ body: CUSTOMER_FORM });
+    setup.deps.freshAccessToken.mockRejectedValueOnce(new Error("Keycloak is down"));
+    await checkout({ cookie, body: CUSTOMER_FORM });
+
+    const logged = JSON.stringify(log.mock.calls);
+    for (const secret of [JAN, "user-1", id, "access-secret", "refresh-1"]) expect(logged).not.toContain(secret);
+  });
+});
+
 describe("POST /api/checkout: the payment provider", () => {
   const violation = { propertyPath: "provider", title: "Wybierz sposób płatności." };
 
   it.each([
-    ["missing", { ...GUEST_ORDER }],
-    ["null", { ...GUEST_ORDER, provider: null }],
-    ["empty", { ...GUEST_ORDER, provider: "" }],
-    ["not a string", { ...GUEST_ORDER, provider: 5 }],
-    ["unknown", { ...GUEST_ORDER, provider: "demo-crypto" }],
-    ["a prototype key", { ...GUEST_ORDER, provider: "constructor" }],
+    ["missing", { ...GUEST_ORDER, buyer: "guest" }],
+    ["null", { ...GUEST_ORDER, buyer: "guest", provider: null }],
+    ["empty", { ...GUEST_ORDER, buyer: "guest", provider: "" }],
+    ["not a string", { ...GUEST_ORDER, buyer: "guest", provider: 5 }],
+    ["unknown", { ...GUEST_ORDER, buyer: "guest", provider: "demo-crypto" }],
+    ["a prototype key", { ...GUEST_ORDER, buyer: "guest", provider: "constructor" }],
   ])("answers 422 for the field provider without placing the order when it is %s", async (_name, body) => {
     const response = await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body });
 
@@ -538,7 +828,7 @@ describe("POST /api/checkout: the payment provider", () => {
 
   it("answers 422 for a customer too, before the cart is merged", async () => {
     const { cookie } = await signedIn();
-    const response = await checkout({ cookie: `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`, body: CUSTOMER_ORDER });
+    const response = await checkout({ cookie: `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`, body: { ...CUSTOMER_ORDER, buyer: JAN } });
 
     expect(response.status).toBe(422);
     expect(orderCalls()).toEqual([]);

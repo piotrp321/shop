@@ -235,7 +235,9 @@ zakończenia `submit` (`:264-276`): przy dwóch sposobach dostawy potrzeba trzec
 
 **Zachowanie.**
 
-- **Blokada** od wysłania do odpowiedzi z błędem albo do nawigacji po sukcesie:
+- **Blokada** od wysłania do odpowiedzi z błędem albo do nawigacji po sukcesie; po 409 rozbieżności koszyka albo kwoty
+  (`cart-changed`, `order-total-changed`) do końca odczytu koszyka, z tym samym tekstem regionu statusu
+  (`docs/features/cart-order-consistency/spec.md`, „Z2 i Z3”):
   - pola tekstowe formularza i pole kodu rabatowego: wartość się nie zmienia, `aria-disabled="true"`, wygląd
     nieaktywny, fokus zostaje;
   - wybór dostawy i płatności: nie zmienia się po kliknięciu, dotyku, strzałkach ani Spacji; `aria-disabled="true"`,
@@ -248,11 +250,12 @@ zakończenia `submit` (`:264-276`): przy dwóch sposobach dostawy potrzeba trzec
   dzisiejszy cel (pole kodu albo „Usuń kod”) pod warunkiem F2; reszta zachowania kodu zostaje.
   Przycisk zamówienia przy braku sposobów dostawy zostaje `disabled` (to stan trwały, nie operacja w drodze).
 - **Po błędzie** kontrolki są odblokowane. Wartości pól zostają. Dostawa, płatność, kod i podsumowanie zmieniają się
-  tylko tak, jak dziś określa `docs/features/checkout/spec.md` dla danej odpowiedzi (odrzucony kod jest zdejmowany,
-  niedostępna dostawa przestaje być wybrana, zmiana kwoty odświeża podsumowanie).
+  tylko tak, jak określa `docs/features/checkout/spec.md` dla danej odpowiedzi (odrzucony kod jest zdejmowany,
+  niedostępna dostawa przestaje być wybrana, rozbieżność koszyka albo kwoty pokazuje podsumowanie z odczytu).
 - **Fokus po odrzuceniu** (F2, F3): cel jak dziś (komunikat, a po 422 pierwsze błędne pole; dla odrzuconego kodu pole
   kodu), ale tylko gdy fokus został na elemencie, z którego wyszło wysłanie (przycisk albo pole z Enterem), albo
-  zginął. Komunikat jest w `role="alert"`, więc jest ogłaszany także bez fokusu.
+  zginął; po rozbieżności koszyka albo kwoty warunek sprawdza się po odczycie koszyka. Komunikat jest
+  w `role="alert"`, więc jest ogłaszany także bez fokusu.
 - **Po sukcesie** blokada trwa do nawigacji.
 - **Błędy wyboru (#345):** gdy brakuje wyboru dostawy i płatności, jedno wysłanie pokazuje oba komunikaty („Wybierz
   sposób dostawy.”, „Wybierz sposób płatności.”), obie grupy mają `aria-invalid` i `aria-describedby`, a fokus idzie
@@ -412,15 +415,19 @@ czytają. **Do ponownego sprawdzenia przed implementacją**, na aktualnym `main`
 Etap gwarantuje jedno: po aktywacji „Przejdź do kasy” w tej samej karcie kasa otwiera się dopiero po zakończeniu
 wszystkich zmian zleconych na tej stronie koszyka (niezatwierdzony wpis, operacja w drodze, akcje czekające).
 
-Poza gwarancją zostaje stan dzisiejszy (#853):
+Kasę otwartą inną drogą niż link w tej karcie (nowa karta albo okno: Ctrl, Cmd, środkowy przycisk, menu kontekstowe,
+ręcznie; przyciski wstecz i dalej) i zmianę koszyka w innej karcie, przeglądarce albo na innym urządzeniu po wczytaniu
+kasy obejmuje gwarancja zamówienia z `docs/features/cart-order-consistency/spec.md` („Granica ochrony zamówienia”):
+zamówienie powstaje tylko wtedy, gdy koszyk na serwerze ma w chwili złożenia te same pozycje i ilości co podsumowanie
+pokazane w kasie, ta sama jest kwota do zapłaty i ten sam kupujący (gość albo to samo konto); inaczej 409, a kasa po odczycie koszyka pokazuje, co się zmieniło.
 
-- Kasa otwarta inną drogą niż link w tej karcie: nowa karta albo okno (Ctrl, Cmd, środkowy przycisk, menu kontekstowe,
-  ręcznie), przyciski wstecz i dalej.
-- Zmiana koszyka w innej karcie, przeglądarce albo na innym urządzeniu po wczytaniu kasy.
-- W obu przypadkach API zamawia aktualną zawartość koszyka z serwera. Odpowiedź 409 pojawia się tylko wtedy, gdy
-  różni się kwota (`expectedTotalGross`); zmiana zawartości przy tej samej kwocie przechodzi bez ostrzeżenia. Zapisy
-  koszyka i zamówienie nie mają wspólnej kolejności między kartami (`queueWrite` obejmuje zapisy koszyka, nie
-  `placeOrder`).
+Poza gwarancją:
+
+- Zmiana zlecona w innej karcie, która nie dotarła do serwera przed zamówieniem: zapisy koszyka i zamówienie nie mają
+  wspólnej kolejności między kartami (`queueWrite` obejmuje zapisy koszyka, nie `placeOrder`), więc zamówienie jest
+  zgodne z kasą, a spóźniony zapis trafia w opróżniony koszyk (zmiana ilości: 404, usunięcie: 200 bez zmian, dodanie:
+  nowa pozycja w koszyku).
+- Dwie zmiany cen, które się znoszą przy tej samej kwocie i tych samych ilościach.
 - Przeładowanie albo zamknięcie karty w trakcie zapisu: akcje jeszcze niewysłane przepadają.
 
 ## Ryzyka i ograniczenia
