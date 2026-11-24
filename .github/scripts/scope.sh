@@ -9,10 +9,12 @@
 #   full     anything else (application code, other infra, Makefile, .github/), or a mix of tooling and k8s: the full CI
 # Any error prints `full` with a ::warning::, so it can only cost a full CI run.
 #
-# With --k8s it answers instead whether the change touches infra/k8s or the workflows at all (any file under
-# infra/k8s/ or .github/workflows/, also documentation, on either side of a move): `yes` or `no`. In the full CI it
-# decides whether `make -C infra/k8s check` runs, which holds the only tests of the workflows (actionlint, secrets only in
-# main-only environments, no deletion of package versions); deploy.yml runs that check before every deployment anyway.
+# With --k8s it answers instead whether the change touches infra/k8s, the workflows or the compose file at all (any file
+# under infra/k8s/ or .github/workflows/, also documentation, or infra/docker-compose.yml, on either side of a move):
+# `yes` or `no`. In the full CI it decides whether `make -C infra/k8s check` runs, which holds the only tests of the
+# workflows (actionlint, secrets only in main-only environments, no deletion of package versions) and the test that the
+# image tags of the chart equal those of the compose file (so an image bump of Dependabot in compose fails its own PR
+# until the chart has the same tag and digest); deploy.yml runs that check before every deployment anyway.
 # Any error prints `yes` with a ::warning::.
 #
 # Usage: scope.sh [--k8s] <base-sha> <head-sha>
@@ -48,6 +50,7 @@ if [ "$mode" = k8s ]; then
         while IFS= read -r file; do
             case "$file" in
                 infra/k8s/* | '"infra/k8s/'* | .github/workflows/* | '".github/workflows/'*) exit 1 ;;
+                infra/docker-compose.yml | '"infra/docker-compose.yml'*) exit 1 ;;
             esac
         done
     }; then

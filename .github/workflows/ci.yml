@@ -10,8 +10,10 @@
 # documentation) runs just the script tests (in the `apps` part); the Kubernetes deployment only (infra/k8s/**,
 # possibly with documentation) runs just `make -C infra/k8s check` (in the `k8s` part). Skipped steps let the other jobs
 # pass within seconds. Anything else, and every push to an epic branch, runs it all, except the `k8s` part, which runs
-# only when the change touches infra/k8s/** or .github/workflows/** (scope.sh --k8s: the check holds the tests of the
-# workflows; deploy.yml runs the same check before every deployment).
+# only when the change touches infra/k8s/**, .github/workflows/** or infra/docker-compose.yml (scope.sh --k8s: the check
+# holds the tests of the workflows and the test that the chart has the image tags of compose, which fails an image bump
+# of Dependabot in compose until the chart has the same tag and digest; deploy.yml runs the same check before every
+# deployment).
 # An error of scope.sh, also a push whose earlier commit is unknown, gives the full CI with the `k8s` part. A full run
 # uses 1 + 6 + 4 runners for its work (`scope`, the `checks-part` and `e2e-shard` parts) and two more for the short
 # `checks` and `e2e` reports.
@@ -112,7 +114,7 @@ jobs:
         include:
           # apps: the CI images the part pulls; stack: `full` starts the services of the api tests, `redis` only Redis;
           # also: the scope (besides `full`) in which the part still has work; in the full CI the `k8s` part works only
-          # when the change touches infra/k8s/** or .github/workflows/**.
+          # when the change touches infra/k8s/**, .github/workflows/** or infra/docker-compose.yml.
           - name: k8s
             apps: ''
             stack: none
@@ -147,8 +149,8 @@ jobs:
       # parts that use an app image.
       FULL_CI: ${{ needs.scope.outputs.scope == 'full' && matrix.apps != '' }}
       # Whether the part has work for the scope of the change: in the full CI all parts, the `k8s` part only when the
-      # change touches infra/k8s/** or .github/workflows/** (`k8s` is `yes`); in a tooling-only change the script tests (`apps`), in a
-      # Kubernetes-only one `make -C infra/k8s check` (`k8s`). The other parts only report success within seconds; a
+      # change touches infra/k8s/**, .github/workflows/** or infra/docker-compose.yml (`k8s` is `yes`); in a
+      # tooling-only change the script tests (`apps`), in a Kubernetes-only one `make -C infra/k8s check` (`k8s`). The other parts only report success within seconds; a
       # documentation-only change has no work for any part.
       PART_ACTIVE: ${{ (needs.scope.outputs.scope == 'full' && (matrix.name != 'k8s' || needs.scope.outputs.k8s == 'yes')) || needs.scope.outputs.scope == matrix.also }}
       K8S: ${{ needs.scope.outputs.k8s }}
@@ -167,9 +169,9 @@ jobs:
 
       # The compose stack of the app tests and E2E does not use infra/k8s: a change limited to it needs only these checks
       # of the chart, environments, sealed secrets and server scripts, and `check-code` leaves them to this part. The part
-      # runs them only when the change touches infra/k8s/** or .github/workflows/** (the check holds the tests of the
-      # workflows); a change elsewhere that the chart must mirror (compose, Keycloak realms) is caught by the same check
-      # in deploy.yml before the deployment.
+      # runs them only when the change touches infra/k8s/**, .github/workflows/** or infra/docker-compose.yml (the check
+      # holds the tests of the workflows and of the image tags of compose in the chart); a change elsewhere that the
+      # chart must mirror (Keycloak realms) is caught by the same check in deploy.yml before the deployment.
       - name: make -C infra/k8s check
         if: matrix.name == 'k8s' && env.PART_ACTIVE == 'true'
         run: make -C infra/k8s check
