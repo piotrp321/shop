@@ -76,8 +76,8 @@ final readonly class InputContractFixtures
             'guestCart' => ['cartId' => CartFixture::cart($this->entityManager->getConnection())],
             'deliveryMethod' => ['id' => OrderingFixture::freeDeliveryMethod($this->entityManager->getConnection())],
             'newDeliveryMethod' => ['id' => $this->deliveryMethod()],
-            'discountCode' => ['id' => $this->discountCode()],
-            'promotion' => ['id' => $this->promotion()],
+            'discountCode' => $this->discountCode(),
+            'promotion' => $this->promotion(),
             'guestCheckout' => $this->checkout(null),
             'customerCheckout' => $this->checkout(TestTokenFactory::CUSTOMER_ID),
             'guestOrder' => $this->guestOrder(),
@@ -231,18 +231,25 @@ final readonly class InputContractFixtures
         return $id;
     }
 
-    private function discountCode(): string
+    /**
+     * An enabled discount code with a text of its own: the beginning of it is what the list of codes finds it by.
+     *
+     * @return array{id: string, code: string}
+     */
+    private function discountCode(): array
     {
         $code = DiscountCodeFactory::createOne();
         new DoctrineDiscountCodeRepository($this->entityManager)->save($code);
 
-        return $code->id()->toString();
+        return ['id' => $code->id()->toString(), 'code' => $code->code()->toString()];
     }
 
     /**
-     * A planned promotion of a variant with a price, at version 1.
+     * A planned promotion of a variant with a price, at version 1, named „Jesień”.
+     *
+     * @return array{id: string, variantId: string}
      */
-    private function promotion(): string
+    private function promotion(): array
     {
         [$variantId] = OrderingFixture::variant($this->entityManager->getConnection(), 1000, 5);
         $id = Uuid::v7()->toRfc4122();
@@ -253,7 +260,7 @@ final readonly class InputContractFixtures
         ));
         $this->entityManager->clear();
 
-        return $id;
+        return ['id' => $id, 'variantId' => $variantId];
     }
 
     /**

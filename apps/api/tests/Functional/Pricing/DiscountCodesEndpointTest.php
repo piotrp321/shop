@@ -292,6 +292,11 @@ final class DiscountCodesEndpointTest extends WebTestCase
         yield 'a blank prefix' => ['q=%20%20', 'q', $q];
         yield 'a prefix of a no-break space only' => ['q=%C2%A0', 'q', $q];
         yield 'a prefix of a zero width space only' => ['q=%E2%80%8B', 'q', $q];
+        yield 'a prefix of a hangul filler only' => ['q=%E3%85%A4', 'q', $q];
+        yield 'a prefix with a NUL' => ['q=AB%00C', 'q', $q];
+        yield 'a prefix with a C1 control character' => ['q=AB%C2%9FC', 'q', $q];
+        yield 'a prefix with a line separator' => ['q=AB%E2%80%A8C', 'q', $q];
+        yield 'a prefix with a line separator at its end' => ['q=ABC%E2%80%A8', 'q', $q];
         yield 'a prefix of 33 characters' => ['q='.str_repeat('A', 33), 'q', $q];
         yield 'a prefix that is not UTF-8' => ['q=%FF', 'q', $q];
         yield 'a page of 0' => ['perPage=0', 'perPage', $page];
