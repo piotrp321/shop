@@ -4,8 +4,10 @@
 # build (production dependencies and a warmed `prod` cache) -> prod (runtime + the built application). `dev` is the last
 # stage, so the Compose build (`target: dev`, and CI) is unchanged; production images are built with `--target prod`.
 
-# Pinned: FrankenPHP 1.13.5 on PHP 8.5.12 (ZTS build, Debian trixie).
-FROM dunglas/frankenphp:1.13.5-php8.5.12-trixie AS runtime
+# Pinned: FrankenPHP 1.13.6 on PHP 8.5.13 (ZTS build, Debian trixie), by the digest of the multi-arch index of the tag
+# (`docker buildx imagetools inspect dunglas/frankenphp:1.13.6-php8.5.13-trixie`, line "Digest"); change the tag and
+# the digest together.
+FROM dunglas/frankenphp:1.13.6-php8.5.13-trixie@sha256:16459935c294791b28d6895cc4b155b99c0bdbb61c7cacc63ac96785db12ca57 AS runtime
 
 # gmp: web-token converts every RSA JWK to PEM with brick/math before openssl signs or verifies; without gmp the
 # conversion runs in pure PHP (about 0.2 s per access token verification, 0.6 s per signature).
@@ -20,8 +22,9 @@ CMD ["frankenphp", "run", "--config", "/etc/frankenphp/Caddyfile"]
 # Tools for installing dependencies: the development image and the build stage. Never in production.
 FROM runtime AS base
 
-# Composer is a tool here, not a project dependency.
-COPY --from=composer:2.10.3 /usr/bin/composer /usr/local/bin/composer
+# Composer is a tool here, not a project dependency. Pinned: Composer 2.10.3, digest of the multi-arch index
+# (`docker buildx imagetools inspect composer:2.10.3`, line "Digest").
+COPY --from=composer:2.10.3@sha256:2cf275428757e5435a667bfc0d038b14520ca02be2b1b70d44a05c8c19e2de48 /usr/bin/composer /usr/local/bin/composer
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git unzip \

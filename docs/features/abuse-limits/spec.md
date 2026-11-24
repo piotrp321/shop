@@ -13,7 +13,7 @@ Zakres: `apps/api/src/Shared/Infrastructure/Http`, `apps/api/src/Cart/Domain`, `
 
 **Zależności.** HARDENING (#267): `ClientIp`, `RateLimitSubscriber`, limitery w Redisie, przekazywanie
 `CF-Connecting-IP` przez sklep i Cloudflare przed originem (`ipAllowList`). CHECKOUT, PAYMENT, DISCOUNT-CODES,
-PRODUCT-PAGE, SENTRY: przepływy, które ograniczamy. Obraz API ma FrankenPHP 1.13.5, którego wymaga limit czasu treści
+PRODUCT-PAGE, SENTRY: przepływy, które ograniczamy. Obraz API ma FrankenPHP 1.13.6, którego wymaga limit czasu treści
 (L8).
 
 ## Cel i skutek
@@ -403,7 +403,7 @@ w całości (audyt: JSON 150 MB wyczerpuje `memory_limit`, 40 wolnych treści bl
 wątek PHP po nagłówkach, więc wolna treść trzyma wątek. Ingress (`infra/k8s/charts/shop/templates/ingress.yaml`,
 `middlewares.yaml`) bez `buffering`.
 
-**Wymagane.** D10 dla API (Caddy) i ingressu (część BFF: L4). Obraz API ma FrankenPHP 1.13.5, w którym limit czasu
+**Wymagane.** D10 dla API (Caddy) i ingressu (część BFF: L4). Obraz API ma FrankenPHP 1.13.6, w którym limit czasu
 treści działa (GHSA-j45x-h238-h4xx; E2). Osobna reguła ingressu dla ścieżki uploadu na hoście `api.` i dla `/api/`
 hosta sklepu; każda nowa reguła ma te same middleware co jej host, w tym `ipallowlist`.
 
