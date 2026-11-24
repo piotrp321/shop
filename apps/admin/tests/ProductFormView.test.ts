@@ -1576,6 +1576,26 @@ describe("ProductFormView", () => {
         expect(wrapper.get("[data-testid=name]").attributes("aria-invalid")).toBe("true");
       });
 
+      it("keeps the way to the server state after a 409 of the version when the next save gets a 422, with the focus on the first error of the fields and not on the note", async () => {
+        const wrapper = await open();
+        await wrapper.get("[data-testid=name]").setValue("Moje");
+        mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+        await wrapper.get("[data-testid=name]").setValue("");
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Podaj nazwę." }] }));
+
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+
+        const note = wrapper.get("[data-testid=restore-note]");
+        expect(note.text()).toContain("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+        expect(note.get("[data-testid=restore-state]").attributes("disabled")).toBeUndefined();
+        expect(note.attributes("data-form-error")).toBeUndefined();
+        expect(document.activeElement).toBe(wrapper.get("[data-testid=name]").element);
+        expect(wrapper.get("[data-testid=name]").attributes("aria-invalid")).toBe("true");
+      });
+
       it("„Sprawdź stan” stops saying that the server matches the form when the staff member changes a field afterwards", async () => {
         const { wrapper } = await saveHeld();
         await vi.advanceTimersByTimeAsync(10_000);

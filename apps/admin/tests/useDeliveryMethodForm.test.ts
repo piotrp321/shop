@@ -647,7 +647,7 @@ describe("useDeliveryMethodForm: the draft and the unknown result of a save (sta
       form.form.value.price = "26,00";
       const second = form.save();
       expect(form.locked.value).toBe(true);
-const before = form.safety.unknown.value;
+      const before = form.safety.unknown.value;
 
       puts[0]!.reject(new TypeError("network down"));
       await saving;

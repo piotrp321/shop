@@ -2060,7 +2060,7 @@ describe("usePromotionForm", () => {
         form.form.value.name = "Druga";
         const second = form.save();
         expect(form.locked.value).toBe(true);
-const before = form.safety.unknown.value;
+        const before = form.safety.unknown.value;
 
         puts[0]!.reject(new TypeError("network down"));
         await saving;

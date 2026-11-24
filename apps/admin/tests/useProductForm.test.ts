@@ -1984,7 +1984,7 @@ describe("useProductForm", () => {
         form.form.value.name = "Druga";
         const second = form.save();
         expect(form.locked.value).toBe(true);
-const before = form.safety.unknown.value;
+        const before = form.safety.unknown.value;
 
         calls[0]!.reject(new TypeError("network down"));
         await running;
@@ -2203,6 +2203,73 @@ const before = form.safety.unknown.value;
         expect(form.form.value.name).toBe("Buty biegowe");
         expect(form.view.value?.version).toBe(3);
         expect(form.dirty.value).toBe(false);
+      });
+    });
+
+    describe("what the form knows about the server, and the next operation that is refused", () => {
+      const NO_PROMISE = "Nie wiemy, czy wcześniejszy zapis się powiódł.";
+
+      it.each([
+        ["a 409 of the version", () => conflict("product-modified")],
+        ["a 409 of a product that cannot be published", () => conflict("product-not-publishable")],
+        ["a 422", () => problem(422, { violations: [] })],
+      ])("says that the earlier save is unknown without the promise that the changes stay after „Odrzuć” and a publication refused with %s", async (_name, answer) => {
+        const { form } = await beginUnknown("save");
+        form.discard();
+        expect(form.safety.unknown.value?.text).toBe("Nie wiemy, czy zapis się powiódł.");
+        const calls = holdCalls(mocks.post);
+
+        const running = form.publish();
+        await advance(0);
+
+        expect(form.safety.unknown.value?.text).toBe(NO_PROMISE);
+        calls[0]!.resolve(answer());
+        expect(await running).toBe("failure");
+        expect(form.safety.unknown.value).toMatchObject({ kind: "unknown", text: NO_PROMISE });
+      });
+
+      it("says the same, without the promise, for a save with new changes after „Odrzuć” that gets a 422", async () => {
+        const { form } = await beginUnknown("save");
+        form.discard();
+        form.form.value.name = "";
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Podaj nazwę." }] }));
+
+        await form.save();
+
+        expect(form.safety.unknown.value?.text).toBe(NO_PROMISE);
+      });
+
+      it("keeps the way to the server state after a 409 of the version when the next save gets a 422, and the button brings the server state", async () => {
+        const { form } = await open();
+        form.form.value.name = "Moja";
+        mocks.put.mockResolvedValue(conflict("product-modified"));
+        await form.save();
+        expect(form.safety.restoreOffered.value).toBe(true);
+        form.form.value.name = "";
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Podaj nazwę." }] }));
+
+        expect(await form.save()).toBe("failure");
+
+        expect(form.errorsAt("name")).toEqual(["Podaj nazwę."]);
+        expect(form.safety.restoreOffered.value).toBe(true);
+        expect(form.safety.restoreNote.value).toBe(OTHER_VERSION);
+        mocks.get.mockResolvedValue(ok(view({ name: "Cudze", version: 7 })));
+        expect(await form.safety.restore()).toBe(true);
+        expect(form.form.value.name).toBe("Cudze");
+        expect(form.safety.restoreOffered.value).toBe(false);
+      });
+
+      it("shows the note when the draft is discarded after that 422", async () => {
+        const { form } = await open();
+        form.form.value.name = "Moja";
+        mocks.put.mockResolvedValue(conflict("product-modified"));
+        await form.save();
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Podaj nazwę." }] }));
+        await form.save();
+
+        expect(form.discard()).toBe(true);
+
+        expect(form.safety.restoreNote.value).toBe(OTHER_VERSION);
       });
     });
 
