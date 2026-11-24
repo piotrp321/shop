@@ -31,7 +31,11 @@ serwera” i „Smoke test i check”).
   w compose, nie przechodzi `checks`, dopóki chart nie ma tego samego tagu i digestu: sesja uzupełnia `images.*`
   w `charts/shop/values.yaml` na polecenie użytkownika. Obraz Playwrighta (`e2e/Dockerfile`) nie jest aktualizowany
   przez Dependabota: jego wersja musi być równa `@playwright/test` z `e2e/package.json`, więc zmienia się je razem,
-  ręcznie. Treść takiego PR agent czyta przez bramkę `tools/agent-security/github_trust.py`.
+  ręcznie. Treść takiego PR agent czyta przez bramkę `tools/agent-security/github_trust.py`. Dwa wyjątki od
+  „tag i digest w `images.*`”: obraz compose bez odpowiednika w chartcie (dziś `curlimages/curl` w `rabbitmq-init`)
+  zmienia się razem z wyjątkiem w `tests/test_workloads.py` (`test_images_are_those_of_compose`), nie w `images.*`;
+  obraz powtórzony w `dockerfile_inline` (`garage-init`: `dxflrs/garage` i `alpine`) musi mieć ten sam tag co `image:`
+  tej usługi albo co `images.alpine`, więc w PR Dependabota sesja sprawdza oba miejsca w compose.
 - Nowy transport workera trafia do compose i chartu w tym samym PR (test
   `test_worker_consumes_the_transports_of_compose` w `tests/test_workloads.py`).
 - Nocne kopie zapasowe (CronJob `backup`: restic do Cloudflare R2) to funkcja tylko środowiska wdrożeniowego: compose się

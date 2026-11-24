@@ -149,8 +149,8 @@ jobs:
       # parts that use an app image.
       FULL_CI: ${{ needs.scope.outputs.scope == 'full' && matrix.apps != '' }}
       # Whether the part has work for the scope of the change: in the full CI all parts, the `k8s` part only when the
-      # change touches infra/k8s/**, .github/workflows/** or infra/docker-compose.yml (`k8s` is `yes`); in a tooling-only change the script tests (`apps`), in a
-      # Kubernetes-only one `make -C infra/k8s check` (`k8s`). The other parts only report success within seconds; a
+      # change touches infra/k8s/**, .github/workflows/** or infra/docker-compose.yml (`k8s` is `yes`); in a
+      # tooling-only change the script tests (`apps`), in a Kubernetes-only one `make -C infra/k8s check` (`k8s`). The other parts only report success within seconds; a
       # documentation-only change has no work for any part.
       PART_ACTIVE: ${{ (needs.scope.outputs.scope == 'full' && (matrix.name != 'k8s' || needs.scope.outputs.k8s == 'yes')) || needs.scope.outputs.scope == matrix.also }}
       K8S: ${{ needs.scope.outputs.k8s }}
