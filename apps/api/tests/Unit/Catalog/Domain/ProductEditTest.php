@@ -263,8 +263,8 @@ final class ProductEditTest extends TestCase
      */
     public static function changesOfAStoredIdentity(): iterable
     {
-        yield 'a value stored with U+200B changed' => [self::AXES, [['id' => self::BLACK_M, 'values' => ['białe', 'M']], self::VARIANTS[1]], "Wariant „czarne, M” nie może zmienić wartości po pierwszej publikacji. Zapisana wartość ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter, albo dodaj nowy wariant i usuń stary."];
-        yield 'an axis stored with U+2060 renamed' => [['Barwa', 'Rozmiar'], self::VARIANTS, "Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter."];
+        yield 'a value stored with U+200B changed' => [self::AXES, [['id' => self::BLACK_M, 'values' => ['białe', 'M']], self::VARIANTS[1]], 'Wariant „czarne, M” nie może zmienić wartości po pierwszej publikacji. Zapisana wartość ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter, albo dodaj nowy wariant i usuń stary.'];
+        yield 'an axis stored with U+2060 renamed' => [['Barwa', 'Rozmiar'], self::VARIANTS, 'Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter.'];
         yield 'a valid value changed while a refused one of another variant is corrected' => [self::AXES, [['id' => self::BLACK_M, 'values' => ['czarne', 'M']], ['id' => self::BLACK_XL, 'values' => ['czarne', 'L']]], 'Wariant „czarne, XL” nie może zmienić wartości po pierwszej publikacji. Popraw tylko wielkość liter albo dodaj nowy wariant i usuń stary.'];
     }
 
@@ -310,9 +310,9 @@ final class ProductEditTest extends TestCase
      */
     public static function changesOfAStoredTextTheRuleRefuses(): iterable
     {
-        yield 'an axis with a tab renamed' => [['Materiał', 'Rozmiar'], self::VARIANTS, "Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji. Zapisana nazwa ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter."];
+        yield 'an axis with a tab renamed' => [['Materiał', 'Rozmiar'], self::VARIANTS, 'Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji. Zapisana nazwa ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter.'];
         yield 'reordered axes, one with a tab' => [['Rozmiar', 'Kolor'], [['id' => self::BLACK_M, 'values' => ['M', 'czarne']], ['id' => self::BLACK_XL, 'values' => ['XL', 'czarne']]], 'Po pierwszej publikacji nie można dodać, usunąć ani przestawić osi wariantów.'];
-        yield 'a value with U+009F changed' => [self::AXES, [['id' => self::BLACK_M, 'values' => ['zielone', 'M']], self::VARIANTS[1]], "Wariant „czarne, M” nie może zmienić wartości po pierwszej publikacji. Zapisana wartość ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter, albo dodaj nowy wariant i usuń stary."];
+        yield 'a value with U+009F changed' => [self::AXES, [['id' => self::BLACK_M, 'values' => ['zielone', 'M']], self::VARIANTS[1]], 'Wariant „czarne, M” nie może zmienić wartości po pierwszej publikacji. Zapisana wartość ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter, albo dodaj nowy wariant i usuń stary.'];
     }
 
     /**
