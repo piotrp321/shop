@@ -106,9 +106,9 @@ produktu zachowuje go, wiersz bez identyfikatora dostaje nowy UUIDv7, identyfika
   dowolnie. Produkt bez osi, któremu dochodzą osie, zachowuje identyfikator wariantu domyślnego w wierszu, który go
   odeśle.
 - Od pierwszej publikacji (także po wycofaniu) wariant zachowuje tożsamość: osie mają tę samą liczbę i kolejność,
-  a każda nazwa ten sam klucz porównania (`mb_strtolower` po przycięciu); zachowany wariant ma ten sam
-  `VariantValues::comparisonKey()` (zmiana wielkości liter i spacji na brzegach jest dozwolona, np. „czarne” →
-  „Czarne”). Naruszenie to `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail`, który nazywa wariant albo oś
+  a każda nazwa i każda wartość zachowanego wariantu tę samą tożsamość tekstu (`IdentityText`:
+  `docs/features/catalog-admin/spec.md`, K5; zmiana wielkości liter i znaków przycinanych z brzegów jest dozwolona,
+  np. „czarne” → „Czarne”, a tekst zapisany ze znakiem niedozwolonym przyjmuje swoją poprawkę). Naruszenie to `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail`, który nazywa wariant albo oś
   zapisanym tekstem bez znaków niedozwolonych i przycinanych z brzegów, z wskazówką poprawki dla tekstu odrzucanego
   przez regułę (K5 w `docs/features/catalog-admin/spec.md`, „Tożsamość wariantu po publikacji”). Nowy wariant można dodać zawsze; inna zmiana znaczenia to dodanie nowego wariantu
   i usunięcie starego.
