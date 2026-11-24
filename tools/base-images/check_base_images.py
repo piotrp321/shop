@@ -8,7 +8,7 @@ in any directory. A new Dockerfile is therefore checked without a change of this
 Checked in each file: the image of every `FROM` (flags such as `--platform=` are skipped), the `--from=` of `COPY` and
 `ADD`, and the `from=` of a `RUN --mount`. A reference to an earlier stage (its `AS` name or its number) and `scratch`
 are allowed. Instruction names and `AS` are case-insensitive, like in Docker. The instruction after `ONBUILD` is checked like any
-other, a byte order mark is skipped and the `# escape=` directive sets the continuation character. The tag may not be `latest`, and no part of
+other, a byte order mark is skipped and the `# escape=` directive (among the directives at the top) sets the continuation character. The tag may not be `latest`, and no part of
 a reference may be a variable, because the value of a variable is not visible here. The text of a heredoc is not
 recognised as such: a line inside one that looks like an instruction is checked like any other.
 
@@ -52,18 +52,19 @@ def dockerfiles(root):
     return found
 
 
-ESCAPE_DIRECTIVE = re.compile(r"#\s*escape\s*=\s*(\\|`)\s*", re.IGNORECASE)
+DIRECTIVE = re.compile(r"#\s*([a-z]+)\s*=\s*(\S*)\s*", re.IGNORECASE)
 
 
 def escape_character(text):
-    """The continuation character: the parser directive `# escape=` in the leading comments, else a backslash."""
+    """The continuation character: the parser directive `# escape=` among the directives at the top of the file, else a
+    backslash. Like in Docker, the directives end at the first line that is not a `# name=value` comment (an ordinary
+    comment, an empty line or an instruction)."""
     for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("#"):
+        directive = DIRECTIVE.fullmatch(line.strip())
+        if not directive:
             break
-        directive = ESCAPE_DIRECTIVE.fullmatch(stripped)
-        if directive:
-            return directive.group(1)
+        if directive.group(1).lower() == "escape" and directive.group(2) in ("\\", "`"):
+            return directive.group(2)
     return "\\"
 
 
