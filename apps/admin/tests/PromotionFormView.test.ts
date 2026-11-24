@@ -748,6 +748,19 @@ describe("PromotionFormView", () => {
       expect(document.activeElement).toBe(save);
     });
 
+    it("keeps the scrolling regions of the chosen and the offered variants focusable while the form is locked: not inside the disabled fieldset", async () => {
+      const { wrapper } = await saveHeld();
+
+      // axe counts everything inside a disabled fieldset as not focusable, so a region there that scrolls fails
+      // `scrollable-region-focusable` at a width where the table is wider than the card.
+      for (const name of ["Wybrane warianty", "Warianty do wyboru"]) {
+        const region = wrapper.get<HTMLElement>(`[role=region][aria-label="${name}"]`).element;
+        expect(region.getAttribute("tabindex"), name).toBe("0");
+        expect(region.closest("fieldset:disabled"), name).toBeNull();
+      }
+      expect(wrapper.get<HTMLFieldSetElement>("[data-testid=promotion-fields]").element.disabled).toBe(true);
+    });
+
     it("disables the fields and the controls of the variants, keeps the open picker open, and a second „Zapisz” sends nothing", async () => {
       const { wrapper, release } = await saveHeld();
 
