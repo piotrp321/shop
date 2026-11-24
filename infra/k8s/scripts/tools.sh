@@ -38,8 +38,8 @@ ALLOY_IMAGE="${ALLOY_IMAGE:-grafana/alloy:v1.21.3@sha256:8ab871206bd2d8f89277f53
 # digest here (docker buildx imagetools inspect prom/prometheus:<tag>).
 PROMETHEUS_IMAGE="${PROMETHEUS_IMAGE:-prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06}"
 CURL_IMAGE="${CURL_IMAGE:-curlimages/curl:8.18.0}"
-# The browser of the smoke test: the Chromium of the image the E2E tests are built on (e2e/Dockerfile, the same tag).
-PLAYWRIGHT_IMAGE="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.64.1-noble}"
+# The browser of the smoke test: the Chromium of the image the E2E tests are built on (e2e/Dockerfile, the same tag and digest).
+PLAYWRIGHT_IMAGE="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.64.1-noble@sha256:2f05f8a734509a7b3f26a912639488ee08f58a7b292d14d62271bcff9038768f}"
 
 # The arguments of helm that make the profile ci pull the images of the registry named in an images values file (the
 # revision and the digests, scripts/images-values.sh) instead of the local ones: the profile ci names a local registry and
