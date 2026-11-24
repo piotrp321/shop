@@ -152,6 +152,21 @@ describe("useDeliveryMethodForm: the draft and the unknown result of a save (sta
       expect(form.errorsAt("priceGross")).toEqual(["Za wysoka cena."]);
       expect(form.safety.unknown.value).toBeNull();
     });
+
+    it("keeps saying that the earlier save may have been done when the next one gets a 422", async () => {
+      const { form } = await open();
+      form.form.value.price = "25,00";
+      mocks.put.mockResolvedValue(problem(502));
+      await form.save();
+      form.form.value.price = "99999,00";
+      mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "priceGross", title: "Za wysoka cena." }] }));
+
+      expect(await form.save()).toBe("failure");
+
+      expect(form.errorsAt("priceGross")).toEqual(["Za wysoka cena."]);
+      expect(form.safety.unknown.value).toMatchObject({ pending: false, kind: "unknown", text: "Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu." });
+      expect(form.form.value.price).toBe("99999,00");
+    });
   });
 
   describe("B3: a read that replaces the form", () => {

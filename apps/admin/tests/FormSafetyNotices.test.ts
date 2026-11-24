@@ -144,6 +144,36 @@ describe("FormSafetyNotices", () => {
     expect(read).not.toHaveBeenCalled();
   });
 
+  it("keeps the message about an earlier save while a newer one runs, with its buttons off, and shows it again after a refusal without taking the focus", async () => {
+    const safety = create();
+    const wrapper = await show(safety);
+    await safety.write(() => failing() as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+    await flushPromises();
+    expect(wrapper.get("[data-testid=unknown-result]").attributes("data-form-error")).toBeDefined();
+    const field = document.createElement("input");
+    document.body.append(field);
+    let answer!: (value: unknown) => void;
+
+    const newer = safety.write(() => new Promise((resolve) => (answer = resolve)) as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+    field.focus();
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid=unknown-result]").text()).toContain("Nie wiemy, czy wcześniejszy zapis się powiódł.");
+    expect(wrapper.get("[data-testid=check-state]").attributes("disabled")).toBeDefined();
+    await wrapper.get("[data-testid=check-state]").trigger("click");
+    expect(read).not.toHaveBeenCalled();
+    answer({ data: undefined, error: {}, response: { status: 422 } });
+    await newer;
+    await flushPromises();
+
+    const alert = wrapper.get("[data-testid=unknown-result]");
+    expect(alert.text()).toContain("Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu.");
+    expect(alert.get("[data-testid=check-state]").attributes("disabled")).toBeUndefined();
+    // The first error of the form is what takes the focus after a refusal: this message is not one (`data-form-error`).
+    expect(alert.attributes("data-form-error")).toBeUndefined();
+    expect(document.activeElement).toBe(field);
+  });
+
   it("shows „Odblokuj formularz” for a new object after the limit, and a link to the list in a new tab after the unlock", async () => {
     state.id = null;
     const safety = create();

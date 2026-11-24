@@ -1557,6 +1557,25 @@ describe("ProductFormView", () => {
         expect(barButton("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
       });
 
+      it("keeps the message about the earlier save when the next one gets a 422, with the focus on the first error of the fields and not on that message", async () => {
+        const wrapper = await open();
+        await wrapper.get("[data-testid=name]").setValue("Pierwsza");
+        mocks.put.mockResolvedValue(problem(502));
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+        expect(alertOf(wrapper).text()).toContain(UNKNOWN);
+        await wrapper.get("[data-testid=name]").setValue("");
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Podaj nazwę." }] }));
+
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+
+        expect(alertOf(wrapper).text()).toContain("Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu.");
+        expect(alertOf(wrapper).get("[data-testid=check-state]").attributes("disabled")).toBeUndefined();
+        expect(document.activeElement).toBe(wrapper.get("[data-testid=name]").element);
+        expect(wrapper.get("[data-testid=name]").attributes("aria-invalid")).toBe("true");
+      });
+
       it("„Sprawdź stan” stops saying that the server matches the form when the staff member changes a field afterwards", async () => {
         const { wrapper } = await saveHeld();
         await vi.advanceTimersByTimeAsync(10_000);

@@ -1541,6 +1541,21 @@ describe("useProductForm", () => {
         expect(form.errorsAt("name")).toEqual(["Podaj nazwę."]);
         expect(form.safety.unknown.value).toBeNull();
       });
+
+      it("keeps saying that the earlier save may have been done when the next one gets a 422", async () => {
+        const { form } = await open();
+        form.form.value.name = "Pierwsza";
+        mocks.put.mockResolvedValue(problem(502));
+        await form.save();
+        form.form.value.name = "";
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Podaj nazwę." }] }));
+
+        expect(await form.save()).toBe("failure");
+
+        expect(form.errorsAt("name")).toEqual(["Podaj nazwę."]);
+        expect(form.safety.unknown.value).toMatchObject({ pending: false, kind: "unknown", text: "Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu." });
+        expect(form.form.value.name).toBe("");
+      });
     });
 
     describe("B4 (c): „Sprawdź stan”", () => {

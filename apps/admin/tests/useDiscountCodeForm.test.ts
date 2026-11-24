@@ -999,6 +999,21 @@ describe("useDiscountCodeForm", () => {
         expect(form.errorsAt("usageLimit")).toEqual(["Za duży limit."]);
         expect(form.safety.unknown.value).toBeNull();
       });
+
+      it("keeps saying that the earlier save may have been done when the next one gets a 422", async () => {
+        const { form } = await open();
+        form.form.value.usageLimit = "5";
+        mocks.put.mockResolvedValue(problem(502));
+        await form.save();
+        form.form.value.usageLimit = "6";
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "usageLimit", title: "Za duży limit." }] }));
+
+        expect(await form.save()).toBe("failure");
+
+        expect(form.errorsAt("usageLimit")).toEqual(["Za duży limit."]);
+        expect(form.safety.unknown.value).toMatchObject({ pending: false, kind: "unknown", text: "Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu." });
+        expect(form.form.value.usageLimit).toBe("6");
+      });
     });
 
     describe("B4 (c): „Sprawdź stan”", () => {

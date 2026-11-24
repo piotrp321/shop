@@ -1790,6 +1790,21 @@ describe("usePromotionForm", () => {
         expect(form.errorsAt("name")).toEqual(["Za długa."]);
         expect(form.safety.unknown.value).toBeNull();
       });
+
+      it("keeps saying that the earlier save may have been done when the next one gets a 422", async () => {
+        const { form } = await open();
+        form.form.value.name = "Moja";
+        mocks.put.mockResolvedValue(problem(502));
+        await form.save();
+        form.form.value.name = "Za długa";
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Za długa." }] }));
+
+        expect(await form.save()).toBe("failure");
+
+        expect(form.errorsAt("name")).toEqual(["Za długa."]);
+        expect(form.safety.unknown.value).toMatchObject({ pending: false, kind: "unknown", text: "Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu." });
+        expect(form.form.value.name).toBe("Za długa");
+      });
     });
 
     describe("B4 (c): „Sprawdź stan”", () => {

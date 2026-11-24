@@ -1039,6 +1039,282 @@ describe("useFormSafety", () => {
     });
   });
 
+  describe("a save whose result is unknown, and a newer save that is refused", () => {
+    // The refusal says the newer save was not done; it says nothing of the earlier one, whose answer will not come.
+    const EARLIER = "Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu.";
+    const EARLIER_MISSING = "Wcześniejszego zapisu nie widać na serwerze. Może jeszcze dotrzeć.";
+    const unknownSave = (safety: ReturnType<typeof create>) =>
+      safety.write(() => Promise.resolve(refused(502)) as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+    const refusedSave = (safety: ReturnType<typeof create>, status = 422) => {
+      const onRefused = vi.fn();
+      return safety.write(() => Promise.resolve(refused(status)) as never, { onSuccess: vi.fn(), onRefused }).then((result) => ({ result, onRefused }));
+    };
+
+    it.each([422, 409, 403, 404])("shows the message about the earlier save again after a %s of the newer one, and the newer one keeps its own handler", async (status) => {
+      const safety = create();
+      await unknownSave(safety);
+
+      const { result, onRefused } = await refusedSave(safety, status);
+
+      expect(result).toBe("refused");
+      expect(onRefused).toHaveBeenCalledWith(status, {});
+      expect(safety.unknown.value).toMatchObject({ pending: false, kind: "unknown", created: false, discarded: false, text: EARLIER });
+      expect(safety.locked.value).toBe(false);
+    });
+
+    it("does it after an error before the answer of the earlier save too, and „Sprawdź stan” compares the draft of that moment", async () => {
+      const safety = create();
+      await safety.write(() => Promise.reject(new TypeError("network down")), { onSuccess: vi.fn(), onRefused: vi.fn() });
+      await refusedSave(safety, 409);
+      state.draft = { name: "Druga" };
+      read.mockResolvedValue({ data: doc("Pierwsza", 4) });
+
+      await safety.check();
+
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(adopted).toEqual([]);
+      expect(state.draft).toEqual({ name: "Druga" });
+      expect(safety.unknown.value).toMatchObject({ kind: "missing", text: EARLIER_MISSING });
+    });
+
+    it("lets „Sprawdź stan” take the object from the server when the draft equals it", async () => {
+      const safety = create();
+      await unknownSave(safety);
+      await refusedSave(safety);
+      read.mockResolvedValue({ data: doc("Pierwsza", 5) });
+
+      await safety.check();
+
+      expect(adopted).toEqual([doc("Pierwsza", 5)]);
+      expect(safety.unknown.value).toBeNull();
+      expect(safety.status.value).toBe(MATCHES_MESSAGE);
+    });
+
+    it("keeps what „Sprawdź stan” found (the save is not on the server) after the newer save is refused, in words about the earlier save", async () => {
+      const safety = create();
+      await unknownSave(safety);
+      read.mockResolvedValue({ data: doc("Cudza", 4) });
+      await safety.check();
+      expect(safety.unknown.value?.kind).toBe("missing");
+
+      await refusedSave(safety);
+
+      expect(safety.unknown.value).toMatchObject({ kind: "missing", pending: false, text: EARLIER_MISSING });
+    });
+
+    it("keeps what „Sprawdź stan” found (another version) after the newer save is refused, with the way to the server state", async () => {
+      const safety = create();
+      await unknownSave(safety);
+      read.mockResolvedValue({ data: doc("Cudza", 6) });
+      await safety.check();
+      expect(safety.restoreOffered.value).toBe(true);
+
+      await refusedSave(safety);
+
+      expect(safety.unknown.value).toMatchObject({ kind: "otherVersion", text: OTHER_VERSION_MESSAGE });
+      expect(safety.restoreOffered.value).toBe(true);
+    });
+
+    it("keeps the message about the creation after the newer creation is refused, with its note for a duplicate", async () => {
+      state.id = null;
+      const safety = create();
+      await unknownSave(safety);
+      expect(safety.unknown.value).toMatchObject({ created: true });
+
+      await refusedSave(safety, 409);
+
+      expect(safety.unknown.value).toMatchObject({
+        pending: false,
+        created: true,
+        text: "Nie wiemy, czy obiekt został utworzony. Wcześniejszy zapis może się jeszcze wykonać. Sprawdź listę przed ponownym zapisem.",
+      });
+      expect(safety.withDuplicateNote("Nazwa zajęta.")).toBe("Nazwa zajęta. Możliwe, że utworzył go Twój wcześniejszy zapis.");
+    });
+
+    it("keeps it for more than one refusal in a row", async () => {
+      const safety = create();
+      await unknownSave(safety);
+
+      await refusedSave(safety);
+      await refusedSave(safety, 409);
+
+      expect(safety.unknown.value).toMatchObject({ text: EARLIER });
+    });
+
+    it("ends it with the confirmed success of the newer save", async () => {
+      const safety = create();
+      await unknownSave(safety);
+
+      const result = await safety.write(() => Promise.resolve(ok(doc("Pierwsza", 5))) as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+
+      expect(result).toBe("success");
+      expect(safety.unknown.value).toBeNull();
+    });
+
+    it("lets the unknown result of the newer save replace it, as one message, and that one is then the earlier one for the next refusal", async () => {
+      const safety = create();
+      await unknownSave(safety);
+
+      await unknownSave(safety);
+      expect(safety.unknown.value).toMatchObject({ kind: "unknown", text: UNKNOWN_RESULT_MESSAGE });
+      await refusedSave(safety);
+
+      expect(safety.unknown.value).toMatchObject({ kind: "unknown", text: EARLIER });
+    });
+
+    it("ends it when the staff member moves to another object", async () => {
+      const safety = create();
+      await unknownSave(safety);
+      await refusedSave(safety);
+
+      safety.reset();
+
+      expect(safety.unknown.value).toBeNull();
+      expect(safety.restoreOffered.value).toBe(false);
+    });
+
+    it("ends it with the object „Odrzuć moje zmiany i pokaż stan z serwera” brings", async () => {
+      const safety = create();
+      await unknownSave(safety);
+      read.mockResolvedValue({ data: doc("Cudza", 6) });
+      await safety.check();
+      await refusedSave(safety);
+
+      await safety.restore();
+
+      expect(adopted).toEqual([doc("Cudza", 6)]);
+      expect(safety.unknown.value).toBeNull();
+      expect(safety.restoreOffered.value).toBe(false);
+    });
+
+    it("loses the sentence about the earlier save only with the discarding of the draft, which says the changes do not stay", async () => {
+      const safety = create();
+      await unknownSave(safety);
+      await refusedSave(safety);
+
+      safety.draftDiscarded();
+
+      expect(safety.unknown.value).toMatchObject({ kind: "unknown", discarded: true, text: "Nie wiemy, czy zapis się powiódł." });
+    });
+
+    describe("while the newer save runs", () => {
+      it("shows the message about the earlier save, and „Sprawdź stan” does nothing: the newer save is not given up", async () => {
+        const safety = create();
+        await unknownSave(safety);
+        const newer = startWrite(safety);
+
+        expect(safety.unknown.value).toMatchObject({ kind: "unknown", text: EARLIER });
+        read.mockResolvedValue({ data: doc("Pierwsza", 5) });
+        await safety.check();
+
+        expect(read).not.toHaveBeenCalled();
+        expect(safety.writing.value).toBe(true);
+        expect(safety.locked.value).toBe(true);
+        newer.request.resolve(refused(422));
+        expect(await newer.result).toBe("refused");
+        expect(safety.unknown.value).toMatchObject({ text: EARLIER });
+      });
+
+      it("does not offer the way to the server state either, and shows it again after the refusal", async () => {
+        const safety = create();
+        await unknownSave(safety);
+        read.mockResolvedValue({ data: doc("Cudza", 6) });
+        await safety.check();
+        const newer = startWrite(safety);
+
+        read.mockClear();
+        expect(await safety.restore()).toBe(false);
+
+        expect(read).not.toHaveBeenCalled();
+        newer.request.resolve(refused(422));
+        await newer.result;
+        expect(safety.restoreOffered.value).toBe(true);
+      });
+
+      it("is replaced by the message of the newer save when it has no answer in 10 s, and comes back when that answer is a refusal", async () => {
+        const safety = create();
+        await unknownSave(safety);
+        const newer = startWrite(safety);
+
+        await vi.advanceTimersByTimeAsync(REQUEST_LIMIT_MS);
+        expect(safety.unknown.value).toMatchObject({ pending: true, text: UNKNOWN_RESULT_MESSAGE });
+        newer.request.resolve(refused(422));
+        await newer.result;
+
+        expect(safety.unknown.value).toMatchObject({ pending: false, text: EARLIER });
+      });
+
+      it("is gone when the newer save is given up with „Sprawdź stan” after its limit: the message is then about the newer one", async () => {
+        const safety = create();
+        await unknownSave(safety);
+        const newer = startWrite(safety);
+        await vi.advanceTimersByTimeAsync(REQUEST_LIMIT_MS);
+        read.mockResolvedValue({ data: doc("Cudza", 4) });
+
+        await safety.check();
+        newer.request.resolve(refused(422));
+        await newer.result;
+
+        expect(safety.unknown.value).toMatchObject({ kind: "missing", text: "Zapisu nie widać na serwerze. Może jeszcze dotrzeć." });
+      });
+
+      it("is gone with the object when the staff member moves to another one", async () => {
+        const safety = create();
+        await unknownSave(safety);
+        const newer = startWrite(safety);
+
+        safety.reset();
+        newer.request.resolve(refused(422));
+        await newer.result;
+
+        expect(safety.unknown.value).toBeNull();
+      });
+    });
+
+    describe("a late success of the earliest save", () => {
+      /** The earliest save has no answer in 10 s and is given up with „Sprawdź stan”, which does not find it. */
+      async function givenUp() {
+        const safety = create();
+        const first = startWrite(safety);
+        await vi.advanceTimersByTimeAsync(REQUEST_LIMIT_MS);
+        read.mockResolvedValue({ data: doc("Cudza", 4) });
+        await safety.check();
+        expect(safety.unknown.value?.kind).toBe("missing");
+        return { safety, first };
+      }
+
+      it("is only a toast when it comes while the newer save runs, and changes neither the message nor the lock of the newer one", async () => {
+        const { safety, first } = await givenUp();
+        const newer = startWrite(safety);
+
+        first.request.resolve(ok(doc("Pierwsza", 5)));
+        await first.result;
+
+        expect(late).toEqual([LATE_SAVE_MESSAGE]);
+        expect(safety.locked.value).toBe(true);
+        expect(safety.unknown.value).toMatchObject({ kind: "missing", text: EARLIER_MISSING });
+        expect(adopted).toEqual([]);
+        newer.request.resolve(refused(422));
+        await newer.result;
+        expect(safety.unknown.value).toMatchObject({ kind: "missing", text: EARLIER_MISSING });
+        expect(first.onSuccess).not.toHaveBeenCalled();
+      });
+
+      it("is only a toast when it comes after the newer save was refused, and changes nothing else", async () => {
+        const { safety, first } = await givenUp();
+        await refusedSave(safety);
+
+        first.request.resolve(ok(doc("Pierwsza", 5)));
+        await first.result;
+
+        expect(late).toEqual([LATE_SAVE_MESSAGE]);
+        expect(safety.unknown.value).toMatchObject({ kind: "missing", text: EARLIER_MISSING });
+        expect(safety.locked.value).toBe(false);
+        expect(adopted).toEqual([]);
+      });
+    });
+  });
+
   describe("a write while a read locks the form", () => {
     it("is not started: the request is not made", async () => {
       const safety = create();
