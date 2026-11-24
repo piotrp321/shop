@@ -127,6 +127,18 @@ Komunikat:
 
 - Pierwszy akapit: „Zawartość koszyka zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.” (`cart-changed`)
   albo „Kwota zamówienia zmieniła się od wczytania kasy. Nie złożyliśmy zamówienia.” (`order-total-changed`).
+- **Niepewna próba.** Próba, której wynik nie dotarł do kasy (błąd sieci, 403, 5xx, odpowiedź bez numeru) albo której
+  klucz API uznało za użyty (`idempotency-key-reused`), mogła złożyć zamówienie. Kasa mówi wtedy „Nie wiemy, czy
+  zamówienie zostało złożone. Spróbuj ponownie: tego samego zamówienia nie złożymy drugi raz.” (ponowienie bez zmiany
+  formularza idzie tym samym kluczem). Od takiej próby do końca życia strony ekran kasy w każdym stanie pokazuje
+  dokładnie jedno: ten tekst (dopóki bieżący klucz jest kluczem tej próby) albo ostrzeżenie „Wcześniejsza próba mogła
+  złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.”. Ostrzeżenie zastępuje zdanie „Nie złożyliśmy
+  zamówienia.” w komunikatach rozbieżności i zmiany kupującego, jest akapitem pozostałych komunikatów odrzucenia
+  i błędu (także nad widokiem pustego koszyka), a gdy żadnego komunikatu nie ma (zdjęty przez klienta, żądanie
+  w drodze), zostaje samo nad formularzem, także gdy bieżąca próba ma inny klucz. Odrzucenie ponowienia niczego nie
+  rozstrzyga: dowodzi tylko, że zamówienia nie było w chwili sprawdzenia, a wcześniejsze żądanie w drodze nadal może
+  je złożyć. O tym, co jest na ekranie, decyduje render, nie miejsce, które ustawia albo zdejmuje komunikat. Lista
+  zmian, podsumowanie i świadome ponowne kliknięcie działają bez zmian.
 - Lista zmian, po jednej pozycji na zmianę, w kolejności podsumowania; `<nazwa>` to nazwa produktu z wariantem:
 
   | Zmiana między podsumowaniem pokazanym a nowym | Tekst |
@@ -188,7 +200,7 @@ zostaje bez zmian i może czytać Redis ponownie; gdy po odświeżeniu `sub` ses
 | konto A | sesja konta A (także po odświeżeniu tokenu albo ponownym logowaniu na A) | zamówienie konta A jak dziś | bez zmian |
 | konto A | sesja konta B | 409 `checkout-buyer-changed`, bez scalania i bez API | ponowny odczyt i komunikat (niżej) |
 | konto A | brak ciasteczka sesji, zły podpis, sesji nie ma w Redisie albo tokenu nie da się odświeżyć | 401 (sesja usunięta jak dziś), bez API; nigdy zamówienie gościa, także gdy przeglądarka ma ciasteczko koszyka gościa i żądanie niesie pole `email` | dzisiejszy widok wygasłej sesji z linkiem logowania |
-| dowolne | sesji nie da się odczytać (Redis albo Keycloak niedostępny) | 503, sesja zostaje, bez API i bez przejścia do zamówienia gościa | „Nie udało się złożyć zamówienia. Spróbuj ponownie.”; formularz i klucz zostają |
+| dowolne | sesji nie da się odczytać (Redis albo Keycloak niedostępny) | 503, sesja zostaje, bez API i bez przejścia do zamówienia gościa | tekst wyniku niepewnego („Nie wiemy, czy zamówienie zostało złożone…”); formularz i klucz zostają |
 | brak pola `buyer` (karta kasy sprzed wdrożenia) | dowolna | 422 „Kasa została zaktualizowana. Odśwież stronę.” bez API | komunikat zbiorczy |
 | `buyer` nie jest tekstem albo jest pusty | dowolna | 422 „Nieprawidłowe dane.” bez API | komunikat zbiorczy |
 
@@ -206,8 +218,8 @@ adresu i znacznika drugiego konta.
    (wylogowanie po odrzuceniu): „Od wczytania kasy nastąpiło wylogowanie. Nie złożyliśmy zamówienia. Podaj adres
    e-mail, sprawdź dane i podsumowanie, potem zamów ponownie.” Gdy wcześniejsza próba miała niepewny wynik (błąd
    sieci, 5xx: zamówienie mogło powstać) i API jej nie rozstrzygnęło, zamiast „Nie złożyliśmy zamówienia.” jest
-   „Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.” Niepewność klucza kończy
-   tylko odpowiedź API na ten sam klucz; odrzucenia BFF przed API i odpowiedzi na inny klucz jej nie kończą.
+   „Wcześniejsza próba mogła złożyć zamówienie. Sprawdź pocztę, zanim zamówisz ponownie.” (reguła niepewnej próby
+   w Z3).
 4. Koszyk może być inny (inny klient, scalenie przy logowaniu): kasa pokazuje go bez listy zmian, bo komunikat prosi
    o sprawdzenie podsumowania.
 5. Następne kliknięcie to świadome potwierdzenie: nowy `Idempotency-Key`, `buyer` i `expectedLines` z ostatniego
@@ -332,6 +344,9 @@ Poza gwarancją:
 13. Istniejące przepływy zamówień E2E przechodzą bez zmiany asercji i helperów `e2e/support`.
 14. Zamówienie zgodne z kasą z innej karty przy zapisie koszyka w drodze (R3) powstaje jak dotąd, a spóźniony zapis
     go nie zmienia (granica ochrony).
+15. Po próbie o niepewnym wyniku kasa w żadnym stanie nie stwierdza, że zamówienia nie złożono: pokazuje tekst
+    niepewnego wyniku albo ostrzeżenie o wcześniejszej próbie dokładnie raz, także po odrzuceniu ponowienia, po
+    odrzuceniu kolejnej próby z innym kluczem, po zmianie kupującego i po zdjęciu komunikatu.
 
 ## Ryzyka i ograniczenia
 
