@@ -109,8 +109,19 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   - osie: ta sama liczba i kolejność, każda nazwa z tą samą tożsamością tekstu;
   - wariant zachowany (ten sam `variantId`): każda wartość z tą samą tożsamością tekstu co wartość zapisana na tej
     pozycji;
-  - naruszenie → `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail` wskazującym etykietę
-    wariantu albo nazwę osi; nowe warianty bez ograniczeń.
+  - naruszenie → `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail` wskazującym wariant albo
+    oś; nowe warianty bez ograniczeń. `detail` nazywa zapisany tekst tak, jak czyta go człowiek (`IdentityText::shown`):
+    bez znaków niedozwolonych (T1) i bez znaków przycinanych z brzegów, więc nie niesie znaków, których panel nie
+    pokazuje; ten sam zapis nazywa wariant w `VariantInUse` (wariant bez żadnej widocznej wartości: „Wariant bez
+    widocznej wartości”). Dla tekstu bez znaków niedozwolonych komunikat to:
+    „Wariant „czarne, M” nie może zmienić wartości po pierwszej publikacji. Popraw tylko wielkość liter albo dodaj nowy
+    wariant i usuń stary.” i „Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter.”
+    Gdy zapisany tekst ma znak niedozwolony (zapis sprzed etapu reguły tekstu; dla wariantu: którakolwiek z jego
+    wartości), wskazówka mówi, jaka poprawka jest dozwolona: „Wariant „czarne, M” nie może zmienić wartości po
+    pierwszej publikacji. Zapisana wartość ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość
+    liter, albo dodaj nowy wariant i usuń stary.” i „Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji.
+    Zapisana nazwa ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter.” (etykieta
+    to tekst po usunięciu znaków niedozwolonych);
 - Usunięcie wariantu (każdy wariant produktu, którego nie ma w nowej liście; także przed publikacją): handler
   pobiera z portu `VariantStockFacts::inUse(variantIds)` identyfikatory wariantów ze stanem fizycznym > 0 albo
   zarezerwowanym > 0 i przekazuje je do `edit`; usunięcie któregoś z nich → `VariantInUse` (`Conflict`, typ

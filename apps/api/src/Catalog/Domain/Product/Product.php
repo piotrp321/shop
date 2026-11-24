@@ -255,7 +255,7 @@ final class Product
         foreach ($variants->toList() as $variant) {
             $kept = $storedVariants[$variant->id()->toString()] ?? null;
             if (null !== $kept && !IdentityText::kept($kept->values()->toList(), $variant->values()->toList())) {
-                throw VariantIdentityLocked::variant($kept->label());
+                throw VariantIdentityLocked::variant($kept->values()->toList());
             }
         }
     }
@@ -278,7 +278,7 @@ final class Product
         foreach ($this->variants->toList() as $variant) {
             $id = $variant->id()->toString();
             if (!isset($kept[$id]) && isset($inUse[$id])) {
-                throw new VariantInUse($variant->label());
+                throw new VariantInUse($variant->values()->toList());
             }
         }
     }

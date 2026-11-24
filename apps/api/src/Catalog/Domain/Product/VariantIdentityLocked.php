@@ -10,18 +10,24 @@ use App\Shared\Domain\Exception\TypedProblem;
 /**
  * After the first publication a variant keeps its meaning (decision K5): the values of a kept variant and the names
  * of the axes change only without a change of their comparison key, and axes cannot be added, removed or reordered.
- * The detail names the stored label of the variant or the stored name of the axis.
+ * The detail names the stored values of the variant or the stored name of the axis as a person reads them, without
+ * forbidden or trimmed characters (IdentityText), and says what the correction of a stored text with forbidden
+ * characters may be.
  */
 final class VariantIdentityLocked extends \DomainException implements Conflict, TypedProblem
 {
     public const string TYPE = 'tag:piotrp321.github.io,2026:shop/problems/variant-locked';
 
-    public static function variant(string $label): self
+    /**
+     * @param list<string> $storedValues the stored values of the variant
+     */
+    public static function variant(array $storedValues): self
     {
-        return new self(\sprintf(
-            '%s nie może zmienić wartości po pierwszej publikacji. Popraw tylko wielkość liter albo dodaj nowy wariant i usuń stary.',
-            '' === $label ? 'Wariant domyślny' : \sprintf('Wariant „%s”', $label),
-        ));
+        $correction = array_any($storedValues, IdentityText::isRefused(...))
+            ? 'Zapisana wartość ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter, albo dodaj nowy wariant i usuń stary.'
+            : 'Popraw tylko wielkość liter albo dodaj nowy wariant i usuń stary.';
+
+        return new self(\sprintf('%s nie może zmienić wartości po pierwszej publikacji. %s', IdentityText::variant($storedValues), $correction));
     }
 
     public static function axes(): self
@@ -29,9 +35,13 @@ final class VariantIdentityLocked extends \DomainException implements Conflict, 
         return new self('Po pierwszej publikacji nie można dodać, usunąć ani przestawić osi wariantów.');
     }
 
-    public static function axisName(string $name): self
+    public static function axisName(string $storedName): self
     {
-        return new self(\sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter.', $name));
+        $correction = IdentityText::isRefused($storedName)
+            ? 'Zapisana nazwa ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter.'
+            : 'Popraw tylko wielkość liter.';
+
+        return new self(\sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. %s', IdentityText::shown($storedName), $correction));
     }
 
     public function problemType(): string
