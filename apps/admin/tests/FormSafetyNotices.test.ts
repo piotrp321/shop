@@ -1,4 +1,5 @@
 import { flushPromises, mount } from "@vue/test-utils";
+import { ref } from "vue";
 import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import FormSafetyNotices from "@/components/FormSafetyNotices.vue";
@@ -16,7 +17,8 @@ describe("FormSafetyNotices", () => {
   let read: Mock<(id: string) => Promise<ReadResult<Doc>>>;
   let mounted: ReturnType<typeof mount> | undefined;
 
-  function create() {
+  // `extra` is what a form adds to the options (a request of its own that its reads must wait for).
+  function create(extra: object = {}) {
     return useFormSafety<Doc, { name: string }>({
       id: () => state.id,
       read,
@@ -28,6 +30,7 @@ describe("FormSafetyNotices", () => {
       },
       onLateSuccess: () => {},
       newObject: { unknownMessage: "Nie wiemy, czy obiekt został utworzony.", ownNote: "Możliwe, że utworzył go Twój wcześniejszy zapis." },
+      ...extra,
     });
   }
 
@@ -99,6 +102,76 @@ describe("FormSafetyNotices", () => {
     expect(wrapper.find("[data-testid=unknown-result]").exists()).toBe(false);
     expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
     expect(document.activeElement).toBe(wrapper.get("[data-testid=safety-status]").element);
+  });
+
+  it("turns off the buttons that start a read while the form has a request of its own, and on again when it ends", async () => {
+    const own = ref(false);
+    const safety = create({ hasOwnRequest: () => own.value });
+    const wrapper = await show(safety);
+    await safety.write(() => failing() as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+    safety.offerRestore("Na serwerze jest inna wersja niż ta, którą edytujesz.");
+    await flushPromises();
+    const off = (testid: string) => wrapper.get(`[data-testid=${testid}]`).attributes("disabled") !== undefined;
+    expect([off("check-state"), off("restore-state")]).toEqual([false, false]);
+
+    own.value = true;
+    await flushPromises();
+
+    expect([off("check-state"), off("restore-state")]).toEqual([true, true]);
+    await wrapper.get("[data-testid=check-state]").trigger("click");
+    await wrapper.get("[data-testid=restore-state]").trigger("click");
+    expect(read).not.toHaveBeenCalled();
+
+    own.value = false;
+    await flushPromises();
+    expect([off("check-state"), off("restore-state")]).toEqual([false, false]);
+  });
+
+  it("turns off „Spróbuj ponownie” too while the form has a request of its own", async () => {
+    const own = ref(false);
+    const safety = create({ hasOwnRequest: () => own.value });
+    const wrapper = await show(safety);
+    read.mockRejectedValue(new TypeError("network down"));
+    await safety.restore();
+    await flushPromises();
+    read.mockClear();
+
+    own.value = true;
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid=retry-read]").attributes("disabled")).toBeDefined();
+    await wrapper.get("[data-testid=retry-read]").trigger("click");
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("keeps the message about an earlier save while a newer one runs, with its buttons off, and shows it again after a refusal without taking the focus", async () => {
+    const safety = create();
+    const wrapper = await show(safety);
+    await safety.write(() => failing() as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+    await flushPromises();
+    expect(wrapper.get("[data-testid=unknown-result]").attributes("data-form-error")).toBeDefined();
+    const field = document.createElement("input");
+    document.body.append(field);
+    let answer!: (value: unknown) => void;
+
+    const newer = safety.write(() => new Promise((resolve) => (answer = resolve)) as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+    field.focus();
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid=unknown-result]").text()).toContain("Nie wiemy, czy wcześniejszy zapis się powiódł.");
+    expect(wrapper.get("[data-testid=check-state]").attributes("disabled")).toBeDefined();
+    await wrapper.get("[data-testid=check-state]").trigger("click");
+    expect(read).not.toHaveBeenCalled();
+    answer({ data: undefined, error: {}, response: { status: 422 } });
+    await newer;
+    await flushPromises();
+
+    const alert = wrapper.get("[data-testid=unknown-result]");
+    expect(alert.text()).toContain("Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu.");
+    expect(alert.get("[data-testid=check-state]").attributes("disabled")).toBeUndefined();
+    // The first error of the form is what takes the focus after a refusal: this message is not one (`data-form-error`).
+    expect(alert.attributes("data-form-error")).toBeUndefined();
+    expect(document.activeElement).toBe(field);
   });
 
   it("shows „Odblokuj formularz” for a new object after the limit, and a link to the list in a new tab after the unlock", async () => {

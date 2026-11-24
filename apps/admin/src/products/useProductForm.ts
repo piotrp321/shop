@@ -212,6 +212,8 @@ export function useProductForm(options: ProductFormOptions) {
       clearFeedback();
     },
     onLateSuccess: (text) => options.onLateSaved?.(text),
+    // The answer of a file being sent adds an image to the draft: a read that replaces the draft waits for it.
+    hasOwnRequest: () => upload.uploading.value,
     // A row of a variant that is new in the draft has no id; the server gives it one, never one of the rows the draft started from.
     compare: () => ({ serverAssigned: ["variantId"], knownServerValues: source?.variants.map((variant) => variant.variantId) ?? [] }),
     newObject: { unknownMessage: "Nie wiemy, czy produkt został utworzony.", ownNote: "Możliwe, że utworzył go Twój wcześniejszy zapis." },
@@ -351,7 +353,8 @@ export function useProductForm(options: ProductFormOptions) {
 
   /** Throws away the unsaved changes (true when a message about the server took the focus): the form goes back to the product as the API last sent it, without a request. */
   function discard(): boolean {
-    if (source === null || busy.value || locked.value) {
+    // A file that is being sent would add its image to the form that was restored.
+    if (source === null || busy.value || locked.value || upload.uploading.value) {
       return false;
     }
     form.value = fromView(source);

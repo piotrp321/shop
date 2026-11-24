@@ -6,8 +6,11 @@ import {
   OTHER_VERSION_MESSAGE,
   READING_MESSAGE,
   MATCHES_MESSAGE,
+  NOT_ON_SERVER_EARLIER_MESSAGE,
   REQUEST_LIMIT_MS,
   UNKNOWN_DISCARDED_MESSAGE,
+  UNKNOWN_EARLIER_DISCARDED_MESSAGE,
+  UNKNOWN_EARLIER_MESSAGE,
   UNKNOWN_RESULT_MESSAGE,
   type ReadResult,
   type RequestComparison,
@@ -39,6 +42,13 @@ export interface FormSafetyOptions<TView extends { version: number }, TBody> {
    * function when it depends on the base of the draft, read when the comparison is made.
    */
   compare?: RequestComparison | (() => RequestComparison);
+  /**
+   * Whether the form has a request of its own that adds to the draft when it ends (the upload of a file). A read that may
+   * replace the draft does not start meanwhile (`check`, `restore`, `retryRead`; `readBlocked` is true for the buttons): the
+   * answer of the request would otherwise be dropped with the draft or added to the object the read brought. Read when a read
+   * starts and reactively for `readBlocked`.
+   */
+  hasOwnRequest?: () => boolean;
   /** The texts for a new object: „Nie wiemy, czy <obiekt> został utworzony.” and „Możliwe, że utworzył go Twój wcześniejszy zapis.”. */
   newObject: { unknownMessage: string; ownNote: string };
 }
@@ -53,6 +63,8 @@ export interface UnknownResult {
   created: boolean;
   /** The draft was discarded after this was said: the message no longer promises that the changes stay. */
   discarded: boolean;
+  /** The message is about a save before the newest one, which was refused: it speaks of „wcześniejszy zapis” and is not the first error of the form. */
+  earlier: boolean;
   text: string;
 }
 
@@ -68,6 +80,16 @@ interface WriteHandlers<TView> {
   confirmedBy?: (served: TView) => boolean;
 }
 
+/**
+ * What the form knows about the server when a newer save starts and that a refusal of that save does not end: the unknown
+ * result of an earlier save and the way to the server state after a 409 (with what that 409 said).
+ */
+interface Kept<TView> {
+  unknown: UnknownState<TView> | null;
+  offered: boolean;
+  context: string | null;
+}
+
 interface Run {
   context: number;
   /** `confirmedCreations` when it started: a creation confirmed since then makes its answer silent. */
@@ -81,6 +103,8 @@ interface UnknownState<TView> {
   kind: UnknownResult["kind"];
   created: boolean;
   discarded?: boolean;
+  /** Kept from an earlier save over a newer one that was refused (`write`). */
+  earlier?: boolean;
   confirmedBy?: (served: TView) => boolean;
 }
 
@@ -98,9 +122,16 @@ interface UnknownState<TView> {
  *   equals the one built from the object (`sameRequest`); otherwise the draft, its base and the version stay.
  * - `restore` is „Odrzuć moje zmiany i pokaż stan z serwera” (and „Odśwież”): the draft is replaced after the answer 200.
  * - Every read that locks the form gives up after `REQUEST_LIMIT_MS` (`readFailed`, `retryRead`); its late answer is ignored.
- * - `write` starts nothing while a read locks the form (`reading`); a creation confirmed after an earlier one that was given up
+ * - A read starts nothing while the form has a request of its own (`hasOwnRequest`); `write` starts nothing while a read locks the form (`reading`); a creation confirmed after an earlier one that was given up
  *   makes the answer of the earlier one silent (the form shows the new object). `draftDiscarded` is for „Odrzuć” of the
  *   draft: what the form knows about the server stays, only the promise that the changes stay goes; a late answer is still only a toast.
+ * - What the form knows about the server (an earlier save whose result is unknown, with what „Sprawdź stan” found, and the way
+ *   to the server state after a 409 with its context) is true until a confirmed success, a match, the object „Odrzuć moje
+ *   zmiany…” brings or another object ends it, so a newer save does not end it: it shows meanwhile with its buttons off
+ *   (`readBlocked`), a refusal of the newer save (any 4xx) shows it again (an unknown result in words about the earlier save,
+ *   `earlier`; the 409 as `restoreNote`), a 409 of the newer save with an offer of its own replaces the offer, and an unknown
+ *   result of the newer save replaces the unknown one (one message). The sentence that the changes stay is said only while
+ *   „Odrzuć” has not taken them away (`discarded`).
  * - `reset` is called when the form moves to another object (or to the form of a new one), `dispose` when it is left: the
  *   answers still on their way are ignored then, without a message, and nothing stays locked.
  *
@@ -116,14 +147,16 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   const matched = ref(false);
   // The draft „Sprawdź stan” found equal to the server: the message is true only for it.
   let matchedDraft: string | null = null;
-  const restoreOffered = ref(false);
+  const offered = ref(false);
   // What the 409 that offered the server state says about it; shown once the draft is discarded and the 409's own message goes.
   let restoreContext: string | null = null;
-  const restoreNote = ref<string | null>(null);
+  const note = ref<string | null>(null);
   // A message appeared or was said again: the one who shows it moves the focus to it. A new object each time, so the focus
   // does not depend on the text or the state changing (the same text twice is still a message the staff member must find).
   const focusRequest = shallowRef<{ kind: "unknown" | "restoreNote" | "readFailed" | "matched" | "reading" } | null>(null);
   const unknownState = shallowRef<UnknownState<TView> | null>(null);
+  // What the form knew about the server before the save that runs now, kept for the time that one runs: its refusal gives it back.
+  const kept = shallowRef<Kept<TView> | null>(null);
   // An earlier creation ended without a trusted answer: the next conflict may be the object that creation made.
   const earlierCreationUnknown = ref(false);
   // Creations confirmed so far: after one, the form shows that object, so an earlier creation that answers late says nothing.
@@ -144,24 +177,35 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   );
 
   const writing = computed(() => active.value !== null);
+  // What is shown is the kept knowledge, while the newer save runs and has no message of its own: nothing it offers may start a
+  // read that gives the newer one up.
+  const keptShown = computed(() => kept.value !== null && unknownState.value === null);
+  const restoreOffered = computed(() => offered.value || (keptShown.value && kept.value?.offered === true));
+  // The context of a 409 stands where the message of the 409 stood, which the form cleared when the save started.
+  const restoreNote = computed(() => note.value ?? (keptShown.value && kept.value?.unknown === null ? (kept.value?.context ?? null) : null));
   const locked = computed(() => writing.value || reading.value);
+  /** The buttons that start a read are off: a read runs, or the form has a request of its own. */
+  const readBlocked = computed(() => reading.value || keptShown.value || (options.hasOwnRequest?.() ?? false));
   const status = computed(() => (reading.value ? READING_MESSAGE : matched.value ? MATCHES_MESSAGE : ""));
   const unknown = computed<UnknownResult | null>(() => {
-    const state = unknownState.value;
+    const state = unknownState.value ?? (keptShown.value ? (kept.value?.unknown ?? null) : null);
     if (state === null) {
       return null;
     }
+    const earlier = state.earlier === true;
     let text = UNKNOWN_RESULT_MESSAGE;
     if (state.kind === "missing") {
-      text = NOT_ON_SERVER_MESSAGE;
+      text = earlier ? NOT_ON_SERVER_EARLIER_MESSAGE : NOT_ON_SERVER_MESSAGE;
     } else if (state.kind === "otherVersion") {
       text = OTHER_VERSION_MESSAGE;
     } else if (state.created && !state.pending) {
       text = `${options.newObject.unknownMessage} ${CHECK_LIST_MESSAGE}`;
     } else if (state.discarded) {
-      text = UNKNOWN_DISCARDED_MESSAGE;
+      text = earlier ? UNKNOWN_EARLIER_DISCARDED_MESSAGE : UNKNOWN_DISCARDED_MESSAGE;
+    } else if (earlier) {
+      text = UNKNOWN_EARLIER_MESSAGE;
     }
-    return { pending: state.pending, kind: state.kind, created: state.created, discarded: state.discarded === true, text };
+    return { pending: state.pending, kind: state.kind, created: state.created, discarded: state.discarded === true, earlier, text };
   });
 
   function announce(kind: "unknown" | "restoreNote" | "readFailed" | "matched" | "reading"): void {
@@ -171,9 +215,9 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   function clearNotices(): void {
     unknownState.value = null;
     matched.value = false;
-    restoreOffered.value = false;
+    offered.value = false;
     restoreContext = null;
-    restoreNote.value = null;
+    note.value = null;
     readFailed.value = false;
   }
 
@@ -185,6 +229,8 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     }
     clearTimeout(run.timer);
     active.value = null;
+    // Its own message (the limit) replaces the kept one; the answer of the abandoned save is late and decides nothing.
+    kept.value = null;
     if (run.created) {
       earlierCreationUnknown.value = true;
     }
@@ -211,6 +257,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     readSequence++;
     clearTimeout(readTimer);
     reading.value = false;
+    kept.value = null;
     clearNotices();
     earlierCreationUnknown.value = false;
     retry = null;
@@ -227,12 +274,13 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   function draftDiscarded(): boolean {
     const current = unknownState.value;
     if (current !== null) {
-      unknownState.value = { ...current, discarded: true };
+      // The refusal of the newer save goes with the draft: the message is about the save again, not about an earlier one.
+      unknownState.value = { ...current, discarded: true, earlier: false };
       announce("unknown");
       return true;
     }
-    if (restoreOffered.value) {
-      restoreNote.value = restoreContext;
+    if (offered.value) {
+      note.value = restoreContext;
       announce("restoreNote");
       return true;
     }
@@ -255,6 +303,14 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
       return null;
     }
     abandon();
+    // What the form knows about the server stays true while this save runs (its message shows, its buttons are off) and after a
+    // refusal of it: an earlier save whose result is unknown, and the way to the server state after a 409. A confirmed success
+    // and an unknown result of this save end it. `discarded` stays as „Odrzuć” left it: it is the message that promises the changes.
+    const earlier = unknownState.value;
+    kept.value =
+      earlier === null && !offered.value
+        ? null
+        : { unknown: earlier === null ? null : { ...earlier, pending: false, earlier: true }, offered: offered.value, context: restoreContext };
     clearNotices();
     const run: Run = { context: generation, confirmedCreations, created: options.id() === null };
     active.value = run;
@@ -282,6 +338,8 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
       return null;
     }
     active.value = null;
+    const held = kept.value;
+    kept.value = null;
     unknownState.value = null;
     if (verdict.kind === "success") {
       if (run.created) {
@@ -293,6 +351,16 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
     }
     if (verdict.kind === "refused") {
       handlers.onRefused(verdict.status, verdict.body);
+      if (held !== null) {
+        // A refusal says nothing about the server; the focus stays where the form put it (no `announce`). An offer of its own
+        // (a 409 that differs from the earlier one) replaces the kept one.
+        unknownState.value = held.unknown;
+        if (held.offered && !offered.value) {
+          offered.value = true;
+          restoreContext = held.context;
+          note.value = held.context;
+        }
+      }
       return "refused";
     }
     unknownState.value = { pending: false, kind: "unknown", created: run.created, confirmedBy: handlers.confirmedBy };
@@ -312,7 +380,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
    */
   async function readState(onData: (view: TView) => void, again: () => Promise<boolean>): Promise<boolean> {
     const id = options.id();
-    if (id === null) {
+    if (id === null || keptShown.value || options.hasOwnRequest?.()) {
       return false;
     }
     const sequence = ++readSequence;
@@ -371,7 +439,8 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   /** „Sprawdź stan”: see the description above. Only after an unknown result of a write to an existing object. */
   async function check(): Promise<void> {
     const state = unknownState.value;
-    if (state === null || state.created || options.id() === null) {
+    // Nothing is given up before the read is sure to start: a read that does not start leaves the write as it was.
+    if (state === null || state.created || options.id() === null || options.hasOwnRequest?.()) {
       return;
     }
     abandon();
@@ -396,7 +465,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
       } else {
         unknownState.value = { ...current, pending: false, kind: "otherVersion" };
         announce("unknown");
-        restoreOffered.value = true;
+        offered.value = true;
       }
     }, async () => {
       await check();
@@ -421,7 +490,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
    * own message); it stays visible with the button after the draft is discarded.
    */
   function offerRestore(context: string): void {
-    restoreOffered.value = true;
+    offered.value = true;
     restoreContext = context;
   }
 
@@ -433,6 +502,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   return {
     writing,
     reading,
+    readBlocked,
     locked,
     status,
     unknown,
@@ -464,6 +534,8 @@ export interface FormSafetyState {
   /** Set to a new object whenever a message appears or is said again; `FormSafetyNotices` moves the focus to it. */
   focusRequest: Readonly<Ref<{ kind: "unknown" | "restoreNote" | "readFailed" | "matched" | "reading" } | null>>;
   reading: Readonly<Ref<boolean>>;
+  /** The buttons that start a read are off: a read runs, or the form has a request of its own. */
+  readBlocked: Readonly<Ref<boolean>>;
   status: Readonly<Ref<string>>;
   check: () => Promise<void>;
   unblock: () => void;

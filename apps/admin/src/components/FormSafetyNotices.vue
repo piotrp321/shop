@@ -32,7 +32,7 @@ const unknown = computed(() => props.safety.unknown.value);
 const readFailed = computed(() => props.safety.readFailed.value);
 const restoreOffered = computed(() => props.safety.restoreOffered.value);
 const restoreNote = computed(() => props.safety.restoreNote.value);
-const reading = computed(() => props.safety.reading.value);
+const readBlocked = computed(() => props.safety.readBlocked.value);
 const status = computed(() => props.safety.status.value);
 
 // The label of „Odrzuć moje zmiany i pokaż stan z serwera” is long: it wraps inside the message instead of sticking out of it
@@ -104,7 +104,7 @@ async function retryRead(): Promise<void> {
       ref="unknownAlert"
       tabindex="-1"
       data-testid="unknown-result"
-      data-form-error
+      :data-form-error="unknown.earlier ? undefined : ''"
       variant="destructive"
       :class="ERROR_ALERT"
     >
@@ -116,7 +116,7 @@ async function retryRead(): Promise<void> {
           variant="outline"
           size="sm"
           data-testid="check-state"
-          :disabled="reading"
+          :disabled="readBlocked"
           @click="safety.check()"
         >
           Sprawdź stan
@@ -148,7 +148,7 @@ async function retryRead(): Promise<void> {
           size="sm"
           data-testid="restore-state"
           :class="RESTORE_BUTTON"
-          :disabled="reading"
+          :disabled="readBlocked"
           @click="restore"
         >
           {{ RESTORE_LABEL }}
@@ -171,7 +171,7 @@ async function retryRead(): Promise<void> {
           size="sm"
           data-testid="restore-state"
           :class="RESTORE_BUTTON"
-          :disabled="reading"
+          :disabled="readBlocked"
           @click="restore"
         >
           {{ RESTORE_LABEL }}
@@ -185,7 +185,7 @@ async function retryRead(): Promise<void> {
         size="sm"
         data-testid="restore-state"
         :class="RESTORE_BUTTON"
-        :disabled="reading"
+        :disabled="readBlocked"
         @click="restore"
       >
         {{ RESTORE_LABEL }}
@@ -207,7 +207,7 @@ async function retryRead(): Promise<void> {
           variant="outline"
           size="sm"
           data-testid="retry-read"
-          :disabled="reading"
+          :disabled="readBlocked"
           @click="retryRead"
         >
           Spróbuj ponownie

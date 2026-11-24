@@ -1790,6 +1790,21 @@ describe("usePromotionForm", () => {
         expect(form.errorsAt("name")).toEqual(["Za długa."]);
         expect(form.safety.unknown.value).toBeNull();
       });
+
+      it("keeps saying that the earlier save may have been done when the next one gets a 422", async () => {
+        const { form } = await open();
+        form.form.value.name = "Moja";
+        mocks.put.mockResolvedValue(problem(502));
+        await form.save();
+        form.form.value.name = "Za długa";
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Za długa." }] }));
+
+        expect(await form.save()).toBe("failure");
+
+        expect(form.errorsAt("name")).toEqual(["Za długa."]);
+        expect(form.safety.unknown.value).toMatchObject({ pending: false, kind: "unknown", text: "Nie wiemy, czy wcześniejszy zapis się powiódł. Twoje zmiany zostają w formularzu." });
+        expect(form.form.value.name).toBe("Za długa");
+      });
     });
 
     describe("B4 (c): „Sprawdź stan”", () => {
@@ -2037,7 +2052,7 @@ describe("usePromotionForm", () => {
         expect(form.safety.unknown.value?.kind).toBe("missing");
       });
 
-      it("(i) does not take the lock of the newer save and shows no message of the earlier one when its error and end come after the newer save started", async () => {
+      it("(i) does not take the lock of the newer save and adds no message of the earlier one when its error and end come after the newer save started: the one „Sprawdź stan” found stays as it was", async () => {
         const { form, puts, saving } = await savingFirst();
         await advance(10_000);
         mocks.get.mockResolvedValue(ok(promotion({ name: "Stara", version: 4 })));
@@ -2045,13 +2060,14 @@ describe("usePromotionForm", () => {
         form.form.value.name = "Druga";
         const second = form.save();
         expect(form.locked.value).toBe(true);
+        const before = form.safety.unknown.value;
 
         puts[0]!.reject(new TypeError("network down"));
         await saving;
 
         expect(form.locked.value).toBe(true);
         expect(form.busy.value).toBe(true);
-        expect(form.safety.unknown.value).toBeNull();
+        expect(form.safety.unknown.value).toEqual(before);
         expect(form.error.value).toBeNull();
         puts[1]!.resolve(ok(promotion({ name: "Druga", version: 5 })));
         expect(await second).toBe("success");
