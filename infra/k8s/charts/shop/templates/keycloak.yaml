@@ -48,6 +48,10 @@ readinessProbe:
 {{- end }}
 {{ include "shop.service" (dict "root" . "name" "keycloak" "ports" (list (dict "name" "http" "port" 8080) (dict "name" "management" "port" 9000))) }}
 ---
-{{ include "shop.deployment" (dict "root" . "name" "keycloak" "wave" "-1" "image" .Values.images.keycloak
+{{- /*
+Recreate: Keycloak migrates the schema of its database at the start and does not support two versions on one database,
+so the old pod stops before the new one starts. Login does not work until the new pod is ready.
+*/}}
+{{ include "shop.deployment" (dict "root" . "name" "keycloak" "wave" "-1" "image" .Values.images.keycloak "recreate" true
   "initContainers" (include "shop.wait" (dict "root" . "name" "postgres" "check" "nc -z -w 2 postgres 5432"))
   "container" (include "shop.keycloak.container" .)) }}
