@@ -120,6 +120,13 @@ describe("sameRequest", () => {
     expect(sameRequest({ rows: [{ variantId: "v-9", values: ["S"] }] }, { rows: [{ variantId: null, values: ["S"] }] }, options)).toBe(false);
     expect(sameRequest({ name: null }, { name: "x" }, options)).toBe(false);
   });
+
+  it("takes a null in the draft for a value the server assigned only when the base did not have that value", () => {
+    const options = { serverAssigned: ["variantId"], knownServerValues: ["v-1", "v-2"] };
+    expect(sameRequest({ rows: [{ variantId: null, values: ["S"] }] }, { rows: [{ variantId: "v-3", values: ["S"] }] }, options)).toBe(true);
+    expect(sameRequest({ rows: [{ variantId: null, values: ["S"] }] }, { rows: [{ variantId: "v-2", values: ["S"] }] }, options)).toBe(false);
+    expect(sameRequest({ rows: [{ variantId: "v-1", values: ["S"] }] }, { rows: [{ variantId: "v-1", values: ["S"] }] }, options)).toBe(true);
+  });
 });
 
 describe("useFormSafety", () => {

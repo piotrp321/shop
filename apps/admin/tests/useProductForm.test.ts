@@ -1639,6 +1639,47 @@ describe("useProductForm", () => {
         expect(same.safety.unknown.value).toBeNull();
       });
 
+      it("is not the same for a row that is new in the draft when the server still has the row it replaced, even with the same values", async () => {
+        // The staff member removed the last row and added one with the same value: the request carries no id for it, so the
+        // server would give it a new id and drop the old one. A server that still has the old row did not do that save.
+        const base = view({ variantAxes: ["Kolor"], variants: [{ variantId: "v-1", values: ["czerwony"] }, { variantId: "v-2", values: ["zielony"] }] });
+        const { form } = await open(base);
+        form.removeVariant(1);
+        form.addVariant();
+        form.setValue(1, 0, "zielony");
+        mocks.put.mockResolvedValue(problem(502));
+        await form.save();
+        mocks.get.mockResolvedValue(ok(base));
+
+        await form.safety.check();
+
+        expect(form.safety.unknown.value?.kind).toBe("missing");
+        expect(form.safety.status.value).toBe("");
+        expect(form.view.value?.version).toBe(3);
+        expect(form.form.value.variants).toEqual([
+          { variantId: "v-1", values: ["czerwony"] },
+          { variantId: null, values: ["zielony"] },
+        ]);
+        expect(form.dirty.value).toBe(true);
+      });
+
+      it("is the same for that replacement when the server did it: the row has an id the base did not have", async () => {
+        const base = view({ variantAxes: ["Kolor"], variants: [{ variantId: "v-1", values: ["czerwony"] }, { variantId: "v-2", values: ["zielony"] }] });
+        const { form } = await open(base);
+        form.removeVariant(1);
+        form.addVariant();
+        form.setValue(1, 0, "zielony");
+        mocks.put.mockResolvedValue(problem(502));
+        await form.save();
+        mocks.get.mockResolvedValue(ok({ ...base, version: 4, variants: [{ variantId: "v-1", values: ["czerwony"] }, { variantId: "v-3", values: ["zielony"] }] }));
+
+        await form.safety.check();
+
+        expect(form.view.value?.version).toBe(4);
+        expect(form.safety.unknown.value).toBeNull();
+        expect(form.safety.status.value).toBe("Stan na serwerze odpowiada formularzowi.");
+      });
+
       it("is not the same for a row that is new in the draft when the server has another value in it or no such row", async () => {
         const added = (current: Form) => {
           current.addVariant();
