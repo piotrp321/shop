@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Ordering\Application\Query;
 
-use App\Ordering\Domain\ControlCharacters;
+use App\Shared\Domain\Text;
 
 /**
- * The search term of the customer list: a fragment of the email or of the name, 3 to 100 characters once trimmed (also
- * of the Unicode spaces), without a control character (looked for in the term as it came: a trim would drop some of
- * them at the ends, and PostgreSQL refuses a NUL).
+ * The search term of the customer list: a fragment of the email or of the name, 3 to 100 characters once trimmed by
+ * the rule of texts (Text: white space and invisible characters at the ends), without a character the rule forbids
+ * (looked for in the term as it came: the trim drops some of them at the ends, and PostgreSQL refuses a NUL).
  */
 final class BackofficeCustomerSearchTerm
 {
@@ -23,11 +23,11 @@ final class BackofficeCustomerSearchTerm
      */
     public static function fragment(string $q): string
     {
-        if (ControlCharacters::in($q)) {
+        if (Text::hasForbiddenCharacters($q)) {
             throw InvalidBackofficeCustomerList::searchTerm();
         }
-        $term = preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', $q);
-        if (!\is_string($term) || mb_strlen($term) < self::MIN_LENGTH || mb_strlen($term) > self::MAX_LENGTH) {
+        $term = Text::normalize($q);
+        if (mb_strlen($term) < self::MIN_LENGTH || mb_strlen($term) > self::MAX_LENGTH) {
             throw InvalidBackofficeCustomerList::searchTerm();
         }
 

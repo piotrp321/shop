@@ -64,6 +64,7 @@ use Symfony\Component\Uid\Uuid;
  * are immutable, so a record of them already in the identity map is never stale. The copy of the delivery and its
  * shares are written only when the order is added; an order stored without a delivery (before it) is read with none.
  * The tracking number of the shipment is written with the other changes (it is set by the shipment and corrected after it).
+ * The contact and the address are read as stored, without the rule of texts (spec api-input-contract, E7).
  */
 final readonly class DoctrineOrderRepository implements OrderRepository
 {
@@ -307,8 +308,9 @@ final readonly class DoctrineOrderRepository implements OrderRepository
             number: OrderNumber::fromString($record->number),
             owner: self::CUSTOMER === $record->ownerType ? OrderOwner::customer($record->customerId ?? '') : OrderOwner::guest(),
             accessToken: null === $record->accessToken ? null : AccessToken::fromString($record->accessToken),
-            contact: Contact::of(EmailAddress::fromString($record->email), $record->fullName, $record->phone),
-            shippingAddress: ShippingAddress::inPoland($record->street, $record->postalCode, $record->city),
+            // As stored, without the rule of texts: an order stored before a stricter rule is still read and processed.
+            contact: Contact::stored(EmailAddress::stored($record->email), $record->fullName, $record->phone),
+            shippingAddress: ShippingAddress::stored($record->street, $record->postalCode, $record->city),
             lines: $lines,
             discount: null === $record->discountCode ? null : OrderDiscount::of($record->discountCode, OrderDiscountKind::from($record->discountKind ?? ''), $record->discountValue ?? 0, Money::of($record->discountGross ?? 0, $currency)),
             delivery: self::delivery($record, $currency),

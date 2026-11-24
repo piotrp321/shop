@@ -1531,7 +1531,7 @@ export interface components {
              */
             version: number;
             /**
-             * @description One line, at most 500 characters once trimmed of white space, without control characters, U+0085, U+2028 and U+2029; required for `cancel` and `return`, otherwise null or blank for none.
+             * @description One line, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators; required for `cancel` and `return`, otherwise null or a text without a visible character for none.
              * @example Kurier DPD
              */
             note: string | null;
@@ -1562,7 +1562,7 @@ export interface components {
              */
             version: number;
             /**
-             * @description One line, at most 500 characters once trimmed of white space, without control characters, U+0085, U+2028 and U+2029; null or blank for none.
+             * @description One line, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators; null or a text without a visible character for none.
              * @example Przelew wysłany
              */
             note: string | null;

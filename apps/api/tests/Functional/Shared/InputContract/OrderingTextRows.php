@@ -154,9 +154,8 @@ final class OrderingTextRows
     {
         $address = 'anna.nowak@example.com';
         $format = self::EMAIL;
-        // 64 + 1 + 189 characters: the longest local part and labels of at most 63 characters.
-        $longest = str_repeat('a', 64).'@'.str_repeat('b', 63).'.'.str_repeat('c', 63).'.'.str_repeat('d', 57).'.com';
-        \assert(254 === \strlen($longest));
+        // 64 + 1 + 189 characters: the longest local part and labels the mailer takes.
+        $longest = str_repeat('a', 64).'@'.str_repeat('b', 61).'.'.str_repeat('c', 61).'.'.str_repeat('d', 61).'.com';
 
         return [
             [$address, $address, 201, $address],
