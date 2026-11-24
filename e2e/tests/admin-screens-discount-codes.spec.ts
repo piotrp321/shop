@@ -485,4 +485,97 @@ test.describe("the requests of the form (stage 2)", () => {
       await page.close();
     }
   });
+
+  // The button „Wstecz” of the browser while a save waits for its answer: the router asks about the unsaved changes like for
+  // any other leave (the draft is still unsaved until the answer), the form stays locked while the staff member decides, and the
+  // answer of the save is then handled by the form that is still shown („Zostań”) or ignored by the one that was left.
+  test.describe("the back button of the browser while a save waits", () => {
+    /** The expired code, then (through the list) the active one with its PUT held; the history is [expired, list, active]. */
+    async function openActiveAfterExpired(page: Page, held: Route[]) {
+      let code: Record<string, unknown> = {};
+      await page.route(CODE_URL(activeCodeId), async (route) => {
+        if (route.request().method() === "GET") {
+          const response = await route.fetch();
+          code = (await response.json()) as Record<string, unknown>;
+          await route.fulfill({ response });
+          return;
+        }
+        if (route.request().method() !== "PUT") {
+          await route.fallback();
+          return;
+        }
+        held.push(route);
+      });
+      await go(page, "/discount-codes?q=" + EXPIRED_CODE);
+      await page.getByTestId("code-link").filter({ hasText: EXPIRED_CODE }).first().click();
+      await expect(page.getByRole("heading", { level: 1, name: EXPIRED_CODE })).toBeVisible();
+      await page.getByRole("navigation", { name: "Okruszki" }).getByRole("link", { name: "Kody rabatowe" }).click();
+      await page.getByTestId("code-link").filter({ hasText: ACTIVE_CODE }).first().click();
+      await expect(page.getByRole("heading", { level: 1, name: ACTIVE_CODE })).toBeVisible();
+      return () => code;
+    }
+
+    async function saveAndGoBack(page: Page, held: Route[]) {
+      const ends = page.getByTestId("ends-input");
+      await ends.fill("2036-12-31T23:59");
+      await page.getByTestId("save").click();
+      await expect.poll(() => held.length, "the save is on its way").toBe(1);
+      await expect(ends).toBeDisabled();
+
+      await page.goBack();
+
+      const dialog = page.getByRole("alertdialog", { name: "Masz niezapisane zmiany" });
+      await expect(dialog, "the router asks before it leaves a form whose save has no answer").toBeVisible();
+      // The address already shows the list while the question is open (the browser moved it, the router has not decided yet).
+      await expect(ends, "the form stays locked while the question is open").toBeDisabled();
+      return { dialog, ends };
+    }
+
+    test("„Zostań” keeps the form and its lock, and the answer that comes then is the result of the save", async () => {
+      test.setTimeout(60_000);
+      const page = await newPanelPage("admin", viewports.desktop);
+      const held: Route[] = [];
+      try {
+        const code = await openActiveAfterExpired(page, held);
+        const { dialog, ends } = await saveAndGoBack(page, held);
+
+        await dialog.getByRole("button", { name: "Zostań" }).click();
+
+        await expect(dialog).toBeHidden();
+        await expect(page).toHaveURL(new RegExp(`/discount-codes/${activeCodeId}$`));
+        await expect(ends).toBeDisabled();
+        await held[0]!.fulfill({ status: 200, json: { ...code(), endsAt: "2036-12-31T22:59:00+00:00", version: (code().version as number) + 1 } });
+
+        await expect(page.getByRole("region", { name: "Powiadomienia", exact: true }).getByText("Kod rabatowy zapisany.")).toBeVisible();
+        await expect(ends).toBeEnabled();
+      } finally {
+        await Promise.all(held.map((route) => route.abort().catch(() => undefined)));
+        await page.close();
+      }
+    });
+
+    test("„Opuść bez zapisu” leaves the form, and the answer that comes after it changes nothing and says nothing", async () => {
+      test.setTimeout(60_000);
+      const page = await newPanelPage("admin", viewports.desktop);
+      const held: Route[] = [];
+      try {
+        const code = await openActiveAfterExpired(page, held);
+        const { dialog } = await saveAndGoBack(page, held);
+
+        await dialog.getByRole("button", { name: "Opuść bez zapisu" }).click();
+
+        await expect(page).toHaveURL(/\/discount-codes$/);
+        await expect(page.getByRole("heading", { level: 1, name: "Kody rabatowe" })).toBeVisible();
+        await held[0]!.fulfill({ status: 200, json: { ...code(), endsAt: "2036-12-31T22:59:00+00:00", version: (code().version as number) + 1 } });
+        await page.waitForTimeout(1_000);
+
+        await expect(page.getByRole("region", { name: "Powiadomienia", exact: true }).getByText("Kod rabatowy zapisany.")).toHaveCount(0);
+        await expect(page).toHaveURL(/\/discount-codes$/);
+        await expect(page.getByRole("heading", { level: 1, name: "Kody rabatowe" })).toBeVisible();
+      } finally {
+        await Promise.all(held.map((route) => route.abort().catch(() => undefined)));
+        await page.close();
+      }
+    });
+  });
 });
