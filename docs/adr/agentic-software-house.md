@@ -171,6 +171,26 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
 7. **Koniec.** Sesja aktualizuje specyfikację, usuwa `plan.md` i wpisuje w opis PR odroczone uwagi (z oceną z kroku 4)
    oraz `Closes #N` dla issues z linii `Issues:` specyfikacji.
 
+   **Ocena odroczeń (pilotaż, `docs/features/ash-process-fixes/spec.md`, O8–O10).** Po poprawkach przeglądu epiku
+   i po sprawdzeniu pozycji „założenie niesprawdzone” (akapit „Zewnętrzne review”), przed przekazaniem PR do
+   zewnętrznego review, o odroczeniu uwagi opisującej konkretny błąd (wejście albo przeplot zdarzeń i błędny wynik)
+   rozstrzyga `code-reviewer` w świeżym kontekście, nie sesja. Gdy „Odroczone uwagi” nie mają takiej pozycji, sesja
+   oceny nie uruchamia i zapisuje to w „Problemach i zastojach”. Zlecenie (`description` zaczyna się od
+   `<EPIK>-DEF1`) podaje każdą taką uwagę w brzmieniu reviewera, który ją zgłosił (cytat z raportu, rola, zadanie),
+   wyniki sprawdzeń jako fakty (komenda albo miejsce w kodzie i wynik), ścieżkę specyfikacji oraz `base_sha`
+   i `head_sha` gałęzi epiku. Nie podaje oceny sesji: skutku, wagi, naruszonej gwarancji ani proponowanej podstawy
+   odroczenia. Reviewer podaje dla każdej uwagi naruszoną gwarancję (sekcja i punkt specyfikacji, lista jakości,
+   kontrakt) albo jej brak, wejście albo przeplot, skutek, odwracalność i werdykt „naprawić przed merge'em” albo
+   „można odroczyć”, z dowodem w kodzie; rzadkość przeplotu i etykieta zakresu nie są podstawą werdyktu. Raport
+   zaczyna od `Werdykt: CHANGES_REQUIRED`, gdy choć jedna uwaga ma werdykt „naprawić”, inaczej od `Werdykt: PASS`.
+   Werdyktu „naprawić” sesja sama nie uchyla: zleca poprawkę (zadanie z przeglądem różnicy) albo przedstawia
+   właścicielowi obie oceny do decyzji. Uwaga z werdyktem „można odroczyć” zostaje w „Odroczonych uwagach”
+   z dopiskiem „ocena odroczeń: można odroczyć”. W „Problemach i zastojach” sesja zapisuje liczbę ocenionych uwag
+   i werdyktów „naprawić” oraz dla każdego z nich, czy poprawka miała test RED potwierdzony zapisem uruchomienia
+   (potwierdzone błędne odroczenie), czy błąd się nie potwierdził. Przy znalezisku zewnętrznego review, które
+   powtarza odroczoną uwagę, podaje też, czy uwaga przeszła ocenę odroczeń i z jakim werdyktem. Potwierdzone błędne
+   odroczenia i nowe znaleziska zewnętrznego review to osobne liczby.
+
    **Zewnętrzne review.** Końcowy PR przechodzi niezależne review Codexa (`docs/features/ash-process-fixes/spec.md`,
    C): po przeglądzie epiku i jego poprawkach, przed oznaczeniem PR jako gotowego. Zanim sesja przekaże PR do
    zewnętrznego review, sprawdza, czy „Odroczone uwagi” mają pozycję z podstawą „założenie niesprawdzone”. Każdą taką
@@ -222,9 +242,10 @@ nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
    - dodaje do końcowego PR komentarz, którego treść zaczyna się od `## Przekazanie do retro`: nazwa epiku i polecenie
      `/retro <epik>`, numer PR i commit merge'u, ścieżka specyfikacji, plan (commit, w którym jeszcze istnieje:
      `git show <sha>:docs/features/<epik>/plan.md`), przeglądy i poprawki (role, rundy, zewnętrzne review
-     z commitami poprawek i z podziałem znalezisk na nowe i powtarzające odroczoną uwagę), wynik CI commita merge'u
-     na `main` (SHA, numer przebiegu) i `ci-time` po merge'u, plik przebiegu, rekord i sesje epiku, wersja procesu
-     z odstępstwami oraz, w całości, uwagi
+     z commitami poprawek i z podziałem znalezisk na nowe i powtarzające odroczoną uwagę; ocena odroczeń: liczba
+     ocenionych uwag, werdykty, potwierdzone błędne odroczenia albo powód, dla którego jej nie było), wynik CI
+     commita merge'u na `main` (SHA, numer przebiegu) i `ci-time` po merge'u, plik przebiegu, rekord i sesje epiku,
+     wersja procesu z odstępstwami oraz, w całości, uwagi
      właściciela, które padły po ostatniej edycji opisu PR;
    - kończy komunikatem: „Epik zakończony. Uruchom /retro <epik> w nowej sesji. Tę sesję można zarchiwizować”.
 
