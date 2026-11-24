@@ -115,17 +115,19 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
   `main` i `epic/**`; wymagane checki to `checks` i `e2e` (części E2E: `e2e/CLAUDE.md`). Zakres liczy
   `.github/scripts/scope.sh` (PR względem bazy, push na `main` według dodanych commitów, push na `epic/**` i błąd
   skryptu: pełne CI): zmiana tylko dokumentacji, narzędzi repo albo `infra/k8s` uruchamia część CI, a
-  `make -C infra/k8s check` biegnie w CI tylko przy zmianie w `infra/k8s/**` albo `.github/workflows/**` (ma testy
-  workflowów) i zawsze przed wdrożeniem z `main` (`deploy.yml`). Testy na usługach stosu trafiają do CI w tym samym PR
+  `make -C infra/k8s check` biegnie w CI tylko przy zmianie w `infra/k8s/**`, `.github/workflows/**` (ma testy
+  workflowów) albo `infra/docker-compose.yml` (tagi obrazów w chartcie) i zawsze przed wdrożeniem z `main`
+  (`deploy.yml`). Testy na usługach stosu trafiają do CI w tym samym PR
   co kod, razem z uruchomieniem usług, których potrzebują.
 - Zadania ustawiające reguły (lint, Deptrac, CORS i podobne) sprawdzają też próby obejścia, nie tylko przypadek
   podstawowy.
 - Chart `infra/k8s/charts/shop` odzwierciedla compose. Zmiana usług, obrazów i ich wersji, zmiennych środowiska,
   transportów workera, sekretów w compose (`infra/scripts/init-env.sh`) i zmiana realmów Keycloaka
-  (`infra/keycloak/realms`: nowy klient, rola, adres) wymaga tej samej zmiany w chartcie w tym samym PR. CI takiego PR
-  nie uruchamia `make -C infra/k8s check`, gdy PR nie zmienia `infra/k8s/**` ani workflowów: rozjazd wychodzi lokalnie
-  w głównym `make check` albo dopiero przed wdrożeniem. Szczegóły (co tego pilnuje, sekrety, digesty, kopie zapasowe,
-  logi, realmy w klastrze): `infra/k8s/CLAUDE.md`, „Chart a compose”.
+  (`infra/keycloak/realms`: nowy klient, rola, adres) wymaga tej samej zmiany w chartcie w tym samym PR. Zmiana
+  `infra/docker-compose.yml` uruchamia w CI `make -C infra/k8s check`, więc obraz zmieniony tylko w compose nie przechodzi
+  `checks`; zmianę realmów, która nie dotyka `infra/k8s/**` ani workflowów, wyłapuje dopiero lokalny `make check` albo
+  kontrola przed wdrożeniem. Szczegóły (co tego pilnuje, sekrety, digesty, kopie zapasowe, logi, realmy w klastrze,
+  PR-y Dependabota): `infra/k8s/CLAUDE.md`, „Chart a compose”.
 - Zadanie jest skończone dopiero, gdy przechodzą `make check` i testy aplikacji, której dotyczy zmiana (przy zmianie
   kilku aplikacji: `check` i testy wszystkich). Pokaż wynik, nie deklaruj.
 - Skrypty, komendy i cele Makefile testujemy także na ścieżce błędu (brak pliku, błąd narzędzia, niedziałająca usługa,
