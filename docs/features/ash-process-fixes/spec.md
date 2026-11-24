@@ -114,6 +114,23 @@ i raport (bez osobnego rejestru):
   zapisu to zwykłe użycie.
 - **O5.** Styl, drobne sugestie i przypadki bez istotnego skutku nadal odracza się bez pytania; zasada nie jest
   obowiązkiem naprawy każdej uwagi i nie zmienia budżetu dwóch rund.
+- **O8 (pilotaż).** O odroczeniu uwagi, która opisuje konkretny błąd (wejście albo przeplot i błędny wynik),
+  rozstrzyga przed zewnętrznym review `code-reviewer` w świeżym kontekście. Dostaje uwagę w brzmieniu zgłaszającego
+  i wyniki sprawdzeń jako fakty, bez oceny sesji, i daje werdykt „naprawić przed merge'em” albo „można odroczyć”.
+  Werdyktu „naprawić” sesja sama nie uchyla: naprawia albo pyta właściciela. Sprawdzenie pozycji „założenie
+  niesprawdzone” (O3) zostaje przy sesji, bo `code-reviewer` nie uruchamia prób. Bez odroczonej uwagi o konkretnym
+  błędzie oceny nie ma.
+- **O9 (pilotaż).** Opis PR i przekazanie do retro podają osobno: potwierdzone błędne odroczenia (werdykt „naprawić”
+  i błąd potwierdzony dowodem wystąpienia na kodzie sprzed poprawki: odtworzeniem albo testem, który na nim nie
+  przechodzi), werdykty „naprawić” z błędem niepotwierdzonym (dowód, że przeplot jest nieosiągalny albo skutek nie
+  występuje) i nierozstrzygniętym, nowe znaleziska zewnętrznego review oraz znaleziska powtarzające odroczoną uwagę
+  z werdyktem, jaki dostała. Przebieg TDD poprawki jest zapisany osobno od potwierdzenia błędu: brak fazy RED to
+  odstępstwo TDD, a nie dowód, że uwaga była nietrafna. Koszt i czas oceny są w rekordzie epiku przy zleceniu
+  `<EPIK>-DEF1`.
+- **O10 (pilotaż).** Pilotaż obejmuje trzy albo cztery epiki z zewnętrznym review, od pierwszego, którego sesja ma tę
+  regułę przed przekazaniem końcowego PR. Potem właściciel ocenia, ile błędnych odroczeń wychwycił reviewer i ile to
+  kosztowało, i decyduje, czy ocena zostaje. Podstawa: `docs/reports/ash-workflow-audit-2026-11-24.md` (cztery
+  z ośmiu potwierdzonych znalezisk zewnętrznego review w pięciu epikach powtarzały uwagę odroczoną przez sesję).
 
 ## S: ryzykowne założenia w specyfikacji
 
