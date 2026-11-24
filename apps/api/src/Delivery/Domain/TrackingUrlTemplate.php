@@ -16,6 +16,13 @@ final readonly class TrackingUrlTemplate
     public const int MAX_LENGTH = 500;
     public const string MARKER = '{numer}';
 
+    /**
+     * The template keeps its own rule (spec api-input-contract, „Pola tekstowe poza regułą”): the control characters
+     * C0 and DEL, U+0085, U+2028, U+2029 and a text that is not valid UTF-8 (the pattern fails on it), looked for in
+     * the value as it came, and Unicode white space trimmed from the ends.
+     */
+    private const string CONTROL = '/[\x00-\x1F\x7F\x{0085}\x{2028}\x{2029}]/u';
+    private const string EDGES = '/^[\s\p{Z}]+|[\s\p{Z}]+$/Du';
     private const string WHITESPACE = '/[\s\p{Z}]/u';
     private const string LABEL = '[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?';
     private const string ADDRESS = '~^https://'.self::LABEL.'(?:\.'.self::LABEL.')*(?::[0-9]{1,5})?(?:[/?#].*)?$~Ds';
@@ -42,10 +49,11 @@ final readonly class TrackingUrlTemplate
         if (null === $template) {
             return null;
         }
-        if (DeliveryText::hasForbiddenCharacters($template)) {
+        // 1: found; false: not valid UTF-8, which is no text either
+        if (0 !== preg_match(self::CONTROL, $template)) {
             throw InvalidDeliveryMethod::templateCharacters();
         }
-        $trimmed = DeliveryText::trim($template);
+        $trimmed = preg_replace(self::EDGES, '', $template) ?? $template;
         if ('' === $trimmed) {
             return null;
         }

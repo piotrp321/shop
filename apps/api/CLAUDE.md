@@ -75,6 +75,13 @@ używa `ApplicationTester` (`setAutoExit(false)`), bo `CommandTester` wyjątku n
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.
 - Brak wspólnych value objectów między contextami. Każdy context ma własne (np. `Price` w Pricing i `Amount` w Payment).
+  Wspólna jest tylko higiena tekstu, która nie jest pojęciem żadnego contextu: reguła tekstów wpisywanych przez ludzi
+  (znaki niedozwolone, przycinanie brzegów, tekst pusty, długość) jest wyłącznie w `App\Shared\Domain\Text`. Value
+  objecty i klasy żądań wołają `Text` zamiast własnych wzorców, a same value objecty tekstów zostają własne dla
+  contextu (limity, komunikaty).
+- Odczyt z bazy nie waliduje tekstów: repozytoria i handlery odczytu odtwarzają je z wiersza nazwanym konstruktorem
+  bez walidacji i bez przycinania (`reconstitute`), więc wiersz zapisany przed ostrzejszą regułą daje się odczytać
+  i przetworzyć. Regułę stosuje zapis (żądanie, seed, generator danych demo).
 - Deptrac pilnuje tych granic. Jeśli Deptrac zgłasza błąd, popraw projekt, nie edytuj `deptrac.yaml`.
 
 ### Pułapki Doctrine (powód wyjątków niżej)

@@ -21,14 +21,14 @@ use Symfony\Component\Validator\Constraints as Assert;
 final readonly class ReviseDeliveryMethodRequest
 {
     public function __construct(
-        #[OA\Property(type: 'string', description: '1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.', maxLength: DeliveryMethodName::MAX_LENGTH, example: 'Kurier standardowy')]
+        #[OA\Property(type: 'string', description: '1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators, unique among all methods without regard to case.', maxLength: DeliveryMethodName::MAX_LENGTH, example: 'Kurier standardowy')]
         #[Assert\Sequentially([
             new Assert\NotNull(message: DeliveryMethodBodyRules::NAME),
             new Assert\Type('string', message: DeliveryMethodBodyRules::NAME),
             new Assert\Callback(DeliveryMethodBodyRules::NAME_VALUE),
         ])]
         public mixed $name,
-        #[OA\Property(type: 'string', description: 'The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.', maxLength: DeliveryMethodDescription::MAX_LENGTH, nullable: true, example: 'Dostawa w 2–3 dni robocze')]
+        #[OA\Property(type: 'string', description: 'The time of the delivery: up to 200 characters once trimmed, without control characters or line separators. Null or a text without a visible character: no description.', maxLength: DeliveryMethodDescription::MAX_LENGTH, nullable: true, example: 'Dostawa w 2–3 dni robocze')]
         #[Assert\Sequentially([
             new Assert\Type('string', message: DeliveryMethodBodyRules::DESCRIPTION_TYPE),
             new Assert\Callback(DeliveryMethodBodyRules::DESCRIPTION_VALUE),

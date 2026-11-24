@@ -170,7 +170,12 @@ final class DeliveryMethodsEndpointTest extends WebTestCase
         $list = $this->send('GET', self::PATH);
         self::assertResponseStatusCodeSame(200);
         self::assertIsArray($list['items']);
-        self::assertSame([[$id, $name, $description]], array_map(static fn (array $item): array => [$item['id'], $item['name'], $item['description']], $list['items']));
+        $items = [];
+        foreach ($list['items'] as $item) {
+            self::assertIsArray($item);
+            $items[] = [$item['id'], $item['name'], $item['description']];
+        }
+        self::assertSame([[$id, $name, $description]], $items);
 
         $method = $this->send('GET', self::PATH.'/'.$id);
         self::assertResponseStatusCodeSame(200);

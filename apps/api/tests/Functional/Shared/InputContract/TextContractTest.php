@@ -183,9 +183,10 @@ final class TextContractTest extends WebTestCase
      */
     private static function keys(string $field): array
     {
-        preg_match_all('/([^.\[\]]+)|\[(\d+)\]/', $field, $matches, \PREG_SET_ORDER);
-
-        return array_map(static fn (array $match): string|int => isset($match[2]) && '' !== $match[2] ? (int) $match[2] : $match[1], $matches);
+        return array_map(
+            static fn (string $key): string|int => ctype_digit($key) ? (int) $key : $key,
+            explode('.', str_replace(['[', ']'], ['.', ''], $field)),
+        );
     }
 
     /**

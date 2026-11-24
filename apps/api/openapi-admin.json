@@ -5991,13 +5991,13 @@
                 ],
                 "properties": {
                     "name": {
-                        "description": "1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.",
+                        "description": "1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators, unique among all methods without regard to case.",
                         "type": "string",
                         "example": "Kurier standardowy",
                         "maxLength": 100
                     },
                     "description": {
-                        "description": "The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.",
+                        "description": "The time of the delivery: up to 200 characters once trimmed, without control characters or line separators. Null or a text without a visible character: no description.",
                         "type": "string",
                         "example": "Dostawa w 2\u20133 dni robocze",
                         "nullable": true,
@@ -6054,13 +6054,13 @@
                 ],
                 "properties": {
                     "name": {
-                        "description": "1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.",
+                        "description": "1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators, unique among all methods without regard to case.",
                         "type": "string",
                         "example": "Kurier standardowy",
                         "maxLength": 100
                     },
                     "description": {
-                        "description": "The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.",
+                        "description": "The time of the delivery: up to 200 characters once trimmed, without control characters or line separators. Null or a text without a visible character: no description.",
                         "type": "string",
                         "example": "Dostawa w 2\u20133 dni robocze",
                         "nullable": true,
