@@ -69,6 +69,16 @@ final class CategoryTest extends TestCase
         yield 'a line separator' => ["Sport\u{2028}"];
         yield 'a new line' => ["Sport\nZima"];
         yield 'invalid UTF-8' => ["Sport\xC3"];
+        // The rule of texts (spec api-input-contract, T1 and T3).
+        yield 'a C1 control character' => ["Spo\u{9F}rt"];
+        yield 'a line separator removed by a trim' => ["\u{2028}Sport"];
+        yield 'a zero width space only' => ["\u{200B}"];
+        yield 'a byte order mark only' => ["\u{FEFF}"];
+        yield 'a soft hyphen only' => ["\u{AD}"];
+        yield 'a word joiner only' => ["\u{2060}"];
+        yield 'a left-to-right mark only' => ["\u{200E}"];
+        yield 'a right-to-left override only' => ["\u{202E}"];
+        yield 'a Hangul filler only' => ["\u{3164}"];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('namesWithoutText')]
@@ -82,6 +92,27 @@ final class CategoryTest extends TestCase
     public function testANameIsTrimmedOfUnicodeWhitespace(): void
     {
         self::assertSame('Łyżwy', CategoryName::of("\u{00A0} Łyżwy \u{2003}")->value());
+    }
+
+    public function testANameIsTrimmedOfInvisibleCharactersAndKeepsAFlagAtItsEnd(): void
+    {
+        self::assertSame('Łyżwy', CategoryName::of("\u{200B}\u{FEFF}Łyżwy\u{2060}\u{AD}")->value());
+        self::assertSame("Anglia \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}", CategoryName::of("Anglia \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}")->value());
+    }
+
+    public function testTheLengthIsCountedAfterTheTrim(): void
+    {
+        self::assertSame(str_repeat('ą', 100), CategoryName::of("\u{200B}".str_repeat('ą', 100)."\u{200B}")->value());
+    }
+
+    /**
+     * A name stored before a stricter rule is read as it is (spec api-input-contract, E7).
+     */
+    public function testAStoredNameIsReconstitutedWithoutTheRule(): void
+    {
+        foreach (["\u{200B}", "Sport\tZima", "Spo\u{9F}rt", ' Sport '] as $stored) {
+            self::assertSame($stored, CategoryName::reconstitute($stored)->value());
+        }
     }
 
     public function testNameOf100CharactersIsAccepted(): void

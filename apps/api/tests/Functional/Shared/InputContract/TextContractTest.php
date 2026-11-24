@@ -235,7 +235,7 @@ final class TextContractTest extends WebTestCase
     private function placeholders(string $fixture): array
     {
         $placeholders = [];
-        foreach (new InputContractFixtures($this->entityManager())->build($fixture) as $name => $value) {
+        foreach (new InputContractFixtures($this->entityManager(), self::getContainer())->build($fixture) as $name => $value) {
             $placeholders['{'.$name.'}'] = $value;
         }
 
