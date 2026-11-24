@@ -714,10 +714,24 @@ describe("DeliveryMethodFormView", () => {
         });
       mocks.put.mockImplementation(hold);
       mocks.post.mockImplementation(hold);
+      wrapper.get<HTMLButtonElement>("[data-testid=save]").element.focus();
       await wrapper.get("[data-testid=save]").trigger("click");
       await settle();
       return { wrapper, calls };
     }
+
+    it("keeps the focus on „Zapisz” while the save runs, and pressing it again sends nothing", async () => {
+      const { wrapper } = await saveHeld();
+      const save = wrapper.get<HTMLButtonElement>("[data-testid=save]").element;
+      const writes = () => mocks.put.mock.calls.length + mocks.post.mock.calls.length;
+
+      expect(document.activeElement).toBe(save);
+      expect(save.disabled).toBe(false);
+      expect(save.getAttribute("aria-disabled")).toBe("true");
+      await wrapper.get("[data-testid=save]").trigger("click");
+      expect(writes()).toBe(1);
+      expect(document.activeElement).toBe(save);
+    });
 
     it("says after 10 s that the result is unknown, with „Sprawdź stan” and the focus on the message, and keeps the fields locked", async () => {
       const { wrapper } = await saveHeld();

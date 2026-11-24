@@ -734,10 +734,24 @@ describe("DiscountCodeFormView", () => {
       let release!: (value: unknown) => void;
       let reject!: (reason: unknown) => void;
       mocks.put.mockImplementation(() => new Promise((resolve, fail) => ((release = resolve), (reject = fail))));
+      wrapper.get<HTMLButtonElement>("[data-testid=save]").element.focus();
       await wrapper.get("[data-testid=save]").trigger("click");
       await settle();
       return { wrapper, release: (value: unknown) => release(value), reject: (reason: unknown) => reject(reason) };
     }
+
+    it("keeps the focus on „Zapisz” while the save runs, and pressing it again sends nothing", async () => {
+      const { wrapper } = await saveHeld();
+      const save = wrapper.get<HTMLButtonElement>("[data-testid=save]").element;
+      const writes = () => mocks.put.mock.calls.length + mocks.post.mock.calls.length;
+
+      expect(document.activeElement).toBe(save);
+      expect(save.disabled).toBe(false);
+      expect(save.getAttribute("aria-disabled")).toBe("true");
+      await wrapper.get("[data-testid=save]").trigger("click");
+      expect(writes()).toBe(1);
+      expect(document.activeElement).toBe(save);
+    });
 
     it("disables every field, the switch and the kind of a new code from the save to its answer, and a second „Zapisz” sends nothing", async () => {
       const { wrapper, release } = await createHeld();
@@ -843,6 +857,7 @@ describe("DiscountCodeFormView", () => {
         });
       mocks.put.mockImplementation(hold);
       mocks.post.mockImplementation(hold);
+      wrapper.get<HTMLButtonElement>("[data-testid=save]").element.focus();
       await wrapper.get("[data-testid=save]").trigger("click");
       await settle();
       return { wrapper, calls };
