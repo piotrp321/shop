@@ -27,7 +27,9 @@ tej opcji.
 ## Komendy
 
 Uruchamiaj z katalogu głównego przez `make -C apps/store <cel>`:
-- `check` – ESLint i `tsc --noEmit` (po `next typegen`, który generuje typy tras do `.next/types`)
+- `check` – ESLint, `tsc --noEmit` (po `next typegen`, który generuje typy tras do `.next/types`) i `audit`
+- `audit` – `npm audit --omit=dev --audit-level=high`: podatność wagi high lub critical w pakiecie produkcyjnym
+  kończy cel błędem, błąd narzędzia i brak sieci też; bez wyjątków, podatny pakiet się aktualizuje
 - `test` – wszystkie testy (Vitest), także integracyjne na usługach stosu
 - `test-unit` – tylko testy jednostkowe, bez usług
 - `shell` – powłoka w kontenerze `store`

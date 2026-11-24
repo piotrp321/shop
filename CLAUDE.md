@@ -30,8 +30,10 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 - Komendy uruchamiaj przez Makefile, który opakowuje `docker compose exec`. Główny zarządza stosem i aplikacjami
   (`make up`/`down`/`logs`/`seed`/`check`/`test`/`e2e`/`api-client`); cele obszaru są w `make/<obszar>.mk` z opisem
   przy celu i dopisują się do `CHECK_TARGETS`, `TEST_TARGETS` albo `CI_AFTER_E2E` bez zmiany głównego `Makefile`.
-  Pracując w jednej aplikacji, używaj jej Makefile (`make -C apps/api check`). `check` = statyczna analiza i lint
-  (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc; główny woła też `make -C infra/k8s check`).
+  Pracując w jednej aplikacji, używaj jej Makefile (`make -C apps/api check`). `check` = statyczna analiza, lint
+  i audyt podatności zależności produkcyjnych (api: PHPStan, Deptrac, PHP CS Fixer, `composer audit`; store/admin:
+  ESLint, tsc, `npm audit`; główny woła też `make -C infra/k8s check`). Audyt jest celem `audit` aplikacji, potrzebuje
+  sieci, a błąd narzędzia albo brak sieci to błąd; podatną zależność się aktualizuje, wyjątki: `apps/api/CLAUDE.md`.
 - Tryb sklepu wybiera `STORE_MODE` (`dev` domyślnie, `production` z `next build` i cache ISR), podawany przy każdym
   `make up` i tak samo przy `make e2e`; E2E w CI działa na `production`. Szczegóły: `e2e/CLAUDE.md`.
 - Każdy worktree ma lokalny `.env` (poza repo) z własnym `COMPOSE_PROJECT_NAME` i wolnymi portami, żeby stosy

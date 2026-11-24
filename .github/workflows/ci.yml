@@ -86,9 +86,10 @@ jobs:
   # needs, so the parts run side by side:
   #   k8s              make -C infra/k8s check (the Helm chart, environments, scripts): no images, no services; the
   #                    longest of the checks, so a part of its own
-  #   apps             make check-code (PHPStan, Deptrac, PHP CS Fixer, ESLint, tsc and the make/*.mk fragments), the api
-  #                    unit suite (a few seconds, no services), the contract freshness, the store and admin suites, the
-  #                    VCL tests and the script tests; Redis for the store integration tests
+  #   apps             make check-code (PHPStan, Deptrac, PHP CS Fixer, ESLint, tsc, the audits of the production
+  #                    dependencies `audit` of the three apps (they need the network) and the make/*.mk fragments),
+  #                    the api unit suite (a few seconds, no services), the contract freshness, the store and admin
+  #                    suites, the VCL tests and the script tests; Redis for the store integration tests
   #   api integration, api demo data, api demo data orders, api functional
   #                    the api suites `integration`, `demo-data` and `demo-data-orders` (the integration tests of the
   #                    demo data generator, about two thirds of the integration time, split in two of about the same

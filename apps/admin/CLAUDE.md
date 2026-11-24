@@ -7,7 +7,9 @@ opis domeny w `docs/vision.md`.
 ## Komendy
 
 Uruchamiaj z katalogu głównego przez `make -C apps/admin <cel>`:
-- `check` – ESLint i `vue-tsc --noEmit`
+- `check` – ESLint, `vue-tsc --noEmit` i `audit`
+- `audit` – `npm audit --omit=dev --audit-level=high`: podatność wagi high lub critical w pakiecie produkcyjnym
+  kończy cel błędem, błąd narzędzia i brak sieci też; bez wyjątków, podatny pakiet się aktualizuje
 - `test` – wszystkie testy (Vitest)
 - `shell` – powłoka w kontenerze `admin`
 
