@@ -1,0 +1,18 @@
+| Punkt | RSS MiB | working set MiB | anon MiB | sterta po GC MB |
+|---|---|---|---|---|
+| start | 112 | 59 | 53 | 36 |
+| po rozgrzewce | 477 | 476 | 463 | 144 |
+| done sent=20,000 | 489 | 499 | 471 | 144 |
+
+events: [('seed', None, None), ('warm', None, None), ('done', 20000, None)]
+peak RSS 489 MiB, peak working set 499 MiB, samples 348
+last sample: RSS 376 MiB at +728 s
+Mark-Compact: 80, longest pause 86 ms, heap after last 145 MB, max heap after GC 154 MB
+Mark-Compact pauses >= 100 ms: 0; total Mark-Compact pause 0.7 s; scavenges 0
+state: running=true oomkilled=false exit=0 restarts=0
+non-GC log lines (last 12):
+   2026-11-24T21:58:19.707101258Z ▲ Next.js 16.4.6
+   2026-11-24T21:58:19.707117675Z - Local:         http://localhost:3000
+   2026-11-24T21:58:19.707118966Z - Network:       http://0.0.0.0:3000
+   2026-11-24T21:58:19.707119841Z ✓ Ready in 0ms
+   2026-11-24T21:58:19.712457633Z ✓ Running next.config took 5ms
