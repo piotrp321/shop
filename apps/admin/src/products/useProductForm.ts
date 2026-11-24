@@ -212,8 +212,8 @@ export function useProductForm(options: ProductFormOptions) {
       clearFeedback();
     },
     onLateSuccess: (text) => options.onLateSaved?.(text),
-    // A row of a variant that is new in the draft has no id; the server gives it one.
-    compare: { serverAssigned: ["variantId"] },
+    // A row of a variant that is new in the draft has no id; the server gives it one, never one of the rows the draft started from.
+    compare: () => ({ serverAssigned: ["variantId"], knownServerValues: source?.variants.map((variant) => variant.variantId) ?? [] }),
     newObject: { unknownMessage: "Nie wiemy, czy produkt został utworzony.", ownNote: "Możliwe, że utworzył go Twój wcześniejszy zapis." },
   });
 

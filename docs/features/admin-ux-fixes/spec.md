@@ -480,7 +480,9 @@ zostają w formularzu.”
 - Zgodność: żądanie zapisu zbudowane z aktualnego szkicu jest równe żądaniu zbudowanemu tą samą funkcją formularza
   z odpowiedzi odczytu, bez `version`. Porównanie jest ścisłe, pole po polu; daty jako momenty w czasie; listy (osie
   i wiersze wariantów, zdjęcia z opisami, kategorie dodatkowe, warianty promocji) w kolejności szkicu; wiersz wariantu
-  bez identyfikatora po wartościach. Nie ma zgodności, gdy ze szkicu nie da się zbudować żądania, gdy szkic zawiera
+  bez identyfikatora po wartościach i tylko z wierszem serwera, którego `variantId` nie występował w stanie bazowym
+  (wariant utworzony na serwerze): wiersz usunięty i dodany od nowa z tą samą wartością zostaje przy starym
+  identyfikatorze na serwerze, który nie wykonał zapisu, więc nie jest zgodny. Nie ma zgodności, gdy ze szkicu nie da się zbudować żądania, gdy szkic zawiera
   wartość nadawaną przez serwer (początek „Od teraz”, pusty slug) albo gdy nieznany wynik dotyczy publikacji lub
   wycofania, a status w odpowiedzi nie jest docelowy. Każda inna różnica, także przycięte spacje, to brak zgodności.
   Porównywany jest szkic z chwili odpowiedzi odczytu, nie treść wysłanego zapisu: zmiana wpisana po odblokowaniu,

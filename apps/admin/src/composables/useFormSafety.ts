@@ -34,8 +34,11 @@ export interface FormSafetyOptions<TView extends { version: number }, TBody> {
   adopt: (view: TView) => void;
   /** Tells the staff member that an earlier save was done after all (a toast); gets `LATE_SAVE_MESSAGE`. */
   onLateSuccess: (message: string) => void;
-  /** The names of the fields that hold moments and of the ones the server fills in, for the comparison of requests. */
-  compare?: RequestComparison;
+  /**
+   * The names of the fields that hold moments and of the ones the server fills in, for the comparison of requests; a
+   * function when it depends on the base of the draft, read when the comparison is made.
+   */
+  compare?: RequestComparison | (() => RequestComparison);
   /** The texts for a new object: „Nie wiemy, czy <obiekt> został utworzony.” and „Możliwe, że utworzył go Twój wcześniejszy zapis.”. */
   newObject: { unknownMessage: string; ownNote: string };
 }
@@ -363,7 +366,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
       const draft = options.draftRequest();
       const served = options.servedRequest(view);
       const confirmed = current.confirmedBy?.(view) ?? true;
-      if (draft !== null && served !== null && confirmed && sameRequest(draft, served, options.compare)) {
+      if (draft !== null && served !== null && confirmed && sameRequest(draft, served, typeof options.compare === "function" ? options.compare() : options.compare)) {
         options.adopt(view);
         clearNotices();
         matched.value = true;

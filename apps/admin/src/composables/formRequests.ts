@@ -56,10 +56,17 @@ export interface RequestComparison {
   /** Names of the fields that hold a moment in time: two texts are the same when they are the same moment. */
   instants?: readonly string[];
   /**
-   * Names of the fields the server fills in (an id of a row that was new): a null in the draft equals any value there.
-   * Only on the draft side: a null on the server is never taken for a draft with a value.
+   * Names of the fields the server fills in (an id of a row that was new): a null in the draft equals a value there that
+   * the base of the draft did not have (`knownServerValues`). Only on the draft side: a null on the server is never taken
+   * for a draft with a value.
    */
   serverAssigned?: readonly string[];
+  /**
+   * The values of `serverAssigned` fields that the base of the draft already had (the ids of its rows). A row of the draft
+   * without an id is a new row, so it is not the row of the server that carries one of them: the server would have given
+   * it a new id and dropped the old one.
+   */
+  knownServerValues?: readonly unknown[];
 }
 
 /**
@@ -72,7 +79,7 @@ export function sameRequest(draft: unknown, served: unknown, options: RequestCom
 
 function same(draft: unknown, served: unknown, key: string | undefined, options: RequestComparison): boolean {
   if (key !== undefined && options.serverAssigned?.includes(key) && draft === null && served !== undefined) {
-    return true;
+    return !(options.knownServerValues ?? []).includes(served);
   }
   if (Array.isArray(draft) || Array.isArray(served)) {
     return (
