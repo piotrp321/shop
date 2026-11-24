@@ -54,8 +54,11 @@ Wynik to `plan.md` w katalogu specyfikacji, z sekcją „Status” i manifestem 
    - `risk`: `FAST` (lokalna zmiana niskiego ryzyka), `STANDARD` (funkcjonalność, API,
      integracja), `CRITICAL` (auth, pieniądze, migracje danych, transakcje, współbieżność, bezpieczeństwo).
      To ocena do planu i przeglądu: sesja prowadząca epik dobiera według niej model i głębokość przeglądu zadania.
-   - `paths`: pliki i katalogi (z `/` na końcu), które zadanie zmieni, łącznie z testami i dokumentacją. Plik, który
-     zadanie na pewno zmieni (np. `spec.md` epiku, każdy `CLAUDE.md`), wpisz jako plik; katalog tylko dla plików
+   - `paths`: pliki i katalogi (z `/` na końcu), które zadanie zmieni, łącznie z testami i dokumentacją. Listę
+     uzupełnij wyszukiwaniem w całym repo (`git grep` ścieżek endpointów, nazw pól, komend i komponentów, które zadanie
+     zmienia). Do `paths` należą też wołający kontraktu poza aplikacją zadania (`load/`, `infra/k8s/smoke/`, `e2e/`),
+     istniejące testy, które obejmuje kryterium zadania, i dokumenty ze zdaniami, które po zmianie przestaną być
+     prawdziwe. Plik, który zadanie na pewno zmieni (np. `spec.md` epiku, każdy `CLAUDE.md`), wpisz jako plik; katalog tylko dla plików
      nieznanych z góry. Przy niepewności wpisz szerszy katalog: za wąska lista może puścić naraz zadania, które
      zmieniają to samo. Zadanie, które zakłada nowy katalog w katalogu głównym repo, nie ma `paths` (walidator
      wymaga istniejącego pierwszego segmentu) i idzie szeregowo.

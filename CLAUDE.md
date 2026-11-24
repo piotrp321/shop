@@ -69,7 +69,10 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
   i `apps/api/openapi-admin.json` (panel: `/api/v1/admin`); klient TS sklepu jest generowany tylko z pierwszego, klient
   panelu tylko z drugiego. Po każdej zmianie endpointu lub DTO w API: wyeksportuj specyfikacje
   (`make -C apps/api openapi`) i wygeneruj klientów TS (`make api-client`); commituj te zmiany razem ze zmianą w API.
-  Fronty używają wyłącznie wygenerowanego klienta. Nie pisz ręcznie typów odpowiedzi API.
+  Fronty używają wyłącznie wygenerowanego klienta. Nie pisz ręcznie typów odpowiedzi API. Zmiana, która dodaje
+  wymagane pole albo zmienia kształt żądania lub odpowiedzi API albo BFF sklepu, w tym samym zadaniu zmienia też
+  wołających spoza wygenerowanych klientów. Znajdziesz ich przez `git grep` ścieżki endpointu i nazwy pola (m.in.
+  `load/`, `infra/k8s/smoke/`, `e2e/`, zestawy testów zgodności wejścia).
 - Oryginały zdjęć są w Garage (prywatny bucket), serwowane wyłącznie przez imgproxy. Podpisane adresy imgproxy buduje
   API; klucz podpisu nigdy nie trafia do frontów. Rozmiary obrazów są zdefiniowane w jednym miejscu: nie dodawaj
   nowego rozmiaru w komponencie, dopisz go do listy. Wyjątek (statyczne WebP strony głównej z jedną listą rozmiarów
@@ -207,7 +210,8 @@ Obowiązuje autora i reviewera, w części, której dotyczy zmiana:
   jest przy celu (komentarz w `make/*.mk` albo w Makefile aplikacji) i w `CLAUDE.md` obszaru.
 - `CLAUDE.md` aplikacji i obszarów zawierają wyłącznie zasady, komendy i decyzje, których nie widać w kodzie. Opisu
   działania kodu (endpointy, pola, komponenty, przebieg) tam nie dopisujemy: należy do specyfikacji funkcji i do kodu.
-  Zadanie zmienia taki plik tylko wtedy, gdy wprowadza albo zmienia zasadę.
+  Zadanie zmienia taki plik, gdy wprowadza albo zmienia zasadę, i gdy zmiana zachowania czyni zdanie w nim
+  nieprawdziwym: wtedy je poprawia albo usuwa, bez dopisywania opisu działania.
 
 ## Czego nie robić
 
