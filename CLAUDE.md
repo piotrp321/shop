@@ -32,7 +32,8 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
   przy celu i dopisują się do `CHECK_TARGETS`, `TEST_TARGETS` albo `CI_AFTER_E2E` bez zmiany głównego `Makefile`.
   Pracując w jednej aplikacji, używaj jej Makefile (`make -C apps/api check`). `check` = statyczna analiza, lint
   i audyt podatności zależności produkcyjnych (api: PHPStan, Deptrac, PHP CS Fixer, `composer audit`; store/admin:
-  ESLint, tsc, `npm audit`; główny woła też `make -C infra/k8s check`). Audyt jest celem `audit` aplikacji, potrzebuje
+  ESLint, tsc, `npm audit`; główny woła też `make -C infra/k8s check` i kontrolę digestów obrazów bazowych
+  w `Dockerfile`, `tools/base-images/`). Audyt jest celem `audit` aplikacji, potrzebuje
   sieci, a błąd narzędzia albo brak sieci to błąd; podatną zależność się aktualizuje, wyjątki: `apps/api/CLAUDE.md`.
 - Tryb sklepu wybiera `STORE_MODE` (`dev` domyślnie, `production` z `next build` i cache ISR), podawany przy każdym
   `make up` i tak samo przy `make e2e`; E2E w CI działa na `production`. Szczegóły: `e2e/CLAUDE.md`.
