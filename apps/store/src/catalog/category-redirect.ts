@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { createApiClient } from "@/api/client";
 import { categoryHref } from "./catalog-href";
+import { CATALOG_TAG } from "./isr-tags";
 import type { SearchParams } from "./listing-query";
 
 /**
@@ -14,7 +15,7 @@ export async function loadCategoryRedirect(path: string): Promise<string | null>
   if (!baseUrl) {
     throw new Error("API_CATALOG_URL is not set.");
   }
-  const { data, response } = await createApiClient({ baseUrl, tags: ["catalog"] }).GET("/api/v1/categories/redirect", { params: { query: { path } } });
+  const { data, response } = await createApiClient({ baseUrl, tags: [CATALOG_TAG] }).GET("/api/v1/categories/redirect", { params: { query: { path } } });
   if (data === undefined) {
     if (response.status === 404 || response.status === 400) {
       return null;

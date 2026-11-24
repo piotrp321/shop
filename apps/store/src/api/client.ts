@@ -1,4 +1,5 @@
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { NextCacheTag } from "@/catalog/isr-tags";
 import { conflictReason, type OrderConflictReason, type PaymentConflictReason, paymentConflictReason } from "@/checkout/problems";
 import type { components, paths } from "./schema";
 
@@ -8,10 +9,16 @@ export type ApiClient = Client<paths>;
  * The only place that talks to the API. Use it from the server only: `baseUrl` is the internal address.
  * `accessToken` adds a bearer header for endpoints that need a signed-in user.
  * `tags` are the Next.js cache tags of every read of the client (`next: { tags }` of fetch): a page that renders from
- * these reads is revalidated with `revalidateTag`. openapi-fetch calls fetch with a ready Request, so the tags travel
- * as its second argument (`requestInitExt`).
+ * these reads is revalidated with `revalidateTag`. Only tags of `@/catalog/isr-tags` fit (`NextCacheTag`), never a
+ * name built here or in the caller, so no read carries a tag with the id of an entity. openapi-fetch calls fetch with
+ * a ready Request, so the tags travel as its second argument (`requestInitExt`).
  */
-export function createApiClient(options: { baseUrl: string; accessToken?: string; fetch?: ClientOptions["fetch"]; tags?: string[] }): ApiClient {
+export function createApiClient(options: {
+  baseUrl: string;
+  accessToken?: string;
+  fetch?: ClientOptions["fetch"];
+  tags?: NextCacheTag[];
+}): ApiClient {
   return createClient<paths>({
     baseUrl: options.baseUrl,
     fetch: options.fetch,
