@@ -16,8 +16,8 @@ final class TextFieldExceptions
 {
     /**
      * @return list<array{field: string, operations: list<string>, reason: string}> the field as the documents name it
-     *                                                                               (`images[].key`), the operations
-     *                                                                               ("METHOD /path") and the reason
+     *                                                                              (`images[].key`), the operations
+     *                                                                              ("METHOD /path") and the reason
      */
     public static function all(): array
     {

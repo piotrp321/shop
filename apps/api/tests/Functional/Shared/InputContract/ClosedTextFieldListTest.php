@@ -142,9 +142,11 @@ final class ClosedTextFieldListTest extends KernelTestCase
 
     public function testAnExceptionWithoutAReasonIsReported(): void
     {
-        $exceptions = TextFieldExceptions::all();
-        $exceptions[0]['reason'] = '';
-        $exceptions[5]['reason'] = " \u{A0}\t";
+        $exceptions = array_map(static fn (array $exception): array => match ($exception['field']) {
+            'slug' => ['reason' => ''] + $exception,
+            'trackingUrlTemplate' => ['reason' => " \u{A0}\t"] + $exception,
+            default => $exception,
+        }, TextFieldExceptions::all());
 
         self::assertSame(
             [
@@ -255,6 +257,7 @@ final class ClosedTextFieldListTest extends KernelTestCase
         self::assertIsArray($item);
         $operation = $item[$method] ?? null;
         self::assertIsArray($operation);
+        /** @var array<string, mixed> $operation */
 
         return $operation;
     }
