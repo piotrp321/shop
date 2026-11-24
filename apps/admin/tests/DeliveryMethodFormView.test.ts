@@ -753,6 +753,20 @@ describe("DeliveryMethodFormView", () => {
       expect(mocks.put).toHaveBeenCalledTimes(1);
     });
 
+    it("„Sprawdź stan” stops saying that the server matches the form when the staff member changes a field afterwards", async () => {
+      const { wrapper } = await saveHeld();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      serve(method({ name: "Kurier DPD", version: 4 }));
+      await click(wrapper, "check-state");
+      expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
+
+      await wrapper.get("[data-testid=name-input]").setValue("Kurier DHL");
+
+      expect(wrapper.get("[data-testid=safety-status]").text()).toBe("");
+      expect(input(wrapper, "name-input").value).toBe("Kurier DHL");
+    });
+
     it("„Sprawdź stan” says the write is not on the server when the version is the same and the values are not", async () => {
       const { wrapper } = await saveHeld();
       await vi.advanceTimersByTimeAsync(10_000);

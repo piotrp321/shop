@@ -1440,6 +1440,21 @@ describe("ProductFormView", () => {
         expect(barButton("Zapisz")?.disabled).toBe(true);
       });
 
+      it("„Sprawdź stan” stops saying that the server matches the form when the staff member changes a field afterwards", async () => {
+        const { wrapper } = await saveHeld();
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settle();
+        serve(view({ name: "Pierwsza", version: 4 }));
+        await alertOf(wrapper).get("[data-testid=check-state]").trigger("click");
+        await settle();
+        expect(wrapper.get("[data-testid=safety-status]").text()).toBe("Stan na serwerze odpowiada formularzowi.");
+
+        await wrapper.get("[data-testid=name]").setValue("Druga");
+
+        expect(wrapper.get("[data-testid=safety-status]").text()).toBe("");
+        expect(inputOf(wrapper, "name").value).toBe("Druga");
+      });
+
       it("„Sprawdź stan” takes the product from the server when it equals the form, says so in a status region and sends no write", async () => {
         const { wrapper } = await saveHeld();
         await vi.advanceTimersByTimeAsync(10_000);

@@ -1,3 +1,4 @@
+import { nextTick, reactive } from "vue";
 import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LATE_SAVE_MESSAGE,
@@ -157,7 +158,7 @@ describe("useFormSafety", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    state = { id: "d1", version: 4, draft: { name: "Pierwsza" } };
+    state = reactive({ id: "d1", version: 4, draft: { name: "Pierwsza" } });
     adopted = [];
     late = [];
     read = vi.fn();
@@ -550,6 +551,33 @@ describe("useFormSafety", () => {
       expect(safety.unknown.value).toBeNull();
       expect(safety.status.value).toBe(MATCHES_MESSAGE);
       expect(safety.locked.value).toBe(false);
+    });
+
+    it("stops saying that the server matches the form as soon as the staff member changes the draft", async () => {
+      const safety = create();
+      await unknownResult(safety);
+      read.mockResolvedValue({ data: doc("Pierwsza", 5) });
+      await safety.check();
+      expect(safety.status.value).toBe(MATCHES_MESSAGE);
+
+      await nextTick();
+      expect(safety.status.value).toBe(MATCHES_MESSAGE);
+      state.draft = { name: "Druga" };
+      await nextTick();
+
+      expect(safety.status.value).toBe("");
+    });
+
+    it("keeps the message of a match while the draft is the one it was said for", async () => {
+      const safety = create();
+      await unknownResult(safety);
+      read.mockResolvedValue({ data: doc("Pierwsza", 5) });
+      await safety.check();
+
+      state.draft = { name: "Pierwsza" };
+      await nextTick();
+
+      expect(safety.status.value).toBe(MATCHES_MESSAGE);
     });
 
     it("leaves the draft, the base and the version when the server has the same version and other values", async () => {
