@@ -180,6 +180,24 @@ final class BackofficeCustomersEndpointTest extends WebTestCase
         self::assertSame($expected, [...self::ids($first), ...self::ids($second)]);
     }
 
+    /**
+     * A name stored before a stricter rule of texts (spec api-input-contract, E7) does not stop the list sorted by name:
+     * the cursor after the customer is taken back.
+     */
+    public function testTheSortByNamePagesOverANameStoredOutsideTheRule(): void
+    {
+        $this->customers();
+        $this->connection->executeStatement("UPDATE ordering_customer SET full_name = ? WHERE customer_id = 'kc-a'", ["Anna\tNowak"]);
+
+        $first = $this->list('perPage=1&sort=name', self::staff(['admin']));
+        self::assertSame(['kc-a'], self::ids($first));
+        self::assertIsString($first['nextCursor']);
+        $second = $this->list('perPage=2&sort=name&after='.$first['nextCursor'], self::staff(['admin']));
+
+        self::assertSame(200, $this->response()->getStatusCode(), (string) $this->response()->getContent());
+        self::assertSame(['kc-b', 'kc-c'], self::ids($second));
+    }
+
     public function testACursorOfAnotherSortIsA400AtAfter(): void
     {
         $this->customers();
