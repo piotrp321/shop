@@ -207,6 +207,9 @@ final class BackofficeCustomersEndpointTest extends WebTestCase
         yield 'a term of 101 characters' => ['q='.str_repeat('a', 101), 'q', $term];
         yield 'a term with a NUL' => ['q=ann%00a', 'q', $term];
         yield 'a term with a line separator' => ['q='.rawurlencode("ann\u{2028}a"), 'q', $term];
+        yield 'a term of three zero width spaces' => ['q='.rawurlencode("\u{200B}\u{200B}\u{200B}"), 'q', $term];
+        yield 'a term of three Hangul fillers' => ['q='.rawurlencode("\u{3164}\u{3164}\u{3164}"), 'q', $term];
+        yield 'a term with a C1 control' => ['q='.rawurlencode("ann\u{9F}a"), 'q', $term];
         yield 'a term as an array' => ['q[]=anna', 'q', $term];
         yield 'a sort outside the list' => ['sort=-name', 'sort', $sort];
         yield 'a sort as an array' => ['sort[]=name', 'sort', $sort];

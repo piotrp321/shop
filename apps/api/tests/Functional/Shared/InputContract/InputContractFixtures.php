@@ -12,6 +12,12 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRedirectRepo
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Catalog\Infrastructure\Search\ElasticsearchClientFactory;
+use App\Ordering\Application\CartReference;
+use App\Ordering\Application\Command\ChangeOrderStatus;
+use App\Ordering\Application\Command\MarkOrderPaid;
+use App\Ordering\Application\Command\PlacedOrder;
+use App\Ordering\Application\Command\PlaceOrder;
+use App\Ordering\Domain\StaffTransition;
 use App\Pricing\Domain\Price\VariantId;
 use App\Pricing\Domain\Promotion\PercentOff;
 use App\Pricing\Domain\Promotion\Promotion;
@@ -27,6 +33,8 @@ use App\Tests\Support\OriginalImages;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Uid\Uuid;
 
 /**
@@ -74,6 +82,10 @@ final readonly class InputContractFixtures
             'customerCheckout' => $this->checkout(TestTokenFactory::CUSTOMER_ID),
             'guestOrder' => $this->guestOrder(),
             'customerOrder' => ['orderId' => OrderingFixture::order($this->entityManager->getConnection(), customerId: TestTokenFactory::CUSTOMER_ID)],
+            'paidOrder' => ['orderId' => $this->paidOrder()],
+            'cancelledOrder' => ['orderId' => $this->cancelledOrder()],
+            'searchedOrder' => $this->searchedOrder(),
+            'searchedCustomer' => $this->searchedCustomer(),
             default => throw new \LogicException(\sprintf('No fixture "%s".', $fixture)),
         };
     }
@@ -260,6 +272,74 @@ final readonly class InputContractFixtures
             'deliveryMethodId' => OrderingFixture::freeDeliveryMethod($connection),
             'variantId' => $variantId,
         ];
+    }
+
+    /**
+     * An order of a guest placed through the command of the checkout (one unit of 12,30 zł) and paid: version 2, with its
+     * reservation and history, what a staff member changes.
+     */
+    private function paidOrder(): string
+    {
+        ['cartId' => $cartId, 'deliveryMethodId' => $deliveryMethodId, 'variantId' => $variantId] = $this->checkout(null);
+        $placed = $this->dispatch(new PlaceOrder(CartReference::guest($cartId), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa',
+            $deliveryMethodId, 1230, [['variantId' => $variantId, 'quantity' => 1]], 'fixture-'.$cartId));
+        \assert($placed instanceof PlacedOrder);
+        $this->dispatch(new MarkOrderPaid($placed->order->orderId, Uuid::v7()->toRfc4122(), 1230, 'PLN', new \DateTimeImmutable()));
+        $this->entityManager->clear();
+
+        return $placed->order->orderId;
+    }
+
+    /**
+     * A paid order cancelled by a staff member, with its refund pending (version 3).
+     */
+    private function cancelledOrder(): string
+    {
+        $orderId = $this->paidOrder();
+        $this->dispatch(new ChangeOrderStatus($orderId, StaffTransition::Cancel, 2, 'Brak towaru', 'kc-staff-1', 'anna'));
+        $this->entityManager->clear();
+
+        return $orderId;
+    }
+
+    /**
+     * An order of a guest whose full name no other order of the tests has, what the search of the order list finds.
+     *
+     * @return array{orderId: string, orderName: string}
+     */
+    private function searchedOrder(): array
+    {
+        $name = 'Zenobia Wierzbięta';
+
+        return ['orderId' => OrderingFixture::order($this->entityManager->getConnection(), email: 'zenobia@example.com', fullName: $name), 'orderName' => $name];
+    }
+
+    /**
+     * A customer with an order and its row of the customer list, under a name no other customer of the tests has.
+     *
+     * @return array{customerId: string, customerName: string}
+     */
+    private function searchedCustomer(): array
+    {
+        $connection = $this->entityManager->getConnection();
+        $customerId = 'kc-text-'.Uuid::v7()->toRfc4122();
+        $name = 'Bogumiła Szczęsna';
+        $orderId = OrderingFixture::order($connection, email: 'bogumila@example.com', customerId: $customerId, fullName: $name);
+        $connection->executeStatement(
+            "INSERT INTO ordering_customer (customer_id, email, full_name, phone, order_count, paid_count, paid_gross, first_order_at, last_order_at, last_order_id)
+             VALUES (?, 'bogumila@example.com', ?, '+48600100200', 1, 0, 0, now(), now(), ?)",
+            [$customerId, $name, $orderId],
+        );
+
+        return ['customerId' => $customerId, 'customerName' => $name];
+    }
+
+    private function dispatch(object $command): mixed
+    {
+        $bus = $this->container()->get('command.bus');
+        \assert($bus instanceof MessageBusInterface);
+
+        return $bus->dispatch($command)->last(HandledStamp::class)?->getResult();
     }
 
     /**

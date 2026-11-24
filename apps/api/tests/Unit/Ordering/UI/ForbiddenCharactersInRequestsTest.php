@@ -39,6 +39,9 @@ final class ForbiddenCharactersInRequestsTest extends TestCase
         yield 'truncated sequence at the end' => ["AB\xC3"];
         yield 'only invalid bytes' => ["\xFF"];
         yield 'NUL' => ["A\0B"];
+        // Every control character of the rule of texts (spec api-input-contract, T1), also C1.
+        yield 'C1 control U+009F' => ["A\u{9F}B"];
+        yield 'C1 control U+0080 at the end' => ["AB\u{80}"];
     }
 
     /**
@@ -79,9 +82,81 @@ final class ForbiddenCharactersInRequestsTest extends TestCase
         self::assertSame([], $this->violations(new CompleteRefundRequest(3, "\u{00A0}")));
     }
 
+    /**
+     * Texts without a visible character once trimmed by the rule of texts (T3).
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function emptyTexts(): iterable
+    {
+        yield 'a zero width space' => ["\u{200B}"];
+        yield 'a Hangul filler' => ["\u{3164}"];
+        yield 'invisible characters and spaces' => ["\u{FEFF} \u{200B}\u{2060}"];
+    }
+
+    #[DataProvider('emptyTexts')]
+    public function testANoteWithoutAVisibleCharacterIsNoNote(string $note): void
+    {
+        foreach (['cancel', 'return'] as $transition) {
+            self::assertSame([['note', 'Notatka jest wymagana.']], $this->violations(new ChangeOrderStatusRequest($transition, 2, $note, null)), $transition);
+        }
+        self::assertSame([], $this->violations(new ChangeOrderStatusRequest('ship', 2, $note, null)));
+        self::assertSame([], $this->violations(new CompleteRefundRequest(3, $note)));
+    }
+
+    #[DataProvider('emptyTexts')]
+    public function testATextOfAnOrderWithoutAVisibleCharacterIsMissing(string $empty): void
+    {
+        $messages = [
+            'email' => 'Adres e-mail jest wymagany.',
+            'fullName' => 'Imię i nazwisko są wymagane.',
+            'phone' => 'Numer telefonu jest wymagany.',
+            'street' => 'Ulica i numer są wymagane.',
+            'postalCode' => 'Kod pocztowy jest wymagany.',
+            'city' => 'Miejscowość jest wymagana.',
+        ];
+        foreach ($messages as $field => $message) {
+            self::assertSame([[$field, $message]], $this->violations(self::guestOrder([$field => $empty])), $field);
+            if ('email' !== $field) {
+                self::assertSame([[$field, $message]], $this->violations(self::customerOrder([$field => $empty])), $field);
+            }
+        }
+    }
+
+    /**
+     * The texts of an order between the characters the rule of texts trims (T2), and the fields with a format among
+     * them, have no violation; the same characters inside a value with a format break the format.
+     */
+    public function testTheTextsOfAnOrderBetweenTheEdgesOfTheRuleAreValid(): void
+    {
+        foreach (["\u{A0}", "\u{200B}", "\u{FEFF}", "\u{AD}\u{3000}"] as $edge) {
+            $between = static fn (string $value): string => $edge.$value.$edge;
+            $fields = ['email' => $between('anna.nowak@example.com'), 'fullName' => $between('Anna Nowak'), 'phone' => $between('+48 600 100 200'), 'street' => $between('ul. Długa 5/3'), 'postalCode' => $between('00-950'), 'city' => $between('Warszawa')];
+
+            self::assertSame([], $this->violations(self::guestOrder($fields)), \sprintf('U+%04X', mb_ord($edge)));
+            self::assertSame([], $this->violations(self::customerOrder($fields)), \sprintf('U+%04X', mb_ord($edge)));
+        }
+        self::assertSame([['phone', 'Podaj 9-cyfrowy numer telefonu.']], $this->violations(self::guestOrder(['phone' => "600\u{200B}100200"])));
+        self::assertSame([['postalCode', 'Podaj kod pocztowy w formacie 00-000.']], $this->violations(self::guestOrder(['postalCode' => "00-\u{A0}950"])));
+        self::assertSame([['email', 'Podaj poprawny adres e-mail.']], $this->violations(self::guestOrder(['email' => "anna\u{200B}nowak@example.com"])));
+    }
+
+    /**
+     * A field with a format answers a forbidden character with the message of its format, also at the end of a valid
+     * value, where the trim of the ends would drop it (T1 looks at the value as it came).
+     */
+    public function testAFieldWithAFormatRefusesAForbiddenCharacterAtTheEndOfAValidValue(): void
+    {
+        foreach (["\u{2028}", "\u{85}", "\u{9F}", "\t"] as $character) {
+            self::assertSame([['email', 'Podaj poprawny adres e-mail.']], $this->violations(self::guestOrder(['email' => 'anna.nowak@example.com'.$character])));
+            self::assertSame([['phone', 'Podaj 9-cyfrowy numer telefonu.']], $this->violations(self::guestOrder(['phone' => '600100200'.$character])));
+            self::assertSame([['postalCode', 'Podaj kod pocztowy w formacie 00-000.']], $this->violations(self::customerOrder(['postalCode' => '00-950'.$character])));
+        }
+    }
+
     public function testTheLengthOfANoteIsCountedAfterATrimOfUnicodeWhiteSpace(): void
     {
-        $edges = "\u{00A0}\u{3000}";
+        $edges = "\u{00A0}\u{3000}\u{200B}";
 
         self::assertSame([], $this->violations(new ChangeOrderStatusRequest('cancel', 2, $edges.str_repeat('ż', 500).$edges, null)));
         self::assertSame([], $this->violations(new CompleteRefundRequest(3, $edges.str_repeat('ż', 500).$edges)));
@@ -134,5 +209,25 @@ final class ForbiddenCharactersInRequestsTest extends TestCase
 
             self::assertSame([[$field, $message]], $this->violations($request), $name);
         }
+    }
+
+    /**
+     * @param array<string, string> $fields the texts that replace those of a valid body
+     */
+    private static function guestOrder(array $fields): PlaceGuestOrderRequest
+    {
+        $fields += ['email' => 'jan@example.com', 'fullName' => 'Jan Kowalski', 'phone' => '600100200', 'street' => 'Długa 1', 'postalCode' => '00-950', 'city' => 'Warszawa'];
+
+        return new PlaceGuestOrderRequest('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', $fields['email'], $fields['fullName'], $fields['phone'], $fields['street'], $fields['postalCode'], $fields['city'], 1000, '0192f0c4-7c1a-7c4e-9a6e-00000000de10', [['variantId' => '0192f0c4-7c1a-7c4e-9a6e-00000000a001', 'quantity' => 1]]);
+    }
+
+    /**
+     * @param array<string, string> $fields the texts that replace those of a valid body; an email is ignored
+     */
+    private static function customerOrder(array $fields): PlaceCustomerOrderRequest
+    {
+        $fields += ['fullName' => 'Jan Kowalski', 'phone' => '600100200', 'street' => 'Długa 1', 'postalCode' => '00-950', 'city' => 'Warszawa'];
+
+        return new PlaceCustomerOrderRequest($fields['fullName'], $fields['phone'], $fields['street'], $fields['postalCode'], $fields['city'], 1000, '0192f0c4-7c1a-7c4e-9a6e-00000000de10', [['variantId' => '0192f0c4-7c1a-7c4e-9a6e-00000000a001', 'quantity' => 1]]);
     }
 }

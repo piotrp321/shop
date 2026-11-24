@@ -148,6 +148,10 @@ final class OrderSearchEndpointTest extends WebTestCase
         yield 'a number of 300 digits' => ['R-'.str_repeat('1', 300)];
         yield 'a NUL' => ['jan%00kowalski'];
         yield 'not UTF-8' => ['jan%FFkowalski'];
+        // The rule of texts (spec api-input-contract, T1 and T3).
+        yield 'three zero width spaces' => ['%E2%80%8B%E2%80%8B%E2%80%8B'];
+        yield 'three Hangul fillers' => ['%E3%85%A4%E3%85%A4%E3%85%A4'];
+        yield 'a C1 control inside' => ['jan%C2%9Fkowalski'];
     }
 
     #[DataProvider('refusedTerms')]
