@@ -414,6 +414,41 @@ final class ProductEditTest extends TestCase
         }
     }
 
+    /**
+     * @return iterable<string, array{list<string>, list<string>, bool}> the stored values, the values given and
+     *                                                                   whether the detail names the correction of
+     *                                                                   forbidden characters
+     */
+    public static function culpritsOfALockedVariant(): iterable
+    {
+        // The value that has no text to keep is not the cause: the changed value M is, and it is a clean text.
+        yield 'a forbidden character in a value without a visible character, the clean value changed' => [["\u{9F}", 'M'], ['x', 'L'], false];
+        yield 'a forbidden character in another value that keeps its text, the clean value changed' => [["czar\u{9F}ne", 'M'], ['czarne', 'L'], false];
+        yield 'the value with the forbidden character changed' => [["czar\u{9F}ne", 'M'], ['zielone', 'M'], true];
+        yield 'the value with the forbidden character changed next to a value without a visible character' => [["\u{3164}", "M\u{9F}"], ['x', 'L'], true];
+        yield 'both values changed, one with a forbidden character' => [["czar\u{9F}ne", 'M'], ['zielone', 'L'], true];
+    }
+
+    /**
+     * The correction of forbidden characters is named only when the value that causes the refusal has them.
+     *
+     * @param list<string> $stored
+     * @param list<string> $given
+     */
+    #[DataProvider('culpritsOfALockedVariant')]
+    public function testTheDetailOfALockedVariantNamesTheCorrectionOnlyForTheValueThatCausesTheRefusal(array $stored, array $given, bool $named): void
+    {
+        $product = StoredProducts::publishedAsStored(self::AXES, [['id' => self::BLACK_M, 'values' => $stored]]);
+
+        try {
+            $this->edit($product, axes: self::AXES, variants: [['id' => self::BLACK_M, 'values' => $given]]);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame($named, str_contains($e->getMessage(), 'znaki niedozwolone'), $e->getMessage());
+            self::assertStringEndsWith($named ? self::LOCKED_VALUE_REFUSED : self::LOCKED_VALUE, $e->getMessage());
+        }
+    }
+
     public function testRemovalOfAVariantInUseNamesTheStoredLabelWithoutForbiddenOrTrimmedCharacters(): void
     {
         $product = StoredProducts::publishedAsStored(self::AXES, [
