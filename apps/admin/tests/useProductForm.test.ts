@@ -1256,6 +1256,107 @@ describe("useProductForm", () => {
       });
     });
 
+    describe("B2: an image upload and the reads that replace the draft", () => {
+      const stored = ok({ key: "originals/c.jpg", preview: { size: "thumbnail", aspectRatio: "1:1", variants: {} } }, 201);
+      const productReads = () => mocks.get.mock.calls.filter(([path]) => path === PRODUCT).length;
+      const keys = (form: Form) => form.form.value.images.map((image) => image.key);
+
+      /** A file is being sent: the answer is held. */
+      async function sending(form: Form) {
+        mocks.post.mockReset();
+        const uploads = holdCalls(mocks.post);
+        form.upload.addFiles([new File(["x"], "c.jpg")]);
+        await advance(0);
+        expect(form.upload.uploading.value).toBe(true);
+        return uploads;
+      }
+
+      it("does not read the product for „Sprawdź stan” while a file is sent, and the image that arrives stays in the draft", async () => {
+        const { form } = await beginUnknown("save");
+        const uploads = await sending(form);
+        const reads = productReads();
+
+        await form.safety.check();
+
+        expect(productReads()).toBe(reads);
+        expect(form.safety.unknown.value).toMatchObject({ kind: "unknown" });
+        uploads[0]!.resolve(stored);
+        await advance(0);
+        expect(keys(form)).toEqual(["originals/a.jpg", "originals/b.jpg", "originals/c.jpg"]);
+        expect(form.form.value.name).toBe("Pierwsza");
+
+        await form.safety.check();
+
+        expect(productReads()).toBe(reads + 1);
+        expect(keys(form)).toEqual(["originals/a.jpg", "originals/b.jpg", "originals/c.jpg"]);
+      });
+
+      it("does not read the product for „Odrzuć moje zmiany…” while a file is sent, and the image is not dropped nor added to the state of the server", async () => {
+        const { form } = await open();
+        form.form.value.name = "Pierwsza";
+        mocks.put.mockResolvedValue(conflict("product-modified"));
+        expect(await form.save()).toBe("failure");
+        const uploads = await sending(form);
+        const reads = productReads();
+
+        expect(await form.safety.restore()).toBe(false);
+
+        expect(productReads()).toBe(reads);
+        expect(form.form.value.name).toBe("Pierwsza");
+        expect(form.locked.value).toBe(false);
+        uploads[0]!.resolve(stored);
+        await advance(0);
+        expect(keys(form)).toContain("originals/c.jpg");
+        expect(form.form.value.name).toBe("Pierwsza");
+
+        mocks.get.mockImplementation(async () => ok(view({ name: "Z serwera", version: 5 })));
+        expect(await form.safety.restore()).toBe(true);
+
+        expect(form.form.value.name).toBe("Z serwera");
+        expect(keys(form)).toEqual(["originals/a.jpg", "originals/b.jpg"]);
+        expect(form.dirty.value).toBe(false);
+      });
+
+      it("does not repeat a read that failed while a file is sent", async () => {
+        const { form } = await open();
+        mocks.put.mockResolvedValue(conflict("product-modified"));
+        form.form.value.name = "Pierwsza";
+        await form.save();
+        mocks.get.mockResolvedValue(problem(500));
+        await form.safety.restore();
+        expect(form.safety.readFailed.value).toBe(true);
+        const uploads = await sending(form);
+        serveReads();
+        const reads = productReads();
+
+        expect(await form.safety.retryRead()).toBe(false);
+
+        expect(productReads()).toBe(reads);
+        expect(form.safety.readFailed.value).toBe(true);
+        uploads[0]!.resolve(stored);
+        await advance(0);
+        expect(keys(form)).toContain("originals/c.jpg");
+      });
+
+      it("does not discard the changes while a file is sent, so the image does not arrive after the discarding", async () => {
+        const { form } = await open();
+        form.form.value.name = "Pierwsza";
+        const uploads = await sending(form);
+
+        expect(form.discard()).toBe(false);
+
+        expect(form.form.value.name).toBe("Pierwsza");
+        uploads[0]!.resolve(stored);
+        await advance(0);
+        expect(keys(form)).toContain("originals/c.jpg");
+        expect(form.form.value.name).toBe("Pierwsza");
+        expect(form.discard()).toBe(false);
+        expect(form.form.value.name).toBe("Buty biegowe");
+        expect(keys(form)).toEqual(["originals/a.jpg", "originals/b.jpg"]);
+        expect(form.dirty.value).toBe(false);
+      });
+    });
+
     describe("B3: „Odśwież” and the other reads that replace the form", () => {
       it("says „Odświeżamy…”, keeps the draft meanwhile and replaces it only with the answer 200", async () => {
         const { form } = await open();

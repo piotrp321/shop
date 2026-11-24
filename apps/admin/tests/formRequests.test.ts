@@ -1,4 +1,4 @@
-import { nextTick, reactive } from "vue";
+import { nextTick, reactive, ref } from "vue";
 import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LATE_SAVE_MESSAGE,
@@ -137,7 +137,8 @@ describe("useFormSafety", () => {
   let late: string[];
   let read: Mock<(id: string) => Promise<ReadResult<Doc>>>;
 
-  function create() {
+  // `extra` is what a form adds to the options (a request of its own that its reads must wait for).
+  function create(extra: object = {}) {
     return useFormSafety<Doc, Body>({
       id: () => state.id,
       read,
@@ -151,6 +152,7 @@ describe("useFormSafety", () => {
       },
       onLateSuccess: (message) => late.push(message),
       newObject: { unknownMessage: "Nie wiemy, czy obiekt został utworzony.", ownNote: "Możliwe, że utworzył go Twój wcześniejszy zapis." },
+      ...extra,
     });
   }
 
@@ -964,6 +966,76 @@ describe("useFormSafety", () => {
       expect(late).toEqual([LATE_SAVE_MESSAGE]);
       expect(first.onSuccess).not.toHaveBeenCalled();
       expect(adopted).toEqual([]);
+    });
+  });
+
+  describe("a read while the form has a request of its own (an upload)", () => {
+    // The answer of a read may replace the draft, and the request of the form ends by adding to the draft: the read waits for it.
+    const own = ref(false);
+
+    beforeEach(() => {
+      own.value = false;
+    });
+
+    async function unknownResult(safety: ReturnType<typeof create>) {
+      await safety.write(() => Promise.resolve(refused(502)) as never, { onSuccess: vi.fn(), onRefused: vi.fn() });
+      expect(safety.unknown.value?.kind).toBe("unknown");
+    }
+
+    it("does not start „Sprawdź stan”: nothing is read, nothing is abandoned, and the message stays; it reads once the request ended", async () => {
+      const safety = create({ hasOwnRequest: () => own.value });
+      await unknownResult(safety);
+      read.mockResolvedValue({ data: doc("Pierwsza", 4) });
+      own.value = true;
+
+      await safety.check();
+
+      expect(read).not.toHaveBeenCalled();
+      expect(safety.reading.value).toBe(false);
+      expect(safety.unknown.value).toMatchObject({ kind: "unknown", text: UNKNOWN_RESULT_MESSAGE });
+
+      own.value = false;
+      await safety.check();
+
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(adopted).toEqual([doc("Pierwsza", 4)]);
+    });
+
+    it("does not start „Odrzuć moje zmiany i pokaż stan z serwera”: the draft stays and the button stays, and it works once the request ended", async () => {
+      const safety = create({ hasOwnRequest: () => own.value });
+      safety.offerRestore(OTHER_VERSION_MESSAGE);
+      read.mockResolvedValue({ data: doc("Z serwera", 7) });
+      own.value = true;
+
+      expect(await safety.restore()).toBe(false);
+
+      expect(read).not.toHaveBeenCalled();
+      expect(adopted).toEqual([]);
+      expect(state.draft).toEqual({ name: "Pierwsza" });
+      expect(safety.restoreOffered.value).toBe(true);
+
+      own.value = false;
+      expect(await safety.restore()).toBe(true);
+      expect(adopted).toEqual([doc("Z serwera", 7)]);
+    });
+
+    it("does not repeat a read that failed („Spróbuj ponownie”) while the request runs, and repeats it after", async () => {
+      const safety = create({ hasOwnRequest: () => own.value });
+      read.mockResolvedValue({ status: 500 });
+      await safety.restore();
+      expect(safety.readFailed.value).toBe(true);
+      read.mockClear();
+      own.value = true;
+
+      expect(await safety.retryRead()).toBe(false);
+
+      expect(read).not.toHaveBeenCalled();
+      expect(safety.readFailed.value).toBe(true);
+
+      own.value = false;
+      read.mockResolvedValue({ data: doc("Z serwera", 7) });
+      expect(await safety.retryRead()).toBe(true);
+      expect(read).toHaveBeenCalledTimes(1);
     });
   });
 

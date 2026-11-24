@@ -1406,6 +1406,109 @@ describe("ProductFormView", () => {
       });
     });
 
+    describe("B2: an image upload and the reads that replace the draft", () => {
+      const stored = { data: { key: "originals/c.jpg", preview: { size: "thumbnail", aspectRatio: "1:1", variants: {} } }, response: { status: 201 } };
+      const offBy = (wrapper: Wrapper, testid: string) => wrapper.get(`[data-testid=${testid}]`).attributes("disabled") !== undefined;
+
+      /** The draft has a name and its save ended with the given answer. */
+      async function savedWith(answer: unknown) {
+        const wrapper = await open();
+        await wrapper.get("[data-testid=name]").setValue("Moje");
+        mocks.put.mockResolvedValue(answer);
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+        return wrapper;
+      }
+
+      it("turns „Sprawdź stan” off while a file is sent, so the image does not arrive in a draft that the answer of the read replaced", async () => {
+        const wrapper = await savedWith(problem(502));
+        expect(offBy(wrapper, "check-state")).toBe(false);
+        const uploads = hold(mocks.post);
+
+        await files(wrapper, [new File(["x"], "c.jpg")]);
+        await settle();
+
+        expect(offBy(wrapper, "check-state")).toBe(true);
+        uploads[0]!.resolve(stored);
+        await settle();
+        expect(wrapper.findAll("[data-testid=image-row]")).toHaveLength(3);
+        expect(offBy(wrapper, "check-state")).toBe(false);
+      });
+
+      it("turns „Odrzuć moje zmiany i pokaż stan z serwera” off while a file is sent", async () => {
+        const wrapper = await savedWith(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
+        expect(offBy(wrapper, "restore-state")).toBe(false);
+        const uploads = hold(mocks.post);
+
+        await files(wrapper, [new File(["x"], "c.jpg")]);
+        await settle();
+
+        expect(offBy(wrapper, "restore-state")).toBe(true);
+        uploads[0]!.resolve(stored);
+        await settle();
+        expect(offBy(wrapper, "restore-state")).toBe(false);
+      });
+
+      it("turns „Spróbuj ponownie” off while a file is sent", async () => {
+        const wrapper = await savedWith(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
+        mocks.get.mockImplementation(async () => problem(500));
+        await wrapper.get("[data-testid=restore-state]").trigger("click");
+        await settle();
+        expect(wrapper.find("[data-testid=read-failed]").exists()).toBe(true);
+        const uploads = hold(mocks.post);
+
+        await files(wrapper, [new File(["x"], "c.jpg")]);
+        await settle();
+
+        expect(offBy(wrapper, "retry-read")).toBe(true);
+        uploads[0]!.resolve(stored);
+        await settle();
+        expect(offBy(wrapper, "retry-read")).toBe(false);
+      });
+
+      it("turns „Odrzuć” of the save bar off while a file is sent", async () => {
+        const wrapper = await open();
+        await wrapper.get("[data-testid=name]").setValue("Moje");
+        const uploads = hold(mocks.post);
+
+        await files(wrapper, [new File(["x"], "c.jpg")]);
+        await settle();
+
+        expect(barButton("Odrzuć")?.disabled).toBe(true);
+        uploads[0]!.resolve(stored);
+        await settle();
+        expect(barButton("Odrzuć")?.disabled).toBe(false);
+      });
+
+      it("sends no file while a read replaces the form: a chosen one is dropped and the button that sends a failed one again is off", async () => {
+        const wrapper = await open();
+        mocks.post.mockResolvedValueOnce(problem(422, { detail: "Plik jest za duży." }));
+        await files(wrapper, [new File(["x"], "c.jpg")]);
+        await settle();
+        expect(wrapper.get("[data-testid=upload-entry]").text()).toContain("Plik jest za duży.");
+        await wrapper.get("[data-testid=name]").setValue("Moje");
+        mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
+        await wrapper.get("[data-testid=save]").trigger("click");
+        await settle();
+        const reads = holdProductReads();
+        await wrapper.get("[data-testid=restore-state]").trigger("click");
+        await settle();
+        const sent = mocks.post.mock.calls.length;
+
+        await files(wrapper, [new File(["y"], "d.jpg")]);
+        await settle();
+
+        expect(mocks.post.mock.calls.length).toBe(sent);
+        // A disabled fieldset refuses the click in a browser (jsdom would still deliver it, so the state is what is checked).
+        expect(off(wrapper, "upload-retry")).toBe(true);
+        expect(off(wrapper, "add-images")).toBe(true);
+        reads[0]!.resolve(okView(view({ name: "Cudze", version: 7 })));
+        await settle();
+        expect(inputOf(wrapper, "name").value).toBe("Cudze");
+        expect(wrapper.findAll("[data-testid=image-row]")).toHaveLength(2);
+      });
+    });
+
     describe("B3: a read that does not answer", () => {
       it("gives up after 10 s with a message and a button to try again, keeps the form, and ignores the answer that comes later, also after a change", async () => {
         const wrapper = await open();
