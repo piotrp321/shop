@@ -4,8 +4,19 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Catalog;
 
+use App\Catalog\Application\Query\ListVariantIdentities;
+use App\Catalog\Application\Query\VariantIdentity;
+use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
+use App\DemoData\Identity\DemoUuid;
+use App\DemoData\Orders\CatalogVariant;
+use App\DemoData\Orders\DbalOrderCatalog;
+use App\Tests\Factory\ProductFactory;
+use App\Tests\Integration\Cart\CartFixture;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
+use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
@@ -96,6 +107,171 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
     }
 
     /**
+     * @return iterable<string, array{string, string, string}>
+     */
+    public static function textsWithCharactersTheRuleTrims(): iterable
+    {
+        foreach (['U+200B' => "\u{200B}", 'U+2060' => "\u{2060}", 'U+FEFF' => "\u{FEFF}", 'U+00AD' => "\u{AD}"] as $label => $edge) {
+            yield "the axis ending with $label" => ['axis', 'Rozmiar'.$edge, 'Rozmiar'];
+            yield "a value starting with $label" => ['value', $edge.'M', 'M'];
+        }
+    }
+
+    /**
+     * The identity of the axes and the variants of a published product (K5) is compared on texts trimmed by the rule
+     * (T2): an axis or a value stored with a character the rule trims is the same axis or value without it, so the
+     * product is saved from its view unchanged and keeps the trimmed text.
+     */
+    #[DataProvider('textsWithCharactersTheRuleTrims')]
+    public function testAPublishedProductStoredWithCharactersTheRuleTrimsIsSavedFromItsView(string $field, string $text, string $trimmed): void
+    {
+        $id = $this->publishedWith($field, $text);
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame($this->storedAfter($id, $field, $trimmed), $this->stored($id));
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string, string, bool}>
+     */
+    public static function textsToCorrect(): iterable
+    {
+        $axis = 'Nazwa osi zawiera niedozwolone znaki.';
+        $value = 'Wartość wariantu zawiera niedozwolone znaki.';
+        yield 'U+009F in the axis' => ['axis', "Roz\u{9F}miar", 'variantAxes[0]', $axis, false];
+        yield 'a tab in the axis' => ['axis', "Roz\tmiar", 'variantAxes[0]', $axis, false];
+        yield 'U+200B as the axis' => ['axis', "\u{200B}", 'variantAxes[0]', 'Nazwa osi musi mieć od 1 do 30 znaków.', false];
+        yield 'U+009F in a value' => ['value', "M\u{9F}", 'variants[0].values[0]', $value, false];
+        yield 'a tab in a value' => ['value', "M\tL", 'variants[0].values[0]', $value, false];
+        yield 'U+200B as a value' => ['value', "\u{200B}", 'variants[0].values[0]', 'Wartość musi mieć od 1 do 40 znaków.', false];
+        yield 'U+009F in a value of a variant in stock' => ['value', "M\u{9F}", 'variants[0].values[0]', $value, true];
+    }
+
+    /**
+     * A stored axis or value the rule refuses has no identity to keep (K5): unchanged it is a 422 at its field, and its
+     * correction is saved, also for a variant in stock. From then on the corrected text is locked as any other.
+     */
+    #[DataProvider('textsToCorrect')]
+    public function testAPublishedProductStoredWithATextTheRuleRefusesIsSavedOnceTheTextIsCorrected(string $field, string $text, string $path, string $title, bool $inStock): void
+    {
+        $id = $this->publishedWith($field, $text);
+        if ($inStock) {
+            $this->api('POST', '/api/v1/admin/variants/'.$this->variant($id, 0).'/stock/receipts', ['quantity' => 5, 'note' => null], server: ['HTTP_IDEMPOTENCY_KEY' => Uuid::v4()->toRfc4122()]);
+            self::assertResponseStatusCodeSame(201);
+        }
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view));
+        self::assertSame([['propertyPath' => $path, 'title' => $title]], $this->violations());
+
+        $corrected = 'axis' === $field ? 'Rozmiar' : 'M';
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, $this->changed($view, $field, $corrected)));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame($this->storedAfter($id, $field, $corrected), $this->stored($id));
+
+        $saved = $this->api('GET', '/api/v1/admin/products/'.$id);
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($saved, $this->changed($saved, $field, 'axis' === $field ? 'Kolor' : 'XL')));
+        $this->assertProblem(409, 'variant-locked');
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string}>
+     */
+    public static function changesOfIdentity(): iterable
+    {
+        yield 'a renamed axis' => ['axis', 'Rozmiar', 'Kolor'];
+        yield 'a changed value' => ['value', 'M', 'XL'];
+        yield 'a renamed axis stored with U+200B at its end' => ['axis', "Rozmiar\u{200B}", 'Kolor'];
+        yield 'a changed value stored with U+FEFF at its start' => ['value', "\u{FEFF}M", 'XL'];
+    }
+
+    /**
+     * A stored text the rule takes keeps its identity after the first publication (K5), also with characters the rule
+     * trims at its ends.
+     */
+    #[DataProvider('changesOfIdentity')]
+    public function testAPublishedProductStillRefusesAChangeOfTheIdentityOfItsVariants(string $field, string $stored, string $changed): void
+    {
+        $id = $this->publishedWith($field, $stored);
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, $this->changed($view, $field, $changed)));
+
+        $this->assertProblem(409, 'variant-locked');
+        self::assertSame($this->storedAfter($id, $field, $stored), $this->stored($id));
+    }
+
+    /**
+     * Two variants stored with values that are one value once trimmed are a repeated combination when the product is
+     * saved.
+     */
+    public function testAValueThatRepeatsAnotherOnceTrimmedIsARepeatedVariant(): void
+    {
+        $id = $this->publishedWith('value', 'M');
+        $this->connection->executeStatement('UPDATE catalog_product_variant SET option_values = jsonb_build_array(?::text) WHERE product_id = ? AND position = 1', ["\u{200B}m", $id]);
+        $this->entityManager->clear();
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view));
+
+        self::assertSame([['propertyPath' => 'variants[1].values', 'title' => 'Taki wariant już istnieje.']], $this->violations());
+    }
+
+    /**
+     * The reads of variants other modules ask Catalog for (the summaries of the lines of a cart, the variants of the
+     * stock list of the panel, the identities of the variants for the seeds) take a stored value outside the rule.
+     */
+    public function testTheReadsOfVariantsForOtherModulesTakeAStoredValueOutsideTheRule(): void
+    {
+        $id = $this->publishedWith('value', "M\tL");
+        $variantId = $this->variant($id, 0);
+
+        $cart = $this->api('GET', '/api/v1/guest-carts/'.CartFixture::cart($this->connection, lines: [[$variantId, 1]]), token: null);
+        self::assertResponseStatusCodeSame(200);
+        self::assertTrue(self::holds($cart, "M\tL"), 'the line of the cart names the variant');
+
+        $stock = $this->api('GET', '/api/v1/admin/stock');
+        self::assertResponseStatusCodeSame(200);
+        self::assertTrue(self::holds($stock, "M\tL"), 'the stock list names the variant');
+
+        $bus = self::getContainer()->get('query.bus');
+        self::assertInstanceOf(MessageBusInterface::class, $bus);
+        $identities = $bus->dispatch(new ListVariantIdentities(null, 100))->last(HandledStamp::class)?->getResult();
+        self::assertIsArray($identities);
+        $keys = [];
+        foreach ($identities as $identity) {
+            self::assertInstanceOf(VariantIdentity::class, $identity);
+            $keys[$identity->variantId] = $identity->key;
+        }
+        self::assertSame('buty-biegowe/m-l', $keys[$variantId] ?? null);
+    }
+
+    /**
+     * The generator of the demo orders reads the variants of the generated catalog from the tables, also a value
+     * stored outside the rule.
+     */
+    public function testTheGeneratorOfDemoOrdersReadsAStoredValueOutsideTheRule(): void
+    {
+        $namespace = '0193a0c4-7c1a-7c4e-9a6e-3f1d2b4c5a70';
+        $variantId = Uuid::v7()->toRfc4122();
+        $product = ProductFactory::createOne([
+            'id' => DemoUuid::v5($namespace, 'product:0'),
+            'mainCategory' => $this->category,
+            'variantAxes' => ['Rozmiar'],
+            'variants' => [['id' => $variantId, 'values' => ['M']]],
+        ]);
+        new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
+        $this->connection->executeStatement('UPDATE catalog_product_variant SET option_values = jsonb_build_array(?::text) WHERE id = ?', ["M\u{9F}", $variantId]);
+
+        $products = new DbalOrderCatalog($this->connection, $namespace)->products([0]);
+
+        self::assertSame(["M\u{9F}"], array_map(static fn (CatalogVariant $variant): string => $variant->label, $products[0]->variants));
+    }
+
+    /**
      * @return iterable<string, array{string}>
      */
     public static function categoryNames(): iterable
@@ -123,6 +299,54 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
         $this->api('PUT', '/api/v1/admin/categories/'.$id, ['name' => $name, 'slug' => $this->category->slug()->value(), 'version' => 1]);
         self::assertSame([['propertyPath' => 'name', 'title' => 'Nazwa kategorii musi mieć od 1 do 100 znaków i nie może zawierać znaków sterujących.']], $this->violations());
         self::assertSame(['name' => $name, 'version' => 1], $this->connection->fetchAssociative('SELECT name, version FROM catalog_category WHERE id = ?', [$id]));
+    }
+
+    /**
+     * A published product (axis Rozmiar, variants M and L) with the text stored in its field past the domain.
+     */
+    private function publishedWith(string $field, string $text): string
+    {
+        $id = self::string($this->publish($this->createProduct())['id']);
+        $this->store($id, $field, $text);
+
+        return $id;
+    }
+
+    private function variant(string $productId, int $position): string
+    {
+        return self::string($this->connection->fetchOne('SELECT id FROM catalog_product_variant WHERE product_id = ? AND position = ?', [$productId, $position]));
+    }
+
+    /**
+     * The changes of an edit that put the text in the field: the first axis, or the first value of the first variant.
+     *
+     * @param array<mixed> $view
+     *
+     * @return array<string, mixed>
+     */
+    private function changed(array $view, string $field, string $text): array
+    {
+        if ('axis' === $field) {
+            return ['variantAxes' => [$text]];
+        }
+        $variants = self::list($view['variants']);
+        $variants[0]['values'] = [$text];
+
+        return ['variants' => $variants];
+    }
+
+    /**
+     * @param array<mixed> $answer
+     */
+    private static function holds(array $answer, string $text): bool
+    {
+        foreach ($answer as $value) {
+            if ($value === $text || \is_array($value) && self::holds($value, $text)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

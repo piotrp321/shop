@@ -96,6 +96,36 @@ final class StoredProducts
     }
 
     /**
+     * A published product whose axes and values are read as stored, without the rule of texts (a row stored before a
+     * stricter rule).
+     *
+     * @param list<string>                                  $axes
+     * @param list<array{id: string, values: list<string>}> $variants
+     */
+    public static function publishedAsStored(array $axes, array $variants): Product
+    {
+        return Product::reconstitute(
+            ProductId::fromString(self::PRODUCT_ID),
+            ProductName::of('Buty biegowe'),
+            new Slug(self::SLUG),
+            ShortDescription::of(''),
+            ProductCategories::create(CategoryId::fromString(self::CATEGORY_ID)),
+            TaxClassCode::Standard,
+            self::images(['front']),
+            ProductVariants::create(
+                VariantAxes::stored($axes),
+                array_map(
+                    static fn (array $variant): ProductVariant => new ProductVariant(VariantId::fromString($variant['id']), VariantValues::stored($variant['values'])),
+                    $variants,
+                ),
+            ),
+            ProductStatus::Published,
+            new \DateTimeImmutable(self::FIRST_PUBLISHED_AT),
+            3,
+        );
+    }
+
+    /**
      * @param list<string>                                  $axes
      * @param list<array{id: string, values: list<string>}> $variants
      */
