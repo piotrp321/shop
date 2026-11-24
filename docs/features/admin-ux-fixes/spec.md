@@ -1,7 +1,6 @@
 # ADMIN-UX-FIXES: poprawki UX panelu (etap 1 i etap 2)
 
-Etap 1 (K1–K6) jest w kodzie na `main` i opisany niżej; etap 2 (B1–B4, bezpieczeństwo formularzy) opisuje sekcja
-„Etap 2” na końcu pliku.
+Etap 1 (K1–K6) i etap 2 (B1–B4, bezpieczeństwo formularzy, sekcja „Etap 2” na końcu pliku) są w kodzie.
 
 Pierwszy etap epiku #778: sześć poprawek użyteczności panelu (`apps/admin`), które występują w codziennej pracy na
 desktopie przy zwykłych danych. Każda sekcja K1–K6 to jedna poprawka. Działanie ekranów opisują ich specyfikacje
@@ -571,17 +570,6 @@ promocja i metoda dostawy.
 5. Każde zadanie pokazuje komendy i wyniki RED i GREEN. Przechodzą `make -C apps/admin check`,
    `make -C apps/admin test` i `make e2e`. `git diff` względem `main` nie zawiera `apps/api`,
    `apps/api/openapi*.json` ani `apps/admin/src/api/schema.d.ts`.
-
-## Zadania dokumentacji
-
-Razem ze zmianą zachowania:
-- ta specyfikacja: D7 (dotyczy już tylko okien zamówienia), K2 (nieudane „Odśwież”, „Ryzyka i założenia”) i „Poza
-  zakresem” etapu 1 (blokada pól innych formularzy);
-- `docs/features/promotions/spec.md` i `docs/features/discount-codes/spec.md`: „inne 409: `detail` i odświeżenie”;
-- `docs/features/delivery/spec.md`: 409 wersji w formularzu metody;
-- `docs/features/admin-design/spec.md`, „Po zapisie”: wyjątek #250 F16 nie dotyczy zapisu żadnego z formularzy;
-- `apps/admin/CLAUDE.md`, „Wygląd” (standard formularza): zasada szkicu i nieznanego wyniku ze wskazaniem wspólnego
-  kodu.
 
 ## Poza zakresem etapu 2
 
