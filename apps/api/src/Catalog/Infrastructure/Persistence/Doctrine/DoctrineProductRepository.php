@@ -238,14 +238,14 @@ final readonly class DoctrineProductRepository implements ProductRepository
 
         $images = [];
         foreach ($record->images as $position => $image) {
-            $images[] = new ProductImage(ImageKey::fromString($image['key']), $image['alt'], $position);
+            $images[] = ProductImage::of(ImageKey::fromString($image['key']), $image['alt'], $position);
         }
 
         return Product::reconstitute(
             ProductId::fromString($record->id),
-            new ProductName($record->name),
+            ProductName::of($record->name),
             new Slug($record->slug),
-            new ShortDescription($record->shortDescription),
+            ShortDescription::of($record->shortDescription),
             ProductCategories::create(
                 CategoryId::fromString($record->primaryCategory->id),
                 array_map(CategoryId::fromString(...), $additionalIds),

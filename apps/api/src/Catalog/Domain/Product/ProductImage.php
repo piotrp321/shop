@@ -8,9 +8,14 @@ final readonly class ProductImage
 {
     public const int MAX_ALT_LENGTH = 200;
 
-    private string $alt;
+    private function __construct(private ImageKey $key, private string $alt, private int $position)
+    {
+    }
 
-    public function __construct(private ImageKey $key, string $alt, private int $position)
+    /**
+     * @throws \InvalidArgumentException
+     */
+    public static function of(ImageKey $key, string $alt, int $position): self
     {
         if (ProductText::hasForbiddenCharacters($alt)) {
             throw new \InvalidArgumentException('Image alt text must not contain forbidden characters.');
@@ -25,7 +30,8 @@ final readonly class ProductImage
         if ($position < 0) {
             throw new \InvalidArgumentException('Image position must not be negative.');
         }
-        $this->alt = $alt;
+
+        return new self($key, $alt, $position);
     }
 
     public function key(): ImageKey

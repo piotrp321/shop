@@ -321,9 +321,9 @@ final class ProductEditTest extends TestCase
         array $inUse = [],
     ): void {
         $product->edit(
-            new ProductName($name),
+            ProductName::of($name),
             new Slug($slug),
-            new ShortDescription($description),
+            ShortDescription::of($description),
             ProductCategories::create(CategoryId::fromString(self::OTHER_CATEGORY)),
             $taxClass,
             StoredProducts::images($imageAlts),

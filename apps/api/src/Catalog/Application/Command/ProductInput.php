@@ -71,7 +71,7 @@ final readonly class ProductInput
     {
         $list = [];
         foreach ($images as $position => $image) {
-            $list[] = new ProductImage(ImageKey::fromString($image['key']), $image['alt'], $position);
+            $list[] = ProductImage::of(ImageKey::fromString($image['key']), $image['alt'], $position);
         }
 
         $images = ProductImages::fromList($list);

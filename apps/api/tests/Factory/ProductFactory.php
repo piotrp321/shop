@@ -86,14 +86,14 @@ final class ProductFactory extends ObjectFactory
         $images = [];
         foreach ($imageAlts as $position => $alt) {
             \assert(\is_string($alt));
-            $images[] = new ProductImage(ImageKey::fromString('originals/'.hash('sha256', $id.$position).'.jpg'), $alt, $position);
+            $images[] = ProductImage::of(ImageKey::fromString('originals/'.hash('sha256', $id.$position).'.jpg'), $alt, $position);
         }
 
         return Product::create(
             ProductId::fromString($id),
-            new ProductName($name),
+            ProductName::of($name),
             new Slug($slug),
-            new ShortDescription($shortDescription),
+            ShortDescription::of($shortDescription),
             ProductCategories::create($main->id(), array_map(
                 static fn (mixed $category): CategoryId => $category instanceof Category ? $category->id() : throw new \InvalidArgumentException('Expected a Category.'),
                 $additional,

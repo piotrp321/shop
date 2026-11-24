@@ -47,9 +47,9 @@ final class StoredProducts
     ): Product {
         return Product::reconstitute(
             ProductId::fromString(self::PRODUCT_ID),
-            new ProductName('Buty biegowe'),
+            ProductName::of('Buty biegowe'),
             new Slug(self::SLUG),
-            new ShortDescription(''),
+            ShortDescription::of(''),
             ProductCategories::create(CategoryId::fromString(self::CATEGORY_ID)),
             TaxClassCode::Standard,
             self::images($imageAlts),
@@ -89,7 +89,7 @@ final class StoredProducts
     {
         $images = [];
         foreach ($alts as $position => $alt) {
-            $images[] = new ProductImage(ImageKey::fromString('originals/'.hash('sha256', $alt).'.jpg'), $alt, $position);
+            $images[] = ProductImage::of(ImageKey::fromString('originals/'.hash('sha256', $alt).'.jpg'), $alt, $position);
         }
 
         return ProductImages::fromList($images);

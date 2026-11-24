@@ -42,13 +42,13 @@ final class ProductTextRulesInValueObjectsTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('ProductName must not contain forbidden characters.');
 
-        new ProductName($value);
+        ProductName::of($value);
     }
 
     public function testProductNameTrimsUnicodeWhitespaceAndCountsTheTrimmedLength(): void
     {
-        self::assertSame('Buty', new ProductName("\u{00A0} Buty\u{3000}")->value());
-        self::assertSame(ProductName::MAX_LENGTH, mb_strlen(new ProductName("\u{00A0}".str_repeat('ż', ProductName::MAX_LENGTH)."\u{00A0}")->value()));
+        self::assertSame('Buty', ProductName::of("\u{00A0} Buty\u{3000}")->value());
+        self::assertSame(ProductName::MAX_LENGTH, mb_strlen(ProductName::of("\u{00A0}".str_repeat('ż', ProductName::MAX_LENGTH)."\u{00A0}")->value()));
     }
 
     public function testProductNameOfOnlyUnicodeWhitespaceIsEmpty(): void
@@ -56,14 +56,14 @@ final class ProductTextRulesInValueObjectsTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('ProductName must not be empty.');
 
-        new ProductName("\u{00A0}\u{2003}");
+        ProductName::of("\u{00A0}\u{2003}");
     }
 
     public function testProductNameTooLongIsRefused(): void
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        new ProductName(str_repeat('a', ProductName::MAX_LENGTH + 1));
+        ProductName::of(str_repeat('a', ProductName::MAX_LENGTH + 1));
     }
 
     /**
@@ -84,27 +84,27 @@ final class ProductTextRulesInValueObjectsTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('ShortDescription must not contain forbidden characters.');
 
-        new ShortDescription($value);
+        ShortDescription::of($value);
     }
 
     public function testShortDescriptionKeepsLineFeedsInside(): void
     {
-        self::assertSame("Pierwsza linia\nDruga", new ShortDescription("Pierwsza linia\nDruga")->value());
+        self::assertSame("Pierwsza linia\nDruga", ShortDescription::of("Pierwsza linia\nDruga")->value());
     }
 
     public function testShortDescriptionTrimsUnicodeWhitespaceAndOfOnlyWhitespaceIsEmpty(): void
     {
-        self::assertSame('Opis', new ShortDescription("\u{00A0}\nOpis\u{3000}\n")->value());
-        self::assertSame('', new ShortDescription("\u{00A0}\u{2003}\n ")->value());
+        self::assertSame('Opis', ShortDescription::of("\u{00A0}\nOpis\u{3000}\n")->value());
+        self::assertSame('', ShortDescription::of("\u{00A0}\u{2003}\n ")->value());
     }
 
     public function testShortDescriptionTooLongIsRefusedAfterTheTrim(): void
     {
-        self::assertSame(ShortDescription::MAX_LENGTH, mb_strlen(new ShortDescription(str_repeat('a', ShortDescription::MAX_LENGTH)."\u{00A0}")->value()));
+        self::assertSame(ShortDescription::MAX_LENGTH, mb_strlen(ShortDescription::of(str_repeat('a', ShortDescription::MAX_LENGTH)."\u{00A0}")->value()));
 
         $this->expectException(\InvalidArgumentException::class);
 
-        new ShortDescription(str_repeat('a', ShortDescription::MAX_LENGTH + 1));
+        ShortDescription::of(str_repeat('a', ShortDescription::MAX_LENGTH + 1));
     }
 
     #[DataProvider('forbidden')]
@@ -113,24 +113,24 @@ final class ProductTextRulesInValueObjectsTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('Image alt text must not contain forbidden characters.');
 
-        new ProductImage(ImageKey::fromString(self::KEY), $value, 0);
+        ProductImage::of(ImageKey::fromString(self::KEY), $value, 0);
     }
 
     public function testProductImageTrimsTheAltAndRefusesOneOfOnlyUnicodeWhitespace(): void
     {
-        self::assertSame('Buty z boku', new ProductImage(ImageKey::fromString(self::KEY), "\u{00A0}Buty z boku\u{00A0}", 0)->alt());
+        self::assertSame('Buty z boku', ProductImage::of(ImageKey::fromString(self::KEY), "\u{00A0}Buty z boku\u{00A0}", 0)->alt());
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('Image alt text must not be empty.');
 
-        new ProductImage(ImageKey::fromString(self::KEY), "\u{00A0}\u{2003}", 0);
+        ProductImage::of(ImageKey::fromString(self::KEY), "\u{00A0}\u{2003}", 0);
     }
 
     public function testProductImageRefusesAnAltTooLong(): void
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        new ProductImage(ImageKey::fromString(self::KEY), str_repeat('a', ProductImage::MAX_ALT_LENGTH + 1), 0);
+        ProductImage::of(ImageKey::fromString(self::KEY), str_repeat('a', ProductImage::MAX_ALT_LENGTH + 1), 0);
     }
 
     #[DataProvider('forbidden')]

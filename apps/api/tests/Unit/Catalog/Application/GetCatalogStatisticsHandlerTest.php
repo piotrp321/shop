@@ -146,7 +146,7 @@ final class GetCatalogStatisticsHandlerTest extends TestCase
 
     private function category(string $id): Category
     {
-        $category = Category::createRoot(CategoryId::fromString($id), new CategoryName('Category '.$id), new CategorySlug($id));
+        $category = Category::createRoot(CategoryId::fromString($id), CategoryName::of('Category '.$id), new CategorySlug($id));
         $this->categories->save($category);
 
         return $category;
@@ -155,14 +155,14 @@ final class GetCatalogStatisticsHandlerTest extends TestCase
     private function product(string $id, Category $category, bool $withImage): void
     {
         $images = $withImage
-            ? ProductImages::fromList([new ProductImage(ImageKey::fromString('originals/'.hash('sha256', $id).'.jpg'), 'Alt', 0)])
+            ? ProductImages::fromList([ProductImage::of(ImageKey::fromString('originals/'.hash('sha256', $id).'.jpg'), 'Alt', 0)])
             : ProductImages::fromList([]);
 
         $this->products->save(Product::create(
             ProductId::fromString($id),
-            new ProductName('Product '.$id),
+            ProductName::of('Product '.$id),
             new Slug('product-'.substr($id, 0, 8).'-'.substr($id, -4)),
-            new ShortDescription(''),
+            ShortDescription::of(''),
             ProductCategories::create($category->id()),
             TaxClassCode::Standard,
             $images,

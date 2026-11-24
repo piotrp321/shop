@@ -51,7 +51,7 @@ final class CategoryFactory extends ObjectFactory
         $slug = new CategorySlug($slug ?? strtolower($id));
 
         return null === $parent
-            ? Category::createRoot(CategoryId::fromString($id), new CategoryName($name), $slug)
-            : Category::createChild(CategoryId::fromString($id), new CategoryName($name), $slug, $parent);
+            ? Category::createRoot(CategoryId::fromString($id), CategoryName::of($name), $slug)
+            : Category::createChild(CategoryId::fromString($id), CategoryName::of($name), $slug, $parent);
     }
 }

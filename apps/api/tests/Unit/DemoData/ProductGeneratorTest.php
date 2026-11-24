@@ -167,7 +167,7 @@ final class ProductGeneratorTest extends TestCase
             self::assertContains($brand, $dictionaries->brands($type->department()));
             self::assertSame(Slug::slugify($spec->name).'-'.($spec->index + 1), $spec->slug);
             new Slug($spec->slug);
-            new ProductName($spec->name);
+            ProductName::of($spec->name);
         }
     }
 
@@ -239,7 +239,7 @@ final class ProductGeneratorTest extends TestCase
     public function testTheDescriptionFitsTheCatalogAndIsBuiltFromTheTypeAndTheDepartment(): void
     {
         foreach (self::small() as $spec) {
-            new ShortDescription($spec->shortDescription);
+            ShortDescription::of($spec->shortDescription);
             self::assertStringStartsWith($spec->name.': ', $spec->shortDescription);
             self::assertStringEndsWith('.', $spec->shortDescription);
         }

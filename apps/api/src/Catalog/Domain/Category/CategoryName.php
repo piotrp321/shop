@@ -14,9 +14,14 @@ final readonly class CategoryName
 {
     public const int MAX_LENGTH = 100;
 
-    private string $value;
+    private function __construct(private string $value)
+    {
+    }
 
-    public function __construct(string $value)
+    /**
+     * @throws \InvalidArgumentException
+     */
+    public static function of(string $value): self
     {
         if (ProductText::hasForbiddenCharacters($value)) {
             throw new \InvalidArgumentException('CategoryName must not contain forbidden characters.');
@@ -28,7 +33,8 @@ final readonly class CategoryName
         if (mb_strlen($value) > self::MAX_LENGTH) {
             throw new \InvalidArgumentException('CategoryName must have at most '.self::MAX_LENGTH.' characters.');
         }
-        $this->value = $value;
+
+        return new self($value);
     }
 
     public function value(): string
