@@ -34,7 +34,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `docs/features/dashboard-data-freshness/spec.md`.
 - `src/composables/` – współdzielona logika reaktywna. `useNameSearch({ initial, apply })`: jedyne miejsce reguł
   wyszukiwania po nazwie listy produktów, listy cen, listy stanów i wyboru wariantów promocji. Reguły są testowane raz,
-  w `tests/useNameSearch.test.ts`. Pozostałe composables (`useCursorPager`, `useListUrlState`, `useUnsavedChangesGuard`,
+  w `tests/useNameSearch.test.ts`. `useFormSafety` i `formRequests`: wspólna ochrona szkicu formularza przed jego własnymi żądaniami (patrz „Wygląd”).
+  Pozostałe composables (`useCursorPager`, `useListUrlState`, `useUnsavedChangesGuard`,
   `usePagerFocus`) opisują komentarze w ich plikach i `docs/features/admin-design/spec.md`.
 - `src/categories/` – ekran „Kategorie” (`/categories`, `CategoriesView`, menu Sklep › Katalog › Kategorie; docs/features/admin-features/spec.md,
   „Kategorie”). Panel nie liczy reguł drzewa (głębokość, cykl, pustość, unikalność sluga to API); wyłącza tylko to, co oczywiście niemożliwe: własne
