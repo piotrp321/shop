@@ -353,7 +353,10 @@ liczby i listy w miejscu tekstu.
 | `note` | `POST /admin/orders/{orderId}/refund-completion` | O | brak notatki | „Notatka zawiera niedozwolone znaki.” | „Notatka musi być tekstem.” |
 | `name` | `POST /admin/promotions`, `PUT /admin/promotions/{id}` | W | „Nazwa promocji musi mieć od 1 do 100 znaków, bez znaków sterujących.” | ten sam | „Nazwa promocji musi być tekstem.” |
 
-Wszystkie komunikaty tabeli istnieją w kodzie; etap nie zmienia ich treści ani liczby naruszeń pola. Tekst z brzegami
+Wszystkie komunikaty tabeli istnieją w kodzie; etap nie zmienia ich treści ani liczby naruszeń pola. Tekst złożony
+wyłącznie ze znaków sterujących (np. sam U+009F) należy do obu klas, „pusty” (T3) i „niedozwolony” (T1): pola
+zamówienia (`fullName`, `street`, `city`) odpowiadają wtedy komunikatem braku wartości, jak przed etapem, a pozostałe
+pola komunikatem znaku niedozwolonego; w obu przypadkach to 422 przy polu. Tekst z brzegami
 (T2) jest przyjęty i zapisany bez nich. Tekst do zachowania (T5) jest zapisany bez zmian, także nazwa promocji
 zakończona flagą (#305).
 
@@ -475,7 +478,9 @@ Skutek:
    `BackofficeCustomerListQuery` sprawdzają `q` przez `OrderSearchTerm` i `BackofficeCustomerSearchTerm`.
 4. **Odczyt** według „Odczyt zapisanych wierszy”.
 5. **Bez zmian:** kształt żądań i odpowiedzi, komunikaty, `propertyPath`, liczba naruszeń pola, odcisk żądania
-   złożenia (skład pól), reguły `expectedLines`.
+   złożenia (skład pól), reguły `expectedLines`. Jeden skutek uboczny reguły fraz: na listach stanów i cen `q` puste
+   według T3 razem z `productId` daje dwa naruszenia przy `q` („zbyt krótka” i konflikt filtrów), jak dotąd `q=x`
+   z `productId` (#632 F3); przed etapem `q` z samych spacji dawało tam jedno.
 
 ### Wdrożenie i klienci
 
