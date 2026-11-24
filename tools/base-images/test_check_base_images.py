@@ -54,8 +54,14 @@ class CheckBaseImages(unittest.TestCase):
         self.init()
         self.write(path, dockerfile, add)
         result = self.run_check()
-        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn(f"{path}:{line}:", result.stdout + result.stderr)
+
+    def assertCouldNotRun(self, result):
+        """The documented answer to input that cannot be checked: status 2 and a message, never a clean result."""
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertTrue(result.stderr.startswith("base-images: "), result.stderr)
+        self.assertEqual(result.stdout, "")
 
     # Valid forms
 
@@ -167,7 +173,7 @@ class CheckBaseImages(unittest.TestCase):
         self.init()
         self.write("Dockerfile", f"FROM node:24\nFROM node:24@{DIGEST} AS ok\nFROM alpine\n")
         result = self.run_check()
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 1)
         self.assertIn("Dockerfile:1:", result.stdout)
         self.assertIn("Dockerfile:3:", result.stdout)
         self.assertNotIn("Dockerfile:2:", result.stdout)
@@ -184,7 +190,7 @@ class CheckBaseImages(unittest.TestCase):
         self.write("Dockerfile", f"FROM node:24@{DIGEST}\n")
         self.write("deep/er/dir/Dockerfile", "FROM node:24\n")
         result = self.run_check()
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 1)
         self.assertIn("deep/er/dir/Dockerfile:1:", result.stdout)
 
     def test_untracked_dockerfile_is_checked(self):
@@ -204,7 +210,7 @@ class CheckBaseImages(unittest.TestCase):
         for name in names:
             self.write(f"sub/{name}", "FROM node:24\n")
         result = self.run_check()
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 1)
         for name in names:
             self.assertIn(f"sub/{name}:1:", result.stdout)
 
@@ -222,26 +228,26 @@ class CheckBaseImages(unittest.TestCase):
         # No `git init`: the ceiling stops git from finding a repository above the temporary directory.
         self.write("Dockerfile", f"FROM node:24@{DIGEST}\n", add=False)
         result = self.run_check()
-        self.assertNotEqual(result.returncode, 0)
+        self.assertCouldNotRun(result)
         self.assertIn("git", result.stderr)
 
     def test_repository_without_dockerfile_fails(self):
         self.init()
         self.write("README.md", "hello\n")
         result = self.run_check()
-        self.assertNotEqual(result.returncode, 0)
+        self.assertCouldNotRun(result)
         self.assertIn("Dockerfile", result.stderr)
 
     def test_missing_directory_fails(self):
         result = self.run_check(os.path.join(self.root, "missing"))
-        self.assertNotEqual(result.returncode, 0)
+        self.assertCouldNotRun(result)
 
     def test_tracked_dockerfile_deleted_from_disk_fails(self):
         self.init()
         self.write("Dockerfile", f"FROM node:24@{DIGEST}\n")
         os.remove(os.path.join(self.root, "Dockerfile"))
         result = self.run_check()
-        self.assertNotEqual(result.returncode, 0)
+        self.assertCouldNotRun(result)
 
     def test_dockerfile_that_is_not_utf8_fails(self):
         self.init()
@@ -249,7 +255,7 @@ class CheckBaseImages(unittest.TestCase):
         with open(os.path.join(self.root, "Dockerfile"), "wb") as file:
             file.write(f"FROM node:24@{DIGEST}\n".encode() + b"\xff\xfe\n")
         result = self.run_check()
-        self.assertNotEqual(result.returncode, 0)
+        self.assertCouldNotRun(result)
 
     def test_success_names_the_number_of_files(self):
         self.assertClean(f"FROM node:24@{DIGEST}\n")
