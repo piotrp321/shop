@@ -184,8 +184,37 @@ expect_k8s() {
 new_repo q-app; change apps/api/src/A.php apps/store/src/x.tsx e2e/tests/a.spec.ts
 expect_k8s "app code and tests only" no
 
-new_repo q-infra; change infra/docker-compose.yml infra/keycloak/realms/shop.json Makefile
+new_repo q-infra; change infra/keycloak/realms/shop.json infra/elasticsearch/Dockerfile infra/scripts/init-env.sh Makefile
 expect_k8s "other infrastructure and the Makefile" no
+
+# The compose file holds the image tags the chart must match (the test of the chart in `make -C infra/k8s check`), so a
+# change of it runs that check in its own PR, e.g. an image bump of Dependabot.
+new_repo q-compose; change infra/docker-compose.yml
+expect_k8s "the compose file only" yes
+expect "the compose file only is the full CI" full
+
+new_repo q-compose-mixed; change infra/docker-compose.yml infra/keycloak/realms/shop.json
+expect_k8s "the compose file mixed with other infrastructure" yes
+
+new_repo q-compose-docs; change infra/docker-compose.yml docs/features/x/spec.md
+expect_k8s "the compose file mixed with documentation" yes
+
+new_repo q-compose-control; mkdir -p "$repo/infra"; printf x > "$repo/infra/docker-compose.yml$(printf '\t')x"; change
+expect_k8s "a compose-like path with a control character (git quotes the path)" yes
+
+new_repo q-compose-rename-in; mkdir -p "$repo/infra"; git -C "$repo" mv apps/api/src/A.php infra/docker-compose.yml; change
+expect_k8s "a file moved to infra/docker-compose.yml" yes
+
+new_repo q-compose-rename-out; change infra/docker-compose.yml
+base="$head"; git -C "$repo" mv infra/docker-compose.yml apps/api/src/compose.yml; change
+expect_k8s "infra/docker-compose.yml moved away" yes
+
+new_repo q-compose-delete; change infra/docker-compose.yml
+base="$head"; git -C "$repo" rm -q infra/docker-compose.yml; change
+expect_k8s "infra/docker-compose.yml deleted" yes
+
+new_repo q-compose-like; change infra/docker-compose.yaml infra/scripts/docker-compose.yml x/infra/docker-compose.yml infra/keycloak/docker-compose.yml
+expect_k8s "paths that only look like the compose file" no
 
 new_repo q-chart; change infra/k8s/charts/shop/values.yaml
 expect_k8s "the chart only" yes
