@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Shared\InputContract;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
@@ -159,6 +160,39 @@ final class ClosedTextFieldListTest extends KernelTestCase
             ],
             ClosedTextFieldList::violations($this->documents(), TextRows::all(), $exceptions),
         );
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function reasonsEmptyByTheRuleOfTexts(): iterable
+    {
+        yield 'U+200B' => ["\u{200B}"];
+        yield 'U+3164' => ["\u{3164}"];
+        yield 'U+2060, U+FEFF and U+00AD' => ["\u{2060}\u{FEFF}\u{AD}"];
+        yield 'invisible characters among spaces' => [" \u{200B}\u{A0}\u{3164}\t"];
+    }
+
+    /**
+     * The reason counts by the rule of texts (Text::normalize), not by white space alone: a reason made only of
+     * invisible characters is no reason.
+     */
+    #[DataProvider('reasonsEmptyByTheRuleOfTexts')]
+    public function testAnExceptionWhoseReasonIsOnlyInvisibleCharactersIsReported(string $reason): void
+    {
+        $exceptions = array_map(static fn (array $exception): array => 'code' === $exception['field'] ? ['reason' => $reason] + $exception : $exception, TextFieldExceptions::all());
+
+        self::assertSame(
+            ['POST /api/v1/admin/discount-codes, code: an exception without a reason'],
+            ClosedTextFieldList::violations($this->documents(), TextRows::all(), $exceptions),
+        );
+    }
+
+    public function testAnExceptionWithAReasonWithAVisibleCharacterIsNotReported(): void
+    {
+        $exceptions = array_map(static fn (array $exception): array => 'code' === $exception['field'] ? ['reason' => "\u{200B}format\u{200B}"] + $exception : $exception, TextFieldExceptions::all());
+
+        self::assertSame([], ClosedTextFieldList::violations($this->documents(), TextRows::all(), $exceptions));
     }
 
     public function testAnExceptionForAFieldTheDocumentsDoNotDescribeIsReported(): void
