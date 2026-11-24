@@ -104,6 +104,23 @@ final class IdentityText
         return true;
     }
 
+    /**
+     * The stored texts that do not keep their identity in the given ones, position by position: the cause of a refusal.
+     *
+     * @param list<string> $stored
+     * @param list<string> $given
+     *
+     * @return list<string>
+     */
+    public static function changed(array $stored, array $given): array
+    {
+        if (\count($stored) !== \count($given)) {
+            return $stored;
+        }
+
+        return array_values(array_filter($stored, static fn (string $text, int $position): bool => !self::keeps($text, $given[$position]), \ARRAY_FILTER_USE_BOTH));
+    }
+
     private static function identity(string $text): ?string
     {
         $normalized = Text::normalize($text);

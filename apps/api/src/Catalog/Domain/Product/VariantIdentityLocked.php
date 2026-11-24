@@ -20,10 +20,12 @@ final class VariantIdentityLocked extends \DomainException implements Conflict, 
 
     /**
      * @param list<string> $storedValues the stored values of the variant
+     * @param list<string> $givenValues  the values given in their place; the correction of forbidden characters is
+     *                                   named only when a value that did not keep its text has them
      */
-    public static function variant(array $storedValues): self
+    public static function variant(array $storedValues, array $givenValues): self
     {
-        $correction = array_any($storedValues, IdentityText::isRefused(...))
+        $correction = array_any(IdentityText::changed($storedValues, $givenValues), IdentityText::isRefused(...))
             ? 'Zapisana wartość ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter, albo dodaj nowy wariant i usuń stary.'
             : 'Popraw tylko wielkość liter albo dodaj nowy wariant i usuń stary.';
 
