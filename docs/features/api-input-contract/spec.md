@@ -457,7 +457,11 @@ Skutek:
   swoim polu. Poprawka tekstu przechodzi także tam, gdzie tekst jest chroniony blokadą tożsamości wariantu po
   publikacji (nazwy osi i wartości wariantów): blokada porównuje teksty po przycięciu T2, a tekst odrzucany przez
   regułę przyjmuje tylko swoją poprawkę, czyli ten sam tekst bez znaków niedozwolonych
-  (`docs/features/catalog-admin/spec.md`, K5; decyzja właściciela z 2026-11-24).
+  (`docs/features/catalog-admin/spec.md`, K5; decyzja właściciela z 2026-11-24). Jeden stan sama poprawka nie
+  otwiera: dwie zapisane nazwy osi, które się powtarzają (po zastąpieniu znaków niedozwolonych odstępem, przycięciu T2
+  i porównaniu bez względu na wielkość liter). Wtedy druga oś, i tylko ona, może jednorazowo dostać nową nazwę;
+  pozycje osi, wartości i identyfikatory wariantów zostają, a po zapisie blokada chroni obie osie (K5, wyjątek
+  z decyzji właściciela z 2026-11-25).
 - Pricing i Inventory nie wymagają zmiany: `Promotion::reconstitute` nie waliduje nazwy, notatka magazynu nie jest
   czytana przez value object, a reguła kodu rabatowego się nie zmienia.
 
@@ -571,7 +575,11 @@ teksty z samego znaku Co i Cn, które nie są puste; teksty z T5; długość po 
   z `properties`, `items`, `allOf`, `oneOf`, `anyOf` albo `$ref` jest czytany w głąb, a `enum` bez `type` zostaje poza
   strażnikiem. Poza strażnikiem celowo: referencje poza dokumentem, `not`,
   słowa schematu z OpenAPI 3.1 (dokumenty są 3.0.3) i parametr-obiekt, który styl `form` rozwija w parametry (generator
-  zapisuje każdy parametr zapytania osobno). Strażnik nie generuje przypadków i nie zmienia tabeli.
+  zapisuje każdy parametr zapytania osobno). Granice reguły schematu bez `type`, których generator nie tworzy:
+  schemat bez `type` z samym `required`, `minProperties`, `maxProperties`, pustym `properties`, pustym `allOf` albo
+  `anyOf` nie jest zgłaszany; `type: object` bez `properties` i bez `additionalProperties` nie jest zgłaszany; operacja
+  zapisana obok `$ref` obiektu ścieżki zastępuje operację tej samej metody z obiektu wskazanego. Strażnik nie generuje
+  przypadków i nie zmienia tabeli.
 - **Granice:** mechanizm nie mutuje innych pól, nie generuje wartości ze schematów i zawiera tylko przypadki tej
   sekcji.
 
