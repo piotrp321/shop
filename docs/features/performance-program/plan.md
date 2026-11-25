@@ -13,7 +13,8 @@ i specyfikacjach funkcji.
 | Kierunek programu | zaakceptowany przez właściciela 2026-11-25 |
 | Nowe epiki funkcjonalne | wstrzymane do zakończenia programu |
 | Profil `server` na worf.pl | generuje go osobna sesja; jej wynik jest linią bazową (PERF-0) |
-| PERF-0 … PERF-9 | nie rozpoczęte |
+| PERF-7 | specyfikacja i plan w `docs/features/admin-queries/` czekają na akceptację i decyzje D1–D3; start po PERF-0 |
+| pozostałe PERF-0 … PERF-9 | nie rozpoczęte |
 
 ## Zasady programu (decyzje właściciela)
 
