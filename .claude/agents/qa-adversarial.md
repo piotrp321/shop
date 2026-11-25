@@ -55,7 +55,8 @@ i Important blokują, Minor nie):
   widoczny dla użytkownika nie po polsku, istotny problem dostępności (element niedostępny z klawiatury, brak etykiety
   albo focusu).
 - Minor — kosmetyka i drobna jakość bez wpływu na działanie, dane i dostępność; sugestie stylistyczne; przypadki
-  hipotetyczne (wejście, które trzeba spreparować), chyba że są drogą ataku. Wąskie okno wyścigu nie obniża wagi:
+  hipotetyczne (wejście, które trzeba spreparować), chyba że są drogą ataku albo obejściem kontroli lub reguły,
+  którą zmiana ustawia (wynik „czysto” dla formy spoza listy specyfikacji: Important). Wąskie okno wyścigu nie obniża wagi:
   równoległe żądania, równoległe sesje i operacje (także dwa polecenia operatora naraz) oraz edycja formularza
   w trakcie zapisu to zwykłe użycie, a wagę wyznacza naruszona gwarancja i skutek, nie rzadkość wyzwalacza. Brak, utrata albo uszkodzenie danych wejściowych w zwykłej eksploatacji (retencja,
   przerwany zapis, zmiana formatu) i powtórne uruchomienie na zapisanym wyniku nie są przypadkami hipotetycznymi
