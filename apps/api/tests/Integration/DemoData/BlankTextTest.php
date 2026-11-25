@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\DemoData;
 
+use App\DemoData\Copy\Sql;
 use App\DemoData\Verify\BlankText;
 use App\Shared\Domain\Text;
 use Doctrine\DBAL\Connection;
@@ -20,7 +21,7 @@ final class BlankTextTest extends KernelTestCase
     {
         $connection = $this->connection();
         $blank = array_map(
-            static fn (mixed $codePoint): int => (int) $codePoint,
+            static fn (mixed $codePoint): int => Sql::int($codePoint),
             $connection->fetchFirstColumn(
                 'SELECT g FROM generate_series(1, 1114111) AS g WHERE (g < 55296 OR g > 57343) AND chr(g) !~ '.$connection->quote(BlankText::visiblePattern()).' ORDER BY g',
             ),
