@@ -20,6 +20,8 @@ use App\Catalog\Domain\Product\ProductAlreadyExists;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
+use App\Catalog\Domain\Product\SkuRepeated;
+use App\Catalog\Domain\Product\SkuUsedByAnotherProduct;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\TaxClassCode;
@@ -40,6 +42,7 @@ final class CreateProductHandlerTest extends TestCase
     private const string UNKNOWN_ID = '00000000-0000-4000-8000-0000000000ff';
     private const string VARIANT_ID = '20000000-0000-4000-8000-000000000001';
     private const string OTHER_VARIANT_ID = '20000000-0000-4000-8000-000000000002';
+    private const string OTHER_PRODUCT_ID = '10000000-0000-4000-8000-000000000002';
 
     private InMemoryCategoryRepository $categories;
     private InMemoryProductRepository $products;
@@ -87,6 +90,61 @@ final class CreateProductHandlerTest extends TestCase
         $event = $this->events->published[0];
         self::assertInstanceOf(ProductCreated::class, $event);
         self::assertSame(self::PRODUCT_ID, $event->productId);
+    }
+
+    public function testTheCodesOfTheVariantsAreSavedTrimmedWithTheSkuInCapitals(): void
+    {
+        ($this->handler)($this->command(variantAxes: ['Kolor'], variants: [
+            ['id' => self::VARIANT_ID, 'values' => ['czarne'], 'sku' => " \u{00A0}but-1/cz\u{200B}", 'ean' => "\u{3000}5901234123457 "],
+            ['id' => self::OTHER_VARIANT_ID, 'values' => ['białe'], 'sku' => '', 'ean' => "\u{00A0}"],
+        ]));
+
+        $variants = $this->products->get(ProductId::fromString(self::PRODUCT_ID))->variants()->toList();
+        self::assertSame('BUT-1/CZ', $variants[0]->sku()?->value());
+        self::assertSame('5901234123457', $variants[0]->ean()?->value());
+        self::assertNull($variants[1]->sku());
+        self::assertNull($variants[1]->ean());
+    }
+
+    public function testTwoVariantsOfAProductMayShareAnEanButNotASku(): void
+    {
+        ($this->handler)($this->command(variantAxes: ['Kolor'], variants: [
+            ['id' => self::VARIANT_ID, 'values' => ['czarne'], 'sku' => 'A-1', 'ean' => '5901234123457'],
+            ['id' => self::OTHER_VARIANT_ID, 'values' => ['białe'], 'sku' => 'A-2', 'ean' => '5901234123457'],
+        ]));
+        self::assertSame(1, $this->products->count());
+
+        try {
+            ($this->handler)($this->command(id: self::OTHER_PRODUCT_ID, slug: 'inne-buty', variantAxes: ['Kolor'], variants: [
+                ['id' => '20000000-0000-4000-8000-000000000003', 'values' => ['czarne'], 'sku' => 'B-1', 'ean' => ''],
+                ['id' => '20000000-0000-4000-8000-000000000004', 'values' => ['białe'], 'sku' => ' b-1', 'ean' => ''],
+            ]));
+            self::fail('Expected SkuRepeated.');
+        } catch (SkuRepeated $e) {
+            self::assertSame(1, $e->index);
+        }
+
+        self::assertSame(1, $this->products->count());
+    }
+
+    public function testASkuOfAVariantOfAnotherProductIsRefusedAtItsRowWhateverItsCaseAndNothingIsSavedOrPublished(): void
+    {
+        ($this->handler)($this->command(variants: [['id' => self::VARIANT_ID, 'values' => [], 'sku' => 'BUT-1']]));
+        $this->events->published = [];
+
+        try {
+            ($this->handler)($this->command(id: self::OTHER_PRODUCT_ID, slug: 'inne-buty', variantAxes: ['Kolor'], variants: [
+                ['id' => '20000000-0000-4000-8000-000000000003', 'values' => ['czarne'], 'sku' => 'wolny-1'],
+                ['id' => '20000000-0000-4000-8000-000000000004', 'values' => ['białe'], 'sku' => ' but-1 '],
+            ]));
+            self::fail('Expected SkuUsedByAnotherProduct.');
+        } catch (SkuUsedByAnotherProduct $e) {
+            self::assertSame(1, $e->index);
+            self::assertSame('Kod SKU jest już używany przez inny produkt.', $e->getMessage());
+        }
+
+        self::assertSame(1, $this->products->count());
+        self::assertSame([], $this->events->published);
     }
 
     public function testAnImageWithoutAnOriginalIsImageNotFoundAtItsPositionAndNothingIsSaved(): void
@@ -351,7 +409,7 @@ final class CreateProductHandlerTest extends TestCase
     /**
      * @param list<string>                                       $additionalCategoryIds
      * @param list<string>                                       $variantAxes
-     * @param list<array{id: string, values: list<string>}>|null $variants              null: the default variant
+     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}>|null $variants null: the default variant
      * @param list<array{key: string, alt: string}>|null         $images                null: one image with an original
      * @param list<array{name: string, value: string}>           $parameters
      */
@@ -383,7 +441,7 @@ final class CreateProductHandlerTest extends TestCase
             'standard',
             $images ?? [['key' => 'originals/'.str_repeat('a', 64).'.jpg', 'alt' => 'front']],
             $variantAxes,
-            $variants ?? [['id' => self::VARIANT_ID, 'values' => []]],
+            array_map(static fn (array $row): array => $row + ['sku' => '', 'ean' => ''], $variants ?? [['id' => self::VARIANT_ID, 'values' => []]]),
             $status,
             $actorId,
         );
