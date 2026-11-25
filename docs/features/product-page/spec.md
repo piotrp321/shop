@@ -277,7 +277,7 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
     wiersza, pojedynczy koniec wiersza to złamanie wiersza, tekst dosłownie, bez interpretacji znaczników i bez
     `dangerouslySetInnerHTML`) i sekcja „Parametry” (`h2`, lista opisowa `dl` nazwa–wartość w kolejności z API,
     `ProductParameters`); każda tylko wtedy, gdy ma treść (opis z samych białych znaków API oddaje jako pusty).
-    Produkt bez nowych danych wygląda jak przed ich dodaniem. 375 px bez poziomego przewijania strony.
+    Produkt bez marki, opisu, parametrów i kodów nie ma na karcie tych elementów ani sekcji „Opis” i „Parametry”. 375 px bez poziomego przewijania strony.
   Front niczego nie liczy poza dopasowaniem wybranych wartości do wariantu: ceny, poziomy i `purchasable` z oferty.
 - Metadane (`generateMetadata`): tytuł `<nazwa> | Worf`, opis = krótki opis, kanoniczny `<STORE_URL>/p/<slug>`,
   Open Graph: tytuł, opis, obraz = pierwsze zdjęcie w największej szerokości (bez zdjęć: bez obrazu).
@@ -443,7 +443,7 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
 2. Strona ma tytuł, opis, kanoniczny adres, Open Graph i JSON-LD `Product` (oferty wariantów z ceną) oraz
    `BreadcrumbList`; nieznany slug daje 404.
 2a. Karta pokazuje markę, sekcje „Opis” i „Parametry” oraz kod produktu i EAN wariantu; JSON-LD ma `brand`, `sku` i `gtin`
-   według sekcji „Strona `/p/[slug]`”; produkt bez tych danych wygląda i opisuje się jak dotąd.
+   według sekcji „Strona `/p/[slug]`”; produkt bez tych danych nie ma na karcie marki, sekcji „Opis” i „Parametry” ani kodów, a jego JSON-LD nie ma `brand`, `sku` ani `gtin`.
 3. Strona produktu jest serwowana z cache ISR (na buildzie produkcyjnym drugie wejście: `x-nextjs-cache: HIT`).
 4. Odczyty katalogu sklepu przechodzą przez Varnish; koszyk, logowanie i żądania z `Authorization` lub `Cookie`
    nigdy nie są cache'owane.
@@ -472,7 +472,7 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
 - Vitest: strona produktu (cena „od”/„X zł”, oznaczenie „Promocja” i linia Omnibus przed i po wyborze wariantu oraz ich brak
   bez promocji i przy `lowestPriorGross = null`, wybór osi i wyłączone wartości według kolejności osi, oś późniejsza wyłączona przed wyborem wcześniejszej, czyszczenie niezgodnego wyboru późniejszej osi, przypadek „czarne, 42” i „białe, 44” bez blokady, brak
   odznaczania drugim kliknięciem, automatyczny wybór jedynego wariantu możliwego do kupienia, jeden wariant, brak
-  wariantu możliwego do kupienia, wariant spoza oferty), widok karty (marka, sekcje „Opis” i „Parametry”, kody wariantu: jeden wariant także niedostępny, wiele po wyborze, pierwszy render bez kodów), strażnik kształtu odpowiedzi szczegółów z nowymi polami, metadane i JSON-LD (`brand`, `sku`, `gtin` tylko przy niepustym polu, wariant z `ean` i pustym `gtin`, produkt bez nowych danych jak dotąd; oferty tylko z ceną, `priceValidUntil` promocji także dla końca o 00:00 czasu warszawskiego, mapowanie dostępności, ucieczka `<`), 404,
+  wariantu możliwego do kupienia, wariant spoza oferty), widok karty (marka, sekcje „Opis” i „Parametry”, kody wariantu: jeden wariant także niedostępny, wiele po wyborze, pierwszy render bez kodów), strażnik kształtu odpowiedzi szczegółów z nowymi polami, metadane i JSON-LD (`brand`, `sku`, `gtin` tylko przy niepustym polu, wariant z `ean` i pustym `gtin`, produkt bez marki i kodów bez `brand`, `sku` i `gtin`; oferty tylko z ceną, `priceValidUntil` promocji także dla końca o 00:00 czasu warszawskiego, mapowanie dostępności, ucieczka `<`), 404,
   błąd oferty; `/api/revalidate` (401, 400, 503, 200 z `revalidateTag`); kafelek z linkiem; odczyty katalogu idą pod
   `API_CATALOG_URL`, a koszyk i logowanie pod `API_INTERNAL_URL`.
 - Funkcjonalne/integracyjne `StorefrontCache` i `purge-all`: sklep odpowiadający po kilku sekundach (mieści się
