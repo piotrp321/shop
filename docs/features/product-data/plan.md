@@ -14,7 +14,7 @@ Epik w toku: gałąź `feat/product-data-1`, start 2026-11-25.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | PRODUCT-DATA-1 | |
+| 1 | PRODUCT-DATA-1 | zmergowane do gałęzi epiku, ed0403b4 |
 | 2 | PRODUCT-DATA-2 | |
 | 3 | PRODUCT-DATA-3, PRODUCT-DATA-4, PRODUCT-DATA-5 | |
 
