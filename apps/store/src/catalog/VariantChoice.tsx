@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "./format-price";
 import { ProductPrice } from "./ProductPrice";
+import { VariantCodes } from "./VariantCodes";
 import { axisValues, buildChoiceVariants, chosenVariant, initialSelection, selectValue, valueState, type Selection } from "./variant-choice";
 
 type ProductDetails = components["schemas"]["ProductDetails"];
@@ -15,7 +16,8 @@ type ProductOffer = components["schemas"]["ProductOfferResponse"];
 /**
  * The variant choice of the product page and its „Do koszyka” button. One choice per axis, in the order of the axes (the
  * rules are in `variant-choice.ts`); the later axis stays disabled until the earlier ones are chosen. A product with one
- * variant shows its values as text. `children` (the price and the level of the product, rendered on the server) stay until
+ * variant shows its values as text. Under the choice are the product code and the EAN of the chosen variant (of the only
+ * variant at once). `children` (the price and the level of the product, rendered on the server) stay until
  * a variant is chosen; then the page shows the price and the level of that variant. Everything shown comes from the
  * offer of the API; the page only matches the chosen values to a variant. The first render is the same for every
  * visitor, so the server can keep the HTML in the ISR cache.
@@ -26,6 +28,9 @@ export function VariantChoice({ details, offer, children }: { details: ProductDe
   const [selection, setSelection] = useState<Selection>(() => initialSelection(variants, axes.length));
   const chosen = chosenVariant(variants, selection);
   const single = variants.length === 1;
+  // The codes of the only variant at once, otherwise of the chosen one: the first render depends only on the data (the
+  // chosen variant is the only purchasable one or none), so it is the same for every visitor.
+  const coded = single ? details.variants[0] : details.variants.find((variant) => variant.variantId === chosen?.variantId);
 
   return (
     <>
@@ -78,6 +83,7 @@ export function VariantChoice({ details, offer, children }: { details: ProductDe
           </fieldset>
         ))
       )}
+      {coded !== undefined && <VariantCodes variant={coded} />}
       <AddToCartButton key={chosen?.variantId ?? ""} variantId={chosen?.variantId ?? null} size="lg" className="mt-2" />
     </>
   );
