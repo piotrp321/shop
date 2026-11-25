@@ -852,12 +852,13 @@ test.describe("the requests of the product form (stage 2)", () => {
   });
 });
 
-// PRODUCT-DATA: the brand, the description and the parameters of a product (docs/features/product-data/spec.md, criterion 9).
-// The panel sends them as they are in the draft, and only the comparison of „Sprawdź stan” after a save without an answer goes
-// through its copy of the rule of texts of the API (T1–T3). The copy and the API can differ (the classes of characters of
-// PCRE and of JavaScript do), and this is the one test that puts the two side by side: a save that reaches the API, an answer
-// the browser never gets, and the check that must find the saved product equal to the form.
-test.describe("the brand, the description and the parameters of a product", () => {
+// PRODUCT-DATA: the brand, the description, the parameters of a product and the codes of its variants (docs/features/product-data/spec.md,
+// criterion 9). The panel sends them as they are in the draft, and only the comparison of „Sprawdź stan” after a save without
+// an answer goes through its copy of the rule of texts of the API (T1–T3, and the capitals of the SKU). The copy and the API
+// can differ (the classes of characters of PCRE and of JavaScript do), and this is the one test that puts the two side by
+// side: a save that reaches the API, an answer the browser never gets, and the check that must find the saved product equal
+// to the form.
+test.describe("the brand, the description, the parameters of a product and the codes of its variants", () => {
   const MATCHES = "Stan na serwerze odpowiada formularzowi.";
   const LINE_FEED: [string, string] = ["U+000A", "\n"];
 
@@ -876,12 +877,21 @@ test.describe("the brand, the description and the parameters of a product", () =
   ];
   const ENGLAND = "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}";
 
+  // The SKU is unique among all the variants: one per run, so a rerun on the same stack never meets the code of an earlier one.
+  const RUN = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const SKU_TYPED = `zz-e2e-${RUN}/a_1.b`;
+  const SKU_STORED = SKU_TYPED.toUpperCase();
+  const EAN = "5901234123457";
+  // The field takes 14 characters, also when a test fills it: an EAN of 8 digits has room for the characters at both its edges.
+  const EAN_SHORT = "59012344";
+
   /**
    * A field of the product form whose text the API normalizes (the fields of the comparison). `kept` is what the API stores
-   * when the text has nothing to trim; `edges` the characters trimmed from its ends. A later task adds the fields of the codes
-   * of a variant here, with their own `kept` and `edges`.
+   * when the text has nothing to trim; `typed` what is typed when it differs (the SKU is typed in small letters and stored in
+   * capitals); `edges` the characters trimmed from its ends; `inside` a text with characters that must stay inside it (a
+   * code has none: its alphabet is closed).
    */
-  type ContentField = { name: string; control: (page: Page) => Locator; kept: string; edges: [string, string][]; inside: string };
+  type ContentField = { name: string; control: (page: Page) => Locator; kept: string; typed?: string; edges: [string, string][]; inside?: string };
   const FIELDS: ContentField[] = [
     { name: "brand", control: (page) => page.getByTestId("brand"), kept: "Marka", edges: EDGE_CHARACTERS, inside: `Ma\u{200B}rka \u{1F469}\u{200D}\u{1F4BB} ${ENGLAND}` },
     {
@@ -893,7 +903,11 @@ test.describe("the brand, the description and the parameters of a product", () =
     },
     { name: "parameter name", control: (page) => page.getByTestId("parameter-name").first(), kept: "Waga", edges: EDGE_CHARACTERS, inside: `Wa\u{200B}ga \u{1F469}\u{200D}\u{1F4BB} ${ENGLAND}` },
     { name: "parameter value", control: (page) => page.getByTestId("parameter-value").first(), kept: "2 kg", edges: EDGE_CHARACTERS, inside: `2\u{200B} kg \u{1F469}\u{200D}\u{1F4BB} ${ENGLAND}` },
+    { name: "SKU", control: (page) => page.getByTestId("variant-sku").first(), kept: SKU_STORED, typed: SKU_TYPED, edges: EDGE_CHARACTERS },
+    { name: "EAN", control: (page) => page.getByTestId("variant-ean").first(), kept: EAN_SHORT, edges: EDGE_CHARACTERS },
   ];
+  /** What the staff member types into the field, without the characters at its edges. */
+  const typedOf = (field: ContentField): string => field.typed ?? field.kept;
 
   const PRODUCT_API = (id: string) => `**/api/v1/admin/products/${id}`;
 
@@ -948,18 +962,30 @@ test.describe("the brand, the description and the parameters of a product", () =
     // Every field holds the character at both its edges; the API stores the text without them.
     for (const edge of new Map([...FIELDS.flatMap((field) => field.edges)]).entries()) {
       const [label, character] = edge;
-      const typed = new Map(FIELDS.map((field) => [field, field.edges.some(([, candidate]) => candidate === character) ? `${character}${field.kept}${character}` : field.kept] as const));
+      const typed = new Map(FIELDS.map((field) => [field, field.edges.some(([, candidate]) => candidate === character) ? `${character}${typedOf(field)}${character}` : typedOf(field)] as const));
       await saveAndCheck(page, statuses, typed, new Map(FIELDS.map((field) => [field, field.kept] as const)), `the edges of ${label}`);
     }
 
-    // The characters trimmed from the edge are the same mixed with spaces and the ones inside the text stay.
+    // The characters trimmed from the edge are the same mixed with spaces and the ones inside the text stay (a code has none inside).
     await saveAndCheck(
       page,
       statuses,
-      new Map(FIELDS.map((field) => [field, ` \u{200B}${field.inside}\u{A0} `] as const)),
-      new Map(FIELDS.map((field) => [field, field.inside] as const)),
+      new Map(FIELDS.map((field) => [field, ` \u{200B}${field.inside ?? typedOf(field)}\u{A0} `] as const)),
+      new Map(FIELDS.map((field) => [field, field.inside ?? field.kept] as const)),
       "U+200B between letters, U+200D in an emoji and the tags of a flag at the end",
     );
+
+    // A code without a visible character is no code (T3), and the server then has none.
+    for (const field of FIELDS.filter((candidate) => candidate.name === "SKU" || candidate.name === "EAN")) {
+      for (const [label, text] of [
+        ["only white space", " \u{A0}\u{3000} \u{2003}"],
+        ["only zero width characters", "\u{200B}\u{2060}\u{FEFF}\u{AD}"],
+        ["only U+200D", "\u{200D}"],
+      ] as const) {
+        await saveAndCheck(page, statuses, new Map([[field, text]]), new Map([[field, ""]]), `a ${field.name} of ${label}`);
+        await saveAndCheck(page, statuses, new Map([[field, typedOf(field)]]), new Map([[field, field.kept]]), `the ${field.name} after ${label}`);
+      }
+    }
 
     // A description without a visible character is no description (T3): only white space, only U+200D.
     const description = FIELDS[1]!;
@@ -977,6 +1003,66 @@ test.describe("the brand, the description and the parameters of a product", () =
     await page.getByTestId("save").click();
     await expect(toasts(page).getByText("Produkt zapisany.")).toBeVisible();
     await expect(page.getByTestId("form-error")).toHaveCount(0);
+  });
+
+  test("a new row of the variants with codes and no identifier, whose save is lost, is recognized by „Sprawdź stan” too", async ({ page }) => {
+    test.setTimeout(3 * 60_000);
+    await loginStaff(page, staff.marketing);
+    const id = await createDraftInPanel(page, newProduct("Nowy wiersz"));
+    const statuses = await loseAnswersOfSaves(page, id);
+
+    await page.getByTestId("add-variant").click();
+    await expect(page.getByTestId("variant-row")).toHaveCount(2);
+    await page.getByTestId("variant-value").nth(1).fill("biały");
+    await page.getByTestId("variant-sku").nth(1).fill(`\u{A0}zz-e2e-${RUN}/row2\u{200B}`);
+    await page.getByTestId("variant-ean").nth(1).fill("\u{3000}59012344\u{FEFF}");
+    await page.getByTestId("save").click();
+    await expect(page.getByTestId("unknown-result")).toBeVisible();
+    expect(statuses.at(-1), "the API accepted the save").toBe(200);
+
+    await page.getByTestId("check-state").click();
+
+    await expect(page.getByTestId("safety-status"), "„Sprawdź stan” says the server equals the form").toHaveText(MATCHES);
+    await expect(page.getByTestId("variant-sku").nth(1)).toHaveValue(`ZZ-E2E-${RUN.toUpperCase()}/ROW2`);
+    await expect(page.getByTestId("variant-ean").nth(1)).toHaveValue("59012344");
+    await expect(page.getByTestId("unknown-result")).toHaveCount(0);
+  });
+
+  test("a code with a character T1 forbids at the edge is a 422 at its field and nothing is saved: the panel does not trim it away", async ({ page, request }) => {
+    test.setTimeout(3 * 60_000);
+    const bearer = waitForBearerToken(page);
+    await loginStaff(page, staff.marketing);
+    const id = await createDraftInPanel(page, newProduct("Kod z tabulatorem"));
+    const headers = { Authorization: `Bearer ${await bearer}` };
+    const stored = async () => (await (await request.get(`${urls.api}/api/v1/admin/products/${id}`, { headers })).json()) as { version: number; variants: { sku: string; ean: string }[] };
+    const before = await stored();
+    const requests: { variants: { sku: string; ean: string }[] }[] = [];
+    page.on("request", (sent) => {
+      if (sent.method() === "PUT" && sent.url().includes(`/api/v1/admin/products/${id}`)) requests.push(sent.postDataJSON() as { variants: { sku: string; ean: string }[] });
+    });
+    const SKU_FORMAT = "Kod SKU może mieć od 1 do 40 znaków: litery A–Z, cyfry oraz znaki - _ . / i musi zaczynać się literą albo cyfrą.";
+    const EAN_FORMAT = "Podaj poprawny kod EAN: 8, 12, 13 albo 14 cyfr z cyfrą kontrolną.";
+
+    for (const [label, character] of [["a tab", "\t"], ["U+2028", "\u{2028}"], ["U+2029", "\u{2029}"], ["U+0085", "\u{85}"]] as const) {
+      await page.getByTestId("variant-ean").first().fill("");
+      await page.getByTestId("variant-sku").first().fill(`${character}zz-e2e-${RUN}`);
+      await page.getByTestId("save").click();
+      await expect(page.getByTestId("sku-error").first(), `the API refuses ${label} at the start of the SKU`).toHaveText(SKU_FORMAT);
+      await expect(page.getByTestId("variant-sku").first()).toHaveAttribute("aria-invalid", "true");
+      expect(requests.at(-1)?.variants[0]?.sku, `the request carries the SKU as it was typed, with ${label}`).toBe(`${character}ZZ-E2E-${RUN.toUpperCase()}`);
+
+      await page.getByTestId("variant-sku").first().fill("");
+      await page.getByTestId("variant-ean").first().fill(`${EAN}${character}`);
+      await page.getByTestId("save").click();
+      await expect(page.getByTestId("ean-error").first(), `the API refuses ${label} at the end of the EAN`).toHaveText(EAN_FORMAT);
+      await expect(page.getByTestId("variant-ean").first()).toHaveAttribute("aria-invalid", "true");
+      expect(requests.at(-1)?.variants[0]?.ean, `the request carries the EAN as it was typed, with ${label}`).toBe(`${EAN}${character}`);
+      await expect(page.getByTestId("variant-ean").first(), "the form keeps what was typed").toHaveValue(`${EAN}${character}`);
+
+      const now = await stored();
+      expect(now.version, `nothing was saved (${label})`).toBe(before.version);
+      expect(now.variants.map((variant) => [variant.sku, variant.ean])).toEqual(before.variants.map((variant) => [variant.sku, variant.ean]));
+    }
   });
 
   test("a character T1 forbids at the edge is a 422 at its field and nothing is saved: the panel does not trim it away", async ({ page, request }) => {
@@ -1076,6 +1162,20 @@ test.describe("the brand, the description and the parameters of a product", () =
       await locator.scrollIntoViewIfNeeded();
       await expectWithinWidth(locator, viewports.phone.width, what);
     }
+
+    // The codes of the variant are in the table that scrolls inside its own region: reached with the Tab key after the value,
+    // limited to 40 and 14 characters, the SKU in capitals while it is typed, and the page does not scroll sideways for them.
+    await page.getByTestId("variant-value").first().focus();
+    await page.keyboard.press("Tab");
+    await expect(page.getByTestId("variant-sku").first(), "the Tab key goes from the value of the variant to its SKU").toBeFocused();
+    await page.keyboard.type("a".repeat(45));
+    await expect(page.getByTestId("variant-sku").first()).toHaveValue("A".repeat(40));
+    await page.keyboard.press("Tab");
+    await expect(page.getByTestId("variant-ean").first(), "the Tab key goes from the SKU to the EAN").toBeFocused();
+    await page.keyboard.type("1".repeat(20));
+    await expect(page.getByTestId("variant-ean").first()).toHaveValue("1".repeat(14));
+    const withCodes = await documentWidths(page);
+    expect(withCodes.scrollWidth, "the page does not scroll sideways for the codes").toBe(withCodes.clientWidth);
 
     // Removing a parameter with the keyboard puts the focus on the next row; after the last one on „Dodaj parametr”.
     await page.getByTestId("parameter-remove").first().focus();
