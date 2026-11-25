@@ -1,6 +1,8 @@
-import { mount, type VueWrapper } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
+import { defineComponent, ref } from "vue";
 import ProductVariants from "@/products/ProductVariants.vue";
+import { upperAscii } from "@/products/contentText";
 import type { VariantRow } from "@/products/useProductForm";
 
 /**
@@ -79,14 +81,75 @@ describe("the columns SKU and EAN of the variants", () => {
     expect(wrapper.get("[data-testid=variant-row]").text()).toContain("Wariant domyślny");
   });
 
-  it("emit the typed code with the number of the row", async () => {
+  it("emit the typed code with the number of the row, the SKU already in capitals", async () => {
     const wrapper = render();
 
-    await inputs(wrapper, "variant-sku")[1]!.setValue("nowy-1");
+    await inputs(wrapper, "variant-sku")[1]!.setValue("nowy-1/ż");
     await inputs(wrapper, "variant-ean")[0]!.setValue("59012344");
 
-    expect(wrapper.emitted("setSku")).toEqual([[1, "nowy-1"]]);
+    expect(wrapper.emitted("setSku")).toEqual([[1, "NOWY-1/ż"]]);
     expect(wrapper.emitted("setEan")).toEqual([[0, "59012344"]]);
+  });
+
+  describe("the SKU in the field while it is typed", () => {
+    /** The form around the table: it keeps the rows and turns the SKU into capitals, as `useProductForm` does. */
+    function renderInForm(sku: string) {
+      const Host = defineComponent({
+        components: { ProductVariants },
+        setup() {
+          const rows = ref<VariantRow[]>([{ variantId: "v-1", values: ["czarne"], sku, ean: "" }]);
+          const typed = (index: number, value: string) => (rows.value[index]!.sku = upperAscii(value));
+          const readOnly = ref(false);
+          return { rows, typed, readOnly };
+        },
+        template: `<ProductVariants :axes="['Kolor']" :rows="rows" :errors="[]" :read-only="readOnly" :axes-locked="false" :errors-at="() => []" :errors-exactly="() => []" @set-sku="typed" />`,
+      });
+      mounted = mount(Host, { attachTo: document.body });
+      return mounted;
+    }
+
+    it("shows capitals, and no character is removed", async () => {
+      const wrapper = renderInForm("");
+
+      await inputs(wrapper, "variant-sku")[0]!.setValue("but-1/ż_2 .x\t");
+      await flushPromises();
+
+      expect(inputs(wrapper, "variant-sku")[0]!.element.value).toBe("BUT-1/ż_2 .X\t");
+    });
+
+    it("shows capitals also when the form already has the same code, so the state does not change and nothing is drawn again", async () => {
+      const wrapper = renderInForm("A");
+
+      await inputs(wrapper, "variant-sku")[0]!.setValue("a");
+      await flushPromises();
+
+      expect(inputs(wrapper, "variant-sku")[0]!.element.value).toBe("A");
+    });
+
+    it("keeps the position of the caret when it turns a letter typed in the middle into a capital", async () => {
+      const wrapper = renderInForm("AB");
+      const input = inputs(wrapper, "variant-sku")[0]!.element;
+      input.focus();
+      input.value = "AxB";
+      input.setSelectionRange(2, 2);
+
+      await inputs(wrapper, "variant-sku")[0]!.trigger("input");
+      await flushPromises();
+
+      expect(input.value).toBe("AXB");
+      expect([input.selectionStart, input.selectionEnd]).toEqual([2, 2]);
+    });
+
+    it("keeps the capitals after the field is drawn again for another reason (the form locks while it saves)", async () => {
+      const wrapper = renderInForm("A");
+      await inputs(wrapper, "variant-sku")[0]!.setValue("a");
+      await flushPromises();
+
+      (wrapper.vm as unknown as { readOnly: boolean }).readOnly = true;
+      await flushPromises();
+
+      expect(inputs(wrapper, "variant-sku")[0]!.element.value).toBe("A");
+    });
   });
 
   it("show the SKU in the form of the row: the capitals the form made of what was typed", async () => {
