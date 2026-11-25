@@ -11,7 +11,7 @@ namespace App\Tests\Functional\Shared\InputContract;
  * of the contract of texts (TextRows), or an entry here with the reason. The query parameters other than `q` (`path`,
  * `option`, `chunk`, `after`, `customerId`, `discountCode` of the cart) are not texts of the body: the guard of the
  * closed list of the inputs (ClosedInputList) has them. A body that is an object of any members is named `.*` (the
- * webhooks of the payment providers).
+ * webhooks of the payment providers), a body that is a list of any members `[]`.
  */
 final class TextFieldExceptions
 {

@@ -578,8 +578,10 @@ teksty z samego znaku Co i Cn, które nie są puste; teksty z T5; długość po 
   bez `properties` albo z pustym, bez `additionalProperties`, bez `enum`, `allOf`, `oneOf` i `anyOf`), dopuszcza
   dowolną składową, jak `additionalProperties: true`, więc jest zgłaszany tak samo: `<nazwa>.*`, a dla całej treści
   `.*` (tak jest opisana treść webhooka dostawcy płatności, jedyna taka w dokumentach i na liście wyjątków). Tak samo
-  lista bez `items` (`type: array`) jest zgłaszana jak `items: {}`: `<nazwa>[]`. Obiekt z `properties` nie dostaje
-  domyślnego `additionalProperties`, a `additionalProperties: false` nic nie zgłasza. Poza strażnikiem celowo:
+  lista bez `items` (`type: array`) jest zgłaszana jak `items: {}`: `<nazwa>[]`, a dla całej treści `[]`. Obiekt
+  z `properties` nie dostaje domyślnego `additionalProperties`, a `additionalProperties: false` nic nie zgłasza.
+  Strażnik nie czyta limitów liczby składowych: obiekt z `maxProperties: 0` i lista z `maxItems: 0` też są zgłaszane
+  (dokumenty takich nie mają). Poza strażnikiem celowo:
   referencje poza dokumentem, `not`,
   słowa schematu z OpenAPI 3.1 (dokumenty są 3.0.3) i parametr-obiekt, który styl `form` rozwija w parametry (generator
   zapisuje każdy parametr zapytania osobno). Granice reguły schematu bez `type`, których generator nie tworzy:
