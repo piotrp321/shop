@@ -10,6 +10,8 @@ Start dopiero, gdy PR #915 jest na `main` (specyfikacja, „Wymagane przed start
 
 ## Status
 
+Epik w toku: gałąź `feat/product-data-1`, start 2026-11-25.
+
 | Fala | Zadania | Status |
 |---|---|---|
 | 1 | PRODUCT-DATA-1 | |
