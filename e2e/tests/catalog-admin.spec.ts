@@ -95,7 +95,8 @@ test("marketing creates and publishes a product, admin prices it and receives st
   await expect(page.getByRole("heading", { level: 1 }), "the focus is on the heading after the save").toBeFocused();
   await expect(page.getByTestId("form-error")).toHaveCount(0);
   await expect(page.getByTestId("slug")).toHaveValue(product.slug);
-  await expect(page.getByTestId("slug")).toBeDisabled();
+  await expect(page.getByTestId("slug"), "the slug of a published product is read-only, not disabled").not.toBeEditable();
+  await expect(page.getByTestId("slug")).toBeEnabled();
   await expectStorePage(store, product.slug, `the product page did not show the new name "${renamed}"`, (page) => page.status === 200 && page.heading === renamed);
 
   // marketing withdraws it: the page is a 404.
@@ -167,8 +168,16 @@ test("support sees the list of products and a read-only form", async ({ page }) 
 
   await page.getByTestId("product-link").first().click();
   await expect(page.getByTestId("read-only-note")).toBeVisible();
-  await expect(page.getByTestId("name")).toBeDisabled();
-  await expect(page.getByTestId("slug")).toBeDisabled();
+  // Read-only, not disabled: a value wider than its field (a long parameter) stays reachable with the keyboard and a screen reader.
+  for (const testid of ["name", "slug", "brand", "description"]) {
+    const field = page.getByTestId(testid);
+    await expect(field, `${testid} is read-only`).not.toBeEditable();
+    await expect(field, `${testid} is not disabled`).toBeEnabled();
+  }
+  const firstValue = page.getByTestId("parameter-value").first();
+  await expect(firstValue).toBeEnabled();
+  await firstValue.focus();
+  await expect(firstValue, "the value of a parameter takes the focus").toBeFocused();
   await expect(page.getByRole("combobox", { name: "Klasa podatkowa" })).toBeDisabled();
   await expect(page.getByRole("region", { name: "Zapis formularza" }), "a read-only form has no save bar").toHaveCount(0);
   for (const action of ["save", "publish", "unpublish", "add-images", "add-axis", "add-variant"]) {

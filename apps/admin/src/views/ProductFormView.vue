@@ -32,8 +32,8 @@ const DESCRIPTION_LIMIT = 5000;
 const BRAND_LIMIT = 60;
 
 // What a failed action moves the focus to: the first error mark or field marked invalid, in the order of the document;
-// a disabled field cannot take focus.
-const FIRST_ERROR = '[data-form-error], [aria-invalid="true"]:not(:disabled)';
+// a disabled field cannot take focus, and a read-only one (the locked slug) cannot be corrected, so its message is the target.
+const FIRST_ERROR = '[data-form-error], [aria-invalid="true"]:not(:disabled):not([readonly])';
 const FOCUSABLE = "input, textarea, select, button, a[href], [tabindex]";
 
 const route = useRoute();
@@ -160,7 +160,7 @@ const { nodes: categories, error: categoriesError } = useCategoryTree();
 
 const descriptionLength = computed(() => [...data.value.shortDescription].length);
 const longDescriptionLength = computed(() => [...data.value.description].length);
-const slugDisabled = computed(() => readOnly.value || (view.value?.slugLocked ?? false));
+const slugReadOnly = computed(() => readOnly.value || (view.value?.slugLocked ?? false));
 const taxClassName = computed(() => taxClasses.value.find((taxClass) => taxClass.code === data.value.taxClass)?.name);
 const publishReasonId = useId();
 
@@ -365,7 +365,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
                     v-model="data.name"
                     data-testid="name"
                     maxlength="200"
-                    :disabled="readOnly"
+                    :readonly="readOnly"
                     :aria-invalid="invalid ? 'true' : undefined"
                     :aria-describedby="describedBy"
                   />
@@ -384,7 +384,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
                     v-model="data.brand"
                     data-testid="brand"
                     :maxlength="BRAND_LIMIT"
-                    :disabled="readOnly"
+                    :readonly="readOnly"
                     :aria-invalid="invalid ? 'true' : undefined"
                     :aria-describedby="describedBy"
                   />
@@ -403,7 +403,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
                     v-model="data.slug"
                     data-testid="slug"
                     maxlength="200"
-                    :disabled="slugDisabled"
+                    :readonly="slugReadOnly"
                     :aria-invalid="invalid ? 'true' : undefined"
                     :aria-describedby="describedBy"
                   />
@@ -435,7 +435,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
                     data-testid="short-description"
                     rows="4"
                     :maxlength="SHORT_DESCRIPTION_LIMIT"
-                    :disabled="readOnly"
+                    :readonly="readOnly"
                     :aria-invalid="invalid ? 'true' : undefined"
                     :aria-describedby="describedBy"
                   />
@@ -458,7 +458,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
                     data-testid="description"
                     rows="10"
                     :maxlength="DESCRIPTION_LIMIT"
-                    :disabled="readOnly"
+                    :readonly="readOnly"
                     :aria-invalid="invalid ? 'true' : undefined"
                     :aria-describedby="describedBy"
                   />

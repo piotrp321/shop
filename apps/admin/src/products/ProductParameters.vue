@@ -110,7 +110,7 @@ async function move(index: number, direction: -1 | 1): Promise<void> {
           <Input
             data-testid="parameter-name"
             :model-value="parameter.name"
-            :disabled="readOnly"
+            :readonly="readOnly"
             :aria-label="`Nazwa parametru ${index + 1}`"
             :aria-invalid="invalid(index, 'name')"
             :aria-describedby="describedBy(index, 'name')"
@@ -143,7 +143,7 @@ async function move(index: number, direction: -1 | 1): Promise<void> {
           <Input
             data-testid="parameter-value"
             :model-value="parameter.value"
-            :disabled="readOnly"
+            :readonly="readOnly"
             :aria-label="`Wartość parametru ${index + 1}`"
             :aria-invalid="invalid(index, 'value')"
             :aria-describedby="describedBy(index, 'value')"
