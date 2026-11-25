@@ -14,8 +14,10 @@ use App\Shared\Domain\Text;
  * guard are only the properties with an `enum` and with a format of the closed list (uuid, date-time, date, binary);
  * any other format, `email` too, is a text. A property with no `type` at all (`{}`, only a maximum length, `items: {}`,
  * `additionalProperties: true`) may be a text, so it counts as one: the type comes from an attribute that may be
- * forgotten. The guard compares lists that exist already; it generates no case and
- * changes no table.
+ * forgotten. An object that says nothing of its members (`type: object` with no `properties`, no
+ * `additionalProperties`, no `enum` and no `allOf`, `oneOf` or `anyOf`) allows any member, as `additionalProperties:
+ * true` does, so it is read as that (`<name>.*`, `.*` for a body); so is a list with no `items` (`<name>[]`). The
+ * guard compares lists that exist already; it generates no case and changes no table.
  *
  * The documents describe the same field in more than one way, and the guard reads each of them: a path item referenced
  * by `$ref` (with the fields written next to the reference); parameters of the path item inherited by its operations (an operation parameter of the same name and place
@@ -342,16 +344,68 @@ final class ClosedTextFieldList
                 $texts = [...$texts, ...self::texts($document, $child, '' === $name ? (string) $property : $name.'.'.$property, $followed)];
             }
         }
-        // `additionalProperties: true` allows any value, so it is a schema that says nothing, like `{}`.
-        $additional = true === ($schema['additionalProperties'] ?? null) ? [] : ($schema['additionalProperties'] ?? null);
+        // `additionalProperties: true` allows any value, so it is a schema that says nothing, like `{}`; so does an
+        // object that says nothing of its members (OpenAPI 3.0: `{type: object}` is `additionalProperties: true`).
+        $additional = true === ($schema['additionalProperties'] ?? null) || self::isObjectOfAnyMembers($schema) ? [] : ($schema['additionalProperties'] ?? null);
         if (\is_array($additional)) {
             $texts = [...$texts, ...self::texts($document, $additional, $name.'.*', $followed)];
         }
-        if (\is_array($schema['items'] ?? null)) {
-            $texts = [...$texts, ...self::texts($document, $schema['items'], $name.'[]', $followed)];
+        // A list with no `items` holds anything, as `items: {}` does.
+        $items = self::isListOfAnything($schema) ? [] : ($schema['items'] ?? null);
+        if (\is_array($items)) {
+            $texts = [...$texts, ...self::texts($document, $items, $name.'[]', $followed)];
         }
 
         return $texts;
+    }
+
+    /**
+     * Whether a schema is an object that says nothing of its members: of `type: object` (also in a list of types, also
+     * nullable), with no (or empty) `properties`, no `additionalProperties`, no `enum` and no `allOf`, `oneOf` or
+     * `anyOf` (a `$ref` is followed before). It allows any member of any value, as `additionalProperties: true` does.
+     * An object with `properties` gets no default `additionalProperties`: that would report the fields it lists twice.
+     *
+     * @param array<mixed> $schema
+     */
+    private static function isObjectOfAnyMembers(array $schema): bool
+    {
+        return self::hasType($schema, 'object')
+            && [] === ($schema['properties'] ?? [])
+            && !isset($schema['additionalProperties'])
+            && !self::isCombinedOrClosed($schema);
+    }
+
+    /**
+     * Whether a schema is a list that says nothing of its elements: of `type: array` (also in a list of types, also
+     * nullable), with no `items`, no `enum` and no `allOf`, `oneOf` or `anyOf`.
+     *
+     * @param array<mixed> $schema
+     */
+    private static function isListOfAnything(array $schema): bool
+    {
+        return self::hasType($schema, 'array') && !isset($schema['items']) && !self::isCombinedOrClosed($schema);
+    }
+
+    /**
+     * @param array<mixed> $schema
+     */
+    private static function hasType(array $schema, string $type): bool
+    {
+        return \in_array($type, \is_array($schema['type'] ?? null) ? $schema['type'] : [$schema['type'] ?? null], true);
+    }
+
+    /**
+     * @param array<mixed> $schema
+     */
+    private static function isCombinedOrClosed(array $schema): bool
+    {
+        foreach (['enum', 'allOf', 'oneOf', 'anyOf'] as $keyword) {
+            if (isset($schema[$keyword])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
