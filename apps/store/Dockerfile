@@ -2,7 +2,7 @@
 
 # Pinned: Node 24.22.3 (npm 11.19.1) on Alpine, by the digest of the multi-arch index of the tag
 # (`docker buildx imagetools inspect node:24.22.3-alpine`, line "Digest"); change the tag and the digest together.
-FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS node
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS node
 
 ENV NEXT_TELEMETRY_DISABLED=1
 

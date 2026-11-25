@@ -22,7 +22,7 @@ CMD ["frankenphp", "run", "--config", "/etc/frankenphp/Caddyfile"]
 # Composer is a tool here, not a project dependency. It is a FROM stage (not COPY --from=image) because Dependabot
 # updates only FROM lines. Pinned: Composer 2.10.3, digest of the multi-arch index
 # (`docker buildx imagetools inspect composer:2.10.3`, line "Digest"); change the tag and the digest together.
-FROM composer:2.10.3@sha256:2cf275428757e5435a667bfc0d038b14520ca02be2b1b70d44a05c8c19e2de48 AS composer
+FROM composer:2.11.0@sha256:278dfc7bd35169965d03f87194816f43bf4e6b6ea61707c2114e52ad12fe24ce AS composer
 
 # Tools for installing dependencies: the development image and the build stage. Never in production.
 FROM runtime AS base
