@@ -36,6 +36,10 @@ final class EanRestrictedCirculationTest extends TestCase
         yield 'the same RCN-12 as 13 digits with a zero on the left' => ['0001000000052'];
         yield 'the same RCN-12 of the figure as 13 digits' => ['0007999000097'];
         yield 'the same velocity RCN-12 as 13 digits' => ['0000000009997'];
+        yield 'RCN-12 LAC as 14 digits' => ['00001000000052'];
+        yield 'RCN-12 of the last company prefix as 14 digits' => ['00007999000097'];
+        yield 'RCN-12 in the middle as 13 digits' => ['0005000009992'];
+        yield 'RCN-12 in the middle as 14 digits' => ['00005000009992'];
         // 2.1.11.4: the GS1 prefixes 02 and 20-29, with the RCN-12 of the U.P.C. prefix 2.
         yield 'RCN-13 with the prefix 02' => ['0200000000004'];
         yield 'RCN-13 with the prefix 20' => ['2000000000008'];
@@ -67,6 +71,16 @@ final class EanRestrictedCirculationTest extends TestCase
         yield 'EAN-8 starting with 1' => ['12345670'];
         yield 'EAN-8 starting with 9' => ['92345676'];
         yield 'a GTIN-14 with an indicator digit over an ordinary GTIN-13' => ['15901234123454'];
+        // Ordinary EAN-13 whose figures 3-8 fall in 001000-007999 but that are no U.P.C.-12 (the 13-figure form does not start with 0).
+        yield 'EAN-13 of Germany 400' => ['4006381333931'];
+        yield 'EAN-13 of Germany 400 (second)' => ['4001686301265'];
+        yield 'EAN-13 of France 300' => ['3001234567892'];
+        yield 'EAN-13 of Italy 800' => ['8001505000009'];
+        yield 'EAN-13 with the prefix 500' => ['5001234567890'];
+        yield 'EAN-13 with the prefix 900' => ['9001123456782'];
+        yield 'EAN-13 with the prefix 700' => ['7001234567898'];
+        yield 'EAN-13 with the prefix 100' => ['1001234567894'];
+        yield 'a GTIN-14 over an ordinary EAN-13 of Germany 400' => ['14001686301262'];
     }
 
     #[DataProvider('restrictedCirculation')]
