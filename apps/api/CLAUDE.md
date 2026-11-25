@@ -524,6 +524,10 @@ Fakty potrzebne do oceny skutku:
   (`StepsPlannerStatisticsTest`). Testy kont na Keycloaku stosu używają tymczasowych realmów
   (`KeycloakTestRealms`, `demo-data-test-*`, usuwane po teście), nigdy realmów `shop` i `backoffice`, i ziarna losowanego
   na test (id kont są globalne w Keycloaku).
+- `make test` czyści (`TRUNCATE`, `TEST_TABLES` w Makefile) tabele generatora w `shop_test` przed każdą suitą: wycofane
+  transakcje testów zostawiają w stercie tysiące stron, a `ANALYZE` próbkuje najwyżej 30 000 stron, więc testy, które
+  czytają statystyki albo plany (licznik produktów pulpitu, `*PlanTest`), dostałyby szacunek zamiast dokładnej liczby.
+  Nowa tabela, którą pisze generator, trafia też do tej listy.
 
 ## Czego nie robić
 

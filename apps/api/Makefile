@@ -36,8 +36,18 @@ PHPUNIT_ARGS ?=
 # arguments go to a single run.
 PHPUNIT_SUITES = $(if $(findstring --testsuite,$(PHPUNIT_ARGS)),all,unit integration demo-data demo-data-orders functional)
 
+# The tables the tests of the generator of the demo data (and the tests of the plans of the queries) fill. A test
+# rolls its rows back, but the heap keeps the pages they took: after the suites of the generator catalog_product in
+# shop_test has tens of thousands of pages with a few live rows, and ANALYZE, which samples at most 30000 pages, then
+# estimates the number of rows (the dashboard tests count three products and read four). TRUNCATE gives a table a new,
+# empty file, so every suite starts from tables of their real size, on a used database too.
+TEST_TABLES = catalog_product_category, catalog_product_variant, catalog_product, catalog_category_redirect, catalog_category, \
+	pricing_variant_price, pricing_price_history, pricing_promotion_variant, pricing_promotion, pricing_discount_code_usage, pricing_discount_code, \
+	ordering_unpaid_order_claim, ordering_order_notification, ordering_order_status_change, ordering_order_line, ordering_order_delivery_vat, ordering_order, payment_payment, \
+	inventory_reservation_line, inventory_reservation, inventory_stock_movement, inventory_stock_item
+
 test: init-test warm-test-cache
-	$(foreach suite,$(PHPUNIT_SUITES),$(RUN) api vendor/bin/phpunit $(if $(filter all,$(suite)),,--testsuite $(suite)) $(PHPUNIT_ARGS) &&) true
+	$(foreach suite,$(PHPUNIT_SUITES),$(RUN) api bin/console dbal:run-sql --env=test 'TRUNCATE $(TEST_TABLES)' && $(RUN) api vendor/bin/phpunit $(if $(filter all,$(suite)),,--testsuite $(suite)) $(PHPUNIT_ARGS) &&) true
 
 # Brings the dev database schema up to date and creates the search alias and index if missing (idempotent);
 # `make up` runs it once the services are healthy.
