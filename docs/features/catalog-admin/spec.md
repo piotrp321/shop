@@ -33,7 +33,8 @@ Poza zakresem:
 - usuwanie produktu (zamiast niego wycofanie publikacji);
 - przekierowania 301 po zmianie sluga produktu (slug jest stały od pierwszej publikacji, decyzja K4);
 - import hurtowy, eksport, operacje masowe;
-- długi opis, pola SEO (własny tytuł i opis), marka jako pole, kody SKU i EAN, zdjęcia per wariant;
+- pola SEO (własny tytuł i opis), kody SKU i EAN, zdjęcia per wariant (marka, długi opis i parametry produktu:
+  `docs/features/product-data/spec.md`);
 - generator kombinacji wariantów (wiersze wariantów dodaje się pojedynczo);
 - kadrowanie i edycja zdjęć w panelu, sprzątanie nieużywanych oryginałów w Garage (K7);
 - ustawianie ceny i stanu z formularza produktu (robią to istniejące listy cen i stanów);
@@ -80,7 +81,10 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
 - `Product::create(..., status)`: panel tworzy `Draft`, loader danych demo `Published` (z `firstPublishedAt`).
   `create` nie sprawdza reguły K2 (dane demo mają produkty bez zdjęć). Zapisuje `ProductCreated` (nie
   `ProductChanged`); `IndexProduct` obsługuje je, więc nowy szkic trafia do indeksu od utworzenia (dokument `draft`).
-- `edit(name, slug, shortDescription, categories, taxClass, images, variants)`: zastępuje dane produktu. Zmiana
+- `edit(name, slug, shortDescription, brand, description, parameters, categories, taxClass, images, variants)`:
+  zastępuje dane produktu. Marka, opis i parametry (value objecty `ProductBrand`, `ProductDescription`,
+  `ProductParameters`) nie należą do tożsamości wariantów i zmieniają się także po publikacji; same one też podnoszą
+  wersję i zapisują `ProductChanged`. Zmiana
   sluga produktu z `firstPublishedAt ≠ null` → `SlugLocked` (`Conflict`). Opublikowany produkt, który miał zdjęcia,
   a nowa lista jest pusta → `ProductNotPublishable` (`Conflict`); opublikowany produkt bez zdjęć zapisuje się bez
   nich (K2). Zapisuje `ProductChanged`, także gdy dane się nie zmieniły (zapis idempotentny dla konsumentów).
@@ -242,7 +246,7 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
 | `GET /products?q&category&status&images&sort&after&perPage` | widok | 200 `{items: [{id, name, slug, status, mainCategory {id, name}, variantCount, image: ImageView(thumbnail) \| null, updatedAt}], next}`; `q` 2–100 znaków po przycięciu według reguły tekstów, bez znaków sterujących i separatorów linii (400 „Szukana fraza zawiera niedozwolone znaki.”), lista szuka frazy przyciętej (`SearchBackofficeProducts`, `pg_trgm`), `status` `draft`/`published` (indeks częściowy `(name, id) WHERE status = 'draft'`, bo szkiców jest mało), `images=none` (tylko produkty bez zdjęć, `catalog_product.images = '[]'::jsonb`; łączy się z `q`, `category`, `status` i `sort`; częściowy indeks `catalog_product_without_images_idx (id) WHERE images = '[]'::jsonb`, migracja nietransakcyjna `CONCURRENTLY`; `ProductsWithoutImagesPlanTest` sprawdza plan na 100 000 produktów bez wyłączania skanów; inna wartość `images` to 400), `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (indeksy `(name, id)` i `(updated_at, id)` z częściowymi wariantami szkiców; oba kierunki czytają ten sam indeks), kursor keyset z kluczem sortu (kursor innego sortu to 400 przy `after`); 400 złe parametry; 404 nieznana kategoria |
-| `GET /products/{id}` | widok | 200 `ProductEditView {id, version, status, firstPublishedAt, name, slug, slugLocked, shortDescription, mainCategoryId, additionalCategoryIds, taxClass, images: [{key, alt, preview: ImageView(thumbnail)}], variantAxes, variants: [{variantId, values}], updatedAt}`; 404 |
+| `GET /products/{id}` | widok | 200 `ProductEditView {id, version, status, firstPublishedAt, name, slug, slugLocked, shortDescription, brand, description, parameters: [{name, value}], mainCategoryId, additionalCategoryIds, taxClass, images: [{key, alt, preview: ImageView(thumbnail)}], variantAxes, variants: [{variantId, values}], updatedAt}`; 404 |
 | `POST /products` | zarządzanie | 201 `ProductEditView`; 409 `slug-taken`; 422 walidacja (pola, `UnknownVariant`, `ImageNotFound`, nieznana kategoria); 503 Garage niedostępny |
 | `PUT /products/{id}` (body z `version`) | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified`, `slug-taken`, `slug-locked`, `product-not-publishable`, `variant-locked`, `variant-in-use`; 422; 503 Garage niedostępny |
 | `POST /products/{id}/publish` `{version}` | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified`, `product-not-publishable` |
@@ -250,24 +254,31 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 | `POST /product-images` (`multipart/form-data`, pole `file`) | zarządzanie | 201 `{key, preview: ImagePreview}` (`ImagePreview`: `size`, `aspectRatio`, `variants` rozmiaru `thumbnail`, bez `alt`); 422 brak pliku, za duży, nieobsługiwany typ, nieczytelne wymiary, za duża rozdzielczość (`detail` po polsku); 503 Garage niedostępny |
 | `GET /tax-classes` | widok | 200 `[{code, name}]` (nazwy po polsku z jednego miejsca w Catalog) |
 
-- Ciało `POST`/`PUT`: `{name, slug, shortDescription, mainCategoryId, additionalCategoryIds, taxClass,
-  images: [{key, alt}], variantAxes, variants: [{variantId: string|null, values}]}` (+ `version` w `PUT`).
-  Walidacja DTO z limitami domeny (nazwa 1–200, slug ≤ 200 i format, opis ≤ 500, do 10 kategorii dodatkowych,
+- Ciało `POST`/`PUT`: `{name, slug, shortDescription, brand, description, parameters: [{name, value}],
+  mainCategoryId, additionalCategoryIds, taxClass, images: [{key, alt}], variantAxes, variants: [{variantId:
+  string|null, values}]}` (+ `version` w `PUT`); wszystkie klucze są wymagane, brak `brand`, `description` albo
+  `parameters` to naruszenie przy polu (jak każdego innego). Walidacja DTO z limitami domeny (nazwa 1–200, slug ≤ 200
+  i format, krótki opis ≤ 500, marka ≤ 60, opis ≤ 5000, do 30 parametrów z nazwą 1–60 i wartością 1–200 znaków,
+  nazwy parametrów różne bez względu na wielkość liter, do 10 kategorii dodatkowych,
   do 10 zdjęć, alt 1–200, 0–2 osie po 1–30 znaków bez `:`, wartości 1–40, 1–100 wariantów); 422 z `violations`
   ze ścieżkami pól (`variants[3].values[1]`).
 - Reguły tekstu: reguła tekstów `App\Shared\Domain\Text` (`docs/features/api-input-contract/spec.md`, „Etap 2:
-  reguła tekstu”, T1–T5), której używają value objecty `ProductName`, `ShortDescription`, `ProductImage`,
-  `VariantAxes`, `VariantValues` i walidator DTO. Niedozwolone są wszystkie znaki sterujące (C0, DEL i C1:
+  reguła tekstu”, T1–T5), której używają value objecty `ProductName`, `ShortDescription`, `ProductBrand`,
+  `ProductDescription`, `ProductParameter`, `ProductImage`, `VariantAxes`, `VariantValues` i walidator DTO. Niedozwolone są wszystkie znaki sterujące (C0, DEL i C1:
   U+0000–U+001F, U+007F–U+009F), U+2028 i U+2029, a tekst, który nie jest poprawnym UTF-8, też. Jedynym wyjątkiem jest
-  LF w krótkim opisie (pozostałe teksty są jednoliniowe). Znaki niedozwolone są szukane w wartości, jak przyszła, przed
+  LF w krótkim i długim opisie (pozostałe teksty, także marka i parametry, są jednoliniowe; U+000D w opisie jest
+  niedozwolone). Znaki niedozwolone są szukane w wartości, jak przyszła, przed
   przycięciem (przycięcie ucięłoby np. końcowy NUL albo U+2028 po cichu). Naruszenie to 422 przy polu (`name`,
-  `shortDescription`, `images[i].alt`, `variantAxes[i]`, `variants[i].values[j]`): „Nazwa produktu zawiera
-  niedozwolone znaki.”, „Krótki opis …”, „Tekst alternatywny …”, „Nazwa osi …”, „Wartość wariantu …”. Z końców tekstu
+  `shortDescription`, `brand`, `description`, `parameters[i].name`, `parameters[i].value`, `images[i].alt`,
+  `variantAxes[i]`, `variants[i].values[j]`): „Nazwa produktu zawiera niedozwolone znaki.”, „Krótki opis …”, „Marka …”,
+  „Opis …”, „Nazwa parametru …”, „Wartość parametru …”, „Tekst alternatywny …”, „Nazwa osi …”, „Wartość
+  wariantu …” (komunikaty i `propertyPath` pól marki, opisu i parametrów: `docs/features/product-data/spec.md`,
+  „Naruszenia”). Z końców tekstu
   znikają białe znaki Unicode (`\s` i kategoria Z, także NBSP) oraz U+200B, U+2060, U+FEFF i U+00AD; w środku nic nie
   jest usuwane, więc emoji z U+200D i flaga na końcu zostają. Długość liczy się po przycięciu. Nazwa, tekst
   alternatywny, nazwa osi i wartość wariantu bez znaku widocznego (same białe znaki albo znaki niewidoczne, np. U+200B,
-  U+3164) to jak puste pole (422 „wymagane” przy tym polu, nie przy `slug`); krótki opis bez znaku widocznego jest
-  zapisany jako pusty. Zapisywane są teksty przycięte; powtórzona oś i kombinacja wartości są porównywane po
+  U+3164) to jak puste pole (422 „wymagane” przy tym polu, nie przy `slug`); krótki opis, marka i opis bez znaku widocznego
+  są zapisane jako puste; nazwa albo wartość parametru bez znaku widocznego to naruszenie przy polu. Zapisywane są teksty przycięte; powtórzona oś i kombinacja wartości są porównywane po
   przycięciu. Repozytorium i odczyty odtwarzają teksty zapisanego wiersza bez reguły i bez przycinania
   (`stored()`), więc produkt zapisany przed ostrzejszą regułą jest czytany bez zmian. Zapis z panelu wysyła wszystkie
   pola: tekst ze znakami, które reguła przycina, jest zapisany przycięty, a tekst, którego reguła nie przyjmuje, daje
@@ -316,8 +327,9 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 - Formularz (`useProductForm`, układ według standardu formularza z `docs/features/admin-design/spec.md`): H1 („Nowy
   produkt”, nazwa produktu, a gdy istniejący produkt się nie wczytał, „Nie udało się wczytać produktu”) z okruszkami
   „Katalog › Produkty › produkt”. Kolumna główna: „Dane produktu” (nazwa, slug z podpowiedzią „pusty: wyliczony
-  z nazwy”, zablokowany przy `slugLocked` z wyjaśnieniem, krótki opis z licznikiem znaków, klasa podatkowa z
-  `GET /tax-classes` jako lista wyboru „Klasa podatkowa”), „Zdjęcia”, „Warianty”. Kolumna boczna: „Status” (tylko
+  z nazwy”, zablokowany przy `slugLocked` z wyjaśnieniem, marka (`maxlength` 60), krótki opis z licznikiem znaków, opis
+  z licznikiem `n/5000`, klasa podatkowa z `GET /tax-classes` jako lista wyboru „Klasa podatkowa”), „Parametry”,
+  „Zdjęcia”, „Warianty”. Kolumna boczna: „Status” (tylko
   zapisany produkt: etykieta, „Opublikuj” albo „Wycofaj z publikacji”) i „Organizacja” (kategoria główna i dodatkowe
   z drzewa, wybór z wyszukiwaniem po nazwie i ścieżce). Pracownik bez `MANAGE_PRODUCTS` widzi formularz tylko do
   odczytu, bez akcji i bez paska zapisu.
@@ -329,6 +341,13 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
   nagłówek karty „Status” po publikacji i wycofaniu (przycisk został zastąpiony), chyba że pracownik w trakcie
   żądania przeniósł fokus do pola: wtedy zostaje w polu. Po błędzie formularz jest długi, więc panel przewija i ustawia
   fokus na pierwszym błędzie w kolejności dokumentu (pole z błędem albo komunikat).
+- Parametry: wiersz „Nazwa” i „Wartość” na parametr, przyciski „Przesuń parametr N w górę”, „Przesuń parametr N w dół”
+  i „Usuń parametr N”, „Dodaj parametr” (wyłączony przy 30). Po dodaniu fokus trafia w nazwę nowego wiersza, po
+  usunięciu w nazwę następnego wiersza, a po usunięciu ostatniego w „Dodaj parametr”. Wiersz zawija się na wąskim
+  ekranie (375 px bez poziomego przewijania strony). Marka, opis i parametry idą do API tak, jak są w szkicu: panel ich
+  nie przycina i nie usuwa z nich znaków (przycina je API, T2); tekst ze znakiem niedozwolonym dostaje 422 przy polu
+  (np. marka z tabulatorem na końcu). Pole opisu jest obszarem tekstu, który zamienia końce wierszy na U+000A, więc
+  U+000D wysyła tylko klient spoza panelu.
 - Zdjęcia: wybór wielu plików; każdy wysyłany osobno, po kolei, ze statusem przy pliku (oczekuje, wysyłanie,
   gotowe, błąd z `detail` 422 albo ogólnym komunikatem i możliwością ponowienia); plik, którego klucz już jest
   w formularzu, nie jest dodawany drugi raz („To zdjęcie już jest w produkcie.”);
@@ -366,7 +385,10 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
   „Warianty”; 403 i inne błędy 4xx jako komunikat
   bez utraty danych formularza. Brak odpowiedzi przez 10 s, błąd sieci i 5xx zapisu, publikacji albo wycofania to
   nieznany wynik (`docs/features/admin-ux-fixes/spec.md`, „B4: nieznany wynik zapisu”): szkic zostaje, pracownik
-  sprawdza stan („Sprawdź stan”) albo odrzuca zmiany. Na czas tych żądań i odczytu stanu z serwera pola, kategorie,
+  sprawdza stan („Sprawdź stan”) albo odrzuca zmiany. Porównanie „Sprawdź stan” dla marki, opisu i parametrów
+  przepuszcza szkic przez kopię reguły tekstu T1–T3 (API przycina te teksty, więc zapis, który serwer wykonał, ma je bez
+  brzegów; szkic ze znakiem T1 nie jest zgodny z żadnym stanem serwera), nie zmieniając pól, żądania ani wykrywania
+  zmian (`docs/features/admin-ux-fixes/spec.md`, B4). Na czas tych żądań i odczytu stanu z serwera pola, kategorie,
   warianty i zdjęcia są zablokowane (karta „Ceny i stany” nie).
 - Panel niczego nie liczy: slug wylicza API, stan `slugLocked` i status pochodzą z odpowiedzi.
 

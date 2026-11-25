@@ -119,6 +119,9 @@ export function makeDetails(n: number, overrides: Partial<ProductDetails> = {}):
     slug: `produkt-${n}`,
     name: `Produkt ${n}`,
     shortDescription: `Opis ${n}`,
+    brand: "",
+    description: "",
+    parameters: [],
     breadcrumb: [
       { id: "bieganie", name: "Bieganie", path: "bieganie" },
       { id: "buty", name: "Buty", path: "bieganie/buty" },
