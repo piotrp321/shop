@@ -6,7 +6,8 @@ or would add (untracked and not ignored), whose name is `Dockerfile`, `Dockerfil
 in any directory. A new Dockerfile is therefore checked without a change of this script or of the Makefile.
 
 Checked in each file: the image of every `FROM` (flags such as `--platform=` are skipped), the `--from=` of `COPY` and
-`ADD`, and the `from=` of a `RUN --mount`. A reference to an earlier stage (its `AS` name or its number) and `scratch`
+`ADD`, and the `from=` of a `RUN --mount` (read as CSV, so a field may be in quotes). Quotes around a
+value are removed, as Docker does. A reference to an earlier stage (its `AS` name or its number) and `scratch`
 are allowed. Instruction names and `AS` are case-insensitive, like in Docker. The instruction after `ONBUILD` is checked like any
 other, a byte order mark is skipped and the `# escape=` directive (among the directives at the top) sets the continuation character. The tag may not be `latest`, and no part of
 a reference may be a variable, because the value of a variable is not visible here. The text of a heredoc is not
@@ -19,6 +20,7 @@ could not run (not a git repository, no Dockerfile, an unreadable file): a resul
 
 Usage: check_base_images.py [directory]
 """
+import csv
 import re
 import subprocess
 import sys
@@ -111,6 +113,61 @@ def reason(reference):
     return None
 
 
+def take_word(text):
+    """The first word of the text and the rest, like Docker splits an instruction: words are separated by white space,
+    except inside single or double quotes; the quotes stay in the word. None when there is no word. ValueError when a
+    quote is not closed."""
+    text = text.lstrip()
+    if not text:
+        return None
+    quote = None
+    for index, char in enumerate(text):
+        if quote:
+            if char == quote:
+                quote = None
+        elif char in "'\"":
+            quote = char
+        elif char.isspace():
+            return text[:index], text[index:]
+    if quote:
+        raise ValueError("a quote is not closed")
+    return text, ""
+
+
+def unquote(text):
+    """The text without the quote characters that delimit a quoted part, like the shell and Docker read a value."""
+    result, quote = [], None
+    for char in text:
+        if quote:
+            if char == quote:
+                quote = None
+            else:
+                result.append(char)
+        elif char in "'\"":
+            quote = char
+        else:
+            result.append(char)
+    return "".join(result)
+
+
+def mount_references(value):
+    """The values of the `from` fields of a `--mount` value. BuildKit reads the value as one CSV record (a field may be
+    in double quotes) and compares the key without regard to case; the value of a field loses its shell quotes. A
+    value in shell quotes as a whole is read both ways, so a reading that differs from the one of Docker cannot hide a
+    reference. ValueError when the value is not valid CSV."""
+    references = []
+    for candidate in dict.fromkeys((value, unquote(value))):
+        try:
+            fields = next(csv.reader([candidate], strict=True), [])
+        except csv.Error as error:
+            raise ValueError(str(error)) from None
+        for field in fields:
+            key, separator, reference = field.partition("=")
+            if separator and key.strip().lower() == "from":
+                references.append(unquote(reference.strip()))
+    return list(dict.fromkeys(references))
+
+
 def check_file(path, text):
     """Returns [(line, message)] for one Dockerfile."""
     problems = []
@@ -127,33 +184,51 @@ def check_file(path, text):
             problems.append((line, f"{what} {reference}: {message}"))
 
     for line, instruction in instructions(text):
-        tokens = instruction.split()
-        if tokens[0].upper() == "ONBUILD":
-            tokens = tokens[1:]
-            if not tokens:
-                continue
-        keyword = tokens[0].upper()
-        flags = []
-        rest = tokens[1:]
-        while rest and rest[0].startswith("--"):
-            flags.append(rest.pop(0))
-        if keyword == "FROM" and rest:
-            check_reference(line, rest[0], "FROM")
-            if len(rest) >= 3 and rest[1].upper() == "AS":
-                stages.append(rest[2].lower())
-            else:
-                stages.append(None)
-        elif keyword in ("COPY", "ADD"):
-            for flag in flags:
-                if flag.lower().startswith("--from="):
-                    check_reference(line, flag[len("--from="):], keyword)
-        elif keyword == "RUN":
-            for flag in flags:
-                if flag.lower().startswith("--mount="):
-                    for option in flag[len("--mount="):].split(","):
-                        if option.lower().startswith("from="):
-                            check_reference(line, option[len("from="):], "RUN --mount from")
+        try:
+            check_instruction(line, instruction, stages, check_reference)
+        except ValueError as error:
+            problems.append((line, f"the instruction cannot be read, so its images cannot be checked: {error}"))
     return problems
+
+
+def check_instruction(line, instruction, stages, check_reference):
+    """Checks the images of one instruction. ValueError when the part that holds them cannot be read: the flags and
+    the words after FROM (the rest of other instructions is not read)."""
+    word, rest = take_word(instruction)
+    if word.upper() == "ONBUILD":
+        taken = take_word(rest)
+        if taken is None:
+            return
+        word, rest = taken
+    keyword = word.upper()
+    flags = []
+    while True:
+        taken = take_word(rest)
+        if taken is None or not taken[0].startswith("--"):
+            break
+        flags.append(taken[0])
+        rest = taken[1]
+    if keyword == "FROM":
+        taken = take_word(rest)
+        if taken is None:
+            return
+        image, rest = taken
+        check_reference(line, unquote(image), "FROM")
+        stage = None
+        taken = take_word(rest)
+        if taken is not None and taken[0].upper() == "AS":
+            named = take_word(taken[1])
+            stage = unquote(named[0]).lower() if named else None
+        stages.append(stage)
+    elif keyword in ("COPY", "ADD"):
+        for flag in flags:
+            if flag.lower().startswith("--from="):
+                check_reference(line, unquote(flag[len("--from="):]), keyword)
+    elif keyword == "RUN":
+        for flag in flags:
+            if flag.lower().startswith("--mount="):
+                for reference in mount_references(flag[len("--mount="):]):
+                    check_reference(line, reference, "RUN --mount from")
 
 
 def main(argv):

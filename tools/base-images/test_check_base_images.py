@@ -293,7 +293,9 @@ class CheckBaseImages(unittest.TestCase):
 
     def test_quoted_platform_with_a_space_does_not_hide_the_image(self):
         self.assertViolation('FROM --platform="linux/amd64 x" node:24\n', 1)
-        self.assertClean(f'FROM --platform="linux/amd64 x" node:24@{DIGEST}\n', path="b/Dockerfile")
+
+    def test_quoted_platform_with_a_space_and_a_pinned_image_passes(self):
+        self.assertClean(f'FROM --platform="linux/amd64 x" node:24@{DIGEST}\n')
 
     def test_quoted_platform_flag_with_a_pinned_image_passes(self):
         self.assertClean(f'FROM --platform="linux/amd64" node:24@{DIGEST}\n')
