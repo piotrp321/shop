@@ -663,7 +663,7 @@ describe("ProductFormView", () => {
       mocks.put.mockResolvedValue(problem(422, { violations: [] }));
 
       await mounted.wrapper.get("[data-testid=brand]").setValue("  Nowa marka\t");
-      await mounted.wrapper.get("[data-testid=description]").setValue("\u00A0Pierwszy.\r\n\nDrugi.");
+      await mounted.wrapper.get("[data-testid=description]").setValue("\u00A0Pierwszy.\n\nDrugi.\u3000");
       await mounted.wrapper.get("[data-testid=add-parameter]").trigger("click");
       await flushPromises();
       await mounted.wrapper.findAll("[data-testid=parameter-name]")[1]!.setValue(" Kolor ");
@@ -673,7 +673,8 @@ describe("ProductFormView", () => {
 
       const body = mocks.put.mock.calls[0]![1].body;
       expect(body.brand).toBe("  Nowa marka\t");
-      expect(body.description).toBe("\u00A0Pierwszy.\r\n\nDrugi.");
+      // A textarea gives its line breaks as U+000A whatever was pasted, so U+000D cannot be sent from this field.
+      expect(body.description).toBe("\u00A0Pierwszy.\n\nDrugi.\u3000");
       expect(body.parameters).toEqual([
         { name: "Waga", value: "2,4 kg" },
         { name: " Kolor ", value: "zielony\u200B" },
@@ -782,10 +783,10 @@ describe("ProductFormView", () => {
       expect(mounted.wrapper.text()).not.toContain("Wróć do listy");
     });
 
-    it("has the cards „Dane produktu”, „Zdjęcia”, „Warianty”, „Ceny i stany”, „Status” and „Organizacja”", async () => {
+    it("has the cards „Dane produktu”, „Parametry”, „Zdjęcia”, „Warianty”, „Ceny i stany”, „Status” and „Organizacja”", async () => {
       mounted = await mountForm("/products/p-1");
 
-      expect([...document.body.querySelectorAll("h2")].map((node) => node.textContent?.trim())).toEqual(["Status", "Organizacja", "Dane produktu", "Zdjęcia", "Warianty", "Ceny i stany"]);
+      expect([...document.body.querySelectorAll("h2")].map((node) => node.textContent?.trim())).toEqual(["Status", "Organizacja", "Dane produktu", "Parametry", "Zdjęcia", "Warianty", "Ceny i stany"]);
       expect(heading("h2", "Status")?.getAttribute("tabindex")).toBe("-1");
     });
 

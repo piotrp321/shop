@@ -3,6 +3,7 @@ import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 import { OTHER_VERSION_MESSAGE, type ReadResult, type WriteOutcome } from "@/composables/formRequests";
 import { useFormSafety } from "@/composables/useFormSafety";
+import { normalizeContentText } from "./contentText";
 import { type FormImage, useImageUpload } from "./useImageUpload";
 import { fetchTaxClasses, type TaxClass } from "./taxClasses";
 
@@ -14,11 +15,20 @@ export interface VariantRow {
   values: string[];
 }
 
+/** A parameter of the product in the form: a name and a value, as typed. */
+export interface ParameterRow {
+  name: string;
+  value: string;
+}
+
 /** The fields of the product the form edits; everything in it is what the API sent or what the staff member typed. */
 export interface ProductFormData {
   name: string;
   slug: string;
   shortDescription: string;
+  brand: string;
+  description: string;
+  parameters: ParameterRow[];
   mainCategoryId: string | null;
   additionalCategoryIds: string[];
   taxClass: string | null;
@@ -52,10 +62,11 @@ export interface ProductFormOptions {
 }
 
 const PROBLEM_PREFIX = "tag:piotrp321.github.io,2026:shop/problems/";
-const FIELD_ROOTS = new Set(["name", "slug", "shortDescription", "mainCategoryId", "additionalCategoryIds", "taxClass", "images", "variantAxes", "variants"]);
+const FIELD_ROOTS = new Set(["name", "slug", "shortDescription", "brand", "description", "parameters", "mainCategoryId", "additionalCategoryIds", "taxClass", "images", "variantAxes", "variants"]);
 
 export const MAX_AXES = 2;
 export const MAX_VARIANTS = 100;
+export const MAX_PARAMETERS = 30;
 
 /** The version of a product changed while the staff member edited it: the draft stays. */
 export const MODIFIED_MESSAGE = "Produkt został w międzyczasie zmieniony. Twoje zmiany zostają w formularzu.";
@@ -73,6 +84,9 @@ function emptyForm(): ProductFormData {
     name: "",
     slug: "",
     shortDescription: "",
+    brand: "",
+    description: "",
+    parameters: [],
     mainCategoryId: null,
     additionalCategoryIds: [],
     taxClass: null,
@@ -88,6 +102,9 @@ function fromView(view: ProductEditView): ProductFormData {
     name: view.name,
     slug: view.slug,
     shortDescription: view.shortDescription,
+    brand: view.brand,
+    description: view.description,
+    parameters: view.parameters.map((parameter) => ({ name: parameter.name, value: parameter.value })),
     mainCategoryId: view.mainCategoryId,
     additionalCategoryIds: [...view.additionalCategoryIds],
     taxClass: view.taxClass,
@@ -116,6 +133,9 @@ function toBody(form: ProductFormData) {
     name: form.name,
     slug: form.slug,
     shortDescription: form.shortDescription,
+    brand: form.brand,
+    description: form.description,
+    parameters: form.parameters.map((parameter) => ({ name: parameter.name, value: parameter.value })),
     mainCategoryId: form.mainCategoryId,
     additionalCategoryIds: form.additionalCategoryIds,
     taxClass: form.taxClass,
@@ -131,6 +151,32 @@ function toBody(form: ProductFormData) {
  */
 function requestOf(form: ProductFormData): ProductBody | null {
   return form.slug === "" ? null : toBody(form);
+}
+
+/**
+ * The request the API would store of the draft, for the comparison of „Sprawdź stan” only: the brand, the description and the
+ * parameters go through the normalization of the API (T1–T3, `contentText.ts`), because the API trims them and the server then
+ * has them without their edges; null when a text has a character T1 forbids (the API stores no such text, so no state of the
+ * server is this draft). The other fields stay as they are and are compared strictly. What the form sends and what makes it
+ * `dirty` is `toBody`, untouched.
+ */
+function comparableRequestOf(form: ProductFormData): ProductBody | null {
+  const request = requestOf(form);
+  if (request === null) {
+    return null;
+  }
+  const brand = normalizeContentText(form.brand);
+  const description = normalizeContentText(form.description, "paragraphs");
+  const parameters: ParameterRow[] = [];
+  for (const parameter of form.parameters) {
+    const name = normalizeContentText(parameter.name);
+    const value = normalizeContentText(parameter.value);
+    if (name === null || value === null) {
+      return null;
+    }
+    parameters.push({ name, value });
+  }
+  return brand === null || description === null ? null : { ...request, brand, description, parameters };
 }
 
 /** The toast after the first save: a product without a price is unavailable in the shop (the price is set on the card „Ceny i stany”). */
@@ -205,7 +251,8 @@ export function useProductForm(options: ProductFormOptions) {
     id: () => view.value?.id ?? options.productId(),
     read: fetchProduct,
     version: () => view.value?.version ?? null,
-    draftRequest: () => requestOf(form.value),
+    draftRequest: () => comparableRequestOf(form.value),
+    draftState: () => requestOf(form.value),
     servedRequest: (served) => requestOf(fromView(served)),
     adopt: (served) => {
       apply(served);
@@ -235,6 +282,10 @@ export function useProductForm(options: ProductFormOptions) {
   /** After the first publication the axes cannot be added, removed or moved (the API enforces it as well). */
   const axesLocked = computed(() => view.value?.firstPublishedAt != null);
   /** The messages for the variants as a whole; the ones for an axis, a row or a value are shown there. */
+  /** The messages for the list of parameters as a whole; the ones for a row, its name and its value are shown there. */
+  const parametersErrors = computed(() => errorsExactly("parameters"));
+  /** Whether another parameter can be added: editable, and fewer than `MAX_PARAMETERS`. */
+  const canAddParameter = computed(() => editable.value && form.value.parameters.length < MAX_PARAMETERS);
   const variantsErrors = computed(() => [
     ...(variantsConflict.value === null ? [] : [variantsConflict.value]),
     ...errorsExactly("variantAxes"),
@@ -519,6 +570,49 @@ export function useProductForm(options: ProductFormOptions) {
     fieldErrors.value = Object.fromEntries(Object.entries(fieldErrors.value).filter(([key]) => !key.startsWith("images")));
   }
 
+  // The paths of the messages count parameters by position, which adding, moving or removing changes.
+  function clearParameterErrors(): void {
+    fieldErrors.value = Object.fromEntries(Object.entries(fieldErrors.value).filter(([key]) => !key.startsWith("parameters")));
+  }
+
+  /** Appends a parameter with an empty name and an empty value. */
+  function addParameter(): void {
+    if (!canAddParameter.value) {
+      return;
+    }
+    form.value.parameters = [...form.value.parameters, { name: "", value: "" }];
+    clearParameterErrors();
+  }
+
+  function removeParameter(index: number): void {
+    if (!editable.value || index < 0 || index >= form.value.parameters.length) {
+      return;
+    }
+    form.value.parameters = form.value.parameters.filter((_, position) => position !== index);
+    clearParameterErrors();
+  }
+
+  /** Moves the parameter at `index` one place up (-1) or down (1) in the order shown by the store. */
+  function moveParameter(index: number, direction: -1 | 1): void {
+    const target = index + direction;
+    const list = form.value.parameters;
+    if (!editable.value || index < 0 || index >= list.length || target < 0 || target >= list.length) {
+      return;
+    }
+    const moved = [...list];
+    [moved[index], moved[target]] = [moved[target]!, moved[index]!];
+    form.value.parameters = moved;
+    clearParameterErrors();
+  }
+
+  function setParameter(index: number, field: keyof ParameterRow, value: string): void {
+    const target = form.value.parameters[index];
+    if (!editable.value || !target) {
+      return;
+    }
+    target[field] = value;
+  }
+
   // The paths of the messages count axes and rows by position, which adding, moving or removing changes.
   function clearVariantErrors(): void {
     fieldErrors.value = Object.fromEntries(Object.entries(fieldErrors.value).filter(([key]) => !key.startsWith("variant")));
@@ -627,6 +721,8 @@ export function useProductForm(options: ProductFormOptions) {
     imagesErrors,
     variantsErrors,
     axesLocked,
+    parametersErrors,
+    canAddParameter,
     errorsAt,
     errorsExactly,
     upload,
@@ -636,6 +732,10 @@ export function useProductForm(options: ProductFormOptions) {
     discard,
     moveImage,
     removeImage,
+    addParameter,
+    removeParameter,
+    moveParameter,
+    setParameter,
     addAxis,
     setAxis,
     removeAxis,

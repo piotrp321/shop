@@ -17,7 +17,6 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
 
 vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get, POST: mocks.post, PUT: mocks.put }) }));
 
-const PRODUCT = "/api/v1/admin/products/{id}";
 const TAX_CLASSES = "/api/v1/admin/tax-classes";
 const MATCHES = "Stan na serwerze odpowiada formularzowi.";
 
@@ -367,6 +366,7 @@ describe("the brand, the description and the parameters of the product form", ()
   describe("„Sprawdź stan” after an unknown result of a save (criterion 9: the normalization of the API)", () => {
     /** The save of the changes `edit` makes ended unknown; the read answers `answer`. */
     async function checkSaved(edit: (form: Form) => void, answer: ProductEditView) {
+      serveReads();
       const form = await start();
       form.form.value.name = "Pierwsza";
       edit(form);
@@ -516,6 +516,17 @@ describe("the brand, the description and the parameters of the product form", ()
 
       expect(mocks.put.mock.calls[1]![1].body).toMatchObject({ version: 4, brand: "Inna" });
       expect(form.view.value?.version).toBe(5);
+    });
+
+    it("ends the message that the server matches when the staff member changes the draft afterwards, also by what the normalization ignores", async () => {
+      const form = await checkSaved(setBrand(" Inna "), served({ brand: "Inna" }));
+      expect(form.safety.status.value).toBe(MATCHES);
+
+      form.form.value.brand = "Inna ";
+      await flushPromises();
+
+      expect(form.safety.status.value).toBe("");
+      expect(form.dirty.value).toBe(true);
     });
 
     it("keeps the strict comparison of the old fields: a trimmed space in the name does not match, whatever the new fields are", async () => {
