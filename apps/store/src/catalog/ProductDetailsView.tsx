@@ -5,6 +5,8 @@ import { Breadcrumbs } from "./Breadcrumbs";
 import { formatPrice } from "./format-price";
 import { ProductGallery } from "./ProductGallery";
 import { ProductPrice } from "./ProductPrice";
+import { ProductDescription, ProductParameters } from "./ProductTexts";
+import { VariantCodes } from "./VariantCodes";
 import { VariantChoice } from "./VariantChoice";
 
 type ProductDetails = components["schemas"]["ProductDetails"];
@@ -15,7 +17,9 @@ type ProductOffer = components["schemas"]["ProductOfferResponse"];
  * enlargement) beside the data on a desktop and above it on a phone. The data: the name, the short description, and the
  * price and level of the product as the API computed them („od X zł” when the purchasable variants cost differently).
  * Below them `VariantChoice` (a Client Component) takes the choice of the variant and the „Do koszyka” button and
- * replaces the price and level with those of the chosen variant. A product without a purchasable variant
+ * replaces the price and level with those of the chosen variant, and shows the product code and the EAN of the variant
+ * (of the only variant of a product at once, also an unavailable one, which has no choice). The brand is above the name.
+ * Under the photos and the data, over the whole width, are the sections „Opis” and „Parametry”, each only with content. A product without a purchasable variant
  * (`fromGross = null`) is „Niedostępny” without a price, a choice and a button. Nothing here depends on the session, so
  * the server can keep the HTML in the ISR cache.
  */
@@ -26,6 +30,11 @@ export function ProductDetailsView({ details, offer }: { details: ProductDetails
       <div className="flex flex-col gap-7 lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:items-start lg:gap-18">
         <ProductGallery name={details.name} images={details.images} zoomImages={details.zoomImages} />
         <div className="flex min-w-0 flex-col gap-5">
+          {details.brand !== "" && (
+            <p data-testid="brand" className="-mb-3 text-ui font-semibold text-muted-foreground uppercase [overflow-wrap:anywhere]">
+              {details.brand}
+            </p>
+          )}
           <h1 className="text-3xl font-semibold tracking-tight lg:max-w-[14ch] lg:text-5xl">{details.name}</h1>
           {details.shortDescription !== "" && (
             <p data-testid="description" className="max-w-[44ch] text-lg text-muted-foreground">
@@ -33,7 +42,10 @@ export function ProductDetailsView({ details, offer }: { details: ProductDetails
             </p>
           )}
           {offer.fromGross === null ? (
-            <AvailabilityLabel level="out_of_stock" />
+            <>
+              <AvailabilityLabel level="out_of_stock" />
+              {details.variants.length === 1 && <VariantCodes variant={details.variants[0]} />}
+            </>
           ) : (
             <VariantChoice details={details} offer={offer}>
               <ProductPrice
@@ -46,6 +58,8 @@ export function ProductDetailsView({ details, offer }: { details: ProductDetails
           )}
         </div>
       </div>
+      <ProductDescription description={details.description} />
+      <ProductParameters parameters={details.parameters} />
     </main>
   );
 }

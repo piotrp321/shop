@@ -4,15 +4,15 @@ Punkt 4 „Zakresu MVP” z `docs/vision.md`: strona produktu w sklepie (ISR, SE
 endpointami katalogu z unieważnianiem po tagach (xkey) oraz rewalidacją ISR po zdarzeniach domenowych.
 
 Issues: #93
-Zakres: `apps/api/src/Catalog`, `apps/api/src/Pricing`, `apps/api/src/Inventory`, `apps/api/src/Shared`, `apps/api/src/Cart/UI/Http/ProductOffersController.php`, `apps/api/tests`, `apps/api/config`, `apps/api/openapi.json`, `apps/store/src/api/schema.d.ts`, `apps/store/src/catalog`, `apps/store/src/api/client.ts`, `apps/store/app`, `infra/docker-compose.yml`, `infra/scripts/init-env.sh`, `Makefile`, `.github/workflows/ci.yml`, `e2e/tests/price-change.spec.ts`, `e2e/tests/stock-receipt.spec.ts`, `e2e/support`, `infra/varnish`, `docs/vision.md`, `CLAUDE.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `docs/features/variants/spec.md`, `docs/features/cart/spec.md`, `docs/features/pricing/spec.md`, `docs/features/inventory/spec.md`, `docs/features/walking-skeleton/spec.md`
+Zakres: `apps/api/src/Catalog`, `apps/api/src/Pricing`, `apps/api/src/Inventory`, `apps/api/src/Shared`, `apps/api/src/Cart/UI/Http/ProductOffersController.php`, `apps/api/tests`, `apps/api/config`, `apps/api/openapi.json`, `apps/store/src/api/schema.d.ts`, `apps/store/src/catalog`, `apps/store/src/api/client.ts`, `apps/store/app`, `infra/docker-compose.yml`, `infra/scripts/init-env.sh`, `Makefile`, `.github/workflows/ci.yml`, `e2e/tests/price-change.spec.ts`, `e2e/tests/stock-receipt.spec.ts`, `e2e/tests/product-data.spec.ts`, `e2e/support`, `infra/varnish`, `docs/vision.md`, `CLAUDE.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `docs/features/variants/spec.md`, `docs/features/cart/spec.md`, `docs/features/pricing/spec.md`, `docs/features/inventory/spec.md`, `docs/features/walking-skeleton/spec.md`
 
 Funkcja opiera się na wariantach produktu w Catalog i na ofercie produktów `GET /api/v1/product-offers` w Cart
 (`docs/features/variants/spec.md`).
 
 ## Cel i zakres
 
-- Strona `/p/<slug>` w sklepie: nazwa, ścieżka kategorii, zdjęcia, krótki opis, cena, dostępność, wybór wariantu
-  i dodanie do koszyka. HTML renderuje serwer i cache'uje ISR; metadane, adres kanoniczny i JSON-LD `Product`
+- Strona `/p/<slug>` w sklepie: marka, nazwa, ścieżka kategorii, zdjęcia, krótki opis, cena, dostępność, wybór wariantu
+  z kodem produktu i EAN, dodanie do koszyka, sekcje „Opis” i „Parametry”. HTML renderuje serwer i cache'uje ISR; metadane, adres kanoniczny i JSON-LD `Product`
   oraz `BreadcrumbList`.
 - Kafelek listy prowadzi do strony produktu.
 - Varnish (usługa w `infra`) przed publicznymi `GET` katalogu: `/api/v1/products`, `/api/v1/products/{slug}`,
@@ -31,7 +31,7 @@ Poza zakresem:
 - tagi i unieważnianie po zmianie kategorii: kategorie powstają tylko w danych demo (`make seed` z pełnym
   unieważnieniem);
 - `sitemap.xml`, `robots.txt`, JSON-LD `Organization`, pomiar Lighthouse w CI;
-- zdjęcia per wariant (decyzja E2 VARIANTS), długi opis produktu, kody SKU/EAN, marka jako osobne pole;
+- zdjęcia per wariant (decyzja E2 VARIANTS);
 - adres wariantu w URL (`?variant=`);
 - Varnish w panelu „Stan systemu” (dashboard).
 
@@ -96,8 +96,11 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
 
 - Zapytanie `GetProductBySlug(slug)` (`query.bus`, DBAL, odczyt z PostgreSQL, nie z Elasticsearch) → `ProductDetails`
   albo `null`:
-  `{id, slug, name, shortDescription, breadcrumb: [{id, name, path}], images: [ImageView], zoomImages: [ZoomImageView], variantAxes: [string],
-  variants: [{variantId, label, values: [string]}]}`.
+  `{id, slug, name, shortDescription, brand, description, parameters: [{name, value}], breadcrumb: [{id, name, path}], images: [ImageView],
+  zoomImages: [ZoomImageView], variantAxes: [string], variants: [{variantId, label, values: [string], sku, ean, gtin}]}`.
+  - `brand`, `description` (zwykły tekst, akapity rozdzielone pustym wierszem), `parameters` (w kolejności prezentacji)
+    i `sku`, `ean`, `gtin` wariantu są puste, gdy produkt albo wariant ich nie ma; `gtin` to `ean`, gdy jest globalnym
+    numerem towaru, a puste dla numeru obiegu ograniczonego (reguły i pola: `docs/features/product-data/spec.md`).
   - `breadcrumb`: ścieżka od korzenia do kategorii głównej produktu (`ProductCategories::main`), z `CategoryPath`;
     `path` elementu to slugi kategorii od korzenia do niego połączone `/` (jak `path` w drzewie kategorii).
   - `images`: wszystkie zdjęcia produktu w kolejności pozycji (0–10), w rozmiarze `product`.
@@ -236,8 +239,8 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
   wygaśnięciu czasowym (`revalidate = 3600`, odświeżenie w tle) błąd zostawia poprzednią wersję.
 - Treść (tokeny i komponenty shadcn/ui wybranego kierunku wyglądu, `docs/features/visual-design/spec.md`; na desktopie galeria obok danych, na telefonie nad danymi):
   - ścieżka: „Wszystkie produkty” › kategorie z `breadcrumb`, linki `/c/<ścieżka>` (`path` elementu);
-  - `h1` z nazwą, galeria zdjęć (`ProductGallery`, P4; patrz „Galeria”; produkt bez zdjęć: `PhotoPlaceholder` jak na
-    kafelku, bez powiększenia), krótki opis;
+  - marka (`brand`, zwykły tekst) nad nazwą, gdy niepusta; `h1` z nazwą, galeria zdjęć (`ProductGallery`, P4; patrz
+    „Galeria”; produkt bez zdjęć: `PhotoPlaceholder` jak na kafelku, bez powiększenia), krótki opis;
   - cena i dostępność: bez wyboru „od X zł” (gdy `hasPriceRange`) albo „X zł” i etykieta `level` produktu; po
     wyborze wariantu jego cena i etykieta `level`;
   - cena promocyjna i Omnibus (`docs/features/promotions/spec.md`, Q11): cena jest zawsze skuteczną ceną z API
@@ -264,14 +267,27 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
     dostępne według reguły wyżej (P2);
   - produkt z jednym wariantem: wartości osi jako tekst (bez wyboru), przycisk dodaje ten wariant;
   - produkt bez wariantu możliwego do kupienia (`fromGross = null`): „Niedostępny”, bez ceny, wyboru i przycisku (P6);
-  - wariant ze szczegółów, którego nie ma w ofercie, jest niemożliwy do kupienia.
+  - wariant ze szczegółów, którego nie ma w ofercie, jest niemożliwy do kupienia;
+  - „Kod produktu: <SKU>” i „EAN: <EAN>” (`VariantCodes`) pod wyborem wariantu, każdy tylko gdy niepusty: dla produktu
+    z jednym wariantem zawsze, także niedostępnego (`fromGross = null`, bez wyboru), dla produktu z wieloma wariantami
+    po wybraniu wariantu (także wybranego od pierwszego renderu jako jedyny możliwy do kupienia: stan początkowy
+    zależy tylko od danych, więc HTML ISR jest taki sam dla każdego). EAN jest pokazany bez oceny, także numer obiegu
+    ograniczonego, który nie ma `gtin`;
+  - pod zdjęciami i danymi zakupu, na całą szerokość: sekcja „Opis” (`h2`, `ProductDescription`: akapity z pustego
+    wiersza, pojedynczy koniec wiersza to złamanie wiersza, tekst dosłownie, bez interpretacji znaczników i bez
+    `dangerouslySetInnerHTML`) i sekcja „Parametry” (`h2`, lista opisowa `dl` nazwa–wartość w kolejności z API,
+    `ProductParameters`); każda tylko wtedy, gdy ma treść (opis z samych białych znaków API oddaje jako pusty).
+    Produkt bez nowych danych wygląda jak przed ich dodaniem. 375 px bez poziomego przewijania strony.
   Front niczego nie liczy poza dopasowaniem wybranych wartości do wariantu: ceny, poziomy i `purchasable` z oferty.
 - Metadane (`generateMetadata`): tytuł `<nazwa> | Worf`, opis = krótki opis, kanoniczny `<STORE_URL>/p/<slug>`,
   Open Graph: tytuł, opis, obraz = pierwsze zdjęcie w największej szerokości (bez zdjęć: bez obrazu).
 - JSON-LD (`<script type="application/ld+json">`; każdy znak `<` w treści zakodowany jako ucieczka Unicode U+003C,
   jak w przewodniku JSON-LD Next.js):
-  - `Product`: `name`, `description`, `image` (największa szerokość każdego zdjęcia), `url` (kanoniczny), `offers`:
-    `Offer` dla każdego wariantu z ceną (`gross` ≠ `null`): `name` = etykieta, `price` (złote z groszy, kropka
+  - `Product`: `name`, `brand` (`{"@type": "Brand", "name": …}`, tylko przy niepustej marce), `description` (krótki
+    opis, nie długi), `image` (największa szerokość każdego zdjęcia), `url` (kanoniczny), `offers`:
+    `Offer` dla każdego wariantu z ceną (`gross` ≠ `null`): `name` = etykieta, `sku` z pola `sku` i `gtin` z pola `gtin`
+    szczegółów (każde tylko przy niepustym polu; sklep nie ocenia kodu EAN, więc numer obiegu ograniczonego, który ma
+    puste `gtin`, nie trafia do danych strukturalnych), `price` (złote z groszy, kropka
     dziesiętna), `priceCurrency: PLN`, `availability` (`in_stock` → `InStock`, `low_stock` → `LimitedAvailability`,
     `out_of_stock` → `OutOfStock`), `url`. `price` to cena skuteczna z API (przy promocji cena promocyjna); wariant
     w promocji ma też `priceValidUntil`: data `YYYY-MM-DD` chwili `endsAt − 1 s` w strefie `Europe/Warsaw` (promocja
@@ -426,6 +442,8 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
    i klient dodają wybrany wariant do koszyka.
 2. Strona ma tytuł, opis, kanoniczny adres, Open Graph i JSON-LD `Product` (oferty wariantów z ceną) oraz
    `BreadcrumbList`; nieznany slug daje 404.
+2a. Karta pokazuje markę, sekcje „Opis” i „Parametry” oraz kod produktu i EAN wariantu; JSON-LD ma `brand`, `sku` i `gtin`
+   według sekcji „Strona `/p/[slug]`”; produkt bez tych danych wygląda i opisuje się jak dotąd.
 3. Strona produktu jest serwowana z cache ISR (na buildzie produkcyjnym drugie wejście: `x-nextjs-cache: HIT`).
 4. Odczyty katalogu sklepu przechodzą przez Varnish; koszyk, logowanie i żądania z `Authorization` lub `Cookie`
    nigdy nie są cache'owane.
@@ -454,7 +472,7 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
 - Vitest: strona produktu (cena „od”/„X zł”, oznaczenie „Promocja” i linia Omnibus przed i po wyborze wariantu oraz ich brak
   bez promocji i przy `lowestPriorGross = null`, wybór osi i wyłączone wartości według kolejności osi, oś późniejsza wyłączona przed wyborem wcześniejszej, czyszczenie niezgodnego wyboru późniejszej osi, przypadek „czarne, 42” i „białe, 44” bez blokady, brak
   odznaczania drugim kliknięciem, automatyczny wybór jedynego wariantu możliwego do kupienia, jeden wariant, brak
-  wariantu możliwego do kupienia, wariant spoza oferty), metadane i JSON-LD (oferty tylko z ceną, `priceValidUntil` promocji także dla końca o 00:00 czasu warszawskiego, mapowanie dostępności, ucieczka `<`), 404,
+  wariantu możliwego do kupienia, wariant spoza oferty), widok karty (marka, sekcje „Opis” i „Parametry”, kody wariantu: jeden wariant także niedostępny, wiele po wyborze, pierwszy render bez kodów), strażnik kształtu odpowiedzi szczegółów z nowymi polami, metadane i JSON-LD (`brand`, `sku`, `gtin` tylko przy niepustym polu, wariant z `ean` i pustym `gtin`, produkt bez nowych danych jak dotąd; oferty tylko z ceną, `priceValidUntil` promocji także dla końca o 00:00 czasu warszawskiego, mapowanie dostępności, ucieczka `<`), 404,
   błąd oferty; `/api/revalidate` (401, 400, 503, 200 z `revalidateTag`); kafelek z linkiem; odczyty katalogu idą pod
   `API_CATALOG_URL`, a koszyk i logowanie pod `API_INTERNAL_URL`.
 - Funkcjonalne/integracyjne `StorefrontCache` i `purge-all`: sklep odpowiadający po kilku sekundach (mieści się
@@ -465,6 +483,10 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
     klient; nieznany slug → 404; drugie wejście
     na stronę z `x-nextjs-cache: HIT` (tylko przy `STORE_MODE=production`);
   - `product-gallery.spec.ts`: galeria i powiększenie (patrz „Galeria i powiększenie”);
+  - `product-data.spec.ts`: produkt utworzony w panelu z marką, opisem (akapity, znacznik `<script>` pokazany dosłownie),
+    parametrami i dwoma wariantami (EAN globalny i EAN z prefiksem „2”), z ceną i zapasem; po publikacji karta
+    pokazuje nowe pola, kody wariantu dopiero po jego wyborze, a JSON-LD ma `brand`, `sku` obu wariantów i `gtin` tylko
+    pierwszego; 375 px bez poziomego przewijania; przechodzi w trybie dev i na buildzie produkcyjnym;
   - `price-change.spec.ts`: nowa cena widoczna na stronie produktu i na liście w ciągu 20 s;
   - `stock-receipt.spec.ts`: po przyjęciu strona produktu pokazuje „Dostępny” w ciągu 20 s;
   - `product-page-freshness.spec.ts` (tylko `STORE_MODE=production`, czyli w CI; w trybie dev pominięty z adnotacją)

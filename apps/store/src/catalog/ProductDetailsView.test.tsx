@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeDetails, makeOffer, makeVariant, variantId } from "./fixtures";
 import { ProductDetailsView } from "./ProductDetailsView";
@@ -127,6 +128,170 @@ describe("ProductDetailsView", () => {
         "Poprzednie zdjęcie",
         "Następne zdjęcie",
       ]);
+    });
+  });
+});
+
+describe("ProductDetailsView product data", () => {
+  const variant = (n: number, sku: string, ean: string, gtin: string, label = "", values: string[] = []) => ({ variantId: variantId(1, n), label, values, sku, ean, gtin });
+  const codes = () => screen.queryByTestId("variant-codes");
+
+  describe("brand", () => {
+    it("shows the brand as plain text above the name", () => {
+      render(<ProductDetailsView details={makeDetails(1, { brand: "Hallen" })} offer={makeOffer(1)} />);
+      const brand = screen.getByTestId("brand");
+      expect(brand.textContent).toBe("Hallen");
+      expect(brand.compareDocumentPosition(screen.getByRole("heading", { level: 1 })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("shows no brand for a product without one", () => {
+      render(<ProductDetailsView details={makeDetails(1, { brand: "" })} offer={makeOffer(1)} />);
+      expect(screen.queryByTestId("brand")).toBeNull();
+    });
+  });
+
+  describe("description", () => {
+    const description = () => screen.queryByRole("heading", { level: 2, name: "Opis" });
+
+    it("shows an h2 'Opis' with a paragraph for each part separated by an empty line", () => {
+      render(<ProductDetailsView details={makeDetails(1, { description: "Pierwszy akapit.\n\nDrugi akapit.\n\n\nTrzeci." })} offer={makeOffer(1)} />);
+      expect(description()).not.toBeNull();
+      const section = screen.getByTestId("product-description");
+      expect([...section.querySelectorAll("p")].map((paragraph) => paragraph.textContent)).toEqual(["Pierwszy akapit.", "Drugi akapit.", "Trzeci."]);
+    });
+
+    it("turns a single line end into a line break inside the paragraph", () => {
+      render(<ProductDetailsView details={makeDetails(1, { description: "Linia jedna.\nLinia dwa.\n\nNowy akapit." })} offer={makeOffer(1)} />);
+      const paragraphs = [...screen.getByTestId("product-description").querySelectorAll("p")];
+      expect(paragraphs).toHaveLength(2);
+      expect(paragraphs[0].innerHTML).toBe("Linia jedna.<br>Linia dwa.");
+    });
+
+    it("shows markup literally as text, without creating elements", () => {
+      const text = "<script>alert(1)</script> i <b>pogrubienie</b> &amp;";
+      render(<ProductDetailsView details={makeDetails(1, { description: text })} offer={makeOffer(1)} />);
+      const section = screen.getByTestId("product-description");
+      expect(section.querySelector("p")?.textContent).toBe(text);
+      expect(section.querySelector("script, b")).toBeNull();
+    });
+
+    it("has no section for an empty description", () => {
+      render(<ProductDetailsView details={makeDetails(1, { description: "" })} offer={makeOffer(1)} />);
+      expect(description()).toBeNull();
+      expect(screen.queryByTestId("product-description")).toBeNull();
+    });
+  });
+
+  describe("parameters", () => {
+    it("shows an h2 'Parametry' and a description list in the order of the API", () => {
+      const parameters = [
+        { name: "Liczba osób", value: "4" },
+        { name: "Masa", value: "3,2 kg" },
+        { name: "Kolor", value: "zielony" },
+      ];
+      render(<ProductDetailsView details={makeDetails(1, { parameters })} offer={makeOffer(1)} />);
+      expect(screen.getByRole("heading", { level: 2, name: "Parametry" })).toBeTruthy();
+      const list = screen.getByTestId("product-parameters");
+      expect(list.tagName).toBe("DL");
+      expect([...list.querySelectorAll("dt")].map((term) => term.textContent)).toEqual(["Liczba osób", "Masa", "Kolor"]);
+      expect([...list.querySelectorAll("dd")].map((value) => value.textContent)).toEqual(["4", "3,2 kg", "zielony"]);
+    });
+
+    it("has no section for a product without parameters", () => {
+      render(<ProductDetailsView details={makeDetails(1, { parameters: [] })} offer={makeOffer(1)} />);
+      expect(screen.queryByRole("heading", { level: 2, name: "Parametry" })).toBeNull();
+      expect(screen.queryByTestId("product-parameters")).toBeNull();
+    });
+  });
+
+  describe("a product without new data", () => {
+    it("has no brand, no sections and no codes, and the rest of the card as before", () => {
+      render(<ProductDetailsView details={makeDetails(1)} offer={makeOffer(1)} />);
+      expect(screen.queryByTestId("brand")).toBeNull();
+      expect(screen.queryAllByRole("heading", { level: 2 })).toEqual([]);
+      expect(codes()).toBeNull();
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Produkt 1");
+      expect(screen.getByTestId("price").textContent).toBe("123,00\u00a0zł");
+      expect(screen.getByRole("button", { name: "Do koszyka" })).toBeTruthy();
+    });
+  });
+
+  describe("product code and EAN", () => {
+    it("shows both of the only variant at once", () => {
+      render(<ProductDetailsView details={makeDetails(1, { variants: [variant(1, "NAMIOT-HALNY-4", "5901234123457", "5901234123457")] })} offer={makeOffer(1)} />);
+      expect(screen.getByText("Kod produktu: NAMIOT-HALNY-4")).toBeTruthy();
+      expect(screen.getByText("EAN: 5901234123457")).toBeTruthy();
+    });
+
+    it("shows each only when it is not empty", () => {
+      const { rerender } = render(<ProductDetailsView details={makeDetails(1, { variants: [variant(1, "ABC-1", "", "")] })} offer={makeOffer(1)} />);
+      expect(codes()?.textContent).toBe("Kod produktu: ABC-1");
+      rerender(<ProductDetailsView details={makeDetails(1, { variants: [variant(1, "", "5901234123457", "5901234123457")] })} offer={makeOffer(1)} />);
+      expect(codes()?.textContent).toBe("EAN: 5901234123457");
+      rerender(<ProductDetailsView details={makeDetails(1, { variants: [variant(1, "", "", "")] })} offer={makeOffer(1)} />);
+      expect(codes()).toBeNull();
+    });
+
+    it("shows the EAN of a number of restricted circulation, for which the API has no gtin", () => {
+      render(<ProductDetailsView details={makeDetails(1, { variants: [variant(1, "X-1", "2000000000008", "")] })} offer={makeOffer(1)} />);
+      expect(screen.getByText("EAN: 2000000000008")).toBeTruthy();
+    });
+
+    it("shows the codes of the only variant also when the product is unavailable", () => {
+      const offer = makeOffer(1, { fromGross: null, level: "out_of_stock", variants: [makeVariant(1, 1, { level: "out_of_stock", purchasable: false })] });
+      render(<ProductDetailsView details={makeDetails(1, { variants: [variant(1, "ABC-1", "5901234123457", "5901234123457")] })} offer={offer} />);
+      expect(screen.getByText("Kod produktu: ABC-1")).toBeTruthy();
+      expect(screen.getByText("EAN: 5901234123457")).toBeTruthy();
+    });
+
+    it("shows no codes of an unavailable product with several variants, which has no choice", () => {
+      const offer = makeOffer(1, {
+        variantAxes: ["Rozmiar"],
+        fromGross: null,
+        level: "out_of_stock",
+        variants: [makeVariant(1, 1, { label: "M", purchasable: false }), makeVariant(1, 2, { label: "L", purchasable: false })],
+      });
+      const details = makeDetails(1, { variantAxes: ["Rozmiar"], variants: [variant(1, "A-M", "", "", "M", ["M"]), variant(2, "A-L", "", "", "L", ["L"])] });
+      render(<ProductDetailsView details={details} offer={offer} />);
+      expect(codes()).toBeNull();
+    });
+
+    describe("a product with several variants", () => {
+      const offer = makeOffer(1, {
+        variantAxes: ["Rozmiar"],
+        fromGross: 10000,
+        hasPriceRange: false,
+        variants: [makeVariant(1, 1, { label: "M", gross: 10000 }), makeVariant(1, 2, { label: "L", gross: 10000 })],
+      });
+      const details = makeDetails(1, {
+        variantAxes: ["Rozmiar"],
+        variants: [variant(1, "A-M", "5901234123457", "5901234123457", "M", ["M"]), variant(2, "A-L", "2000000000008", "", "L", ["L"])],
+      });
+
+      it("shows the codes of the variant after it is chosen, and the codes of the next one after another choice", () => {
+        render(<ProductDetailsView details={details} offer={offer} />);
+        expect(codes()).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "M" }));
+        expect(screen.getByText("Kod produktu: A-M")).toBeTruthy();
+        expect(screen.getByText("EAN: 5901234123457")).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "L" }));
+        expect(screen.getByText("Kod produktu: A-L")).toBeTruthy();
+        expect(screen.getByText("EAN: 2000000000008")).toBeTruthy();
+        expect(screen.queryByText("Kod produktu: A-M")).toBeNull();
+      });
+
+      it("has no codes in the HTML of the server before a choice, the same for every visitor", () => {
+        const html = renderToStaticMarkup(<ProductDetailsView details={details} offer={offer} />);
+        expect(html).not.toContain("Kod produktu");
+        expect(html).not.toContain("EAN:");
+      });
+
+      it("shows at once the codes of the only purchasable variant, as the choice does", () => {
+        const onlyOne = { ...offer, variants: [makeVariant(1, 1, { label: "M", gross: 10000 }), makeVariant(1, 2, { label: "L", gross: null, purchasable: false })] };
+        const html = renderToStaticMarkup(<ProductDetailsView details={details} offer={onlyOne} />);
+        expect(html).toContain("Kod produktu: A-M");
+        expect(html).not.toContain("A-L");
+      });
     });
   });
 });
