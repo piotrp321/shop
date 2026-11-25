@@ -11,7 +11,13 @@ value are removed, as Docker does. A reference to an earlier stage (its `AS` nam
 are allowed. Instruction names and `AS` are case-insensitive, like in Docker. The instruction after `ONBUILD` is checked like any
 other, a byte order mark is skipped and the `# escape=` directive (among the directives at the top) sets the continuation character. The tag may not be `latest`, and no part of
 a reference may be a variable, because the value of a variable is not visible here. The text of a heredoc is not
-recognised as such: a line inside one that looks like an instruction is checked like any other.
+recognised as such: a line inside one that looks like a FROM, COPY, ADD or RUN is checked like any other (the other
+instructions are not read, so an apostrophe in a heredoc body does no harm).
+
+Words that hold images are read as Docker splits an instruction: by white space outside quotes. A flag, the image and
+the stage name of a FROM with an escape character (a backslash or a backtick) are not read, because Docker removes the
+escape (`target=/a\\ b`, `fr\\om=`) and the words could be split or spelled differently than here: such an instruction is a
+violation ("cannot be read"), never a clean result. So is a flag with a quote that is not closed.
 
 A Dockerfile written inline in another file (e.g. `dockerfile_inline` in compose) is not covered.
 
@@ -191,33 +197,52 @@ def check_file(path, text):
     return problems
 
 
+ESCAPES = ("\\", "`")
+
+
+def read_word(text, what):
+    """take_word, but a word with an escape character (a backslash or a backtick, whichever the file uses) is not read:
+    Docker removes the escape and may join or split words differently, so the word could hide an image."""
+    taken = take_word(text)
+    if taken is not None and any(char in taken[0] for char in ESCAPES):
+        raise ValueError(f"{what} '{taken[0]}' has an escape character")
+    return taken
+
+
 def check_instruction(line, instruction, stages, check_reference):
-    """Checks the images of one instruction. ValueError when the part that holds them cannot be read: the flags and
-    the words after FROM (the rest of other instructions is not read)."""
-    word, rest = take_word(instruction)
-    if word.upper() == "ONBUILD":
-        taken = take_word(rest)
-        if taken is None:
+    """Checks the images of one instruction. Only FROM, COPY, ADD, RUN and ONBUILD of these are read; the other
+    instructions (and the text of a heredoc that is not an instruction) are not. ValueError when the part that holds the
+    images cannot be read: a flag with an unclosed quote or an escape character, a FROM with such a word, and a word
+    after the flags that starts with a dash or an escape character and has an escape character in it."""
+    parts = instruction.split(None, 1)
+    keyword = parts[0].upper()
+    rest = parts[1] if len(parts) > 1 else ""
+    if keyword == "ONBUILD":
+        parts = rest.split(None, 1)
+        if not parts:
             return
-        word, rest = taken
-    keyword = word.upper()
+        keyword = parts[0].upper()
+        rest = parts[1] if len(parts) > 1 else ""
+    if keyword not in ("FROM", "COPY", "ADD", "RUN"):
+        return
     flags = []
-    while True:
-        taken = take_word(rest)
-        if taken is None or not taken[0].startswith("--"):
-            break
-        flags.append(taken[0])
-        rest = taken[1]
+    while rest.lstrip().startswith("--"):
+        word, rest = read_word(rest, "flag")
+        flags.append(word)
+    words = rest.split(None, 1)
+    first = words[0] if words else ""
+    if first and (first[0] == "-" or first[0] in ESCAPES) and any(char in first for char in ESCAPES):
+        raise ValueError(f"word '{first}' has an escape character")
     if keyword == "FROM":
-        taken = take_word(rest)
+        taken = read_word(rest, "image")
         if taken is None:
             return
         image, rest = taken
         check_reference(line, unquote(image), "FROM")
         stage = None
-        taken = take_word(rest)
+        taken = read_word(rest, "word")
         if taken is not None and taken[0].upper() == "AS":
-            named = take_word(taken[1])
+            named = read_word(taken[1], "stage name")
             stage = unquote(named[0]).lower() if named else None
         stages.append(stage)
     elif keyword in ("COPY", "ADD"):
