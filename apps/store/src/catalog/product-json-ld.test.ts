@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeDetails, makeOffer, makeVariant } from "./fixtures";
+import { makeDetails, makeOffer, makeVariant, variantId } from "./fixtures";
 import { buildBreadcrumbJsonLd, buildProductJsonLd, serializeJsonLd } from "./product-json-ld";
 
 const STORE = "http://store.test";
@@ -59,6 +59,60 @@ describe("buildProductJsonLd", () => {
     expect(ld.offers).toEqual([]);
     expect(ld).not.toHaveProperty("image");
     expect(ld).not.toHaveProperty("description");
+  });
+});
+
+describe("buildProductJsonLd product data", () => {
+  const variant = (n: number, sku: string, ean: string, gtin: string) => ({ variantId: variantId(1, n), label: "", values: [], sku, ean, gtin });
+  const TWO_VARIANTS = makeOffer(1, { variants: [makeVariant(1, 1, { label: "M" }), makeVariant(1, 2, { label: "L" })] });
+
+  it("has the brand as a Brand of the product only when the brand is not empty", () => {
+    expect(buildProductJsonLd(makeDetails(1, { brand: "Hallen" }), makeOffer(1), STORE)).toMatchObject({ brand: { "@type": "Brand", name: "Hallen" } });
+    expect(buildProductJsonLd(makeDetails(1, { brand: "" }), makeOffer(1), STORE)).not.toHaveProperty("brand");
+  });
+
+  it("takes sku and gtin of an Offer from the fields of its variant, each only when not empty", () => {
+    const details = makeDetails(1, { variants: [variant(1, "A-M", "5901234123457", "5901234123457"), variant(2, "", "", "")] });
+    const ld = buildProductJsonLd(details, TWO_VARIANTS, STORE);
+    expect(ld.offers[0]).toMatchObject({ sku: "A-M", gtin: "5901234123457" });
+    expect(ld.offers[1]).not.toHaveProperty("sku");
+    expect(ld.offers[1]).not.toHaveProperty("gtin");
+  });
+
+  it("leaves gtin out for a variant with an EAN and an empty gtin, and does not judge the EAN", () => {
+    const details = makeDetails(1, { variants: [variant(1, "A-M", "2000000000008", ""), variant(2, "A-L", "5901234123457", "5901234123457")] });
+    const ld = buildProductJsonLd(details, TWO_VARIANTS, STORE);
+    expect(ld.offers[0]).toMatchObject({ sku: "A-M" });
+    expect(ld.offers[0]).not.toHaveProperty("gtin");
+    expect(ld.offers[1]).toMatchObject({ sku: "A-L", gtin: "5901234123457" });
+  });
+
+  it("takes the gtin as the API gave it, even when it differs from the EAN", () => {
+    const ld = buildProductJsonLd(makeDetails(1, { variants: [variant(1, "A", "05901234123457", "5901234123457")] }), makeOffer(1), STORE);
+    expect(ld.offers[0]).toMatchObject({ gtin: "5901234123457" });
+  });
+
+  it("keeps the short description as the description, whatever the long one says", () => {
+    const ld = buildProductJsonLd(makeDetails(1, { shortDescription: "Krótki.", description: "Długi opis.\n\nDrugi akapit." }), makeOffer(1), STORE);
+    expect(ld).toMatchObject({ description: "Krótki." });
+    expect(JSON.stringify(ld)).not.toContain("Długi opis");
+  });
+
+  it("keeps the parameters out of the data", () => {
+    const ld = buildProductJsonLd(makeDetails(1, { parameters: [{ name: "Masa", value: "3 kg" }] }), makeOffer(1), STORE);
+    expect(JSON.stringify(ld)).not.toContain("Masa");
+  });
+
+  it("is the same as before the product data for a product without it", () => {
+    expect(buildProductJsonLd(makeDetails(1, { name: "Buty", shortDescription: "Lekkie." }), makeOffer(1), STORE)).toStrictEqual({
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: "Buty",
+      description: "Lekkie.",
+      image: ["http://imgproxy.test/a1-1600/plain.webp", "http://imgproxy.test/b1-1600/plain.webp"],
+      url: "http://store.test/p/produkt-1",
+      offers: [{ "@type": "Offer", price: "123.00", priceCurrency: "PLN", availability: "https://schema.org/InStock", url: "http://store.test/p/produkt-1" }],
+    });
   });
 });
 

@@ -137,6 +137,17 @@ describe("loadProduct", () => {
       ["no breadcrumb", { ...DETAILS, breadcrumb: null }],
       ["no short description", { ...DETAILS, shortDescription: undefined }],
       ["a numeric short description", { ...DETAILS, shortDescription: 5 }],
+      ["no brand", { ...DETAILS, brand: undefined }],
+      ["a numeric brand", { ...DETAILS, brand: 5 }],
+      ["no description", { ...DETAILS, description: undefined }],
+      ["a null description", { ...DETAILS, description: null }],
+      ["parameters that are not a list", { ...DETAILS, parameters: "x" }],
+      ["no parameters", { ...DETAILS, parameters: undefined }],
+      ["a parameter without a value", { ...DETAILS, parameters: [{ name: "Masa" }] }],
+      ["a parameter that is not an object", { ...DETAILS, parameters: [null] }],
+      ["a variant without a sku", { ...DETAILS, variants: [{ ...DETAILS.variants[0], sku: undefined }] }],
+      ["a variant without an ean", { ...DETAILS, variants: [{ ...DETAILS.variants[0], ean: undefined }] }],
+      ["a variant with a numeric gtin", { ...DETAILS, variants: [{ ...DETAILS.variants[0], gtin: 5901234123457 }] }],
     ])("details with an unexpected body (%s)", async (_name, body) => {
       stubApi((url) => (url.pathname.startsWith("/api/v1/products/") ? json(body) : json({ items: [OFFER] })));
       await expect(loadProduct("produkt-1")).rejects.toThrow("unexpected");
