@@ -69,7 +69,7 @@ final readonly class Ean
     /**
      * Whether the code is an RCN of section 2.1.11 (the table of the spec), read on the 14-digit form of the code (padded
      * with zeros on the left): RCN-8 of the prefixes 0 and 2 (six zeros, then 0 or 2), the GS1 prefix 04 and the U.P.C.
-     * prefix 4, the U.P.C. company prefixes 001000 to 007999 and the prefixes 02 and 20 to 29. The first digit of the 14-digit
+     * prefix 4, the U.P.C. company prefixes 001000 to 007999 (only of a U.P.C.-12: the second figure of the 14-figure form is 0) and the prefixes 02 and 20 to 29. The first digit of the 14-digit
      * form is the indicator of a GTIN-14 and no rule looks at it except the first: RCN has no 14-digit form, so a code of 14
      * digits over an RCN-13 is no global number either. A stored code that is no digit string is no RCN
      * (gtin() is empty for it all the same).
@@ -86,7 +86,7 @@ final readonly class Ean
             || '04' === substr($code, 1, 2)
             || '2' === $code[1]
             || '02' === substr($code, 1, 2)
-            || ($companyPrefix >= '001000' && $companyPrefix <= '007999');
+            || ('0' === $code[1] && $companyPrefix >= '001000' && $companyPrefix <= '007999');
     }
 
     private static function hasCheckDigit(string $code): bool
