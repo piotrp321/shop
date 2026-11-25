@@ -367,7 +367,8 @@ Wykonywane razem z implementacją, w zadaniu, które zmienia opisane zachowanie:
 - **Nowa budowa pod tym samym tagiem może pozostać niezauważona** (D5, T2): digest jest sprawdzany przy aktualizacji
   obrazu, nie stale, więc CI jej nie pokaże. Compose trzyma sam tag, a Dependabot porównuje wersje tagów, więc może
   nie zgłosić budowy opublikowanej pod tym samym tagiem (jak `26.8.2-3` po `26.8.2-2`). Chart działa wtedy dalej na
-  przypiętym digeście, a lokalny stos i CI pobierają bieżącą budowę tagu.
+  przypiętym digeście, a CI (świeży runner) pobiera bieżącą budowę tagu. Lokalny `make up` nie pobiera obrazu, który
+  już jest w pamięci Dockera: maszyna z wcześniejszą budową tagu zostaje na niej do `docker compose pull`.
 - **Audyty zależą od usług zewnętrznych** (Packagist, rejestr npm): ich awaria zatrzymuje `checks` do ponowienia.
 - **Dependabot proponuje też nowe linie** (imgproxy 4, FrankenPHP 1.14): PR to sygnał, nie zobowiązanie; przyjęcie
   nowej linii to osobna decyzja.
