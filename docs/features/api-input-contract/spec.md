@@ -434,6 +434,7 @@ w etapie. Ścieżki bez prefiksu `/api/v1`.
 | `trackingNumber` | `POST /admin/orders/{orderId}/status-changes`, `PUT /admin/orders/{orderId}/tracking-number` | format z własnym przycinaniem (`order-management`) |
 | `trackingUrlTemplate` | `POST /admin/delivery-methods`, `PUT /admin/delivery-methods/{id}` | format z własnym przycinaniem (`delivery`) |
 | `discountCode` (treść zamówienia) | `POST /orders`, `POST /me/orders` | tekst pusty to złożenie bez kodu, a zły kod jest odrzuceniem kodu, nie błędem wejścia |
+| `.*` (cała treść webhooka dostawcy płatności) | `POST /payments/webhooks/{provider}` | treść w formacie dostawcy, weryfikowana jego podpisem przed odczytem; adapter czyta z niej tylko identyfikatory, status albo typ, kod waluty, kwotę i czas, każde ściśle typowane, i żaden tekst wpisywany przez ludzi (`payment`) |
 
 Poza strażnikiem pól tekstowych są też parametry zapytań inne niż `q` (`path`, `option`, `chunk`, `after`,
 `customerId`, `discountCode` koszyka): nie są polami treści, a pilnuje ich strażnik etapu 1 (tabele B1 i B2).
@@ -558,7 +559,7 @@ teksty z samego znaku Co i Cn, które nie są puste; teksty z T5; długość po 
   w elementach list i z `null`) i każdy parametr zapytania `q` ma wiersz albo wpis na liście „Pola tekstowe poza regułą”
   z powodem. Poza strażnikiem są tylko właściwości z `enum` i z formatem z zamkniętej listy: `uuid`, `date-time`,
   `date`, `binary`. Każdy inny format, w tym `email`, podlega strażnikowi, więc `POST /orders` `email` musi mieć wiersz.
-  Dokumenty opisują 55 takich pól (48 tekstów treści i 7 fraz `q`): 40 ma wiersz, 15 jest na liście wyjątków. Kilka
+  Dokumenty opisują 56 takich pól (49 tekstów treści i 7 fraz `q`): 40 ma wiersz, 16 jest na liście wyjątków. Kilka
   wierszy tej samej operacji i pola nie przeszkadza. Przerywają test (na kopiach danych, każda próba osobnym testem):
   pole bez wiersza i bez wpisu (bez formatu, z formatem spoza zamkniętej listy, w liście obiektów, parametr `q`
   nowej listy), wiersz pola, którego dokumenty nie opisują, wpis bez powodu (powód pusty według reguły tekstu, także
@@ -573,11 +574,20 @@ teksty z samego znaku Co i Cn, które nie są puste; teksty z T5; długość po 
   `nullable`, `items: {}`, `additionalProperties: true`) jest możliwym tekstem i też wymaga wiersza albo wpisu, bo
   klasy żądań mają parametry `mixed`, a `type` w OpenAPI pochodzi z atrybutu, który można pominąć; schemat bez `type`
   z `properties`, `items`, `allOf`, `oneOf`, `anyOf` albo `$ref` jest czytany w głąb, a `enum` bez `type` zostaje poza
-  strażnikiem. Poza strażnikiem celowo: referencje poza dokumentem, `not`,
+  strażnikiem. Obiekt, który nic nie mówi o swoich składowych (`type: object`, także w liście typów i z `nullable`,
+  bez `properties` albo z pustym, bez `additionalProperties`, bez `enum`, `allOf`, `oneOf` i `anyOf`), dopuszcza
+  dowolną składową, jak `additionalProperties: true`, więc jest zgłaszany tak samo: `<nazwa>.*`, a dla całej treści
+  `.*` (tak jest opisana treść webhooka dostawcy płatności, jedyna taka w dokumentach i na liście wyjątków). Tak samo
+  lista bez `items` (`type: array`) jest zgłaszana jak `items: {}`: `<nazwa>[]`, a dla całej treści `[]`. Obiekt
+  z `properties` nie dostaje domyślnego `additionalProperties`, a `additionalProperties: false` nic nie zgłasza.
+  Strażnik nie czyta limitów liczby składowych: obiekt z `maxProperties: 0` i lista z `maxItems: 0` też są zgłaszane
+  (dokumenty takich nie mają). Poza strażnikiem celowo:
+  referencje poza dokumentem, `not`,
   słowa schematu z OpenAPI 3.1 (dokumenty są 3.0.3) i parametr-obiekt, który styl `form` rozwija w parametry (generator
   zapisuje każdy parametr zapytania osobno). Granice reguły schematu bez `type`, których generator nie tworzy:
   schemat bez `type` z samym `required`, `minProperties`, `maxProperties`, pustym `properties`, pustym `allOf` albo
-  `anyOf` nie jest zgłaszany; `type: object` bez `properties` i bez `additionalProperties` nie jest zgłaszany; operacja
+  `anyOf` nie jest zgłaszany (granica dotyczy schematu bez `type`; ze `type: object` obiekt jest zgłaszany według zdania
+  wyżej); operacja
   zapisana obok `$ref` obiektu ścieżki zastępuje operację tej samej metody z obiektu wskazanego. Strażnik nie generuje
   przypadków i nie zmienia tabeli.
 - **Granice:** mechanizm nie mutuje innych pól, nie generuje wartości ze schematów i zawiera tylko przypadki tej

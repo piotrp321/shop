@@ -274,10 +274,12 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   (`ClosedInputListTest`) przerywa test, gdy parametr zapytania albo `Idempotency-Key` opisany w OpenAPI nie ma wiersza
   albo trasa `/api/v1` nie jest opisana w `openapi.json` ani `openapi-admin.json`.
 - Nowe pole tekstowe treści żądania (właściwość typu `string` bez `enum` i bez formatu `uuid`, `date-time`, `date`,
-  `binary`; `email` też) albo parametr `q` dostaje wiersz w tabeli testu kontraktu tekstów (`TextRows`, pliki
-  `*TextRows.php` według modułu w `tests/Functional/Shared/InputContract`) albo wpis z powodem na liście wyjątków
-  strażnika (`TextFieldExceptions`; pola o zamkniętym alfabecie albo własnym formacie). Strażnik zamkniętej listy
-  (`ClosedTextFieldListTest`) przerywa test, gdy opisane w OpenAPI pole tekstowe nie ma wiersza ani wpisu.
+  `binary`; `email` też; także pole bez `type` oraz obiekt albo lista bez opisu składowych) albo parametr `q` dostaje
+  wiersz w tabeli testu kontraktu tekstów (`TextRows`, pliki `*TextRows.php` według modułu
+  w `tests/Functional/Shared/InputContract`) albo wpis z powodem na liście wyjątków
+  strażnika (`TextFieldExceptions`; pola o zamkniętym alfabecie albo własnym formacie, treść webhooka weryfikowana
+  podpisem dostawcy). Strażnik zamkniętej listy (`ClosedTextFieldListTest`) przerywa test, gdy opisane w OpenAPI pole
+  tekstowe nie ma wiersza ani wpisu.
 - Parametry, których błąd typu (`q[]=…`) ma dawać ten sam polski komunikat co zła wartość, są w DTO typu `mixed`
   i sprawdzane w callbackach (np. `sort` list panelu, `q` zamówień, klientów i kodów, `level`, `images`,
   `productId`).
