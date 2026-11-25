@@ -55,7 +55,8 @@ final readonly class DemoCatalogLoader
                 $product->taxClass,
                 array_map(static fn (array $image): array => ['key' => $keys[$image['file']], 'alt' => $image['alt']], $product->images),
                 $product->variantAxes,
-                $product->variants,
+                // The demo products have no codes of their own yet.
+                array_map(static fn (array $variant): array => [...$variant, 'sku' => '', 'ean' => ''], $product->variants),
                 // In the storefront from the start (also without images), created by nobody; no ProductChanged.
                 ProductStatus::Published,
                 null,

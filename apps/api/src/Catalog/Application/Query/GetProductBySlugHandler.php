@@ -8,6 +8,7 @@ use App\Catalog\Application\Image\ImageSize;
 use App\Catalog\Application\Image\SizedImage;
 use App\Catalog\Application\Port\ImageUrlGenerator;
 use App\Catalog\Application\Port\ProductDetailsSource;
+use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\VariantId;
@@ -56,7 +57,10 @@ final readonly class GetProductBySlugHandler
                 $id = VariantId::fromString($variant['id']);
                 $values = VariantValues::stored($variant['values']);
 
-                return new ProductDetailsVariant($id->toString(), new ProductVariant($id, $values)->label(), $variant['values']);
+                // Whether the code is a global trade item number is the rule of the domain (Ean), never the shop's.
+                $gtin = '' === $variant['ean'] ? '' : Ean::stored($variant['ean'])->gtin();
+
+                return new ProductDetailsVariant($id->toString(), new ProductVariant($id, $values)->label(), $variant['values'], $variant['sku'], $variant['ean'], $gtin);
             }, $row['variants']),
         );
     }

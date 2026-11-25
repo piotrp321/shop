@@ -12,10 +12,15 @@ use App\Catalog\Domain\Category\CategoryRepository;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\ImageNotFound;
 use App\Catalog\Domain\Product\ProductCategories;
+use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductParameter;
 use App\Catalog\Domain\Product\ProductParameters;
+use App\Catalog\Domain\Product\ProductRepository;
+use App\Catalog\Domain\Product\ProductVariants;
+use App\Catalog\Domain\Product\Sku;
+use App\Catalog\Domain\Product\SkuUsedByAnotherProduct;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\UnknownCategory;
@@ -40,6 +45,33 @@ final readonly class ProductInput
             static fn (array $parameter): ProductParameter => ProductParameter::of($parameter['name'], $parameter['value']),
             $parameters,
         ));
+    }
+
+    /**
+     * The check of the SKUs of a write against the variants of the other products, before anything is saved. The variants
+     * of the product itself are not taken, so the codes of two of them may be swapped and a repeated write is a conflict
+     * of the version, not of the SKU. A write that passed it may still lose a race: the unique index decides then.
+     *
+     * @throws SkuUsedByAnotherProduct at the first row whose SKU another product has
+     */
+    public static function refuseSkusOfOtherProducts(ProductRepository $products, ProductId $product, ProductVariants $variants): void
+    {
+        $skus = [];
+        foreach ($variants->toList() as $variant) {
+            if (null !== $variant->sku()) {
+                $skus[] = $variant->sku();
+            }
+        }
+        if ([] === $skus) {
+            return;
+        }
+
+        $taken = array_map(static fn (Sku $sku): string => $sku->value(), $products->skusOfOtherProducts($product, $skus));
+        foreach ($variants->toList() as $index => $variant) {
+            if (null !== $variant->sku() && \in_array($variant->sku()->value(), $taken, true)) {
+                throw new SkuUsedByAnotherProduct($index);
+            }
+        }
     }
 
     /**

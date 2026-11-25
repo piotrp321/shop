@@ -132,7 +132,7 @@ export function makeDetails(n: number, overrides: Partial<ProductDetails> = {}):
     ],
     zoomImages: [makeZoomPhoto(`Zdjęcie ${n}, pierwsze`, `a${n}`), makeZoomPhoto(`Zdjęcie ${n}, drugie`, `b${n}`)],
     variantAxes: [],
-    variants: [{ variantId: variantId(n, 1), label: "", values: [] }],
+    variants: [{ variantId: variantId(n, 1), label: "", values: [], sku: "", ean: "", gtin: "" }],
     ...overrides,
   };
 }

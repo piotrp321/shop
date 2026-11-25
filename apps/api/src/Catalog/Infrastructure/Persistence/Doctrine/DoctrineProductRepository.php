@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Catalog\Infrastructure\Persistence\Doctrine;
 
 use App\Catalog\Domain\Category\CategoryId;
+use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductAlreadyExists;
@@ -24,6 +25,8 @@ use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
+use App\Catalog\Domain\Product\Sku;
+use App\Catalog\Domain\Product\SkuAlreadyTaken;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\TaxClassCode;
@@ -34,6 +37,7 @@ use App\Catalog\Domain\Product\VariantValues;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\CategoryRecord;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\ProductRecord;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\ProductVariantRecord;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\OptimisticLockException;
@@ -58,6 +62,9 @@ final readonly class DoctrineProductRepository implements ProductRepository
             if (str_contains($e->getMessage(), ProductRecord::SLUG_CONSTRAINT)) {
                 throw new SlugAlreadyTaken();
             }
+            if (str_contains($e->getMessage(), ProductVariantRecord::SKU_CONSTRAINT)) {
+                throw new SkuAlreadyTaken();
+            }
             if (str_contains($e->getMessage(), ProductVariantRecord::PRIMARY_KEY_CONSTRAINT)) {
                 throw new VariantAlreadyExists();
             }
@@ -77,6 +84,21 @@ final readonly class DoctrineProductRepository implements ProductRepository
         }
 
         return $this->toDomain($record);
+    }
+
+    public function skusOfOtherProducts(ProductId $product, array $skus): array
+    {
+        if ([] === $skus) {
+            return [];
+        }
+
+        $taken = $this->entityManager->getConnection()->fetchFirstColumn(
+            'SELECT sku FROM catalog_product_variant WHERE sku IN (:skus) AND product_id <> CAST(:product AS uuid)',
+            ['skus' => array_map(static fn (Sku $sku): string => $sku->value(), $skus), 'product' => $product->toString()],
+            ['skus' => ArrayParameterType::STRING],
+        );
+
+        return array_values(array_filter($skus, static fn (Sku $sku): bool => \in_array($sku->value(), $taken, true)));
     }
 
     /**
@@ -153,7 +175,12 @@ final readonly class DoctrineProductRepository implements ProductRepository
             $record->variantAxes = $axes;
         }
         $variants = array_map(
-            static fn (ProductVariant $variant): array => ['id' => $variant->id()->toString(), 'values' => $variant->values()->toList()],
+            static fn (ProductVariant $variant): array => [
+                'id' => $variant->id()->toString(),
+                'values' => $variant->values()->toList(),
+                'sku' => $variant->sku()?->value(),
+                'ean' => $variant->ean()?->value(),
+            ],
             $product->variants()->toList(),
         );
         $variantsChanged = null !== $existing && $variants !== $this->storedVariants($record);
@@ -192,12 +219,12 @@ final readonly class DoctrineProductRepository implements ProductRepository
     }
 
     /**
-     * @return list<array{id: string, values: list<string>}>
+     * @return list<array{id: string, values: list<string>, sku: string|null, ean: string|null}>
      */
     private function storedVariants(ProductRecord $record): array
     {
         return array_values($record->variants->map(
-            static fn (ProductVariantRecord $variant): array => ['id' => $variant->id, 'values' => $variant->optionValues],
+            static fn (ProductVariantRecord $variant): array => ['id' => $variant->id, 'values' => $variant->optionValues, 'sku' => $variant->sku, 'ean' => $variant->ean],
         )->toArray());
     }
 
@@ -212,6 +239,8 @@ final readonly class DoctrineProductRepository implements ProductRepository
         foreach ($variants as $position => $variant) {
             $variantRecord = new ProductVariantRecord($variant->id()->toString(), $record, $position);
             $variantRecord->optionValues = $variant->values()->toList();
+            $variantRecord->sku = $variant->sku()?->value();
+            $variantRecord->ean = $variant->ean()?->value();
             $variantRecord->valuesKey = json_encode($variant->values()->comparisonKey(), \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR);
             $record->variants->add($variantRecord);
         }
@@ -282,6 +311,8 @@ final readonly class DoctrineProductRepository implements ProductRepository
                     static fn (ProductVariantRecord $variant): ProductVariant => new ProductVariant(
                         VariantId::fromString($variant->id),
                         VariantValues::stored($variant->optionValues),
+                        null === $variant->sku ? null : Sku::stored($variant->sku),
+                        null === $variant->ean ? null : Ean::stored($variant->ean),
                     ),
                 )->toArray()),
             ),

@@ -6,6 +6,7 @@ namespace App\Tests\Factory;
 
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
+use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductBrand;
@@ -21,7 +22,6 @@ use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
-use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\Sku;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;

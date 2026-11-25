@@ -25,8 +25,8 @@ use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ShortDescription;
-use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SkuUsedByAnotherProduct;
+use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SlugLocked;
 use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\TaxClassCode;
@@ -477,9 +477,6 @@ final class EditProductHandlerTest extends TestCase
     }
 
     /**
-     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}>|null $variants null: the black and the white variant without codes
-     */
-    /**
      * @return list<array{string|null, string|null}> the SKU and the EAN of every variant, in order
      */
     private function codes(Product $product): array
@@ -490,6 +487,9 @@ final class EditProductHandlerTest extends TestCase
         );
     }
 
+    /**
+     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}>|null $variants null: the black and the white variant without codes
+     */
     private function store(ProductStatus $status, ?array $variants = null): void
     {
         $product = $this->product(self::PRODUCT_ID, 'buty-biegowe', $status, ['Kolor'], $variants ?? [['id' => self::BLACK, 'values' => ['czarne']], ['id' => self::WHITE, 'values' => ['białe']]]);
@@ -497,7 +497,7 @@ final class EditProductHandlerTest extends TestCase
     }
 
     /**
-     * @param list<string>                                                                  $axes
+     * @param list<string>                                                              $axes
      * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}> $variants
      */
     private function product(string $id, string $slug, ProductStatus $status, array $axes, array $variants): Product
@@ -520,10 +520,11 @@ final class EditProductHandlerTest extends TestCase
     }
 
     /**
-     * @param list<array{key: string, alt: string}>|null                     $images                null: the stored image
-     * @param list<array{variantId: string|null, values: list<string>, sku?: string, ean?: string}>|null $variants null: both stored variants
-     * @param list<string>                                                   $additionalCategoryIds
-     * @param list<array{name: string, value: string}>                       $parameters
+     * @param list<array{key: string, alt: string}>|null                                                 $images                null: the stored image
+     * @param list<array{variantId: string|null, values: list<string>, sku?: string, ean?: string}>|null $variants              null: both stored variants
+     * @param list<string>                                                                               $additionalCategoryIds
+     * @param list<array{name: string, value: string}>                                                   $parameters
+     * @param list<string>                                                                               $variantAxes
      */
     private function command(
         int $expectedVersion = 1,

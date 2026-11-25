@@ -19,6 +19,7 @@ interface ProductRepository
      * @param \DateTimeImmutable $at              the time of the change
      *
      * @throws SlugAlreadyTaken
+     * @throws SkuAlreadyTaken             when a variant of another product has a SKU of the product (the unique index decides a race)
      * @throws VariantAlreadyExists        when a variant id is already used by another product
      * @throws ProductAlreadyExists        when a concurrent insert of the same id wins the race
      * @throws ProductModifiedConcurrently
@@ -29,4 +30,14 @@ interface ProductRepository
      * @throws ProductNotFound
      */
     public function get(ProductId $id): Product;
+
+    /**
+     * The given SKUs that a variant of a product other than `$product` has, drafts too: the SKU is unique among all the
+     * variants of all the products, and the variants of the product itself do not count (they are rewritten with it).
+     *
+     * @param list<Sku> $skus
+     *
+     * @return list<Sku> the taken ones, in the order given
+     */
+    public function skusOfOtherProducts(ProductId $product, array $skus): array;
 }

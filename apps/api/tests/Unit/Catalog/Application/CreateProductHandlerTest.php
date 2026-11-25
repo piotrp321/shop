@@ -407,11 +407,11 @@ final class CreateProductHandlerTest extends TestCase
     }
 
     /**
-     * @param list<string>                                       $additionalCategoryIds
-     * @param list<string>                                       $variantAxes
-     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}>|null $variants null: the default variant
-     * @param list<array{key: string, alt: string}>|null         $images                null: one image with an original
-     * @param list<array{name: string, value: string}>           $parameters
+     * @param list<string>                                                                   $additionalCategoryIds
+     * @param list<string>                                                                   $variantAxes
+     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}>|null $variants              null: the default variant
+     * @param list<array{key: string, alt: string}>|null                                     $images                null: one image with an original
+     * @param list<array{name: string, value: string}>                                       $parameters
      */
     private function command(
         string $id = self::PRODUCT_ID,

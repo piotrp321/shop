@@ -53,7 +53,7 @@ final readonly class GetProductEditViewHandler
                 $row['images'],
             ),
             $row['axes'],
-            array_map(static fn (array $variant): ProductEditVariant => new ProductEditVariant($variant['id'], $variant['values']), $row['variants']),
+            array_map(static fn (array $variant): ProductEditVariant => new ProductEditVariant($variant['id'], $variant['values'], $variant['sku'], $variant['ean']), $row['variants']),
             $row['updatedAt'],
         );
     }

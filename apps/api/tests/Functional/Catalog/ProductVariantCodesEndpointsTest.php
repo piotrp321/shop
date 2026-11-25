@@ -48,7 +48,7 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
         $view = $this->createProduct(['variants' => self::rows()]);
 
         self::assertSame([['BUT-M', '5901234123457'], ['BUT-L', '2000000000008']], $this->codes($view));
-        $this->assertKeysMatchSchema($view['variants'][0], 'ProductEditVariantResponse');
+        $this->assertKeysMatchSchema($this->variantsOf($view)[0], 'ProductEditVariantResponse');
         self::assertSame($view, $this->api('GET', self::PRODUCTS.'/'.self::string($view['id'])));
         self::assertSame(
             [['BUT-M', '5901234123457'], ['BUT-L', '2000000000008']],
@@ -61,9 +61,9 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
         // The shop gets the code of the seller and the global trade item number: empty for a number of restricted circulation.
         self::assertSame([['BUT-M', '5901234123457', '5901234123457'], ['BUT-L', '2000000000008', '']], array_map(
             static fn (array $variant): array => [$variant['sku'], $variant['ean'], $variant['gtin']],
-            self::list($page['variants']),
+            self::list($this->variantsOf($page)),
         ));
-        $this->assertKeysMatchSchemaOfTheShop($page['variants'][0]);
+        $this->assertKeysMatchSchemaOfTheShop($this->variantsOf($page)[0]);
     }
 
     public function testAVariantWithoutCodesHasEmptyTextsEverywhere(): void
@@ -74,13 +74,13 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
         self::assertSame([[null, null], [null, null]], array_map(static fn (array $row): array => array_values($row), $this->connection->fetchAllAssociative('SELECT sku, ean FROM catalog_product_variant WHERE product_id = ? ORDER BY position', [$view['id']])));
         $this->publish($view);
         $page = $this->api('GET', '/api/v1/products/buty-biegowe', token: null);
-        self::assertSame([['', '', ''], ['', '', '']], array_map(static fn (array $variant): array => [$variant['sku'], $variant['ean'], $variant['gtin']], self::list($page['variants'])));
+        self::assertSame([['', '', ''], ['', '', '']], array_map(static fn (array $variant): array => [$variant['sku'], $variant['ean'], $variant['gtin']], self::list($this->variantsOf($page))));
     }
 
     public function testAnEditReplacesAddsAndRemovesTheCodes(): void
     {
         $created = $this->createProduct(['variants' => self::rows()]);
-        $rows = $created['variants'];
+        $rows = $this->variantsOf($created);
 
         $edited = $this->api('PUT', self::PRODUCTS.'/'.self::string($created['id']), $this->editBody($created, ['variants' => [
             [...$rows[0], 'sku' => 'nowy-1', 'ean' => ''],
@@ -109,13 +109,13 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
     {
         $created = $this->publish($this->createProduct(['variants' => self::rows()]));
         $path = self::PRODUCTS.'/'.self::string($created['id']);
-        $rows = $created['variants'];
+        $rows = $this->variantsOf($created);
 
         $edited = $this->api('PUT', $path, $this->editBody($created, ['variants' => [$rows[0], [...$rows[1], ...$change]]]));
 
         self::assertResponseStatusCodeSame(200);
-        self::assertSame($created['variants'][0], $edited['variants'][0], 'the codes of the other variant are untouched');
-        self::assertSame([...$created['variants'][1], ...$change], $edited['variants'][1]);
+        self::assertSame($this->variantsOf($created)[0], $this->variantsOf($edited)[0], 'the codes of the other variant are untouched');
+        self::assertSame([...$this->variantsOf($created)[1], ...$change], $this->variantsOf($edited)[1]);
         self::assertSame(3, $edited['version']);
         self::assertSame(1, $this->sentInTheLastRequest(ProductChanged::class));
 
@@ -145,10 +145,10 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
     }
 
     /**
-     * @param list<string>                       $axes
-     * @param list<list<string>>                 $values
-     * @param list<string>                       $newAxes
-     * @param list<array{int, list<string>}>     $newRows
+     * @param list<string>                   $axes
+     * @param list<list<string>>             $values
+     * @param list<string>                   $newAxes
+     * @param list<array{int, list<string>}> $newRows
      */
     #[DataProvider('changesOfAxesAndValues')]
     public function testTheVariantOfTheSameIdKeepsItsCodesWhenTheAxesAndTheValuesOfADraftChange(array $axes, array $values, array $newAxes, array $newRows): void
@@ -157,7 +157,7 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
             ['variantId' => null, 'values' => $values[0], 'sku' => 'but-m', 'ean' => '5901234123457'],
             ['variantId' => null, 'values' => $values[1], 'sku' => 'but-l', 'ean' => '59012344'],
         ]]);
-        $rows = self::list($created['variants']);
+        $rows = self::list($this->variantsOf($created));
         $before = [];
         foreach ($rows as $row) {
             $before[self::string($row['variantId'])] = [$row['sku'], $row['ean']];
@@ -171,14 +171,14 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         $after = [];
-        foreach (self::list($edited['variants']) as $row) {
+        foreach (self::list($this->variantsOf($edited)) as $row) {
             $after[self::string($row['variantId'])] = [$row['sku'], $row['ean']];
         }
         self::assertSame($kept, array_keys($after), 'the same variants, in the order of the rows');
         foreach ($after as $id => $codes) {
             self::assertSame($before[$id], $codes, 'the codes of the variant '.$id);
         }
-        self::assertSame($edited['variants'], $this->api('GET', self::PRODUCTS.'/'.self::string($created['id']))['variants']);
+        self::assertSame($this->variantsOf($edited), $this->api('GET', self::PRODUCTS.'/'.self::string($created['id']))['variants']);
     }
 
     public function testAfterThePublicationTheCodesStayWhenAKeptVariantChangesOnlyTheCaseOrTheEdgesOfItsValueOrTheNameOfItsAxis(): void
@@ -187,7 +187,7 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
             ['variantId' => null, 'values' => ['M'], 'sku' => 'but-m', 'ean' => '5901234123457'],
             ['variantId' => null, 'values' => ['L'], 'sku' => 'but-l', 'ean' => ''],
         ]]));
-        $rows = self::list($created['variants']);
+        $rows = self::list($this->variantsOf($created));
 
         $edited = $this->api('PUT', self::PRODUCTS.'/'.self::string($created['id']), $this->editBody($created, [
             'variantAxes' => ['ROZMIAR'],
@@ -196,13 +196,13 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame([['BUT-M', '5901234123457'], ['BUT-L', '']], $this->codes($edited));
-        self::assertSame(array_column($rows, 'variantId'), array_column(self::list($edited['variants']), 'variantId'));
+        self::assertSame(array_column($rows, 'variantId'), array_column(self::list($this->variantsOf($edited)), 'variantId'));
     }
 
     public function testTheCodesDoNotLetAPublishedVariantChangeItsValue(): void
     {
         $created = $this->publish($this->createProduct(['variants' => self::rows()]));
-        $rows = self::list($created['variants']);
+        $rows = self::list($this->variantsOf($created));
 
         $this->api('PUT', self::PRODUCTS.'/'.self::string($created['id']), $this->editBody($created, ['variants' => [[...$rows[0], 'values' => ['XL']], $rows[1]]]));
 
@@ -214,7 +214,7 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
         $created = $this->createProduct(['variants' => self::rows()]);
 
         // Only the order of the variants changes: the repository replaces the rows.
-        $rows = self::list($created['variants']);
+        $rows = self::list($this->variantsOf($created));
         $edited = $this->api('PUT', self::PRODUCTS.'/'.self::string($created['id']), $this->editBody($created, ['variants' => array_reverse($rows)]));
 
         self::assertSame([['BUT-L', '2000000000008'], ['BUT-M', '5901234123457']], $this->codes($edited));
@@ -223,7 +223,7 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
     public function testTwoVariantsOfOneProductSwapTheirSkusInOneSave(): void
     {
         $created = $this->createProduct(['variants' => self::rows('BUT-M', 'BUT-L')]);
-        $rows = self::list($created['variants']);
+        $rows = self::list($this->variantsOf($created));
 
         $edited = $this->api('PUT', self::PRODUCTS.'/'.self::string($created['id']), $this->editBody($created, ['variants' => [
             [...$rows[0], 'sku' => 'BUT-L'],
@@ -231,7 +231,7 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
         ]]));
 
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(['BUT-L', 'BUT-M'], array_column(self::list($edited['variants']), 'sku'));
+        self::assertSame(['BUT-L', 'BUT-M'], array_column(self::list($this->variantsOf($edited)), 'sku'));
     }
 
     /**
@@ -267,7 +267,7 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
 
         $created = $this->createProduct();
         $edit = $this->editBody($created);
-        $edit['variants'] = $this->bodyRows($created['variants']);
+        $edit['variants'] = $this->bodyRows($this->variantsOf($created));
         if (null === $value) {
             unset($edit['variants'][1][$field]);
         } else {
@@ -343,9 +343,9 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
         self::assertSame(0, $this->connection->fetchOne('SELECT COUNT(*) FROM catalog_product'));
 
         $created = $this->createProduct(['variants' => self::rows()]);
-        $edit = $this->editBody($created, ['variants' => $this->bodyRows($created['variants'])]);
-        $edit['variants'][1][$field] = $value;
-        $this->api('PUT', self::PRODUCTS.'/'.self::string($created['id']), $edit);
+        $rows = $this->bodyRows($this->variantsOf($created));
+        $rows[1][$field] = $value;
+        $this->api('PUT', self::PRODUCTS.'/'.self::string($created['id']), $this->editBody($created, ['variants' => $rows]));
 
         self::assertSame([['propertyPath' => 'variants[1].'.$field, 'title' => $title]], $this->violations());
         self::assertSame([1, 'BUT-L', '2000000000008'], [
@@ -439,7 +439,7 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
         self::assertSame([['propertyPath' => 'variants[1].sku', 'title' => self::TAKEN]], $this->violations());
         self::assertSame(2, $this->connection->fetchOne('SELECT COUNT(*) FROM catalog_product'));
 
-        $this->api('PUT', self::PRODUCTS.'/'.self::string($second['id']), $this->editBody($second, ['variants' => [[...$second['variants'][0], 'sku' => $given]]]));
+        $this->api('PUT', self::PRODUCTS.'/'.self::string($second['id']), $this->editBody($second, ['variants' => [[...$this->variantsOf($second)[0], 'sku' => $given]]]));
 
         self::assertSame([['propertyPath' => 'variants[0].sku', 'title' => self::TAKEN]], $this->violations());
         self::assertSame(['DRUGI-1', 1], [
@@ -458,7 +458,7 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
         $this->api('POST', self::PRODUCTS, $body);
         self::assertSame([['propertyPath' => 'variants[0].sku', 'title' => self::TAKEN]], $this->violations());
 
-        $this->api('PUT', self::PRODUCTS.'/'.self::string($first['id']), $this->editBody($first, ['variants' => [$first['variants'][1]]]));
+        $this->api('PUT', self::PRODUCTS.'/'.self::string($first['id']), $this->editBody($first, ['variants' => [$this->variantsOf($first)[1]]]));
         self::assertResponseStatusCodeSame(200);
 
         $this->api('POST', self::PRODUCTS, $body);
@@ -521,7 +521,7 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
         $view = $this->api('GET', self::PRODUCTS.'/'.$id);
 
         self::assertSame([['', ''], ['', '']], $this->codes($view));
-        $saved = $this->api('PUT', self::PRODUCTS.'/'.$id, $this->editBody($view, ['variants' => [[...$view['variants'][0], 'sku' => 'nowy']]]));
+        $saved = $this->api('PUT', self::PRODUCTS.'/'.$id, $this->editBody($view, ['variants' => [[...$this->variantsOf($view)[0], 'sku' => 'nowy'], $this->variantsOf($view)[1]]]));
         self::assertResponseStatusCodeSame(200);
         self::assertSame([['NOWY', ''], ['', '']], $this->codes($saved));
     }
@@ -536,8 +536,8 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
         $page = $this->api('GET', '/api/v1/products/buty-biegowe', token: null);
 
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(['low case', '123'], [$view['variants'][0]['sku'], $view['variants'][0]['ean']]);
-        self::assertSame(['low case', '123', ''], [$page['variants'][0]['sku'], $page['variants'][0]['ean'], $page['variants'][0]['gtin']]);
+        self::assertSame(['low case', '123'], [$this->variantsOf($view)[0]['sku'], $this->variantsOf($view)[0]['ean']]);
+        self::assertSame(['low case', '123', ''], [$this->variantsOf($page)[0]['sku'], $this->variantsOf($page)[0]['ean'], $this->variantsOf($page)[0]['gtin']]);
 
         $this->api('PUT', self::PRODUCTS.'/'.$id, $this->editBody($view));
         self::assertSame([
@@ -549,11 +549,21 @@ final class ProductVariantCodesEndpointsTest extends WebTestCase
     /**
      * @param array<mixed> $view
      *
+     * @return list<array<mixed>> the rows of the variants of a view
+     */
+    private function variantsOf(array $view): array
+    {
+        return self::list($view['variants']);
+    }
+
+    /**
+     * @param array<mixed> $view
+     *
      * @return list<array{string, string}> the SKU and the EAN of every variant
      */
     private function codes(array $view): array
     {
-        return array_map(static fn (array $row): array => [self::string($row['sku']), self::string($row['ean'])], self::list($view['variants']));
+        return array_map(static fn (array $row): array => [self::string($row['sku']), self::string($row['ean'])], self::list($this->variantsOf($view)));
     }
 
     /**

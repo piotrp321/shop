@@ -265,9 +265,9 @@ final class ProductVariantCodesPersistenceTest extends KernelTestCase
     }
 
     /**
-     * @param list<string>                                                               $axes
+     * @param list<string>                                                              $axes
      * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}> $variants
-     * @param array<string, mixed>                                                       $attributes
+     * @param array<string, mixed>                                                      $attributes
      */
     private function product(array $axes, array $variants, array $attributes = []): Product
     {
@@ -280,7 +280,7 @@ final class ProductVariantCodesPersistenceTest extends KernelTestCase
     }
 
     /**
-     * @param list<string>                                                               $axes
+     * @param list<string>                                                              $axes
      * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}> $variants
      */
     private function variants(array $axes, array $variants): ProductVariants
@@ -302,7 +302,7 @@ final class ProductVariantCodesPersistenceTest extends KernelTestCase
     /**
      * Reads the product, edits only its variants and saves it from the view it read (a write with the expected version).
      *
-     * @param list<string>                                                               $axes
+     * @param list<string>                                                              $axes
      * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}> $variants
      */
     private function saveVariants(string $productId, array $axes, array $variants): void

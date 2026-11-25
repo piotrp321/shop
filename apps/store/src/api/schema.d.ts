@@ -765,6 +765,21 @@ export interface components {
              *     ]
              */
             values: string[];
+            /**
+             * @description The SKU the seller gave the variant (capitals), shown as the product code; empty when it has none.
+             * @example NAMIOT-HALNY-4
+             */
+            sku: string;
+            /**
+             * @description The EAN the seller gave the variant (8, 12, 13 or 14 digits); empty when it has none.
+             * @example 5901234123457
+             */
+            ean: string;
+            /**
+             * @description The EAN when it is a global trade item number, empty when it is a number of restricted circulation (the GS1 prefixes 02, 04 and 20-29 and the other numbers of section 2.1.11 of the GS1 General Specifications), which identifies an item inside a company or a region only. Structured data of the page takes the GTIN from here.
+             * @example 5901234123457
+             */
+            gtin: string;
         };
         /** @description A cart with everything the store shows, computed by the API. The number of available units is never part of it. */
         CartView: {

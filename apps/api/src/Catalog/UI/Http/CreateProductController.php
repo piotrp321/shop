@@ -65,7 +65,7 @@ final class CreateProductController
             ),
             new OA\Response(
                 response: 409,
-                description: 'The slug belongs to another product (`type` slug-taken).',
+                description: 'The slug belongs to another product (`type` slug-taken), or an SKU was taken by a variant of another product between the check and the write (`type` sku-taken; the same refusal found before the write is a 422 at the SKU).',
                 content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/ProductConflictProblem')),
             ),
             new OA\Response(
@@ -103,7 +103,7 @@ final class CreateProductController
             if (null !== $row['variantId']) {
                 throw ProductWriteFailures::unprocessable($product, \sprintf('variants[%d].variantId', $index), new UnknownVariant($index)->getMessage());
             }
-            $variants[] = ['id' => Uuid::v7()->toRfc4122(), 'values' => $row['values']];
+            $variants[] = ['id' => Uuid::v7()->toRfc4122(), 'values' => $row['values'], 'sku' => $row['sku'], 'ean' => $row['ean']];
         }
 
         $id = Uuid::v7()->toRfc4122();

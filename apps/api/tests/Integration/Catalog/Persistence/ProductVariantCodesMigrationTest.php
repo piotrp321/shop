@@ -98,7 +98,7 @@ final class ProductVariantCodesMigrationTest extends KernelTestCase
     {
         foreach (self::VARIANT_IDS as $position => $id) {
             $this->connection->executeStatement(
-                "INSERT INTO catalog_product_variant (id, product_id, position, option_values) VALUES (?, ?, ?, ?::jsonb)",
+                'INSERT INTO catalog_product_variant (id, product_id, position, option_values) VALUES (?, ?, ?, ?::jsonb)',
                 [$id, self::PRODUCT_ID, $position, json_encode(['wartość '.$position], \JSON_THROW_ON_ERROR)],
             );
         }

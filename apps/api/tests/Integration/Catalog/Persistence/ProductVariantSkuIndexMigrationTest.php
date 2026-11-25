@@ -140,7 +140,7 @@ final class ProductVariantSkuIndexMigrationTest extends KernelTestCase
         }
         foreach ($skus as $position => $sku) {
             $this->connection->executeStatement(
-                "INSERT INTO catalog_product_variant (id, product_id, position, option_values, sku) VALUES (?, ?, ?, ?::jsonb, ?)",
+                'INSERT INTO catalog_product_variant (id, product_id, position, option_values, sku) VALUES (?, ?, ?, ?::jsonb, ?)',
                 [\sprintf('dddddddd-0000-4000-8000-%012d', $position), self::PRODUCT_IDS[$position % 2], intdiv($position, 2), json_encode(['v'.$position], \JSON_THROW_ON_ERROR), $sku],
             );
         }

@@ -134,7 +134,7 @@ final class ProductChangeOutboxTest extends MessagingKernelTestCase
     }
 
     /**
-     * @param list<array{variantId: string|null, values: list<string>}>|null $variants
+     * @param list<array{variantId: string|null, values: list<string>, sku: string, ean: string}>|null $variants
      */
     private function edit(int $version, string $name, ?array $variants = null): EditProduct
     {
