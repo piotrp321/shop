@@ -114,6 +114,44 @@ final class ClosedInputListTest extends KernelTestCase
         );
     }
 
+    /**
+     * The path item of OpenAPI 3.0.3 allows fields next to `$ref`: they are read with the item referenced, and a
+     * method of the same name takes the place of the referenced one.
+     */
+    public function testAnOperationNextToTheReferenceOfAPathItemIsReadWithTheReferencedOne(): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/shared', ['parameters' => [['name' => 'brand', 'in' => 'query']], 'get' => ['parameters' => [['name' => 'old', 'in' => 'query']]]]);
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/alias', [
+            '$ref' => '#/paths/~1api~1v1~1admin~1shared',
+            'get' => ['parameters' => []],
+            'post' => ['parameters' => [['name' => 'color', 'in' => 'query']]],
+        ]);
+
+        self::assertSame(
+            [
+                'GET /api/v1/admin/shared, query brand',
+                'GET /api/v1/admin/shared, query old',
+                'GET /api/v1/admin/alias, query brand',
+                'POST /api/v1/admin/alias, query brand',
+                'POST /api/v1/admin/alias, query color',
+            ],
+            ClosedInputList::inputsWithoutARow($documents, InputRows::all()),
+        );
+    }
+
+    public function testAMethodNextToTheReferenceOfAPathItemDescribesARoute(): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/shared', ['get' => []]);
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/alias', ['$ref' => '#/paths/~1api~1v1~1admin~1shared', 'post' => []]);
+
+        self::assertSame(
+            ['DELETE /api/v1/admin/alias'],
+            ClosedInputList::routesWithoutADocument($documents, [['GET', '/api/v1/admin/alias'], ['POST', '/api/v1/admin/alias'], ['DELETE', '/api/v1/admin/alias']]),
+        );
+    }
+
     public function testARouteDescribedOnlyByAReferencedPathItemIsDescribed(): void
     {
         $documents = $this->documents();

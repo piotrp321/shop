@@ -177,6 +177,46 @@ final class ClosedTextFieldListTest extends KernelTestCase
     /**
      * Circumvention 3: a body that is a text itself has no property to name; it is reported as `(body)`.
      */
+    /**
+     * The path item of OpenAPI 3.0.3 allows fields next to `$ref`: they are read with the item referenced, and a field
+     * of the same name (a method) takes the place of the referenced one.
+     */
+    public function testAnOperationNextToTheReferenceOfAPathItemIsReadWithTheReferencedOne(): void
+    {
+        $body = static fn (string $property): array => ['content' => ['application/json' => ['schema' => ['type' => 'object', 'properties' => [$property => ['type' => 'string']]]]]];
+        $query = ['name' => 'q', 'in' => 'query', 'schema' => ['type' => 'string']];
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/shared', ['get' => ['parameters' => [$query]], 'post' => ['requestBody' => $body('old')]]);
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/alias', ['$ref' => '#/paths/~1api~1v1~1admin~1shared', 'post' => ['parameters' => [$query], 'requestBody' => $body('note')]]);
+
+        self::assertSame(
+            [
+                'GET /api/v1/admin/shared, query q'.self::NO_ROW,
+                'POST /api/v1/admin/shared, old'.self::NO_ROW,
+                'GET /api/v1/admin/alias, query q'.self::NO_ROW,
+                'POST /api/v1/admin/alias, query q'.self::NO_ROW,
+                'POST /api/v1/admin/alias, note'.self::NO_ROW,
+            ],
+            ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
+        );
+    }
+
+    public function testAPhraseOfThePathItemNextToTheReferenceServesTheOperationsOfBoth(): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/shared', ['get' => []]);
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/alias', [
+            '$ref' => '#/paths/~1api~1v1~1admin~1shared',
+            'parameters' => [['name' => 'q', 'in' => 'query', 'schema' => ['type' => 'string']]],
+            'delete' => [],
+        ]);
+
+        self::assertSame(
+            ['GET /api/v1/admin/alias, query q'.self::NO_ROW, 'DELETE /api/v1/admin/alias, query q'.self::NO_ROW],
+            ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
+        );
+    }
+
     public function testABodyThatIsATextItselfIsReported(): void
     {
         $documents = $this->documents();
