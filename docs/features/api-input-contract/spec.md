@@ -434,6 +434,8 @@ w etapie. Ścieżki bez prefiksu `/api/v1`.
 | `slug` | `POST /admin/categories`, `PUT /admin/categories/{id}`, `POST /admin/products`, `PUT /admin/products/{id}` | zamknięty alfabet albo zamknięta lista wartości |
 | `taxClass` | `POST /admin/products`, `PUT /admin/products/{id}` | zamknięty alfabet albo zamknięta lista wartości |
 | `images[n].key` | `POST /admin/products`, `PUT /admin/products/{id}` | zamknięty alfabet albo zamknięta lista wartości |
+| `variants[n].sku` | `POST /admin/products`, `PUT /admin/products/{id}` | zamknięty alfabet (`A–Z0–9-_./`, litery ASCII zapisane wielkimi) z własnym przycinaniem: T1 na wartości, jak przyszła (tabulator albo U+2028 na brzegu to naruszenie formatu, nie cicho przycięty kod), potem T2, potem format; tekst bez znaku widocznego to brak kodu (`product-data`) |
+| `variants[n].ean` | `POST /admin/products`, `PUT /admin/products/{id}` | format cyfr z cyfrą kontrolną GS1 (8, 12, 13 albo 14) z własnym przycinaniem w tej samej kolejności (T1, T2, format); liczba JSON to „Kod EAN musi być tekstem.” (`product-data`) |
 | `code` (kod rabatowy) | `POST /admin/discount-codes` | format z własnym przycinaniem (`discount-codes`) |
 | `trackingNumber` | `POST /admin/orders/{orderId}/status-changes`, `PUT /admin/orders/{orderId}/tracking-number` | format z własnym przycinaniem (`order-management`) |
 | `trackingUrlTemplate` | `POST /admin/delivery-methods`, `PUT /admin/delivery-methods/{id}` | format z własnym przycinaniem (`delivery`) |

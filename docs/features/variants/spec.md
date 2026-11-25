@@ -29,7 +29,7 @@ Poza zakresem:
 - ekrany panelu do dodawania i edycji produktów i wariantów (CATALOG-ADMIN #95, `docs/features/catalog-admin/spec.md`);
 - wyszukiwanie i filtry po wartościach wariantów (SEARCH #94); indeks Elasticsearch zawiera warianty z wartościami
   osi, cenami i dostępnością (`docs/features/search/spec.md`);
-- zdjęcia per wariant i galeria, kody SKU i EAN, cena „od” w Varnishu i ISR.
+- zdjęcia per wariant i galeria, cena „od” w Varnishu i ISR (kody SKU i EAN wariantu: `docs/features/product-data/spec.md`).
 
 ## Decyzje użytkownika
 
