@@ -64,6 +64,11 @@ Zaprojektuj najprostsze poprawne rozwiązanie spełniające wymagania.
     aż do UI (czy UI odróżni przypadki), paginację, brakujące dane. Przy każdej zmianie stanu danych sprawdź,
     proporcjonalnie do ryzyka: równoległe zmiany (także z nieaktualnego widoku), cykl życia danych, innych konsumentów
     tych danych (modele odczytu, indeksy, inne moduły) i skutki błędów. Nie dodawaj mechanizmów dla hipotetycznych przypadków.
+    Kontrola albo reguła, którą zmiana buduje (kontrola w `make check`, lint, test procesu, sonda, walidator) albo
+    konfiguruje (automatyzacja aktualizacji, np. Dependabot), ma w specyfikacji zamkniętą listę form wejścia, które ocenia
+    albo obsługuje (np. instrukcje i składnie odwołania do obrazu), i jeden wynik dla każdej innej formy: błąd, nigdy
+    „czysto”. Formy obsługiwane przez narzędzie zewnętrzne sprawdź w jego dokumentacji albo kodzie (punkt 4). Formę,
+    której narzędzie nie obsługuje, specyfikacja zmienia albo wyłącza z powodem.
 
 ## Rezultat
 
