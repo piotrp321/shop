@@ -68,8 +68,9 @@ final readonly class DiscountCodeListQuery
     }
 
     /**
-     * The beginning of a code the list is filtered by: `q` trimmed by the rule of texts. What the code is made of is
-     * the rule of DiscountCodeValue, which the list applies to it.
+     * The beginning of a code the list is filtered by: `q` trimmed by the rule of texts, and by nothing else: a format
+     * character T2 leaves next to a visible one stays, so the phrase is the beginning of no code. What a code is made
+     * of is the alphabet of DiscountCodeValue, which the list applies to it.
      */
     public function codePrefix(): ?string
     {

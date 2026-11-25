@@ -411,8 +411,10 @@ Wielkość liter zostaje.
 
 Długość frazy liczy się po przycięciu T2, a lista szuka frazy przyciętej: fraza między U+200B albo między U+00A0
 zwraca ten sam wynik co fraza czysta (te same pozycje w tej samej kolejności i ten sam licznik). Dotyczy wszystkich
-siedmiu list, także listy kodów rabatowych, gdzie fraza jest początkiem kodu. Fraza, która nie jest poprawnym UTF-8,
-i `q[]=x` zostają jak w etapie 1 (tabela B1).
+siedmiu list, także listy kodów rabatowych, gdzie fraza jest początkiem kodu. Żadna lista nie przycina frazy drugi raz
+inną regułą: na liście kodów fraza z znakiem formatującym obok liter, który T2 zostawia (np. U+200D, U+200E), nie jest
+początkiem żadnego kodu i daje pustą listę ze statusem 200, jak każda fraza ze znakiem spoza alfabetu kodu. Fraza, która
+nie jest poprawnym UTF-8, i `q[]=x` zostają jak w etapie 1 (tabela B1).
 
 ### Pola tekstowe poza regułą
 

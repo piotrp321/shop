@@ -8,7 +8,6 @@ use App\Pricing\Application\Port\Clock;
 use App\Pricing\Application\Port\DiscountCodeReader;
 use App\Pricing\Application\Port\ListedDiscountCode;
 use App\Pricing\Domain\DiscountCode\DiscountCodeStatus;
-use App\Pricing\Domain\DiscountCode\DiscountCodeValue;
 use App\Pricing\Domain\DiscountCode\ValidityPeriod;
 use App\Shared\Domain\BoundedCount;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
@@ -27,7 +26,8 @@ final readonly class ListDiscountCodesHandler
 
     /**
      * The status filter and the status of each item are taken at one moment. The prefix is compared like a code:
-     * trimmed and in upper case; one with a character no code has gives an empty page without a read. One code more
+     * in upper case, the phrase as the rule of texts trimmed it (T2) and no further: a format character T2 leaves next
+     * to a visible one is part of the prefix; one with a character no code has gives an empty page without a read. One code more
      * than the page is read: its presence is what tells there is a next page. The first page (no cursor) also
      * carries the bounded total of the filters: the number of its rows when there is no next page (nothing to
      * count), otherwise the reader counts.
@@ -70,6 +70,9 @@ final readonly class ListDiscountCodesHandler
     }
 
     /**
+     * @param string $q the phrase after Text::normalize (the query of the controller); it is not trimmed again, by this
+     *                  or any other rule
+     *
      * @return string|false the prefix in the form of a stored code, false when no code can start with it
      */
     private static function prefix(string $q): string|false
@@ -77,7 +80,7 @@ final readonly class ListDiscountCodesHandler
         if (!mb_check_encoding($q, 'UTF-8')) {
             return false;
         }
-        $prefix = strtoupper(DiscountCodeValue::trimmed($q));
+        $prefix = strtoupper($q);
 
         return 1 === preg_match(self::PREFIX, $prefix) ? $prefix : false;
     }
