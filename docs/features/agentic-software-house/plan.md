@@ -15,11 +15,11 @@ przede wszystkim czas zegarowy epiku, pilnując jakości, liczby napraw, interwe
 Repozytorium nie ma skilli ani procedury uruchamiania AO, a epik ONCALL (krok 11) i pozostałe zaplanowane prace
 związane z AO są wstrzymane (ADR, punkt 6 „Bez AO”).
 
-W toku: brak epiku. Blokery: brak.
-Ostatni zmergowany epik: ADMIN-UX-FIXES etap 2 (#837, końcowy PR #896, zmergowany 2026-11-24; epik natywny
-z danymi pomiaru; 8 wiadomości właściciela, 3 oczekiwania, łącznie 73 min czekania). Ostatni zmergowany epik serii:
-DELIVERY etap 1 (#120, końcowy PR #819). Retro do zrobienia: brak (retro ADMIN-UX-FIXES etap 2: ten PR). Otwartych
-issues z etykietą `agent` jest 142, zamkniętych 97.
+W toku: brak epiku (przygotowany: PRODUCT-DATA, #772). Blokery: brak.
+Ostatni zmergowany epik: API-INPUT-CONTRACT etap 2 (`api-input-2`, #305, końcowy PR #915, zmergowany 2026-11-25;
+epik natywny z danymi pomiaru; 8 interwencji właściciela, 5 oczekiwań, łącznie 541 min czekania). Ostatni zmergowany
+epik serii: DELIVERY etap 1 (#120, końcowy PR #819). Retro do zrobienia: brak (retro API-INPUT-CONTRACT etap 2: ten
+PR). Otwartych issues z etykietą `agent` jest 145, zamkniętych 111.
 
 Seria ASH v1.0 (specyfikacja `docs/features/ash-v1/spec.md`): trzy epiki prowadzone natywnie według „Przebiegu epiku”
 w ADR, ocenianie metrykami i retrospektywami `/retro`. Seria jest w toku od założenia tagu `ash-v1.0` do retrospektywy

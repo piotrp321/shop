@@ -379,6 +379,10 @@ final class OrderLifecycleTest extends TestCase
         yield 'only white space' => ['   '];
         yield 'only non-breaking spaces' => ["\u{00A0}\u{00A0}"];
         yield 'only Unicode white space and ASCII spaces' => [" \u{2003}\u{3000}\u{202F} "];
+        // The rule of texts (spec api-input-contract, T3): no visible character is no note.
+        yield 'only a zero width space' => ["\u{200B}"];
+        yield 'only a Hangul filler' => ["\u{3164}"];
+        yield 'only invisible characters and spaces' => ["\u{FEFF} \u{200B}\u{2060}\u{00AD}"];
     }
 
     #[DataProvider('missingRequiredNotes')]
@@ -418,6 +422,10 @@ final class OrderLifecycleTest extends TestCase
         yield 'truncated UTF-8 sequence at the end' => ["Paczka\xC3", 'Notatka zawiera niedozwolone znaki.'];
         yield 'only invalid UTF-8' => ["\xFF", 'Notatka zawiera niedozwolone znaki.'];
         yield '501 characters after a trim of non-breaking spaces' => ["\u{00A0}".str_repeat('ż', 501)."\u{00A0}", 'Notatka może mieć najwyżej 500 znaków.'];
+        // Every control character of the rule of texts (T1), also C1.
+        yield 'a C1 control U+009F' => ["Paczka\u{9F}wróciła", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'a C1 control U+0080 at the end' => ["Paczka wróciła\u{80}", 'Notatka zawiera niedozwolone znaki.'];
+        yield '501 characters after a trim of zero width spaces' => ["\u{200B}".str_repeat('ż', 501)."\u{200B}", 'Notatka może mieć najwyżej 500 znaków.'];
     }
 
     #[DataProvider('invalidNotes')]
@@ -452,6 +460,15 @@ final class OrderLifecycleTest extends TestCase
         self::assertSame(str_repeat('ż', 500), self::lastChange($order)->note());
     }
 
+    public function testANoteIsTrimmedOfInvisibleCharactersAtItsEndsOnly(): void
+    {
+        $order = self::orderIn('paid');
+
+        $order->cancel(self::staff(), "\u{200B}\u{FEFF}Brak\u{200B}towaru ".str_repeat('ż', 488)."\u{2060}\u{00AD}", new \DateTimeImmutable(self::NOW));
+
+        self::assertSame("Brak\u{200B}towaru ".str_repeat('ż', 488), self::lastChange($order)->note());
+    }
+
     public function testANoteOfFiveHundredCharactersIsKept(): void
     {
         $order = self::orderIn('paid');
@@ -471,6 +488,8 @@ final class OrderLifecycleTest extends TestCase
         yield 'empty' => [''];
         yield 'only spaces' => ['    '];
         yield 'only non-breaking spaces' => ["\u{00A0}\u{00A0}"];
+        yield 'only a zero width space' => ["\u{200B}"];
+        yield 'only a Hangul filler' => ["\u{3164}"];
     }
 
     #[DataProvider('emptyOptionalNotes')]

@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace App\Ordering\UI\Http;
 
-use App\Ordering\Domain\ControlCharacters;
 use App\Ordering\Domain\StaffNote;
+use App\Ordering\UI\Http\Validation\TextCharacters;
+use App\Shared\Domain\Text;
 use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -25,11 +26,11 @@ final readonly class CompleteRefundRequest
             new Assert\Positive(message: 'Wersja zamówienia musi być liczbą całkowitą od 1.'),
         ])]
         public mixed $version,
-        #[OA\Property(type: 'string', description: 'One line, at most 500 characters once trimmed of white space, without control characters, U+0085, U+2028 and U+2029; null or blank for none.', maxLength: StaffNote::MAX_LENGTH, nullable: true, example: 'Przelew wysłany')]
+        #[OA\Property(type: 'string', description: 'One line, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators; null or a text without a visible character for none.', maxLength: StaffNote::MAX_LENGTH, nullable: true, example: 'Przelew wysłany')]
         #[Assert\Sequentially([
             new Assert\Type('string', message: 'Notatka musi być tekstem.'),
-            new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Notatka zawiera niedozwolone znaki.'),
-            new Assert\Length(max: StaffNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', charsetMessage: 'Notatka zawiera niedozwolone znaki.', normalizer: StaffNote::class.'::trim'),
+            new TextCharacters(message: 'Notatka zawiera niedozwolone znaki.'),
+            new Assert\Length(max: StaffNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', charsetMessage: 'Notatka zawiera niedozwolone znaki.', normalizer: [Text::class, 'normalize']),
         ])]
         public mixed $note,
     ) {

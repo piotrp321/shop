@@ -155,7 +155,8 @@ final class ProductTextRulesEndpointsTest extends WebTestCase
     /**
      * Invalid UTF-8 never reaches the validator of a write: the JSON decoder refuses a body with a malformed byte or a
      * lone surrogate escape first, so the answer is 400 and nothing is saved or changed. The rule for such a text in
-     * the validator and in the value objects is covered by ProductWriteValidationTest and ProductTextTest.
+     * the validator and in the value objects is covered by ProductWriteValidationTest, ProductWriteTextRulesTest and
+     * TextTest.
      */
     #[DataProvider('invalidUtf8')]
     public function testInvalidUtf8CannotBeDeliveredToAFieldAndIsABadRequestNotAServerError(string $method, string $field, string $json): void

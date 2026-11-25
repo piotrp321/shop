@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace App\Ordering\UI\Http;
 
 use App\Ordering\Domain\Contact;
-use App\Ordering\Domain\ControlCharacters;
 use App\Ordering\Domain\DiscountCodeText;
 use App\Ordering\Domain\Order;
 use App\Ordering\Domain\OrderLine;
 use App\Ordering\Domain\ShippingAddress;
 use App\Ordering\UI\Http\Validation\ExpectedLinesFormat;
+use App\Ordering\UI\Http\Validation\TextCharacters;
+use App\Shared\Domain\Text;
 use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -26,48 +27,49 @@ use Symfony\Component\Validator\Constraints as Assert;
 final readonly class PlaceCustomerOrderRequest
 {
     public function __construct(
-        #[OA\Property(type: 'string', maxLength: Contact::MAX_FULL_NAME_LENGTH, description: 'Full name, 1 to 100 characters once trimmed.', example: 'Jan Kowalski')]
+        #[OA\Property(type: 'string', maxLength: Contact::MAX_FULL_NAME_LENGTH, description: 'Full name, 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.', example: 'Jan Kowalski')]
         #[Assert\Sequentially([
             new Assert\NotNull(message: 'Imię i nazwisko są wymagane.'),
             new Assert\Type('string', message: 'Imię i nazwisko są wymagane.'),
-            new Assert\NotBlank(message: 'Imię i nazwisko są wymagane.', normalizer: 'trim'),
-            new Assert\Length(max: Contact::MAX_FULL_NAME_LENGTH, maxMessage: 'Imię i nazwisko mogą mieć najwyżej 100 znaków.', charsetMessage: 'Imię i nazwisko zawierają niedozwolone znaki.', normalizer: 'trim'),
-            new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Imię i nazwisko zawierają niedozwolone znaki.'),
+            new Assert\NotBlank(message: 'Imię i nazwisko są wymagane.', normalizer: [Text::class, 'normalize']),
+            new Assert\Length(max: Contact::MAX_FULL_NAME_LENGTH, maxMessage: 'Imię i nazwisko mogą mieć najwyżej 100 znaków.', charsetMessage: 'Imię i nazwisko zawierają niedozwolone znaki.', normalizer: [Text::class, 'normalize']),
+            new TextCharacters(message: 'Imię i nazwisko zawierają niedozwolone znaki.'),
         ])]
         public mixed $fullName,
-        #[OA\Property(type: 'string', description: 'A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped. The order keeps +48 and the 9 digits.', example: '600 100 200')]
+        #[OA\Property(type: 'string', description: 'A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped, white space and invisible characters at the ends are trimmed, control characters and line separators are refused. The order keeps +48 and the 9 digits.', example: '600 100 200')]
         #[Assert\Sequentially([
             new Assert\NotNull(message: 'Numer telefonu jest wymagany.'),
             new Assert\Type('string', message: 'Podaj 9-cyfrowy numer telefonu.'),
-            new Assert\NotBlank(message: 'Numer telefonu jest wymagany.', normalizer: 'trim'),
-            new Assert\Regex(pattern: PlaceGuestOrderRequest::PHONE_PATTERN, message: 'Podaj 9-cyfrowy numer telefonu.'),
+            new TextCharacters(message: 'Podaj 9-cyfrowy numer telefonu.'),
+            new Assert\NotBlank(message: 'Numer telefonu jest wymagany.', normalizer: [Text::class, 'normalize']),
+            new Assert\Regex(pattern: PlaceGuestOrderRequest::PHONE_PATTERN, message: 'Podaj 9-cyfrowy numer telefonu.', normalizer: [Text::class, 'normalize']),
         ])]
         public mixed $phone,
-        #[OA\Property(type: 'string', maxLength: ShippingAddress::MAX_STREET_LENGTH, description: 'Street and number, 1 to 100 characters once trimmed.', example: 'ul. Długa 5/3')]
+        #[OA\Property(type: 'string', maxLength: ShippingAddress::MAX_STREET_LENGTH, description: 'Street and number, 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.', example: 'ul. Długa 5/3')]
         #[Assert\Sequentially([
             new Assert\NotNull(message: 'Ulica i numer są wymagane.'),
             new Assert\Type('string', message: 'Ulica i numer są wymagane.'),
-            new Assert\NotBlank(message: 'Ulica i numer są wymagane.', normalizer: 'trim'),
-            new Assert\Length(max: ShippingAddress::MAX_STREET_LENGTH, maxMessage: 'Ulica i numer mogą mieć najwyżej 100 znaków.', charsetMessage: 'Ulica i numer zawierają niedozwolone znaki.', normalizer: 'trim'),
-            new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Ulica i numer zawierają niedozwolone znaki.'),
+            new Assert\NotBlank(message: 'Ulica i numer są wymagane.', normalizer: [Text::class, 'normalize']),
+            new Assert\Length(max: ShippingAddress::MAX_STREET_LENGTH, maxMessage: 'Ulica i numer mogą mieć najwyżej 100 znaków.', charsetMessage: 'Ulica i numer zawierają niedozwolone znaki.', normalizer: [Text::class, 'normalize']),
+            new TextCharacters(message: 'Ulica i numer zawierają niedozwolone znaki.'),
         ])]
         public mixed $street,
-        #[OA\Property(type: 'string', description: 'Polish postal code NN-NNN.', example: '00-950')]
+        #[OA\Property(type: 'string', description: 'Polish postal code NN-NNN, without control characters or line separators; white space and invisible characters at the ends are trimmed.', example: '00-950')]
         #[Assert\Sequentially([
             new Assert\NotNull(message: 'Kod pocztowy jest wymagany.'),
             new Assert\Type('string', message: 'Podaj kod pocztowy w formacie 00-000.'),
-            new Assert\NotBlank(message: 'Kod pocztowy jest wymagany.', normalizer: 'trim'),
-            new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Podaj kod pocztowy w formacie 00-000.'),
-            new Assert\Regex(pattern: PlaceGuestOrderRequest::POSTAL_CODE_PATTERN, message: 'Podaj kod pocztowy w formacie 00-000.', normalizer: 'trim'),
+            new TextCharacters(message: 'Podaj kod pocztowy w formacie 00-000.'),
+            new Assert\NotBlank(message: 'Kod pocztowy jest wymagany.', normalizer: [Text::class, 'normalize']),
+            new Assert\Regex(pattern: PlaceGuestOrderRequest::POSTAL_CODE_PATTERN, message: 'Podaj kod pocztowy w formacie 00-000.', normalizer: [Text::class, 'normalize']),
         ])]
         public mixed $postalCode,
-        #[OA\Property(type: 'string', maxLength: ShippingAddress::MAX_CITY_LENGTH, description: 'City, 1 to 60 characters once trimmed. The country is always Poland.', example: 'Warszawa')]
+        #[OA\Property(type: 'string', maxLength: ShippingAddress::MAX_CITY_LENGTH, description: 'City, 1 to 60 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators. The country is always Poland.', example: 'Warszawa')]
         #[Assert\Sequentially([
             new Assert\NotNull(message: 'Miejscowość jest wymagana.'),
             new Assert\Type('string', message: 'Miejscowość jest wymagana.'),
-            new Assert\NotBlank(message: 'Miejscowość jest wymagana.', normalizer: 'trim'),
-            new Assert\Length(max: ShippingAddress::MAX_CITY_LENGTH, maxMessage: 'Miejscowość może mieć najwyżej 60 znaków.', charsetMessage: 'Miejscowość zawiera niedozwolone znaki.', normalizer: 'trim'),
-            new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Miejscowość zawiera niedozwolone znaki.'),
+            new Assert\NotBlank(message: 'Miejscowość jest wymagana.', normalizer: [Text::class, 'normalize']),
+            new Assert\Length(max: ShippingAddress::MAX_CITY_LENGTH, maxMessage: 'Miejscowość może mieć najwyżej 60 znaków.', charsetMessage: 'Miejscowość zawiera niedozwolone znaki.', normalizer: [Text::class, 'normalize']),
+            new TextCharacters(message: 'Miejscowość zawiera niedozwolone znaki.'),
         ])]
         public mixed $city,
         #[OA\Property(type: 'integer', minimum: 0, description: 'The gross total the customer saw, in grosze, with the delivery: `totalGross` of the chosen option of `delivery.options` of the cart. Only compared with the total the API computes; another one is a 409.', example: 39998)]

@@ -1104,7 +1104,7 @@ export interface components {
         /** @description A new category, placed at the end of its siblings. */
         CreateCategoryRequest: {
             /**
-             * @description 1 to 100 characters once trimmed of whitespace, without control characters.
+             * @description 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.
              * @example Namioty
              */
             name: string;
@@ -1140,7 +1140,7 @@ export interface components {
         /** @description The name and the slug of a category. A new slug changes the address of the category and its descendants; the old addresses redirect to the new ones. */
         ReviseCategoryRequest: {
             /**
-             * @description 1 to 100 characters once trimmed of whitespace, without control characters.
+             * @description 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.
              * @example Namioty
              */
             name: string;
@@ -1326,12 +1326,12 @@ export interface components {
         /** @description A new delivery method. */
         CreateDeliveryMethodRequest: {
             /**
-             * @description 1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.
+             * @description 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators, unique among all methods without regard to case.
              * @example Kurier standardowy
              */
             name: string;
             /**
-             * @description The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.
+             * @description The time of the delivery: up to 200 characters once trimmed, without control characters or line separators. Null or a text without a visible character: no description.
              * @example Dostawa w 2–3 dni robocze
              */
             description: string | null;
@@ -1364,12 +1364,12 @@ export interface components {
         /** @description A delivery method as it should be. */
         ReviseDeliveryMethodRequest: {
             /**
-             * @description 1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.
+             * @description 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators, unique among all methods without regard to case.
              * @example Kurier standardowy
              */
             name: string;
             /**
-             * @description The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.
+             * @description The time of the delivery: up to 200 characters once trimmed, without control characters or line separators. Null or a text without a visible character: no description.
              * @example Dostawa w 2–3 dni robocze
              */
             description: string | null;
@@ -1445,7 +1445,7 @@ export interface components {
              */
             reason: "inventory_count" | "damage" | "loss" | "other";
             /**
-             * @description A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or blank for none.
+             * @description A note, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or a text without a visible character for none.
              * @example Inwentaryzacja roczna
              */
             note: string | null;
@@ -1458,7 +1458,7 @@ export interface components {
              */
             quantity: number;
             /**
-             * @description A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; null or blank for none.
+             * @description A note, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters other than tab and line breaks; null or a text without a visible character for none.
              * @example Dostawa od Biegam sp. z o.o.
              */
             note: string | null;
@@ -1531,7 +1531,7 @@ export interface components {
              */
             version: number;
             /**
-             * @description One line, at most 500 characters once trimmed of white space, without control characters, U+0085, U+2028 and U+2029; required for `cancel` and `return`, otherwise null or blank for none.
+             * @description One line, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators; required for `cancel` and `return`, otherwise null or a text without a visible character for none.
              * @example Kurier DPD
              */
             note: string | null;
@@ -1562,7 +1562,7 @@ export interface components {
              */
             version: number;
             /**
-             * @description One line, at most 500 characters once trimmed of white space, without control characters, U+0085, U+2028 and U+2029; null or blank for none.
+             * @description One line, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators; null or a text without a visible character for none.
              * @example Przelew wysłany
              */
             note: string | null;
@@ -3349,7 +3349,7 @@ export interface operations {
     listBackofficeProducts: {
         parameters: {
             query?: {
-                /** @description A part of the product name, 2 to 100 characters. */
+                /** @description A part of the product name, 2 to 100 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators. */
                 q?: string;
                 /** @description Category id (UUID). */
                 category?: string;

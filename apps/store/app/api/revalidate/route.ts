@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { revalidateTag } from "next/cache";
+import { nextCacheTagOf } from "@/catalog/isr-tags";
 import { isProductSlug } from "@/catalog/load-product";
 import { BODY_TOO_LARGE, readBodyText } from "@/cart/json-body";
 
@@ -7,8 +8,10 @@ import { BODY_TOO_LARGE, readBodyText } from "@/cart/json-body";
  * On-demand revalidation of the ISR pages, called by the API worker after it purged Varnish (StorefrontCache in the
  * API): `Authorization: Bearer <STORE_REVALIDATE_SECRET>`, a JSON body `{ tags }` with 1 to 100 tags of the API's
  * dictionary (`catalog`, `product-<uuid in lower case>`, `product-slug-<slug in the format of a product slug>`). Each
- * tag is revalidated with `expire: 0`, so the next visitor waits for a fresh render instead of getting the stale page.
- * The secret is never logged.
+ * tag becomes its tag of the Next.js cache (`isr-tags.ts`: `catalog` or a product bucket; a bucket name in the body is
+ * outside the dictionary, so it is refused), and each different Next.js tag is revalidated once with `expire: 0`, so
+ * the next visitor waits for a fresh render instead of getting the stale page. `revalidated` is the number of tags of
+ * the body. The secret is never logged.
  */
 
 const MAX_TAGS = 100;
@@ -60,6 +63,6 @@ export async function POST(request: Request): Promise<Response> {
   const tags = tagsOf(body);
   if (tags === null) return answer(400, { detail: `The body must be { tags } with 1 to ${MAX_TAGS} known tags.` });
 
-  for (const tag of tags) revalidateTag(tag, { expire: 0 });
+  for (const tag of new Set(tags.map(nextCacheTagOf))) revalidateTag(tag, { expire: 0 });
   return answer(200, { revalidated: tags.length });
 }

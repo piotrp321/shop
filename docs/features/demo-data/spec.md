@@ -50,7 +50,9 @@ Przyjęte przez użytkownika 2026-11-13 (rekomendacje z przygotowania epiku):
 - **P1. Generator jako płaski moduł.** `DemoData` poza contextami (jak `PaymentSimulator`), z jedną warstwą Deptrac
   z dostępem tylko do `Native`, `Vendor` i `Shared_Infrastructure`. Pisze tabele wszystkich modułów przez `COPY`
   i SQL, bez importu klas contextów; reguły, które powtarza, pilnują testy kontraktu porównujące wynik generatora
-  z kodem modułów (testy nie podlegają Deptrac).
+  z kodem modułów (testy nie podlegają Deptrac). Teksty pod regułą tekstu (`Text`) generator pisze
+  z pominięciem domeny, więc testy kontraktu wymagają, żeby teksty słowników i wygenerowane (nazwy, opisy, osie,
+  wartości wariantów, tekst alternatywny, kategorie, imię, ulica, miejscowość) były w postaci, którą reguła zachowuje.
 - **P1a. Reguły z warstw Domain zamiast kopii.** Warstwa `DemoData` może dodatkowo zależeć od `Catalog_Domain`,
   `Pricing_Domain` i `Ordering_Domain` (czysty PHP bez infrastruktury; `DemoData` jest ujściem, od którego nic nie
   zależy). Generator woła istniejące reguły i value objecty dla wartości (`PriceBreakdown`, `PromotionalPrice`,

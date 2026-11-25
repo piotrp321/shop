@@ -9,6 +9,7 @@ use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineDiscountCodeReposito
 use App\Tests\Factory\DiscountCodeFactory;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\DBAL\ParameterType;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
@@ -72,6 +73,34 @@ final class CartDeliveryEndpointTest extends WebTestCase
         );
         self::assertSame($this->gross($view) + 1_999, $delivery['options'][0]['totalGross']);
         self::assertTrue(Uuid::isValid($delivery['options'][0]['methodId']));
+    }
+
+    /**
+     * Texts stored before the rule of texts that the rule refuses (docs/features/api-input-contract/spec.md, E7).
+     *
+     * @return iterable<string, array{string, string}>
+     */
+    public static function storedTextsOutsideTheRule(): iterable
+    {
+        yield 'U+200B as the whole name' => ["\u{200B}", 'Wtorek–piątek'];
+        yield 'U+009F in the name' => ["Kurier\u{9F}A", 'Wtorek–piątek'];
+        yield 'a tab in the name and the description' => ["Kurier\tA", "Wtorek\tpiątek"];
+    }
+
+    /**
+     * The cart reads the stored methods without checking their texts again.
+     */
+    #[DataProvider('storedTextsOutsideTheRule')]
+    public function testAMethodStoredWithATextOutsideTheRuleIsOfferedUnchanged(string $name, string $description): void
+    {
+        $this->methods([[$name, 1_999, null, 10, $description]]);
+        $cart = $this->guestCartWith(10_000);
+
+        $view = $this->request('GET', $cart);
+
+        self::assertResponseStatusCodeSame(200);
+        $options = $this->delivery($view)['options'];
+        self::assertSame([[$name, $description, 1_999]], array_map(static fn (array $o): array => [$o['name'], $o['description'], $o['costGross']], $options));
     }
 
     public function testFromTheThresholdTheCostIsZero(): void

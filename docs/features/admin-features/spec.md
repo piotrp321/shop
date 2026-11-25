@@ -254,6 +254,19 @@ Parametr `sort=<klucz>` z zamkniętą listą na endpoint; każdy klucz ma indeks
 - `ListPager`: „Pokazano 1–25 z 1 234” albo „z ponad 10 000” (listy cen i stanów liczą produkty: „Pokazano produkty
   1–25 z …”); bez numerów dalszych stron.
 
+### Frazy `q` list stanów, cen i kodów rabatowych
+
+- `q` list `GET /admin/stock` i `GET /admin/prices` (część nazwy produktu) i `GET /admin/discount-codes` (początek kodu)
+  podlega regule tekstu (`App\Shared\Domain\Text`, `docs/features/api-input-contract/spec.md`, „Etap 2: reguła tekstu”):
+  znaki sterujące (także C1, U+2028 i U+2029) w frazie, jak przyszła, dają 400 przy `q`; długość (2–100 znaków na
+  listach stanów i cen, 1–32 na liście kodów) liczy się po przycięciu z brzegów (T2: białe znaki Unicode oraz U+200B, U+2060, U+FEFF
+  i U+00AD; inne znaki formatujące zostają); fraza bez znaku widocznego (same spacje, U+00A0, U+200B, U+3164) jest za krótka, więc też 400; lista szuka
+  frazy przyciętej. Normalizację robi warstwa UI listy (`BackofficeStockQuery`, `BackofficePricesQuery`,
+  `DiscountCodeListQuery`), jak `BackofficeProductsQuery` w Catalog. Komunikaty: listy stanów i cen „Ta wartość jest
+  zbyt krótka. Powinna mieć 2 lub więcej znaków.” i „Szukana fraza zawiera niedozwolone znaki.”, lista kodów „Początek
+  kodu musi mieć od 1 do 32 znaków.” dla obu przypadków. Co kod rabatowy zawiera (alfabet, wielkość liter) zostaje regułą
+  `DiscountCodeValue`.
+
 ### Wyszukiwanie zamówień (decyzja P8)
 
 - `q`: dokładny numer (`^[Rr]-[0-9]+$`) i pełny adres e-mail (lokalna część, `@`, domena z kropką i ostatnim członem co
@@ -280,8 +293,9 @@ Parametr `sort=<klucz>` z zamkniętą listą na endpoint; każdy klucz ma indeks
 
 ### Reguły
 
-- Kategoria: nazwa (1–100 znaków), slug (unikalny wśród rodzeństwa), rodzic albo korzeń, **pozycja** wśród rodzeństwa
-  (kolumna `position`, wartość domyślna 0) i `version` (domyślnie 1).
+- Kategoria: nazwa (1–100 znaków po przycięciu, według reguły tekstów z `docs/features/api-input-contract/spec.md`),
+  slug (unikalny wśród rodzeństwa), rodzic albo korzeń, **pozycja** wśród rodzeństwa (kolumna `position`, wartość
+  domyślna 0) i `version` (domyślnie 1).
 - Kolejność rodzeństwa (drzewo publiczne i panelu, `CategoryTreeBuilder`) to `position`, potem nazwa w `pl_PL`
   (`Collator`), potem `id`. Dopóki pracownik nie zmieni kolejności, wszystkie pozycje są 0, więc kolejność jest
   alfabetyczna, także po `make seed` (`DemoCatalogLoader` nie ustawia pozycji).

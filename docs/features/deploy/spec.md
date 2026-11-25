@@ -30,7 +30,7 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
 - Ograniczenia startowe sterowane konfiguracją: pasek demonstracji, `X-Robots-Tag: noindex`, rejestracja
   i logowanie klientów, poczta zamówień; Cloudflare Access przed panelem.
 - Brzeg sieci: Cloudflare; origin przyjmuje HTTP(S) tylko od Cloudflare.
-- Weryfikacja bez serwera: statyczny check chartu w wymaganym CI (przy zmianie `infra/k8s/**` albo workflowów) i przed każdym
+- Weryfikacja bez serwera: statyczny check chartu w wymaganym CI (przy zmianie `infra/k8s/**`, workflowów albo `infra/docker-compose.yml`) i przed każdym
   wdrożeniem oraz smoke test na k3d na standardowym runnerze.
 - Bootstrap czystego VPS-a i wdrożenie wykonywalne przez Claude Code po SSH, z jawnymi punktami zgody i krokami
   użytkownika.
@@ -180,8 +180,17 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 
 - Usługi stanowe (Postgres, Elasticsearch, RabbitMQ, Redis, Garage) jako StatefulSety z PVC `local-path`.
   Elasticsearch `single-node`, bez security (bez publicznego adresu).
-- Bezstanowe (api, worker, worker-commands, store, admin, imgproxy, varnish, keycloak, mailpit) jako Deploymenty z jedną repliką,
-  `maxUnavailable: 0`, sondami jak health checki compose.
+- Bezstanowe (api, worker, worker-commands, store, admin, imgproxy, varnish, keycloak, mailpit) jako Deploymenty z jedną repliką
+  i sondami jak health checki compose. Wszystkie poza Keycloakiem mają `RollingUpdate` z `maxUnavailable: 0`
+  i `maxSurge: 1`: nowy pod, który nie staje się gotowy, zostawia działający stary.
+- Keycloak ma strategię `Recreate`: przy starcie migruje schemat swojej bazy i nie wspiera dwóch wersji na jednej bazie,
+  więc stary pod kończy działanie, zanim wystartuje nowy. Przy zmianie szablonu poda Keycloaka (obraz, zmienne, zasoby)
+  logowanie i odświeżanie tokenów nie działają od zatrzymania starego poda do gotowości nowego (pobranie obrazu, start,
+  migracja); sesje są w bazie i przetrwają restart. Wdrożenie, które Keycloaka nie zmienia, go nie restartuje (etykiety
+  poda nie zawierają rewizji). Nowy pod, który nie staje się gotowy, nie zostawia starego: logowanie nie działa do
+  naprawy, a wdrożenie zatrzymuje się na Jobie `keycloak-config`, który czeka na gotowego Keycloaka. Powrotu do starszej
+  wersji na zmigrowanej bazie nie ma: baza `keycloak` wraca z kopii (`restore`) albo powstaje od nowa (`keycloak-config`
+  zakłada realmy, `create-admin` konta personelu).
 - Keycloak w trybie `start`, za proxy (`KC_PROXY_HEADERS=xforwarded`, `KC_HTTP_ENABLED=true`),
   `KC_HOSTNAME=https://auth.<domena>`, `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`, bez `--import-realm` (D9).
 - Fale i Joby (D8, D11):
@@ -215,7 +224,7 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 - CronJob `cart:purge-expired` (co godzinę, `concurrencyPolicy: Forbid`, strefa `Europe/Warsaw`).
 - CronJob `demo-data` (profile `prod`, `ci` i `load`; `demoData.enabled`): zawieszony (`suspend: true`), jego Job zastępuje
   dane sklepu danymi profilu generatora albo seedem, więc sam się nie uruchamia, a skrypt `files/scripts/demo-data.sh`
-  odmawia bez `DEMO_DATA_CONFIRM` (kod 64). W `prod` (`medium`, po zgodzie `server`) Job powstaje wyłącznie z celu
+  odmawia bez `DEMO_DATA_CONFIRM` (kod 64). W `prod` (profil `server`) Job powstaje wyłącznie z celu
   `make -C infra/k8s generate` po zgodzie użytkownika: zamyka sklep NetworkPolicy `shop-closed` (jedyna, tymczasowa;
   poza chartem), a po udanym Jobie `make -C infra/k8s open` sprawdza dane i otwiera go; nieudany przebieg zostawia
   sklep zamknięty. Strażnik wolnego miejsca
@@ -475,10 +484,11 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   instalatora; prawdziwe są sprawdzenia, zapisy plików i idempotencja), z odmową bez roota i na innym systemie przed
   zmianami. Ostatni krok sprawdza gitem na hoście, że `.gitignore` nie ignoruje certyfikatu
   `environments/prod/sealed-secrets.pem`. `check` chartu działa w części `checks part k8s` wymaganego
-  checku `checks`, gdy zmiana dotyka `infra/k8s/**` albo `.github/workflows/**` (`.github/scripts/scope.sh --k8s`; push na `epic/**` i błąd skryptu:
+  checku `checks`, gdy zmiana dotyka `infra/k8s/**`, `.github/workflows/**` albo `infra/docker-compose.yml` (`.github/scripts/scope.sh --k8s`; push na `epic/**` i błąd skryptu:
   zawsze), w jobie `k8s-check` przy każdym wdrożeniu (`deploy` go wymaga), a lokalnie i w bramkach AO woła go główny
-  `make check`. Zmiana compose albo realmów, której chart nie odzwierciedla, przechodzi więc CI swojego PR, gdy nie
-  zmienia `infra/k8s/**` ani workflowów, i zatrzymuje dopiero wdrożenie. Testy skryptu `.github/scripts/deploy-ref.sh` (lokalne repo bare, także odrzucony
+  `make check`. Obraz zmieniony w compose bez tagu i digestu w chartcie nie przechodzi więc `checks` swojego PR;
+  zmiana realmów, której chart nie odzwierciedla, a która nie zmienia `infra/k8s/**` ani workflowów, przechodzi CI
+  swojego PR i zatrzymuje dopiero wdrożenie. Testy skryptu `.github/scripts/deploy-ref.sh` (lokalne repo bare, także odrzucony
   non-fast-forward) i struktury rulesetów (`tools/rulesets`) uruchamia job narzędzi repo w `ci.yml`.
 - `make -C infra/k8s smoke`: buduje cztery obrazy produkcyjne lokalnie i importuje je do k3d (bez wypychania; nazwa
   klastra i porty z `COMPOSE_PROJECT_NAME` i `.env` worktree), instaluje chart z profilem `ci` na pustym klastrze,

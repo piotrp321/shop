@@ -92,21 +92,26 @@ Reguły Deptrac (nowe warstwy `Ordering_Domain`, `Ordering_Application`, `Orderi
 - `OrderNumber`: `R-` i liczba ≥ 100001 (P6).
 - `OrderOwner`: `guest` albo `customer(customerId)`; `customerId` to `sub` z tokena (1–255 znaków).
 - `IdempotencyKey`: 1–100 znaków `[A-Za-z0-9._:-]` (ten sam format co klucze Inventory).
-- `EmailAddress`: przycięty, do 254 znaków, poprawny adres (walidacja formatu w DTO: `Assert\Email` i ograniczenie
-  `MailerAcceptsEmail`, które buduje `Symfony\Component\Mime\Address` jak Mailer, więc `a..b@…`, `.a@…` i `a.@…`
-  dają 422 zamiast zamówienia bez e-maila; domena sprawdza długość, obecność `@` i brak znaków niedozwolonych).
-- Znaki sterujące `\x00-\x1F` i `\x7F`, U+0085, U+2028 i U+2029 (separatory linii i akapitu) oraz tekst, który nie
-  jest poprawnym UTF-8, są odrzucane w `email`, `fullName`, `phone`, `street`, `postalCode` i `city`, sprawdzane w
-  wartości w takiej postaci, w jakiej przyszła (`trim` usuwa NUL, tabulator i końce linii z brzegów, więc sprawdzenie po
-  przycięciu wpuściłoby je i zmieniło wartość po cichu). Wzorzec (z flagą `u`) jest w `ControlCharacters` (Ordering
-  Domain); DTO używa go w `Assert\Regex(match: false)` (niepoprawny UTF-8 też daje naruszenie, a `Length` przed nim
-  ma ten sam komunikat w `charsetMessage`), VO rzucają `InvalidOrderInput` (`ControlCharacters::in()` uznaje
-  niepoprawny UTF-8 za znak niedozwolony). Przycinanie tych pól zostaje `trim()` (tylko ASCII); jedynie notatka
-  pracownika przycina białe znaki Unicode (spec zarządzania zamówieniami, `StaffNote`).
+- Teksty kontaktu i adresu podlegają regule tekstu (`App\Shared\Domain\Text`, specyfikacja
+  `docs/features/api-input-contract/spec.md`, „Etap 2: reguła tekstu”): znaki niedozwolone (wszystkie znaki sterujące,
+  także C1, U+2028, U+2029 i tekst, który nie jest poprawnym UTF-8) są szukane w wartości w takiej postaci, w jakiej
+  przyszła, bo przycięcie usunęłoby część z nich z brzegów i zmieniło wartość po cichu; z brzegów znikają białe znaki
+  Unicode i znaki niewidoczne (U+200B, U+2060, U+FEFF, U+00AD); tekst bez znaku widocznego jest pusty. DTO sprawdza znaki
+  ograniczeniem `TextCharacters`, a puste pole i długość ograniczeniami z normalizacją reguły; VO rzucają
+  `InvalidOrderInput`. Pola z formatem (`email`, `phone`, `postalCode`) odpowiadają na znak niedozwolony komunikatem
+  formatu; w środku wartości nic nie jest usuwane, więc biały znak inny niż spacja ASCII (w telefonie spacja i myślnik)
+  w środku łamie format. Przypadki: „Pola z formatem: przypadki” w tamtej specyfikacji.
+- `EmailAddress`: przycięty według reguły, do 254 znaków, poprawny adres (walidacja formatu w DTO: `Assert\Email`
+  i ograniczenie `MailerAcceptsEmail`, które buduje `Symfony\Component\Mime\Address` z adresu przyciętego jak w
+  zamówieniu, więc `a..b@…`, `.a@…` i `a.@…` dają 422 zamiast zamówienia bez e-maila; domena sprawdza długość,
+  obecność `@` i brak znaków niedozwolonych). Wielkość liter zostaje; zamówienie i poczta mają ten sam adres.
 - `Contact {email, fullName, phone}`: `fullName` 1–100 znaków po przycięciu, bez znaków niedozwolonych; `phone`: 9 cyfr, opcjonalnie poprzedzone
   `+48`; spacje i myślniki są usuwane, zapis w postaci `+48NNNNNNNNN`.
 - `ShippingAddress {street, postalCode, city, country}`: `street` 1–100, `city` 1–60 znaków po przycięciu, oba bez znaków niedozwolonych,
   `postalCode` `NN-NNN`, `country` zawsze `PL`.
+- Odczyt zamówienia z bazy (`DoctrineOrderRepository`) buduje `Contact`, `EmailAddress` i `ShippingAddress`
+  konstruktorami `stored()` bez walidacji i bez przycinania: zamówienie zapisane przed ostrzejszą regułą daje się
+  odczytać, opłacić, wygasić, zmienić i wysłać jego e-maile.
 - `Money`: nieujemne grosze (`int`) i `Currency` (tylko `PLN`).
 - `PriceCopy {net, vat, gross, vatRateBp, taxClass}`: cena jednostkowa skopiowana z wyceny Pricing; `net + vat = gross`.
   To cena skuteczna z chwili złożenia: w aktywnej promocji cena promocyjna (netto i VAT ze stawki ceny katalogowej,
@@ -422,8 +427,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | `cartId` | brak, `null` | Identyfikator koszyka jest wymagany. |
 | `cartId` | nie UUID | Identyfikator koszyka musi być UUID. |
 | `email` | brak, `null`, pusty | Adres e-mail jest wymagany. |
-| `email` | zły format (także taki, jakiego nie przyjmie Mailer), znak niedozwolony (sterujący, U+0085, U+2028, U+2029, niepoprawny UTF-8) albo > 254 znaki | Podaj poprawny adres e-mail. |
-| `fullName` | brak, pusty po przycięciu | Imię i nazwisko są wymagane. |
+| `email` | zły format (także taki, jakiego nie przyjmie Mailer), znak niedozwolony reguły tekstu albo > 254 znaki po przycięciu | Podaj poprawny adres e-mail. |
+| `fullName` | brak, pusty po przycięciu (bez znaku widocznego) | Imię i nazwisko są wymagane. |
 | `fullName` | > 100 znaków | Imię i nazwisko mogą mieć najwyżej 100 znaków. |
 | `fullName` | znak niedozwolony (jak wyżej) | Imię i nazwisko zawierają niedozwolone znaki. |
 | `phone` | brak, pusty | Numer telefonu jest wymagany. |

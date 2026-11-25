@@ -65,7 +65,9 @@ Sesja prowadząca pracuje w swoim worktree na gałęzi epiku. Jedna sesja prowad
 nowa sesja, a `/retro` po epiku biegnie w osobnej, nowej sesji.
 
 1. **Start.** Specyfikacja i plan są na `main`. Sesja zakłada gałąź epiku od `origin/main` (nazwa spoza `epic/*`, np.
-   `feat/<epik>`), wypycha ją z pierwszym commitem (np. „Status” planu: epik w toku) i otwiera draft PR do `main`. Po otwarciu PR zapisuje
+   `feat/<epik>`), wypycha ją z pierwszym commitem (np. „Status” planu: epik w toku) i otwiera draft PR do `main`
+   z opisem złożonym od razu ze stałych sekcji końcowego PR (nazwy i kolejność: krok 7, akapit „Opis końcowego PR ma
+   stałe sekcje…”); sekcje wypełnia w trakcie epiku, bez własnych nagłówków. Po otwarciu PR zapisuje
    punkt odniesienia: `python3 tools/metrics/metrics.py start <epik>` (nazwa epiku małymi literami, jak w `/retro <epik>`) z odczytem limitów subskrypcji (obiekt
    z `get_usage`). `start` sprawdza też wersję procesu („Wersja procesu” niżej) i odmawia przy rozbieżności albo gdy
    sesja prowadziła już inny epik; rozbieżność sesja obsługuje przed pierwszym zleceniem. Opcje, w tym wznowienie

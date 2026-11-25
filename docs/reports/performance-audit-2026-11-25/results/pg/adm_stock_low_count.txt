@@ -1,0 +1,61 @@
+-- adm_stock_low_count
+SELECT count(*) FROM (SELECT 1 FROM inventory_stock_item WHERE physical - reserved BETWEEN 1 AND 5 AND product_id IS NOT NULL GROUP BY product_id LIMIT 10001) bounded
+
+SET
+SET
+                                                                                          QUERY PLAN                                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=509.43..509.44 rows=1 width=8) (actual time=6.394..6.400 rows=1.00 loops=1)
+   Buffers: shared hit=1 read=51
+   ->  Limit  (cost=0.42..384.42 rows=10001 width=20) (actual time=0.032..5.958 rows=10001.00 loops=1)
+         Buffers: shared hit=1 read=51
+         ->  Group  (cost=0.42..573.36 rows=14922 width=20) (actual time=0.032..5.347 rows=10001.00 loops=1)
+               Group Key: inventory_stock_item.product_id
+               Buffers: shared hit=1 read=51
+               ->  Index Only Scan using inventory_stock_item_low_stock_idx on inventory_stock_item  (cost=0.42..535.75 rows=15047 width=16) (actual time=0.031..4.172 rows=11719.00 loops=1)
+                     Index Cond: (product_id IS NOT NULL)
+                     Heap Fetches: 0
+                     Index Searches: 1
+                     Buffers: shared hit=1 read=51
+ Planning:
+   Buffers: shared hit=122
+ Planning Time: 0.294 ms
+ Execution Time: 6.429 ms
+(16 rows)
+
+                                                                                          QUERY PLAN                                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=509.43..509.44 rows=1 width=8) (actual time=2.668..2.669 rows=1.00 loops=1)
+   Buffers: shared hit=52
+   ->  Limit  (cost=0.42..384.42 rows=10001 width=20) (actual time=0.015..2.292 rows=10001.00 loops=1)
+         Buffers: shared hit=52
+         ->  Group  (cost=0.42..573.36 rows=14922 width=20) (actual time=0.014..1.722 rows=10001.00 loops=1)
+               Group Key: inventory_stock_item.product_id
+               Buffers: shared hit=52
+               ->  Index Only Scan using inventory_stock_item_low_stock_idx on inventory_stock_item  (cost=0.42..535.75 rows=15047 width=16) (actual time=0.014..0.752 rows=11719.00 loops=1)
+                     Index Cond: (product_id IS NOT NULL)
+                     Heap Fetches: 0
+                     Index Searches: 1
+                     Buffers: shared hit=52
+ Planning Time: 0.091 ms
+ Execution Time: 2.683 ms
+(14 rows)
+
+                                                                                          QUERY PLAN                                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=509.43..509.44 rows=1 width=8) (actual time=2.957..2.958 rows=1.00 loops=1)
+   Buffers: shared hit=52
+   ->  Limit  (cost=0.42..384.42 rows=10001 width=20) (actual time=0.011..2.576 rows=10001.00 loops=1)
+         Buffers: shared hit=52
+         ->  Group  (cost=0.42..573.36 rows=14922 width=20) (actual time=0.010..1.985 rows=10001.00 loops=1)
+               Group Key: inventory_stock_item.product_id
+               Buffers: shared hit=52
+               ->  Index Only Scan using inventory_stock_item_low_stock_idx on inventory_stock_item  (cost=0.42..535.75 rows=15047 width=16) (actual time=0.009..0.828 rows=11719.00 loops=1)
+                     Index Cond: (product_id IS NOT NULL)
+                     Heap Fetches: 0
+                     Index Searches: 1
+                     Buffers: shared hit=52
+ Planning Time: 0.069 ms
+ Execution Time: 2.971 ms
+(14 rows)
+

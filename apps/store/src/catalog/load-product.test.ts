@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeDetails, makeOffer } from "./fixtures";
+import { nextCacheTagOf } from "./isr-tags";
 import { loadProduct } from "./load-product";
 
 const json = (body: unknown, status = 200, contentType = "application/json") =>
@@ -22,6 +23,15 @@ function stubApi(handler: (url: URL) => Response | Promise<Response>) {
     }),
   );
   return calls;
+}
+
+const BUCKET = /^product-bucket-[0-9a-f]{4}$/;
+
+/** The tags of a read: catalog and one bucket, and no tag carries the id or the slug of the product. */
+function expectBucketTags(tags: string[] | undefined, apiTag: string, ...secrets: string[]) {
+  expect(tags).toEqual(["catalog", nextCacheTagOf(apiTag)]);
+  expect(tags?.[1]).toMatch(BUCKET);
+  for (const secret of secrets) for (const tag of tags ?? []) expect(tag.toLowerCase()).not.toContain(secret.toLowerCase());
 }
 
 const okApi = (url: URL) => (url.pathname.startsWith("/api/v1/products/") ? json(DETAILS) : json({ items: [OFFER] }));
@@ -52,23 +62,23 @@ describe("loadProduct", () => {
     ]);
   });
 
-  it("tags the details with catalog and the slug, and the offer with catalog and the product", async () => {
+  it("tags the details with catalog and the bucket of the slug tag, and the offer with catalog and the bucket of the product tag", async () => {
     const calls = stubApi(okApi);
     await loadProduct("produkt-1");
-    expect(calls[0].init?.next?.tags).toEqual(["catalog", "product-slug-produkt-1"]);
-    expect(calls[1].init?.next?.tags).toEqual(["catalog", `product-${DETAILS.id}`]);
+    expectBucketTags(calls[0].init?.next?.tags, "product-slug-produkt-1", "produkt-1", DETAILS.id);
+    expectBucketTags(calls[1].init?.next?.tags, `product-${DETAILS.id}`, "produkt-1", DETAILS.id);
   });
 
-  it("tags the read of a slug that is not found with its slug, so the publication of the product revalidates it", async () => {
+  it("tags the read of a slug that is not found with the bucket of its slug tag, so the publication of the product revalidates it", async () => {
     const calls = stubApi(() => problem(404));
     await loadProduct("kurtka-puchowa-2");
-    expect(calls[0].init?.next?.tags).toEqual(["catalog", "product-slug-kurtka-puchowa-2"]);
+    expectBucketTags(calls[0].init?.next?.tags, "product-slug-kurtka-puchowa-2", "kurtka-puchowa-2");
   });
 
-  it("tags a slug of 200 characters", async () => {
+  it("tags a slug of 200 characters with the bucket of its slug tag", async () => {
     const calls = stubApi(() => problem(404));
     await loadProduct("a".repeat(200));
-    expect(calls[0].init?.next?.tags).toEqual(["catalog", `product-slug-${"a".repeat(200)}`]);
+    expectBucketTags(calls[0].init?.next?.tags, `product-slug-${"a".repeat(200)}`, "a".repeat(200));
   });
 
   it.each([
@@ -90,13 +100,15 @@ describe("loadProduct", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("writes the product tag with the id in lower case", async () => {
+  it("takes the bucket of the product tag with the id in lower case", async () => {
     const id = "ABCDEF00-0000-4000-8000-00000000000A";
+    // The upper-case name falls into another bucket, so the test tells the two apart.
+    expect(nextCacheTagOf(`product-${id}`)).not.toBe(nextCacheTagOf(`product-${id.toLowerCase()}`));
     const calls = stubApi((url) =>
       url.pathname.startsWith("/api/v1/products/") ? json({ ...DETAILS, id }) : json({ items: [{ ...OFFER, productId: id }] }),
     );
     await loadProduct("produkt-1");
-    expect(calls[1].init?.next?.tags).toEqual(["catalog", `product-${id.toLowerCase()}`]);
+    expectBucketTags(calls[1].init?.next?.tags, `product-${id.toLowerCase()}`, id);
   });
 
   it("answers not-found for a 404 of the details, without asking for the offer", async () => {

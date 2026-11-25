@@ -190,7 +190,7 @@ jak `productId` w `/api/v1/product-offers`) wysyła bez zmian:
 | Parametr | Walidacja (400 z `violations`) | Znaczenie |
 |---|---|---|
 | `category` | UUID; nieznana kategoria: 404 | kategoria z podkategoriami |
-| `q` | po przycięciu 2–100 znaków | fraza (S8) |
+| `q` | reguła tekstów (`docs/features/api-input-contract/spec.md`, T1–T4): 2–100 znaków po przycięciu białych znaków i znaków niewidocznych z końców; znak sterujący albo separator linii to „Szukana fraza zawiera niedozwolone znaki.” | fraza (S8), szukana po przycięciu |
 | `option` | powtarzany `<oś>:<wartość>` (podział na pierwszym `:`), do 50 wpisów, do 5 różnych osi; oś 1–30, wartość 1–40 znaków; forma `option[]` jest odrzucana | wartości osi (S2) |
 | `priceMin`, `priceMax` | napis z samych cyfr (do 12), grosze, `priceMin ≤ priceMax` | zakres ceny brutto (S2) |
 | `available` | `true` | tylko produkty z wariantem możliwym do kupienia (S2) |

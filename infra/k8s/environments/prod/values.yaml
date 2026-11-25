@@ -78,14 +78,15 @@ backup:
   secretName: shop-backup
 
 # The demo data in scale on the server (docs/features/demo-scale/spec.md, "Job generatora na serwerze (chart)"): the suspended CronJob
-# demo-data, whose Job only make -C infra/k8s generate creates (after the consent of the owner). First medium, then server after the
-# analysis of medium and another consent (U2): changing the profile is a PR with this value and a deployment. The anchor stays the same,
-# so that generating again gives the same data. The Secret of the photo pool exists only for a run (make generate creates and deletes
-# it). The guard stops the generator at 32 GB free (just above the alert NodeDiskFull and the watermarks of Elasticsearch). The time
-# limits: medium 6 h, server 24 h (U6); both are estimates, not measurements on this server.
+# demo-data, whose Job only make -C infra/k8s generate creates (after the consent of the owner). The profile is server, the second step
+# after the run of medium and its analysis (U2); every run needs its own consent, and going back to medium is a PR with this value and a
+# deployment. The anchor stays the same, so that generating again gives the same data. The Secret of the photo pool exists only for a
+# run (make generate creates and deletes it). The guard stops the generator at 32 GB free (just above the alert NodeDiskFull and the
+# watermarks of Elasticsearch). The time limits: medium 6 h (its Job took 67 minutes on this server), server 24 h (U6; an estimate
+# from that run, not a measurement).
 demoData:
   enabled: true
-  profile: medium
+  profile: server
   anchor: "2026-11-19T00:00:00Z"
   photosSecretName: demo-photos
   minFreeGb: 32

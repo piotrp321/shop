@@ -7,7 +7,11 @@ pola, przebiegi, komendy) opisują specyfikacje w `docs/features/<funkcja>/spec.
 ## Komendy
 
 Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
-- `check` – PHPStan, Deptrac, PHP CS Fixer
+- `check` – PHPStan, Deptrac, PHP CS Fixer i `audit`
+- `audit` – `composer audit --locked --no-dev --abandoned=report`: każde ogłoszenie bezpieczeństwa dla pakietu
+  produkcyjnego z `composer.lock` kończy cel błędem (ogłoszenia nie mają wagi), pakiety porzucone są tylko wypisywane;
+  błąd narzędzia i brak sieci to też błąd. Wyjątek to wyłącznie wpis `config.audit.ignore` w `composer.json`
+  z identyfikatorem ogłoszenia i powodem; zwykle zależność się aktualizuje (`composer update <pakiet>`)
 - `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ); dodatkowe
   argumenty PHPUnit w `PHPUNIT_ARGS`, np. `make -C apps/api test-unit PHPUNIT_ARGS='--filter CartTest'`.
   CI uruchamia suity `unit`, `integration`, `demo-data`, `demo-data-orders` i `functional` z `phpunit.dist.xml` po
@@ -75,6 +79,18 @@ używa `ApplicationTester` (`setAutoExit(false)`), bo `CommandTester` wyjątku n
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.
 - Brak wspólnych value objectów między contextami. Każdy context ma własne (np. `Price` w Pricing i `Amount` w Payment).
+  Wspólna jest tylko higiena tekstu, która nie jest pojęciem żadnego contextu: reguła tekstów wpisywanych przez ludzi
+  (znaki niedozwolone, przycinanie brzegów, tekst pusty, długość) jest wyłącznie w `App\Shared\Domain\Text`. Value
+  objecty i klasy żądań tekstów pod tą regułą wołają `Text` zamiast własnych wzorców, a same value objecty zostają
+  własne dla contextu (limity, komunikaty). Pola z listy „Pola tekstowe poza regułą”
+  (`docs/features/api-input-contract/spec.md`) mają własne reguły w swoich value objectach.
+- Odczyt z bazy nie waliduje tekstów pod regułą `Text`: repozytoria i handlery odczytu odtwarzają je z wiersza
+  nazwanym konstruktorem bez walidacji i bez przycinania (`stored()`), więc wiersz zapisany przed ostrzejszą
+  regułą daje się odczytać i przetworzyć. Regułę stosuje zapis przez domenę (żądanie, seedy). Generator danych demo
+  zapisuje tabele przez COPY, a nie przez agregaty, więc każdy tekst pod regułą, który zapisuje, musi być w postaci,
+  którą reguła zachowuje; pilnują tego testy kontraktu (`GeneratedText`).
+  `reconstitute()` zostaje nazwą odtworzenia agregatu, nie value objectu: po niej `DemoDataBoundaryTest` rozpoznaje
+  agregaty.
 - Deptrac pilnuje tych granic. Jeśli Deptrac zgłasza błąd, popraw projekt, nie edytuj `deptrac.yaml`.
 
 ### Pułapki Doctrine (powód wyjątków niżej)
@@ -261,6 +277,13 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   (`tests/Functional/Shared/InputContract`, pliki `*Cases.php` według modułu). Strażnik zamkniętej listy
   (`ClosedInputListTest`) przerywa test, gdy parametr zapytania albo `Idempotency-Key` opisany w OpenAPI nie ma wiersza
   albo trasa `/api/v1` nie jest opisana w `openapi.json` ani `openapi-admin.json`.
+- Nowe pole tekstowe treści żądania (właściwość typu `string` bez `enum` i bez formatu `uuid`, `date-time`, `date`,
+  `binary`; `email` też; także pole bez `type` oraz obiekt albo lista bez opisu składowych) albo parametr `q` dostaje
+  wiersz w tabeli testu kontraktu tekstów (`TextRows`, pliki `*TextRows.php` według modułu
+  w `tests/Functional/Shared/InputContract`) albo wpis z powodem na liście wyjątków
+  strażnika (`TextFieldExceptions`; pola o zamkniętym alfabecie albo własnym formacie, treść webhooka weryfikowana
+  podpisem dostawcy). Strażnik zamkniętej listy (`ClosedTextFieldListTest`) przerywa test, gdy opisane w OpenAPI pole
+  tekstowe nie ma wiersza ani wpisu.
 - Parametry, których błąd typu (`q[]=…`) ma dawać ten sam polski komunikat co zła wartość, są w DTO typu `mixed`
   i sprawdzane w callbackach (np. `sort` list panelu, `q` zamówień, klientów i kodów, `level`, `images`,
   `productId`).

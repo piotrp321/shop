@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { createApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { CATALOG_TAG } from "./isr-tags";
 
 type CategoryNode = components["schemas"]["CategoryNode"];
 
@@ -15,7 +16,7 @@ export async function loadCategoryTree(): Promise<CategoryNode[]> {
   if (!baseUrl) {
     throw new Error("API_CATALOG_URL is not set.");
   }
-  const { data, response } = await createApiClient({ baseUrl, tags: ["catalog"] }).GET("/api/v1/categories");
+  const { data, response } = await createApiClient({ baseUrl, tags: [CATALOG_TAG] }).GET("/api/v1/categories");
   if (data === undefined) {
     throw new Error(`GET /api/v1/categories failed with status ${response.status}.`);
   }

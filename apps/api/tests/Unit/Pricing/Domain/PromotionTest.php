@@ -165,6 +165,13 @@ final class PromotionTest extends TestCase
         yield 'a line separator inside' => ["a\u{2028}b"];
         yield 'a paragraph separator inside' => ["a\u{2029}b"];
         yield '101 characters between no-break spaces' => ["\u{A0}".str_repeat('ą', 101)."\u{A0}"];
+        yield 'only a hangul filler, which is not seen' => ["\u{3164}"];
+        yield 'only a joiner and a mark of direction' => ["\u{200D}\u{200E}"];
+        yield 'a C1 control character inside' => ["a\u{9F}b"];
+        yield 'a next line inside' => ["a\u{85}b"];
+        yield 'a line separator at the end, which trimming would drop' => ["Promo\u{2028}"];
+        yield 'a paragraph separator at the end, which trimming would drop' => ["Promo\u{2029}"];
+        yield 'a NUL at the end, which trimming would drop' => ["Promo\0"];
     }
 
     #[DataProvider('invalidNames')]
@@ -192,6 +199,30 @@ final class PromotionTest extends TestCase
         );
 
         self::assertSame($name, $promotion->name());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function namesToKeep(): iterable
+    {
+        yield 'the flag of England at the end' => ["Wyprzedaż \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}"];
+        yield 'an emoji with a joiner at the end' => ["Wyprzedaż \u{1F469}\u{200D}\u{1F4BB}"];
+        yield 'a heart with a variation selector at the end' => ["Wyprzedaż \u{2764}\u{FE0F}"];
+        yield 'Polish letters' => ['Zażółć gęślą jaźń'];
+    }
+
+    #[DataProvider('namesToKeep')]
+    public function testANameEndingWithAFormatCharacterOfAVisibleOneIsKeptAsItIs(string $name): void
+    {
+        $promotion = Promotion::plan(
+            PromotionId::fromString(self::ID), $name, PercentOff::of(10), null, new \DateTimeImmutable('2026-12-01T00:00:00Z'), self::variants(self::A), null, self::now(),
+        );
+        self::assertSame($name, $promotion->name());
+
+        $revised = $this->planned('2026-11-11T00:00:00Z', '2026-11-21T00:00:00Z');
+        $revised->revise($name, PercentOff::of(10), null, new \DateTimeImmutable('2026-11-21T00:00:00Z'), self::variants(self::A), null, self::now());
+        self::assertSame($name, $revised->name());
     }
 
     #[DataProvider('invalidNames')]

@@ -45,6 +45,10 @@ final class DeliveryMethodValuesTest extends TestCase
         yield 'Polish letters' => ['Kurier ŁÓDŹ żółć', 'Kurier ŁÓDŹ żółć'];
         yield 'trimmed of Unicode spaces' => ["\u{3000}Kurier\u{2003} ", 'Kurier'];
         yield 'spaces inside kept' => ['Kurier  ekspresowy', 'Kurier  ekspresowy'];
+        yield 'trimmed of zero width spaces' => ["\u{200B}\u{FEFF}Kurier\u{2060}\u{AD}", 'Kurier'];
+        yield 'a hundred characters once trimmed of zero width spaces' => ["\u{200B}".str_repeat('a', 100)."\u{200B}", str_repeat('a', 100)];
+        yield 'ending with the flag of England' => ["Kurier \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}", "Kurier \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}"];
+        yield 'an emoji with U+200D' => ["Kurier \u{1F469}\u{200D}\u{1F4BB}", "Kurier \u{1F469}\u{200D}\u{1F4BB}"];
     }
 
     #[DataProvider('validNames')]
@@ -62,6 +66,11 @@ final class DeliveryMethodValuesTest extends TestCase
         yield 'ASCII spaces only' => ['   ', self::NAME_REQUIRED];
         yield 'a no-break space only' => ["\u{A0}", self::NAME_REQUIRED];
         yield 'Unicode spaces only' => [" \u{3000}\u{2003}\u{202F}", self::NAME_REQUIRED];
+        yield 'a zero width space only' => ["\u{200B}", self::NAME_REQUIRED];
+        yield 'a Hangul filler only' => ["\u{3164}", self::NAME_REQUIRED];
+        yield 'invisible characters only' => ["\u{FEFF}\u{AD}\u{2060}\u{200E}\u{202E}\u{200D}", self::NAME_REQUIRED];
+        yield 'a C1 control character' => ["Kur\u{9F}ier", self::NAME_CHARACTERS];
+        yield 'a C1 control character at the end' => ["Kurier\u{80}", self::NAME_CHARACTERS];
         yield 'a hundred and one characters' => [str_repeat('a', 101), self::NAME_TOO_LONG];
         yield 'a NUL byte' => ["Kur\0ier", self::NAME_CHARACTERS];
         yield 'a line separator' => ["Kur\u{2028}ier", self::NAME_CHARACTERS];
@@ -88,6 +97,8 @@ final class DeliveryMethodValuesTest extends TestCase
         yield 'null is no description' => [null, ''];
         yield 'empty' => ['', ''];
         yield 'Unicode spaces only' => ["\u{A0}\u{3000} ", ''];
+        yield 'invisible characters only' => ["\u{200B}\u{3164}", ''];
+        yield 'trimmed of zero width spaces' => ["\u{200B}Jutro\u{200B}", 'Jutro'];
         yield 'two hundred characters' => [str_repeat('ż', 200), str_repeat('ż', 200)];
         yield 'trimmed' => ["  Dostawa w 2–3 dni robocze\u{A0}", 'Dostawa w 2–3 dni robocze'];
     }
@@ -108,6 +119,7 @@ final class DeliveryMethodValuesTest extends TestCase
         yield 'a carriage return' => ["Dostawa\r", self::DESCRIPTION_CHARACTERS];
         yield 'a NUL byte' => ["Dostawa\0", self::DESCRIPTION_CHARACTERS];
         yield 'a line separator' => ["Dostawa\u{2028}", self::DESCRIPTION_CHARACTERS];
+        yield 'a C1 control character' => ["Dos\u{9F}tawa", self::DESCRIPTION_CHARACTERS];
         yield 'invalid UTF-8' => ["Dostawa \xFF", self::DESCRIPTION_CHARACTERS];
     }
 
@@ -115,6 +127,17 @@ final class DeliveryMethodValuesTest extends TestCase
     public function testAnInvalidDescriptionIsRefusedAtItsField(string $description, string $message): void
     {
         $this->assertRefused(static fn () => DeliveryMethodDescription::of($description), 'description', $message);
+    }
+
+    /**
+     * A stored text is read as it is, also one the rule refuses (docs/features/api-input-contract/spec.md, E7).
+     */
+    public function testAStoredNameAndDescriptionAreReadWithoutTheRule(): void
+    {
+        foreach (["\u{200B}", "Kurier\u{9F}", "Kurier\t", " Kurier\u{A0}"] as $stored) {
+            self::assertSame($stored, DeliveryMethodName::stored($stored)->toString());
+            self::assertSame($stored, DeliveryMethodDescription::stored($stored)->toString());
+        }
     }
 
     /**

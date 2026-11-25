@@ -18,6 +18,7 @@ use App\DemoData\Catalog\Dictionaries;
 use App\DemoData\Catalog\ProductGenerator;
 use App\DemoData\Catalog\ProductSpec;
 use App\DemoData\Identity\DemoUuid;
+use App\DemoData\Photo\PhotoAssigner;
 use App\DemoData\Profile\Profiles;
 use App\DemoData\Random\Prng;
 use PHPUnit\Framework\TestCase;
@@ -167,7 +168,32 @@ final class ProductGeneratorTest extends TestCase
             self::assertContains($brand, $dictionaries->brands($type->department()));
             self::assertSame(Slug::slugify($spec->name).'-'.($spec->index + 1), $spec->slug);
             new Slug($spec->slug);
-            new ProductName($spec->name);
+            ProductName::of($spec->name);
+        }
+    }
+
+    /**
+     * The generator writes the texts of a product by COPY, past the rule of texts: the name, the description, the axes
+     * and the values of the variants, and the alt texts of the photos built from the name, are in the form the rule
+     * keeps (see GeneratedText).
+     */
+    public function testTheTextsOfTheProductsAreInTheFormOfTheRule(): void
+    {
+        $prng = Prng::forPart(self::profiles()->namespace, 'photos', 0);
+        foreach (self::small() as $spec) {
+            GeneratedText::assertInTheFormOfTheRule($spec->name, 'product name');
+            GeneratedText::assertInTheFormOfTheRule($spec->shortDescription, 'short description of '.$spec->name);
+            foreach ($spec->axes as $axis) {
+                GeneratedText::assertInTheFormOfTheRule($axis, 'axis of '.$spec->name);
+            }
+            foreach ($spec->variants as $variant) {
+                foreach ($variant->values as $value) {
+                    GeneratedText::assertInTheFormOfTheRule($value, 'variant value of '.$spec->name);
+                }
+            }
+            foreach (PhotoAssigner::assign($spec, ['a', 'b', 'c'], $prng) as $image) {
+                GeneratedText::assertInTheFormOfTheRule($image['alt'], 'alt text of '.$spec->name);
+            }
         }
     }
 
@@ -239,7 +265,7 @@ final class ProductGeneratorTest extends TestCase
     public function testTheDescriptionFitsTheCatalogAndIsBuiltFromTheTypeAndTheDepartment(): void
     {
         foreach (self::small() as $spec) {
-            new ShortDescription($spec->shortDescription);
+            ShortDescription::of($spec->shortDescription);
             self::assertStringStartsWith($spec->name.': ', $spec->shortDescription);
             self::assertStringEndsWith('.', $spec->shortDescription);
         }

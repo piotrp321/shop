@@ -1,0 +1,53 @@
+=== W1 qx x3
+ count 
+-------
+     0
+(1 row)
+
+Time: 1452.316 ms (00:01.452)
+ count 
+-------
+     0
+(1 row)
+
+Time: 723.909 ms
+=== W2 termos x2
+ count 
+-------
+    26
+(1 row)
+
+Time: 1075.191 ms (00:01.075)
+ count 
+-------
+    26
+(1 row)
+
+Time: 1068.268 ms (00:01.068)
+=== W3 small category x2
+ count 
+-------
+    20
+(1 row)
+
+Time: 6985.818 ms (00:06.986)
+ count 
+-------
+    20
+(1 row)
+
+Time: 9368.041 ms (00:09.368)
+=== W4 actual matches termos / qx
+ count 
+-------
+ 12920
+(1 row)
+
+Time: 181.093 ms
+=== W5 trgm of qx
+      show_trgm      |              show_trgm              
+---------------------+-------------------------------------
+ {"  q"," qx","qx "} | {"  t"," te",erm,mos,"os ",rmo,ter}
+(1 row)
+
+Time: 0.312 ms

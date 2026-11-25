@@ -1,0 +1,55 @@
+-- adm_stock_out_page
+SELECT product_id FROM inventory_stock_item WHERE physical - reserved = 0 AND product_id IS NOT NULL GROUP BY product_id ORDER BY product_id LIMIT 50
+
+SET
+SET
+                                                                                       QUERY PLAN                                                                                       
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..2.39 rows=50 width=16) (actual time=0.028..0.046 rows=50.00 loops=1)
+   Buffers: shared read=4
+   ->  Group  (cost=0.42..589.36 rows=14922 width=16) (actual time=0.028..0.039 rows=50.00 loops=1)
+         Group Key: product_id
+         Buffers: shared read=4
+         ->  Index Only Scan using inventory_stock_item_out_of_stock_idx on inventory_stock_item  (cost=0.42..551.74 rows=15047 width=16) (actual time=0.027..0.030 rows=58.00 loops=1)
+               Index Cond: (product_id IS NOT NULL)
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared read=4
+ Planning:
+   Buffers: shared hit=117 read=5
+ Planning Time: 0.335 ms
+ Execution Time: 0.073 ms
+(14 rows)
+
+                                                                                       QUERY PLAN                                                                                       
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..2.39 rows=50 width=16) (actual time=0.009..0.021 rows=50.00 loops=1)
+   Buffers: shared hit=4
+   ->  Group  (cost=0.42..589.36 rows=14922 width=16) (actual time=0.009..0.018 rows=50.00 loops=1)
+         Group Key: product_id
+         Buffers: shared hit=4
+         ->  Index Only Scan using inventory_stock_item_out_of_stock_idx on inventory_stock_item  (cost=0.42..551.74 rows=15047 width=16) (actual time=0.009..0.012 rows=58.00 loops=1)
+               Index Cond: (product_id IS NOT NULL)
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared hit=4
+ Planning Time: 0.029 ms
+ Execution Time: 0.026 ms
+(12 rows)
+
+                                                                                       QUERY PLAN                                                                                       
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..2.39 rows=50 width=16) (actual time=0.008..0.021 rows=50.00 loops=1)
+   Buffers: shared hit=4
+   ->  Group  (cost=0.42..589.36 rows=14922 width=16) (actual time=0.008..0.018 rows=50.00 loops=1)
+         Group Key: product_id
+         Buffers: shared hit=4
+         ->  Index Only Scan using inventory_stock_item_out_of_stock_idx on inventory_stock_item  (cost=0.42..551.74 rows=15047 width=16) (actual time=0.007..0.011 rows=58.00 loops=1)
+               Index Cond: (product_id IS NOT NULL)
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared hit=4
+ Planning Time: 0.055 ms
+ Execution Time: 0.031 ms
+(12 rows)
+

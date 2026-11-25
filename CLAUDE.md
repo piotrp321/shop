@@ -30,8 +30,11 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 - Komendy uruchamiaj przez Makefile, który opakowuje `docker compose exec`. Główny zarządza stosem i aplikacjami
   (`make up`/`down`/`logs`/`seed`/`check`/`test`/`e2e`/`api-client`); cele obszaru są w `make/<obszar>.mk` z opisem
   przy celu i dopisują się do `CHECK_TARGETS`, `TEST_TARGETS` albo `CI_AFTER_E2E` bez zmiany głównego `Makefile`.
-  Pracując w jednej aplikacji, używaj jej Makefile (`make -C apps/api check`). `check` = statyczna analiza i lint
-  (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc; główny woła też `make -C infra/k8s check`).
+  Pracując w jednej aplikacji, używaj jej Makefile (`make -C apps/api check`). `check` = statyczna analiza, lint
+  i audyt podatności zależności produkcyjnych (api: PHPStan, Deptrac, PHP CS Fixer, `composer audit`; store/admin:
+  ESLint, tsc, `npm audit`; główny woła też `make -C infra/k8s check` i kontrolę digestów obrazów bazowych
+  w `Dockerfile`, `tools/base-images/`). Audyt jest celem `audit` aplikacji, potrzebuje
+  sieci, a błąd narzędzia albo brak sieci to błąd; podatną zależność się aktualizuje, wyjątki: `apps/api/CLAUDE.md`.
 - Tryb sklepu wybiera `STORE_MODE` (`dev` domyślnie, `production` z `next build` i cache ISR), podawany przy każdym
   `make up` i tak samo przy `make e2e`; E2E w CI działa na `production`. Szczegóły: `e2e/CLAUDE.md`.
 - Każdy worktree ma lokalny `.env` (poza repo) z własnym `COMPOSE_PROJECT_NAME` i wolnymi portami, żeby stosy
@@ -112,17 +115,19 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
   `main` i `epic/**`; wymagane checki to `checks` i `e2e` (części E2E: `e2e/CLAUDE.md`). Zakres liczy
   `.github/scripts/scope.sh` (PR względem bazy, push na `main` według dodanych commitów, push na `epic/**` i błąd
   skryptu: pełne CI): zmiana tylko dokumentacji, narzędzi repo albo `infra/k8s` uruchamia część CI, a
-  `make -C infra/k8s check` biegnie w CI tylko przy zmianie w `infra/k8s/**` albo `.github/workflows/**` (ma testy
-  workflowów) i zawsze przed wdrożeniem z `main` (`deploy.yml`). Testy na usługach stosu trafiają do CI w tym samym PR
+  `make -C infra/k8s check` biegnie w CI tylko przy zmianie w `infra/k8s/**`, `.github/workflows/**` (ma testy
+  workflowów) albo `infra/docker-compose.yml` (tagi obrazów w chartcie) i zawsze przed wdrożeniem z `main`
+  (`deploy.yml`). Testy na usługach stosu trafiają do CI w tym samym PR
   co kod, razem z uruchomieniem usług, których potrzebują.
 - Zadania ustawiające reguły (lint, Deptrac, CORS i podobne) sprawdzają też próby obejścia, nie tylko przypadek
   podstawowy.
 - Chart `infra/k8s/charts/shop` odzwierciedla compose. Zmiana usług, obrazów i ich wersji, zmiennych środowiska,
   transportów workera, sekretów w compose (`infra/scripts/init-env.sh`) i zmiana realmów Keycloaka
-  (`infra/keycloak/realms`: nowy klient, rola, adres) wymaga tej samej zmiany w chartcie w tym samym PR. CI takiego PR
-  nie uruchamia `make -C infra/k8s check`, gdy PR nie zmienia `infra/k8s/**` ani workflowów: rozjazd wychodzi lokalnie
-  w głównym `make check` albo dopiero przed wdrożeniem. Szczegóły (co tego pilnuje, sekrety, digesty, kopie zapasowe,
-  logi, realmy w klastrze): `infra/k8s/CLAUDE.md`, „Chart a compose”.
+  (`infra/keycloak/realms`: nowy klient, rola, adres) wymaga tej samej zmiany w chartcie w tym samym PR. Zmiana
+  `infra/docker-compose.yml` uruchamia w CI `make -C infra/k8s check`, więc obraz zmieniony tylko w compose nie przechodzi
+  `checks`; zmianę realmów, która nie dotyka `infra/k8s/**` ani workflowów, wyłapuje dopiero lokalny `make check` albo
+  kontrola przed wdrożeniem. Szczegóły (co tego pilnuje, sekrety, digesty, kopie zapasowe, logi, realmy w klastrze,
+  PR-y Dependabota): `infra/k8s/CLAUDE.md`, „Chart a compose”.
 - Zadanie jest skończone dopiero, gdy przechodzą `make check` i testy aplikacji, której dotyczy zmiana (przy zmianie
   kilku aplikacji: `check` i testy wszystkich). Pokaż wynik, nie deklaruj.
 - Skrypty, komendy i cele Makefile testujemy także na ścieżce błędu (brak pliku, błąd narzędzia, niedziałająca usługa,
@@ -181,6 +186,13 @@ Obowiązuje autora i reviewera, w części, której dotyczy zmiana:
   i deserializacji frameworka.
 - **Unicode:** polskie znaki działają; znaki sterujące (NUL, U+2028) i same białe znaki Unicode (NBSP) w tekstach są
   odrzucane albo obsłużone (`trim()` i wyrażenia bez `/u` działają tylko na ASCII).
+- **Zmiana reguły porównania albo normalizacji** (przycinanie, wielkość liter, usuwane albo zastępowane znaki, klucz
+  unikalności, kursor, tożsamość): przypadki testów i przeglądu wynikają z różnicy starej i nowej reguły w każdym
+  miejscu, gdzie się spotykają, a nie tylko z przykładów specyfikacji i dzisiejszych danych: wartość zapisana według
+  starej reguły wobec wysłanej według nowej (zapis bez zmian przechodzi, tożsamość i klucz się zgadzają), dwie zapisane
+  wartości, które nowa reguła zrównuje (kolizja), i znak, który jedna warstwa usuwa, a inna zostawia (walidacja,
+  handler, zapytanie, indeks, klucz kursora). Przypadki wyszukuje się w kodzie (`git grep` miejsc, które porównują
+  albo liczą klucz z tego tekstu), nie z pamięci.
 - **Klawiatura, focus, etykiety:** każda kontrolka działa z klawiatury i ma etykietę; po akcji (zapis, dialog, błąd)
   focus trafia w sensowne miejsce; asynchroniczne statusy i błędy są w `aria-live`.
 - **Stany:** loading, empty i error dla każdego zapytania; ekran 375 px.

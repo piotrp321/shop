@@ -90,9 +90,9 @@ final readonly class CreateProductHandler
         $now = $this->clock->now();
         $product = Product::create(
             $id,
-            new ProductName($command->name),
+            ProductName::of($command->name),
             $slug,
-            new ShortDescription($command->shortDescription),
+            ShortDescription::of($command->shortDescription),
             $categories,
             TaxClassCode::from($command->taxClass),
             $images,

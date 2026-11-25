@@ -86,7 +86,7 @@ final class BackofficePricesController
 
         try {
             /** @var PriceList $list */
-            $list = $this->handle(new ListBackofficePrices($query->q, $query->category, $query->after, $query->perPage, $sort, $productId));
+            $list = $this->handle(new ListBackofficePrices($query->term(), $query->category, $query->after, $query->perPage, $sort, $productId));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

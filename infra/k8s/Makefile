@@ -133,16 +133,18 @@ restore:
 # Replaces the data of the shop with the demo data of a profile, or with the seed again (docs/features/demo-scale/spec.md):
 # make -C infra/k8s generate PROFILE=<seed|profile of the CronJob demo-data> GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...']
 # KUBE_DIR=<directory>. Only after the consent of the user in the conversation that names the operation, the host and the profile. Checks
-# without changes, says what it will do and asks for the word tak; then takes the lock demo-data-lock (make generate and make open run
-# one at a time), closes the shop, runs the Job demo-data-run and, after it completed, make open under its lock. A failure leaves the
-# shop closed (exit 1; 2 for wrong arguments). The variables: the header of scripts/generate.sh.
+# without changes (no active Job, except one of the CronJobs rate-limit-check, queue-check and order-expiry), says what it will do
+# and asks for the word tak; then takes the lock demo-data-lock (make generate and make open run one at a time), closes the shop, runs
+# the Job demo-data-run and, after it completed, make open under its lock. A failure leaves the shop closed (exit 1; 2 for wrong
+# arguments). The variables: the header of scripts/generate.sh.
 generate:
 	@sh scripts/ao-guard.sh generate
 	PROFILE="$(PROFILE)" sh scripts/generate.sh
 
 # Checks the data of the Job demo-data-run of make generate (that completed) and opens the shop; make generate runs it, by hand after a
 # run that stopped: make -C infra/k8s open GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...'] KUBE_DIR=<directory>.
-# Idempotent; holds the lock demo-data-lock to its end and refuses while another make generate or make open holds it, or a Job runs.
+# Idempotent; holds the lock demo-data-lock to its end and refuses while another make generate or make open holds it, or a Job runs
+# (not one of the CronJobs rate-limit-check, queue-check and order-expiry, as for make generate: active_jobs of scripts/shop-closed.sh).
 # Exit 1 when a check fails (the shop stays closed). The variables: the header of scripts/open.sh.
 open:
 	@sh scripts/ao-guard.sh open
@@ -150,7 +152,8 @@ open:
 
 # Rebuilds the search index of the cluster (docs/features/search/spec.md, "Infrastruktura"): make -C infra/k8s reindex KUBE_DIR=<directory>.
 # Only after the consent of the user in the conversation that names the operation and the host. Refuses without changes when a Job of
-# the namespace is active, make generate or make open holds the lock demo-data-lock, or the index of the alias products cannot be read;
+# the namespace is active (not one of the CronJobs rate-limit-check, queue-check and order-expiry), make generate or make open holds
+# the lock demo-data-lock, or the index of the alias products cannot be read;
 # says which index the alias is on and how many shards the new one gets (SEARCH_SHARDS of the deployed revision: elasticsearch.shards)
 # and asks for the word tak; then takes the lock (make generate and make open refuse meanwhile), reads the Jobs again, runs a Job of the
 # suspended CronJob reindex (catalog:reindex) and checks the index the alias is on after it. The shop stays open; a change written

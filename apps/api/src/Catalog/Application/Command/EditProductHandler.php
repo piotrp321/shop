@@ -88,9 +88,9 @@ final readonly class EditProductHandler
 
         $now = $this->clock->now();
         $product->edit(
-            new ProductName($command->name),
+            ProductName::of($command->name),
             $slug,
-            new ShortDescription($command->shortDescription),
+            ShortDescription::of($command->shortDescription),
             $categories,
             TaxClassCode::from($command->taxClass),
             $images,

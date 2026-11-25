@@ -106,15 +106,22 @@ produktu zachowuje go, wiersz bez identyfikatora dostaje nowy UUIDv7, identyfika
   dowolnie. Produkt bez osi, któremu dochodzą osie, zachowuje identyfikator wariantu domyślnego w wierszu, który go
   odeśle.
 - Od pierwszej publikacji (także po wycofaniu) wariant zachowuje tożsamość: osie mają tę samą liczbę i kolejność,
-  a każda nazwa ten sam klucz porównania (`mb_strtolower` po przycięciu); zachowany wariant ma ten sam
-  `VariantValues::comparisonKey()` (zmiana wielkości liter i spacji na brzegach jest dozwolona, np. „czarne” →
-  „Czarne”). Naruszenie to `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z zapisaną etykietą wariantu
-  albo nazwą osi w `detail`. Nowy wariant można dodać zawsze; inna zmiana znaczenia to dodanie nowego wariantu
+  a każda nazwa i każda wartość zachowanego wariantu tę samą tożsamość tekstu (`IdentityText`:
+  `docs/features/catalog-admin/spec.md`, K5; zmiana wielkości liter i znaków przycinanych z brzegów jest dozwolona,
+  np. „czarne” → „Czarne”, a tekst zapisany ze znakiem niedozwolonym przyjmuje swoją poprawkę). Wyjątek
+  (decyzja właściciela z 2026-11-25): druga oś, której zapisana nazwa powtarza zapisaną nazwę pierwszej po zastąpieniu
+  znaków niedozwolonych odstępem i przycięciu T2, bez względu na wielkość liter (zapis sprzed reguły tekstów, np.
+  „Kolor” i „Kolor” U+200B; nie „Kolor” i `Kol` U+009F `or`), może jednorazowo dostać nową nazwę, a pierwsza zostaje
+  chroniona (K5). Naruszenie to `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail`, który nazywa wariant albo oś
+  zapisanym tekstem bez znaków niedozwolonych i przycinanych z brzegów, z wskazówką poprawki dla tekstu odrzucanego
+  przez regułę (K5 w `docs/features/catalog-admin/spec.md`, „Tożsamość wariantu po publikacji”). Nowy wariant można dodać zawsze; inna zmiana znaczenia to dodanie nowego wariantu
   i usunięcie starego.
 - Usunięcie wariantu (wariantu nie ma w nowej liście; także przed publikacją): handler pyta port `VariantStockFacts`
   (`Catalog_Application`, adapter `QueryBusVariantStockFacts` w `Inventory_Infrastructure` nad `GetStockLevels`)
   o usuwane warianty ze stanem fizycznym > 0 albo zarezerwowanym > 0. Usunięcie takiego wariantu to `VariantInUse`
-  (`Conflict`, typ `variant-in-use`) z etykietą pierwszego takiego wariantu. Fakty są czytane bez blokady wierszy
+  (`Conflict`, typ `variant-in-use`) z nazwą pierwszego takiego wariantu
+  (jego zapisane wartości po przecinku, bez znaków niedozwolonych i przycinanych; „Wariant domyślny” bez wartości,
+  „Wariant bez widocznej wartości”, gdy żadna nie ma znaku widocznego; K5 w `catalog-admin`). Fakty są czytane bez blokady wierszy
   Inventory.
 - Usunięty wariant znika z `catalog_product_variant`. Jego cena, stan i historie zostają w Pricing i Inventory
   (niewidoczne w panelu, bo listy idą po wariantach Catalog), a linia koszyka z nim ma stan `unavailable_product`

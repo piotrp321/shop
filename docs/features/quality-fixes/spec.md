@@ -25,7 +25,7 @@ Zakres: `apps/api/src/Cart/UI/Http`, `apps/api/tests/Functional/Cart`, `apps/api
 | #130 | Bez zadania: kryterium issue jest nieaktualne (CATALOG-ADMIN K5 celowo zmienia warianty przez `save()`); końcowy PR epiku zamyka issue. |
 | #248 | Klucz porównania liczy domena: `DROP EXPRESSION` na `values_key`, kolumna dopuszcza NULL, repozytorium zapisuje klucz z `comparisonKey()`; `NOT NULL` w osobnej, późniejszej zmianie. |
 | #257 | Brak dowolnego klucza (także takiego, który dopuszcza `null`) daje 422 „To pole jest wymagane.” przy kluczu; kontrakt OpenAPI bez zmian. Wszystkie siedem endpointów (Ordering, Inventory, Pricing), jeden wspólny mechanizm w `apps/api/src/Shared/UI/Http`. |
-| #256 | Ostrzejszy `ControlCharacters` obejmuje wszystkie jednoliniowe pola Ordering (notatka, dane kontaktowe, adres zamówienia). |
+| #256 | Ostrzejsza reguła znaków obejmuje wszystkie jednoliniowe pola Ordering (notatka, dane kontaktowe, adres zamówienia). |
 | #247 | Krótki opis może zawierać LF; z samych białych znaków jest pusty i przyjęty. Pozostałe teksty produktu są jednoliniowe. |
 | #341 | Poprawka obejmuje też `PromotionFormView.vue` i `ProductFormView.vue` (F9 z #251); #251 zostaje otwarte z pozostałymi punktami. |
 
@@ -83,27 +83,28 @@ webhook secret”, bez słowa „signature”; niepusty sekret działa jak dotą
 
 ## #247: znaki sterujące i białe znaki Unicode w tekstach produktu
 
-**Problem.** `ValidProductWriteValidator` (`apps/api/src/Catalog/UI/Http/Validation/`) sprawdza pustkę przez `trim()` (tylko
-ASCII) i nie odrzuca znaków sterujących; value objecty domeny też używają `trim()`. NUL w `images[].alt`
-i `variantAxes[]` daje 500 (jsonb), w `name`, `shortDescription` i wartościach wariantów zapis z uciętą wartością.
-Nazwa, oś albo wartość z samych NBSP przechodzi (nazwa z NBSP daje naruszenie przy `slug`, nie przy `name`). Walidator
-kopiuje limity domeny jako literały.
+**Problem.** `ValidProductWriteValidator` (`apps/api/src/Catalog/UI/Http/Validation/`) sprawdzał pustkę przez `trim()`
+(tylko ASCII) i nie odrzucał znaków sterujących; value objecty domeny też używały `trim()`. NUL w `images[].alt`
+i `variantAxes[]` dawał 500 (jsonb), w `name`, `shortDescription` i wartościach wariantów zapis z uciętą wartością.
+Nazwa, oś albo wartość z samych NBSP przechodziła (nazwa z NBSP dawała naruszenie przy `slug`, nie przy `name`).
+Walidator kopiował limity domeny jako literały.
 
 **Zachowanie.**
-- Jedna klasa reguł tekstu, `ProductText`, w `apps/api/src/Catalog/Domain/Product` (własna kopia, wzorem
-  `Ordering\Domain\ControlCharacters`; bez wspólnych value objectów między modułami): przycinanie białych znaków Unicode
-  (`\s` i `\p{Z}` z `/u`), wykrywanie znaków niedozwolonych: C0 i DEL (U+0000–U+001F, U+007F) oraz U+0085, U+2028,
-  U+2029, z wyjątkiem LF (U+000A) w krótkim opisie. Niepoprawny UTF-8 (błąd wyrażenia) to znak niedozwolony. Używają jej
-  value objecty (`ProductName`, `ShortDescription`, `ProductImage`, `VariantAxes`, `VariantValues`) i walidator.
+- Reguła tekstów produktu to wspólna reguła `App\Shared\Domain\Text` (`docs/features/api-input-contract/spec.md`,
+  „Etap 2: reguła tekstu”): przycinanie białych znaków Unicode i czterech znaków niewidocznych z końców, wykrywanie
+  znaków niedozwolonych (wszystkie znaki sterujące, także C1, oraz U+2028 i U+2029), z wyjątkiem LF (U+000A) w krótkim
+  opisie. Niepoprawny UTF-8 to znak niedozwolony. Używają jej value objecty (`ProductName`, `ShortDescription`,
+  `ProductImage`, `VariantAxes`, `VariantValues`) i walidator.
 - Znak niedozwolony w `name`, `shortDescription`, `images[].alt`, `variantAxes[]` albo wartości wariantu → 422 przy polu
   z komunikatem „Nazwa produktu zawiera niedozwolone znaki.”, „Krótki opis zawiera niedozwolone znaki.”, „Tekst
   alternatywny zawiera niedozwolone znaki.”, „Nazwa osi zawiera niedozwolone znaki.” albo „Wartość wariantu zawiera
   niedozwolone znaki.” (styl Ordering). Niepoprawny UTF-8 w treści JSON (bajt poza UTF-8, samotny surogat `\udc80`)
   nie dociera do walidatora: dekoder odpowiada 400 i nic się nie zapisuje; reguła dla takiego tekstu działa w walidatorze
   i value objectach.
-- Tekst z samych białych znaków Unicode w `name`, `images[].alt`, osi albo wartości wariantu → 422 przy tym polu z tym
-  samym komunikatem co pusty („Podaj nazwę produktu.”, „Podaj tekst alternatywny zdjęcia.”, „Nazwa osi musi mieć od 1 do
-  30 znaków.”, „Wartość musi mieć od 1 do 40 znaków.”), nie przy `slug`. Krótki opis z samych białych znaków po
+- Tekst bez znaku widocznego (same białe znaki Unicode albo znaki niewidoczne) w `name`, `images[].alt`, osi albo
+  wartości wariantu → 422 przy tym polu z tym samym komunikatem co pusty („Podaj nazwę produktu.”, „Podaj tekst
+  alternatywny zdjęcia.”, „Nazwa osi musi mieć od 1 do 30 znaków.”, „Wartość musi mieć od 1 do 40 znaków.”), nie przy
+  `slug`. Krótki opis bez znaku widocznego po
   przycięciu jest pusty i zostaje przyjęty (pole opcjonalne). Zapisywane są teksty przycięte, a długość liczy się po
   przycięciu.
 - Limity długości walidator bierze ze stałych domeny (publicznych), bez literałów.
@@ -113,8 +114,8 @@ kopiuje limity domeny jako literały.
 końcu w każdym polu → 422 przy polu, LF odrzucony poza krótkim opisem; niepoprawny UTF-8 w treści JSON → 400, nic nie
 zapisane; same białe znaki Unicode (NBSP, U+3000) w polach wymaganych → 422 jak pusty tekst, w krótkim opisie → zapis
 pustego opisu; LF w krótkim opisie zapisany; zapis tekstów przyciętych i limity liczone po przycięciu. Testy
-jednostkowe klasy reguł (`ProductTextTest`), value objectów (`ProductTextRulesInValueObjectsTest`) i walidatora
-(`ProductWriteValidationTest`).
+jednostkowe reguły (`TextTest`), value objectów (`ProductTextRulesInValueObjectsTest`) i walidatora
+(`ProductWriteValidationTest`, `ProductWriteTextRulesTest`).
 
 ## #248: duplikat wariantu według bazy, nie domeny
 
@@ -146,24 +147,23 @@ zapisane, `values_key` to klucz porównania domeny, wiersze bez klucza pomijane 
 
 ## #256: notatka pracownika z białymi znakami Unicode
 
-**Problem.** `StaffNote::optional()` (`apps/api/src/Ordering/Domain/StaffNote.php`) przycina `trim()`, a
-`ControlCharacters::PATTERN` (`/[\x00-\x1F\x7F]/`) nie ma `/u` ani separatorów linii. Notatka z samym NBSP albo z U+2028
-daje 200 i zapis.
+**Problem.** `StaffNote::optional()` (`apps/api/src/Ordering/Domain/StaffNote.php`) przycinał `trim()`, a
+`ControlCharacters::PATTERN` (`/[\x00-\x1F\x7F]/`) nie miał `/u` ani separatorów linii. Notatka z samym NBSP albo
+z U+2028 dawała 200 i zapis.
 
 **Zachowanie.**
-- `ControlCharacters` odrzuca też U+0085, U+2028 i U+2029 (wzorzec z `/u`); niepoprawny UTF-8 (błąd wyrażenia) to znak
-  niedozwolony. Dotyczy wszystkich jednoliniowych pól Ordering, które go używają: notatki, danych kontaktowych (imię
-  i nazwisko, e-mail), adresu zamówienia (ulica, miejscowość, kod pocztowy) w `PlaceGuestOrderRequest`
-  i `PlaceCustomerOrderRequest`. `Assert\Length` pól imienia i nazwiska, ulicy, miejscowości, e-maila i notatki ma
-  `charsetMessage` z komunikatem pola, więc niepoprawny UTF-8 daje to samo naruszenie co znak niedozwolony. `docs/features/order-management/spec.md`
-  i `docs/features/checkout/spec.md` opisują regułę; opisy pól w OpenAPI
-  (`openapi.json`, `openapi-admin.json`) i kliencie panelu są wyeksportowane od nowa (wzorzec z `/u` nie trafia już do
-  specyfikacji jako `pattern`).
-- `StaffNote::trim()` przycina białe znaki Unicode (`\s` i `\p{Z}`, także NBSP), a `StaffNote::optional()` używa go przed
-  liczeniem długości; notatka z samych białych znaków jest brakiem notatki (dla anulowania i zwrotu 422 „Notatka jest
-  wymagana.”, dla pozostałych przejść bez notatki, jak pusta). `ChangeOrderStatusRequest` i `CompleteRefundRequest`
-  liczą długość po tym samym przycięciu (`normalizer: StaffNote::trim`); sama notatka z U+2028 itp. to „Notatka zawiera
-  niedozwolone znaki.”, nie „wymagana”.
+- Jednoliniowe pola Ordering (notatka, dane kontaktowe: imię i nazwisko, e-mail, telefon; adres zamówienia: ulica,
+  miejscowość, kod pocztowy) w `PlaceGuestOrderRequest`, `PlaceCustomerOrderRequest`, `ChangeOrderStatusRequest`,
+  `CompleteRefundRequest` i w value objectach podlegają regule tekstu `App\Shared\Domain\Text`
+  (`docs/features/api-input-contract/spec.md`, „Etap 2: reguła tekstu”): znaki niedozwolone (wszystkie znaki sterujące,
+  także C1, oraz U+2028 i U+2029; niepoprawny UTF-8) są szukane w wartości, jak przyszła, a brzegi tracą białe znaki
+  Unicode i znaki niewidoczne. `Assert\Length` pól imienia i nazwiska, ulicy, miejscowości, e-maila i notatki ma
+  `charsetMessage` z komunikatem pola, więc niepoprawny UTF-8 daje to samo naruszenie co znak niedozwolony.
+  `docs/features/order-management/spec.md` i `docs/features/checkout/spec.md` opisują regułę.
+- Notatka bez znaku widocznego (same białe znaki, także NBSP, albo same znaki niewidoczne) jest brakiem notatki (dla
+  anulowania i zwrotu 422 „Notatka jest wymagana.”, dla pozostałych przejść bez notatki, jak pusta).
+  `ChangeOrderStatusRequest` i `CompleteRefundRequest` liczą długość po tym samym przycięciu (normalizacja reguły);
+  sama notatka z U+2028 itp. to „Notatka zawiera niedozwolone znaki.”, nie „wymagana”.
 
 **Kryteria.** Testy 422 dla notatki z samym NBSP (przy anulowaniu i zwrocie) i z U+2028, U+2029, U+0085, w domenie
 (`OrderLifecycleTest`, `OrderValuesTest`) i w obu żądaniach (`ForbiddenCharactersInRequestsTest`,

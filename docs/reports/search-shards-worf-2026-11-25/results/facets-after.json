@@ -1,0 +1,10101 @@
+{
+ "": {
+  "facets": {
+   "availableCount": 953414,
+   "categories": [
+    {
+     "count": 131586,
+     "id": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+     "name": "Bieganie",
+     "path": "bieganie",
+     "slug": "bieganie"
+    },
+    {
+     "count": 152506,
+     "id": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+     "name": "Fitness",
+     "path": "fitness",
+     "slug": "fitness"
+    },
+    {
+     "count": 143221,
+     "id": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+     "name": "Rower",
+     "path": "rower",
+     "slug": "rower"
+    },
+    {
+     "count": 118249,
+     "id": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+     "name": "Sporty drużynowe",
+     "path": "sporty-druzynowe",
+     "slug": "sporty-druzynowe"
+    },
+    {
+     "count": 105466,
+     "id": "6f62a979-6012-5f5a-a39b-13948746e108",
+     "name": "Sporty wodne",
+     "path": "sporty-wodne",
+     "slug": "sporty-wodne"
+    },
+    {
+     "count": 126348,
+     "id": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+     "name": "Sporty zimowe",
+     "path": "sporty-zimowe",
+     "slug": "sporty-zimowe"
+    },
+    {
+     "count": 202733,
+     "id": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+     "name": "Turystyka",
+     "path": "turystyka",
+     "slug": "turystyka"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 105553,
+       "value": "czerwone"
+      },
+      {
+       "count": 105353,
+       "value": "szare"
+      },
+      {
+       "count": 105349,
+       "value": "niebieskie"
+      },
+      {
+       "count": 105074,
+       "value": "zielone"
+      },
+      {
+       "count": 104877,
+       "value": "czarne"
+      },
+      {
+       "count": 104736,
+       "value": "granatowe"
+      },
+      {
+       "count": 96830,
+       "value": "niebieska"
+      },
+      {
+       "count": 96659,
+       "value": "granatowa"
+      },
+      {
+       "count": 96636,
+       "value": "zielona"
+      },
+      {
+       "count": 96520,
+       "value": "szara"
+      },
+      {
+       "count": 96483,
+       "value": "czerwona"
+      },
+      {
+       "count": 96423,
+       "value": "czarna"
+      },
+      {
+       "count": 95839,
+       "value": "granatowy"
+      },
+      {
+       "count": 95725,
+       "value": "szary"
+      },
+      {
+       "count": 95723,
+       "value": "czarny"
+      },
+      {
+       "count": 95636,
+       "value": "niebieski"
+      },
+      {
+       "count": 95386,
+       "value": "czerwony"
+      },
+      {
+       "count": 95297,
+       "value": "zielony"
+      },
+      {
+       "count": 24,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 17,
+       "value": "pomarańczowa"
+      },
+      {
+       "count": 13,
+       "value": "biała"
+      },
+      {
+       "count": 10,
+       "value": "biały"
+      },
+      {
+       "count": 10,
+       "value": "grafitowy"
+      },
+      {
+       "count": 10,
+       "value": "pomarańczowe"
+      },
+      {
+       "count": 10,
+       "value": "turkusowa"
+      },
+      {
+       "count": 6,
+       "value": "grafitowe"
+      },
+      {
+       "count": 6,
+       "value": "oliwkowy"
+      },
+      {
+       "count": 6,
+       "value": "przydymione"
+      },
+      {
+       "count": 4,
+       "value": "biało-niebieska"
+      },
+      {
+       "count": 4,
+       "value": "brązowa"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 136798,
+       "value": "M"
+      },
+      {
+       "count": 136441,
+       "value": "L"
+      },
+      {
+       "count": 136227,
+       "value": "S"
+      },
+      {
+       "count": 136044,
+       "value": "XL"
+      },
+      {
+       "count": 80018,
+       "value": "XS"
+      },
+      {
+       "count": 79930,
+       "value": "XXL"
+      },
+      {
+       "count": 34778,
+       "value": "47"
+      },
+      {
+       "count": 34743,
+       "value": "43"
+      },
+      {
+       "count": 34697,
+       "value": "44"
+      },
+      {
+       "count": 34551,
+       "value": "39"
+      },
+      {
+       "count": 34542,
+       "value": "46"
+      },
+      {
+       "count": 34540,
+       "value": "40"
+      },
+      {
+       "count": 34506,
+       "value": "42"
+      },
+      {
+       "count": 34398,
+       "value": "41"
+      },
+      {
+       "count": 34309,
+       "value": "45"
+      },
+      {
+       "count": 34268,
+       "value": "38"
+      },
+      {
+       "count": 25588,
+       "value": "35-38"
+      },
+      {
+       "count": 25515,
+       "value": "43-46"
+      },
+      {
+       "count": 25309,
+       "value": "39-42"
+      },
+      {
+       "count": 13450,
+       "value": "L/XL"
+      },
+      {
+       "count": 13426,
+       "value": "S/M"
+      },
+      {
+       "count": 12672,
+       "value": "29\""
+      },
+      {
+       "count": 12536,
+       "value": "26\""
+      },
+      {
+       "count": 12509,
+       "value": "28\""
+      },
+      {
+       "count": 12478,
+       "value": "27,5\""
+      },
+      {
+       "count": 6273,
+       "value": "1"
+      },
+      {
+       "count": 6240,
+       "value": "2"
+      },
+      {
+       "count": 6203,
+       "value": "3"
+      },
+      {
+       "count": 2357,
+       "value": "8"
+      },
+      {
+       "count": 2348,
+       "value": "6"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 14087,
+       "value": "1 l"
+      },
+      {
+       "count": 14082,
+       "value": "0,75 l"
+      },
+      {
+       "count": 14033,
+       "value": "1000 ml"
+      },
+      {
+       "count": 10537,
+       "value": "20 l"
+      },
+      {
+       "count": 8565,
+       "value": "700 ml"
+      },
+      {
+       "count": 8498,
+       "value": "70 l"
+      },
+      {
+       "count": 8477,
+       "value": "50 l"
+      },
+      {
+       "count": 8459,
+       "value": "30 l"
+      },
+      {
+       "count": 8385,
+       "value": "500 ml"
+      },
+      {
+       "count": 8320,
+       "value": "0,5 l"
+      },
+      {
+       "count": 6267,
+       "value": "1,8 l"
+      },
+      {
+       "count": 6257,
+       "value": "1,2 l"
+      },
+      {
+       "count": 6231,
+       "value": "0,8 l"
+      },
+      {
+       "count": 5742,
+       "value": "1,5 l"
+      },
+      {
+       "count": 5695,
+       "value": "15 l"
+      },
+      {
+       "count": 5654,
+       "value": "0,6 l"
+      },
+      {
+       "count": 5648,
+       "value": "25 l"
+      },
+      {
+       "count": 5480,
+       "value": "750 ml"
+      },
+      {
+       "count": 5444,
+       "value": "600 ml"
+      },
+      {
+       "count": 4877,
+       "value": "40 l"
+      },
+      {
+       "count": 4859,
+       "value": "10 l"
+      },
+      {
+       "count": 4778,
+       "value": "5 l"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 9270,
+       "value": "220 cm"
+      },
+      {
+       "count": 8620,
+       "value": "100-120 cm"
+      },
+      {
+       "count": 8528,
+       "value": "110-130 cm"
+      },
+      {
+       "count": 8482,
+       "value": "115-135 cm"
+      },
+      {
+       "count": 6352,
+       "value": "180 cm"
+      },
+      {
+       "count": 6191,
+       "value": "210 cm"
+      },
+      {
+       "count": 6184,
+       "value": "230 cm"
+      },
+      {
+       "count": 5555,
+       "value": "2,8 m"
+      },
+      {
+       "count": 5501,
+       "value": "2,5 m"
+      },
+      {
+       "count": 5478,
+       "value": "3 m"
+      },
+      {
+       "count": 5115,
+       "value": "120 cm"
+      },
+      {
+       "count": 5112,
+       "value": "147 cm"
+      },
+      {
+       "count": 5112,
+       "value": "162 cm"
+      },
+      {
+       "count": 5081,
+       "value": "155 cm"
+      },
+      {
+       "count": 5061,
+       "value": "125 cm"
+      },
+      {
+       "count": 5053,
+       "value": "158 cm"
+      },
+      {
+       "count": 5046,
+       "value": "152 cm"
+      },
+      {
+       "count": 5045,
+       "value": "105 cm"
+      },
+      {
+       "count": 5042,
+       "value": "115 cm"
+      },
+      {
+       "count": 5029,
+       "value": "110 cm"
+      },
+      {
+       "count": 3185,
+       "value": "150 cm"
+      },
+      {
+       "count": 3150,
+       "value": "160 cm"
+      },
+      {
+       "count": 3065,
+       "value": "200 cm"
+      },
+      {
+       "count": 6,
+       "value": "170 cm"
+      },
+      {
+       "count": 4,
+       "value": "164 cm"
+      },
+      {
+       "count": 4,
+       "value": "172 cm"
+      }
+     ]
+    },
+    {
+     "axis": "Smak",
+     "values": [
+      {
+       "count": 17197,
+       "value": "cytrynowy"
+      },
+      {
+       "count": 11745,
+       "value": "jabłkowy"
+      },
+      {
+       "count": 11691,
+       "value": "czekoladowy"
+      },
+      {
+       "count": 11649,
+       "value": "bananowy"
+      },
+      {
+       "count": 11505,
+       "value": "waniliowy"
+      },
+      {
+       "count": 11478,
+       "value": "truskawkowy"
+      },
+      {
+       "count": 5685,
+       "value": "malinowy"
+      },
+      {
+       "count": 5606,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 5531,
+       "value": "owoce leśne"
+      },
+      {
+       "count": 6,
+       "value": "orzechowy"
+      },
+      {
+       "count": 6,
+       "value": "owocowy"
+      },
+      {
+       "count": 4,
+       "value": "cytrynowe"
+      },
+      {
+       "count": 4,
+       "value": "czekoladowa"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowe"
+      },
+      {
+       "count": 4,
+       "value": "truskawkowa"
+      },
+      {
+       "count": 4,
+       "value": "waniliowa"
+      }
+     ]
+    },
+    {
+     "axis": "Waga",
+     "values": [
+      {
+       "count": 11211,
+       "value": "20 kg"
+      },
+      {
+       "count": 6834,
+       "value": "8 kg"
+      },
+      {
+       "count": 6829,
+       "value": "24 kg"
+      },
+      {
+       "count": 6815,
+       "value": "16 kg"
+      },
+      {
+       "count": 6773,
+       "value": "12 kg"
+      },
+      {
+       "count": 6747,
+       "value": "4 kg"
+      },
+      {
+       "count": 5611,
+       "value": "500 g"
+      },
+      {
+       "count": 5558,
+       "value": "900 g"
+      },
+      {
+       "count": 5547,
+       "value": "2 kg"
+      },
+      {
+       "count": 4498,
+       "value": "1,25 kg"
+      },
+      {
+       "count": 4456,
+       "value": "15 kg"
+      },
+      {
+       "count": 4444,
+       "value": "2,5 kg"
+      },
+      {
+       "count": 4427,
+       "value": "10 kg"
+      },
+      {
+       "count": 4410,
+       "value": "5 kg"
+      }
+     ]
+    },
+    {
+     "axis": "Montaż",
+     "values": [
+      {
+       "count": 6407,
+       "value": "przód"
+      },
+      {
+       "count": 6394,
+       "value": "tył"
+      },
+      {
+       "count": 6364,
+       "value": "komplet"
+      },
+      {
+       "count": 6244,
+       "value": "przedni"
+      },
+      {
+       "count": 6216,
+       "value": "na sztycę"
+      },
+      {
+       "count": 6157,
+       "value": "tylny"
+      },
+      {
+       "count": 3379,
+       "value": "na ramie"
+      },
+      {
+       "count": 3348,
+       "value": "na bagażniku"
+      }
+     ]
+    },
+    {
+     "axis": "Szerokość",
+     "values": [
+      {
+       "count": 7299,
+       "value": "57 mm"
+      },
+      {
+       "count": 7264,
+       "value": "35 mm"
+      },
+      {
+       "count": 7226,
+       "value": "50 mm"
+      },
+      {
+       "count": 7215,
+       "value": "40 mm"
+      },
+      {
+       "count": 5582,
+       "value": "130 mm"
+      },
+      {
+       "count": 5581,
+       "value": "155 mm"
+      },
+      {
+       "count": 5570,
+       "value": "143 mm"
+      }
+     ]
+    },
+    {
+     "axis": "Opór",
+     "values": [
+      {
+       "count": 8694,
+       "value": "bardzo mocny"
+      },
+      {
+       "count": 8666,
+       "value": "średni"
+      },
+      {
+       "count": 8612,
+       "value": "lekki"
+      },
+      {
+       "count": 8595,
+       "value": "mocny"
+      }
+     ]
+    },
+    {
+     "axis": "Liczba przełożeń",
+     "values": [
+      {
+       "count": 7627,
+       "value": "10"
+      },
+      {
+       "count": 7601,
+       "value": "12"
+      },
+      {
+       "count": 7491,
+       "value": "11"
+      },
+      {
+       "count": 7470,
+       "value": "9"
+      },
+      {
+       "count": 5060,
+       "value": "8"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 1499900,
+    "min": 690
+   }
+  },
+  "total": 980083
+ },
+ "?available=true": {
+  "facets": {
+   "availableCount": 953414,
+   "categories": [
+    {
+     "count": 128233,
+     "id": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+     "name": "Bieganie",
+     "path": "bieganie",
+     "slug": "bieganie"
+    },
+    {
+     "count": 148774,
+     "id": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+     "name": "Fitness",
+     "path": "fitness",
+     "slug": "fitness"
+    },
+    {
+     "count": 139498,
+     "id": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+     "name": "Rower",
+     "path": "rower",
+     "slug": "rower"
+    },
+    {
+     "count": 115036,
+     "id": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+     "name": "Sporty drużynowe",
+     "path": "sporty-druzynowe",
+     "slug": "sporty-druzynowe"
+    },
+    {
+     "count": 102724,
+     "id": "6f62a979-6012-5f5a-a39b-13948746e108",
+     "name": "Sporty wodne",
+     "path": "sporty-wodne",
+     "slug": "sporty-wodne"
+    },
+    {
+     "count": 123329,
+     "id": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+     "name": "Sporty zimowe",
+     "path": "sporty-zimowe",
+     "slug": "sporty-zimowe"
+    },
+    {
+     "count": 195846,
+     "id": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+     "name": "Turystyka",
+     "path": "turystyka",
+     "slug": "turystyka"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 99572,
+       "value": "czerwone"
+      },
+      {
+       "count": 99357,
+       "value": "szare"
+      },
+      {
+       "count": 99292,
+       "value": "niebieskie"
+      },
+      {
+       "count": 99046,
+       "value": "zielone"
+      },
+      {
+       "count": 98893,
+       "value": "granatowe"
+      },
+      {
+       "count": 98668,
+       "value": "czarne"
+      },
+      {
+       "count": 90913,
+       "value": "niebieska"
+      },
+      {
+       "count": 90814,
+       "value": "czerwona"
+      },
+      {
+       "count": 90717,
+       "value": "granatowa"
+      },
+      {
+       "count": 90646,
+       "value": "czarna"
+      },
+      {
+       "count": 90643,
+       "value": "zielona"
+      },
+      {
+       "count": 90633,
+       "value": "szara"
+      },
+      {
+       "count": 89677,
+       "value": "szary"
+      },
+      {
+       "count": 89657,
+       "value": "granatowy"
+      },
+      {
+       "count": 89625,
+       "value": "niebieski"
+      },
+      {
+       "count": 89571,
+       "value": "czarny"
+      },
+      {
+       "count": 89275,
+       "value": "czerwony"
+      },
+      {
+       "count": 89124,
+       "value": "zielony"
+      },
+      {
+       "count": 22,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 17,
+       "value": "pomarańczowa"
+      },
+      {
+       "count": 13,
+       "value": "biała"
+      },
+      {
+       "count": 10,
+       "value": "biały"
+      },
+      {
+       "count": 10,
+       "value": "grafitowy"
+      },
+      {
+       "count": 10,
+       "value": "turkusowa"
+      },
+      {
+       "count": 9,
+       "value": "pomarańczowe"
+      },
+      {
+       "count": 6,
+       "value": "grafitowe"
+      },
+      {
+       "count": 6,
+       "value": "oliwkowy"
+      },
+      {
+       "count": 6,
+       "value": "przydymione"
+      },
+      {
+       "count": 4,
+       "value": "biało-niebieska"
+      },
+      {
+       "count": 4,
+       "value": "brązowa"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 129358,
+       "value": "M"
+      },
+      {
+       "count": 129055,
+       "value": "L"
+      },
+      {
+       "count": 128695,
+       "value": "S"
+      },
+      {
+       "count": 128665,
+       "value": "XL"
+      },
+      {
+       "count": 75473,
+       "value": "XXL"
+      },
+      {
+       "count": 75417,
+       "value": "XS"
+      },
+      {
+       "count": 32569,
+       "value": "47"
+      },
+      {
+       "count": 32562,
+       "value": "43"
+      },
+      {
+       "count": 32415,
+       "value": "44"
+      },
+      {
+       "count": 32376,
+       "value": "39"
+      },
+      {
+       "count": 32281,
+       "value": "40"
+      },
+      {
+       "count": 32270,
+       "value": "46"
+      },
+      {
+       "count": 32264,
+       "value": "42"
+      },
+      {
+       "count": 32240,
+       "value": "41"
+      },
+      {
+       "count": 32110,
+       "value": "45"
+      },
+      {
+       "count": 32052,
+       "value": "38"
+      },
+      {
+       "count": 24563,
+       "value": "35-38"
+      },
+      {
+       "count": 24527,
+       "value": "43-46"
+      },
+      {
+       "count": 24265,
+       "value": "39-42"
+      },
+      {
+       "count": 13053,
+       "value": "L/XL"
+      },
+      {
+       "count": 13030,
+       "value": "S/M"
+      },
+      {
+       "count": 11884,
+       "value": "29\""
+      },
+      {
+       "count": 11773,
+       "value": "26\""
+      },
+      {
+       "count": 11757,
+       "value": "28\""
+      },
+      {
+       "count": 11721,
+       "value": "27,5\""
+      },
+      {
+       "count": 5814,
+       "value": "1"
+      },
+      {
+       "count": 5808,
+       "value": "2"
+      },
+      {
+       "count": 5768,
+       "value": "3"
+      },
+      {
+       "count": 2187,
+       "value": "8"
+      },
+      {
+       "count": 2168,
+       "value": "6"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 13519,
+       "value": "1000 ml"
+      },
+      {
+       "count": 13334,
+       "value": "1 l"
+      },
+      {
+       "count": 13300,
+       "value": "0,75 l"
+      },
+      {
+       "count": 10084,
+       "value": "20 l"
+      },
+      {
+       "count": 8234,
+       "value": "700 ml"
+      },
+      {
+       "count": 8175,
+       "value": "70 l"
+      },
+      {
+       "count": 8131,
+       "value": "30 l"
+      },
+      {
+       "count": 8122,
+       "value": "50 l"
+      },
+      {
+       "count": 8059,
+       "value": "500 ml"
+      },
+      {
+       "count": 7986,
+       "value": "0,5 l"
+      },
+      {
+       "count": 5849,
+       "value": "1,8 l"
+      },
+      {
+       "count": 5803,
+       "value": "1,2 l"
+      },
+      {
+       "count": 5786,
+       "value": "0,8 l"
+      },
+      {
+       "count": 5457,
+       "value": "15 l"
+      },
+      {
+       "count": 5416,
+       "value": "25 l"
+      },
+      {
+       "count": 5335,
+       "value": "1,5 l"
+      },
+      {
+       "count": 5276,
+       "value": "750 ml"
+      },
+      {
+       "count": 5235,
+       "value": "0,6 l"
+      },
+      {
+       "count": 5225,
+       "value": "600 ml"
+      },
+      {
+       "count": 4645,
+       "value": "40 l"
+      },
+      {
+       "count": 4643,
+       "value": "10 l"
+      },
+      {
+       "count": 4555,
+       "value": "5 l"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 8567,
+       "value": "220 cm"
+      },
+      {
+       "count": 8253,
+       "value": "100-120 cm"
+      },
+      {
+       "count": 8210,
+       "value": "110-130 cm"
+      },
+      {
+       "count": 8121,
+       "value": "115-135 cm"
+      },
+      {
+       "count": 5854,
+       "value": "180 cm"
+      },
+      {
+       "count": 5745,
+       "value": "210 cm"
+      },
+      {
+       "count": 5737,
+       "value": "230 cm"
+      },
+      {
+       "count": 5336,
+       "value": "2,8 m"
+      },
+      {
+       "count": 5296,
+       "value": "2,5 m"
+      },
+      {
+       "count": 5262,
+       "value": "3 m"
+      },
+      {
+       "count": 4739,
+       "value": "147 cm"
+      },
+      {
+       "count": 4722,
+       "value": "162 cm"
+      },
+      {
+       "count": 4711,
+       "value": "155 cm"
+      },
+      {
+       "count": 4706,
+       "value": "120 cm"
+      },
+      {
+       "count": 4694,
+       "value": "152 cm"
+      },
+      {
+       "count": 4680,
+       "value": "125 cm"
+      },
+      {
+       "count": 4680,
+       "value": "158 cm"
+      },
+      {
+       "count": 4668,
+       "value": "105 cm"
+      },
+      {
+       "count": 4660,
+       "value": "110 cm"
+      },
+      {
+       "count": 4645,
+       "value": "115 cm"
+      },
+      {
+       "count": 2982,
+       "value": "150 cm"
+      },
+      {
+       "count": 2937,
+       "value": "160 cm"
+      },
+      {
+       "count": 2862,
+       "value": "200 cm"
+      },
+      {
+       "count": 6,
+       "value": "170 cm"
+      },
+      {
+       "count": 4,
+       "value": "164 cm"
+      },
+      {
+       "count": 4,
+       "value": "172 cm"
+      }
+     ]
+    },
+    {
+     "axis": "Smak",
+     "values": [
+      {
+       "count": 15983,
+       "value": "cytrynowy"
+      },
+      {
+       "count": 10891,
+       "value": "jabłkowy"
+      },
+      {
+       "count": 10861,
+       "value": "czekoladowy"
+      },
+      {
+       "count": 10814,
+       "value": "bananowy"
+      },
+      {
+       "count": 10716,
+       "value": "waniliowy"
+      },
+      {
+       "count": 10675,
+       "value": "truskawkowy"
+      },
+      {
+       "count": 5297,
+       "value": "malinowy"
+      },
+      {
+       "count": 5220,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 5092,
+       "value": "owoce leśne"
+      },
+      {
+       "count": 6,
+       "value": "orzechowy"
+      },
+      {
+       "count": 6,
+       "value": "owocowy"
+      },
+      {
+       "count": 4,
+       "value": "cytrynowe"
+      },
+      {
+       "count": 4,
+       "value": "czekoladowa"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowe"
+      },
+      {
+       "count": 4,
+       "value": "truskawkowa"
+      },
+      {
+       "count": 4,
+       "value": "waniliowa"
+      }
+     ]
+    },
+    {
+     "axis": "Waga",
+     "values": [
+      {
+       "count": 10356,
+       "value": "20 kg"
+      },
+      {
+       "count": 6341,
+       "value": "8 kg"
+      },
+      {
+       "count": 6330,
+       "value": "24 kg"
+      },
+      {
+       "count": 6311,
+       "value": "16 kg"
+      },
+      {
+       "count": 6304,
+       "value": "12 kg"
+      },
+      {
+       "count": 6265,
+       "value": "4 kg"
+      },
+      {
+       "count": 5368,
+       "value": "500 g"
+      },
+      {
+       "count": 5314,
+       "value": "900 g"
+      },
+      {
+       "count": 5297,
+       "value": "2 kg"
+      },
+      {
+       "count": 4144,
+       "value": "1,25 kg"
+      },
+      {
+       "count": 4135,
+       "value": "2,5 kg"
+      },
+      {
+       "count": 4119,
+       "value": "15 kg"
+      },
+      {
+       "count": 4106,
+       "value": "10 kg"
+      },
+      {
+       "count": 4066,
+       "value": "5 kg"
+      }
+     ]
+    },
+    {
+     "axis": "Montaż",
+     "values": [
+      {
+       "count": 5956,
+       "value": "przód"
+      },
+      {
+       "count": 5937,
+       "value": "tył"
+      },
+      {
+       "count": 5847,
+       "value": "komplet"
+      },
+      {
+       "count": 5773,
+       "value": "przedni"
+      },
+      {
+       "count": 5769,
+       "value": "na sztycę"
+      },
+      {
+       "count": 5717,
+       "value": "tylny"
+      },
+      {
+       "count": 3275,
+       "value": "na ramie"
+      },
+      {
+       "count": 3265,
+       "value": "na bagażniku"
+      }
+     ]
+    },
+    {
+     "axis": "Szerokość",
+     "values": [
+      {
+       "count": 6942,
+       "value": "57 mm"
+      },
+      {
+       "count": 6933,
+       "value": "35 mm"
+      },
+      {
+       "count": 6907,
+       "value": "40 mm"
+      },
+      {
+       "count": 6869,
+       "value": "50 mm"
+      },
+      {
+       "count": 5376,
+       "value": "155 mm"
+      },
+      {
+       "count": 5364,
+       "value": "143 mm"
+      },
+      {
+       "count": 5351,
+       "value": "130 mm"
+      }
+     ]
+    },
+    {
+     "axis": "Opór",
+     "values": [
+      {
+       "count": 8077,
+       "value": "bardzo mocny"
+      },
+      {
+       "count": 8019,
+       "value": "średni"
+      },
+      {
+       "count": 7985,
+       "value": "mocny"
+      },
+      {
+       "count": 7959,
+       "value": "lekki"
+      }
+     ]
+    },
+    {
+     "axis": "Liczba przełożeń",
+     "values": [
+      {
+       "count": 7104,
+       "value": "10"
+      },
+      {
+       "count": 7081,
+       "value": "12"
+      },
+      {
+       "count": 6976,
+       "value": "11"
+      },
+      {
+       "count": 6951,
+       "value": "9"
+      },
+      {
+       "count": 4654,
+       "value": "8"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 1499900,
+    "min": 690
+   }
+  },
+  "total": 953414
+ },
+ "?category=1eca62e7-3a2e-526f-b689-4d43a343b30d": {
+  "facets": {
+   "availableCount": 32468,
+   "categories": [
+    {
+     "count": 6429,
+     "id": "0e811f7e-c801-572b-a28d-ceea69c2c019",
+     "name": "Filtry do wody",
+     "path": "turystyka/akcesoria-gorskie/filtry-do-wody",
+     "slug": "filtry-do-wody"
+    },
+    {
+     "count": 15195,
+     "id": "2e961065-6d3a-50e2-abaf-a6936a768cc6",
+     "name": "Kijki trekkingowe",
+     "path": "turystyka/akcesoria-gorskie/kijki",
+     "slug": "kijki"
+    },
+    {
+     "count": 6431,
+     "id": "8732b1af-0cf9-5c92-8388-043c6a2a6a95",
+     "name": "Kompasy",
+     "path": "turystyka/akcesoria-gorskie/kompasy",
+     "slug": "kompasy"
+    },
+    {
+     "count": 6551,
+     "id": "c57c017b-d6f7-5990-82bf-635533003629",
+     "name": "Lornetki",
+     "path": "turystyka/akcesoria-gorskie/lornetki",
+     "slug": "lornetki"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 6330,
+       "value": "zielony"
+      },
+      {
+       "count": 6308,
+       "value": "szary"
+      },
+      {
+       "count": 6304,
+       "value": "czarny"
+      },
+      {
+       "count": 6271,
+       "value": "niebieski"
+      },
+      {
+       "count": 6219,
+       "value": "czerwony"
+      },
+      {
+       "count": 6208,
+       "value": "granatowy"
+      },
+      {
+       "count": 1067,
+       "value": "czerwone"
+      },
+      {
+       "count": 1066,
+       "value": "zielone"
+      },
+      {
+       "count": 1044,
+       "value": "czarne"
+      },
+      {
+       "count": 1039,
+       "value": "niebieskie"
+      },
+      {
+       "count": 1016,
+       "value": "granatowe"
+      },
+      {
+       "count": 1003,
+       "value": "szare"
+      },
+      {
+       "count": 812,
+       "value": "szara"
+      },
+      {
+       "count": 791,
+       "value": "czarna"
+      },
+      {
+       "count": 783,
+       "value": "czerwona"
+      },
+      {
+       "count": 774,
+       "value": "niebieska"
+      },
+      {
+       "count": 774,
+       "value": "zielona"
+      },
+      {
+       "count": 770,
+       "value": "granatowa"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 8620,
+       "value": "100-120 cm"
+      },
+      {
+       "count": 8528,
+       "value": "110-130 cm"
+      },
+      {
+       "count": 8482,
+       "value": "115-135 cm"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 1355,
+       "value": "XL"
+      },
+      {
+       "count": 1330,
+       "value": "M"
+      },
+      {
+       "count": 1327,
+       "value": "XS"
+      },
+      {
+       "count": 1327,
+       "value": "XXL"
+      },
+      {
+       "count": 1307,
+       "value": "L"
+      },
+      {
+       "count": 1302,
+       "value": "S"
+      },
+      {
+       "count": 404,
+       "value": "43-46"
+      },
+      {
+       "count": 381,
+       "value": "35-38"
+      },
+      {
+       "count": 380,
+       "value": "39-42"
+      },
+      {
+       "count": 352,
+       "value": "46"
+      },
+      {
+       "count": 349,
+       "value": "47"
+      },
+      {
+       "count": 347,
+       "value": "40"
+      },
+      {
+       "count": 347,
+       "value": "43"
+      },
+      {
+       "count": 346,
+       "value": "44"
+      },
+      {
+       "count": 341,
+       "value": "41"
+      },
+      {
+       "count": 340,
+       "value": "38"
+      },
+      {
+       "count": 339,
+       "value": "45"
+      },
+      {
+       "count": 335,
+       "value": "42"
+      },
+      {
+       "count": 323,
+       "value": "39"
+      }
+     ]
+    },
+    {
+     "axis": "Powiększenie",
+     "values": [
+      {
+       "count": 3122,
+       "value": "8x32"
+      },
+      {
+       "count": 3092,
+       "value": "8x42"
+      },
+      {
+       "count": 3084,
+       "value": "10x42"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 678,
+       "value": "1 l"
+      },
+      {
+       "count": 671,
+       "value": "0,75 l"
+      },
+      {
+       "count": 369,
+       "value": "0,5 l"
+      },
+      {
+       "count": 296,
+       "value": "1,8 l"
+      },
+      {
+       "count": 286,
+       "value": "1,2 l"
+      },
+      {
+       "count": 284,
+       "value": "0,8 l"
+      },
+      {
+       "count": 267,
+       "value": "1,5 l"
+      },
+      {
+       "count": 258,
+       "value": "0,6 l"
+      }
+     ]
+    },
+    {
+     "axis": "Porcja",
+     "values": [
+      {
+       "count": 308,
+       "value": "300 g"
+      },
+      {
+       "count": 295,
+       "value": "500 g"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 140000,
+    "min": 1499
+   }
+  },
+  "total": 33707
+ },
+ "?category=1fba7250-7014-5beb-9a01-583bb76fd12d": {
+  "facets": {
+   "availableCount": 21421,
+   "categories": [
+    {
+     "count": 6345,
+     "id": "12feeac5-837f-5d48-98fd-621b45298787",
+     "name": "Bieżnie",
+     "path": "fitness/cardio/bieznie",
+     "slug": "bieznie"
+    },
+    {
+     "count": 6175,
+     "id": "fe332289-01f9-59d7-abb2-c1cb44a98639",
+     "name": "Rowery treningowe",
+     "path": "fitness/cardio/rowery-treningowe",
+     "slug": "rowery-treningowe"
+    },
+    {
+     "count": 10108,
+     "id": "29133c6e-e2bb-51b9-a778-810e56071f05",
+     "name": "Skakanki",
+     "path": "fitness/cardio/skakanki",
+     "slug": "skakanki"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 3988,
+       "value": "granatowa"
+      },
+      {
+       "count": 3923,
+       "value": "czerwona"
+      },
+      {
+       "count": 3910,
+       "value": "czarna"
+      },
+      {
+       "count": 3910,
+       "value": "szara"
+      },
+      {
+       "count": 3897,
+       "value": "niebieska"
+      },
+      {
+       "count": 3894,
+       "value": "zielona"
+      },
+      {
+       "count": 2564,
+       "value": "szary"
+      },
+      {
+       "count": 2552,
+       "value": "niebieski"
+      },
+      {
+       "count": 2529,
+       "value": "czerwony"
+      },
+      {
+       "count": 2527,
+       "value": "zielony"
+      },
+      {
+       "count": 2516,
+       "value": "czarny"
+      },
+      {
+       "count": 2513,
+       "value": "granatowy"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 5555,
+       "value": "2,8 m"
+      },
+      {
+       "count": 5501,
+       "value": "2,5 m"
+      },
+      {
+       "count": 5478,
+       "value": "3 m"
+      },
+      {
+       "count": 123,
+       "value": "150 cm"
+      },
+      {
+       "count": 122,
+       "value": "180 cm"
+      },
+      {
+       "count": 115,
+       "value": "220 cm"
+      }
+     ]
+    },
+    {
+     "axis": "Waga",
+     "values": [
+      {
+       "count": 444,
+       "value": "20 kg"
+      },
+      {
+       "count": 289,
+       "value": "16 kg"
+      },
+      {
+       "count": 282,
+       "value": "4 kg"
+      },
+      {
+       "count": 279,
+       "value": "8 kg"
+      },
+      {
+       "count": 264,
+       "value": "24 kg"
+      },
+      {
+       "count": 260,
+       "value": "12 kg"
+      },
+      {
+       "count": 201,
+       "value": "500 g"
+      },
+      {
+       "count": 198,
+       "value": "2 kg"
+      },
+      {
+       "count": 185,
+       "value": "15 kg"
+      },
+      {
+       "count": 180,
+       "value": "900 g"
+      },
+      {
+       "count": 178,
+       "value": "5 kg"
+      },
+      {
+       "count": 176,
+       "value": "10 kg"
+      },
+      {
+       "count": 172,
+       "value": "2,5 kg"
+      },
+      {
+       "count": 170,
+       "value": "1,25 kg"
+      }
+     ]
+    },
+    {
+     "axis": "Smak",
+     "values": [
+      {
+       "count": 675,
+       "value": "cytrynowy"
+      },
+      {
+       "count": 437,
+       "value": "bananowy"
+      },
+      {
+       "count": 430,
+       "value": "jabłkowy"
+      },
+      {
+       "count": 429,
+       "value": "truskawkowy"
+      },
+      {
+       "count": 423,
+       "value": "czekoladowy"
+      },
+      {
+       "count": 404,
+       "value": "waniliowy"
+      },
+      {
+       "count": 218,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 214,
+       "value": "malinowy"
+      },
+      {
+       "count": 214,
+       "value": "owoce leśne"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 546,
+       "value": "1000 ml"
+      },
+      {
+       "count": 355,
+       "value": "700 ml"
+      },
+      {
+       "count": 338,
+       "value": "500 ml"
+      },
+      {
+       "count": 200,
+       "value": "600 ml"
+      },
+      {
+       "count": 185,
+       "value": "750 ml"
+      }
+     ]
+    },
+    {
+     "axis": "Opór",
+     "values": [
+      {
+       "count": 333,
+       "value": "średni"
+      },
+      {
+       "count": 331,
+       "value": "lekki"
+      },
+      {
+       "count": 330,
+       "value": "mocny"
+      },
+      {
+       "count": 324,
+       "value": "bardzo mocny"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 283,
+       "value": "XL"
+      },
+      {
+       "count": 269,
+       "value": "M"
+      },
+      {
+       "count": 265,
+       "value": "S"
+      },
+      {
+       "count": 263,
+       "value": "L"
+      }
+     ]
+    },
+    {
+     "axis": "Średnica",
+     "values": [
+      {
+       "count": 238,
+       "value": "75 cm"
+      },
+      {
+       "count": 236,
+       "value": "65 cm"
+      },
+      {
+       "count": 235,
+       "value": "55 cm"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 589999,
+    "min": 999
+   }
+  },
+  "total": 22212
+ },
+ "?category=24f060dc-a340-56d7-9601-378eb1ef0b3f": {
+  "facets": {
+   "availableCount": 12,
+   "categories": [],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 4,
+       "value": "czarna"
+      },
+      {
+       "count": 4,
+       "value": "czarny"
+      },
+      {
+       "count": 4,
+       "value": "niebieski"
+      },
+      {
+       "count": 4,
+       "value": "oliwkowa"
+      },
+      {
+       "count": 4,
+       "value": "srebrny"
+      }
+     ]
+    },
+    {
+     "axis": "Smak",
+     "values": [
+      {
+       "count": 4,
+       "value": "cytrynowy"
+      },
+      {
+       "count": 4,
+       "value": "malinowy"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowy"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 18900,
+    "min": 842
+   }
+  },
+  "total": 12
+ },
+ "?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea": {
+  "facets": {
+   "availableCount": 128233,
+   "categories": [
+    {
+     "count": 12,
+     "id": "60328daf-3f3c-553e-bbf0-0642d8854acb",
+     "name": "Akcesoria biegowe",
+     "path": "bieganie/akcesoria",
+     "slug": "akcesoria"
+    },
+    {
+     "count": 12,
+     "id": "9c5e2afb-1a3c-50dc-89d8-58cbc018ebb7",
+     "name": "Buty biegowe",
+     "path": "bieganie/buty",
+     "slug": "buty"
+    },
+    {
+     "count": 26065,
+     "id": "573b3efd-5c6c-5577-8528-e54817ea4242",
+     "name": "Elektronika biegowa",
+     "path": "bieganie/elektronika-biegowa",
+     "slug": "elektronika-biegowa"
+    },
+    {
+     "count": 34531,
+     "id": "2fd19aa6-9371-50cb-b4b5-e3faec23f858",
+     "name": "Obuwie startowe",
+     "path": "bieganie/obuwie-startowe",
+     "slug": "obuwie-startowe"
+    },
+    {
+     "count": 8,
+     "id": "dc038372-ef77-5ed5-83db-a141bf649103",
+     "name": "Odzież biegowa",
+     "path": "bieganie/odziez",
+     "slug": "odziez"
+    },
+    {
+     "count": 22162,
+     "id": "b24e7921-99db-51d6-b6cf-382103f299df",
+     "name": "Regeneracja biegacza",
+     "path": "bieganie/regeneracja-biegacza",
+     "slug": "regeneracja-biegacza"
+    },
+    {
+     "count": 68868,
+     "id": "4ceaad5a-8588-5e5c-a11a-1a2507542a33",
+     "name": "Ubrania do biegania",
+     "path": "bieganie/ubrania-do-biegania",
+     "slug": "ubrania-do-biegania"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 34375,
+       "value": "szare"
+      },
+      {
+       "count": 34293,
+       "value": "czerwone"
+      },
+      {
+       "count": 34214,
+       "value": "niebieskie"
+      },
+      {
+       "count": 34141,
+       "value": "czarne"
+      },
+      {
+       "count": 34132,
+       "value": "zielone"
+      },
+      {
+       "count": 33931,
+       "value": "granatowe"
+      },
+      {
+       "count": 14956,
+       "value": "niebieska"
+      },
+      {
+       "count": 14922,
+       "value": "czarna"
+      },
+      {
+       "count": 14909,
+       "value": "szara"
+      },
+      {
+       "count": 14890,
+       "value": "zielona"
+      },
+      {
+       "count": 14881,
+       "value": "granatowa"
+      },
+      {
+       "count": 14792,
+       "value": "czerwona"
+      },
+      {
+       "count": 9268,
+       "value": "czarny"
+      },
+      {
+       "count": 9255,
+       "value": "czerwony"
+      },
+      {
+       "count": 9176,
+       "value": "szary"
+      },
+      {
+       "count": 9141,
+       "value": "niebieski"
+      },
+      {
+       "count": 9139,
+       "value": "granatowy"
+      },
+      {
+       "count": 9105,
+       "value": "zielony"
+      },
+      {
+       "count": 6,
+       "value": "pomarańczowe"
+      },
+      {
+       "count": 4,
+       "value": "biała"
+      },
+      {
+       "count": 4,
+       "value": "limonkowa"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 4,
+       "value": "turkusowa"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 18156,
+       "value": "L"
+      },
+      {
+       "count": 18082,
+       "value": "XL"
+      },
+      {
+       "count": 18062,
+       "value": "S"
+      },
+      {
+       "count": 18038,
+       "value": "M"
+      },
+      {
+       "count": 11337,
+       "value": "35-38"
+      },
+      {
+       "count": 11328,
+       "value": "43-46"
+      },
+      {
+       "count": 11153,
+       "value": "39-42"
+      },
+      {
+       "count": 10966,
+       "value": "XS"
+      },
+      {
+       "count": 10893,
+       "value": "XXL"
+      },
+      {
+       "count": 8788,
+       "value": "47"
+      },
+      {
+       "count": 8746,
+       "value": "44"
+      },
+      {
+       "count": 8730,
+       "value": "41"
+      },
+      {
+       "count": 8706,
+       "value": "46"
+      },
+      {
+       "count": 8683,
+       "value": "43"
+      },
+      {
+       "count": 8680,
+       "value": "38"
+      },
+      {
+       "count": 8636,
+       "value": "39"
+      },
+      {
+       "count": 8631,
+       "value": "42"
+      },
+      {
+       "count": 8610,
+       "value": "40"
+      },
+      {
+       "count": 8543,
+       "value": "45"
+      },
+      {
+       "count": 6674,
+       "value": "S/M"
+      },
+      {
+       "count": 6669,
+       "value": "L/XL"
+      }
+     ]
+    },
+    {
+     "axis": "Smak",
+     "values": [
+      {
+       "count": 4,
+       "value": "cytrynowy"
+      },
+      {
+       "count": 4,
+       "value": "malinowy"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowy"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 210000,
+    "min": 842
+   }
+  },
+  "total": 131586
+ },
+ "?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&option=Kolor%3Aszare": {
+  "facets": {
+   "availableCount": 32298,
+   "categories": [
+    {
+     "count": 5994,
+     "id": "573b3efd-5c6c-5577-8528-e54817ea4242",
+     "name": "Elektronika biegowa",
+     "path": "bieganie/elektronika-biegowa",
+     "slug": "elektronika-biegowa"
+    },
+    {
+     "count": 13848,
+     "id": "2fd19aa6-9371-50cb-b4b5-e3faec23f858",
+     "name": "Obuwie startowe",
+     "path": "bieganie/obuwie-startowe",
+     "slug": "obuwie-startowe"
+    },
+    {
+     "count": 1579,
+     "id": "b24e7921-99db-51d6-b6cf-382103f299df",
+     "name": "Regeneracja biegacza",
+     "path": "bieganie/regeneracja-biegacza",
+     "slug": "regeneracja-biegacza"
+    },
+    {
+     "count": 18242,
+     "id": "4ceaad5a-8588-5e5c-a11a-1a2507542a33",
+     "name": "Ubrania do biegania",
+     "path": "bieganie/ubrania-do-biegania",
+     "slug": "ubrania-do-biegania"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 34375,
+       "value": "szare"
+      },
+      {
+       "count": 34293,
+       "value": "czerwone"
+      },
+      {
+       "count": 34214,
+       "value": "niebieskie"
+      },
+      {
+       "count": 34141,
+       "value": "czarne"
+      },
+      {
+       "count": 34132,
+       "value": "zielone"
+      },
+      {
+       "count": 33931,
+       "value": "granatowe"
+      },
+      {
+       "count": 14956,
+       "value": "niebieska"
+      },
+      {
+       "count": 14922,
+       "value": "czarna"
+      },
+      {
+       "count": 14909,
+       "value": "szara"
+      },
+      {
+       "count": 14890,
+       "value": "zielona"
+      },
+      {
+       "count": 14881,
+       "value": "granatowa"
+      },
+      {
+       "count": 14792,
+       "value": "czerwona"
+      },
+      {
+       "count": 9268,
+       "value": "czarny"
+      },
+      {
+       "count": 9255,
+       "value": "czerwony"
+      },
+      {
+       "count": 9176,
+       "value": "szary"
+      },
+      {
+       "count": 9141,
+       "value": "niebieski"
+      },
+      {
+       "count": 9139,
+       "value": "granatowy"
+      },
+      {
+       "count": 9105,
+       "value": "zielony"
+      },
+      {
+       "count": 6,
+       "value": "pomarańczowe"
+      },
+      {
+       "count": 4,
+       "value": "biała"
+      },
+      {
+       "count": 4,
+       "value": "limonkowa"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 4,
+       "value": "turkusowa"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 3288,
+       "value": "39-42"
+      },
+      {
+       "count": 3227,
+       "value": "43-46"
+      },
+      {
+       "count": 3189,
+       "value": "35-38"
+      },
+      {
+       "count": 2485,
+       "value": "XL"
+      },
+      {
+       "count": 2401,
+       "value": "L"
+      },
+      {
+       "count": 2394,
+       "value": "M"
+      },
+      {
+       "count": 2388,
+       "value": "S"
+      },
+      {
+       "count": 1777,
+       "value": "38"
+      },
+      {
+       "count": 1764,
+       "value": "41"
+      },
+      {
+       "count": 1743,
+       "value": "46"
+      },
+      {
+       "count": 1741,
+       "value": "39"
+      },
+      {
+       "count": 1720,
+       "value": "40"
+      },
+      {
+       "count": 1710,
+       "value": "45"
+      },
+      {
+       "count": 1709,
+       "value": "43"
+      },
+      {
+       "count": 1699,
+       "value": "42"
+      },
+      {
+       "count": 1698,
+       "value": "47"
+      },
+      {
+       "count": 1669,
+       "value": "44"
+      },
+      {
+       "count": 1252,
+       "value": "XS"
+      },
+      {
+       "count": 1124,
+       "value": "XXL"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 85000,
+    "min": 2499
+   }
+  },
+  "total": 34375
+ },
+ "?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&option=Rozmiar%3AL": {
+  "facets": {
+   "availableCount": 17223,
+   "categories": [
+    {
+     "count": 849,
+     "id": "573b3efd-5c6c-5577-8528-e54817ea4242",
+     "name": "Elektronika biegowa",
+     "path": "bieganie/elektronika-biegowa",
+     "slug": "elektronika-biegowa"
+    },
+    {
+     "count": 796,
+     "id": "2fd19aa6-9371-50cb-b4b5-e3faec23f858",
+     "name": "Obuwie startowe",
+     "path": "bieganie/obuwie-startowe",
+     "slug": "obuwie-startowe"
+    },
+    {
+     "count": 8,
+     "id": "dc038372-ef77-5ed5-83db-a141bf649103",
+     "name": "Odzież biegowa",
+     "path": "bieganie/odziez",
+     "slug": "odziez"
+    },
+    {
+     "count": 3161,
+     "id": "b24e7921-99db-51d6-b6cf-382103f299df",
+     "name": "Regeneracja biegacza",
+     "path": "bieganie/regeneracja-biegacza",
+     "slug": "regeneracja-biegacza"
+    },
+    {
+     "count": 15906,
+     "id": "4ceaad5a-8588-5e5c-a11a-1a2507542a33",
+     "name": "Ubrania do biegania",
+     "path": "bieganie/ubrania-do-biegania",
+     "slug": "ubrania-do-biegania"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 2454,
+       "value": "niebieskie"
+      },
+      {
+       "count": 2418,
+       "value": "zielone"
+      },
+      {
+       "count": 2410,
+       "value": "czarne"
+      },
+      {
+       "count": 2401,
+       "value": "szare"
+      },
+      {
+       "count": 2378,
+       "value": "czerwone"
+      },
+      {
+       "count": 2329,
+       "value": "granatowe"
+      },
+      {
+       "count": 1233,
+       "value": "szary"
+      },
+      {
+       "count": 1230,
+       "value": "granatowy"
+      },
+      {
+       "count": 1228,
+       "value": "czarny"
+      },
+      {
+       "count": 1175,
+       "value": "czerwony"
+      },
+      {
+       "count": 1168,
+       "value": "niebieski"
+      },
+      {
+       "count": 1121,
+       "value": "zielony"
+      },
+      {
+       "count": 624,
+       "value": "niebieska"
+      },
+      {
+       "count": 622,
+       "value": "czarna"
+      },
+      {
+       "count": 622,
+       "value": "granatowa"
+      },
+      {
+       "count": 611,
+       "value": "czerwona"
+      },
+      {
+       "count": 610,
+       "value": "zielona"
+      },
+      {
+       "count": 581,
+       "value": "szara"
+      },
+      {
+       "count": 4,
+       "value": "biała"
+      },
+      {
+       "count": 4,
+       "value": "limonkowa"
+      },
+      {
+       "count": 4,
+       "value": "turkusowa"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 18156,
+       "value": "L"
+      },
+      {
+       "count": 18082,
+       "value": "XL"
+      },
+      {
+       "count": 18062,
+       "value": "S"
+      },
+      {
+       "count": 18038,
+       "value": "M"
+      },
+      {
+       "count": 11337,
+       "value": "35-38"
+      },
+      {
+       "count": 11328,
+       "value": "43-46"
+      },
+      {
+       "count": 11153,
+       "value": "39-42"
+      },
+      {
+       "count": 10966,
+       "value": "XS"
+      },
+      {
+       "count": 10893,
+       "value": "XXL"
+      },
+      {
+       "count": 8788,
+       "value": "47"
+      },
+      {
+       "count": 8746,
+       "value": "44"
+      },
+      {
+       "count": 8730,
+       "value": "41"
+      },
+      {
+       "count": 8706,
+       "value": "46"
+      },
+      {
+       "count": 8683,
+       "value": "43"
+      },
+      {
+       "count": 8680,
+       "value": "38"
+      },
+      {
+       "count": 8636,
+       "value": "39"
+      },
+      {
+       "count": 8631,
+       "value": "42"
+      },
+      {
+       "count": 8610,
+       "value": "40"
+      },
+      {
+       "count": 8543,
+       "value": "45"
+      },
+      {
+       "count": 6674,
+       "value": "S/M"
+      },
+      {
+       "count": 6669,
+       "value": "L/XL"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 39900,
+    "min": 3999
+   }
+  },
+  "total": 18156
+ },
+ "?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&option=Smak%3Acytrynowy": {
+  "facets": {
+   "availableCount": 4,
+   "categories": [
+    {
+     "count": 4,
+     "id": "60328daf-3f3c-553e-bbf0-0642d8854acb",
+     "name": "Akcesoria biegowe",
+     "path": "bieganie/akcesoria",
+     "slug": "akcesoria"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Smak",
+     "values": [
+      {
+       "count": 4,
+       "value": "cytrynowy"
+      },
+      {
+       "count": 4,
+       "value": "malinowy"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowy"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 1097,
+    "min": 842
+   }
+  },
+  "total": 4
+ },
+ "?category=60328daf-3f3c-553e-bbf0-0642d8854acb": {
+  "facets": {
+   "availableCount": 12,
+   "categories": [],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 4,
+       "value": "czarna"
+      },
+      {
+       "count": 4,
+       "value": "czarny"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 4,
+       "value": "szara"
+      }
+     ]
+    },
+    {
+     "axis": "Smak",
+     "values": [
+      {
+       "count": 4,
+       "value": "cytrynowy"
+      },
+      {
+       "count": 4,
+       "value": "malinowy"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowy"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 32900,
+    "min": 842
+   }
+  },
+  "total": 12
+ },
+ "?category=6a1e0ddd-6825-51e2-a6dc-52d790533102": {
+  "facets": {
+   "availableCount": 6,
+   "categories": [],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 6,
+       "value": "biały"
+      },
+      {
+       "count": 6,
+       "value": "czarny"
+      },
+      {
+       "count": 6,
+       "value": "niebieski"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 6,
+       "value": "L"
+      },
+      {
+       "count": 6,
+       "value": "M"
+      },
+      {
+       "count": 6,
+       "value": "S"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 49900,
+    "min": 29900
+   }
+  },
+  "total": 6
+ },
+ "?category=6f62a979-6012-5f5a-a39b-13948746e108": {
+  "facets": {
+   "availableCount": 102724,
+   "categories": [
+    {
+     "count": 6,
+     "id": "d8db2ee0-5605-5e61-8788-c3df42b6a7fb",
+     "name": "Deski SUP",
+     "path": "sporty-wodne/sup",
+     "slug": "sup"
+    },
+    {
+     "count": 4,
+     "id": "ebcde635-4d3b-503f-82d2-4bad17c400b0",
+     "name": "Kajaki",
+     "path": "sporty-wodne/kajaki",
+     "slug": "kajaki"
+    },
+    {
+     "count": 21100,
+     "id": "d6c6d458-cbe7-5eb9-bd6c-f6bf4c7ca6f7",
+     "name": "Nurkowanie i snorkeling",
+     "path": "sporty-wodne/nurkowanie",
+     "slug": "nurkowanie"
+    },
+    {
+     "count": 24886,
+     "id": "0bed0d4e-ca39-559b-94b7-d44506c0ac99",
+     "name": "Odzież wodna",
+     "path": "sporty-wodne/odziez-wodna",
+     "slug": "odziez-wodna"
+    },
+    {
+     "count": 10,
+     "id": "c30c66bb-d85b-589b-85c6-5a5a4817f05c",
+     "name": "Pływanie",
+     "path": "sporty-wodne/plywanie",
+     "slug": "plywanie"
+    },
+    {
+     "count": 42151,
+     "id": "4465893d-be57-5bbf-a8f9-b09bcb2de278",
+     "name": "Sprzęt do pływania",
+     "path": "sporty-wodne/sprzet-do-plywania",
+     "slug": "sprzet-do-plywania"
+    },
+    {
+     "count": 34140,
+     "id": "6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+     "name": "Wiosłowanie",
+     "path": "sporty-wodne/wioslowanie",
+     "slug": "wioslowanie"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 18359,
+       "value": "niebieska"
+      },
+      {
+       "count": 18222,
+       "value": "czerwona"
+      },
+      {
+       "count": 18203,
+       "value": "granatowa"
+      },
+      {
+       "count": 18197,
+       "value": "zielona"
+      },
+      {
+       "count": 18196,
+       "value": "szara"
+      },
+      {
+       "count": 18169,
+       "value": "czarna"
+      },
+      {
+       "count": 13762,
+       "value": "szary"
+      },
+      {
+       "count": 13699,
+       "value": "granatowy"
+      },
+      {
+       "count": 13695,
+       "value": "czarny"
+      },
+      {
+       "count": 13695,
+       "value": "czerwony"
+      },
+      {
+       "count": 13643,
+       "value": "zielony"
+      },
+      {
+       "count": 13554,
+       "value": "niebieski"
+      },
+      {
+       "count": 11046,
+       "value": "niebieskie"
+      },
+      {
+       "count": 11018,
+       "value": "czerwone"
+      },
+      {
+       "count": 10940,
+       "value": "szare"
+      },
+      {
+       "count": 10901,
+       "value": "granatowe"
+      },
+      {
+       "count": 10871,
+       "value": "zielone"
+      },
+      {
+       "count": 10817,
+       "value": "czarne"
+      },
+      {
+       "count": 6,
+       "value": "przydymione"
+      },
+      {
+       "count": 6,
+       "value": "turkusowa"
+      },
+      {
+       "count": 4,
+       "value": "grafitowa"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowy"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 24701,
+       "value": "M"
+      },
+      {
+       "count": 24641,
+       "value": "L"
+      },
+      {
+       "count": 24508,
+       "value": "S"
+      },
+      {
+       "count": 24461,
+       "value": "XL"
+      },
+      {
+       "count": 12701,
+       "value": "XXL"
+      },
+      {
+       "count": 12659,
+       "value": "XS"
+      },
+      {
+       "count": 2473,
+       "value": "45"
+      },
+      {
+       "count": 2453,
+       "value": "40"
+      },
+      {
+       "count": 2450,
+       "value": "44"
+      },
+      {
+       "count": 2441,
+       "value": "42"
+      },
+      {
+       "count": 2437,
+       "value": "47"
+      },
+      {
+       "count": 2431,
+       "value": "46"
+      },
+      {
+       "count": 2403,
+       "value": "43"
+      },
+      {
+       "count": 2397,
+       "value": "41"
+      },
+      {
+       "count": 2384,
+       "value": "39"
+      },
+      {
+       "count": 2338,
+       "value": "38"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 4898,
+       "value": "20 l"
+      },
+      {
+       "count": 4877,
+       "value": "40 l"
+      },
+      {
+       "count": 4859,
+       "value": "10 l"
+      },
+      {
+       "count": 4778,
+       "value": "5 l"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 6191,
+       "value": "210 cm"
+      },
+      {
+       "count": 6184,
+       "value": "230 cm"
+      },
+      {
+       "count": 6108,
+       "value": "220 cm"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 349900,
+    "min": 1499
+   }
+  },
+  "total": 105466
+ },
+ "?category=70134891-dc80-5215-9109-23f8f80ad40a": {
+  "facets": {
+   "availableCount": 20,
+   "categories": [
+    {
+     "count": 6,
+     "id": "50cd3ab9-6263-5441-9d77-cef1c8794964",
+     "name": "Namioty",
+     "path": "turystyka/biwak/namioty",
+     "slug": "namioty"
+    },
+    {
+     "count": 10,
+     "id": "d2a8f52e-6be4-54e2-afa2-b6537de3abe3",
+     "name": "Sprzęt do spania",
+     "path": "turystyka/biwak/spanie",
+     "slug": "spanie"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 6,
+       "value": "niebieski"
+      },
+      {
+       "count": 6,
+       "value": "oliwkowy"
+      },
+      {
+       "count": 6,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 6,
+       "value": "zielony"
+      },
+      {
+       "count": 4,
+       "value": "czarna"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowa"
+      },
+      {
+       "count": 4,
+       "value": "szara"
+      },
+      {
+       "count": 4,
+       "value": "zielona"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 127920,
+    "min": 12900
+   }
+  },
+  "total": 20
+ },
+ "?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9": {
+  "facets": {
+   "availableCount": 148774,
+   "categories": [
+    {
+     "count": 43686,
+     "id": "d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+     "name": "Akcesoria treningowe",
+     "path": "fitness/akcesoria-treningowe",
+     "slug": "akcesoria-treningowe"
+    },
+    {
+     "count": 22212,
+     "id": "1fba7250-7014-5beb-9a01-583bb76fd12d",
+     "name": "Cardio",
+     "path": "fitness/cardio",
+     "slug": "cardio"
+    },
+    {
+     "count": 26180,
+     "id": "e7ab4de1-752a-53ab-8842-3405c065bed5",
+     "name": "Joga i pilates",
+     "path": "fitness/joga-i-pilates",
+     "slug": "joga-i-pilates"
+    },
+    {
+     "count": 18,
+     "id": "2fa47594-eefe-5fd5-9c28-e1b2c42bf611",
+     "name": "Odżywki",
+     "path": "fitness/odzywki",
+     "slug": "odzywki"
+    },
+    {
+     "count": 34038,
+     "id": "5067b323-b777-57bc-9802-bdc59fd33175",
+     "name": "Odżywki dodatkowe",
+     "path": "fitness/odzywki-dodatkowe",
+     "slug": "odzywki-dodatkowe"
+    },
+    {
+     "count": 52017,
+     "id": "4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+     "name": "Siłownia",
+     "path": "fitness/silownia",
+     "slug": "silownia"
+    },
+    {
+     "count": 8,
+     "id": "129b82c8-66b5-5855-9666-cf98d86c1cf2",
+     "name": "Trening",
+     "path": "fitness/trening",
+     "slug": "trening"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 22618,
+       "value": "szary"
+      },
+      {
+       "count": 22608,
+       "value": "granatowy"
+      },
+      {
+       "count": 22601,
+       "value": "czarny"
+      },
+      {
+       "count": 22579,
+       "value": "niebieski"
+      },
+      {
+       "count": 22569,
+       "value": "zielony"
+      },
+      {
+       "count": 22312,
+       "value": "czerwony"
+      },
+      {
+       "count": 9800,
+       "value": "granatowa"
+      },
+      {
+       "count": 9761,
+       "value": "czerwona"
+      },
+      {
+       "count": 9760,
+       "value": "zielona"
+      },
+      {
+       "count": 9716,
+       "value": "szara"
+      },
+      {
+       "count": 9701,
+       "value": "czarna"
+      },
+      {
+       "count": 9698,
+       "value": "niebieska"
+      },
+      {
+       "count": 4,
+       "value": "fioletowa"
+      }
+     ]
+    },
+    {
+     "axis": "Smak",
+     "values": [
+      {
+       "count": 17197,
+       "value": "cytrynowy"
+      },
+      {
+       "count": 11745,
+       "value": "jabłkowy"
+      },
+      {
+       "count": 11691,
+       "value": "czekoladowy"
+      },
+      {
+       "count": 11649,
+       "value": "bananowy"
+      },
+      {
+       "count": 11505,
+       "value": "waniliowy"
+      },
+      {
+       "count": 11478,
+       "value": "truskawkowy"
+      },
+      {
+       "count": 5685,
+       "value": "malinowy"
+      },
+      {
+       "count": 5606,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 5531,
+       "value": "owoce leśne"
+      },
+      {
+       "count": 6,
+       "value": "orzechowy"
+      },
+      {
+       "count": 6,
+       "value": "owocowy"
+      },
+      {
+       "count": 4,
+       "value": "cytrynowe"
+      },
+      {
+       "count": 4,
+       "value": "czekoladowa"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowe"
+      },
+      {
+       "count": 4,
+       "value": "truskawkowa"
+      },
+      {
+       "count": 4,
+       "value": "waniliowa"
+      }
+     ]
+    },
+    {
+     "axis": "Waga",
+     "values": [
+      {
+       "count": 11211,
+       "value": "20 kg"
+      },
+      {
+       "count": 6834,
+       "value": "8 kg"
+      },
+      {
+       "count": 6829,
+       "value": "24 kg"
+      },
+      {
+       "count": 6815,
+       "value": "16 kg"
+      },
+      {
+       "count": 6773,
+       "value": "12 kg"
+      },
+      {
+       "count": 6747,
+       "value": "4 kg"
+      },
+      {
+       "count": 5611,
+       "value": "500 g"
+      },
+      {
+       "count": 5558,
+       "value": "900 g"
+      },
+      {
+       "count": 5547,
+       "value": "2 kg"
+      },
+      {
+       "count": 4498,
+       "value": "1,25 kg"
+      },
+      {
+       "count": 4456,
+       "value": "15 kg"
+      },
+      {
+       "count": 4444,
+       "value": "2,5 kg"
+      },
+      {
+       "count": 4427,
+       "value": "10 kg"
+      },
+      {
+       "count": 4410,
+       "value": "5 kg"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 14033,
+       "value": "1000 ml"
+      },
+      {
+       "count": 8565,
+       "value": "700 ml"
+      },
+      {
+       "count": 8385,
+       "value": "500 ml"
+      },
+      {
+       "count": 5480,
+       "value": "750 ml"
+      },
+      {
+       "count": 5444,
+       "value": "600 ml"
+      }
+     ]
+    },
+    {
+     "axis": "Opór",
+     "values": [
+      {
+       "count": 8694,
+       "value": "bardzo mocny"
+      },
+      {
+       "count": 8666,
+       "value": "średni"
+      },
+      {
+       "count": 8612,
+       "value": "lekki"
+      },
+      {
+       "count": 8595,
+       "value": "mocny"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 7645,
+       "value": "XL"
+      },
+      {
+       "count": 7628,
+       "value": "M"
+      },
+      {
+       "count": 7606,
+       "value": "S"
+      },
+      {
+       "count": 7570,
+       "value": "L"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 5555,
+       "value": "2,8 m"
+      },
+      {
+       "count": 5501,
+       "value": "2,5 m"
+      },
+      {
+       "count": 5478,
+       "value": "3 m"
+      },
+      {
+       "count": 3200,
+       "value": "180 cm"
+      },
+      {
+       "count": 3185,
+       "value": "150 cm"
+      },
+      {
+       "count": 3162,
+       "value": "220 cm"
+      }
+     ]
+    },
+    {
+     "axis": "Średnica",
+     "values": [
+      {
+       "count": 6241,
+       "value": "65 cm"
+      },
+      {
+       "count": 6210,
+       "value": "55 cm"
+      },
+      {
+       "count": 6205,
+       "value": "75 cm"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 589999,
+    "min": 690
+   }
+  },
+  "total": 152506
+ },
+ "?category=80e6ad64-55c8-5d19-928f-c7ab460a9a7f": {
+  "facets": {
+   "availableCount": 24746,
+   "categories": [
+    {
+     "count": 10008,
+     "id": "e9a71633-a709-59fb-b5b8-0ec288bdcb2a",
+     "name": "Buty koszykarskie",
+     "path": "sporty-druzynowe/koszykowka/buty",
+     "slug": "buty"
+    },
+    {
+     "count": 6124,
+     "id": "db3be160-884a-59ea-a8dd-4804a6fe510d",
+     "name": "Kosze do koszykówki",
+     "path": "sporty-druzynowe/koszykowka/kosze",
+     "slug": "kosze"
+    },
+    {
+     "count": 10041,
+     "id": "4662120e-64b1-574a-97a3-da28807d0bf3",
+     "name": "Stroje koszykarskie",
+     "path": "sporty-druzynowe/koszykowka/stroje",
+     "slug": "stroje"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 4533,
+       "value": "M"
+      },
+      {
+       "count": 4491,
+       "value": "L"
+      },
+      {
+       "count": 4462,
+       "value": "S"
+      },
+      {
+       "count": 4397,
+       "value": "XL"
+      },
+      {
+       "count": 4048,
+       "value": "XS"
+      },
+      {
+       "count": 3919,
+       "value": "XXL"
+      },
+      {
+       "count": 2581,
+       "value": "40"
+      },
+      {
+       "count": 2578,
+       "value": "38"
+      },
+      {
+       "count": 2574,
+       "value": "47"
+      },
+      {
+       "count": 2564,
+       "value": "44"
+      },
+      {
+       "count": 2559,
+       "value": "43"
+      },
+      {
+       "count": 2516,
+       "value": "39"
+      },
+      {
+       "count": 2514,
+       "value": "45"
+      },
+      {
+       "count": 2503,
+       "value": "41"
+      },
+      {
+       "count": 2473,
+       "value": "46"
+      },
+      {
+       "count": 2453,
+       "value": "42"
+      },
+      {
+       "count": 295,
+       "value": "2"
+      },
+      {
+       "count": 280,
+       "value": "1"
+      },
+      {
+       "count": 275,
+       "value": "3"
+      },
+      {
+       "count": 267,
+       "value": "35-38"
+      },
+      {
+       "count": 252,
+       "value": "43-46"
+      },
+      {
+       "count": 250,
+       "value": "39-42"
+      },
+      {
+       "count": 120,
+       "value": "9"
+      },
+      {
+       "count": 119,
+       "value": "10"
+      },
+      {
+       "count": 117,
+       "value": "7"
+      },
+      {
+       "count": 116,
+       "value": "8"
+      },
+      {
+       "count": 115,
+       "value": "6"
+      },
+      {
+       "count": 110,
+       "value": "11"
+      }
+     ]
+    },
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 4231,
+       "value": "czerwony"
+      },
+      {
+       "count": 4206,
+       "value": "zielony"
+      },
+      {
+       "count": 4174,
+       "value": "granatowy"
+      },
+      {
+       "count": 4136,
+       "value": "niebieski"
+      },
+      {
+       "count": 4131,
+       "value": "czarny"
+      },
+      {
+       "count": 4125,
+       "value": "szary"
+      },
+      {
+       "count": 3966,
+       "value": "czerwone"
+      },
+      {
+       "count": 3917,
+       "value": "zielone"
+      },
+      {
+       "count": 3891,
+       "value": "granatowe"
+      },
+      {
+       "count": 3870,
+       "value": "szare"
+      },
+      {
+       "count": 3866,
+       "value": "czarne"
+      },
+      {
+       "count": 3857,
+       "value": "niebieskie"
+      },
+      {
+       "count": 425,
+       "value": "szara"
+      },
+      {
+       "count": 419,
+       "value": "zielona"
+      },
+      {
+       "count": 413,
+       "value": "czerwona"
+      },
+      {
+       "count": 404,
+       "value": "granatowa"
+      },
+      {
+       "count": 403,
+       "value": "niebieska"
+      },
+      {
+       "count": 380,
+       "value": "czarna"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 388,
+       "value": "50 l"
+      },
+      {
+       "count": 376,
+       "value": "30 l"
+      },
+      {
+       "count": 365,
+       "value": "70 l"
+      }
+     ]
+    },
+    {
+     "axis": "Liczba sztuk",
+     "values": [
+      {
+       "count": 263,
+       "value": "20"
+      },
+      {
+       "count": 250,
+       "value": "10"
+      },
+      {
+       "count": 247,
+       "value": "40"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 240000,
+    "min": 999
+   }
+  },
+  "total": 25516
+ },
+ "?category=8c10569a-2f29-539a-b2ec-ae97f68410a7": {
+  "facets": {
+   "availableCount": 115036,
+   "categories": [
+    {
+     "count": 46957,
+     "id": "9c9cc83c-63e5-5d6f-a933-c135928c19db",
+     "name": "Akcesoria piłkarskie",
+     "path": "sporty-druzynowe/akcesoria-pilkarskie",
+     "slug": "akcesoria-pilkarskie"
+    },
+    {
+     "count": 25516,
+     "id": "80e6ad64-55c8-5d19-928f-c7ab460a9a7f",
+     "name": "Koszykówka",
+     "path": "sporty-druzynowe/koszykowka",
+     "slug": "koszykowka"
+    },
+    {
+     "count": 10126,
+     "id": "81e88cb5-168e-5589-86fe-e14b2a3b22cb",
+     "name": "Piłka ręczna",
+     "path": "sporty-druzynowe/pilka-reczna",
+     "slug": "pilka-reczna"
+    },
+    {
+     "count": 23,
+     "id": "592d133b-169f-5d84-b197-b877925beda1",
+     "name": "Piłki",
+     "path": "sporty-druzynowe/pilki",
+     "slug": "pilki"
+    },
+    {
+     "count": 25714,
+     "id": "c5f17e8c-4d5e-5db3-8d61-2298306917f8",
+     "name": "Siatkówka",
+     "path": "sporty-druzynowe/siatkowka",
+     "slug": "siatkowka"
+    },
+    {
+     "count": 29558,
+     "id": "2d2c640f-4ea6-5539-b375-fc161e7936b7",
+     "name": "Trening drużynowy",
+     "path": "sporty-druzynowe/trening-druzynowy",
+     "slug": "trening-druzynowy"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 16607,
+       "value": "granatowy"
+      },
+      {
+       "count": 16480,
+       "value": "niebieski"
+      },
+      {
+       "count": 16475,
+       "value": "czerwony"
+      },
+      {
+       "count": 16431,
+       "value": "szary"
+      },
+      {
+       "count": 16420,
+       "value": "czarny"
+      },
+      {
+       "count": 16292,
+       "value": "zielony"
+      },
+      {
+       "count": 11175,
+       "value": "czerwone"
+      },
+      {
+       "count": 11067,
+       "value": "niebieskie"
+      },
+      {
+       "count": 11045,
+       "value": "granatowe"
+      },
+      {
+       "count": 11025,
+       "value": "zielone"
+      },
+      {
+       "count": 11008,
+       "value": "szare"
+      },
+      {
+       "count": 10939,
+       "value": "czarne"
+      },
+      {
+       "count": 9379,
+       "value": "zielona"
+      },
+      {
+       "count": 9366,
+       "value": "granatowa"
+      },
+      {
+       "count": 9301,
+       "value": "czerwona"
+      },
+      {
+       "count": 9296,
+       "value": "niebieska"
+      },
+      {
+       "count": 9282,
+       "value": "szara"
+      },
+      {
+       "count": 9161,
+       "value": "czarna"
+      },
+      {
+       "count": 13,
+       "value": "pomarańczowa"
+      },
+      {
+       "count": 9,
+       "value": "biała"
+      },
+      {
+       "count": 4,
+       "value": "biało-niebieska"
+      },
+      {
+       "count": 4,
+       "value": "brązowa"
+      },
+      {
+       "count": 4,
+       "value": "żółto-niebieska"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 23173,
+       "value": "M"
+      },
+      {
+       "count": 23072,
+       "value": "L"
+      },
+      {
+       "count": 23001,
+       "value": "S"
+      },
+      {
+       "count": 22921,
+       "value": "XL"
+      },
+      {
+       "count": 12640,
+       "value": "XS"
+      },
+      {
+       "count": 12614,
+       "value": "XXL"
+      },
+      {
+       "count": 6273,
+       "value": "1"
+      },
+      {
+       "count": 6240,
+       "value": "2"
+      },
+      {
+       "count": 6203,
+       "value": "3"
+      },
+      {
+       "count": 5733,
+       "value": "35-38"
+      },
+      {
+       "count": 5667,
+       "value": "43-46"
+      },
+      {
+       "count": 5647,
+       "value": "39-42"
+      },
+      {
+       "count": 4994,
+       "value": "47"
+      },
+      {
+       "count": 4975,
+       "value": "40"
+      },
+      {
+       "count": 4950,
+       "value": "38"
+      },
+      {
+       "count": 4937,
+       "value": "43"
+      },
+      {
+       "count": 4935,
+       "value": "44"
+      },
+      {
+       "count": 4918,
+       "value": "39"
+      },
+      {
+       "count": 4872,
+       "value": "45"
+      },
+      {
+       "count": 4825,
+       "value": "46"
+      },
+      {
+       "count": 4815,
+       "value": "42"
+      },
+      {
+       "count": 4801,
+       "value": "41"
+      },
+      {
+       "count": 2357,
+       "value": "8"
+      },
+      {
+       "count": 2348,
+       "value": "6"
+      },
+      {
+       "count": 2335,
+       "value": "7"
+      },
+      {
+       "count": 2333,
+       "value": "9"
+      },
+      {
+       "count": 2301,
+       "value": "10"
+      },
+      {
+       "count": 2280,
+       "value": "11"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 8498,
+       "value": "70 l"
+      },
+      {
+       "count": 8477,
+       "value": "50 l"
+      },
+      {
+       "count": 8459,
+       "value": "30 l"
+      }
+     ]
+    },
+    {
+     "axis": "Liczba sztuk",
+     "values": [
+      {
+       "count": 5601,
+       "value": "10"
+      },
+      {
+       "count": 5599,
+       "value": "40"
+      },
+      {
+       "count": 5561,
+       "value": "20"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 240000,
+    "min": 999
+   }
+  },
+  "total": 118249
+ },
+ "?category=9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2": {
+  "facets": {
+   "availableCount": 39773,
+   "categories": [
+    {
+     "count": 14413,
+     "id": "b624ae3d-2145-5a7e-9b42-4ca631d5358d",
+     "name": "Gogle narciarskie",
+     "path": "sporty-zimowe/akcesoria-narciarskie/gogle",
+     "slug": "gogle"
+    },
+    {
+     "count": 10157,
+     "id": "3cc2055d-461d-5238-bc2c-f387db0bb1c4",
+     "name": "Kijki narciarskie",
+     "path": "sporty-zimowe/akcesoria-narciarskie/kijki",
+     "slug": "kijki"
+    },
+    {
+     "count": 6052,
+     "id": "80dcb48e-b80c-5a8d-a7b4-59da04ed3215",
+     "name": "Pokrowce na narty",
+     "path": "sporty-zimowe/akcesoria-narciarskie/pokrowce",
+     "slug": "pokrowce"
+    },
+    {
+     "count": 6068,
+     "id": "d9f2cca5-ac47-58b3-9231-14f5fbab564f",
+     "name": "Smary i woski",
+     "path": "sporty-zimowe/akcesoria-narciarskie/smary-i-woski",
+     "slug": "smary-i-woski"
+    },
+    {
+     "count": 6041,
+     "id": "5539f772-3a11-5ffe-a2ae-a0e823a5bb3a",
+     "name": "Wiązania narciarskie",
+     "path": "sporty-zimowe/akcesoria-narciarskie/wiazania",
+     "slug": "wiazania"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 7108,
+       "value": "granatowy"
+      },
+      {
+       "count": 7104,
+       "value": "niebieski"
+      },
+      {
+       "count": 7096,
+       "value": "czarny"
+      },
+      {
+       "count": 7093,
+       "value": "szary"
+      },
+      {
+       "count": 7079,
+       "value": "czerwony"
+      },
+      {
+       "count": 6959,
+       "value": "zielony"
+      },
+      {
+       "count": 1382,
+       "value": "czerwona"
+      },
+      {
+       "count": 1340,
+       "value": "granatowa"
+      },
+      {
+       "count": 1320,
+       "value": "zielona"
+      },
+      {
+       "count": 1305,
+       "value": "szara"
+      },
+      {
+       "count": 1287,
+       "value": "niebieska"
+      },
+      {
+       "count": 1275,
+       "value": "czarna"
+      },
+      {
+       "count": 826,
+       "value": "szare"
+      },
+      {
+       "count": 821,
+       "value": "niebieskie"
+      },
+      {
+       "count": 819,
+       "value": "granatowe"
+      },
+      {
+       "count": 802,
+       "value": "zielone"
+      },
+      {
+       "count": 792,
+       "value": "czarne"
+      },
+      {
+       "count": 785,
+       "value": "czerwone"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 5115,
+       "value": "120 cm"
+      },
+      {
+       "count": 5061,
+       "value": "125 cm"
+      },
+      {
+       "count": 5045,
+       "value": "105 cm"
+      },
+      {
+       "count": 5042,
+       "value": "115 cm"
+      },
+      {
+       "count": 5029,
+       "value": "110 cm"
+      },
+      {
+       "count": 3144,
+       "value": "160 cm"
+      },
+      {
+       "count": 3142,
+       "value": "180 cm"
+      },
+      {
+       "count": 3065,
+       "value": "200 cm"
+      },
+      {
+       "count": 416,
+       "value": "147 cm"
+      },
+      {
+       "count": 413,
+       "value": "152 cm"
+      },
+      {
+       "count": 411,
+       "value": "158 cm"
+      },
+      {
+       "count": 404,
+       "value": "162 cm"
+      },
+      {
+       "count": 397,
+       "value": "155 cm"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 1647,
+       "value": "XL"
+      },
+      {
+       "count": 1599,
+       "value": "L"
+      },
+      {
+       "count": 1599,
+       "value": "M"
+      },
+      {
+       "count": 1563,
+       "value": "S"
+      },
+      {
+       "count": 723,
+       "value": "47"
+      },
+      {
+       "count": 683,
+       "value": "41"
+      },
+      {
+       "count": 679,
+       "value": "43"
+      },
+      {
+       "count": 669,
+       "value": "45"
+      },
+      {
+       "count": 650,
+       "value": "40"
+      },
+      {
+       "count": 647,
+       "value": "39"
+      },
+      {
+       "count": 647,
+       "value": "42"
+      },
+      {
+       "count": 639,
+       "value": "44"
+      },
+      {
+       "count": 636,
+       "value": "38"
+      },
+      {
+       "count": 636,
+       "value": "46"
+      },
+      {
+       "count": 531,
+       "value": "L/XL"
+      },
+      {
+       "count": 509,
+       "value": "S/M"
+      },
+      {
+       "count": 420,
+       "value": "XS"
+      },
+      {
+       "count": 412,
+       "value": "XXL"
+      }
+     ]
+    },
+    {
+     "axis": "Typ",
+     "values": [
+      {
+       "count": 3112,
+       "value": "uniwersalny"
+      },
+      {
+       "count": 3089,
+       "value": "wiosenny"
+      },
+      {
+       "count": 3074,
+       "value": "zimowy"
+      }
+     ]
+    },
+    {
+     "axis": "Zakres DIN",
+     "values": [
+      {
+       "count": 3119,
+       "value": "4-12"
+      },
+      {
+       "count": 3083,
+       "value": "3-10"
+      },
+      {
+       "count": 3054,
+       "value": "6-14"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 290000,
+    "min": 2999
+   }
+  },
+  "total": 40724
+ },
+ "?category=9c5e2afb-1a3c-50dc-89d8-58cbc018ebb7": {
+  "facets": {
+   "availableCount": 12,
+   "categories": [
+    {
+     "count": 6,
+     "id": "68dd377b-f60c-54fb-a0c1-d040f87ddba2",
+     "name": "Buty szosowe",
+     "path": "bieganie/buty/szosowe",
+     "slug": "szosowe"
+    },
+    {
+     "count": 6,
+     "id": "65c200e9-5634-5413-a515-0f94e28bef34",
+     "name": "Buty trailowe",
+     "path": "bieganie/buty/trailowe",
+     "slug": "trailowe"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 12,
+       "value": "czarne"
+      },
+      {
+       "count": 6,
+       "value": "niebieskie"
+      },
+      {
+       "count": 6,
+       "value": "pomarańczowe"
+      },
+      {
+       "count": 6,
+       "value": "zielone"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 12,
+       "value": "40"
+      },
+      {
+       "count": 12,
+       "value": "41"
+      },
+      {
+       "count": 12,
+       "value": "42"
+      },
+      {
+       "count": 12,
+       "value": "43"
+      },
+      {
+       "count": 12,
+       "value": "44"
+      },
+      {
+       "count": 12,
+       "value": "45"
+      },
+      {
+       "count": 12,
+       "value": "46"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 69900,
+    "min": 34900
+   }
+  },
+  "total": 12
+ },
+ "?category=9c9cc83c-63e5-5d6f-a933-c135928c19db": {
+  "facets": {
+   "availableCount": 45857,
+   "categories": [
+    {
+     "count": 10240,
+     "id": "c0e422fd-b002-56d0-bfda-f15645a0fd56",
+     "name": "Getry piłkarskie",
+     "path": "sporty-druzynowe/akcesoria-pilkarskie/getry",
+     "slug": "getry"
+    },
+    {
+     "count": 10100,
+     "id": "2b93dc6f-4c3b-53d0-b20b-9be5f7980537",
+     "name": "Ochraniacze piłkarskie",
+     "path": "sporty-druzynowe/akcesoria-pilkarskie/ochraniacze",
+     "slug": "ochraniacze"
+    },
+    {
+     "count": 6045,
+     "id": "f663f97c-e400-58b4-b8f7-d6a979f89073",
+     "name": "Rękawice bramkarskie",
+     "path": "sporty-druzynowe/akcesoria-pilkarskie/rekawice-bramkarskie",
+     "slug": "rekawice-bramkarskie"
+    },
+    {
+     "count": 22498,
+     "id": "eede7500-b01e-5a87-a489-5dbfb0da8b00",
+     "name": "Stroje piłkarskie",
+     "path": "sporty-druzynowe/akcesoria-pilkarskie/stroje",
+     "slug": "stroje"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 15276,
+       "value": "L"
+      },
+      {
+       "count": 15268,
+       "value": "XL"
+      },
+      {
+       "count": 15235,
+       "value": "M"
+      },
+      {
+       "count": 15230,
+       "value": "S"
+      },
+      {
+       "count": 9303,
+       "value": "XXL"
+      },
+      {
+       "count": 9253,
+       "value": "XS"
+      },
+      {
+       "count": 5733,
+       "value": "35-38"
+      },
+      {
+       "count": 5667,
+       "value": "43-46"
+      },
+      {
+       "count": 5647,
+       "value": "39-42"
+      },
+      {
+       "count": 2357,
+       "value": "8"
+      },
+      {
+       "count": 2348,
+       "value": "6"
+      },
+      {
+       "count": 2335,
+       "value": "7"
+      },
+      {
+       "count": 2333,
+       "value": "9"
+      },
+      {
+       "count": 2301,
+       "value": "10"
+      },
+      {
+       "count": 2280,
+       "value": "11"
+      },
+      {
+       "count": 394,
+       "value": "2"
+      },
+      {
+       "count": 391,
+       "value": "1"
+      },
+      {
+       "count": 370,
+       "value": "3"
+      },
+      {
+       "count": 334,
+       "value": "38"
+      },
+      {
+       "count": 329,
+       "value": "39"
+      },
+      {
+       "count": 311,
+       "value": "45"
+      },
+      {
+       "count": 310,
+       "value": "40"
+      },
+      {
+       "count": 303,
+       "value": "47"
+      },
+      {
+       "count": 300,
+       "value": "43"
+      },
+      {
+       "count": 298,
+       "value": "42"
+      },
+      {
+       "count": 295,
+       "value": "44"
+      },
+      {
+       "count": 287,
+       "value": "46"
+      },
+      {
+       "count": 284,
+       "value": "41"
+      }
+     ]
+    },
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 6246,
+       "value": "czerwony"
+      },
+      {
+       "count": 6234,
+       "value": "granatowy"
+      },
+      {
+       "count": 6177,
+       "value": "niebieski"
+      },
+      {
+       "count": 6161,
+       "value": "czarny"
+      },
+      {
+       "count": 6140,
+       "value": "szary"
+      },
+      {
+       "count": 6079,
+       "value": "zielony"
+      },
+      {
+       "count": 4294,
+       "value": "niebieskie"
+      },
+      {
+       "count": 4291,
+       "value": "czerwone"
+      },
+      {
+       "count": 4278,
+       "value": "zielone"
+      },
+      {
+       "count": 4274,
+       "value": "granatowe"
+      },
+      {
+       "count": 4268,
+       "value": "szare"
+      },
+      {
+       "count": 4193,
+       "value": "czarne"
+      },
+      {
+       "count": 4027,
+       "value": "zielona"
+      },
+      {
+       "count": 3998,
+       "value": "granatowa"
+      },
+      {
+       "count": 3979,
+       "value": "czerwona"
+      },
+      {
+       "count": 3929,
+       "value": "szara"
+      },
+      {
+       "count": 3923,
+       "value": "niebieska"
+      },
+      {
+       "count": 3856,
+       "value": "czarna"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 558,
+       "value": "30 l"
+      },
+      {
+       "count": 540,
+       "value": "50 l"
+      },
+      {
+       "count": 534,
+       "value": "70 l"
+      }
+     ]
+    },
+    {
+     "axis": "Liczba sztuk",
+     "values": [
+      {
+       "count": 348,
+       "value": "20"
+      },
+      {
+       "count": 344,
+       "value": "40"
+      },
+      {
+       "count": 339,
+       "value": "10"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 200000,
+    "min": 999
+   }
+  },
+  "total": 46957
+ },
+ "?category=c4b9431b-efe9-510f-8615-58bbd4ef86c2": {
+  "facets": {
+   "availableCount": 24348,
+   "categories": [
+    {
+     "count": 18982,
+     "id": "802a97c9-9558-5a47-aa2c-bd21da57e6cb",
+     "name": "Bagażniki rowerowe",
+     "path": "rower/bagazniki-i-foteliki/bagazniki",
+     "slug": "bagazniki"
+    },
+    {
+     "count": 6355,
+     "id": "67a7eaa7-4725-5233-be8d-133e240c37b9",
+     "name": "Foteliki rowerowe",
+     "path": "rower/bagazniki-i-foteliki/foteliki",
+     "slug": "foteliki"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 4067,
+       "value": "czerwona"
+      },
+      {
+       "count": 4064,
+       "value": "czarna"
+      },
+      {
+       "count": 4040,
+       "value": "granatowa"
+      },
+      {
+       "count": 4007,
+       "value": "szara"
+      },
+      {
+       "count": 3986,
+       "value": "niebieska"
+      },
+      {
+       "count": 3950,
+       "value": "zielona"
+      },
+      {
+       "count": 2134,
+       "value": "niebieski"
+      },
+      {
+       "count": 2128,
+       "value": "zielony"
+      },
+      {
+       "count": 2113,
+       "value": "szary"
+      },
+      {
+       "count": 2102,
+       "value": "granatowy"
+      },
+      {
+       "count": 2081,
+       "value": "czerwony"
+      },
+      {
+       "count": 2072,
+       "value": "czarny"
+      },
+      {
+       "count": 527,
+       "value": "granatowe"
+      },
+      {
+       "count": 524,
+       "value": "szare"
+      },
+      {
+       "count": 512,
+       "value": "czarne"
+      },
+      {
+       "count": 506,
+       "value": "czerwone"
+      },
+      {
+       "count": 504,
+       "value": "zielone"
+      },
+      {
+       "count": 498,
+       "value": "niebieskie"
+      }
+     ]
+    },
+    {
+     "axis": "Montaż",
+     "values": [
+      {
+       "count": 6244,
+       "value": "przedni"
+      },
+      {
+       "count": 6216,
+       "value": "na sztycę"
+      },
+      {
+       "count": 6157,
+       "value": "tylny"
+      },
+      {
+       "count": 3379,
+       "value": "na ramie"
+      },
+      {
+       "count": 3348,
+       "value": "na bagażniku"
+      },
+      {
+       "count": 191,
+       "value": "tył"
+      },
+      {
+       "count": 188,
+       "value": "przód"
+      },
+      {
+       "count": 182,
+       "value": "komplet"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 5695,
+       "value": "15 l"
+      },
+      {
+       "count": 5648,
+       "value": "25 l"
+      },
+      {
+       "count": 5639,
+       "value": "20 l"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 471,
+       "value": "XL"
+      },
+      {
+       "count": 462,
+       "value": "S"
+      },
+      {
+       "count": 460,
+       "value": "L"
+      },
+      {
+       "count": 456,
+       "value": "M"
+      },
+      {
+       "count": 367,
+       "value": "27,5\""
+      },
+      {
+       "count": 367,
+       "value": "29\""
+      },
+      {
+       "count": 362,
+       "value": "26\""
+      },
+      {
+       "count": 359,
+       "value": "28\""
+      },
+      {
+       "count": 359,
+       "value": "XS"
+      },
+      {
+       "count": 357,
+       "value": "XXL"
+      },
+      {
+       "count": 89,
+       "value": "44"
+      },
+      {
+       "count": 84,
+       "value": "46"
+      },
+      {
+       "count": 83,
+       "value": "39"
+      },
+      {
+       "count": 83,
+       "value": "47"
+      },
+      {
+       "count": 81,
+       "value": "45"
+      },
+      {
+       "count": 80,
+       "value": "38"
+      },
+      {
+       "count": 75,
+       "value": "40"
+      },
+      {
+       "count": 75,
+       "value": "43"
+      },
+      {
+       "count": 74,
+       "value": "42"
+      },
+      {
+       "count": 71,
+       "value": "41"
+      }
+     ]
+    },
+    {
+     "axis": "Szerokość",
+     "values": [
+      {
+       "count": 232,
+       "value": "57 mm"
+      },
+      {
+       "count": 230,
+       "value": "50 mm"
+      },
+      {
+       "count": 219,
+       "value": "35 mm"
+      },
+      {
+       "count": 214,
+       "value": "40 mm"
+      },
+      {
+       "count": 173,
+       "value": "130 mm"
+      },
+      {
+       "count": 172,
+       "value": "143 mm"
+      },
+      {
+       "count": 167,
+       "value": "155 mm"
+      }
+     ]
+    },
+    {
+     "axis": "Liczba przełożeń",
+     "values": [
+      {
+       "count": 231,
+       "value": "9"
+      },
+      {
+       "count": 224,
+       "value": "10"
+      },
+      {
+       "count": 221,
+       "value": "11"
+      },
+      {
+       "count": 220,
+       "value": "12"
+      },
+      {
+       "count": 149,
+       "value": "8"
+      }
+     ]
+    },
+    {
+     "axis": "Moc",
+     "values": [
+      {
+       "count": 220,
+       "value": "1200 lm"
+      },
+      {
+       "count": 219,
+       "value": "800 lm"
+      },
+      {
+       "count": 208,
+       "value": "400 lm"
+      }
+     ]
+    },
+    {
+     "axis": "Typ",
+     "values": [
+      {
+       "count": 193,
+       "value": "łańcuch"
+      },
+      {
+       "count": 192,
+       "value": "linka"
+      },
+      {
+       "count": 178,
+       "value": "U-lock"
+      }
+     ]
+    },
+    {
+     "axis": "Zakres zębatek",
+     "values": [
+      {
+       "count": 87,
+       "value": "11-32"
+      },
+      {
+       "count": 83,
+       "value": "11-36"
+      },
+      {
+       "count": 82,
+       "value": "10-51"
+      },
+      {
+       "count": 75,
+       "value": "11-34"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 120000,
+    "min": 1499
+   }
+  },
+  "total": 24997
+ },
+ "?category=d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab": {
+  "facets": {
+   "availableCount": 42667,
+   "categories": [
+    {
+     "count": 6129,
+     "id": "72ce749c-5110-5ce8-b243-4919a8319937",
+     "name": "Opaski na nadgarstki",
+     "path": "fitness/akcesoria-treningowe/opaski",
+     "slug": "opaski"
+    },
+    {
+     "count": 6010,
+     "id": "f4e75bdd-1644-5d47-ba9b-9cbbac702ee5",
+     "name": "Pasy do podnoszenia",
+     "path": "fitness/akcesoria-treningowe/pasy-do-podnoszenia",
+     "slug": "pasy-do-podnoszenia"
+    },
+    {
+     "count": 10310,
+     "id": "ce6e471b-05e0-5d0b-a18d-04ef56a356c8",
+     "name": "Rękawice treningowe",
+     "path": "fitness/akcesoria-treningowe/rekawice",
+     "slug": "rekawice"
+    },
+    {
+     "count": 22640,
+     "id": "865e162c-7fc4-55c7-84f2-39f301865e39",
+     "name": "Shakery i bidony",
+     "path": "fitness/akcesoria-treningowe/shakery",
+     "slug": "shakery"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 10078,
+       "value": "szary"
+      },
+      {
+       "count": 10061,
+       "value": "czarny"
+      },
+      {
+       "count": 10054,
+       "value": "niebieski"
+      },
+      {
+       "count": 10034,
+       "value": "granatowy"
+      },
+      {
+       "count": 10010,
+       "value": "zielony"
+      },
+      {
+       "count": 9944,
+       "value": "czerwony"
+      },
+      {
+       "count": 6231,
+       "value": "zielona"
+      },
+      {
+       "count": 6221,
+       "value": "czerwona"
+      },
+      {
+       "count": 6214,
+       "value": "niebieska"
+      },
+      {
+       "count": 6206,
+       "value": "granatowa"
+      },
+      {
+       "count": 6191,
+       "value": "szara"
+      },
+      {
+       "count": 6190,
+       "value": "czarna"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 14033,
+       "value": "1000 ml"
+      },
+      {
+       "count": 8565,
+       "value": "700 ml"
+      },
+      {
+       "count": 8385,
+       "value": "500 ml"
+      },
+      {
+       "count": 5480,
+       "value": "750 ml"
+      },
+      {
+       "count": 5444,
+       "value": "600 ml"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 7645,
+       "value": "XL"
+      },
+      {
+       "count": 7628,
+       "value": "M"
+      },
+      {
+       "count": 7606,
+       "value": "S"
+      },
+      {
+       "count": 7570,
+       "value": "L"
+      }
+     ]
+    },
+    {
+     "axis": "Smak",
+     "values": [
+      {
+       "count": 866,
+       "value": "cytrynowy"
+      },
+      {
+       "count": 602,
+       "value": "czekoladowy"
+      },
+      {
+       "count": 595,
+       "value": "jabłkowy"
+      },
+      {
+       "count": 590,
+       "value": "bananowy"
+      },
+      {
+       "count": 588,
+       "value": "truskawkowy"
+      },
+      {
+       "count": 579,
+       "value": "waniliowy"
+      },
+      {
+       "count": 274,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 269,
+       "value": "malinowy"
+      },
+      {
+       "count": 261,
+       "value": "owoce leśne"
+      }
+     ]
+    },
+    {
+     "axis": "Waga",
+     "values": [
+      {
+       "count": 549,
+       "value": "20 kg"
+      },
+      {
+       "count": 336,
+       "value": "8 kg"
+      },
+      {
+       "count": 328,
+       "value": "24 kg"
+      },
+      {
+       "count": 326,
+       "value": "4 kg"
+      },
+      {
+       "count": 324,
+       "value": "12 kg"
+      },
+      {
+       "count": 306,
+       "value": "16 kg"
+      },
+      {
+       "count": 291,
+       "value": "900 g"
+      },
+      {
+       "count": 285,
+       "value": "500 g"
+      },
+      {
+       "count": 267,
+       "value": "2 kg"
+      },
+      {
+       "count": 236,
+       "value": "2,5 kg"
+      },
+      {
+       "count": 230,
+       "value": "15 kg"
+      },
+      {
+       "count": 226,
+       "value": "1,25 kg"
+      },
+      {
+       "count": 225,
+       "value": "10 kg"
+      },
+      {
+       "count": 215,
+       "value": "5 kg"
+      }
+     ]
+    },
+    {
+     "axis": "Opór",
+     "values": [
+      {
+       "count": 453,
+       "value": "bardzo mocny"
+      },
+      {
+       "count": 440,
+       "value": "lekki"
+      },
+      {
+       "count": 437,
+       "value": "średni"
+      },
+      {
+       "count": 415,
+       "value": "mocny"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 289,
+       "value": "3 m"
+      },
+      {
+       "count": 280,
+       "value": "2,5 m"
+      },
+      {
+       "count": 268,
+       "value": "2,8 m"
+      },
+      {
+       "count": 144,
+       "value": "180 cm"
+      },
+      {
+       "count": 134,
+       "value": "220 cm"
+      },
+      {
+       "count": 130,
+       "value": "150 cm"
+      }
+     ]
+    },
+    {
+     "axis": "Średnica",
+     "values": [
+      {
+       "count": 327,
+       "value": "65 cm"
+      },
+      {
+       "count": 314,
+       "value": "55 cm"
+      },
+      {
+       "count": 309,
+       "value": "75 cm"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 569999,
+    "min": 999
+   }
+  },
+  "total": 43686
+ },
+ "?category=d7c098d0-4bae-595e-a1e1-e4a923448956": {
+  "facets": {
+   "availableCount": 195846,
+   "categories": [
+    {
+     "count": 33707,
+     "id": "1eca62e7-3a2e-526f-b689-4d43a343b30d",
+     "name": "Akcesoria górskie",
+     "path": "turystyka/akcesoria-gorskie",
+     "slug": "akcesoria-gorskie"
+    },
+    {
+     "count": 20,
+     "id": "70134891-dc80-5215-9109-23f8f80ad40a",
+     "name": "Biwak",
+     "path": "turystyka/biwak",
+     "slug": "biwak"
+    },
+    {
+     "count": 49853,
+     "id": "b046c3bb-67cf-575e-85de-475b0a4231db",
+     "name": "Kuchnia turystyczna",
+     "path": "turystyka/kuchnia-turystyczna",
+     "slug": "kuchnia-turystyczna"
+    },
+    {
+     "count": 39764,
+     "id": "a58050fa-627a-5c6f-aa94-3f392baa4385",
+     "name": "Literatura i żywność",
+     "path": "turystyka/literatura-i-zywnosc",
+     "slug": "literatura-i-zywnosc"
+    },
+    {
+     "count": 16,
+     "id": "8114f947-c901-5ec4-a342-8680b736d727",
+     "name": "Nawigacja i literatura",
+     "path": "turystyka/nawigacja",
+     "slug": "nawigacja"
+    },
+    {
+     "count": 43805,
+     "id": "1a27b41d-f17e-5928-b73d-e9953916221a",
+     "name": "Obuwie turystyczne",
+     "path": "turystyka/obuwie-turystyczne",
+     "slug": "obuwie-turystyczne"
+    },
+    {
+     "count": 70132,
+     "id": "f6f867f6-b41b-5131-9b4d-8a30fbea6c2b",
+     "name": "Odzież turystyczna",
+     "path": "turystyka/odziez-turystyczna",
+     "slug": "odziez-turystyczna"
+    },
+    {
+     "count": 14,
+     "id": "266c5e49-3e83-5a60-98d2-e2e142d46edb",
+     "name": "Plecaki",
+     "path": "turystyka/plecaki",
+     "slug": "plecaki"
+    },
+    {
+     "count": 8,
+     "id": "eb2174f3-d536-50f3-8832-51736f2da26d",
+     "name": "Żywność turystyczna",
+     "path": "turystyka/zywnosc",
+     "slug": "zywnosc"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 21946,
+       "value": "czerwone"
+      },
+      {
+       "count": 21923,
+       "value": "zielone"
+      },
+      {
+       "count": 21830,
+       "value": "czarne"
+      },
+      {
+       "count": 21828,
+       "value": "granatowe"
+      },
+      {
+       "count": 21822,
+       "value": "szare"
+      },
+      {
+       "count": 21797,
+       "value": "niebieskie"
+      },
+      {
+       "count": 16831,
+       "value": "niebieski"
+      },
+      {
+       "count": 16824,
+       "value": "zielony"
+      },
+      {
+       "count": 16820,
+       "value": "granatowy"
+      },
+      {
+       "count": 16750,
+       "value": "czarny"
+      },
+      {
+       "count": 16746,
+       "value": "szary"
+      },
+      {
+       "count": 16643,
+       "value": "czerwony"
+      },
+      {
+       "count": 16543,
+       "value": "niebieska"
+      },
+      {
+       "count": 16523,
+       "value": "szara"
+      },
+      {
+       "count": 16516,
+       "value": "zielona"
+      },
+      {
+       "count": 16513,
+       "value": "granatowa"
+      },
+      {
+       "count": 16496,
+       "value": "czerwona"
+      },
+      {
+       "count": 16491,
+       "value": "czarna"
+      },
+      {
+       "count": 14,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 6,
+       "value": "oliwkowy"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowa"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 27409,
+       "value": "XS"
+      },
+      {
+       "count": 27388,
+       "value": "M"
+      },
+      {
+       "count": 27286,
+       "value": "XXL"
+      },
+      {
+       "count": 27218,
+       "value": "L"
+      },
+      {
+       "count": 27198,
+       "value": "S"
+      },
+      {
+       "count": 27121,
+       "value": "XL"
+      },
+      {
+       "count": 8520,
+       "value": "43-46"
+      },
+      {
+       "count": 8518,
+       "value": "35-38"
+      },
+      {
+       "count": 8509,
+       "value": "39-42"
+      },
+      {
+       "count": 7307,
+       "value": "42"
+      },
+      {
+       "count": 7295,
+       "value": "47"
+      },
+      {
+       "count": 7282,
+       "value": "44"
+      },
+      {
+       "count": 7262,
+       "value": "43"
+      },
+      {
+       "count": 7259,
+       "value": "40"
+      },
+      {
+       "count": 7257,
+       "value": "46"
+      },
+      {
+       "count": 7246,
+       "value": "41"
+      },
+      {
+       "count": 7235,
+       "value": "39"
+      },
+      {
+       "count": 7165,
+       "value": "45"
+      },
+      {
+       "count": 7102,
+       "value": "38"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 14087,
+       "value": "1 l"
+      },
+      {
+       "count": 14082,
+       "value": "0,75 l"
+      },
+      {
+       "count": 8320,
+       "value": "0,5 l"
+      },
+      {
+       "count": 6267,
+       "value": "1,8 l"
+      },
+      {
+       "count": 6257,
+       "value": "1,2 l"
+      },
+      {
+       "count": 6231,
+       "value": "0,8 l"
+      },
+      {
+       "count": 5742,
+       "value": "1,5 l"
+      },
+      {
+       "count": 5654,
+       "value": "0,6 l"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 8620,
+       "value": "100-120 cm"
+      },
+      {
+       "count": 8528,
+       "value": "110-130 cm"
+      },
+      {
+       "count": 8482,
+       "value": "115-135 cm"
+      }
+     ]
+    },
+    {
+     "axis": "Porcja",
+     "values": [
+      {
+       "count": 6358,
+       "value": "300 g"
+      },
+      {
+       "count": 6301,
+       "value": "500 g"
+      },
+      {
+       "count": 8,
+       "value": "dwuosobowa"
+      },
+      {
+       "count": 8,
+       "value": "jednoosobowa"
+      }
+     ]
+    },
+    {
+     "axis": "Powiększenie",
+     "values": [
+      {
+       "count": 3122,
+       "value": "8x32"
+      },
+      {
+       "count": 3092,
+       "value": "8x42"
+      },
+      {
+       "count": 3084,
+       "value": "10x42"
+      }
+     ]
+    },
+    {
+     "axis": "Oprawa",
+     "values": [
+      {
+       "count": 8,
+       "value": "oprawa miękka"
+      },
+      {
+       "count": 8,
+       "value": "oprawa twarda"
+      }
+     ]
+    },
+    {
+     "axis": "Wersja",
+     "values": [
+      {
+       "count": 8,
+       "value": "laminowana"
+      },
+      {
+       "count": 8,
+       "value": "składana"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 140000,
+    "min": 1499
+   }
+  },
+  "total": 202733
+ },
+ "?category=d8db2ee0-5605-5e61-8788-c3df42b6a7fb": {
+  "facets": {
+   "availableCount": 6,
+   "categories": [],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 6,
+       "value": "niebieska"
+      },
+      {
+       "count": 6,
+       "value": "turkusowa"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 299900,
+    "min": 189900
+   }
+  },
+  "total": 6
+ },
+ "?category=ebcde635-4d3b-503f-82d2-4bad17c400b0": {
+  "facets": {
+   "availableCount": 3,
+   "categories": [],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 4,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 4,
+       "value": "zielony"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 349900,
+    "min": 249900
+   }
+  },
+  "total": 4
+ },
+ "?category=f88bf6cc-a54d-5473-8aae-47a57bc51304": {
+  "facets": {
+   "availableCount": 139498,
+   "categories": [
+    {
+     "count": 12,
+     "id": "24f060dc-a340-56d7-9601-378eb1ef0b3f",
+     "name": "Akcesoria rowerowe",
+     "path": "rower/akcesoria",
+     "slug": "akcesoria"
+    },
+    {
+     "count": 24997,
+     "id": "c4b9431b-efe9-510f-8615-58bbd4ef86c2",
+     "name": "Bagażniki i foteliki",
+     "path": "rower/bagazniki-i-foteliki",
+     "slug": "bagazniki-i-foteliki"
+    },
+    {
+     "count": 57557,
+     "id": "2c4ff27c-adc5-5571-8331-8626052e4e4f",
+     "name": "Części rowerowe",
+     "path": "rower/czesci-rowerowe",
+     "slug": "czesci-rowerowe"
+    },
+    {
+     "count": 34553,
+     "id": "a5bff447-a759-5048-8534-e5b052a4839c",
+     "name": "Elektronika rowerowa",
+     "path": "rower/elektronika-rowerowa",
+     "slug": "elektronika-rowerowa"
+    },
+    {
+     "count": 10,
+     "id": "c593aa0a-a5db-5c48-97b3-cbf27cef971c",
+     "name": "Kaski i ochraniacze",
+     "path": "rower/kaski-i-ochraniacze",
+     "slug": "kaski-i-ochraniacze"
+    },
+    {
+     "count": 10,
+     "id": "5b0bb826-c5c6-5c66-8dae-dbe98eb45416",
+     "name": "Rowery",
+     "path": "rower/rowery",
+     "slug": "rowery"
+    },
+    {
+     "count": 48170,
+     "id": "1e458f55-1552-5eac-bffe-411c91036786",
+     "name": "Ubrania rowerowe",
+     "path": "rower/ubrania-rowerowe",
+     "slug": "ubrania-rowerowe"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 16587,
+       "value": "niebieskie"
+      },
+      {
+       "count": 16511,
+       "value": "czarne"
+      },
+      {
+       "count": 16487,
+       "value": "szare"
+      },
+      {
+       "count": 16482,
+       "value": "zielone"
+      },
+      {
+       "count": 16467,
+       "value": "czerwone"
+      },
+      {
+       "count": 16449,
+       "value": "granatowe"
+      },
+      {
+       "count": 11126,
+       "value": "szara"
+      },
+      {
+       "count": 11115,
+       "value": "granatowa"
+      },
+      {
+       "count": 11094,
+       "value": "niebieska"
+      },
+      {
+       "count": 11090,
+       "value": "czarna"
+      },
+      {
+       "count": 11085,
+       "value": "czerwona"
+      },
+      {
+       "count": 11011,
+       "value": "zielona"
+      },
+      {
+       "count": 5807,
+       "value": "zielony"
+      },
+      {
+       "count": 5776,
+       "value": "niebieski"
+      },
+      {
+       "count": 5753,
+       "value": "czerwony"
+      },
+      {
+       "count": 5751,
+       "value": "czarny"
+      },
+      {
+       "count": 5748,
+       "value": "szary"
+      },
+      {
+       "count": 5694,
+       "value": "granatowy"
+      },
+      {
+       "count": 10,
+       "value": "biały"
+      },
+      {
+       "count": 10,
+       "value": "grafitowy"
+      },
+      {
+       "count": 6,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 4,
+       "value": "oliwkowa"
+      },
+      {
+       "count": 4,
+       "value": "srebrny"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 15633,
+       "value": "S"
+      },
+      {
+       "count": 15578,
+       "value": "XL"
+      },
+      {
+       "count": 15561,
+       "value": "L"
+      },
+      {
+       "count": 15519,
+       "value": "M"
+      },
+      {
+       "count": 12672,
+       "value": "29\""
+      },
+      {
+       "count": 12536,
+       "value": "26\""
+      },
+      {
+       "count": 12509,
+       "value": "28\""
+      },
+      {
+       "count": 12478,
+       "value": "27,5\""
+      },
+      {
+       "count": 10902,
+       "value": "XXL"
+      },
+      {
+       "count": 10759,
+       "value": "XS"
+      },
+      {
+       "count": 2510,
+       "value": "43"
+      },
+      {
+       "count": 2502,
+       "value": "42"
+      },
+      {
+       "count": 2476,
+       "value": "44"
+      },
+      {
+       "count": 2457,
+       "value": "38"
+      },
+      {
+       "count": 2457,
+       "value": "45"
+      },
+      {
+       "count": 2434,
+       "value": "39"
+      },
+      {
+       "count": 2432,
+       "value": "47"
+      },
+      {
+       "count": 2421,
+       "value": "41"
+      },
+      {
+       "count": 2418,
+       "value": "40"
+      },
+      {
+       "count": 2401,
+       "value": "46"
+      }
+     ]
+    },
+    {
+     "axis": "Montaż",
+     "values": [
+      {
+       "count": 6407,
+       "value": "przód"
+      },
+      {
+       "count": 6394,
+       "value": "tył"
+      },
+      {
+       "count": 6364,
+       "value": "komplet"
+      },
+      {
+       "count": 6244,
+       "value": "przedni"
+      },
+      {
+       "count": 6216,
+       "value": "na sztycę"
+      },
+      {
+       "count": 6157,
+       "value": "tylny"
+      },
+      {
+       "count": 3379,
+       "value": "na ramie"
+      },
+      {
+       "count": 3348,
+       "value": "na bagażniku"
+      }
+     ]
+    },
+    {
+     "axis": "Szerokość",
+     "values": [
+      {
+       "count": 7299,
+       "value": "57 mm"
+      },
+      {
+       "count": 7264,
+       "value": "35 mm"
+      },
+      {
+       "count": 7226,
+       "value": "50 mm"
+      },
+      {
+       "count": 7215,
+       "value": "40 mm"
+      },
+      {
+       "count": 5582,
+       "value": "130 mm"
+      },
+      {
+       "count": 5581,
+       "value": "155 mm"
+      },
+      {
+       "count": 5570,
+       "value": "143 mm"
+      }
+     ]
+    },
+    {
+     "axis": "Liczba przełożeń",
+     "values": [
+      {
+       "count": 7627,
+       "value": "10"
+      },
+      {
+       "count": 7601,
+       "value": "12"
+      },
+      {
+       "count": 7491,
+       "value": "11"
+      },
+      {
+       "count": 7470,
+       "value": "9"
+      },
+      {
+       "count": 5060,
+       "value": "8"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 5695,
+       "value": "15 l"
+      },
+      {
+       "count": 5648,
+       "value": "25 l"
+      },
+      {
+       "count": 5639,
+       "value": "20 l"
+      }
+     ]
+    },
+    {
+     "axis": "Moc",
+     "values": [
+      {
+       "count": 6283,
+       "value": "400 lm"
+      },
+      {
+       "count": 6235,
+       "value": "800 lm"
+      },
+      {
+       "count": 6210,
+       "value": "1200 lm"
+      }
+     ]
+    },
+    {
+     "axis": "Typ",
+     "values": [
+      {
+       "count": 6152,
+       "value": "łańcuch"
+      },
+      {
+       "count": 6108,
+       "value": "U-lock"
+      },
+      {
+       "count": 6089,
+       "value": "linka"
+      }
+     ]
+    },
+    {
+     "axis": "Zakres zębatek",
+     "values": [
+      {
+       "count": 2495,
+       "value": "11-36"
+      },
+      {
+       "count": 2489,
+       "value": "11-32"
+      },
+      {
+       "count": 2461,
+       "value": "11-34"
+      },
+      {
+       "count": 2404,
+       "value": "10-51"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar ramy",
+     "values": [
+      {
+       "count": 10,
+       "value": "L"
+      },
+      {
+       "count": 10,
+       "value": "M"
+      },
+      {
+       "count": 10,
+       "value": "S"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 1499900,
+    "min": 842
+   }
+  },
+  "total": 143221
+ },
+ "?category=fb2be761-1a8c-5d94-9c3f-2917db623644": {
+  "facets": {
+   "availableCount": 123329,
+   "categories": [
+    {
+     "count": 40724,
+     "id": "9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+     "name": "Akcesoria narciarskie",
+     "path": "sporty-zimowe/akcesoria-narciarskie",
+     "slug": "akcesoria-narciarskie"
+    },
+    {
+     "count": 6,
+     "id": "6a1e0ddd-6825-51e2-a6dc-52d790533102",
+     "name": "Kaski narciarskie",
+     "path": "sporty-zimowe/kaski",
+     "slug": "kaski"
+    },
+    {
+     "count": 10,
+     "id": "bc18f6f0-fcc5-5e7f-bd57-08945163c1ee",
+     "name": "Narty",
+     "path": "sporty-zimowe/narty",
+     "slug": "narty"
+    },
+    {
+     "count": 29783,
+     "id": "b175a428-2d6c-57b8-aaa6-b4983ed7d9f4",
+     "name": "Obuwie zimowe",
+     "path": "sporty-zimowe/obuwie-zimowe",
+     "slug": "obuwie-zimowe"
+    },
+    {
+     "count": 50131,
+     "id": "a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb",
+     "name": "Odzież termiczna",
+     "path": "sporty-zimowe/odziez-termiczna",
+     "slug": "odziez-termiczna"
+    },
+    {
+     "count": 10,
+     "id": "64531934-c33c-5ae7-8d7a-94cbb3961c8d",
+     "name": "Odzież zimowa",
+     "path": "sporty-zimowe/odziez",
+     "slug": "odziez"
+    },
+    {
+     "count": 26122,
+     "id": "cba30644-78d8-59a2-8741-ac02e83f0f34",
+     "name": "Snowboard",
+     "path": "sporty-zimowe/snowboard",
+     "slug": "snowboard"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 16897,
+       "value": "czarna"
+      },
+      {
+       "count": 16884,
+       "value": "niebieska"
+      },
+      {
+       "count": 16883,
+       "value": "zielona"
+      },
+      {
+       "count": 16826,
+       "value": "czerwona"
+      },
+      {
+       "count": 16785,
+       "value": "granatowa"
+      },
+      {
+       "count": 16772,
+       "value": "szara"
+      },
+      {
+       "count": 11281,
+       "value": "niebieski"
+      },
+      {
+       "count": 11272,
+       "value": "granatowy"
+      },
+      {
+       "count": 11253,
+       "value": "czerwony"
+      },
+      {
+       "count": 11248,
+       "value": "czarny"
+      },
+      {
+       "count": 11244,
+       "value": "szary"
+      },
+      {
+       "count": 11057,
+       "value": "zielony"
+      },
+      {
+       "count": 10721,
+       "value": "szare"
+      },
+      {
+       "count": 10654,
+       "value": "czerwone"
+      },
+      {
+       "count": 10641,
+       "value": "zielone"
+      },
+      {
+       "count": 10639,
+       "value": "czarne"
+      },
+      {
+       "count": 10638,
+       "value": "niebieskie"
+      },
+      {
+       "count": 10582,
+       "value": "granatowe"
+      },
+      {
+       "count": 6,
+       "value": "biały"
+      },
+      {
+       "count": 6,
+       "value": "grafitowe"
+      },
+      {
+       "count": 4,
+       "value": "limonkowa"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowe"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 20361,
+       "value": "M"
+      },
+      {
+       "count": 20240,
+       "value": "XL"
+      },
+      {
+       "count": 20233,
+       "value": "L"
+      },
+      {
+       "count": 20229,
+       "value": "S"
+      },
+      {
+       "count": 8948,
+       "value": "43"
+      },
+      {
+       "count": 8944,
+       "value": "39"
+      },
+      {
+       "count": 8922,
+       "value": "46"
+      },
+      {
+       "count": 8832,
+       "value": "47"
+      },
+      {
+       "count": 8825,
+       "value": "40"
+      },
+      {
+       "count": 8810,
+       "value": "42"
+      },
+      {
+       "count": 8808,
+       "value": "44"
+      },
+      {
+       "count": 8803,
+       "value": "41"
+      },
+      {
+       "count": 8799,
+       "value": "45"
+      },
+      {
+       "count": 8741,
+       "value": "38"
+      },
+      {
+       "count": 6781,
+       "value": "L/XL"
+      },
+      {
+       "count": 6752,
+       "value": "S/M"
+      },
+      {
+       "count": 5585,
+       "value": "XS"
+      },
+      {
+       "count": 5534,
+       "value": "XXL"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 5115,
+       "value": "120 cm"
+      },
+      {
+       "count": 5112,
+       "value": "147 cm"
+      },
+      {
+       "count": 5112,
+       "value": "162 cm"
+      },
+      {
+       "count": 5081,
+       "value": "155 cm"
+      },
+      {
+       "count": 5061,
+       "value": "125 cm"
+      },
+      {
+       "count": 5053,
+       "value": "158 cm"
+      },
+      {
+       "count": 5046,
+       "value": "152 cm"
+      },
+      {
+       "count": 5045,
+       "value": "105 cm"
+      },
+      {
+       "count": 5042,
+       "value": "115 cm"
+      },
+      {
+       "count": 5029,
+       "value": "110 cm"
+      },
+      {
+       "count": 3152,
+       "value": "180 cm"
+      },
+      {
+       "count": 3150,
+       "value": "160 cm"
+      },
+      {
+       "count": 3065,
+       "value": "200 cm"
+      },
+      {
+       "count": 6,
+       "value": "170 cm"
+      },
+      {
+       "count": 4,
+       "value": "164 cm"
+      },
+      {
+       "count": 4,
+       "value": "172 cm"
+      }
+     ]
+    },
+    {
+     "axis": "Typ",
+     "values": [
+      {
+       "count": 3112,
+       "value": "uniwersalny"
+      },
+      {
+       "count": 3089,
+       "value": "wiosenny"
+      },
+      {
+       "count": 3074,
+       "value": "zimowy"
+      }
+     ]
+    },
+    {
+     "axis": "Zakres DIN",
+     "values": [
+      {
+       "count": 3119,
+       "value": "4-12"
+      },
+      {
+       "count": 3083,
+       "value": "3-10"
+      },
+      {
+       "count": 3054,
+       "value": "6-14"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 299900,
+    "min": 2999
+   }
+  },
+  "total": 126348
+ },
+ "?option=Kolor%3Aczerwone": {
+  "facets": {
+   "availableCount": 99572,
+   "categories": [
+    {
+     "count": 34293,
+     "id": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+     "name": "Bieganie",
+     "path": "bieganie",
+     "slug": "bieganie"
+    },
+    {
+     "count": 16467,
+     "id": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+     "name": "Rower",
+     "path": "rower",
+     "slug": "rower"
+    },
+    {
+     "count": 11175,
+     "id": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+     "name": "Sporty drużynowe",
+     "path": "sporty-druzynowe",
+     "slug": "sporty-druzynowe"
+    },
+    {
+     "count": 11018,
+     "id": "6f62a979-6012-5f5a-a39b-13948746e108",
+     "name": "Sporty wodne",
+     "path": "sporty-wodne",
+     "slug": "sporty-wodne"
+    },
+    {
+     "count": 10654,
+     "id": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+     "name": "Sporty zimowe",
+     "path": "sporty-zimowe",
+     "slug": "sporty-zimowe"
+    },
+    {
+     "count": 21946,
+     "id": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+     "name": "Turystyka",
+     "path": "turystyka",
+     "slug": "turystyka"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 105553,
+       "value": "czerwone"
+      },
+      {
+       "count": 105353,
+       "value": "szare"
+      },
+      {
+       "count": 105349,
+       "value": "niebieskie"
+      },
+      {
+       "count": 105074,
+       "value": "zielone"
+      },
+      {
+       "count": 104877,
+       "value": "czarne"
+      },
+      {
+       "count": 104736,
+       "value": "granatowe"
+      },
+      {
+       "count": 96830,
+       "value": "niebieska"
+      },
+      {
+       "count": 96659,
+       "value": "granatowa"
+      },
+      {
+       "count": 96636,
+       "value": "zielona"
+      },
+      {
+       "count": 96520,
+       "value": "szara"
+      },
+      {
+       "count": 96483,
+       "value": "czerwona"
+      },
+      {
+       "count": 96423,
+       "value": "czarna"
+      },
+      {
+       "count": 95839,
+       "value": "granatowy"
+      },
+      {
+       "count": 95725,
+       "value": "szary"
+      },
+      {
+       "count": 95723,
+       "value": "czarny"
+      },
+      {
+       "count": 95636,
+       "value": "niebieski"
+      },
+      {
+       "count": 95386,
+       "value": "czerwony"
+      },
+      {
+       "count": 95297,
+       "value": "zielony"
+      },
+      {
+       "count": 24,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 17,
+       "value": "pomarańczowa"
+      },
+      {
+       "count": 13,
+       "value": "biała"
+      },
+      {
+       "count": 10,
+       "value": "biały"
+      },
+      {
+       "count": 10,
+       "value": "grafitowy"
+      },
+      {
+       "count": 10,
+       "value": "pomarańczowe"
+      },
+      {
+       "count": 10,
+       "value": "turkusowa"
+      },
+      {
+       "count": 6,
+       "value": "grafitowe"
+      },
+      {
+       "count": 6,
+       "value": "oliwkowy"
+      },
+      {
+       "count": 6,
+       "value": "przydymione"
+      },
+      {
+       "count": 4,
+       "value": "biało-niebieska"
+      },
+      {
+       "count": 4,
+       "value": "brązowa"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 8640,
+       "value": "S"
+      },
+      {
+       "count": 8609,
+       "value": "XL"
+      },
+      {
+       "count": 8601,
+       "value": "M"
+      },
+      {
+       "count": 8585,
+       "value": "L"
+      },
+      {
+       "count": 7380,
+       "value": "35-38"
+      },
+      {
+       "count": 7284,
+       "value": "43-46"
+      },
+      {
+       "count": 7175,
+       "value": "39-42"
+      },
+      {
+       "count": 6361,
+       "value": "47"
+      },
+      {
+       "count": 6316,
+       "value": "44"
+      },
+      {
+       "count": 6279,
+       "value": "42"
+      },
+      {
+       "count": 6232,
+       "value": "43"
+      },
+      {
+       "count": 6227,
+       "value": "41"
+      },
+      {
+       "count": 6218,
+       "value": "40"
+      },
+      {
+       "count": 6211,
+       "value": "38"
+      },
+      {
+       "count": 6201,
+       "value": "39"
+      },
+      {
+       "count": 6182,
+       "value": "46"
+      },
+      {
+       "count": 6161,
+       "value": "45"
+      },
+      {
+       "count": 4482,
+       "value": "XXL"
+      },
+      {
+       "count": 4328,
+       "value": "XS"
+      }
+     ]
+    },
+    {
+     "axis": "Szerokość",
+     "values": [
+      {
+       "count": 1574,
+       "value": "130 mm"
+      },
+      {
+       "count": 1570,
+       "value": "155 mm"
+      },
+      {
+       "count": 1565,
+       "value": "143 mm"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 6,
+       "value": "160 cm"
+      },
+      {
+       "count": 6,
+       "value": "170 cm"
+      },
+      {
+       "count": 6,
+       "value": "180 cm"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 251910,
+    "min": 1499
+   }
+  },
+  "total": 105553
+ },
+ "?option=Pojemno%C5%9B%C4%87%3A1%20l": {
+  "facets": {
+   "availableCount": 13334,
+   "categories": [
+    {
+     "count": 14087,
+     "id": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+     "name": "Turystyka",
+     "path": "turystyka",
+     "slug": "turystyka"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 14087,
+       "value": "1 l"
+      },
+      {
+       "count": 14082,
+       "value": "0,75 l"
+      },
+      {
+       "count": 14033,
+       "value": "1000 ml"
+      },
+      {
+       "count": 10537,
+       "value": "20 l"
+      },
+      {
+       "count": 8565,
+       "value": "700 ml"
+      },
+      {
+       "count": 8498,
+       "value": "70 l"
+      },
+      {
+       "count": 8477,
+       "value": "50 l"
+      },
+      {
+       "count": 8459,
+       "value": "30 l"
+      },
+      {
+       "count": 8385,
+       "value": "500 ml"
+      },
+      {
+       "count": 8320,
+       "value": "0,5 l"
+      },
+      {
+       "count": 6267,
+       "value": "1,8 l"
+      },
+      {
+       "count": 6257,
+       "value": "1,2 l"
+      },
+      {
+       "count": 6231,
+       "value": "0,8 l"
+      },
+      {
+       "count": 5742,
+       "value": "1,5 l"
+      },
+      {
+       "count": 5695,
+       "value": "15 l"
+      },
+      {
+       "count": 5654,
+       "value": "0,6 l"
+      },
+      {
+       "count": 5648,
+       "value": "25 l"
+      },
+      {
+       "count": 5480,
+       "value": "750 ml"
+      },
+      {
+       "count": 5444,
+       "value": "600 ml"
+      },
+      {
+       "count": 4877,
+       "value": "40 l"
+      },
+      {
+       "count": 4859,
+       "value": "10 l"
+      },
+      {
+       "count": 4778,
+       "value": "5 l"
+      }
+     ]
+    },
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 2420,
+       "value": "czerwony"
+      },
+      {
+       "count": 2407,
+       "value": "granatowy"
+      },
+      {
+       "count": 2406,
+       "value": "niebieski"
+      },
+      {
+       "count": 2367,
+       "value": "zielony"
+      },
+      {
+       "count": 2341,
+       "value": "szary"
+      },
+      {
+       "count": 2336,
+       "value": "czarny"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 22500,
+    "min": 1999
+   }
+  },
+  "total": 14087
+ },
+ "?option=Rozmiar%3AM": {
+  "facets": {
+   "availableCount": 129358,
+   "categories": [
+    {
+     "count": 18038,
+     "id": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+     "name": "Bieganie",
+     "path": "bieganie",
+     "slug": "bieganie"
+    },
+    {
+     "count": 7628,
+     "id": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+     "name": "Fitness",
+     "path": "fitness",
+     "slug": "fitness"
+    },
+    {
+     "count": 15519,
+     "id": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+     "name": "Rower",
+     "path": "rower",
+     "slug": "rower"
+    },
+    {
+     "count": 23173,
+     "id": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+     "name": "Sporty drużynowe",
+     "path": "sporty-druzynowe",
+     "slug": "sporty-druzynowe"
+    },
+    {
+     "count": 24701,
+     "id": "6f62a979-6012-5f5a-a39b-13948746e108",
+     "name": "Sporty wodne",
+     "path": "sporty-wodne",
+     "slug": "sporty-wodne"
+    },
+    {
+     "count": 20361,
+     "id": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+     "name": "Sporty zimowe",
+     "path": "sporty-zimowe",
+     "slug": "sporty-zimowe"
+    },
+    {
+     "count": 27388,
+     "id": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+     "name": "Turystyka",
+     "path": "turystyka",
+     "slug": "turystyka"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 136798,
+       "value": "M"
+      },
+      {
+       "count": 136441,
+       "value": "L"
+      },
+      {
+       "count": 136227,
+       "value": "S"
+      },
+      {
+       "count": 136044,
+       "value": "XL"
+      },
+      {
+       "count": 80018,
+       "value": "XS"
+      },
+      {
+       "count": 79930,
+       "value": "XXL"
+      },
+      {
+       "count": 34778,
+       "value": "47"
+      },
+      {
+       "count": 34743,
+       "value": "43"
+      },
+      {
+       "count": 34697,
+       "value": "44"
+      },
+      {
+       "count": 34551,
+       "value": "39"
+      },
+      {
+       "count": 34542,
+       "value": "46"
+      },
+      {
+       "count": 34540,
+       "value": "40"
+      },
+      {
+       "count": 34506,
+       "value": "42"
+      },
+      {
+       "count": 34398,
+       "value": "41"
+      },
+      {
+       "count": 34309,
+       "value": "45"
+      },
+      {
+       "count": 34268,
+       "value": "38"
+      },
+      {
+       "count": 25588,
+       "value": "35-38"
+      },
+      {
+       "count": 25515,
+       "value": "43-46"
+      },
+      {
+       "count": 25309,
+       "value": "39-42"
+      },
+      {
+       "count": 13450,
+       "value": "L/XL"
+      },
+      {
+       "count": 13426,
+       "value": "S/M"
+      },
+      {
+       "count": 12672,
+       "value": "29\""
+      },
+      {
+       "count": 12536,
+       "value": "26\""
+      },
+      {
+       "count": 12509,
+       "value": "28\""
+      },
+      {
+       "count": 12478,
+       "value": "27,5\""
+      },
+      {
+       "count": 6273,
+       "value": "1"
+      },
+      {
+       "count": 6240,
+       "value": "2"
+      },
+      {
+       "count": 6203,
+       "value": "3"
+      },
+      {
+       "count": 2357,
+       "value": "8"
+      },
+      {
+       "count": 2348,
+       "value": "6"
+      }
+     ]
+    },
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 13615,
+       "value": "niebieska"
+      },
+      {
+       "count": 13520,
+       "value": "czerwona"
+      },
+      {
+       "count": 13486,
+       "value": "szara"
+      },
+      {
+       "count": 13472,
+       "value": "czarna"
+      },
+      {
+       "count": 13445,
+       "value": "granatowa"
+      },
+      {
+       "count": 13363,
+       "value": "zielona"
+      },
+      {
+       "count": 8614,
+       "value": "czarne"
+      },
+      {
+       "count": 8614,
+       "value": "niebieskie"
+      },
+      {
+       "count": 8612,
+       "value": "zielone"
+      },
+      {
+       "count": 8611,
+       "value": "szare"
+      },
+      {
+       "count": 8601,
+       "value": "czerwone"
+      },
+      {
+       "count": 8596,
+       "value": "granatowe"
+      },
+      {
+       "count": 6861,
+       "value": "czarny"
+      },
+      {
+       "count": 6860,
+       "value": "czerwony"
+      },
+      {
+       "count": 6799,
+       "value": "granatowy"
+      },
+      {
+       "count": 6729,
+       "value": "niebieski"
+      },
+      {
+       "count": 6726,
+       "value": "szary"
+      },
+      {
+       "count": 6691,
+       "value": "zielony"
+      },
+      {
+       "count": 10,
+       "value": "biały"
+      },
+      {
+       "count": 4,
+       "value": "biała"
+      },
+      {
+       "count": 4,
+       "value": "grafitowa"
+      },
+      {
+       "count": 4,
+       "value": "limonkowa"
+      },
+      {
+       "count": 4,
+       "value": "turkusowa"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 140000,
+    "min": 2499
+   }
+  },
+  "total": 136798
+ },
+ "?priceMin=100&priceMax=300": {
+  "facets": {
+   "availableCount": 0,
+   "categories": [],
+   "options": [],
+   "price": {
+    "max": 1499900,
+    "min": 690
+   }
+  },
+  "total": 0
+ },
+ "?q=buty": {
+  "facets": {
+   "availableCount": 137848,
+   "categories": [
+    {
+     "count": 28829,
+     "id": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+     "name": "Bieganie",
+     "path": "bieganie",
+     "slug": "bieganie"
+    },
+    {
+     "count": 10652,
+     "id": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+     "name": "Rower",
+     "path": "rower",
+     "slug": "rower"
+    },
+    {
+     "count": 30445,
+     "id": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+     "name": "Sporty drużynowe",
+     "path": "sporty-druzynowe",
+     "slug": "sporty-druzynowe"
+    },
+    {
+     "count": 9884,
+     "id": "6f62a979-6012-5f5a-a39b-13948746e108",
+     "name": "Sporty wodne",
+     "path": "sporty-wodne",
+     "slug": "sporty-wodne"
+    },
+    {
+     "count": 42549,
+     "id": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+     "name": "Sporty zimowe",
+     "path": "sporty-zimowe",
+     "slug": "sporty-zimowe"
+    },
+    {
+     "count": 18994,
+     "id": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+     "name": "Turystyka",
+     "path": "turystyka",
+     "slug": "turystyka"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 42803,
+       "value": "czerwone"
+      },
+      {
+       "count": 42746,
+       "value": "szare"
+      },
+      {
+       "count": 42745,
+       "value": "niebieskie"
+      },
+      {
+       "count": 42636,
+       "value": "zielone"
+      },
+      {
+       "count": 42543,
+       "value": "czarne"
+      },
+      {
+       "count": 42435,
+       "value": "granatowe"
+      },
+      {
+       "count": 7143,
+       "value": "granatowa"
+      },
+      {
+       "count": 7135,
+       "value": "szara"
+      },
+      {
+       "count": 7108,
+       "value": "zielona"
+      },
+      {
+       "count": 7107,
+       "value": "czerwona"
+      },
+      {
+       "count": 7091,
+       "value": "niebieska"
+      },
+      {
+       "count": 6984,
+       "value": "czarna"
+      },
+      {
+       "count": 1982,
+       "value": "czerwony"
+      },
+      {
+       "count": 1975,
+       "value": "granatowy"
+      },
+      {
+       "count": 1954,
+       "value": "niebieski"
+      },
+      {
+       "count": 1952,
+       "value": "czarny"
+      },
+      {
+       "count": 1949,
+       "value": "zielony"
+      },
+      {
+       "count": 1932,
+       "value": "szary"
+      },
+      {
+       "count": 6,
+       "value": "pomarańczowe"
+      },
+      {
+       "count": 2,
+       "value": "grafitowe"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 31213,
+       "value": "47"
+      },
+      {
+       "count": 31140,
+       "value": "43"
+      },
+      {
+       "count": 31105,
+       "value": "44"
+      },
+      {
+       "count": 30961,
+       "value": "46"
+      },
+      {
+       "count": 30956,
+       "value": "40"
+      },
+      {
+       "count": 30926,
+       "value": "39"
+      },
+      {
+       "count": 30896,
+       "value": "42"
+      },
+      {
+       "count": 30789,
+       "value": "41"
+      },
+      {
+       "count": 30716,
+       "value": "45"
+      },
+      {
+       "count": 30619,
+       "value": "38"
+      },
+      {
+       "count": 6239,
+       "value": "S"
+      },
+      {
+       "count": 6216,
+       "value": "XL"
+      },
+      {
+       "count": 6211,
+       "value": "M"
+      },
+      {
+       "count": 6208,
+       "value": "L"
+      },
+      {
+       "count": 1725,
+       "value": "XS"
+      },
+      {
+       "count": 1652,
+       "value": "XXL"
+      },
+      {
+       "count": 627,
+       "value": "S/M"
+      },
+      {
+       "count": 625,
+       "value": "L/XL"
+      },
+      {
+       "count": 610,
+       "value": "35-38"
+      },
+      {
+       "count": 596,
+       "value": "39-42"
+      },
+      {
+       "count": 596,
+       "value": "43-46"
+      },
+      {
+       "count": 187,
+       "value": "29\""
+      },
+      {
+       "count": 185,
+       "value": "1"
+      },
+      {
+       "count": 185,
+       "value": "26\""
+      },
+      {
+       "count": 185,
+       "value": "3"
+      },
+      {
+       "count": 184,
+       "value": "2"
+      },
+      {
+       "count": 180,
+       "value": "27,5\""
+      },
+      {
+       "count": 177,
+       "value": "28\""
+      },
+      {
+       "count": 65,
+       "value": "6"
+      },
+      {
+       "count": 65,
+       "value": "9"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 7176,
+       "value": "70 l"
+      },
+      {
+       "count": 7145,
+       "value": "30 l"
+      },
+      {
+       "count": 7136,
+       "value": "50 l"
+      },
+      {
+       "count": 174,
+       "value": "1 l"
+      },
+      {
+       "count": 161,
+       "value": "20 l"
+      },
+      {
+       "count": 160,
+       "value": "0,75 l"
+      },
+      {
+       "count": 94,
+       "value": "0,5 l"
+      },
+      {
+       "count": 89,
+       "value": "15 l"
+      },
+      {
+       "count": 80,
+       "value": "25 l"
+      },
+      {
+       "count": 79,
+       "value": "0,6 l"
+      },
+      {
+       "count": 75,
+       "value": "10 l"
+      },
+      {
+       "count": 74,
+       "value": "1,5 l"
+      },
+      {
+       "count": 70,
+       "value": "1,8 l"
+      },
+      {
+       "count": 70,
+       "value": "40 l"
+      },
+      {
+       "count": 68,
+       "value": "5 l"
+      },
+      {
+       "count": 64,
+       "value": "0,8 l"
+      },
+      {
+       "count": 62,
+       "value": "1,2 l"
+      }
+     ]
+    },
+    {
+     "axis": "Zakres DIN",
+     "values": [
+      {
+       "count": 2650,
+       "value": "4-12"
+      },
+      {
+       "count": 2611,
+       "value": "3-10"
+      },
+      {
+       "count": 2598,
+       "value": "6-14"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 333,
+       "value": "147 cm"
+      },
+      {
+       "count": 329,
+       "value": "162 cm"
+      },
+      {
+       "count": 325,
+       "value": "158 cm"
+      },
+      {
+       "count": 322,
+       "value": "155 cm"
+      },
+      {
+       "count": 318,
+       "value": "152 cm"
+      },
+      {
+       "count": 311,
+       "value": "125 cm"
+      },
+      {
+       "count": 299,
+       "value": "120 cm"
+      },
+      {
+       "count": 298,
+       "value": "115 cm"
+      },
+      {
+       "count": 295,
+       "value": "105 cm"
+      },
+      {
+       "count": 293,
+       "value": "110 cm"
+      },
+      {
+       "count": 198,
+       "value": "160 cm"
+      },
+      {
+       "count": 191,
+       "value": "180 cm"
+      },
+      {
+       "count": 170,
+       "value": "200 cm"
+      },
+      {
+       "count": 117,
+       "value": "100-120 cm"
+      },
+      {
+       "count": 105,
+       "value": "115-135 cm"
+      },
+      {
+       "count": 101,
+       "value": "110-130 cm"
+      },
+      {
+       "count": 90,
+       "value": "230 cm"
+      },
+      {
+       "count": 87,
+       "value": "220 cm"
+      },
+      {
+       "count": 85,
+       "value": "210 cm"
+      },
+      {
+       "count": 2,
+       "value": "170 cm"
+      }
+     ]
+    },
+    {
+     "axis": "Typ",
+     "values": [
+      {
+       "count": 192,
+       "value": "uniwersalny"
+      },
+      {
+       "count": 188,
+       "value": "wiosenny"
+      },
+      {
+       "count": 186,
+       "value": "zimowy"
+      },
+      {
+       "count": 107,
+       "value": "łańcuch"
+      },
+      {
+       "count": 105,
+       "value": "linka"
+      },
+      {
+       "count": 99,
+       "value": "U-lock"
+      }
+     ]
+    },
+    {
+     "axis": "Montaż",
+     "values": [
+      {
+       "count": 112,
+       "value": "przód"
+      },
+      {
+       "count": 111,
+       "value": "komplet"
+      },
+      {
+       "count": 105,
+       "value": "przedni"
+      },
+      {
+       "count": 103,
+       "value": "tył"
+      },
+      {
+       "count": 92,
+       "value": "na sztycę"
+      },
+      {
+       "count": 91,
+       "value": "tylny"
+      },
+      {
+       "count": 52,
+       "value": "na bagażniku"
+      },
+      {
+       "count": 48,
+       "value": "na ramie"
+      }
+     ]
+    },
+    {
+     "axis": "Szerokość",
+     "values": [
+      {
+       "count": 112,
+       "value": "57 mm"
+      },
+      {
+       "count": 109,
+       "value": "40 mm"
+      },
+      {
+       "count": 106,
+       "value": "35 mm"
+      },
+      {
+       "count": 104,
+       "value": "50 mm"
+      },
+      {
+       "count": 89,
+       "value": "155 mm"
+      },
+      {
+       "count": 77,
+       "value": "130 mm"
+      },
+      {
+       "count": 75,
+       "value": "143 mm"
+      }
+     ]
+    },
+    {
+     "axis": "Liczba sztuk",
+     "values": [
+      {
+       "count": 174,
+       "value": "10"
+      },
+      {
+       "count": 165,
+       "value": "20"
+      },
+      {
+       "count": 165,
+       "value": "40"
+      }
+     ]
+    },
+    {
+     "axis": "Liczba przełożeń",
+     "values": [
+      {
+       "count": 119,
+       "value": "12"
+      },
+      {
+       "count": 113,
+       "value": "9"
+      },
+      {
+       "count": 112,
+       "value": "11"
+      },
+      {
+       "count": 105,
+       "value": "10"
+      },
+      {
+       "count": 69,
+       "value": "8"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 289999,
+    "min": 999
+   }
+  },
+  "total": 141353
+ },
+ "?q=buty%20biegowe": {
+  "facets": {
+   "availableCount": 4966,
+   "categories": [
+    {
+     "count": 5105,
+     "id": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+     "name": "Bieganie",
+     "path": "bieganie",
+     "slug": "bieganie"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 1804,
+       "value": "niebieskie"
+      },
+      {
+       "count": 1804,
+       "value": "zielone"
+      },
+      {
+       "count": 1801,
+       "value": "szare"
+      },
+      {
+       "count": 1771,
+       "value": "granatowe"
+      },
+      {
+       "count": 1763,
+       "value": "czarne"
+      },
+      {
+       "count": 1751,
+       "value": "czerwone"
+      },
+      {
+       "count": 293,
+       "value": "granatowy"
+      },
+      {
+       "count": 279,
+       "value": "czerwony"
+      },
+      {
+       "count": 279,
+       "value": "niebieski"
+      },
+      {
+       "count": 278,
+       "value": "czarny"
+      },
+      {
+       "count": 275,
+       "value": "zielony"
+      },
+      {
+       "count": 273,
+       "value": "szary"
+      },
+      {
+       "count": 136,
+       "value": "niebieska"
+      },
+      {
+       "count": 133,
+       "value": "szara"
+      },
+      {
+       "count": 131,
+       "value": "czerwona"
+      },
+      {
+       "count": 123,
+       "value": "granatowa"
+      },
+      {
+       "count": 122,
+       "value": "zielona"
+      },
+      {
+       "count": 103,
+       "value": "czarna"
+      },
+      {
+       "count": 6,
+       "value": "pomarańczowe"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 827,
+       "value": "40"
+      },
+      {
+       "count": 827,
+       "value": "44"
+      },
+      {
+       "count": 803,
+       "value": "41"
+      },
+      {
+       "count": 798,
+       "value": "39"
+      },
+      {
+       "count": 796,
+       "value": "43"
+      },
+      {
+       "count": 775,
+       "value": "38"
+      },
+      {
+       "count": 774,
+       "value": "45"
+      },
+      {
+       "count": 770,
+       "value": "42"
+      },
+      {
+       "count": 768,
+       "value": "46"
+      },
+      {
+       "count": 761,
+       "value": "47"
+      },
+      {
+       "count": 475,
+       "value": "S"
+      },
+      {
+       "count": 461,
+       "value": "XL"
+      },
+      {
+       "count": 456,
+       "value": "M"
+      },
+      {
+       "count": 455,
+       "value": "L"
+      },
+      {
+       "count": 344,
+       "value": "35-38"
+      },
+      {
+       "count": 335,
+       "value": "39-42"
+      },
+      {
+       "count": 335,
+       "value": "43-46"
+      },
+      {
+       "count": 304,
+       "value": "XS"
+      },
+      {
+       "count": 302,
+       "value": "XXL"
+      },
+      {
+       "count": 208,
+       "value": "S/M"
+      },
+      {
+       "count": 207,
+       "value": "L/XL"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 200000,
+    "min": 2499
+   }
+  },
+  "total": 5105
+ },
+ "?q=kurtka": {
+  "facets": {
+   "availableCount": 18849,
+   "categories": [
+    {
+     "count": 4,
+     "id": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+     "name": "Bieganie",
+     "path": "bieganie",
+     "slug": "bieganie"
+    },
+    {
+     "count": 10,
+     "id": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+     "name": "Sporty zimowe",
+     "path": "sporty-zimowe",
+     "slug": "sporty-zimowe"
+    },
+    {
+     "count": 19309,
+     "id": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+     "name": "Turystyka",
+     "path": "turystyka",
+     "slug": "turystyka"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 7513,
+       "value": "niebieska"
+      },
+      {
+       "count": 7499,
+       "value": "granatowa"
+      },
+      {
+       "count": 7473,
+       "value": "czarna"
+      },
+      {
+       "count": 7465,
+       "value": "szara"
+      },
+      {
+       "count": 7462,
+       "value": "czerwona"
+      },
+      {
+       "count": 7445,
+       "value": "zielona"
+      },
+      {
+       "count": 280,
+       "value": "niebieskie"
+      },
+      {
+       "count": 275,
+       "value": "granatowe"
+      },
+      {
+       "count": 263,
+       "value": "czarne"
+      },
+      {
+       "count": 257,
+       "value": "szare"
+      },
+      {
+       "count": 256,
+       "value": "zielone"
+      },
+      {
+       "count": 248,
+       "value": "czerwone"
+      },
+      {
+       "count": 216,
+       "value": "czerwony"
+      },
+      {
+       "count": 216,
+       "value": "granatowy"
+      },
+      {
+       "count": 214,
+       "value": "zielony"
+      },
+      {
+       "count": 211,
+       "value": "szary"
+      },
+      {
+       "count": 208,
+       "value": "czarny"
+      },
+      {
+       "count": 206,
+       "value": "niebieski"
+      },
+      {
+       "count": 4,
+       "value": "limonkowa"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 7659,
+       "value": "M"
+      },
+      {
+       "count": 7627,
+       "value": "XL"
+      },
+      {
+       "count": 7622,
+       "value": "XS"
+      },
+      {
+       "count": 7617,
+       "value": "XXL"
+      },
+      {
+       "count": 7547,
+       "value": "L"
+      },
+      {
+       "count": 7473,
+       "value": "S"
+      },
+      {
+       "count": 106,
+       "value": "39-42"
+      },
+      {
+       "count": 98,
+       "value": "35-38"
+      },
+      {
+       "count": 98,
+       "value": "43-46"
+      },
+      {
+       "count": 96,
+       "value": "43"
+      },
+      {
+       "count": 92,
+       "value": "45"
+      },
+      {
+       "count": 91,
+       "value": "39"
+      },
+      {
+       "count": 88,
+       "value": "46"
+      },
+      {
+       "count": 84,
+       "value": "40"
+      },
+      {
+       "count": 83,
+       "value": "38"
+      },
+      {
+       "count": 82,
+       "value": "47"
+      },
+      {
+       "count": 81,
+       "value": "44"
+      },
+      {
+       "count": 80,
+       "value": "41"
+      },
+      {
+       "count": 80,
+       "value": "42"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 188,
+       "value": "1 l"
+      },
+      {
+       "count": 179,
+       "value": "0,75 l"
+      },
+      {
+       "count": 113,
+       "value": "0,5 l"
+      },
+      {
+       "count": 95,
+       "value": "1,8 l"
+      },
+      {
+       "count": 93,
+       "value": "0,8 l"
+      },
+      {
+       "count": 93,
+       "value": "1,2 l"
+      },
+      {
+       "count": 84,
+       "value": "0,6 l"
+      },
+      {
+       "count": 76,
+       "value": "1,5 l"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 111,
+       "value": "100-120 cm"
+      },
+      {
+       "count": 107,
+       "value": "110-130 cm"
+      },
+      {
+       "count": 107,
+       "value": "115-135 cm"
+      }
+     ]
+    },
+    {
+     "axis": "Porcja",
+     "values": [
+      {
+       "count": 75,
+       "value": "500 g"
+      },
+      {
+       "count": 60,
+       "value": "300 g"
+      }
+     ]
+    },
+    {
+     "axis": "Powiększenie",
+     "values": [
+      {
+       "count": 26,
+       "value": "10x42"
+      },
+      {
+       "count": 25,
+       "value": "8x32"
+      },
+      {
+       "count": 22,
+       "value": "8x42"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 140000,
+    "min": 1499
+   }
+  },
+  "total": 19319
+ },
+ "?q=rower": {
+  "facets": {
+   "availableCount": 145445,
+   "categories": [
+    {
+     "count": 4,
+     "id": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+     "name": "Bieganie",
+     "path": "bieganie",
+     "slug": "bieganie"
+    },
+    {
+     "count": 6179,
+     "id": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+     "name": "Fitness",
+     "path": "fitness",
+     "slug": "fitness"
+    },
+    {
+     "count": 143221,
+     "id": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+     "name": "Rower",
+     "path": "rower",
+     "slug": "rower"
+    },
+    {
+     "count": 6,
+     "id": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+     "name": "Sporty zimowe",
+     "path": "sporty-zimowe",
+     "slug": "sporty-zimowe"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 16587,
+       "value": "niebieskie"
+      },
+      {
+       "count": 16511,
+       "value": "czarne"
+      },
+      {
+       "count": 16487,
+       "value": "szare"
+      },
+      {
+       "count": 16482,
+       "value": "zielone"
+      },
+      {
+       "count": 16467,
+       "value": "czerwone"
+      },
+      {
+       "count": 16449,
+       "value": "granatowe"
+      },
+      {
+       "count": 11235,
+       "value": "szara"
+      },
+      {
+       "count": 11217,
+       "value": "granatowa"
+      },
+      {
+       "count": 11202,
+       "value": "czarna"
+      },
+      {
+       "count": 11195,
+       "value": "niebieska"
+      },
+      {
+       "count": 11184,
+       "value": "czerwona"
+      },
+      {
+       "count": 11114,
+       "value": "zielona"
+      },
+      {
+       "count": 7822,
+       "value": "zielony"
+      },
+      {
+       "count": 7789,
+       "value": "niebieski"
+      },
+      {
+       "count": 7778,
+       "value": "szary"
+      },
+      {
+       "count": 7746,
+       "value": "czarny"
+      },
+      {
+       "count": 7740,
+       "value": "czerwony"
+      },
+      {
+       "count": 7670,
+       "value": "granatowy"
+      },
+      {
+       "count": 10,
+       "value": "biały"
+      },
+      {
+       "count": 10,
+       "value": "grafitowy"
+      },
+      {
+       "count": 6,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 4,
+       "value": "oliwkowa"
+      },
+      {
+       "count": 4,
+       "value": "srebrny"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 15697,
+       "value": "S"
+      },
+      {
+       "count": 15656,
+       "value": "XL"
+      },
+      {
+       "count": 15634,
+       "value": "L"
+      },
+      {
+       "count": 15601,
+       "value": "M"
+      },
+      {
+       "count": 12672,
+       "value": "29\""
+      },
+      {
+       "count": 12536,
+       "value": "26\""
+      },
+      {
+       "count": 12509,
+       "value": "28\""
+      },
+      {
+       "count": 12478,
+       "value": "27,5\""
+      },
+      {
+       "count": 10902,
+       "value": "XXL"
+      },
+      {
+       "count": 10759,
+       "value": "XS"
+      },
+      {
+       "count": 2510,
+       "value": "43"
+      },
+      {
+       "count": 2502,
+       "value": "42"
+      },
+      {
+       "count": 2476,
+       "value": "44"
+      },
+      {
+       "count": 2457,
+       "value": "38"
+      },
+      {
+       "count": 2457,
+       "value": "45"
+      },
+      {
+       "count": 2434,
+       "value": "39"
+      },
+      {
+       "count": 2432,
+       "value": "47"
+      },
+      {
+       "count": 2421,
+       "value": "41"
+      },
+      {
+       "count": 2418,
+       "value": "40"
+      },
+      {
+       "count": 2401,
+       "value": "46"
+      }
+     ]
+    },
+    {
+     "axis": "Montaż",
+     "values": [
+      {
+       "count": 6407,
+       "value": "przód"
+      },
+      {
+       "count": 6394,
+       "value": "tył"
+      },
+      {
+       "count": 6364,
+       "value": "komplet"
+      },
+      {
+       "count": 6244,
+       "value": "przedni"
+      },
+      {
+       "count": 6216,
+       "value": "na sztycę"
+      },
+      {
+       "count": 6157,
+       "value": "tylny"
+      },
+      {
+       "count": 3379,
+       "value": "na ramie"
+      },
+      {
+       "count": 3348,
+       "value": "na bagażniku"
+      }
+     ]
+    },
+    {
+     "axis": "Szerokość",
+     "values": [
+      {
+       "count": 7299,
+       "value": "57 mm"
+      },
+      {
+       "count": 7264,
+       "value": "35 mm"
+      },
+      {
+       "count": 7226,
+       "value": "50 mm"
+      },
+      {
+       "count": 7215,
+       "value": "40 mm"
+      },
+      {
+       "count": 5582,
+       "value": "130 mm"
+      },
+      {
+       "count": 5581,
+       "value": "155 mm"
+      },
+      {
+       "count": 5570,
+       "value": "143 mm"
+      }
+     ]
+    },
+    {
+     "axis": "Liczba przełożeń",
+     "values": [
+      {
+       "count": 7627,
+       "value": "10"
+      },
+      {
+       "count": 7601,
+       "value": "12"
+      },
+      {
+       "count": 7491,
+       "value": "11"
+      },
+      {
+       "count": 7470,
+       "value": "9"
+      },
+      {
+       "count": 5060,
+       "value": "8"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 5695,
+       "value": "15 l"
+      },
+      {
+       "count": 5648,
+       "value": "25 l"
+      },
+      {
+       "count": 5639,
+       "value": "20 l"
+      },
+      {
+       "count": 186,
+       "value": "1000 ml"
+      },
+      {
+       "count": 118,
+       "value": "700 ml"
+      },
+      {
+       "count": 113,
+       "value": "500 ml"
+      },
+      {
+       "count": 69,
+       "value": "600 ml"
+      },
+      {
+       "count": 65,
+       "value": "750 ml"
+      }
+     ]
+    },
+    {
+     "axis": "Moc",
+     "values": [
+      {
+       "count": 6283,
+       "value": "400 lm"
+      },
+      {
+       "count": 6235,
+       "value": "800 lm"
+      },
+      {
+       "count": 6210,
+       "value": "1200 lm"
+      }
+     ]
+    },
+    {
+     "axis": "Typ",
+     "values": [
+      {
+       "count": 6152,
+       "value": "łańcuch"
+      },
+      {
+       "count": 6108,
+       "value": "U-lock"
+      },
+      {
+       "count": 6089,
+       "value": "linka"
+      }
+     ]
+    },
+    {
+     "axis": "Zakres zębatek",
+     "values": [
+      {
+       "count": 2495,
+       "value": "11-36"
+      },
+      {
+       "count": 2489,
+       "value": "11-32"
+      },
+      {
+       "count": 2461,
+       "value": "11-34"
+      },
+      {
+       "count": 2404,
+       "value": "10-51"
+      }
+     ]
+    },
+    {
+     "axis": "Smak",
+     "values": [
+      {
+       "count": 225,
+       "value": "cytrynowy"
+      },
+      {
+       "count": 144,
+       "value": "bananowy"
+      },
+      {
+       "count": 142,
+       "value": "czekoladowy"
+      },
+      {
+       "count": 138,
+       "value": "jabłkowy"
+      },
+      {
+       "count": 131,
+       "value": "truskawkowy"
+      },
+      {
+       "count": 128,
+       "value": "waniliowy"
+      },
+      {
+       "count": 76,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 72,
+       "value": "malinowy"
+      },
+      {
+       "count": 71,
+       "value": "owoce leśne"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 1499900,
+    "min": 842
+   }
+  },
+  "total": 149396
+ },
+ "?q=sportowe": {
+  "facets": {
+   "availableCount": 73982,
+   "categories": [
+    {
+     "count": 53227,
+     "id": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+     "name": "Bieganie",
+     "path": "bieganie",
+     "slug": "bieganie"
+    },
+    {
+     "count": 8317,
+     "id": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+     "name": "Fitness",
+     "path": "fitness",
+     "slug": "fitness"
+    },
+    {
+     "count": 4,
+     "id": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+     "name": "Rower",
+     "path": "rower",
+     "slug": "rower"
+    },
+    {
+     "count": 14384,
+     "id": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+     "name": "Sporty drużynowe",
+     "path": "sporty-druzynowe",
+     "slug": "sporty-druzynowe"
+    },
+    {
+     "count": 2,
+     "id": "6f62a979-6012-5f5a-a39b-13948746e108",
+     "name": "Sporty wodne",
+     "path": "sporty-wodne",
+     "slug": "sporty-wodne"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 18949,
+       "value": "szare"
+      },
+      {
+       "count": 18856,
+       "value": "niebieskie"
+      },
+      {
+       "count": 18793,
+       "value": "czerwone"
+      },
+      {
+       "count": 18785,
+       "value": "zielone"
+      },
+      {
+       "count": 18707,
+       "value": "czarne"
+      },
+      {
+       "count": 18686,
+       "value": "granatowe"
+      },
+      {
+       "count": 8183,
+       "value": "czarny"
+      },
+      {
+       "count": 8095,
+       "value": "granatowy"
+      },
+      {
+       "count": 8086,
+       "value": "czerwony"
+      },
+      {
+       "count": 8039,
+       "value": "szary"
+      },
+      {
+       "count": 8016,
+       "value": "zielony"
+      },
+      {
+       "count": 8002,
+       "value": "niebieski"
+      },
+      {
+       "count": 6962,
+       "value": "niebieska"
+      },
+      {
+       "count": 6943,
+       "value": "szara"
+      },
+      {
+       "count": 6921,
+       "value": "granatowa"
+      },
+      {
+       "count": 6917,
+       "value": "zielona"
+      },
+      {
+       "count": 6862,
+       "value": "czerwona"
+      },
+      {
+       "count": 6806,
+       "value": "czarna"
+      },
+      {
+       "count": 2,
+       "value": "przydymione"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 8854,
+       "value": "47"
+      },
+      {
+       "count": 8819,
+       "value": "44"
+      },
+      {
+       "count": 8786,
+       "value": "41"
+      },
+      {
+       "count": 8762,
+       "value": "46"
+      },
+      {
+       "count": 8757,
+       "value": "38"
+      },
+      {
+       "count": 8737,
+       "value": "43"
+      },
+      {
+       "count": 8703,
+       "value": "39"
+      },
+      {
+       "count": 8692,
+       "value": "42"
+      },
+      {
+       "count": 8686,
+       "value": "40"
+      },
+      {
+       "count": 8612,
+       "value": "45"
+      },
+      {
+       "count": 1702,
+       "value": "XL"
+      },
+      {
+       "count": 1691,
+       "value": "S"
+      },
+      {
+       "count": 1690,
+       "value": "L"
+      },
+      {
+       "count": 1688,
+       "value": "M"
+      },
+      {
+       "count": 988,
+       "value": "35-38"
+      },
+      {
+       "count": 983,
+       "value": "XS"
+      },
+      {
+       "count": 964,
+       "value": "XXL"
+      },
+      {
+       "count": 951,
+       "value": "43-46"
+      },
+      {
+       "count": 948,
+       "value": "39-42"
+      },
+      {
+       "count": 521,
+       "value": "L/XL"
+      },
+      {
+       "count": 521,
+       "value": "S/M"
+      },
+      {
+       "count": 120,
+       "value": "1"
+      },
+      {
+       "count": 110,
+       "value": "2"
+      },
+      {
+       "count": 101,
+       "value": "3"
+      },
+      {
+       "count": 42,
+       "value": "6"
+      },
+      {
+       "count": 36,
+       "value": "11"
+      },
+      {
+       "count": 35,
+       "value": "8"
+      },
+      {
+       "count": 34,
+       "value": "7"
+      },
+      {
+       "count": 33,
+       "value": "9"
+      },
+      {
+       "count": 32,
+       "value": "10"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 8498,
+       "value": "70 l"
+      },
+      {
+       "count": 8477,
+       "value": "50 l"
+      },
+      {
+       "count": 8459,
+       "value": "30 l"
+      },
+      {
+       "count": 5497,
+       "value": "1000 ml"
+      },
+      {
+       "count": 5480,
+       "value": "750 ml"
+      },
+      {
+       "count": 5444,
+       "value": "600 ml"
+      }
+     ]
+    },
+    {
+     "axis": "Liczba sztuk",
+     "values": [
+      {
+       "count": 106,
+       "value": "10"
+      },
+      {
+       "count": 97,
+       "value": "20"
+      },
+      {
+       "count": 93,
+       "value": "40"
+      }
+     ]
+    },
+    {
+     "axis": "Smak",
+     "values": [
+      {
+       "count": 6,
+       "value": "czekoladowy"
+      },
+      {
+       "count": 6,
+       "value": "orzechowy"
+      },
+      {
+       "count": 6,
+       "value": "owocowy"
+      },
+      {
+       "count": 4,
+       "value": "cytrynowy"
+      },
+      {
+       "count": 4,
+       "value": "malinowy"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowy"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 229999,
+    "min": 690
+   }
+  },
+  "total": 75926
+ },
+ "?sort=price_asc": {
+  "facets": {
+   "availableCount": 953414,
+   "categories": [
+    {
+     "count": 131586,
+     "id": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+     "name": "Bieganie",
+     "path": "bieganie",
+     "slug": "bieganie"
+    },
+    {
+     "count": 152506,
+     "id": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+     "name": "Fitness",
+     "path": "fitness",
+     "slug": "fitness"
+    },
+    {
+     "count": 143221,
+     "id": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+     "name": "Rower",
+     "path": "rower",
+     "slug": "rower"
+    },
+    {
+     "count": 118249,
+     "id": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+     "name": "Sporty drużynowe",
+     "path": "sporty-druzynowe",
+     "slug": "sporty-druzynowe"
+    },
+    {
+     "count": 105466,
+     "id": "6f62a979-6012-5f5a-a39b-13948746e108",
+     "name": "Sporty wodne",
+     "path": "sporty-wodne",
+     "slug": "sporty-wodne"
+    },
+    {
+     "count": 126348,
+     "id": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+     "name": "Sporty zimowe",
+     "path": "sporty-zimowe",
+     "slug": "sporty-zimowe"
+    },
+    {
+     "count": 202733,
+     "id": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+     "name": "Turystyka",
+     "path": "turystyka",
+     "slug": "turystyka"
+    }
+   ],
+   "options": [
+    {
+     "axis": "Kolor",
+     "values": [
+      {
+       "count": 105553,
+       "value": "czerwone"
+      },
+      {
+       "count": 105353,
+       "value": "szare"
+      },
+      {
+       "count": 105349,
+       "value": "niebieskie"
+      },
+      {
+       "count": 105074,
+       "value": "zielone"
+      },
+      {
+       "count": 104877,
+       "value": "czarne"
+      },
+      {
+       "count": 104736,
+       "value": "granatowe"
+      },
+      {
+       "count": 96830,
+       "value": "niebieska"
+      },
+      {
+       "count": 96659,
+       "value": "granatowa"
+      },
+      {
+       "count": 96636,
+       "value": "zielona"
+      },
+      {
+       "count": 96520,
+       "value": "szara"
+      },
+      {
+       "count": 96483,
+       "value": "czerwona"
+      },
+      {
+       "count": 96423,
+       "value": "czarna"
+      },
+      {
+       "count": 95839,
+       "value": "granatowy"
+      },
+      {
+       "count": 95725,
+       "value": "szary"
+      },
+      {
+       "count": 95723,
+       "value": "czarny"
+      },
+      {
+       "count": 95636,
+       "value": "niebieski"
+      },
+      {
+       "count": 95386,
+       "value": "czerwony"
+      },
+      {
+       "count": 95297,
+       "value": "zielony"
+      },
+      {
+       "count": 24,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 17,
+       "value": "pomarańczowa"
+      },
+      {
+       "count": 13,
+       "value": "biała"
+      },
+      {
+       "count": 10,
+       "value": "biały"
+      },
+      {
+       "count": 10,
+       "value": "grafitowy"
+      },
+      {
+       "count": 10,
+       "value": "pomarańczowe"
+      },
+      {
+       "count": 10,
+       "value": "turkusowa"
+      },
+      {
+       "count": 6,
+       "value": "grafitowe"
+      },
+      {
+       "count": 6,
+       "value": "oliwkowy"
+      },
+      {
+       "count": 6,
+       "value": "przydymione"
+      },
+      {
+       "count": 4,
+       "value": "biało-niebieska"
+      },
+      {
+       "count": 4,
+       "value": "brązowa"
+      }
+     ]
+    },
+    {
+     "axis": "Rozmiar",
+     "values": [
+      {
+       "count": 136798,
+       "value": "M"
+      },
+      {
+       "count": 136441,
+       "value": "L"
+      },
+      {
+       "count": 136227,
+       "value": "S"
+      },
+      {
+       "count": 136044,
+       "value": "XL"
+      },
+      {
+       "count": 80018,
+       "value": "XS"
+      },
+      {
+       "count": 79930,
+       "value": "XXL"
+      },
+      {
+       "count": 34778,
+       "value": "47"
+      },
+      {
+       "count": 34743,
+       "value": "43"
+      },
+      {
+       "count": 34697,
+       "value": "44"
+      },
+      {
+       "count": 34551,
+       "value": "39"
+      },
+      {
+       "count": 34542,
+       "value": "46"
+      },
+      {
+       "count": 34540,
+       "value": "40"
+      },
+      {
+       "count": 34506,
+       "value": "42"
+      },
+      {
+       "count": 34398,
+       "value": "41"
+      },
+      {
+       "count": 34309,
+       "value": "45"
+      },
+      {
+       "count": 34268,
+       "value": "38"
+      },
+      {
+       "count": 25588,
+       "value": "35-38"
+      },
+      {
+       "count": 25515,
+       "value": "43-46"
+      },
+      {
+       "count": 25309,
+       "value": "39-42"
+      },
+      {
+       "count": 13450,
+       "value": "L/XL"
+      },
+      {
+       "count": 13426,
+       "value": "S/M"
+      },
+      {
+       "count": 12672,
+       "value": "29\""
+      },
+      {
+       "count": 12536,
+       "value": "26\""
+      },
+      {
+       "count": 12509,
+       "value": "28\""
+      },
+      {
+       "count": 12478,
+       "value": "27,5\""
+      },
+      {
+       "count": 6273,
+       "value": "1"
+      },
+      {
+       "count": 6240,
+       "value": "2"
+      },
+      {
+       "count": 6203,
+       "value": "3"
+      },
+      {
+       "count": 2357,
+       "value": "8"
+      },
+      {
+       "count": 2348,
+       "value": "6"
+      }
+     ]
+    },
+    {
+     "axis": "Pojemność",
+     "values": [
+      {
+       "count": 14087,
+       "value": "1 l"
+      },
+      {
+       "count": 14082,
+       "value": "0,75 l"
+      },
+      {
+       "count": 14033,
+       "value": "1000 ml"
+      },
+      {
+       "count": 10537,
+       "value": "20 l"
+      },
+      {
+       "count": 8565,
+       "value": "700 ml"
+      },
+      {
+       "count": 8498,
+       "value": "70 l"
+      },
+      {
+       "count": 8477,
+       "value": "50 l"
+      },
+      {
+       "count": 8459,
+       "value": "30 l"
+      },
+      {
+       "count": 8385,
+       "value": "500 ml"
+      },
+      {
+       "count": 8320,
+       "value": "0,5 l"
+      },
+      {
+       "count": 6267,
+       "value": "1,8 l"
+      },
+      {
+       "count": 6257,
+       "value": "1,2 l"
+      },
+      {
+       "count": 6231,
+       "value": "0,8 l"
+      },
+      {
+       "count": 5742,
+       "value": "1,5 l"
+      },
+      {
+       "count": 5695,
+       "value": "15 l"
+      },
+      {
+       "count": 5654,
+       "value": "0,6 l"
+      },
+      {
+       "count": 5648,
+       "value": "25 l"
+      },
+      {
+       "count": 5480,
+       "value": "750 ml"
+      },
+      {
+       "count": 5444,
+       "value": "600 ml"
+      },
+      {
+       "count": 4877,
+       "value": "40 l"
+      },
+      {
+       "count": 4859,
+       "value": "10 l"
+      },
+      {
+       "count": 4778,
+       "value": "5 l"
+      }
+     ]
+    },
+    {
+     "axis": "Długość",
+     "values": [
+      {
+       "count": 9270,
+       "value": "220 cm"
+      },
+      {
+       "count": 8620,
+       "value": "100-120 cm"
+      },
+      {
+       "count": 8528,
+       "value": "110-130 cm"
+      },
+      {
+       "count": 8482,
+       "value": "115-135 cm"
+      },
+      {
+       "count": 6352,
+       "value": "180 cm"
+      },
+      {
+       "count": 6191,
+       "value": "210 cm"
+      },
+      {
+       "count": 6184,
+       "value": "230 cm"
+      },
+      {
+       "count": 5555,
+       "value": "2,8 m"
+      },
+      {
+       "count": 5501,
+       "value": "2,5 m"
+      },
+      {
+       "count": 5478,
+       "value": "3 m"
+      },
+      {
+       "count": 5115,
+       "value": "120 cm"
+      },
+      {
+       "count": 5112,
+       "value": "147 cm"
+      },
+      {
+       "count": 5112,
+       "value": "162 cm"
+      },
+      {
+       "count": 5081,
+       "value": "155 cm"
+      },
+      {
+       "count": 5061,
+       "value": "125 cm"
+      },
+      {
+       "count": 5053,
+       "value": "158 cm"
+      },
+      {
+       "count": 5046,
+       "value": "152 cm"
+      },
+      {
+       "count": 5045,
+       "value": "105 cm"
+      },
+      {
+       "count": 5042,
+       "value": "115 cm"
+      },
+      {
+       "count": 5029,
+       "value": "110 cm"
+      },
+      {
+       "count": 3185,
+       "value": "150 cm"
+      },
+      {
+       "count": 3150,
+       "value": "160 cm"
+      },
+      {
+       "count": 3065,
+       "value": "200 cm"
+      },
+      {
+       "count": 6,
+       "value": "170 cm"
+      },
+      {
+       "count": 4,
+       "value": "164 cm"
+      },
+      {
+       "count": 4,
+       "value": "172 cm"
+      }
+     ]
+    },
+    {
+     "axis": "Smak",
+     "values": [
+      {
+       "count": 17197,
+       "value": "cytrynowy"
+      },
+      {
+       "count": 11745,
+       "value": "jabłkowy"
+      },
+      {
+       "count": 11691,
+       "value": "czekoladowy"
+      },
+      {
+       "count": 11649,
+       "value": "bananowy"
+      },
+      {
+       "count": 11505,
+       "value": "waniliowy"
+      },
+      {
+       "count": 11478,
+       "value": "truskawkowy"
+      },
+      {
+       "count": 5685,
+       "value": "malinowy"
+      },
+      {
+       "count": 5606,
+       "value": "pomarańczowy"
+      },
+      {
+       "count": 5531,
+       "value": "owoce leśne"
+      },
+      {
+       "count": 6,
+       "value": "orzechowy"
+      },
+      {
+       "count": 6,
+       "value": "owocowy"
+      },
+      {
+       "count": 4,
+       "value": "cytrynowe"
+      },
+      {
+       "count": 4,
+       "value": "czekoladowa"
+      },
+      {
+       "count": 4,
+       "value": "pomarańczowe"
+      },
+      {
+       "count": 4,
+       "value": "truskawkowa"
+      },
+      {
+       "count": 4,
+       "value": "waniliowa"
+      }
+     ]
+    },
+    {
+     "axis": "Waga",
+     "values": [
+      {
+       "count": 11211,
+       "value": "20 kg"
+      },
+      {
+       "count": 6834,
+       "value": "8 kg"
+      },
+      {
+       "count": 6829,
+       "value": "24 kg"
+      },
+      {
+       "count": 6815,
+       "value": "16 kg"
+      },
+      {
+       "count": 6773,
+       "value": "12 kg"
+      },
+      {
+       "count": 6747,
+       "value": "4 kg"
+      },
+      {
+       "count": 5611,
+       "value": "500 g"
+      },
+      {
+       "count": 5558,
+       "value": "900 g"
+      },
+      {
+       "count": 5547,
+       "value": "2 kg"
+      },
+      {
+       "count": 4498,
+       "value": "1,25 kg"
+      },
+      {
+       "count": 4456,
+       "value": "15 kg"
+      },
+      {
+       "count": 4444,
+       "value": "2,5 kg"
+      },
+      {
+       "count": 4427,
+       "value": "10 kg"
+      },
+      {
+       "count": 4410,
+       "value": "5 kg"
+      }
+     ]
+    },
+    {
+     "axis": "Montaż",
+     "values": [
+      {
+       "count": 6407,
+       "value": "przód"
+      },
+      {
+       "count": 6394,
+       "value": "tył"
+      },
+      {
+       "count": 6364,
+       "value": "komplet"
+      },
+      {
+       "count": 6244,
+       "value": "przedni"
+      },
+      {
+       "count": 6216,
+       "value": "na sztycę"
+      },
+      {
+       "count": 6157,
+       "value": "tylny"
+      },
+      {
+       "count": 3379,
+       "value": "na ramie"
+      },
+      {
+       "count": 3348,
+       "value": "na bagażniku"
+      }
+     ]
+    },
+    {
+     "axis": "Szerokość",
+     "values": [
+      {
+       "count": 7299,
+       "value": "57 mm"
+      },
+      {
+       "count": 7264,
+       "value": "35 mm"
+      },
+      {
+       "count": 7226,
+       "value": "50 mm"
+      },
+      {
+       "count": 7215,
+       "value": "40 mm"
+      },
+      {
+       "count": 5582,
+       "value": "130 mm"
+      },
+      {
+       "count": 5581,
+       "value": "155 mm"
+      },
+      {
+       "count": 5570,
+       "value": "143 mm"
+      }
+     ]
+    },
+    {
+     "axis": "Opór",
+     "values": [
+      {
+       "count": 8694,
+       "value": "bardzo mocny"
+      },
+      {
+       "count": 8666,
+       "value": "średni"
+      },
+      {
+       "count": 8612,
+       "value": "lekki"
+      },
+      {
+       "count": 8595,
+       "value": "mocny"
+      }
+     ]
+    },
+    {
+     "axis": "Liczba przełożeń",
+     "values": [
+      {
+       "count": 7627,
+       "value": "10"
+      },
+      {
+       "count": 7601,
+       "value": "12"
+      },
+      {
+       "count": 7491,
+       "value": "11"
+      },
+      {
+       "count": 7470,
+       "value": "9"
+      },
+      {
+       "count": 5060,
+       "value": "8"
+      }
+     ]
+    }
+   ],
+   "price": {
+    "max": 1499900,
+    "min": 690
+   }
+  },
+  "total": 980083
+ }
+}

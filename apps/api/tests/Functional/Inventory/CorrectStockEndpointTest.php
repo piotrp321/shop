@@ -465,6 +465,13 @@ final class CorrectStockEndpointTest extends WebTestCase
         yield 'NUL at the end' => ["a\0"];
         yield 'escape' => ["a\x1Bb"];
         yield 'delete' => ["a\x7Fb"];
+        yield 'next line (C1)' => ["a\u{85}b"];
+        yield 'C1 control character inside' => ["a\u{9F}b"];
+        yield 'C1 control character at the end' => ["a\u{9F}"];
+        yield 'line separator inside' => ["a\u{2028}b"];
+        yield 'line separator at the end' => ["a\u{2028}"];
+        yield 'paragraph separator inside' => ["a\u{2029}b"];
+        yield 'paragraph separator at the end' => ["a\u{2029}"];
     }
 
     /**

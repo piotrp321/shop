@@ -132,6 +132,11 @@ final class CategoryManagementEndpointTest extends WebTestCase
         yield 'a name with a NUL' => [['name' => "Zima\0", 'slug' => 'a', 'parentId' => null], 'name', 'Nazwa kategorii musi mieć od 1 do 100 znaków i nie może zawierać znaków sterujących.'];
         yield 'a name with a line separator' => [['name' => "Zima\u{2028}", 'slug' => 'a', 'parentId' => null], 'name', 'Nazwa kategorii musi mieć od 1 do 100 znaków i nie może zawierać znaków sterujących.'];
         yield 'a name of 101 characters' => [['name' => str_repeat('ż', 101), 'slug' => 'a', 'parentId' => null], 'name', 'Nazwa kategorii musi mieć od 1 do 100 znaków i nie może zawierać znaków sterujących.'];
+        // Spec api-input-contract, T3 and #632 F4: a name without a visible character is no name.
+        foreach ([0x200B, 0xFEFF, 0xAD, 0x2060, 0x200E, 0x202E] as $codePoint) {
+            yield \sprintf('a name of U+%04X', $codePoint) => [['name' => mb_chr($codePoint), 'slug' => 'a', 'parentId' => null], 'name', 'Nazwa kategorii musi mieć od 1 do 100 znaków i nie może zawierać znaków sterujących.'];
+        }
+        yield 'a name with a C1 control character' => [['name' => "Zi\u{9F}ma", 'slug' => 'a', 'parentId' => null], 'name', 'Nazwa kategorii musi mieć od 1 do 100 znaków i nie może zawierać znaków sterujących.'];
         yield 'an upper case slug' => [['name' => 'A', 'slug' => 'Sport', 'parentId' => null], 'slug', 'Slug może mieć 1–60 znaków: małe litery a–z i cyfry, słowa oddzielone pojedynczym myślnikiem.'];
         yield 'a slug with polish letters' => [['name' => 'A', 'slug' => 'łyżwy', 'parentId' => null], 'slug', 'Slug może mieć 1–60 znaków: małe litery a–z i cyfry, słowa oddzielone pojedynczym myślnikiem.'];
         yield 'a slug of another type' => [['name' => 'A', 'slug' => ['a'], 'parentId' => null], 'slug', 'Slug musi być tekstem.'];

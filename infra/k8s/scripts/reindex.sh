@@ -10,7 +10,8 @@
 # Steps:
 #   1. checks without changes: the CronJob reindex is there and says the shards of a new index; nobody holds the lock demo-data-lock
 #      (make generate and make open: scripts/shop-closed.sh); no Job of the namespace is active, except one of the CronJobs
-#      rate-limit-check, queue-check and order-expiry (short checks that run every five minutes); the index of the alias products can
+#      rate-limit-check, queue-check and order-expiry (short checks that run every five minutes and do not touch the index; active_jobs
+#      of scripts/shop-closed.sh); the index of the alias products can
 #      be read from Elasticsearch;
 #   2. says which index the alias is on, how many shards the new one gets, and goes on only after `tak`;
 #   3. takes the lock demo-data-lock and holds it to its end (the trap releases it; a KILL leaves it), so that make generate and make
@@ -54,8 +55,6 @@ exec 3<&0 < /dev/null
 
 cronjob=reindex
 alias_name=products
-# The CronJobs of short checks: an active Job of theirs (by its owner) is no reason to refuse (they do not touch the index).
-check_cronjobs="rate-limit-check queue-check order-expiry"
 job=""
 
 refuse() {
@@ -78,14 +77,6 @@ alias_index() {
   kubectl -n "$namespace" exec statefulset/elasticsearch -- curl -fsS \
     "http://localhost:9200/_cat/indices/$alias_name?format=json&h=index,pri,docs.count" |
     py_json '"%s %d %d" % (d[0]["index"], int(d[0]["pri"]), int(d[0]["docs.count"])) if len(d) == 1 else sys.exit(1)'
-}
-
-# running_jobs: the names of the Jobs of the namespace that run (neither Complete nor Failed), separated by spaces, without the Jobs of
-# the CronJobs of the short checks (by their owner: a Job someone made by hand is a Job like any other).
-running_jobs() {
-  kubectl -n "$namespace" get jobs -o json | py_json '" ".join(j["metadata"]["name"] for j in d["items"]
-    if not {c.get("type") for c in (j.get("status", {}).get("conditions") or []) if c.get("status") == "True"} & {"Complete", "Failed"}
-    and not any(o.get("kind") == "CronJob" and o.get("name") in "'"$check_cronjobs"'".split() for o in j["metadata"].get("ownerReferences") or []))'
 }
 
 # The lock of this run is released on every exit (lock_release deletes only a lock with the token of this run). A signal after the Job
@@ -119,7 +110,7 @@ esac
 lock_read || refuse "cannot read the lock $lock_name"
 [ -z "$lock_held_token" ] || refuse "the lock $lock_name is held by $lock_holder: make generate, make open and make reindex run one at a time; $(lock_message)"
 
-active="$(running_jobs)" || refuse "cannot read the Jobs of the namespace $namespace"
+active="$(active_jobs)" || refuse "cannot read the Jobs of the namespace $namespace"
 [ -z "$active" ] || refuse "Jobs are active in the namespace $namespace: $active (wait for them to finish)"
 
 before="$(alias_index)" || refuse "cannot read the index of the alias $alias_name from Elasticsearch (the alias has to be on exactly one index)"
@@ -154,7 +145,7 @@ echo
 # The answer may have taken long: the lock keeps make generate and make open out from here on (they refuse without changes), and a Job
 # that started since the checks (a deployment, a CronJob) is a refusal before anything is created.
 lock_take reindex || refuse "$lock_error"
-active="$(running_jobs)" || refuse "cannot read the Jobs of the namespace $namespace"
+active="$(active_jobs)" || refuse "cannot read the Jobs of the namespace $namespace"
 [ -z "$active" ] || refuse "Jobs are active in the namespace $namespace: $active (they started after the checks; wait for them to finish)"
 
 job="reindex-$(date -u +%Y%m%d%H%M%S)"

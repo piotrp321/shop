@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { createApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { CATALOG_TAG, type NextCacheTag, nextCacheTagOf } from "./isr-tags";
 
 type ProductDetails = components["schemas"]["ProductDetails"];
 type ProductOffer = components["schemas"]["ProductOfferResponse"];
@@ -20,10 +21,10 @@ export function isProductSlug(value: string): boolean {
 
 /**
  * The reads of the product page go through Varnish (`API_CATALOG_URL`) like the other catalog reads. The tags are the
- * ones the API puts in `xkey` (`catalog`, `product-slug-<slug>`, `product-<id>`): the page is revalidated by the same
- * names that purge Varnish.
+ * Next.js tags (`isr-tags.ts`) of the names the API puts in `xkey` (`catalog`, the bucket of `product-slug-<slug>`,
+ * the bucket of `product-<id>`): `/api/revalidate` turns the names that purge Varnish into the same tags.
  */
-function catalogClient(tags: string[]) {
+function catalogClient(tags: NextCacheTag[]) {
   const baseUrl = process.env.API_CATALOG_URL;
   if (!baseUrl) {
     throw new Error("API_CATALOG_URL is not set.");
@@ -52,8 +53,8 @@ function isDetails(value: ProductDetails | undefined): value is ProductDetails {
  * The details of the product by its slug, then its offer (price, level, variants). A slug outside the format of a
  * product slug is `not-found` without a call to the API (no product can have it); a 404 for the slug is `not-found`
  * too.
- * The read of the details carries the tag of the slug, so the publication of a product revalidates the 404 page of its
- * slug.
+ * The read of the details carries the tag of the bucket of the slug, so the publication of a product revalidates the
+ * 404 page of its slug.
  * Any other failure (status, network, an unexpected body) of the details or of the offer is thrown, so the page is an
  * error page that the ISR cache does not keep, not a page without a price.
  */
@@ -61,7 +62,7 @@ export async function loadProduct(slug: string): Promise<ProductResult> {
   if (!isProductSlug(slug)) {
     return { kind: "not-found" };
   }
-  const detailsResponse = await catalogClient(["catalog", `product-slug-${slug}`]).GET("/api/v1/products/{slug}", { params: { path: { slug } } });
+  const detailsResponse = await catalogClient([CATALOG_TAG, nextCacheTagOf(`product-slug-${slug}`)]).GET("/api/v1/products/{slug}", { params: { path: { slug } } });
   if (detailsResponse.response.status === 404) {
     return { kind: "not-found" };
   }
@@ -73,7 +74,7 @@ export async function loadProduct(slug: string): Promise<ProductResult> {
     throw new Error("GET /api/v1/products/{slug} returned an unexpected body.");
   }
 
-  const offerResponse = await catalogClient(["catalog", `product-${details.id.toLowerCase()}`]).GET("/api/v1/product-offers", {
+  const offerResponse = await catalogClient([CATALOG_TAG, nextCacheTagOf(`product-${details.id.toLowerCase()}`)]).GET("/api/v1/product-offers", {
     params: { query: { productId: [details.id] } },
   });
   if (offerResponse.data === undefined) {

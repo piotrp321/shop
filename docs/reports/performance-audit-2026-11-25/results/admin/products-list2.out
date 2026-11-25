@@ -1,0 +1,224 @@
+=== P7 warm rerun termos
+                                                                               QUERY PLAN                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..734.26 rows=26 width=71) (actual time=2318.700..2318.774 rows=26.00 loops=1)
+   Buffers: shared hit=151595 read=779545
+   ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..575668.05 rows=20396 width=71) (actual time=2318.699..2318.763 rows=26.00 loops=1)
+         Filter: ((name)::text ~~* '%termos%'::text)
+         Rows Removed by Filter: 918460
+         Index Searches: 1
+         Buffers: shared hit=151595 read=779545
+ Planning:
+   Buffers: shared hit=218 read=59
+ Planning Time: 0.807 ms
+ Execution Time: 2318.792 ms
+(11 rows)
+
+Time: 2320.379 ms (00:02.320)
+=== P10 q "zupa" (late alphabet)
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=549.44..549.50 rows=26 width=71) (actual time=38.534..38.536 rows=26.00 loops=1)
+   Buffers: shared hit=1117 read=7093
+   ->  Sort  (cost=549.44..549.69 rows=101 width=71) (actual time=38.533..38.534 rows=26.00 loops=1)
+         Sort Key: name, id
+         Sort Method: top-N heapsort  Memory: 30kB
+         Buffers: shared hit=1117 read=7093
+         ->  Bitmap Heap Scan on catalog_product p  (cost=149.90..546.56 rows=101 width=71) (actual time=1.945..35.842 rows=8584.00 loops=1)
+               Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+               Heap Blocks: exact=8175
+               Buffers: shared hit=1114 read=7090
+               ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..149.87 rows=101 width=0) (actual time=1.141..1.141 rows=8584.00 loops=1)
+                     Index Cond: ((name)::text ~~* '%zupa%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=9 read=20
+ Planning:
+   Buffers: shared read=1
+ Planning Time: 0.123 ms
+ Execution Time: 38.655 ms
+(18 rows)
+
+Time: 38.932 ms
+=== P11 q "żuraw 900 pro" rare
+                                                                        QUERY PLAN                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1221.58..1221.64 rows=26 width=71) (actual time=9.434..9.437 rows=26.00 loops=1)
+   Buffers: shared hit=807 read=867
+   ->  Sort  (cost=1221.58..1221.83 rows=101 width=71) (actual time=9.433..9.434 rows=26.00 loops=1)
+         Sort Key: name, id
+         Sort Method: top-N heapsort  Memory: 30kB
+         Buffers: shared hit=807 read=867
+         ->  Bitmap Heap Scan on catalog_product p  (cost=822.04..1218.70 rows=101 width=71) (actual time=8.955..9.399 rows=80.00 loops=1)
+               Recheck Cond: ((name)::text ~~* '%żuraw 900 pro%'::text)
+               Rows Removed by Index Recheck: 18
+               Heap Blocks: exact=98
+               Buffers: shared hit=807 read=867
+               ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..822.01 rows=101 width=0) (actual time=8.877..8.878 rows=98.00 loops=1)
+                     Index Cond: ((name)::text ~~* '%żuraw 900 pro%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=791 read=785
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.097 ms
+ Execution Time: 9.448 ms
+(19 rows)
+
+Time: 9.679 ms
+=== P12 q "ravotar" -name
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=773.48..773.55 rows=26 width=71) (actual time=12.309..12.311 rows=26.00 loops=1)
+   Buffers: shared hit=475 read=2675
+   ->  Sort  (cost=773.48..773.74 rows=101 width=71) (actual time=12.307..12.309 rows=26.00 loops=1)
+         Sort Key: name DESC, id DESC
+         Sort Method: top-N heapsort  Memory: 30kB
+         Buffers: shared hit=475 read=2675
+         ->  Bitmap Heap Scan on catalog_product p  (cost=373.94..770.61 rows=101 width=71) (actual time=1.440..11.618 rows=2980.00 loops=1)
+               Recheck Cond: ((name)::text ~~* '%ravotar%'::text)
+               Heap Blocks: exact=2922
+               Buffers: shared hit=475 read=2675
+               ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..373.92 rows=101 width=0) (actual time=1.195..1.195 rows=2980.00 loops=1)
+                     Index Cond: ((name)::text ~~* '%ravotar%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=113 read=115
+ Planning:
+   Buffers: shared hit=2 read=9
+ Planning Time: 0.134 ms
+ Execution Time: 12.321 ms
+(18 rows)
+
+Time: 12.589 ms
+=== P13 q 2-char "zx" sort updatedAt
+                                                                                     QUERY PLAN                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..94004.15 rows=26 width=71) (actual time=1102.291..1102.292 rows=0.00 loops=1)
+   Buffers: shared hit=890372 read=106136
+   ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..365168.74 rows=101 width=71) (actual time=1102.291..1102.291 rows=0.00 loops=1)
+         Filter: ((name)::text ~~* '%zx%'::text)
+         Rows Removed by Filter: 1000191
+         Index Searches: 1
+         Buffers: shared hit=890372 read=106136
+ Planning:
+   Buffers: shared hit=5 read=1
+ Planning Time: 0.116 ms
+ Execution Time: 1102.296 ms
+(11 rows)
+
+Time: 1102.682 ms (00:01.103)
+=== P14 count 2-char no result qx
+                                                                                        QUERY PLAN                                                                                         
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=67689.93..67689.94 rows=1 width=8) (actual time=202.464..204.128 rows=1.00 loops=1)
+   Buffers: shared hit=655060 read=13955
+   ->  Limit  (cost=1000.42..67688.66 rows=101 width=4) (actual time=202.463..204.127 rows=0.00 loops=1)
+         Buffers: shared hit=655060 read=13955
+         ->  Gather  (cost=1000.42..67688.66 rows=101 width=4) (actual time=202.462..204.126 rows=0.00 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               Buffers: shared hit=655060 read=13955
+               ->  Parallel Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..66678.56 rows=42 width=4) (actual time=200.387..200.387 rows=0.00 loops=3)
+                     Filter: ((name)::text ~~* '%qx%'::text)
+                     Rows Removed by Filter: 333397
+                     Heap Fetches: 0
+                     Index Searches: 1
+                     Buffers: shared hit=655060 read=13955
+ Planning:
+   Buffers: shared hit=1 read=3
+ Planning Time: 0.096 ms
+ Execution Time: 204.140 ms
+(18 rows)
+
+Time: 204.444 ms
+=== P15 status=draft sort name
+                                                                               QUERY PLAN                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.41..97.79 rows=26 width=71) (actual time=0.069..0.142 rows=26.00 loops=1)
+   Buffers: shared read=29
+   ->  Index Scan using catalog_product_draft_name_id_idx on catalog_product p  (cost=0.41..82177.53 rows=21942 width=71) (actual time=0.069..0.140 rows=26.00 loops=1)
+         Index Searches: 1
+         Buffers: shared read=29
+ Planning:
+   Buffers: shared read=3
+ Planning Time: 0.061 ms
+ Execution Time: 0.146 ms
+(9 rows)
+
+Time: 0.475 ms
+=== P16 status=published sort -updatedAt
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..10.04 rows=26 width=71) (actual time=0.017..0.036 rows=26.00 loops=1)
+   Buffers: shared hit=8 read=9
+   ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..365168.74 rows=987639 width=71) (actual time=0.017..0.034 rows=26.00 loops=1)
+         Filter: ((status)::text = 'published'::text)
+         Index Searches: 1
+         Buffers: shared hit=8 read=9
+ Planning Time: 0.039 ms
+ Execution Time: 0.041 ms
+(8 rows)
+
+Time: 0.192 ms
+=== P17 images=none sort name
+                                                                            QUERY PLAN                                                                             
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..763.29 rows=26 width=71) (actual time=0.048..2.331 rows=26.00 loops=1)
+   Buffers: shared hit=83 read=1004
+   ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..575668.05 rows=19620 width=71) (actual time=0.048..2.329 rows=26.00 loops=1)
+         Filter: (images = '[]'::jsonb)
+         Rows Removed by Filter: 1045
+         Index Searches: 1
+         Buffers: shared hit=83 read=1004
+ Planning:
+   Buffers: shared hit=2 read=7
+ Planning Time: 0.062 ms
+ Execution Time: 2.336 ms
+(11 rows)
+
+Time: 2.536 ms
+=== P17c count images=none
+                                                                                      QUERY PLAN                                                                                       
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=10141.87..10141.88 rows=1 width=8) (actual time=11.756..11.756 rows=1.00 loops=1)
+   Buffers: shared hit=6703 read=2358
+   ->  Limit  (cost=0.41..10016.86 rows=10001 width=4) (actual time=0.087..11.453 rows=10001.00 loops=1)
+         Buffers: shared hit=6703 read=2358
+         ->  Index Only Scan using catalog_product_without_images_idx on catalog_product p  (cost=0.41..19650.71 rows=19620 width=4) (actual time=0.086..11.056 rows=10001.00 loops=1)
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared hit=6703 read=2358
+ Planning Time: 0.037 ms
+ Execution Time: 11.766 ms
+(10 rows)
+
+Time: 11.958 ms
+=== P18 draft + images none + q termos
+                                                                                  QUERY PLAN                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=2839.87..2839.89 rows=9 width=71) (actual time=6.407..6.409 rows=8.00 loops=1)
+   Buffers: shared hit=78 read=503
+   ->  Sort  (cost=2839.87..2839.89 rows=9 width=71) (actual time=6.407..6.407 rows=8.00 loops=1)
+         Sort Key: name, id
+         Sort Method: quicksort  Memory: 26kB
+         Buffers: shared hit=78 read=503
+         ->  Bitmap Heap Scan on catalog_product p  (cost=1138.96..2839.72 rows=9 width=71) (actual time=5.244..6.397 rows=8.00 loops=1)
+               Recheck Cond: (((name)::text ~~* '%termos%'::text) AND ((status)::text = 'draft'::text))
+               Filter: (images = '[]'::jsonb)
+               Rows Removed by Filter: 264
+               Heap Blocks: exact=272
+               Buffers: shared hit=78 read=503
+               ->  BitmapAnd  (cost=1138.96..1138.96 rows=443 width=0) (actual time=4.899..4.900 rows=0.00 loops=1)
+                     Buffers: shared hit=68 read=241
+                     ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..400.71 rows=20396 width=0) (actual time=2.123..2.123 rows=12920.00 loops=1)
+                           Index Cond: ((name)::text ~~* '%termos%'::text)
+                           Index Searches: 1
+                           Buffers: shared hit=68 read=85
+                     ->  Bitmap Index Scan on catalog_product_draft_updated_at_id_idx  (cost=0.00..738.00 rows=21942 width=0) (actual time=2.359..2.359 rows=20108.00 loops=1)
+                           Index Searches: 1
+                           Buffers: shared read=156
+ Planning:
+   Buffers: shared read=1
+ Planning Time: 0.142 ms
+ Execution Time: 6.421 ms
+(25 rows)
+
+Time: 6.749 ms

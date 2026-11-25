@@ -604,6 +604,34 @@ final class ProductsEndpointTest extends WebTestCase
         yield 'relevance without a phrase' => ['sort=relevance', 'sort'];
     }
 
+    /**
+     * The rule of texts (spec api-input-contract, E6): a phrase without a visible character is too short and a
+     * forbidden character is refused, each with one violation of `q`.
+     *
+     * @return iterable<string, array{string, string}>
+     */
+    public static function phrasesOutsideTheRule(): iterable
+    {
+        $tooShort = 'Ta wartość jest zbyt krótka. Powinna mieć 2 lub więcej znaków.';
+        yield 'two NBSP' => ['%C2%A0%C2%A0', $tooShort];
+        yield 'three U+200B' => ['%E2%80%8B%E2%80%8B%E2%80%8B', $tooShort];
+        yield 'three U+3164' => ['%E3%85%A4%E3%85%A4%E3%85%A4', $tooShort];
+        yield 'a NUL inside' => ['a%00b', 'Szukana fraza zawiera niedozwolone znaki.'];
+        yield 'U+009F inside' => ['bu%C2%9Fty', 'Szukana fraza zawiera niedozwolone znaki.'];
+        yield 'U+2028 at the end' => ['buty%E2%80%A8', 'Szukana fraza zawiera niedozwolone znaki.'];
+    }
+
+    #[DataProvider('phrasesOutsideTheRule')]
+    public function testAPhraseOutsideTheRuleIsRejected(string $phrase, string $title): void
+    {
+        $this->index($this->document('Buty', self::LEAF, [self::LEAF]));
+
+        $problem = $this->get('/api/v1/products?q='.$phrase);
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame([['propertyPath' => 'q', 'title' => $title]], $problem['violations']);
+    }
+
     #[DataProvider('invalidQueries')]
     public function testInvalidParametersGiveProblemDetailsWithViolations(string $query, string $property): void
     {

@@ -8,6 +8,7 @@ use App\Ordering\Domain\AccessToken;
 use App\Ordering\Domain\Contact;
 use App\Ordering\Domain\Currency;
 use App\Ordering\Domain\EmailAddress;
+use App\Ordering\Domain\ExpectedLines;
 use App\Ordering\Domain\IdempotencyKey;
 use App\Ordering\Domain\InvalidOrderInput;
 use App\Ordering\Domain\Money;
@@ -122,6 +123,9 @@ final class OrderValuesTest extends TestCase
         yield 'lone continuation byte, not valid UTF-8' => ["A\x80B"];
         yield 'truncated sequence at the end, not valid UTF-8' => ["AB\xC3"];
         yield 'overlong sequence, not valid UTF-8' => ["A\xC0\xAFB"];
+        // Every control character of the rule of texts (spec api-input-contract, T1), also C1.
+        yield 'C1 control U+009F inside' => ["A\u{9F}B"];
+        yield 'C1 control U+0080 at the end' => ["AB\u{80}"];
     }
 
     #[DataProvider('withControlCharacters')]
@@ -176,6 +180,7 @@ final class OrderValuesTest extends TestCase
         yield 'U+2028' => ["\u{2028}"];
         yield 'U+2029' => ["\u{2029}"];
         yield 'not valid UTF-8' => ["\xC3"];
+        yield 'C1 control U+009F' => ["\u{9F}"];
     }
 
     #[DataProvider('controlCharactersAlone')]
@@ -214,6 +219,104 @@ final class OrderValuesTest extends TestCase
                 self::assertSame('Imię i nazwisko są wymagane.', $invalid->getMessage());
             }
         }
+    }
+
+    /**
+     * Texts without a visible character once trimmed (spec api-input-contract, T3).
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function emptyTexts(): iterable
+    {
+        yield 'a no-break space' => ["\u{A0}"];
+        yield 'a zero width space' => ["\u{200B}"];
+        yield 'a Hangul filler' => ["\u{3164}"];
+        yield 'invisible characters and spaces' => ["\u{FEFF} \u{200B}\u{2060}\u{3000}"];
+    }
+
+    #[DataProvider('emptyTexts')]
+    public function testATextWithoutAVisibleCharacterIsNoValue(string $empty): void
+    {
+        $cases = [
+            'Imię i nazwisko są wymagane.' => static fn () => self::contact(fullName: $empty),
+            'Ulica i numer są wymagane.' => static fn () => ShippingAddress::inPoland($empty, '00-950', 'Warszawa'),
+            'Kod pocztowy jest wymagany.' => static fn () => ShippingAddress::inPoland('Długa 1', $empty, 'Warszawa'),
+            'Miejscowość jest wymagana.' => static fn () => ShippingAddress::inPoland('Długa 1', '00-950', $empty),
+            'Podaj poprawny adres e-mail.' => static fn () => EmailAddress::fromString($empty),
+            'Podaj 9-cyfrowy numer telefonu.' => static fn () => self::contact(phone: $empty),
+        ];
+        foreach ($cases as $message => $build) {
+            try {
+                $build();
+                self::fail('Expected InvalidOrderInput: '.$message);
+            } catch (InvalidOrderInput $invalid) {
+                self::assertSame($message, $invalid->getMessage());
+            }
+        }
+    }
+
+    /**
+     * The characters the rule of texts trims from the ends (T2), not only the ASCII white space of trim().
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function edges(): iterable
+    {
+        yield 'no-break spaces' => ["\u{A0}"];
+        yield 'zero width spaces' => ["\u{200B}"];
+        yield 'a byte order mark' => ["\u{FEFF}"];
+        yield 'soft hyphens' => ["\u{AD}"];
+        yield 'an ideographic space and a word joiner' => ["\u{3000}\u{2060}"];
+    }
+
+    #[DataProvider('edges')]
+    public function testTheContactAndTheAddressLoseTheEdgesOfTheRuleOfTexts(string $edge): void
+    {
+        $contact = Contact::of(EmailAddress::fromString($edge.'Jan.Kowalski@Example.com'.$edge), $edge.'Jan Kowalski'.$edge, $edge.'+48 600-100-200'.$edge);
+        $address = ShippingAddress::inPoland($edge.'ul. Długa 1/2'.$edge, $edge.'00-950'.$edge, $edge.'Warszawa'.$edge);
+
+        self::assertSame(['Jan.Kowalski@Example.com', 'Jan Kowalski', '+48600100200'], [$contact->email()->toString(), $contact->fullName(), $contact->phone()]);
+        self::assertSame(['ul. Długa 1/2', '00-950', 'Warszawa'], [$address->street(), $address->postalCode(), $address->city()]);
+    }
+
+    public function testInsideATextNothingIsDroppedSoAFormatRefusesIt(): void
+    {
+        self::assertSame("Jan\u{A0}Kowalski", self::contact(fullName: "\u{200B}Jan\u{A0}Kowalski\u{200B}")->fullName());
+        self::assertSame("ul.\u{200B}Długa 1", ShippingAddress::inPoland("\u{FEFF}ul.\u{200B}Długa 1\u{AD}", '00-950', 'Warszawa')->street());
+        foreach ([
+            'Podaj 9-cyfrowy numer telefonu.' => static fn () => self::contact(phone: "600\u{A0}100\u{A0}200"),
+            'Podaj kod pocztowy w formacie 00-000.' => static fn () => ShippingAddress::inPoland('Długa 1', "00-\u{200B}950", 'Warszawa'),
+        ] as $message => $build) {
+            try {
+                $build();
+                self::fail('Expected InvalidOrderInput: '.$message);
+            } catch (InvalidOrderInput $invalid) {
+                self::assertSame($message, $invalid->getMessage());
+            }
+        }
+    }
+
+    public function testTheLimitsCountTheTextOnceTrimmed(): void
+    {
+        $edge = "\u{200B}\u{A0}";
+
+        self::assertSame(str_repeat('ż', 100), self::contact(fullName: $edge.str_repeat('ż', 100).$edge)->fullName());
+        self::assertSame(str_repeat('ł', 60), ShippingAddress::inPoland($edge.str_repeat('ś', 100).$edge, '00-950', $edge.str_repeat('ł', 60).$edge)->city());
+        $longest = str_repeat('a', 64).'@'.str_repeat('b', 185).'.com';
+        self::assertSame($longest, EmailAddress::fromString($edge.$longest.$edge)->toString());
+    }
+
+    /**
+     * What an order read from the database keeps: the texts as stored, also those the rule refuses (spec
+     * api-input-contract, E7), without a check and without a trim.
+     */
+    public function testTheStoredContactAndAddressAreKeptAsTheyAre(): void
+    {
+        $contact = Contact::stored(EmailAddress::stored(" jan@example.com\u{200B}"), "\u{A0}", "+48600100200\t");
+        $address = ShippingAddress::stored("\u{200B}", "00-950\u{A0}", "War\tszawa\u{9F}");
+
+        self::assertSame([" jan@example.com\u{200B}", "\u{A0}", "+48600100200\t"], [$contact->email()->toString(), $contact->fullName(), $contact->phone()]);
+        self::assertSame(["\u{200B}", "00-950\u{A0}", "War\tszawa\u{9F}", 'PL'], [$address->street(), $address->postalCode(), $address->city(), $address->country()]);
     }
 
     public function testShippingAddressIsTrimmedAndAlwaysInPoland(): void
@@ -379,6 +482,48 @@ final class OrderValuesTest extends TestCase
         self::assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $fingerprint->toString());
         self::assertTrue($fingerprint->equals($same));
         self::assertTrue($fingerprint->equals(RequestFingerprint::fromString($fingerprint->toString())));
+    }
+
+    /**
+     * The fingerprint of a request whose texts have no characters at their ends but ASCII white space is the one of
+     * the time before the rule of texts (spec api-input-contract, "Wdrożenie i klienci"): a repeat of a placement made
+     * before the rule still is a repeat. The values are the fingerprints the code before the rule computed.
+     */
+    public function testTheFingerprintOfATextWithoutOtherEdgesIsTheOneOfTheTimeBeforeTheRule(): void
+    {
+        self::assertSame('a2a1e7fca14ecfe689884b636a0d591616f3d6608398bfb662f93c153011fbac', RequestFingerprint::of(
+            'guest:6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b',
+            Contact::of(EmailAddress::fromString(' Jan.Kowalski@Example.com '), ' Jan Kowalski-Żółć ', '+48 600-100-200'),
+            ShippingAddress::inPoland(' ul. Długa 1/2 ', ' 00-950 ', 'Warszawa '),
+            12_300,
+            'WITAJ10',
+            '0192f0c4-7c1a-7c4e-9a6e-00000000de10',
+            ExpectedLines::of([['variantId' => '0192f0c4-7c1a-7c4e-9a6e-00000000a001', 'quantity' => 2]]),
+        )->toString());
+        self::assertSame('9f0158a7b6885bdb4b212f3264553fec5a459190bf551e9b57b019e5c60bd54f', RequestFingerprint::of(
+            'customer:kc-1',
+            Contact::of(EmailAddress::fromString('ewa@example.com'), 'Ewa Nowak', '600100200'),
+            ShippingAddress::inPoland('Długa 1', '00-950', 'Kraków'),
+            1230,
+        )->toString());
+    }
+
+    /**
+     * A repeat with the same texts between other edges of the rule is the same request: the fingerprint is computed
+     * from the trimmed values.
+     */
+    public function testTheFingerprintIsTheSameForTextsBetweenTheEdgesOfTheRule(): void
+    {
+        $fingerprint = static fn (string $edge): RequestFingerprint => RequestFingerprint::of(
+            'guest:6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b',
+            Contact::of(EmailAddress::fromString($edge.'jan@example.com'.$edge), $edge.'Jan Kowalski'.$edge, $edge.'600100200'.$edge),
+            ShippingAddress::inPoland($edge.'Długa 1'.$edge, $edge.'00-950'.$edge, $edge.'Warszawa'.$edge),
+            12_300,
+        );
+
+        foreach (["\u{A0}", "\u{200B}", "\u{FEFF}", "\u{3000}\u{2060}"] as $edge) {
+            self::assertTrue($fingerprint('')->equals($fingerprint($edge)), \sprintf('U+%04X', mb_ord($edge)));
+        }
     }
 
     public function testFingerprintDiffersForAnotherCartContactAddressOrAmount(): void

@@ -21,7 +21,7 @@ final class CategoryTest extends TestCase
     {
         $id = CategoryId::fromString('11111111-1111-4111-8111-111111111111');
 
-        $root = Category::createRoot($id, new CategoryName('Shoes'), new CategorySlug('shoes'));
+        $root = Category::createRoot($id, CategoryName::of('Shoes'), new CategorySlug('shoes'));
 
         self::assertSame('shoes', $root->slug()->value());
         self::assertSame('/11111111-1111-4111-8111-111111111111/', $root->path()->toString());
@@ -34,10 +34,10 @@ final class CategoryTest extends TestCase
         $r = CategoryId::fromString('11111111-1111-4111-8111-111111111111');
         $c = CategoryId::fromString('22222222-2222-4222-8222-222222222222');
         $g = CategoryId::fromString('33333333-3333-4333-8333-333333333333');
-        $root = Category::createRoot($r, new CategoryName('A'), new CategorySlug('a'));
-        $child = Category::createChild($c, new CategoryName('B'), new CategorySlug('b'), $root);
+        $root = Category::createRoot($r, CategoryName::of('A'), new CategorySlug('a'));
+        $child = Category::createChild($c, CategoryName::of('B'), new CategorySlug('b'), $root);
 
-        $grandchild = Category::createChild($g, new CategoryName('C'), new CategorySlug('c'), $child);
+        $grandchild = Category::createChild($g, CategoryName::of('C'), new CategorySlug('c'), $child);
 
         self::assertSame('c', $grandchild->slug()->value());
         self::assertSame('/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/', $grandchild->path()->toString());
@@ -49,14 +49,14 @@ final class CategoryTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        new CategoryName('');
+        CategoryName::of('');
     }
 
     public function testWhitespaceNameIsRejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        new CategoryName("  \t");
+        CategoryName::of("  \t");
     }
 
     /**
@@ -69,6 +69,16 @@ final class CategoryTest extends TestCase
         yield 'a line separator' => ["Sport\u{2028}"];
         yield 'a new line' => ["Sport\nZima"];
         yield 'invalid UTF-8' => ["Sport\xC3"];
+        // The rule of texts (spec api-input-contract, T1 and T3).
+        yield 'a C1 control character' => ["Spo\u{9F}rt"];
+        yield 'a line separator removed by a trim' => ["\u{2028}Sport"];
+        yield 'a zero width space only' => ["\u{200B}"];
+        yield 'a byte order mark only' => ["\u{FEFF}"];
+        yield 'a soft hyphen only' => ["\u{AD}"];
+        yield 'a word joiner only' => ["\u{2060}"];
+        yield 'a left-to-right mark only' => ["\u{200E}"];
+        yield 'a right-to-left override only' => ["\u{202E}"];
+        yield 'a Hangul filler only' => ["\u{3164}"];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('namesWithoutText')]
@@ -76,24 +86,45 @@ final class CategoryTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        new CategoryName($name);
+        CategoryName::of($name);
     }
 
     public function testANameIsTrimmedOfUnicodeWhitespace(): void
     {
-        self::assertSame('Łyżwy', (new CategoryName("\u{00A0} Łyżwy \u{2003}"))->value());
+        self::assertSame('Łyżwy', CategoryName::of("\u{00A0} Łyżwy \u{2003}")->value());
+    }
+
+    public function testANameIsTrimmedOfInvisibleCharactersAndKeepsAFlagAtItsEnd(): void
+    {
+        self::assertSame('Łyżwy', CategoryName::of("\u{200B}\u{FEFF}Łyżwy\u{2060}\u{AD}")->value());
+        self::assertSame("Anglia \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}", CategoryName::of("Anglia \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}")->value());
+    }
+
+    public function testTheLengthIsCountedAfterTheTrim(): void
+    {
+        self::assertSame(str_repeat('ą', 100), CategoryName::of("\u{200B}".str_repeat('ą', 100)."\u{200B}")->value());
+    }
+
+    /**
+     * A name stored before a stricter rule is read as it is (spec api-input-contract, E7).
+     */
+    public function testAStoredNameIsReadWithoutTheRule(): void
+    {
+        foreach (["\u{200B}", "Sport\tZima", "Spo\u{9F}rt", ' Sport '] as $stored) {
+            self::assertSame($stored, CategoryName::stored($stored)->value());
+        }
     }
 
     public function testNameOf100CharactersIsAccepted(): void
     {
-        self::assertSame(str_repeat('ą', 100), (new CategoryName(str_repeat('ą', 100)))->value());
+        self::assertSame(str_repeat('ą', 100), CategoryName::of(str_repeat('ą', 100))->value());
     }
 
     public function testNameOf101CharactersIsRejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        new CategoryName(str_repeat('a', 101));
+        CategoryName::of(str_repeat('a', 101));
     }
 
     public function testPathRoundTripsThroughString(): void
@@ -114,7 +145,7 @@ final class CategoryTest extends TestCase
     {
         $category = Category::reconstitute(
             CategoryId::fromString(self::CHILD),
-            new CategoryName('Running'),
+            CategoryName::of('Running'),
             new CategorySlug('running'),
             CategoryId::fromString(self::ROOT),
             CategoryPath::fromString('/'.self::ROOT.'/'.self::CHILD.'/'),
@@ -131,7 +162,7 @@ final class CategoryTest extends TestCase
     {
         $category = Category::reconstitute(
             CategoryId::fromString(self::ROOT),
-            new CategoryName('Shoes'),
+            CategoryName::of('Shoes'),
             new CategorySlug('shoes'),
             null,
             CategoryPath::fromString('/'.self::ROOT.'/'),
@@ -147,7 +178,7 @@ final class CategoryTest extends TestCase
 
         Category::reconstitute(
             CategoryId::fromString(self::CHILD),
-            new CategoryName('Running'),
+            CategoryName::of('Running'),
             new CategorySlug('running'),
             CategoryId::fromString(self::ROOT),
             CategoryPath::fromString('/'.self::ROOT.'/'.self::OTHER.'/'),
@@ -160,7 +191,7 @@ final class CategoryTest extends TestCase
 
         Category::reconstitute(
             CategoryId::fromString(self::CHILD),
-            new CategoryName('Running'),
+            CategoryName::of('Running'),
             new CategorySlug('running'),
             CategoryId::fromString(self::OTHER),
             CategoryPath::fromString('/'.self::ROOT.'/'.self::CHILD.'/'),
@@ -173,7 +204,7 @@ final class CategoryTest extends TestCase
 
         Category::reconstitute(
             CategoryId::fromString(self::CHILD),
-            new CategoryName('Running'),
+            CategoryName::of('Running'),
             new CategorySlug('running'),
             null,
             CategoryPath::fromString('/'.self::ROOT.'/'.self::CHILD.'/'),
@@ -186,7 +217,7 @@ final class CategoryTest extends TestCase
 
         Category::reconstitute(
             CategoryId::fromString(self::ROOT),
-            new CategoryName('Shoes'),
+            CategoryName::of('Shoes'),
             new CategorySlug('shoes'),
             CategoryId::fromString(self::OTHER),
             CategoryPath::fromString('/'.self::ROOT.'/'),

@@ -342,9 +342,9 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   `demo-data-lock`, więc `generate` i `open` w tym czasie odmawiają. **Nie wdrażaj nowej wersji w trakcie przebudowy**:
   Job `migrate` wdrożenia kończy się wtedy błędem (`catalog:search-index:setup` odmawia przy trwającej przebudowie),
   a po jej końcu trzeba go ponowić (`make -C infra/k8s rerun JOB=<migrate-…>`). Odmowa (kod 1, „nothing changed”):
-  aktywny Job w przestrzeni nazw (poczekaj na koniec), blokada `demo-data-lock` innego przebiegu albo nieczytelny
-  indeks. Porażka (kod 1, „FAILED”): komunikat mówi, na którym indeksie jest alias (nieudany Job zostawia go na starym),
-  log Joba jest w wyjściu celu i w Grafana Cloud; po usunięciu przyczyny uruchom cel ponownie (nie `rerun`). Liczba
+  aktywny Job w przestrzeni nazw (poczekaj na koniec; Joby CronJobów `rate-limit-check`, `queue-check` i `order-expiry` nie
+  są powodem odmowy), blokada `demo-data-lock` innego przebiegu albo nieczytelny indeks. Porażka (kod 1, „FAILED”):
+  komunikat mówi, na którym indeksie jest alias (nieudany Job zostawia go na starym), log Joba jest w wyjściu celu i w Grafana Cloud; po usunięciu przyczyny uruchom cel ponownie (nie `rerun`). Liczba
   dokumentów w wyjściu celu to dokumenty Lucene (razem z zagnieżdżonymi wariantami), więcej niż produktów w logu Joba. Zmiana produktu, ceny albo stanu zapisana w trakcie budowy może nie trafić do nowego indeksu
   do następnej zmiany tego produktu, więc przebudowę uruchamiaj poza godzinami zmian w panelu. Powrót do poprzedniej
   liczby shardów: zmiana `elasticsearch.shards`, wdrożenie i ponowna przebudowa.
@@ -740,12 +740,13 @@ czeka na L9. `open` zmienia serwer (otwiera sklep), więc też wymaga zgody, kt�
    `demo-photos` na czas przebiegu (usuwany przy każdym wyjściu `generate`, także po błędzie; po jego zabiciu usuwa go
    `open`). Profil `seed` pliku nie potrzebuje.
 2. **agent** – wdrożona rewizja ma ten profil: `generate` przyjmuje `seed` albo `demoData.profile` CronJoba
-   (`environments/prod/values.yaml`; `medium`, a `server` po zmianie wartości w PR i zwykłym wdrożeniu). Wdrożenie:
+   (`environments/prod/values.yaml`: `server`; powrót do `medium` to zmiana wartości w PR i zwykłe wdrożenie). Wdrożenie:
    sekcja 7 (zgoda użytkownika); nie w trakcie generowania, bo restartuje pody, których generator potrzebuje.
 3. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: sklep otwarty, bez blokady `demo-data-lock`, Job
    `demo-data-run` (poprzedniego przebiegu), aktywne Joby, aplikacje `Synced` i `Healthy`, wszystkie Deploymenty
    i StatefulSety gotowe (generator potrzebuje Elasticsearcha, Postgresa, Keycloaka, `worker`, Varnisha i sklepu), żaden
-   Job nie jest aktywny.
+   Job nie jest aktywny poza Jobami CronJobów `rate-limit-check`, `queue-check` i `order-expiry` (co 5 minut, najwyżej
+   60, 120 i 600 s; `generate` i `open` je pomijają, bo generator nie zapisuje niczego, co zmieniają).
 4. **agent** – wolne miejsce: `medium` wymaga co najmniej 32 GB (`demoData.minFreeGb`; 1,25 × `diskPeakGb` `medium`, czyli
    26,25 GB, jest mniejsze), `server` co najmniej 120 GB (1,25 × `diskPeakGb` 96 GB; to szacunek z ekstrapolacji, nie
    pomiar). Odczytem miejsca jest kubelet; `generate` sam odmawia bez zapasu. Strażnik w Jobie zatrzymuje generator, gdy
@@ -804,7 +805,8 @@ make -C infra/k8s generate PROFILE=medium \
   make -C infra/k8s open GENERATE_PROBE_URL='https://api.worf.pl/ https://worf.pl/' KUBE_DIR="$KUBE_DIR"
   ```
 
-  `open` odmawia przy blokadzie innego przebiegu, przy aktywnym Jobie, bez Joba `demo-data-run` i z Jobem innym niż
+  `open` odmawia przy blokadzie innego przebiegu, przy aktywnym Jobie (poza Jobami CronJobów `rate-limit-check`,
+  `queue-check` i `order-expiry`, tak jak `generate`), bez Joba `demo-data-run` i z Jobem innym niż
   `Complete`; `generate` usuwa Job poprzedniego przebiegu tuż przed nowym (po zamknięciu), więc sukces poprzedniego
   przebiegu nie otworzy sklepu po przerwanym nowym. Gdy `generate` skończył się przed tym usunięciem (np. sonda nie
   potwierdziła zamknięcia), dane są nietknięte, a `open` otwiera sklep na Jobie poprzedniego przebiegu, jeśli jest

@@ -1,0 +1,65 @@
+{
+ "full": {
+  "median_took": 803,
+  "min": 696,
+  "max": 1024,
+  "p_wall": 807.5,
+  "total": 980083
+ },
+ "hits_only_tth_true": {
+  "median_took": 31,
+  "min": 27,
+  "max": 32,
+  "p_wall": 35.9,
+  "total": 980083
+ },
+ "hits_only_tth_false": {
+  "median_took": 7,
+  "min": 6,
+  "max": 8,
+  "p_wall": 11.9,
+  "total": null
+ },
+ "count_only": {
+  "median_took": 4,
+  "min": 3,
+  "max": 4,
+  "p_wall": 7.5,
+  "total": 980083
+ },
+ "agg_only_categories": {
+  "median_took": 145,
+  "min": 123,
+  "max": 154,
+  "p_wall": 149.7,
+  "total": 980083
+ },
+ "agg_only_available": {
+  "median_took": 45,
+  "min": 45,
+  "max": 71,
+  "p_wall": 49.3,
+  "total": 980083
+ },
+ "agg_only_price": {
+  "median_took": 78,
+  "min": 73,
+  "max": 98,
+  "p_wall": 81.7,
+  "total": 980083
+ },
+ "agg_only_free": {
+  "median_took": 456,
+  "min": 419,
+  "max": 511,
+  "p_wall": 459.9,
+  "total": 980083
+ },
+ "all_aggs_size0": {
+  "median_took": 844,
+  "min": 783,
+  "max": 893,
+  "p_wall": 848.8,
+  "total": 980083
+ }
+}

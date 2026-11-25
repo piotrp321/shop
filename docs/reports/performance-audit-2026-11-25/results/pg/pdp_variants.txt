@@ -1,0 +1,37 @@
+-- pdp_variants
+SELECT id, option_values FROM catalog_product_variant WHERE product_id = '7b5ce2a3-32cd-5637-9f78-12ac3c6fd0c8' ORDER BY position
+
+SET
+SET
+                                                                            QUERY PLAN                                                                             
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using catalog_product_variant_position_key on catalog_product_variant  (cost=0.43..28.53 rows=6 width=40) (actual time=0.046..0.052 rows=3.00 loops=1)
+   Index Cond: (product_id = '7b5ce2a3-32cd-5637-9f78-12ac3c6fd0c8'::uuid)
+   Index Searches: 1
+   Buffers: shared hit=1 read=3
+ Planning:
+   Buffers: shared hit=158 read=7
+ Planning Time: 0.532 ms
+ Execution Time: 0.091 ms
+(8 rows)
+
+                                                                            QUERY PLAN                                                                             
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using catalog_product_variant_position_key on catalog_product_variant  (cost=0.43..28.53 rows=6 width=40) (actual time=0.008..0.009 rows=3.00 loops=1)
+   Index Cond: (product_id = '7b5ce2a3-32cd-5637-9f78-12ac3c6fd0c8'::uuid)
+   Index Searches: 1
+   Buffers: shared hit=4
+ Planning Time: 0.042 ms
+ Execution Time: 0.017 ms
+(6 rows)
+
+                                                                            QUERY PLAN                                                                             
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using catalog_product_variant_position_key on catalog_product_variant  (cost=0.43..28.53 rows=6 width=40) (actual time=0.014..0.015 rows=3.00 loops=1)
+   Index Cond: (product_id = '7b5ce2a3-32cd-5637-9f78-12ac3c6fd0c8'::uuid)
+   Index Searches: 1
+   Buffers: shared hit=4
+ Planning Time: 0.058 ms
+ Execution Time: 0.026 ms
+(6 rows)
+

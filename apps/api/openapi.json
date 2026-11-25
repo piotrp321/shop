@@ -1346,7 +1346,7 @@
                     {
                         "name": "q",
                         "in": "query",
-                        "description": "Search phrase, 2 to 100 characters after trimming. Every word must match (name, category names or short description), Polish inflection, missing Polish characters and small typos are tolerated.",
+                        "description": "Search phrase, 2 to 100 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators. Every word must match (name, category names or short description), Polish inflection, missing Polish characters and small typos are tolerated.",
                         "required": false,
                         "schema": {
                             "type": "string",
@@ -4556,29 +4556,29 @@
                 ],
                 "properties": {
                     "fullName": {
-                        "description": "Full name, 1 to 100 characters once trimmed.",
+                        "description": "Full name, 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.",
                         "type": "string",
                         "example": "Jan Kowalski",
                         "maxLength": 100
                     },
                     "phone": {
-                        "description": "A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped. The order keeps +48 and the 9 digits.",
+                        "description": "A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped, white space and invisible characters at the ends are trimmed, control characters and line separators are refused. The order keeps +48 and the 9 digits.",
                         "type": "string",
                         "example": "600 100 200"
                     },
                     "street": {
-                        "description": "Street and number, 1 to 100 characters once trimmed.",
+                        "description": "Street and number, 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.",
                         "type": "string",
                         "example": "ul. D\u0142uga 5/3",
                         "maxLength": 100
                     },
                     "postalCode": {
-                        "description": "Polish postal code NN-NNN.",
+                        "description": "Polish postal code NN-NNN, without control characters or line separators; white space and invisible characters at the ends are trimmed.",
                         "type": "string",
                         "example": "00-950"
                     },
                     "city": {
-                        "description": "City, 1 to 60 characters once trimmed. The country is always Poland.",
+                        "description": "City, 1 to 60 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators. The country is always Poland.",
                         "type": "string",
                         "example": "Warszawa",
                         "maxLength": 60
@@ -4670,36 +4670,36 @@
                         "format": "uuid"
                     },
                     "email": {
-                        "description": "Email address the order is confirmed to, at most 254 characters once trimmed, one the mailer accepts (no empty part between dots).",
+                        "description": "Email address the order is confirmed to, at most 254 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators, one the mailer accepts (no empty part between dots). The order keeps it trimmed, in its letter case.",
                         "type": "string",
                         "format": "email",
                         "example": "anna.nowak@example.com",
                         "maxLength": 254
                     },
                     "fullName": {
-                        "description": "Full name, 1 to 100 characters once trimmed.",
+                        "description": "Full name, 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.",
                         "type": "string",
                         "example": "Anna Nowak",
                         "maxLength": 100
                     },
                     "phone": {
-                        "description": "A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped. The order keeps +48 and the 9 digits.",
+                        "description": "A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped, white space and invisible characters at the ends are trimmed, control characters and line separators are refused. The order keeps +48 and the 9 digits.",
                         "type": "string",
                         "example": "600 100 200"
                     },
                     "street": {
-                        "description": "Street and number, 1 to 100 characters once trimmed.",
+                        "description": "Street and number, 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.",
                         "type": "string",
                         "example": "ul. D\u0142uga 5/3",
                         "maxLength": 100
                     },
                     "postalCode": {
-                        "description": "Polish postal code NN-NNN.",
+                        "description": "Polish postal code NN-NNN, without control characters or line separators; white space and invisible characters at the ends are trimmed.",
                         "type": "string",
                         "example": "00-950"
                     },
                     "city": {
-                        "description": "City, 1 to 60 characters once trimmed. The country is always Poland.",
+                        "description": "City, 1 to 60 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators. The country is always Poland.",
                         "type": "string",
                         "example": "Warszawa",
                         "maxLength": 60

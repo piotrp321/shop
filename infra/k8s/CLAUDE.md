@@ -15,12 +15,27 @@ serwera” i „Smoke test i check”).
   `make -C infra/k8s check` (każdy klucz z `init-env.sh` jest w szablonie sekretu, obrazy usług bez naszego kodu mają
   tag jak w compose i digest, Elasticsearch to obraz z `infra/elasticsearch/Dockerfile` jak w compose) i test dymny;
   nowej zmiennej z wartością domyślną ani zmiany istniejącego klienta realmu żaden z nich nie wyłapie. `check` biegnie
-  w CI tylko przy zmianie w `infra/k8s/**` albo `.github/workflows/**` (`.github/scripts/scope.sh --k8s`), zawsze przed wdrożeniem z `main` (job
-  `k8s-check` w `deploy.yml`, którego wymaga `deploy`) i lokalnie w głównym `make check`. Zmiana compose albo realmów
-  bez zmiany chartu przechodzi więc CI swojego PR i wychodzi dopiero przed wdrożeniem, które wtedy się nie odbywa.
+  w CI tylko przy zmianie w `infra/k8s/**`, `.github/workflows/**` albo `infra/docker-compose.yml`
+  (`.github/scripts/scope.sh --k8s`), zawsze przed wdrożeniem z `main` (job `k8s-check` w `deploy.yml`, którego wymaga
+  `deploy`) i lokalnie w głównym `make check`. Obraz zmieniony w compose bez tagu i digestu w chartcie nie przechodzi więc
+  `checks` swojego PR; zmiana realmów albo innej części compose, której chart nie odzwierciedla, a która nie dotyka
+  `infra/k8s/**` ani workflowów, wychodzi dopiero przed wdrożeniem, które wtedy się nie odbywa.
   Nowy sekret (klucz w `infra/scripts/init-env.sh`) trafia do szablonu sekretu chartu i, gdy w repo jest certyfikat Sealed Secrets,
   zaszyfrowany `make -C infra/k8s seal-secrets` do `environments/prod/secrets/` w tym samym PR (pilnuje tego `check`). Zmiana wersji
-  obrazu w compose wymaga nowego digestu w chartcie (`docker buildx imagetools inspect <obraz:tag>`).
+  obrazu w compose wymaga tego samego tagu i nowego digestu w chartcie, a digest pochodzi z rejestru dla nowego tagu:
+  `docker buildx imagetools inspect <obraz:tag> --format '{{.Manifest.Digest}}'` (indeks multi-arch z `linux/amd64`
+  i `linux/arm64`). Komenda i jej wynik są w opisie commita albo w komentarzu PR, przy każdej zmianie obrazu, także
+  ręcznej. `check` tego nie porównuje z rejestrem (tagi są zmienne, a rejestr bywa niedostępny): sprawdza tylko równość
+  tagów i format digestu.
+- PR Dependabota (cotygodniowe, zgrupowane aktualizacje obrazów: `.github/dependabot.yml`), który zmienia obraz
+  w compose, nie przechodzi `checks`, dopóki chart nie ma tego samego tagu i digestu: sesja uzupełnia `images.*`
+  w `charts/shop/values.yaml` na polecenie użytkownika. Obraz Playwrighta (`e2e/Dockerfile`) nie jest aktualizowany
+  przez Dependabota: jego wersja musi być równa `@playwright/test` z `e2e/package.json`, więc zmienia się je razem,
+  ręcznie. Treść takiego PR agent czyta przez bramkę `tools/agent-security/github_trust.py`. Dwa wyjątki od
+  „tag i digest w `images.*`”: obraz compose bez odpowiednika w chartcie (dziś `curlimages/curl` w `rabbitmq-init`)
+  zmienia się razem z wyjątkiem w `tests/test_workloads.py` (`test_images_are_those_of_compose`), nie w `images.*`;
+  obraz powtórzony w `dockerfile_inline` (`garage-init`: `dxflrs/garage` i `alpine`) musi mieć ten sam tag co `image:`
+  tej usługi albo co `images.alpine`, więc w PR Dependabota sesja sprawdza oba miejsca w compose.
 - Nowy transport workera trafia do compose i chartu w tym samym PR (test
   `test_worker_consumes_the_transports_of_compose` w `tests/test_workloads.py`).
 - Nocne kopie zapasowe (CronJob `backup`: restic do Cloudflare R2) to funkcja tylko środowiska wdrożeniowego: compose się

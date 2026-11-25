@@ -1,0 +1,43 @@
+-- adm_prod_default
+SELECT p.id, p.name FROM catalog_product p ORDER BY p.name ASC, p.id ASC LIMIT 50
+
+SET
+SET
+                                                                               QUERY PLAN                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..3.97 rows=50 width=54) (actual time=0.028..0.057 rows=50.00 loops=1)
+   Buffers: shared hit=34 read=5
+   ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..71516.14 rows=1009581 width=54) (actual time=0.027..0.047 rows=50.00 loops=1)
+         Heap Fetches: 0
+         Index Searches: 1
+         Buffers: shared hit=34 read=5
+ Planning:
+   Buffers: shared hit=205 read=52
+ Planning Time: 0.648 ms
+ Execution Time: 0.071 ms
+(10 rows)
+
+                                                                               QUERY PLAN                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..3.97 rows=50 width=54) (actual time=0.004..0.015 rows=50.00 loops=1)
+   Buffers: shared hit=39
+   ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..71516.14 rows=1009581 width=54) (actual time=0.004..0.012 rows=50.00 loops=1)
+         Heap Fetches: 0
+         Index Searches: 1
+         Buffers: shared hit=39
+ Planning Time: 0.028 ms
+ Execution Time: 0.020 ms
+(8 rows)
+
+                                                                               QUERY PLAN                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..3.97 rows=50 width=54) (actual time=0.005..0.017 rows=50.00 loops=1)
+   Buffers: shared hit=39
+   ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..71516.14 rows=1009581 width=54) (actual time=0.004..0.013 rows=50.00 loops=1)
+         Heap Fetches: 0
+         Index Searches: 1
+         Buffers: shared hit=39
+ Planning Time: 0.043 ms
+ Execution Time: 0.023 ms
+(8 rows)
+
