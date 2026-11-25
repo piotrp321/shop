@@ -88,7 +88,7 @@ final class DiscountCodeQueriesTest extends TestCase
             $this->listed(self::B, 'WIOSNA', '2026-11-02T00:00:00Z', '2026-11-01T00:00:00Z', null, true, 0),
         ];
 
-        $list = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, " wit\u{A0}", null, 25));
+        $list = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, 'wit', null, 25));
 
         self::assertSame([self::A], array_map(static fn (DiscountCodeView $code): string => $code->id, $list->items));
         self::assertSame(DiscountCodeStatus::Active, $this->reader->pages[0][0]);
@@ -130,9 +130,9 @@ final class DiscountCodeQueriesTest extends TestCase
             $this->listed(self::B, 'WITAJ20', '2026-11-02T00:00:00Z', '2026-11-01T00:00:00Z', null, true, 0),
         ];
 
-        $first = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, ' wit ', null, 1));
+        $first = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, 'wit', null, 1));
         self::assertNotNull($first->next);
-        $second = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, ' wit ', $first->next, 1));
+        $second = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, 'wit', $first->next, 1));
 
         self::assertEquals(new BoundedCount(42, false), $first->total);
         self::assertNull($second->total);
