@@ -1,0 +1,62 @@
+-- adm_prod_count_term4_none
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%zzqq%' LIMIT 10001) b
+
+SET
+SET
+                                                                       QUERY PLAN                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=547.82..547.83 rows=1 width=8) (actual time=0.031..0.035 rows=1.00 loops=1)
+   Buffers: shared hit=7
+   ->  Limit  (cost=149.90..546.56 rows=101 width=4) (actual time=0.029..0.030 rows=0.00 loops=1)
+         Buffers: shared hit=7
+         ->  Bitmap Heap Scan on catalog_product p  (cost=149.90..546.56 rows=101 width=4) (actual time=0.028..0.028 rows=0.00 loops=1)
+               Recheck Cond: ((name)::text ~~* '%zzqq%'::text)
+               Buffers: shared hit=7
+               ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..149.87 rows=101 width=0) (actual time=0.023..0.023 rows=0.00 loops=1)
+                     Index Cond: ((name)::text ~~* '%zzqq%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=7
+ Planning:
+   Buffers: shared hit=236
+ Planning Time: 1.314 ms
+ Execution Time: 0.112 ms
+(15 rows)
+
+                                                                       QUERY PLAN                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=547.82..547.83 rows=1 width=8) (actual time=0.008..0.009 rows=1.00 loops=1)
+   Buffers: shared hit=7
+   ->  Limit  (cost=149.90..546.56 rows=101 width=4) (actual time=0.007..0.008 rows=0.00 loops=1)
+         Buffers: shared hit=7
+         ->  Bitmap Heap Scan on catalog_product p  (cost=149.90..546.56 rows=101 width=4) (actual time=0.007..0.007 rows=0.00 loops=1)
+               Recheck Cond: ((name)::text ~~* '%zzqq%'::text)
+               Buffers: shared hit=7
+               ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..149.87 rows=101 width=0) (actual time=0.005..0.005 rows=0.00 loops=1)
+                     Index Cond: ((name)::text ~~* '%zzqq%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=7
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.167 ms
+ Execution Time: 0.021 ms
+(15 rows)
+
+                                                                       QUERY PLAN                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=547.82..547.83 rows=1 width=8) (actual time=0.006..0.006 rows=1.00 loops=1)
+   Buffers: shared hit=7
+   ->  Limit  (cost=149.90..546.56 rows=101 width=4) (actual time=0.006..0.006 rows=0.00 loops=1)
+         Buffers: shared hit=7
+         ->  Bitmap Heap Scan on catalog_product p  (cost=149.90..546.56 rows=101 width=4) (actual time=0.005..0.006 rows=0.00 loops=1)
+               Recheck Cond: ((name)::text ~~* '%zzqq%'::text)
+               Buffers: shared hit=7
+               ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..149.87 rows=101 width=0) (actual time=0.004..0.004 rows=0.00 loops=1)
+                     Index Cond: ((name)::text ~~* '%zzqq%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=7
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.133 ms
+ Execution Time: 0.013 ms
+(15 rows)
+

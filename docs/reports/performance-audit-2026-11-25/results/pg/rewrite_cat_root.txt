@@ -1,0 +1,167 @@
+-- rewrite_cat_root
+SELECT p.id, p.name FROM catalog_product p WHERE p.id IN (SELECT p2.id FROM catalog_product p2 WHERE p2.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION ALL SELECT pc.product_id FROM catalog_product_category pc WHERE pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) ORDER BY p.name, p.id LIMIT 50
+
+SET
+SET
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=153273.49..153273.62 rows=50 width=54) (actual time=5140.335..5140.361 rows=50.00 loops=1)
+   Buffers: shared hit=645850 read=308444, temp read=447 written=798
+   ->  Sort  (cost=153273.49..153861.57 rows=235233 width=54) (actual time=5107.960..5107.969 rows=50.00 loops=1)
+         Sort Key: p.name, p.id
+         Sort Method: top-N heapsort  Memory: 35kB
+         Buffers: shared hit=645850 read=308444, temp read=447 written=798
+         ->  Nested Loop  (cost=144010.20..145459.22 rows=235233 width=54) (actual time=2477.572..5005.109 rows=206849.00 loops=1)
+               Buffers: shared hit=645844 read=308444, temp read=447 written=798
+               ->  HashAggregate  (cost=144009.78..144011.78 rows=200 width=16) (actual time=2477.524..2628.316 rows=206849.00 loops=1)
+                     Group Key: p2.id
+                     Batches: 5  Memory Usage: 8273kB  Disk Usage: 3768kB
+                     Buffers: shared hit=10242 read=116650, temp read=447 written=798
+                     ->  Append  (cost=7.69..143421.70 rows=235233 width=16) (actual time=2.015..2187.998 rows=248611.00 loops=1)
+                           Buffers: shared hit=10242 read=116650
+                           ->  Hash Join  (cost=7.69..138223.05 rows=196307 width=16) (actual time=2.014..2099.265 rows=206841.00 loops=1)
+                                 Hash Cond: (p2.primary_category_id = c.id)
+                                 Buffers: shared hit=10237 read=115175
+                                 ->  Seq Scan on catalog_product p2  (cost=0.00..135502.81 rows=1009581 width=32) (actual time=1.944..1823.910 rows=1000191.00 loops=1)
+                                       Buffers: shared hit=10232 read=115175
+                                 ->  Hash  (cost=7.25..7.25 rows=35 width=16) (actual time=0.055..0.056 rows=34.00 loops=1)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                                       Buffers: shared hit=5
+                                       ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.019..0.046 rows=34.00 loops=1)
+                                             Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                                             Rows Removed by Filter: 146
+                                             Buffers: shared hit=5
+                           ->  Hash Join  (cost=7.69..4022.48 rows=38926 width=16) (actual time=0.119..57.283 rows=41770.00 loops=1)
+                                 Hash Cond: (pc.category_id = c_1.id)
+                                 Buffers: shared hit=5 read=1475
+                                 ->  Seq Scan on catalog_product_category pc  (cost=0.00..3476.92 rows=200192 width=32) (actual time=0.034..26.917 rows=200192.00 loops=1)
+                                       Buffers: shared read=1475
+                                 ->  Hash  (cost=7.25..7.25 rows=35 width=16) (actual time=0.066..0.067 rows=34.00 loops=1)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                                       Buffers: shared hit=5
+                                       ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.037..0.057 rows=34.00 loops=1)
+                                             Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                                             Rows Removed by Filter: 146
+                                             Buffers: shared hit=5
+               ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..8.40 rows=1 width=54) (actual time=0.011..0.011 rows=1.00 loops=206849)
+                     Index Cond: (id = p2.id)
+                     Index Searches: 206849
+                     Buffers: shared hit=635602 read=191794
+ Planning:
+   Buffers: shared hit=494
+ Planning Time: 2.374 ms
+ JIT:
+   Functions: 39
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 9.133 ms (Deform 5.009 ms), Inlining 0.000 ms, Optimization 1.057 ms, Emission 33.629 ms, Total 43.819 ms
+ Execution Time: 5175.709 ms
+(50 rows)
+
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=153273.49..153273.62 rows=50 width=54) (actual time=10462.929..10462.946 rows=50.00 loops=1)
+   Buffers: shared hit=644126 read=310162, temp read=447 written=798
+   ->  Sort  (cost=153273.49..153861.57 rows=235233 width=54) (actual time=10444.088..10444.101 rows=50.00 loops=1)
+         Sort Key: p.name, p.id
+         Sort Method: top-N heapsort  Memory: 35kB
+         Buffers: shared hit=644126 read=310162, temp read=447 written=798
+         ->  Nested Loop  (cost=144010.20..145459.22 rows=235233 width=54) (actual time=2588.465..10092.191 rows=206849.00 loops=1)
+               Buffers: shared hit=644126 read=310162, temp read=447 written=798
+               ->  HashAggregate  (cost=144009.78..144011.78 rows=200 width=16) (actual time=2588.412..2931.209 rows=206849.00 loops=1)
+                     Group Key: p2.id
+                     Batches: 5  Memory Usage: 8273kB  Disk Usage: 3768kB
+                     Buffers: shared hit=8121 read=118771, temp read=447 written=798
+                     ->  Append  (cost=7.69..143421.70 rows=235233 width=16) (actual time=4.970..2356.008 rows=248611.00 loops=1)
+                           Buffers: shared hit=8121 read=118771
+                           ->  Hash Join  (cost=7.69..138223.05 rows=196307 width=16) (actual time=4.967..2153.879 rows=206841.00 loops=1)
+                                 Hash Cond: (p2.primary_category_id = c.id)
+                                 Buffers: shared hit=8116 read=117296
+                                 ->  Seq Scan on catalog_product p2  (cost=0.00..135502.81 rows=1009581 width=32) (actual time=1.040..1908.471 rows=1000191.00 loops=1)
+                                       Buffers: shared hit=8114 read=117293
+                                 ->  Hash  (cost=7.25..7.25 rows=35 width=16) (actual time=3.898..3.899 rows=34.00 loops=1)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                                       Buffers: shared hit=2 read=3
+                                       ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=2.006..3.880 rows=34.00 loops=1)
+                                             Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                                             Rows Removed by Filter: 146
+                                             Buffers: shared hit=2 read=3
+                           ->  Hash Join  (cost=7.69..4022.48 rows=38926 width=16) (actual time=0.157..146.792 rows=41770.00 loops=1)
+                                 Hash Cond: (pc.category_id = c_1.id)
+                                 Buffers: shared hit=5 read=1475
+                                 ->  Seq Scan on catalog_product_category pc  (cost=0.00..3476.92 rows=200192 width=32) (actual time=0.068..64.019 rows=200192.00 loops=1)
+                                       Buffers: shared read=1475
+                                 ->  Hash  (cost=7.25..7.25 rows=35 width=16) (actual time=0.072..0.073 rows=34.00 loops=1)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                                       Buffers: shared hit=5
+                                       ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.038..0.059 rows=34.00 loops=1)
+                                             Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                                             Rows Removed by Filter: 146
+                                             Buffers: shared hit=5
+               ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..8.40 rows=1 width=54) (actual time=0.033..0.033 rows=1.00 loops=206849)
+                     Index Cond: (id = p2.id)
+                     Index Searches: 206849
+                     Buffers: shared hit=636005 read=191391
+ Planning:
+   Buffers: shared hit=8 read=14
+ Planning Time: 0.588 ms
+ JIT:
+   Functions: 39
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 1.551 ms (Deform 0.433 ms), Inlining 0.000 ms, Optimization 2.144 ms, Emission 20.841 ms, Total 24.536 ms
+ Execution Time: 10465.752 ms
+(50 rows)
+
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=153273.49..153273.62 rows=50 width=54) (actual time=8125.562..8125.574 rows=50.00 loops=1)
+   Buffers: shared hit=644800 read=309488, temp read=447 written=798
+   ->  Sort  (cost=153273.49..153861.57 rows=235233 width=54) (actual time=8077.007..8077.015 rows=50.00 loops=1)
+         Sort Key: p.name, p.id
+         Sort Method: top-N heapsort  Memory: 35kB
+         Buffers: shared hit=644800 read=309488, temp read=447 written=798
+         ->  Nested Loop  (cost=144010.20..145459.22 rows=235233 width=54) (actual time=3429.413..7896.043 rows=206849.00 loops=1)
+               Buffers: shared hit=644800 read=309488, temp read=447 written=798
+               ->  HashAggregate  (cost=144009.78..144011.78 rows=200 width=16) (actual time=3429.373..3586.971 rows=206849.00 loops=1)
+                     Group Key: p2.id
+                     Batches: 5  Memory Usage: 8273kB  Disk Usage: 3768kB
+                     Buffers: shared hit=8139 read=118753, temp read=447 written=798
+                     ->  Append  (cost=7.69..143421.70 rows=235233 width=16) (actual time=17.141..3116.153 rows=248611.00 loops=1)
+                           Buffers: shared hit=8139 read=118753
+                           ->  Hash Join  (cost=7.69..138223.05 rows=196307 width=16) (actual time=17.139..2907.341 rows=206841.00 loops=1)
+                                 Hash Cond: (p2.primary_category_id = c.id)
+                                 Buffers: shared hit=8134 read=117278
+                                 ->  Seq Scan on catalog_product p2  (cost=0.00..135502.81 rows=1009581 width=32) (actual time=17.079..2510.913 rows=1000191.00 loops=1)
+                                       Buffers: shared hit=8129 read=117278
+                                 ->  Hash  (cost=7.25..7.25 rows=35 width=16) (actual time=0.048..0.049 rows=34.00 loops=1)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                                       Buffers: shared hit=5
+                                       ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.018..0.038 rows=34.00 loops=1)
+                                             Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                                             Rows Removed by Filter: 146
+                                             Buffers: shared hit=5
+                           ->  Hash Join  (cost=7.69..4022.48 rows=38926 width=16) (actual time=0.143..104.014 rows=41770.00 loops=1)
+                                 Hash Cond: (pc.category_id = c_1.id)
+                                 Buffers: shared hit=5 read=1475
+                                 ->  Seq Scan on catalog_product_category pc  (cost=0.00..3476.92 rows=200192 width=32) (actual time=0.056..59.548 rows=200192.00 loops=1)
+                                       Buffers: shared read=1475
+                                 ->  Hash  (cost=7.25..7.25 rows=35 width=16) (actual time=0.069..0.069 rows=34.00 loops=1)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                                       Buffers: shared hit=5
+                                       ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.039..0.059 rows=34.00 loops=1)
+                                             Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                                             Rows Removed by Filter: 146
+                                             Buffers: shared hit=5
+               ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..8.40 rows=1 width=54) (actual time=0.020..0.020 rows=1.00 loops=206849)
+                     Index Cond: (id = p2.id)
+                     Index Searches: 206849
+                     Buffers: shared hit=636661 read=190735
+ Planning:
+   Buffers: shared hit=10 read=12
+ Planning Time: 0.589 ms
+ JIT:
+   Functions: 39
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 1.018 ms (Deform 0.390 ms), Inlining 0.000 ms, Optimization 0.817 ms, Emission 49.538 ms, Total 51.373 ms
+ Execution Time: 8135.256 ms
+(50 rows)
+

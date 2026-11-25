@@ -1,0 +1,59 @@
+SET
+SET
+                 name                  |    setting     | unit |       source       
+---------------------------------------+----------------+------+--------------------
+ autovacuum                            | on             |      | default
+ autovacuum_analyze_scale_factor       | 0.1            |      | default
+ autovacuum_max_workers                | 3              |      | default
+ autovacuum_vacuum_cost_limit          | -1             |      | default
+ autovacuum_vacuum_insert_scale_factor | 0.2            |      | default
+ autovacuum_vacuum_scale_factor        | 0.2            |      | default
+ checkpoint_timeout                    | 300            | s    | default
+ default_statistics_target             | 100            |      | default
+ default_transaction_isolation         | read committed |      | default
+ effective_cache_size                  | 524288         | 8kB  | default
+ effective_io_concurrency              | 16             |      | default
+ hash_mem_multiplier                   | 2              |      | default
+ huge_pages                            | try            |      | default
+ idle_in_transaction_session_timeout   | 0              | ms   | default
+ idle_session_timeout                  | 0              | ms   | default
+ io_method                             | worker         |      | default
+ jit                                   | on             |      | default
+ lock_timeout                          | 0              | ms   | default
+ log_min_duration_statement            | -1             | ms   | default
+ maintenance_work_mem                  | 65536          | kB   | default
+ max_connections                       | 100            |      | configuration file
+ max_parallel_workers                  | 8              |      | default
+ max_parallel_workers_per_gather       | 2              |      | default
+ max_wal_size                          | 1024           | MB   | configuration file
+ max_worker_processes                  | 8              |      | default
+ min_wal_size                          | 80             | MB   | configuration file
+ random_page_cost                      | 4              |      | default
+ shared_buffers                        | 16384          | 8kB  | configuration file
+ shared_preload_libraries              |                |      | default
+ statement_timeout                     | 60000          | ms   | session
+ synchronous_commit                    | on             |      | default
+ temp_buffers                          | 1024           | 8kB  | default
+ track_io_timing                       | off            |      | default
+ wal_buffers                           | 512            | 8kB  | default
+ work_mem                              | 4096           | kB   | default
+(35 rows)
+
+ stats_reset 
+-------------
+ 
+(1 row)
+
+ extname | extversion 
+---------+------------
+ plpgsql | 1.0
+ pg_trgm | 1.6
+(2 rows)
+
+ count | state  
+-------+--------
+     8 | 
+     2 | active
+     4 | idle
+(3 rows)
+

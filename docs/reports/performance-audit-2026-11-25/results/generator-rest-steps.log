@@ -1,0 +1,22 @@
+== 19:02:09 START ordering:read-models:rebuild
+sales: 26000 hours rebuilt, up to 2026-11-13 08:00 UTC
+customers: 100 batches rebuilt, 50000 customers, up to 821e625a-6455-5f0b-b82c-b44c5e6cb564
+ [OK] sales: 26279 hours rebuilt, 959747 orders, 52050699723 grosze             
+      customers: 98568 customers rebuilt in 198 batches, 600321 orders          
+== 19:02:44 END ordering:read-models:rebuild rc=
+== 19:02:44 START demo-data:analyze
+      ordering_order, ordering_order_line, ordering_order_status_change,        
+      payment_payment, pricing_discount_code_usage, inventory_stock_item,       
+      inventory_reservation, inventory_reservation_line,                        
+      inventory_stock_movement                                                  
+== 19:02:47 END demo-data:analyze rc=
+== 19:02:47 START catalog:reindex
+ [OK] The alias now points to "products_20261125180247558_526e75" (1000191      
+      documents); "products_20261125154510455_cb3a43" was replaced.             
+== 19:07:09 END catalog:reindex rc=
+== 19:07:09 START storefront:cache:purge-all
+ [OK] Varnish and the store pages were invalidated.                             
+== 19:07:10 END storefront:cache:purge-all rc=
+== build prod image
+sha256:73fdeb2192b611c6257aebc3d03255ac2dbf720f656237799af4e6a74d30e3b1
+REST_DONE

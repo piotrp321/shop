@@ -1,0 +1,2 @@
+facets size:0, request_cache=true: first 208 second 7 third 3
+after 1 document write + refresh: 141 then 139

@@ -1,0 +1,34 @@
+               code_id                | count | count 
+--------------------------------------+-------+-------
+ dac4c26e-7357-5592-9ab9-b61948e89240 | 13961 | 13389
+ d23d3bb7-cc63-507f-ac52-80f7a45eb619 | 11324 | 10841
+ d6dda390-6240-53ba-9bc0-4e42a13300af |  7911 |  7580
+ 4fc335ba-ad09-5f74-80eb-63a5d028a5a3 |  6876 |  6600
+ 587d7a0a-cd66-511c-9063-809db789d477 |  6150 |  5889
+(5 rows)
+
+Time: 33.011 ms
+=== DC1 discount code list with active_uses per row
+                                                                                                QUERY PLAN                                                                                                 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.14..2261.19 rows=17 width=32) (actual time=0.093..176.205 rows=17.00 loops=1)
+   Buffers: shared hit=19 read=107
+   ->  Index Only Scan using pricing_discount_code_created_at_id_idx on pricing_discount_code c  (cost=0.14..2261.19 rows=17 width=32) (actual time=0.092..176.193 rows=17.00 loops=1)
+         Heap Fetches: 17
+         Index Searches: 1
+         Buffers: shared hit=19 read=107
+         SubPlan 1
+           ->  Aggregate  (cost=132.27..132.28 rows=1 width=8) (actual time=10.355..10.355 rows=1.00 loops=17)
+                 Buffers: shared hit=19 read=105
+                 ->  Index Only Scan using pricing_discount_code_usage_active_idx on pricing_discount_code_usage u  (cost=0.29..119.77 rows=4999 width=0) (actual time=0.771..9.744 rows=4117.59 loops=17)
+                       Index Cond: (code_id = c.id)
+                       Heap Fetches: 0
+                       Index Searches: 17
+                       Buffers: shared hit=19 read=105
+ Planning:
+   Buffers: shared hit=83 read=3
+ Planning Time: 3.155 ms
+ Execution Time: 176.251 ms
+(18 rows)
+
+Time: 180.841 ms

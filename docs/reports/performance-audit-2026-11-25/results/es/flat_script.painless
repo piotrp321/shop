@@ -1,0 +1,14 @@
+String sep = String.valueOf((char)31);
+Set axes = new TreeSet(); Set opts = new TreeSet(); long mx = -1; boolean buy = false;
+for (def v : ctx._source.variants) {
+  Set vax = new TreeSet();
+  for (def o : v.options) { int i = o.indexOf(sep); vax.add(o.substring(0, i)); opts.add(o); }
+  axes.addAll(vax);
+  v.remove('pairs');
+  v.axes = new ArrayList(vax);
+  if (v.purchasable) { buy = true; if (v.gross != null && v.gross > mx) { mx = v.gross; } }
+}
+ctx._source.facet_axes = new ArrayList(axes);
+ctx._source.facet_options = new ArrayList(opts);
+ctx._source.purchasable = buy;
+if (mx >= 0) { ctx._source.max_gross = mx; }

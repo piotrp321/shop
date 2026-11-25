@@ -1,0 +1,89 @@
+-- adm_ord_fragment4_none
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('zzqq') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 50
+
+SET
+SET
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=592.82..1018.35 rows=50 width=108) (actual time=0.258..0.262 rows=0.00 loops=1)
+   Buffers: shared hit=44 read=2
+   ->  Result  (cost=592.82..1443.88 rows=100 width=108) (actual time=0.257..0.258 rows=0.00 loops=1)
+         Buffers: shared hit=44 read=2
+         ->  Sort  (cost=592.82..593.07 rows=100 width=100) (actual time=0.257..0.257 rows=0.00 loops=1)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=44 read=2
+               ->  Bitmap Heap Scan on ordering_order o  (cost=199.65..589.49 rows=100 width=100) (actual time=0.234..0.235 rows=0.00 loops=1)
+                     Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%zzqq%'::text)
+                     Buffers: shared hit=38 read=2
+                     ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..199.63 rows=100 width=0) (actual time=0.230..0.230 rows=0.00 loops=1)
+                           Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%zzqq%'::text)
+                           Index Searches: 1
+                           Buffers: shared hit=38 read=2
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 0
+ Planning:
+   Buffers: shared hit=425
+ Planning Time: 1.383 ms
+ Execution Time: 0.357 ms
+(24 rows)
+
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=592.82..1018.35 rows=50 width=108) (actual time=0.140..0.141 rows=0.00 loops=1)
+   Buffers: shared hit=40
+   ->  Result  (cost=592.82..1443.88 rows=100 width=108) (actual time=0.139..0.140 rows=0.00 loops=1)
+         Buffers: shared hit=40
+         ->  Sort  (cost=592.82..593.07 rows=100 width=100) (actual time=0.139..0.139 rows=0.00 loops=1)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=40
+               ->  Bitmap Heap Scan on ordering_order o  (cost=199.65..589.49 rows=100 width=100) (actual time=0.137..0.137 rows=0.00 loops=1)
+                     Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%zzqq%'::text)
+                     Buffers: shared hit=40
+                     ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..199.63 rows=100 width=0) (actual time=0.134..0.134 rows=0.00 loops=1)
+                           Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%zzqq%'::text)
+                           Index Searches: 1
+                           Buffers: shared hit=40
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 0
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.180 ms
+ Execution Time: 0.170 ms
+(24 rows)
+
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=592.82..1018.35 rows=50 width=108) (actual time=0.151..0.152 rows=0.00 loops=1)
+   Buffers: shared hit=40
+   ->  Result  (cost=592.82..1443.88 rows=100 width=108) (actual time=0.151..0.152 rows=0.00 loops=1)
+         Buffers: shared hit=40
+         ->  Sort  (cost=592.82..593.07 rows=100 width=100) (actual time=0.151..0.151 rows=0.00 loops=1)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=40
+               ->  Bitmap Heap Scan on ordering_order o  (cost=199.65..589.49 rows=100 width=100) (actual time=0.149..0.149 rows=0.00 loops=1)
+                     Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%zzqq%'::text)
+                     Buffers: shared hit=40
+                     ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..199.63 rows=100 width=0) (actual time=0.146..0.146 rows=0.00 loops=1)
+                           Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%zzqq%'::text)
+                           Index Searches: 1
+                           Buffers: shared hit=40
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 0
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.138 ms
+ Execution Time: 0.169 ms
+(24 rows)
+

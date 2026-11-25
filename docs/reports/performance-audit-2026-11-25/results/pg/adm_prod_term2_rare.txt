@@ -1,0 +1,65 @@
+-- adm_prod_term2_rare
+SELECT p.id, p.name FROM catalog_product p WHERE p.name ILIKE '%qx%' ORDER BY p.name ASC, p.id ASC LIMIT 50
+
+SET
+SET
+                                                                                      QUERY PLAN                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1000.45..34015.20 rows=50 width=54) (actual time=320.910..323.905 rows=0.00 loops=1)
+   Buffers: shared hit=655087 read=13950
+   ->  Gather Merge  (cost=1000.45..67690.25 rows=101 width=54) (actual time=320.908..323.903 rows=0.00 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=655087 read=13950
+         ->  Parallel Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..66678.56 rows=42 width=54) (actual time=319.157..319.158 rows=0.00 loops=3)
+               Filter: ((name)::text ~~* '%qx%'::text)
+               Rows Removed by Filter: 333397
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared hit=655087 read=13950
+ Planning:
+   Buffers: shared hit=268 read=3
+ Planning Time: 0.786 ms
+ Execution Time: 323.936 ms
+(16 rows)
+
+                                                                                      QUERY PLAN                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1000.45..34015.20 rows=50 width=54) (actual time=347.388..351.581 rows=0.00 loops=1)
+   Buffers: shared hit=669010
+   ->  Gather Merge  (cost=1000.45..67690.25 rows=101 width=54) (actual time=347.386..351.579 rows=0.00 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=669010
+         ->  Parallel Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..66678.56 rows=42 width=54) (actual time=345.372..345.372 rows=0.00 loops=3)
+               Filter: ((name)::text ~~* '%qx%'::text)
+               Rows Removed by Filter: 333397
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared hit=669010
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.181 ms
+ Execution Time: 351.602 ms
+(16 rows)
+
+                                                                                      QUERY PLAN                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1000.45..34015.20 rows=50 width=54) (actual time=410.890..418.216 rows=0.00 loops=1)
+   Buffers: shared hit=669028
+   ->  Gather Merge  (cost=1000.45..67690.25 rows=101 width=54) (actual time=410.889..418.214 rows=0.00 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=669028
+         ->  Parallel Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..66678.56 rows=42 width=54) (actual time=408.420..408.420 rows=0.00 loops=3)
+               Filter: ((name)::text ~~* '%qx%'::text)
+               Rows Removed by Filter: 333397
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared hit=669028
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.210 ms
+ Execution Time: 418.241 ms
+(16 rows)
+

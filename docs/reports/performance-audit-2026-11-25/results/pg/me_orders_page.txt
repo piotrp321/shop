@@ -1,0 +1,43 @@
+-- me_orders_page
+SELECT o.street, o.postal_code FROM ordering_order o WHERE o.owner_type = 'customer' AND o.customer_id = '77e9e8db-4af0-5ed8-96b7-182d1a8588e7' ORDER BY o.placed_at DESC, o.id DESC LIMIT 20
+
+SET
+SET
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..81.83 rows=20 width=44) (actual time=0.045..0.164 rows=20.00 loops=1)
+   Buffers: shared hit=5 read=18
+   ->  Index Scan using ordering_order_customer_placed_at_id_idx on ordering_order o  (cost=0.42..1547.03 rows=380 width=44) (actual time=0.044..0.158 rows=20.00 loops=1)
+         Index Cond: ((customer_id)::text = '77e9e8db-4af0-5ed8-96b7-182d1a8588e7'::text)
+         Index Searches: 1
+         Buffers: shared hit=5 read=18
+ Planning:
+   Buffers: shared hit=345 read=2
+ Planning Time: 0.987 ms
+ Execution Time: 0.187 ms
+(10 rows)
+
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..81.83 rows=20 width=44) (actual time=0.026..0.050 rows=20.00 loops=1)
+   Buffers: shared hit=23
+   ->  Index Scan using ordering_order_customer_placed_at_id_idx on ordering_order o  (cost=0.42..1547.03 rows=380 width=44) (actual time=0.025..0.047 rows=20.00 loops=1)
+         Index Cond: ((customer_id)::text = '77e9e8db-4af0-5ed8-96b7-182d1a8588e7'::text)
+         Index Searches: 1
+         Buffers: shared hit=23
+ Planning Time: 0.109 ms
+ Execution Time: 0.062 ms
+(8 rows)
+
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..81.83 rows=20 width=44) (actual time=0.016..0.035 rows=20.00 loops=1)
+   Buffers: shared hit=23
+   ->  Index Scan using ordering_order_customer_placed_at_id_idx on ordering_order o  (cost=0.42..1547.03 rows=380 width=44) (actual time=0.015..0.032 rows=20.00 loops=1)
+         Index Cond: ((customer_id)::text = '77e9e8db-4af0-5ed8-96b7-182d1a8588e7'::text)
+         Index Searches: 1
+         Buffers: shared hit=23
+ Planning Time: 0.099 ms
+ Execution Time: 0.046 ms
+(8 rows)
+
