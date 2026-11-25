@@ -803,11 +803,11 @@ final class ProductEditTest extends TestCase
     }
 
     /**
-     * @param list<array{name: string, value: string}>           $parameters
-     * @param list<string>                                       $imageAlts
-     * @param list<string>                                       $axes
-     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}>|null $variants null: the variants of the product
-     * @param list<string>                                       $inUse
+     * @param list<array{name: string, value: string}>                                       $parameters
+     * @param list<string>                                                                   $imageAlts
+     * @param list<string>                                                                   $axes
+     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}>|null $variants   null: the variants of the product
+     * @param list<string>                                                                   $inUse
      */
     private function edit(
         Product $product,

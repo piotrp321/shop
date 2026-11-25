@@ -214,9 +214,14 @@ final class VariantCodesTest extends TestCase
 
     public function testTheGtinOfAnOrdinaryEanIsTheEanAndOfARestrictedCirculationNumberIsEmpty(): void
     {
-        self::assertSame('5901234123457', Ean::optional('5901234123457')?->gtin());
-        self::assertSame('', Ean::optional('2000000000008')?->gtin());
-        self::assertTrue(Ean::optional('2000000000008')?->isRestrictedCirculation());
-        self::assertFalse(Ean::optional('5901234123457')?->isRestrictedCirculation());
+        $global = Ean::optional('5901234123457');
+        $restricted = Ean::optional('2000000000008');
+        self::assertNotNull($global);
+        self::assertNotNull($restricted);
+
+        self::assertSame('5901234123457', $global->gtin());
+        self::assertSame('', $restricted->gtin());
+        self::assertTrue($restricted->isRestrictedCirculation());
+        self::assertFalse($global->isRestrictedCirculation());
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Catalog\Domain;
 
 use App\Catalog\Domain\Category\CategoryId;
+use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductBrand;
@@ -20,7 +21,6 @@ use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
-use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\Sku;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;
@@ -39,10 +39,10 @@ final class StoredProducts
     public const string FIRST_PUBLISHED_AT = '2026-11-01T10:00:00+00:00';
 
     /**
-     * @param list<string>                                       $imageAlts  one image per alt text
-     * @param list<string>                                       $axes
-     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}>|null $variants null: one default variant
-     * @param list<array{name: string, value: string}>           $parameters
+     * @param list<string>                                                                   $imageAlts  one image per alt text
+     * @param list<string>                                                                   $axes
+     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}>|null $variants   null: one default variant
+     * @param list<array{name: string, value: string}>                                       $parameters
      */
     public static function product(
         ProductStatus $status = ProductStatus::Draft,
