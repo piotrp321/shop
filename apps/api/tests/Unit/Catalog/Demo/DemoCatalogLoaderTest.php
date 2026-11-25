@@ -67,6 +67,32 @@ final class DemoCatalogLoaderTest extends TestCase
         }
     }
 
+    public function testProductsAreCreatedWithTheirBrandDescriptionParametersAndTheCodesOfTheirVariants(): void
+    {
+        $bus = new RecordingMessageBus();
+        $catalog = new YamlDemoCatalogSource(self::DEFINITION, self::IMAGES)->load();
+
+        new DemoCatalogLoader($bus, new InMemoryProductImageStorage())->load($catalog);
+
+        $products = $bus->dispatchedOf(CreateProduct::class);
+        self::assertSame('Tarvik', $products[0]->brand);
+        self::assertSame("Lekkie buty na asfalt.\n\nButy do biegania po utwardzonych drogach.\n\nPodeszwa z pianki EVA tłumi wstrząsy.", $products[0]->description);
+        self::assertSame(
+            [['name' => 'Materiał cholewki', 'value' => 'siatka'], ['name' => 'Waga', 'value' => '250 g'], ['name' => 'Drop', 'value' => '8 mm']],
+            $products[0]->parameters,
+        );
+        self::assertSame(['TAR-ASFALT-200-CZA-40', 'TAR-ASFALT-200-CZA-41', 'TAR-ASFALT-200-BIA-40', 'TAR-ASFALT-200-BIA-41'], array_column($products[0]->variants, 'sku'));
+        foreach ($products as $product) {
+            self::assertNotSame('', $product->brand, $product->name);
+            foreach ($product->variants as $variant) {
+                self::assertMatchesRegularExpression('/^2\d{12}$/D', $variant['ean'], $product->name);
+            }
+        }
+        // A type without a description or parameters gives the sentence of the model and an empty list.
+        self::assertSame('Plecak dzienny.', $products[6]->description);
+        self::assertSame([], $products[6]->parameters);
+    }
+
     public function testSourceFailsOnMissingImageFile(): void
     {
         $source = new YamlDemoCatalogSource(self::DEFINITION, __DIR__.'/no-such-dir');

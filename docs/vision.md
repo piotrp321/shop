@@ -320,6 +320,9 @@ Komenda ładująca realistyczny katalog sportowo-outdoorowy: około 200 produkt�
 z około tysiącem wariantów (kolor, rozmiar, smak, oprawa; ceny i stany per wariant), zdjęciami (prawdziwe zdjęcia
 „w terenie” w spójnej tonacji, wgrywane do Garage), cenami w różnych stawkach VAT,
 stanami magazynowymi, kilkoma aktywnymi promocjami i kodami rabatowymi (`WITAJ10`, `MINUS50` i wygasły `LATO15`).
+Każdy produkt seeda ma markę (tę z nazwy), opis i co najmniej 3 parametry po polsku, napisane per typ i model, a każdy
+wariant kod produktu (SKU) i EAN z puli GS1 o prefiksie „2” (numery obiegu ograniczonego, więc bez `gtin` w odpowiedzi
+sklepu).
 Do tego konta testowe w Keycloak: klient w realmie `shop`, pracownicy z każdą rolą w realmie `backoffice`. Po `make up` i `make seed`
 sklep ma wyglądać jak prawdziwy.
 
