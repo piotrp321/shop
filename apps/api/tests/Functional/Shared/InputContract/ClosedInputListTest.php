@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Shared\InputContract;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Routing\RouterInterface;
 
@@ -35,6 +36,92 @@ final class ClosedInputListTest extends KernelTestCase
         self::assertSame(
             ['GET /api/v1/products, query brand', 'GET /api/v1/admin/products, header Idempotency-Key'],
             ClosedInputList::inputsWithoutARow($documents, InputRows::all()),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, list<string>}> a path item added to a copy of a document and
+     *                                                                       the inputs the guard must report for it
+     */
+    public static function inputsDeclaredByReferenceOrAboveTheOperation(): iterable
+    {
+        $brand = ['name' => 'brand', 'in' => 'query', 'schema' => ['type' => 'string']];
+        $key = ['name' => 'Idempotency-Key', 'in' => 'header', 'schema' => ['type' => 'string']];
+        $brandReference = ['$ref' => '#/components/parameters/Brand'];
+        $keyReference = ['$ref' => '#/components/parameters/Key'];
+
+        // Circumvention (a): the parameters of the path item are inherited by every operation of it.
+        yield 'a query parameter of the path item' => [['parameters' => [$brand], 'get' => []], ['GET /api/v1/admin/new-list, query brand']];
+        yield 'an Idempotency-Key of the path item' => [['parameters' => [$key], 'post' => []], ['POST /api/v1/admin/new-list, header Idempotency-Key']];
+        yield 'the parameters of the path item serve each operation of it' => [
+            ['parameters' => [$brand, $key], 'get' => [], 'post' => []],
+            ['GET /api/v1/admin/new-list, query brand', 'GET /api/v1/admin/new-list, header Idempotency-Key', 'POST /api/v1/admin/new-list, query brand', 'POST /api/v1/admin/new-list, header Idempotency-Key'],
+        ];
+        yield 'a header written in another letter case is the same header' => [
+            ['post' => ['parameters' => [['name' => 'idempotency-key', 'in' => 'header']]]],
+            ['POST /api/v1/admin/new-list, header Idempotency-Key'],
+        ];
+
+        // Circumvention (b): the parameter is a reference to the components, in the operation and in the path item.
+        yield 'a query parameter referenced in the operation' => [['get' => ['parameters' => [$brandReference]]], ['GET /api/v1/admin/new-list, query brand']];
+        yield 'an Idempotency-Key referenced in the operation' => [['put' => ['parameters' => [$keyReference]]], ['PUT /api/v1/admin/new-list, header Idempotency-Key']];
+        yield 'a query parameter referenced in the path item' => [['parameters' => [$brandReference], 'get' => []], ['GET /api/v1/admin/new-list, query brand']];
+        yield 'an Idempotency-Key referenced in the path item' => [['parameters' => [$keyReference], 'patch' => []], ['PATCH /api/v1/admin/new-list, header Idempotency-Key']];
+
+        // The operation parameter of the same name and place replaces the inherited one: one input, not two.
+        yield 'the same parameter in the path item and in the operation is one input' => [
+            ['parameters' => [$brand], 'get' => ['parameters' => [$brandReference]]],
+            ['GET /api/v1/admin/new-list, query brand'],
+        ];
+        yield 'a parameter of the same name in another place is another input' => [
+            ['parameters' => [['name' => 'Idempotency-Key', 'in' => 'query', 'schema' => ['type' => 'string']]], 'post' => ['parameters' => [$key]]],
+            ['POST /api/v1/admin/new-list, query Idempotency-Key', 'POST /api/v1/admin/new-list, header Idempotency-Key'],
+        ];
+        yield 'a header of the path item and the other headers are no input' => [
+            ['parameters' => [['name' => 'X-Trace', 'in' => 'header'], ['name' => 'brand', 'in' => 'cookie']], 'get' => []],
+            [],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @param list<string>         $inputs
+     */
+    #[DataProvider('inputsDeclaredByReferenceOrAboveTheOperation')]
+    public function testAnInputDeclaredByReferenceOrInThePathItemIsReported(array $item, array $inputs): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withComponent($documents[1], 'parameters', 'Brand', ['name' => 'brand', 'in' => 'query', 'schema' => ['type' => 'string']]);
+        $documents[1] = self::withComponent($documents[1], 'parameters', 'Key', ['name' => 'Idempotency-Key', 'in' => 'header', 'schema' => ['type' => 'string']]);
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/new-list', $item);
+
+        self::assertSame($inputs, ClosedInputList::inputsWithoutARow($documents, InputRows::all()));
+    }
+
+    /**
+     * Circumvention (c): the path item is a reference to another one.
+     */
+    public function testAnInputOfAPathItemReferencedByAnotherPathIsReportedForBoth(): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/shared', ['parameters' => [['name' => 'brand', 'in' => 'query']], 'get' => []]);
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/alias', ['$ref' => '#/paths/~1api~1v1~1admin~1shared']);
+
+        self::assertSame(
+            ['GET /api/v1/admin/shared, query brand', 'GET /api/v1/admin/alias, query brand'],
+            ClosedInputList::inputsWithoutARow($documents, InputRows::all()),
+        );
+    }
+
+    public function testARouteDescribedOnlyByAReferencedPathItemIsDescribed(): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/shared', ['get' => []]);
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/alias', ['$ref' => '#/paths/~1api~1v1~1admin~1shared']);
+
+        self::assertSame(
+            ['POST /api/v1/admin/alias'],
+            ClosedInputList::routesWithoutADocument($documents, [['GET', '/api/v1/admin/alias'], ['POST', '/api/v1/admin/alias']]),
         );
     }
 
@@ -91,6 +178,43 @@ final class ClosedInputListTest extends KernelTestCase
         self::assertIsArray($operation);
         $operation['parameters'] = [...(\is_array($operation['parameters'] ?? null) ? $operation['parameters'] : []), $parameter];
         $item[$method] = $operation;
+        $paths[$path] = $item;
+        $document['paths'] = $paths;
+
+        return $document;
+    }
+
+    /**
+     * A copy of the document with one more entry in `components/<group>`.
+     *
+     * @param array<string, mixed> $document
+     * @param array<string, mixed> $component
+     *
+     * @return array<string, mixed>
+     */
+    private static function withComponent(array $document, string $group, string $name, array $component): array
+    {
+        $components = \is_array($document['components'] ?? null) ? $document['components'] : [];
+        $entries = \is_array($components[$group] ?? null) ? $components[$group] : [];
+        $entries[$name] = $component;
+        $components[$group] = $entries;
+        $document['components'] = $components;
+
+        return $document;
+    }
+
+    /**
+     * A copy of the document with one more path item.
+     *
+     * @param array<string, mixed> $document
+     * @param array<string, mixed> $item
+     *
+     * @return array<string, mixed>
+     */
+    private static function withPathItem(array $document, string $path, array $item): array
+    {
+        $paths = $document['paths'];
+        self::assertIsArray($paths);
         $paths[$path] = $item;
         $document['paths'] = $paths;
 
