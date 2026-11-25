@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Catalog\Concurrency;
 
 use App\Catalog\Application\Command\CreateProduct;
+use App\Catalog\Application\Command\EditProduct;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\SkuAlreadyTaken;
 use App\Tests\Integration\Inventory\Concurrency\ConcurrentCommands;
 use App\Tests\Integration\Inventory\Concurrency\Outcome;
+use App\Tests\Support\Concurrency\SaveProductWithoutTheSkuCheck;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Configuration as DbalConfiguration;
 use Doctrine\DBAL\Connection;
@@ -41,14 +43,15 @@ final class ProductSkuConcurrencyTest extends KernelTestCase
         $params = $kernelConnection->getParams();
         $this->control = DriverManager::getConnection($params, new DbalConfiguration());
         $this->control->executeStatement("SET lock_timeout = '10s'");
+        // What an earlier run that was interrupted left behind.
+        $this->dropTheTriggers();
         $this->control->executeStatement('CREATE OR REPLACE FUNCTION catalog_test_hold_variant() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(0.5); RETURN NEW; END $$');
         $this->control->executeStatement('CREATE TRIGGER catalog_test_hold_variant AFTER INSERT ON catalog_product_variant FOR EACH ROW EXECUTE FUNCTION catalog_test_hold_variant()');
     }
 
     protected function tearDown(): void
     {
-        $this->control->executeStatement('DROP TRIGGER IF EXISTS catalog_test_hold_variant ON catalog_product_variant');
-        $this->control->executeStatement('DROP FUNCTION IF EXISTS catalog_test_hold_variant()');
+        $this->dropTheTriggers();
         if ([] !== $this->categories) {
             $this->control->executeStatement('DELETE FROM catalog_product WHERE primary_category_id IN (?)', [$this->categories], [ArrayParameterType::STRING]);
             $this->control->executeStatement('DELETE FROM catalog_category WHERE id IN (?)', [$this->categories], [ArrayParameterType::STRING]);
@@ -85,6 +88,44 @@ final class ProductSkuConcurrencyTest extends KernelTestCase
     }
 
     /**
+     * The deletes of the rows of the variants are held too, so the SKU that a write removes stays locked for a while after
+     * the row is gone, as it does for any write that takes long to commit.
+     */
+    public function testAnEditThatRemovesASkuAndAWriteThatWaitsForItEndWithOneWinnerAndSkuTakenNeverADeadlock(): void
+    {
+        $this->control->executeStatement('CREATE OR REPLACE FUNCTION catalog_test_hold_variant_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(0.5); RETURN OLD; END $$');
+        $this->control->executeStatement('CREATE TRIGGER catalog_test_hold_variant_delete AFTER DELETE ON catalog_product_variant FOR EACH ROW EXECUTE FUNCTION catalog_test_hold_variant_delete()');
+
+        for ($round = 0; $round < self::ROUNDS; ++$round) {
+            $category = $this->category();
+            $kept = 'ROUND'.$round.'-W';
+            $removed = 'ROUND'.$round.'-X';
+            $productId = Uuid::v7()->toRfc4122();
+            // The product has the SKU X, committed after the check of the other write found it free.
+            $this->control->executeStatement(
+                "INSERT INTO catalog_product (id, slug, name, short_description, primary_category_id, tax_class, images, variant_axes, status, updated_at, version)
+                 VALUES (?, ?, 'Produkt', '', ?, 'standard', '[]'::jsonb, '[\"Rozmiar\"]'::jsonb, 'draft', now(), 1)",
+                [$productId, 'edytowany-'.substr($category, -8), $category],
+            );
+            $this->control->executeStatement(
+                "INSERT INTO catalog_product_variant (id, product_id, position, option_values, sku) VALUES (?, ?, 0, '[\"M\"]'::jsonb, ?)",
+                [Uuid::v7()->toRfc4122(), $productId, $removed],
+            );
+
+            // The creation takes W and then X; the edit removes X and adds W: each waits for the other one's key.
+            $outcomes = ConcurrentCommands::run($this->control, [
+                new SaveProductWithoutTheSkuCheck(Uuid::v7()->toRfc4122(), 'nowy-'.substr($category, -8), $category, [$kept, $removed]),
+                new EditProduct($productId, 1, 'staff-sub-2', 'Produkt', 'edytowany-'.substr($category, -8), '', '', '', [], $category, [], 'standard', [], ['Rozmiar'], [['variantId' => null, 'values' => ['L'], 'sku' => $kept, 'ean' => '']]),
+            ]);
+
+            self::assertSame([SkuAlreadyTaken::class, Outcome::SUCCESS], array_map(static fn (Outcome $outcome): string => $outcome->kind, $outcomes), 'Round '.$round.': '.json_encode($outcomes, \JSON_THROW_ON_ERROR));
+            // The edit won: its product has W and no X, and the creation left nothing.
+            self::assertSame([$kept], $this->control->fetchFirstColumn('SELECT sku FROM catalog_product_variant WHERE product_id = ?', [$productId]), 'Round '.$round);
+            self::assertSame(1, $this->control->fetchOne('SELECT count(*) FROM catalog_product WHERE primary_category_id = ?', [$category]), 'Round '.$round.': only the edited product');
+        }
+    }
+
+    /**
      * @param list<string> $skus one variant per SKU, in this order
      */
     private function create(string $category, string $slug, array $skus): CreateProduct
@@ -95,6 +136,14 @@ final class ProductSkuConcurrencyTest extends KernelTestCase
         }
 
         return new CreateProduct(Uuid::v7()->toRfc4122(), 'Produkt '.$slug, $slug.'-'.substr($category, -8), '', '', '', [], $category, [], 'standard', [], ['Rozmiar'], $variants, ProductStatus::Draft, 'staff-sub-1');
+    }
+
+    private function dropTheTriggers(): void
+    {
+        foreach (['catalog_test_hold_variant', 'catalog_test_hold_variant_delete'] as $name) {
+            $this->control->executeStatement('DROP TRIGGER IF EXISTS '.$name.' ON catalog_product_variant');
+            $this->control->executeStatement('DROP FUNCTION IF EXISTS '.$name.'()');
+        }
     }
 
     private function category(): string
