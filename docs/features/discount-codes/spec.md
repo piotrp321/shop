@@ -156,8 +156,8 @@ Decyzje DDD i architektoniczne:
   białych znaków to brak kodu. Tekst w złym formacie (znaki spoza `[A-Za-z0-9-]`, długość poza 3–32) to kod nieznany
   (`invalid`), nie błąd zapytania; więcej niż 64 znaki: `InvalidBasketQuery` (granice HTTP odrzucają wcześniej).
 - Panel: `ListDiscountCodes(status?, q?, after, perPage)` (keyset po `(created_at DESC, id)`; `q` to prefiks tekstu
-  kodu; `perPage` 1–100, domyślnie 25; zły parametr albo kursor: 400) i `GetDiscountCode(id)`; oba z liczbą aktywnych
-  użyć.
+  kodu po przycięciu regułą tekstu (T2) i bez drugiego przycinania; `perPage` 1–100, domyślnie 25; zły parametr albo
+  kursor: 400) i `GetDiscountCode(id)`; oba z liczbą aktywnych użyć.
 
 ### Komendy
 
@@ -337,7 +337,7 @@ pozostali 403; odczyt: każdy pracownik):
 
 | Endpoint | Odpowiedzi |
 |---|---|
-| `GET /api/v1/admin/discount-codes?status&q&after&perPage` | 200 `{items: [DiscountCode], next}`; `status` jeden z `disabled`, `planned`, `active`, `expired`; `q` przycięty i zamieniony na wielkie litery, 1–32 znaki; 400 |
+| `GET /api/v1/admin/discount-codes?status&q&after&perPage` | 200 `{items: [DiscountCode], next}`; `status` jeden z `disabled`, `planned`, `active`, `expired`; `q` przycięty regułą tekstu (T2, `docs/features/api-input-contract/spec.md`) i zamieniony na wielkie litery, 1–32 znaki; znak spoza alfabetu kodu (także znak formatujący, który T2 zostawia) daje pustą listę; 400 |
 | `POST /api/v1/admin/discount-codes` `{code, kind, value, minimumOrderGross \| null, startsAt, endsAt \| null, usageLimit \| null, enabled}` | 201 `DiscountCode`; 403; 409 `discount-code-taken`; 422 |
 | `GET /api/v1/admin/discount-codes/{id}` | 200 `DiscountCode`; 404 |
 | `PUT /api/v1/admin/discount-codes/{id}` `{kind, value, minimumOrderGross, startsAt, endsAt, usageLimit, enabled, version}` (bez `code`) | 200; 403; 404; 409 (wersja, `discount-code-not-editable`); 422 |

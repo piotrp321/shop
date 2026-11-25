@@ -39,8 +39,10 @@ final readonly class DiscountCodeValue
     }
 
     /**
-     * The text without the Unicode spaces and invisible format characters at its ends, the one trimming of a code and
-     * of the beginning of one (the list filter). Text that is not UTF-8 comes back as it is: check the encoding first.
+     * The text without the Unicode spaces and invisible format characters at its ends, the one trimming of a code (of
+     * its creation, of the preview in the basket and of the order). The beginning of a code in the list filter is not
+     * trimmed by it but by the rule of texts (Text). Text that is not UTF-8 comes back as it is: check the encoding
+     * first.
      */
     public static function trimmed(string $text): string
     {

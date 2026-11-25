@@ -12,8 +12,20 @@ use App\Shared\Domain\Text;
  * OpenAPI documents (nested, in a list, also nullable) and every query parameter `q` has a row in the table of the
  * contract of texts (TextRows) or an entry with a reason in the list of exceptions (TextFieldExceptions). Outside the
  * guard are only the properties with an `enum` and with a format of the closed list (uuid, date-time, date, binary);
- * any other format, `email` too, is a text. The guard compares lists that exist already; it generates no case and
+ * any other format, `email` too, is a text. A property with no `type` at all (`{}`, only a maximum length, `items: {}`,
+ * `additionalProperties: true`) may be a text, so it counts as one: the type comes from an attribute that may be
+ * forgotten. The guard compares lists that exist already; it generates no case and
  * changes no table.
+ *
+ * The documents describe the same field in more than one way, and the guard reads each of them: a path item referenced
+ * by `$ref` (with the fields written next to the reference); parameters of the path item inherited by its operations (an operation parameter of the same name and place
+ * takes the place of the inherited one) and parameters referenced from `components/parameters`; a request body
+ * referenced from `components/requestBodies`, in every content type; a schema through `$ref` (any depth, a cycle
+ * ends), `allOf`, `oneOf`, `anyOf`, `properties`, `items` and `additionalProperties`; a `type` that is a list with
+ * `null`. A body that is a text itself is named `(body)`. Left out on purpose: references outside the document (the
+ * documents are single files), `not`, the schema keywords of OpenAPI 3.1 (`prefixItems`, `patternProperties`, `if`,
+ * `then`, `else`; the documents are 3.0.3), and an object query parameter that the style `form` expands into
+ * parameters (the generator writes every query parameter on its own).
  *
  * A text is "METHOD /path, field" in the form of the documents (upper-case method, a list as `[]`: `images[].alt`), a
  * phrase is "METHOD /path, query q". The other query parameters are inputs of the closed list of the inputs
@@ -23,6 +35,10 @@ final class ClosedTextFieldList
 {
     /** The formats of a string that are not a text typed by people. */
     private const array CLOSED_FORMATS = ['uuid', 'date-time', 'date', 'binary'];
+    /** The name of the text of a body that is a text itself. */
+    private const string BODY = '(body)';
+    /** The keys of a path item that are operations. */
+    private const array METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
 
     /**
      * @param list<array<string, mixed>> $documents
@@ -33,28 +49,58 @@ final class ClosedTextFieldList
     {
         $fields = [];
         foreach ($documents as $document) {
-            $paths = $document['paths'] ?? [];
-            foreach (\is_array($paths) ? $paths : [] as $path => $item) {
-                foreach (\is_array($item) ? $item : [] as $method => $operation) {
-                    if (!\is_array($operation)) {
-                        continue;
+            foreach (self::operations($document) as ['method' => $method, 'path' => $path, 'operation' => $operation, 'parameters' => $parameters]) {
+                $name = "$method $path";
+                foreach ($parameters as $parameter) {
+                    if ('query' === ($parameter['in'] ?? null) && 'q' === ($parameter['name'] ?? null)) {
+                        $fields["$name, query q"] = "$name, query q";
                     }
-                    $name = strtoupper((string) $method).' '.$path;
-                    foreach (self::parameters($document, $operation) as $parameter) {
-                        if ('query' === ($parameter['in'] ?? null) && 'q' === ($parameter['name'] ?? null)) {
-                            $fields["$name, query q"] = "$name, query q";
-                        }
-                    }
-                    foreach (self::bodySchemas($operation) as $schema) {
-                        foreach (self::texts($document, $schema, '', []) as $text) {
-                            $fields["$name, $text"] = "$name, $text";
-                        }
+                }
+                foreach (self::bodySchemas($document, $operation) as $schema) {
+                    foreach (self::texts($document, $schema, '', []) as $text) {
+                        $fields["$name, $text"] = "$name, $text";
                     }
                 }
             }
         }
 
         return array_values($fields);
+    }
+
+    /**
+     * Each operation of a document, as the guards of the inputs read it (this one and ClosedInputList): the path item
+     * is followed through `$ref`, only the keys that are methods are operations, and the parameters are those of the
+     * path item and of the operation, each resolved, where an operation parameter of the same name and place takes the
+     * place of the inherited one (so one parameter is never two).
+     *
+     * @param array<string, mixed> $document
+     *
+     * @return list<array{method: string, path: string, operation: array<mixed>, parameters: list<array<mixed>>}> the method in upper case
+     */
+    public static function operations(array $document): array
+    {
+        $operations = [];
+        $paths = $document['paths'] ?? [];
+        foreach (\is_array($paths) ? $paths : [] as $path => $item) {
+            $item = self::pathItem($document, $item, []);
+            if (null === $item) {
+                continue;
+            }
+            $inherited = self::parameters($document, $item['parameters'] ?? null);
+            foreach (self::METHODS as $method) {
+                $operation = $item[$method] ?? null;
+                if (\is_array($operation)) {
+                    $operations[] = [
+                        'method' => strtoupper($method),
+                        'path' => (string) $path,
+                        'operation' => $operation,
+                        'parameters' => self::effectiveParameters($inherited, self::parameters($document, $operation['parameters'] ?? null)),
+                    ];
+                }
+            }
+        }
+
+        return $operations;
     }
 
     /**
@@ -149,18 +195,15 @@ final class ClosedTextFieldList
 
     /**
      * @param array<string, mixed> $document
-     * @param array<mixed>         $operation
      *
-     * @return list<array<mixed>>
+     * @return list<array<mixed>> the parameters of a list of an operation or of a path item, each resolved
      */
-    private static function parameters(array $document, array $operation): array
+    private static function parameters(array $document, mixed $list): array
     {
         $parameters = [];
-        foreach (\is_array($operation['parameters'] ?? null) ? $operation['parameters'] : [] as $parameter) {
-            if (\is_array($parameter) && \is_string($parameter['$ref'] ?? null)) {
-                $parameter = self::resolve($document, $parameter['$ref']);
-            }
-            if (\is_array($parameter)) {
+        foreach (\is_array($list) ? $list : [] as $parameter) {
+            $parameter = self::dereference($document, $parameter);
+            if (null !== $parameter) {
                 $parameters[] = $parameter;
             }
         }
@@ -169,14 +212,36 @@ final class ClosedTextFieldList
     }
 
     /**
-     * @param array<mixed> $operation
+     * The parameters an operation has: those of its path item, where an operation parameter of the same name and place
+     * takes the place of the inherited one (so one parameter is never two).
+     *
+     * @param list<array<mixed>> $inherited
+     * @param list<array<mixed>> $own
+     *
+     * @return list<array<mixed>>
+     */
+    private static function effectiveParameters(array $inherited, array $own): array
+    {
+        $effective = [];
+        foreach ([...$inherited, ...$own] as $parameter) {
+            $in = \is_string($parameter['in'] ?? null) ? $parameter['in'] : '';
+            $name = \is_string($parameter['name'] ?? null) ? $parameter['name'] : '';
+            $effective["$in:$name"] = $parameter;
+        }
+
+        return array_values($effective);
+    }
+
+    /**
+     * @param array<string, mixed> $document
+     * @param array<mixed>         $operation
      *
      * @return list<array<mixed>> the schema of the body for each content type
      */
-    private static function bodySchemas(array $operation): array
+    private static function bodySchemas(array $document, array $operation): array
     {
-        $body = $operation['requestBody'] ?? null;
-        $content = \is_array($body) && \is_array($body['content'] ?? null) ? $body['content'] : [];
+        $body = self::dereference($document, $operation['requestBody'] ?? null);
+        $content = null !== $body && \is_array($body['content'] ?? null) ? $body['content'] : [];
         $schemas = [];
         foreach ($content as $media) {
             if (\is_array($media) && \is_array($media['schema'] ?? null)) {
@@ -185,6 +250,61 @@ final class ClosedTextFieldList
         }
 
         return $schemas;
+    }
+
+    /**
+     * A path item with the fields written next to its `$ref` (OpenAPI 3.0.3 allows them): the item referenced, through
+     * any number of references, and the fields of the item itself over it (a method of the same name takes the place
+     * of the referenced one; the parameters of both serve every operation). A reference that circles, points outside
+     * the document or at nothing leaves the fields of the item itself.
+     *
+     * @param array<string, mixed> $document
+     * @param list<string>         $followed
+     *
+     * @return array<mixed>|null
+     */
+    private static function pathItem(array $document, mixed $item, array $followed): ?array
+    {
+        if (!\is_array($item)) {
+            return null;
+        }
+        if (!\is_string($item['$ref'] ?? null)) {
+            return $item;
+        }
+        $reference = $item['$ref'];
+        unset($item['$ref']);
+        $referenced = \in_array($reference, $followed, true) ? null : self::pathItem($document, self::resolve($document, $reference), [...$followed, $reference]);
+        if (null === $referenced) {
+            return [] === $item ? null : $item;
+        }
+        $parameters = [
+            ...(\is_array($referenced['parameters'] ?? null) ? $referenced['parameters'] : []),
+            ...(\is_array($item['parameters'] ?? null) ? $item['parameters'] : []),
+        ];
+
+        return [...$referenced, ...$item, 'parameters' => $parameters];
+    }
+
+    /**
+     * The object a node is: the node itself, or the one its `$ref` points to (through any number of references; one
+     * that circles, points outside the document or at nothing is no object).
+     *
+     * @param array<string, mixed> $document
+     *
+     * @return array<mixed>|null
+     */
+    private static function dereference(array $document, mixed $node): ?array
+    {
+        $followed = [];
+        while (\is_array($node) && \is_string($node['$ref'] ?? null)) {
+            if (\in_array($node['$ref'], $followed, true)) {
+                return null;
+            }
+            $followed[] = $node['$ref'];
+            $node = self::resolve($document, $node['$ref']);
+        }
+
+        return \is_array($node) ? $node : null;
     }
 
     /**
@@ -214,17 +334,18 @@ final class ClosedTextFieldList
             }
         }
 
-        $types = \is_array($schema['type'] ?? null) ? $schema['type'] : [$schema['type'] ?? null];
-        if ('' !== $name && \in_array('string', $types, true) && !isset($schema['enum']) && !\in_array($schema['format'] ?? null, self::CLOSED_FORMATS, true)) {
-            $texts[] = $name;
+        if (self::isPossibleText($schema)) {
+            $texts[] = '' === $name ? self::BODY : $name;
         }
         foreach (\is_array($schema['properties'] ?? null) ? $schema['properties'] : [] as $property => $child) {
             if (\is_array($child)) {
                 $texts = [...$texts, ...self::texts($document, $child, '' === $name ? (string) $property : $name.'.'.$property, $followed)];
             }
         }
-        if (\is_array($schema['additionalProperties'] ?? null)) {
-            $texts = [...$texts, ...self::texts($document, $schema['additionalProperties'], $name.'.*', $followed)];
+        // `additionalProperties: true` allows any value, so it is a schema that says nothing, like `{}`.
+        $additional = true === ($schema['additionalProperties'] ?? null) ? [] : ($schema['additionalProperties'] ?? null);
+        if (\is_array($additional)) {
+            $texts = [...$texts, ...self::texts($document, $additional, $name.'.*', $followed)];
         }
         if (\is_array($schema['items'] ?? null)) {
             $texts = [...$texts, ...self::texts($document, $schema['items'], $name.'[]', $followed)];
@@ -234,12 +355,50 @@ final class ClosedTextFieldList
     }
 
     /**
+     * Whether a schema (after its references, combinations, properties and items are read apart) is a text or may be
+     * one: a `string` (also in a list of types), or a schema that says no type at all (`{}`, only a maximum length,
+     * only `nullable`), because the type of a property of a request comes from an attribute that may be forgotten. A
+     * schema with an `enum`, with a format of the closed list, or that is read in depth (`properties`, `items`,
+     * `allOf`, `oneOf`, `anyOf`, and `required`, `not` and the limits of an object, which describe an object) is no
+     * leaf; a schema with another type is no text.
+     *
+     * @param array<mixed> $schema
+     */
+    private static function isPossibleText(array $schema): bool
+    {
+        if (isset($schema['enum']) || \in_array($schema['format'] ?? null, self::CLOSED_FORMATS, true)) {
+            return false;
+        }
+        $types = \is_array($schema['type'] ?? null) ? $schema['type'] : [$schema['type'] ?? null];
+        if (\in_array('string', $types, true)) {
+            return true;
+        }
+        if (null !== ($schema['type'] ?? null)) {
+            return false;
+        }
+        foreach (['$ref', 'properties', 'items', 'additionalProperties', 'allOf', 'oneOf', 'anyOf', 'not', 'required', 'minProperties', 'maxProperties'] as $structure) {
+            if (isset($schema[$structure])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The node a reference of the document points to (`#/components/schemas/Name`; the keys of a pointer are decoded:
+     * `~1` is `/`, `~0` is `~`, and percent encoding). A reference outside the document points at nothing.
+     *
      * @param array<string, mixed> $document
      */
     private static function resolve(array $document, string $reference): mixed
     {
+        if (!str_starts_with($reference, '#/')) {
+            return null;
+        }
         $node = $document;
-        foreach (explode('/', ltrim($reference, '#/')) as $key) {
+        foreach (explode('/', substr($reference, 2)) as $key) {
+            $key = str_replace(['~1', '~0'], ['/', '~'], rawurldecode($key));
             if (!\is_array($node) || !\array_key_exists($key, $node)) {
                 return null;
             }
