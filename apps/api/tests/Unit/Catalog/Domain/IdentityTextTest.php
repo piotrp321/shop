@@ -59,6 +59,37 @@ final class IdentityTextTest extends TestCase
         self::assertFalse(IdentityText::kept(['czarne'], ['czarne', 'M']));
     }
 
+    /**
+     * @return iterable<string, array{string, string, bool}>
+     */
+    public static function storedTexts(): iterable
+    {
+        // Two names the rule before the rule of texts took as different, one identity once trimmed (T2).
+        yield 'U+200B at the end' => ['Kolor', "Kolor\u{200B}", true];
+        yield 'U+2060 at the end' => ['Kolor', "Kolor\u{2060}", true];
+        yield 'U+FEFF at the start' => ['Kolor', "\u{FEFF}Kolor", true];
+        yield 'U+00AD at the end' => ['Kolor', "Kolor\u{AD}", true];
+        // A text with a forbidden character has the identity of its correction.
+        yield 'a forbidden character inside' => ['Kolor', "Kol\u{9F}or", true];
+        yield 'a tab inside' => ['Kolor', "Kol\tor", true];
+        yield 'a forbidden character next to one letter' => ['A', "\u{9F}A", true];
+        // Different identities, or no identity.
+        yield 'other texts' => ['Kolor', 'Rozmiar', false];
+        yield 'a space inside is part of the text' => ['Kolor', 'Ko lor', false];
+        yield 'a text without a visible character' => ['Kolor', "\u{200B}", false];
+        yield 'two texts without a visible character' => ["\u{200B}", "\u{3164}", false];
+    }
+
+    /**
+     * Two stored texts share an identity when both have one and it is the same, whatever their order.
+     */
+    #[DataProvider('storedTexts')]
+    public function testTwoStoredTextsHaveOneIdentityOnlyAsTheRuleSays(string $stored, string $other, bool $same): void
+    {
+        self::assertSame($same, IdentityText::same($stored, $other));
+        self::assertSame($same, IdentityText::same($other, $stored));
+    }
+
     public function testAStoredTextWithoutAVisibleCharacterHasNoIdentity(): void
     {
         self::assertTrue(IdentityText::has("Kol\tor"));
