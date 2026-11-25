@@ -76,6 +76,9 @@ final class ProcessCountDeterminismTest extends KernelTestCase
             $this->generate($processes);
             $sums[$processes] = $this->checksums();
             self::assertSame(2_000, Sql::int($this->control->fetchOne('SELECT count(*) FROM catalog_product')), $processes.' processes');
+            // The checksum below would be the same for empty columns, so the new fields must be there.
+            self::assertSame(0, Sql::int($this->control->fetchOne("SELECT count(*) FROM catalog_product WHERE brand = '' OR description = '' OR parameters = '[]'::jsonb")), $processes.' processes: a product without the content fields');
+            self::assertSame(0, Sql::int($this->control->fetchOne('SELECT count(*) FROM catalog_product_variant WHERE sku IS NULL OR ean IS NULL')), $processes.' processes: a variant without the codes');
             self::assertGreaterThan(5_000, Sql::int($this->control->fetchOne('SELECT count(*) FROM pricing_variant_price')), $processes.' processes');
             self::assertSame(5_000, Sql::int($this->control->fetchOne('SELECT count(*) FROM ordering_order')), $processes.' processes');
             $this->empty();
