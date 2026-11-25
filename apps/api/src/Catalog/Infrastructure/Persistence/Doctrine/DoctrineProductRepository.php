@@ -44,6 +44,12 @@ use Doctrine\ORM\OptimisticLockException;
 
 final readonly class DoctrineProductRepository implements ProductRepository
 {
+    /**
+     * The first key of the two-key advisory locks of the SKUs (pg_advisory_xact_lock(int, int)), chosen for them; the second
+     * is a hash of the SKU, so two SKUs with the same hash only wait for each other.
+     */
+    public const int SKU_LOCK_NAMESPACE = 0x534B; // "SK"
+
     public function __construct(private EntityManagerInterface $entityManager)
     {
     }
@@ -123,6 +129,7 @@ final readonly class DoctrineProductRepository implements ProductRepository
         if (null !== $existing && null !== $expectedVersion && $existing->version !== $expectedVersion) {
             throw new ProductModifiedConcurrently();
         }
+        $this->lockSkus($product, $existing);
         $record = $existing ?? new ProductRecord($id);
         $record->slug = $product->slug()->value();
         $record->name = $product->name()->value();
@@ -216,6 +223,44 @@ final readonly class DoctrineProductRepository implements ProductRepository
             $this->addVariants($record, $product->variants()->toList());
             $this->entityManager->flush();
         }
+    }
+
+    /**
+     * Takes, before any row of the write is touched, an advisory lock of the transaction on every SKU it inserts or removes
+     * (the SKUs of the variants given and of those stored), one statement, in ascending order of the keys. Two writes that
+     * touch one SKU then queue here instead of on the unique index, where a row removed and not yet committed holds the
+     * SKU for an insert of another write: each could wait for a key the other holds (a deadlock, a 500), whatever the
+     * order the rows are written in. Whoever comes second goes on after the commit of the first and meets the committed
+     * state: the SKU taken (`SkuAlreadyTaken`) or free.
+     */
+    private function lockSkus(Product $product, ?ProductRecord $existing): void
+    {
+        $skus = array_map(static fn (ProductVariant $variant): ?string => $variant->sku()?->value(), $product->variants()->toList());
+        if (null !== $existing) {
+            foreach ($existing->variants as $stored) {
+                $skus[] = $stored->sku;
+            }
+        }
+        $keys = [];
+        foreach ($skus as $sku) {
+            if (null !== $sku) {
+                $hash = crc32($sku);
+                // The CRC-32 as a signed 32-bit integer (the int of PostgreSQL).
+                $keys[$hash > 0x7FFFFFFF ? $hash - 0x100000000 : $hash] = true;
+            }
+        }
+        if ([] === $keys) {
+            return;
+        }
+        $keys = array_keys($keys);
+        sort($keys);
+
+        $this->entityManager->getConnection()->executeStatement(
+            'SELECT pg_advisory_xact_lock(CAST(:namespace AS int), k.key)
+             FROM unnest(CAST(:keys AS int[])) WITH ORDINALITY AS k(key, position)
+             ORDER BY k.position',
+            ['namespace' => self::SKU_LOCK_NAMESPACE, 'keys' => '{'.implode(',', $keys).'}'],
+        );
     }
 
     /**
