@@ -1,8 +1,8 @@
-import { expect, test, type APIRequestContext, type Page, type Route } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page, type Route } from "@playwright/test";
 import { staff } from "../support/accounts";
 import { createCategory, readToken, removeTestCategories, SLUG_PREFIX, testCategorySlugs } from "../support/categories";
 import { createDraftInPanel, newProduct, publishInPanel, receiveStockInPanel, solidPng, unpublishInPanel } from "../support/catalog-admin";
-import { documentWidths, expectControlsReachable, viewports, WCAG_TAGS } from "../support/panel-layout";
+import { documentWidths, expectControlsReachable, expectWithinWidth, viewports, WCAG_TAGS } from "../support/panel-layout";
 import { openMenuItem } from "../support/panel-menu";
 import { closePanelContexts, go, inState, newPanelPage, type PanelState, signInPanelRoles, violationsOf } from "../support/panel-states";
 import { toasts } from "../support/promotions";
@@ -849,5 +849,243 @@ test.describe("the requests of the product form (stage 2)", () => {
     } finally {
       await page.close();
     }
+  });
+});
+
+// PRODUCT-DATA: the brand, the description and the parameters of a product (docs/features/product-data/spec.md, criterion 9).
+// The panel sends them as they are in the draft, and only the comparison of „Sprawdź stan” after a save without an answer goes
+// through its copy of the rule of texts of the API (T1–T3). The copy and the API can differ (the classes of characters of
+// PCRE and of JavaScript do), and this is the one test that puts the two side by side: a save that reaches the API, an answer
+// the browser never gets, and the check that must find the saved product equal to the form.
+test.describe("the brand, the description and the parameters of a product", () => {
+  const MATCHES = "Stan na serwerze odpowiada formularzowi.";
+  const LINE_FEED: [string, string] = ["U+000A", "\n"];
+
+  /** The characters the API trims from the ends of a text (T2) that a one-line field can hold: the list of criterion 9b. */
+  const EDGE_CHARACTERS: [string, string][] = [
+    ["a space", " "],
+    ["U+00A0", "\u{A0}"],
+    ["U+2003", "\u{2003}"],
+    ["U+202F", "\u{202F}"],
+    ["U+3000", "\u{3000}"],
+    ["U+180E", "\u{180E}"],
+    ["U+200B", "\u{200B}"],
+    ["U+2060", "\u{2060}"],
+    ["U+FEFF", "\u{FEFF}"],
+    ["U+00AD", "\u{AD}"],
+  ];
+  const ENGLAND = "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}";
+
+  /**
+   * A field of the product form whose text the API normalizes (the fields of the comparison). `kept` is what the API stores
+   * when the text has nothing to trim; `edges` the characters trimmed from its ends. A later task adds the fields of the codes
+   * of a variant here, with their own `kept` and `edges`.
+   */
+  type ContentField = { name: string; control: (page: Page) => Locator; kept: string; edges: [string, string][]; inside: string };
+  const FIELDS: ContentField[] = [
+    { name: "brand", control: (page) => page.getByTestId("brand"), kept: "Marka", edges: EDGE_CHARACTERS, inside: `Ma\u{200B}rka \u{1F469}\u{200D}\u{1F4BB} ${ENGLAND}` },
+    {
+      name: "description",
+      control: (page) => page.getByTestId("description"),
+      kept: "Pierwszy akapit.\n\nDrugi akapit.",
+      edges: [...EDGE_CHARACTERS, LINE_FEED],
+      inside: `Opis \u{1F469}\u{200D}\u{1F4BB}\n\nZ\u{200B}drugim akapitem ${ENGLAND}`,
+    },
+    { name: "parameter name", control: (page) => page.getByTestId("parameter-name").first(), kept: "Waga", edges: EDGE_CHARACTERS, inside: `Wa\u{200B}ga \u{1F469}\u{200D}\u{1F4BB} ${ENGLAND}` },
+    { name: "parameter value", control: (page) => page.getByTestId("parameter-value").first(), kept: "2 kg", edges: EDGE_CHARACTERS, inside: `2\u{200B} kg \u{1F469}\u{200D}\u{1F4BB} ${ENGLAND}` },
+  ];
+
+  const PRODUCT_API = (id: string) => `**/api/v1/admin/products/${id}`;
+
+  /** Fills every field of the list with its text, as given; the typed text goes to the field untouched. */
+  async function fill(page: Page, texts: Map<ContentField, string>): Promise<void> {
+    for (const [field, text] of texts) await field.control(page).fill(text);
+  }
+
+  /**
+   * The save that the API does and the browser never hears of: the PUT goes to the API, its answer is thrown away. Returns the
+   * statuses of the answers of the API, which the caller checks to prove the save reached it and was not refused.
+   */
+  async function loseAnswersOfSaves(page: Page, id: string): Promise<number[]> {
+    const statuses: number[] = [];
+    await page.route(PRODUCT_API(id), async (route) => {
+      if (route.request().method() !== "PUT") {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      statuses.push(response.status());
+      await route.abort("failed");
+    });
+    return statuses;
+  }
+
+  /** Saves what the form holds, the answer is lost, and „Sprawdź stan” must find the server equal to the form. */
+  async function saveAndCheck(page: Page, statuses: number[], texts: Map<ContentField, string>, expected: Map<ContentField, string>, what: string): Promise<void> {
+    const before = statuses.length;
+    await fill(page, texts);
+    await page.getByTestId("save").click();
+    await expect(page.getByTestId("unknown-result"), `${what}: the form does not know whether the save was done`).toBeVisible();
+    expect(statuses.length, `${what}: the save reached the API`).toBe(before + 1);
+    expect(statuses.at(-1), `${what}: the API accepted the save (a 409 here means the form kept a stale version)`).toBe(200);
+
+    await page.getByTestId("check-state").click();
+    await expect(page.getByTestId("safety-status"), `${what}: „Sprawdź stan” says the server equals the form`).toHaveText(MATCHES);
+    for (const [field, text] of expected) {
+      await expect(field.control(page), `${what}: the ${field.name} is the text the API stored`).toHaveValue(text);
+    }
+    await expect(page.getByTestId("unknown-result")).toHaveCount(0);
+  }
+
+  test("a save the server did, whose answer is lost, is recognized by „Sprawdź stan” for every character the API trims, in the brand, the description and the parameters", async ({ page }) => {
+    test.setTimeout(10 * 60_000);
+    await loginStaff(page, staff.marketing);
+    const id = await createDraftInPanel(page, newProduct("Sprawdz stan"));
+    await page.getByTestId("add-parameter").click();
+    await expect(page.getByTestId("parameter-row")).toHaveCount(1);
+    const statuses = await loseAnswersOfSaves(page, id);
+
+    // Every field holds the character at both its edges; the API stores the text without them.
+    for (const edge of new Map([...FIELDS.flatMap((field) => field.edges)]).entries()) {
+      const [label, character] = edge;
+      const typed = new Map(FIELDS.map((field) => [field, field.edges.some(([, candidate]) => candidate === character) ? `${character}${field.kept}${character}` : field.kept] as const));
+      await saveAndCheck(page, statuses, typed, new Map(FIELDS.map((field) => [field, field.kept] as const)), `the edges of ${label}`);
+    }
+
+    // The characters trimmed from the edge are the same mixed with spaces and the ones inside the text stay.
+    await saveAndCheck(
+      page,
+      statuses,
+      new Map(FIELDS.map((field) => [field, ` \u{200B}${field.inside}\u{A0} `] as const)),
+      new Map(FIELDS.map((field) => [field, field.inside] as const)),
+      "U+200B between letters, U+200D in an emoji and the tags of a flag at the end",
+    );
+
+    // A description without a visible character is no description (T3): only white space, only U+200D.
+    const description = FIELDS[1]!;
+    for (const [label, text] of [
+      ["only white space", " \u{A0}\u{3000} \n \u{2003}"],
+      ["only U+200D", "\u{200D}"],
+    ] as const) {
+      await saveAndCheck(page, statuses, new Map([[description, description.kept]]), new Map([[description, description.kept]]), `the description before ${label}`);
+      await saveAndCheck(page, statuses, new Map([[description, text]]), new Map([[description, ""]]), `a description of ${label}`);
+    }
+
+    // The form is still the one of the product: the next save, whose answer arrives, is not refused.
+    await page.unroute(PRODUCT_API(id));
+    await FIELDS[0]!.control(page).fill("Koniec");
+    await page.getByTestId("save").click();
+    await expect(toasts(page).getByText("Produkt zapisany.")).toBeVisible();
+    await expect(page.getByTestId("form-error")).toHaveCount(0);
+  });
+
+  test("a character T1 forbids at the edge is a 422 at its field and nothing is saved: the panel does not trim it away", async ({ page, request }) => {
+    test.setTimeout(3 * 60_000);
+    const bearer = waitForBearerToken(page);
+    await loginStaff(page, staff.marketing);
+    const id = await createDraftInPanel(page, newProduct("Tabulator"));
+    const headers = { Authorization: `Bearer ${await bearer}` };
+    const stored = async () => (await (await request.get(`${urls.api}/api/v1/admin/products/${id}`, { headers })).json()) as Record<string, unknown>;
+    const before = await stored();
+    const requests: unknown[] = [];
+    page.on("request", (sent) => {
+      if (sent.method() === "PUT" && sent.url().includes(`/api/v1/admin/products/${id}`)) requests.push(sent.postDataJSON());
+    });
+
+    // The brand with a tab at the end.
+    await page.getByTestId("brand").fill("Marka\t");
+    await page.getByTestId("save").click();
+    await expect(page.getByTestId("error-brand"), "the API refuses the tab at the end of the brand").toHaveText("Marka zawiera niedozwolone znaki.");
+    await expect(page.getByTestId("brand")).toHaveAttribute("aria-invalid", "true");
+    expect(requests.at(-1), "the request carries the brand as it was typed").toMatchObject({ brand: "Marka\t" });
+    await expect(page.getByTestId("brand"), "the form keeps what was typed").toHaveValue("Marka\t");
+    expect((await stored()).version, "nothing was saved").toBe(before.version);
+    expect((await stored()).brand).toBe("");
+
+    // A value of a parameter with U+2028 at the edge.
+    await page.getByTestId("brand").fill("");
+    await page.getByTestId("add-parameter").click();
+    await page.getByTestId("parameter-name").first().fill("Waga");
+    await page.getByTestId("parameter-value").first().fill("2 kg\u{2028}");
+    await page.getByTestId("save").click();
+    await expect(page.getByTestId("parameter-error").first()).toHaveText("Wartość parametru zawiera niedozwolone znaki.");
+    expect(requests.at(-1)).toMatchObject({ parameters: [{ name: "Waga", value: "2 kg\u{2028}" }] });
+    expect((await stored()).version, "nothing was saved").toBe(before.version);
+    expect((await stored()).parameters).toEqual([]);
+
+    // A carriage return in the description cannot be typed (a textarea turns it into a line feed): the API is asked directly.
+    const view = await stored();
+    const refused = await request.put(`${urls.api}/api/v1/admin/products/${id}`, {
+      headers,
+      data: {
+        version: view.version,
+        name: view.name,
+        slug: view.slug,
+        shortDescription: view.shortDescription,
+        brand: view.brand,
+        description: "Pierwszy akapit.\r\nDrugi akapit.",
+        parameters: view.parameters,
+        mainCategoryId: view.mainCategoryId,
+        additionalCategoryIds: view.additionalCategoryIds,
+        taxClass: view.taxClass,
+        images: (view.images as { key: string; alt: string }[]).map((image) => ({ key: image.key, alt: image.alt })),
+        variantAxes: view.variantAxes,
+        variants: view.variants,
+      },
+    });
+    expect(refused.status()).toBe(422);
+    const problem = (await refused.json()) as { violations: { propertyPath: string; title: string }[] };
+    expect(problem.violations.map(({ propertyPath, title }) => ({ propertyPath, title }))).toEqual([{ propertyPath: "description", title: "Opis zawiera niedozwolone znaki." }]);
+    expect((await stored()).description).toBe("");
+  });
+
+  test("the fields and the section fit a 375 px screen and are operated from the keyboard", async ({ page }) => {
+    test.setTimeout(3 * 60_000);
+    await loginStaff(page, staff.marketing);
+    const id = await createDraftInPanel(page, newProduct("Telefon"));
+    await page.setViewportSize(viewports.phone);
+    await page.goto(`${urls.admin}/products/${id}`);
+    await expect(page.getByTestId("brand")).toBeVisible();
+
+    // A parameter added with the keyboard: Enter on the button, the focus on the name, Tab to the value.
+    await page.getByTestId("add-parameter").focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("parameter-name").first(), "the focus goes to the name of the new row").toBeFocused();
+    await page.keyboard.type("N".repeat(60));
+    await page.keyboard.press("Tab");
+    await expect(page.getByTestId("parameter-value").first()).toBeFocused();
+    await page.keyboard.type("W".repeat(200));
+    await page.getByTestId("add-parameter").focus();
+    await page.keyboard.press("Space");
+    await expect(page.getByTestId("parameter-name").nth(1)).toBeFocused();
+    await page.keyboard.type("Druga");
+
+    await page.getByTestId("brand").fill("M".repeat(60));
+    await page.getByTestId("description").fill("D".repeat(300));
+    const widths = await documentWidths(page);
+    expect(widths.scrollWidth, "the page does not scroll sideways").toBe(widths.clientWidth);
+    for (const [what, locator] of [
+      ["the brand", page.getByTestId("brand")],
+      ["the description", page.getByTestId("description")],
+      ["the name of a parameter", page.getByTestId("parameter-name").first()],
+      ["the value of a parameter", page.getByTestId("parameter-value").first()],
+      ["the button that moves a parameter up", page.getByTestId("parameter-up").nth(1)],
+      ["the button that removes a parameter", page.getByTestId("parameter-remove").nth(1)],
+      ["the button that adds a parameter", page.getByTestId("add-parameter")],
+    ] as const) {
+      await locator.scrollIntoViewIfNeeded();
+      await expectWithinWidth(locator, viewports.phone.width, what);
+    }
+
+    // Removing a parameter with the keyboard puts the focus on the next row; after the last one on „Dodaj parametr”.
+    await page.getByTestId("parameter-remove").first().focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("parameter-row")).toHaveCount(1);
+    await expect(page.getByTestId("parameter-name").first()).toBeFocused();
+    await expect(page.getByTestId("parameter-name").first()).toHaveValue("Druga");
+    await page.getByTestId("parameter-remove").first().focus();
+    await page.keyboard.press("Space");
+    await expect(page.getByTestId("parameter-row")).toHaveCount(0);
+    await expect(page.getByTestId("add-parameter")).toBeFocused();
   });
 });

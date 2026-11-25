@@ -297,6 +297,38 @@ final class CreateProductHandlerTest extends TestCase
         self::assertInstanceOf(ProductCreated::class, $this->events->published[0]);
     }
 
+    public function testTheBrandTheDescriptionAndTheParametersAreSavedAsGivenAndTrimmed(): void
+    {
+        ($this->handler)($this->command(
+            brand: "\u{00A0}Hallen\u{200B}",
+            description: "Pierwszy akapit.\n\nDrugi akapit.\n",
+            parameters: [['name' => 'Liczba osób', 'value' => '4'], ['name' => ' Waga', 'value' => '2,4 kg ']],
+        ));
+
+        $product = $this->products->get(ProductId::fromString(self::PRODUCT_ID));
+        self::assertSame('Hallen', $product->brand()->value());
+        self::assertSame("Pierwszy akapit.\n\nDrugi akapit.", $product->description()->value());
+        self::assertSame([['Liczba osób', '4'], ['Waga', '2,4 kg']], array_map(static fn ($parameter): array => [$parameter->name(), $parameter->value()], $product->parameters()->toList()));
+    }
+
+    public function testAnInvalidBrandDescriptionOrParameterSavesNothing(): void
+    {
+        foreach ([
+            $this->command(brand: "Hallen\t"),
+            $this->command(description: "Opis\r"),
+            $this->command(parameters: [['name' => 'a', 'value' => 'b'], ['name' => 'A', 'value' => 'c']]),
+        ] as $invalid) {
+            try {
+                ($this->handler)($invalid);
+                self::fail('Expected a refusal.');
+            } catch (\InvalidArgumentException) {
+            }
+        }
+
+        self::assertSame(0, $this->products->count());
+        self::assertSame([], $this->events->published);
+    }
+
     public function testAnEmptySlugIsDerivedFromTheName(): void
     {
         ($this->handler)($this->command(name: 'Plecak Śnieżka 30 L', slug: ''));
@@ -321,6 +353,7 @@ final class CreateProductHandlerTest extends TestCase
      * @param list<string>                                       $variantAxes
      * @param list<array{id: string, values: list<string>}>|null $variants              null: the default variant
      * @param list<array{key: string, alt: string}>|null         $images                null: one image with an original
+     * @param list<array{name: string, value: string}>           $parameters
      */
     private function command(
         string $id = self::PRODUCT_ID,
@@ -333,12 +366,18 @@ final class CreateProductHandlerTest extends TestCase
         ProductStatus $status = ProductStatus::Draft,
         ?string $actorId = 'staff-sub-1',
         ?array $images = null,
+        string $brand = '',
+        string $description = '',
+        array $parameters = [],
     ): CreateProduct {
         return new CreateProduct(
             $id,
             $name,
             $slug,
             'Lekkie',
+            $brand,
+            $description,
+            $parameters,
             $mainCategoryId,
             $additionalCategoryIds,
             'standard',

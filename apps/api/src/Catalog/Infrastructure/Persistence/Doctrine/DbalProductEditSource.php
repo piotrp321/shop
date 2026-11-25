@@ -21,7 +21,7 @@ final readonly class DbalProductEditSource implements ProductEditSource
     public function find(ProductId $id): ?array
     {
         $product = $this->connection->fetchAssociative(
-            'SELECT id, version, status, first_published_at, name, slug, short_description, primary_category_id, tax_class, images, variant_axes, updated_at
+            'SELECT id, version, status, first_published_at, name, slug, short_description, brand, description, parameters, primary_category_id, tax_class, images, variant_axes, updated_at
              FROM catalog_product WHERE id = CAST(:id AS uuid)',
             ['id' => $id->toString()],
         );
@@ -30,6 +30,7 @@ final readonly class DbalProductEditSource implements ProductEditSource
         }
         \assert(\is_string($product['id']) && \is_int($product['version']) && \is_string($product['status']) && \is_string($product['name']));
         \assert(\is_string($product['slug']) && \is_string($product['short_description']) && \is_string($product['primary_category_id']));
+        \assert(\is_string($product['brand']) && \is_string($product['description']));
         \assert(\is_string($product['tax_class']) && \is_string($product['updated_at']));
         \assert(null === $product['first_published_at'] || \is_string($product['first_published_at']));
 
@@ -50,6 +51,9 @@ final readonly class DbalProductEditSource implements ProductEditSource
             'name' => $product['name'],
             'slug' => $product['slug'],
             'shortDescription' => $product['short_description'],
+            'brand' => $product['brand'],
+            'description' => $product['description'],
+            'parameters' => self::parameters($product['parameters']),
             'mainCategoryId' => $product['primary_category_id'],
             'additionalCategoryIds' => array_map(static fn (mixed $categoryId): string => \is_string($categoryId) ? $categoryId : throw new \UnexpectedValueException('Expected a category id.'), $additional),
             'taxClass' => $product['tax_class'],
@@ -75,6 +79,19 @@ final readonly class DbalProductEditSource implements ProductEditSource
 
         /** @var list<array{key: string, alt: string}> $images */
         return array_map(static fn (array $image): array => ['key' => $image['key'], 'alt' => $image['alt']], $images);
+    }
+
+    /**
+     * @return list<array{name: string, value: string}>
+     */
+    private static function parameters(mixed $json): array
+    {
+        \assert(\is_string($json));
+        $parameters = json_decode($json, true, flags: \JSON_THROW_ON_ERROR);
+        \assert(\is_array($parameters) && array_is_list($parameters));
+
+        /** @var list<array{name: string, value: string}> $parameters */
+        return array_map(static fn (array $parameter): array => ['name' => $parameter['name'], 'value' => $parameter['value']], $parameters);
     }
 
     /**

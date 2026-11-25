@@ -340,6 +340,10 @@ liczby i listy w miejscu tekstu.
 | `name` | `POST /admin/categories`, `PUT /admin/categories/{id}` | W | „Nazwa kategorii musi mieć od 1 do 100 znaków i nie może zawierać znaków sterujących.” | ten sam | „Nazwa kategorii musi być tekstem.” |
 | `name` | `POST /admin/products`, `PUT /admin/products/{id}` | W | „Podaj nazwę produktu.” | „Nazwa produktu zawiera niedozwolone znaki.” | „Podaj nazwę produktu.” |
 | `shortDescription` | te same | O, U+000A dozwolony | zapisany pusty opis | „Krótki opis zawiera niedozwolone znaki.” | „Krótki opis musi być tekstem.” |
+| `brand` | te same | O | zapisany brak marki | „Marka zawiera niedozwolone znaki.” | „Marka musi być tekstem.” |
+| `description` | te same | O, U+000A dozwolony | zapisany brak opisu | „Opis zawiera niedozwolone znaki.” | „Opis musi być tekstem.” |
+| `parameters[n].name` | te same | W | „Nazwa parametru musi mieć od 1 do 60 znaków.” | „Nazwa parametru zawiera niedozwolone znaki.” | „Nazwa parametru musi mieć od 1 do 60 znaków.” |
+| `parameters[n].value` | te same | W | „Wartość parametru musi mieć od 1 do 200 znaków.” | „Wartość parametru zawiera niedozwolone znaki.” | „Wartość parametru musi mieć od 1 do 200 znaków.” |
 | `images[n].alt` | te same | W | „Podaj tekst alternatywny zdjęcia.” | „Tekst alternatywny zawiera niedozwolone znaki.” | „Podaj tekst alternatywny zdjęcia.” |
 | `variantAxes[n]` | te same | W | „Nazwa osi musi mieć od 1 do 30 znaków.” | „Nazwa osi zawiera niedozwolone znaki.” | „Nazwa osi musi mieć od 1 do 30 znaków.” |
 | `variants[n].values[m]` | te same | W | „Wartość musi mieć od 1 do 40 znaków.” | „Wartość wariantu zawiera niedozwolone znaki.” | „Wartość musi mieć od 1 do 40 znaków.” |
@@ -443,7 +447,8 @@ Poza strażnikiem pól tekstowych są też parametry zapytań inne niż `q` (`pa
 
 Repozytoria i handlery odczytu odtwarzają teksty z wiersza nazwanym konstruktorem `stored()`, który nie waliduje i nie
 przycina: `DoctrineOrderRepository` (`Contact::stored`, `EmailAddress::stored`, `ShippingAddress::stored`),
-`DoctrineProductRepository` (`ProductName`, `ShortDescription`, `ProductImage`, `VariantAxes`, `VariantValues`),
+`DoctrineProductRepository` (`ProductName`, `ShortDescription`, `ProductBrand`, `ProductDescription`,
+`ProductParameter`, `ProductImage`, `VariantAxes`, `VariantValues`),
 `DoctrineCategoryRepository` (`CategoryName`), `DoctrineDeliveryMethodRepository` (`DeliveryMethodName`,
 `DeliveryMethodDescription`), handlery odczytu Catalog i odczyt generatora danych demo zamówień
 (`VariantValues::stored`). Walidują i przycinają tylko konstruktory zapisu (`of()`, `fromList()`, `fromString()`,

@@ -9,6 +9,7 @@ use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductModifiedConcurrently;
+use App\Catalog\Domain\Product\ProductParameter;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
@@ -22,6 +23,7 @@ use Doctrine\DBAL\Exception as DbalException;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Contracts\Service\ResetInterface;
 use Zenstruck\Foundry\Test\Factories;
@@ -100,6 +102,52 @@ final class ProductVersionTest extends KernelTestCase
         $this->products->save($this->changed($product, $main, [], ['name' => 'Another name']), null, null, new \DateTimeImmutable());
 
         self::assertSame(2, $this->version($product));
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function contentChanges(): iterable
+    {
+        yield 'the brand' => [['brand' => 'Hallen']];
+        yield 'the description' => [['description' => "Pierwszy.\n\nDrugi."]];
+        yield 'the parameters' => [['parameters' => [['name' => 'Waga', 'value' => '1 kg']]]];
+        yield 'the order of the parameters' => [['parameters' => [['name' => 'Kolor', 'value' => 'czarny'], ['name' => 'Waga', 'value' => '1 kg']]]];
+        yield 'a value of a parameter' => [['parameters' => [['name' => 'Waga', 'value' => '2 kg'], ['name' => 'Kolor', 'value' => 'czarny']]]];
+    }
+
+    /**
+     * @param array<string, mixed> $change
+     */
+    #[DataProvider('contentChanges')]
+    public function testChangingOnlyTheBrandTheDescriptionOrTheParametersIncrementsTheVersionAndIsPersisted(array $change): void
+    {
+        [$main] = $this->savedCategories(1);
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'brand' => 'Tarvik', 'description' => 'Opis', 'parameters' => [['name' => 'Waga', 'value' => '1 kg'], ['name' => 'Kolor', 'value' => 'czarny']]]);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
+        $this->entityManager->clear();
+
+        $this->products->save($this->changed($product, $main, [], $change), null, null, new \DateTimeImmutable());
+
+        self::assertSame(2, $this->version($product));
+        $this->entityManager->clear();
+        $stored = $this->products->get($product->id());
+        $expected = [...['brand' => 'Tarvik', 'description' => 'Opis', 'parameters' => [['name' => 'Waga', 'value' => '1 kg'], ['name' => 'Kolor', 'value' => 'czarny']]], ...$change];
+        self::assertSame($expected['brand'], $stored->brand()->value());
+        self::assertSame($expected['description'], $stored->description()->value());
+        self::assertSame($expected['parameters'], array_map(static fn (ProductParameter $parameter): array => ['name' => $parameter->name(), 'value' => $parameter->value()], $stored->parameters()->toList()));
+    }
+
+    public function testSavingTheSameBrandDescriptionAndParametersKeepsTheVersion(): void
+    {
+        [$main] = $this->savedCategories(1);
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'brand' => 'Tarvik', 'description' => 'Opis', 'parameters' => [['name' => 'Waga', 'value' => '1 kg'], ['name' => 'Kolor', 'value' => 'czarny']]]);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
+        $this->entityManager->clear();
+
+        $this->products->save($this->changed($product, $main, []), null, null, new \DateTimeImmutable());
+
+        self::assertSame(1, $this->version($product));
     }
 
     public function testChangingOnlyAdditionalCategoriesIncrementsTheVersion(): void
@@ -271,6 +319,9 @@ final class ProductVersionTest extends KernelTestCase
             $product->name(),
             $product->slug(),
             $product->shortDescription(),
+            $product->brand(),
+            $product->description(),
+            $product->parameters(),
             $product->categories(),
             $product->taxClass(),
             ProductImages::fromList(array_map(
@@ -313,7 +364,7 @@ final class ProductVersionTest extends KernelTestCase
         );
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('secondWriterChanges')]
+    #[DataProvider('secondWriterChanges')]
     public function testSaveWaitingForARowLockHeldByAnotherProcessEndsInAConflict(bool $waitingWriterChangesName): void
     {
         $manager = $this->independentManager();
@@ -360,7 +411,7 @@ final class ProductVersionTest extends KernelTestCase
         yield 'name and additional categories' => [true];
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('secondWriterChanges')]
+    #[DataProvider('secondWriterChanges')]
     public function testConcurrentWriteBasedOnStaleReadIsRejectedWithoutChangingTables(bool $secondChangesName): void
     {
         $first = $this->independentManager();
@@ -552,6 +603,12 @@ final class ProductVersionTest extends KernelTestCase
             'mainCategory' => $main,
             'additionalCategories' => $additional,
             'imageAlts' => $imageAlts,
+            'brand' => $product->brand()->value(),
+            'description' => $product->description()->value(),
+            'parameters' => array_map(
+                static fn (ProductParameter $parameter): array => ['name' => $parameter->name(), 'value' => $parameter->value()],
+                $product->parameters()->toList(),
+            ),
             'variantAxes' => $product->variantAxes()->names(),
             'variants' => array_map(
                 static fn (ProductVariant $variant): array => ['id' => $variant->id()->toString(), 'values' => $variant->values()->toList()],

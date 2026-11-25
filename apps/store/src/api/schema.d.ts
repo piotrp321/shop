@@ -706,6 +706,15 @@ export interface components {
             /** @example Buty szosowe Tarvik Asfalt 200 */
             name: string;
             shortDescription: string;
+            /**
+             * @description The brand of the product; empty when it has none.
+             * @example Hallen
+             */
+            brand: string;
+            /** @description The description in paragraphs separated by an empty line, plain text (never markup); empty when the product has none. */
+            description: string;
+            /** @description The parameters of the product (name and value) in presentation order; empty when it has none. */
+            parameters: components["schemas"]["ProductParameter"][];
             /** @description The categories from the root to the main category of the product. */
             breadcrumb: components["schemas"]["BreadcrumbItem"][];
             /** @description All the images of the product in position order, the first is the main one (size `product`). */
@@ -722,6 +731,12 @@ export interface components {
             variantAxes: string[];
             /** @description The variants in position order. */
             variants: components["schemas"]["ProductDetailsVariant"][];
+        };
+        ProductParameter: {
+            /** @example Liczba osób */
+            name: string;
+            /** @example 4 */
+            value: string;
         };
         BreadcrumbItem: {
             /** Format: uuid */

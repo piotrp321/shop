@@ -7,11 +7,15 @@ namespace App\Tests\Unit\Catalog\Domain;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductBrand;
 use App\Catalog\Domain\Product\ProductCategories;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductParameter;
+use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
@@ -33,9 +37,10 @@ final class StoredProducts
     public const string FIRST_PUBLISHED_AT = '2026-11-01T10:00:00+00:00';
 
     /**
-     * @param list<string>                                       $imageAlts one image per alt text
+     * @param list<string>                                       $imageAlts  one image per alt text
      * @param list<string>                                       $axes
-     * @param list<array{id: string, values: list<string>}>|null $variants  null: one default variant
+     * @param list<array{id: string, values: list<string>}>|null $variants   null: one default variant
+     * @param list<array{name: string, value: string}>           $parameters
      */
     public static function product(
         ProductStatus $status = ProductStatus::Draft,
@@ -44,12 +49,18 @@ final class StoredProducts
         array $axes = [],
         ?array $variants = null,
         int $version = 3,
+        string $brand = '',
+        string $description = '',
+        array $parameters = [],
     ): Product {
         return Product::reconstitute(
             ProductId::fromString(self::PRODUCT_ID),
             ProductName::of('Buty biegowe'),
             new Slug(self::SLUG),
             ShortDescription::of(''),
+            ProductBrand::of($brand),
+            ProductDescription::of($description),
+            ProductParameters::create(array_map(static fn (array $parameter): ProductParameter => ProductParameter::of($parameter['name'], $parameter['value']), $parameters)),
             ProductCategories::create(CategoryId::fromString(self::CATEGORY_ID)),
             TaxClassCode::Standard,
             self::images($imageAlts),
@@ -109,6 +120,9 @@ final class StoredProducts
             ProductName::of('Buty biegowe'),
             new Slug(self::SLUG),
             ShortDescription::of(''),
+            ProductBrand::of(''),
+            ProductDescription::of(''),
+            ProductParameters::create([]),
             ProductCategories::create(CategoryId::fromString(self::CATEGORY_ID)),
             TaxClassCode::Standard,
             self::images(['front']),

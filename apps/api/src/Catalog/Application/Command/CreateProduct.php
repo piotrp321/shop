@@ -10,6 +10,7 @@ final readonly class CreateProduct
 {
     /**
      * @param string                                        $slug                  empty: derived from the name
+     * @param list<array{name: string, value: string}>      $parameters            in presentation order
      * @param list<string>                                  $additionalCategoryIds
      * @param list<array{key: string, alt: string}>         $images                in position order
      * @param list<string>                                  $variantAxes           0 to 2 axis names, e.g. ["Kolor", "Rozmiar"]
@@ -22,6 +23,9 @@ final readonly class CreateProduct
         public string $name,
         public string $slug,
         public string $shortDescription,
+        public string $brand,
+        public string $description,
+        public array $parameters,
         public string $mainCategoryId,
         public array $additionalCategoryIds,
         public string $taxClass,

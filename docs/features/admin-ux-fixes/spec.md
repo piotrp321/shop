@@ -480,7 +480,15 @@ zostają w formularzu.”
   (wariant utworzony na serwerze): wiersz usunięty i dodany od nowa z tą samą wartością zostaje przy starym
   identyfikatorze na serwerze, który nie wykonał zapisu, więc nie jest zgodny. Nie ma zgodności, gdy ze szkicu nie da się zbudować żądania, gdy szkic zawiera
   wartość nadawaną przez serwer (początek „Od teraz”, pusty slug) albo gdy nieznany wynik dotyczy publikacji lub
-  wycofania, a status w odpowiedzi nie jest docelowy. Każda inna różnica, także przycięte spacje, to brak zgodności.
+  wycofania, a status w odpowiedzi nie jest docelowy. Każda inna różnica, także przycięte spacje, to brak zgodności,
+  z jednym wyjątkiem: nowe pola produktu (marka, opis, parametry) są porównywane po normalizacji API, bo API je
+  przycina, a zapis, który serwer wykonał, ma je bez brzegów. Szkic przechodzi wtedy przez kopię reguły tekstu T1–T3
+  (`docs/features/api-input-contract/spec.md`, „Etap 2: reguła tekstu”) w kolejności API: znak niedozwolony (T1) w polu
+  daje szkic, który nie jest zgodny z żadnym stanem serwera, potem znikają znaki brzegów (T2), a tekst bez znaku
+  widocznego (T3) to brak wartości. Normalizacja służy tylko porównaniu: nie zmienia pól formularza, wysyłanego żądania
+  (to, co wpisał pracownik, idzie do API bez przycinania) ani wykrywania niezapisanych zmian, a zgodność kopii z API
+  sprawdza test E2E na prawdziwym API (`e2e/tests/catalog-admin.spec.ts`). Istniejące pola (nazwa, krótki opis, teksty
+  zdjęć, osie i wartości wariantów) zostają przy ścisłym porównaniu.
   Porównywany jest szkic z chwili odpowiedzi odczytu, nie treść wysłanego zapisu: zmiana wpisana po odblokowaniu,
   której serwer nie ma, daje brak zgodności.
 - Zgodne: formularz przyjmuje obiekt z odpowiedzi (wersja, status, stan bazowy), komunikat nieznanego wyniku znika,

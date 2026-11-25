@@ -36,6 +36,9 @@ final class ProductWriteValidationTest extends TestCase
             'name' => 'Buty biegowe',
             'slug' => 'buty-biegowe',
             'shortDescription' => 'Lekkie',
+            'brand' => 'Hallen',
+            'description' => "Pierwszy akapit.\n\nDrugi akapit.",
+            'parameters' => [['name' => 'Waga', 'value' => '2,4 kg']],
             'mainCategoryId' => self::UUID_A,
             'additionalCategoryIds' => [self::UUID_B],
             'taxClass' => 'standard',
@@ -86,6 +89,44 @@ final class ProductWriteValidationTest extends TestCase
         yield 'a slug with a double dash' => [self::with(['slug' => 'buty--biegowe']), ['slug' => 'Slug może zawierać tylko małe litery bez polskich znaków, cyfry i pojedyncze myślniki.']];
         yield 'a short description that is no text' => [self::with(['shortDescription' => ['x']]), ['shortDescription' => 'Krótki opis musi być tekstem.']];
         yield 'a short description over 500 characters' => [self::with(['shortDescription' => str_repeat('a', 501)]), ['shortDescription' => 'Krótki opis może mieć najwyżej 500 znaków.']];
+
+        yield 'no brand, description and parameters' => [self::with(['brand' => '', 'description' => '', 'parameters' => []]), []];
+        yield 'the content at the edge of its limits' => [self::with([
+            'brand' => str_repeat('ż', 60),
+            'description' => str_repeat('ż', 5000),
+            'parameters' => array_map(static fn (int $n): array => ['name' => str_pad((string) $n, 60, 'x'), 'value' => str_repeat('ż', 200)], range(1, 30)),
+        ]), []];
+        yield 'a missing brand' => [self::with(['brand' => null]), ['brand' => 'Marka musi być tekstem.']];
+        yield 'a brand that is no text' => [self::with(['brand' => 5]), ['brand' => 'Marka musi być tekstem.']];
+        yield 'a brand that is a list' => [self::with(['brand' => ['Hallen']]), ['brand' => 'Marka musi być tekstem.']];
+        yield 'a brand over 60 characters' => [self::with(['brand' => str_repeat('a', 61)]), ['brand' => 'Marka może mieć najwyżej 60 znaków.']];
+        yield 'a blank brand' => [self::with(['brand' => " \u{00A0}\u{200B}"]), []];
+        yield 'a brand of 60 characters with spaces around' => [self::with(['brand' => " \u{00A0}".str_repeat('a', 60)."\u{3000}"]), []];
+        yield 'a missing description' => [self::with(['description' => null]), ['description' => 'Opis musi być tekstem.']];
+        yield 'a description that is no text' => [self::with(['description' => 5]), ['description' => 'Opis musi być tekstem.']];
+        yield 'a description over 5000 characters' => [self::with(['description' => str_repeat('a', 5001)]), ['description' => 'Opis może mieć najwyżej 5000 znaków.']];
+        yield 'a description of 5000 characters with line feeds around' => [self::with(['description' => "\n".str_repeat('a', 5000)."\n"]), []];
+        yield 'a description with a line feed inside' => [self::with(['description' => "Linia 1\nLinia 2\n\nAkapit"]), []];
+        yield 'missing parameters' => [self::with(['parameters' => null]), ['parameters' => 'Parametry muszą być listą.']];
+        yield 'parameters that are no list' => [self::with(['parameters' => 'Waga']), ['parameters' => 'Parametry muszą być listą.']];
+        yield 'parameters as an object' => [self::with(['parameters' => ['a' => ['name' => 'Waga', 'value' => '1']]]), ['parameters' => 'Parametry muszą być listą.']];
+        yield 'thirty-one parameters' => [self::with(['parameters' => array_map(static fn (int $n): array => ['name' => 'P'.$n, 'value' => 'x'], range(1, 31))]), ['parameters' => 'Produkt może mieć najwyżej 30 parametrów.']];
+        yield 'a parameter that is no object' => [self::with(['parameters' => [['name' => 'Waga', 'value' => '1'], 'x']]), ['parameters[1]' => 'Parametr musi mieć nazwę i wartość.']];
+        yield 'a parameter that is a list' => [self::with(['parameters' => [['Waga', '1']]]), ['parameters[0]' => 'Parametr musi mieć nazwę i wartość.']];
+        yield 'a parameter without a name key' => [self::with(['parameters' => [['value' => '1']]]), ['parameters[0]' => 'Parametr musi mieć nazwę i wartość.']];
+        yield 'a parameter without a value key' => [self::with(['parameters' => [['name' => 'Waga']]]), ['parameters[0]' => 'Parametr musi mieć nazwę i wartość.']];
+        yield 'an empty parameter object' => [self::with(['parameters' => [[]]]), ['parameters[0]' => 'Parametr musi mieć nazwę i wartość.']];
+        yield 'a parameter name that is no text' => [self::with(['parameters' => [['name' => 7, 'value' => '1']]]), ['parameters[0].name' => 'Nazwa parametru musi mieć od 1 do 60 znaków.']];
+        yield 'a null parameter name' => [self::with(['parameters' => [['name' => null, 'value' => '1']]]), ['parameters[0].name' => 'Nazwa parametru musi mieć od 1 do 60 znaków.']];
+        yield 'a blank parameter name' => [self::with(['parameters' => [['name' => " \u{00A0}\u{200B}", 'value' => '1']]]), ['parameters[0].name' => 'Nazwa parametru musi mieć od 1 do 60 znaków.']];
+        yield 'a parameter name over 60 characters' => [self::with(['parameters' => [['name' => str_repeat('a', 61), 'value' => '1']]]), ['parameters[0].name' => 'Nazwa parametru musi mieć od 1 do 60 znaków.']];
+        yield 'a parameter value that is no text' => [self::with(['parameters' => [['name' => 'Waga', 'value' => 7]]]), ['parameters[0].value' => 'Wartość parametru musi mieć od 1 do 200 znaków.']];
+        yield 'a blank parameter value' => [self::with(['parameters' => [['name' => 'Waga', 'value' => "\u{3000}"]]]), ['parameters[0].value' => 'Wartość parametru musi mieć od 1 do 200 znaków.']];
+        yield 'a parameter value over 200 characters' => [self::with(['parameters' => [['name' => 'Waga', 'value' => str_repeat('a', 201)]]]), ['parameters[0].value' => 'Wartość parametru musi mieć od 1 do 200 znaków.']];
+        yield 'a repeated parameter name' => [self::with(['parameters' => [['name' => 'Waga', 'value' => '1'], ['name' => 'Kolor', 'value' => 'x'], ['name' => ' WAGA', 'value' => '2']]]), ['parameters[2].name' => 'Parametr o tej nazwie już jest na liście.']];
+        yield 'a repeated parameter name in Polish capitals' => [self::with(['parameters' => [['name' => 'Żywotność', 'value' => '1'], ['name' => 'ŻYWOTNOŚĆ', 'value' => '2']]]), ['parameters[1].name' => 'Parametr o tej nazwie już jest na liście.']];
+        yield 'a repeated parameter name with invisible characters' => [self::with(['parameters' => [['name' => 'Waga', 'value' => '1'], ['name' => "\u{200B}waga\u{00A0}", 'value' => '2']]]), ['parameters[1].name' => 'Parametr o tej nazwie już jest na liście.']];
+        yield 'the same value in two parameters' => [self::with(['parameters' => [['name' => 'Waga', 'value' => '1'], ['name' => 'Masa', 'value' => '1']]]), []];
 
         yield 'a missing main category' => [self::with(['mainCategoryId' => null]), ['mainCategoryId' => 'Wybierz kategorię główną.']];
         yield 'a main category that is no uuid' => [self::with(['mainCategoryId' => 'sport']), ['mainCategoryId' => 'Wybierz kategorię główną.']];
@@ -144,6 +185,16 @@ final class ProductWriteValidationTest extends TestCase
             yield "an axis name with $label" => [self::with(['variantAxes' => [$text], 'variants' => [['variantId' => null, 'values' => ['a']]]]), ['variantAxes[0]' => 'Nazwa osi zawiera niedozwolone znaki.']];
             yield "a value with $label" => [self::with(['variants' => [['variantId' => null, 'values' => ['a', $text]]]]), ['variants[0].values[1]' => 'Wartość wariantu zawiera niedozwolone znaki.']];
         }
+        foreach ($forbidden as $label => $text) {
+            yield "a brand with $label" => [self::with(['brand' => $text]), ['brand' => 'Marka zawiera niedozwolone znaki.']];
+            yield "a description with $label" => [self::with(['description' => $text]), ['description' => 'Opis zawiera niedozwolone znaki.']];
+            yield "a parameter name with $label" => [self::with(['parameters' => [['name' => $text, 'value' => 'x']]]), ['parameters[0].name' => 'Nazwa parametru zawiera niedozwolone znaki.']];
+            yield "a parameter value with $label" => [self::with(['parameters' => [['name' => 'Waga', 'value' => $text]]]), ['parameters[0].value' => 'Wartość parametru zawiera niedozwolone znaki.']];
+        }
+        yield 'a brand with a line feed' => [self::with(['brand' => "Hal\nlen"]), ['brand' => 'Marka zawiera niedozwolone znaki.']];
+        yield 'a description with a carriage return' => [self::with(['description' => "Linia 1\r\nLinia 2"]), ['description' => 'Opis zawiera niedozwolone znaki.']];
+        yield 'a parameter value with a line feed' => [self::with(['parameters' => [['name' => 'Waga', 'value' => "1\n2"]]]), ['parameters[0].value' => 'Wartość parametru zawiera niedozwolone znaki.']];
+        yield 'a description with U+2028 at the end' => [self::with(['description' => "Opis\u{2028}"]), ['description' => 'Opis zawiera niedozwolone znaki.']];
         yield 'a short description with a line feed' => [self::with(['shortDescription' => "Linia 1\nLinia 2"]), []];
         yield 'a short description of only whitespace' => [self::with(['shortDescription' => "\u{00A0}\n\u{3000}"]), []];
         yield 'a name with a line feed' => [self::with(['name' => "a\nb"]), ['name' => 'Nazwa produktu zawiera niedozwolone znaki.']];
@@ -159,9 +210,11 @@ final class ProductWriteValidationTest extends TestCase
         yield 'a repeated axis name with non-breaking spaces' => [self::with(['variantAxes' => ['Kolor', "\u{00A0}kolor"]]), ['variantAxes[1]' => 'Nazwa osi już jest użyta.']];
 
         yield 'several mistakes at once, in the order of the body' => [
-            self::with(['name' => '', 'taxClass' => 'x', 'images' => [['key' => 'k', 'alt' => '']], 'variants' => [['variantId' => 'z', 'values' => []]]]),
+            self::with(['name' => '', 'brand' => null, 'parameters' => [['name' => 'Waga', 'value' => '']], 'taxClass' => 'x', 'images' => [['key' => 'k', 'alt' => '']], 'variants' => [['variantId' => 'z', 'values' => []]]]),
             [
                 'name' => 'Podaj nazwę produktu.',
+                'brand' => 'Marka musi być tekstem.',
+                'parameters[0].value' => 'Wartość parametru musi mieć od 1 do 200 znaków.',
                 'taxClass' => 'Wybierz klasę podatkową.',
                 'images[0].key' => 'Klucz zdjęcia jest nieprawidłowy.',
                 'images[0].alt' => 'Podaj tekst alternatywny zdjęcia.',

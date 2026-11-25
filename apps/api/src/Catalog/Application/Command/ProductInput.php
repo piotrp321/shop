@@ -14,6 +14,8 @@ use App\Catalog\Domain\Product\ImageNotFound;
 use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductImages;
+use App\Catalog\Domain\Product\ProductParameter;
+use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\UnknownCategory;
@@ -25,6 +27,19 @@ final readonly class ProductInput
 {
     public function __construct(private CategoryRepository $categories, private ProductImageStorage $imageStorage)
     {
+    }
+
+    /**
+     * @param list<array{name: string, value: string}> $parameters in presentation order
+     *
+     * @throws \InvalidArgumentException
+     */
+    public static function parameters(array $parameters): ProductParameters
+    {
+        return ProductParameters::create(array_map(
+            static fn (array $parameter): ProductParameter => ProductParameter::of($parameter['name'], $parameter['value']),
+            $parameters,
+        ));
     }
 
     /**

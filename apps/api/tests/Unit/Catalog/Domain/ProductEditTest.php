@@ -7,10 +7,14 @@ namespace App\Tests\Unit\Catalog\Domain;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Product\IdentityText;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductBrand;
 use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductChanged;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ProductNotPublishable;
+use App\Catalog\Domain\Product\ProductParameter;
+use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
@@ -61,6 +65,58 @@ final class ProductEditTest extends TestCase
         self::assertSame(StoredProducts::PRODUCT_ID, $events[0]->productId);
         self::assertSame('buty-trailowe', $events[0]->slug);
         self::assertEquals(new \DateTimeImmutable(self::NOW), $events[0]->occurredAt());
+    }
+
+    public function testEditReplacesTheBrandTheDescriptionAndTheParametersInTheirOrder(): void
+    {
+        $product = StoredProducts::product();
+
+        $this->edit($product, brand: 'Hallen', longDescription: "Pierwszy akapit.\n\nDrugi akapit.", parameters: [['name' => 'Waga', 'value' => '2,4 kg'], ['name' => 'Liczba osób', 'value' => '4']]);
+
+        self::assertSame('Hallen', $product->brand()->value());
+        self::assertSame("Pierwszy akapit.\n\nDrugi akapit.", $product->description()->value());
+        self::assertSame([['Waga', '2,4 kg'], ['Liczba osób', '4']], array_map(
+            static fn (ProductParameter $parameter): array => [$parameter->name(), $parameter->value()],
+            $product->parameters()->toList(),
+        ));
+    }
+
+    public function testEditRemovesTheContentWhenTheNewValuesAreEmpty(): void
+    {
+        $product = StoredProducts::product(brand: 'Hallen', description: 'Opis', parameters: [['name' => 'Waga', 'value' => '1 kg']]);
+
+        $this->edit($product);
+
+        self::assertSame('', $product->brand()->value());
+        self::assertSame('', $product->description()->value());
+        self::assertTrue($product->parameters()->isEmpty());
+    }
+
+    public function testAChangeOfOnlyTheBrandTheDescriptionOrTheParametersRecordsProductChangedOnce(): void
+    {
+        $changes = [
+            fn (Product $product) => $this->edit($product, brand: 'Hallen'),
+            fn (Product $product) => $this->edit($product, longDescription: 'Opis'),
+            fn (Product $product) => $this->edit($product, parameters: [['name' => 'Waga', 'value' => '1 kg']]),
+        ];
+        foreach ($changes as $change) {
+            $product = StoredProducts::published();
+
+            $change($product);
+
+            $events = $product->releaseEvents();
+            self::assertCount(1, $events);
+            self::assertInstanceOf(ProductChanged::class, $events[0]);
+        }
+    }
+
+    public function testTheBrandTheDescriptionAndTheParametersAreNotPartOfTheIdentityOfAPublishedProduct(): void
+    {
+        $product = StoredProducts::published(axes: self::AXES, variants: self::VARIANTS);
+
+        $this->edit($product, brand: 'Inna marka', longDescription: 'Nowy opis', parameters: [['name' => 'Waga', 'value' => '1 kg']], axes: self::AXES, variants: self::VARIANTS);
+
+        self::assertSame('Inna marka', $product->brand()->value());
     }
 
     public function testAnUnchangedEditStillRecordsProductChanged(): void
@@ -676,9 +732,10 @@ final class ProductEditTest extends TestCase
     }
 
     /**
+     * @param list<array{name: string, value: string}>           $parameters
      * @param list<string>                                       $imageAlts
      * @param list<string>                                       $axes
-     * @param list<array{id: string, values: list<string>}>|null $variants  null: the variants of the product
+     * @param list<array{id: string, values: list<string>}>|null $variants   null: the variants of the product
      * @param list<string>                                       $inUse
      */
     private function edit(
@@ -686,6 +743,9 @@ final class ProductEditTest extends TestCase
         string $name = 'Buty biegowe',
         string $slug = StoredProducts::SLUG,
         string $description = '',
+        string $brand = '',
+        string $longDescription = '',
+        array $parameters = [],
         array $imageAlts = ['front'],
         TaxClassCode $taxClass = TaxClassCode::Standard,
         ?array $axes = null,
@@ -696,6 +756,9 @@ final class ProductEditTest extends TestCase
             ProductName::of($name),
             new Slug($slug),
             ShortDescription::of($description),
+            ProductBrand::of($brand),
+            ProductDescription::of($longDescription),
+            ProductParameters::create(array_map(static fn (array $parameter): ProductParameter => ProductParameter::of($parameter['name'], $parameter['value']), $parameters)),
             ProductCategories::create(CategoryId::fromString(self::OTHER_CATEGORY)),
             $taxClass,
             StoredProducts::images($imageAlts),

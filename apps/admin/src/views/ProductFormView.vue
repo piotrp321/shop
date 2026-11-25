@@ -21,12 +21,15 @@ import { useCategoryTree } from "@/composables/useCategoryTree";
 import { useUnsavedChangesGuard } from "@/composables/useUnsavedChangesGuard";
 import { canManageProducts } from "@/products/permissions";
 import ProductImages from "@/products/ProductImages.vue";
+import ProductParameters from "@/products/ProductParameters.vue";
 import ProductPriceStock from "@/products/ProductPriceStock.vue";
 import ProductVariants from "@/products/ProductVariants.vue";
 import { type ActionResult, useProductForm } from "@/products/useProductForm";
 import { useAuthStore } from "@/stores/auth";
 
 const SHORT_DESCRIPTION_LIMIT = 500;
+const DESCRIPTION_LIMIT = 5000;
+const BRAND_LIMIT = 60;
 
 // What a failed action moves the focus to: the first error mark or field marked invalid, in the order of the document;
 // a disabled field cannot take focus.
@@ -59,6 +62,8 @@ const {
   imagesErrors,
   variantsErrors,
   axesLocked,
+  parametersErrors,
+  canAddParameter,
   errorsAt,
   errorsExactly,
   upload,
@@ -68,6 +73,10 @@ const {
   discard,
   moveImage,
   removeImage,
+  addParameter,
+  removeParameter,
+  moveParameter,
+  setParameter,
   addAxis,
   setAxis,
   removeAxis,
@@ -148,6 +157,7 @@ const { open: leaveOpen, leave } = useUnsavedChangesGuard(() => dirty.value || u
 const { nodes: categories, error: categoriesError } = useCategoryTree();
 
 const descriptionLength = computed(() => [...data.value.shortDescription].length);
+const longDescriptionLength = computed(() => [...data.value.description].length);
 const slugDisabled = computed(() => readOnly.value || (view.value?.slugLocked ?? false));
 const taxClassName = computed(() => taxClasses.value.find((taxClass) => taxClass.code === data.value.taxClass)?.name);
 const publishReasonId = useId();
@@ -361,6 +371,25 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
               </FormField>
 
               <FormField
+                control-id="product-brand"
+                label="Marka"
+                :errors="errorsAt('brand')"
+                error-testid="error-brand"
+              >
+                <template #default="{ describedBy, invalid }">
+                  <Input
+                    id="product-brand"
+                    v-model="data.brand"
+                    data-testid="brand"
+                    :maxlength="BRAND_LIMIT"
+                    :disabled="readOnly"
+                    :aria-invalid="invalid ? 'true' : undefined"
+                    :aria-describedby="describedBy"
+                  />
+                </template>
+              </FormField>
+
+              <FormField
                 control-id="product-slug"
                 label="Slug"
                 :errors="errorsAt('slug')"
@@ -415,6 +444,29 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
               </FormField>
 
               <FormField
+                control-id="product-long-description"
+                label="Opis"
+                :errors="errorsAt('description')"
+                error-testid="error-description"
+              >
+                <template #default="{ describedBy, invalid }">
+                  <Textarea
+                    id="product-long-description"
+                    v-model="data.description"
+                    data-testid="description"
+                    rows="10"
+                    :maxlength="DESCRIPTION_LIMIT"
+                    :disabled="readOnly"
+                    :aria-invalid="invalid ? 'true' : undefined"
+                    :aria-describedby="describedBy"
+                  />
+                </template>
+                <template #hint>
+                  <span data-testid="description-counter">{{ longDescriptionLength }}/{{ DESCRIPTION_LIMIT }}</span>
+                </template>
+              </FormField>
+
+              <FormField
                 control-id="product-tax-class"
                 label="Klasa podatkowa"
                 :errors="errorsAt('taxClass')"
@@ -450,6 +502,19 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
                 </template>
               </FormField>
             </FormSection>
+
+            <ProductParameters
+              :parameters="data.parameters"
+              :read-only="readOnly"
+              :can-add="canAddParameter"
+              :errors="parametersErrors"
+              :errors-at="errorsAt"
+              :errors-exactly="errorsExactly"
+              @add="addParameter"
+              @remove="removeParameter"
+              @move="moveParameter"
+              @set="setParameter"
+            />
 
             <ProductImages
               :images="data.images"

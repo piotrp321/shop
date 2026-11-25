@@ -8,10 +8,13 @@ use App\Catalog\Application\Command\CreateCategory;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductBrand;
 use App\Catalog\Domain\Product\ProductCategories;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
@@ -295,6 +298,9 @@ final class CatalogStepsTest extends KernelTestCase
             ProductName::of('Kontrakt'),
             new Slug('kontrakt-values-key'),
             ShortDescription::of(''),
+            ProductBrand::of(''),
+            ProductDescription::of(''),
+            ProductParameters::create([]),
             ProductCategories::create(CategoryId::fromString($category)),
             TaxClassCode::Standard,
             ProductImages::fromList([]),

@@ -89,6 +89,9 @@ final class GetProductBySlugTest extends KernelTestCase
             'slug' => 'buty',
             'name' => 'Buty Puls',
             'shortDescription' => 'Lekkie buty.',
+            'brand' => 'Puls',
+            'description' => "Pierwszy akapit.\n\nDrugi akapit.",
+            'parameters' => [['name' => 'Waga', 'value' => '250 g'], ['name' => 'Kolor', 'value' => 'czarny']],
             'mainCategory' => $this->categories['road'],
             'imageAlts' => ['Pierwsze', 'Drugie', 'Trzecie'],
         ]);
@@ -97,6 +100,8 @@ final class GetProductBySlugTest extends KernelTestCase
 
         self::assertSame($product->id()->toString(), $details->id);
         self::assertSame(['buty', 'Buty Puls', 'Lekkie buty.'], [$details->slug, $details->name, $details->shortDescription]);
+        self::assertSame(['Puls', "Pierwszy akapit.\n\nDrugi akapit."], [$details->brand, $details->description]);
+        self::assertSame([['Waga', '250 g'], ['Kolor', 'czarny']], array_map(static fn ($parameter): array => [$parameter->name, $parameter->value], $details->parameters));
         self::assertSame(['Pierwsze', 'Drugie', 'Trzecie'], array_map(static fn ($image): string => $image->alt, $details->images));
         $urls = self::getContainer()->get(ImageUrlGenerator::class);
         self::assertInstanceOf(ImageUrlGenerator::class, $urls);
