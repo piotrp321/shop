@@ -460,6 +460,44 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
     }
 
     /**
+     * Three variants stored with values that are one value once trimmed: each one after the first is a repeated
+     * combination, and the way out is the same as for two: the stock of a variant to remove corrected to zero, then
+     * the product saved without the repeated variants, the kept one with its identifier.
+     */
+    public function testThreeVariantsStoredWithOneValueAreSavedOnceTheRepeatedOnesAreRemoved(): void
+    {
+        $id = self::string($this->publish($this->createProduct([
+            'variants' => [['variantId' => null, 'values' => ['M']], ['variantId' => null, 'values' => ['L']], ['variantId' => null, 'values' => ['XL']]],
+        ]))['id']);
+        foreach ([1 => "M\u{200B}", 2 => "\u{FEFF}m"] as $position => $value) {
+            $this->connection->executeStatement('UPDATE catalog_product_variant SET option_values = jsonb_build_array(?::text) WHERE product_id = ? AND position = ?', [$value, $id, $position]);
+        }
+        $this->entityManager->clear();
+        $kept = $this->variant($id, 0);
+        $inStock = $this->variant($id, 2);
+        $receipt = $this->api('POST', '/api/v1/admin/variants/'.$inStock.'/stock/receipts', ['quantity' => 5, 'note' => null], server: ['HTTP_IDEMPOTENCY_KEY' => Uuid::v4()->toRfc4122()]);
+        self::assertResponseStatusCodeSame(201);
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view));
+        self::assertSame([
+            ['propertyPath' => 'variants[1].values', 'title' => 'Taki wariant już istnieje.'],
+            ['propertyPath' => 'variants[2].values', 'title' => 'Taki wariant już istnieje.'],
+        ], $this->violations());
+
+        $first = [self::list($view['variants'])[0]];
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variants' => $first]));
+        $this->assertProblem(409, 'variant-in-use');
+
+        $this->api('POST', '/api/v1/admin/variants/'.$inStock.'/stock/corrections', ['physical' => 0, 'version' => $receipt['version'], 'reason' => 'other', 'note' => 'Powtórzony wariant']);
+        self::assertResponseStatusCodeSame(200);
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variants' => $first]));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([['id' => $kept, 'option_values' => '["M"]']], $this->connection->fetchAllAssociative('SELECT id, option_values FROM catalog_product_variant WHERE product_id = ?', [$id]));
+    }
+
+    /**
      * The reads of variants other modules ask Catalog for (the summaries of the lines of a cart, the variants of the
      * stock list of the panel, the identities of the variants for the seeds) take a stored value outside the rule.
      */
