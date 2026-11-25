@@ -20,7 +20,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * The consistency check after the load (the last step of bin/generate-demo, also on its own). The catalog checks: a
  * published product without a variant, the counts of the tables against the profile, the slugs of the tail (unique,
- * different from the slugs of fixtures/catalog.yaml). The price checks: a variant without a price or history, a price
+ * different from the slugs of fixtures/catalog.yaml), a generated product without a brand, a description or parameters
+ * and a generated variant without a SKU or an EAN (the seed's own products and variants are left out). The price checks: a variant without a price or history, a price
  * that is not the rule of Pricing, the promotions (ended, at most 1000 variants, no overlap) and the discount codes.
  * The order and stock checks: the number of orders, a variant without a stock record, reserved stock that is not the
  * sum of the active reservations, a last movement that is not the stock, a paid order without an active reservation or

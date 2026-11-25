@@ -5,9 +5,11 @@
 # split into parts (products, orders); it is the same for every profile and does not depend on the number of
 # processes, so one run gives the same rows with one process and with many.
 # `diskPeakGb` is the estimate of the peak disk use of the whole stack (Postgres, Elasticsearch, Keycloak, WAL,
-# images, cluster), the base of the free space check before a run on k3d. medium is measured (the peak of the VM against the
-# reading before the start, rounded up to a whole GB; docs/reports/demo-load-medium-2026-11-19.md); server and full are
-# extrapolated from the sizes of that run and NOT verified by a measurement (docs/features/demo-data/spec.md, "k3d").
+# images, cluster), the base of the free space check before a run on k3d. All three profiles are estimates and none is
+# verified by a run with the current generator: the peak of the run of medium without the content fields of the products
+# (the peak of the VM against the reading before the start, 20.52 GB; docs/reports/demo-load-medium-2026-11-19.md; server
+# and full extrapolated from it) plus the estimated growth from the brand, description, parameters, SKU and EAN of the
+# products, rounded up to a whole GB (docs/features/demo-data/spec.md, "Rozmiar i czas pól treści produktów").
 namespace: "8d3b6f1e-5a27-4c90-b1e4-7f02a96c35d8"
 partSize: 500
 profiles:
@@ -22,16 +24,16 @@ profiles:
     customers: 100000
     products: 1000000
     orders: 1000000
-    diskPeakGb: 21
+    diskPeakGb: 23
   server:
     staff: 500
     customers: 1000000
     products: 10000000
     orders: 5000000
-    diskPeakGb: 96
+    diskPeakGb: 114
   full:
     staff: 500
     customers: 1000000
     products: 10000000
     orders: 50000000
-    diskPeakGb: 250
+    diskPeakGb: 268
