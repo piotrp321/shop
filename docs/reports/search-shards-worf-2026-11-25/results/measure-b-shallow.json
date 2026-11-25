@@ -1,0 +1,1031 @@
+{
+ "started": "2026-11-25T14:22:33Z",
+ "steps": {
+  "store_cold_pages_shallow": {
+   "at": "14:22:43Z",
+   "summary": {
+    "n": 10,
+    "median": 0.944,
+    "min": 0.888,
+    "max": 1.046,
+    "statuses": {
+     "200": 10
+    }
+   },
+   "samples": [
+    {
+     "url": "https://worf.pl/?page=2",
+     "status": 200,
+     "ttfb": 1.013148,
+     "total": 1.052622
+    },
+    {
+     "url": "https://worf.pl/?page=3",
+     "status": 200,
+     "ttfb": 0.887764,
+     "total": 0.992467
+    },
+    {
+     "url": "https://worf.pl/?page=4",
+     "status": 200,
+     "ttfb": 0.945021,
+     "total": 1.049496
+    },
+    {
+     "url": "https://worf.pl/?page=5",
+     "status": 200,
+     "ttfb": 0.890607,
+     "total": 1.000058
+    },
+    {
+     "url": "https://worf.pl/?page=6",
+     "status": 200,
+     "ttfb": 0.897433,
+     "total": 0.996563
+    },
+    {
+     "url": "https://worf.pl/?page=7",
+     "status": 200,
+     "ttfb": 0.943838,
+     "total": 1.045292
+    },
+    {
+     "url": "https://worf.pl/?page=8",
+     "status": 200,
+     "ttfb": 1.046257,
+     "total": 1.087977
+    },
+    {
+     "url": "https://worf.pl/?page=9",
+     "status": 200,
+     "ttfb": 0.909731,
+     "total": 0.937116
+    },
+    {
+     "url": "https://worf.pl/?page=10",
+     "status": 200,
+     "ttfb": 0.947148,
+     "total": 1.06422
+    },
+    {
+     "url": "https://worf.pl/?page=11",
+     "status": 200,
+     "ttfb": 1.010851,
+     "total": 1.120231
+    }
+   ]
+  },
+  "api_pages_shallow_sequential": {
+   "at": "14:22:51Z",
+   "summary": {
+    "n": 10,
+    "median": 0.72,
+    "min": 0.69,
+    "max": 0.795,
+    "statuses": {
+     "200": 10
+    }
+   },
+   "samples": [
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=2",
+     "status": 200,
+     "ttfb": 0.694466,
+     "total": 0.695024
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=3",
+     "status": 200,
+     "ttfb": 0.795035,
+     "total": 0.799535
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=4",
+     "status": 200,
+     "ttfb": 0.725938,
+     "total": 0.727441
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=5",
+     "status": 200,
+     "ttfb": 0.716241,
+     "total": 0.718161
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=6",
+     "status": 200,
+     "ttfb": 0.690042,
+     "total": 0.691203
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=7",
+     "status": 200,
+     "ttfb": 0.693278,
+     "total": 0.694512
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=8",
+     "status": 200,
+     "ttfb": 0.766331,
+     "total": 0.76793
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=9",
+     "status": 200,
+     "ttfb": 0.702946,
+     "total": 0.704168
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=10",
+     "status": 200,
+     "ttfb": 0.738713,
+     "total": 0.74028
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=11",
+     "status": 200,
+     "ttfb": 0.723745,
+     "total": 0.72508
+    }
+   ]
+  },
+  "api_parallel_1_shallow": {
+   "at": "14:22:59Z",
+   "summary": {
+    "n": 3,
+    "median": 0.721,
+    "min": 0.698,
+    "max": 0.739,
+    "statuses": {
+     "200": 3
+    }
+   },
+   "samples": [
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=12",
+     "status": 200,
+     "ttfb": 0.698499,
+     "total": 0.700007
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=13",
+     "status": 200,
+     "ttfb": 0.738872,
+     "total": 0.740097
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=14",
+     "status": 200,
+     "ttfb": 0.721342,
+     "total": 0.721986
+    }
+   ]
+  },
+  "api_parallel_2_shallow": {
+   "at": "14:23:08Z",
+   "summary": {
+    "n": 6,
+    "median": 0.882,
+    "min": 0.754,
+    "max": 0.92,
+    "statuses": {
+     "200": 6
+    }
+   },
+   "samples": [
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=15",
+     "status": 200,
+     "ttfb": 0.86768,
+     "total": 0.868846
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=16",
+     "status": 200,
+     "ttfb": 0.895825,
+     "total": 0.899073
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=17",
+     "status": 200,
+     "ttfb": 0.918559,
+     "total": 0.919853
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=18",
+     "status": 200,
+     "ttfb": 0.919996,
+     "total": 0.962495
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=19",
+     "status": 200,
+     "ttfb": 0.754499,
+     "total": 0.756223
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=20",
+     "status": 200,
+     "ttfb": 0.854222,
+     "total": 0.856418
+    }
+   ]
+  },
+  "api_parallel_4_shallow": {
+   "at": "14:23:18Z",
+   "summary": {
+    "n": 12,
+    "median": 1.38,
+    "min": 1.137,
+    "max": 1.625,
+    "statuses": {
+     "200": 12
+    }
+   },
+   "samples": [
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=21",
+     "status": 200,
+     "ttfb": 1.625238,
+     "total": 1.625497
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=22",
+     "status": 200,
+     "ttfb": 1.453235,
+     "total": 1.453496
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=23",
+     "status": 200,
+     "ttfb": 1.34878,
+     "total": 1.349943
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=24",
+     "status": 200,
+     "ttfb": 1.564163,
+     "total": 1.565303
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=25",
+     "status": 200,
+     "ttfb": 1.541032,
+     "total": 1.575108
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=26",
+     "status": 200,
+     "ttfb": 1.361712,
+     "total": 1.533876
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=27",
+     "status": 200,
+     "ttfb": 1.399228,
+     "total": 1.400865
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=28",
+     "status": 200,
+     "ttfb": 1.359585,
+     "total": 1.361099
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=29",
+     "status": 200,
+     "ttfb": 1.429273,
+     "total": 1.429549
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=30",
+     "status": 200,
+     "ttfb": 1.184393,
+     "total": 1.185931
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=31",
+     "status": 200,
+     "ttfb": 1.248657,
+     "total": 1.249396
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=32",
+     "status": 200,
+     "ttfb": 1.136891,
+     "total": 1.13718
+    }
+   ]
+  },
+  "api_parallel_8_shallow": {
+   "at": "14:23:32Z",
+   "summary": {
+    "n": 24,
+    "median": 2.245,
+    "min": 2.008,
+    "max": 2.387,
+    "statuses": {
+     "200": 16,
+     "503": 8
+    }
+   },
+   "samples": [
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=33",
+     "status": 200,
+     "ttfb": 2.018682,
+     "total": 2.020021
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=34",
+     "status": 200,
+     "ttfb": 2.192422,
+     "total": 2.193704
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=35",
+     "status": 503,
+     "ttfb": 2.275633,
+     "total": 2.275733
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=36",
+     "status": 200,
+     "ttfb": 2.037112,
+     "total": 2.037366
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=37",
+     "status": 503,
+     "ttfb": 2.345658,
+     "total": 2.345762
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=38",
+     "status": 200,
+     "ttfb": 2.007719,
+     "total": 2.009782
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=39",
+     "status": 200,
+     "ttfb": 2.242493,
+     "total": 2.24276
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=40",
+     "status": 200,
+     "ttfb": 2.123022,
+     "total": 2.124398
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=41",
+     "status": 200,
+     "ttfb": 2.143818,
+     "total": 2.145572
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=42",
+     "status": 200,
+     "ttfb": 2.136637,
+     "total": 2.137962
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=43",
+     "status": 503,
+     "ttfb": 2.371057,
+     "total": 2.371156
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=44",
+     "status": 503,
+     "ttfb": 2.315202,
+     "total": 2.315561
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=45",
+     "status": 200,
+     "ttfb": 2.345688,
+     "total": 2.347834
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=46",
+     "status": 200,
+     "ttfb": 2.248419,
+     "total": 2.248937
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=47",
+     "status": 200,
+     "ttfb": 2.136391,
+     "total": 2.138239
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=48",
+     "status": 503,
+     "ttfb": 2.387401,
+     "total": 2.387509
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=49",
+     "status": 503,
+     "ttfb": 2.342493,
+     "total": 2.342666
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=50",
+     "status": 503,
+     "ttfb": 2.303766,
+     "total": 2.303924
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=51",
+     "status": 200,
+     "ttfb": 2.293758,
+     "total": 2.295453
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=52",
+     "status": 200,
+     "ttfb": 2.181434,
+     "total": 2.182926
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=53",
+     "status": 200,
+     "ttfb": 2.175934,
+     "total": 2.17805
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=54",
+     "status": 503,
+     "ttfb": 2.316455,
+     "total": 2.316732
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=55",
+     "status": 200,
+     "ttfb": 2.317534,
+     "total": 2.318913
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=56",
+     "status": 200,
+     "ttfb": 2.200319,
+     "total": 2.201921
+    }
+   ]
+  },
+  "store_parallel_1_shallow": {
+   "at": "14:23:41Z",
+   "summary": {
+    "n": 3,
+    "median": 1.049,
+    "min": 0.974,
+    "max": 1.1,
+    "statuses": {
+     "200": 3
+    }
+   },
+   "samples": [
+    {
+     "url": "https://worf.pl/?page=60",
+     "status": 200,
+     "ttfb": 1.048632,
+     "total": 1.149077
+    },
+    {
+     "url": "https://worf.pl/?page=61",
+     "status": 200,
+     "ttfb": 0.974131,
+     "total": 1.072471
+    },
+    {
+     "url": "https://worf.pl/?page=62",
+     "status": 200,
+     "ttfb": 1.100499,
+     "total": 1.205904
+    }
+   ]
+  },
+  "store_parallel_2_shallow": {
+   "at": "14:23:51Z",
+   "summary": {
+    "n": 6,
+    "median": 1.16,
+    "min": 1.031,
+    "max": 1.363,
+    "statuses": {
+     "200": 6
+    }
+   },
+   "samples": [
+    {
+     "url": "https://worf.pl/?page=63",
+     "status": 200,
+     "ttfb": 1.166787,
+     "total": 1.271389
+    },
+    {
+     "url": "https://worf.pl/?page=64",
+     "status": 200,
+     "ttfb": 1.152814,
+     "total": 1.249545
+    },
+    {
+     "url": "https://worf.pl/?page=65",
+     "status": 200,
+     "ttfb": 1.143246,
+     "total": 1.174447
+    },
+    {
+     "url": "https://worf.pl/?page=66",
+     "status": 200,
+     "ttfb": 1.030898,
+     "total": 1.135067
+    },
+    {
+     "url": "https://worf.pl/?page=67",
+     "status": 200,
+     "ttfb": 1.243518,
+     "total": 1.361336
+    },
+    {
+     "url": "https://worf.pl/?page=68",
+     "status": 200,
+     "ttfb": 1.363211,
+     "total": 1.396885
+    }
+   ]
+  },
+  "store_parallel_4_shallow": {
+   "at": "14:24:02Z",
+   "summary": {
+    "n": 12,
+    "median": 1.687,
+    "min": 1.534,
+    "max": 1.826,
+    "statuses": {
+     "200": 12
+    }
+   },
+   "samples": [
+    {
+     "url": "https://worf.pl/?page=69",
+     "status": 200,
+     "ttfb": 1.706585,
+     "total": 1.817352
+    },
+    {
+     "url": "https://worf.pl/?page=70",
+     "status": 200,
+     "ttfb": 1.718437,
+     "total": 1.82135
+    },
+    {
+     "url": "https://worf.pl/?page=71",
+     "status": 200,
+     "ttfb": 1.826341,
+     "total": 1.85351
+    },
+    {
+     "url": "https://worf.pl/?page=72",
+     "status": 200,
+     "ttfb": 1.675608,
+     "total": 1.769196
+    },
+    {
+     "url": "https://worf.pl/?page=73",
+     "status": 200,
+     "ttfb": 1.618976,
+     "total": 1.726866
+    },
+    {
+     "url": "https://worf.pl/?page=74",
+     "status": 200,
+     "ttfb": 1.636224,
+     "total": 1.740477
+    },
+    {
+     "url": "https://worf.pl/?page=75",
+     "status": 200,
+     "ttfb": 1.70983,
+     "total": 1.814321
+    },
+    {
+     "url": "https://worf.pl/?page=76",
+     "status": 200,
+     "ttfb": 1.72928,
+     "total": 1.758416
+    },
+    {
+     "url": "https://worf.pl/?page=77",
+     "status": 200,
+     "ttfb": 1.572821,
+     "total": 1.677842
+    },
+    {
+     "url": "https://worf.pl/?page=78",
+     "status": 200,
+     "ttfb": 1.534183,
+     "total": 1.641296
+    },
+    {
+     "url": "https://worf.pl/?page=79",
+     "status": 200,
+     "ttfb": 1.698909,
+     "total": 1.789156
+    },
+    {
+     "url": "https://worf.pl/?page=80",
+     "status": 200,
+     "ttfb": 1.597823,
+     "total": 1.705914
+    }
+   ]
+  },
+  "store_parallel_8_shallow": {
+   "at": "14:24:22Z",
+   "summary": {
+    "n": 24,
+    "median": 2.525,
+    "min": 2.299,
+    "max": 2.795,
+    "statuses": {
+     "500": 24
+    }
+   },
+   "samples": [
+    {
+     "url": "https://worf.pl/?page=81",
+     "status": 500,
+     "ttfb": 2.544989,
+     "total": 4.625578
+    },
+    {
+     "url": "https://worf.pl/?page=82",
+     "status": 500,
+     "ttfb": 2.538459,
+     "total": 4.516686
+    },
+    {
+     "url": "https://worf.pl/?page=83",
+     "status": 500,
+     "ttfb": 2.379338,
+     "total": 4.577293
+    },
+    {
+     "url": "https://worf.pl/?page=84",
+     "status": 500,
+     "ttfb": 2.654701,
+     "total": 4.577136
+    },
+    {
+     "url": "https://worf.pl/?page=85",
+     "status": 500,
+     "ttfb": 2.319324,
+     "total": 4.33538
+    },
+    {
+     "url": "https://worf.pl/?page=86",
+     "status": 500,
+     "ttfb": 2.318902,
+     "total": 4.573055
+    },
+    {
+     "url": "https://worf.pl/?page=87",
+     "status": 500,
+     "ttfb": 2.538196,
+     "total": 4.630318
+    },
+    {
+     "url": "https://worf.pl/?page=88",
+     "status": 500,
+     "ttfb": 2.794615,
+     "total": 4.619946
+    },
+    {
+     "url": "https://worf.pl/?page=89",
+     "status": 500,
+     "ttfb": 2.299348,
+     "total": 4.333744
+    },
+    {
+     "url": "https://worf.pl/?page=90",
+     "status": 500,
+     "ttfb": 2.688128,
+     "total": 4.60856
+    },
+    {
+     "url": "https://worf.pl/?page=91",
+     "status": 500,
+     "ttfb": 2.690941,
+     "total": 4.632988
+    },
+    {
+     "url": "https://worf.pl/?page=92",
+     "status": 500,
+     "ttfb": 2.698368,
+     "total": 4.633974
+    },
+    {
+     "url": "https://worf.pl/?page=93",
+     "status": 500,
+     "ttfb": 2.689547,
+     "total": 4.617916
+    },
+    {
+     "url": "https://worf.pl/?page=94",
+     "status": 500,
+     "ttfb": 2.313079,
+     "total": 4.605011
+    },
+    {
+     "url": "https://worf.pl/?page=95",
+     "status": 500,
+     "ttfb": 2.565427,
+     "total": 4.596171
+    },
+    {
+     "url": "https://worf.pl/?page=96",
+     "status": 500,
+     "ttfb": 2.467567,
+     "total": 4.60738
+    },
+    {
+     "url": "https://worf.pl/?page=97",
+     "status": 500,
+     "ttfb": 2.559004,
+     "total": 4.531164
+    },
+    {
+     "url": "https://worf.pl/?page=98",
+     "status": 500,
+     "ttfb": 2.416463,
+     "total": 4.411499
+    },
+    {
+     "url": "https://worf.pl/?page=99",
+     "status": 500,
+     "ttfb": 2.55856,
+     "total": 4.518774
+    },
+    {
+     "url": "https://worf.pl/?page=100",
+     "status": 500,
+     "ttfb": 2.51256,
+     "total": 4.455266
+    },
+    {
+     "url": "https://worf.pl/?page=101",
+     "status": 500,
+     "ttfb": 2.327423,
+     "total": 4.34391
+    },
+    {
+     "url": "https://worf.pl/?page=102",
+     "status": 500,
+     "ttfb": 2.325785,
+     "total": 4.369919
+    },
+    {
+     "url": "https://worf.pl/?page=103",
+     "status": 500,
+     "ttfb": 2.473465,
+     "total": 4.513679
+    },
+    {
+     "url": "https://worf.pl/?page=104",
+     "status": 500,
+     "ttfb": 2.332301,
+     "total": 4.397908
+    }
+   ]
+  },
+  "api_page_20": {
+   "at": "14:24:24Z",
+   "summary": {
+    "n": 3,
+    "median": 0.723,
+    "min": 0.706,
+    "max": 0.769,
+    "statuses": {
+     "200": 3
+    }
+   },
+   "samples": [
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=20&x=0",
+     "status": 200,
+     "ttfb": 0.722781,
+     "total": 0.724015
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=20&x=1",
+     "status": 200,
+     "ttfb": 0.768624,
+     "total": 0.770005
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=20&x=2",
+     "status": 200,
+     "ttfb": 0.705512,
+     "total": 0.706074
+    }
+   ]
+  },
+  "api_page_50": {
+   "at": "14:24:27Z",
+   "summary": {
+    "n": 3,
+    "median": 0.803,
+    "min": 0.775,
+    "max": 0.831,
+    "statuses": {
+     "200": 3
+    }
+   },
+   "samples": [
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=50&x=0",
+     "status": 200,
+     "ttfb": 0.830538,
+     "total": 0.831558
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=50&x=1",
+     "status": 200,
+     "ttfb": 0.803174,
+     "total": 0.803436
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=50&x=2",
+     "status": 200,
+     "ttfb": 0.77455,
+     "total": 0.776102
+    }
+   ]
+  },
+  "api_page_100": {
+   "at": "14:24:30Z",
+   "summary": {
+    "n": 3,
+    "median": 0.945,
+    "min": 0.863,
+    "max": 1.152,
+    "statuses": {
+     "200": 3
+    }
+   },
+   "samples": [
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=100&x=0",
+     "status": 200,
+     "ttfb": 1.152072,
+     "total": 1.153305
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=100&x=1",
+     "status": 200,
+     "ttfb": 0.944828,
+     "total": 0.945827
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=100&x=2",
+     "status": 200,
+     "ttfb": 0.863458,
+     "total": 0.865355
+    }
+   ]
+  },
+  "api_page_150": {
+   "at": "14:24:33Z",
+   "summary": {
+    "n": 3,
+    "median": 0.954,
+    "min": 0.94,
+    "max": 1.033,
+    "statuses": {
+     "200": 3
+    }
+   },
+   "samples": [
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=150&x=0",
+     "status": 200,
+     "ttfb": 0.953547,
+     "total": 0.954967
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=150&x=1",
+     "status": 200,
+     "ttfb": 0.939539,
+     "total": 0.941914
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=150&x=2",
+     "status": 200,
+     "ttfb": 1.03335,
+     "total": 1.034508
+    }
+   ]
+  },
+  "api_page_200": {
+   "at": "14:24:36Z",
+   "summary": {
+    "n": 3,
+    "median": 1.047,
+    "min": 0.997,
+    "max": 1.122,
+    "statuses": {
+     "200": 3
+    }
+   },
+   "samples": [
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=200&x=0",
+     "status": 200,
+     "ttfb": 1.12154,
+     "total": 1.122854
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=200&x=1",
+     "status": 200,
+     "ttfb": 0.99728,
+     "total": 0.997628
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=200&x=2",
+     "status": 200,
+     "ttfb": 1.047278,
+     "total": 1.04936
+    }
+   ]
+  },
+  "api_page_300": {
+   "at": "14:24:40Z",
+   "summary": {
+    "n": 3,
+    "median": 1.314,
+    "min": 1.231,
+    "max": 1.365,
+    "statuses": {
+     "200": 3
+    }
+   },
+   "samples": [
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=300&x=0",
+     "status": 200,
+     "ttfb": 1.231306,
+     "total": 1.233037
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=300&x=1",
+     "status": 200,
+     "ttfb": 1.36506,
+     "total": 1.366342
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=300&x=2",
+     "status": 200,
+     "ttfb": 1.31421,
+     "total": 1.316115
+    }
+   ]
+  },
+  "api_page_400": {
+   "at": "14:24:44Z",
+   "summary": {
+    "n": 3,
+    "median": 1.373,
+    "min": 1.315,
+    "max": 1.464,
+    "statuses": {
+     "200": 3
+    }
+   },
+   "samples": [
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=400&x=0",
+     "status": 200,
+     "ttfb": 1.315305,
+     "total": 1.316725
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=400&x=1",
+     "status": 200,
+     "ttfb": 1.373108,
+     "total": 1.374661
+    },
+    {
+     "url": "https://api.worf.pl/api/v1/products?page=400&x=2",
+     "status": 200,
+     "ttfb": 1.463959,
+     "total": 1.465469
+    }
+   ]
+  }
+ },
+ "finished": "2026-11-25T14:24:44Z"
+}
