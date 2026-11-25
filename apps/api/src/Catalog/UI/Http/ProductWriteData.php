@@ -11,11 +11,11 @@ namespace App\Catalog\UI\Http;
 final readonly class ProductWriteData
 {
     /**
-     * @param list<array{name: string, value: string}>                  $parameters
-     * @param list<string>                                              $additionalCategoryIds
-     * @param list<array{key: string, alt: string}>                     $images
-     * @param list<string>                                              $variantAxes
-     * @param list<array{variantId: string|null, values: list<string>}> $variants
+     * @param list<array{name: string, value: string}>                                            $parameters
+     * @param list<string>                                                                        $additionalCategoryIds
+     * @param list<array{key: string, alt: string}>                                               $images
+     * @param list<string>                                                                        $variantAxes
+     * @param list<array{variantId: string|null, values: list<string>, sku: string, ean: string}> $variants
      */
     private function __construct(
         public string $name,
@@ -42,7 +42,7 @@ final readonly class ProductWriteData
         /** @var list<string> $additionalCategoryIds */
         /** @var list<array{key: string, alt: string}> $images */
         /** @var list<string> $variantAxes */
-        /** @var list<array{variantId: string|null, values: list<string>}> $variants */
+        /** @var list<array{variantId: string|null, values: list<string>, sku: string, ean: string}> $variants */
         return new self(
             $name,
             $slug,
@@ -55,7 +55,7 @@ final readonly class ProductWriteData
             $taxClass,
             array_map(static fn (array $image): array => ['key' => $image['key'], 'alt' => $image['alt']], $images),
             $variantAxes,
-            array_map(static fn (array $row): array => ['variantId' => $row['variantId'], 'values' => $row['values']], $variants),
+            array_map(static fn (array $row): array => ['variantId' => $row['variantId'], 'values' => $row['values'], 'sku' => $row['sku'], 'ean' => $row['ean']], $variants),
         );
     }
 }

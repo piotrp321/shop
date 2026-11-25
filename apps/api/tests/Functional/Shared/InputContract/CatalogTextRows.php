@@ -59,14 +59,14 @@ final class CatalogTextRows
             'taxClass' => 'standard',
             'images' => [['key' => '{imageKey}', 'alt' => 'Buty z boku']],
             'variantAxes' => ['Rozmiar'],
-            'variants' => [['variantId' => null, 'values' => ['Czerwony']], ['variantId' => null, 'values' => ['L']]],
+            'variants' => [['variantId' => null, 'values' => ['Czerwony'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['L'], 'sku' => '', 'ean' => '']],
         ];
         $operations = [
             'POST '.self::PRODUCTS => ['productWrite', $body],
             'PUT '.self::PRODUCTS.'/{id}' => ['productEdit', [
                 'version' => 1,
                 ...$body,
-                'variants' => [['variantId' => '{variantM}', 'values' => ['Czerwony']], ['variantId' => '{variantL}', 'values' => ['L']]],
+                'variants' => [['variantId' => '{variantM}', 'values' => ['Czerwony'], 'sku' => '', 'ean' => ''], ['variantId' => '{variantL}', 'values' => ['L'], 'sku' => '', 'ean' => '']],
             ]],
         ];
         $id = ['id' => '{response.id}'];

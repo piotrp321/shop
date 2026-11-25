@@ -6,6 +6,9 @@ import FormSection from "@/components/FormSection.vue";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { INPUT_CLASS } from "@/components/ui/input/inputClass";
+import { cn } from "@/lib/utils";
+import { upperAscii } from "./contentText";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MAX_AXES, MAX_VARIANTS, type VariantRow } from "./useProductForm";
 
@@ -31,6 +34,8 @@ const emit = defineEmits<{
   addVariant: [];
   removeVariant: [index: number];
   setValue: [row: number, position: number, value: string];
+  setSku: [row: number, value: string];
+  setEan: [row: number, value: string];
 }>();
 
 const LOCKED_EXPLANATION =
@@ -86,6 +91,23 @@ function confirm(): void {
   } else if (current?.kind === "axis") {
     emit("removeAxis", current.index);
   }
+}
+
+/**
+ * The SKU is written in capitals while it is typed. The field is a plain `<input>`, not `Input`: a field that keeps its own
+ * copy of the value would show what was typed when the form already holds the same capitals (nothing changes, so nothing is
+ * drawn again), and would take the typed letters back whenever it is drawn for another reason. The letters of the ASCII
+ * become capitals in the field itself, the caret stays where it was, and no character is removed.
+ */
+function typeSku(index: number, event: Event): void {
+  const field = event.target as HTMLInputElement;
+  const capitals = upperAscii(field.value);
+  if (capitals !== field.value) {
+    const { selectionStart, selectionEnd } = field;
+    field.value = capitals;
+    field.setSelectionRange(selectionStart, selectionEnd);
+  }
+  emit("setSku", index, capitals);
 }
 
 const rowErrors = (index: number) => [...props.errorsExactly(`variants[${index}]`), ...props.errorsExactly(`variants[${index}].values`), ...props.errorsAt(`variants[${index}].variantId`)];
@@ -205,14 +227,26 @@ const ids = (kind: string, ...parts: number[]) => `${idPrefix}-${kind}-${parts.j
       aria-label="Warianty produktu"
       tabindex="0"
     >
-      <TableHeader v-if="!noAxes">
+      <TableHeader>
         <TableRow>
+          <TableHead
+            v-if="noAxes"
+            scope="col"
+          >
+            Wariant
+          </TableHead>
           <TableHead
             v-for="(_, position) in axes"
             :key="position"
             scope="col"
           >
             {{ axisLabel(position) }}
+          </TableHead>
+          <TableHead scope="col">
+            SKU
+          </TableHead>
+          <TableHead scope="col">
+            EAN
           </TableHead>
           <TableHead scope="col">
             <span class="sr-only">Akcje</span>
@@ -249,6 +283,57 @@ const ids = (kind: string, ...parts: number[]) => `${idPrefix}-${kind}-${parts.j
               :id="ids('value-error', index, position)"
               :key="title"
               data-testid="value-error"
+              data-form-error
+              class="mt-1 text-sm whitespace-normal text-status-danger"
+            >
+              {{ title }}
+            </p>
+          </TableCell>
+          <TableCell class="align-top">
+            <input
+              data-testid="variant-sku"
+              data-slot="input"
+              :class="cn(INPUT_CLASS, 'aria-invalid:border-destructive', 'min-w-40')"
+              :value="row.sku"
+              :disabled="readOnly"
+              :aria-invalid="errorsAt(`variants[${index}].sku`).length > 0 ? 'true' : undefined"
+              :aria-describedby="errorsAt(`variants[${index}].sku`).length > 0 ? ids('sku-error', index) : undefined"
+              :aria-label="`SKU, wariant ${index + 1}`"
+              maxlength="40"
+              autocapitalize="characters"
+              spellcheck="false"
+              @input="typeSku(index, $event)"
+            >
+            <p
+              v-for="title in errorsAt(`variants[${index}].sku`)"
+              :id="ids('sku-error', index)"
+              :key="title"
+              data-testid="sku-error"
+              data-form-error
+              class="mt-1 text-sm whitespace-normal text-status-danger"
+            >
+              {{ title }}
+            </p>
+          </TableCell>
+          <TableCell class="align-top">
+            <Input
+              data-testid="variant-ean"
+              class="min-w-36"
+              :model-value="row.ean"
+              :disabled="readOnly"
+              :aria-invalid="errorsAt(`variants[${index}].ean`).length > 0 ? 'true' : undefined"
+              :aria-describedby="errorsAt(`variants[${index}].ean`).length > 0 ? ids('ean-error', index) : undefined"
+              :aria-label="`EAN, wariant ${index + 1}`"
+              maxlength="14"
+              inputmode="numeric"
+              spellcheck="false"
+              @update:model-value="emit('setEan', index, String($event ?? ''))"
+            />
+            <p
+              v-for="title in errorsAt(`variants[${index}].ean`)"
+              :id="ids('ean-error', index)"
+              :key="title"
+              data-testid="ean-error"
               data-form-error
               class="mt-1 text-sm whitespace-normal text-status-danger"
             >

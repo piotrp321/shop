@@ -38,7 +38,7 @@ final readonly class DbalProductDetailsSource implements ProductDetailsSource
         \assert(\is_string($product['brand']) && \is_string($product['description']));
 
         $variants = $this->connection->fetchAllAssociative(
-            'SELECT id, option_values FROM catalog_product_variant WHERE product_id = CAST(:id AS uuid) ORDER BY position',
+            'SELECT id, option_values, sku, ean FROM catalog_product_variant WHERE product_id = CAST(:id AS uuid) ORDER BY position',
             ['id' => $product['id']],
         );
 
@@ -54,9 +54,9 @@ final readonly class DbalProductDetailsSource implements ProductDetailsSource
             'images' => self::images($product['images']),
             'axes' => self::strings($product['variant_axes']),
             'variants' => array_map(static function (array $variant): array {
-                \assert(\is_string($variant['id']));
+                \assert(\is_string($variant['id']) && (null === $variant['sku'] || \is_string($variant['sku'])) && (null === $variant['ean'] || \is_string($variant['ean'])));
 
-                return ['id' => $variant['id'], 'values' => self::strings($variant['option_values'])];
+                return ['id' => $variant['id'], 'values' => self::strings($variant['option_values']), 'sku' => $variant['sku'] ?? '', 'ean' => $variant['ean'] ?? ''];
             }, $variants),
             'published' => $product['published'],
         ];

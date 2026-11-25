@@ -23,7 +23,7 @@ interface ProductDetailsSource
      *     breadcrumb: list<array{id: string, name: string, slug: string}>,
      *     images: list<array{key: string, alt: string}>,
      *     axes: list<string>,
-     *     variants: list<array{id: string, values: list<string>}>,
+     *     variants: list<array{id: string, values: list<string>, sku: string, ean: string}>,
      *     published: bool
      * }|null null when no product has the slug; breadcrumb from the root to the main category, images and
      *        variants in position order

@@ -78,8 +78,8 @@ final class ProductDetailsEndpointTest extends WebTestCase
         self::assertSame(['Kolor', 'Rozmiar'], $body['variantAxes']);
         self::assertSame(
             [
-                ['variantId' => self::BLACK_42, 'label' => 'czarne, 42', 'values' => ['czarne', '42']],
-                ['variantId' => self::WHITE_43, 'label' => 'białe, 43', 'values' => ['białe', '43']],
+                ['variantId' => self::BLACK_42, 'label' => 'czarne, 42', 'values' => ['czarne', '42'], 'sku' => '', 'ean' => '', 'gtin' => ''],
+                ['variantId' => self::WHITE_43, 'label' => 'białe, 43', 'values' => ['białe', '43'], 'sku' => '', 'ean' => '', 'gtin' => ''],
             ],
             $body['variants'],
         );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeContentText } from "@/products/contentText";
+import { normalizeContentText, normalizeEan, normalizeSku } from "@/products/contentText";
 
 /**
  * The copy of the rule of texts T1–T3 (docs/features/api-input-contract/spec.md, „Etap 2: reguła tekstu”) that only the
@@ -162,6 +162,72 @@ describe("normalizeContentText", () => {
     for (const [, edge] of EDGES) {
       const once = normalizeContentText(`${edge}Hal${cp(0x200b)}len${edge}`)!;
       expect(normalizeContentText(once), hex(edge)).toBe(once);
+    }
+  });
+});
+
+/**
+ * The codes of a variant go through the same T1, T2 and T3, in this order, and the SKU through the capitals of the letters of
+ * the ASCII after them (docs/features/product-data/spec.md, „Porównanie „Sprawdź stan” z normalizacją API”): the value of the
+ * draft and the code the API would store, "" for no code, or null when T1 forbids the value.
+ */
+describe("normalizeSku and normalizeEan", () => {
+  describe("T2 and T3 come before the capitals", () => {
+    it.each(EDGES)("trim %s from both edges of the code", (_name, edge) => {
+      expect(normalizeSku(`${edge}but-1${edge}`)).toBe("BUT-1");
+      expect(normalizeEan(`${edge}5901234123457${edge}`)).toBe("5901234123457");
+    });
+
+    it("make a code without a visible character no code", () => {
+      for (const value of ["", "   ", cp(0xa0, 0x3000), cp(0x200d), cp(0x200b, 0x2060, 0xfeff, 0xad), cp(0x3164)]) {
+        expect(normalizeSku(value), hex(value)).toBe("");
+        expect(normalizeEan(value), hex(value)).toBe("");
+      }
+    });
+
+    it("keep what is inside the code", () => {
+      expect(normalizeSku(`ab${cp(0x200b)}1`)).toBe(`AB${cp(0x200b)}1`);
+      expect(normalizeEan(`590${cp(0x200b)}1234123457`)).toBe(`590${cp(0x200b)}1234123457`);
+    });
+  });
+
+  describe("T1: a forbidden character gives no code, at the edge and inside", () => {
+    it.each(FORBIDDEN)("%s: in the SKU and in the EAN", (_name, character) => {
+      for (const value of [`but-1${character}`, `${character}but-1`, `bu${character}t-1`, character, ` ${character} `]) {
+        expect(normalizeSku(value), hex(value)).toBeNull();
+        expect(normalizeEan(value), hex(value)).toBeNull();
+      }
+    });
+
+    it("looks at the value as it came, before the trim: a tab and U+2028 at the edge are no code of any state of the server", () => {
+      expect(normalizeSku(`but-1${cp(0x09)}`)).toBeNull();
+      expect(normalizeSku(`${cp(0x2028)}${cp(0x200b)}`)).toBeNull();
+      expect(normalizeEan(`5901234123457${cp(0x09)}`)).toBeNull();
+      expect(normalizeEan(`${cp(0x2028)}59012344`)).toBeNull();
+    });
+
+    it("allows no line feed, which only a description does", () => {
+      expect(normalizeSku("but\n1")).toBeNull();
+      expect(normalizeEan("5901234\n123457")).toBeNull();
+    });
+  });
+
+  describe("the capitals of the SKU", () => {
+    it("turn the letters of the ASCII into capitals and no other letter", () => {
+      expect(normalizeSku("but-1/cz_2.x")).toBe("BUT-1/CZ_2.X");
+      expect(normalizeSku("żółw")).toBe("żółW");
+      expect(normalizeSku("straße")).toBe("STRAßE");
+    });
+
+    it("leave the EAN as it is", () => {
+      expect(normalizeEan("abc")).toBe("abc");
+    });
+  });
+
+  it("are idempotent", () => {
+    for (const value of [" but-1 ", "ŻÓŁW-1", `${cp(0xa0)}ab${cp(0x200b)}1`]) {
+      const once = normalizeSku(value)!;
+      expect(normalizeSku(once)).toBe(once);
     }
   });
 });

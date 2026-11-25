@@ -86,7 +86,7 @@ final class ProductWriteTextRulesTest extends TestCase
             'shortDescription' => "\u{200B}".str_repeat('a', 500)."\u{200B}",
             'images' => [['key' => self::KEY, 'alt' => "\u{2060}".str_repeat('a', 200)."\u{2060}"]],
             'variantAxes' => ["\u{AD}".str_repeat('a', 30)."\u{AD}"],
-            'variants' => [['variantId' => null, 'values' => ["\u{200B}".str_repeat('a', 40)."\u{200B}"]]],
+            'variants' => [['variantId' => null, 'values' => ["\u{200B}".str_repeat('a', 40)."\u{200B}"], 'sku' => '', 'ean' => '']],
         ]));
     }
 
@@ -94,10 +94,10 @@ final class ProductWriteTextRulesTest extends TestCase
     {
         self::assertSame([['variantAxes[1]', 'Nazwa osi już jest użyta.']], $this->violations([
             'variantAxes' => ['Kolor', "\u{200B}kolor"],
-            'variants' => [['variantId' => null, 'values' => ['M', 'czarny']]],
+            'variants' => [['variantId' => null, 'values' => ['M', 'czarny'], 'sku' => '', 'ean' => '']],
         ]));
         self::assertSame([['variants[1].values', 'Taki wariant już istnieje.']], $this->violations([
-            'variants' => [['variantId' => null, 'values' => ['M']], ['variantId' => null, 'values' => ["\u{200B}m"]]],
+            'variants' => [['variantId' => null, 'values' => ['M'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ["\u{200B}m"], 'sku' => '', 'ean' => '']],
         ]));
     }
 
@@ -110,7 +110,7 @@ final class ProductWriteTextRulesTest extends TestCase
             'name' => ['name' => $text],
             'alt' => ['images' => [['key' => self::KEY, 'alt' => $text]]],
             'axis' => ['variantAxes' => [$text]],
-            'value' => ['variants' => [['variantId' => null, 'values' => [$text]], ['variantId' => null, 'values' => ['L']]]],
+            'value' => ['variants' => [['variantId' => null, 'values' => [$text], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['L'], 'sku' => '', 'ean' => '']]],
             default => throw new \LogicException($field),
         };
     }
@@ -134,7 +134,7 @@ final class ProductWriteTextRulesTest extends TestCase
             'taxClass' => 'standard',
             'images' => [['key' => self::KEY, 'alt' => 'Buty z boku']],
             'variantAxes' => ['Rozmiar'],
-            'variants' => [['variantId' => null, 'values' => ['M']], ['variantId' => null, 'values' => ['L']]],
+            'variants' => [['variantId' => null, 'values' => ['M'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['L'], 'sku' => '', 'ean' => '']],
             ...$changes,
         ];
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();

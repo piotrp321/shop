@@ -214,6 +214,77 @@ final class ProductEditTest extends TestCase
         );
     }
 
+    public function testAfterThePublicationTheCodesOfAVariantCanBeChangedAddedAndRemovedAndEachChangeIsAChangeOfTheProduct(): void
+    {
+        $product = StoredProducts::published(axes: self::AXES, variants: [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'M'], 'sku' => 'BUT-M', 'ean' => '5901234123457'],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL']],
+        ]);
+
+        $this->edit($product, axes: self::AXES, variants: [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'M'], 'sku' => 'but-m-2'],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL'], 'sku' => 'BUT-XL', 'ean' => '59012344'],
+        ]);
+
+        self::assertSame(
+            [self::BLACK_M => ['BUT-M-2', null], self::BLACK_XL => ['BUT-XL', '59012344']],
+            $this->codes($product),
+        );
+        $events = $product->releaseEvents();
+        self::assertCount(1, $events);
+        self::assertInstanceOf(ProductChanged::class, $events[0]);
+    }
+
+    public function testAfterThePublicationTheCodesStayWhenOnlyTheCaseOfTheValuesChanges(): void
+    {
+        $product = StoredProducts::published(axes: self::AXES, variants: [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'M'], 'sku' => 'BUT-M', 'ean' => '5901234123457'],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL'], 'sku' => 'BUT-XL'],
+        ]);
+
+        $this->edit($product, axes: ['kolor', 'ROZMIAR'], variants: [
+            ['id' => self::BLACK_M, 'values' => ['Czarne', 'm'], 'sku' => 'BUT-M', 'ean' => '5901234123457'],
+            ['id' => self::BLACK_XL, 'values' => [' czarne ', 'XL'], 'sku' => 'BUT-XL'],
+        ]);
+
+        self::assertSame([self::BLACK_M => ['BUT-M', '5901234123457'], self::BLACK_XL => ['BUT-XL', null]], $this->codes($product));
+    }
+
+    public function testAfterThePublicationTheCodesDoNotLetAVariantChangeItsValues(): void
+    {
+        $product = StoredProducts::published(axes: self::AXES, variants: [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'M'], 'sku' => 'BUT-M'],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL']],
+        ]);
+
+        $this->expectException(VariantIdentityLocked::class);
+
+        $this->edit($product, axes: self::AXES, variants: [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'L'], 'sku' => 'BUT-M'],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL']],
+        ]);
+    }
+
+    public function testADraftKeepsTheCodesOfTheVariantsThatStayWhenItsAxesAndValuesChange(): void
+    {
+        $product = StoredProducts::product(axes: self::AXES, variants: [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'M'], 'sku' => 'BUT-M', 'ean' => '5901234123457'],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL'], 'sku' => 'BUT-XL'],
+        ]);
+
+        // One axis removed, the other renamed, a value changed, a variant added without codes.
+        $this->edit($product, axes: ['Rozmiar'], variants: [
+            ['id' => self::BLACK_XL, 'values' => ['XXL'], 'sku' => 'BUT-XL'],
+            ['id' => self::BLACK_M, 'values' => ['M'], 'sku' => 'BUT-M', 'ean' => '5901234123457'],
+            ['id' => self::NEW_VARIANT, 'values' => ['S']],
+        ]);
+
+        self::assertSame(
+            [self::BLACK_XL => ['BUT-XL', null], self::BLACK_M => ['BUT-M', '5901234123457'], self::NEW_VARIANT => [null, null]],
+            $this->codes($product),
+        );
+    }
+
     public function testAfterThePublicationAChangedValueOfAKeptVariantIsLocked(): void
     {
         foreach ([StoredProducts::published(axes: self::AXES, variants: self::VARIANTS), StoredProducts::unpublished(axes: self::AXES, variants: self::VARIANTS)] as $product) {
@@ -732,11 +803,11 @@ final class ProductEditTest extends TestCase
     }
 
     /**
-     * @param list<array{name: string, value: string}>           $parameters
-     * @param list<string>                                       $imageAlts
-     * @param list<string>                                       $axes
-     * @param list<array{id: string, values: list<string>}>|null $variants   null: the variants of the product
-     * @param list<string>                                       $inUse
+     * @param list<array{name: string, value: string}>                                       $parameters
+     * @param list<string>                                                                   $imageAlts
+     * @param list<string>                                                                   $axes
+     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}>|null $variants   null: the variants of the product
+     * @param list<string>                                                                   $inUse
      */
     private function edit(
         Product $product,
@@ -766,6 +837,19 @@ final class ProductEditTest extends TestCase
             array_map(VariantId::fromString(...), $inUse),
             new \DateTimeImmutable(self::NOW),
         );
+    }
+
+    /**
+     * @return array<string, array{string|null, string|null}> the SKU and the EAN of every variant by its id, in order
+     */
+    private function codes(Product $product): array
+    {
+        $codes = [];
+        foreach ($product->variants()->toList() as $variant) {
+            $codes[$variant->id()->toString()] = [$variant->sku()?->value(), $variant->ean()?->value()];
+        }
+
+        return $codes;
     }
 
     /**

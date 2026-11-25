@@ -84,6 +84,8 @@ const {
   addVariant,
   removeVariant,
   setValue,
+  setSku,
+  setEan,
 } = useProductForm({
   productId: () => (typeof route.params.id === "string" ? route.params.id : null),
   // Only hides the actions: the API checks the permission. The roles come from /api/v1/admin/me.
@@ -546,6 +548,8 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
               @add-variant="addVariant"
               @remove-variant="removeVariant"
               @set-value="setValue"
+              @set-sku="setSku"
+              @set-ean="setEan"
             />
           </fieldset>
 

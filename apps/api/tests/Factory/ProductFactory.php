@@ -6,6 +6,7 @@ namespace App\Tests\Factory;
 
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
+use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductBrand;
@@ -21,6 +22,7 @@ use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
+use App\Catalog\Domain\Product\Sku;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Domain\Product\VariantAxes;
@@ -32,7 +34,7 @@ use Zenstruck\Foundry\ObjectFactory;
  * Builds Product aggregates through Product::create(); tests persist them through the repository.
  * Categories are given as Category aggregates; image keys as a list of alt texts. Without `variantAxes` and `variants`
  * the product has one default variant with a random id (never the id of the product); `variants` is a list of
- * `['id' => string, 'values' => list<string>]`. `parameters` is a list of `['name' => string, 'value' => string]`.
+ * `['id' => string, 'values' => list<string>]`, with the optional `'sku'` and `'ean'` (texts as written). `parameters` is a list of `['name' => string, 'value' => string]`.
  * Products are published by default (`status`), as the stored data is.
  *
  * @extends ObjectFactory<Product>
@@ -122,7 +124,11 @@ final class ProductFactory extends ObjectFactory
                 array_map(static function (mixed $variant): ProductVariant {
                     \assert(\is_array($variant) && \is_string($variant['id']) && \is_array($variant['values']) && array_is_list($variant['values']));
 
-                    return new ProductVariant(VariantId::fromString($variant['id']), VariantValues::fromList(self::strings($variant['values'])));
+                    $sku = $variant['sku'] ?? '';
+                    $ean = $variant['ean'] ?? '';
+                    \assert(\is_string($sku) && \is_string($ean));
+
+                    return new ProductVariant(VariantId::fromString($variant['id']), VariantValues::fromList(self::strings($variant['values'])), Sku::optional($sku), Ean::optional($ean));
                 }, $variants),
             ),
             $status,

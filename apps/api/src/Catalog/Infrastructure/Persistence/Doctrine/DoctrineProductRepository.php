@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Catalog\Infrastructure\Persistence\Doctrine;
 
 use App\Catalog\Domain\Category\CategoryId;
+use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductAlreadyExists;
@@ -24,6 +25,8 @@ use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
+use App\Catalog\Domain\Product\Sku;
+use App\Catalog\Domain\Product\SkuAlreadyTaken;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\TaxClassCode;
@@ -34,12 +37,19 @@ use App\Catalog\Domain\Product\VariantValues;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\CategoryRecord;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\ProductRecord;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\ProductVariantRecord;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\OptimisticLockException;
 
 final readonly class DoctrineProductRepository implements ProductRepository
 {
+    /**
+     * The first key of the two-key advisory locks of the SKUs (pg_advisory_xact_lock(int, int)), chosen for them; the second
+     * is a hash of the SKU, so two SKUs with the same hash only wait for each other.
+     */
+    public const int SKU_LOCK_NAMESPACE = 0x534B; // "SK"
+
     public function __construct(private EntityManagerInterface $entityManager)
     {
     }
@@ -57,6 +67,9 @@ final readonly class DoctrineProductRepository implements ProductRepository
         } catch (UniqueConstraintViolationException $e) {
             if (str_contains($e->getMessage(), ProductRecord::SLUG_CONSTRAINT)) {
                 throw new SlugAlreadyTaken();
+            }
+            if (str_contains($e->getMessage(), ProductVariantRecord::SKU_CONSTRAINT)) {
+                throw new SkuAlreadyTaken();
             }
             if (str_contains($e->getMessage(), ProductVariantRecord::PRIMARY_KEY_CONSTRAINT)) {
                 throw new VariantAlreadyExists();
@@ -77,6 +90,21 @@ final readonly class DoctrineProductRepository implements ProductRepository
         }
 
         return $this->toDomain($record);
+    }
+
+    public function skusOfOtherProducts(ProductId $product, array $skus): array
+    {
+        if ([] === $skus) {
+            return [];
+        }
+
+        $taken = $this->entityManager->getConnection()->fetchFirstColumn(
+            'SELECT sku FROM catalog_product_variant WHERE sku IN (:skus) AND product_id <> CAST(:product AS uuid)',
+            ['skus' => array_map(static fn (Sku $sku): string => $sku->value(), $skus), 'product' => $product->toString()],
+            ['skus' => ArrayParameterType::STRING],
+        );
+
+        return array_values(array_filter($skus, static fn (Sku $sku): bool => \in_array($sku->value(), $taken, true)));
     }
 
     /**
@@ -101,6 +129,7 @@ final readonly class DoctrineProductRepository implements ProductRepository
         if (null !== $existing && null !== $expectedVersion && $existing->version !== $expectedVersion) {
             throw new ProductModifiedConcurrently();
         }
+        $this->lockSkus($product, $existing);
         $record = $existing ?? new ProductRecord($id);
         $record->slug = $product->slug()->value();
         $record->name = $product->name()->value();
@@ -153,7 +182,12 @@ final readonly class DoctrineProductRepository implements ProductRepository
             $record->variantAxes = $axes;
         }
         $variants = array_map(
-            static fn (ProductVariant $variant): array => ['id' => $variant->id()->toString(), 'values' => $variant->values()->toList()],
+            static fn (ProductVariant $variant): array => [
+                'id' => $variant->id()->toString(),
+                'values' => $variant->values()->toList(),
+                'sku' => $variant->sku()?->value(),
+                'ean' => $variant->ean()?->value(),
+            ],
             $product->variants()->toList(),
         );
         $variantsChanged = null !== $existing && $variants !== $this->storedVariants($record);
@@ -192,12 +226,50 @@ final readonly class DoctrineProductRepository implements ProductRepository
     }
 
     /**
-     * @return list<array{id: string, values: list<string>}>
+     * Takes, before any row of the write is touched, an advisory lock of the transaction on every SKU it inserts or removes
+     * (the SKUs of the variants given and of those stored), one statement, in ascending order of the keys. Two writes that
+     * touch one SKU then queue here instead of on the unique index, where a row removed and not yet committed holds the
+     * SKU for an insert of another write: each could wait for a key the other holds (a deadlock, a 500), whatever the
+     * order the rows are written in. Whoever comes second goes on after the commit of the first and meets the committed
+     * state: the SKU taken (`SkuAlreadyTaken`) or free.
+     */
+    private function lockSkus(Product $product, ?ProductRecord $existing): void
+    {
+        $skus = array_map(static fn (ProductVariant $variant): ?string => $variant->sku()?->value(), $product->variants()->toList());
+        if (null !== $existing) {
+            foreach ($existing->variants as $stored) {
+                $skus[] = $stored->sku;
+            }
+        }
+        $keys = [];
+        foreach ($skus as $sku) {
+            if (null !== $sku) {
+                $hash = crc32($sku);
+                // The CRC-32 as a signed 32-bit integer (the int of PostgreSQL).
+                $keys[$hash > 0x7FFFFFFF ? $hash - 0x100000000 : $hash] = true;
+            }
+        }
+        if ([] === $keys) {
+            return;
+        }
+        $keys = array_keys($keys);
+        sort($keys);
+
+        $this->entityManager->getConnection()->executeStatement(
+            'SELECT pg_advisory_xact_lock(CAST(:namespace AS int), k.key)
+             FROM unnest(CAST(:keys AS int[])) WITH ORDINALITY AS k(key, position)
+             ORDER BY k.position',
+            ['namespace' => self::SKU_LOCK_NAMESPACE, 'keys' => '{'.implode(',', $keys).'}'],
+        );
+    }
+
+    /**
+     * @return list<array{id: string, values: list<string>, sku: string|null, ean: string|null}>
      */
     private function storedVariants(ProductRecord $record): array
     {
         return array_values($record->variants->map(
-            static fn (ProductVariantRecord $variant): array => ['id' => $variant->id, 'values' => $variant->optionValues],
+            static fn (ProductVariantRecord $variant): array => ['id' => $variant->id, 'values' => $variant->optionValues, 'sku' => $variant->sku, 'ean' => $variant->ean],
         )->toArray());
     }
 
@@ -205,15 +277,35 @@ final readonly class DoctrineProductRepository implements ProductRepository
      * The key of the unique index is the comparison key of the domain, so the database never rejects a combination
      * the domain accepts (lower() of PostgreSQL maps e.g. "İ" and "i" to the same text, mb_strtolower does not).
      *
+     * The rows are inserted in the order of their SKUs, not of their positions: a write that holds the codes X and then Y
+     * while another one holds Y and then X would deadlock on the unique index of the SKU (a 500). When every write takes
+     * the codes in the same order, the later one waits for the first and then loses with `SkuAlreadyTaken`. Rows without
+     * a SKU lock nothing and come last.
+     *
      * @param list<ProductVariant> $variants
      */
     private function addVariants(ProductRecord $record, array $variants): void
     {
+        $rows = [];
         foreach ($variants as $position => $variant) {
             $variantRecord = new ProductVariantRecord($variant->id()->toString(), $record, $position);
             $variantRecord->optionValues = $variant->values()->toList();
+            $variantRecord->sku = $variant->sku()?->value();
+            $variantRecord->ean = $variant->ean()?->value();
             $variantRecord->valuesKey = json_encode($variant->values()->comparisonKey(), \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR);
             $record->variants->add($variantRecord);
+            $rows[] = $variantRecord;
+        }
+
+        usort($rows, static fn (ProductVariantRecord $left, ProductVariantRecord $right): int => match (true) {
+            null === $left->sku && null === $right->sku => $left->position <=> $right->position,
+            null === $left->sku => 1,
+            null === $right->sku => -1,
+            default => strcmp($left->sku, $right->sku),
+        });
+        // Scheduled one by one in this order; the cascade of the product then finds them scheduled already.
+        foreach ($rows as $row) {
+            $this->entityManager->persist($row);
         }
     }
 
@@ -282,6 +374,8 @@ final readonly class DoctrineProductRepository implements ProductRepository
                     static fn (ProductVariantRecord $variant): ProductVariant => new ProductVariant(
                         VariantId::fromString($variant->id),
                         VariantValues::stored($variant->optionValues),
+                        null === $variant->sku ? null : Sku::stored($variant->sku),
+                        null === $variant->ean ? null : Ean::stored($variant->ean),
                     ),
                 )->toArray()),
             ),

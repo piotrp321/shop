@@ -178,6 +178,27 @@ final class GetProductBySlugTest extends KernelTestCase
         );
     }
 
+    public function testTheVariantsCarryTheirCodesAndTheGtinOnlyOfAGlobalTradeItemNumber(): void
+    {
+        $this->saveProduct([
+            'slug' => 'buty',
+            'mainCategory' => $this->categories['road'],
+            'variantAxes' => ['Rozmiar'],
+            'variants' => [
+                ['id' => self::BLACK_42, 'values' => ['42'], 'sku' => 'buty-42', 'ean' => '5901234123457'],
+                ['id' => self::WHITE_43, 'values' => ['43'], 'sku' => 'buty-43', 'ean' => '2000000000008'],
+                ['id' => self::BLACK_43, 'values' => ['44']],
+            ],
+        ]);
+
+        $details = $this->details('buty');
+
+        self::assertSame(
+            [['BUTY-42', '5901234123457', '5901234123457'], ['BUTY-43', '2000000000008', ''], ['', '', '']],
+            array_map(static fn ($variant): array => [$variant->sku, $variant->ean, $variant->gtin], $details->variants),
+        );
+    }
+
     public function testProductWithoutAxesHasTheDefaultVariantWithAnEmptyLabel(): void
     {
         $this->saveProduct(['slug' => 'pasek', 'mainCategory' => $this->categories['other'], 'variants' => [['id' => self::BLACK_42, 'values' => []]]]);

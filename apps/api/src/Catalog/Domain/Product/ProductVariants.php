@@ -7,7 +7,7 @@ namespace App\Catalog\Domain\Product;
 /**
  * The variants of a product with the axes they are described by, in presentation order. A product has 1 to 100
  * variants; each has one value per axis; no two have the same combination of values (trimmed, without regard to
- * case); ids differ; without axes there is exactly one variant, the default one, without values.
+ * case); ids differ; no two have the same SKU; without axes there is exactly one variant, the default one, without values.
  */
 final readonly class ProductVariants
 {
@@ -27,6 +27,7 @@ final readonly class ProductVariants
      *
      * @throws InvalidProductVariants
      * @throws DuplicateVariantValues
+     * @throws SkuRepeated            at the later of two variants with the same SKU
      */
     public static function create(VariantAxes $axes, array $variants): self
     {
@@ -45,7 +46,8 @@ final readonly class ProductVariants
 
         $ids = [];
         $combinations = [];
-        foreach ($variants as $variant) {
+        $skus = [];
+        foreach ($variants as $index => $variant) {
             $id = $variant->id()->toString();
             if (isset($ids[$id])) {
                 throw InvalidProductVariants::idRepeated();
@@ -57,6 +59,14 @@ final readonly class ProductVariants
                 throw new DuplicateVariantValues();
             }
             $combinations[$combination] = true;
+
+            $sku = $variant->sku()?->value();
+            if (null !== $sku) {
+                if (isset($skus[$sku])) {
+                    throw new SkuRepeated($index);
+                }
+                $skus[$sku] = true;
+            }
         }
 
         return new self($axes, $variants);

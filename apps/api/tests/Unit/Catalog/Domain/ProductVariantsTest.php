@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Catalog\Domain;
 
 use App\Catalog\Domain\Product\DuplicateVariantValues;
+use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\InvalidProductVariants;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
+use App\Catalog\Domain\Product\Sku;
+use App\Catalog\Domain\Product\SkuRepeated;
 use App\Catalog\Domain\Product\VariantAxes;
 use App\Catalog\Domain\Product\VariantId;
 use App\Catalog\Domain\Product\VariantValues;
@@ -24,6 +27,51 @@ final class ProductVariantsTest extends TestCase
         self::assertSame([], $variants->axes()->names());
         self::assertSame('', $variants->toList()[0]->label());
         self::assertSame(self::id(1), $variants->toList()[0]->id()->toString());
+    }
+
+    public function testAVariantWithoutCodesHasNoSkuAndNoEan(): void
+    {
+        $variant = self::variant(1, []);
+
+        self::assertNull($variant->sku());
+        self::assertNull($variant->ean());
+    }
+
+    public function testAVariantKeepsItsCodesWhateverItsValuesAre(): void
+    {
+        $variant = new ProductVariant(VariantId::fromString(self::id(1)), VariantValues::fromList(['czarne']), Sku::optional('ab-1'), Ean::optional('5901234123457'));
+
+        self::assertSame('AB-1', $variant->sku()?->value());
+        self::assertSame('5901234123457', $variant->ean()?->value());
+        self::assertSame('czarne', $variant->label());
+    }
+
+    public function testSeveralVariantsWithoutAnSkuAndSeveralWithTheSameEanAreAccepted(): void
+    {
+        $same = Ean::optional('5901234123457');
+        $variants = ProductVariants::create(VariantAxes::fromList(['Rozmiar']), [
+            new ProductVariant(VariantId::fromString(self::id(1)), VariantValues::fromList(['S']), null, $same),
+            new ProductVariant(VariantId::fromString(self::id(2)), VariantValues::fromList(['M']), null, $same),
+            new ProductVariant(VariantId::fromString(self::id(3)), VariantValues::fromList(['L'])),
+        ]);
+
+        self::assertSame(3, $variants->count());
+    }
+
+    public function testTheSameSkuInTwoVariantsIsRejectedAtTheLaterRowWhateverTheCaseItWasWrittenIn(): void
+    {
+        try {
+            ProductVariants::create(VariantAxes::fromList(['Rozmiar']), [
+                new ProductVariant(VariantId::fromString(self::id(1)), VariantValues::fromList(['S']), Sku::optional('AB-1')),
+                new ProductVariant(VariantId::fromString(self::id(2)), VariantValues::fromList(['M']), Sku::optional('CD-2')),
+                new ProductVariant(VariantId::fromString(self::id(3)), VariantValues::fromList(['L']), Sku::optional(' ab-1 ')),
+            ]);
+            self::fail('Expected SkuRepeated.');
+        } catch (SkuRepeated $e) {
+            self::assertSame(2, $e->index);
+            self::assertContains(InvalidInput::class, class_implements($e));
+            self::assertSame('Ten kod SKU powtarza się w produkcie.', $e->getMessage());
+        }
     }
 
     public function testNoVariantsIsRejected(): void

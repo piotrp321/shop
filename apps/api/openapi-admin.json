@@ -849,7 +849,7 @@
                         }
                     },
                     "409": {
-                        "description": "The slug belongs to another product (`type` slug-taken).",
+                        "description": "The slug belongs to another product (`type` slug-taken), or an SKU was taken by a variant of another product between the check and the write (`type` sku-taken; the same refusal found before the write is a 422 at the SKU).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -1047,7 +1047,7 @@
                         }
                     },
                     "409": {
-                        "description": "The `type` names the cause: product-modified (the version is not the current one), slug-taken, slug-locked (the slug of a product that was published cannot change), product-not-publishable (the last image of a published product that had images cannot be removed), variant-locked (after the first publication an axis or the meaning of a variant cannot change), variant-in-use (a removed variant has stock or reservations).",
+                        "description": "The `type` names the cause: product-modified (the version is not the current one), slug-taken, sku-taken (an SKU was taken by a variant of another product between the check and the write; found before the write it is a 422 at the SKU), slug-locked (the slug of a product that was published cannot change), product-not-publishable (the last image of a published product that had images cannot be removed), variant-locked (after the first publication an axis or the meaning of a variant cannot change), variant-in-use (a removed variant has stock or reservations).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -5496,7 +5496,7 @@
                 "type": "object"
             },
             "ProductConflictProblem": {
-                "description": "A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, or a removed variant has stock or reservations.",
+                "description": "A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, a SKU belongs to a variant of another product (found only when two writes race: before the write it is a 422 at the SKU), the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, or a removed variant has stock or reservations.",
                 "required": [
                     "type",
                     "title",
@@ -5509,6 +5509,7 @@
                         "enum": [
                             "tag:piotrp321.github.io,2026:shop/problems/product-modified",
                             "tag:piotrp321.github.io,2026:shop/problems/slug-taken",
+                            "tag:piotrp321.github.io,2026:shop/problems/sku-taken",
                             "tag:piotrp321.github.io,2026:shop/problems/slug-locked",
                             "tag:piotrp321.github.io,2026:shop/problems/product-not-publishable",
                             "tag:piotrp321.github.io,2026:shop/problems/variant-locked",
@@ -5774,12 +5775,14 @@
                         "maxItems": 2
                     },
                     "variants": {
-                        "description": "The variants in presentation order: one row per variant with one value per axis (1 to 40 characters); exactly one row without values for a product without axes. A row with the `variantId` of the product keeps that variant, a row with `null` is a new one. No two rows have the same values without regard to case and spaces at the ends.",
+                        "description": "The variants in presentation order: one row per variant with one value per axis (1 to 40 characters); exactly one row without values for a product without axes. A row with the `variantId` of the product keeps that variant, a row with `null` is a new one. No two rows have the same values without regard to case and spaces at the ends, and no two have the same SKU.",
                         "type": "array",
                         "items": {
                             "required": [
                                 "variantId",
-                                "values"
+                                "values",
+                                "sku",
+                                "ean"
                             ],
                             "properties": {
                                 "variantId": {
@@ -5794,6 +5797,18 @@
                                         "maxLength": 40,
                                         "minLength": 1
                                     }
+                                },
+                                "sku": {
+                                    "description": "The SKU of the variant: letters A-Z (small ones are turned into capitals), digits and the signs - _ . /, from 1 to 40 characters, the first one a letter or a digit; empty: no SKU. Unique among all the variants of all the products, drafts too. It belongs to the variant, not to its values, and may change after the first publication.",
+                                    "type": "string",
+                                    "example": "NAMIOT-HALNY-4",
+                                    "maxLength": 40
+                                },
+                                "ean": {
+                                    "description": "The EAN of the variant: 8, 12, 13 or 14 digits with the check digit of GS1; empty: no EAN. Not unique. The store gives its `gtin` only for a global trade item number, not for a number of restricted circulation (the GS1 prefixes 02, 04 and 20-29 and others of section 2.1.11 of the GS1 General Specifications).",
+                                    "type": "string",
+                                    "example": "5901234123457",
+                                    "maxLength": 14
                                 }
                             },
                             "type": "object"
@@ -5966,12 +5981,14 @@
                         "maxItems": 2
                     },
                     "variants": {
-                        "description": "The variants in presentation order: one row per variant with one value per axis (1 to 40 characters); exactly one row without values for a product without axes. A row with the `variantId` of the product keeps that variant, a row with `null` is a new one. No two rows have the same values without regard to case and spaces at the ends.",
+                        "description": "The variants in presentation order: one row per variant with one value per axis (1 to 40 characters); exactly one row without values for a product without axes. A row with the `variantId` of the product keeps that variant, a row with `null` is a new one. No two rows have the same values without regard to case and spaces at the ends, and no two have the same SKU.",
                         "type": "array",
                         "items": {
                             "required": [
                                 "variantId",
-                                "values"
+                                "values",
+                                "sku",
+                                "ean"
                             ],
                             "properties": {
                                 "variantId": {
@@ -5986,6 +6003,18 @@
                                         "maxLength": 40,
                                         "minLength": 1
                                     }
+                                },
+                                "sku": {
+                                    "description": "The SKU of the variant: letters A-Z (small ones are turned into capitals), digits and the signs - _ . /, from 1 to 40 characters, the first one a letter or a digit; empty: no SKU. Unique among all the variants of all the products, drafts too. It belongs to the variant, not to its values, and may change after the first publication.",
+                                    "type": "string",
+                                    "example": "NAMIOT-HALNY-4",
+                                    "maxLength": 40
+                                },
+                                "ean": {
+                                    "description": "The EAN of the variant: 8, 12, 13 or 14 digits with the check digit of GS1; empty: no EAN. Not unique. The store gives its `gtin` only for a global trade item number, not for a number of restricted circulation (the GS1 prefixes 02, 04 and 20-29 and others of section 2.1.11 of the GS1 General Specifications).",
+                                    "type": "string",
+                                    "example": "5901234123457",
+                                    "maxLength": 14
                                 }
                             },
                             "type": "object"
@@ -7550,7 +7579,9 @@
                 "description": "A variant of a product in the edit view.",
                 "required": [
                     "variantId",
-                    "values"
+                    "values",
+                    "sku",
+                    "ean"
                 ],
                 "properties": {
                     "variantId": {
@@ -7567,6 +7598,16 @@
                             "czarne",
                             "42"
                         ]
+                    },
+                    "sku": {
+                        "description": "The SKU of the variant as stored (capitals); empty when it has none.",
+                        "type": "string",
+                        "example": "NAMIOT-HALNY-4"
+                    },
+                    "ean": {
+                        "description": "The EAN of the variant; empty when it has none.",
+                        "type": "string",
+                        "example": "5901234123457"
                     }
                 },
                 "type": "object"

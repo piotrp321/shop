@@ -44,8 +44,8 @@ function view(overrides: Partial<ProductEditView> = {}): ProductEditView {
     images: [{ key: "originals/a.jpg", alt: "Przód", preview }],
     variantAxes: ["Kolor"],
     variants: [
-      { variantId: "v-1", values: ["czarne"] },
-      { variantId: "v-2", values: ["białe"] },
+      { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
+      { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
     ],
     updatedAt: "2026-11-01T12:30:00+00:00",
     ...overrides,

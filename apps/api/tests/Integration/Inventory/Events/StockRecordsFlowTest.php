@@ -49,7 +49,7 @@ final class StockRecordsFlowTest extends MessagingKernelTestCase
             'standard',
             [],
             ['Kolor'],
-            [['id' => self::GREEN, 'values' => ['zielony']], ['id' => self::ORANGE, 'values' => ['pomarańczowy']]],
+            [['id' => self::GREEN, 'values' => ['zielony'], 'sku' => '', 'ean' => ''], ['id' => self::ORANGE, 'values' => ['pomarańczowy'], 'sku' => '', 'ean' => '']],
             ProductStatus::Draft,
             'staff-sub-1',
         ));
@@ -74,7 +74,7 @@ final class StockRecordsFlowTest extends MessagingKernelTestCase
             'standard',
             [],
             ['Kolor'],
-            [['variantId' => self::GREEN, 'values' => ['zielony']], ['variantId' => null, 'values' => ['czarny']]],
+            [['variantId' => self::GREEN, 'values' => ['zielony'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['czarny'], 'sku' => '', 'ean' => '']],
         ));
         $this->consumeOutboxAndEvents(2);
 

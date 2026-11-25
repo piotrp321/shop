@@ -23,8 +23,8 @@ const SHOES = makeOffer(1, {
 const SHOES_DETAILS = makeDetails(1, {
   variantAxes: ["Kolor", "Rozmiar"],
   variants: [
-    { variantId: variantId(1, 1), label: "czarne, 42", values: ["czarne", "42"] },
-    { variantId: variantId(1, 2), label: "czarne, 44", values: ["czarne", "44"] },
+    { variantId: variantId(1, 1), label: "czarne, 42", values: ["czarne", "42"], sku: "", ean: "", gtin: "" },
+    { variantId: variantId(1, 2), label: "czarne, 44", values: ["czarne", "44"], sku: "", ean: "", gtin: "" },
   ],
 });
 

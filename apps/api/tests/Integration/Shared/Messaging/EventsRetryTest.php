@@ -93,7 +93,7 @@ final class EventsRetryTest extends MessagingKernelTestCase
             'standard',
             [['key' => 'originals/'.str_repeat('a', 64).'.jpg', 'alt' => 'front']],
             [],
-            [['id' => '20000000-0000-4000-8000-000000000001', 'values' => []]],
+            [['id' => '20000000-0000-4000-8000-000000000001', 'values' => [], 'sku' => '', 'ean' => '']],
             ProductStatus::Published,
             null,
         ));

@@ -60,7 +60,7 @@ final class RepriceOnTaxClassChangeTest extends MessagingKernelTestCase
             'standard',
             [['key' => self::IMAGE, 'alt' => 'okładka']],
             ['Okładka'],
-            [['id' => self::HARDCOVER, 'values' => ['twarda']], ['id' => self::PAPERBACK, 'values' => ['miękka']]],
+            [['id' => self::HARDCOVER, 'values' => ['twarda'], 'sku' => '', 'ean' => ''], ['id' => self::PAPERBACK, 'values' => ['miękka'], 'sku' => '', 'ean' => '']],
             // A draft: its prices are set before the publication, and repriced too.
             ProductStatus::Draft,
             'staff-sub-1',
@@ -123,7 +123,7 @@ final class RepriceOnTaxClassChangeTest extends MessagingKernelTestCase
             $taxClass,
             [['key' => self::IMAGE, 'alt' => 'okładka']],
             ['Okładka'],
-            [['variantId' => self::HARDCOVER, 'values' => ['twarda']], ['variantId' => self::PAPERBACK, 'values' => ['miękka']]],
+            [['variantId' => self::HARDCOVER, 'values' => ['twarda'], 'sku' => '', 'ean' => ''], ['variantId' => self::PAPERBACK, 'values' => ['miękka'], 'sku' => '', 'ean' => '']],
         );
     }
 
