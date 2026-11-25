@@ -1342,6 +1342,7 @@ describe("ProductFormView", () => {
         expect(rows[1]!.get("[data-testid=sku-error]").text()).toBe("Ten kod SKU powtarza się w produkcie.");
         expect(rows[0]!.find("[data-testid=sku-error]").exists()).toBe(false);
         expect(inputOf(mounted.wrapper, "variant-sku", 1).attributes("aria-invalid")).toBe("true");
+        expect(document.activeElement).toBe(inputOf(mounted.wrapper, "variant-sku", 1).element);
       });
 
       it("shows a 409 sku-taken as the message of the section of the variants", async () => {
