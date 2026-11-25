@@ -6,6 +6,9 @@ import FormSection from "@/components/FormSection.vue";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { INPUT_CLASS } from "@/components/ui/input/inputClass";
+import { cn } from "@/lib/utils";
+import { upperAscii } from "./contentText";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MAX_AXES, MAX_VARIANTS, type VariantRow } from "./useProductForm";
 
@@ -88,6 +91,23 @@ function confirm(): void {
   } else if (current?.kind === "axis") {
     emit("removeAxis", current.index);
   }
+}
+
+/**
+ * The SKU is written in capitals while it is typed. The field is a plain `<input>`, not `Input`: a field that keeps its own
+ * copy of the value would show what was typed when the form already holds the same capitals (nothing changes, so nothing is
+ * drawn again), and would take the typed letters back whenever it is drawn for another reason. The letters of the ASCII
+ * become capitals in the field itself, the caret stays where it was, and no character is removed.
+ */
+function typeSku(index: number, event: Event): void {
+  const field = event.target as HTMLInputElement;
+  const capitals = upperAscii(field.value);
+  if (capitals !== field.value) {
+    const { selectionStart, selectionEnd } = field;
+    field.value = capitals;
+    field.setSelectionRange(selectionStart, selectionEnd);
+  }
+  emit("setSku", index, capitals);
 }
 
 const rowErrors = (index: number) => [...props.errorsExactly(`variants[${index}]`), ...props.errorsExactly(`variants[${index}].values`), ...props.errorsAt(`variants[${index}].variantId`)];
@@ -270,10 +290,11 @@ const ids = (kind: string, ...parts: number[]) => `${idPrefix}-${kind}-${parts.j
             </p>
           </TableCell>
           <TableCell class="align-top">
-            <Input
+            <input
               data-testid="variant-sku"
-              class="min-w-40"
-              :model-value="row.sku"
+              data-slot="input"
+              :class="cn(INPUT_CLASS, 'aria-invalid:border-destructive', 'min-w-40')"
+              :value="row.sku"
               :disabled="readOnly"
               :aria-invalid="errorsAt(`variants[${index}].sku`).length > 0 ? 'true' : undefined"
               :aria-describedby="errorsAt(`variants[${index}].sku`).length > 0 ? ids('sku-error', index) : undefined"
@@ -281,8 +302,8 @@ const ids = (kind: string, ...parts: number[]) => `${idPrefix}-${kind}-${parts.j
               maxlength="40"
               autocapitalize="characters"
               spellcheck="false"
-              @update:model-value="emit('setSku', index, String($event ?? ''))"
-            />
+              @input="typeSku(index, $event)"
+            >
             <p
               v-for="title in errorsAt(`variants[${index}].sku`)"
               :id="ids('sku-error', index)"
