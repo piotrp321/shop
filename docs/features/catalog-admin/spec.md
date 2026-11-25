@@ -109,7 +109,7 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   `ProductRepository::skusOfOtherProducts` przed zapisem; kody wariantów zapisywanego produktu nie liczą się) to 422
   przy `variants[i].sku`. Gwarancją jest indeks unikalny `catalog_product_variant_sku_key` (osobna migracja
   nietransakcyjna `CONCURRENTLY`): zapis, który przegrał wyścig, to 409 `sku-taken` (`SkuAlreadyTaken`, bez
-  `violations`), rozpoznawany po nazwie ograniczenia jak `slug-taken`. EAN nie jest unikalny. `gtin` odpowiedzi sklepu
+  `violations`), rozpoznawany po nazwie ograniczenia jak `slug-taken`. Przed zmianą jakiegokolwiek wiersza repozytorium bierze blokadę doradczą transakcji (`pg_advisory_xact_lock(int, int)`) na każde SKU, które zapis wstawia albo usuwa, jednym zapytaniem w rosnącej kolejności kluczy, więc dwa zapisy tego samego SKU ustawiają się w kolejce na blokadzie, a nie na indeksie (usunięty, niezatwierdzony wiersz trzyma SKU dla wstawienia innego zapisu i dwa zapisy mogłyby zakleszczyć się na indeksie, co dałoby 500); drugi zapis widzi stan zatwierdzony: SKU zajęte (`sku-taken`) albo wolne. Wiersze wariantów są wstawiane w kolejności SKU. EAN nie jest unikalny. `gtin` odpowiedzi sklepu
   liczy `Ean::gtin()`: równy EAN dla globalnego numeru towaru, pusty dla numeru obiegu ograniczonego (RCN, GS1
   General Specifications 26.0, §2.1.11) i dla braku EAN. Produkt bez osi, któremu dochodzą osie (tylko przed
   pierwszą publikacją), zachowuje identyfikator wariantu domyślnego w pierwszym wierszu, jeśli panel go odeśle.
