@@ -192,6 +192,13 @@ Obowiązuje autora i reviewera, w części, której dotyczy zmiana:
   i deserializacji frameworka.
 - **Unicode:** polskie znaki działają; znaki sterujące (NUL, U+2028) i same białe znaki Unicode (NBSP) w tekstach są
   odrzucane albo obsłużone (`trim()` i wyrażenia bez `/u` działają tylko na ASCII).
+- **Zmiana reguły porównania albo normalizacji** (przycinanie, wielkość liter, usuwane albo zastępowane znaki, klucz
+  unikalności, kursor, tożsamość): przypadki testów i przeglądu wynikają z różnicy starej i nowej reguły w każdym
+  miejscu, gdzie się spotykają, a nie tylko z przykładów specyfikacji i dzisiejszych danych: wartość zapisana według
+  starej reguły wobec wysłanej według nowej (zapis bez zmian przechodzi, tożsamość i klucz się zgadzają), dwie zapisane
+  wartości, które nowa reguła zrównuje (kolizja), i znak, który jedna warstwa usuwa, a inna zostawia (walidacja,
+  handler, zapytanie, indeks, klucz kursora). Przypadki wyszukuje się w kodzie (`git grep` miejsc, które porównują
+  albo liczą klucz z tego tekstu), nie z pamięci.
 - **Klawiatura, focus, etykiety:** każda kontrolka działa z klawiatury i ma etykietę; po akcji (zapis, dialog, błąd)
   focus trafia w sensowne miejsce; asynchroniczne statusy i błędy są w `aria-live`.
 - **Stany:** loading, empty i error dla każdego zapytania; ekran 375 px.
