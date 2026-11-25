@@ -416,8 +416,10 @@ final class RealDemoCatalogTest extends TestCase
     public function testEveryVariantHasAUniqueSkuStartingWithALetterAndAnEanOfTheRestrictedPrefixTwo(): void
     {
         $skus = [];
+        $eans = [];
         foreach (self::$catalog->products as $product) {
             foreach ($product->variants as $variant) {
+                $eans[] = $variant['ean'];
                 $sku = Sku::optional($variant['sku']);
                 self::assertNotNull($sku, $product->name);
                 self::assertSame($variant['sku'], $sku->value(), $product->name);
@@ -433,6 +435,7 @@ final class RealDemoCatalogTest extends TestCase
 
         self::assertGreaterThanOrEqual(1000, \count($skus));
         self::assertSame($skus, array_values(array_unique($skus)));
+        self::assertSame($eans, array_values(array_unique($eans)));
     }
 
     /**
@@ -469,6 +472,57 @@ final class RealDemoCatalogTest extends TestCase
         }
 
         self::assertGreaterThan(0, $checked, $typePrefix);
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string, string}> the type, a phrase of a description, the parameter and the text its value holds when the phrase is true
+     */
+    public static function claimsOfDescriptionsThatOnlySomeModelsOfATypeCanMake(): iterable
+    {
+        yield 'anti-fog coating of the goggles' => ['Okulary pływackie ', 'przeciwmgiel', 'Powłoka', 'przeciwmgielna'];
+        yield 'hook-and-loop fastening of the bike bags' => ['Torba rowerowa ', 'rzepow', 'Mocowanie', 'rzepow'];
+        yield 'recreational use of the footballs' => ['Piłka nożna ', 'rekreacyjn', 'Przeznaczenie', 'rekreacyjn'];
+        yield 'ski slope of the ski jackets' => ['Kurtka narciarska ', 'stoku', 'Przeznaczenie', 'narciarstwo'];
+        yield 'ski slope of the touring skis' => ['Narty skiturowe ', 'stoku', 'Przeznaczenie', 'narciarstwo'];
+        yield 'quick drying of the shirts' => ['Koszulka biegowa ', 'szybko schnie', 'Materiał', 'poliester'];
+    }
+
+    #[DataProvider('claimsOfDescriptionsThatOnlySomeModelsOfATypeCanMake')]
+    public function testDescriptionOfAProductSaysNothingItsParametersDeny(string $typePrefix, string $phrase, string $parameter, string $needle): void
+    {
+        $checked = 0;
+        foreach (self::$catalog->products as $product) {
+            if (!str_starts_with($product->name, $typePrefix)) {
+                continue;
+            }
+            ++$checked;
+            if (!str_contains(mb_strtolower($product->description), $phrase)) {
+                continue;
+            }
+            $values = array_column($product->parameters, 'value', 'name');
+            self::assertStringContainsString($needle, mb_strtolower($values[$parameter] ?? ''), $product->name.': the description says "'.$phrase.'"');
+        }
+
+        self::assertGreaterThan(0, $checked, $typePrefix);
+    }
+
+    public function testNoDescriptionClaimsWhatTheSetOfTheTouringSkisHolds(): void
+    {
+        // The photos of Stavro Grań 95 show skis with skins, so no text says what is or is not in the set.
+        foreach (self::$catalog->products as $product) {
+            if (str_starts_with($product->name, 'Narty skiturowe ')) {
+                self::assertStringNotContainsString('bez wiązań', $product->description, $product->name);
+                self::assertStringNotContainsString('bez fok', $product->description, $product->name);
+                self::assertNotContains('Wiązania i foki', array_column($product->parameters, 'name'), $product->name);
+            }
+        }
+    }
+
+    public function testNoProductHasAnIsbnParameterBecauseTheCodeOfTheVariantIsItsEan(): void
+    {
+        foreach (self::$catalog->products as $product) {
+            self::assertNotContains('isbn', array_map(mb_strtolower(...), array_column($product->parameters, 'name')), $product->name);
+        }
     }
 
     public function testTheTentHalny4HasFourPeople(): void
