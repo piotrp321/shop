@@ -14,8 +14,9 @@ use Doctrine\DBAL\Connection;
 /**
  * The catalog checks of demo-data:verify: a published product has a variant, the counts of the tables are the ones of
  * the profile, the slugs of the tail are unique and different from the slugs of fixtures/catalog.yaml, and a generated
- * product has a brand, a description and parameters and a generated variant a SKU and an EAN (the products and variants
- * of the seed are the seed's own and are left out: the seed writes its content itself). Returns the violations; none
+ * product has a brand, a description and parameters (each with a name and a value) and a generated variant a SKU and
+ * an EAN (the products and variants of the seed are the seed's own and are left out: the seed writes its content itself).
+ * "Has" is a text with a visible character (`BlankText`), not only a value that is not NULL. Returns the violations; none
  * means the data is consistent.
  */
 final readonly class CatalogVerifier
@@ -140,6 +141,8 @@ final readonly class CatalogVerifier
 
     /**
      * One pass over the table counts what is missing; only when something is, a second query names the first products.
+     * A brand or a description is missing as NULL, as an empty text and as a text without a visible character (T3), a
+     * list of parameters as an empty one, and a parameter as an entry without a name or a value of that kind.
      *
      * @param list<string> $seedSlugs
      *
@@ -147,10 +150,16 @@ final readonly class CatalogVerifier
      */
     private function generatedProductsWithoutContent(array $seedSlugs): array
     {
+        $visible = $this->connection->quote(BlankText::visiblePattern());
         $checks = [
-            'no_brand' => ['A generated product has no brand', "brand = ''"],
-            'no_description' => ['A generated product has no description', "description = ''"],
-            'no_parameters' => ['A generated product has no parameters', "parameters = '[]'::jsonb"],
+            'no_brand' => ['A generated product has no brand', BlankText::missing('brand', $visible)],
+            'no_description' => ['A generated product has no description', BlankText::missing('description', $visible)],
+            'no_parameters' => ['A generated product has no parameters', "(parameters = '[]'::jsonb OR jsonb_typeof(parameters) <> 'array')"],
+            'blank_parameter' => ['A generated product has a parameter without a name or a value', \sprintf(
+                "(CASE WHEN jsonb_typeof(parameters) = 'array' THEN EXISTS (SELECT 1 FROM jsonb_array_elements(parameters) AS parameter(entry) WHERE jsonb_typeof(parameter.entry) <> 'object' OR %s OR %s) ELSE false END)",
+                BlankText::missing("parameter.entry ->> 'name'", $visible),
+                BlankText::missing("parameter.entry ->> 'value'", $visible),
+            )],
         ];
         $counts = [];
         foreach ($checks as $key => [, $condition]) {
@@ -178,7 +187,8 @@ final readonly class CatalogVerifier
     }
 
     /**
-     * The same for the codes of the variants; the variants of the products of the seed are left out by the product id.
+     * The same for the codes of the variants (NULL, an empty text or a text without a visible character is no code); the
+     * variants of the products of the seed are left out by the product id.
      *
      * @param list<string> $seedProductIds
      *
@@ -186,16 +196,17 @@ final readonly class CatalogVerifier
      */
     private function generatedVariantsWithoutCodes(array $seedProductIds): array
     {
+        $visible = $this->connection->quote(BlankText::visiblePattern());
         $checks = [
-            'no_sku' => ['A generated variant has no SKU', 'sku IS NULL'],
-            'no_ean' => ['A generated variant has no EAN', 'ean IS NULL'],
+            'no_sku' => ['A generated variant has no SKU', BlankText::missing('v.sku', $visible)],
+            'no_ean' => ['A generated variant has no EAN', BlankText::missing('v.ean', $visible)],
         ];
         $counts = [];
         foreach ($checks as $key => [, $condition]) {
             $counts[] = \sprintf('count(*) FILTER (WHERE %s) AS %s', $condition, $key);
         }
         $row = $this->connection->fetchAssociative(
-            'SELECT '.implode(', ', $counts).' FROM catalog_product_variant WHERE NOT (product_id = ANY(?::uuid[]))',
+            'SELECT '.implode(', ', $counts).' FROM catalog_product_variant v WHERE NOT (v.product_id = ANY(?::uuid[]))',
             [Sql::textArray($seedProductIds)],
         );
 
@@ -206,7 +217,7 @@ final readonly class CatalogVerifier
             }
             /** @var list<string> $slugs */
             $slugs = $this->connection->fetchFirstColumn(
-                'SELECT DISTINCT p.slug FROM catalog_product_variant v JOIN catalog_product p ON p.id = v.product_id WHERE NOT (v.product_id = ANY(?::uuid[])) AND v.'.$condition.' ORDER BY p.slug LIMIT '.(Listing::SHOWN + 1),
+                'SELECT DISTINCT p.slug FROM catalog_product_variant v JOIN catalog_product p ON p.id = v.product_id WHERE NOT (v.product_id = ANY(?::uuid[])) AND '.$condition.' ORDER BY p.slug LIMIT '.(Listing::SHOWN + 1),
                 [Sql::textArray($seedProductIds)],
             );
             $violations = [...$violations, ...Listing::of($what, $slugs)];

@@ -342,10 +342,13 @@ Krok 6 to SQL po załadowaniu zamówień (`INSERT … SELECT` z sumami narastaj�
 - liczby w tabelach różnią się od profilu, kategorie ogona są niekompletne, slug produktu z ogona nie jest unikalny
   (albo slug z `catalog.yaml` należy do innego produktu);
 - wygenerowany produkt nie ma marki, opisu albo parametrów (naruszenia „A generated product has no brand”, „… no
-  description”, „… no parameters”) albo wygenerowany wariant nie ma SKU albo EAN („A generated variant has no SKU”,
-  „… no EAN”); każde z nich wymienia pierwsze slugi produktów. Produkty z `catalog.yaml` i ich warianty są pominięte
-  (seed pisze własną treść i kody). Każde z dwóch sprawdzeń to jedno przejście po tabeli (liczniki), a produkty
-  nazywa dopiero drugie zapytanie, gdy licznik jest dodatni;
+  description”, „… no parameters”) albo ma parametr bez nazwy lub wartości („… has a parameter without a name or a
+  value”) albo wygenerowany wariant nie ma SKU albo EAN („A generated variant has no SKU”, „… no EAN”); każde z nich
+  wymienia pierwsze slugi produktów. Brak wartości to `NULL`, pusty tekst albo tekst bez znaku widocznego według T3
+  reguły tekstu (`BlankText`: PostgreSQL nie ma klas Unicode, więc wzorzec wylicza niewidoczne punkty kodowe, a test
+  porównuje go z `Text` dla każdego z nich), nie tylko `NULL`: odbiorca API nie odróżnia ich od siebie. Produkty
+  z `catalog.yaml` i ich warianty są pominięte (seed pisze własną treść i kody). Każde z dwóch sprawdzeń to jedno
+  przejście po tabeli (liczniki), a produkty nazywa dopiero drugie zapytanie, gdy licznik jest dodatni;
 - w którymś realmie nie ma grupy `demo-data-generated` albo jej członkowie to nie dokładnie zbiór docelowy z bieżącymi
   danymi (opcja `--no-accounts` pomija sprawdzenia kont).
 W `small` sprawdzenie ceny linii obejmuje wszystkie zamówienia, w większych profilach deterministyczną próbkę
@@ -660,11 +663,13 @@ trafiają do sąsiednich stron. Odniesienie: limit Joba `server` to 24 h (`docs/
 (`docs/reports/demo-scale-medium-worf-2026-11-20.md`), więc przyrost rzędu kilku minut to około 0,5% prognozy;
 nawet kilkukrotnie większy nie zbliża Joba do limitu.
 
-**Czas nowych sprawdzeń `demo-data:verify`** (dwa zapytania liczące: produkty bez marki, opisu i parametrów w jednym
-przejściu, warianty bez SKU i EAN w drugim): na `small` 0,6 ms i 0,7 ms (`EXPLAIN ANALYZE`); cały `demo-data:verify
---no-accounts` na `small` trwa około 1,1 s przed i po (0,94–1,27 s przed, 1,09–1,18 s po: w granicach rozrzutu). Na
-`medium` (po `ANALYZE`, równoległe skanowanie sekwencyjne, dane w pamięci podręcznej systemu) 155 ms i 127 ms; szacunek
-dla `server` i `full` ×10 to około 3 s.
+**Czas sprawdzeń treści `demo-data:verify`** (dwa zapytania liczące: produkty bez marki, opisu, parametrów i z parametrem
+bez nazwy lub wartości w jednym przejściu, warianty bez SKU i EAN w drugim; brak to `NULL`, pusty tekst albo tekst bez
+znaku widocznego): na `small` (2191 produktów, 7081 wariantów, `EXPLAIN ANALYZE` po `ANALYZE`, dwa pomiary) 6,7–6,9 ms
+i 2,3 ms, z czego sprawdzenie wpisów parametrów to około 5,2 ms (bez niego produkty 1,5 ms); same sprawdzenia
+`NULL` kosztowały 0,8–0,9 ms i 0,6 ms. Na `medium` nie mierzono po tej zmianie (wymaga puli zdjęć; przed zmianą 155 ms
+i 127 ms): proporcja `small` daje około 1,2 s i 0,5 s, a dla `server` i `full` ×10 około 12 s i 5 s, czyli kilka
+procent czasu `demo-data:verify`.
 
 Kroki zdjęć, cen, promocji i zamówień przechodzą generator produktów i liczą teraz także opis i parametry (dane tych
 kroków bez zmian); koszt CPU tego dodatku nie był mierzony i nie wchodzi do szacunku czasu.

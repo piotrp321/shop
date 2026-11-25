@@ -352,7 +352,8 @@ stron w pamięci, a nie zwiększa jej zużycia.
   co przed etapem identyfikatory, slugi, nazwy, krótkie opisy, warianty i ceny, a nowe pola są deterministyczne
   i niezależne od liczby procesów.
 - `COPY` dostaje nowe kolumny (`CatalogLoader`); `demo-data:verify` sprawdza, że żaden wygenerowany produkt nie ma
-  pustej marki, opisu ani parametrów i żaden wygenerowany wariant nie jest bez SKU albo EAN.
+  marki, opisu ani parametrów (brak to `NULL`, pusty tekst albo tekst bez znaku widocznego według T3; parametr bez nazwy
+  lub wartości też jest naruszeniem) i żaden wygenerowany wariant nie jest bez SKU albo EAN (ta sama definicja braku).
 
 ## Skala i dane na serwerze
 
@@ -528,7 +529,9 @@ Etap nie potwierdza działania przy 10 mln produktów: weryfikacja skali należy
     przechodzi przed zmianą i po niej (ceny powstają z identyfikatorów wariantów we własnym strumieniu, więc zostają
     takie same).
 15. `demo-data:verify` kończy się błędem, gdy wygenerowany produkt nie ma marki, opisu albo parametrów albo wygenerowany
-    wariant nie ma SKU albo EAN (sprawdzone także na ścieżce błędu), i przechodzi na profilu `small`.
+    wariant nie ma SKU albo EAN (sprawdzone także na ścieżce błędu), także gdy brak ma postać pustego tekstu albo tekstu
+    bez znaku widocznego (spacje, NBSP, znaki niewidoczne), a parametr bez nazwy lub wartości jest naruszeniem;
+    przechodzi na profilu `small`.
 16. Pomiar rozmiaru tabel („Skala i dane na serwerze”, p. 3): rozmiar sterty, TOAST i każdego indeksu
     `catalog_product` i `catalog_product_variant` (indeks SKU osobno), przed zmianą i po niej z tego samego ziarna,
     po pełnym przebiegu `small` i po krokach katalogu `medium`; komendy i wyniki są w raporcie zadania, a bajty na

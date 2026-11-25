@@ -129,6 +129,22 @@ final class VerifyStepTest extends KernelTestCase
         yield 'a product without parameters' => ["UPDATE catalog_product SET parameters = '[]'::jsonb WHERE id = :product", 'A generated product has no parameters'];
         yield 'a variant without a SKU' => ['UPDATE catalog_product_variant SET sku = NULL WHERE id = (SELECT id FROM catalog_product_variant WHERE product_id = :product ORDER BY position LIMIT 1)', 'A generated variant has no SKU'];
         yield 'a variant without an EAN' => ['UPDATE catalog_product_variant SET ean = NULL WHERE id = (SELECT id FROM catalog_product_variant WHERE product_id = :product ORDER BY position LIMIT 1)', 'A generated variant has no EAN'];
+
+        // The API gives no code as an empty text (the receiver does not tell NULL from ''), so a generator fault that writes
+        // an empty or a blank text is a missing value as well: the rule of the texts (T3), not the ASCII `btrim`.
+        $firstVariant = '(SELECT id FROM catalog_product_variant WHERE product_id = :product ORDER BY position LIMIT 1)';
+        yield 'a variant with an empty SKU' => ["UPDATE catalog_product_variant SET sku = '' WHERE id = $firstVariant", 'A generated variant has no SKU'];
+        yield 'a variant with an empty EAN' => ["UPDATE catalog_product_variant SET ean = '' WHERE id = $firstVariant", 'A generated variant has no EAN'];
+        yield 'a variant with a SKU of spaces' => ["UPDATE catalog_product_variant SET sku = '   ' WHERE id = $firstVariant", 'A generated variant has no SKU'];
+        yield 'a variant with a SKU of no-break spaces' => ["UPDATE catalog_product_variant SET sku = '\u{00A0}\u{00A0}' WHERE id = $firstVariant", 'A generated variant has no SKU'];
+        yield 'a variant with an EAN of an em space and a zero width space' => ["UPDATE catalog_product_variant SET ean = '\u{2003}\u{200B}' WHERE id = $firstVariant", 'A generated variant has no EAN'];
+        yield 'a product with a brand of a space' => ["UPDATE catalog_product SET brand = ' ' WHERE id = :product", 'A generated product has no brand'];
+        yield 'a product with a brand of a no-break space' => ["UPDATE catalog_product SET brand = '\u{00A0}' WHERE id = :product", 'A generated product has no brand'];
+        yield 'a product with a brand of invisible characters' => ["UPDATE catalog_product SET brand = '\u{3000}\u{200D}\u{FE0F}\u{3164}' WHERE id = :product", 'A generated product has no brand'];
+        yield 'a product with a description of a no-break space' => ["UPDATE catalog_product SET description = '\u{00A0}' WHERE id = :product", 'A generated product has no description'];
+        yield 'a product with a parameter without a name' => ['UPDATE catalog_product SET parameters = \'[{"name":"","value":"2,4 kg"}]\'::jsonb WHERE id = :product', 'A generated product has a parameter without a name or a value'];
+        yield 'a product with a parameter of a blank value' => ["UPDATE catalog_product SET parameters = '[{\"name\":\"Waga\",\"value\":\"\u{00A0}\"}]'::jsonb WHERE id = :product", 'A generated product has a parameter without a name or a value'];
+        yield 'a product with a parameter without the key of a value' => ['UPDATE catalog_product SET parameters = \'[{"name":"Waga"}]\'::jsonb WHERE id = :product', 'A generated product has a parameter without a name or a value'];
     }
 
     #[DataProvider('spoiledContent')]
