@@ -9,7 +9,8 @@ use App\Shared\Domain\Exception\TypedProblem;
 
 /**
  * After the first publication a variant keeps its meaning (decision K5): the values of a kept variant and the names
- * of the axes change only without a change of their comparison key, and axes cannot be added, removed or reordered.
+ * of the axes change only without a change of their comparison key (but the later of two stored names that repeat
+ * each other, which takes a new name), and axes cannot be added, removed or reordered.
  * The detail names the stored values of the variant or the stored name of the axis as a person reads them, without
  * forbidden or trimmed characters (IdentityText), and says what the correction of a stored text with forbidden
  * characters may be.
@@ -37,11 +38,18 @@ final class VariantIdentityLocked extends \DomainException implements Conflict, 
         return new self('Po pierwszej publikacji nie można dodać, usunąć ani przestawić osi wariantów.');
     }
 
-    public static function axisName(string $storedName): self
+    /**
+     * @param bool $repeated whether the second axis repeats the stored name: then the second, not this one, takes a new
+     *                       name
+     */
+    public static function axisName(string $storedName, bool $repeated = false): self
     {
         $correction = IdentityText::isRefused($storedName)
             ? 'Zapisana nazwa ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter.'
             : 'Popraw tylko wielkość liter.';
+        if ($repeated) {
+            $correction .= ' Nową nazwę może dostać tylko druga oś, która powtarza tę nazwę.';
+        }
 
         return new self(\sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. %s', IdentityText::shown($storedName), $correction));
     }

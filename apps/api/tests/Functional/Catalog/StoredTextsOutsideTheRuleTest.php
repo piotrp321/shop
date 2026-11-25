@@ -6,6 +6,7 @@ namespace App\Tests\Functional\Catalog;
 
 use App\Catalog\Application\Query\ListVariantIdentities;
 use App\Catalog\Application\Query\VariantIdentity;
+use App\Catalog\Domain\Product\IdentityText;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\DemoData\Identity\DemoUuid;
 use App\DemoData\Orders\CatalogVariant;
@@ -261,6 +262,206 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
     }
 
     /**
+     * @return iterable<string, array{list<string>, string}> two axis names stored before the rule of texts that repeat
+     *                                                       each other once the forbidden characters are spaces and
+     *                                                       the ends are trimmed (T2), and what an edit that keeps
+     *                                                       them gets at the second axis
+     */
+    public static function storedAxesThatRepeatEachOther(): iterable
+    {
+        yield 'U+200B at the end of the second' => [['Kolor', "Kolor\u{200B}"], 'Nazwa osi już jest użyta.'];
+        yield 'U+009F at the end of the second' => [['Kolor', "Kolor\u{9F}"], 'Nazwa osi zawiera niedozwolone znaki.'];
+        yield 'U+009F before the one letter of the second' => [['A', "\u{9F}A"], 'Nazwa osi zawiera niedozwolone znaki.'];
+    }
+
+    /**
+     * Two axis names the rule before the rule of texts took as different are one name now: an edit that keeps them is
+     * a 422 at the second axis, the first stays locked, and the product is saved once the second axis takes a name
+     * that does not repeat the first, with the other changes of the edit; the axes keep their count and order, the
+     * variants their identifiers and values (E7). Then K5 locks both names again: a new name of either is refused, a
+     * change of case is not.
+     *
+     * @param list<string> $stored
+     */
+    #[DataProvider('storedAxesThatRepeatEachOther')]
+    public function testTheSecondOfTwoAxesStoredThatRepeatEachOtherTakesANewNameOnce(array $stored, string $kept): void
+    {
+        $id = $this->publishedWithRepeatedAxes($stored);
+        $first = IdentityText::shown($stored[0]);
+        $variants = $this->storedVariants($id);
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['shortDescription' => 'Nowy opis']));
+        self::assertSame([['propertyPath' => 'variantAxes[1]', 'title' => $kept]], $this->violations());
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variantAxes' => ['Barwa', 'Rozmiar']]));
+        $this->assertProblem(409, 'variant-locked', \sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter. Nową nazwę może dostać tylko druga oś, która powtarza tę nazwę.', $first));
+        self::assertSame($stored, $this->storedAxes($id));
+
+        $saved = $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['shortDescription' => 'Nowy opis', 'variantAxes' => [$first, 'Rozmiar']]));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([$first, 'Rozmiar'], $this->storedAxes($id));
+        self::assertSame('Nowy opis', $this->connection->fetchOne('SELECT short_description FROM catalog_product WHERE id = ?', [$id]));
+        self::assertSame($variants, $this->storedVariants($id));
+
+        foreach ([[[$first, 'Materiał'], 'Rozmiar'], [['Barwa', 'Rozmiar'], $first]] as [$axes, $locked]) {
+            $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($saved, ['variantAxes' => $axes]));
+            $this->assertProblem(409, 'variant-locked', \sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter.', $locked));
+        }
+        self::assertSame([$first, 'Rozmiar'], $this->storedAxes($id));
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($saved, ['variantAxes' => [mb_strtolower($first), 'ROZMIAR']]));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([mb_strtolower($first), 'ROZMIAR'], $this->storedAxes($id));
+        self::assertSame($variants, $this->storedVariants($id));
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string}> the stored second axis name with a forbidden character,
+     *                                                         its name in the detail and its correction that does not
+     *                                                         repeat the first
+     */
+    public static function secondAxesThatDoNotRepeatTheFirst(): iterable
+    {
+        yield 'U+009F inside' => ["Kol\u{9F}or", 'Kolor', 'Kol or'];
+        yield 'U+009F before a space inside' => ["Ko\u{9F} lor", 'Ko lor', 'Ko lor'];
+    }
+
+    /**
+     * A second axis name with a forbidden character that does not repeat the first once the character is a space has no
+     * new name (K5): it takes only its correction, and the correction without the space repeats the first.
+     */
+    #[DataProvider('secondAxesThatDoNotRepeatTheFirst')]
+    public function testASecondAxisWithAForbiddenCharacterThatDoesNotRepeatTheFirstTakesOnlyItsCorrection(string $stored, string $shown, string $correction): void
+    {
+        $id = $this->publishedWithRepeatedAxes(['Kolor', $stored]);
+        $variants = $this->storedVariants($id);
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variantAxes' => ['Kolor', 'Materiał']]));
+        $this->assertProblem(409, 'variant-locked', \sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. Zapisana nazwa ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter.', $shown));
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variantAxes' => ['Kolor', 'Kolor']]));
+        self::assertSame([['propertyPath' => 'variantAxes[1]', 'title' => 'Nazwa osi już jest użyta.']], $this->violations());
+        self::assertSame(['Kolor', $stored], $this->storedAxes($id));
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variantAxes' => ['Kolor', $correction]]));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(['Kolor', $correction], $this->storedAxes($id));
+        self::assertSame($variants, $this->storedVariants($id));
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function editsThatKeepTheRepeatedAxis(): iterable
+    {
+        yield 'no change' => [[]];
+        yield 'another field changed' => [['shortDescription' => 'Nowy opis']];
+        yield 'the second in another case' => [['variantAxes' => ['Kolor', 'KOLOR']]];
+        yield 'the second with U+200B at its end' => [['variantAxes' => ['Kolor', "Kolor\u{200B}"]]];
+        yield 'the second with U+2060 at its end' => [['variantAxes' => ['Kolor', "Kolor\u{2060}"]]];
+        yield 'the second with U+FEFF at its start' => [['variantAxes' => ['Kolor', "\u{FEFF}kolor"]]];
+        yield 'the second with U+00AD at its end' => [['variantAxes' => ['Kolor', "Kolor\u{AD}"]]];
+        yield 'the second with NBSP at its start' => [['variantAxes' => ['Kolor', "\u{A0}Kolor"]]];
+    }
+
+    /**
+     * The second name still repeating the first is the field to fix: 422 at the second axis, nothing saved.
+     *
+     * @param array<string, mixed> $changes
+     */
+    #[DataProvider('editsThatKeepTheRepeatedAxis')]
+    public function testTheSecondOfTwoAxesStoredWithOneIdentityIsARepeatedAxisUntilItIsRenamed(array $changes): void
+    {
+        $id = $this->publishedWithRepeatedAxes();
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, $changes));
+
+        self::assertSame([['propertyPath' => 'variantAxes[1]', 'title' => 'Nazwa osi już jest użyta.']], $this->violations());
+        self::assertSame(['Kolor', "Kolor\u{200B}"], $this->storedAxes($id));
+        self::assertSame($view['version'], $this->connection->fetchOne('SELECT version FROM catalog_product WHERE id = ?', [$id]));
+    }
+
+    /**
+     * @return iterable<string, array{list<string>, bool, string}> the axes, whether the values of the variants follow
+     *                                                             a reordering, and the detail
+     */
+    public static function changesOfTheFirstOfTwoRepeatedAxes(): iterable
+    {
+        $first = 'Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter. Nową nazwę może dostać tylko druga oś, która powtarza tę nazwę.';
+
+        yield 'the first renamed' => [['Barwa', 'Kolor'], false, $first];
+        yield 'both renamed' => [['Barwa', 'Rozmiar'], false, $first];
+        yield 'reordered, the second renamed' => [['Rozmiar', 'Kolor'], true, $first];
+    }
+
+    /**
+     * The first of two axes stored with one identity keeps its lock (K5), also when the second takes a new name in
+     * the same edit or the axes are reordered.
+     *
+     * @param list<string> $axes
+     */
+    #[DataProvider('changesOfTheFirstOfTwoRepeatedAxes')]
+    public function testTheFirstOfTwoAxesStoredWithOneIdentityStaysLocked(array $axes, bool $reordered, string $detail): void
+    {
+        $id = $this->publishedWithRepeatedAxes();
+        $variants = $this->storedVariants($id);
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+        $changes = ['variantAxes' => $axes];
+        if ($reordered) {
+            $changes['variants'] = array_map(static fn (array $variant): array => [...$variant, 'values' => array_reverse(self::list($variant['values'] ?? null))], self::list($view['variants']));
+        }
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, $changes));
+
+        $this->assertProblem(409, 'variant-locked', $detail);
+        self::assertSame(['Kolor', "Kolor\u{200B}"], $this->storedAxes($id));
+        self::assertSame($variants, $this->storedVariants($id));
+    }
+
+    /**
+     * An axis is not removed after the first publication, also of two axes stored with one identity; a third axis is
+     * over the limit of two.
+     */
+    public function testTwoAxesStoredWithOneIdentityAreNotRemovedOrAdded(): void
+    {
+        $id = $this->publishedWithRepeatedAxes();
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+        $single = array_map(static fn (array $variant): array => [...$variant, 'values' => [self::list($variant['values'] ?? null)[0]]], self::list($view['variants']));
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variantAxes' => ['Kolor'], 'variants' => $single]));
+        $this->assertProblem(409, 'variant-locked', 'Po pierwszej publikacji nie można dodać, usunąć ani przestawić osi wariantów.');
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variantAxes' => ['Kolor', 'Rozmiar', 'Materiał']]));
+        self::assertResponseStatusCodeSame(422);
+
+        self::assertSame(['Kolor', "Kolor\u{200B}"], $this->storedAxes($id));
+    }
+
+    /**
+     * Only two stored names with one identity open the new name of the second axis: a request that repeats a stored
+     * name, or sends two names with one identity, does not.
+     */
+    public function testTheSecondOfTwoAxesStoredWithTwoIdentitiesStaysLocked(): void
+    {
+        $id = self::string($this->publish($this->createProduct(self::twoAxes()))['id']);
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variantAxes' => ['Kolor', 'Materiał']]));
+        $this->assertProblem(409, 'variant-locked', 'Oś „Rozmiar” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter.');
+
+        foreach (['KOLOR', "Kolor\u{200B}"] as $repeated) {
+            $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variantAxes' => ['Kolor', $repeated]]));
+            self::assertSame([['propertyPath' => 'variantAxes[1]', 'title' => 'Nazwa osi już jest użyta.']], $this->violations());
+        }
+
+        self::assertSame(['Kolor', 'Rozmiar'], $this->storedAxes($id));
+    }
+
+    /**
      * A value stored with a forbidden character whose correction repeats another variant is a repeated variant.
      */
     public function testACorrectionThatRepeatsAnotherVariantIsARepeatedVariant(): void
@@ -316,6 +517,44 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
         $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view));
 
         self::assertSame([['propertyPath' => 'variants[1].values', 'title' => 'Taki wariant już istnieje.']], $this->violations());
+    }
+
+    /**
+     * Three variants stored with values that are one value once trimmed: each one after the first is a repeated
+     * combination, and the way out is the same as for two: the stock of a variant to remove corrected to zero, then
+     * the product saved without the repeated variants, the kept one with its identifier.
+     */
+    public function testThreeVariantsStoredWithOneValueAreSavedOnceTheRepeatedOnesAreRemoved(): void
+    {
+        $id = self::string($this->publish($this->createProduct([
+            'variants' => [['variantId' => null, 'values' => ['M']], ['variantId' => null, 'values' => ['L']], ['variantId' => null, 'values' => ['XL']]],
+        ]))['id']);
+        foreach ([1 => "M\u{200B}", 2 => "\u{FEFF}m"] as $position => $value) {
+            $this->connection->executeStatement('UPDATE catalog_product_variant SET option_values = jsonb_build_array(?::text) WHERE product_id = ? AND position = ?', [$value, $id, $position]);
+        }
+        $this->entityManager->clear();
+        $kept = $this->variant($id, 0);
+        $inStock = $this->variant($id, 2);
+        $receipt = $this->api('POST', '/api/v1/admin/variants/'.$inStock.'/stock/receipts', ['quantity' => 5, 'note' => null], server: ['HTTP_IDEMPOTENCY_KEY' => Uuid::v4()->toRfc4122()]);
+        self::assertResponseStatusCodeSame(201);
+        $view = $this->api('GET', '/api/v1/admin/products/'.$id);
+
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view));
+        self::assertSame([
+            ['propertyPath' => 'variants[1].values', 'title' => 'Taki wariant już istnieje.'],
+            ['propertyPath' => 'variants[2].values', 'title' => 'Taki wariant już istnieje.'],
+        ], $this->violations());
+
+        $first = [self::list($view['variants'])[0]];
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variants' => $first]));
+        $this->assertProblem(409, 'variant-in-use');
+
+        $this->api('POST', '/api/v1/admin/variants/'.$inStock.'/stock/corrections', ['physical' => 0, 'version' => $receipt['version'], 'reason' => 'other', 'note' => 'Powtórzony wariant']);
+        self::assertResponseStatusCodeSame(200);
+        $this->api('PUT', '/api/v1/admin/products/'.$id, $this->editBody($view, ['variants' => $first]));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([['id' => $kept, 'option_values' => '["M"]']], $this->connection->fetchAllAssociative('SELECT id, option_values FROM catalog_product_variant WHERE product_id = ?', [$id]));
     }
 
     /**
@@ -408,6 +647,48 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
         $this->store($id, $field, $text);
 
         return $id;
+    }
+
+    /**
+     * @return array<string, mixed> the changes of a product with the axes Kolor and Rozmiar and two variants
+     */
+    private static function twoAxes(): array
+    {
+        return [
+            'variantAxes' => ['Kolor', 'Rozmiar'],
+            'variants' => [['variantId' => null, 'values' => ['czarne', 'M']], ['variantId' => null, 'values' => ['białe', 'L']]],
+        ];
+    }
+
+    /**
+     * A published product with the two axes, Kolor and Kolor U+200B by default, past the domain, as the rule before the
+     * rule of texts stored two different names.
+     *
+     * @param list<string> $axes
+     */
+    private function publishedWithRepeatedAxes(array $axes = ['Kolor', "Kolor\u{200B}"]): string
+    {
+        $id = self::string($this->publish($this->createProduct(self::twoAxes()))['id']);
+        $this->connection->executeStatement('UPDATE catalog_product SET variant_axes = jsonb_build_array(?::text, ?::text) WHERE id = ?', [$axes[0], $axes[1], $id]);
+        $this->entityManager->clear();
+
+        return $id;
+    }
+
+    /**
+     * @return mixed the stored names of the axes
+     */
+    private function storedAxes(string $id): mixed
+    {
+        return json_decode(self::string($this->connection->fetchOne('SELECT variant_axes FROM catalog_product WHERE id = ?', [$id])), true);
+    }
+
+    /**
+     * @return list<array<string, mixed>> the identifiers, positions and values of the stored variants
+     */
+    private function storedVariants(string $id): array
+    {
+        return $this->connection->fetchAllAssociative('SELECT id, position, option_values FROM catalog_product_variant WHERE product_id = ? ORDER BY position', [$id]);
     }
 
     private function variant(string $productId, int $position): string

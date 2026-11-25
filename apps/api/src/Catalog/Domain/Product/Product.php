@@ -231,7 +231,9 @@ final class Product
      * The same axes in the same order, each name with the same identity; every kept variant with the same identity of
      * its values. The identity is the text trimmed by the rule of texts without regard to case; a stored name or value
      * the rule refuses keeps only its correction, and one without a visible character has none ({@see IdentityText}).
-     * New variants are free.
+     * New variants are free. A stored axis name that repeats the stored name in an earlier place ({@see
+     * IdentityText::same()}: two names the rule before the rule of texts took as different) is free: the product is
+     * saved only once it takes a new name (spec api-input-contract, E7; owner decision of 2026-11-25).
      *
      * @throws VariantIdentityLocked
      */
@@ -246,9 +248,14 @@ final class Product
             if (IdentityText::keeps($name, $given[$position])) {
                 continue;
             }
+            $earlier = \array_slice($stored, 0, $position);
+            if (array_any($earlier, static fn (string $other): bool => IdentityText::same($other, $name))) {
+                continue;
+            }
             // A name that is still there, in another place, is a reordering; otherwise the axis was renamed.
             $elsewhere = array_any($stored, static fn (string $other): bool => IdentityText::has($other) && IdentityText::keeps($other, $given[$position]));
-            throw $elsewhere ? VariantIdentityLocked::axes() : VariantIdentityLocked::axisName($name);
+            $repeatedLater = array_any(\array_slice($stored, $position + 1), static fn (string $other): bool => IdentityText::same($name, $other));
+            throw $elsewhere ? VariantIdentityLocked::axes() : VariantIdentityLocked::axisName($name, $repeatedLater);
         }
 
         $storedVariants = $this->variantsById();

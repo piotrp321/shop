@@ -17,6 +17,7 @@ use App\Shared\Domain\Text;
  *   to case ("czar" U+009F "ne" keeps „czarne” and „czar ne”, not „zielone”).
  * - A stored text without a visible character, also once its forbidden characters are gone, has no text to keep: any
  *   text may take its place.
+ * - Two stored texts the rule before the rule of texts took as different may repeat each other now ({@see same()}).
  */
 final class IdentityText
 {
@@ -31,14 +32,25 @@ final class IdentityText
      */
     public static function keeps(string $stored, string $given): bool
     {
-        if (!Text::hasForbiddenCharacters($stored)) {
-            $identity = self::identity($stored);
-
-            return null === $identity || $identity === self::identity($given);
+        $identity = self::storedIdentity($stored);
+        if (null === $identity) {
+            return true;
         }
-        $identity = self::identity(self::withoutWhiteSpace(self::withoutForbiddenCharacters($stored)));
 
-        return null === $identity || $identity === self::identity(self::withoutWhiteSpace($given));
+        return $identity === self::identity(Text::hasForbiddenCharacters($stored) ? self::withoutWhiteSpace($given) : $given);
+    }
+
+    /**
+     * Whether two stored texts repeat each other: with every forbidden character a space and the ends trimmed by the
+     * rule (T2), they are one visible text without regard to case, as the rule of a repeated axis compares them (e.g.
+     * "Kolor" and "Kolor" U+200B, which the rule before the rule of texts took as two texts; not "Kolor" and
+     * "Kol" U+009F "or", which is "Kol or").
+     */
+    public static function same(string $stored, string $other): bool
+    {
+        $text = self::identity(self::withForbiddenCharactersAsSpaces($stored));
+
+        return null !== $text && $text === self::identity(self::withForbiddenCharactersAsSpaces($other));
     }
 
     /**
@@ -121,6 +133,17 @@ final class IdentityText
         return array_values(array_filter($stored, static fn (string $text, int $position): bool => !self::keeps($text, $given[$position]), \ARRAY_FILTER_USE_BOTH));
     }
 
+    /**
+     * The identity a stored text keeps: the text itself, or the correction of a text the rule refuses; none for a text
+     * without a visible character.
+     */
+    private static function storedIdentity(string $stored): ?string
+    {
+        return Text::hasForbiddenCharacters($stored)
+            ? self::identity(self::withoutWhiteSpace(self::withoutForbiddenCharacters($stored)))
+            : self::identity($stored);
+    }
+
     private static function identity(string $text): ?string
     {
         $normalized = Text::normalize($text);
@@ -137,6 +160,14 @@ final class IdentityText
         return implode('', array_filter(
             mb_str_split($text, 1, 'UTF-8'),
             static fn (string $character): bool => !Text::hasForbiddenCharacters($character),
+        ));
+    }
+
+    private static function withForbiddenCharactersAsSpaces(string $text): string
+    {
+        return implode('', array_map(
+            static fn (string $character): string => Text::hasForbiddenCharacters($character) ? ' ' : $character,
+            mb_str_split($text, 1, 'UTF-8'),
         ));
     }
 
