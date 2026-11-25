@@ -8,13 +8,17 @@ use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductAlreadyExists;
+use App\Catalog\Domain\Product\ProductBrand;
 use App\Catalog\Domain\Product\ProductCategories;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductModifiedConcurrently;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ProductNotFound;
+use App\Catalog\Domain\Product\ProductParameter;
+use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductRepository;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
@@ -101,6 +105,20 @@ final readonly class DoctrineProductRepository implements ProductRepository
         $record->slug = $product->slug()->value();
         $record->name = $product->name()->value();
         $record->shortDescription = $product->shortDescription()->value();
+        $record->brand = $product->brand()->value();
+        $record->description = $product->description()->value();
+        $parameters = array_map(
+            static fn (ProductParameter $parameter): array => ['name' => $parameter->name(), 'value' => $parameter->value()],
+            $product->parameters()->toList(),
+        );
+        // JSONB returns object keys in its own order, so compare the stored entries rebuilt in our key order, strictly.
+        $storedParameters = null === $existing ? null : array_map(
+            static fn (array $parameter): array => ['name' => $parameter['name'], 'value' => $parameter['value']],
+            $record->parameters,
+        );
+        if ($storedParameters !== $parameters) {
+            $record->parameters = $parameters;
+        }
         $record->primaryCategory = $this->categoryReference($product->categories()->main());
         $record->taxClass = $product->taxClass()->value;
         $record->status = $product->status()->value;
@@ -246,6 +264,12 @@ final readonly class DoctrineProductRepository implements ProductRepository
             ProductName::stored($record->name),
             new Slug($record->slug),
             ShortDescription::stored($record->shortDescription),
+            ProductBrand::stored($record->brand),
+            ProductDescription::stored($record->description),
+            ProductParameters::stored(array_map(
+                static fn (array $parameter): ProductParameter => ProductParameter::stored($parameter['name'], $parameter['value']),
+                $record->parameters,
+            )),
             ProductCategories::create(
                 CategoryId::fromString($record->primaryCategory->id),
                 array_map(CategoryId::fromString(...), $additionalIds),

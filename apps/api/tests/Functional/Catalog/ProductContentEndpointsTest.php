@@ -318,8 +318,7 @@ final class ProductContentEndpointsTest extends WebTestCase
     {
         yield 'a tab in the brand' => ['brand', "Hal\tlen", 'brand', 'Marka zawiera niedozwolone znaki.'];
         yield 'a carriage return in the description' => ['description', "Opis\r\ndalej", 'description', 'Opis zawiera niedozwolone znaki.'];
-        yield 'U+2028 in a value' => ['parameters', '[{"name": "Waga", "value": "2 kg
-"}]', 'parameters[0].value', 'Wartość parametru zawiera niedozwolone znaki.'];
+        yield 'U+2028 in a value' => ['parameters', '[{"name": "Waga", "value": "2 kg\\u2028"}]', 'parameters[0].value', 'Wartość parametru zawiera niedozwolone znaki.'];
         yield 'a repeated name' => ['parameters', '[{"name": "Waga", "value": "1"}, {"name": "waga", "value": "2"}]', 'parameters[1].name', 'Parametr o tej nazwie już jest na liście.'];
         yield 'an empty value' => ['parameters', '[{"name": "Waga", "value": ""}]', 'parameters[0].value', 'Wartość parametru musi mieć od 1 do 200 znaków.'];
     }

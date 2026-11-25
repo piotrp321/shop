@@ -94,10 +94,15 @@ final class ProductEditTest extends TestCase
 
     public function testAChangeOfOnlyTheBrandTheDescriptionOrTheParametersRecordsProductChangedOnce(): void
     {
-        foreach ([['brand' => 'Hallen'], ['longDescription' => 'Opis'], ['parameters' => [['name' => 'Waga', 'value' => '1 kg']]]] as $change) {
+        $changes = [
+            fn (Product $product) => $this->edit($product, brand: 'Hallen'),
+            fn (Product $product) => $this->edit($product, longDescription: 'Opis'),
+            fn (Product $product) => $this->edit($product, parameters: [['name' => 'Waga', 'value' => '1 kg']]),
+        ];
+        foreach ($changes as $change) {
             $product = StoredProducts::published();
 
-            $this->edit($product, ...$change);
+            $change($product);
 
             $events = $product->releaseEvents();
             self::assertCount(1, $events);

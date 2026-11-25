@@ -3078,6 +3078,9 @@
                     "slug",
                     "name",
                     "shortDescription",
+                    "brand",
+                    "description",
+                    "parameters",
                     "breadcrumb",
                     "images",
                     "zoomImages",
@@ -3099,6 +3102,22 @@
                     },
                     "shortDescription": {
                         "type": "string"
+                    },
+                    "brand": {
+                        "description": "The brand of the product; empty when it has none.",
+                        "type": "string",
+                        "example": "Hallen"
+                    },
+                    "description": {
+                        "description": "The description in paragraphs separated by an empty line, plain text (never markup); empty when the product has none.",
+                        "type": "string"
+                    },
+                    "parameters": {
+                        "description": "The parameters of the product (name and value) in presentation order; empty when it has none.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductParameter"
+                        }
                     },
                     "breadcrumb": {
                         "description": "The categories from the root to the main category of the product.",
@@ -3138,6 +3157,23 @@
                         "items": {
                             "$ref": "#/components/schemas/ProductDetailsVariant"
                         }
+                    }
+                },
+                "type": "object"
+            },
+            "ProductParameter": {
+                "required": [
+                    "name",
+                    "value"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "example": "Liczba os\u00f3b"
+                    },
+                    "value": {
+                        "type": "string",
+                        "example": "4"
                     }
                 },
                 "type": "object"

@@ -94,7 +94,7 @@ final class ProductWriteValidationTest extends TestCase
         yield 'the content at the edge of its limits' => [self::with([
             'brand' => str_repeat('ż', 60),
             'description' => str_repeat('ż', 5000),
-            'parameters' => array_map(static fn (int $n): array => ['name' => str_pad((string) $n, 60, 'ż'), 'value' => str_repeat('ż', 200)], range(1, 30)),
+            'parameters' => array_map(static fn (int $n): array => ['name' => str_pad((string) $n, 60, 'x'), 'value' => str_repeat('ż', 200)], range(1, 30)),
         ]), []];
         yield 'a missing brand' => [self::with(['brand' => null]), ['brand' => 'Marka musi być tekstem.']];
         yield 'a brand that is no text' => [self::with(['brand' => 5]), ['brand' => 'Marka musi być tekstem.']];

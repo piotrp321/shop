@@ -16,6 +16,8 @@ use App\Catalog\Domain\Product\InvalidProductVariants;
 use App\Catalog\Domain\Product\InvalidVariantAxes;
 use App\Catalog\Domain\Product\InvalidVariantValues;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductBrand;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductModifiedConcurrently;
 use App\Catalog\Domain\Product\ProductName;
@@ -91,6 +93,9 @@ final readonly class EditProductHandler
             ProductName::of($command->name),
             $slug,
             ShortDescription::of($command->shortDescription),
+            ProductBrand::of($command->brand),
+            ProductDescription::of($command->description),
+            ProductInput::parameters($command->parameters),
             $categories,
             TaxClassCode::from($command->taxClass),
             $images,

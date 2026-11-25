@@ -123,9 +123,14 @@ final class EditProductHandlerTest extends TestCase
     {
         $this->store(ProductStatus::Published);
 
-        foreach ([['brand' => "Hallen\t"], ['description' => "Opis\r"], ['parameters' => [['name' => 'Waga', 'value' => "1\u{2028}"]]], ['parameters' => [['name' => 'a', 'value' => 'b'], ['name' => 'A', 'value' => 'c']]]] as $invalid) {
+        foreach ([
+            $this->command(brand: "Hallen\t"),
+            $this->command(description: "Opis\r"),
+            $this->command(parameters: [['name' => 'Waga', 'value' => "1\u{2028}"]]),
+            $this->command(parameters: [['name' => 'a', 'value' => 'b'], ['name' => 'A', 'value' => 'c']]),
+        ] as $invalid) {
             try {
-                ($this->handler)($this->command(...$invalid));
+                ($this->handler)($invalid);
                 self::fail('Expected a refusal.');
             } catch (\InvalidArgumentException) {
             }

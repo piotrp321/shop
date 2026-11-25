@@ -46,6 +46,10 @@ final readonly class DemoCatalogLoader
                 $product->name,
                 $product->slug,
                 $product->shortDescription,
+                // The demo products have no brand, description or parameters of their own.
+                '',
+                '',
+                [],
                 $product->mainCategoryId,
                 $product->additionalCategoryIds,
                 $product->taxClass,

@@ -13,6 +13,7 @@ final readonly class EditProduct
      * @param int                                                       $expectedVersion       the version the change is based on
      * @param string                                                    $actorId               the staff member (`sub`)
      * @param string                                                    $slug                  empty: derived from the name, or kept once the slug is locked
+     * @param list<array{name: string, value: string}>                  $parameters            in presentation order
      * @param list<string>                                              $additionalCategoryIds
      * @param list<array{key: string, alt: string}>                     $images                in position order
      * @param list<string>                                              $variantAxes           0 to 2 axis names
@@ -25,6 +26,9 @@ final readonly class EditProduct
         public string $name,
         public string $slug,
         public string $shortDescription,
+        public string $brand,
+        public string $description,
+        public array $parameters,
         public string $mainCategoryId,
         public array $additionalCategoryIds,
         public string $taxClass,

@@ -5629,6 +5629,9 @@
                     "name",
                     "slug",
                     "shortDescription",
+                    "brand",
+                    "description",
+                    "parameters",
                     "mainCategoryId",
                     "additionalCategoryIds",
                     "taxClass",
@@ -5660,6 +5663,51 @@
                         "nullable": true,
                         "default": null,
                         "maxLength": 500
+                    },
+                    "brand": {
+                        "description": "Brand, up to 60 characters; may be empty.",
+                        "type": "string",
+                        "example": "Hallen",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 60
+                    },
+                    "description": {
+                        "description": "Description of paragraphs separated by an empty line, up to 5000 characters; may be empty. The store shows it as plain text, not as markup.",
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 5000
+                    },
+                    "parameters": {
+                        "description": "Up to 30 parameters in presentation order. The names differ without regard to case and spaces at the ends; the values may repeat.",
+                        "type": "array",
+                        "items": {
+                            "required": [
+                                "name",
+                                "value"
+                            ],
+                            "properties": {
+                                "name": {
+                                    "description": "Name of the parameter, 1 to 60 characters.",
+                                    "type": "string",
+                                    "example": "Liczba os\u00f3b",
+                                    "maxLength": 60,
+                                    "minLength": 1
+                                },
+                                "value": {
+                                    "description": "Value of the parameter, 1 to 200 characters.",
+                                    "type": "string",
+                                    "example": "4",
+                                    "maxLength": 200,
+                                    "minLength": 1
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "nullable": true,
+                        "default": null,
+                        "maxItems": 30
                     },
                     "mainCategoryId": {
                         "description": "Id of the main category; an unknown category is a 422 at this field.",
@@ -5765,6 +5813,9 @@
                     "name",
                     "slug",
                     "shortDescription",
+                    "brand",
+                    "description",
+                    "parameters",
                     "mainCategoryId",
                     "additionalCategoryIds",
                     "taxClass",
@@ -5804,6 +5855,51 @@
                         "nullable": true,
                         "default": null,
                         "maxLength": 500
+                    },
+                    "brand": {
+                        "description": "Brand, up to 60 characters; may be empty.",
+                        "type": "string",
+                        "example": "Hallen",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 60
+                    },
+                    "description": {
+                        "description": "Description of paragraphs separated by an empty line, up to 5000 characters; may be empty. The store shows it as plain text, not as markup.",
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 5000
+                    },
+                    "parameters": {
+                        "description": "Up to 30 parameters in presentation order. The names differ without regard to case and spaces at the ends; the values may repeat.",
+                        "type": "array",
+                        "items": {
+                            "required": [
+                                "name",
+                                "value"
+                            ],
+                            "properties": {
+                                "name": {
+                                    "description": "Name of the parameter, 1 to 60 characters.",
+                                    "type": "string",
+                                    "example": "Liczba os\u00f3b",
+                                    "maxLength": 60,
+                                    "minLength": 1
+                                },
+                                "value": {
+                                    "description": "Value of the parameter, 1 to 200 characters.",
+                                    "type": "string",
+                                    "example": "4",
+                                    "maxLength": 200,
+                                    "minLength": 1
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "nullable": true,
+                        "default": null,
+                        "maxItems": 30
                     },
                     "mainCategoryId": {
                         "description": "Id of the main category; an unknown category is a 422 at this field.",
@@ -7409,6 +7505,24 @@
                 },
                 "type": "object"
             },
+            "ProductParameterResponse": {
+                "description": "A parameter of a product in the edit view: a name and a value.",
+                "required": [
+                    "name",
+                    "value"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "example": "Liczba os\u00f3b"
+                    },
+                    "value": {
+                        "type": "string",
+                        "example": "4"
+                    }
+                },
+                "type": "object"
+            },
             "ProductEditImageResponse": {
                 "description": "An image of a product in the edit view.",
                 "required": [
@@ -7468,6 +7582,9 @@
                     "slug",
                     "slugLocked",
                     "shortDescription",
+                    "brand",
+                    "description",
+                    "parameters",
                     "mainCategoryId",
                     "additionalCategoryIds",
                     "taxClass",
@@ -7511,6 +7628,22 @@
                     },
                     "shortDescription": {
                         "type": "string"
+                    },
+                    "brand": {
+                        "description": "Brand of the product; empty when it has none.",
+                        "type": "string",
+                        "example": "Hallen"
+                    },
+                    "description": {
+                        "description": "Description of paragraphs separated by an empty line; empty when the product has none.",
+                        "type": "string"
+                    },
+                    "parameters": {
+                        "description": "In presentation order.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductParameterResponse"
+                        }
                     },
                     "mainCategoryId": {
                         "type": "string",

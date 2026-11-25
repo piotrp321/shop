@@ -229,7 +229,7 @@ nelmio_api_doc:
                         # real responses by ProductDetailsEndpointTest.
                         ProductDetails:
                             type: object
-                            required: [id, slug, name, shortDescription, breadcrumb, images, zoomImages, variantAxes, variants]
+                            required: [id, slug, name, shortDescription, brand, description, parameters, breadcrumb, images, zoomImages, variantAxes, variants]
                             properties:
                                 id:
                                     type: string
@@ -242,6 +242,18 @@ nelmio_api_doc:
                                     example: Buty szosowe Tarvik Asfalt 200
                                 shortDescription:
                                     type: string
+                                brand:
+                                    type: string
+                                    description: The brand of the product; empty when it has none.
+                                    example: Hallen
+                                description:
+                                    type: string
+                                    description: The description in paragraphs separated by an empty line, plain text (never markup); empty when the product has none.
+                                parameters:
+                                    type: array
+                                    description: The parameters of the product (name and value) in presentation order; empty when it has none.
+                                    items:
+                                        $ref: '#/components/schemas/ProductParameter'
                                 breadcrumb:
                                     type: array
                                     description: The categories from the root to the main category of the product.
@@ -268,6 +280,16 @@ nelmio_api_doc:
                                     description: The variants in position order.
                                     items:
                                         $ref: '#/components/schemas/ProductDetailsVariant'
+                        ProductParameter:
+                            type: object
+                            required: [name, value]
+                            properties:
+                                name:
+                                    type: string
+                                    example: Liczba osób
+                                value:
+                                    type: string
+                                    example: '4'
                         BreadcrumbItem:
                             type: object
                             required: [id, name, path]

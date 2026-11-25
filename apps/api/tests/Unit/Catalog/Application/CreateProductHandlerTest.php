@@ -313,9 +313,13 @@ final class CreateProductHandlerTest extends TestCase
 
     public function testAnInvalidBrandDescriptionOrParameterSavesNothing(): void
     {
-        foreach ([['brand' => "Hallen\t"], ['description' => "Opis\r"], ['parameters' => [['name' => 'a', 'value' => 'b'], ['name' => 'A', 'value' => 'c']]]] as $invalid) {
+        foreach ([
+            $this->command(brand: "Hallen\t"),
+            $this->command(description: "Opis\r"),
+            $this->command(parameters: [['name' => 'a', 'value' => 'b'], ['name' => 'A', 'value' => 'c']]),
+        ] as $invalid) {
             try {
-                ($this->handler)($this->command(...$invalid));
+                ($this->handler)($invalid);
                 self::fail('Expected a refusal.');
             } catch (\InvalidArgumentException) {
             }

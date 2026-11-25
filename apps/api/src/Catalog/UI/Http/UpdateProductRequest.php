@@ -11,7 +11,7 @@ use OpenApi\Attributes as OA;
  * Body of PUT /api/v1/admin/products/{id}: the `version` the edit is based on and the whole data of the product. The values are taken as JSON gives them and validated by {@see ValidProductWrite}, never cast; a missing key is
  * a violation at its field. Unknown keys are ignored.
  */
-#[OA\Schema(description: 'The whole data of the product and the version it is based on.', required: ['version', 'name', 'slug', 'shortDescription', 'mainCategoryId', 'additionalCategoryIds', 'taxClass', 'images', 'variantAxes', 'variants'])]
+#[OA\Schema(description: 'The whole data of the product and the version it is based on.', required: ['version', 'name', 'slug', 'shortDescription', 'brand', 'description', 'parameters', 'mainCategoryId', 'additionalCategoryIds', 'taxClass', 'images', 'variantAxes', 'variants'])]
 #[ValidProductWrite]
 final readonly class UpdateProductRequest
 {
@@ -24,6 +24,15 @@ final readonly class UpdateProductRequest
         public mixed $slug = null,
         #[OA\Property(type: 'string', maxLength: 500, description: 'Short description, up to 500 characters; may be empty.')]
         public mixed $shortDescription = null,
+        #[OA\Property(type: 'string', maxLength: 60, description: 'Brand, up to 60 characters; may be empty.', example: 'Hallen')]
+        public mixed $brand = null,
+        #[OA\Property(type: 'string', maxLength: 5000, description: 'Description of paragraphs separated by an empty line, up to 5000 characters; may be empty. The store shows it as plain text, not as markup.')]
+        public mixed $description = null,
+        #[OA\Property(type: 'array', maxItems: 30, description: 'Up to 30 parameters in presentation order. The names differ without regard to case and spaces at the ends; the values may repeat.', items: new OA\Items(type: 'object', required: ['name', 'value'], properties: [
+            new OA\Property(property: 'name', type: 'string', minLength: 1, maxLength: 60, description: 'Name of the parameter, 1 to 60 characters.', example: 'Liczba osób'),
+            new OA\Property(property: 'value', type: 'string', minLength: 1, maxLength: 200, description: 'Value of the parameter, 1 to 200 characters.', example: '4'),
+        ]))]
+        public mixed $parameters = null,
         #[OA\Property(type: 'string', format: 'uuid', description: 'Id of the main category; an unknown category is a 422 at this field.')]
         public mixed $mainCategoryId = null,
         #[OA\Property(type: 'array', items: new OA\Items(type: 'string', format: 'uuid'), maxItems: 10, description: 'Ids of up to 10 additional categories, different from each other and from the main one.')]
@@ -50,6 +59,6 @@ final readonly class UpdateProductRequest
      */
     public function data(): ProductWriteData
     {
-        return ProductWriteData::of($this->name, $this->slug, $this->shortDescription, $this->mainCategoryId, $this->additionalCategoryIds, $this->taxClass, $this->images, $this->variantAxes, $this->variants);
+        return ProductWriteData::of($this->name, $this->slug, $this->shortDescription, $this->brand, $this->description, $this->parameters, $this->mainCategoryId, $this->additionalCategoryIds, $this->taxClass, $this->images, $this->variantAxes, $this->variants);
     }
 }

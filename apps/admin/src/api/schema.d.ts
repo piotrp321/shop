@@ -1175,6 +1175,33 @@ export interface components {
              */
             shortDescription: string | null;
             /**
+             * @description Brand, up to 60 characters; may be empty.
+             * @default null
+             * @example Hallen
+             */
+            brand: string | null;
+            /**
+             * @description Description of paragraphs separated by an empty line, up to 5000 characters; may be empty. The store shows it as plain text, not as markup.
+             * @default null
+             */
+            description: string | null;
+            /**
+             * @description Up to 30 parameters in presentation order. The names differ without regard to case and spaces at the ends; the values may repeat.
+             * @default null
+             */
+            parameters: {
+                /**
+                 * @description Name of the parameter, 1 to 60 characters.
+                 * @example Liczba osób
+                 */
+                name: string;
+                /**
+                 * @description Value of the parameter, 1 to 200 characters.
+                 * @example 4
+                 */
+                value: string;
+            }[] | null;
+            /**
              * Format: uuid
              * @description Id of the main category; an unknown category is a 422 at this field.
              * @default null
@@ -1244,6 +1271,33 @@ export interface components {
              * @default null
              */
             shortDescription: string | null;
+            /**
+             * @description Brand, up to 60 characters; may be empty.
+             * @default null
+             * @example Hallen
+             */
+            brand: string | null;
+            /**
+             * @description Description of paragraphs separated by an empty line, up to 5000 characters; may be empty. The store shows it as plain text, not as markup.
+             * @default null
+             */
+            description: string | null;
+            /**
+             * @description Up to 30 parameters in presentation order. The names differ without regard to case and spaces at the ends; the values may repeat.
+             * @default null
+             */
+            parameters: {
+                /**
+                 * @description Name of the parameter, 1 to 60 characters.
+                 * @example Liczba osób
+                 */
+                name: string;
+                /**
+                 * @description Value of the parameter, 1 to 200 characters.
+                 * @example 4
+                 */
+                value: string;
+            }[] | null;
             /**
              * Format: uuid
              * @description Id of the main category; an unknown category is a 422 at this field.
@@ -2004,6 +2058,13 @@ export interface components {
             /** @description How many products match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones. */
             total: components["schemas"]["BoundedCountResponse"] | null;
         };
+        /** @description A parameter of a product in the edit view: a name and a value. */
+        ProductParameterResponse: {
+            /** @example Liczba osób */
+            name: string;
+            /** @example 4 */
+            value: string;
+        };
         /** @description An image of a product in the edit view. */
         ProductEditImageResponse: {
             /**
@@ -2049,6 +2110,15 @@ export interface components {
             /** @description The slug cannot change: the product was published at least once. */
             slugLocked: boolean;
             shortDescription: string;
+            /**
+             * @description Brand of the product; empty when it has none.
+             * @example Hallen
+             */
+            brand: string;
+            /** @description Description of paragraphs separated by an empty line; empty when the product has none. */
+            description: string;
+            /** @description In presentation order. */
+            parameters: components["schemas"]["ProductParameterResponse"][];
             /** Format: uuid */
             mainCategoryId: string;
             additionalCategoryIds: string[];
