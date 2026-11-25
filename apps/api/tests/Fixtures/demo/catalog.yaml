@@ -21,11 +21,27 @@ templates:
     productType: "Buty"
     taxClass: standard
     brands: ["Tarvik", "Norvane"]
+    description:
+      - "Buty do biegania po utwardzonych drogach."
+      - "Podeszwa z pianki EVA tłumi wstrząsy."
+    parameters:
+      - name: "Materiał cholewki"
+        value: "siatka"
+      - name: "Waga"
+        value: "280 g"
     models:
       - name: "Asfalt 200"
         description: "Lekkie buty na asfalt."
+        parameters:
+          - name: "Waga"
+            value: "250 g"
+          - name: "Drop"
+            value: "8 mm"
       - name: "Dystans 400"
         description: "Buty na długie dystanse."
+        fullDescription:
+          - "Własny opis modelu Dystans 400."
+          - "Drugi akapit własnego opisu."
       - name: "Tempo 600"
         description: "Buty na szybkie treningi."
     variantAxes: ["Kolor", "Rozmiar"]

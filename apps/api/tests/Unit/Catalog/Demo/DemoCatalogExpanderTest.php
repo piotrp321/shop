@@ -6,6 +6,7 @@ namespace App\Tests\Unit\Catalog\Demo;
 
 use App\Catalog\Application\Demo\DemoCatalog;
 use App\Catalog\Application\Demo\DemoProduct;
+use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Infrastructure\Demo\DemoCatalogDefinition;
 use App\Catalog\Infrastructure\Demo\DemoCatalogExpander;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -85,7 +86,7 @@ final class DemoCatalogExpanderTest extends TestCase
                 ['id' => Uuid::v5($namespace, 'variant:buty-tarvik-asfalt-200/biale-40')->toRfc4122(), 'values' => ['białe', '40']],
                 ['id' => Uuid::v5($namespace, 'variant:buty-tarvik-asfalt-200/biale-41')->toRfc4122(), 'values' => ['białe', '41']],
             ],
-            $product->variants,
+            self::withoutCodes($product->variants),
         );
     }
 
@@ -100,7 +101,7 @@ final class DemoCatalogExpanderTest extends TestCase
                 ['id' => Uuid::v5($namespace, 'variant:plecak-tarvik-zab-20/zolty')->toRfc4122(), 'values' => ['żółty']],
                 ['id' => Uuid::v5($namespace, 'variant:plecak-tarvik-zab-20/zielony')->toRfc4122(), 'values' => ['zielony']],
             ],
-            $product->variants,
+            self::withoutCodes($product->variants),
         );
     }
 
@@ -112,7 +113,7 @@ final class DemoCatalogExpanderTest extends TestCase
         self::assertSame([], $product->variantAxes);
         self::assertSame(
             [['id' => Uuid::v5($namespace, 'variant:hantle-lumora-para-10/standard')->toRfc4122(), 'values' => []]],
-            $product->variants,
+            self::withoutCodes($product->variants),
         );
         self::assertNotSame($product->id, $product->variants[0]['id']);
     }
@@ -312,6 +313,204 @@ final class DemoCatalogExpanderTest extends TestCase
         $this->expectExceptionMessage('nie-ma-takiego.yaml');
 
         DemoCatalogDefinition::fromFile(__DIR__.'/nie-ma-takiego.yaml');
+    }
+
+    public function testBrandIsTheBrandOfTheNameOfEachProduct(): void
+    {
+        $products = $this->expand()->products;
+
+        self::assertSame('Tarvik', $products[0]->brand);
+        self::assertSame('Norvane', $products[3]->brand);
+        self::assertSame('Tarvik', $products[6]->brand);
+        self::assertSame('Dravik', $products[9]->brand);
+    }
+
+    public function testDescriptionIsTheSentenceOfTheModelThenTheParagraphsOfTheTypeSeparatedByBlankLines(): void
+    {
+        $products = $this->expand()->products;
+
+        self::assertSame(
+            "Lekkie buty na asfalt.\n\nButy do biegania po utwardzonych drogach.\n\nPodeszwa z pianki EVA tłumi wstrząsy.",
+            $products[0]->description,
+        );
+        // Another model of the type gets the same paragraphs after its own sentence.
+        self::assertSame(
+            "Buty na szybkie treningi.\n\nButy do biegania po utwardzonych drogach.\n\nPodeszwa z pianki EVA tłumi wstrząsy.",
+            $products[2]->description,
+        );
+    }
+
+    public function testModelWithAFullDescriptionTakesItInsteadOfTheSentenceAndTheParagraphsOfTheType(): void
+    {
+        self::assertSame("Własny opis modelu Dystans 400.\n\nDrugi akapit własnego opisu.", $this->expand()->products[1]->description);
+    }
+
+    public function testTypeWithoutParagraphsGivesTheSentenceOfTheModelAsTheDescription(): void
+    {
+        self::assertSame('Plecak dzienny.', $this->expand()->products[6]->description);
+    }
+
+    public function testParametersAreThoseOfTheTypeAndAParameterOfTheModelWithTheSameNameReplacesItInPlace(): void
+    {
+        $products = $this->expand()->products;
+
+        self::assertSame(
+            [
+                ['name' => 'Materiał cholewki', 'value' => 'siatka'],
+                ['name' => 'Waga', 'value' => '250 g'],
+                ['name' => 'Drop', 'value' => '8 mm'],
+            ],
+            $products[0]->parameters,
+        );
+        // A model without parameters of its own has those of the type, and a type without any gives none.
+        self::assertSame(
+            [['name' => 'Materiał cholewki', 'value' => 'siatka'], ['name' => 'Waga', 'value' => '280 g']],
+            $products[1]->parameters,
+        );
+        self::assertSame([], $products[6]->parameters);
+    }
+
+    public function testParameterOfTheModelReplacesTheOneOfTheTypeWhateverTheCaseOfItsName(): void
+    {
+        $data = $this->with(['templates', 0, 'models', 0, 'parameters'], [['name' => 'WAGA', 'value' => '250 g']]);
+
+        $parameters = new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES)->products[0]->parameters;
+
+        self::assertSame([['name' => 'Materiał cholewki', 'value' => 'siatka'], ['name' => 'WAGA', 'value' => '250 g']], $parameters);
+    }
+
+    public function testNameRepeatedInTheParametersOfOneModelIsNotMergedAway(): void
+    {
+        $data = $this->with(['templates', 0, 'models', 0, 'parameters'], [['name' => 'Waga', 'value' => '250 g'], ['name' => 'waga', 'value' => '260 g']]);
+
+        $parameters = new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES)->products[0]->parameters;
+
+        self::assertSame(['Materiał cholewki', 'Waga', 'waga'], array_column($parameters, 'name'));
+    }
+
+    public function testSkuIsTheLettersOfTheBrandThenTheModelThenTheValuesOfTheVariant(): void
+    {
+        $products = $this->expand()->products;
+
+        self::assertSame(
+            ['TAR-ASFALT-200-CZA-40', 'TAR-ASFALT-200-CZA-41', 'TAR-ASFALT-200-BIA-40', 'TAR-ASFALT-200-BIA-41'],
+            array_column($products[0]->variants, 'sku'),
+        );
+        self::assertSame(['TAR-ZAB-20-ZOL', 'TAR-ZAB-20-ZIE'], array_column($products[6]->variants, 'sku'));
+        // A variant without values has the code of the product only.
+        self::assertSame(['LUM-PARA-10'], array_column($products[8]->variants, 'sku'));
+        self::assertSame(['DRA-PARA-10'], array_column($products[9]->variants, 'sku'));
+    }
+
+    public function testEveryWordOfAMultiWordBrandTakesItsFirstThreeLetters(): void
+    {
+        $data = $this->with(['templates', 1, 'brands'], ['Tarvik Press']);
+
+        $products = new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES)->products;
+
+        self::assertSame('Tarvik Press', $products[6]->brand);
+        self::assertSame(['TAR-PRE-ZAB-20-ZOL', 'TAR-PRE-ZAB-20-ZIE'], array_column($products[6]->variants, 'sku'));
+    }
+
+    public function testSkuOfTheWholeCatalogIsUniqueAndStartsWithALetter(): void
+    {
+        $skus = [];
+        foreach ($this->expand()->products as $product) {
+            foreach ($product->variants as $variant) {
+                $skus[] = $variant['sku'];
+            }
+        }
+
+        self::assertCount(4 * 6 + 2 * 2 + 2, $skus);
+        self::assertSame($skus, array_values(array_unique($skus)));
+        foreach ($skus as $sku) {
+            self::assertMatchesRegularExpression('/^[A-Z][A-Z0-9\-_.\/]{0,39}$/D', $sku);
+        }
+    }
+
+    public function testTwoProductsWithTheSameSkuAreRejectedWithThatSku(): void
+    {
+        // Both brands give the letters TAR, the model and the values are the same.
+        $data = $this->with(['templates', 0, 'brands'], ['Tarvik', 'Tarwik']);
+
+        try {
+            new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES);
+            self::fail('A repeated SKU must be rejected.');
+        } catch (\InvalidArgumentException $e) {
+            self::assertStringContainsString('SKU "TAR-ASFALT-200-CZA-40"', $e->getMessage());
+            self::assertStringContainsString('buty-tarwik-asfalt-200', $e->getMessage());
+        }
+    }
+
+    public function testEanIsAnEan13OfTheRestrictedCirculationPrefixTwoWithAValidCheckDigit(): void
+    {
+        foreach ($this->expand()->products as $product) {
+            foreach ($product->variants as $variant) {
+                self::assertMatchesRegularExpression('/^2\d{12}$/D', $variant['ean'], $product->name);
+                $ean = Ean::optional($variant['ean']);
+                self::assertNotNull($ean, $product->name);
+                // The prefix 2 is a number of restricted circulation, so the shop has no gtin for it.
+                self::assertSame('', $ean->gtin(), $product->name);
+            }
+        }
+    }
+
+    public function testEanComesFromTheKeyOfTheVariantNotFromItsPositionInTheCatalog(): void
+    {
+        $all = $this->expand()->products;
+        $data = Yaml::parseFile(self::FIXTURE);
+        self::assertIsArray($data);
+        self::assertIsArray($data['templates']);
+        // Without the first template every other product moves up in the expansion.
+        $data['templates'] = \array_slice($data['templates'], 1);
+        $withoutFirst = new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES)->products;
+
+        self::assertSame($all[6]->name, $withoutFirst[0]->name);
+        self::assertSame(array_column($all[6]->variants, 'ean'), array_column($withoutFirst[0]->variants, 'ean'));
+        // Different variants have different codes.
+        $eans = [];
+        foreach ($all as $product) {
+            array_push($eans, ...array_column($product->variants, 'ean'));
+        }
+        self::assertSame($eans, array_values(array_unique($eans)));
+    }
+
+    /**
+     * @param list<array<string, mixed>> $variants
+     *
+     * @return list<array{id: mixed, values: mixed}>
+     */
+    private static function withoutCodes(array $variants): array
+    {
+        return array_map(static fn (array $variant): array => ['id' => $variant['id'], 'values' => $variant['values']], $variants);
+    }
+
+    /** @return iterable<string, array{list<string|int>, mixed, string}> */
+    public static function invalidDescriptionAndParameterDefinitions(): iterable
+    {
+        yield 'description not a list' => [['templates', 0, 'description'], 'Jeden akapit.', '"description"'];
+        yield 'description with an empty paragraph' => [['templates', 0, 'description'], ['Akapit.', ''], '"description"'];
+        yield 'parameters not a list' => [['templates', 0, 'parameters'], 'Waga', '"parameters"'];
+        yield 'parameter not a map' => [['templates', 0, 'parameters'], ['Waga'], 'parameter'];
+        yield 'parameter without a value' => [['templates', 0, 'parameters'], [['name' => 'Waga']], '"value"'];
+        yield 'parameter with an empty name' => [['templates', 0, 'parameters'], [['name' => '', 'value' => '1']], '"name"'];
+        yield 'parameter of a model without a name' => [['templates', 0, 'models', 0, 'parameters'], [['value' => '1']], '"name"'];
+        yield 'full description not a list' => [['templates', 0, 'models', 1, 'fullDescription'], 'Opis', '"fullDescription"'];
+        yield 'empty full description' => [['templates', 0, 'models', 1, 'fullDescription'], [], '"fullDescription"'];
+    }
+
+    /**
+     * @param list<string|int> $path
+     */
+    #[DataProvider('invalidDescriptionAndParameterDefinitions')]
+    public function testMalformedDescriptionOrParametersAreRejectedWithTheirContext(array $path, mixed $value, string $expectedInMessage): void
+    {
+        $data = $this->with($path, $value);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage($expectedInMessage);
+
+        DemoCatalogDefinition::fromArray($data);
     }
 
     private function expand(): DemoCatalog
