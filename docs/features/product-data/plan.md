@@ -16,7 +16,7 @@ Epik w toku: gałąź `feat/product-data-1`, start 2026-11-25.
 |---|---|---|
 | 1 | PRODUCT-DATA-1 | zmergowane do gałęzi epiku, ed0403b4 |
 | 2 | PRODUCT-DATA-2 | zmergowane do gałęzi epiku, 9f8355bc |
-| 3 | PRODUCT-DATA-3, PRODUCT-DATA-4, PRODUCT-DATA-5 | |
+| 3 | PRODUCT-DATA-3, PRODUCT-DATA-4, PRODUCT-DATA-5 | zmergowane do gałęzi epiku: 3 `726e1a40`, 4 `79734393`, 5 `7afa8348` |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 

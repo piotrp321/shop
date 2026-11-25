@@ -633,7 +633,7 @@ Wszystkie trzy wartości `diskPeakGb` są szacunkiem niezweryfikowanym przebiegi
 pochodzi z pomiaru `medium` skalowanego liniowo, a druga kopia i WAL to założenia (druga kopia zakłada, że odkurzanie
 nie nadąża za krokiem zdjęć, więc jest górną granicą; w `small` zmierzono około 0,83 przyrostu wiersza). Założenie o WAL
 (przyrost 0): `max_wal_size` jest limitem miękkim, więc przy zapisie większym o 21% WAL może go chwilowo przekroczyć;
-nie mierzono, o ile, a ewentualny nadmiar mieści się w zapasie 1,25 strażnika miejsca. Strażnik wolnego
+nie mierzono, o ile; zakładamy, że ewentualny nadmiar mieści się w zapasie 1,25 strażnika miejsca. Strażnik wolnego
 miejsca (wolne ≥ 1,25 × `diskPeakGb`) wymaga więc dla `medium` 28,75 GB, dla `server` 142,5 GB, dla `full` 335 GB.
 
 **Czas kroku `demo-data:products`, `medium`, 4 procesy** (od startu pierwszego procesu do końca ostatniego, bez resetu
