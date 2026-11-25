@@ -61,13 +61,13 @@ final class ProductVariantCodesMigrationTest extends KernelTestCase
 
         self::assertSame(
             [
-                'ean' => ['YES', 'character varying', 14, null],
-                'sku' => ['YES', 'character varying', 40, null],
+                'ean' => ['YES', 'character varying', 14],
+                'sku' => ['YES', 'character varying', 40],
             ],
             array_map(
-                static fn (array $row): array => [$row['is_nullable'], $row['data_type'], $row['character_maximum_length'], $row['column_default']],
+                static fn (array $row): array => [$row['is_nullable'], $row['data_type'], $row['character_maximum_length']],
                 $this->connection->fetchAllAssociativeIndexed(
-                    "SELECT column_name, is_nullable, data_type, character_maximum_length, column_default FROM information_schema.columns
+                    "SELECT column_name, is_nullable, data_type, character_maximum_length FROM information_schema.columns
                      WHERE table_name = 'catalog_product_variant' AND column_name IN ('sku', 'ean') ORDER BY column_name",
                 ),
             ),

@@ -241,7 +241,7 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
     {
         $created = $this->publish($this->createProduct([
             'variantAxes' => ['Kolor', 'Rozmiar'],
-            'variants' => [['variantId' => null, 'values' => ['czarne', 'M']], ['variantId' => null, 'values' => ['czarne', 'L']]],
+            'variants' => [['variantId' => null, 'values' => ['czarne', 'M'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['czarne', 'L'], 'sku' => '', 'ean' => '']],
         ]));
         $id = self::string($created['id']);
         $this->connection->executeStatement("UPDATE catalog_product SET variant_axes = jsonb_build_array('Kol'||chr(9)||'or', 'Rozmiar') WHERE id = ?", [$id]);
@@ -527,7 +527,7 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
     public function testThreeVariantsStoredWithOneValueAreSavedOnceTheRepeatedOnesAreRemoved(): void
     {
         $id = self::string($this->publish($this->createProduct([
-            'variants' => [['variantId' => null, 'values' => ['M']], ['variantId' => null, 'values' => ['L']], ['variantId' => null, 'values' => ['XL']]],
+            'variants' => [['variantId' => null, 'values' => ['M'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['L'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['XL'], 'sku' => '', 'ean' => '']],
         ]))['id']);
         foreach ([1 => "M\u{200B}", 2 => "\u{FEFF}m"] as $position => $value) {
             $this->connection->executeStatement('UPDATE catalog_product_variant SET option_values = jsonb_build_array(?::text) WHERE product_id = ? AND position = ?', [$value, $id, $position]);
@@ -656,7 +656,7 @@ final class StoredTextsOutsideTheRuleTest extends WebTestCase
     {
         return [
             'variantAxes' => ['Kolor', 'Rozmiar'],
-            'variants' => [['variantId' => null, 'values' => ['czarne', 'M']], ['variantId' => null, 'values' => ['białe', 'L']]],
+            'variants' => [['variantId' => null, 'values' => ['czarne', 'M'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['białe', 'L'], 'sku' => '', 'ean' => '']],
         ];
     }
 

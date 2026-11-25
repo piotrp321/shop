@@ -45,8 +45,8 @@ final class ProductWriteValidationTest extends TestCase
             'images' => [['key' => 'originals/'.str_repeat('a', 64).'.jpg', 'alt' => 'Przód']],
             'variantAxes' => ['Kolor', 'Rozmiar'],
             'variants' => [
-                ['variantId' => null, 'values' => ['czarne', '40']],
-                ['variantId' => self::UUID_C, 'values' => ['czarne', '41']],
+                ['variantId' => null, 'values' => ['czarne', '40'], 'sku' => '', 'ean' => ''],
+                ['variantId' => self::UUID_C, 'values' => ['czarne', '41'], 'sku' => '', 'ean' => ''],
             ],
         ];
     }
@@ -70,13 +70,13 @@ final class ProductWriteValidationTest extends TestCase
         $other = 'originals/'.str_repeat('b', 64).'.png';
 
         yield 'a valid body' => [self::valid(), []];
-        yield 'an empty slug, no categories, images, axes' => [self::with(['slug' => '', 'additionalCategoryIds' => [], 'images' => [], 'variantAxes' => [], 'variants' => [['variantId' => null, 'values' => []]]]), []];
+        yield 'an empty slug, no categories, images, axes' => [self::with(['slug' => '', 'additionalCategoryIds' => [], 'images' => [], 'variantAxes' => [], 'variants' => [['variantId' => null, 'values' => [], 'sku' => '', 'ean' => '']]]), []];
         yield 'limits at the edge' => [self::with([
             'name' => str_repeat('ż', 200), 'slug' => str_repeat('a', 200), 'shortDescription' => str_repeat('ż', 500),
             'additionalCategoryIds' => array_map(static fn (int $n): string => \sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $n), range(1, 10)),
             'images' => array_map(static fn (int $n): array => ['key' => 'originals/'.str_pad(dechex($n), 64, '0', \STR_PAD_LEFT).'.jpg', 'alt' => str_repeat('ż', 200)], range(1, 9)),
             'variantAxes' => [str_repeat('ż', 30), 'B'],
-            'variants' => array_map(static fn (int $n): array => ['variantId' => null, 'values' => [str_repeat('ż', 40), (string) $n]], range(1, 100)),
+            'variants' => array_map(static fn (int $n): array => ['variantId' => null, 'values' => [str_repeat('ż', 40), (string) $n], 'sku' => '', 'ean' => ''], range(1, 100)),
         ]), []];
 
         yield 'a missing name' => [self::with(['name' => null]), ['name' => 'Podaj nazwę produktu.']];
@@ -151,29 +151,29 @@ final class ProductWriteValidationTest extends TestCase
         yield 'an alt over 200 characters' => [self::with(['images' => [['key' => $key, 'alt' => str_repeat('a', 201)]]]), ['images[0].alt' => 'Tekst alternatywny może mieć najwyżej 200 znaków.']];
 
         yield 'axes that are no list' => [self::with(['variantAxes' => 'Kolor']), ['variantAxes' => 'Osie wariantów muszą być listą.']];
-        yield 'three axes' => [self::with(['variantAxes' => ['A', 'B', 'C'], 'variants' => [['variantId' => null, 'values' => ['1', '2', '3']]]]), ['variantAxes' => 'Produkt może mieć najwyżej 2 osie wariantów.']];
-        yield 'an empty axis name' => [self::with(['variantAxes' => ['Kolor', '  '], 'variants' => [['variantId' => null, 'values' => ['a', 'b']]]]), ['variantAxes[1]' => 'Nazwa osi musi mieć od 1 do 30 znaków.']];
-        yield 'an axis name over 30 characters' => [self::with(['variantAxes' => [str_repeat('a', 31)], 'variants' => [['variantId' => null, 'values' => ['a']]]]), ['variantAxes[0]' => 'Nazwa osi musi mieć od 1 do 30 znaków.']];
-        yield 'an axis name that is no text' => [self::with(['variantAxes' => [3], 'variants' => [['variantId' => null, 'values' => ['a']]]]), ['variantAxes[0]' => 'Nazwa osi musi mieć od 1 do 30 znaków.']];
-        yield 'an axis name with a colon' => [self::with(['variantAxes' => ['Kolor: ciemny'], 'variants' => [['variantId' => null, 'values' => ['a']]]]), ['variantAxes[0]' => 'Nazwa osi nie może zawierać dwukropka.']];
+        yield 'three axes' => [self::with(['variantAxes' => ['A', 'B', 'C'], 'variants' => [['variantId' => null, 'values' => ['1', '2', '3'], 'sku' => '', 'ean' => '']]]), ['variantAxes' => 'Produkt może mieć najwyżej 2 osie wariantów.']];
+        yield 'an empty axis name' => [self::with(['variantAxes' => ['Kolor', '  '], 'variants' => [['variantId' => null, 'values' => ['a', 'b'], 'sku' => '', 'ean' => '']]]), ['variantAxes[1]' => 'Nazwa osi musi mieć od 1 do 30 znaków.']];
+        yield 'an axis name over 30 characters' => [self::with(['variantAxes' => [str_repeat('a', 31)], 'variants' => [['variantId' => null, 'values' => ['a'], 'sku' => '', 'ean' => '']]]), ['variantAxes[0]' => 'Nazwa osi musi mieć od 1 do 30 znaków.']];
+        yield 'an axis name that is no text' => [self::with(['variantAxes' => [3], 'variants' => [['variantId' => null, 'values' => ['a'], 'sku' => '', 'ean' => '']]]), ['variantAxes[0]' => 'Nazwa osi musi mieć od 1 do 30 znaków.']];
+        yield 'an axis name with a colon' => [self::with(['variantAxes' => ['Kolor: ciemny'], 'variants' => [['variantId' => null, 'values' => ['a'], 'sku' => '', 'ean' => '']]]), ['variantAxes[0]' => 'Nazwa osi nie może zawierać dwukropka.']];
         yield 'a repeated axis name' => [self::with(['variantAxes' => ['Kolor', ' kolor ']]), ['variantAxes[1]' => 'Nazwa osi już jest użyta.']];
 
         yield 'variants that are no list' => [self::with(['variants' => 'x']), ['variants' => 'Warianty muszą być listą.']];
         yield 'no variants' => [self::with(['variants' => []]), ['variants' => 'Produkt musi mieć od 1 do 100 wariantów.']];
-        yield 'a hundred and one variants' => [self::with(['variantAxes' => ['A'], 'variants' => array_map(static fn (int $n): array => ['variantId' => null, 'values' => [(string) $n]], range(1, 101))]), ['variants' => 'Produkt musi mieć od 1 do 100 wariantów.']];
-        yield 'a variant that is no object' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', 'b']], 'x']]), ['variants[1]' => 'Wariant jest nieprawidłowy.']];
-        yield 'a variant id that is no uuid' => [self::with(['variants' => [['variantId' => 'abc', 'values' => ['a', 'b']]]]), ['variants[0].variantId' => 'Identyfikator wariantu jest nieprawidłowy.']];
-        yield 'a missing variant id' => [self::with(['variants' => [['values' => ['a', 'b']]]]), ['variants[0].variantId' => 'Identyfikator wariantu jest nieprawidłowy.']];
-        yield 'a repeated variant id' => [self::with(['variants' => [['variantId' => self::UUID_C, 'values' => ['a', 'b']], ['variantId' => strtoupper(self::UUID_C), 'values' => ['c', 'd']]]]), ['variants[1].variantId' => 'Ten wariant jest powtórzony.']];
-        yield 'values that are no list' => [self::with(['variants' => [['variantId' => null, 'values' => 'a']]]), ['variants[0].values' => 'Wartości wariantu muszą być listą.']];
-        yield 'fewer values than axes' => [self::with(['variants' => [['variantId' => null, 'values' => ['a']]]]), ['variants[0].values' => 'Wariant musi mieć jedną wartość dla każdej osi.']];
-        yield 'values for a product without axes' => [self::with(['variantAxes' => [], 'variants' => [['variantId' => null, 'values' => ['a']]]]), ['variants[0].values' => 'Wariant musi mieć jedną wartość dla każdej osi.']];
-        yield 'an empty value' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', 'b']], ['variantId' => null, 'values' => ['a', " \u{00A0}"]]]]), ['variants[1].values[1]' => 'Wartość musi mieć od 1 do 40 znaków.']];
-        yield 'a value over 40 characters' => [self::with(['variants' => [['variantId' => null, 'values' => [str_repeat('a', 41), 'b']]]]), ['variants[0].values[0]' => 'Wartość musi mieć od 1 do 40 znaków.']];
-        yield 'a value that is no text' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', 4]]]]), ['variants[0].values[1]' => 'Wartość musi mieć od 1 do 40 znaków.']];
-        yield 'a repeated combination' => [self::with(['variants' => [['variantId' => null, 'values' => ['czarne', '40']], ['variantId' => null, 'values' => ['Czarne ', '41']], ['variantId' => null, 'values' => [' CZARNE', '40 ']]]]), ['variants[2].values' => 'Taki wariant już istnieje.']];
-        yield 'the same combination written in Polish capitals' => [self::with(['variantAxes' => ['Kolor'], 'variants' => [['variantId' => null, 'values' => ['żółte']], ['variantId' => null, 'values' => ['ŻÓŁTE']]]]), ['variants[1].values' => 'Taki wariant już istnieje.']];
-        yield 'more than one row without axes' => [self::with(['variantAxes' => [], 'variants' => [['variantId' => null, 'values' => []], ['variantId' => null, 'values' => []]]]), ['variants' => 'Produkt bez osi ma tylko jeden wariant.']];
+        yield 'a hundred and one variants' => [self::with(['variantAxes' => ['A'], 'variants' => array_map(static fn (int $n): array => ['variantId' => null, 'values' => [(string) $n], 'sku' => '', 'ean' => ''], range(1, 101))]), ['variants' => 'Produkt musi mieć od 1 do 100 wariantów.']];
+        yield 'a variant that is no object' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', 'b'], 'sku' => '', 'ean' => ''], 'x']]), ['variants[1]' => 'Wariant jest nieprawidłowy.']];
+        yield 'a variant id that is no uuid' => [self::with(['variants' => [['variantId' => 'abc', 'values' => ['a', 'b'], 'sku' => '', 'ean' => '']]]), ['variants[0].variantId' => 'Identyfikator wariantu jest nieprawidłowy.']];
+        yield 'a missing variant id' => [self::with(['variants' => [['values' => ['a', 'b'], 'sku' => '', 'ean' => '']]]), ['variants[0].variantId' => 'Identyfikator wariantu jest nieprawidłowy.']];
+        yield 'a repeated variant id' => [self::with(['variants' => [['variantId' => self::UUID_C, 'values' => ['a', 'b'], 'sku' => '', 'ean' => ''], ['variantId' => strtoupper(self::UUID_C), 'values' => ['c', 'd'], 'sku' => '', 'ean' => '']]]), ['variants[1].variantId' => 'Ten wariant jest powtórzony.']];
+        yield 'values that are no list' => [self::with(['variants' => [['variantId' => null, 'values' => 'a', 'sku' => '', 'ean' => '']]]), ['variants[0].values' => 'Wartości wariantu muszą być listą.']];
+        yield 'fewer values than axes' => [self::with(['variants' => [['variantId' => null, 'values' => ['a'], 'sku' => '', 'ean' => '']]]), ['variants[0].values' => 'Wariant musi mieć jedną wartość dla każdej osi.']];
+        yield 'values for a product without axes' => [self::with(['variantAxes' => [], 'variants' => [['variantId' => null, 'values' => ['a'], 'sku' => '', 'ean' => '']]]), ['variants[0].values' => 'Wariant musi mieć jedną wartość dla każdej osi.']];
+        yield 'an empty value' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', 'b'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['a', " \u{00A0}"], 'sku' => '', 'ean' => '']]]), ['variants[1].values[1]' => 'Wartość musi mieć od 1 do 40 znaków.']];
+        yield 'a value over 40 characters' => [self::with(['variants' => [['variantId' => null, 'values' => [str_repeat('a', 41), 'b'], 'sku' => '', 'ean' => '']]]), ['variants[0].values[0]' => 'Wartość musi mieć od 1 do 40 znaków.']];
+        yield 'a value that is no text' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', 4], 'sku' => '', 'ean' => '']]]), ['variants[0].values[1]' => 'Wartość musi mieć od 1 do 40 znaków.']];
+        yield 'a repeated combination' => [self::with(['variants' => [['variantId' => null, 'values' => ['czarne', '40'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['Czarne ', '41'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => [' CZARNE', '40 '], 'sku' => '', 'ean' => '']]]), ['variants[2].values' => 'Taki wariant już istnieje.']];
+        yield 'the same combination written in Polish capitals' => [self::with(['variantAxes' => ['Kolor'], 'variants' => [['variantId' => null, 'values' => ['żółte'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['ŻÓŁTE'], 'sku' => '', 'ean' => '']]]), ['variants[1].values' => 'Taki wariant już istnieje.']];
+        yield 'more than one row without axes' => [self::with(['variantAxes' => [], 'variants' => [['variantId' => null, 'values' => [], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => [], 'sku' => '', 'ean' => '']]]), ['variants' => 'Produkt bez osi ma tylko jeden wariant.']];
 
         // Forbidden characters and Unicode whitespace (#247); an invalid UTF-8 byte cannot arrive in a JSON body (the
         // decoder answers 400 first), so only this test shows how the validator treats it.
@@ -182,8 +182,8 @@ final class ProductWriteValidationTest extends TestCase
             yield "a name with $label" => [self::with(['name' => $text]), ['name' => 'Nazwa produktu zawiera niedozwolone znaki.']];
             yield "a short description with $label" => [self::with(['shortDescription' => $text]), ['shortDescription' => 'Krótki opis zawiera niedozwolone znaki.']];
             yield "an alt with $label" => [self::with(['images' => [['key' => $key, 'alt' => $text]]]), ['images[0].alt' => 'Tekst alternatywny zawiera niedozwolone znaki.']];
-            yield "an axis name with $label" => [self::with(['variantAxes' => [$text], 'variants' => [['variantId' => null, 'values' => ['a']]]]), ['variantAxes[0]' => 'Nazwa osi zawiera niedozwolone znaki.']];
-            yield "a value with $label" => [self::with(['variants' => [['variantId' => null, 'values' => ['a', $text]]]]), ['variants[0].values[1]' => 'Wartość wariantu zawiera niedozwolone znaki.']];
+            yield "an axis name with $label" => [self::with(['variantAxes' => [$text], 'variants' => [['variantId' => null, 'values' => ['a'], 'sku' => '', 'ean' => '']]]), ['variantAxes[0]' => 'Nazwa osi zawiera niedozwolone znaki.']];
+            yield "a value with $label" => [self::with(['variants' => [['variantId' => null, 'values' => ['a', $text], 'sku' => '', 'ean' => '']]]), ['variants[0].values[1]' => 'Wartość wariantu zawiera niedozwolone znaki.']];
         }
         foreach ($forbidden as $label => $text) {
             yield "a brand with $label" => [self::with(['brand' => $text]), ['brand' => 'Marka zawiera niedozwolone znaki.']];
@@ -199,18 +199,63 @@ final class ProductWriteValidationTest extends TestCase
         yield 'a short description of only whitespace' => [self::with(['shortDescription' => "\u{00A0}\n\u{3000}"]), []];
         yield 'a name with a line feed' => [self::with(['name' => "a\nb"]), ['name' => 'Nazwa produktu zawiera niedozwolone znaki.']];
         yield 'an alt with a line feed' => [self::with(['images' => [['key' => $key, 'alt' => "a\nb"]]]), ['images[0].alt' => 'Tekst alternatywny zawiera niedozwolone znaki.']];
-        yield 'an axis name with a line feed' => [self::with(['variantAxes' => ["a\nb"], 'variants' => [['variantId' => null, 'values' => ['a']]]]), ['variantAxes[0]' => 'Nazwa osi zawiera niedozwolone znaki.']];
-        yield 'a value with a line feed' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', "a\nb"]]]]), ['variants[0].values[1]' => 'Wartość wariantu zawiera niedozwolone znaki.']];
+        yield 'an axis name with a line feed' => [self::with(['variantAxes' => ["a\nb"], 'variants' => [['variantId' => null, 'values' => ['a'], 'sku' => '', 'ean' => '']]]), ['variantAxes[0]' => 'Nazwa osi zawiera niedozwolone znaki.']];
+        yield 'a value with a line feed' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', "a\nb"], 'sku' => '', 'ean' => '']]]), ['variants[0].values[1]' => 'Wartość wariantu zawiera niedozwolone znaki.']];
         yield 'a name of only non-breaking spaces' => [self::with(['name' => "\u{00A0}\u{00A0}"]), ['name' => 'Podaj nazwę produktu.']];
         yield 'an alt of only ideographic spaces' => [self::with(['images' => [['key' => $key, 'alt' => "\u{3000}"]]]), ['images[0].alt' => 'Podaj tekst alternatywny zdjęcia.']];
-        yield 'an axis name of only non-breaking spaces' => [self::with(['variantAxes' => ["\u{00A0}"], 'variants' => [['variantId' => null, 'values' => ['a']]]]), ['variantAxes[0]' => 'Nazwa osi musi mieć od 1 do 30 znaków.']];
-        yield 'a value of only non-breaking spaces' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', "\u{00A0}"]]]]), ['variants[0].values[1]' => 'Wartość musi mieć od 1 do 40 znaków.']];
+        yield 'an axis name of only non-breaking spaces' => [self::with(['variantAxes' => ["\u{00A0}"], 'variants' => [['variantId' => null, 'values' => ['a'], 'sku' => '', 'ean' => '']]]), ['variantAxes[0]' => 'Nazwa osi musi mieć od 1 do 30 znaków.']];
+        yield 'a value of only non-breaking spaces' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', "\u{00A0}"], 'sku' => '', 'ean' => '']]]), ['variants[0].values[1]' => 'Wartość musi mieć od 1 do 40 znaków.']];
         yield 'a name of 200 characters with non-breaking spaces around' => [self::with(['name' => "\u{00A0}".str_repeat('ż', 200)."\u{00A0}"]), []];
-        yield 'a repeated combination with non-breaking spaces' => [self::with(['variantAxes' => ['Kolor'], 'variants' => [['variantId' => null, 'values' => ['czarne']], ['variantId' => null, 'values' => ["\u{00A0}Czarne\u{00A0}"]]]]), ['variants[1].values' => 'Taki wariant już istnieje.']];
+        yield 'a repeated combination with non-breaking spaces' => [self::with(['variantAxes' => ['Kolor'], 'variants' => [['variantId' => null, 'values' => ['czarne'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ["\u{00A0}Czarne\u{00A0}"], 'sku' => '', 'ean' => '']]]), ['variants[1].values' => 'Taki wariant już istnieje.']];
         yield 'a repeated axis name with non-breaking spaces' => [self::with(['variantAxes' => ['Kolor', "\u{00A0}kolor"]]), ['variantAxes[1]' => 'Nazwa osi już jest użyta.']];
 
+        $skuFormat = 'Kod SKU może mieć od 1 do 40 znaków: litery A–Z, cyfry oraz znaki - _ . / i musi zaczynać się literą albo cyfrą.';
+        $eanFormat = 'Podaj poprawny kod EAN: 8, 12, 13 albo 14 cyfr z cyfrą kontrolną.';
+        $row = static fn (array $codes): array => self::with(['variants' => [
+            ['variantId' => null, 'values' => ['czarne', '40'], 'sku' => '', 'ean' => ''],
+            ['variantId' => null, 'values' => ['czarne', '41'], 'sku' => '', 'ean' => '', ...$codes],
+        ]]);
+        yield 'valid codes with edges and small letters' => [$row(['sku' => " \u{00A0}but-1/cz_2.x\u{200B}", 'ean' => "\u{3000}5901234123457 "]), []];
+        yield 'a SKU of 40 characters' => [$row(['sku' => str_repeat('a', 40)]), []];
+        yield 'EANs of 8, 12 and 14 digits' => [self::with(['variants' => [
+            ['variantId' => null, 'values' => ['czarne', '40'], 'sku' => '', 'ean' => '59012344'],
+            ['variantId' => null, 'values' => ['czarne', '41'], 'sku' => '', 'ean' => '012345678905'],
+            ['variantId' => null, 'values' => ['czarne', '42'], 'sku' => '', 'ean' => '15901234123454'],
+        ]]), []];
+        yield 'a SKU missing' => [self::with(['variants' => [['variantId' => null, 'values' => ['czarne', '40'], 'ean' => '']]]), ['variants[0].sku' => 'Kod SKU musi być tekstem.']];
+        yield 'an EAN missing' => [self::with(['variants' => [['variantId' => null, 'values' => ['czarne', '40'], 'sku' => '']]]), ['variants[0].ean' => 'Kod EAN musi być tekstem.']];
+        yield 'a SKU that is null' => [$row(['sku' => null]), ['variants[1].sku' => 'Kod SKU musi być tekstem.']];
+        yield 'a SKU that is a number' => [$row(['sku' => 12]), ['variants[1].sku' => 'Kod SKU musi być tekstem.']];
+        yield 'an EAN that is a JSON number' => [$row(['ean' => 5901234123457]), ['variants[1].ean' => 'Kod EAN musi być tekstem.']];
+        yield 'an EAN that is a list' => [$row(['ean' => ['5901234123457']]), ['variants[1].ean' => 'Kod EAN musi być tekstem.']];
+        yield 'a SKU with a space inside' => [$row(['sku' => 'AB 1']), ['variants[1].sku' => $skuFormat]];
+        yield 'a SKU of 41 characters' => [$row(['sku' => str_repeat('A', 41)]), ['variants[1].sku' => $skuFormat]];
+        yield 'a SKU starting with a dash' => [$row(['sku' => '-AB']), ['variants[1].sku' => $skuFormat]];
+        yield 'a SKU with a Polish letter' => [$row(['sku' => 'ŻÓŁW']), ['variants[1].sku' => $skuFormat]];
+        yield 'a SKU with a tab at the end' => [$row(['sku' => "AB-1\t"]), ['variants[1].sku' => $skuFormat]];
+        yield 'a SKU with U+2028 at the start' => [$row(['sku' => "\u{2028}AB-1"]), ['variants[1].sku' => $skuFormat]];
+        yield 'an EAN with a tab at the end' => [$row(['ean' => "5901234123457\t"]), ['variants[1].ean' => $eanFormat]];
+        yield 'an EAN with U+2028 at the end' => [$row(['ean' => "5901234123457\u{2028}"]), ['variants[1].ean' => $eanFormat]];
+        yield 'an EAN with a wrong check digit' => [$row(['ean' => '5901234123458']), ['variants[1].ean' => $eanFormat]];
+        yield 'an EAN of 11 digits' => [$row(['ean' => '59012341234']), ['variants[1].ean' => $eanFormat]];
+        yield 'an EAN with a letter' => [$row(['ean' => '590123412345X']), ['variants[1].ean' => $eanFormat]];
+        yield 'codes of only non-breaking spaces' => [$row(['sku' => "\u{00A0}", 'ean' => "\u{3000}"]), []];
+        yield 'the same SKU twice, the later row is at fault' => [self::with(['variants' => [
+            ['variantId' => null, 'values' => ['czarne', '40'], 'sku' => 'but-1', 'ean' => ''],
+            ['variantId' => null, 'values' => ['czarne', '41'], 'sku' => 'BUT-2', 'ean' => ''],
+            ['variantId' => null, 'values' => ['czarne', '42'], 'sku' => ' But-1 ', 'ean' => ''],
+        ]]), ['variants[2].sku' => 'Ten kod SKU powtarza się w produkcie.']];
+        yield 'the same EAN twice is fine' => [self::with(['variants' => [
+            ['variantId' => null, 'values' => ['czarne', '40'], 'sku' => '', 'ean' => '5901234123457'],
+            ['variantId' => null, 'values' => ['czarne', '41'], 'sku' => '', 'ean' => '5901234123457'],
+        ]]), []];
+        yield 'the same bad SKU twice is a mistake of format, not of repetition' => [self::with(['variants' => [
+            ['variantId' => null, 'values' => ['czarne', '40'], 'sku' => 'a b', 'ean' => ''],
+            ['variantId' => null, 'values' => ['czarne', '41'], 'sku' => 'a b', 'ean' => ''],
+        ]]), ['variants[0].sku' => $skuFormat, 'variants[1].sku' => $skuFormat]];
+
         yield 'several mistakes at once, in the order of the body' => [
-            self::with(['name' => '', 'brand' => null, 'parameters' => [['name' => 'Waga', 'value' => '']], 'taxClass' => 'x', 'images' => [['key' => 'k', 'alt' => '']], 'variants' => [['variantId' => 'z', 'values' => []]]]),
+            self::with(['name' => '', 'brand' => null, 'parameters' => [['name' => 'Waga', 'value' => '']], 'taxClass' => 'x', 'images' => [['key' => 'k', 'alt' => '']], 'variants' => [['variantId' => 'z', 'values' => [], 'sku' => '', 'ean' => '']]]),
             [
                 'name' => 'Podaj nazwę produktu.',
                 'brand' => 'Marka musi być tekstem.',

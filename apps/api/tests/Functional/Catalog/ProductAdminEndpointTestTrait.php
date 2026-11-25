@@ -119,7 +119,7 @@ trait ProductAdminEndpointTestTrait
             'taxClass' => 'standard',
             'images' => [['key' => $this->originalKey(), 'alt' => 'Buty z boku']],
             'variantAxes' => ['Rozmiar'],
-            'variants' => [['variantId' => null, 'values' => ['M']], ['variantId' => null, 'values' => ['L']]],
+            'variants' => [['variantId' => null, 'values' => ['M'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['L'], 'sku' => '', 'ean' => '']],
             ...$changes,
         ];
     }

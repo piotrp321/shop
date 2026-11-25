@@ -90,7 +90,7 @@ final class BackofficeProductsEndpointTest extends WebTestCase
 
     public function testTheListHoldsTheSummaryOfEachProduct(): void
     {
-        $view = $this->createProduct(['variants' => [['variantId' => null, 'values' => ['M']], ['variantId' => null, 'values' => ['L']], ['variantId' => null, 'values' => ['XL']]]]);
+        $view = $this->createProduct(['variants' => [['variantId' => null, 'values' => ['M'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['L'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['XL'], 'sku' => '', 'ean' => '']]]);
 
         $body = $this->api('GET', '/api/v1/admin/products');
 

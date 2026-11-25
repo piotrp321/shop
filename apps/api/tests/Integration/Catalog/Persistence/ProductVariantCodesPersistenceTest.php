@@ -140,7 +140,7 @@ final class ProductVariantCodesPersistenceTest extends KernelTestCase
             ['id' => self::BLACK_M, 'values' => ['czarne', 'M'], 'sku' => 'BUT-1', 'ean' => '5901234123457'],
             ['id' => self::BLACK_L, 'values' => ['czarne', 'L'], 'sku' => 'BUT-2'],
             ['id' => self::WHITE_M, 'values' => ['białe', 'M'], 'ean' => '59012344'],
-        ]);
+        ], ['status' => ProductStatus::Draft]);
         $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
@@ -163,7 +163,7 @@ final class ProductVariantCodesPersistenceTest extends KernelTestCase
         $product = $this->product(['Kolor'], [
             ['id' => self::BLACK_M, 'values' => ['czarne'], 'sku' => 'BUT-1', 'ean' => '5901234123457'],
             ['id' => self::BLACK_L, 'values' => ['białe'], 'sku' => 'BUT-2'],
-        ]);
+        ], ['status' => ProductStatus::Draft]);
         $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 

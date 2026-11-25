@@ -102,7 +102,7 @@ final class SearchReindexFlowTest extends MessagingKernelTestCase
             'standard',
             [['key' => 'originals/'.str_repeat('a', 64).'.jpg', 'alt' => 'front']],
             [],
-            [['id' => (string) Uuid::v7(), 'values' => []]],
+            [['id' => (string) Uuid::v7(), 'values' => [], 'sku' => '', 'ean' => '']],
             ProductStatus::Draft,
             'staff-sub-1',
         ));

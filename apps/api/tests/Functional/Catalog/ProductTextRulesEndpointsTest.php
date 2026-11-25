@@ -46,7 +46,7 @@ final class ProductTextRulesEndpointsTest extends WebTestCase
             'shortDescription' => ['shortDescription' => $text],
             'alt' => ['images' => [['key' => $this->originalKey(), 'alt' => $text]]],
             'axis' => ['variantAxes' => [$text]],
-            'value' => ['variants' => [['variantId' => null, 'values' => [$text]], ['variantId' => null, 'values' => ['L']]]],
+            'value' => ['variants' => [['variantId' => null, 'values' => [$text], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['L'], 'sku' => '', 'ean' => '']]],
             default => throw new \LogicException(\sprintf('Unknown field %s.', $field)),
         };
     }
@@ -245,7 +245,7 @@ final class ProductTextRulesEndpointsTest extends WebTestCase
             'name' => "\u{00A0}Buty biegowe\u{3000}",
             'images' => [['key' => $this->originalKey(), 'alt' => "\u{00A0}Buty z boku\u{00A0}"]],
             'variantAxes' => ["\u{00A0}Rozmiar\u{00A0}"],
-            'variants' => [['variantId' => null, 'values' => ["\u{3000}M"]], ['variantId' => null, 'values' => ["L\u{00A0}"]]],
+            'variants' => [['variantId' => null, 'values' => ["\u{3000}M"], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ["L\u{00A0}"], 'sku' => '', 'ean' => '']],
         ]);
 
         self::assertResponseIsSuccessful();

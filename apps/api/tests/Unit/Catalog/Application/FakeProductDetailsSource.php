@@ -36,7 +36,7 @@ final class FakeProductDetailsSource implements ProductDetailsSource
             'breadcrumb' => [],
             'images' => $this->images,
             'axes' => [],
-            'variants' => [['id' => 'c0000000-0000-4000-8000-000000000001', 'values' => []]],
+            'variants' => [['id' => 'c0000000-0000-4000-8000-000000000001', 'values' => [], 'sku' => '', 'ean' => '']],
             'published' => true,
         ];
     }

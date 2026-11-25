@@ -174,6 +174,18 @@ final class BackofficeProductViewsTest extends KernelTestCase
         self::assertSame('2026-11-03T10:15:30+00:00', $view->updatedAt->format(\DATE_ATOM));
     }
 
+    public function testEditViewHoldsTheCodesOfTheVariantsAndEmptyTextsForNone(): void
+    {
+        $product = $this->save(['variantAxes' => ['Kolor'], 'variants' => [
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'values' => ['czarne'], 'sku' => 'kurtka-cz', 'ean' => '5901234123457'],
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'values' => ['białe']],
+        ]], new \DateTimeImmutable());
+
+        $view = $this->view($product->id()->toString());
+
+        self::assertSame([['KURTKA-CZ', '5901234123457'], ['', '']], array_map(static fn ($variant): array => [$variant->sku, $variant->ean], $view->variants));
+    }
+
     public function testEditViewOfADraftIsNotSlugLockedAndHasNoFirstPublication(): void
     {
         $product = $this->save(['status' => ProductStatus::Draft, 'createdAt' => new \DateTimeImmutable()]);
