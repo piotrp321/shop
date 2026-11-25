@@ -25,7 +25,7 @@ export function ProductDescription({ description }: { description: string }) {
     return null;
   }
   return (
-    <section data-testid="product-description" aria-labelledby="product-description-heading" className="flex min-w-0 flex-col gap-3">
+    <section data-testid="product-description" aria-labelledby="product-description-heading" className="mt-4 flex min-w-0 flex-col gap-3 lg:mt-0">
       <h2 id="product-description-heading" className="text-2xl font-semibold tracking-tight">
         Opis
       </h2>
@@ -54,7 +54,7 @@ export function ProductParameters({ parameters }: { parameters: ProductParameter
     return null;
   }
   return (
-    <section aria-labelledby="product-parameters-heading" className="flex min-w-0 flex-col gap-3">
+    <section aria-labelledby="product-parameters-heading" className="mt-4 flex min-w-0 flex-col gap-3 lg:mt-0">
       <h2 id="product-parameters-heading" className="text-2xl font-semibold tracking-tight">
         Parametry
       </h2>
