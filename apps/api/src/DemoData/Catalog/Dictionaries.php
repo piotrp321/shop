@@ -10,8 +10,8 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * The dictionaries of the generator in fixtures/demo-data (categories, product types, brands, models, descriptions,
- * photo groups), each read and checked on first use; a missing or malformed file is reported by its name.
+ * The dictionaries of the generator in fixtures/demo-data (categories, product types, parameters, brands, models,
+ * descriptions, photo groups), each read and checked on first use; a missing or malformed file is reported by its name.
  */
 final class Dictionaries
 {
@@ -25,6 +25,10 @@ final class Dictionaries
     private ?array $models = null;
     /** @var array<string, non-empty-list<string>>|null */
     private ?array $closings = null;
+    /** @var array<string, non-empty-list<string>>|null */
+    private ?array $sentences = null;
+    /** @var array<string, non-empty-list<TypeParameter>>|null */
+    private ?array $parameterSets = null;
     /** @var array<string, non-empty-list<string>>|null */
     private ?array $photoGroups = null;
     private ?float $defaultSingle = null;
@@ -162,6 +166,20 @@ final class Dictionaries
     }
 
     /**
+     * @return non-empty-list<string> the sentences the long descriptions of the department are built from
+     */
+    public function sentences(string $department): array
+    {
+        $this->sentences ??= $this->loadSentences();
+        $sentences = $this->sentences[$department] ?? [];
+        if ([] === $sentences) {
+            throw new \InvalidArgumentException(\sprintf('No description sentences for the department "%s".', $department));
+        }
+
+        return $sentences;
+    }
+
+    /**
      * @return list<string>
      */
     public function photoGroupNames(): array
@@ -279,6 +297,14 @@ final class Dictionaries
                 }
                 $features[] = $feature;
             }
+            $setName = self::string($row, 'parameters', $file);
+            $parameters = $this->parameterSets()[$setName] ?? throw self::invalid($file, \sprintf('%s: unknown parameter set "%s"', $name, $setName));
+            $axisNames = array_map(static fn (TypeAxis $axis): string => mb_strtolower($axis->name), $axes);
+            foreach ($parameters as $parameter) {
+                if (\in_array(mb_strtolower($parameter->name), $axisNames, true)) {
+                    throw self::invalid($file, \sprintf('%s: the parameter "%s" of the set "%s" is an axis of the variants of the type', $name, $parameter->name, $setName));
+                }
+            }
             $types[] = new ProductType(
                 $name,
                 self::string($row, 'leaf', $file),
@@ -290,6 +316,7 @@ final class Dictionaries
                 self::string($row, 'photos', $file),
                 $weight,
                 $features,
+                $parameters,
             );
         }
 
@@ -322,6 +349,46 @@ final class Dictionaries
         }
 
         return $closings;
+    }
+
+    /**
+     * @return array<string, non-empty-list<string>>
+     */
+    private function loadSentences(): array
+    {
+        $file = 'descriptions.yaml';
+        $sentences = [];
+        foreach (self::map(self::read($this->directory, $file)['sentences'] ?? null, $file, 'sentences') as $department => $texts) {
+            $sentences[(string) $department] = self::strings($texts, $file, 'sentences of '.$department);
+        }
+
+        return $sentences;
+    }
+
+    /**
+     * @return array<string, non-empty-list<TypeParameter>>
+     */
+    private function parameterSets(): array
+    {
+        return $this->parameterSets ??= $this->loadParameterSets();
+    }
+
+    /**
+     * @return array<string, non-empty-list<TypeParameter>>
+     */
+    private function loadParameterSets(): array
+    {
+        $file = 'parameters.yaml';
+        $sets = [];
+        foreach (self::map(self::read($this->directory, $file)['sets'] ?? null, $file, 'sets') as $set => $parameters) {
+            $list = [];
+            foreach (self::map($parameters, $file, 'the set '.$set) as $name => $values) {
+                $list[] = new TypeParameter((string) $name, self::strings($values, $file, 'values of '.$name.' in '.$set));
+            }
+            $sets[(string) $set] = [] === $list ? throw self::invalid($file, 'the set '.$set.' must not be empty') : $list;
+        }
+
+        return $sets;
     }
 
     /**

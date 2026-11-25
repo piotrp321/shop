@@ -155,6 +155,7 @@ final class VerifyStepTest extends KernelTestCase
         // own content (and a variant of the seed has the codes of the seed), whatever the verification of the tail asks.
         $seed = new SeedCatalog(\dirname(__DIR__, 3).'/fixtures/catalog.yaml')->products();
         $slug = array_key_first($seed);
+        self::assertIsString($slug);
         $category = $connection->fetchOne('SELECT id FROM catalog_category LIMIT 1');
         $connection->executeStatement(
             "INSERT INTO catalog_product (id, slug, name, short_description, brand, description, parameters, tax_class, images, variant_axes, status, primary_category_id, updated_at) VALUES (?, ?, 'x', '', '', '', '[]', 'standard', '[]', '[]', 'draft', ?, now())",
