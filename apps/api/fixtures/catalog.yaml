@@ -151,11 +151,11 @@ templates:
     productType: "Buty trailowe"
     taxClass: standard
     description:
-      - "Buty na szlaki i ścieżki w terenie: kamienie, korzenie, błoto i podbiegi. Bieżnik z głębokimi klockami trzyma na luźnym podłożu, a wzmocniony przód chroni palce przed uderzeniami."
-      - "Cholewka jest odporna na ocieranie i szybko schnie po przemoczeniu. Sznurowanie pozostaje stabilne na zbiegach, a język jest przyszyty do cholewki, żeby do środka nie wpadał piach."
+      - "Buty na szlaki i ścieżki w terenie: kamienie, korzenie, błoto i podbiegi. Bieżnik z klockami trzyma na luźnym podłożu, a konstrukcja buta chroni stopę przed uderzeniami o kamienie i korzenie."
+      - "Cholewka jest odporna na ocieranie. Sznurowanie pozostaje stabilne na zbiegach, a język jest przyszyty do cholewki, żeby do środka nie wpadał piach."
     parameters:
       - {name: "Przeznaczenie", value: "Bieganie w terenie i po górskich szlakach"}
-      - {name: "Cholewka", value: "Siatka odporna na ocieranie"}
+      - {name: "Cholewka", value: "Odporna na ocieranie"}
     brands:
       - "Tarvik"
       - "Norvane"
@@ -193,8 +193,8 @@ templates:
     productType: "Kurtka biegowa"
     taxClass: standard
     description:
-      - "Kurtka na bieganie w chłodne i wietrzne dni. Krój przy ciele nie trzepocze podczas ruchu, a ściągacze przy rękawach i dole ograniczają przewiewy."
-      - "Zamek na całej długości ułatwia regulację wentylacji w trakcie biegu. Odblaskowe detale zwiększają widoczność o zmierzchu. Kurtkę można prać w pralce w temperaturze 30 stopni."
+      - "Kurtka na bieganie w chłodne i wietrzne dni. Nie krępuje ruchów podczas biegu, a ściągacze przy rękawach i dole ograniczają przewiewy."
+      - "Zamek na całej długości ułatwia regulację wentylacji w trakcie biegu. Kurtkę można prać w pralce w temperaturze 30 stopni."
     parameters:
       - {name: "Przeznaczenie", value: "Bieganie w zmiennej pogodzie"}
       - {name: "Zamek", value: "Na całej długości"}
@@ -228,8 +228,8 @@ templates:
     productType: "Koszulka biegowa"
     taxClass: standard
     description:
-      - "Koszulka do biegania i innych sportów wytrzymałościowych. Materiał odprowadza pot od skóry i szybko schnie, dzięki czemu koszulka nie przylega do ciała podczas długiego wysiłku."
-      - "Płaskie szwy ograniczają ocieranie na plecach i ramionach. Krój jest sportowy, lekko dopasowany. Koszulkę można prać w pralce w temperaturze 30 stopni."
+      - "Koszulka do biegania i innych sportów wytrzymałościowych. Materiał odprowadza pot od skóry, dzięki czemu koszulka nie przylega do ciała podczas długiego wysiłku."
+      - "Krój jest sportowy, lekko dopasowany. Koszulkę można prać w pralce w temperaturze 30 stopni."
     parameters:
       - {name: "Przeznaczenie", value: "Bieganie i trening wytrzymałościowy"}
       - {name: "Krój", value: "Sportowy, lekko dopasowany"}
@@ -450,9 +450,8 @@ templates:
     taxClass: standard
     description:
       - "Torba mocowana do roweru pozwala zabrać narzędzia, prowiant i drobne rzeczy bez plecaka. Materiał jest wytrzymały i łatwo go przetrzeć wilgotną szmatką."
-      - "Zapięcia rzepowe i paski utrzymują torbę stabilnie podczas jazdy po nierównym terenie. Wewnątrz jest główna komora, a torbę można łatwo zdjąć z roweru."
+      - "Mocowanie utrzymuje torbę stabilnie podczas jazdy po nierównym terenie, a torbę można łatwo zdjąć z roweru. Wewnątrz jest główna komora."
     parameters:
-      - {name: "Mocowanie", value: "Paski rzepowe"}
       - {name: "Materiał", value: "Wytrzymała tkanina poliestrowa"}
     brands:
       - "Zolvia"
@@ -464,6 +463,7 @@ templates:
           - {name: "Pojemność", value: "4 l"}
           - {name: "Miejsce montażu", value: "Pod ramą"}
           - {name: "Wodoodporność", value: "Wodoodporna"}
+          - {name: "Mocowanie", value: "Paski rzepowe"}
       - name: "Kierownica 10"
         description: "Torba na kierownicę 10 l do bikepackingu, z szybkim systemem mocowania."
         parameters:
@@ -484,7 +484,7 @@ templates:
     taxClass: standard
     description:
       - "Bidon z podwójną ścianką utrzymuje temperaturę napoju: zimny pozostaje chłodny, a ciepły gorący przez kilka godzin. Można go zabrać na rower, w plecak i na siłownię."
-      - "Zawór i nakrętkę można rozebrać do mycia. Zalecamy mycie ręczne, bo zmywarka może uszkodzić powłokę zewnętrzną."
+      - "Zamknięcie można rozebrać do mycia. Zalecamy mycie ręczne, bo zmywarka może uszkodzić powłokę zewnętrzną."
     parameters:
       - {name: "Konstrukcja", value: "Podwójna ścianka"}
       - {name: "Mycie", value: "Ręczne"}
@@ -516,11 +516,11 @@ templates:
     taxClass: standard
     description:
       - "Plecak trekkingowy do noszenia sprzętu na wielogodzinnych i wielodniowych wyprawach. System nośny przenosi większość ciężaru na biodra, dzięki czemu ramiona i kręgosłup nie są nadmiernie obciążone."
-      - "Szelki i pas biodrowy są wyprofilowane i wyściełane. Boczne kieszenie mieszczą bidony, a paski kompresyjne pozwalają ściągnąć zawartość, gdy plecak nie jest pełny."
+      - "Szelki i pas biodrowy są wyprofilowane. Boczne kieszenie mieszczą bidony, a paski kompresyjne pozwalają ściągnąć zawartość, gdy plecak nie jest pełny."
       - "Plecak należy prać ręcznie w letniej wodzie i suszyć w rozłożonej postaci, z dala od źródeł ciepła."
     parameters:
       - {name: "Przeznaczenie", value: "Trekking i wyprawy górskie"}
-      - {name: "Pas biodrowy", value: "Wyściełany"}
+      - {name: "Pas biodrowy", value: "Wyprofilowany"}
     brands:
       - "Hallen"
       - "Norvane"
@@ -639,7 +639,7 @@ templates:
     taxClass: standard
     description:
       - "Śpiwór do spania w namiocie i schronisku. Kołnierz przy szyi i zamek z osłoną ograniczają ucieczkę ciepła, a kaptur można ściągnąć sznurkiem."
-      - "Śpiwór jest pakowany w worek. Przed schowaniem zawsze wysusz go całkowicie. Długotrwałe przechowywanie w ściśniętym worku skraca jego żywotność, więc najlepiej trzymać śpiwór luźno w dużym worku bawełnianym."
+      - "Przed schowaniem zawsze wysusz śpiwór całkowicie. Do dłuższego przechowywania najlepiej trzymać go luźno, w dużym worku bawełnianym, a nie ściśniętego."
     parameters:
       - {name: "Kształt", value: "Mumia"}
       - {name: "Kaptur", value: "Z regulacją sznurkiem"}
@@ -704,7 +704,7 @@ templates:
     productType: "Przewodnik"
     taxClass: printed_book
     description:
-      - "Przewodnik opisuje trasy piesze krok po kroku: punkt startu, przebieg szlaku, czas przejścia i najciekawsze miejsca po drodze. Każda trasa ma profil wysokościowy i wskazówki, jak dojechać do początku szlaku."
+      - "Przewodnik opisuje trasy krok po kroku: punkt startu, przebieg szlaku, czas przejścia i najciekawsze miejsca po drodze. Opisy zawierają wskazówki, jak dojechać do początku szlaku."
       - "W książce znajdziesz informacje o schroniskach, noclegach i zasadach bezpieczeństwa w górach. Na końcu jest skorowidz miejscowości i szczytów."
       - "Warunki na szlakach mogą się zmienić, dlatego przed wyjściem sprawdź komunikaty o stanie tras."
     parameters:
@@ -719,26 +719,22 @@ templates:
         parameters:
           - {name: "Region", value: "Tatry Zachodnie"}
           - {name: "Liczba tras", value: "60"}
-          - {name: "ISBN", value: "978-83-99001-01-3"}
       - name: "Bieszczady"
         description: "Przewodnik po Bieszczadach z opisem połonin, schronisk i tras jednodniowych. ISBN 978-83-99001-02-0."
         parameters:
           - {name: "Region", value: "Bieszczady"}
           - {name: "Zakres", value: "Połoniny, schroniska i trasy jednodniowe"}
-          - {name: "ISBN", value: "978-83-99001-02-0"}
       - name: "Karkonosze"
         description: "Przewodnik po Karkonoszach z trasami pieszymi i rowerowymi oraz opisem atrakcji. ISBN 978-83-99001-03-7."
         parameters:
           - {name: "Region", value: "Karkonosze"}
           - {name: "Zakres", value: "Trasy piesze i rowerowe oraz atrakcje"}
-          - {name: "ISBN", value: "978-83-99001-03-7"}
       - name: "Beskid Żywiecki"
         description: "Przewodnik po Beskidzie Żywieckim z 45 trasami i mapkami szlaków. ISBN 978-83-99001-04-4."
         parameters:
           - {name: "Region", value: "Beskid Żywiecki"}
           - {name: "Liczba tras", value: "45"}
           - {name: "Mapki", value: "Mapki szlaków przy opisach tras"}
-          - {name: "ISBN", value: "978-83-99001-04-4"}
     variantAxes: ["Oprawa"]
     axisValues:
       - ["oprawa miękka", "oprawa twarda"]
@@ -751,7 +747,7 @@ templates:
     productType: "Mapa turystyczna"
     taxClass: printed_map
     description:
-      - "Mapa turystyczna pokazuje sieć szlaków pieszych, schroniska, punkty widokowe i ukształtowanie terenu. Szlaki są oznaczone kolorami zgodnymi z oznakowaniem w terenie."
+      - "Mapa turystyczna pokazuje sieć szlaków i ukształtowanie terenu. Szlaki są oznaczone kolorami zgodnymi z oznakowaniem w terenie."
       - "Warstwice i wysokości ułatwiają ocenę trudności trasy przed wyjściem. Mapa zawiera legendę i siatkę współrzędnych. Przed wyprawą sprawdź datę wydania, bo szlaki bywają zmieniane."
     parameters:
       - {name: "Rodzaj", value: "Mapa turystyczna"}
@@ -882,10 +878,10 @@ templates:
     taxClass: standard
     description:
       - "Narty skiturowe pozwalają wejść na szczyt i zjechać po świeżym śniegu poza trasami. Są lżejsze od nart zjazdowych, co ułatwia podejścia, a ich konstrukcja zapewnia dobrą kontrolę na zjeździe."
-      - "Na podejściach używa się fok przyklejanych do ślizgu, a na zjeździe zdejmuje się je i chowa. Narty sprzedajemy bez wiązań, fok i kijków; te elementy dobiera się do butów i techniki jazdy."
+      - "Na podejściach używa się fok przyklejanych do ślizgu, a na zjeździe zdejmuje się je i chowa. Wiązania skiturowe dobiera się do butów i techniki jazdy."
     parameters:
       - {name: "Przeznaczenie", value: "Skituring"}
-      - {name: "Wiązania i foki", value: "Sprzedawane osobno"}
+      - {name: "Podejścia", value: "Z użyciem fok przyklejanych do ślizgu"}
     brands:
       - "Stavro"
       - "Vilmar"
@@ -930,7 +926,6 @@ templates:
       - "Pasek podbródkowy zapina się jedną ręką, także w rękawicy. Wyściółka jest miękka i można ją wyprać. Po poważnym upadku kask należy wymienić."
     parameters:
       - {name: "Przeznaczenie", value: "Narciarstwo i jazda na rowerze"}
-      - {name: "Norma", value: "EN 1077 i EN 1078"}
       - {name: "Regulacja obwodu", value: "Pokrętłem"}
     brands:
       - "Stavro"
@@ -946,6 +941,7 @@ templates:
         parameters:
           - {name: "Skorupa", value: "Lekka"}
           - {name: "Przeznaczenie", value: "Narciarstwo, snowboard i jazda na rowerze"}
+          - {name: "Norma", value: "EN 1077 i EN 1078"}
       - name: "Zima 3"
         description: "Kask z mocowaniem na gogle i odpinanymi nausznikami."
         parameters:
@@ -964,10 +960,10 @@ templates:
     productType: "Kurtka narciarska"
     taxClass: standard
     description:
-      - "Kurtka narciarska chroni przed śniegiem, wiatrem i mrozem podczas jazdy na stoku. Membrana zatrzymuje wodę z zewnątrz, a jednocześnie wypuszcza parę wodną, więc kurtka nie staje się wilgotna od wewnątrz."
+      - "Kurtka narciarska chroni przed śniegiem i wiatrem podczas jazdy na nartach. Membrana zatrzymuje wodę z zewnątrz, a jednocześnie wypuszcza parę wodną, więc kurtka nie staje się wilgotna od wewnątrz."
       - "Ściągacz u dołu i mankiety z regulacją ograniczają przedostawanie się śniegu. Zamek jest osłonięty listwą przeciwwiatrową. Kurtkę wystarczy prać w niskiej temperaturze, bez płynu zmiękczającego."
     parameters:
-      - {name: "Przeznaczenie", value: "Narciarstwo i snowboard"}
+      - {name: "Przeznaczenie", value: "Narciarstwo"}
       - {name: "Pranie", value: "30 stopni, bez płynu zmiękczającego"}
     brands:
       - "Stavro"
@@ -1004,7 +1000,7 @@ templates:
     productType: "Mata do ćwiczeń"
     taxClass: standard
     description:
-      - "Mata do ćwiczeń na podłodze: jogi, pilatesu, rozciągania i treningu siłowego. Powierzchnia chroni przed poślizgiem, a pianka amortyzuje nacisk na kolana, łokcie i kręgosłup."
+      - "Mata do ćwiczeń na podłodze: jogi, pilatesu, rozciągania i treningu siłowego. Pianka amortyzuje nacisk na kolana, łokcie i kręgosłup."
       - "Matę łatwo zwinąć i przenosić. Do czyszczenia wystarczy wilgotna ściereczka z łagodnym detergentem. Po rozwinięciu mata może przez kilka godzin zachowywać zagięcia."
     parameters:
       - {name: "Materiał", value: "Pianka"}
@@ -1022,7 +1018,7 @@ templates:
         description: "Gruba mata 10 mm chroniąca kolana i kręgosłup podczas ćwiczeń siłowych."
         parameters:
           - {name: "Grubość", value: "10 mm"}
-          - {name: "Przeznaczenie", value: "Ćwiczenia siłowe z obciążeniem kolan"}
+          - {name: "Przeznaczenie", value: "Ćwiczenia siłowe i ochrona kolan"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["fioletowa", "zielona", "szara"]
@@ -1063,7 +1059,7 @@ templates:
     productType: "Baton energetyczny"
     taxClass: energy_bar
     description:
-      - "Baton energetyczny to szybkie źródło węglowodanów przed treningiem, w trakcie i po wysiłku. Zmieści się w kieszeni koszulki i nie wymaga przechowywania w lodówce."
+      - "Baton energetyczny to przekąska na wysiłek: przed treningiem, w trakcie i po nim. Zmieści się w kieszeni koszulki i nie wymaga przechowywania w lodówce."
       - "Przechowuj baton w suchym miejscu, z dala od słońca. Produkt może zawierać orzechy i ślady innych alergenów; szczegółowy skład jest na opakowaniu."
     parameters:
       - {name: "Przeznaczenie", value: "Przekąska sportowa"}
@@ -1135,7 +1131,7 @@ templates:
     productType: "Odżywka białkowa"
     taxClass: protein_powder
     description:
-      - "Odżywka białkowa w proszku uzupełnia dzienne zapotrzebowanie na białko u osób, które trenują. Rozpuszcza się w wodzie, mleku lub napoju roślinnym po wstrząśnięciu w shakerze."
+      - "Odżywka białkowa w proszku uzupełnia dzienne zapotrzebowanie na białko u osób, które trenują. Rozpuszcza się w wodzie lub wybranym napoju po wstrząśnięciu w shakerze."
       - "Zalecaną porcję i skład podaje etykieta na opakowaniu. Produkt przechowuj w suchym miejscu, szczelnie zamknięty. Odżywka nie zastępuje zróżnicowanej diety."
     parameters:
       - {name: "Postać", value: "Proszek"}
@@ -1296,8 +1292,8 @@ templates:
     productType: "Okulary pływackie"
     taxClass: standard
     description:
-      - "Okulary pływackie chronią oczy przed chlorem i zapewniają ostry obraz pod wodą. Miękkie uszczelki przylegają do okolicy oczu i nie ocierają skóry nawet podczas dłuższego treningu."
-      - "Silikonowa opaska z regulacją trzyma okulary na głowie także podczas startu ze słupka. Po pływaniu przepłucz okulary czystą wodą i nie dotykaj soczewek palcami, bo możesz uszkodzić powłokę przeciwmgielną."
+      - "Okulary pływackie chronią oczy przed wodą i zapewniają ostry obraz pod wodą. Miękkie uszczelki przylegają do okolicy oczu i nie ocierają skóry nawet podczas dłuższego treningu."
+      - "Silikonowa opaska z regulacją trzyma okulary na głowie także podczas startu ze słupka. Po pływaniu przepłucz okulary czystą wodą i nie dotykaj soczewek palcami, żeby ich nie porysować."
     parameters:
       - {name: "Opaska", value: "Silikonowa, regulowana"}
       - {name: "Uszczelki", value: "Miękkie"}
@@ -1333,7 +1329,7 @@ templates:
     productType: "Pianka pływacka"
     taxClass: standard
     description:
-      - "Pianka neoprenowa chroni przed utratą ciepła podczas pływania w otwartej wodzie. Cienka warstwa wody, która dostaje się pod piankę, ogrzewa się od ciała i tworzy dodatkową izolację."
+      - "Pianka neoprenowa chroni przed utratą ciepła podczas pływania w otwartej wodzie. Neopren izoluje ciało od zimnej wody, a dopasowana pianka ogranicza napływ wody pod spód."
       - "Zamek na plecach z linką ułatwia zakładanie. Piankę zakłada się na suche ciało i zdejmuje, zaczynając od ramion. Po pływaniu należy ją przepłukać słodką wodą i suszyć w cieniu, na wieszaku."
     parameters:
       - {name: "Materiał", value: "Neopren"}
@@ -1366,11 +1362,10 @@ templates:
     productType: "Piłka nożna"
     taxClass: standard
     description:
-      - "Piłka nożna do treningów i gry rekreacyjnej. Powłoka z syntetycznej skóry jest odporna na uszkodzenia, a zawór dobrze utrzymuje ciśnienie."
+      - "Piłka nożna o regularnym kształcie i stabilnym odbiciu. Powłoka z syntetycznej skóry jest odporna na uszkodzenia, a zawór dobrze utrzymuje ciśnienie."
       - "Przed użyciem piłkę należy napompować do ciśnienia wskazanego na zaworze. Po grze wytrzyj ją z błota wilgotną szmatką i przechowuj w temperaturze pokojowej, lekko napompowaną."
     parameters:
       - {name: "Powłoka", value: "Syntetyczna skóra"}
-      - {name: "Przeznaczenie", value: "Trening i gra rekreacyjna"}
     brands:
       - "Dravik"
       - "Stavro"
@@ -1382,6 +1377,7 @@ templates:
           - {name: "Rozmiar piłki", value: "5"}
           - {name: "Nawierzchnia", value: "Trawa i sztuczna nawierzchnia"}
           - {name: "Odporność", value: "Odporna na przetarcia"}
+          - {name: "Przeznaczenie", value: "Trening"}
       - name: "Mecz 5"
         description: "Piłka meczowa rozmiar 5 ze zgrzewanymi panelami o stałym odbiciu."
         parameters:
@@ -1393,6 +1389,7 @@ templates:
         parameters:
           - {name: "Rozmiar piłki", value: "4"}
           - {name: "Wiek", value: "Młodzież do 12 lat"}
+          - {name: "Przeznaczenie", value: "Gra i trening młodzieży"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["biała", "pomarańczowa"]
