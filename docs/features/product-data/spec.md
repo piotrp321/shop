@@ -131,7 +131,7 @@ kodu (kod dopełniony zerami z lewej):
   14-cyfrowej.
 - Prefiksy spoza §2.1.11 (np. `03`, `05`, `30`, prefiksy firmowe U.P.C. `000999` i `008000`, kod 8-cyfrowy
   zaczynający się od `1` albo `9`) nie są RCN. Kod 13-cyfrowy, którego druga cyfra postaci 14-cyfrowej nie jest zerem
-  (np. `3001234567892`, `4006381333931`), nie jest U.P.C.-12, więc nie podlega wierszowi 3 i ma `gtin`.
+  (np. `3001234567892`, `4006381333931`), nie jest U.P.C.-12, więc nie podlega wierszowi 3 (ma `gtin`, jeśli nie spełnia innego wiersza).
 
 Rozstrzyga to domena Catalog, nie sklep: odpowiedź sklepu niesie `ean` (kod wpisany przez sprzedawcę) i `gtin` (ten
 sam kod, gdy jest globalnym numerem towaru, inaczej pusty tekst). Panel przyjmuje i pokazuje każdy poprawny EAN.
