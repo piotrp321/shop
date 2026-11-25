@@ -586,7 +586,7 @@ i jeden po, bajty:
 W przeliczeniu na wiersz: tabela produktów 3 358 B → 4 468 B na produkt, tabela wariantów 294 B → 354 B na wariant;
 sterta produktów 991 B → 2 419 B na produkt. Przyrost sterty (1 428 B) jest większy niż w pomiarze 2 (779 B), bo krok
 zdjęć zostawia martwą wersję każdego wiersza: ponad przyrost wiersza dochodzi druga kopia o około 650 B na produkt.
-Opis i parametry mieszczą się w wierszu poniżej progu TOAST (średnio 428 B opisu i 199 B parametrów), więc TOAST jest pusty.
+Opis (300–600 znaków) i parametry (3–6 par) mieszczą się w wierszu poniżej progu TOAST, więc TOAST jest pusty.
 
 **Pomiar 2: `medium`, kroki katalogu** (`bin/seed-demo`, `demo-data:categories`, potem `demo-data:products` w 4 procesach
 `--worker=i --workers=4`, tak jak woła je `bin/generate-demo`; bez zdjęć, cen i zamówień; 1 000 191 produktów, w tym
@@ -625,7 +625,7 @@ rozmiar tabel po nim (tabele po kroku to część rachunku, nie szczyt). Przyros
 | tabele i indeksy wariantów, w tym indeks SKU | +70 B × warianty (3,009 na produkt; pomiar 2) | 0,21 GB | 2,10 GB | 2,10 GB |
 | druga kopia przyrostu wiersza produktu w kroku zdjęć | 779 B × produkty: `UPDATE` obrazów zostawia stary wiersz (z nowymi kolumnami) do odkurzenia | 0,78 GB | 7,79 GB | 7,79 GB |
 | WAL nowych kolumn i indeksu SKU | zapis kroku produktów 8,93 → 10,84 GB na `medium` (+1,91 GB), ale na dysku WAL trzyma `max_wal_size` (1 GB, chart go nie zmienia, kopie zapasowe to `pg_dump`, bez archiwizacji WAL), więc szczytu nie zwiększa; zawiera go stały narzut 10,31 GB | 0 | 0 | 0 |
-| **przyrost szczytu** | | **1,78 GB** | **17,85 GB** | **17,85 GB** |
+| **przyrost szczytu** | | **1,79 GB** | **17,85 GB** | **17,85 GB** |
 | szczyt bez pól treści | tabela „Ekstrapolacja `server` i `full`” wyżej | 20,52 GB | 95,2 GB | 249,7 GB |
 | **razem, w górę do pełnego GB (`diskPeakGb`)** | | **22,3 → 23 GB** | **113,05 → 114 GB** | **267,55 → 268 GB** |
 
