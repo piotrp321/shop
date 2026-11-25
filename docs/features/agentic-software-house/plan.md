@@ -22,11 +22,11 @@ Od 2026-11-18 obowiązuje moratorium na rozwój AO, skilli istniejących tylko d
 Ostatni epik prowadzony przez AO: DEMO-DATA (#482), zakończony w AO 2026-11-18 (końcowy PR #744; integracja przeszła
 w pierwszej rundzie).
 
-W toku: brak epiku. Blokery: brak.
-Ostatni zmergowany epik: SECURITY-PATCHING (#767, końcowy PR #937, zmergowany 2026-11-25; epik natywny
-z danymi pomiaru; 2 interwencje właściciela, 1 oczekiwanie, łącznie 444 min czekania). Ostatni zmergowany epik serii:
-DELIVERY etap 1 (#120, końcowy PR #819). Retro do zrobienia: brak (retro SECURITY-PATCHING: ten PR). Otwartych
-issues z etykietą `agent` jest 145, zamkniętych 107.
+W toku: brak epiku (przygotowany: PRODUCT-DATA, #772). Blokery: brak.
+Ostatni zmergowany epik: API-INPUT-CONTRACT etap 2 (`api-input-2`, #305, końcowy PR #915, zmergowany 2026-11-25;
+epik natywny z danymi pomiaru; 8 interwencji właściciela, 5 oczekiwań, łącznie 541 min czekania). Ostatni zmergowany
+epik serii: DELIVERY etap 1 (#120, końcowy PR #819). Retro do zrobienia: brak (retro API-INPUT-CONTRACT etap 2: ten
+PR). Otwartych issues z etykietą `agent` jest 145, zamkniętych 111.
 
 Seria ASH v1.0 (specyfikacja `docs/features/ash-v1/spec.md`): trzy epiki prowadzone natywnie według „Przebiegu epiku”
 w ADR, ocenianie metrykami i retrospektywami `/retro`. Seria jest w toku od założenia tagu `ash-v1.0` do retrospektywy
