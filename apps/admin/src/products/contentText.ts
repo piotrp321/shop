@@ -34,3 +34,23 @@ export function normalizeContentText(value: string, kind: ContentTextKind = "lin
   const trimmed = value.replace(EDGES, "");
   return INVISIBLE_ONLY.test(trimmed) ? "" : trimmed;
 }
+
+/**
+ * The SKU the API would store of `value`: T1, T2 and T3 as above, then the letters of the ASCII turned into capitals (the API
+ * writes the code in capitals; a letter of another alphabet is no letter of the SKU and stays as it is). "" for no code, null
+ * when T1 forbids the value. Like `normalizeContentText` it serves the comparison of „Sprawdź stan” only.
+ */
+export function normalizeSku(value: string): string | null {
+  const text = normalizeContentText(value);
+  return text === null ? null : upperAscii(text);
+}
+
+/** The EAN the API would store of `value`: T1, T2 and T3, nothing else ("" for no code, null when T1 forbids the value). */
+export function normalizeEan(value: string): string | null {
+  return normalizeContentText(value);
+}
+
+/** The letters a to z turned into capitals; every other character, also a letter of another alphabet, stays. */
+export function upperAscii(value: string): string {
+  return value.replace(/[a-z]/g, (letter) => letter.toUpperCase());
+}

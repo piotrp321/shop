@@ -45,8 +45,8 @@ function view(overrides: Partial<ProductEditView> = {}): ProductEditView {
     ],
     variantAxes: ["Kolor"],
     variants: [
-      { variantId: "v-1", values: ["czarne"] },
-      { variantId: "v-2", values: ["białe"] },
+      { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
+      { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
     ],
     updatedAt: "2026-11-01T12:30:00+00:00",
     ...overrides,
@@ -137,8 +137,8 @@ describe("useProductForm", () => {
         ],
         variantAxes: ["Kolor"],
         variants: [
-          { variantId: "v-1", values: ["czarne"] },
-          { variantId: "v-2", values: ["białe"] },
+          { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
+          { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
         ],
       });
       expect(form.view.value).toMatchObject({ version: 3, status: "draft", slugLocked: false, firstPublishedAt: null });
@@ -162,7 +162,7 @@ describe("useProductForm", () => {
         taxClass: null,
         images: [],
         variantAxes: [],
-        variants: [{ variantId: null, values: [] }],
+        variants: [{ variantId: null, values: [], sku: "", ean: "" }],
       });
       expect(form.dirty.value).toBe(false);
     });
@@ -298,7 +298,7 @@ describe("useProductForm", () => {
       form.form.value.mainCategoryId = "c-main";
       form.form.value.taxClass = "standard";
       form.form.value.images = [{ key: "originals/a.jpg", alt: "Przód", variants: preview.variants }];
-      mocks.post.mockResolvedValue(ok(view({ images: [{ key: "originals/a.jpg", alt: "Przód", preview }], variantAxes: [], variants: [{ variantId: "v-9", values: [] }] }), 201));
+      mocks.post.mockResolvedValue(ok(view({ images: [{ key: "originals/a.jpg", alt: "Przód", preview }], variantAxes: [], variants: [{ variantId: "v-9", values: [], sku: "", ean: "" }] }), 201));
 
       await form.save();
 
@@ -315,7 +315,7 @@ describe("useProductForm", () => {
           taxClass: "standard",
           images: [{ key: "originals/a.jpg", alt: "Przód" }],
           variantAxes: [],
-          variants: [{ variantId: null, values: [] }],
+          variants: [{ variantId: null, values: [], sku: "", ean: "" }],
         },
       });
       expect(onCreated).toHaveBeenCalledWith("p-1");
@@ -397,8 +397,8 @@ describe("useProductForm", () => {
           ],
           variantAxes: ["Kolor"],
           variants: [
-            { variantId: "v-1", values: ["czarne"] },
-            { variantId: "v-2", values: ["białe"] },
+            { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
+            { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
           ],
         },
       });
@@ -857,8 +857,8 @@ describe("useProductForm", () => {
 
       expect(form.form.value.variantAxes).toEqual(["Kolor", "Rozmiar"]);
       expect(form.form.value.variants).toEqual([
-        { variantId: "v-1", values: ["czarne", ""] },
-        { variantId: "v-2", values: ["białe", ""] },
+        { variantId: "v-1", values: ["czarne", ""], sku: "", ean: "" },
+        { variantId: "v-2", values: ["białe", ""], sku: "", ean: "" },
       ]);
       expect(form.dirty.value).toBe(true);
     });
@@ -888,8 +888,8 @@ describe("useProductForm", () => {
 
       expect(form.form.value.variantAxes).toEqual(["Rozmiar"]);
       expect(form.form.value.variants).toEqual([
-        { variantId: null, values: ["M"] },
-        { variantId: null, values: ["L"] },
+        { variantId: null, values: ["M"], sku: "", ean: "" },
+        { variantId: null, values: ["L"], sku: "", ean: "" },
       ]);
     });
 
@@ -922,7 +922,7 @@ describe("useProductForm", () => {
 
     it("keeps the default variant, with its id, as the first row when the first axis is added", async () => {
       const { form } = await start({ id: "p-1" });
-      serveReads(view({ variantAxes: [], variants: [{ variantId: "v-default", values: [] }] }));
+      serveReads(view({ variantAxes: [], variants: [{ variantId: "v-default", values: [], sku: "", ean: "" }] }));
       await form.safety.restore();
 
       form.addAxis();
@@ -934,8 +934,8 @@ describe("useProductForm", () => {
       await form.save();
 
       expect(sentVariants().variants).toEqual([
-        { variantId: "v-default", values: ["czarne"] },
-        { variantId: null, values: ["białe"] },
+        { variantId: "v-default", values: ["czarne"], sku: "", ean: "" },
+        { variantId: null, values: ["białe"], sku: "", ean: "" },
       ]);
     });
 
@@ -945,7 +945,7 @@ describe("useProductForm", () => {
       form.removeAxis(0);
 
       expect(form.form.value.variantAxes).toEqual([]);
-      expect(form.form.value.variants).toEqual([{ variantId: "v-1", values: [] }]);
+      expect(form.form.value.variants).toEqual([{ variantId: "v-1", values: [], sku: "", ean: "" }]);
     });
 
     it("adds a row with an empty value per axis and sends null for it", async () => {
@@ -957,9 +957,9 @@ describe("useProductForm", () => {
       await form.save();
 
       expect(sentVariants().variants).toEqual([
-        { variantId: "v-1", values: ["czarne"] },
-        { variantId: "v-2", values: ["białe"] },
-        { variantId: null, values: ["zielone"] },
+        { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
+        { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
+        { variantId: null, values: ["zielone"], sku: "", ean: "" },
       ]);
     });
 
@@ -970,7 +970,7 @@ describe("useProductForm", () => {
       mocks.put.mockResolvedValue(ok(view()));
       await form.save();
 
-      expect(sentVariants().variants).toEqual([{ variantId: "v-2", values: ["białe"] }]);
+      expect(sentVariants().variants).toEqual([{ variantId: "v-2", values: ["białe"], sku: "", ean: "" }]);
     });
 
     it("keeps at least one row and does not add a row to a product without axes", async () => {
@@ -1016,8 +1016,8 @@ describe("useProductForm", () => {
       form.removeVariant(1);
       expect(form.form.value.variantAxes).toEqual(["kolor"]);
       expect(form.form.value.variants).toEqual([
-        { variantId: "v-1", values: ["Czarne"] },
-        { variantId: null, values: [""] },
+        { variantId: "v-1", values: ["Czarne"], sku: "", ean: "" },
+        { variantId: null, values: [""], sku: "", ean: "" },
       ]);
     });
 
@@ -1706,8 +1706,8 @@ describe("useProductForm", () => {
           "a value of a variant",
           {
             variants: [
-              { variantId: "v-1", values: ["czarne"] },
-              { variantId: "v-2", values: ["czerwone"] },
+              { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
+              { variantId: "v-2", values: ["czerwone"], sku: "", ean: "" },
             ],
           },
         ],
@@ -1715,8 +1715,8 @@ describe("useProductForm", () => {
           "the order of the variants",
           {
             variants: [
-              { variantId: "v-2", values: ["białe"] },
-              { variantId: "v-1", values: ["czarne"] },
+              { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
+              { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
             ],
           },
         ],
@@ -1774,9 +1774,9 @@ describe("useProductForm", () => {
           current.setValue(2, 0, "zielone");
         };
         const rows = (value: string) => [
-          { variantId: "v-1", values: ["czarne"] },
-          { variantId: "v-2", values: ["białe"] },
-          { variantId: "v-3", values: [value] },
+          { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
+          { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
+          { variantId: "v-3", values: [value], sku: "", ean: "" },
         ];
 
         const same = await checkSaved(added, served({ variants: rows("zielone") }));
@@ -1787,7 +1787,7 @@ describe("useProductForm", () => {
       it("is not the same for a row that is new in the draft when the server still has the row it replaced, even with the same values", async () => {
         // The staff member removed the last row and added one with the same value: the request carries no id for it, so the
         // server would give it a new id and drop the old one. A server that still has the old row did not do that save.
-        const base = view({ variantAxes: ["Kolor"], variants: [{ variantId: "v-1", values: ["czerwony"] }, { variantId: "v-2", values: ["zielony"] }] });
+        const base = view({ variantAxes: ["Kolor"], variants: [{ variantId: "v-1", values: ["czerwony"], sku: "", ean: "" }, { variantId: "v-2", values: ["zielony"], sku: "", ean: "" }] });
         const { form } = await open(base);
         form.removeVariant(1);
         form.addVariant();
@@ -1802,21 +1802,21 @@ describe("useProductForm", () => {
         expect(form.safety.status.value).toBe("");
         expect(form.view.value?.version).toBe(3);
         expect(form.form.value.variants).toEqual([
-          { variantId: "v-1", values: ["czerwony"] },
-          { variantId: null, values: ["zielony"] },
+          { variantId: "v-1", values: ["czerwony"], sku: "", ean: "" },
+          { variantId: null, values: ["zielony"], sku: "", ean: "" },
         ]);
         expect(form.dirty.value).toBe(true);
       });
 
       it("is the same for that replacement when the server did it: the row has an id the base did not have", async () => {
-        const base = view({ variantAxes: ["Kolor"], variants: [{ variantId: "v-1", values: ["czerwony"] }, { variantId: "v-2", values: ["zielony"] }] });
+        const base = view({ variantAxes: ["Kolor"], variants: [{ variantId: "v-1", values: ["czerwony"], sku: "", ean: "" }, { variantId: "v-2", values: ["zielony"], sku: "", ean: "" }] });
         const { form } = await open(base);
         form.removeVariant(1);
         form.addVariant();
         form.setValue(1, 0, "zielony");
         mocks.put.mockResolvedValue(problem(502));
         await form.save();
-        mocks.get.mockResolvedValue(ok({ ...base, version: 4, variants: [{ variantId: "v-1", values: ["czerwony"] }, { variantId: "v-3", values: ["zielony"] }] }));
+        mocks.get.mockResolvedValue(ok({ ...base, version: 4, variants: [{ variantId: "v-1", values: ["czerwony"], sku: "", ean: "" }, { variantId: "v-3", values: ["zielony"], sku: "", ean: "" }] }));
 
         await form.safety.check();
 
@@ -1834,9 +1834,9 @@ describe("useProductForm", () => {
           added,
           served({
             variants: [
-              { variantId: "v-1", values: ["czarne"] },
-              { variantId: "v-2", values: ["białe"] },
-              { variantId: "v-3", values: ["żółte"] },
+              { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
+              { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
+              { variantId: "v-3", values: ["żółte"], sku: "", ean: "" },
             ],
           }),
         );

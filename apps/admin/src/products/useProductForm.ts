@@ -3,16 +3,18 @@ import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 import { OTHER_VERSION_MESSAGE, type ReadResult, type WriteOutcome } from "@/composables/formRequests";
 import { useFormSafety } from "@/composables/useFormSafety";
-import { normalizeContentText } from "./contentText";
+import { normalizeContentText, normalizeEan, normalizeSku, upperAscii } from "./contentText";
 import { type FormImage, useImageUpload } from "./useImageUpload";
 import { fetchTaxClasses, type TaxClass } from "./taxClasses";
 
 export type ProductEditView = components["schemas"]["ProductEditViewResponse"];
 
-/** A variant row of the form. `variantId` is null for a row that is new. */
+/** A variant row of the form. `variantId` is null for a row that is new; `sku` and `ean` are "" for no code. */
 export interface VariantRow {
   variantId: string | null;
   values: string[];
+  sku: string;
+  ean: string;
 }
 
 /** A parameter of the product in the form: a name and a value, as typed. */
@@ -71,6 +73,8 @@ export const MAX_PARAMETERS = 30;
 /** The version of a product changed while the staff member edited it: the draft stays. */
 export const MODIFIED_MESSAGE = "Produkt został w międzyczasie zmieniony. Twoje zmiany zostają w formularzu.";
 export const SLUG_TAKEN_MESSAGE = "Ten slug ma już inny produkt. Podaj własny slug.";
+/** What the API says of a SKU that a variant of another product has (422 at the SKU, 409 `sku-taken`); the note of an earlier unknown creation goes with it. */
+export const SKU_TAKEN_MESSAGE = "Kod SKU jest już używany przez inny produkt.";
 export const NOT_PUBLISHABLE_MESSAGE = "Dodaj co najmniej jedno zdjęcie przed publikacją.";
 export const LAST_IMAGE_MESSAGE = "Opublikowany produkt musi mieć co najmniej jedno zdjęcie.";
 
@@ -93,7 +97,7 @@ function emptyForm(): ProductFormData {
     images: [],
     variantAxes: [],
     // A product without axes has exactly one variant row without values.
-    variants: [{ variantId: null, values: [] }],
+    variants: [{ variantId: null, values: [], sku: "", ean: "" }],
   };
 }
 
@@ -110,7 +114,7 @@ function fromView(view: ProductEditView): ProductFormData {
     taxClass: view.taxClass,
     images: view.images.map((image) => ({ key: image.key, alt: image.alt, variants: image.preview.variants })),
     variantAxes: [...view.variantAxes],
-    variants: view.variants.map((variant) => ({ variantId: variant.variantId, values: [...variant.values] })),
+    variants: view.variants.map((variant) => ({ variantId: variant.variantId, values: [...variant.values], sku: variant.sku, ean: variant.ean })),
   };
 }
 
@@ -141,7 +145,7 @@ function toBody(form: ProductFormData) {
     taxClass: form.taxClass,
     images: form.images.map((image) => ({ key: image.key, alt: image.alt })),
     variantAxes: form.variantAxes,
-    variants: form.variants.map((variant) => ({ variantId: variant.variantId, values: variant.values })),
+    variants: form.variants.map((variant) => ({ variantId: variant.variantId, values: variant.values, sku: variant.sku, ean: variant.ean })),
   };
 }
 
@@ -154,10 +158,11 @@ function requestOf(form: ProductFormData): ProductBody | null {
 }
 
 /**
- * The request the API would store of the draft, for the comparison of „Sprawdź stan” only: the brand, the description and the
- * parameters go through the normalization of the API (T1–T3, `contentText.ts`), because the API trims them and the server then
- * has them without their edges; null when a text has a character T1 forbids (the API stores no such text, so no state of the
- * server is this draft). The other fields stay as they are and are compared strictly. What the form sends and what makes it
+ * The request the API would store of the draft, for the comparison of „Sprawdź stan” only: the brand, the description, the
+ * parameters and the codes of the variants go through the normalization of the API (T1–T3 and the capitals of the SKU,
+ * `contentText.ts`), because the API trims them and the server then has them without their edges; null when a text has a
+ * character T1 forbids (the API stores no such text, so no state of the server is this draft). The other fields stay as they
+ * are and are compared strictly. What the form sends and what makes it
  * `dirty` is `toBody`, untouched.
  */
 function comparableRequestOf(form: ProductFormData): ProductBody | null {
@@ -176,7 +181,16 @@ function comparableRequestOf(form: ProductFormData): ProductBody | null {
     }
     parameters.push({ name, value });
   }
-  return brand === null || description === null ? null : { ...request, brand, description, parameters };
+  const variants: VariantRow[] = [];
+  for (const variant of request.variants) {
+    const sku = normalizeSku(variant.sku);
+    const ean = normalizeEan(variant.ean);
+    if (sku === null || ean === null) {
+      return null;
+    }
+    variants.push({ ...variant, sku, ean });
+  }
+  return brand === null || description === null ? null : { ...request, brand, description, parameters, variants };
 }
 
 /** The toast after the first save: a product without a price is unavailable in the shop (the price is set on the card „Ceny i stany”). */
@@ -437,7 +451,8 @@ export function useProductForm(options: ProductFormOptions) {
     const unplaced: string[] = [];
     for (const { propertyPath, title } of violations) {
       if (FIELD_ROOTS.has(propertyPath.split(/[.[]/)[0] ?? "")) {
-        addFieldError(propertyPath, title);
+        // A taken SKU may be the one a creation made whose answer never came (`withDuplicateNote`, like a taken slug).
+        addFieldError(propertyPath, /^variants\[\d+\]\.sku$/.test(propertyPath) && title === SKU_TAKEN_MESSAGE ? safety.withDuplicateNote(title) : title);
       } else {
         unplaced.push(title);
       }
@@ -460,6 +475,9 @@ export function useProductForm(options: ProductFormOptions) {
         return;
       case "slug-taken":
         addFieldError("slug", safety.withDuplicateNote(SLUG_TAKEN_MESSAGE));
+        return;
+      case "sku-taken":
+        variantsConflict.value = safety.withDuplicateNote(SKU_TAKEN_MESSAGE);
         return;
       case "slug-locked":
         addFieldError("slug", detail ?? "Slug nie może się zmienić po pierwszej publikacji.");
@@ -618,8 +636,9 @@ export function useProductForm(options: ProductFormOptions) {
     fieldErrors.value = Object.fromEntries(Object.entries(fieldErrors.value).filter(([key]) => !key.startsWith("variant")));
   }
 
+  // Every row keeps its identifier and its codes: the codes belong to the variant, not to its values.
   function changeRows(change: (values: string[]) => string[]): void {
-    form.value.variants = form.value.variants.map((row) => ({ variantId: row.variantId, values: change(row.values) }));
+    form.value.variants = form.value.variants.map((row) => ({ ...row, values: change(row.values) }));
   }
 
   const canEditAxes = () => editable.value && !axesLocked.value;
@@ -643,7 +662,7 @@ export function useProductForm(options: ProductFormOptions) {
 
   /**
    * Removes an axis and the values at its position. Without axes the product has one default variant, so the first
-   * row stays (with its id, without values) and the others go.
+   * row stays (with its id and its codes, without values) and the others go.
    */
   function removeAxis(index: number): void {
     if (!canEditAxes() || index < 0 || index >= form.value.variantAxes.length) {
@@ -651,7 +670,7 @@ export function useProductForm(options: ProductFormOptions) {
     }
     form.value.variantAxes = form.value.variantAxes.filter((_, position) => position !== index);
     if (form.value.variantAxes.length === 0) {
-      form.value.variants = form.value.variants.slice(0, 1).map((row) => ({ variantId: row.variantId, values: [] }));
+      form.value.variants = form.value.variants.slice(0, 1).map((row) => ({ ...row, values: [] }));
     } else {
       changeRows((values) => values.filter((_, position) => position !== index));
     }
@@ -675,12 +694,12 @@ export function useProductForm(options: ProductFormOptions) {
     clearVariantErrors();
   }
 
-  /** Appends a new row (no id) with an empty value per axis; a product without axes has only the default variant. */
+  /** Appends a new row (no id, no codes) with an empty value per axis; a product without axes has only the default variant. */
   function addVariant(): void {
     if (!editable.value || form.value.variantAxes.length === 0 || form.value.variants.length >= MAX_VARIANTS) {
       return;
     }
-    form.value.variants = [...form.value.variants, { variantId: null, values: form.value.variantAxes.map(() => "") }];
+    form.value.variants = [...form.value.variants, { variantId: null, values: form.value.variantAxes.map(() => ""), sku: "", ean: "" }];
     clearVariantErrors();
   }
 
@@ -699,6 +718,26 @@ export function useProductForm(options: ProductFormOptions) {
       return;
     }
     target.values = target.values.map((current, index) => (index === position ? value : current));
+  }
+
+  /**
+   * Sets the SKU of a row. The letters of the ASCII become capitals while the staff member types, so the code shows in the
+   * form in which it is saved; no character is removed (the API refuses what it does not take).
+   */
+  function setSku(row: number, value: string): void {
+    const target = form.value.variants[row];
+    if (!editable.value || !target) {
+      return;
+    }
+    target.sku = upperAscii(value);
+  }
+
+  function setEan(row: number, value: string): void {
+    const target = form.value.variants[row];
+    if (!editable.value || !target) {
+      return;
+    }
+    target.ean = value;
   }
 
   return {
@@ -743,5 +782,7 @@ export function useProductForm(options: ProductFormOptions) {
     addVariant,
     removeVariant,
     setValue,
+    setSku,
+    setEan,
   };
 }

@@ -49,8 +49,8 @@ function view(overrides: Partial<ProductEditView> = {}): ProductEditView {
     images: [image("originals/a.jpg", "Przód"), image("originals/b.jpg", "Bok")],
     variantAxes: ["Kolor"],
     variants: [
-      { variantId: "v-1", values: ["czarne"] },
-      { variantId: "v-2", values: ["białe"] },
+      { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
+      { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
     ],
     updatedAt: "2026-11-01T12:30:00+00:00",
     ...overrides,
@@ -273,13 +273,13 @@ describe("ProductFormView", () => {
     it("creates a new product with the default variant and moves to its page", async () => {
       mounted = await mountForm("/products/new");
       expect(mounted.wrapper.get("h1").text()).toBe("Nowy produkt");
-      mocks.post.mockResolvedValue({ data: view({ id: "p-9", variantAxes: [], variants: [{ variantId: "v-9", values: [] }] }), response: { status: 201 } });
+      mocks.post.mockResolvedValue({ data: view({ id: "p-9", variantAxes: [], variants: [{ variantId: "v-9", values: [], sku: "", ean: "" }] }), response: { status: 201 } });
 
       await mounted.wrapper.get("[data-testid=name]").setValue("Buty biegowe");
       await mounted.wrapper.get("[data-testid=save]").trigger("click");
       await flushPromises();
 
-      expect(mocks.post).toHaveBeenCalledWith(PRODUCTS, expect.objectContaining({ body: expect.objectContaining({ name: "Buty biegowe", variants: [{ variantId: null, values: [] }] }) }));
+      expect(mocks.post).toHaveBeenCalledWith(PRODUCTS, expect.objectContaining({ body: expect.objectContaining({ name: "Buty biegowe", variants: [{ variantId: null, values: [], sku: "", ean: "" }] }) }));
       expect(mounted.router.currentRoute.value.name).toBe("product");
       expect(mounted.router.currentRoute.value.params.id).toBe("p-9");
       expect(successToast).toHaveBeenCalledWith("Produkt zapisany. Ustaw cenę, inaczej produkt będzie w sklepie niedostępny.");
@@ -564,7 +564,7 @@ describe("ProductFormView", () => {
 
     it("moves to the heading of the page after a product was created, once the route moved to its page", async () => {
       await edited("/products/new", "Buty biegowe");
-      mocks.post.mockResolvedValue({ data: view({ id: "p-9", variantAxes: [], variants: [{ variantId: "v-9", values: [] }] }), response: { status: 201 } });
+      mocks.post.mockResolvedValue({ data: view({ id: "p-9", variantAxes: [], variants: [{ variantId: "v-9", values: [], sku: "", ean: "" }] }), response: { status: 201 } });
 
       await click("save");
 
@@ -1229,9 +1229,9 @@ describe("ProductFormView", () => {
       expect(mocks.put.mock.calls[0]![1].body).toMatchObject({
         variantAxes: ["Barwa"],
         variants: [
-          { variantId: "v-1", values: ["Czarne"] },
-          { variantId: "v-2", values: ["białe"] },
-          { variantId: null, values: ["zielone"] },
+          { variantId: "v-1", values: ["Czarne"], sku: "", ean: "" },
+          { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
+          { variantId: null, values: ["zielone"], sku: "", ean: "" },
         ],
       });
     });
@@ -1292,7 +1292,101 @@ describe("ProductFormView", () => {
       const rows = mounted.wrapper.findAll("[data-testid=variant-row]");
       expect(rows).toHaveLength(1);
       expect(rows[0]!.text()).toBe("Wariant domyślny");
-      expect(rows[0]!.find("input").exists()).toBe(false);
+      // No value to type, but the codes of the one variant: its SKU and its EAN.
+      expect(rows[0]!.find("[data-testid=variant-value]").exists()).toBe(false);
+      expect(rows[0]!.findAll("input").map((input) => input.attributes("data-testid"))).toEqual(["variant-sku", "variant-ean"]);
+    });
+
+    describe("the SKU and the EAN", () => {
+      const withCodes = () =>
+        view({
+          variants: [
+            { variantId: "v-1", values: ["czarne"], sku: "BUT-C", ean: "5901234123457" },
+            { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
+          ],
+        });
+      const inputOf = (wrapper: Awaited<ReturnType<typeof mountForm>>["wrapper"], id: string, row: number) => wrapper.findAll(`[data-testid=${id}]`)[row]!;
+
+      it("shows the codes of the variants in their columns", async () => {
+        serve(withCodes());
+        mounted = await mountForm("/products/p-1");
+
+        expect(mounted.wrapper.findAll("[data-testid=variant-sku]").map((node) => (node.element as HTMLInputElement).value)).toEqual(["BUT-C", ""]);
+        expect(mounted.wrapper.findAll("[data-testid=variant-ean]").map((node) => (node.element as HTMLInputElement).value)).toEqual(["5901234123457", ""]);
+      });
+
+      it("shows the SKU in capitals as it is typed and sends it as typed in the draft", async () => {
+        serve(withCodes());
+        mounted = await mountForm("/products/p-1");
+        mocks.put.mockResolvedValue({ data: withCodes(), response: { status: 200 } });
+
+        await inputOf(mounted.wrapper, "variant-sku", 1).setValue("nowy-1/ż");
+        await flushPromises();
+
+        expect((inputOf(mounted.wrapper, "variant-sku", 1).element as HTMLInputElement).value).toBe("NOWY-1/ż");
+        await mounted.wrapper.get("[data-testid=save]").trigger("click");
+        await flushPromises();
+        expect(mocks.put.mock.calls[0]![1].body.variants[1]).toEqual({ variantId: "v-2", values: ["białe"], sku: "NOWY-1/ż", ean: "" });
+      });
+
+      it("puts a violation at the SKU of its row and moves the focus to that field", async () => {
+        serve(withCodes());
+        mounted = await mountForm("/products/p-1");
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "variants[1].sku", title: "Ten kod SKU powtarza się w produkcie." }] }));
+
+        await inputOf(mounted.wrapper, "variant-sku", 1).setValue("but-c");
+        await mounted.wrapper.get("[data-testid=save]").trigger("click");
+        await flushPromises();
+
+        const rows = mounted.wrapper.findAll("[data-testid=variant-row]");
+        expect(rows[1]!.get("[data-testid=sku-error]").text()).toBe("Ten kod SKU powtarza się w produkcie.");
+        expect(rows[0]!.find("[data-testid=sku-error]").exists()).toBe(false);
+        expect(inputOf(mounted.wrapper, "variant-sku", 1).attributes("aria-invalid")).toBe("true");
+      });
+
+      it("shows a 409 sku-taken as the message of the section of the variants", async () => {
+        serve(withCodes());
+        mounted = await mountForm("/products/p-1");
+        mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}sku-taken`, detail: "x" }));
+
+        await inputOf(mounted.wrapper, "variant-sku", 0).setValue("zajety");
+        await mounted.wrapper.get("[data-testid=save]").trigger("click");
+        await flushPromises();
+
+        expect(mounted.wrapper.get("[data-testid=variants-error]").text()).toBe("Kod SKU jest już używany przez inny produkt.");
+        expect((inputOf(mounted.wrapper, "variant-sku", 0).element as HTMLInputElement).value).toBe("ZAJETY");
+      });
+
+      it("adds to a taken SKU, after a creation whose result was not known, that the earlier save may have created the product", async () => {
+        mounted = await mountForm("/products/new");
+        await mounted.wrapper.get("[data-testid=name]").setValue("Nowy");
+        await inputOf(mounted.wrapper, "variant-sku", 0).setValue("moj-kod");
+        mocks.post.mockRejectedValueOnce(new TypeError("network down"));
+        await mounted.wrapper.get("[data-testid=save]").trigger("click");
+        await flushPromises();
+        mocks.post.mockResolvedValue(problem(409, { type: `${PREFIX}sku-taken`, detail: "x" }));
+
+        await mounted.wrapper.get("[data-testid=save]").trigger("click");
+        await flushPromises();
+
+        expect(mounted.wrapper.get("[data-testid=variants-error]").text()).toBe("Kod SKU jest już używany przez inny produkt. Możliwe, że utworzył go Twój wcześniejszy zapis.");
+      });
+
+      it("locks the codes while a save runs", async () => {
+        serve(withCodes());
+        mounted = await mountForm("/products/p-1");
+        let answer!: (value: unknown) => void;
+        mocks.put.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+
+        await inputOf(mounted.wrapper, "variant-sku", 0).setValue("inny");
+        await mounted.wrapper.get("[data-testid=save]").trigger("click");
+        await flushPromises();
+
+        expect(mounted.wrapper.findAll("[data-testid=variant-sku], [data-testid=variant-ean]").every((node) => node.element.matches(":disabled"))).toBe(true);
+        answer({ data: withCodes(), response: { status: 200 } });
+        await flushPromises();
+        expect(mounted.wrapper.findAll("[data-testid=variant-sku]").every((node) => !node.element.matches(":disabled"))).toBe(true);
+      });
     });
 
     it("shows the conflict about variants at the section", async () => {
@@ -1330,6 +1424,8 @@ describe("ProductFormView", () => {
       "axis-remove",
       "add-axis",
       "variant-value",
+      "variant-sku",
+      "variant-ean",
       "variant-remove",
       "add-variant",
       "parameter-name",
