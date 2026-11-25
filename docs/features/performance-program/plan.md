@@ -13,7 +13,8 @@ i specyfikacjach funkcji.
 | Kierunek programu | zaakceptowany przez właściciela 2026-11-25 |
 | Nowe epiki funkcjonalne | wstrzymane do zakończenia programu |
 | Profil `server` na worf.pl | generuje go osobna sesja; jej wynik jest linią bazową (PERF-0) |
-| PERF-0 … PERF-9 | nie rozpoczęte |
+| PERF-0 | w toku: W1–W20 zaakceptowane jako cel, zestaw benchmarków `load/baseline.py`; pomiar na `server` po zakończeniu generowania i otwarciu sklepu przez właściciela |
+| PERF-1 … PERF-9 | nie rozpoczęte |
 
 ## Zasady programu (decyzje właściciela)
 
