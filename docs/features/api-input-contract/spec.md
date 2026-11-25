@@ -199,8 +199,8 @@ odwzorowuje tabele B1, B2 i C wiersz po wierszu. Tabela jest podzielona na pliki
   dokumentów. Strażnik czyta dokumenty tak jak strażnik pól tekstowych (etap 2, wspólny odczyt
   `ClosedTextFieldList::operations`): parametry ze ścieżki (dziedziczą je wszystkie jej operacje, a parametr operacji
   o tej samej nazwie i miejscu go zastępuje), parametry przez `$ref` do `components/parameters` i ścieżkę wskazaną
-  przez `$ref`; nazwa nagłówka nie zależy od wielkości liter. Każdą z tych prób obejścia ma osobny test na kopii
-  dokumentu. Strażnik nie generuje przypadków. Pozostałe nagłówki z OpenAPI (`Order-Access-Token`, podpisy webhooka)
+  przez `$ref` (z polami zapisanymi obok `$ref`); nazwa nagłówka nie zależy od wielkości liter. Każda z tych prób
+  obejścia ma osobny test na kopii dokumentu. Strażnik nie generuje przypadków. Pozostałe nagłówki z OpenAPI (`Order-Access-Token`, podpisy webhooka)
   są poza tabelą.
 - **Sekcja A:** 404, 415 i 400 dla operacji z tabeli A, z poprawnym tokenem i istniejącym zasobem tam, gdzie błąd ma
   wystąpić za autoryzacją.
@@ -416,7 +416,7 @@ Wielkość liter zostaje.
 Długość frazy liczy się po przycięciu T2, a lista szuka frazy przyciętej: fraza między U+200B albo między U+00A0
 zwraca ten sam wynik co fraza czysta (te same pozycje w tej samej kolejności i ten sam licznik). Dotyczy wszystkich
 siedmiu list, także listy kodów rabatowych, gdzie fraza jest początkiem kodu. Żadna lista nie przycina frazy drugi raz
-inną regułą: na liście kodów fraza z znakiem formatującym obok liter, który T2 zostawia (np. U+200D, U+200E), nie jest
+inną regułą: na liście kodów fraza ze znakiem formatującym obok liter, który T2 zostawia (np. U+200D, U+200E), nie jest
 początkiem żadnego kodu i daje pustą listę ze statusem 200, jak każda fraza ze znakiem spoza alfabetu kodu. Fraza, która
 nie jest poprawnym UTF-8, i `q[]=x` zostają jak w etapie 1 (tabela B1).
 
@@ -561,7 +561,7 @@ teksty z samego znaku Co i Cn, które nie są puste; teksty z T5; długość po 
   złożony z samych znaków niewidocznych, np. U+200B albo U+3164), wpis dla pola, którego dokumenty nie
   opisują, i tabela bez wiersza `POST /orders` `email` (test usuwa ten wiersz z kopii tabeli). Strażnik czyta każdy
   sposób, którym dokument OpenAPI 3.0 opisuje takie pole, i ma na to próby obejścia na kopiach dokumentów: ścieżkę
-  wskazaną przez `$ref`; parametr `q` ze ścieżki (dziedziczą go wszystkie jej operacje, a parametr operacji o tej samej
+  wskazaną przez `$ref` (z polami zapisanymi obok `$ref`: wygrywa pole o tej samej nazwie, czyli metoda); parametr `q` ze ścieżki (dziedziczą go wszystkie jej operacje, a parametr operacji o tej samej
   nazwie i miejscu go zastępuje, więc nie liczy się dwa razy) i z `components/parameters`; treść żądania z
   `components/requestBodies` (także przez łańcuch referencji) w każdym typie treści; schemat przez `$ref` na dowolnej
   głębokości (cykl się kończy), `allOf`, `oneOf`, `anyOf`, `additionalProperties`, zagnieżdżone `items` i `type`

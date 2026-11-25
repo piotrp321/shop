@@ -106,6 +106,12 @@ final class DiscountCodeQueriesTest extends TestCase
         yield 'a NUL byte' => ["A\0"];
         yield 'only no-break spaces' => ["\u{A0}\u{A0}"];
         yield 'longer than a code' => [str_repeat('A', 33)];
+        // The handler gets the phrase the controller trimmed (Text::normalize) and trims nothing itself.
+        yield 'a leading space' => [' WIT'];
+        yield 'a trailing no-break space' => ["WIT\u{A0}"];
+        yield 'a trailing zero width space' => ["WIT\u{200B}"];
+        yield 'a trailing zero width joiner' => ["WIT\u{200D}"];
+        yield 'a leading left-to-right mark' => ["\u{200E}WIT"];
     }
 
     #[DataProvider('prefixesNoCodeHas')]

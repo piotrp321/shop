@@ -287,7 +287,9 @@ final class DiscountCodesEndpointTest extends WebTestCase
      */
     public static function formatCharactersTheRuleOfTextsKeeps(): iterable
     {
-        // Every group of the format characters (Cf) that the old trimming of the list removed and T2 leaves.
+        // One character of each group of the format characters (Cf) that the old trimming of the list removed and T2
+        // leaves: joiners and marks, the arabic and syriac signs, the directional controls, the invisible operators, the
+        // interlinear annotation, the musical format characters and the language tag.
         yield 'a zero width joiner' => ["\u{200D}"];
         yield 'a zero width non-joiner' => ["\u{200C}"];
         yield 'a left-to-right mark' => ["\u{200E}"];
@@ -301,6 +303,12 @@ final class DiscountCodesEndpointTest extends WebTestCase
         yield 'a left-to-right isolate' => ["\u{2066}"];
         yield 'a pop directional isolate' => ["\u{2069}"];
         yield 'a tag space' => ["\u{E0020}"];
+        yield 'an arabic number sign' => ["\u{600}"];
+        yield 'an arabic end of ayah' => ["\u{6DD}"];
+        yield 'a syriac abbreviation mark' => ["\u{70F}"];
+        yield 'an interlinear annotation anchor' => ["\u{FFF9}"];
+        yield 'a musical symbol begin beam' => ["\u{1D173}"];
+        yield 'a language tag' => ["\u{E0001}"];
     }
 
     #[DataProvider('formatCharactersTheRuleOfTextsKeeps')]

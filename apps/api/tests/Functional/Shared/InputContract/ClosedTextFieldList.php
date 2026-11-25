@@ -18,7 +18,7 @@ use App\Shared\Domain\Text;
  * changes no table.
  *
  * The documents describe the same field in more than one way, and the guard reads each of them: a path item referenced
- * by `$ref`; parameters of the path item inherited by its operations (an operation parameter of the same name and place
+ * by `$ref` (with the fields written next to the reference); parameters of the path item inherited by its operations (an operation parameter of the same name and place
  * takes the place of the inherited one) and parameters referenced from `components/parameters`; a request body
  * referenced from `components/requestBodies`, in every content type; a schema through `$ref` (any depth, a cycle
  * ends), `allOf`, `oneOf`, `anyOf`, `properties`, `items` and `additionalProperties`; a `type` that is a list with
@@ -82,7 +82,7 @@ final class ClosedTextFieldList
         $operations = [];
         $paths = $document['paths'] ?? [];
         foreach (\is_array($paths) ? $paths : [] as $path => $item) {
-            $item = self::dereference($document, $item);
+            $item = self::pathItem($document, $item, []);
             if (null === $item) {
                 continue;
             }
@@ -250,6 +250,39 @@ final class ClosedTextFieldList
         }
 
         return $schemas;
+    }
+
+    /**
+     * A path item with the fields written next to its `$ref` (OpenAPI 3.0.3 allows them): the item referenced, through
+     * any number of references, and the fields of the item itself over it (a method of the same name takes the place
+     * of the referenced one; the parameters of both serve every operation). A reference that circles, points outside
+     * the document or at nothing leaves the fields of the item itself.
+     *
+     * @param array<string, mixed> $document
+     * @param list<string>         $followed
+     *
+     * @return array<mixed>|null
+     */
+    private static function pathItem(array $document, mixed $item, array $followed): ?array
+    {
+        if (!\is_array($item)) {
+            return null;
+        }
+        if (!\is_string($item['$ref'] ?? null)) {
+            return $item;
+        }
+        $reference = $item['$ref'];
+        unset($item['$ref']);
+        $referenced = \in_array($reference, $followed, true) ? null : self::pathItem($document, self::resolve($document, $reference), [...$followed, $reference]);
+        if (null === $referenced) {
+            return [] === $item ? null : $item;
+        }
+        $parameters = [
+            ...(\is_array($referenced['parameters'] ?? null) ? $referenced['parameters'] : []),
+            ...(\is_array($item['parameters'] ?? null) ? $item['parameters'] : []),
+        ];
+
+        return [...$referenced, ...$item, 'parameters' => $parameters];
     }
 
     /**
