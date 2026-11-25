@@ -161,11 +161,13 @@ describe("the columns SKU and EAN of the variants", () => {
     expect(inputs(wrapper, "variant-sku")[1]!.element.value).toBe("NOWY-1");
   });
 
-  it("are off for a staff member who may not change products", () => {
+  it("are read-only, not disabled, for a staff member who may not change products: the whole code can still be read", () => {
     const wrapper = render({ readOnly: true });
 
-    expect(inputs(wrapper, "variant-sku").map((node) => node.attributes("disabled") !== undefined)).toEqual([true, true]);
-    expect(inputs(wrapper, "variant-ean").map((node) => node.attributes("disabled") !== undefined)).toEqual([true, true]);
+    for (const node of [...inputs(wrapper, "variant-sku"), ...inputs(wrapper, "variant-ean")]) {
+      expect(node.element.readOnly).toBe(true);
+      expect(node.element.disabled).toBe(false);
+    }
   });
 
   it("show the messages of the API at the code they are about, joined to the field and marked invalid", () => {

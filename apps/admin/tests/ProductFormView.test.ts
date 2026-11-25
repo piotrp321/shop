@@ -162,11 +162,11 @@ describe("ProductFormView", () => {
       expect(mounted.wrapper.get("[data-testid=slug-hint]").text()).toBe("pusty: wyliczony z nazwy");
     });
 
-    it("disables the slug of a product that was published and says why", async () => {
+    it("makes the slug of a product that was published read-only and says why", async () => {
       serve(view({ slugLocked: true, status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }));
       mounted = await mountForm("/products/p-1");
 
-      expect(mounted.wrapper.get("[data-testid=slug]").attributes("disabled")).toBeDefined();
+      expect((mounted.wrapper.get("[data-testid=slug]").element as HTMLInputElement).readOnly).toBe(true);
       expect(mounted.wrapper.get("[data-testid=slug-locked-note]").text()).toContain("publikacji");
     });
 
@@ -744,13 +744,13 @@ describe("ProductFormView", () => {
       expect(document.activeElement).toBe(wrapper.get("[data-testid=add-parameter]").element);
     });
 
-    it("is read-only without the permission: the fields are off and the buttons are not there", async () => {
+    it("is read-only without the permission: the fields are read-only and the buttons are not there", async () => {
       mounted = await mountForm("/products/p-1", ["support"]);
       const { wrapper } = mounted;
 
-      expect(wrapper.get("[data-testid=brand]").attributes("disabled")).toBeDefined();
-      expect(wrapper.get("[data-testid=description]").attributes("disabled")).toBeDefined();
-      expect(wrapper.get("[data-testid=parameter-name]").attributes("disabled")).toBeDefined();
+      for (const testid of ["brand", "description", "parameter-name"]) {
+        expect((wrapper.get(`[data-testid=${testid}]`).element as HTMLInputElement).readOnly).toBe(true);
+      }
       expect(wrapper.find("[data-testid=add-parameter]").exists()).toBe(false);
       expect(wrapper.find("[data-testid=parameter-remove]").exists()).toBe(false);
     });
@@ -762,13 +762,58 @@ describe("ProductFormView", () => {
       const { wrapper } = mounted;
 
       expect((wrapper.get("[data-testid=name]").element as HTMLInputElement).value).toBe("Buty biegowe");
-      for (const field of ["name", "slug", "short-description", "image-alt"]) {
-        expect(wrapper.get(`[data-testid=${field}]`).attributes("disabled")).toBeDefined();
-      }
       for (const control of ["save", "publish", "unpublish", "add-images", "image-input", "image-up", "image-down", "image-remove"]) {
         expect(wrapper.find(`[data-testid=${control}]`).exists()).toBe(false);
       }
       expect(wrapper.find("[data-testid=read-only-note]").exists()).toBe(true);
+    });
+
+    // A disabled text field cannot be focused, selected or scrolled, so a value wider than the field (a long parameter, a long
+    // SKU) could not be read at all: the read-only form has read-only fields, which the keyboard and a screen reader reach.
+    it.each([["support"], ["warehouse"]] as const)("makes every text field read-only, not disabled, for %s", async (role) => {
+      mounted = await mountForm("/products/p-1", [role]);
+      const { wrapper } = mounted;
+      const texts = [
+        "name", "brand", "slug", "short-description", "description", "parameter-name", "parameter-value",
+        "image-alt", "axis-name", "variant-value", "variant-sku", "variant-ean",
+      ];
+
+      for (const testid of texts) {
+        const nodes = wrapper.findAll<HTMLInputElement | HTMLTextAreaElement>(`[data-testid=${testid}]`);
+        expect(nodes.length, `a field ${testid}`).toBeGreaterThan(0);
+        for (const node of nodes) {
+          const element = node.element;
+          expect(element.readOnly, `${testid} is read-only`).toBe(true);
+          expect(element.disabled, `${testid} is not disabled`).toBe(false);
+          expect(element.matches(":disabled"), `${testid} is not disabled by a fieldset`).toBe(false);
+          element.focus();
+          expect(document.activeElement, `${testid} takes the focus`).toBe(element);
+        }
+      }
+    });
+
+    it("keeps the values of the read-only fields in the form: they are read as they were sent", async () => {
+      mounted = await mountForm("/products/p-1", ["support"]);
+      const { wrapper } = mounted;
+
+      expect((wrapper.get("[data-testid=parameter-value]").element as HTMLInputElement).value).toBe("2,4 kg");
+      expect((wrapper.get("[data-testid=short-description]").element as HTMLTextAreaElement).value).toBe("Lekkie buty.");
+      expect((wrapper.get("[data-testid=image-alt]").element as HTMLInputElement).value).toBe("Przód");
+      expect(mocks.put).not.toHaveBeenCalled();
+    });
+
+    it("keeps the fields of an editor editable, and the slug of a published product read-only", async () => {
+      serve(view({ slugLocked: true, status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }));
+      mounted = await mountForm("/products/p-1");
+      const { wrapper } = mounted;
+
+      for (const testid of ["name", "brand", "short-description", "description", "parameter-name", "parameter-value", "image-alt", "variant-value"]) {
+        const element = wrapper.get(`[data-testid=${testid}]`).element as HTMLInputElement;
+        expect(element.readOnly, `${testid} is editable`).toBe(false);
+        expect(element.disabled, `${testid} is on`).toBe(false);
+      }
+      expect((wrapper.get("[data-testid=slug]").element as HTMLInputElement).readOnly).toBe(true);
+      expect((wrapper.get("[data-testid=slug]").element as HTMLInputElement).disabled).toBe(false);
     });
   });
 
@@ -1283,7 +1328,7 @@ describe("ProductFormView", () => {
       expect(wrapper.find("[data-testid=add-axis]").exists()).toBe(false);
       expect(wrapper.find("[data-testid=add-variant]").exists()).toBe(false);
       expect(wrapper.find("[data-testid=variant-remove]").exists()).toBe(false);
-      expect(wrapper.get("[data-testid=variant-value]").attributes("disabled")).toBeDefined();
+      expect((wrapper.get("[data-testid=variant-value]").element as HTMLInputElement).readOnly).toBe(true);
     });
 
     it("shows the default variant of a product without axes", async () => {

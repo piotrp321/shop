@@ -77,6 +77,7 @@ function renderInForm(initial: VariantRow[] = TWO_ROWS, initialAxes: string[] = 
   return mounted;
 }
 
+const READ_ONLY = (wrapper: ReturnType<typeof render>, id: string) => wrapper.findAll(`[data-testid=${id}]`).map((node) => node.attributes("readonly") !== undefined);
 const DISABLED = (wrapper: ReturnType<typeof render>, id: string) => wrapper.findAll(`[data-testid=${id}]`).map((node) => node.attributes("disabled") !== undefined);
 
 describe("ProductVariants", () => {
@@ -347,14 +348,16 @@ describe("ProductVariants", () => {
   });
 
   describe("read-only", () => {
-    it("has no controls for editing and disables the fields", () => {
+    it("has no controls for editing and makes the fields read-only", () => {
       const wrapper = render({ readOnly: true, axesLocked: true });
 
       for (const id of ["add-axis", "add-variant", "axis-remove", "axis-move-up", "axis-move-down", "variant-remove"]) {
         expect(wrapper.find(`[data-testid=${id}]`).exists()).toBe(false);
       }
-      expect(DISABLED(wrapper, "axis-name")).toEqual([true]);
-      expect(DISABLED(wrapper, "variant-value")).toEqual([true, true]);
+      expect(READ_ONLY(wrapper, "axis-name")).toEqual([true]);
+      expect(READ_ONLY(wrapper, "variant-value")).toEqual([true, true]);
+      expect(DISABLED(wrapper, "axis-name")).toEqual([false]);
+      expect(DISABLED(wrapper, "variant-value")).toEqual([false, false]);
       expect(wrapper.find("[data-testid=variants-locked]").exists()).toBe(false);
     });
   });

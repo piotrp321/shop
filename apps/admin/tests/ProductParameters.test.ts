@@ -259,11 +259,15 @@ describe("ProductParameters", () => {
   });
 
   describe("without the permission to manage products", () => {
-    it("shows the parameters read-only: the fields are off and there are no buttons", () => {
+    it("shows the parameters read-only: the fields are read-only, still reachable, and there are no buttons", () => {
       mountSection({ readOnly: true });
 
-      expect(names().every((input) => input.disabled)).toBe(true);
-      expect(values().every((input) => input.disabled)).toBe(true);
+      for (const input of [...names(), ...values()]) {
+        expect(input.readOnly).toBe(true);
+        expect(input.disabled).toBe(false);
+        input.focus();
+        expect(document.activeElement).toBe(input);
+      }
       expect(section().querySelectorAll("button")).toHaveLength(0);
     });
   });
