@@ -48,14 +48,14 @@ final class ProductImagesTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        new ProductImage($this->key(0), '', 0);
+        ProductImage::of($this->key(0), '', 0);
     }
 
     public function testNegativePositionIsRejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        new ProductImage($this->key(0), 'alt', -1);
+        ProductImage::of($this->key(0), 'alt', -1);
     }
 
     public function testMainIsImageAtPositionZero(): void
@@ -87,7 +87,7 @@ final class ProductImagesTest extends TestCase
 
     private function image(int $keySeed, int $position): ProductImage
     {
-        return new ProductImage($this->key($keySeed), 'Alt', $position);
+        return ProductImage::of($this->key($keySeed), 'Alt', $position);
     }
 
     private function key(int $seed): ImageKey

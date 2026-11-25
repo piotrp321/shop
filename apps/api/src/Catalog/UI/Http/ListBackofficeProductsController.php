@@ -44,7 +44,7 @@ final class ListBackofficeProductsController
             .'The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.',
         tags: ['Catalog'],
         parameters: [
-            new OA\Parameter(name: 'q', in: 'query', required: false, description: 'A part of the product name, 2 to 100 characters.', schema: new OA\Schema(type: 'string', minLength: 2, maxLength: 100)),
+            new OA\Parameter(name: 'q', in: 'query', required: false, description: 'A part of the product name, 2 to 100 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators.', schema: new OA\Schema(type: 'string', minLength: 2, maxLength: 100)),
             new OA\Parameter(name: 'category', in: 'query', required: false, description: 'Category id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
             new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Only drafts or only published products.', schema: new OA\Schema(type: 'string', enum: ['draft', 'published'])),
             new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'The order: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties.', schema: new OA\Schema(type: 'string', enum: BackofficeProductsQuery::SORTS, default: 'name')),
@@ -88,7 +88,7 @@ final class ListBackofficeProductsController
 
         try {
             /** @var BackofficeProductList $list */
-            $list = $this->handle(new ListBackofficeProducts($query->q, $query->category, $query->status, $query->after, $query->perPage, $sort, 'none' === $query->images));
+            $list = $this->handle(new ListBackofficeProducts($query->term(), $query->category, $query->status, $query->after, $query->perPage, $sort, 'none' === $query->images));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

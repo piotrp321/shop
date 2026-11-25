@@ -63,7 +63,7 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
         foreach ($catalog->categories as $category) {
             $this->check(\sprintf('category "%s"', $category->slugPath), static function () use ($category): void {
                 CategoryId::fromString($category->id);
-                new CategoryName($category->name);
+                CategoryName::of($category->name);
                 new CategorySlug($category->slug);
             });
         }
@@ -71,16 +71,16 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
         $placeholderKey = ImageKey::fromString('originals/'.str_repeat('0', 64).'.jpg');
         foreach ($catalog->products as $product) {
             $this->check(\sprintf('product "%s"', $product->slug), static function () use ($product, $placeholderKey): void {
-                new ProductName($product->name);
+                ProductName::of($product->name);
                 new Slug($product->slug);
-                new ShortDescription($product->shortDescription);
+                ShortDescription::of($product->shortDescription);
                 TaxClassCode::from($product->taxClass);
                 ProductCategories::create(
                     CategoryId::fromString($product->mainCategoryId),
                     array_map(CategoryId::fromString(...), $product->additionalCategoryIds),
                 );
                 foreach ($product->images as $position => $image) {
-                    new ProductImage($placeholderKey, $image['alt'], $position);
+                    ProductImage::of($placeholderKey, $image['alt'], $position);
                 }
                 ProductVariants::create(
                     VariantAxes::fromList($product->variantAxes),

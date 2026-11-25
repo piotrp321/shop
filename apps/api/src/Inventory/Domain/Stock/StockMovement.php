@@ -88,13 +88,14 @@ final readonly class StockMovement
 
     /**
      * Whether this is the receipt of the quantity with the note into the variant: a receipt sent again with its key
-     * is the same receipt only then.
+     * is the same receipt only then. The stored note is compared as the rule of texts reads it (see
+     * StockNote::matchesStored()), so a receipt stored before the rule is still answered as a repeat.
      */
     public function isReceiptOf(VariantId $variantId, int $quantity, StockNote $note): bool
     {
         return StockMovementType::Receipt === $this->type
             && $this->variantId->equals($variantId)
             && $quantity === $this->physicalDelta
-            && $note->toNullableString() === $this->note;
+            && $note->matchesStored($this->note);
     }
 }

@@ -36,6 +36,31 @@ final class BackofficeCustomerCursorTest extends TestCase
         self::assertMatchesRegularExpression('/^[A-Za-z0-9_-]+$/', BackofficeCustomerCursor::after($customer, BackofficeCustomerSort::Name)->encode());
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function storedNamesOutsideTheRule(): iterable
+    {
+        yield 'a tab' => ["anna\tnowak"];
+        yield 'a C1 control' => ["anna\u{9F}nowak"];
+        yield 'a no-break space only' => ["\u{A0}"];
+        yield 'a line separator at the end' => ["anna nowak\u{2028}"];
+    }
+
+    /**
+     * A name stored before a stricter rule of texts (spec api-input-contract, E7) is the position of the sort by name
+     * like any other: the cursor after it is a cursor, so the list pages over the customer.
+     */
+    #[DataProvider('storedNamesOutsideTheRule')]
+    public function testTheCursorAfterANameStoredOutsideTheRuleIsACursor(string $sortName): void
+    {
+        $customer = new ListedCustomer('kc-1', 'anna@example.com', $sortName, 1, 0, new \DateTimeImmutable('2026-11-05 12:30:00+00:00'), $sortName);
+
+        $cursor = BackofficeCustomerCursor::decode(BackofficeCustomerCursor::after($customer, BackofficeCustomerSort::Name)->encode(), BackofficeCustomerSort::Name);
+
+        self::assertSame([$sortName, 'kc-1'], [$cursor->value, $cursor->customerId]);
+    }
+
     public function testACursorOfAnotherSortIsNoCursor(): void
     {
         $text = BackofficeCustomerCursor::after(self::customer(), BackofficeCustomerSort::OrderCountDescending)->encode();

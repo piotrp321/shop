@@ -66,9 +66,9 @@ final class GetCategoryTreeHandlerTest extends TestCase
 
     public function testBuildsTreeRegardlessOfRepositoryOrder(): void
     {
-        $sport = Category::createRoot(CategoryId::fromString('00000000-0000-4000-8000-000000000001'), new CategoryName('Sport'), new CategorySlug('sport'));
-        $running = Category::createChild(CategoryId::fromString('00000000-0000-4000-8000-000000000002'), new CategoryName('Bieganie'), new CategorySlug('bieganie'), $sport);
-        $shoes = Category::createChild(CategoryId::fromString('00000000-0000-4000-8000-000000000003'), new CategoryName('Buty'), new CategorySlug('buty'), $running);
+        $sport = Category::createRoot(CategoryId::fromString('00000000-0000-4000-8000-000000000001'), CategoryName::of('Sport'), new CategorySlug('sport'));
+        $running = Category::createChild(CategoryId::fromString('00000000-0000-4000-8000-000000000002'), CategoryName::of('Bieganie'), new CategorySlug('bieganie'), $sport);
+        $shoes = Category::createChild(CategoryId::fromString('00000000-0000-4000-8000-000000000003'), CategoryName::of('Buty'), new CategorySlug('buty'), $running);
         foreach ([$shoes, $running, $sport] as $category) {
             $this->categories->save($category);
         }
@@ -150,7 +150,7 @@ final class GetCategoryTreeHandlerTest extends TestCase
 
     private function root(string $id, string $name, ?string $slug = null, int $position = 0): Category
     {
-        $category = Category::createRoot(CategoryId::fromString($id), new CategoryName($name), new CategorySlug($slug ?? $id), $position);
+        $category = Category::createRoot(CategoryId::fromString($id), CategoryName::of($name), new CategorySlug($slug ?? $id), $position);
         $this->categories->save($category);
 
         return $category;
@@ -158,7 +158,7 @@ final class GetCategoryTreeHandlerTest extends TestCase
 
     private function child(string $id, string $name, Category $parent, ?string $slug = null, int $position = 0): Category
     {
-        $category = Category::createChild(CategoryId::fromString($id), new CategoryName($name), new CategorySlug($slug ?? $id), $parent, $position);
+        $category = Category::createChild(CategoryId::fromString($id), CategoryName::of($name), new CategorySlug($slug ?? $id), $parent, $position);
         $this->categories->save($category);
 
         return $category;

@@ -24,6 +24,7 @@ final class OrderSearchTermTest extends TestCase
         yield 'in lower case' => ['r-100001', 'R-100001'];
         yield 'with spaces around' => ['  R-100001 ', 'R-100001'];
         yield 'with no-break spaces around' => ["\u{00A0}R-100001\u{00A0}", 'R-100001'];
+        yield 'with zero width spaces around' => ["\u{200B}R-100001\u{200B}", 'R-100001'];
         yield 'the shortest' => ['R-1', 'R-1'];
     }
 
@@ -54,6 +55,8 @@ final class OrderSearchTermTest extends TestCase
         yield 'a name with a space inside' => ['Jan Kowalski', 'Jan Kowalski'];
         yield 'spaces around dropped' => ['  jan  ', 'jan'];
         yield 'no-break spaces around dropped' => ["\u{00A0}jan\u{00A0}", 'jan'];
+        yield 'invisible characters around dropped' => ["\u{200B}\u{FEFF}jan\u{2060}\u{00AD}", 'jan'];
+        yield 'an invisible character inside kept' => ["ja\u{200B}n", "ja\u{200B}n"];
         yield 'three characters, two of them multibyte' => ['Łuk', 'Łuk'];
         yield 'a percent and an underscore stay as typed' => ['a%_b', 'a%_b'];
         yield 'a backslash stays as typed' => ['a\\b', 'a\\b'];
@@ -68,6 +71,7 @@ final class OrderSearchTermTest extends TestCase
         yield 'an email' => ['jan@example.com', 'jan@example.com'];
         yield 'in another letter case, as typed' => ['Jan.Kowalski@Example.COM', 'Jan.Kowalski@Example.COM'];
         yield 'with spaces around' => [' jan@example.com  ', 'jan@example.com'];
+        yield 'with zero width spaces around' => ["\u{200B}jan@example.com\u{200B}", 'jan@example.com'];
         yield 'with a subdomain' => ['jan+sklep@mail.example.co.uk', 'jan+sklep@mail.example.co.uk'];
         yield 'a number-like local part' => ['R-1@example.com', 'R-1@example.com'];
         yield 'the shortest' => ['a@b.cc', 'a@b.cc'];
@@ -116,6 +120,10 @@ final class OrderSearchTermTest extends TestCase
         yield 'empty' => [''];
         yield 'spaces only' => ['     '];
         yield 'no-break spaces only' => ["\u{00A0}\u{00A0}\u{00A0}\u{00A0}"];
+        yield 'three zero width spaces' => ["\u{200B}\u{200B}\u{200B}"];
+        yield 'three Hangul fillers' => ["\u{3164}\u{3164}\u{3164}"];
+        yield 'two characters between zero width spaces' => ["\u{200B}ab\u{200B}"];
+        yield 'a C1 control' => ["jan\u{9F}kowalski"];
         yield 'two characters' => ['ab'];
         yield 'two characters between spaces' => ['  ab  '];
         yield 'a prefix of a number' => ['R-'];

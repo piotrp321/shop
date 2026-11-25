@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Catalog\Domain\Product;
 
+use App\Shared\Domain\Text;
+
 /**
- * The values of one variant, one per axis in the order of the axes; each 1 to 40 characters after trimming Unicode
- * whitespace, without control characters (see ProductText). A default variant (a product without axes) has none.
+ * The values of one variant, one per axis in the order of the axes; each a text by the rule of texts (Text) of 1 to 40
+ * characters once trimmed. A default variant (a product without axes) has none.
  */
 final readonly class VariantValues
 {
@@ -28,10 +30,10 @@ final readonly class VariantValues
     {
         $trimmed = [];
         foreach ($values as $value) {
-            if (ProductText::hasForbiddenCharacters($value)) {
+            if (Text::hasForbiddenCharacters($value)) {
                 throw InvalidVariantValues::forbiddenCharacters();
             }
-            $value = ProductText::trim($value);
+            $value = Text::normalize($value);
             $length = mb_strlen($value);
             if ($length < 1 || $length > self::MAX_VALUE_LENGTH) {
                 throw InvalidVariantValues::lengthOutOfRange();
@@ -40,6 +42,16 @@ final readonly class VariantValues
         }
 
         return new self($trimmed);
+    }
+
+    /**
+     * The values as stored, without the rule (spec api-input-contract, E7); only a write goes through fromList().
+     *
+     * @param list<string> $values
+     */
+    public static function stored(array $values): self
+    {
+        return new self($values);
     }
 
     /**

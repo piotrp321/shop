@@ -9,6 +9,7 @@ use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\VariantAxes;
 use App\Catalog\Domain\Product\VariantValues;
 use App\DemoData\Catalog\Dictionaries;
+use App\DemoData\Catalog\ProductType;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
@@ -48,6 +49,43 @@ final class DictionariesTest extends TestCase
         foreach ($seed['categories'] as $department) {
             $taken = array_column($department['children'] ?? [], 'slug');
             self::assertSame([], array_values(array_intersect($taken, $dictionaries->groupSlugs($department['slug']))), 'A group collides in '.$department['slug']);
+        }
+    }
+
+    /**
+     * The generator writes the texts of the dictionaries by COPY, past the rule of texts: every entry is in the form the
+     * rule keeps (see GeneratedText), so no product, category or description carries a character the rule would trim.
+     */
+    public function testEveryTextOfTheDictionariesIsInTheFormOfTheRule(): void
+    {
+        $dictionaries = self::dictionaries();
+
+        GeneratedText::assertAllInTheFormOfTheRule(array_column($dictionaries->categoryDefinitions(), 'name'), 'category name');
+        $types = $dictionaries->types();
+        GeneratedText::assertAllInTheFormOfTheRule(array_map(static fn (ProductType $type): string => $type->name, $types), 'product type');
+        foreach ($types as $type) {
+            // A type may have no axis (a default variant) and no feature.
+            foreach ($type->axes as $axis) {
+                GeneratedText::assertInTheFormOfTheRule($axis->name, 'axis of '.$type->name);
+            }
+            foreach ($type->axes as $axis) {
+                GeneratedText::assertAllInTheFormOfTheRule($axis->values, 'value of the axis '.$axis->name);
+            }
+            foreach ($type->features as $feature) {
+                GeneratedText::assertInTheFormOfTheRule($feature, 'feature of '.$type->name);
+            }
+        }
+        foreach ($dictionaries->departmentSlugs() as $department) {
+            GeneratedText::assertAllInTheFormOfTheRule($dictionaries->brands($department), 'brand of '.$department);
+            GeneratedText::assertAllInTheFormOfTheRule($dictionaries->closings($department), 'closing of '.$department);
+        }
+        GeneratedText::assertAllInTheFormOfTheRule($dictionaries->modelWords(), 'model word');
+        // A suffix follows the number after one space; "" is no suffix.
+        foreach (array_column($dictionaries->modelSuffixes(), 'text') as $suffix) {
+            if ('' !== $suffix) {
+                self::assertStringStartsWith(' ', $suffix);
+                GeneratedText::assertInTheFormOfTheRule(substr($suffix, 1), 'model suffix');
+            }
         }
     }
 

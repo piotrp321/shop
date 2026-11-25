@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace App\Ordering\UI\Http;
 
-use App\Ordering\Domain\ControlCharacters;
 use App\Ordering\Domain\StaffNote;
+use App\Ordering\UI\Http\Validation\TextCharacters;
+use App\Shared\Domain\Text;
 use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
@@ -40,11 +41,11 @@ final readonly class ChangeOrderStatusRequest
             new Assert\Positive(message: 'Wersja zamówienia musi być liczbą całkowitą od 1.'),
         ])]
         public mixed $version,
-        #[OA\Property(type: 'string', description: 'One line, at most 500 characters once trimmed of white space, without control characters, U+0085, U+2028 and U+2029; required for `cancel` and `return`, otherwise null or blank for none.', maxLength: StaffNote::MAX_LENGTH, nullable: true, example: 'Kurier DPD')]
+        #[OA\Property(type: 'string', description: 'One line, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators; required for `cancel` and `return`, otherwise null or a text without a visible character for none.', maxLength: StaffNote::MAX_LENGTH, nullable: true, example: 'Kurier DPD')]
         #[Assert\Sequentially([
             new Assert\Type('string', message: 'Notatka musi być tekstem.'),
-            new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Notatka zawiera niedozwolone znaki.'),
-            new Assert\Length(max: StaffNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', charsetMessage: 'Notatka zawiera niedozwolone znaki.', normalizer: StaffNote::class.'::trim'),
+            new TextCharacters(message: 'Notatka zawiera niedozwolone znaki.'),
+            new Assert\Length(max: StaffNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', charsetMessage: 'Notatka zawiera niedozwolone znaki.', normalizer: [Text::class, 'normalize']),
         ])]
         public mixed $note,
         #[OA\Property(type: 'string', description: 'The tracking number of the shipment, for `ship` only: 1 to 40 ASCII letters, digits and hyphens once trimmed of white space. Null or nothing but white space is no number, for every transition; any other value of another transition is refused.', maxLength: 40, nullable: true, example: 'JJD0002-4455')]
@@ -72,13 +73,13 @@ final readonly class ChangeOrderStatusRequest
 
     /**
      * A cancellation and a return are explained in the note; the domain refuses them without one too, this puts the
-     * message at the field before the role and the order are checked. A note of nothing but Unicode white space is no
-     * note; one with a forbidden character already has its violation.
+     * message at the field before the role and the order are checked. A note without a visible character (the rule of
+     * texts) is no note; one with a forbidden character already has its violation.
      */
     #[Assert\Callback]
     public function validateRequiredNote(ExecutionContextInterface $context): void
     {
-        if (\in_array($this->transition, self::NOTE_REQUIRED, true) && (null === $this->note || (\is_string($this->note) && !ControlCharacters::in($this->note) && '' === StaffNote::trim($this->note)))) {
+        if (\in_array($this->transition, self::NOTE_REQUIRED, true) && (null === $this->note || (\is_string($this->note) && !Text::hasForbiddenCharacters($this->note) && '' === Text::normalize($this->note)))) {
             $context->buildViolation('Notatka jest wymagana.')->atPath('note')->addViolation();
         }
     }

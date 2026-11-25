@@ -21,7 +21,7 @@ final readonly class DemoPromotionList
     /**
      * @param list<array{name: string, percentOff: int, days: int, patterns: list<string>}> $promotions in order
      *
-     * @throws \InvalidArgumentException on an empty list, a name, percentage or length the Promotion would refuse, or a
+     * @throws \InvalidArgumentException on an empty list, a name (by the rule of texts of the Promotion), percentage or length the Promotion would refuse, or a
      *                                   promotion without patterns or with a malformed pattern
      */
     public function __construct(array $promotions)
@@ -32,9 +32,10 @@ final readonly class DemoPromotionList
 
         $list = [];
         foreach ($promotions as ['name' => $name, 'percentOff' => $percentOff, 'days' => $days, 'patterns' => $patterns]) {
-            $name = trim($name);
-            if ('' === $name || mb_strlen($name) > Promotion::MAX_NAME_LENGTH) {
-                throw new \InvalidArgumentException(\sprintf('The demo promotion name "%s" must have 1 to %d characters.', $name, Promotion::MAX_NAME_LENGTH));
+            try {
+                $name = Promotion::validName($name);
+            } catch (InvalidPromotion $e) {
+                throw new \InvalidArgumentException(\sprintf('The demo promotion name %s is invalid: %s', json_encode($name, \JSON_INVALID_UTF8_SUBSTITUTE), $e->getMessage()), 0, $e);
             }
             try {
                 PercentOff::of($percentOff);

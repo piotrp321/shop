@@ -88,7 +88,7 @@ final class DiscountCodeQueriesTest extends TestCase
             $this->listed(self::B, 'WIOSNA', '2026-11-02T00:00:00Z', '2026-11-01T00:00:00Z', null, true, 0),
         ];
 
-        $list = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, " wit\u{A0}", null, 25));
+        $list = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, 'wit', null, 25));
 
         self::assertSame([self::A], array_map(static fn (DiscountCodeView $code): string => $code->id, $list->items));
         self::assertSame(DiscountCodeStatus::Active, $this->reader->pages[0][0]);
@@ -106,6 +106,12 @@ final class DiscountCodeQueriesTest extends TestCase
         yield 'a NUL byte' => ["A\0"];
         yield 'only no-break spaces' => ["\u{A0}\u{A0}"];
         yield 'longer than a code' => [str_repeat('A', 33)];
+        // The handler gets the phrase the controller trimmed (Text::normalize) and trims nothing itself.
+        yield 'a leading space' => [' WIT'];
+        yield 'a trailing no-break space' => ["WIT\u{A0}"];
+        yield 'a trailing zero width space' => ["WIT\u{200B}"];
+        yield 'a trailing zero width joiner' => ["WIT\u{200D}"];
+        yield 'a leading left-to-right mark' => ["\u{200E}WIT"];
     }
 
     #[DataProvider('prefixesNoCodeHas')]
@@ -130,9 +136,9 @@ final class DiscountCodeQueriesTest extends TestCase
             $this->listed(self::B, 'WITAJ20', '2026-11-02T00:00:00Z', '2026-11-01T00:00:00Z', null, true, 0),
         ];
 
-        $first = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, ' wit ', null, 1));
+        $first = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, 'wit', null, 1));
         self::assertNotNull($first->next);
-        $second = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, ' wit ', $first->next, 1));
+        $second = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, 'wit', $first->next, 1));
 
         self::assertEquals(new BoundedCount(42, false), $first->total);
         self::assertNull($second->total);

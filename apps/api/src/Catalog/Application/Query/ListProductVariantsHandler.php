@@ -57,7 +57,7 @@ final readonly class ListProductVariantsHandler
                     static function (array $variant): VariantOption {
                         $id = VariantId::fromString($variant['id']);
 
-                        return new VariantOption($id->toString(), new ProductVariant($id, VariantValues::fromList($variant['values']))->label());
+                        return new VariantOption($id->toString(), new ProductVariant($id, VariantValues::stored($variant['values']))->label());
                     },
                     $row['variants'],
                 ),

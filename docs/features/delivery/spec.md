@@ -165,12 +165,13 @@ Założenia architektoniczne:
 ### Model
 
 - Agregat `DeliveryMethod` (`id` UUID v7, `name`, `description`, `price`, `freeFrom`, `active`, `position`,
-  `trackingUrlTemplate`), value objecty modułu (kopie lokalne wzorców, nie import z innych modułów):
-  - `DeliveryMethodName`: 1–100 znaków po obcięciu białych znaków Unicode na brzegach (wzorzec `StaffNote::EDGES`,
-    `Ordering/Domain/StaffNote.php:17`); odrzuca znaki sterujące, U+0085, U+2028, U+2029 (wzorzec
-    `Ordering/Domain/ControlCharacters.php:15`), niepoprawny UTF-8 i nazwę z samych białych znaków (np. NBSP).
-  - `DeliveryMethodDescription`: 0–200 znaków po obcięciu, jedna linia (znak nowej linii jest znakiem sterującym),
-    te same znaki zakazane; pusty opis jest dozwolony.
+  `trackingUrlTemplate`), value objecty modułu; nazwa i opis stosują regułę tekstu `App\Shared\Domain\Text`
+  (`docs/features/api-input-contract/spec.md`, „Etap 2: reguła tekstu”, T1–T5):
+  - `DeliveryMethodName`: 1–100 znaków po przycięciu brzegów (białe znaki Unicode oraz U+200B, U+2060, U+FEFF,
+    U+00AD); odrzuca znaki sterujące (także C1), U+2028, U+2029, niepoprawny UTF-8 i nazwę bez znaku widocznego (np.
+    NBSP, U+200B, U+3164). Znaki formatujące obok znaku widocznego zostają (emoji, flaga na końcu).
+  - `DeliveryMethodDescription`: 0–200 znaków po przycięciu, jedna linia (znak nowej linii jest znakiem sterującym),
+    te same znaki zakazane; opis bez znaku widocznego to pusty opis.
   - `DeliveryPrice`: brutto 0…99 999 999 groszy (górna granica jak `GrossPrice::MAX`).
   - `FreeDeliveryThreshold`: `null` (brak progu) albo 1…99 999 999 999 groszy.
   - `position`: 0…999.
@@ -182,7 +183,9 @@ Założenia architektoniczne:
 - Persystencja: tabela `delivery_method (id UUID PK, name VARCHAR(100), description VARCHAR(200), price_gross BIGINT,
   free_from_gross BIGINT NULL, active BOOLEAN, position SMALLINT, tracking_url_template VARCHAR(500) NULL, version INT,
   created_at, updated_at)`, rekord ORM z `#[ORM\Version]` (wzorzec `DiscountCodeRecord.php:72`), indeks unikalny
-  `lower(name)`, indeks `(active, position)`, CHECK zakresów ceny, progu i kolejności. Mapowanie w
+  `lower(name)`, indeks `(active, position)`, CHECK zakresów ceny, progu i kolejności. Repozytorium odtwarza nazwę
+  i opis z wiersza bez reguły tekstu (`stored()`), więc metoda zapisana przed ostrzejszą regułą jest na liście
+  panelu, w szczegółach i w koszyku bez zmiany, a jej zmiana z panelu wymaga poprawienia pola. Mapowanie w
   `config/packages/doctrine.yaml`, warstwy `Delivery_*` w `deptrac.yaml` z zależnościami `Cart_Infrastructure` i
   `Ordering_Infrastructure → Delivery_Application`.
 
@@ -205,8 +208,8 @@ Wszystkie trasy w `openapi-admin.json`, firewall `backoffice`, tylko rola `admin
   | Pole | Komunikaty |
   |---|---|
   | brak klucza | „To pole jest wymagane.” |
-  | `name` | „Nazwa jest wymagana.” (`null`, nie tekst, pusta po obcięciu); „Nazwa może mieć najwyżej 100 znaków.”; „Nazwa zawiera niedozwolone znaki.” |
-  | `description` | „Opis musi być tekstem.”; „Opis może mieć najwyżej 200 znaków.”; „Opis zawiera niedozwolone znaki.”; `null` i tekst z samych białych znaków to pusty opis |
+  | `name` | „Nazwa jest wymagana.” (`null`, nie tekst, bez znaku widocznego po przycięciu); „Nazwa może mieć najwyżej 100 znaków.”; „Nazwa zawiera niedozwolone znaki.” |
+  | `description` | „Opis musi być tekstem.”; „Opis może mieć najwyżej 200 znaków.”; „Opis zawiera niedozwolone znaki.”; `null` i tekst bez znaku widocznego to pusty opis |
   | `priceGross` | „Cena jest wymagana.” (`null`); „Cena musi być liczbą całkowitą groszy.”; „Cena musi wynosić od 0,00 do 999 999,99 zł.” |
   | `freeFromGross` | „Próg darmowej dostawy musi być liczbą całkowitą groszy.”; „Próg darmowej dostawy musi wynosić od 0,01 do 999 999 999,99 zł.” |
   | `active` | „Wskaż, czy metoda jest aktywna.” (`null` albo nie wartość logiczna) |

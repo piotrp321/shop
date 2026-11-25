@@ -263,6 +263,66 @@ final class DiscountCodesEndpointTest extends WebTestCase
         self::assertSame(['items' => [], 'next' => null, 'total' => ['value' => 0, 'capped' => false]], $none);
     }
 
+    /**
+     * The list searches for the phrase as the rule of texts trims it (T2) and no further: what T2 trims at the ends
+     * (white space, U+200B) does not change the result, a format character it leaves next to a visible one makes a
+     * phrase that is the beginning of no code.
+     */
+    public function testThePrefixIsTrimmedByTheRuleOfTextsAndNotAgain(): void
+    {
+        $id = $this->storedCode(['code' => 'WITAJ10']);
+        $this->storedCode(['code' => 'ZIMA20']);
+
+        foreach (['WIT', "WIT\u{200B}", "\u{200B}WIT", " \u{A0}WIT\u{A0} ", "\u{FEFF}WIT\u{2060}", "wit\u{AD}"] as $phrase) {
+            $found = $this->send('GET', '/api/v1/admin/discount-codes?q='.rawurlencode($phrase));
+            self::assertResponseStatusCodeSame(200);
+            self::assertIsArray($found['items']);
+            self::assertSame([$id], array_column($found['items'], 'id'), bin2hex($phrase));
+            self::assertSame(['value' => 1, 'capped' => false], $found['total'], bin2hex($phrase));
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function formatCharactersTheRuleOfTextsKeeps(): iterable
+    {
+        // One character of each group of the format characters (Cf) that the old trimming of the list removed and T2
+        // leaves: joiners and marks, the arabic and syriac signs, the directional controls, the invisible operators, the
+        // interlinear annotation, the musical format characters and the language tag.
+        yield 'a zero width joiner' => ["\u{200D}"];
+        yield 'a zero width non-joiner' => ["\u{200C}"];
+        yield 'a left-to-right mark' => ["\u{200E}"];
+        yield 'a right-to-left mark' => ["\u{200F}"];
+        yield 'an arabic letter mark' => ["\u{61C}"];
+        yield 'a left-to-right embedding' => ["\u{202A}"];
+        yield 'a pop directional formatting' => ["\u{202C}"];
+        yield 'a left-to-right override' => ["\u{202D}"];
+        yield 'a function application' => ["\u{2061}"];
+        yield 'an invisible separator' => ["\u{2063}"];
+        yield 'a left-to-right isolate' => ["\u{2066}"];
+        yield 'a pop directional isolate' => ["\u{2069}"];
+        yield 'a tag space' => ["\u{E0020}"];
+        yield 'an arabic number sign' => ["\u{600}"];
+        yield 'an arabic end of ayah' => ["\u{6DD}"];
+        yield 'a syriac abbreviation mark' => ["\u{70F}"];
+        yield 'an interlinear annotation anchor' => ["\u{FFF9}"];
+        yield 'a musical symbol begin beam' => ["\u{1D173}"];
+        yield 'a language tag' => ["\u{E0001}"];
+    }
+
+    #[DataProvider('formatCharactersTheRuleOfTextsKeeps')]
+    public function testAFormatCharacterNextToTheLettersIsNotTrimmedAgainAndFindsNoCode(string $character): void
+    {
+        $this->storedCode(['code' => 'WITAJ10']);
+
+        foreach (["WIT$character", "{$character}WIT", "{$character}WIT$character", "\u{A0}WIT$character\u{200B}"] as $phrase) {
+            $found = $this->send('GET', '/api/v1/admin/discount-codes?q='.rawurlencode($phrase));
+            self::assertResponseStatusCodeSame(200);
+            self::assertSame(['items' => [], 'next' => null, 'total' => ['value' => 0, 'capped' => false]], $found, bin2hex($phrase));
+        }
+    }
+
     public function testAPrefixOf32CharactersFollowedByANoBreakSpaceFiltersLikeOneOf32(): void
     {
         $long = str_repeat('A', 31).'B';
@@ -292,6 +352,11 @@ final class DiscountCodesEndpointTest extends WebTestCase
         yield 'a blank prefix' => ['q=%20%20', 'q', $q];
         yield 'a prefix of a no-break space only' => ['q=%C2%A0', 'q', $q];
         yield 'a prefix of a zero width space only' => ['q=%E2%80%8B', 'q', $q];
+        yield 'a prefix of a hangul filler only' => ['q=%E3%85%A4', 'q', $q];
+        yield 'a prefix with a NUL' => ['q=AB%00C', 'q', $q];
+        yield 'a prefix with a C1 control character' => ['q=AB%C2%9FC', 'q', $q];
+        yield 'a prefix with a line separator' => ['q=AB%E2%80%A8C', 'q', $q];
+        yield 'a prefix with a line separator at its end' => ['q=ABC%E2%80%A8', 'q', $q];
         yield 'a prefix of 33 characters' => ['q='.str_repeat('A', 33), 'q', $q];
         yield 'a prefix that is not UTF-8' => ['q=%FF', 'q', $q];
         yield 'a page of 0' => ['perPage=0', 'perPage', $page];

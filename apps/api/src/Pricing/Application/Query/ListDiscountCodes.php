@@ -16,7 +16,7 @@ final readonly class ListDiscountCodes
 
     /**
      * @param DiscountCodeStatus|null $status only the codes in this status now
-     * @param string|null             $q      the beginning of the text of the code, in any case
+     * @param string|null             $q      the beginning of the text of the code, in any case, as the rule of texts trimmed it (Text::normalize)
      * @param string|null             $after  the `next` of the previous page
      */
     public function __construct(

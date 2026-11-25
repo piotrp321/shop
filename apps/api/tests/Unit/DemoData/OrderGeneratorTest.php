@@ -372,6 +372,19 @@ final class OrderGeneratorTest extends TestCase
         self::assertGreaterThan(0.5, \count(array_filter($counts, static fn (int $count): bool => $count <= 3)) / \count($counts));
     }
 
+    /**
+     * The generator writes the contact and the address of an order by COPY, past the rule of texts: the name, the
+     * street and the city are in the form the rule keeps (see GeneratedText).
+     */
+    public function testTheContactAndTheAddressOfTheOrdersAreInTheFormOfTheRule(): void
+    {
+        foreach (self::orders() as $order) {
+            GeneratedText::assertInTheFormOfTheRule($order->fullName, 'full name of order '.$order->number);
+            GeneratedText::assertInTheFormOfTheRule($order->street, 'street of order '.$order->number);
+            GeneratedText::assertInTheFormOfTheRule($order->city, 'city of order '.$order->number);
+        }
+    }
+
     public function testTheDistributionsAreTheOnesOfTheSpecification(): void
     {
         $anchor = new \DateTimeImmutable(self::ANCHOR);

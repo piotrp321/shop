@@ -148,9 +148,9 @@ final class ProductPublicationTest extends TestCase
     {
         return Product::create(
             ProductId::fromString(StoredProducts::PRODUCT_ID),
-            new ProductName('Buty biegowe'),
+            ProductName::of('Buty biegowe'),
             new Slug(StoredProducts::SLUG),
-            new ShortDescription(''),
+            ShortDescription::of(''),
             ProductCategories::create(CategoryId::fromString(StoredProducts::CATEGORY_ID)),
             TaxClassCode::Standard,
             StoredProducts::images([]),

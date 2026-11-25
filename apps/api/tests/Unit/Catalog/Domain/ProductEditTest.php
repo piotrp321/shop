@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Catalog\Domain;
 
 use App\Catalog\Domain\Category\CategoryId;
+use App\Catalog\Domain\Product\IdentityText;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductChanged;
@@ -33,6 +34,8 @@ final class ProductEditTest extends TestCase
     private const string NEW_VARIANT = '0192f0c4-0000-7000-8000-000000000003';
     private const string OTHER_CATEGORY = '44444444-4444-4444-8444-444444444444';
 
+    private const string LOCKED_VALUE = ' nie może zmienić wartości po pierwszej publikacji. Popraw tylko wielkość liter albo dodaj nowy wariant i usuń stary.';
+    private const string LOCKED_VALUE_REFUSED = ' nie może zmienić wartości po pierwszej publikacji. Zapisana wartość ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter, albo dodaj nowy wariant i usuń stary.';
     private const array AXES = ['Kolor', 'Rozmiar'];
     private const array VARIANTS = [
         ['id' => self::BLACK_M, 'values' => ['czarne', 'M']],
@@ -239,6 +242,261 @@ final class ProductEditTest extends TestCase
         self::assertSame(['Kolor'], $product->variantAxes()->names());
     }
 
+    /**
+     * The identity of a published product compares the stored texts trimmed by the rule of texts (T2), so an axis or a
+     * value stored with characters the rule trims is kept by the same text without them.
+     */
+    public function testAfterThePublicationAStoredTextIsComparedTrimmedByTheRule(): void
+    {
+        $product = StoredProducts::publishedAsStored(["Kolor\u{2060}", "\u{FEFF}Rozmiar"], [
+            ['id' => self::BLACK_M, 'values' => ["czarne\u{200B}", "\u{AD}M"]],
+            ['id' => self::BLACK_XL, 'values' => ["czarne\u{200B}", 'XL']],
+        ]);
+
+        $this->edit($product, axes: self::AXES, variants: self::VARIANTS);
+
+        self::assertSame(self::AXES, $product->variantAxes()->names());
+        self::assertSame([self::BLACK_M => 'czarne, M', self::BLACK_XL => 'czarne, XL'], $this->labels($product));
+    }
+
+    /**
+     * @return iterable<string, array{list<string>, list<array{id: string, values: list<string>}>, string}>
+     */
+    public static function changesOfAStoredIdentity(): iterable
+    {
+        yield 'a value stored with U+200B changed' => [self::AXES, [['id' => self::BLACK_M, 'values' => ['białe', 'M']], self::VARIANTS[1]], 'Wariant „czarne, M” nie może zmienić wartości po pierwszej publikacji. Popraw tylko wielkość liter albo dodaj nowy wariant i usuń stary.'];
+        yield 'an axis stored with U+2060 renamed' => [['Barwa', 'Rozmiar'], self::VARIANTS, 'Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter.'];
+        yield 'a valid value changed while a refused one of another variant is corrected' => [self::AXES, [['id' => self::BLACK_M, 'values' => ['czarne', 'M']], ['id' => self::BLACK_XL, 'values' => ['czarne', 'L']]], 'Wariant „czarne, XL” nie może zmienić wartości po pierwszej publikacji. Popraw tylko wielkość liter albo dodaj nowy wariant i usuń stary.'];
+    }
+
+    /**
+     * @param list<string>                                  $axes
+     * @param list<array{id: string, values: list<string>}> $variants
+     */
+    #[DataProvider('changesOfAStoredIdentity')]
+    public function testAfterThePublicationAStoredTextTheRuleTakesKeepsItsIdentity(array $axes, array $variants, string $message): void
+    {
+        $product = StoredProducts::publishedAsStored(["Kolor\u{2060}", 'Rozmiar'], [
+            ['id' => self::BLACK_M, 'values' => ["czarne\u{200B}", "M\u{9F}"]],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL']],
+        ]);
+
+        try {
+            $this->edit($product, axes: $axes, variants: $variants);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame($message, $e->getMessage());
+        }
+    }
+
+    /**
+     * A stored axis or value the rule refuses (a forbidden character, or no visible character) has no identity to keep:
+     * its correction is accepted after the publication.
+     */
+    public function testAfterThePublicationAStoredTextTheRuleRefusesMayBeCorrected(): void
+    {
+        $product = StoredProducts::publishedAsStored(["Ko\tlor", "\u{200B}"], [
+            ['id' => self::BLACK_M, 'values' => ["czar\u{9F}ne", 'M']],
+            ['id' => self::BLACK_XL, 'values' => ["\u{3164}", 'XL']],
+        ]);
+
+        $this->edit($product, axes: self::AXES, variants: self::VARIANTS);
+
+        self::assertSame(self::AXES, $product->variantAxes()->names());
+        self::assertSame([self::BLACK_M => 'czarne, M', self::BLACK_XL => 'czarne, XL'], $this->labels($product));
+    }
+
+    /**
+     * @return iterable<string, array{list<string>, list<array{id: string, values: list<string>}>, string}>
+     */
+    public static function changesOfAStoredTextTheRuleRefuses(): iterable
+    {
+        yield 'an axis with a tab renamed' => [['Materiał', 'Rozmiar'], self::VARIANTS, 'Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji. Zapisana nazwa ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter.'];
+        yield 'reordered axes, one with a tab' => [['Rozmiar', 'Kolor'], [['id' => self::BLACK_M, 'values' => ['M', 'czarne']], ['id' => self::BLACK_XL, 'values' => ['XL', 'czarne']]], 'Po pierwszej publikacji nie można dodać, usunąć ani przestawić osi wariantów.'];
+        yield 'a value with U+009F changed' => [self::AXES, [['id' => self::BLACK_M, 'values' => ['zielone', 'M']], self::VARIANTS[1]], 'Wariant „czarne, M” nie może zmienić wartości po pierwszej publikacji. Zapisana wartość ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter, albo dodaj nowy wariant i usuń stary.'];
+    }
+
+    /**
+     * A stored text the rule refuses for a forbidden character keeps the text without forbidden characters and white
+     * space: any other text is a change of the identity.
+     *
+     * @param list<string>                                  $axes
+     * @param list<array{id: string, values: list<string>}> $variants
+     */
+    #[DataProvider('changesOfAStoredTextTheRuleRefuses')]
+    public function testAfterThePublicationAStoredTextTheRuleRefusesMayOnlyBeCorrected(array $axes, array $variants, string $message): void
+    {
+        $product = StoredProducts::publishedAsStored(["Kol\tor", 'Rozmiar'], [
+            ['id' => self::BLACK_M, 'values' => ["czar\u{9F}ne", 'M']],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL']],
+        ]);
+
+        try {
+            $this->edit($product, axes: $axes, variants: $variants);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame($message, $e->getMessage());
+        }
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}> two axis names stored before the rule of texts that repeat each
+     *                                               other once the forbidden characters are spaces and the ends are
+     *                                               trimmed (T2), without regard to case
+     */
+    public static function storedAxesThatRepeatEachOther(): iterable
+    {
+        yield 'U+200B at the end of the second' => [['Kolor', "Kolor\u{200B}"]];
+        yield 'U+009F at the end of the second' => [['Kolor', "Kolor\u{9F}"]];
+        yield 'U+009F before the one letter of the second' => [['A', "\u{9F}A"]];
+    }
+
+    /**
+     * Of two stored axis names that repeat each other, the first stays locked and the second takes a new name once (E7:
+     * the field has to be fixed and the fix has to save); the axes keep their count and order, the variants their
+     * identifiers and values. Once saved, the names differ and K5 locks both again: a new name of either is refused
+     * with the usual detail, a change of case is not.
+     *
+     * @param list<string> $stored
+     */
+    #[DataProvider('storedAxesThatRepeatEachOther')]
+    public function testAfterThePublicationTheSecondOfTwoStoredAxesThatRepeatEachOtherTakesANewNameOnce(array $stored): void
+    {
+        $product = StoredProducts::publishedAsStored($stored, self::VARIANTS);
+        $first = IdentityText::shown($stored[0]);
+        try {
+            $this->edit($product, axes: ['Barwa', 'Rozmiar'], variants: self::VARIANTS);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame(\sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter. Nową nazwę może dostać tylko druga oś, która powtarza tę nazwę.', $first), $e->getMessage());
+        }
+
+        $this->edit($product, description: 'Nowy opis', axes: [$first, 'Rozmiar'], variants: self::VARIANTS);
+
+        self::assertSame([$first, 'Rozmiar'], $product->variantAxes()->names());
+        self::assertSame('Nowy opis', $product->shortDescription()->value());
+        self::assertSame([self::BLACK_M => 'czarne, M', self::BLACK_XL => 'czarne, XL'], $this->labels($product));
+        $product->releaseEvents();
+
+        foreach ([[[$first, 'Materiał'], 'Rozmiar'], [['Barwa', 'Rozmiar'], $first]] as [$axes, $locked]) {
+            try {
+                $this->edit($product, axes: $axes, variants: self::VARIANTS);
+                self::fail('Expected VariantIdentityLocked.');
+            } catch (VariantIdentityLocked $e) {
+                self::assertSame(\sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter.', $locked), $e->getMessage());
+            }
+        }
+        self::assertSame([$first, 'Rozmiar'], $product->variantAxes()->names());
+        self::assertSame([], $product->releaseEvents());
+
+        $this->edit($product, axes: [mb_strtolower($first), 'ROZMIAR'], variants: self::VARIANTS);
+
+        self::assertSame([mb_strtolower($first), 'ROZMIAR'], $product->variantAxes()->names());
+        self::assertSame([self::BLACK_M => 'czarne, M', self::BLACK_XL => 'czarne, XL'], $this->labels($product));
+    }
+
+    /**
+     * @return iterable<string, array{list<string>, list<array{id: string, values: list<string>}>, string}>
+     */
+    public static function changesOfTheFirstOfTwoRepeatedAxes(): iterable
+    {
+        $first = 'Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter. Nową nazwę może dostać tylko druga oś, która powtarza tę nazwę.';
+
+        yield 'the first renamed' => [['Barwa', 'Kolor'], self::VARIANTS, $first];
+        yield 'both renamed' => [['Barwa', 'Rozmiar'], self::VARIANTS, $first];
+        yield 'reordered, the second renamed' => [['Rozmiar', 'Kolor'], [['id' => self::BLACK_M, 'values' => ['M', 'czarne']], ['id' => self::BLACK_XL, 'values' => ['XL', 'czarne']]], $first];
+        yield 'the second removed' => [['Kolor'], [['id' => self::BLACK_M, 'values' => ['czarne']]], 'Po pierwszej publikacji nie można dodać, usunąć ani przestawić osi wariantów.'];
+    }
+
+    /**
+     * The first of two stored axes with one identity keeps its lock, also when the second takes a new name in the same
+     * edit; an axis is not removed or reordered.
+     *
+     * @param list<string>                                  $axes
+     * @param list<array{id: string, values: list<string>}> $variants
+     */
+    #[DataProvider('changesOfTheFirstOfTwoRepeatedAxes')]
+    public function testAfterThePublicationTheFirstOfTwoStoredAxesWithOneIdentityStaysLocked(array $axes, array $variants, string $message): void
+    {
+        $product = StoredProducts::publishedAsStored(['Kolor', "Kolor\u{200B}"], self::VARIANTS);
+
+        try {
+            $this->edit($product, axes: $axes, variants: $variants);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame($message, $e->getMessage());
+        }
+
+        self::assertSame(['Kolor', "Kolor\u{200B}"], $product->variantAxes()->names());
+        self::assertSame([], $product->releaseEvents());
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function storedAxesWithTwoIdentities(): iterable
+    {
+        yield 'two names' => [self::AXES];
+        yield 'a space inside is part of the name' => [['Kolor', 'Ko lor']];
+        yield 'a forbidden character, corrected to another name' => [['Kolor', "Roz\tmiar"]];
+        // A forbidden character is a space in the comparison: these names repeat the first only without it.
+        yield 'U+009F inside the second' => [['Kolor', "Kol\u{9F}or"]];
+        yield 'U+009F before a space inside the second' => [['Kolor', "Ko\u{9F} lor"]];
+    }
+
+    /**
+     * Only two stored names with one identity open the new name of the second: otherwise the second axis is locked
+     * with the usual detail.
+     *
+     * @param list<string> $stored
+     */
+    #[DataProvider('storedAxesWithTwoIdentities')]
+    public function testAfterThePublicationTheSecondOfTwoStoredAxesWithTwoIdentitiesStaysLocked(array $stored): void
+    {
+        $product = StoredProducts::publishedAsStored($stored, self::VARIANTS);
+
+        try {
+            $this->edit($product, axes: ['Kolor', 'Materiał'], variants: self::VARIANTS);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertStringStartsWith(\sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. ', IdentityText::shown($stored[1])), $e->getMessage());
+            self::assertStringNotContainsString('druga oś', $e->getMessage());
+        }
+
+        self::assertSame($stored, $product->variantAxes()->names());
+    }
+
+    /**
+     * @return iterable<string, array{string, string}> the stored second axis name with a forbidden character and the
+     *                                                 correction that does not repeat the first
+     */
+    public static function secondAxesWithAForbiddenCharacterAndTheirCorrection(): iterable
+    {
+        yield 'U+009F inside' => ["Kol\u{9F}or", 'Kol or'];
+        yield 'U+009F before a space inside' => ["Ko\u{9F} lor", 'Ko lor'];
+    }
+
+    /**
+     * A second axis name with a forbidden character that does not repeat the first once the character is a space keeps
+     * its correction (the usual way out), and the detail of a new name says so.
+     */
+    #[DataProvider('secondAxesWithAForbiddenCharacterAndTheirCorrection')]
+    public function testAfterThePublicationASecondAxisThatDoesNotRepeatTheFirstTakesOnlyItsCorrection(string $stored, string $correction): void
+    {
+        $product = StoredProducts::publishedAsStored(['Kolor', $stored], self::VARIANTS);
+        try {
+            $this->edit($product, axes: ['Kolor', 'Materiał'], variants: self::VARIANTS);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame(\sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. Zapisana nazwa ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter.', IdentityText::shown($stored)), $e->getMessage());
+        }
+
+        $this->edit($product, axes: ['Kolor', $correction], variants: self::VARIANTS);
+
+        self::assertSame(['Kolor', $correction], $product->variantAxes()->names());
+        self::assertSame([self::BLACK_M => 'czarne, M', self::BLACK_XL => 'czarne, XL'], $this->labels($product));
+    }
+
     public function testAfterThePublicationANewVariantIsAccepted(): void
     {
         $product = StoredProducts::published(axes: self::AXES, variants: self::VARIANTS);
@@ -264,6 +522,120 @@ final class ProductEditTest extends TestCase
         $default = StoredProducts::product();
         $this->edit($default, axes: ['Kolor'], variants: [['id' => '33333333-3333-4333-8333-333333333333', 'values' => ['czarne']], ['id' => self::NEW_VARIANT, 'values' => ['białe']]]);
         self::assertSame(['33333333-3333-4333-8333-333333333333' => 'czarne', self::NEW_VARIANT => 'białe'], $this->labels($default));
+    }
+
+    /**
+     * The detail names the stored text as a person reads it: without the characters the rule forbids and without the
+     * ones it trims from the ends, and a stored text with forbidden characters is told what its correction may be.
+     */
+    public function testTheDetailOfALockedVariantHasNeitherForbiddenNorTrimmedCharacters(): void
+    {
+        $product = StoredProducts::publishedAsStored(["Kolor\u{2060}", 'Rozmiar'], [
+            ['id' => self::BLACK_M, 'values' => ["\u{200B}czarne\u{FEFF}", "M\u{AD}"]],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL']],
+        ]);
+
+        try {
+            $this->edit($product, axes: self::AXES, variants: [['id' => self::BLACK_M, 'values' => ['czarne', 'L']], self::VARIANTS[1]]);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame('Wariant „czarne, M”'.self::LOCKED_VALUE, $e->getMessage());
+        }
+    }
+
+    public function testTheDetailOfALockedVariantWithAForbiddenCharacterInAnyValueNamesTheCorrection(): void
+    {
+        $product = StoredProducts::publishedAsStored(self::AXES, [
+            ['id' => self::BLACK_M, 'values' => ['czarne', "M\u{2028}"]],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL']],
+        ]);
+
+        try {
+            $this->edit($product, axes: self::AXES, variants: [['id' => self::BLACK_M, 'values' => ['czarne', 'L']], self::VARIANTS[1]]);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame('Wariant „czarne, M”'.self::LOCKED_VALUE_REFUSED, $e->getMessage());
+        }
+    }
+
+    public function testTheDetailOfALockedAxisHasNoTrimmedCharacters(): void
+    {
+        $product = StoredProducts::publishedAsStored(["\u{200B}Kolor\u{2060}", 'Rozmiar'], [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'M']],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL']],
+        ]);
+
+        try {
+            $this->edit($product, axes: ['Barwa', 'Rozmiar'], variants: self::VARIANTS);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame('Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter.', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return iterable<string, array{list<string>, list<string>, bool}> the stored values, the values given and
+     *                                                                   whether the detail names the correction of
+     *                                                                   forbidden characters
+     */
+    public static function culpritsOfALockedVariant(): iterable
+    {
+        // The value that has no text to keep is not the cause: the changed value M is, and it is a clean text.
+        yield 'a forbidden character in a value without a visible character, the clean value changed' => [["\u{9F}", 'M'], ['x', 'L'], false];
+        yield 'a forbidden character in another value that keeps its text, the clean value changed' => [["czar\u{9F}ne", 'M'], ['czarne', 'L'], false];
+        yield 'the value with the forbidden character changed' => [["czar\u{9F}ne", 'M'], ['zielone', 'M'], true];
+        yield 'the value with the forbidden character changed next to a value without a visible character' => [["\u{3164}", "M\u{9F}"], ['x', 'L'], true];
+        yield 'both values changed, one with a forbidden character' => [["czar\u{9F}ne", 'M'], ['zielone', 'L'], true];
+    }
+
+    /**
+     * The correction of forbidden characters is named only when the value that causes the refusal has them.
+     *
+     * @param list<string> $stored
+     * @param list<string> $given
+     */
+    #[DataProvider('culpritsOfALockedVariant')]
+    public function testTheDetailOfALockedVariantNamesTheCorrectionOnlyForTheValueThatCausesTheRefusal(array $stored, array $given, bool $named): void
+    {
+        $product = StoredProducts::publishedAsStored(self::AXES, [['id' => self::BLACK_M, 'values' => $stored]]);
+
+        try {
+            $this->edit($product, axes: self::AXES, variants: [['id' => self::BLACK_M, 'values' => $given]]);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame($named, str_contains($e->getMessage(), 'znaki niedozwolone'), $e->getMessage());
+            self::assertStringEndsWith($named ? self::LOCKED_VALUE_REFUSED : self::LOCKED_VALUE, $e->getMessage());
+        }
+    }
+
+    public function testRemovalOfAVariantInUseNamesTheStoredLabelWithoutForbiddenOrTrimmedCharacters(): void
+    {
+        $product = StoredProducts::publishedAsStored(self::AXES, [
+            ['id' => self::BLACK_M, 'values' => ["\u{200B}czar\u{9F}ne", 'M']],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', "XL\u{2060}"]],
+        ]);
+
+        try {
+            $this->edit($product, axes: self::AXES, variants: [self::VARIANTS[1]], inUse: [self::BLACK_M]);
+            self::fail('Expected VariantInUse.');
+        } catch (VariantInUse $e) {
+            self::assertSame('Wariant „czarne, M” ma stan magazynowy albo rezerwacje. Najpierw skoryguj stan do zera.', $e->getMessage());
+        }
+    }
+
+    public function testRemovalOfAVariantInUseWithoutAVisibleValueIsNotTheDefaultVariant(): void
+    {
+        $product = StoredProducts::publishedAsStored(['Kolor'], [
+            ['id' => self::BLACK_M, 'values' => ["\u{200B}"]],
+            ['id' => self::BLACK_XL, 'values' => ['czarne']],
+        ]);
+
+        try {
+            $this->edit($product, axes: ['Kolor'], variants: [['id' => self::BLACK_XL, 'values' => ['czarne']]], inUse: [self::BLACK_M]);
+            self::fail('Expected VariantInUse.');
+        } catch (VariantInUse $e) {
+            self::assertSame('Wariant bez widocznej wartości ma stan magazynowy albo rezerwacje. Najpierw skoryguj stan do zera.', $e->getMessage());
+        }
     }
 
     public function testRemovalOfAVariantInUseIsRefusedWithItsLabel(): void
@@ -321,9 +693,9 @@ final class ProductEditTest extends TestCase
         array $inUse = [],
     ): void {
         $product->edit(
-            new ProductName($name),
+            ProductName::of($name),
             new Slug($slug),
-            new ShortDescription($description),
+            ShortDescription::of($description),
             ProductCategories::create(CategoryId::fromString(self::OTHER_CATEGORY)),
             $taxClass,
             StoredProducts::images($imageAlts),
