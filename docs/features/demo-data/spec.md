@@ -148,10 +148,13 @@ rozmiar części są w tym pliku wspólne dla wszystkich profili, więc profile 
 | `server` | 500 | 1 000 000 | 10 000 000 | 5 000 000 | k3d (później serwer demo) |
 | `full` | 500 | 1 000 000 | 10 000 000 | 50 000 000 | k3d |
 
-Rozmiary `medium` są zmierzone (raport `docs/reports/demo-load-medium-2026-11-19.md`): produkt z wariantami, cenami, historią cen
-i stanem zajmuje około 5,4 KB (tabele produktowe 5,42 GB na 1 mln produktów), zamówienie ze wszystkimi tabelami
+Rozmiary `medium` są zmierzone (raport `docs/reports/demo-load-medium-2026-11-19.md`) dla generatora bez pól treści produktów
+(marki, opisu, parametrów, SKU i EAN): produkt z wariantami, cenami, historią cen i stanem zajmuje około 5,4 KB (tabele
+produktowe 5,42 GB na 1 mln produktów), a pola treści i indeks SKU dodają do tabel katalogu około 1,0 KB na produkt
+z wariantami (pomiar w „Rozmiar i czas pól treści produktów”, niżej), zamówienie ze wszystkimi tabelami
 zamówieniowymi około 3,4 KB (3,44 GB na 1 mln zamówień), indeks Elasticsearcha około 1,06 GB na 1 mln produktów.
-Rozmiary `server` i `full` to ekstrapolacja liniowa z tych liczb, niezweryfikowana pomiarem:
+Rozmiary `server` i `full` to ekstrapolacja liniowa z tych liczb (bez pól treści; z nimi tabele katalogu rosną o około
+10 GB, szacunek niżej), niezweryfikowana pomiarem:
 
 | Profil | Postgres (ekstrapolacja) | Elasticsearch (ekstrapolacja) | Keycloak (ekstrapolacja) |
 |---|---|---|---|
@@ -603,8 +606,8 @@ przebiegami poniżej 0,5%), MB:
 | | razem | 838,6 | 1 048,9 | +210,3 |
 
 Indeks SKU bez pól treści ma wpisy `NULL` dla każdego wariantu (10 B na wariant); z polami ma 55,5 B na wariant. Jedyny
-indeks produktów, który się zmienił, to `catalog_product_name_trgm_idx` (+16,6 MB w `medium`, −0,7 MB w `small`: indeks
-po nazwie, której nowe pola nie zmieniają, więc to rozrzut między przebiegami, a nie skutek pól; przyczyny nie badano),
+indeks produktów, który się zmienił, to `catalog_product_name_trgm_idx` (`medium`: 125,5–125,7 MB w 3 przebiegach bez pól, 141,5–142,9 MB w 4 z polami, czyli różnica systematyczna +16,6 MB;
+w `small` odwrotnie, −0,7 MB w jednym przebiegu; indeks jest po nazwie, której nowe pola nie zmieniają, przyczyny nie badano),
 pozostałe różnią się o mniej niż 1 MB. Rachunek niżej bierze przyrost w całości, także tę różnicę.
 
 **Bajty na produkt i na wariant (pomiar 2: `medium`, kroki katalogu, bez zdjęć, cen i zamówień).** Tabela produktów:
@@ -628,7 +631,9 @@ rozmiar tabel po nim (tabele po kroku to część rachunku, nie szczyt). Przyros
 
 Wszystkie trzy wartości `diskPeakGb` są szacunkiem niezweryfikowanym przebiegiem po zmianie generatora: przyrost tabel
 pochodzi z pomiaru `medium` skalowanego liniowo, a druga kopia i WAL to założenia (druga kopia zakłada, że odkurzanie
-nie nadąża za krokiem zdjęć, więc jest górną granicą; w `small` zmierzono około 0,83 przyrostu wiersza). Strażnik wolnego
+nie nadąża za krokiem zdjęć, więc jest górną granicą; w `small` zmierzono około 0,83 przyrostu wiersza). Założenie o WAL
+(przyrost 0): `max_wal_size` jest limitem miękkim, więc przy zapisie większym o 21% WAL może go chwilowo przekroczyć;
+nie mierzono, o ile, a ewentualny nadmiar mieści się w zapasie 1,25 strażnika miejsca. Strażnik wolnego
 miejsca (wolne ≥ 1,25 × `diskPeakGb`) wymaga więc dla `medium` 28,75 GB, dla `server` 142,5 GB, dla `full` 335 GB.
 
 **Czas kroku `demo-data:products`, `medium`, 4 procesy** (od startu pierwszego procesu do końca ostatniego, bez resetu
@@ -660,6 +665,9 @@ przejściu, warianty bez SKU i EAN w drugim): na `small` 0,6 ms i 0,7 ms (`EXPLA
 --no-accounts` na `small` trwa około 1,1 s przed i po (0,94–1,27 s przed, 1,09–1,18 s po: w granicach rozrzutu). Na
 `medium` (po `ANALYZE`, równoległe skanowanie sekwencyjne, dane w pamięci podręcznej systemu) 155 ms i 127 ms; szacunek
 dla `server` i `full` ×10 to około 3 s.
+
+Kroki zdjęć, cen, promocji i zamówień przechodzą generator produktów i liczą teraz także opis i parametry (dane tych
+kroków bez zmian); koszt CPU tego dodatku nie był mierzony i nie wchodzi do szacunku czasu.
 
 Pomiar `server` i `full` nie został wykonany; szczyt dysku całego stosu po zmianie generatora też nie (`medium` na k3d
 powtórzy DEMO-SCALE).
