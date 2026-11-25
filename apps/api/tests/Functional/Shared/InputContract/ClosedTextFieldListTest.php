@@ -214,7 +214,7 @@ final class ClosedTextFieldListTest extends KernelTestCase
         yield 'oneOf of references' => [['oneOf' => [['$ref' => '#/components/schemas/A'], ['$ref' => '#/components/schemas/B']]], ['A' => $string, 'B' => ['type' => 'object', 'properties' => ['b' => $string]]], ['data', 'data.b']];
         yield 'additionalProperties as a text' => [['type' => 'object', 'additionalProperties' => $string], [], ['data.*']];
         yield 'additionalProperties as a reference' => [['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Text']], ['Text' => $string], ['data.*']];
-        yield 'additionalProperties as true' => [['type' => 'object', 'additionalProperties' => true], [], []];
+        yield 'additionalProperties as true' => [['type' => 'object', 'additionalProperties' => true], [], ['data.*']];
         yield 'items of items' => [['type' => 'array', 'items' => ['type' => 'array', 'items' => $string]], [], ['data[][]']];
         yield 'items of an object' => [['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['a' => ['type' => 'array', 'items' => $string]]]], [], ['data[].a[]']];
         yield 'a type that is a list with null' => [['type' => ['string', 'null']], [], ['data']];

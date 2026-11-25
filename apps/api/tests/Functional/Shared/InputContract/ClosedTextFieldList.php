@@ -12,7 +12,9 @@ use App\Shared\Domain\Text;
  * OpenAPI documents (nested, in a list, also nullable) and every query parameter `q` has a row in the table of the
  * contract of texts (TextRows) or an entry with a reason in the list of exceptions (TextFieldExceptions). Outside the
  * guard are only the properties with an `enum` and with a format of the closed list (uuid, date-time, date, binary);
- * any other format, `email` too, is a text. The guard compares lists that exist already; it generates no case and
+ * any other format, `email` too, is a text. A property with no `type` at all (`{}`, only a maximum length, `items: {}`,
+ * `additionalProperties: true`) may be a text, so it counts as one: the type comes from an attribute that may be
+ * forgotten. The guard compares lists that exist already; it generates no case and
  * changes no table.
  *
  * The documents describe the same field in more than one way, and the guard reads each of them: a path item referenced
@@ -299,8 +301,7 @@ final class ClosedTextFieldList
             }
         }
 
-        $types = \is_array($schema['type'] ?? null) ? $schema['type'] : [$schema['type'] ?? null];
-        if (\in_array('string', $types, true) && !isset($schema['enum']) && !\in_array($schema['format'] ?? null, self::CLOSED_FORMATS, true)) {
+        if (self::isPossibleText($schema)) {
             $texts[] = '' === $name ? self::BODY : $name;
         }
         foreach (\is_array($schema['properties'] ?? null) ? $schema['properties'] : [] as $property => $child) {
@@ -308,14 +309,47 @@ final class ClosedTextFieldList
                 $texts = [...$texts, ...self::texts($document, $child, '' === $name ? (string) $property : $name.'.'.$property, $followed)];
             }
         }
-        if (\is_array($schema['additionalProperties'] ?? null)) {
-            $texts = [...$texts, ...self::texts($document, $schema['additionalProperties'], $name.'.*', $followed)];
+        // `additionalProperties: true` allows any value, so it is a schema that says nothing, like `{}`.
+        $additional = true === ($schema['additionalProperties'] ?? null) ? [] : ($schema['additionalProperties'] ?? null);
+        if (\is_array($additional)) {
+            $texts = [...$texts, ...self::texts($document, $additional, $name.'.*', $followed)];
         }
         if (\is_array($schema['items'] ?? null)) {
             $texts = [...$texts, ...self::texts($document, $schema['items'], $name.'[]', $followed)];
         }
 
         return $texts;
+    }
+
+    /**
+     * Whether a schema (after its references, combinations, properties and items are read apart) is a text or may be
+     * one: a `string` (also in a list of types), or a schema that says no type at all (`{}`, only a maximum length,
+     * only `nullable`), because the type of a property of a request comes from an attribute that may be forgotten. A
+     * schema with an `enum`, with a format of the closed list, or that is read in depth (`properties`, `items`,
+     * `allOf`, `oneOf`, `anyOf`, and `required`, `not` and the limits of an object, which describe an object) is no
+     * leaf; a schema with another type is no text.
+     *
+     * @param array<mixed> $schema
+     */
+    private static function isPossibleText(array $schema): bool
+    {
+        if (isset($schema['enum']) || \in_array($schema['format'] ?? null, self::CLOSED_FORMATS, true)) {
+            return false;
+        }
+        $types = \is_array($schema['type'] ?? null) ? $schema['type'] : [$schema['type'] ?? null];
+        if (\in_array('string', $types, true)) {
+            return true;
+        }
+        if (null !== ($schema['type'] ?? null)) {
+            return false;
+        }
+        foreach (['$ref', 'properties', 'items', 'additionalProperties', 'allOf', 'oneOf', 'anyOf', 'not', 'required', 'minProperties', 'maxProperties'] as $structure) {
+            if (isset($schema[$structure])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

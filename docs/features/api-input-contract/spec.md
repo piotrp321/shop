@@ -565,7 +565,11 @@ teksty z samego znaku Co i Cn, które nie są puste; teksty z T5; długość po 
   nazwie i miejscu go zastępuje, więc nie liczy się dwa razy) i z `components/parameters`; treść żądania z
   `components/requestBodies` (także przez łańcuch referencji) w każdym typie treści; schemat przez `$ref` na dowolnej
   głębokości (cykl się kończy), `allOf`, `oneOf`, `anyOf`, `additionalProperties`, zagnieżdżone `items` i `type`
-  z `null`; treść, która sama jest tekstem (`(body)`). Poza strażnikiem celowo: referencje poza dokumentem, `not`,
+  z `null`; treść, która sama jest tekstem (`(body)`). Schemat-liść bez `type` (`{}`, samo `maxLength`, samo
+  `nullable`, `items: {}`, `additionalProperties: true`) jest możliwym tekstem i też wymaga wiersza albo wpisu, bo
+  klasy żądań mają parametry `mixed`, a `type` w OpenAPI pochodzi z atrybutu, który można pominąć; schemat bez `type`
+  z `properties`, `items`, `allOf`, `oneOf`, `anyOf` albo `$ref` jest czytany w głąb, a `enum` bez `type` zostaje poza
+  strażnikiem. Poza strażnikiem celowo: referencje poza dokumentem, `not`,
   słowa schematu z OpenAPI 3.1 (dokumenty są 3.0.3) i parametr-obiekt, który styl `form` rozwija w parametry (generator
   zapisuje każdy parametr zapytania osobno). Strażnik nie generuje przypadków i nie zmienia tabeli.
 - **Granice:** mechanizm nie mutuje innych pól, nie generuje wartości ze schematów i zawiera tylko przypadki tej
