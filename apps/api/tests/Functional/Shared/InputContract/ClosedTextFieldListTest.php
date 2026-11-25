@@ -103,6 +103,179 @@ final class ClosedTextFieldListTest extends KernelTestCase
         );
     }
 
+    /**
+     * Circumvention 1: the body of a request is not written in the operation but referenced from
+     * `components/requestBodies` (also through a chain of references).
+     */
+    public function testATextOfARequestBodyReferencedFromTheComponentsIsReported(): void
+    {
+        $body = ['content' => ['application/json' => ['schema' => ['type' => 'object', 'properties' => ['nickname' => ['type' => 'string']]]]]];
+        $documents = $this->documents();
+        $documents[1] = self::withComponent($documents[1], 'requestBodies', 'NewThing', $body);
+        $documents[1] = self::withComponent($documents[1], 'requestBodies', 'NewThingAlias', ['$ref' => '#/components/requestBodies/NewThing']);
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/new-things', ['post' => ['requestBody' => ['$ref' => '#/components/requestBodies/NewThing']]]);
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/new-aliases', ['put' => ['requestBody' => ['$ref' => '#/components/requestBodies/NewThingAlias']]]);
+
+        self::assertSame(
+            [
+                'POST /api/v1/admin/new-things, nickname'.self::NO_ROW,
+                'PUT /api/v1/admin/new-aliases, nickname'.self::NO_ROW,
+            ],
+            ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, list<string>}> a path item, the violations it must give
+     */
+    public static function phrasesDeclaredAboveTheOperation(): iterable
+    {
+        $query = ['name' => 'q', 'in' => 'query', 'schema' => ['type' => 'string']];
+        $header = ['name' => 'q', 'in' => 'header', 'schema' => ['type' => 'string']];
+        $violation = 'GET /api/v1/admin/new-list, query q'.self::NO_ROW;
+
+        // Circumvention 2: the parameter of the path item is inherited by every operation of it.
+        yield 'a parameter of the path item' => [['parameters' => [$query], 'get' => []], [$violation]];
+        yield 'a reference to a parameter of the components in the path item' => [['parameters' => [['$ref' => '#/components/parameters/Phrase']], 'get' => []], [$violation]];
+        yield 'a reference to a parameter of the components in the operation' => [['get' => ['parameters' => [['$ref' => '#/components/parameters/Phrase']]]], [$violation]];
+        yield 'the same parameter in the path item and in the operation is one' => [['parameters' => [$query], 'get' => ['parameters' => [$query]]], [$violation]];
+        yield 'the operation takes over the parameter of the path item' => [['parameters' => [$query], 'get' => ['parameters' => [['$ref' => '#/components/parameters/Phrase']]]], [$violation]];
+        yield 'a parameter of the path item serves every operation of it' => [
+            ['parameters' => [$query], 'get' => [], 'post' => [], 'delete' => ['parameters' => []]],
+            [$violation, 'POST /api/v1/admin/new-list, query q'.self::NO_ROW, 'DELETE /api/v1/admin/new-list, query q'.self::NO_ROW],
+        ];
+        yield 'a header of the path item is no phrase' => [['parameters' => [$header], 'get' => ['parameters' => []]], []];
+        yield 'a header of the operation does not take over the query of the path item' => [['parameters' => [$query], 'get' => ['parameters' => [$header]]], [$violation]];
+        yield 'a path item without a phrase' => [['parameters' => [['name' => 'page', 'in' => 'query', 'schema' => ['type' => 'string']]], 'get' => []], []];
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @param list<string>         $violations
+     */
+    #[DataProvider('phrasesDeclaredAboveTheOperation')]
+    public function testAPhraseDeclaredInThePathItemOrInTheComponentsIsReportedOnceForEachOperation(array $item, array $violations): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withComponent($documents[1], 'parameters', 'Phrase', ['name' => 'q', 'in' => 'query', 'schema' => ['type' => 'string']]);
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/new-list', $item);
+
+        self::assertSame($violations, ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()));
+    }
+
+    public function testAPathItemReferencingAnotherOneIsReadAsIt(): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/stock-alias', ['$ref' => '#/paths/~1api~1v1~1admin~1stock']);
+
+        self::assertSame(
+            ['GET /api/v1/admin/stock-alias, query q'.self::NO_ROW],
+            ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
+        );
+    }
+
+    /**
+     * Circumvention 3: a body that is a text itself has no property to name; it is reported as `(body)`.
+     */
+    public function testABodyThatIsATextItselfIsReported(): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/notes', ['put' => ['requestBody' => ['content' => ['text/plain' => ['schema' => ['type' => 'string']]]]]]);
+
+        self::assertSame(
+            ['PUT /api/v1/admin/notes, (body)'.self::NO_ROW],
+            ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, array<string, array<string, mixed>>, list<string>}> the schema of the
+     *                                                                                                           property `data`, the schemas of the components it needs, the texts it holds
+     */
+    public static function constructsThatDescribeATextOfTheBody(): iterable
+    {
+        $string = ['type' => 'string'];
+
+        yield 'a reference to a schema of the components' => [['$ref' => '#/components/schemas/Text'], ['Text' => $string], ['data']];
+        yield 'a chain of references through three schemas' => [
+            ['$ref' => '#/components/schemas/A'],
+            ['A' => ['$ref' => '#/components/schemas/B'], 'B' => ['type' => 'object', 'properties' => ['deep' => ['$ref' => '#/components/schemas/C']]], 'C' => $string],
+            ['data.deep'],
+        ];
+        yield 'a schema that contains itself' => [
+            ['$ref' => '#/components/schemas/Tree'],
+            ['Tree' => ['type' => 'object', 'properties' => ['label' => $string, 'children' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Tree']]]]],
+            ['data.label'],
+        ];
+        yield 'allOf' => [['allOf' => [['type' => 'object', 'properties' => ['a' => $string]], ['type' => 'object', 'properties' => ['b' => $string]]]], [], ['data.a', 'data.b']];
+        yield 'oneOf' => [['oneOf' => [['type' => 'object', 'properties' => ['a' => $string]], ['type' => 'object', 'properties' => ['b' => $string]]]], [], ['data.a', 'data.b']];
+        yield 'anyOf of a text and a number' => [['anyOf' => [$string, ['type' => 'integer']]], [], ['data']];
+        yield 'oneOf of references' => [['oneOf' => [['$ref' => '#/components/schemas/A'], ['$ref' => '#/components/schemas/B']]], ['A' => $string, 'B' => ['type' => 'object', 'properties' => ['b' => $string]]], ['data', 'data.b']];
+        yield 'additionalProperties as a text' => [['type' => 'object', 'additionalProperties' => $string], [], ['data.*']];
+        yield 'additionalProperties as a reference' => [['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Text']], ['Text' => $string], ['data.*']];
+        yield 'additionalProperties as true' => [['type' => 'object', 'additionalProperties' => true], [], []];
+        yield 'items of items' => [['type' => 'array', 'items' => ['type' => 'array', 'items' => $string]], [], ['data[][]']];
+        yield 'items of an object' => [['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['a' => ['type' => 'array', 'items' => $string]]]], [], ['data[].a[]']];
+        yield 'a type that is a list with null' => [['type' => ['string', 'null']], [], ['data']];
+        yield 'a nullable text' => [['type' => 'string', 'nullable' => true], [], ['data']];
+        yield 'a text with a format of no closed list' => [['type' => 'string', 'format' => 'password'], [], ['data']];
+        yield 'a text with an enum is a closed list' => [['type' => 'string', 'enum' => ['a']], [], []];
+    }
+
+    /**
+     * @param array<string, mixed>                $schema
+     * @param array<string, array<string, mixed>> $components
+     * @param list<string>                        $texts
+     */
+    #[DataProvider('constructsThatDescribeATextOfTheBody')]
+    public function testEveryConstructThatDescribesATextOfTheBodyIsRead(array $schema, array $components, array $texts): void
+    {
+        $documents = $this->documents();
+        foreach ($components as $name => $component) {
+            $documents[1] = self::withComponent($documents[1], 'schemas', $name, $component);
+        }
+        $documents[1] = self::withBodyProperty($documents[1], '/api/v1/admin/promotions', 'post', 'data', $schema);
+
+        self::assertSame(
+            array_map(static fn (string $text): string => 'POST /api/v1/admin/promotions, '.$text.self::NO_ROW, $texts),
+            ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
+        );
+    }
+
+    public function testEveryContentTypeOfTheBodyIsRead(): void
+    {
+        $object = static fn (string $property): array => ['schema' => ['type' => 'object', 'properties' => [$property => ['type' => 'string']]]];
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/new-things', ['patch' => ['requestBody' => ['content' => [
+            'application/json' => $object('json'),
+            'multipart/form-data' => $object('form'),
+            'application/x-www-form-urlencoded' => $object('urlencoded'),
+        ]]]]);
+
+        self::assertSame(
+            [
+                'PATCH /api/v1/admin/new-things, json'.self::NO_ROW,
+                'PATCH /api/v1/admin/new-things, form'.self::NO_ROW,
+                'PATCH /api/v1/admin/new-things, urlencoded'.self::NO_ROW,
+            ],
+            ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
+        );
+    }
+
+    public function testAReferenceToNothingIsLeftOutAndOneThatCirclesEnds(): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withComponent($documents[1], 'requestBodies', 'One', ['$ref' => '#/components/requestBodies/Two']);
+        $documents[1] = self::withComponent($documents[1], 'requestBodies', 'Two', ['$ref' => '#/components/requestBodies/One']);
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/new-things', [
+            'parameters' => [['$ref' => '#/components/parameters/Missing']],
+            'post' => ['requestBody' => ['$ref' => '#/components/requestBodies/One']],
+            'put' => ['requestBody' => ['$ref' => '#/components/requestBodies/Missing']],
+        ]);
+
+        self::assertSame([], ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()));
+    }
+
     public function testThePropertiesTheGuardLeavesOutAreNotReported(): void
     {
         $documents = $this->documents();
@@ -276,6 +449,43 @@ final class ClosedTextFieldListTest extends KernelTestCase
         $operation['parameters'] = [...(\is_array($operation['parameters'] ?? null) ? $operation['parameters'] : []), $parameter];
 
         return self::withOperation($document, $path, $method, $operation);
+    }
+
+    /**
+     * A copy of the document with one more entry in `components/<group>`.
+     *
+     * @param array<string, mixed> $document
+     * @param array<string, mixed> $component
+     *
+     * @return array<string, mixed>
+     */
+    private static function withComponent(array $document, string $group, string $name, array $component): array
+    {
+        $components = \is_array($document['components'] ?? null) ? $document['components'] : [];
+        $entries = \is_array($components[$group] ?? null) ? $components[$group] : [];
+        $entries[$name] = $component;
+        $components[$group] = $entries;
+        $document['components'] = $components;
+
+        return $document;
+    }
+
+    /**
+     * A copy of the document with one more path item.
+     *
+     * @param array<string, mixed> $document
+     * @param array<string, mixed> $item
+     *
+     * @return array<string, mixed>
+     */
+    private static function withPathItem(array $document, string $path, array $item): array
+    {
+        $paths = $document['paths'];
+        self::assertIsArray($paths);
+        $paths[$path] = $item;
+        $document['paths'] = $paths;
+
+        return $document;
     }
 
     /**
