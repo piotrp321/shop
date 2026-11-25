@@ -110,7 +110,8 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   - wyjątek dla dwóch zapisanych nazw osi o jednej tożsamości: zapis sprzed reguły tekstów mógł przyjąć dwie nazwy,
     które po przycięciu albo po poprawce znaków niedozwolonych są jedną (`IdentityText::same`: obie mają tożsamość
     i jest ona ta sama, np. „Kolor” i „Kolor” U+200B albo „Kolor” i `Kol` U+009F `or`). Zapis z niezmienioną drugą
-    nazwą to powtórzona oś (422 przy `variantAxes[1]`, „Nazwa osi już jest użyta.”), więc oś, której zapisana nazwa
+    nazwą to powtórzona oś (422 przy `variantAxes[1]`, „Nazwa osi już jest użyta.”; dla nazwy ze znakiem
+    niedozwolonym najpierw 422 „Nazwa osi zawiera niedozwolone znaki.”), więc oś, której zapisana nazwa
     ma tożsamość zapisanej nazwy osi na wcześniejszej pozycji, może dostać dowolną nazwę, która nie powtarza innej
     osi (inaczej dalej 422 powtórzonej osi). Wyjątek liczy się tylko z nazw zapisanych w produkcie, nie z nazw
     wysłanych. Pierwsza z tych osi zachowuje blokadę; liczba i kolejność osi, wartości wariantów i ich
