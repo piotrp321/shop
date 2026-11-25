@@ -6,11 +6,15 @@ namespace App\Tests\Unit\Catalog\Domain;
 
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductBrand;
 use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductCreated;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductParameter;
+use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
@@ -73,6 +77,9 @@ final class ProductTest extends TestCase
             ProductName::of('Shoes'),
             new Slug('shoes'),
             ShortDescription::of('Light'),
+            ProductBrand::stored('Hallen'),
+            ProductDescription::stored("Pierwszy.\n\nDrugi."),
+            ProductParameters::stored([ProductParameter::stored('Waga', '2 kg')]),
             ProductCategories::create(CategoryId::fromString('22222222-2222-4222-8222-222222222222')),
             TaxClassCode::FreezeDriedMeal,
             ProductImages::fromList([]),
@@ -92,6 +99,9 @@ final class ProductTest extends TestCase
         self::assertSame('Shoes', $product->name()->value());
         self::assertSame('shoes', $product->slug()->value());
         self::assertSame('Light', $product->shortDescription()->value());
+        self::assertSame('Hallen', $product->brand()->value());
+        self::assertSame("Pierwszy.\n\nDrugi.", $product->description()->value());
+        self::assertSame('Waga', $product->parameters()->toList()[0]->name());
         self::assertSame(TaxClassCode::FreezeDriedMeal, $product->taxClass());
         self::assertSame('22222222-2222-4222-8222-222222222222', $product->categories()->main()->toString());
     }
@@ -139,6 +149,9 @@ final class ProductTest extends TestCase
             ProductName::of('Shoes'),
             new Slug('shoes'),
             ShortDescription::of(''),
+            ProductBrand::of(''),
+            ProductDescription::of(''),
+            ProductParameters::create([]),
             ProductCategories::create(CategoryId::fromString('22222222-2222-4222-8222-222222222222')),
             TaxClassCode::Standard,
             ProductImages::fromList([]),

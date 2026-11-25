@@ -271,6 +271,9 @@ final class ProductVersionTest extends KernelTestCase
             $product->name(),
             $product->slug(),
             $product->shortDescription(),
+            $product->brand(),
+            $product->description(),
+            $product->parameters(),
             $product->categories(),
             $product->taxClass(),
             ProductImages::fromList(array_map(
