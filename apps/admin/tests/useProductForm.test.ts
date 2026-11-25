@@ -30,6 +30,12 @@ function view(overrides: Partial<ProductEditView> = {}): ProductEditView {
     slug: "buty-biegowe",
     slugLocked: false,
     shortDescription: "Lekkie buty.",
+    brand: "Hallen",
+    description: "Pierwszy akapit.\n\nDrugi akapit.",
+    parameters: [
+      { name: "Waga", value: "2,4 kg" },
+      { name: "Liczba osób", value: "4" },
+    ],
     mainCategoryId: "c-main",
     additionalCategoryIds: ["c-extra"],
     taxClass: "standard",
@@ -116,6 +122,12 @@ describe("useProductForm", () => {
         name: "Buty biegowe",
         slug: "buty-biegowe",
         shortDescription: "Lekkie buty.",
+        brand: "Hallen",
+        description: "Pierwszy akapit.\n\nDrugi akapit.",
+        parameters: [
+          { name: "Waga", value: "2,4 kg" },
+          { name: "Liczba osób", value: "4" },
+        ],
         mainCategoryId: "c-main",
         additionalCategoryIds: ["c-extra"],
         taxClass: "standard",
@@ -143,6 +155,9 @@ describe("useProductForm", () => {
       expect(form.form.value).toMatchObject({
         name: "",
         slug: "",
+        brand: "",
+        description: "",
+        parameters: [],
         mainCategoryId: null,
         taxClass: null,
         images: [],
@@ -364,6 +379,12 @@ describe("useProductForm", () => {
           name: "Inne buty",
           slug: "buty-biegowe",
           shortDescription: "Lekkie buty.",
+          brand: "Hallen",
+          description: "Pierwszy akapit.\n\nDrugi akapit.",
+          parameters: [
+            { name: "Waga", value: "2,4 kg" },
+            { name: "Liczba osób", value: "4" },
+          ],
           mainCategoryId: "c-main",
           additionalCategoryIds: ["c-extra"],
           taxClass: "standard",
@@ -1100,6 +1121,11 @@ describe("useProductForm", () => {
       form.addVariant();
       form.removeVariant(1);
       form.setValue(0, 0, "zielone");
+      form.addParameter();
+      form.setParameter(0, "name", "Zmieniona nazwa");
+      form.setParameter(0, "value", "Zmieniona wartość");
+      form.moveParameter(0, 1);
+      form.removeParameter(1);
     }
 
     type Kind = "save" | "publish" | "unpublish";

@@ -40,6 +40,9 @@ function view(overrides: Partial<ProductEditView> = {}): ProductEditView {
     slug: "buty-biegowe",
     slugLocked: false,
     shortDescription: "Lekkie buty.",
+    brand: "Hallen",
+    description: "Pierwszy akapit.\n\nDrugi akapit.",
+    parameters: [{ name: "Waga", value: "2,4 kg" }],
     mainCategoryId: "c-main",
     additionalCategoryIds: ["c-extra"],
     taxClass: "standard",
@@ -613,6 +616,145 @@ describe("ProductFormView", () => {
     });
   });
 
+  describe("the brand, the description and the parameters", () => {
+    const heading2 = (text: string) => heading("h2", text);
+
+    it("shows the brand after the name and the description after the short description, each with its label", async () => {
+      mounted = await mountForm("/products/p-1");
+      const { wrapper } = mounted;
+
+      expect((wrapper.get("[data-testid=brand]").element as HTMLInputElement).value).toBe("Hallen");
+      expect((wrapper.get("[data-testid=description]").element as HTMLTextAreaElement).value).toBe("Pierwszy akapit.\n\nDrugi akapit.");
+      expect((document.getElementById("product-brand") as HTMLInputElement).labels?.[0]?.textContent?.trim()).toBe("Marka");
+      expect((document.getElementById("product-long-description") as HTMLTextAreaElement).labels?.[0]?.textContent?.trim()).toBe("Opis");
+      const order = [...wrapper.element.querySelectorAll("[data-testid=name], [data-testid=brand], [data-testid=short-description], [data-testid=description]")].map((element) => element.getAttribute("data-testid"));
+      expect(order).toEqual(["name", "brand", "short-description", "description"]);
+      expect(wrapper.get("[data-testid=brand]").attributes("maxlength")).toBe("60");
+      expect(wrapper.get("[data-testid=description]").attributes("maxlength")).toBe("5000");
+    });
+
+    it("counts the characters of the description against 5000", async () => {
+      mounted = await mountForm("/products/p-1");
+
+      expect(mounted.wrapper.get("[data-testid=description-counter]").text()).toBe("31/5000");
+      await mounted.wrapper.get("[data-testid=description]").setValue("Ąę😀");
+      expect(mounted.wrapper.get("[data-testid=description-counter]").text()).toBe("3/5000");
+    });
+
+    it("shows the section „Parametry” with a row for every parameter", async () => {
+      mounted = await mountForm("/products/p-1");
+
+      expect(heading2("Parametry")).toBeDefined();
+      expect((mounted.wrapper.get("[data-testid=parameter-name]").element as HTMLInputElement).value).toBe("Waga");
+      expect((mounted.wrapper.get("[data-testid=parameter-value]").element as HTMLInputElement).value).toBe("2,4 kg");
+    });
+
+    it("shows no parameters and empty fields for a product that has none", async () => {
+      serve(view({ brand: "", description: "", parameters: [] }));
+      mounted = await mountForm("/products/p-1");
+
+      expect((mounted.wrapper.get("[data-testid=brand]").element as HTMLInputElement).value).toBe("");
+      expect(mounted.wrapper.findAll("[data-testid=parameter-row]")).toHaveLength(0);
+      expect(mounted.wrapper.get("[data-testid=description-counter]").text()).toBe("0/5000");
+    });
+
+    it("sends what was typed, with its edges and its characters, and the parameters in their order", async () => {
+      mounted = await mountForm("/products/p-1");
+      mocks.put.mockResolvedValue(problem(422, { violations: [] }));
+
+      await mounted.wrapper.get("[data-testid=brand]").setValue("  Nowa marka\t");
+      await mounted.wrapper.get("[data-testid=description]").setValue("\u00A0Pierwszy.\r\n\nDrugi.");
+      await mounted.wrapper.get("[data-testid=add-parameter]").trigger("click");
+      await flushPromises();
+      await mounted.wrapper.findAll("[data-testid=parameter-name]")[1]!.setValue(" Kolor ");
+      await mounted.wrapper.findAll("[data-testid=parameter-value]")[1]!.setValue("zielony\u200B");
+      await mounted.wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+
+      const body = mocks.put.mock.calls[0]![1].body;
+      expect(body.brand).toBe("  Nowa marka\t");
+      expect(body.description).toBe("\u00A0Pierwszy.\r\n\nDrugi.");
+      expect(body.parameters).toEqual([
+        { name: "Waga", value: "2,4 kg" },
+        { name: " Kolor ", value: "zielony\u200B" },
+      ]);
+    });
+
+    it("puts the messages of the API at the brand, the description and the parameters, and marks the fields invalid", async () => {
+      mounted = await mountForm("/products/p-1");
+      mocks.put.mockResolvedValue(
+        problem(422, {
+          violations: [
+            { propertyPath: "brand", title: "Marka zawiera niedozwolone znaki." },
+            { propertyPath: "description", title: "Opis może mieć najwyżej 5000 znaków." },
+            { propertyPath: "parameters[0].name", title: "Nazwa parametru zawiera niedozwolone znaki." },
+            { propertyPath: "parameters[0].value", title: "Wartość parametru musi mieć od 1 do 200 znaków." },
+            { propertyPath: "parameters", title: "Produkt może mieć najwyżej 30 parametrów." },
+          ],
+        }),
+      );
+
+      await mounted.wrapper.get("[data-testid=brand]").setValue("Inna");
+      await mounted.wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+
+      const { wrapper } = mounted;
+      expect(wrapper.get("[data-testid=error-brand]").text()).toBe("Marka zawiera niedozwolone znaki.");
+      expect(wrapper.get("[data-testid=brand]").attributes("aria-invalid")).toBe("true");
+      expect(wrapper.get("[data-testid=brand]").attributes("aria-describedby")).toContain(wrapper.get("[data-testid=error-brand]").attributes("id"));
+      expect(wrapper.get("[data-testid=error-description]").text()).toBe("Opis może mieć najwyżej 5000 znaków.");
+      expect(wrapper.get("[data-testid=description]").attributes("aria-invalid")).toBe("true");
+      expect(wrapper.get("[data-testid=parameter-name]").attributes("aria-invalid")).toBe("true");
+      expect(wrapper.get("[data-testid=parameter-value]").attributes("aria-invalid")).toBe("true");
+      expect(wrapper.findAll("[data-testid=parameter-error]").map((element) => element.text())).toEqual([
+        "Nazwa parametru zawiera niedozwolone znaki.",
+        "Wartość parametru musi mieć od 1 do 200 znaków.",
+      ]);
+      expect(wrapper.get("[data-testid=parameters-error]").text()).toBe("Produkt może mieć najwyżej 30 parametrów.");
+      // The first message in the document takes the focus.
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=brand]").element);
+      expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+    });
+
+    it("adds a parameter from the keyboard and puts the focus on the name of the new row", async () => {
+      mounted = await mountForm("/products/p-1");
+
+      mounted.wrapper.get<HTMLButtonElement>("[data-testid=add-parameter]").element.click();
+      await flushPromises();
+
+      const names = mounted.wrapper.findAll<HTMLInputElement>("[data-testid=parameter-name]");
+      expect(names).toHaveLength(2);
+      expect(document.activeElement).toBe(names[1]!.element);
+      expect(mounted.wrapper.find("[data-testid=save]").exists()).toBe(true);
+    });
+
+    it("removes a parameter and moves the focus to the next row, or to „Dodaj parametr” after the last one", async () => {
+      serve(view({ parameters: [{ name: "Waga", value: "1 kg" }, { name: "Kolor", value: "x" }] }));
+      mounted = await mountForm("/products/p-1");
+      const { wrapper } = mounted;
+
+      wrapper.findAll<HTMLButtonElement>("[data-testid=parameter-remove]")[0]!.element.click();
+      await flushPromises();
+      expect(document.activeElement).toBe(wrapper.findAll<HTMLInputElement>("[data-testid=parameter-name]")[0]!.element);
+      expect((document.activeElement as HTMLInputElement).value).toBe("Kolor");
+
+      wrapper.findAll<HTMLButtonElement>("[data-testid=parameter-remove]")[0]!.element.click();
+      await flushPromises();
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=add-parameter]").element);
+    });
+
+    it("is read-only without the permission: the fields are off and the buttons are not there", async () => {
+      mounted = await mountForm("/products/p-1", ["support"]);
+      const { wrapper } = mounted;
+
+      expect(wrapper.get("[data-testid=brand]").attributes("disabled")).toBeDefined();
+      expect(wrapper.get("[data-testid=description]").attributes("disabled")).toBeDefined();
+      expect(wrapper.get("[data-testid=parameter-name]").attributes("disabled")).toBeDefined();
+      expect(wrapper.find("[data-testid=add-parameter]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=parameter-remove]").exists()).toBe(false);
+    });
+  });
+
   describe("without the permission to manage products", () => {
     it.each([["support"], ["warehouse"]] as const)("shows %s a read-only form without actions", async (role) => {
       mounted = await mountForm("/products/p-1", [role]);
@@ -1172,6 +1314,8 @@ describe("ProductFormView", () => {
       "name",
       "slug",
       "short-description",
+      "brand",
+      "description",
       "tax-class",
       "image-alt",
       "image-up",
@@ -1187,6 +1331,12 @@ describe("ProductFormView", () => {
       "variant-value",
       "variant-remove",
       "add-variant",
+      "parameter-name",
+      "parameter-value",
+      "parameter-up",
+      "parameter-down",
+      "parameter-remove",
+      "add-parameter",
     ];
 
     beforeEach(() => {
@@ -1220,7 +1370,7 @@ describe("ProductFormView", () => {
       return elements.every((element) => element.element.matches(":disabled"));
     }
     // The only axis of the product is the first and the last: its buttons that move it are off whatever the state of the form.
-    const BY_POSITION = ["axis-move-up", "axis-move-down"];
+    const BY_POSITION = ["axis-move-up", "axis-move-down", "parameter-up", "parameter-down"];
     const states = (wrapper: Wrapper, unlocked = false) =>
       Object.fromEntries(CONTROLS.filter((testid) => !unlocked || !BY_POSITION.includes(testid)).map((testid) => [testid, off(wrapper, testid)]));
     const all = (value: boolean) => Object.fromEntries(CONTROLS.filter((testid) => value || !BY_POSITION.includes(testid)).map((testid) => [testid, value]));
