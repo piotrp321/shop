@@ -6,7 +6,7 @@ stack and the login of the Keycloak administrator, has its own resources and a t
 repeated, gets the time to stop the generator on TERM, makes Postgres end the sessions of a generator that is gone, and the secret of
 the read access to the photo pool reaches no other container.
 
-The cases: prod (medium with the anchor and the photo pool of the server), prod-demo-data-server (the second step on the server), ci and
+The cases: prod (server with the anchor and the photo pool of the server), prod-demo-data-medium (the way back to the first step), ci and
 load (the profile small), ci-no-demo-data (ci with the switch off), ci-demo-data-medium (the profile medium with an anchor, the secret of
 the photo pool and other resources), ci-demo-data-server and ci-demo-data-full (the profiles with the longer limits)."""
 
@@ -19,7 +19,7 @@ PHOTOS_KEYS = ("DEMO_PHOTOS_ENDPOINT", "DEMO_PHOTOS_BUCKET", "DEMO_PHOTOS_ACCESS
 STACK_SECRET = "shop-secrets"
 SCRIPT = "infra/k8s/charts/shop/files/scripts/demo-data.sh"
 PROD_ANCHOR = "2026-11-19T00:00:00Z"
-ALL_CASES = ("prod", "prod-demo-data-server", "ci", "load", "ci-demo-data-medium", "ci-demo-data-server", "ci-demo-data-full")
+ALL_CASES = ("prod", "prod-demo-data-medium", "ci", "load", "ci-demo-data-medium", "ci-demo-data-server", "ci-demo-data-full")
 
 
 def demo_data(case):
@@ -105,7 +105,7 @@ class CronJobTest(unittest.TestCase):
 
     def test_the_time_limit_follows_the_profile_of_the_generator(self):
         limits = {"ci": 1800, "load": 1800, "ci-demo-data-medium": 3600, "ci-demo-data-server": 32400, "ci-demo-data-full": 72000,
-                  "prod": 6 * 3600, "prod-demo-data-server": 24 * 3600}
+                  "prod": 24 * 3600, "prod-demo-data-medium": 6 * 3600}
         for case, seconds in limits.items():
             self.assertEqual(seconds, demo_data(case)["spec"]["jobTemplate"]["spec"]["activeDeadlineSeconds"], case)
 
@@ -118,10 +118,10 @@ class CronJobTest(unittest.TestCase):
         self.assertEqual(["sh", "/scripts/demo-data.sh", "--profile=small", "--min-free-gb=2"], container("load")["command"])
         self.assertEqual(["sh", "/scripts/demo-data.sh", "--profile=server", "--min-free-gb=2"], container("ci-demo-data-server")["command"])
         self.assertEqual(["sh", "/scripts/demo-data.sh", "--profile=full", "--min-free-gb=2"], container("ci-demo-data-full")["command"])
-        self.assertEqual(["sh", "/scripts/demo-data.sh", "--profile=medium", f"--anchor={PROD_ANCHOR}", "--min-free-gb=32"],
-                         container("prod")["command"])
         self.assertEqual(["sh", "/scripts/demo-data.sh", "--profile=server", f"--anchor={PROD_ANCHOR}", "--min-free-gb=32"],
-                         container("prod-demo-data-server")["command"])
+                         container("prod")["command"])
+        self.assertEqual(["sh", "/scripts/demo-data.sh", "--profile=medium", f"--anchor={PROD_ANCHOR}", "--min-free-gb=32"],
+                         container("prod-demo-data-medium")["command"])
 
     def test_the_break_of_the_smoke_test_patches_the_argument_of_the_profile(self):
         """SMOKE_BREAK=demo-data replaces --profile=small at a fixed index of the command (a JSON patch with a test of the value)."""
