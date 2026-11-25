@@ -252,8 +252,8 @@ Kody wyjścia: 0 sprawdzone, sklep otwarty; 1 odmowa, nieudane sprawdzenie albo 
 
 ### Job generatora na serwerze (chart)
 
-- Profil `prod` włącza zawieszony CronJob `demo-data`: `demoData.profile` (`medium`, po zgodzie na drugi krok
-  `server`), stała chwila odniesienia `demoData.anchor` (ta sama dla obu profili, żeby ponowne generowanie dawało te
+- Profil `prod` włącza zawieszony CronJob `demo-data`: `demoData.profile` (`server`, drugi krok po przebiegu
+  `medium`), stała chwila odniesienia `demoData.anchor` (ta sama dla obu profili, żeby ponowne generowanie dawało te
   same dane), `demoData.photosSecretName: demo-photos` (odwołania do sekretu są opcjonalne, żeby Job `seed` ruszył
   bez niego; brak zmiennych przy profilu ze zdjęciami wykrywa `bin/generate-demo` przed kasowaniem),
   `demoData.minFreeGb: 32`, limity czasu `medium` 6 h i `server` 24 h (U6), `terminationGracePeriodSeconds: 120`,
@@ -294,7 +294,8 @@ Kody wyjścia: 0 sprawdzone, sklep otwarty; 1 odmowa, nieudane sprawdzenie albo 
   Elasticsearcha (zajęte 90%, na serwerze około 20,7 GB wolnego) nowy indeks seeda może nie dostać shardu, dopóki
   Elasticsearch nie odświeży informacji o dysku (`cluster.info.update.interval`, 30 s): taka próba kończy się
   błędem, a ponowienie przechodzi.
-- Wdrożony profil to deklaracja w repo: zmiana `medium` na `server` to PR z wartościami i zwykłe wdrożenie.
+- Wdrożony profil to deklaracja w repo: zmiana profilu to PR z wartościami i zwykłe wdrożenie. Sama zmiana nie rusza
+  danych: zastępuje je dopiero `generate` po zgodzie.
 
 CronJob `load` (chart, wszystkie profile: `prod`, `ci` i `load`): zawieszony, obraz k6 przypięty digestem w `images.k6`
 (ten sam co w `load/k6.sh`; pilnuje tego `check`), skrypty z ConfigMapy renderowanej z `load/` (dowiązanie w `files/`,

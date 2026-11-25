@@ -224,7 +224,7 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 - CronJob `cart:purge-expired` (co godzinę, `concurrencyPolicy: Forbid`, strefa `Europe/Warsaw`).
 - CronJob `demo-data` (profile `prod`, `ci` i `load`; `demoData.enabled`): zawieszony (`suspend: true`), jego Job zastępuje
   dane sklepu danymi profilu generatora albo seedem, więc sam się nie uruchamia, a skrypt `files/scripts/demo-data.sh`
-  odmawia bez `DEMO_DATA_CONFIRM` (kod 64). W `prod` (`medium`, po zgodzie `server`) Job powstaje wyłącznie z celu
+  odmawia bez `DEMO_DATA_CONFIRM` (kod 64). W `prod` (profil `server`) Job powstaje wyłącznie z celu
   `make -C infra/k8s generate` po zgodzie użytkownika: zamyka sklep NetworkPolicy `shop-closed` (jedyna, tymczasowa;
   poza chartem), a po udanym Jobie `make -C infra/k8s open` sprawdza dane i otwiera go; nieudany przebieg zostawia
   sklep zamknięty. Strażnik wolnego miejsca

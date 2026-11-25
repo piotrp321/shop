@@ -741,7 +741,7 @@ czeka na L9. `open` zmienia serwer (otwiera sklep), więc też wymaga zgody, kt�
    `demo-photos` na czas przebiegu (usuwany przy każdym wyjściu `generate`, także po błędzie; po jego zabiciu usuwa go
    `open`). Profil `seed` pliku nie potrzebuje.
 2. **agent** – wdrożona rewizja ma ten profil: `generate` przyjmuje `seed` albo `demoData.profile` CronJoba
-   (`environments/prod/values.yaml`; `medium`, a `server` po zmianie wartości w PR i zwykłym wdrożeniu). Wdrożenie:
+   (`environments/prod/values.yaml`: `server`; powrót do `medium` to zmiana wartości w PR i zwykłe wdrożenie). Wdrożenie:
    sekcja 7 (zgoda użytkownika); nie w trakcie generowania, bo restartuje pody, których generator potrzebuje.
 3. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: sklep otwarty, bez blokady `demo-data-lock`, Job
    `demo-data-run` (poprzedniego przebiegu), aktywne Joby, aplikacje `Synced` i `Healthy`, wszystkie Deploymenty
