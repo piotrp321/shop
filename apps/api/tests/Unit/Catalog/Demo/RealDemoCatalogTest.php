@@ -361,18 +361,13 @@ final class RealDemoCatalogTest extends TestCase
 
     public function testEveryProductHasTheBrandOfItsNameAndAFullDescription(): void
     {
-        $data = Yaml::parseFile(self::FIXTURES.'/catalog.yaml');
-        self::assertIsArray($data);
-        $templates = $data['templates'];
-        self::assertIsArray($templates);
         $brandOf = [];
         $shortOf = [];
-        foreach ($templates as $template) {
-            self::assertIsArray($template);
-            foreach ($template['brands'] as $brand) {
-                foreach ($template['models'] as $model) {
-                    $brandOf[$template['productType'].' '.$brand.' '.$model['name']] = $brand;
-                    $shortOf[$template['productType'].' '.$brand.' '.$model['name']] = $model['description'];
+        foreach (DemoCatalogDefinition::fromFile(self::FIXTURES.'/catalog.yaml')->templates as $template) {
+            foreach ($template->brands as $brand) {
+                foreach ($template->models as $model) {
+                    $brandOf[$template->productType.' '.$brand.' '.$model['name']] = $brand;
+                    $shortOf[$template->productType.' '.$brand.' '.$model['name']] = $model['description'];
                 }
             }
         }

@@ -16,15 +16,15 @@ use App\Catalog\Domain\Product\VariantAxes;
 final readonly class DemoProductTemplate
 {
     /**
-     * @param list<string>                                                                                                                                             $additionalCategories slug paths
-     * @param non-empty-list<string>                                                                                                                                   $brands
-     * @param non-empty-list<array{name: string, description: string, parameters: list<array{name: string, value: string}>, fullDescription: list<string>}>            $models               fullDescription is empty for a model without its own description
-     * @param list<string>                                                                                                                                             $variantAxes          names of the axes, none for a default variant
-     * @param list<non-empty-list<string>>                                                                                                                             $axisValues           one list of values per axis, in the order of the axes
-     * @param non-empty-list<array{file: string, alt: string}>                                                                                                         $images               the pool of the template
-     * @param list<array{brand: string, model: string, images: non-empty-list<array{file: string, alt: string}>}>                                                         $productImages        the images of single products (brand + model), taken instead of the pool
-     * @param list<string>                                                                                                                                             $description          the paragraphs of the type, none for a type without
-     * @param list<array{name: string, value: string}>                                                                                                                 $parameters           the parameters of the type in presentation order
+     * @param list<string>                                                                                                                                  $additionalCategories slug paths
+     * @param non-empty-list<string>                                                                                                                        $brands
+     * @param non-empty-list<array{name: string, description: string, parameters: list<array{name: string, value: string}>, fullDescription: list<string>}> $models               fullDescription is empty for a model without its own description
+     * @param list<string>                                                                                                                                  $variantAxes          names of the axes, none for a default variant
+     * @param list<non-empty-list<string>>                                                                                                                  $axisValues           one list of values per axis, in the order of the axes
+     * @param non-empty-list<array{file: string, alt: string}>                                                                                              $images               the pool of the template
+     * @param list<array{brand: string, model: string, images: non-empty-list<array{file: string, alt: string}>}>                                           $productImages        the images of single products (brand + model), taken instead of the pool
+     * @param list<string>                                                                                                                                  $description          the paragraphs of the type, none for a type without
+     * @param list<array{name: string, value: string}>                                                                                                      $parameters           the parameters of the type in presentation order
      */
     public function __construct(
         public string $category,
