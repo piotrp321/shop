@@ -383,10 +383,11 @@ Decyzje etapu, które wpływają na planowane 10 mln produktów (`docs/features/
    kroku zdjęć (stara wersja wiersza zostaje do odkurzenia); WAL nowych kolumn i indeksu SKU. Zadanie generatora
    zapisuje ten rachunek składnik po składniku w `docs/features/demo-data/spec.md`, oznacza wartości `medium`,
    `server` i `full` jako szacunek niezweryfikowany przebiegiem i podnosi `diskPeakGb` w `profiles.yaml`. Od
-   `diskPeakGb` zależy strażnik wolnego miejsca (wolne ≥ `1,25 × diskPeakGb`): dla `server` dziś 96 GB i próg 120 GB
-   wobec 163,9 GiB (176 GB) wolnych po `medium`. Rachunek z budżetów sprzed pomiaru daje dla `server` przyrost szczytu
-   rzędu 20 GB (około 10 GB tabel i indeksów i do 8 GB drugiej kopii wierszy), czyli próg około 145 GB. Szczyt `server`
-   potwierdzi dopiero raport z jego przebiegu (DEMO-SCALE).
+   `diskPeakGb` zależy strażnik wolnego miejsca (wolne ≥ `1,25 × diskPeakGb`): po etapie `diskPeakGb` to 23 GB (`medium`),
+   114 GB (`server`) i 268 GB (`full`), więc próg dla `server` to 142,5 GB wobec 163,9 GiB (176 GB) wolnych po `medium`.
+   Przyrost szczytu `server` (17,85 GB: około 10 GB tabel i indeksów i około 8 GB drugiej kopii wierszy) i pomiary, z
+   których wynika, są w `docs/features/demo-data/spec.md` („Rozmiar i czas pól treści produktów”); wszystkie trzy wartości
+   to szacunek niezweryfikowany przebiegiem. Szczyt `server` potwierdzi dopiero raport z jego przebiegu (DEMO-SCALE).
 5. **Czas generowania i indeks SKU podczas `COPY`: szacunek z pomiaru kroku.** Indeks unikalny SKU istnieje, gdy
    generator ładuje warianty, więc każdy wiersz `COPY` dopisuje do niego wpis (tak jak dziś do dwóch indeksów
    unikalnych wariantu). Generator nie zmienia schematu (`docs/features/demo-data/spec.md`), więc nie usuwa indeksu na

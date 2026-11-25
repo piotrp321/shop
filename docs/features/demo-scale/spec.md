@@ -60,7 +60,7 @@ Z Grafana Cloud (node-exporter, kubelet) i `make -C infra/k8s status`:
 | Baza `shop` | seed: 191 produktów, 0 zamówień (log Joba `initialize` z 2026-11-18) |
 | Wolumeny | `local-path` na tym samym dysku; rozmiary z `storage.*` nie są egzekwowane |
 
-Szacunek szczytu dysku dla `server` (96 GB, `profiles.yaml`) jest ekstrapolacją z `medium` na innym sprzęcie. Miejsce
+Szacunek szczytu dysku dla `server` (114 GB, `profiles.yaml`; rachunek w `docs/features/demo-data/spec.md`) jest ekstrapolacją z `medium` na innym sprzęcie. Miejsce
 wystarcza z zapasem, ale bezpieczeństwo przebiegu zapewnia strażnik miejsca (niżej), nie ten szacunek.
 
 ## Założenia techniczne i eksperymenty
