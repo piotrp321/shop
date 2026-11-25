@@ -243,6 +243,93 @@ final class ClosedTextFieldListTest extends KernelTestCase
         );
     }
 
+    /**
+     * A property of a body with no `type` is a possible text: the class of a request takes `mixed` parameters, so the
+     * `type` of its schema comes only from an attribute that may be forgotten. What the schema says in depth is read
+     * on; one that says nothing of a type is reported as a text.
+     *
+     * @return iterable<string, array{array<string, mixed>, list<string>}> the schema of the property `data` and the texts it holds
+     */
+    public static function schemasWithNoType(): iterable
+    {
+        $string = ['type' => 'string'];
+
+        yield 'only a maximum length' => [['maxLength' => 100], ['data']];
+        yield 'only nullable' => [['nullable' => true], ['data']];
+        yield 'only a default' => [['default' => null, 'maxLength' => 50], ['data']];
+        yield 'an empty schema' => [[], ['data']];
+        yield 'the items of a list are an empty schema' => [['type' => 'array', 'items' => []], ['data[]']];
+        yield 'the items of a list with no type are a maximum length' => [['items' => ['maxLength' => 5]], ['data[]']];
+        yield 'additionalProperties true' => [['type' => 'object', 'additionalProperties' => true], ['data.*']];
+        yield 'additionalProperties an empty schema' => [['type' => 'object', 'additionalProperties' => []], ['data.*']];
+        yield 'a part of anyOf with no type' => [['anyOf' => [['maxLength' => 5], ['type' => 'integer']]], ['data']];
+        yield 'a property with no type in an object with no type' => [['properties' => ['note' => ['maxLength' => 5]]], ['data.note']];
+
+        // What is read in depth or is no text.
+        yield 'properties with no type' => [['properties' => ['a' => $string]], ['data.a']];
+        yield 'items with no type' => [['items' => $string], ['data[]']];
+        yield 'allOf with no type' => [['allOf' => [['type' => 'object', 'properties' => ['a' => $string]]]], ['data.a']];
+        yield 'a reference with no type' => [['$ref' => '#/components/schemas/Text'], ['data']];
+        yield 'an enum with no type' => [['enum' => ['a', 'b']], []];
+        yield 'a format of the closed list with no type' => [['format' => 'uuid'], []];
+        yield 'additionalProperties false' => [['type' => 'object', 'additionalProperties' => false], []];
+        yield 'only the required keys of a part of oneOf' => [
+            ['type' => 'object', 'properties' => ['a' => $string, 'b' => $string], 'oneOf' => [['required' => ['a']], ['required' => ['b']]]],
+            ['data.a', 'data.b'],
+        ];
+        yield 'a type that is not a text' => [['type' => 'integer', 'maximum' => 5], []];
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @param list<string>         $texts
+     */
+    #[DataProvider('schemasWithNoType')]
+    public function testASchemaWithNoTypeIsAPossibleTextAndIsReported(array $schema, array $texts): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withComponent($documents[1], 'schemas', 'Text', ['type' => 'string']);
+        $documents[1] = self::withBodyProperty($documents[1], '/api/v1/admin/promotions', 'post', 'data', $schema);
+
+        self::assertSame(
+            array_map(static fn (string $text): string => 'POST /api/v1/admin/promotions, '.$text.self::NO_ROW, $texts),
+            ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
+        );
+    }
+
+    public function testABodyWithNoSchemaTypeAtAllIsReported(): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/notes', ['put' => ['requestBody' => ['content' => ['application/json' => ['schema' => []]]]]]);
+
+        self::assertSame(
+            ['PUT /api/v1/admin/notes, (body)'.self::NO_ROW],
+            ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}> the parameter `q`
+     */
+    public static function phrasesWithNoSchemaType(): iterable
+    {
+        yield 'with no schema' => [['name' => 'q', 'in' => 'query']];
+        yield 'with an empty schema' => [['name' => 'q', 'in' => 'query', 'schema' => []]];
+        yield 'with a schema of a maximum length' => [['name' => 'q', 'in' => 'query', 'schema' => ['maxLength' => 100]]];
+    }
+
+    /**
+     * @param array<string, mixed> $parameter
+     */
+    #[DataProvider('phrasesWithNoSchemaType')]
+    public function testAPhraseWhoseSchemaSaysNoTypeIsReported(array $parameter): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/new-list', ['get' => ['parameters' => [$parameter]]]);
+
+        self::assertSame(['GET /api/v1/admin/new-list, query q'.self::NO_ROW], ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()));
+    }
+
     public function testEveryContentTypeOfTheBodyIsRead(): void
     {
         $object = static fn (string $property): array => ['schema' => ['type' => 'object', 'properties' => [$property => ['type' => 'string']]]];
