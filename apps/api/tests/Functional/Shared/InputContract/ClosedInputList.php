@@ -11,7 +11,9 @@ namespace App\Tests\Functional\Shared\InputContract;
  * exist already; they generate no case.
  *
  * An operation is "METHOD /path" in the form of the OpenAPI documents (upper-case method), an input is
- * "METHOD /path, query name" or "METHOD /path, header Idempotency-Key".
+ * "METHOD /path, query name" or "METHOD /path, header Idempotency-Key". The documents are read as ClosedTextFieldList
+ * reads them (ClosedTextFieldList::operations): a path item by `$ref`, the parameters of the path item inherited by its
+ * operations, a parameter by `$ref` to `components/parameters`.
  */
 final class ClosedInputList
 {
@@ -24,18 +26,14 @@ final class ClosedInputList
     {
         $inputs = [];
         foreach ($documents as $document) {
-            $paths = $document['paths'] ?? [];
-            foreach (\is_array($paths) ? $paths : [] as $path => $item) {
-                foreach (\is_array($item) ? $item : [] as $method => $operation) {
-                    $parameters = \is_array($operation) && \is_array($operation['parameters'] ?? null) ? $operation['parameters'] : [];
-                    foreach ($parameters as $parameter) {
-                        if (!\is_array($parameter) || !\is_string($parameter['name'] ?? null)) {
-                            continue;
-                        }
-                        $input = self::input(strtoupper((string) $method), (string) $path, \is_string($parameter['in'] ?? null) ? $parameter['in'] : '', $parameter['name']);
-                        if (null !== $input) {
-                            $inputs[$input] = $input;
-                        }
+            foreach (ClosedTextFieldList::operations($document) as ['method' => $method, 'path' => $path, 'parameters' => $parameters]) {
+                foreach ($parameters as $parameter) {
+                    if (!\is_string($parameter['name'] ?? null)) {
+                        continue;
+                    }
+                    $input = self::input($method, $path, \is_string($parameter['in'] ?? null) ? $parameter['in'] : '', $parameter['name']);
+                    if (null !== $input) {
+                        $inputs[$input] = $input;
                     }
                 }
             }
@@ -83,11 +81,8 @@ final class ClosedInputList
     {
         $described = [];
         foreach ($documents as $document) {
-            $paths = $document['paths'] ?? [];
-            foreach (\is_array($paths) ? $paths : [] as $path => $item) {
-                foreach (array_keys(\is_array($item) ? $item : []) as $method) {
-                    $described[strtoupper((string) $method).' '.$path] = true;
-                }
+            foreach (ClosedTextFieldList::operations($document) as ['method' => $method, 'path' => $path]) {
+                $described["$method $path"] = true;
             }
         }
 
@@ -111,6 +106,7 @@ final class ClosedInputList
             return "$method $path, query $name";
         }
 
-        return 'header' === $location && 'Idempotency-Key' === $name ? "$method $path, header $name" : null;
+        // The name of a header is not case-sensitive.
+        return 'header' === $location && 0 === strcasecmp('Idempotency-Key', $name) ? "$method $path, header Idempotency-Key" : null;
     }
 }

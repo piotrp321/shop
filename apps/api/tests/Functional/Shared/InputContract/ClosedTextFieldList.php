@@ -47,34 +47,58 @@ final class ClosedTextFieldList
     {
         $fields = [];
         foreach ($documents as $document) {
-            $paths = $document['paths'] ?? [];
-            foreach (\is_array($paths) ? $paths : [] as $path => $item) {
-                $item = self::dereference($document, $item);
-                if (null === $item) {
-                    continue;
+            foreach (self::operations($document) as ['method' => $method, 'path' => $path, 'operation' => $operation, 'parameters' => $parameters]) {
+                $name = "$method $path";
+                foreach ($parameters as $parameter) {
+                    if ('query' === ($parameter['in'] ?? null) && 'q' === ($parameter['name'] ?? null)) {
+                        $fields["$name, query q"] = "$name, query q";
+                    }
                 }
-                $inherited = self::parameters($document, $item['parameters'] ?? null);
-                foreach (self::METHODS as $method) {
-                    $operation = $item[$method] ?? null;
-                    if (!\is_array($operation)) {
-                        continue;
-                    }
-                    $name = strtoupper($method).' '.$path;
-                    foreach (self::effectiveParameters($inherited, self::parameters($document, $operation['parameters'] ?? null)) as $parameter) {
-                        if ('query' === ($parameter['in'] ?? null) && 'q' === ($parameter['name'] ?? null)) {
-                            $fields["$name, query q"] = "$name, query q";
-                        }
-                    }
-                    foreach (self::bodySchemas($document, $operation) as $schema) {
-                        foreach (self::texts($document, $schema, '', []) as $text) {
-                            $fields["$name, $text"] = "$name, $text";
-                        }
+                foreach (self::bodySchemas($document, $operation) as $schema) {
+                    foreach (self::texts($document, $schema, '', []) as $text) {
+                        $fields["$name, $text"] = "$name, $text";
                     }
                 }
             }
         }
 
         return array_values($fields);
+    }
+
+    /**
+     * Each operation of a document, as the guards of the inputs read it (this one and ClosedInputList): the path item
+     * is followed through `$ref`, only the keys that are methods are operations, and the parameters are those of the
+     * path item and of the operation, each resolved, where an operation parameter of the same name and place takes the
+     * place of the inherited one (so one parameter is never two).
+     *
+     * @param array<string, mixed> $document
+     *
+     * @return list<array{method: string, path: string, operation: array<mixed>, parameters: list<array<mixed>>}> the method in upper case
+     */
+    public static function operations(array $document): array
+    {
+        $operations = [];
+        $paths = $document['paths'] ?? [];
+        foreach (\is_array($paths) ? $paths : [] as $path => $item) {
+            $item = self::dereference($document, $item);
+            if (null === $item) {
+                continue;
+            }
+            $inherited = self::parameters($document, $item['parameters'] ?? null);
+            foreach (self::METHODS as $method) {
+                $operation = $item[$method] ?? null;
+                if (\is_array($operation)) {
+                    $operations[] = [
+                        'method' => strtoupper($method),
+                        'path' => (string) $path,
+                        'operation' => $operation,
+                        'parameters' => self::effectiveParameters($inherited, self::parameters($document, $operation['parameters'] ?? null)),
+                    ];
+                }
+            }
+        }
+
+        return $operations;
     }
 
     /**

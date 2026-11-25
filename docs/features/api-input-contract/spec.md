@@ -196,7 +196,11 @@ odwzorowuje tabele B1, B2 i C wiersz po wierszu. Tabela jest podzielona na pliki
   zamkniętej listy (`ClosedInputListTest`, logika w `ClosedInputList`, jedna lista wierszy w `InputRows`): parametr
   zapytania albo nagłówek `Idempotency-Key` opisany w OpenAPI bez wiersza w tabeli przerywa test (dopasowanie po
   metodzie, ścieżce w postaci z OpenAPI i nazwie wejścia), tak samo trasa `/api/v1` bez wpisu w jednym z dwóch
-  dokumentów. Strażnik nie generuje przypadków. Pozostałe nagłówki z OpenAPI (`Order-Access-Token`, podpisy webhooka)
+  dokumentów. Strażnik czyta dokumenty tak jak strażnik pól tekstowych (etap 2, wspólny odczyt
+  `ClosedTextFieldList::operations`): parametry ze ścieżki (dziedziczą je wszystkie jej operacje, a parametr operacji
+  o tej samej nazwie i miejscu go zastępuje), parametry przez `$ref` do `components/parameters` i ścieżkę wskazaną
+  przez `$ref`; nazwa nagłówka nie zależy od wielkości liter. Każdą z tych prób obejścia ma osobny test na kopii
+  dokumentu. Strażnik nie generuje przypadków. Pozostałe nagłówki z OpenAPI (`Order-Access-Token`, podpisy webhooka)
   są poza tabelą.
 - **Sekcja A:** 404, 415 i 400 dla operacji z tabeli A, z poprawnym tokenem i istniejącym zasobem tam, gdzie błąd ma
   wystąpić za autoryzacją.

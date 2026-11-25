@@ -40,8 +40,9 @@ final class ClosedInputListTest extends KernelTestCase
     }
 
     /**
-     * @return iterable<string, array{array<string, mixed>, list<string>}> a path item added to a copy of a document and
-     *                                                                       the inputs the guard must report for it
+     * A path item added to a copy of a document and the inputs the guard must report for it.
+     *
+     * @return iterable<string, array{array<string, mixed>, list<string>}>
      */
     public static function inputsDeclaredByReferenceOrAboveTheOperation(): iterable
     {
