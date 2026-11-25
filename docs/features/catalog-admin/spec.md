@@ -348,7 +348,7 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
   „Zdjęcia”, „Warianty”. Kolumna boczna: „Status” (tylko
   zapisany produkt: etykieta, „Opublikuj” albo „Wycofaj z publikacji”) i „Organizacja” (kategoria główna i dodatkowe
   z drzewa, wybór z wyszukiwaniem po nazwie i ścieżce). Pracownik bez `MANAGE_PRODUCTS` widzi formularz tylko do
-  odczytu, bez akcji i bez paska zapisu. Pola tekstowe (także slug po pierwszej publikacji) mają wtedy `readonly`, nie `disabled`: wartość
+  odczytu, bez akcji i bez paska zapisu. Pola tekstowe mają wtedy `readonly`, nie `disabled` (slug po pierwszej publikacji ma `readonly` także w edytorze): wartość
   szerszą niż pole (długi parametr, SKU) da się sfokusować, zaznaczyć, przewinąć i odczytać czytnikiem ekranu. `disabled` zostaje na czas
   żądania (zablokowany `fieldset`) i dla list wyboru.
 - Pasek zapisu (przyklejony do dołu): „Niezapisane zmiany” z „Odrzuć” (przywraca produkt z ostatniej odpowiedzi API

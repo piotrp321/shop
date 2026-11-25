@@ -668,8 +668,8 @@ bez nazwy lub wartości w jednym przejściu, warianty bez SKU i EAN w drugim; br
 znaku widocznego): na `small` (2191 produktów, 7081 wariantów, `EXPLAIN ANALYZE` po `ANALYZE`, dwa pomiary) 6,7–6,9 ms
 i 2,3 ms, z czego sprawdzenie wpisów parametrów to około 5,2 ms (bez niego produkty 1,5 ms); same sprawdzenia
 `NULL` kosztowały 0,8–0,9 ms i 0,6 ms. Na `medium` nie mierzono po tej zmianie (wymaga puli zdjęć; przed zmianą 155 ms
-i 127 ms): proporcja `small` daje około 1,2 s i 0,5 s, a dla `server` i `full` ×10 około 12 s i 5 s, czyli kilka
-procent czasu `demo-data:verify`.
+i 127 ms): proporcja `small` daje około 1,2 s i 0,5 s, a dla `server` i `full` ×10 około 12 s i 5 s (szacunek);
+wobec zmierzonych 596 s całego `demo-data:verify` na `medium` to poniżej 1% czasu przebiegu `medium`.
 
 Kroki zdjęć, cen, promocji i zamówień przechodzą generator produktów i liczą teraz także opis i parametry (dane tych
 kroków bez zmian); koszt CPU tego dodatku nie był mierzony i nie wchodzi do szacunku czasu.
