@@ -236,7 +236,7 @@ final class WriteProductEndpointsTest extends WebTestCase
         $this->api('POST', self::PRODUCTS, []);
 
         self::assertSame(
-            ['name', 'slug', 'shortDescription', 'mainCategoryId', 'additionalCategoryIds', 'taxClass', 'images', 'variantAxes', 'variants'],
+            ['name', 'slug', 'shortDescription', 'brand', 'description', 'parameters', 'mainCategoryId', 'additionalCategoryIds', 'taxClass', 'images', 'variantAxes', 'variants'],
             array_column($this->violations(), 'propertyPath'),
         );
     }

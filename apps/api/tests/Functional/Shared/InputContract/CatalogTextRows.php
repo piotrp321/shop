@@ -51,6 +51,9 @@ final class CatalogTextRows
             'name' => 'Buty biegowe',
             'slug' => 'buty-biegowe',
             'shortDescription' => 'Lekkie buty na szlak.',
+            'brand' => 'Hallen',
+            'description' => "Lekkie buty na szlak.\n\nDrugi akapit.",
+            'parameters' => [['name' => 'Waga', 'value' => '2,4 kg']],
             'mainCategoryId' => '{categoryId}',
             'additionalCategoryIds' => [],
             'taxClass' => 'standard',
@@ -80,6 +83,27 @@ final class CatalogTextRows
                 wrongType: 'Krótki opis musi być tekstem.',
                 stored: TextRow::column(\sprintf(self::PRODUCT, 'short_description'), $id),
                 allowed: "\n");
+            yield TextRow::optional($operation, InputCase::STAFF, $fixture, 'brand', 'Hallen', $request,
+                noValue: '',
+                forbidden: 'Marka zawiera niedozwolone znaki.',
+                wrongType: 'Marka musi być tekstem.',
+                stored: TextRow::column(\sprintf(self::PRODUCT, 'brand'), $id));
+            yield TextRow::optional($operation, InputCase::STAFF, $fixture, 'description', 'Pierwszy akapit opisu.', $request,
+                noValue: '',
+                forbidden: 'Opis zawiera niedozwolone znaki.',
+                wrongType: 'Opis musi być tekstem.',
+                stored: TextRow::column(\sprintf(self::PRODUCT, 'description'), $id),
+                allowed: "\n");
+            yield TextRow::required($operation, InputCase::STAFF, $fixture, 'parameters[0].name', 'Waga', $request,
+                empty: 'Nazwa parametru musi mieć od 1 do 60 znaków.',
+                forbidden: 'Nazwa parametru zawiera niedozwolone znaki.',
+                wrongType: 'Nazwa parametru musi mieć od 1 do 60 znaków.',
+                stored: TextRow::column(\sprintf(self::PRODUCT, "parameters->0->>'name'"), $id));
+            yield TextRow::required($operation, InputCase::STAFF, $fixture, 'parameters[0].value', '2,4 kg', $request,
+                empty: 'Wartość parametru musi mieć od 1 do 200 znaków.',
+                forbidden: 'Wartość parametru zawiera niedozwolone znaki.',
+                wrongType: 'Wartość parametru musi mieć od 1 do 200 znaków.',
+                stored: TextRow::column(\sprintf(self::PRODUCT, "parameters->0->>'value'"), $id));
             yield TextRow::required($operation, InputCase::STAFF, $fixture, 'images[0].alt', 'Buty z boku', $request,
                 empty: 'Podaj tekst alternatywny zdjęcia.',
                 forbidden: 'Tekst alternatywny zawiera niedozwolone znaki.',

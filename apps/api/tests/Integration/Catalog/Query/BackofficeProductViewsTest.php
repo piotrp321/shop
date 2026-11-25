@@ -145,6 +145,7 @@ final class BackofficeProductViewsTest extends KernelTestCase
         $this->categories->save($extra);
         $product = $this->save([
             'name' => 'Kurtka', 'slug' => 'kurtka', 'shortDescription' => 'Ciepła', 'additionalCategories' => [$extra],
+            'brand' => 'Tarvik', 'description' => "Pierwszy.\n\nDrugi.", 'parameters' => [['name' => 'Waga', 'value' => '450 g'], ['name' => 'Materiał', 'value' => 'puch']],
             'imageAlts' => ['przód', 'tył'], 'variantAxes' => ['Kolor'], 'taxClass' => \App\Catalog\Domain\Product\TaxClassCode::EnergyBar,
             'variants' => [['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'values' => ['czarne']], ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'values' => ['białe']]],
         ], new \DateTimeImmutable('2026-11-03T10:15:30+00:00'));
@@ -157,6 +158,8 @@ final class BackofficeProductViewsTest extends KernelTestCase
         self::assertNotNull($view->firstPublishedAt);
         self::assertTrue($view->slugLocked);
         self::assertSame(['Kurtka', 'kurtka', 'Ciepła'], [$view->name, $view->slug, $view->shortDescription]);
+        self::assertSame(['Tarvik', "Pierwszy.\n\nDrugi."], [$view->brand, $view->description]);
+        self::assertSame([['Waga', '450 g'], ['Materiał', 'puch']], array_map(static fn ($parameter): array => [$parameter->name, $parameter->value], $view->parameters));
         self::assertSame($this->category->id()->toString(), $view->mainCategoryId);
         self::assertSame([$extra->id()->toString()], $view->additionalCategoryIds);
         self::assertSame('energy_bar', $view->taxClass);
