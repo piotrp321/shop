@@ -232,10 +232,16 @@ final readonly class DoctrineProductRepository implements ProductRepository
      * The key of the unique index is the comparison key of the domain, so the database never rejects a combination
      * the domain accepts (lower() of PostgreSQL maps e.g. "İ" and "i" to the same text, mb_strtolower does not).
      *
+     * The rows are inserted in the order of their SKUs, not of their positions: a write that holds the codes X and then Y
+     * while another one holds Y and then X would deadlock on the unique index of the SKU (a 500). When every write takes
+     * the codes in the same order, the later one waits for the first and then loses with `SkuAlreadyTaken`. Rows without
+     * a SKU lock nothing and come last.
+     *
      * @param list<ProductVariant> $variants
      */
     private function addVariants(ProductRecord $record, array $variants): void
     {
+        $rows = [];
         foreach ($variants as $position => $variant) {
             $variantRecord = new ProductVariantRecord($variant->id()->toString(), $record, $position);
             $variantRecord->optionValues = $variant->values()->toList();
@@ -243,6 +249,18 @@ final readonly class DoctrineProductRepository implements ProductRepository
             $variantRecord->ean = $variant->ean()?->value();
             $variantRecord->valuesKey = json_encode($variant->values()->comparisonKey(), \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR);
             $record->variants->add($variantRecord);
+            $rows[] = $variantRecord;
+        }
+
+        usort($rows, static fn (ProductVariantRecord $left, ProductVariantRecord $right): int => match (true) {
+            null === $left->sku && null === $right->sku => $left->position <=> $right->position,
+            null === $left->sku => 1,
+            null === $right->sku => -1,
+            default => strcmp($left->sku, $right->sku),
+        });
+        // Scheduled one by one in this order; the cascade of the product then finds them scheduled already.
+        foreach ($rows as $row) {
+            $this->entityManager->persist($row);
         }
     }
 
