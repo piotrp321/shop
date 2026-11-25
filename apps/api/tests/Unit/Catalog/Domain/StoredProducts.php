@@ -20,6 +20,8 @@ use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
+use App\Catalog\Domain\Product\Ean;
+use App\Catalog\Domain\Product\Sku;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Domain\Product\VariantAxes;
@@ -39,7 +41,7 @@ final class StoredProducts
     /**
      * @param list<string>                                       $imageAlts  one image per alt text
      * @param list<string>                                       $axes
-     * @param list<array{id: string, values: list<string>}>|null $variants   null: one default variant
+     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}>|null $variants null: one default variant
      * @param list<array{name: string, value: string}>           $parameters
      */
     public static function product(
@@ -140,15 +142,20 @@ final class StoredProducts
     }
 
     /**
-     * @param list<string>                                  $axes
-     * @param list<array{id: string, values: list<string>}> $variants
+     * @param list<string>                                                              $axes
+     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}> $variants a row may carry the codes of the variant
      */
     public static function variants(array $axes, array $variants): ProductVariants
     {
         return ProductVariants::create(
             VariantAxes::fromList($axes),
             array_map(
-                static fn (array $variant): ProductVariant => new ProductVariant(VariantId::fromString($variant['id']), VariantValues::fromList($variant['values'])),
+                static fn (array $variant): ProductVariant => new ProductVariant(
+                    VariantId::fromString($variant['id']),
+                    VariantValues::fromList($variant['values']),
+                    isset($variant['sku']) ? Sku::optional($variant['sku']) : null,
+                    isset($variant['ean']) ? Ean::optional($variant['ean']) : null,
+                ),
                 $variants,
             ),
         );
