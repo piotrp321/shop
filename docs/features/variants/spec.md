@@ -108,7 +108,9 @@ produktu zachowuje go, wiersz bez identyfikatora dostaje nowy UUIDv7, identyfika
 - Od pierwszej publikacji (także po wycofaniu) wariant zachowuje tożsamość: osie mają tę samą liczbę i kolejność,
   a każda nazwa i każda wartość zachowanego wariantu tę samą tożsamość tekstu (`IdentityText`:
   `docs/features/catalog-admin/spec.md`, K5; zmiana wielkości liter i znaków przycinanych z brzegów jest dozwolona,
-  np. „czarne” → „Czarne”, a tekst zapisany ze znakiem niedozwolonym przyjmuje swoją poprawkę). Naruszenie to `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail`, który nazywa wariant albo oś
+  np. „czarne” → „Czarne”, a tekst zapisany ze znakiem niedozwolonym przyjmuje swoją poprawkę). Wyjątek: druga
+  z dwóch zapisanych nazw osi o tej samej tożsamości (zapis sprzed reguły tekstów, np. „Kolor” i „Kolor” U+200B)
+  może dostać nową nazwę, a pierwsza zostaje chroniona (K5). Naruszenie to `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail`, który nazywa wariant albo oś
   zapisanym tekstem bez znaków niedozwolonych i przycinanych z brzegów, z wskazówką poprawki dla tekstu odrzucanego
   przez regułę (K5 w `docs/features/catalog-admin/spec.md`, „Tożsamość wariantu po publikacji”). Nowy wariant można dodać zawsze; inna zmiana znaczenia to dodanie nowego wariantu
   i usunięcie starego.

@@ -17,6 +17,8 @@ use App\Shared\Domain\Text;
  *   to case ("czar" U+009F "ne" keeps „czarne” and „czar ne”, not „zielone”).
  * - A stored text without a visible character, also once its forbidden characters are gone, has no text to keep: any
  *   text may take its place.
+ * - Two stored texts with one identity (texts the rule before the rule of texts took as different) are the same text
+ *   now ({@see same()}).
  */
 final class IdentityText
 {
@@ -31,14 +33,23 @@ final class IdentityText
      */
     public static function keeps(string $stored, string $given): bool
     {
-        if (!Text::hasForbiddenCharacters($stored)) {
-            $identity = self::identity($stored);
-
-            return null === $identity || $identity === self::identity($given);
+        $identity = self::storedIdentity($stored);
+        if (null === $identity) {
+            return true;
         }
-        $identity = self::identity(self::withoutWhiteSpace(self::withoutForbiddenCharacters($stored)));
 
-        return null === $identity || $identity === self::identity(self::withoutWhiteSpace($given));
+        return $identity === self::identity(Text::hasForbiddenCharacters($stored) ? self::withoutWhiteSpace($given) : $given);
+    }
+
+    /**
+     * Whether two stored texts have one identity: both have one, and it is the same (e.g. "Kolor" and "Kolor" U+200B,
+     * which the rule before the rule of texts took as two texts).
+     */
+    public static function same(string $stored, string $other): bool
+    {
+        $identity = self::storedIdentity($stored);
+
+        return null !== $identity && $identity === self::storedIdentity($other);
     }
 
     /**
@@ -119,6 +130,17 @@ final class IdentityText
         }
 
         return array_values(array_filter($stored, static fn (string $text, int $position): bool => !self::keeps($text, $given[$position]), \ARRAY_FILTER_USE_BOTH));
+    }
+
+    /**
+     * The identity a stored text keeps: the text itself, or the correction of a text the rule refuses; none for a text
+     * without a visible character.
+     */
+    private static function storedIdentity(string $stored): ?string
+    {
+        return Text::hasForbiddenCharacters($stored)
+            ? self::identity(self::withoutWhiteSpace(self::withoutForbiddenCharacters($stored)))
+            : self::identity($stored);
     }
 
     private static function identity(string $text): ?string
