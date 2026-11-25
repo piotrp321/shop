@@ -300,6 +300,47 @@ class CheckBaseImages(unittest.TestCase):
     def test_quoted_platform_flag_with_a_pinned_image_passes(self):
         self.assertClean(f'FROM --platform="linux/amd64" node:24@{DIGEST}\n')
 
+    # Escape characters in the words that hold images: Docker removes them, so the word is not read; such a word is a violation
+
+    def test_run_mount_with_an_escaped_space_before_from_fails(self):
+        self.assertViolation("FROM scratch\nRUN --mount=type=bind,target=/a\\ b,from=busybox:1 ls\n", 2)
+
+    def test_copy_with_an_escaped_space_in_an_earlier_flag_fails(self):
+        self.assertViolation("FROM scratch\nCOPY --chown=a\\ b --from=img:1 /a /a\n", 2)
+
+    def test_run_mount_with_an_escaped_character_in_the_key_fails(self):
+        self.assertViolation("FROM scratch\nRUN --mount=type=bind,target=/x,fr\\om=busybox:1 true\n", 2)
+
+    def test_escaped_character_in_the_flag_name_fails(self):
+        self.assertViolation("FROM scratch\nCOPY --fr\\om=img:1 /a /a\n", 2)
+
+    def test_escaped_character_in_the_dashes_of_a_flag_fails(self):
+        self.assertViolation("FROM scratch\nCOPY -\\-from=img:1 /a /a\n", 2)
+
+    def test_escaped_character_in_a_platform_of_from_fails(self):
+        self.assertViolation("FROM --platform=a\\ b node:24\n", 1)
+
+    def test_escaped_character_in_the_image_of_from_fails(self):
+        self.assertViolation("FROM node:\\24\n", 1)
+
+    def test_backtick_in_a_flag_word_fails(self):
+        self.assertViolation("# escape=`\nFROM scratch\nCOPY --chown=a` b --from=img:1 /a /a\n", 3)
+
+    def test_backslash_in_a_path_after_the_flags_passes(self):
+        self.assertClean(f"FROM node:24@{DIGEST}\nCOPY a\\ b /a\nRUN echo a\\ b\n")
+
+    # Text that is not an instruction of Docker but looks like one (a heredoc body)
+
+    def test_heredoc_body_with_an_apostrophe_passes(self):
+        self.assertClean(f"FROM node:24@{DIGEST}\nRUN <<EOF\ndon't panic\nEOF\n")
+
+    def test_instructions_other_than_the_checked_ones_with_an_apostrophe_pass(self):
+        self.assertClean(f"FROM node:24@{DIGEST}\nLABEL a=\"it's\"\nCMD [\"sh\", \"-c\", \"echo it's\"]\nRUN echo it's\n"
+                         "COPY it's.txt /x\n")
+
+    def test_heredoc_line_that_looks_like_a_copy_flag_with_an_apostrophe_is_not_clean(self):
+        self.assertViolation(f"FROM node:24@{DIGEST}\nRUN <<EOF\nCOPY --from=\"it's /a\nEOF\n", 3)
+
     # Files that are checked
 
     def test_new_dockerfile_in_any_directory_is_checked(self):
