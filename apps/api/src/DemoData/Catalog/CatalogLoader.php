@@ -15,7 +15,8 @@ use Doctrine\DBAL\Connection;
  * with COPY (no aggregates, no events, no outbox; the search index and the caches are refreshed by the end of
  * bin/generate-demo).
  *
- * Tables written: catalog_category, catalog_product, catalog_product_variant, catalog_product_category.
+ * Tables written: catalog_category, catalog_product, catalog_product_variant, catalog_product_category. The SKUs are
+ * unique by construction (VariantCodes), so the unique index of the column stays in place while the rows are loaded.
  */
 final readonly class CatalogLoader
 {
@@ -104,12 +105,12 @@ final readonly class CatalogLoader
         $specs = iterator_to_array($generator->part($part), false);
         $products = $this->copy->copy(
             'catalog_product',
-            ['id', 'slug', 'name', 'short_description', 'primary_category_id', 'tax_class', 'images', 'variant_axes', 'status', 'first_published_at', 'updated_by', 'updated_at', 'version'],
+            ['id', 'slug', 'name', 'short_description', 'brand', 'description', 'parameters', 'primary_category_id', 'tax_class', 'images', 'variant_axes', 'status', 'first_published_at', 'updated_by', 'updated_at', 'version'],
             $this->productRows($specs),
         );
         $variants = $this->copy->copy(
             'catalog_product_variant',
-            ['id', 'product_id', 'position', 'option_values', 'values_key'],
+            ['id', 'product_id', 'position', 'option_values', 'values_key', 'sku', 'ean'],
             $this->variantRows($specs),
         );
         $this->copy->copy('catalog_product_category', ['product_id', 'category_id'], $this->linkRows($specs));
@@ -130,6 +131,9 @@ final readonly class CatalogLoader
                 $spec->slug,
                 $spec->name,
                 $spec->shortDescription,
+                $spec->brand,
+                $spec->description,
+                json_encode($spec->parameters, \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR),
                 $spec->primaryCategoryId,
                 $spec->taxClass,
                 '[]',
@@ -152,7 +156,7 @@ final readonly class CatalogLoader
     {
         foreach ($specs as $spec) {
             foreach ($spec->variants as $variant) {
-                yield [$variant->id, $spec->id, $variant->position, json_encode($variant->values, \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR), $variant->valuesKey];
+                yield [$variant->id, $spec->id, $variant->position, json_encode($variant->values, \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR), $variant->valuesKey, $variant->sku, $variant->ean];
             }
         }
     }

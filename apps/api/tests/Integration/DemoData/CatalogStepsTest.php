@@ -6,6 +6,7 @@ namespace App\Tests\Integration\DemoData;
 
 use App\Catalog\Application\Command\CreateCategory;
 use App\Catalog\Domain\Category\CategoryId;
+use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductBrand;
@@ -14,11 +15,13 @@ use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductParameter;
 use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
+use App\Catalog\Domain\Product\Sku;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Domain\Product\VariantAxes;
@@ -344,6 +347,54 @@ final class CatalogStepsTest extends KernelTestCase
 
             self::assertSame($storage->store($contents), ImageKeys::forContents($contents), $file);
         }
+    }
+
+    public function testTheBrandDescriptionParametersAndCodesAreWrittenAndPassTheRulesOfTheCatalogUnchanged(): void
+    {
+        $this->succeeds('demo-data:categories');
+        $this->succeeds('demo-data:products', ['--products' => '300']);
+        $connection = $this->connection();
+
+        $products = $connection->fetchAllAssociative('SELECT slug, name, short_description, brand, description, parameters FROM catalog_product');
+        self::assertCount(300, $products);
+        foreach ($products as $row) {
+            $name = $this->text($row['name']);
+            $brand = $this->text($row['brand']);
+            $description = $this->text($row['description']);
+            self::assertNotSame('', $brand, $name);
+            self::assertStringContainsString(' '.$brand.' ', $name);
+            self::assertSame($brand, ProductBrand::of($brand)->value());
+            self::assertGreaterThanOrEqual(300, mb_strlen($description), $name);
+            self::assertLessThanOrEqual(600, mb_strlen($description), $name);
+            self::assertNotSame($this->text($row['short_description']), $description);
+            self::assertSame($description, ProductDescription::of($description)->value());
+
+            $parameters = json_decode($this->text($row['parameters']), true, flags: \JSON_THROW_ON_ERROR);
+            self::assertIsArray($parameters);
+            self::assertGreaterThanOrEqual(3, \count($parameters), $name);
+            self::assertLessThanOrEqual(6, \count($parameters), $name);
+            $built = [];
+            foreach ($parameters as $parameter) {
+                self::assertIsArray($parameter);
+                self::assertSame(['name', 'value'], array_keys($parameter));
+                $built[] = ProductParameter::of(Sql::string($parameter['name']), Sql::string($parameter['value']));
+                self::assertSame([$parameter['name'], $parameter['value']], [end($built)->name(), end($built)->value()]);
+            }
+            ProductParameters::create($built);
+        }
+
+        $variants = $connection->fetchAllAssociative('SELECT sku, ean FROM catalog_product_variant');
+        self::assertGreaterThan(300, \count($variants));
+        $skus = [];
+        foreach ($variants as $row) {
+            $sku = $this->text($row['sku']);
+            $ean = $this->text($row['ean']);
+            self::assertSame($sku, Sku::optional($sku)?->value());
+            self::assertSame($ean, Ean::optional($ean)?->value());
+            self::assertStringStartsWith('2', $ean);
+            $skus[] = $sku;
+        }
+        self::assertCount(\count($skus), array_unique($skus), 'The SKUs are unique, so the unique index of the table never fires.');
     }
 
     public function testTheGeneratorStaysInsideTheRulesOfTheProductGenerator(): void

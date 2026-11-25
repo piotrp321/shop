@@ -37,11 +37,14 @@ final class ProfilesTest extends TestCase
     {
         $profiles = $this->real();
 
-        // medium: measured (the peak of the VM against the first reading, 20.52 GB, revision aceeab48, 2026-11-19); server and
-        // full: extrapolated from the sizes of that run, not measured (docs/features/demo-data/spec.md, "k3d").
-        self::assertSame(21, $profiles->get('medium')->diskPeakGb);
-        self::assertSame(96, $profiles->get('server')->diskPeakGb);
-        self::assertSame(250, $profiles->get('full')->diskPeakGb);
+        // All three are estimates, none verified by a run with the current generator: the peak of the run of medium
+        // without the content fields of the products (20.52 GB measured, revision aceeab48, 2026-11-19; server 95.2 GB and
+        // full 249.7 GB extrapolated from it) plus the estimated growth from the content fields and the SKU index
+        // (1.78 GB, 17.85 GB, 17.85 GB), rounded up to a whole GB (docs/features/demo-data/spec.md, "Rozmiar i czas pól
+        // treści produktów").
+        self::assertSame(23, $profiles->get('medium')->diskPeakGb);
+        self::assertSame(114, $profiles->get('server')->diskPeakGb);
+        self::assertSame(268, $profiles->get('full')->diskPeakGb);
         self::assertGreaterThan(0, $profiles->get('small')->diskPeakGb);
     }
 
