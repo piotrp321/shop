@@ -727,7 +727,7 @@ danych”. Ten sam wynik jest w rekordzie epiku natywnego (`ci.time`).
   oczekiwanie na runner między jobami, więc nie jest czasem „bez kolejek”), i czas wykonania każdego joba (`checks part
   *`, `e2e shard *`; bez jobów zbiorczych `aggregate_jobs`).
 - **Część nieaktywna:** część `checks` bez pracy dla zakresu zmiany (część `k8s` w pełnym CI zmiany, która nie dotyka
-  `infra/k8s/**` ani `.github/workflows/**`) kończy się w kilka sekund krokiem `inactive_step` („Nothing to run in this
+  `infra/k8s/**`, `.github/workflows/**` ani `infra/docker-compose.yml`) kończy się w kilka sekund krokiem `inactive_step` („Nothing to run in this
   part for the scope of the change”). Jej czas nie jest czasem joba: w tym przebiegu job nie wchodzi do bazy, median
   ani porównań (przebieg zostaje porównywalny, czas całego przebiegu liczy się jak zwykle). Baza joba to więc mediana
   przebiegów, w których był aktywny, z tym samym minimum `min_baseline_runs`; za mało takich przebiegów to brak danych

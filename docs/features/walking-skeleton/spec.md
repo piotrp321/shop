@@ -164,7 +164,7 @@ są placeholderami podstawianymi przez Keycloak z env.
 | Klient OIDC | `store`: confidential, Authorization Code + PKCE S256, tylko standard flow | `admin`: public, Authorization Code + PKCE S256, tylko standard flow |
 | Przekierowania | `${STORE_URL}/auth/callback`; po wylogowaniu `${STORE_URL}/` | `${ADMIN_URL}/*`; web origin `${ADMIN_URL}` |
 | Audience w access tokenie | `shop-api` (mapper audience) | `backoffice-api` (mapper audience) |
-| Rejestracja | włączona, login e-mailem, weryfikacja e-mail wymagana | wyłączona |
+| Rejestracja | włączona, login e-mailem, weryfikacja e-mail wymagana; formularz bez hasła (e-mail, imię, nazwisko), hasło klient ustawia po otwarciu linku z e-maila weryfikacyjnego i dopiero wtedy jest zalogowany | wyłączona |
 | Reset hasła | włączony | wyłączony |
 | SMTP | `mailpit:1025`, nadawca `sklep@example.com` | brak |
 | 2FA | brak | własny browser flow z formularzem OTP jako krok wymaganym; polityka TOTP: SHA1, 6 cyfr, 30 s; nowe konto dostaje wymaganą akcję `CONFIGURE_TOTP` |
@@ -991,8 +991,9 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
 1. Katalog: strona główna pokazuje produkty z załadowanymi zdjęciami; wybór kategorii pokazuje też produkty
    z podkategorii; paginacja działa.
 2. Klient: logowanie kontem demo, „Zalogowany jako …”, wylogowanie.
-3. Rejestracja: nowe konto na unikalny adres, e-mail weryfikacyjny w Mailpicie (API Mailpita), otwarcie linku,
-   konto zweryfikowane i zalogowane w sklepie.
+3. Rejestracja: formularz bez pola hasła, nowe konto na unikalny adres, e-mail weryfikacyjny w Mailpicie (API
+   Mailpita), otwarcie linku, ustawienie hasła na stronie Keycloaka, klient zalogowany w sklepie; po wylogowaniu
+   logowanie tym hasłem działa.
 4. Pracownik: `admin` loguje się hasłem i kodem TOTP wyliczonym ze stałego sekretu i widzi oba działy dashboardu;
    `support` widzi dział „Katalog” bez działu „Stan systemu”.
 

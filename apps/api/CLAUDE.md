@@ -7,7 +7,11 @@ pola, przebiegi, komendy) opisują specyfikacje w `docs/features/<funkcja>/spec.
 ## Komendy
 
 Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
-- `check` – PHPStan, Deptrac, PHP CS Fixer
+- `check` – PHPStan, Deptrac, PHP CS Fixer i `audit`
+- `audit` – `composer audit --locked --no-dev --abandoned=report`: każde ogłoszenie bezpieczeństwa dla pakietu
+  produkcyjnego z `composer.lock` kończy cel błędem (ogłoszenia nie mają wagi), pakiety porzucone są tylko wypisywane;
+  błąd narzędzia i brak sieci to też błąd. Wyjątek to wyłącznie wpis `config.audit.ignore` w `composer.json`
+  z identyfikatorem ogłoszenia i powodem; zwykle zależność się aktualizuje (`composer update <pakiet>`)
 - `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ); dodatkowe
   argumenty PHPUnit w `PHPUNIT_ARGS`, np. `make -C apps/api test-unit PHPUNIT_ARGS='--filter CartTest'`.
   CI uruchamia suity `unit`, `integration`, `demo-data`, `demo-data-orders` i `functional` z `phpunit.dist.xml` po

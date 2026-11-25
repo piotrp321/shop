@@ -267,7 +267,7 @@ zbudować inny obraz produkcyjny.
 | Plik | Dziś | Po zmianie |
 |---|---|---|
 | `apps/api/Dockerfile` (`FROM`, etap `runtime`) | `dunglas/frankenphp:1.13.5-php8.5.12-trixie` | `dunglas/frankenphp:1.13.6-php8.5.13-trixie@sha256:…` (najnowsze wydanie poprawkowe linii 1.13; 1.14.0 to nowa linia) |
-| `apps/api/Dockerfile` (`COPY --from`) | `composer:2.10.3` | ten sam tag z `@sha256:…` |
+| `apps/api/Dockerfile` (`COPY --from`) | `composer:2.10.3` | etap `FROM composer:2.10.3@sha256:… AS composer` i `COPY --from=composer …`: Dependabot aktualizuje tylko linie `FROM`, więc obraz w `COPY --from` nigdy nie dostałby aktualizacji (D3) |
 | `apps/store/Dockerfile`, `apps/admin/Dockerfile` (etap `node`) | `node:24.22.3-alpine` | ten sam tag z `@sha256:…` (bieżące wydanie linii 24) |
 | `apps/admin/Dockerfile` (etap `prod`) | `nginxinc/nginx-unprivileged:1.30.6-alpine` | ten sam tag z `@sha256:…` (bieżące wydanie linii 1.30) |
 | `e2e/Dockerfile` | `mcr.microsoft.com/playwright:v1.64.1-noble` | ten sam tag z `@sha256:…` (T6) |
@@ -367,7 +367,8 @@ Wykonywane razem z implementacją, w zadaniu, które zmienia opisane zachowanie:
 - **Nowa budowa pod tym samym tagiem może pozostać niezauważona** (D5, T2): digest jest sprawdzany przy aktualizacji
   obrazu, nie stale, więc CI jej nie pokaże. Compose trzyma sam tag, a Dependabot porównuje wersje tagów, więc może
   nie zgłosić budowy opublikowanej pod tym samym tagiem (jak `26.8.2-3` po `26.8.2-2`). Chart działa wtedy dalej na
-  przypiętym digeście, a lokalny stos i CI pobierają bieżącą budowę tagu.
+  przypiętym digeście, a CI (świeży runner) pobiera bieżącą budowę tagu. Lokalny `make up` nie pobiera obrazu, który
+  już jest w pamięci Dockera: maszyna z wcześniejszą budową tagu zostaje na niej do `docker compose pull`.
 - **Audyty zależą od usług zewnętrznych** (Packagist, rejestr npm): ich awaria zatrzymuje `checks` do ponowienia.
 - **Dependabot proponuje też nowe linie** (imgproxy 4, FrankenPHP 1.14): PR to sygnał, nie zobowiązanie; przyjęcie
   nowej linii to osobna decyzja.
