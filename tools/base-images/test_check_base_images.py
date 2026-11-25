@@ -232,6 +232,72 @@ class CheckBaseImages(unittest.TestCase):
     def test_escape_directive_after_another_directive_still_applies(self):
         self.assertViolation("# syntax=docker/dockerfile:1\n# escape=`\nFROM scratch\nCOPY `\n  --from=img:1 /a /a\n", 4)
 
+    # Values of flags in quotes: BuildKit reads `--mount` as CSV and removes shell quotes from words and values
+
+    def test_run_mount_from_in_a_quoted_csv_field_fails(self):
+        self.assertViolation('FROM scratch\nRUN --mount=type=bind,"from=busybox:1.37.0",target=/x ls /x\n', 2)
+
+    def test_run_mount_from_in_a_quoted_csv_field_with_a_pinned_image_passes(self):
+        self.assertClean(f'FROM scratch\nRUN --mount=type=bind,"from=busybox:1.37.0@{DIGEST}",target=/x ls /x\n')
+
+    def test_run_mount_from_as_the_first_quoted_field_fails(self):
+        self.assertViolation('FROM scratch\nRUN --mount="from=busybox:1",type=bind,target=/x ls /x\n', 2)
+
+    def test_run_mount_from_with_a_quoted_value_fails(self):
+        self.assertViolation('FROM scratch\nRUN --mount=type=bind,from="busybox:1",target=/x ls /x\n', 2)
+
+    def test_run_mount_from_with_a_quoted_pinned_value_passes(self):
+        self.assertClean(f'FROM scratch\nRUN --mount=type=bind,from="busybox:1@{DIGEST}",target=/x ls /x\n')
+
+    def test_run_mount_with_the_whole_value_in_quotes_fails(self):
+        self.assertViolation('FROM scratch\nRUN --mount="type=bind,from=busybox:1,target=/x" ls /x\n', 2)
+
+    def test_run_mount_with_the_whole_value_in_quotes_and_a_pinned_image_passes(self):
+        self.assertClean(f'FROM scratch\nRUN --mount="type=bind,from=busybox:1@{DIGEST},target=/x" ls /x\n')
+
+    def test_run_mount_key_in_another_case_fails(self):
+        self.assertViolation('FROM scratch\nRUN --mount=type=bind,"FROM=busybox:1",target=/x ls /x\n', 2)
+        self.assertViolation('FROM scratch\nRUN --MOUNT=type=bind,From=busybox:1,target=/x ls /x\n', 2, path="b/Dockerfile")
+
+    def test_run_mount_from_an_earlier_stage_in_quotes_passes(self):
+        self.assertClean(f'FROM node:24@{DIGEST} AS build\nRUN --mount=type=bind,"from=build",target=/x ls /x\n')
+
+    def test_run_mount_with_an_unterminated_quote_fails(self):
+        self.assertViolation('FROM scratch\nRUN --mount=type=bind,"from=busybox:1,target=/x ls /x\n', 2)
+
+    def test_onbuild_run_mount_from_in_a_quoted_csv_field_fails(self):
+        self.assertViolation('FROM scratch\nONBUILD RUN --mount=type=bind,"from=img:1",target=/b true\n', 2)
+
+    def test_run_mount_without_from_passes(self):
+        self.assertClean('FROM scratch\nRUN --mount=type=cache,"target=/c",id="x,y" true\n'.replace("FROM scratch", f"FROM node:24@{DIGEST}"))
+
+    def test_quoted_copy_from_image_fails(self):
+        self.assertViolation('FROM scratch\nCOPY --from="composer:2" /a /a\n', 2)
+        self.assertViolation("FROM scratch\nADD --from='busybox:1' /a /a\n", 2, path="b/Dockerfile")
+
+    def test_quoted_pinned_copy_from_image_passes(self):
+        self.assertClean(f'FROM scratch\nCOPY --from="composer:2@{DIGEST}" /a /a\n')
+
+    def test_quoted_copy_from_an_earlier_stage_passes(self):
+        self.assertClean(f'FROM node:24@{DIGEST} AS build\nCOPY --from="build" /a /a\n')
+
+    def test_copy_from_with_an_unterminated_quote_fails(self):
+        self.assertViolation('FROM scratch\nCOPY --from="composer:2 /a /a\n', 2)
+
+    def test_quoted_from_image_fails(self):
+        self.assertViolation('FROM "node:24"\n', 1)
+        self.assertViolation("FROM 'node:24' AS build\n", 1, path="b/Dockerfile")
+
+    def test_quoted_pinned_from_image_passes(self):
+        self.assertClean(f'FROM "node:24@{DIGEST}" AS build\nFROM \'node:24@{DIGEST}\'\n')
+
+    def test_quoted_platform_with_a_space_does_not_hide_the_image(self):
+        self.assertViolation('FROM --platform="linux/amd64 x" node:24\n', 1)
+        self.assertClean(f'FROM --platform="linux/amd64 x" node:24@{DIGEST}\n', path="b/Dockerfile")
+
+    def test_quoted_platform_flag_with_a_pinned_image_passes(self):
+        self.assertClean(f'FROM --platform="linux/amd64" node:24@{DIGEST}\n')
+
     # Files that are checked
 
     def test_new_dockerfile_in_any_directory_is_checked(self):
