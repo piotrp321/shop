@@ -27,17 +27,17 @@ final class ClosedTextFieldListTest extends KernelTestCase
 
         $described = ClosedTextFieldList::describedFields($documents);
         self::assertCount(7, array_filter($described, static fn (string $field): bool => str_contains($field, ', query q')));
-        self::assertCount(48, array_filter($described, static fn (string $field): bool => !str_contains($field, ', query q')));
+        self::assertCount(49, array_filter($described, static fn (string $field): bool => !str_contains($field, ', query q')));
         self::assertContains('POST /api/v1/orders, email', $described, 'a format outside the closed list is a text');
         self::assertNotContains('POST /api/v1/admin/discount-codes, startsAt', $described, 'date-time is outside the guard');
         self::assertNotContains('POST /api/v1/admin/orders/{orderId}/status-changes, transition', $described, 'an enum is outside the guard');
         self::assertNotContains('POST /api/v1/admin/products, mainCategoryId', $described, 'uuid is outside the guard');
 
         self::assertSame([], ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()));
-        // Each described text is covered once by a row or an exception: 40 rows of fields plus 15 excepted ones.
+        // Each described text is covered once by a row or an exception: 40 rows of fields plus 16 excepted ones.
         self::assertCount(40, array_unique(ClosedTextFieldList::coveredFields(TextRows::all())));
-        self::assertCount(15, ClosedTextFieldList::excepted(TextFieldExceptions::all()));
-        self::assertCount(55, $described);
+        self::assertCount(16, ClosedTextFieldList::excepted(TextFieldExceptions::all()));
+        self::assertCount(56, $described);
     }
 
     public function testTheExceptionsAreTheTextsOutsideTheRuleOfTheSpec(): void
@@ -45,7 +45,7 @@ final class ClosedTextFieldListTest extends KernelTestCase
         $exceptions = TextFieldExceptions::all();
 
         self::assertSame(
-            ['slug', 'taxClass', 'images[].key', 'code', 'trackingNumber', 'trackingUrlTemplate', 'discountCode'],
+            ['slug', 'taxClass', 'images[].key', 'code', 'trackingNumber', 'trackingUrlTemplate', 'discountCode', '.*'],
             array_column($exceptions, 'field'),
         );
         foreach ($exceptions as $exception) {
@@ -335,6 +335,111 @@ final class ClosedTextFieldListTest extends KernelTestCase
             array_map(static fn (string $text): string => 'POST /api/v1/admin/promotions, '.$text.self::NO_ROW, $texts),
             ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
         );
+    }
+
+    /**
+     * An object with no `properties`, no `additionalProperties` and no composition allows any member of any value, as
+     * `additionalProperties: true` does (OpenAPI 3.0), so it is reported like it: `<name>.*`, and `.*` for a body. The
+     * same holds for a list with no `items`.
+     *
+     * @return iterable<string, array{array<string, mixed>, list<string>}> the schema of the property `data` and the texts it holds
+     */
+    public static function freeFormSchemas(): iterable
+    {
+        $string = ['type' => 'string'];
+
+        yield 'an object' => [['type' => 'object'], ['data.*']];
+        yield 'a nullable object' => [['type' => 'object', 'nullable' => true], ['data.*']];
+        yield 'an object in a list of types' => [['type' => ['object', 'null']], ['data.*']];
+        yield 'an object with a description only' => [['type' => 'object', 'description' => 'Any.'], ['data.*']];
+        yield 'an object with the required keys only' => [['type' => 'object', 'required' => ['a']], ['data.*']];
+        yield 'an object with empty properties' => [['type' => 'object', 'properties' => []], ['data.*']];
+        yield 'an object in a list of objects' => [['type' => 'array', 'items' => ['type' => 'object']], ['data[].*']];
+        yield 'an object in the properties of an object' => [['type' => 'object', 'properties' => ['inner' => ['type' => 'object']]], ['data.inner.*']];
+        yield 'an object as additionalProperties' => [['type' => 'object', 'additionalProperties' => ['type' => 'object']], ['data.*.*']];
+        yield 'a list' => [['type' => 'array'], ['data[]']];
+        yield 'a nullable list' => [['type' => 'array', 'nullable' => true], ['data[]']];
+        yield 'a list in a list of types' => [['type' => ['array', 'null']], ['data[]']];
+        yield 'a list of lists' => [['type' => 'array', 'items' => ['type' => 'array']], ['data[][]']];
+
+        // Controls: what says more than "any object" or "any list" adds nothing beyond its own fields.
+        yield 'an object that allows no other member' => [['type' => 'object', 'additionalProperties' => false], []];
+        yield 'an object with properties' => [['type' => 'object', 'properties' => ['a' => $string]], ['data.a']];
+        yield 'an object with properties of numbers' => [['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]], []];
+        yield 'an object with a closed list of members' => [['type' => 'object', 'properties' => ['a' => ['type' => 'integer']], 'additionalProperties' => false], []];
+        yield 'an object of numbers' => [['type' => 'object', 'additionalProperties' => ['type' => 'integer']], []];
+        yield 'an object with allOf' => [['type' => 'object', 'allOf' => [['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]]]], []];
+        yield 'an object that is a reference' => [['$ref' => '#/components/schemas/Closed'], []];
+        yield 'a list of numbers' => [['type' => 'array', 'items' => ['type' => 'integer']], []];
+        yield 'a list of objects with properties' => [['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]]], []];
+        yield 'a list that is a reference' => [['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Closed']], []];
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @param list<string>         $texts
+     */
+    #[DataProvider('freeFormSchemas')]
+    public function testAnObjectOrAListThatSaysNothingOfItsMembersIsReported(array $schema, array $texts): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withComponent($documents[1], 'schemas', 'Closed', ['type' => 'object', 'additionalProperties' => false]);
+        $documents[1] = self::withBodyProperty($documents[1], '/api/v1/admin/promotions', 'post', 'data', $schema);
+
+        self::assertSame(
+            array_map(static fn (string $text): string => 'POST /api/v1/admin/promotions, '.$text.self::NO_ROW, $texts),
+            ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}> the schema of the body
+     */
+    public static function freeFormBodies(): iterable
+    {
+        yield 'an object' => [['type' => 'object']];
+        yield 'a nullable object' => [['type' => 'object', 'nullable' => true]];
+        yield 'an object in a list of types' => [['type' => ['object', 'null']]];
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    #[DataProvider('freeFormBodies')]
+    public function testABodyThatIsAnObjectOfAnyMembersIsReportedAsAny(array $schema): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/new-events', ['post' => ['requestBody' => ['content' => ['application/json' => ['schema' => $schema]]]]]);
+
+        self::assertSame(
+            ['POST /api/v1/admin/new-events, .*'.self::NO_ROW],
+            ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()),
+        );
+    }
+
+    public function testABodyThatIsAnObjectThatAllowsNoMembersIsNotReported(): void
+    {
+        $documents = $this->documents();
+        $documents[1] = self::withPathItem($documents[1], '/api/v1/admin/new-events', ['post' => ['requestBody' => ['content' => ['application/json' => ['schema' => ['type' => 'object', 'additionalProperties' => false]]]]]]);
+
+        self::assertSame([], ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()));
+    }
+
+    /**
+     * The body of the webhooks of the payment providers is `{"type": "object"}`: the one body of the documents that is
+     * an object of any members. Without its entry the guard reports it.
+     */
+    public function testTheBodyOfThePaymentWebhooksNeedsItsEntryOfTheList(): void
+    {
+        $documents = $this->documents();
+        $exceptions = array_values(array_filter(TextFieldExceptions::all(), static fn (array $exception): bool => '.*' !== $exception['field']));
+        self::assertCount(\count(TextFieldExceptions::all()) - 1, $exceptions);
+
+        self::assertSame(
+            ['POST /api/v1/payments/webhooks/{provider}, .*'.self::NO_ROW],
+            ClosedTextFieldList::violations($documents, TextRows::all(), $exceptions),
+        );
+        self::assertContains('POST /api/v1/payments/webhooks/{provider}, .*', ClosedTextFieldList::describedFields($documents));
     }
 
     public function testABodyWithNoSchemaTypeAtAllIsReported(): void
