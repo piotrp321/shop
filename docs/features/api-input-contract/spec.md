@@ -555,8 +555,15 @@ teksty z samego znaku Co i Cn, które nie są puste; teksty z T5; długość po 
   pole bez wiersza i bez wpisu (bez formatu, z formatem spoza zamkniętej listy, w liście obiektów, parametr `q`
   nowej listy), wiersz pola, którego dokumenty nie opisują, wpis bez powodu (powód pusty według reguły tekstu, także
   złożony z samych znaków niewidocznych, np. U+200B albo U+3164), wpis dla pola, którego dokumenty nie
-  opisują, i tabela bez wiersza `POST /orders` `email` (test usuwa ten wiersz z kopii tabeli). Strażnik nie generuje
-  przypadków i nie zmienia tabeli.
+  opisują, i tabela bez wiersza `POST /orders` `email` (test usuwa ten wiersz z kopii tabeli). Strażnik czyta każdy
+  sposób, którym dokument OpenAPI 3.0 opisuje takie pole, i ma na to próby obejścia na kopiach dokumentów: ścieżkę
+  wskazaną przez `$ref`; parametr `q` ze ścieżki (dziedziczą go wszystkie jej operacje, a parametr operacji o tej samej
+  nazwie i miejscu go zastępuje, więc nie liczy się dwa razy) i z `components/parameters`; treść żądania z
+  `components/requestBodies` (także przez łańcuch referencji) w każdym typie treści; schemat przez `$ref` na dowolnej
+  głębokości (cykl się kończy), `allOf`, `oneOf`, `anyOf`, `additionalProperties`, zagnieżdżone `items` i `type`
+  z `null`; treść, która sama jest tekstem (`(body)`). Poza strażnikiem celowo: referencje poza dokumentem, `not`,
+  słowa schematu z OpenAPI 3.1 (dokumenty są 3.0.3) i parametr-obiekt, który styl `form` rozwija w parametry (generator
+  zapisuje każdy parametr zapytania osobno). Strażnik nie generuje przypadków i nie zmienia tabeli.
 - **Granice:** mechanizm nie mutuje innych pól, nie generuje wartości ze schematów i zawiera tylko przypadki tej
   sekcji.
 

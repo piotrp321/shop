@@ -189,8 +189,9 @@ final class ClosedTextFieldListTest extends KernelTestCase
     }
 
     /**
-     * @return iterable<string, array{array<string, mixed>, array<string, array<string, mixed>>, list<string>}> the schema of the
-     *                                                                                                           property `data`, the schemas of the components it needs, the texts it holds
+     * The schema of the property `data`, the schemas of the components it needs and the texts it holds.
+     *
+     * @return iterable<string, array{array<string, mixed>, array<string, array<string, mixed>>, list<string>}>
      */
     public static function constructsThatDescribeATextOfTheBody(): iterable
     {
