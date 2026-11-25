@@ -22,7 +22,8 @@ use Symfony\Component\Uid\Uuid;
  * The variants of a product are the product of the values of its axes in file order (the first axis varies slowest);
  * a product without axes has one default variant. Ids are UUID v5 in the definition's namespace: 'category:<slug path>',
  * 'product:<slug>' and 'variant:<variant key>' (<slug>/standard for the default variant). The key is the one of
- * Catalog's VariantKey, so a repeated key is rejected like a repeated slug.
+ * Catalog's VariantKey, so a repeated key is rejected like a repeated slug. The brand of a product is the brand of its name;
+ * its SKUs and EANs come from DemoVariantCodes, and a repeated SKU is rejected like a repeated key.
  */
 final readonly class DemoCatalogExpander
 {
@@ -44,6 +45,7 @@ final readonly class DemoCatalogExpander
         $products = [];
         $slugs = [];
         $variantKeys = [];
+        $skus = [];
         $index = 0;
         foreach ($definition->templates as $template) {
             $main = $this->categoryId($idsByPath, $template->category);
@@ -65,7 +67,17 @@ final readonly class DemoCatalogExpander
                             throw new \InvalidArgumentException(\sprintf('The variant key "%s" is produced more than once.', $variantKey));
                         }
                         $variantKeys[$variantKey] = true;
-                        $variants[] = ['id' => Uuid::v5($namespace, 'variant:'.$variantKey)->toRfc4122(), 'values' => $values];
+                        $sku = DemoVariantCodes::sku($brand, $model['name'], $values);
+                        if (isset($skus[$sku])) {
+                            throw new \InvalidArgumentException(\sprintf('The SKU "%s" of the product "%s" is produced more than once.', $sku, $slug));
+                        }
+                        $skus[$sku] = true;
+                        $variants[] = [
+                            'id' => Uuid::v5($namespace, 'variant:'.$variantKey)->toRfc4122(),
+                            'values' => $values,
+                            'sku' => $sku,
+                            'ean' => DemoVariantCodes::ean($variantKey),
+                        ];
                     }
 
                     $products[] = new DemoProduct(
@@ -73,6 +85,9 @@ final readonly class DemoCatalogExpander
                         $name,
                         $slug,
                         $model['description'],
+                        $brand,
+                        $this->description($template, $model),
+                        $this->parameters($template, $model),
                         $main,
                         $additional,
                         $template->taxClass,
@@ -135,6 +150,55 @@ final readonly class DemoCatalogExpander
         }
 
         return $combinations;
+    }
+
+    /**
+     * The own description of the model in whole, or its sentence followed by the paragraphs of the type; paragraphs are
+     * separated by a blank line.
+     *
+     * @param array{name: string, description: string, parameters: list<array{name: string, value: string}>, fullDescription: list<string>} $model
+     */
+    private function description(DemoProductTemplate $template, array $model): string
+    {
+        $paragraphs = [] !== $model['fullDescription'] ? $model['fullDescription'] : [$model['description'], ...$template->description];
+
+        return implode("\n\n", $paragraphs);
+    }
+
+    /**
+     * The parameters of the type; one of the model with the same name (trimmed, without regard to case) takes its place,
+     * the others follow. A name repeated within the parameters of the model, or of the type, stays repeated for the
+     * domain to refuse.
+     *
+     * @param array{name: string, description: string, parameters: list<array{name: string, value: string}>, fullDescription: list<string>} $model
+     *
+     * @return list<array{name: string, value: string}>
+     */
+    private function parameters(DemoProductTemplate $template, array $model): array
+    {
+        $parameters = $template->parameters;
+        $ofType = [];
+        foreach ($parameters as $position => $parameter) {
+            $ofType[$this->nameKey($parameter['name'])] ??= $position;
+        }
+
+        $ofModel = [];
+        foreach ($model['parameters'] as $parameter) {
+            $key = $this->nameKey($parameter['name']);
+            if (isset($ofType[$key]) && !isset($ofModel[$key])) {
+                $parameters[$ofType[$key]] = $parameter;
+            } else {
+                $parameters[] = $parameter;
+            }
+            $ofModel[$key] = true;
+        }
+
+        return $parameters;
+    }
+
+    private function nameKey(string $name): string
+    {
+        return mb_strtolower(trim($name));
     }
 
     /**

@@ -8,18 +8,23 @@ use App\Catalog\Domain\Product\VariantAxes;
 
 /**
  * A product template of the demo definition: the products are the product of brands and models (the name never holds
- * a variant value); the variants of a product are the product of the values of its 0-2 variant axes.
+ * a variant value); the variants of a product are the product of the values of its 0-2 variant axes. The optional
+ * "description" (paragraphs) and "parameters" are those of the type; a model adds "parameters" of its own (one of the
+ * same name replaces the one of the type) or has a "fullDescription" (paragraphs) that takes the place of its sentence
+ * and of the paragraphs of the type.
  */
 final readonly class DemoProductTemplate
 {
     /**
-     * @param list<string>                                                                                        $additionalCategories slug paths
-     * @param non-empty-list<string>                                                                              $brands
-     * @param non-empty-list<array{name: string, description: string}>                                            $models
-     * @param list<string>                                                                                        $variantAxes          names of the axes, none for a default variant
-     * @param list<non-empty-list<string>>                                                                        $axisValues           one list of values per axis, in the order of the axes
-     * @param non-empty-list<array{file: string, alt: string}>                                                    $images               the pool of the template
-     * @param list<array{brand: string, model: string, images: non-empty-list<array{file: string, alt: string}>}> $productImages        the images of single products (brand + model), taken instead of the pool
+     * @param list<string>                                                                                                                                             $additionalCategories slug paths
+     * @param non-empty-list<string>                                                                                                                                   $brands
+     * @param non-empty-list<array{name: string, description: string, parameters: list<array{name: string, value: string}>, fullDescription: list<string>}>            $models               fullDescription is empty for a model without its own description
+     * @param list<string>                                                                                                                                             $variantAxes          names of the axes, none for a default variant
+     * @param list<non-empty-list<string>>                                                                                                                             $axisValues           one list of values per axis, in the order of the axes
+     * @param non-empty-list<array{file: string, alt: string}>                                                                                                         $images               the pool of the template
+     * @param list<array{brand: string, model: string, images: non-empty-list<array{file: string, alt: string}>}>                                                         $productImages        the images of single products (brand + model), taken instead of the pool
+     * @param list<string>                                                                                                                                             $description          the paragraphs of the type, none for a type without
+     * @param list<array{name: string, value: string}>                                                                                                                 $parameters           the parameters of the type in presentation order
      */
     public function __construct(
         public string $category,
@@ -32,6 +37,8 @@ final readonly class DemoProductTemplate
         public array $axisValues,
         public array $images,
         public array $productImages = [],
+        public array $description = [],
+        public array $parameters = [],
     ) {
     }
 
@@ -72,6 +79,8 @@ final readonly class DemoProductTemplate
             $models[] = [
                 'name' => DemoCatalogDefinition::string($model, 'name', $where.' model'),
                 'description' => DemoCatalogDefinition::string($model, 'description', $where.' model'),
+                'parameters' => self::parameters($model, $where.' model'),
+                'fullDescription' => self::paragraphs($model, 'fullDescription', $where.' model'),
             ];
         }
         $images = self::images($data, $where);
@@ -92,7 +101,49 @@ final readonly class DemoProductTemplate
             $axisValues,
             $images,
             self::productImages($data, $where, $brands, array_column($models, 'name')),
+            self::paragraphs($data, 'description', $where),
+            self::parameters($data, $where),
         );
+    }
+
+    /**
+     * The optional paragraphs under $key: none when the key is missing, otherwise a non-empty list of non-empty texts.
+     *
+     * @param array<mixed> $data
+     *
+     * @return list<string>
+     */
+    private static function paragraphs(array $data, string $key, string $where): array
+    {
+        if (!\array_key_exists($key, $data)) {
+            return [];
+        }
+
+        return DemoCatalogDefinition::strings($data, $key, $where);
+    }
+
+    /**
+     * The optional "parameters": a list of maps with a "name" and a "value". Whether the texts make valid parameters
+     * is for the domain to say.
+     *
+     * @param array<mixed> $data
+     *
+     * @return list<array{name: string, value: string}>
+     */
+    private static function parameters(array $data, string $where): array
+    {
+        $parameters = [];
+        foreach (DemoCatalogDefinition::list($data, 'parameters', $where, required: false) as $parameter) {
+            if (!\is_array($parameter)) {
+                throw new \InvalidArgumentException(\sprintf('A parameter of %s must be a map.', $where));
+            }
+            $parameters[] = [
+                'name' => DemoCatalogDefinition::string($parameter, 'name', $where.' parameter'),
+                'value' => DemoCatalogDefinition::string($parameter, 'value', $where.' parameter'),
+            ];
+        }
+
+        return $parameters;
     }
 
     /**
