@@ -1,0 +1,4 @@
+t_flat1 all_name hits, sort name, tth=true 11 tth=false 2
+t_flat1_x3 all_name hits, sort name, tth=true 2 tth=false 2
+t_orig1 all_name hits, sort name, tth=true 2 tth=false 2
+t_orig1_x3 all_name hits, sort name, tth=true 2 tth=false 2

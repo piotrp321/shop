@@ -1,0 +1,165 @@
+    min    |   max    |          min           
+-----------+----------+------------------------
+ R-1000000 | R-999999 | 2023-11-26 00:04:58+00
+(1 row)
+
+Time: 188.143 ms
+=== O15 fragment "czerniak" -placedAt
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=705.97..927.25 rows=26 width=136) (actual time=7.056..9.982 rows=26.00 loops=1)
+   Buffers: shared hit=101 read=510
+   ->  Result  (cost=705.97..1557.03 rows=100 width=136) (actual time=7.054..9.974 rows=26.00 loops=1)
+         Buffers: shared hit=101 read=510
+         ->  Sort  (cost=705.97..706.22 rows=100 width=128) (actual time=6.836..6.845 rows=26.00 loops=1)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: top-N heapsort  Memory: 38kB
+               Buffers: shared hit=54 read=453
+               ->  Bitmap Heap Scan on ordering_order o  (cost=313.28..703.12 rows=100 width=128) (actual time=2.003..6.626 rows=371.00 loops=1)
+                     Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%czerniak%'::text)
+                     Heap Blocks: exact=371
+                     Buffers: shared hit=48 read=453
+                     ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..313.25 rows=100 width=0) (actual time=1.822..1.822 rows=371.00 loops=1)
+                           Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%czerniak%'::text)
+                           Index Searches: 1
+                           Buffers: shared hit=44 read=86
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.119..0.119 rows=1.00 loops=26)
+                 Buffers: shared hit=47 read=57
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.117..0.117 rows=1.38 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=47 read=57
+ Planning:
+   Buffers: shared hit=153 read=44
+ Planning Time: 1.232 ms
+ Execution Time: 10.078 ms
+(27 rows)
+
+Time: 12.646 ms
+=== O16 fragment "g10000" (only old orders)
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=621.78..843.06 rows=26 width=136) (actual time=3.699..4.052 rows=26.00 loops=1)
+   Buffers: shared hit=150 read=103
+   ->  Result  (cost=621.78..1472.85 rows=100 width=136) (actual time=3.698..4.048 rows=26.00 loops=1)
+         Buffers: shared hit=150 read=103
+         ->  Sort  (cost=621.78..622.03 rows=100 width=128) (actual time=3.411..3.419 rows=26.00 loops=1)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: quicksort  Memory: 37kB
+               Buffers: shared hit=51 read=98
+               ->  Bitmap Heap Scan on ordering_order o  (cost=229.09..618.93 rows=100 width=128) (actual time=2.322..3.390 rows=47.00 loops=1)
+                     Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%g10000%'::text)
+                     Rows Removed by Index Recheck: 418
+                     Heap Blocks: exact=74
+                     Buffers: shared hit=51 read=98
+                     ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..229.06 rows=100 width=0) (actual time=2.171..2.172 rows=465.00 loops=1)
+                           Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%g10000%'::text)
+                           Index Searches: 1
+                           Buffers: shared hit=51 read=24
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.023..0.023 rows=1.00 loops=26)
+                 Buffers: shared hit=99 read=5
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.022..0.023 rows=1.81 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=99 read=5
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.197 ms
+ Execution Time: 4.095 ms
+(28 rows)
+
+Time: 4.598 ms
+=== O17 fragment "example.net" -placedAt
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..464.68 rows=26 width=136) (actual time=0.098..0.448 rows=26.00 loops=1)
+   Buffers: shared hit=98 read=23
+   ->  Index Scan using ordering_order_status_placed_at_id_idx on ordering_order o  (cost=0.42..15588.79 rows=873 width=136) (actual time=0.097..0.444 rows=26.00 loops=1)
+         Index Cond: ((status)::text = 'paid'::text)
+         Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%.org%'::text)
+         Rows Removed by Filter: 69
+         Index Searches: 1
+         Buffers: shared hit=98 read=23
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.005..0.005 rows=1.00 loops=26)
+                 Buffers: shared hit=98 read=7
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.005..0.005 rows=2.00 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=98 read=7
+ Planning:
+   Buffers: shared hit=4
+ Planning Time: 0.197 ms
+ Execution Time: 0.466 ms
+(19 rows)
+
+Time: 1.330 ms
+=== O18 fragment "ryszard" + status returned
+                                                                                               QUERY PLAN                                                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=4475.92..4697.20 rows=26 width=136) (actual time=23.012..26.942 rows=26.00 loops=1)
+   Buffers: shared hit=115 read=662
+   ->  Result  (cost=4475.92..8348.27 rows=455 width=136) (actual time=23.010..26.934 rows=26.00 loops=1)
+         Buffers: shared hit=115 read=662
+         ->  Sort  (cost=4475.92..4477.06 rows=455 width=128) (actual time=22.766..22.778 rows=26.00 loops=1)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: top-N heapsort  Memory: 38kB
+               Buffers: shared hit=65 read=606
+               ->  Bitmap Heap Scan on ordering_order o  (cost=2756.87..4462.95 rows=455 width=128) (actual time=20.250..22.680 rows=158.00 loops=1)
+                     Recheck Cond: ((lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%ryszard%'::text) AND ((status)::text = 'returned'::text))
+                     Heap Blocks: exact=157
+                     Buffers: shared hit=65 read=606
+                     ->  BitmapAnd  (cost=2756.87..2756.87 rows=455 width=0) (actual time=20.054..20.055 rows=0.00 loops=1)
+                           Buffers: shared hit=64 read=450
+                           ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..337.95 rows=10102 width=0) (actual time=3.643..3.643 rows=4036.00 loops=1)
+                                 Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%ryszard%'::text)
+                                 Index Searches: 1
+                                 Buffers: shared hit=64 read=37
+                           ->  Bitmap Index Scan on ordering_order_status_total_gross_id_idx  (cost=0.00..2418.45 rows=45070 width=0) (actual time=15.822..15.822 rows=41366.00 loops=1)
+                                 Index Cond: ((status)::text = 'returned'::text)
+                                 Index Searches: 1
+                                 Buffers: shared read=413
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.158..0.158 rows=1.00 loops=26)
+                 Buffers: shared hit=50 read=56
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.154..0.156 rows=1.85 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=50 read=56
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.254 ms
+ Execution Time: 27.177 ms
+(33 rows)
+
+Time: 27.845 ms
+=== O18c count
+                                                                                            QUERY PLAN                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=4468.64..4468.65 rows=1 width=8) (actual time=10.504..10.506 rows=1.00 loops=1)
+   Buffers: shared hit=671
+   ->  Limit  (cost=2756.87..4462.95 rows=455 width=4) (actual time=10.082..10.489 rows=158.00 loops=1)
+         Buffers: shared hit=671
+         ->  Bitmap Heap Scan on ordering_order o  (cost=2756.87..4462.95 rows=455 width=4) (actual time=10.080..10.474 rows=158.00 loops=1)
+               Recheck Cond: ((lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%ryszard%'::text) AND ((status)::text = 'returned'::text))
+               Heap Blocks: exact=157
+               Buffers: shared hit=671
+               ->  BitmapAnd  (cost=2756.87..2756.87 rows=455 width=0) (actual time=10.028..10.029 rows=0.00 loops=1)
+                     Buffers: shared hit=514
+                     ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..337.95 rows=10102 width=0) (actual time=2.412..2.413 rows=4036.00 loops=1)
+                           Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%ryszard%'::text)
+                           Index Searches: 1
+                           Buffers: shared hit=101
+                     ->  Bitmap Index Scan on ordering_order_status_total_gross_id_idx  (cost=0.00..2418.45 rows=45070 width=0) (actual time=7.368..7.368 rows=41366.00 loops=1)
+                           Index Cond: ((status)::text = 'returned'::text)
+                           Index Searches: 1
+                           Buffers: shared hit=413
+ Planning:
+   Buffers: shared hit=2 read=2
+ Planning Time: 0.252 ms
+ Execution Time: 11.170 ms
+(22 rows)
+
+Time: 11.853 ms

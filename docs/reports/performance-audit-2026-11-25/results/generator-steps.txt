@@ -1,0 +1,32 @@
+3: [OK] photos: the pool version 1 (4317 files) can be loaded for the profile     
+892: [OK] categories: 44, products: 191, indexed: 191                               
+3960: [OK] prices: 1012, promotions: 3, discount codes: 3                            
+3965: [OK] delivery methods: 2                                                       
+3968: [OK] payment simulator transactions removed                                    
+3971: [OK] payments removed                                                          
+3974: [OK] orders removed                                                            
+7019: [OK] stocks: 1012, stock records written: 1012                                 
+7039: [OK] The alias now points to "products_20261125154510455_cb3a43" (191          
+7047: [OK] Varnish and the store pages were invalidated.                             
+7068: [OK] Backfill complete.                                                        
+7071: [OK] categories: 136 written, 7 already there                                  
+7091: [OK] products (worker 0 of 4): 500 parts, 250000 products, 752982 variants     
+7095: [OK] products (worker 1 of 4): 500 parts, 250000 products, 752608 variants     
+7099: [OK] products (worker 3 of 4): 500 parts, 250000 products, 750682 variants     
+7103: [OK] products (worker 2 of 4): 500 parts, 250000 products, 752066 variants     
+28691: [OK] photos: 4317 files in the bucket, 1000000 products, 1617932 photos        
+28712: [OK] prices (worker 2 of 4): 500 parts, 752066 variants, 977145 history entries
+28716: [OK] prices (worker 3 of 4): 500 parts, 750682 variants, 975925 history entries
+28720: [OK] prices (worker 1 of 4): 500 parts, 752608 variants, 978326 history entries
+28724: [OK] prices (worker 0 of 4): 500 parts, 752982 variants, 978647 history entries
+28727: [OK] promotions: 40 promotions with 6705 variants, 14 discount codes           
+28742: [OK] the generated accounts are reconciled                                     
+28762: [OK] orders (worker 3 of 4): 500 parts, 250000 orders, 475680 lines            
+28766: [OK] orders (worker 2 of 4): 500 parts, 250000 orders, 474965 lines            
+28770: [OK] orders (worker 1 of 4): 500 parts, 250000 orders, 475956 lines            
+28774: [OK] orders (worker 0 of 4): 500 parts, 250000 orders, 474893 lines            
+28777: [OK] stock: 3008338 stock records, 126403 reservations, 3260071 movements      
+28780: [OK] the next order number follows R-1100000                                   
+28798:PHP Fatal error:  Allowed memory size of 268435456 bytes exhausted (tried to allocate 2097152 bytes) in /app/vendor/monolog/monolog/src/Monolog/Logger.php on line 367
+28813:real 559.88
+28816:exit=2

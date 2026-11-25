@@ -1,0 +1,8 @@
+full 331
+hits+post_filter only 7
+only categories 10
+only available 9
+only price 10
+only free 15
+only selected_0 241
+count of parents matching nested conds 1

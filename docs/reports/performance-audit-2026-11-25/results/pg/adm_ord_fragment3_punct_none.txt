@@ -1,0 +1,92 @@
+-- adm_ord_fragment3_punct_none
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('#!#') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 50
+
+SET
+SET
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=67600.51..68031.24 rows=50 width=108) (actual time=328.155..331.008 rows=0.00 loops=1)
+   Buffers: shared hit=9259 read=47015
+   ->  Gather Merge  (cost=67600.51..68461.97 rows=100 width=108) (actual time=328.154..331.006 rows=0.00 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=9259 read=47015
+         ->  Sort  (cost=66600.49..66600.59 rows=42 width=100) (actual time=325.966..325.967 rows=0.00 loops=3)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=9259 read=47015
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Parallel Seq Scan on ordering_order o  (cost=0.00..66599.35 rows=42 width=100) (actual time=325.917..325.917 rows=0.00 loops=3)
+                     Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%#!#%'::text)
+                     Rows Removed by Filter: 333333
+                     Buffers: shared hit=9167 read=47015
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 0
+ Planning:
+   Buffers: shared hit=425
+ Planning Time: 1.116 ms
+ Execution Time: 331.065 ms
+(25 rows)
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=67600.51..68031.24 rows=50 width=108) (actual time=390.640..393.905 rows=0.00 loops=1)
+   Buffers: shared hit=9541 read=46733
+   ->  Gather Merge  (cost=67600.51..68461.97 rows=100 width=108) (actual time=390.639..393.903 rows=0.00 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=9541 read=46733
+         ->  Sort  (cost=66600.49..66600.59 rows=42 width=100) (actual time=388.328..388.328 rows=0.00 loops=3)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=9541 read=46733
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Parallel Seq Scan on ordering_order o  (cost=0.00..66599.35 rows=42 width=100) (actual time=388.281..388.282 rows=0.00 loops=3)
+                     Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%#!#%'::text)
+                     Rows Removed by Filter: 333333
+                     Buffers: shared hit=9449 read=46733
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 0
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.211 ms
+ Execution Time: 393.944 ms
+(25 rows)
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=67600.51..68031.24 rows=50 width=108) (actual time=403.871..408.450 rows=0.00 loops=1)
+   Buffers: shared hit=9823 read=46451
+   ->  Gather Merge  (cost=67600.51..68461.97 rows=100 width=108) (actual time=403.869..408.447 rows=0.00 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=9823 read=46451
+         ->  Sort  (cost=66600.49..66600.59 rows=42 width=100) (actual time=401.212..401.212 rows=0.00 loops=3)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=9823 read=46451
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Parallel Seq Scan on ordering_order o  (cost=0.00..66599.35 rows=42 width=100) (actual time=401.129..401.129 rows=0.00 loops=3)
+                     Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%#!#%'::text)
+                     Rows Removed by Filter: 333333
+                     Buffers: shared hit=9731 read=46451
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 0
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.216 ms
+ Execution Time: 408.483 ms
+(25 rows)
+

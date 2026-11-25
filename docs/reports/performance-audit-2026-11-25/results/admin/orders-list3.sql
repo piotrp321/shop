@@ -1,0 +1,6 @@
+\echo '=== O19 fragment "r-1000" (old orders only, many trigram hits)'
+EXPLAIN (ANALYZE, BUFFERS) SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('r-1000') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26;
+\echo '=== O20 fragment "@example.com" (very frequent)'
+EXPLAIN (ANALYZE, BUFFERS) SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('mple.c') || '%' LIMIT 10001) bounded;
+\echo '=== O21 fragment "nowak" + placedFrom 2026-11-24 (1 day, newest)'
+EXPLAIN (ANALYZE, BUFFERS) SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('nowak') || '%' AND o.placed_at >= '2026-11-24' ORDER BY o.placed_at ASC, o.id ASC LIMIT 26;

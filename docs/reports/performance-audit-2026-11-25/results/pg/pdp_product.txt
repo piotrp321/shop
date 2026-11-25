@@ -1,0 +1,65 @@
+-- pdp_product
+SELECT p.id, p.slug, p.name, p.short_description, p.images, p.variant_axes, main.path, p.status = 'published' AS published FROM catalog_product p JOIN catalog_category main ON main.id = p.primary_category_id WHERE p.slug = 'menazka-turystyczna-ilkodek-turnia-700-121540'
+
+SET
+SET
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Hash Join  (cost=8.46..15.74 rows=1 width=623) (actual time=0.467..0.498 rows=1.00 loops=1)
+   Hash Cond: (main.id = p.primary_category_id)
+   Buffers: shared hit=5 read=4
+   ->  Seq Scan on catalog_category main  (cost=0.00..6.80 rows=180 width=116) (actual time=0.016..0.054 rows=180.00 loops=1)
+         Buffers: shared hit=5
+   ->  Hash  (cost=8.44..8.44 rows=1 width=547) (actual time=0.407..0.408 rows=1.00 loops=1)
+         Buckets: 1024  Batches: 1  Memory Usage: 9kB
+         Buffers: shared read=4
+         ->  Index Scan using catalog_product_slug_key on catalog_product p  (cost=0.42..8.44 rows=1 width=547) (actual time=0.399..0.400 rows=1.00 loops=1)
+               Index Cond: ((slug)::text = 'menazka-turystyczna-ilkodek-turnia-700-121540'::text)
+               Index Searches: 1
+               Buffers: shared read=4
+ Planning:
+   Buffers: shared hit=414 read=86
+ Planning Time: 2.258 ms
+ Execution Time: 0.572 ms
+(16 rows)
+
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Hash Join  (cost=8.46..15.74 rows=1 width=623) (actual time=0.046..0.063 rows=1.00 loops=1)
+   Hash Cond: (main.id = p.primary_category_id)
+   Buffers: shared hit=9
+   ->  Seq Scan on catalog_category main  (cost=0.00..6.80 rows=180 width=116) (actual time=0.007..0.026 rows=180.00 loops=1)
+         Buffers: shared hit=5
+   ->  Hash  (cost=8.44..8.44 rows=1 width=547) (actual time=0.018..0.018 rows=1.00 loops=1)
+         Buckets: 1024  Batches: 1  Memory Usage: 9kB
+         Buffers: shared hit=4
+         ->  Index Scan using catalog_product_slug_key on catalog_product p  (cost=0.42..8.44 rows=1 width=547) (actual time=0.016..0.016 rows=1.00 loops=1)
+               Index Cond: ((slug)::text = 'menazka-turystyczna-ilkodek-turnia-700-121540'::text)
+               Index Searches: 1
+               Buffers: shared hit=4
+ Planning:
+   Buffers: shared hit=12
+ Planning Time: 0.169 ms
+ Execution Time: 0.081 ms
+(16 rows)
+
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Hash Join  (cost=8.46..15.74 rows=1 width=623) (actual time=0.088..0.106 rows=1.00 loops=1)
+   Hash Cond: (main.id = p.primary_category_id)
+   Buffers: shared hit=9
+   ->  Seq Scan on catalog_category main  (cost=0.00..6.80 rows=180 width=116) (actual time=0.008..0.050 rows=180.00 loops=1)
+         Buffers: shared hit=5
+   ->  Hash  (cost=8.44..8.44 rows=1 width=547) (actual time=0.021..0.021 rows=1.00 loops=1)
+         Buckets: 1024  Batches: 1  Memory Usage: 9kB
+         Buffers: shared hit=4
+         ->  Index Scan using catalog_product_slug_key on catalog_product p  (cost=0.42..8.44 rows=1 width=547) (actual time=0.017..0.017 rows=1.00 loops=1)
+               Index Cond: ((slug)::text = 'menazka-turystyczna-ilkodek-turnia-700-121540'::text)
+               Index Searches: 1
+               Buffers: shared hit=4
+ Planning:
+   Buffers: shared hit=12
+ Planning Time: 0.221 ms
+ Execution Time: 0.125 ms
+(16 rows)
+

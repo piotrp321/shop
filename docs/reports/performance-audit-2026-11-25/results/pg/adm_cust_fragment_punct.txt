@@ -1,0 +1,77 @@
+-- adm_cust_fragment_punct
+SELECT c.customer_id FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('#!#') || '%' OR lower(c.full_name) LIKE '%' || lower('#!#') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 50
+
+SET
+SET
+                                                                   QUERY PLAN                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=5416.54..5418.76 rows=19 width=45) (actual time=49.327..51.584 rows=0.00 loops=1)
+   Buffers: shared hit=595 read=3092
+   ->  Gather Merge  (cost=5416.54..5418.76 rows=19 width=45) (actual time=49.326..51.581 rows=0.00 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=595 read=3092
+         ->  Sort  (cost=4416.52..4416.54 rows=8 width=45) (actual time=45.903..45.904 rows=0.00 loops=3)
+               Sort Key: last_order_at DESC, customer_id
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=595 read=3092
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Parallel Seq Scan on ordering_customer c  (cost=0.00..4416.40 rows=8 width=45) (actual time=45.805..45.805 rows=0.00 loops=3)
+                     Filter: ((lower((email)::text) ~~ '%#!#%'::text) OR (lower((full_name)::text) ~~ '%#!#%'::text))
+                     Rows Removed by Filter: 32856
+                     Buffers: shared hit=503 read=3092
+ Planning:
+   Buffers: shared hit=258
+ Planning Time: 1.042 ms
+ Execution Time: 51.618 ms
+(20 rows)
+
+                                                                   QUERY PLAN                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=5416.54..5418.76 rows=19 width=45) (actual time=36.953..39.598 rows=0.00 loops=1)
+   Buffers: shared hit=2783 read=904
+   ->  Gather Merge  (cost=5416.54..5418.76 rows=19 width=45) (actual time=36.952..39.596 rows=0.00 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=2783 read=904
+         ->  Sort  (cost=4416.52..4416.54 rows=8 width=45) (actual time=34.179..34.179 rows=0.00 loops=3)
+               Sort Key: last_order_at DESC, customer_id
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=2783 read=904
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Parallel Seq Scan on ordering_customer c  (cost=0.00..4416.40 rows=8 width=45) (actual time=34.116..34.116 rows=0.00 loops=3)
+                     Filter: ((lower((email)::text) ~~ '%#!#%'::text) OR (lower((full_name)::text) ~~ '%#!#%'::text))
+                     Rows Removed by Filter: 32856
+                     Buffers: shared hit=2691 read=904
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.165 ms
+ Execution Time: 39.618 ms
+(20 rows)
+
+                                                                   QUERY PLAN                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=5416.54..5418.76 rows=19 width=45) (actual time=37.574..39.644 rows=0.00 loops=1)
+   Buffers: shared hit=3687
+   ->  Gather Merge  (cost=5416.54..5418.76 rows=19 width=45) (actual time=37.573..39.642 rows=0.00 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=3687
+         ->  Sort  (cost=4416.52..4416.54 rows=8 width=45) (actual time=34.656..34.657 rows=0.00 loops=3)
+               Sort Key: last_order_at DESC, customer_id
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=3687
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Parallel Seq Scan on ordering_customer c  (cost=0.00..4416.40 rows=8 width=45) (actual time=34.593..34.594 rows=0.00 loops=3)
+                     Filter: ((lower((email)::text) ~~ '%#!#%'::text) OR (lower((full_name)::text) ~~ '%#!#%'::text))
+                     Rows Removed by Filter: 32856
+                     Buffers: shared hit=3595
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.151 ms
+ Execution Time: 39.659 ms
+(20 rows)
+

@@ -1,0 +1,172 @@
+{
+ "all_name": {
+  "B": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "Bp": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "flat": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  }
+ },
+ "all_price_asc": {
+  "B": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "Bp": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "flat": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  }
+ },
+ "root_name": {
+  "B": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "Bp": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "flat": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  }
+ },
+ "leaf_name": {
+  "B": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "Bp": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "flat": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  }
+ },
+ "phrase_kurtka": {
+  "B": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "Bp": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "flat": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  }
+ },
+ "phrase_typo": {
+  "B": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "Bp": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "flat": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  }
+ },
+ "root_color": {
+  "B": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "Bp": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "flat": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  }
+ },
+ "root_color_size": {
+  "B": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "Bp": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "flat": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  }
+ },
+ "root_price": {
+  "B": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "Bp": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "flat": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  }
+ },
+ "all_color_avail": {
+  "B": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "Bp": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  },
+  "flat": {
+   "identical_facets": true,
+   "diff_keys": [],
+   "same_hits_page": true
+  }
+ }
+}

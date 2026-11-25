@@ -1,0 +1,61 @@
+-- adm_ord_default
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count FROM ordering_order o ORDER BY o.placed_at DESC, o.id DESC LIMIT 50
+
+SET
+SET
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..434.22 rows=50 width=108) (actual time=0.071..0.196 rows=50.00 loops=1)
+   Buffers: shared hit=203 read=6
+   ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..8676568.25 rows=1000066 width=108) (actual time=0.070..0.189 rows=50.00 loops=1)
+         Index Searches: 1
+         Buffers: shared hit=203 read=6
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.003..0.003 rows=1.00 loops=50)
+                 Buffers: shared hit=198 read=5
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.002..0.002 rows=2.16 loops=50)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 50
+                       Buffers: shared hit=198 read=5
+ Planning:
+   Buffers: shared hit=414
+ Planning Time: 0.685 ms
+ Execution Time: 0.227 ms
+(16 rows)
+
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..434.22 rows=50 width=108) (actual time=0.027..0.115 rows=50.00 loops=1)
+   Buffers: shared hit=209
+   ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..8676568.25 rows=1000066 width=108) (actual time=0.026..0.112 rows=50.00 loops=1)
+         Index Searches: 1
+         Buffers: shared hit=209
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.002..0.002 rows=1.00 loops=50)
+                 Buffers: shared hit=203
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.001..0.001 rows=2.16 loops=50)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 50
+                       Buffers: shared hit=203
+ Planning Time: 0.109 ms
+ Execution Time: 0.138 ms
+(14 rows)
+
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..434.22 rows=50 width=108) (actual time=0.014..0.099 rows=50.00 loops=1)
+   Buffers: shared hit=209
+   ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..8676568.25 rows=1000066 width=108) (actual time=0.013..0.096 rows=50.00 loops=1)
+         Index Searches: 1
+         Buffers: shared hit=209
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.001..0.001 rows=1.00 loops=50)
+                 Buffers: shared hit=203
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.001..0.001 rows=2.16 loops=50)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 50
+                       Buffers: shared hit=203
+ Planning Time: 0.068 ms
+ Execution Time: 0.112 ms
+(14 rows)
+

@@ -1,0 +1,47 @@
+-- adm_cust_fragment_all
+SELECT c.customer_id FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('example') || '%' OR lower(c.full_name) LIKE '%' || lower('example') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 50
+
+SET
+SET
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..14.08 rows=50 width=45) (actual time=0.036..0.429 rows=50.00 loops=1)
+   Buffers: shared read=54
+   ->  Index Scan using ordering_customer_last_order_at_idx on ordering_customer c  (cost=0.42..26932.59 rows=98558 width=45) (actual time=0.035..0.420 rows=50.00 loops=1)
+         Filter: ((lower((email)::text) ~~ '%example%'::text) OR (lower((full_name)::text) ~~ '%example%'::text))
+         Index Searches: 1
+         Buffers: shared read=54
+ Planning:
+   Buffers: shared hit=246 read=12
+ Planning Time: 1.339 ms
+ Execution Time: 0.448 ms
+(10 rows)
+
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..14.08 rows=50 width=45) (actual time=0.018..0.106 rows=50.00 loops=1)
+   Buffers: shared hit=54
+   ->  Index Scan using ordering_customer_last_order_at_idx on ordering_customer c  (cost=0.42..26932.59 rows=98558 width=45) (actual time=0.017..0.101 rows=50.00 loops=1)
+         Filter: ((lower((email)::text) ~~ '%example%'::text) OR (lower((full_name)::text) ~~ '%example%'::text))
+         Index Searches: 1
+         Buffers: shared hit=54
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.148 ms
+ Execution Time: 0.137 ms
+(10 rows)
+
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..14.08 rows=50 width=45) (actual time=0.011..0.086 rows=50.00 loops=1)
+   Buffers: shared hit=54
+   ->  Index Scan using ordering_customer_last_order_at_idx on ordering_customer c  (cost=0.42..26932.59 rows=98558 width=45) (actual time=0.010..0.081 rows=50.00 loops=1)
+         Filter: ((lower((email)::text) ~~ '%example%'::text) OR (lower((full_name)::text) ~~ '%example%'::text))
+         Index Searches: 1
+         Buffers: shared hit=54
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.177 ms
+ Execution Time: 0.101 ms
+(10 rows)
+

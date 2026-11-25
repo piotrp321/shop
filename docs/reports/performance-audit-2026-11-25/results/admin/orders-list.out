@@ -1,0 +1,481 @@
+=== O1 no filter -placedAt
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..226.00 rows=26 width=136) (actual time=0.107..0.153 rows=26.00 loops=1)
+   Buffers: shared hit=100 read=10
+   ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..8676568.25 rows=1000066 width=136) (actual time=0.106..0.148 rows=26.00 loops=1)
+         Index Searches: 1
+         Buffers: shared hit=100 read=10
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.004..0.004 rows=1.00 loops=26)
+                 Buffers: shared hit=100 read=5
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.004..0.004 rows=2.23 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=100 read=5
+ Planning:
+   Buffers: shared hit=400 read=26
+ Planning Time: 1.253 ms
+ Execution Time: 0.191 ms
+(16 rows)
+
+Time: 2.229 ms
+=== O1c count no filter
+                                                                               QUERY PLAN                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=601.74..601.75 rows=1 width=8) (actual time=1.613..1.614 rows=1.00 loops=1)
+   Buffers: shared read=62
+   ->  Limit  (cost=0.42..476.72 rows=10001 width=4) (actual time=0.093..1.328 rows=10001.00 loops=1)
+         Buffers: shared read=62
+         ->  Index Only Scan using ordering_order_pkey on ordering_order o  (cost=0.42..47628.69 rows=1000066 width=4) (actual time=0.092..0.914 rows=10001.00 loops=1)
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared read=62
+ Planning:
+   Buffers: shared hit=17 read=5
+ Planning Time: 0.110 ms
+ Execution Time: 1.624 ms
+(12 rows)
+
+Time: 1.884 ms
+=== O2 status=paid -placedAt
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..287.36 rows=26 width=136) (actual time=0.101..0.141 rows=26.00 loops=1)
+   Buffers: shared hit=107 read=3
+   ->  Index Scan using ordering_order_status_placed_at_id_idx on ordering_order o  (cost=0.42..35315.99 rows=3200 width=136) (actual time=0.101..0.139 rows=26.00 loops=1)
+         Index Cond: ((status)::text = 'paid'::text)
+         Index Searches: 1
+         Buffers: shared hit=107 read=3
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.001..0.001 rows=1.00 loops=26)
+                 Buffers: shared hit=105
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.001..0.001 rows=2.31 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=105
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.068 ms
+ Execution Time: 0.153 ms
+(17 rows)
+
+Time: 0.557 ms
+=== O2c count paid (dashboard paidToShip, limit 1000)
+                                                                                       QUERY PLAN                                                                                       
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=471.82..471.83 rows=1 width=8) (actual time=1.729..1.730 rows=1.00 loops=1)
+   Buffers: shared hit=692 read=290
+   ->  Limit  (cost=0.42..459.31 rows=1001 width=4) (actual time=0.258..1.693 rows=1001.00 loops=1)
+         Buffers: shared hit=692 read=290
+         ->  Index Only Scan using ordering_order_status_total_gross_id_idx on ordering_order o  (cost=0.42..1467.38 rows=3200 width=4) (actual time=0.257..1.644 rows=1001.00 loops=1)
+               Index Cond: (status = 'paid'::text)
+               Heap Fetches: 1001
+               Index Searches: 1
+               Buffers: shared hit=692 read=290
+ Planning Time: 0.034 ms
+ Execution Time: 1.737 ms
+(11 rows)
+
+Time: 1.897 ms
+=== O2d count delivered (10000)
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=899.28..899.29 rows=1 width=8) (actual time=2.508..2.509 rows=1.00 loops=1)
+   Buffers: shared read=703
+   ->  Limit  (cost=0.00..774.27 rows=10001 width=4) (actual time=0.074..2.219 rows=10001.00 loops=1)
+         Buffers: shared read=703
+         ->  Seq Scan on ordering_order o  (cost=0.00..68682.82 rows=887159 width=4) (actual time=0.074..1.800 rows=10001.00 loops=1)
+               Filter: ((status)::text = 'delivered'::text)
+               Rows Removed by Filter: 1131
+               Buffers: shared read=703
+ Planning Time: 0.026 ms
+ Execution Time: 2.567 ms
+(10 rows)
+
+Time: 2.734 ms
+=== O3 -total no filter
+                                                                                     QUERY PLAN                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..228.44 rows=26 width=136) (actual time=0.155..1.897 rows=26.00 loops=1)
+   Buffers: shared hit=33 read=101
+   ->  Index Scan Backward using ordering_order_total_gross_id_idx on ordering_order o  (cost=0.42..8770449.55 rows=1000066 width=136) (actual time=0.154..1.894 rows=26.00 loops=1)
+         Index Searches: 1
+         Buffers: shared hit=33 read=101
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.067..0.067 rows=1.00 loops=26)
+                 Buffers: shared hit=33 read=72
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.064..0.066 rows=2.73 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=33 read=72
+ Planning:
+   Buffers: shared hit=4
+ Planning Time: 0.087 ms
+ Execution Time: 1.910 ms
+(16 rows)
+
+Time: 2.196 ms
+=== O4 pending refunds sort refund
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.28..251.80 rows=26 width=136) (actual time=0.034..1.195 rows=26.00 loops=1)
+   Buffers: shared hit=54 read=78
+   ->  Index Scan using ordering_order_pending_refund_idx on ordering_order o  (cost=0.28..593236.97 rows=61324 width=136) (actual time=0.034..1.192 rows=26.00 loops=1)
+         Index Searches: 1
+         Buffers: shared hit=54 read=78
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.041..0.041 rows=1.00 loops=26)
+                 Buffers: shared hit=54 read=50
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.040..0.040 rows=1.73 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=54 read=50
+ Planning:
+   Buffers: shared hit=9
+ Planning Time: 0.063 ms
+ Execution Time: 1.202 ms
+(16 rows)
+
+Time: 1.369 ms
+=== O4c overdue refunds count
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=315.75..315.76 rows=1 width=8) (actual time=0.573..0.573 rows=1.00 loops=1)
+   Buffers: shared hit=40 read=147
+   ->  Limit  (cost=0.28..303.24 rows=1001 width=4) (actual time=0.007..0.564 rows=183.00 loops=1)
+         Buffers: shared hit=40 read=147
+         ->  Index Only Scan using ordering_order_pending_refund_idx on ordering_order o  (cost=0.28..1179.42 rows=3896 width=4) (actual time=0.007..0.551 rows=183.00 loops=1)
+               Index Cond: (refund_due_at < now())
+               Heap Fetches: 183
+               Index Searches: 1
+               Buffers: shared hit=40 read=147
+ Planning Time: 0.048 ms
+ Execution Time: 0.580 ms
+(11 rows)
+
+Time: 0.783 ms
+=== O5 fragment frequent "kowal"
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..386.84 rows=26 width=136) (actual time=0.030..1.612 rows=26.00 loops=1)
+   Buffers: shared hit=156 read=47
+   ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..450393.49 rows=30305 width=136) (actual time=0.030..1.609 rows=26.00 loops=1)
+         Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+         Rows Removed by Filter: 1244
+         Index Searches: 1
+         Buffers: shared hit=156 read=47
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.020..0.020 rows=1.00 loops=26)
+                 Buffers: shared hit=79 read=26
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.019..0.019 rows=1.96 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=79 read=26
+ Planning:
+   Buffers: shared hit=15 dirtied=1
+ Planning Time: 0.398 ms
+ Execution Time: 1.626 ms
+(18 rows)
+
+Time: 2.295 ms
+=== O5c count kowal
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=16867.61..16867.62 rows=1 width=8) (actual time=43.021..43.021 rows=1.00 loops=1)
+   Buffers: shared hit=81 read=8308
+   ->  Limit  (cost=387.66..16742.60 rows=10001 width=4) (actual time=7.263..42.602 rows=10001.00 loops=1)
+         Buffers: shared hit=81 read=8308
+         ->  Bitmap Heap Scan on ordering_order o  (cost=387.66..49946.33 rows=30305 width=4) (actual time=7.262..42.071 rows=10001.00 loops=1)
+               Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+               Rows Removed by Index Recheck: 2
+               Heap Blocks: exact=8213
+               Buffers: shared hit=81 read=8308
+               ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..380.09 rows=30305 width=0) (actual time=5.307..5.308 rows=23312.00 loops=1)
+                     Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=47 read=99
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.075 ms
+ Execution Time: 43.185 ms
+(17 rows)
+
+Time: 43.435 ms
+=== O6 fragment very frequent "example"
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..226.39 rows=26 width=136) (actual time=0.015..0.065 rows=26.00 loops=1)
+   Buffers: shared hit=110
+   ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..8690719.42 rows=999966 width=136) (actual time=0.015..0.064 rows=26.00 loops=1)
+         Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%example%'::text)
+         Index Searches: 1
+         Buffers: shared hit=110
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.001..0.001 rows=1.00 loops=26)
+                 Buffers: shared hit=105
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.001..0.001 rows=2.23 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=105
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.104 ms
+ Execution Time: 0.076 ms
+(17 rows)
+
+Time: 0.338 ms
+=== O6c count example
+                                                                    QUERY PLAN                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=936.96..936.97 rows=1 width=8) (actual time=7.540..7.540 rows=1.00 loops=1)
+   Buffers: shared hit=225 read=412
+   ->  Limit  (cost=0.00..811.95 rows=10001 width=4) (actual time=0.006..7.221 rows=10001.00 loops=1)
+         Buffers: shared hit=225 read=412
+         ->  Seq Scan on ordering_order o  (cost=0.00..81183.65 rows=999966 width=4) (actual time=0.006..6.795 rows=10001.00 loops=1)
+               Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%example%'::text)
+               Buffers: shared hit=225 read=412
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.074 ms
+ Execution Time: 7.603 ms
+(11 rows)
+
+Time: 7.842 ms
+=== O7 fragment no result "qqzzxx"
+                                                                           QUERY PLAN                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=651.22..872.50 rows=26 width=136) (actual time=0.165..0.165 rows=0.00 loops=1)
+   Buffers: shared hit=49 read=3
+   ->  Result  (cost=651.22..1502.28 rows=100 width=136) (actual time=0.164..0.165 rows=0.00 loops=1)
+         Buffers: shared hit=49 read=3
+         ->  Sort  (cost=651.22..651.47 rows=100 width=128) (actual time=0.164..0.164 rows=0.00 loops=1)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=49 read=3
+               ->  Bitmap Heap Scan on ordering_order o  (cost=258.53..648.37 rows=100 width=128) (actual time=0.149..0.149 rows=0.00 loops=1)
+                     Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%qqzzxx%'::text)
+                     Buffers: shared hit=43 read=3
+                     ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..258.50 rows=100 width=0) (actual time=0.146..0.146 rows=0.00 loops=1)
+                           Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%qqzzxx%'::text)
+                           Index Searches: 1
+                           Buffers: shared hit=43 read=3
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 0
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.083 ms
+ Execution Time: 0.177 ms
+(24 rows)
+
+Time: 0.403 ms
+=== O8 fragment 3 chars "ann"
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..345.47 rows=26 width=136) (actual time=0.024..0.609 rows=26.00 loops=1)
+   Buffers: shared hit=139 read=13
+   ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..536241.82 rows=40407 width=136) (actual time=0.023..0.607 rows=26.00 loops=1)
+         Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%ann%'::text)
+         Rows Removed by Filter: 558
+         Index Searches: 1
+         Buffers: shared hit=139 read=13
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.007..0.007 rows=1.00 loops=26)
+                 Buffers: shared hit=92 read=13
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.006..0.006 rows=1.85 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=92 read=13
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.079 ms
+ Execution Time: 0.618 ms
+(18 rows)
+
+Time: 0.854 ms
+=== O9 fragment rare "czerniak.g331" with placedAt asc
+                                                                                  QUERY PLAN                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=849.03..1070.31 rows=26 width=136) (actual time=7.477..7.478 rows=1.00 loops=1)
+   Buffers: shared hit=242 read=220
+   ->  Result  (cost=849.03..1700.10 rows=100 width=136) (actual time=7.477..7.478 rows=1.00 loops=1)
+         Buffers: shared hit=242 read=220
+         ->  Sort  (cost=849.03..849.28 rows=100 width=128) (actual time=7.334..7.335 rows=1.00 loops=1)
+               Sort Key: o.placed_at, o.id
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=240 read=218
+               ->  Bitmap Heap Scan on ordering_order o  (cost=456.34..846.18 rows=100 width=128) (actual time=7.330..7.330 rows=1.00 loops=1)
+                     Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%czerniak.g331%'::text)
+                     Heap Blocks: exact=1
+                     Buffers: shared hit=240 read=218
+                     ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..456.31 rows=100 width=0) (actual time=7.249..7.249 rows=1.00 loops=1)
+                           Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%czerniak.g331%'::text)
+                           Index Searches: 1
+                           Buffers: shared hit=240 read=217
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.138..0.138 rows=1.00 loops=1)
+                 Buffers: shared hit=2 read=2
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.134..0.135 rows=2.00 loops=1)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 1
+                       Buffers: shared hit=2 read=2
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.072 ms
+ Execution Time: 7.496 ms
+(27 rows)
+
+Time: 7.741 ms
+=== O10 date range 1 year + status delivered
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..232.16 rows=26 width=136) (actual time=0.237..0.378 rows=26.00 loops=1)
+   Buffers: shared hit=101 read=9
+   ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..2767449.74 rows=310498 width=136) (actual time=0.237..0.376 rows=26.00 loops=1)
+         Index Cond: ((placed_at >= '2025-01-01 00:00:00+00'::timestamp with time zone) AND (placed_at < '2026-01-01 00:00:00+00'::timestamp with time zone))
+         Filter: ((status)::text = 'delivered'::text)
+         Rows Removed by Filter: 6
+         Index Searches: 1
+         Buffers: shared hit=101 read=9
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.009..0.009 rows=1.00 loops=26)
+                 Buffers: shared hit=100 read=4
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.008..0.008 rows=1.77 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=100 read=4
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.111 ms
+ Execution Time: 0.390 ms
+(19 rows)
+
+Time: 0.683 ms
+=== O10c count date range
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=1570.95..1570.96 rows=1 width=8) (actual time=6.399..6.399 rows=1.00 loops=1)
+   Buffers: shared hit=2 read=119
+   ->  Limit  (cost=0.42..1445.94 rows=10001 width=4) (actual time=0.117..6.081 rows=10001.00 loops=1)
+         Buffers: shared hit=2 read=119
+         ->  Index Only Scan using ordering_order_status_placed_at_id_idx on ordering_order o  (cost=0.42..44878.86 rows=310498 width=4) (actual time=0.117..5.531 rows=10001.00 loops=1)
+               Index Cond: ((status = 'delivered'::text) AND (placed_at >= '2025-01-01 00:00:00+00'::timestamp with time zone) AND (placed_at < '2026-01-01 00:00:00+00'::timestamp with time zone))
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared hit=2 read=119
+ Planning Time: 0.051 ms
+ Execution Time: 6.410 ms
+(11 rows)
+
+Time: 6.621 ms
+=== O11 date range narrow (1 day, old) + fragment frequent
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..269.64 rows=26 width=136) (actual time=0.254..0.466 rows=26.00 loops=1)
+   Buffers: shared hit=103 read=9
+   ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..4214.62 rows=407 width=136) (actual time=0.254..0.464 rows=26.00 loops=1)
+         Index Cond: ((placed_at >= '2024-03-01 00:00:00+00'::timestamp with time zone) AND (placed_at < '2024-03-02 00:00:00+00'::timestamp with time zone))
+         Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%example%'::text)
+         Index Searches: 1
+         Buffers: shared hit=103 read=9
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.009..0.009 rows=1.00 loops=26)
+                 Buffers: shared hit=101 read=4
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.009..0.009 rows=1.92 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=101 read=4
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.084 ms
+ Execution Time: 0.475 ms
+(18 rows)
+
+Time: 0.693 ms
+=== O12 status paid + fragment no-result
+                                                                                            QUERY PLAN                                                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=435.21..443.73 rows=1 width=136) (actual time=1.601..1.602 rows=0.00 loops=1)
+   Buffers: shared hit=56 read=18
+   ->  Result  (cost=435.21..443.73 rows=1 width=136) (actual time=1.601..1.601 rows=0.00 loops=1)
+         Buffers: shared hit=56 read=18
+         ->  Sort  (cost=435.21..435.22 rows=1 width=128) (actual time=1.600..1.601 rows=0.00 loops=1)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=56 read=18
+               ->  Bitmap Heap Scan on ordering_order o  (cost=431.18..435.20 rows=1 width=128) (actual time=1.598..1.598 rows=0.00 loops=1)
+                     Recheck Cond: (((status)::text = 'paid'::text) AND (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%qqzzxx%'::text))
+                     Buffers: shared hit=56 read=18
+                     ->  BitmapAnd  (cost=431.18..431.18 rows=1 width=0) (actual time=1.595..1.595 rows=0.00 loops=1)
+                           Buffers: shared hit=56 read=18
+                           ->  Bitmap Index Scan on ordering_order_status_total_gross_id_idx  (cost=0.00..172.43 rows=3200 width=0) (actual time=1.484..1.484 rows=3049.00 loops=1)
+                                 Index Cond: ((status)::text = 'paid'::text)
+                                 Index Searches: 1
+                                 Buffers: shared hit=10 read=18
+                           ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..258.50 rows=100 width=0) (actual time=0.105..0.105 rows=0.00 loops=1)
+                                 Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%qqzzxx%'::text)
+                                 Index Searches: 1
+                                 Buffers: shared hit=46
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 0
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.125 ms
+ Execution Time: 1.619 ms
+(30 rows)
+
+Time: 1.920 ms
+=== O13 email exact
+                                                                                  QUERY PLAN                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=40.72..117.32 rows=9 width=136) (actual time=0.040..0.041 rows=1.00 loops=1)
+   Buffers: shared hit=5 read=3
+   ->  Result  (cost=40.72..117.32 rows=9 width=136) (actual time=0.040..0.040 rows=1.00 loops=1)
+         Buffers: shared hit=5 read=3
+         ->  Sort  (cost=40.72..40.75 rows=9 width=128) (actual time=0.031..0.031 rows=1.00 loops=1)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=1 read=3
+               ->  Index Scan using ordering_order_lower_email_idx on ordering_order o  (cost=0.42..40.58 rows=9 width=128) (actual time=0.029..0.029 rows=1.00 loops=1)
+                     Index Cond: (lower((email)::text) = 'roman.dudziak.g331096@example.com'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=1 read=3
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.007..0.007 rows=1.00 loops=1)
+                 Buffers: shared hit=4
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.005..0.005 rows=2.00 loops=1)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 1
+                       Buffers: shared hit=4
+ Planning Time: 0.070 ms
+ Execution Time: 0.051 ms
+(21 rows)
+
+Time: 0.255 ms
+=== O14 far page -placedAt cursor old
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..259.06 rows=26 width=136) (actual time=0.172..0.215 rows=26.00 loops=1)
+   Buffers: shared hit=102 read=8
+   ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..313042.25 rows=31469 width=136) (actual time=0.172..0.213 rows=26.00 loops=1)
+         Index Cond: (ROW(placed_at, id) < ROW('2024-01-01 00:00:00+00'::timestamp with time zone, '00000000-0000-0000-0000-000000000000'::uuid))
+         Index Searches: 1
+         Buffers: shared hit=102 read=8
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.004..0.004 rows=1.00 loops=26)
+                 Buffers: shared hit=101 read=4
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.003..0.003 rows=1.77 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=101 read=4
+ Planning Time: 0.068 ms
+ Execution Time: 0.233 ms
+(15 rows)
+
+Time: 0.491 ms

@@ -1,0 +1,68 @@
+-- adm_prod_term4_none
+SELECT p.id, p.name FROM catalog_product p WHERE p.name ILIKE '%zzqq%' ORDER BY p.name ASC, p.id ASC LIMIT 50
+
+SET
+SET
+                                                                       QUERY PLAN                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=549.91..550.04 rows=50 width=54) (actual time=0.076..0.079 rows=0.00 loops=1)
+   Buffers: shared hit=9 read=4
+   ->  Sort  (cost=549.91..550.17 rows=101 width=54) (actual time=0.074..0.075 rows=0.00 loops=1)
+         Sort Key: name, id
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=9 read=4
+         ->  Bitmap Heap Scan on catalog_product p  (cost=149.90..546.56 rows=101 width=54) (actual time=0.044..0.044 rows=0.00 loops=1)
+               Recheck Cond: ((name)::text ~~* '%zzqq%'::text)
+               Buffers: shared hit=3 read=4
+               ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..149.87 rows=101 width=0) (actual time=0.038..0.038 rows=0.00 loops=1)
+                     Index Cond: ((name)::text ~~* '%zzqq%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=3 read=4
+ Planning:
+   Buffers: shared hit=269 read=2
+ Planning Time: 1.433 ms
+ Execution Time: 0.160 ms
+(17 rows)
+
+                                                                       QUERY PLAN                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=549.91..550.04 rows=50 width=54) (actual time=0.010..0.011 rows=0.00 loops=1)
+   Buffers: shared hit=7
+   ->  Sort  (cost=549.91..550.17 rows=101 width=54) (actual time=0.010..0.010 rows=0.00 loops=1)
+         Sort Key: name, id
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=7
+         ->  Bitmap Heap Scan on catalog_product p  (cost=149.90..546.56 rows=101 width=54) (actual time=0.008..0.009 rows=0.00 loops=1)
+               Recheck Cond: ((name)::text ~~* '%zzqq%'::text)
+               Buffers: shared hit=7
+               ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..149.87 rows=101 width=0) (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: ((name)::text ~~* '%zzqq%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=7
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.146 ms
+ Execution Time: 0.020 ms
+(17 rows)
+
+                                                                       QUERY PLAN                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=549.91..550.04 rows=50 width=54) (actual time=0.006..0.007 rows=0.00 loops=1)
+   Buffers: shared hit=7
+   ->  Sort  (cost=549.91..550.17 rows=101 width=54) (actual time=0.006..0.006 rows=0.00 loops=1)
+         Sort Key: name, id
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=7
+         ->  Bitmap Heap Scan on catalog_product p  (cost=149.90..546.56 rows=101 width=54) (actual time=0.005..0.005 rows=0.00 loops=1)
+               Recheck Cond: ((name)::text ~~* '%zzqq%'::text)
+               Buffers: shared hit=7
+               ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..149.87 rows=101 width=0) (actual time=0.004..0.004 rows=0.00 loops=1)
+                     Index Cond: ((name)::text ~~* '%zzqq%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=7
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.120 ms
+ Execution Time: 0.011 ms
+(17 rows)
+

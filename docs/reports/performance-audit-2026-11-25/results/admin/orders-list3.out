@@ -1,0 +1,91 @@
+=== O19 fragment "r-1000" (old orders only, many trigram hits)
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=651.22..872.50 rows=26 width=136) (actual time=14.405..14.684 rows=26.00 loops=1)
+   Buffers: shared hit=200 read=349
+   ->  Result  (cost=651.22..1502.28 rows=100 width=136) (actual time=14.404..14.672 rows=26.00 loops=1)
+         Buffers: shared hit=200 read=349
+         ->  Sort  (cost=651.22..651.47 rows=100 width=128) (actual time=14.172..14.177 rows=26.00 loops=1)
+               Sort Key: o.placed_at DESC, o.id DESC
+               Sort Method: top-N heapsort  Memory: 38kB
+               Buffers: shared hit=101 read=343
+               ->  Bitmap Heap Scan on ordering_order o  (cost=258.53..648.37 rows=100 width=128) (actual time=9.921..13.863 rows=1099.00 loops=1)
+                     Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%r-1000%'::text)
+                     Rows Removed by Index Recheck: 144
+                     Heap Blocks: exact=205
+                     Buffers: shared hit=95 read=343
+                     ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..258.50 rows=100 width=0) (actual time=9.716..9.716 rows=1243.00 loops=1)
+                           Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%r-1000%'::text)
+                           Index Searches: 1
+                           Buffers: shared hit=95 read=138
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.018..0.018 rows=1.00 loops=26)
+                 Buffers: shared hit=99 read=6
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.017..0.017 rows=1.81 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=99 read=6
+ Planning:
+   Buffers: shared hit=368 read=69
+ Planning Time: 2.569 ms
+ Execution Time: 14.812 ms
+(28 rows)
+
+Time: 20.159 ms
+=== O20 fragment "@example.com" (very frequent)
+                                                                   QUERY PLAN                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=2357.64..2357.65 rows=1 width=8) (actual time=41.940..41.941 rows=1.00 loops=1)
+   Buffers: shared hit=3 read=1769
+   ->  Limit  (cost=0.00..2232.63 rows=10001 width=4) (actual time=0.177..41.253 rows=10001.00 loops=1)
+         Buffers: shared hit=3 read=1769
+         ->  Seq Scan on ordering_order o  (cost=0.00..81183.65 rows=363660 width=4) (actual time=0.175..40.377 rows=10001.00 loops=1)
+               Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%mple.c%'::text)
+               Rows Removed by Filter: 20027
+               Buffers: shared hit=3 read=1769
+ Planning:
+   Buffers: shared hit=3 read=1
+ Planning Time: 0.254 ms
+ Execution Time: 42.087 ms
+(12 rows)
+
+Time: 42.860 ms
+=== O21 fragment "nowak" + placedFrom 2026-11-24 (1 day, newest)
+                                                                                                             QUERY PLAN                                                                                                             
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=572.00..793.27 rows=26 width=136) (actual time=11.273..12.741 rows=26.00 loops=1)
+   Buffers: shared hit=139 read=134
+   ->  Result  (cost=572.00..912.42 rows=40 width=136) (actual time=11.272..12.734 rows=26.00 loops=1)
+         Buffers: shared hit=139 read=134
+         ->  Sort  (cost=572.00..572.10 rows=40 width=128) (actual time=10.286..10.317 rows=26.00 loops=1)
+               Sort Key: o.placed_at, o.id
+               Sort Method: quicksort  Memory: 32kB
+               Buffers: shared hit=72 read=95
+               ->  Bitmap Heap Scan on ordering_order o  (cost=413.03..570.93 rows=40 width=128) (actual time=9.866..10.264 rows=37.00 loops=1)
+                     Recheck Cond: ((placed_at >= '2026-11-24 00:00:00+00'::timestamp with time zone) AND (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%nowak%'::text))
+                     Heap Blocks: exact=32
+                     Buffers: shared hit=72 read=95
+                     ->  BitmapAnd  (cost=413.03..413.03 rows=40 width=0) (actual time=9.688..9.690 rows=0.00 loops=1)
+                           Buffers: shared hit=72 read=63
+                           ->  Bitmap Index Scan on ordering_order_placed_at_id_idx  (cost=0.00..83.19 rows=1968 width=0) (actual time=1.801..1.801 rows=1924.00 loops=1)
+                                 Index Cond: (placed_at >= '2026-11-24 00:00:00+00'::timestamp with time zone)
+                                 Index Searches: 1
+                                 Buffers: shared hit=3 read=15
+                           ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..329.58 rows=20203 width=0) (actual time=7.717..7.718 rows=19211.00 loops=1)
+                                 Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%nowak%'::text)
+                                 Index Searches: 1
+                                 Buffers: shared hit=69 read=48
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.091..0.091 rows=1.00 loops=26)
+                 Buffers: shared hit=67 read=39
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.087..0.089 rows=1.69 loops=26)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 26
+                       Buffers: shared hit=67 read=39
+ Planning:
+   Buffers: shared hit=16 read=5 dirtied=1
+ Planning Time: 0.352 ms
+ Execution Time: 12.789 ms
+(33 rows)
+
+Time: 13.743 ms
