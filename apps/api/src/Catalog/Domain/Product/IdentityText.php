@@ -17,8 +17,7 @@ use App\Shared\Domain\Text;
  *   to case ("czar" U+009F "ne" keeps „czarne” and „czar ne”, not „zielone”).
  * - A stored text without a visible character, also once its forbidden characters are gone, has no text to keep: any
  *   text may take its place.
- * - Two stored texts with one identity (texts the rule before the rule of texts took as different) are the same text
- *   now ({@see same()}).
+ * - Two stored texts the rule before the rule of texts took as different may repeat each other now ({@see same()}).
  */
 final class IdentityText
 {
@@ -42,14 +41,16 @@ final class IdentityText
     }
 
     /**
-     * Whether two stored texts have one identity: both have one, and it is the same (e.g. "Kolor" and "Kolor" U+200B,
-     * which the rule before the rule of texts took as two texts).
+     * Whether two stored texts repeat each other: with every forbidden character a space and the ends trimmed by the
+     * rule (T2), they are one visible text without regard to case, as the rule of a repeated axis compares them (e.g.
+     * "Kolor" and "Kolor" U+200B, which the rule before the rule of texts took as two texts; not "Kolor" and
+     * "Kol" U+009F "or", which is "Kol or").
      */
     public static function same(string $stored, string $other): bool
     {
-        $identity = self::storedIdentity($stored);
+        $text = self::identity(self::withForbiddenCharactersAsSpaces($stored));
 
-        return null !== $identity && $identity === self::storedIdentity($other);
+        return null !== $text && $text === self::identity(self::withForbiddenCharactersAsSpaces($other));
     }
 
     /**
@@ -159,6 +160,14 @@ final class IdentityText
         return implode('', array_filter(
             mb_str_split($text, 1, 'UTF-8'),
             static fn (string $character): bool => !Text::hasForbiddenCharacters($character),
+        ));
+    }
+
+    private static function withForbiddenCharactersAsSpaces(string $text): string
+    {
+        return implode('', array_map(
+            static fn (string $character): string => Text::hasForbiddenCharacters($character) ? ' ' : $character,
+            mb_str_split($text, 1, 'UTF-8'),
         ));
     }
 

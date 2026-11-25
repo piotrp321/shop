@@ -9,8 +9,8 @@ use App\Shared\Domain\Exception\TypedProblem;
 
 /**
  * After the first publication a variant keeps its meaning (decision K5): the values of a kept variant and the names
- * of the axes change only without a change of their comparison key (but the later of two stored names with one
- * identity, which takes a new name), and axes cannot be added, removed or reordered.
+ * of the axes change only without a change of their comparison key (but the later of two stored names that repeat
+ * each other, which takes a new name), and axes cannot be added, removed or reordered.
  * The detail names the stored values of the variant or the stored name of the axis as a person reads them, without
  * forbidden or trimmed characters (IdentityText), and says what the correction of a stored text with forbidden
  * characters may be.

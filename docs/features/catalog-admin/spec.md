@@ -48,7 +48,7 @@ Poza zakresem:
 | K2 | Publikacja szkicu wymaga co najmniej jednego zdjęcia. Cena i stan nie są wymagane: opublikowany produkt bez ceny albo stanu jest w sklepie „Niedostępny” (E3 VARIANTS). Zapis opublikowanego produktu, który miał zdjęcia, nie może usunąć ostatniego. Opublikowany produkt bez zdjęć (dane demo `imagelessEvery: 50`, `PhotoPlaceholder` w sklepie) jest edytowalny bez dodawania zdjęcia. |
 | K3 | Uprawnienia: tworzenie, edycja, upload zdjęć, publikacja i wycofanie: role `admin` i `marketing`. Lista i podgląd produktu: każdy pracownik z rolą personelu (`admin`, `support`, `warehouse`, `marketing`). |
 | K4 | Slug: na tworzeniu opcjonalny (pusty: API wylicza go z nazwy); zmienny, dopóki produkt nie był nigdy opublikowany; od pierwszej publikacji stały (także po wycofaniu). Bez przekierowań 301. |
-| K5 | Warianty: osie, wartości i lista wariantów zmieniają się dowolnie, dopóki produkt nie był nigdy opublikowany. Po pierwszej publikacji: wariant zachowuje tożsamość, więc jego wartości mogą zmienić się tylko bez zmiany tożsamości tekstu (tekst przycięty według reguły tekstów, bez względu na wielkość liter: wielkość liter i znaki przycinane z brzegów, np. „czarne” → „Czarne”); osi nie da się dodać, usunąć ani przestawić (zmiana nazwy osi tylko bez zmiany tożsamości tekstu); zapisana nazwa osi albo wartość ze znakiem niedozwolonym zachowuje tożsamość swojej poprawki (tego samego tekstu bez znaków niedozwolonych i białych znaków), a bez znaku widocznego nie ma tożsamości; wyjątek: oś, której zapisana nazwa ma tę samą tożsamość co zapisana nazwa osi na wcześniejszej pozycji (dwie nazwy zapisane przed regułą tekstów, np. „Kolor” i „Kolor” U+200B), może dostać nową nazwę, a pierwsza z nich zostaje chroniona (decyzja właściciela z 2026-11-25); nowy wariant można dodać; inna zmiana znaczenia to usunięcie starego wariantu i dodanie nowego (nowy identyfikator). Usunięcie wariantu jest zablokowane, gdy ma stan fizyczny > 0 albo zarezerwowany > 0. Cena, stan i historie usuniętego wariantu zostają w Pricing i Inventory, niewidoczne w panelu; linie koszyka z nim mają stan `unavailable_product`. |
+| K5 | Warianty: osie, wartości i lista wariantów zmieniają się dowolnie, dopóki produkt nie był nigdy opublikowany. Po pierwszej publikacji: wariant zachowuje tożsamość, więc jego wartości mogą zmienić się tylko bez zmiany tożsamości tekstu (tekst przycięty według reguły tekstów, bez względu na wielkość liter: wielkość liter i znaki przycinane z brzegów, np. „czarne” → „Czarne”); osi nie da się dodać, usunąć ani przestawić (zmiana nazwy osi tylko bez zmiany tożsamości tekstu); zapisana nazwa osi albo wartość ze znakiem niedozwolonym zachowuje tożsamość swojej poprawki (tego samego tekstu bez znaków niedozwolonych i białych znaków), a bez znaku widocznego nie ma tożsamości; wyjątek (decyzja właściciela z 2026-11-25): druga oś, której zapisana nazwa powtarza zapisaną nazwę pierwszej osi (po zastąpieniu znaków niedozwolonych odstępem i przycięciu T2, bez względu na wielkość liter, np. „Kolor” i „Kolor” U+200B), może jednorazowo dostać nową nazwę, a pierwsza zostaje chroniona; nowy wariant można dodać; inna zmiana znaczenia to usunięcie starego wariantu i dodanie nowego (nowy identyfikator). Usunięcie wariantu jest zablokowane, gdy ma stan fizyczny > 0 albo zarezerwowany > 0. Cena, stan i historie usuniętego wariantu zostają w Pricing i Inventory, niewidoczne w panelu; linie koszyka z nim mają stan `unavailable_product`. |
 | K6 | Zmiana klasy podatkowej przelicza ceny wariantów produktu: to samo brutto, nowa stawka i netto, nowy wpis historii cen (Omnibus) ze źródłem systemowym `tax_reconciliation`, bez pracownika (pracownika zmiany klasy wskazuje `updated_by` produktu). |
 | K7 | Oryginały zdjęć w Garage nie są usuwane (także po usunięciu zdjęcia z produktu albo uploadzie bez zapisu produktu). Klucz wynika z treści, więc ten sam plik nie zajmuje miejsca dwa razy. |
 | K8 | Limity uploadu: 64 MB i 50 MP na plik, typy JPEG, PNG, WebP, AVIF, HEIC. Jeden plik na żądanie, panel wysyła kilka po kolei. |
@@ -107,19 +107,23 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
     jak został wysłany: po zapisie „czar ne” wartość ma tę tożsamość i nie da się jej już zmienić na „czarne”. Po
     zapisie poprawiony tekst jest chroniony jak każdy inny;
   - osie: ta sama liczba i kolejność, każda nazwa z tą samą tożsamością tekstu;
-  - wyjątek dla dwóch zapisanych nazw osi o jednej tożsamości: zapis sprzed reguły tekstów mógł przyjąć dwie nazwy,
-    które po przycięciu albo po poprawce znaków niedozwolonych są jedną (`IdentityText::same`: obie mają tożsamość
-    i jest ona ta sama, np. „Kolor” i „Kolor” U+200B albo „Kolor” i `Kol` U+009F `or`). Zapis z niezmienioną drugą
-    nazwą to powtórzona oś (422 przy `variantAxes[1]`, „Nazwa osi już jest użyta.”; dla nazwy ze znakiem
-    niedozwolonym najpierw 422 „Nazwa osi zawiera niedozwolone znaki.”), więc oś, której zapisana nazwa
-    ma tożsamość zapisanej nazwy osi na wcześniejszej pozycji, może dostać dowolną nazwę, która nie powtarza innej
-    osi (inaczej dalej 422 powtórzonej osi). Wyjątek liczy się tylko z nazw zapisanych w produkcie, nie z nazw
-    wysłanych. Pierwsza z tych osi zachowuje blokadę; liczba i kolejność osi, wartości wariantów i ich
-    identyfikatory zostają bez zmian (dodanie, usunięcie i przestawienie osi dalej daje 409). Po zapisie nazwy osi są
-    różne i obie chroni zwykła reguła. Zmiana nazwy pierwszej osi przy takim powtórzeniu daje komunikat z dopiskiem:
-    „Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter. Nową nazwę może dostać
-    tylko druga oś, która powtarza tę nazwę.” (dla zapisanej nazwy ze znakiem niedozwolonym dopisek idzie po
-    wskazówce poprawki);
+  - wyjątek dla dwóch zapisanych nazw osi, które się powtarzają (decyzja właściciela z 2026-11-25: „Wyjątek dotyczy
+    wyłącznie drugiej osi. Przy ustalaniu kolizji zastąp niedozwolone znaki odstępami, zastosuj T2 i dotychczasowe
+    porównanie bez względu na wielkość liter.”): zapis sprzed reguły tekstów mógł przyjąć dwie nazwy, które teraz są
+    jedną. Kolizję liczy `IdentityText::same` wyłącznie z nazw zapisanych w produkcie, nie z nazw wysłanych: w każdej
+    znaki niedozwolone (T1) zastępuje odstęp, potem przycięcie T2 i porównanie bez względu na wielkość liter, tak jak
+    reguła powtórzonej osi; nazwa bez znaku widocznego z niczym nie koliduje. Kolidują np. „Kolor” i „Kolor” U+200B,
+    „Kolor” i „Kolor” U+009F, „A” i U+009F „A”. Nie kolidują „Kolor” i `Kol` U+009F `or` (to „Kol or”) ani „Kolor”
+    i `Ko` U+009F ` lor`: druga nazwa przyjmuje wtedy tylko swoją poprawkę („Kol or” albo „Ko lor”; poprawka bez odstępu
+    to powtórzona oś), a nowa nazwa daje 409 ze wskazówką o znakach niedozwolonych. Zapis z niezmienioną drugą nazwą
+    kolidującą daje 422 przy `variantAxes[1]`: „Nazwa osi już jest użyta.”, a dla nazwy ze znakiem niedozwolonym
+    najpierw „Nazwa osi zawiera niedozwolone znaki.” (po usunięciu znaku: „Nazwa osi już jest użyta.”). Druga oś może
+    wtedy dostać dowolną nazwę, która nie powtarza pierwszej (inaczej dalej 422 powtórzonej osi). Pierwsza oś
+    zachowuje blokadę; liczba i kolejność osi, wartości wariantów i ich identyfikatory zostają bez zmian (dodanie,
+    usunięcie i przestawienie osi dalej daje 409). Po zapisie nazwy osi się nie powtarzają i obie chroni zwykła
+    reguła. Zmiana nazwy pierwszej osi przy kolizji daje komunikat z dopiskiem: „Oś „Kolor” nie może zmienić nazwy po
+    pierwszej publikacji. Popraw tylko wielkość liter. Nową nazwę może dostać tylko druga oś, która powtarza tę
+    nazwę.” (dla zapisanej nazwy ze znakiem niedozwolonym dopisek idzie po wskazówce poprawki);
   - wariant zachowany (ten sam `variantId`): każda wartość z tą samą tożsamością tekstu co wartość zapisana na tej
     pozycji;
   - naruszenie → `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail` wskazującym wariant albo
@@ -273,7 +277,7 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
   jedną kombinacją, dają się odczytać, a ich zapis z panelu jest powtórzoną kombinacją (422 przy
   `variants[i].values` każdego wariantu po pierwszym). Wyjściem jest usunięcie wszystkich poza jednym: korekta ich
   stanu fizycznego do zera, potem zapis produktu bez nich; rezerwacja blokuje usunięcie (`variant-in-use`), dopóki
-  nie zostanie zwolniona albo zatwierdzona. Dwie zapisane nazwy osi o jednej tożsamości to powtórzona oś (422 przy
+  nie zostanie zwolniona albo zatwierdzona. Dwie zapisane nazwy osi, które się powtarzają, to powtórzona oś (422 przy
   `variantAxes[1]`), a wyjściem jest nowa nazwa drugiej osi także po publikacji (K5, „Tożsamość wariantu po
   publikacji”).
   Niepoprawny UTF-8 w treści JSON nie dociera do walidatora: dekoder odpowiada 400 (bajt poza UTF-8 albo samotny

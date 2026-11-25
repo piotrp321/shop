@@ -468,7 +468,7 @@ final class ProductEditTest extends TestCase
 
     /**
      * @return iterable<string, array{string, string}> the stored second axis name with a forbidden character and the
-     *                                                  correction that does not repeat the first
+     *                                                 correction that does not repeat the first
      */
     public static function secondAxesWithAForbiddenCharacterAndTheirCorrection(): iterable
     {

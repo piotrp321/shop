@@ -231,9 +231,9 @@ final class Product
      * The same axes in the same order, each name with the same identity; every kept variant with the same identity of
      * its values. The identity is the text trimmed by the rule of texts without regard to case; a stored name or value
      * the rule refuses keeps only its correction, and one without a visible character has none ({@see IdentityText}).
-     * New variants are free. A stored axis name with the identity of a stored name in an earlier place (two names the
-     * rule before the rule of texts took as different) is free: it repeats the earlier one, so it has to take a new
-     * name for the product to be saved (spec api-input-contract, E7).
+     * New variants are free. A stored axis name that repeats the stored name in an earlier place ({@see
+     * IdentityText::same()}: two names the rule before the rule of texts took as different) is free: the product is
+     * saved only once it takes a new name (spec api-input-contract, E7; owner decision of 2026-11-25).
      *
      * @throws VariantIdentityLocked
      */
