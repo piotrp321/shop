@@ -252,6 +252,37 @@ test.describe("the list", () => {
     }
   });
 
+  // #572, #627: a click on an option gave the focus to the page and left the field pointing at the removed option.
+  test("the category filter keeps the focus after an option is clicked, filters by the next typed character and has no aria-activedescendant of a removed option", async () => {
+    test.setTimeout(90_000);
+    const page = await newPanelPage("warehouse", viewports.desktop);
+    try {
+      await openInventory(page);
+      const filter = page.getByRole("combobox", { name: "Kategoria" });
+
+      await filter.click();
+      await page.getByRole("option", { name: /Kajaki/ }).first().click();
+      await expect(page).toHaveURL(/category=/);
+      await expect(filter, "the field keeps the focus after a click on an option").toBeFocused();
+      expect(await violationsOf(page, null, ["aria-valid-attr-value"]), "axe after a choice by the mouse").toEqual([]);
+
+      await page.keyboard.press("ControlOrMeta+A");
+      await page.keyboard.type("kaj");
+      const options = page.getByRole("option");
+      await expect(options.first()).toBeVisible();
+      for (const name of await options.evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label") ?? ""))) {
+        expect(name.toLocaleLowerCase("pl"), "the list is filtered by the typed text").toContain("kaj");
+      }
+
+      await filter.press("ArrowDown");
+      await filter.press("Enter");
+      await expect(page.getByRole("option")).toHaveCount(0);
+      expect(await violationsOf(page, null, ["aria-valid-attr-value"]), "axe after a choice with Enter").toEqual([]);
+    } finally {
+      await page.close();
+    }
+  });
+
   test("keeps the search and the page size in the address, without a new entry of the history", async () => {
     test.setTimeout(90_000);
     const page = await newPanelPage("warehouse", viewports.desktop);

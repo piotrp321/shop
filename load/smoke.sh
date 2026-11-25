@@ -3,7 +3,8 @@
 # running stack of docker compose (make up and make seed first). Runs k6 in a container on the network of the stack and
 # reaches the services by their names there (http://store:3000, http://api); the Origin of the writes is the public
 # address of the store, as the store itself has it (STORE_URL). Without thresholds of speed; any failed scenario is a non-zero
-# exit code (99: a check or a threshold of the run failed; 2: the stack is not running).
+# exit code, the one of k6 (99: a check or a threshold of the run failed; 108: the checkout order was refused with a 422 or
+# a 409 cart-changed, which aborts the run) or 2: the stack is not running.
 set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"

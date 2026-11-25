@@ -87,6 +87,11 @@ class TempDirCase(unittest.TestCase):
         patcher = mock.patch.dict(os.environ, {'SHOP_METRICS_STATE': self.metrics_state})
         patcher.start()
         self.addCleanup(patcher.stop)
+        # The default directory of the session transcripts (~/.claude/projects) is a temporary one too.
+        self.projects = os.path.join(self.tmp, 'projects')
+        patcher = mock.patch.object(retro, 'CLAUDE_PROJECTS', self.projects, create=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def real_home(self):
         """VISUAL-DESIGN and DISCOUNT-CODES (with their events), CART (an AO without events), ao-night, a run in
@@ -865,6 +870,10 @@ class FakeRunner:
                          gh_item(357, kind='pull', title='VD-11', body='## Decyzje bez pytania\n\nBrak.\n')]
         self.open_prs = []
         self.head_prs = {}   # branch -> the pull requests of that head (the final PR of a native epic)
+        self.pr_comments = {}   # number -> the comments of that PR (`gh issue view N --json comments`)
+        self.git_log = {}   # path -> the output of `git log ... -- <path>`
+        self.refs = {}      # ref -> sha of `git rev-parse --verify -q <ref>^{commit}` (others: no such ref)
+        self.blobs = set()  # `<ref>:<path>` that `git cat-file -e` finds
         self.ao_issues = [gh_item(46, repo=AO_REPO, title='ao epic resume --add-qa-rounds po FINALIZE', body='x',
                                   labels=[])]
         self.shop_issues = [gh_item(380, title='tech-debt agent issue', body='y',
@@ -882,14 +891,27 @@ class FakeRunner:
             return 'this is not json'
         if args[:2] == ['git', 'fetch']:
             return ''
+        if args[:3] == ['git', 'rev-parse', '--verify']:
+            ref = args[-1][:-len('^{commit}')] if args[-1].endswith('^{commit}') else args[-1]
+            if ref not in self.refs:
+                raise next_epic_module().CommandError(args, 'exit code 1')
+            return self.refs[ref] + '\n'
         if args[:2] == ['git', 'rev-parse']:
             return 'c0ffee1234567890\n'
+        if args[:3] == ['git', 'cat-file', '-e']:
+            if args[3] not in self.blobs:
+                raise next_epic_module().CommandError(args, 'exit code 128')
+            return ''
         if args[:2] == ['git', 'ls-remote']:
             return 'abc\trefs/heads/epic/hardening\n'
         if args[:2] == ['git', 'ls-tree']:
             return 'docs/features/retro/spec.md\ndocs/features/retro/plan.md\n'
         if args[:2] == ['git', 'show']:
             return '{"schema_version": 1}'
+        if args[:2] == ['git', 'log']:
+            return self.git_log.get(args[-1], '')
+        if args[:3] == ['gh', 'issue', 'view'] and args[-2:] == ['--json', 'comments']:
+            return json.dumps({'comments': self.pr_comments.get(int(args[3]), [])})
         if args[:3] == ['gh', 'project', 'item-list']:
             return json.dumps({'items': [
                 {'content': {'type': 'Issue', 'number': 267, 'title': 'HARDENING: bezpieczeństwo',
@@ -1232,6 +1254,26 @@ EFFECT = {'before': {'epics': ['a', 'b', 'c'], 'n': 3, 'n_epics': 3, 'median': 1
           'spanning': [], 'unmerged_after': [], 'gaps': []}
 
 
+HEAD_SHA, OLD_SHA = 'b' * 40, 'e' * 40
+
+
+def process_reading(differs=(), skills=(), match=None):
+    """The output of `metrics.py process --worktree DIR` (tools/metrics/process_version.py, `reading`): the worktree
+    of the retro at HEAD and the main checkout, with `differs` in the main checkout."""
+    def place(kind, path, head, found):
+        return {'kind': kind, 'path': path, 'head': head, 'branch': 'main' if kind == 'main_checkout' else None,
+                'dirty': False, 'fingerprint': 'f-%s' % kind, 'files': {},
+                'differs': [{'path': p, 'state': 'changed'} for p in found]}
+    return {'worktree': '/retro/wt', 'worktree_head': HEAD_SHA,
+            'expected': {'ref': HEAD_SHA, 'requested': 'HEAD', 'describe': 'ash-v1.0-24-gbbbbbbb',
+                         'fingerprint': 'f-worktree', 'files': {}},
+            'disk': [place('worktree', '/retro/wt', HEAD_SHA, ()), place('main_checkout', '/shop', OLD_SHA, differs)],
+            'user_level': {'agents': [], 'skills': list(skills)},
+            'match': (not differs and not skills) if match is None else match,
+            'active_epics': [{'epic': 'abuse-limits', 'started_at': '2026-11-19T16:29:32Z', 'fingerprint': None,
+                              'current': None}]}
+
+
 class FakeMetrics:
     """Stands in for the runner of `python3 tools/metrics/metrics.py`: gets the arguments after the script and returns
     the standard output. `fail` is None, 'all' (every call fails like a missing script or a non-zero exit code),
@@ -1246,6 +1288,10 @@ class FakeMetrics:
              'skipped': [{'key': 'D1', 'reason': 'za mało modeli'}], 'gaps': ['pole X']},
             {'epic': 'not-an-ao-run', 'candidates': [candidate('D2:plan_split')], 'skipped': [], 'gaps': []}]
         self.effect = dict(EFFECT)
+        # `process --worktree DIR`: (exit code, stdout); a non-zero code fails the way make_metrics_runner fails
+        self.process = (0, json.dumps(process_reading()))
+        self.watch = None            # a FakeRunner: how many gh/git calls were made before `process`
+        self.calls_before_process = None
 
     def __call__(self, args):
         self.calls.append(list(args))
@@ -1254,6 +1300,13 @@ class FakeMetrics:
             raise error
         if self.fail == 'bad_json':
             return 'not json'
+        if args[0] == 'process':
+            if self.watch is not None:
+                self.calls_before_process = len(self.watch.calls)
+            code, out = self.process
+            if code:
+                raise retro.MeasurementError('kod wyjścia %d' % code, code=code, stdout=out)
+            return out
         if args[0] == 'decide':
             return json.dumps({'epic': args[1], 'candidates': [], 'report': [], 'skipped': [], 'gaps': [],
                                'history': self.history, 'keys': {}})
@@ -1450,6 +1503,14 @@ class MetricsRunnerTest(TempDirCase):
     def test_a_non_zero_exit_code_is_only_the_category_kod_wyjscia_and_never_the_stderr(self):
         repo = self.repo_with('import sys; sys.stderr.write("metrics: brak rekordu w /Users/x/.local/state\\n"); sys.exit(2)')
         self.assertEqual(self.failure(repo, ('effect', 'X', '--at', 'Y')), 'kod wyjścia 2')
+
+    def test_a_non_zero_exit_code_keeps_the_code_and_the_standard_output_but_not_the_stderr(self):
+        # `metrics.py process` prints its reading and exits 4 when the definitions differ
+        repo = self.repo_with('import sys; print(\'{"match": false}\'); sys.stderr.write("/Users/x\\n"); sys.exit(4)')
+        with self.assertRaises(retro.MeasurementError) as caught:
+            retro.make_metrics_runner(repo)(['process', '--worktree', repo])
+        self.assertEqual((str(caught.exception), caught.exception.code), ('kod wyjścia 4', 4))
+        self.assertEqual(json.loads(caught.exception.stdout), {'match': False})
 
     def test_a_timeout_is_the_category_przekroczony_czas(self):
         repo = self.repo_with('import time; time.sleep(30)')
@@ -1814,6 +1875,68 @@ class NativeCase(CollectCase):
         return {i['id']: i for i in data['incidents'] if i['epic'] == NATIVE}
 
 
+class NativeReviewFindingsTest(unittest.TestCase):
+    """The finding of a blocking review of a native record says what the record says: the task of the plan, the id of
+    a task outside the plan, an order whose task is unknown or the whole change, and a missing mode in words."""
+
+    def findings(self, reviews):
+        incidents, _ = retro.native_record_incidents(NATIVE, native_record(reviews=reviews))
+        return [(i['key'], i['facts'][0]['text']) for i in incidents if i['kind'] == 'finding']
+
+    def review(self, at, role='code-reviewer', **fields):
+        found = {'task': None, 'role': role, 'agent_id': 'ar', 'at': '2026-11-20T%s:00Z' % at, 'mode': 'FULL',
+                 'verdict': 'CHANGES_REQUIRED', 'blocking': True}
+        found.update(fields)
+        return found
+
+    def test_the_assignment_of_the_order_names_the_review(self):
+        found = self.findings([
+            self.review('09:00', task='ABUSE-LIMITS-2', ref='ABUSE-LIMITS-2', assignment='plan'),
+            self.review('09:10', ref='ABUSE-LIMITS-QA1', assignment='outside_plan'),
+            self.review('09:20', ref=None, assignment='unknown', mode=None),
+            self.review('09:30', role='qa-adversarial', ref=None, assignment='no_task', mode='DELTA', verdict='BLOCK')])
+        self.assertEqual(found, [
+            ('ABUSE-LIMITS-2:code-reviewer@1795165200',
+             'przegląd code-reviewer zadania ABUSE-LIMITS-2 (FULL): werdykt CHANGES_REQUIRED'),
+            ('ABUSE-LIMITS-QA1:code-reviewer@1795165800',
+             'przegląd code-reviewer zadania spoza planu ABUSE-LIMITS-QA1 (FULL): werdykt CHANGES_REQUIRED'),
+            ('nieustalone:code-reviewer@1795166400',
+             'przegląd code-reviewer zlecenia z zadaniem nieustalonym (tryb nieustalony): werdykt CHANGES_REQUIRED'),
+            ('epik:qa-adversarial@1795167000', 'przegląd qa-adversarial całej zmiany (DELTA): werdykt BLOCK')])
+        incidents, _ = retro.native_record_incidents(NATIVE, native_record(reviews=[
+            self.review('09:10', ref='ABUSE-LIMITS-QA1', assignment='outside_plan')]))
+        data = [i['data'] for i in incidents if i['kind'] == 'finding'][0]
+        self.assertEqual((data['task'], data['ref'], data['assignment']), (None, 'ABUSE-LIMITS-QA1', 'outside_plan'))
+
+    def test_a_ref_that_is_no_identifier_reaches_neither_the_key_nor_the_data(self):
+        for ref in ('ABUSE-LIMITS-QA1\nTAJNY-TEKST', 123, ['ABUSE-LIMITS-QA1'], 'A' * 101, ' ', ''):
+            with self.subTest(ref=ref):
+                incidents, _ = retro.native_record_incidents(NATIVE, native_record(reviews=[
+                    self.review('09:10', ref=ref, assignment='outside_plan')]))
+                finding = [i for i in incidents if i['kind'] == 'finding'][0]
+                self.assertIsNone(finding['data']['ref'])
+                self.assertEqual(finding['key'], 'nieustalone:code-reviewer@1795165800')
+                self.assertNotIn('\n', finding['facts'][0]['text'])
+        incidents, _ = retro.native_record_incidents(NATIVE, native_record(reviews=[
+            self.review('09:10', ref='ABUSE-LIMITS-QA1', assignment='outside_plan\nTAJNE')]))
+        finding = [i for i in incidents if i['kind'] == 'finding'][0]
+        self.assertIsNone(finding['data']['assignment'])
+        self.assertEqual(finding['key'], 'nieustalone:code-reviewer@1795165800')
+
+    def test_a_review_of_the_record_without_orders_keeps_its_text_key_and_data(self):
+        incidents, _ = retro.native_record_incidents(NATIVE, native_record())
+        found = {i['key']: (i['facts'][0]['text'], i['data']) for i in incidents if i['kind'] == 'finding'}
+        self.assertEqual(found, {
+            'ABUSE-LIMITS-2:code-reviewer@1795167000': (
+                'przegląd code-reviewer zadania ABUSE-LIMITS-2 (FULL): werdykt CHANGES_REQUIRED',
+                {'task': 'ABUSE-LIMITS-2', 'role': 'code-reviewer', 'agent_id': 'a2r', 'mode': 'FULL',
+                 'verdict': 'CHANGES_REQUIRED', 'blocking': True, 'can_be_corrective': False}),
+            'epik:qa-adversarial@1795172400': (
+                'przegląd qa-adversarial całej zmiany (FULL): werdykt BLOCK',
+                {'task': None, 'role': 'qa-adversarial', 'agent_id': 'aqa', 'mode': 'FULL', 'verdict': 'BLOCK',
+                 'blocking': True, 'can_be_corrective': False})})
+
+
 class NativeSectionsTest(unittest.TestCase):
     """The points of a fixed section of the description of the final PR (docs/adr/agentic-software-house.md,
     "Przebieg epiku", step 7): None without the section, no point for the entry "brak"."""
@@ -1854,7 +1977,8 @@ class NativeCollectTest(NativeCase):
     def test_collect_refreshes_the_record_with_metrics_epic_before_the_other_measurement(self):
         metrics = NativeMetrics(self.metrics_state, native_record())
         self.collected(metrics=metrics)
-        self.assertEqual(metrics.calls[0], ['epic', NATIVE])
+        # the check of the process version (`process`) comes first; of the measurement, the refresh is the first call
+        self.assertEqual([c for c in metrics.calls if c[0] != 'process'][0], ['epic', NATIVE])
         self.assertEqual(len([c for c in metrics.calls if c[0] == 'epic']), 1)
 
     def test_the_incidents_of_a_native_epic_by_kind(self):
@@ -2044,6 +2168,775 @@ class NativeRefusalTest(NativeCase):
         with open(os.path.join(self.metrics_state, 'runs', NATIVE + '.json'), 'w') as f:
             f.write('{not json')
         self.refused(NATIVE)
+
+
+# --------------------------------------------------------------- the whole text of the points (ASH-PROCESS-FIXES R)
+
+END_MARKER = 'ISTOTNE NA KOŃCU: właściciel chce pełnej treści'
+
+
+def long_point(length, end=END_MARKER):
+    """One line of `length` characters whose important part is at its very end."""
+    base = 'Uwaga właściciela: sesja dzieliła uwagę na kilka punktów, bo limit ucinał treść; '
+    filler = (base * (length // len(base) + 1))[:length - len(end) - 1]
+    if filler.endswith(' '):
+        filler = filler[:-1] + 'x'
+    return filler + ' ' + end
+
+
+class FullTextOfPointsTest(unittest.TestCase):
+    """R1, R2, R4: a point of a PR description is one incident with its whole text in `data.text` and in the evidence,
+    whatever its length; the identifier and the number of incidents do not depend on the length."""
+
+    LENGTHS = (501, 1200, 5000)
+
+    def test_a_long_point_is_built_to_the_length_with_the_marker_at_its_end(self):
+        for length in self.LENGTHS:
+            text = long_point(length)
+            self.assertEqual(len(text), length)
+            self.assertTrue(text.endswith(END_MARKER))
+
+    def test_a_long_decision_of_a_task_pr_is_one_incident_with_the_whole_text(self):
+        for length in self.LENGTHS:
+            with self.subTest(length=length):
+                text = long_point(length)
+                body = '## Decyzje bez pytania\n\n1. %s\n\n## Dalej\n\n- coś\n' % text
+                incidents = retro.unasked_incidents('e', [{'number': 9, 'title': 'T', 'body': body}])
+                self.assertEqual([i['id'] for i in incidents], ['e/unasked/pr9#1'])
+                self.assertEqual(incidents[0]['data']['text'], text)
+                self.assertEqual([f['text'] for f in incidents[0]['facts']], [text])
+
+    def test_n_points_of_a_task_pr_give_n_incidents_whatever_their_length(self):
+        texts = [long_point(n, 'koniec %d' % n) for n in (40, 700, 1600)]
+        body = '## Decyzje bez pytania\n\n' + ''.join('- %s\n' % t for t in texts)
+        incidents = retro.unasked_incidents('e', [{'number': 9, 'body': body}])
+        self.assertEqual([i['key'] for i in incidents], ['pr9#1', 'pr9#2', 'pr9#3'])
+        self.assertEqual([i['data']['text'] for i in incidents], texts)
+
+    def test_a_long_point_of_each_section_of_the_final_pr_is_one_incident_with_the_whole_text(self):
+        decision, problem, other = long_point(1200, 'decyzja-koniec'), long_point(5000), long_point(600, 'drugi')
+        gap = long_point(1100, 'luka-koniec')
+        body = ('## Decyzje bez pytania\n\n1. %s\n\n## Problemy i zastoje\n\n- %s\n- %s\n\n'
+                '## Luki w instrukcjach\n\n%s\n' % (decision, problem, other, gap))
+        incidents, facts = retro.native_pr_incidents('e', 800, {'title': 'T', 'body': body})
+        found = {i['id']: i for i in incidents}
+        self.assertEqual(sorted(found), ['e/reported/gaps#1', 'e/reported/problems#1', 'e/reported/problems#2',
+                                         'e/unasked/pr800#1'])
+        for incident_id, text in (('e/unasked/pr800#1', decision), ('e/reported/problems#1', problem),
+                                  ('e/reported/problems#2', other), ('e/reported/gaps#1', gap)):
+            with self.subTest(incident=incident_id):
+                self.assertEqual(found[incident_id]['data']['text'], text)
+                self.assertEqual([f['text'] for f in found[incident_id]['facts']], [text])
+        self.assertEqual(facts, [])
+
+    def test_polish_characters_on_the_old_limit_of_500_are_kept(self):
+        for length in (499, 500, 501, 502):
+            text = 'ż' * (length - 6) + 'ąęść ó'
+            with self.subTest(length=length):
+                self.assertEqual(len(text), length)
+                body = '## Decyzje bez pytania\n\n- %s\n\n## Problemy i zastoje\n\n- %s\n' % (text, text)
+                task = retro.unasked_incidents('e', [{'number': 9, 'body': body}])
+                final, _ = retro.native_pr_incidents('e', 800, {'body': body})
+                for incident in task + final:
+                    self.assertEqual(incident['data']['text'], text, incident['id'])
+                    self.assertEqual(incident['facts'][0]['text'], text, incident['id'])
+                    self.assertNotIn('…', incident['data']['text'])
+
+    def test_a_multi_line_point_with_paragraphs_and_a_nested_list_is_one_point_with_all_its_text(self):
+        body = ('## Problemy i zastoje\n\n'
+                '- Uwaga właściciela: pierwszy akapit.\n\n'
+                '  Drugi akapit po pustej linii, wcięty.\n'
+                '  - zagnieżdżony punkt A\n'
+                '  - zagnieżdżony punkt B: %s\n'
+                '- Drugi punkt.\n' % END_MARKER)
+        points = retro.pr_section_points(body, 'Problemy i zastoje')
+        self.assertEqual([p for p, _ in points], [1, 2])
+        for part in ('pierwszy akapit', 'Drugi akapit po pustej linii', 'zagnieżdżony punkt A', END_MARKER):
+            self.assertIn(part, points[0][1])
+        self.assertEqual(points[1][1], 'Drugi punkt.')
+
+    def test_text_outside_the_points_of_a_section_leaves_a_fact_with_the_whole_text(self):
+        tail = 'Akapit bez wcięcia po pustej linii. ' + long_point(900)
+        body = ('## Problemy i zastoje\n\nWstęp prozą przed listą.\n\n- Pierwszy punkt.\n\n%s\n\n'
+                '## Luki w instrukcjach\n\n- brak\n' % tail)
+        incidents, facts = retro.native_pr_incidents('e', 800, {'body': body})
+        self.assertEqual([i['id'] for i in incidents], ['e/reported/problems#1'])
+        self.assertEqual(incidents[0]['data']['text'], 'Pierwszy punkt.')
+        outside = {f['id']: f for f in facts}['e/outside-points/problems']
+        self.assertIn('Wstęp prozą przed listą.', outside['text'])
+        self.assertIn(tail, outside['text'])
+        self.assertIn('Problemy i zastoje', outside['text'])
+        self.assertIn('#800', outside['text'])
+
+    def test_a_section_of_points_only_leaves_no_outside_fact(self):
+        _, facts = retro.native_pr_incidents('e', 800, {'body': NATIVE_BODY})
+        self.assertFalse([f for f in facts if '/outside-points/' in f['id']])
+
+    def test_the_whole_text_of_a_manual_fix(self):
+        text = long_point(1500)
+        incidents, _ = retro.manual_incidents('e', retro.parse_measurement('Ręczne poprawki: 1\n- PR #12: %s\n' % text))
+        self.assertEqual(incidents[0]['data']['items'], [text])
+        self.assertEqual([f['text'] for f in incidents[0]['facts']], [text])
+
+
+class FullTextOfAoDataTest(CollectCase):
+    """R3 for the AO data that carries text written by a session or a person: the questions of a blocker (a wait and
+    the status of a blocked task) and the body of an open issue reach input.json whole."""
+
+    def test_the_whole_question_of_a_blocker_of_a_wait(self):
+        question = long_point(1500)
+        events = [{'type': 'status_changed', 'task_id': 'T-1', 'epic_id': 'open', 'at': 1794000000.5,
+                   'data': {'from': 'RUNNING', 'to': 'BLOCKED', 'reason': 'executor', 'blockers': [question],
+                            'reasons': [question]}}]
+        build_run(self.ao_home, 'open', 'cart.sql', json.dumps(events[0]) + '\n',
+                  extra_sql="UPDATE epics SET epic_id='open';")
+        epic = [e for e in retro.discover_epics(self.ao_home) if e['id'] == 'open'][0]
+        incidents, _ = retro.ao_incidents(epic)
+        wait = [i for i in incidents if i['kind'] == 'wait'][0]
+        self.assertEqual(wait['data']['blockers'], [question])
+        self.assertEqual(wait['data']['reasons'], [question])
+        self.assertIn('pytanie blokera: ' + question, [f['text'] for f in wait['facts']])
+        self.assertIn('powód wstrzymania: ' + question, [f['text'] for f in wait['facts']])
+
+    def test_the_whole_question_of_a_blocked_task_of_an_epic_in_progress(self):
+        question = long_point(1500)
+        con = sqlite3.connect(os.path.join(self.ao_home, 'ao-hardening', 'orchestrator.db'))
+        con.execute("UPDATE tasks SET status='BLOCKED', blockers=? WHERE task_id='CART-2'", (json.dumps([question]),))
+        con.commit()
+        con.close()
+        self.assertEqual(self.collect(), 0)
+        status = {s['id']: s for s in self.load()['status']}['status/in-progress']
+        self.assertEqual(status['blocked'][0]['tasks'][0]['blockers'], [question])
+
+    def test_the_whole_body_of_an_open_issue(self):
+        body = long_point(6000)
+        self.runner.shop_issues[0]['body'] = body
+        self.runner.ao_issues[0]['body'] = body
+        self.assertEqual(self.collect(), 0)
+        issues = self.load()['open_issues']
+        self.assertEqual(issues['shop'][0]['body'], body)
+        self.assertEqual(issues['ao'][0]['body'], body)
+
+    def test_prose_outside_the_decisions_of_a_task_pr_leaves_a_fact(self):
+        tail = 'Decyzja prozą po liście: ' + long_point(800)
+        self.runner.task_prs[0]['body'] = '## Decyzje bez pytania\n\n1. **Pierwsza**.\n\n%s\n' % tail
+        self.assertEqual(self.collect(), 0)
+        data = self.load()
+        facts = {f['id']: f for f in data['facts']}
+        self.assertIn(tail, facts['visual-design/outside-points/pr356']['text'])
+        self.assertEqual([i['key'] for i in data['incidents'] if i['kind'] == 'unasked'], ['pr356#1'])
+        # the entry "Brak." of PR #357 is no text outside the points
+        self.assertNotIn('visual-design/outside-points/pr357', facts)
+
+
+class FullTextOfNativeCollectTest(NativeCase):
+    """R4 end to end: collect of a native epic whose final PR has points longer than 500 (and 1000) characters with
+    the important part at their end."""
+
+    def setUp(self):
+        super().setUp()
+        self.write_native()
+        self.problem, self.decision = long_point(1100), long_point(520, 'koniec decyzji')
+        self.runner.head_prs[NATIVE_BRANCH][0]['body'] = NATIVE_BODY.replace(
+            '- Za mało pamięci Dockera: dwa stosy zamiast trzech.', '- ' + self.problem).replace(
+            '1. Limit liczony na adres IP, nie na konto.', '1. ' + self.decision)
+
+    def test_input_json_has_the_whole_text_one_incident_per_point_and_the_same_ids(self):
+        data = self.collected()
+        found = self.native(data)
+        for incident_id, text in (('abuse-limits/reported/problems#1', self.problem),
+                                  ('abuse-limits/unasked/pr800#1', self.decision)):
+            with self.subTest(incident=incident_id):
+                self.assertEqual(found[incident_id]['data']['text'], text)
+                self.assertEqual([f['text'] for f in found[incident_id]['facts']], [text])
+        self.assertEqual(self.kinds(data, NATIVE)['reported'], 2)
+        self.assertEqual(self.kinds(data, NATIVE)['unasked'], 2)
+        self.assertIn(END_MARKER, json.dumps(data, ensure_ascii=False))
+
+
+# ----------------------------------------------------------- handoff to the retro and the materials (ASH-PROCESS-FIXES P3)
+
+HANDOFF = '## Przekazanie do retro\n\nEpik: abuse-limits, `/retro abuse-limits`.\n\nUwaga właściciela: %s\n'
+
+
+class HandoffTest(NativeCase):
+    """P3: collect of a native epic gives the whole text of the comments "Przekazanie do retro" of the final PR, read
+    through the origin gate; a comment of an untrusted author is only an entry of `external`."""
+
+    def setUp(self):
+        super().setUp()
+        self.write_native()
+        self.text = HANDOFF % long_point(3000)
+        self.runner.pr_comments[800] = [
+            comment('Zwykły komentarz przeglądu.', n=5),
+            comment(self.text, n=6),
+            comment(HANDOFF % 'SECRET-HANDOFF-MARKER', author='eve', n=7)]
+
+    def test_the_handoff_comment_is_in_input_json_whole(self):
+        handoff = self.collected()['handoff']
+        self.assertEqual(handoff, {'pr': 800, 'comments': [
+            {'author': 'piotrp321', 'created_at': '2026-11-10T10:00:00Z',
+             'url': 'https://github.com/piotrp321/shop/issues/1#issuecomment-6', 'body': self.text}]})
+
+    def test_the_comments_are_read_through_the_gate(self):
+        self.collected()
+        self.assertIn(['gh', 'issue', 'view', '800', '--repo', 'piotrp321/shop', '--json', 'comments'],
+                      self.runner.calls)
+        self.assertTrue([c for c in self.runner.calls if c[:3] == ['gh', 'api', '--include'] and 'eve' in c[3]])
+
+    def test_a_comment_of_an_untrusted_author_is_only_number_author_and_link(self):
+        data = self.collected()
+        self.assertIn({'source': 'final_pr_comment', 'number': 800, 'author': 'eve',
+                       'url': 'https://github.com/piotrp321/shop/issues/1#issuecomment-7'}, data['external'])
+        self.assertNotIn('SECRET-HANDOFF-MARKER', json.dumps(data, ensure_ascii=False))
+
+    def test_without_a_handoff_comment_it_is_a_fact_not_an_error(self):
+        self.runner.pr_comments[800] = [comment('Zwykły komentarz przeglądu.', n=5)]
+        data = self.collected()
+        self.assertEqual(data['handoff'], {'pr': 800, 'comments': []})
+        facts = {f['id']: f for f in data['facts']}
+        self.assertIn('#800', facts['abuse-limits/missing/handoff']['text'])
+
+    def test_a_failing_gate_on_the_comments_is_exit_code_1_without_input_json(self):
+        self.runner.fail = '--json comments'
+        with redirect_stderr(io.StringIO()):
+            code = self.collect(NATIVE, metrics=NativeMetrics(self.metrics_state, native_record()))
+        self.assertEqual(code, 1)
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'input.json')))
+
+    def test_an_ao_epic_has_neither_handoff_nor_materials(self):
+        self.assertEqual(self.collect('visual-design', metrics=FakeMetrics()), 0)
+        data = self.load()
+        self.assertIsNone(data['handoff'])
+        self.assertIsNone(data['materials'])
+        self.assertFalse([c for c in self.runner.calls if c[:3] == ['gh', 'issue', 'view'] or c[:2] == ['git', 'log']])
+        self.assertFalse([f for f in data['facts'] if f['id'].startswith('visual-design/missing/handoff')])
+
+
+PLAN_PATH = 'docs/features/abuse-limits/plan.md'
+DELETED_IN, LAST_VERSION, BRANCH_HEAD = 'd' * 40, 'a' * 40, 'f' * 40
+
+
+class MaterialsTest(NativeCase):
+    """P3: the pointers to the materials of a native epic (no copied content): the specification and the plan in the
+    worktree of the retro (a removed plan: the commit with its last version), the final PR, the run file, the record
+    and the sessions with the directories of their transcripts. Missing parts are facts; collect succeeds."""
+
+    def setUp(self):
+        super().setUp()
+        self.write_native()
+        self.worktree = os.path.join(self.tmp, 'wt')
+        os.makedirs(os.path.join(self.worktree, 'docs', 'features', NATIVE))
+        with open(os.path.join(self.worktree, 'docs', 'features', NATIVE, 'spec.md'), 'w') as f:
+            f.write('# spec\n')
+        self.runner.git_log[PLAN_PATH] = '%s %s\n' % (DELETED_IN, LAST_VERSION)
+        self.runner.refs['origin/' + NATIVE_BRANCH] = BRANCH_HEAD   # the branch of the epic is still on origin
+        self.transcripts = os.path.join(self.projects, '-w')
+        os.makedirs(self.transcripts)
+        with open(os.path.join(self.transcripts, 's1.jsonl'), 'w') as f:
+            f.write('{}\n')
+
+    def argv(self, epic='visual-design', *extra):
+        return super().argv(epic, '--worktree', self.worktree, *extra)
+
+    def materials(self):
+        data = self.collected()
+        return data['materials'], {f['id']: f for f in data['facts']}
+
+    def test_the_pointers_to_the_materials_of_the_epic(self):
+        materials, facts = self.materials()
+        self.assertEqual(materials, {
+            'final_pr': 800,
+            'spec': {'path': 'docs/features/abuse-limits/spec.md', 'exists': True},
+            'plan': {'path': PLAN_PATH, 'exists': False, 'source': 'epic_branch', 'ref': 'origin/' + NATIVE_BRANCH,
+                     'last_commit': LAST_VERSION, 'deleted_in': DELETED_IN},
+            'run_file': os.path.join(self.metrics_state, 'runs', 'abuse-limits.json'),
+            'record': {'path': os.path.join(self.metrics_state, 'epics', 'abuse-limits.json'), 'exists': True},
+            'sessions': [{'id': 's1', 'worktree': '/w', 'at': '2026-11-20T08:00:00Z',
+                          'transcript_dir': self.transcripts,
+                          'transcript': os.path.join(self.transcripts, 's1.jsonl')}]})
+        self.assertFalse([f for f in facts if f.startswith('abuse-limits/missing/') and f.split('/')[2] in
+                          ('spec', 'plan', 'sessions', 'transcripts')])
+
+    def test_the_history_of_the_plan_is_read_on_the_branch_of_the_epic(self):
+        self.collected()
+        logs = [c for c in self.runner.calls if c[:2] == ['git', 'log']]
+        self.assertEqual(len(logs), 1)
+        self.assertIn('origin/' + NATIVE_BRANCH, logs[0])
+        self.assertIn('--diff-filter=D', logs[0])
+        self.assertEqual(logs[0][-2:], ['--', PLAN_PATH])
+
+    def test_a_local_branch_is_used_when_origin_has_none(self):
+        del self.runner.refs['origin/' + NATIVE_BRANCH]
+        self.runner.refs[NATIVE_BRANCH] = BRANCH_HEAD
+        materials, _ = self.materials()
+        self.assertEqual((materials['plan']['source'], materials['plan']['ref']), ('epic_branch', NATIVE_BRANCH))
+
+    def test_a_plan_kept_on_the_branch_to_its_end_points_at_the_head_of_the_branch(self):
+        self.runner.git_log[PLAN_PATH] = ''
+        self.runner.blobs.add('origin/%s:%s' % (NATIVE_BRANCH, PLAN_PATH))
+        materials, facts = self.materials()
+        self.assertEqual(materials['plan'], {'path': PLAN_PATH, 'exists': False, 'source': 'epic_branch',
+                                             'ref': 'origin/' + NATIVE_BRANCH, 'last_commit': BRANCH_HEAD,
+                                             'deleted_in': None})
+        self.assertNotIn('abuse-limits/missing/plan', facts)
+
+    def test_without_the_branch_the_plan_of_main_before_the_epic_is_marked(self):
+        del self.runner.refs['origin/' + NATIVE_BRANCH]
+        materials, facts = self.materials()
+        self.assertEqual(materials['plan'], {'path': PLAN_PATH, 'exists': False, 'source': 'main',
+                                             'ref': 'c0ffee1234567890', 'last_commit': LAST_VERSION,
+                                             'deleted_in': DELETED_IN})
+        text = facts['abuse-limits/missing/plan-epic-version']['text']
+        for part in (NATIVE_BRANCH, 'sprzed epiku', '„Status” planu z czasu epiku jest niedostępny'):
+            self.assertIn(part, text)
+
+    def test_a_plan_in_the_worktree_without_the_branch_needs_no_history(self):
+        del self.runner.refs['origin/' + NATIVE_BRANCH]
+        with open(os.path.join(self.worktree, PLAN_PATH), 'w') as f:
+            f.write('# plan\n')
+        materials, _ = self.materials()
+        self.assertEqual(materials['plan'], {'path': PLAN_PATH, 'exists': True, 'source': 'worktree', 'ref': None,
+                                             'last_commit': None, 'deleted_in': None})
+        self.assertFalse([c for c in self.runner.calls if c[:2] == ['git', 'log']])
+
+    def test_a_plan_that_never_existed_is_a_fact(self):
+        self.runner.git_log[PLAN_PATH] = ''
+        materials, facts = self.materials()
+        self.assertEqual((materials['plan']['last_commit'], materials['plan']['deleted_in']), (None, None))
+        self.assertIn('nigdy', facts['abuse-limits/missing/plan']['text'])
+
+    def test_a_branch_name_that_looks_like_an_option_is_not_used(self):
+        self.write_native(run_file=dict(native_run_file(), branch='--output=/tmp/x'))
+        self.runner.head_prs['--output=/tmp/x'] = self.runner.head_prs[NATIVE_BRANCH]
+        materials, _ = self.materials()
+        self.assertEqual(materials['plan']['source'], 'main')
+        self.assertFalse([c for c in self.runner.calls if c[:2] == ['git', 'rev-parse'] and '--output' in ' '.join(c)])
+
+    def test_a_failing_git_is_a_fact_and_collect_succeeds(self):
+        self.runner.fail = '--diff-filter'
+        materials, facts = self.materials()
+        self.assertEqual(materials['plan']['last_commit'], None)
+        self.assertIn('git', facts['abuse-limits/missing/plan']['text'])
+
+    def test_without_the_directory_of_the_specification_it_is_a_fact(self):
+        shutil.rmtree(os.path.join(self.worktree, 'docs'))
+        materials, facts = self.materials()
+        self.assertEqual(materials['spec'], {'path': 'docs/features/abuse-limits/spec.md', 'exists': False})
+        self.assertIn('brak katalogu docs/features/abuse-limits', facts['abuse-limits/missing/spec']['text'])
+
+    def test_a_run_file_without_sessions_is_a_fact(self):
+        self.write_native(run_file=dict(native_run_file(), sessions=[]))
+        materials, facts = self.materials()
+        self.assertEqual(materials['sessions'], [])
+        self.assertIn('abuse-limits/missing/sessions', facts)
+
+    def test_a_session_without_a_transcript_has_none_and_a_fact(self):
+        os.remove(os.path.join(self.transcripts, 's1.jsonl'))
+        materials, facts = self.materials()
+        self.assertEqual(materials['sessions'][0]['transcript'], None)
+        self.assertEqual(materials['sessions'][0]['transcript_dir'], self.transcripts)
+        self.assertIn('s1', facts['abuse-limits/missing/transcripts']['text'])
+
+
+class PlanPointerGitTest(TempDirCase):
+    """QA 1: the last version of the plan is on the branch of the epic, not on main. A real repository: main has the
+    plan before the epic, the epic branch changes it twice (its "Status") and removes it, main gets a squash merge
+    that removes it, and a clone has the branch as origin/<branch>."""
+
+    PLAN = 'docs/features/demo/plan.md'
+
+    def git(self, cwd, *args):
+        env = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t',
+                   GIT_COMMITTER_EMAIL='t@t', GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull)
+        result = subprocess.run(['git', '-C', cwd] + list(args), capture_output=True, text=True, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip()
+
+    def write(self, repo, text):
+        os.makedirs(os.path.join(repo, 'docs', 'features', 'demo'), exist_ok=True)
+        with open(os.path.join(repo, self.PLAN), 'w') as f:
+            f.write(text)
+
+    def setUp(self):
+        super().setUp()
+        self.upstream = os.path.join(self.tmp, 'upstream')
+        os.makedirs(self.upstream)
+        self.git(self.upstream, 'init', '-q', '-b', 'main')
+        self.write(self.upstream, '# plan\n\n## Status\n\n')
+        self.git(self.upstream, 'add', '.')
+        self.git(self.upstream, 'commit', '-q', '-m', 'plan before the epic')
+        self.before_epic = self.git(self.upstream, 'rev-parse', 'HEAD')
+        self.git(self.upstream, 'switch', '-q', '-c', 'feat/demo')
+        for status in ('zadanie 1 zrobione', 'zadanie 2 zrobione'):
+            self.write(self.upstream, '# plan\n\n## Status\n\n- %s\n' % status)
+            self.git(self.upstream, 'commit', '-q', '-am', status)
+        self.last_version = self.git(self.upstream, 'rev-parse', 'HEAD')
+        self.git(self.upstream, 'rm', '-q', self.PLAN)
+        self.git(self.upstream, 'commit', '-q', '-m', 'remove the plan')
+        self.removed_on_branch = self.git(self.upstream, 'rev-parse', 'HEAD')
+        self.git(self.upstream, 'switch', '-q', 'main')
+        self.git(self.upstream, 'merge', '-q', '--squash', 'feat/demo')
+        self.git(self.upstream, 'commit', '-q', '-m', 'feat: epic demo (squash)')
+        self.squash = self.git(self.upstream, 'rev-parse', 'HEAD')
+        self.clone = os.path.join(self.tmp, 'clone')
+        self.git(self.tmp, 'clone', '-q', self.upstream, self.clone)
+        self.main = self.git(self.clone, 'rev-parse', 'origin/main')
+
+    def pointer(self, repo, branch='feat/demo', commit=None):
+        return retro.plan_pointer('demo', self.PLAN, repo, retro.next_epic.make_runner(repo), commit or self.main,
+                                  branch)
+
+    def test_the_last_version_is_the_last_commit_of_the_branch_with_the_plan(self):
+        plan, facts = self.pointer(self.clone)
+        self.assertEqual(plan, {'path': self.PLAN, 'exists': False, 'source': 'epic_branch', 'ref': 'origin/feat/demo',
+                                'last_commit': self.last_version, 'deleted_in': self.removed_on_branch})
+        self.assertEqual(facts, [])
+        self.assertIn('zadanie 2 zrobione', self.git(self.clone, 'show', '%s:%s' % (plan['last_commit'], self.PLAN)))
+
+    def test_a_local_branch_without_origin(self):
+        plan, _ = self.pointer(self.upstream)
+        self.assertEqual((plan['source'], plan['ref'], plan['last_commit']),
+                         ('epic_branch', 'feat/demo', self.last_version))
+
+    def test_without_the_branch_the_version_of_main_before_the_epic_is_marked(self):
+        self.git(self.clone, 'branch', '-q', '-rd', 'origin/feat/demo')
+        plan, facts = self.pointer(self.clone)
+        self.assertEqual(plan, {'path': self.PLAN, 'exists': False, 'source': 'main', 'ref': self.main,
+                                'last_commit': self.before_epic, 'deleted_in': self.squash})
+        self.assertEqual([f['id'] for f in facts], ['demo/missing/plan-epic-version'])
+        self.assertIn('„Status” planu z czasu epiku jest niedostępny', facts[0]['text'])
+
+
+# ------------------------------------------------------------------ the version of the process (ASH-PROCESS-FIXES W4, W7)
+
+DIFFERING = ['.claude/agents/code-reviewer.md', '.claude/agents/retro-analyst.md', '.claude/skills/retro/SKILL.md']
+NOT_CONFIRMED = 'nie jest potwierdzona'
+
+
+class ProcessCheckCase(CollectCase):
+    """collect of visual-design with a FakeMetrics that answers `process` and watches the gh/git calls."""
+
+    def setUp(self):
+        super().setUp()
+        self.metrics = FakeMetrics()
+        self.metrics.watch = self.runner
+
+    def run_collect(self, *extra, epic='visual-design', metrics=None):
+        stderr = io.StringIO()
+        with redirect_stderr(stderr), redirect_stdout(io.StringIO()):
+            code = retro.main(self.argv(epic, *extra), run=self.runner,
+                              metrics=self.metrics if metrics is None else metrics)
+        return code, stderr.getvalue()
+
+    def facts(self):
+        return {f['id']: f for f in self.load()['facts']}
+
+
+class ProcessCheckTest(ProcessCheckCase):
+    """W7: collect checks the version of the process (`metrics.py process --worktree <worktree of the retro>`, the
+    expected version is its HEAD) before any `gh` call. A difference is a refusal (exit 2, nothing written) unless it is
+    accepted with a reason; a check that cannot run is a fact and collect goes on."""
+
+    def test_a_matching_version_is_a_fact_with_the_expected_version_and_the_check_comes_before_any_gh(self):
+        code, err = self.run_collect()
+        self.assertEqual(code, 0, err)
+        process = [c for c in self.metrics.calls if c[0] == 'process']
+        self.assertEqual(process, [['process', '--worktree', self.tmp]])
+        self.assertEqual(self.metrics.calls[0][0], 'process')
+        self.assertEqual(self.metrics.calls_before_process, 0)
+        fact = self.facts()['visual-design/process/check']
+        self.assertEqual(fact['data']['status'], 'match')
+        self.assertEqual((fact['data']['ref'], fact['data']['describe']), (HEAD_SHA, 'ash-v1.0-24-gbbbbbbb'))
+        self.assertIn('ash-v1.0-24-gbbbbbbb', fact['text'])
+        self.assertIn(NOT_CONFIRMED, fact['text'])
+
+    def test_the_worktree_of_the_retro_is_checked(self):
+        worktree = os.path.join(self.tmp, 'wt')
+        os.makedirs(worktree)
+        self.assertEqual(self.run_collect('--worktree', worktree)[0], 0)
+        self.assertEqual([c for c in self.metrics.calls if c[0] == 'process'], [['process', '--worktree', worktree]])
+
+    def test_a_difference_without_acceptance_is_a_refusal_before_any_gh_without_input_json(self):
+        self.metrics.process = (4, json.dumps(process_reading(DIFFERING)))
+        code, err = self.run_collect()
+        self.assertEqual(code, 2)
+        self.assertTrue(err.startswith('retro: wersja procesu'), err)
+        for text in ('main_checkout', '/shop', '3 plik', DIFFERING[0], 'docs/adr/agentic-software-house.md',
+                     '--accept-process-mismatch'):
+            self.assertIn(text, err)
+        self.assertEqual(self.runner.calls, [])
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'input.json')))
+        self.assertFalse(os.path.exists(self.retro_home))
+
+    def test_a_skill_of_the_user_that_hides_the_project_skill_is_a_refusal(self):
+        self.metrics.process = (4, json.dumps(process_reading(skills=['retro'])))
+        code, err = self.run_collect()
+        self.assertEqual(code, 2)
+        self.assertIn('retro', err.split('skille użytkownika', 1)[1])
+
+    def test_a_difference_accepted_with_a_reason_is_collected_with_a_fact(self):
+        self.metrics.process = (4, json.dumps(process_reading(DIFFERING)))
+        code, err = self.run_collect('--accept-process-mismatch', '  epik abuse-limits w toku  ')
+        self.assertEqual(code, 0, err)
+        fact = self.facts()['visual-design/process/check']
+        self.assertEqual(fact['data']['status'], 'mismatch_accepted')
+        self.assertEqual(fact['data']['accepted'], 'epik abuse-limits w toku')
+        self.assertEqual(fact['data']['places'], [{'kind': 'main_checkout', 'path': '/shop', 'head': OLD_SHA,
+                                                   'differs': [{'path': p, 'state': 'changed'} for p in DIFFERING]}])
+        for text in ('epik abuse-limits w toku', 'main_checkout', DIFFERING[0], NOT_CONFIRMED, 'na dysku'):
+            self.assertIn(text, fact['text'])
+
+    def test_an_empty_reason_is_a_refusal_without_any_command(self):
+        for reason in ('', '   ', ' '):
+            with self.subTest(reason=reason):
+                code, err = self.run_collect('--accept-process-mismatch', reason)
+                self.assertEqual(code, 2)
+                self.assertIn('--accept-process-mismatch', err)
+                self.assertEqual(self.runner.calls, [])
+                self.assertFalse(os.path.exists(os.path.join(self.out, 'input.json')))
+
+    def test_a_check_that_cannot_run_is_a_fact_and_collect_goes_on(self):
+        # (exit code 4 is a difference whatever its output: ProcessCheckExitCodeTest)
+        for answer, category in (((2, ''), 'kod wyjścia 2'), ((0, 'not json'), 'wynik nie jest JSON-em'),
+                                 ((0, json.dumps({'match': True})), 'nieoczekiwany kształt JSON')):
+            with self.subTest(answer=answer):
+                self.metrics = FakeMetrics()
+                self.metrics.process = answer
+                code, err = self.run_collect()
+                self.assertEqual(code, 0, err)
+                facts = self.facts()
+                fact = facts['visual-design/process/missing/check']
+                self.assertTrue(fact['text'].startswith('brak kontroli wersji procesu'), fact['text'])
+                self.assertIn(category, fact['text'])
+                self.assertNotIn('visual-design/process/check', facts)
+
+    def test_a_missing_script_in_the_worktree_is_a_fact(self):
+        # no metrics runner injected: the real one, and the repository of the test has no tools/metrics/metrics.py
+        code, err = self.run_collect(metrics=False)
+        self.assertEqual(code, 0, err)
+        self.assertIn('brak skryptu', self.facts()['visual-design/process/missing/check']['text'])
+
+    def test_the_refusal_says_itself_that_it_is_no_error_to_defer(self):
+        self.metrics.process = (4, json.dumps(process_reading(DIFFERING)))
+        _, err = self.run_collect()
+        self.assertIn('To nie jest błąd zbierania danych', err)
+        self.assertIn('nie odraczaj retro', err)
+        self.assertIn('zapytaj', err)
+
+    def test_an_empty_reason_says_to_give_one_and_repeat(self):
+        code, err = self.run_collect('--accept-process-mismatch', ' ')
+        self.assertEqual(code, 2)
+        self.assertIn('podaj niepusty powód i powtórz', err)
+        self.assertIn('nie odraczaj retro', err)
+
+    def test_the_refusal_says_whether_an_epic_in_progress_started_with_the_definitions_of_the_main_checkout(self):
+        reading = process_reading(DIFFERING)
+        reading['active_epics'] = [{'epic': 'a-epic', 'current': True}, {'epic': 'b-epic', 'current': False},
+                                   {'epic': 'c-epic', 'current': None}, {'epic': 'd-epic'}]
+        self.metrics.process = (4, json.dumps(reading))
+        _, err = self.run_collect()
+        for text in ('a-epic (definicje z dzisiejszego głównego checkoutu: tak)',
+                     'b-epic (definicje z dzisiejszego głównego checkoutu: nie)',
+                     'c-epic (definicje z dzisiejszego głównego checkoutu: brak danych)',
+                     'd-epic (definicje z dzisiejszego głównego checkoutu: brak danych)'):
+            self.assertIn(text, err)
+
+    def test_an_ao_epic_has_no_fact_of_a_record(self):
+        self.run_collect()
+        self.assertFalse([f for f in self.facts() if f.startswith('visual-design/process/') and 'record' in f])
+
+
+class ProcessCheckExitCodeTest(ProcessCheckCase):
+    """S1: exit code 4 of `metrics.py process` is a difference whatever its output says: a reading with `match: true`,
+    an unreadable or a partial output is a refusal (showing what can be shown), and an accepted reason still works."""
+
+    def test_exit_code_4_with_match_true_is_a_refusal(self):
+        self.metrics.process = (4, json.dumps(process_reading()))
+        code, err = self.run_collect()
+        self.assertEqual(code, 2)
+        self.assertTrue(err.startswith('retro: wersja procesu'), err)
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'input.json')))
+
+    def test_exit_code_4_with_an_unreadable_output_is_a_refusal(self):
+        for out in ('not json', '', None, '[]'):
+            with self.subTest(out=out):
+                self.metrics.process = (4, out)
+                code, err = self.run_collect()
+                self.assertEqual(code, 2)
+                self.assertIn('narzędzie zgłosiło różnicę, wynik nieczytelny', err)
+                self.assertEqual(self.runner.calls, [])
+
+    def test_exit_code_4_with_a_partial_output_shows_what_it_can(self):
+        reading = process_reading(DIFFERING)
+        del reading['expected'], reading['match']
+        self.metrics.process = (4, json.dumps(reading))
+        code, err = self.run_collect()
+        self.assertEqual(code, 2)
+        self.assertIn(DIFFERING[0], err)
+        self.assertIn('brak SHA', err)
+
+    def test_exit_code_4_with_an_unreadable_output_can_be_accepted(self):
+        self.metrics.process = (4, 'not json')
+        code, err = self.run_collect('--accept-process-mismatch', 'świadomie')
+        self.assertEqual(code, 0, err)
+        fact = self.facts()['visual-design/process/check']
+        self.assertEqual((fact['data']['status'], fact['data']['accepted']), ('mismatch_accepted', 'świadomie'))
+        self.assertIn('wynik nieczytelny', fact['text'])
+        self.assertNotIn('visual-design/process/missing/check', self.facts())
+
+
+def record_process(**extra):
+    """The field `process` of a native record (tools/metrics, "Wersja procesu w rekordzie")."""
+    process = {'status': 'checked', 'checked_at': '2026-11-20T08:00:00Z', 'checked_on': 'start',
+               'expected': {'ref': HEAD_SHA, 'requested': 'abc', 'describe': 'ash-v1.0-3-gbbbbbbb',
+                            'fingerprint': 'f1', 'files': {}},
+               'disk': [{'kind': 'worktree', 'path': '/w', 'head': HEAD_SHA, 'differs': []}],
+               'user_level': {'agents': [], 'skills': []}, 'match': True, 'accepted': None, 'changes': [],
+               'loaded': {'session': [], 'agents': [], 'skills': [],
+                          'summary': {'confirmed': 4, 'differs': 0, 'unconfirmed': 0},
+                          'by_role': {'developer': {'confirmed': 2, 'differs': 0, 'unconfirmed': 0}}}}
+    process.update(extra)
+    return process
+
+
+class ProcessOfTheRecordTest(NativeCase):
+    """W4: the field `process` of the record of a native epic (and its `gaps` under `process`) is a fact for the
+    analyst: a start accepted despite a difference, changes of the definitions during the epic, subagents with another
+    definition than expected, no confirmation, no check of the disk. A record without the field is a fact of missing
+    data."""
+
+    def setUp(self):
+        super().setUp()
+        self.write_native()
+
+    def fact(self, process, gaps=(), missing=False):
+        record = native_record(gaps=list(gaps))
+        if process is not None or not missing:
+            record['process'] = process
+        data = self.collected(metrics=NativeMetrics(self.metrics_state, record))
+        return {f['id']: f for f in data['facts']}
+
+    def test_a_matching_record(self):
+        fact = self.fact(record_process())['abuse-limits/process/record']
+        self.assertEqual((fact['data']['match'], fact['data']['ref'], fact['data']['describe']),
+                         (True, HEAD_SHA, 'ash-v1.0-3-gbbbbbbb'))
+        self.assertEqual(fact['data']['differs_roles'], [])
+        self.assertIn('dysk przy starcie zgodny', fact['text'])
+        self.assertIn('ash-v1.0-3-gbbbbbbb', fact['text'])
+
+    def test_a_start_accepted_despite_a_difference_with_its_gaps(self):
+        gap = 'process: start mimo różnicy definicji (3 plików: main_checkout; skille użytkownika: brak); powód: x'
+        fact = self.fact(record_process(match=False, accepted='epik w toku w innej sesji'),
+                         gaps=[gap, 'reviews: coś innego'])['abuse-limits/process/record']
+        self.assertIn('zaakceptowany mimo różnicy', fact['text'])
+        self.assertIn('epik w toku w innej sesji', fact['text'])
+        self.assertEqual(fact['data']['accepted'], 'epik w toku w innej sesji')
+        self.assertEqual(fact['data']['gaps'], [gap[len('process: '):]])
+
+    def test_changes_of_the_definitions_during_the_epic(self):
+        changes = [{'at': '2026-11-20T10:00:00Z', 'event': 'done', 'session': 's1', 'kind': 'disk',
+                    'disk': [{'kind': 'main_checkout', 'fingerprint': 'f9',
+                              'differs': [{'path': DIFFERING[0], 'state': 'changed'}]}], 'accepted': None},
+                   {'at': '2026-11-20T11:00:00Z', 'event': 'process', 'session': 's1', 'kind': 'check_failed',
+                    'reason': 'brak gita', 'accepted': None}]
+        fact = self.fact(record_process(changes=changes))['abuse-limits/process/record']
+        self.assertIn('zmiany definicji w trakcie: 1', fact['text'])
+        self.assertIn('nieudane kontrole w trakcie: 1', fact['text'])
+        self.assertEqual(len(fact['data']['changes']), 2)
+
+    def test_subagents_with_another_definition_and_without_a_confirmation(self):
+        loaded = {'session': [], 'agents': [], 'skills': [],
+                  'summary': {'confirmed': 1, 'differs': 1, 'unconfirmed': 3},
+                  'by_role': {'code-reviewer': {'confirmed': 0, 'differs': 1, 'unconfirmed': 0},
+                              'developer': {'confirmed': 1, 'differs': 0, 'unconfirmed': 2}}}
+        fact = self.fact(record_process(loaded=loaded))['abuse-limits/process/record']
+        self.assertEqual(fact['data']['differs_roles'], ['code-reviewer'])
+        self.assertIn('code-reviewer', fact['text'])
+        self.assertIn('bez potwierdzenia: 3', fact['text'])
+
+    def test_a_disk_that_was_not_checked(self):
+        fact = self.fact(record_process(disk=None, disk_reason='worktree poza repozytorium'))[
+            'abuse-limits/process/record']
+        self.assertFalse(fact['data']['disk_checked'])
+        self.assertIn('dysk niesprawdzony', fact['text'])
+        self.assertIn('worktree poza repozytorium', fact['text'])
+
+    def test_a_record_that_could_not_be_checked(self):
+        fact = self.fact(record_process(status='check_failed', reason='brak gita', accepted='awaria'))[
+            'abuse-limits/process/record']
+        self.assertEqual(fact['data']['status'], 'check_failed')
+        self.assertIn('brak gita', fact['text'])
+
+    def test_a_record_with_null_or_without_the_field_is_a_fact_of_missing_data(self):
+        for missing in (False, True):
+            with self.subTest(without_the_key=missing):
+                facts = self.fact(None, missing=missing)
+                self.assertIn('abuse-limits/process/missing/record', facts)
+                self.assertNotIn('abuse-limits/process/record', facts)
+
+    def test_a_record_without_a_disk_check_gives_no_structural_zeros(self):
+        # the shape of tools/metrics for a run file without a disk check (README, "Wersja procesu")
+        unchecked = record_process(status='not_checked', disk=None, disk_checked=False,
+                                   disk_reason='start sprzed kontroli wersji (plik przebiegu bez pola process)',
+                                   match=None, accepted=None, changes=[])
+        unchecked.pop('checked_on')
+        fact = self.fact(unchecked)['abuse-limits/process/record']
+        self.assertIn('zmiany definicji w trakcie: brak danych', fact['text'])
+        self.assertNotIn('w trakcie: 0', fact['text'])
+        self.assertIn('start sprzed kontroli wersji (plik przebiegu bez pola process)', fact['text'])
+        self.assertNotIn('brak powodu', fact['text'])
+        self.assertNotIn('zgodny', fact['text'])
+        self.assertIsNone(fact['data']['disk_changes'])
+        self.assertFalse(fact['data']['disk_checked'])
+
+    def test_a_difference_without_a_recorded_acceptance_is_said_as_it_is(self):
+        fact = self.fact(record_process(match=False, accepted=None))['abuse-limits/process/record']
+        self.assertIn('różnica definicji przy starcie bez zapisanej akceptacji', fact['text'])
+        self.assertNotIn('zaakceptowany', fact['text'])
+
+    def test_confirmed_in_the_version_of_the_epic_are_told_apart(self):
+        loaded = {'summary': {'confirmed': 4, 'differs': 0, 'unconfirmed': 1, 'confirmed_epic': 2}, 'by_role': {}}
+        fact = self.fact(record_process(loaded=loaded))['abuse-limits/process/record']
+        self.assertIn('potwierdzone: 4 (w wersji epiku: 2)', fact['text'])
+
+    def test_an_informational_change_is_no_change_of_the_definitions(self):
+        changes = [{'at': '2026-11-20T10:00:00Z', 'event': 'process', 'kind': 'disk', 'informational': True,
+                    'disk': [{'kind': 'worktree', 'differs': [{'path': DIFFERING[0], 'state': 'changed'}]}]}]
+        fact = self.fact(record_process(changes=changes))['abuse-limits/process/record']
+        self.assertIn('zmiany definicji w trakcie: 0', fact['text'])
+        self.assertIn('zmiany informacyjne (zacommitowane na gałęzi epiku): 1', fact['text'])
+        self.assertEqual(fact['data']['disk_changes'], 0)
+        self.assertTrue(fact['data']['changes'][0]['informational'])
+
+    def test_the_numbers_of_files_follow_the_rule_of_tools_metrics(self):
+        # tools/metrics: in a worktree descending from the base only an uncommitted change is a mismatch, the commits
+        # of the epic branch are information; in the main checkout every difference is a mismatch
+        def files(*names):
+            return [{'path': n, 'state': 'changed'} for n in names]
+        changes = [
+            {'at': 't1', 'event': 'process', 'kind': 'disk', 'informational': True,
+             'disk': [{'kind': 'worktree', 'from_base': True, 'uncommitted': [], 'epic_branch': files('a', 'b'),
+                       'differs': files('a', 'b')}, {'kind': 'main_checkout', 'differs': []}]},
+            {'at': 't2', 'event': 'process', 'kind': 'disk', 'informational': False,
+             'disk': [{'kind': 'worktree', 'from_base': True, 'uncommitted': files('c'),
+                       'epic_branch': files('a', 'b'), 'differs': files('a', 'b', 'c')},
+                      {'kind': 'main_checkout', 'differs': files('x', 'y')}]},
+            {'at': 't3', 'event': 'done', 'kind': 'disk', 'informational': False, 'returned': True,
+             'disk': [{'kind': 'main_checkout', 'differs': []}]}]
+        fact = self.fact(record_process(changes=changes))['abuse-limits/process/record']
+        self.assertIn('zmiany definicji w trakcie: 1 (plików: 3)', fact['text'])
+        self.assertIn('zmiany informacyjne (zacommitowane na gałęzi epiku): 1 (plików: 2)', fact['text'])
+        self.assertIn('powroty do stanu zgodnego: 1', fact['text'])
+        self.assertEqual(fact['data']['disk_changes'], 1)
+        self.assertEqual([(c['mismatch_files'], c['epic_branch_files'], c['returned']) for c in fact['data']['changes']],
+                         [(0, 2, False), (3, 0, False), (0, 0, True)])
+
+    def test_odd_shapes_of_the_field_are_no_error(self):
+        for odd in ({'status': 'checked', 'loaded': 'x', 'changes': 'y', 'disk': 3, 'expected': []},
+                    {'loaded': {'by_role': {'r': 'x'}, 'summary': None}}):
+            with self.subTest(odd=odd):
+                self.assertIn('abuse-limits/process/record', self.fact(odd))
 
 
 class MeasurementFromTheWorktreeTest(CollectCase):
@@ -3521,6 +4414,61 @@ class IssuesTest(RunDirCase):
 
 
 
+class GithubLimitsTest(RunDirCase):
+    """R3: the text of an issue goes to GitHub whole; a text over the limit of GitHub (65536 characters in a body or a
+    comment, 256 in a title) is an error of `validate` and a refusal of `issues` with the name of the field, never a
+    text cut in silence."""
+
+    def setUp(self):
+        super().setUp()
+        self.repo = os.path.join(self.tmp, 'repo')
+        os.makedirs(self.repo)
+        retro.write_json(self.run_dir, 'input.json', valid_input())
+
+    def validate(self, *items):
+        self.write_proposals(*items)
+        code, out, err = self.cli('validate', self.run_dir, repo=self.repo)
+        return code, json.loads(out)['errors']
+
+    def test_a_long_body_with_the_important_part_at_its_end_reaches_gh_whole(self):
+        body = long_point(20000)
+        self.write_proposals(issue_item(1, key='long', body=body))
+        self.write_state('e3', {'decisions_open': [{'n': 1, 'kind': 'issue', 'key': 'long'}]})
+        code, out, err = self.cli('issues', self.run_dir, '--approve', '1')
+        self.assertEqual(code, 0, err)
+        create = [c for c in self.runner.calls if c[:3] == ['gh', 'issue', 'create']][0]
+        self.assertIn(body, create[create.index('--body') + 1])
+
+    def test_a_body_over_the_limit_of_github_is_an_error_of_validate_with_the_field(self):
+        code, errors = self.validate(issue_item(1, key='long', body=long_point(65600)))
+        self.assertEqual(code, 2)
+        self.assertTrue([e for e in errors if e['code'] == 'field' and e['item'] == 1 and 'body' in e['message']
+                         and '65536' in e['message']], errors)
+
+    def test_a_comment_over_the_limit_of_github_is_an_error_of_validate_with_the_field(self):
+        code, errors = self.validate(issue_item(1, key='long', body=None, existing_issue=46,
+                                                cause=long_point(65600)))
+        self.assertEqual(code, 2)
+        self.assertTrue([e for e in errors if e['code'] == 'field' and 'cause' in e['message']
+                         and '65536' in e['message']], errors)
+
+    def test_a_title_over_the_limit_of_github_is_an_error_of_validate_with_the_field(self):
+        code, errors = self.validate(issue_item(1, key='long', title='T' * 257))
+        self.assertEqual(code, 2)
+        self.assertTrue([e for e in errors if e['code'] == 'field' and 'title' in e['message']
+                         and '256' in e['message']], errors)
+
+    def test_a_text_at_the_limits_passes(self):
+        code, errors = self.validate(issue_item(1, key='ok', title='T' * 256, body=long_point(60000)))
+        self.assertEqual((code, errors), (0, []))
+
+    def test_issues_refuses_a_text_over_the_limit_without_any_gh_call(self):
+        self.write_proposals(issue_item(1, key='long', body=long_point(65600)))
+        self.write_state('e3', {'decisions_open': [{'n': 1, 'kind': 'issue', 'key': 'long'}]})
+        self.refused('issues', self.run_dir, '--approve', '1', text='65536')
+        self.assertFalse([c for c in self.runner.calls if c[:2] == ['gh', 'issue']])
+
+
 class ProcessErrorPathsTest(TempDirCase):
     """The commands as processes, with the real runner and a `gh` or `git` that fails."""
 
@@ -3852,10 +4800,10 @@ class RetroProcessDocumentsTest(unittest.TestCase):
         for text in (row % 'wstrzymana', '# Plan bez tabeli\n', None):
             with self.subTest(text=text):
                 self.assertTrue(self.series_state(text).startswith('w toku (nieznany stan'))
-        # the plan of today: the tag ash-v1.0 is set, so a retro during the series defers its fix items (the plain
-        # state, not the annotated "w toku (nieznany stan …)" of an unreadable row)
+        # the plan of today: the series ASH v1.0 has ended for good, so "zakończona" (the plain state, not the
+        # annotated "w toku (nieznany stan …)" of an unreadable row); "przed startem" or "w toku" would be a wrong plan
         self.assertEqual(self.series_state(repo_text('docs', 'features', 'agentic-software-house', 'plan.md')),
-                         'w toku')
+                         'zakończona')
 
     def test_the_agent_and_the_specification_describe_the_incidents_of_a_native_epic(self):
         agent = repo_text('.claude', 'agents', 'retro-analyst.md')

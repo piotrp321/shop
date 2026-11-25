@@ -113,7 +113,8 @@ Stan nie jest zapisywany w osobnym obiekcie; wynika z obiektów klastra:
   Pody działają, więc alert `WorkloadNotReady` się nie odzywa. Regułę zakłada `generate`, usuwa wyłącznie `open`; nie
   jest częścią chartu i nie ma etykiet ani adnotacji śledzenia Argo CD, więc wdrożenie ani synchronizacja jej nie
   usuną (Z7). Cel `status` pokazuje, czy reguła istnieje.
-- **Blokada `demo-data-lock`.** `generate` i `open` działają pojedynczo. Blokadą jest ConfigMap `demo-data-lock`
+- **Blokada `demo-data-lock`.** `generate` i `open` działają pojedynczo; tę samą blokadę bierze na czas przebudowy indeksu
+  `make -C infra/k8s reindex` (`docs/features/search/spec.md`, „Infrastruktura”). Blokadą jest ConfigMap `demo-data-lock`
   w przestrzeni `shop` z dwoma polami: `holder` (polecenie, profil, host operatora, pid i czas UTC startu) i `token`
   (losowy). Nie ma etykiet ani adnotacji śledzenia Argo CD (jak reguła). Zakłada ją `kubectl create`, który przy
   istniejącej blokadzie kończy się błędem `AlreadyExists`, więc dostaje ją tylko jeden przebieg. `generate` sprawdza ją
@@ -133,8 +134,11 @@ Stan nie jest zapisywany w osobnym obiekcie; wynika z obiektów klastra:
   żadnego `Complete`, więc `open` po przerwaniu nowego generowania odmawia: sukces poprzedniego przebiegu nie może
   zostać wzięty za sukces bieżącego. `open` otwiera sklep tylko po Jobie `demo-data-run`,
   który jest `Complete`. Przebieg trwa, dopóki Job jest aktywny; `generate` i `open` odmawiają przy aktywnym Jobie
-  przestrzeni (poza Jobami CronJoba `rate-limit-check`, który działa co 5 minut przez najwyżej minutę: zgodność
-  z ABUSE-LIMITS, L12).
+  przestrzeni poza Jobami CronJobów krótkich sprawdzeń `rate-limit-check`, `queue-check` i `order-expiry` (co 5 minut,
+  najwyżej 60, 120 i 600 s; ABUSE-LIMITS, L12, i ASYNC-RELIABILITY, W9). Jobem sprawdzenia jest Job, którego właścicielem
+  jest taki CronJob, nie Job o podobnej nazwie: Job utworzony ręcznie, Job innego CronJoba i Job, którego właścicielem nie
+  jest CronJob, blokują. Ten wyjątek obowiązuje w każdym odczycie aktywnych Jobów: przed `tak`, tuż przed nowym Jobem
+  `demo-data-run` i w `open`.
 - **Zakres zamknięcia.** Reguła obejmuje każdy pod przestrzeni, więc zamyka wszystkie publiczne wejścia naraz:
   sklep, API, panel (`admin.`), logowanie (`auth.`) i obrazy (`img.`); innych wejść nie ma (Z8). Połączenia otwarte
   przed regułą zrywa restart poda Traefika (Z2); tam też kończą się połączenia Cloudflare z serwerem.
@@ -174,9 +178,9 @@ Przebieg:
    - blokady `demo-data-lock` nie ma (odmowa podaje jej posiadacza);
    - `PROFILE` to `seed` albo profil wpisany w CronJobie `demo-data` wdrożonej rewizji (`demoData.profile`); inny
      profil wymaga zmiany wartości i wdrożenia;
-   - CronJob `demo-data` istnieje i jest zawieszony; żaden Job przestrzeni nie jest aktywny; każdy Deployment
-     i StatefulSet przestrzeni jest gotowy (generator kończy się błędem, gdy Elasticsearch, Postgres, Keycloak,
-     `worker`, Varnish albo sklep nie odpowiada);
+   - CronJob `demo-data` istnieje i jest zawieszony; żaden Job przestrzeni nie jest aktywny, poza Jobami CronJobów
+     krótkich sprawdzeń („Stan sklepu i blokada”); każdy Deployment i StatefulSet przestrzeni jest gotowy (generator
+     kończy się błędem, gdy Elasticsearch, Postgres, Keycloak, `worker`, Varnish albo sklep nie odpowiada);
    - gdy profil nie jest `seed`, a CronJob ma sekret puli zdjęć (`photosSecretName`): plik puli zdjęć
      (`DEMO_PHOTOS_ENV_FILE`, domyślnie `~/.config/shop/demo-photos.env`) ma cztery zmienne odczytu (brak: kod 2);
    - wolne miejsce każdego węzła (kubelet, `/api/v1/nodes/<węzeł>/proxy/stats/summary`) da się odczytać jako liczbę
@@ -215,6 +219,10 @@ po `Failed` albo gdy Jobu nie ma, wraca się do `generate`. Przerwanie przed usu
 nietknięte i ten Job (`open` otwiera sklep na nim); po usunięciu `open` odmawia do sukcesu nowego Joba.
 
 CronJob `cart-purge-expired` działa w trakcie bez zmian: usuwa tylko wygasłe koszyki, których generator nie pisze.
+CronJoby `rate-limit-check`, `queue-check` i `order-expiry` też: pierwszy zapisuje tylko klucz kontrolny w Redisie,
+drugi tylko czyta kolejki wiadomości, a trzeci zmienia tylko zamówienia `new` po terminie (`ordering:expire-overdue`)
+i płatności `pending` (`payment:close-abandoned`), a generator nie zapisuje ani jednych, ani drugich (zamówienia
+anulowane albo opłacone i dalej, płatności `succeeded`; `docs/features/demo-data/spec.md`, P8).
 
 ### Cel `make -C infra/k8s open`
 
@@ -244,8 +252,8 @@ Kody wyjścia: 0 sprawdzone, sklep otwarty; 1 odmowa, nieudane sprawdzenie albo 
 
 ### Job generatora na serwerze (chart)
 
-- Profil `prod` włącza zawieszony CronJob `demo-data`: `demoData.profile` (`medium`, po zgodzie na drugi krok
-  `server`), stała chwila odniesienia `demoData.anchor` (ta sama dla obu profili, żeby ponowne generowanie dawało te
+- Profil `prod` włącza zawieszony CronJob `demo-data`: `demoData.profile` (`server`, drugi krok po przebiegu
+  `medium`), stała chwila odniesienia `demoData.anchor` (ta sama dla obu profili, żeby ponowne generowanie dawało te
   same dane), `demoData.photosSecretName: demo-photos` (odwołania do sekretu są opcjonalne, żeby Job `seed` ruszył
   bez niego; brak zmiennych przy profilu ze zdjęciami wykrywa `bin/generate-demo` przed kasowaniem),
   `demoData.minFreeGb: 32`, limity czasu `medium` 6 h i `server` 24 h (U6), `terminationGracePeriodSeconds: 120`,
@@ -286,7 +294,8 @@ Kody wyjścia: 0 sprawdzone, sklep otwarty; 1 odmowa, nieudane sprawdzenie albo 
   Elasticsearcha (zajęte 90%, na serwerze około 20,7 GB wolnego) nowy indeks seeda może nie dostać shardu, dopóki
   Elasticsearch nie odświeży informacji o dysku (`cluster.info.update.interval`, 30 s): taka próba kończy się
   błędem, a ponowienie przechodzi.
-- Wdrożony profil to deklaracja w repo: zmiana `medium` na `server` to PR z wartościami i zwykłe wdrożenie.
+- Wdrożony profil to deklaracja w repo: zmiana profilu to PR z wartościami i zwykłe wdrożenie. Sama zmiana nie rusza
+  danych: zastępuje je dopiero `generate` po zgodzie.
 
 CronJob `load` (chart, wszystkie profile: `prod`, `ci` i `load`): zawieszony, obraz k6 przypięty digestem w `images.k6`
 (ten sam co w `load/k6.sh`; pilnuje tego `check`), skrypty z ConfigMapy renderowanej z `load/` (dowiązanie w `files/`,
@@ -338,7 +347,7 @@ używanym przez `load.sh`, `generate.sh` i `open.sh`.
 - `make -C infra/k8s rerun` odmawia Joba z etykietą generatora `app.kubernetes.io/name: demo-data` kodem 3 i wskazuje
   `make generate` (`rerun` odtworzyłby Job razem z `DEMO_DATA_CONFIRM`).
 - Cele `generate` i `open` wołają `ao-guard.sh` jak pozostałe cele z kubeconfigiem produkcji.
-- `generate` i `open` działają pojedynczo (blokada `demo-data-lock`, „Stan sklepu i blokada”).
+- `generate`, `open` i `reindex` działają pojedynczo (blokada `demo-data-lock`, „Stan sklepu i blokada”).
 
 ### Kolejne wdrożenia
 
@@ -368,7 +377,7 @@ Odzyskiwanie jest ręczne (U8): `make status`, potem ponowny `generate`, powrót
 |---|---|---|
 | Przerwany skrypt, utrata połączenia albo uśpienie komputera operatora | Job działa dalej, strażnik i zbieranie logów działają w klastrze; sklep zamknięty | Po końcu Joba `Complete`: `make open`; `Failed`: ponowny `generate` albo seed |
 | Drugi `generate` albo `open` w trakcie przebiegu | Odmowa bez zmian z posiadaczem blokady | Poczekać na koniec przebiegu (`make status`) |
-| `generate` albo `open` zabity sygnałem KILL albo bez połączenia przy zwalnianiu blokady | Blokada `demo-data-lock` zostaje; `generate` i `open` odmawiają z jej posiadaczem | Gdy żaden `generate` ani `open` nie działa, użytkownik usuwa blokadę (runbook), potem jak w pozostałych wierszach |
+| `generate`, `open` albo `reindex` zabity sygnałem KILL albo bez połączenia przy zwalnianiu blokady | Blokada `demo-data-lock` zostaje; `generate`, `open` i `reindex` odmawiają z jej posiadaczem | Gdy żaden `generate`, `open` ani `reindex` nie działa, użytkownik usuwa blokadę (runbook), potem jak w pozostałych wierszach |
 | `generate` przerwany po `tak`, przed usunięciem Joba poprzedniego przebiegu | Dane nietknięte, Job poprzedniego przebiegu zostaje, sklep może być zamknięty | `make open` (jeśli ten Job jest `Complete`) albo ponowny `generate` |
 | `generate` przerwany po usunięciu Joba poprzedniego przebiegu, przed końcem nowego | Joba `Complete` nie ma | `open` odmawia (brak Joba albo Job niezakończony); ponowny `generate` |
 | Usunięty albo zabity pod Joba (brak pamięci, eksmisja, limit czasu) | Job kończy się błędem i nie startuje ponownie (Z9); przy TERM skrypt zatrzymuje generator; sesje bazy generatora kończą się same także po zabiciu bez sygnału (Z11) | Dane niepełne, sklep zamknięty; ponowny `generate` albo seed; log z Grafana Cloud |
@@ -448,8 +457,9 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
    ścieżek. Kontener CronJoba ma `PGOPTIONS` z `client_connection_check_interval`; na działającym stosie sesja procesu
    PHP z tą zmienną kończy się po zabiciu klienta sygnałem KILL w trakcie długiego zapytania (Z11).
 3. `generate` odmawia bez zmian (testy skryptu na atrapach `kubectl`): brak albo zły `PROFILE`, profil inny niż
-   w CronJobie, brak `tak`, aktywny Job (poza Jobami `rate-limit-check`), niegotowy Deployment albo StatefulSet, brak
-   pliku puli zdjęć albo zmiennej odczytu (tylko gdy CronJob ma sekret puli i profil nie jest `seed`), za mało
+   w CronJobie, brak `tak`, aktywny Job (poza Jobami CronJobów `rate-limit-check`, `queue-check` i `order-expiry`,
+   także tuż przed nowym Jobem `demo-data-run`; Job o podobnej nazwie bez takiego właściciela blokuje), niegotowy
+   Deployment albo StatefulSet, brak pliku puli zdjęć albo zmiennej odczytu (tylko gdy CronJob ma sekret puli i profil nie jest `seed`), za mało
    wolnego miejsca (próg `minFreeGb` dla każdego profilu poza `seed`, próg `diskPeakGb` tylko dla `medium` i `server`;
    `seed` odmawia tylko przy nieczytelnym odczycie), nieczytelny odczyt miejsca, brak `KUBE_DIR`, blokada innego
    przebiegu (przed `tak` i przy zakładaniu po `tak`).
@@ -461,8 +471,8 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
    powstaje, a Job poprzedniego przebiegu zostaje. Sekret jest usunięty także po HUP, INT i TERM; Job z poprzedniego
    przebiegu nigdy nie przechodzi do `open` jako sukces tego przebiegu (po jego usunięciu `open` odmawia do sukcesu
    nowego Joba).
-5. `open` odmawia bez zmian przy aktywnym Jobie, bez Joba `demo-data-run` i z Jobem innym niż `Complete`; usuwa
-   pozostawiony sekret puli zdjęć; po nieudanym sprawdzeniu (nieważny indeks, alias na zero albo wiele indeksów, stan
+5. `open` odmawia bez zmian przy aktywnym Jobie (z tym samym wyjątkiem co `generate`), bez Joba `demo-data-run`
+   i z Jobem innym niż `Complete`; usuwa pozostawiony sekret puli zdjęć; po nieudanym sprawdzeniu (nieważny indeks, alias na zero albo wiele indeksów, stan
    `red`, indeks bez aliasu, nieudany Job `load`) kończy się kodem 1 z regułą na miejscu; po udanych sprawdzeniach
    czyści pulę `cache.sitemap` w każdym podzie `api` przed Jobem `load`, usuwa regułę i kończy kodem 0 po „otwarty”
    od każdego adresu sondy; sonda bez „otwarty” to kod 1, a ponowne `open` kończy otwarcie. `open` odmawia bez zmian
@@ -545,9 +555,10 @@ Utrzymywana razem z kodem. Dokumenty, które opisują tę funkcję albo jej zasa
   (`docs/features/product-page/spec.md`, „Cache ISR”, poprawka L9 z PR #800), nie zapisuje na dysk, a pamięć sklepu pod takim
   ruchem stabilizuje się poniżej limitu kontenera. Dlatego dane w skali trafiają na serwer dopiero po wdrożeniu tej
   poprawki i jej weryfikacji (warunek w „Wymagane przed startem”). Poza limitem cache zostaje lista rewalidowanych
-  tagów (ok. 180 B na tag, do restartu poda): przy `medium` najwyżej ok. 350 MiB, przyjęte ograniczenie; przy `server`
-  więcej niż sterta poda sklepu, jeśli od startu poda zmieni się większość produktów (product-page spec, „Cache ISR”),
-  dlatego `server` czeka na ograniczenie tej listy (warunek w „Wymagane przed startem”).
+  tagów (ok. 180 B na tag, do restartu poda); sklep rewaliduje kubełki zamiast tagów z identyfikatorem i slugiem
+  produktu, więc lista ma najwyżej 65 537 wpisów przy każdej liczbie produktów (`docs/features/isr-tag-limit/spec.md`,
+  product-page spec, „Cache ISR”). `server` czeka na weryfikację tej zmiany na serwerze (warunek w „Wymagane przed
+  startem”).
 - `count(*)` w `initialize` przy 10 mln produktów: obserwowane w krokach na serwerze, poprawka poza tym etapem.
 
 ## Wymagane przed startem
@@ -569,6 +580,6 @@ Utrzymywana razem z kodem. Dokumenty, które opisują tę funkcję albo jej zasa
     400 MB wpisów 404); pamięć kontenera `store` (`container_memory_working_set_bytes`) przestaje rosnąć i zostaje
     poniżej 1 GiB przy limicie 1536 MiB; liczba restartów poda sklepu (`kube_pod_container_status_restarts_total`)
     się nie zmienia.
-- Przed `generate` z profilem `server` na serwerze dodatkowo: wdrożone i zweryfikowane na serwerze ograniczenie wzrostu
-  listy rewalidowanych tagów cache ISR sklepu (PERFORMANCE, #781). Przy `medium` lista bez limitu jest przyjętym
-  ograniczeniem.
+- Przed `generate` z profilem `server` na serwerze dodatkowo: wdrożone ograniczenie listy rewalidowanych tagów cache ISR
+  sklepu (`docs/features/isr-tag-limit/spec.md`) i jego weryfikacja na serwerze według tej specyfikacji („Weryfikacja na
+  serwerze (D4)”, wynik w komentarzu w #781).

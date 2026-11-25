@@ -4,6 +4,8 @@ import { RouterLink } from "vue-router";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import ScrollEdgeShadows from "@/components/list/ScrollEdgeShadows.vue";
+import { useScrollEdges } from "@/components/list/useScrollEdges";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { focusAfterAction } from "@/lib/focus";
@@ -29,6 +31,9 @@ const BADGES: Record<OrderStatus, "warning" | "info" | "success" | "neutral" | "
 };
 
 const heading = ref<HTMLElement | null>(null);
+const region = ref<HTMLElement | null>(null);
+const table = ref<HTMLElement | null>(null);
+const { edges, measure } = useScrollEdges(region, table);
 const retryButton = ref<InstanceType<typeof Button> | null>(null);
 
 // A successful retry removes the message with its button: the focus goes back to the button while it is still there
@@ -92,83 +97,98 @@ async function retryAndRefocus() {
       </p>
       <div
         v-else
-        role="region"
-        aria-label="Ostatnie zamówienia"
-        tabindex="0"
-        class="overflow-x-auto"
+        class="relative @container"
       >
-        <table class="w-full caption-bottom text-sm">
-          <TableHeader>
-            <TableRow class="hover:bg-transparent">
-              <TableHead class="px-3 text-xs font-bold text-muted-foreground uppercase">
-                Numer
-              </TableHead>
-              <TableHead class="px-3 text-xs font-bold text-muted-foreground uppercase">
-                Klient
-              </TableHead>
-              <TableHead class="px-3 text-xs font-bold text-muted-foreground uppercase">
-                Data
-              </TableHead>
-              <TableHead class="px-3 text-right text-xs font-bold text-muted-foreground uppercase">
-                Pozycje
-              </TableHead>
-              <TableHead class="px-3 text-right text-xs font-bold text-muted-foreground uppercase">
-                Kwota
-              </TableHead>
-              <TableHead class="px-3 text-xs font-bold text-muted-foreground uppercase">
-                Status
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow
-              v-for="order in items"
-              :key="order.orderId"
-              data-testid="recent-order"
-            >
-              <TableCell class="px-3 font-bold whitespace-nowrap">
-                <RouterLink
-                  :to="{ name: 'order-detail', params: { orderId: order.orderId } }"
-                  class="rounded-sm text-interface underline-offset-4 hover:underline"
+        <div
+          ref="region"
+          role="region"
+          aria-label="Ostatnie zamówienia"
+          tabindex="0"
+          class="overflow-x-auto"
+          @scroll="measure"
+        >
+          <!-- „Pozycje” is a column only where the card is wide enough for it (a container query on the width of the card,
+               not of the window: the card is 2/3 or the whole width of the dashboard); below that the units are a line of
+               the cell of the customer. The classes are written out in full so that Tailwind finds them. -->
+          <table
+            ref="table"
+            class="w-full caption-bottom text-sm"
+          >
+            <TableHeader>
+              <TableRow class="hover:bg-transparent">
+                <TableHead class="px-3 text-xs font-bold text-muted-foreground uppercase">
+                  Numer
+                </TableHead>
+                <TableHead class="px-3 text-xs font-bold text-muted-foreground uppercase">
+                  Klient
+                </TableHead>
+                <TableHead class="hidden px-3 text-right text-xs font-bold text-muted-foreground uppercase @min-[40rem]:table-cell">
+                  Pozycje
+                </TableHead>
+                <TableHead class="px-3 text-right text-xs font-bold text-muted-foreground uppercase">
+                  Kwota
+                </TableHead>
+                <TableHead class="px-3 text-xs font-bold text-muted-foreground uppercase">
+                  Status
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="order in items"
+                :key="order.orderId"
+                data-testid="recent-order"
+              >
+                <TableCell class="px-3 font-bold whitespace-nowrap">
+                  <RouterLink
+                    :to="{ name: 'order-detail', params: { orderId: order.orderId } }"
+                    class="rounded-sm text-interface underline-offset-4 hover:underline"
+                  >
+                    {{ order.number }}
+                  </RouterLink>
+                </TableCell>
+                <TableCell class="px-3 whitespace-normal">
+                  <div data-testid="order-customer">
+                    {{ order.fullName }}
+                  </div>
+                  <div
+                    data-testid="order-date"
+                    class="text-xs whitespace-nowrap text-muted-foreground"
+                  >
+                    {{ formatDateTime(order.placedAt) }}
+                  </div>
+                  <div
+                    data-testid="order-items-line"
+                    class="text-xs text-muted-foreground @min-[40rem]:hidden"
+                  >
+                    Pozycje: {{ order.itemCount }}
+                  </div>
+                </TableCell>
+                <TableCell
+                  data-testid="order-items"
+                  class="hidden px-3 text-right tabular-nums @min-[40rem]:table-cell"
                 >
-                  {{ order.number }}
-                </RouterLink>
-              </TableCell>
-              <TableCell
-                data-testid="order-customer"
-                class="px-3"
-              >
-                {{ order.fullName }}
-              </TableCell>
-              <TableCell
-                data-testid="order-date"
-                class="px-3 whitespace-nowrap"
-              >
-                {{ formatDateTime(order.placedAt) }}
-              </TableCell>
-              <TableCell
-                data-testid="order-items"
-                class="px-3 text-right tabular-nums"
-              >
-                {{ order.itemCount }}
-              </TableCell>
-              <TableCell
-                data-testid="order-total"
-                class="px-3 text-right whitespace-nowrap tabular-nums"
-              >
-                {{ formatMoney(order.totalGross, order.currency) }}
-              </TableCell>
-              <TableCell class="px-3">
-                <Badge
-                  data-testid="order-status"
-                  :variant="BADGES[order.status] ?? 'neutral'"
+                  {{ order.itemCount }}
+                </TableCell>
+                <TableCell
+                  data-testid="order-total"
+                  class="px-3 text-right whitespace-nowrap tabular-nums"
                 >
-                  {{ statusLabel(order.status).label }}
-                </Badge>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </table>
+                  {{ formatMoney(order.totalGross, order.currency) }}
+                </TableCell>
+                <TableCell class="px-3">
+                  <Badge
+                    data-testid="order-status"
+                    :variant="BADGES[order.status] ?? 'neutral'"
+                  >
+                    {{ statusLabel(order.status).label }}
+                  </Badge>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </table>
+        </div>
+        <ScrollEdgeShadows :edges="edges" />
       </div>
     </template>
     <div

@@ -15,6 +15,7 @@ final class SeedDemoScriptTest extends TestCase
     private const SEEDS = [
         'catalog:seed-demo',
         'pricing:seed-demo',
+        'delivery:seed-demo',
         'payment-simulator:seed-demo',
         'payment:seed-demo',
         'ordering:seed-demo',
@@ -96,7 +97,7 @@ final class SeedDemoScriptTest extends TestCase
         self::assertSame(3, $code);
         self::assertStringContainsString('boom in payment:seed-demo', $stderr);
         self::assertSame(
-            ['catalog:seed-demo --force-reset', 'pricing:seed-demo --force-reset', 'payment-simulator:seed-demo --force-reset', 'payment:seed-demo --force-reset'],
+            ['catalog:seed-demo --force-reset', 'pricing:seed-demo --force-reset', 'delivery:seed-demo --force-reset', 'payment-simulator:seed-demo --force-reset', 'payment:seed-demo --force-reset'],
             $this->calls(),
         );
     }

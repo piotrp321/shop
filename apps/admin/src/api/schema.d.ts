@@ -240,6 +240,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/delivery-methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The delivery methods
+         * @description Every delivery method, without pages: the active ones (at most 20) by position, then by name; then the inactive ones by name (a method is never deleted, only disabled). Administrators only.
+         */
+        get: operations["listDeliveryMethods"];
+        put?: never;
+        /**
+         * Create a delivery method
+         * @description Administrators only. The name is unique among all methods (also the inactive ones) without regard to case; at most 20 methods are active. A method is never deleted; it is disabled with `active` false.
+         */
+        post: operations["createDeliveryMethod"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/delivery-methods/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A delivery method
+         * @description Administrators only.
+         */
+        get: operations["getDeliveryMethod"];
+        /**
+         * Change a delivery method
+         * @description Sends the whole method as it should be, based on the `version` seen. Administrators only. Activating a method when 20 are active is a 409; a change that does not activate the method is never refused for the limit. Placed orders keep their copy of the method. An unknown method is a 404 before the body is read.
+         */
+        put: operations["reviseDeliveryMethod"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/stock": {
         parameters: {
             query?: never;
@@ -411,9 +459,29 @@ export interface paths {
         put?: never;
         /**
          * Change the status of an order
-         * @description Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel and register returns. A note is required to cancel and to register a return. Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The history entry names the staff member of the token. The customer gets an email about a shipment, a cancellation and a return.
+         * @description Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel and register returns. A note is required to cancel and to register a return. A shipment takes an optional tracking number (`trackingNumber`, null or blank for none; the other transitions take none). Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The history entry names the staff member of the token. The customer gets an email about a shipment (with the tracking number and its link, if there is one), a cancellation and a return.
          */
         post: operations["changeOrderStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{orderId}/tracking-number": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add, replace or remove the tracking number of an order
+         * @description Sets the tracking number of a shipped or delivered order (1 to 40 ASCII letters, digits and hyphens), replacing the one it has; null or a text of nothing but white space removes it. Administrators and the warehouse only. Only an order that is shipped or delivered takes the change. The number is not an event of the order: no history entry is added and no email is sent (the customer sees the current number and its link in the order; the email of the shipment keeps the number it was sent with). Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed. The change raises the version.
+         */
+        put: operations["changeOrderTrackingNumber"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -757,6 +825,10 @@ export interface components {
             lines: components["schemas"]["BackofficeOrderLine"][];
             /** @description The discount code the order was placed with; null without one. */
             discount: components["schemas"]["BackofficeOrderDiscount"] | null;
+            /** @description The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery). */
+            delivery: components["schemas"]["BackofficeOrderDelivery"] | null;
+            /** @description The shipment, only once a tracking number is written (at the shipment or afterwards); null without one. */
+            shipment: components["schemas"]["BackofficeOrderShipment"] | null;
             totals: components["schemas"]["BackofficeOrderTotals"];
             /**
              * Format: date-time
@@ -803,6 +875,8 @@ export interface components {
             allowedTransitions: components["schemas"]["BackofficeOrderTransition"][];
             /** @description The refund is to do and the staff member of the token may mark it made. */
             canCompleteRefund: boolean;
+            /** @description The order is shipped or delivered and the staff member of the token (an administrator or the warehouse) may add, correct or remove its tracking number. */
+            canChangeTrackingNumber: boolean;
         };
         BackofficeOrderAddress: {
             /** @example ul. Długa 5/3 */
@@ -878,7 +952,35 @@ export interface components {
              */
             amountGross: number;
         };
-        /** @description Sums of the lines after the discount of the code; net + vat = gross. */
+        /** @description The delivery of an order, a copy of the method as it was when the order was placed. */
+        BackofficeOrderDelivery: {
+            /** @example Kurier standardowy */
+            methodName: string;
+            /**
+             * @description The gross cost of the delivery in grosze, part of the totals; 0 for a free delivery.
+             * @example 1999
+             */
+            gross: number;
+        };
+        /** @description The shipment of an order that has a tracking number. The carrier is the name of the delivery method of the placement. */
+        BackofficeOrderShipment: {
+            /**
+             * @description The name of the delivery method; null for an order placed without one.
+             * @example Kurier standardowy
+             */
+            carrier: string | null;
+            /**
+             * @description 1 to 40 ASCII letters, digits and hyphens.
+             * @example JJD0002-4455
+             */
+            trackingNumber: string;
+            /**
+             * @description The link that follows the shipment, from the copy of the template of the method with the number; null without a template.
+             * @example https://tracking.example.com/JJD0002-4455
+             */
+            trackingUrl: string | null;
+        };
+        /** @description Sums of the lines after the discount of the code and of the delivery; net + vat = gross. */
         BackofficeOrderTotals: {
             /** @example 32519 */
             net: number;
@@ -938,10 +1040,10 @@ export interface components {
             /** @example Przelew wysłany */
             note: string | null;
         };
-        /** @description A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the status of the order does not allow the change, the order has no refund to do, or (`about:blank`) the order changed since the `version` sent, also when a change that succeeded is sent again. Nothing is changed. */
+        /** @description A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the status of the order does not allow the change, the order has no refund to do, the order is neither shipped nor delivered so its tracking number cannot change, or (`about:blank`) the order changed since the `version` sent, also when a change that succeeded is sent again. Nothing is changed. */
         BackofficeOrderConflictProblem: {
             /** @enum {string} */
-            type: "tag:piotrp321.github.io,2026:shop/problems/order-transition-not-allowed" | "tag:piotrp321.github.io,2026:shop/problems/refund-not-pending" | "about:blank";
+            type: "tag:piotrp321.github.io,2026:shop/problems/order-transition-not-allowed" | "tag:piotrp321.github.io,2026:shop/problems/refund-not-pending" | "tag:piotrp321.github.io,2026:shop/problems/tracking-number-not-changeable" | "about:blank";
             /** @example Conflict */
             title: string;
             /** @enum {integer} */
@@ -961,6 +1063,17 @@ export interface components {
             detail: string;
             /** @description Only with `promotion-overlap`. The variants of the request that are in another promotion of an overlapping period, ordered by id. */
             conflictingVariantIds?: string[];
+        };
+        /** @description A 409 of the delivery methods of the panel. `type` names the cause (the `detail` is Polish text for people and may change): another method has the name without regard to case (also an inactive one), the method would be one active method more than 20, or (`about:blank`) the method changed since the `version` sent. Nothing is changed. */
+        DeliveryConflictProblem: {
+            /** @enum {string} */
+            type: "tag:piotrp321.github.io,2026:shop/problems/delivery-method-name-taken" | "tag:piotrp321.github.io,2026:shop/problems/delivery-method-limit-reached" | "about:blank";
+            /** @example Conflict */
+            title: string;
+            /** @enum {integer} */
+            status: 409;
+            /** @description Polish text for the staff member. */
+            detail: string;
         };
         /** @description A 409 of the category endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the category changed since the `version` sent, a sibling has the slug, the tree would have more than 4 levels, the new parent is the category or one of its descendants, or the category has subcategories or products (counted in `subcategoryCount` and `productCount`). Nothing is changed. */
         CategoryConflictProblem: {
@@ -1210,6 +1323,87 @@ export interface components {
              */
             version: number | null;
         };
+        /** @description A new delivery method. */
+        CreateDeliveryMethodRequest: {
+            /**
+             * @description 1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.
+             * @example Kurier standardowy
+             */
+            name: string;
+            /**
+             * @description The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.
+             * @example Dostawa w 2–3 dni robocze
+             */
+            description: string | null;
+            /**
+             * @description Gross price in grosze.
+             * @example 1999
+             */
+            priceGross: number;
+            /**
+             * @description The method is free for goods (gross after discounts, grosze) of at least this value. Null: no threshold.
+             * @example 29900
+             */
+            freeFromGross: number | null;
+            /**
+             * @description Offered in the cart and the checkout. At most 20 methods are active.
+             * @example true
+             */
+            active: boolean;
+            /**
+             * @description Ascending position among the active methods; one position is ordered by name.
+             * @example 10
+             */
+            position: number;
+            /**
+             * @description The tracking address of the carrier: https:// with a host name, `{numer}` exactly once in place of the tracking number, without white space, up to 500 characters. Null or white space only: no template.
+             * @example https://tracking.example.com/{numer}
+             */
+            trackingUrlTemplate: string | null;
+        };
+        /** @description A delivery method as it should be. */
+        ReviseDeliveryMethodRequest: {
+            /**
+             * @description 1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.
+             * @example Kurier standardowy
+             */
+            name: string;
+            /**
+             * @description The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.
+             * @example Dostawa w 2–3 dni robocze
+             */
+            description: string | null;
+            /**
+             * @description Gross price in grosze.
+             * @example 1999
+             */
+            priceGross: number;
+            /**
+             * @description The method is free for goods (gross after discounts, grosze) of at least this value. Null: no threshold.
+             * @example 29900
+             */
+            freeFromGross: number | null;
+            /**
+             * @description Offered in the cart and the checkout. At most 20 methods are active; activating one more is a 409.
+             * @example true
+             */
+            active: boolean;
+            /**
+             * @description Ascending position among the active methods; one position is ordered by name.
+             * @example 10
+             */
+            position: number;
+            /**
+             * @description The tracking address of the carrier: https:// with a host name, `{numer}` exactly once in place of the tracking number, without white space, up to 500 characters. Null or white space only: no template.
+             * @example https://tracking.example.com/{numer}
+             */
+            trackingUrlTemplate: string | null;
+            /**
+             * @description The `version` of the method the change is based on.
+             * @example 1
+             */
+            version: number;
+        };
         BackofficeStockQuery: {
             /** @default null */
             q: string | null;
@@ -1341,6 +1535,24 @@ export interface components {
              * @example Kurier DPD
              */
             note: string | null;
+            /**
+             * @description The tracking number of the shipment, for `ship` only: 1 to 40 ASCII letters, digits and hyphens once trimmed of white space. Null or nothing but white space is no number, for every transition; any other value of another transition is refused.
+             * @example JJD0002-4455
+             */
+            trackingNumber: string | null;
+        };
+        /** @description The tracking number of a shipped or delivered order, based on the version of the order the staff member saw. */
+        ChangeTrackingNumberRequest: {
+            /**
+             * @description The tracking number: 1 to 40 ASCII letters, digits and hyphens once trimmed of white space. Null or nothing but white space removes the number.
+             * @example JJD0002-4455
+             */
+            trackingNumber: string | null;
+            /**
+             * @description The `version` of the order the change is based on.
+             * @example 4
+             */
+            version: number;
         };
         /** @description The refund of an order marked made, based on the version of the order the staff member saw. */
         CompleteRefundRequest: {
@@ -1605,6 +1817,64 @@ export interface components {
              */
             inSync: boolean | null;
         };
+        /** @description Messages that failed all their attempts and wait in the `failed` transport for a decision of the operator. */
+        DashboardFailedMessagesResponse: {
+            /**
+             * @description Messages in `failed`, counted up to 1000.
+             * @example 0
+             */
+            count: number;
+            /**
+             * @description More than 1000 messages: `count` is 1000.
+             * @example false
+             */
+            capped: boolean;
+            /**
+             * Format: date-time
+             * @description When the oldest of them was written to `failed`, RFC 3339 in UTC. Null without any.
+             * @example 2026-11-20T10:15:00+00:00
+             */
+            oldestAt: string | null;
+        };
+        /** @description A queue of the database that a worker takes messages from. */
+        DashboardTransportResponse: {
+            /**
+             * @description The name of the transport: outbox, scheduled, payment_simulator, promotions or jobs.
+             * @example outbox
+             */
+            name: string;
+            /**
+             * @description Messages that a worker could take now (not handed to a worker, due), counted up to 1000.
+             * @example 0
+             */
+            ready: number;
+            /**
+             * @description More than 1000 ready messages: `ready` is 1000.
+             * @example false
+             */
+            capped: boolean;
+            /**
+             * @description How long the oldest ready message has been ready, in seconds (a delayed message from the moment it became due). Null without a ready message.
+             * @example 3
+             */
+            oldestReadyAgeSeconds: number | null;
+            /**
+             * @description Whether the oldest ready message waits longer than the limit of the API (600 s): nothing takes the messages of the queue.
+             * @example false
+             */
+            stalled: boolean;
+        };
+        /** @description The messages of the queues in the database (the outbox and the commands), judged by the API. */
+        DashboardMessagesResponse: {
+            /**
+             * @description Nothing is in `failed` and no queue stands.
+             * @example true
+             */
+            healthy: boolean;
+            failed: components["schemas"]["DashboardFailedMessagesResponse"];
+            /** @description Always in this order: outbox, scheduled, payment_simulator, promotions, jobs. */
+            transports: components["schemas"]["DashboardTransportResponse"][];
+        };
         /** @description The state of the system, for administrators. */
         DashboardSystemResponse: {
             /** @description Always in this order: postgres, redis, elasticsearch, rabbitmq, keycloak, garage, imgproxy, mailpit. A service that does not answer within 1 s is down. */
@@ -1613,6 +1883,7 @@ export interface components {
             /** @description Queues of the broker. Null when its management API does not answer. */
             queues: components["schemas"]["DashboardQueueResponse"][] | null;
             searchIndex: components["schemas"]["DashboardSearchIndexResponse"];
+            messages: components["schemas"]["DashboardMessagesResponse"];
         };
         /** @description What the admin dashboard shows. */
         DashboardResponse: {
@@ -1843,6 +2114,49 @@ export interface components {
              */
             key: string;
             preview: components["schemas"]["ImagePreviewResponse"];
+        };
+        /** @description A delivery method of the panel. Amounts in grosze. */
+        DeliveryMethodResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @example Kurier standardowy */
+            name: string;
+            /**
+             * @description Empty without a description.
+             * @example Dostawa w 2–3 dni robocze
+             */
+            description: string;
+            /**
+             * @description Gross price.
+             * @example 1999
+             */
+            priceGross: number;
+            /**
+             * @description Free from this value of the goods after discounts (gross); null without a threshold.
+             * @example 29900
+             */
+            freeFromGross: number | null;
+            /** @example true */
+            active: boolean;
+            /**
+             * @description Ascending position among the active methods.
+             * @example 10
+             */
+            position: number;
+            /**
+             * @description Null without a template.
+             * @example https://tracking.example.com/{numer}
+             */
+            trackingUrlTemplate: string | null;
+            /**
+             * @description Version of the method, for the optimistic locking of changes.
+             * @example 1
+             */
+            version: number;
+        };
+        /** @description Every delivery method, without pages: the active ones by position, then by name; then the inactive ones by name. */
+        DeliveryMethodListResponse: {
+            items: components["schemas"]["DeliveryMethodResponse"][];
         };
         /** @description The stored stock of a product variant, in whole units; all computed by the API. */
         ListedStockResponse: {
@@ -3641,6 +3955,298 @@ export interface operations {
             };
         };
     };
+    listDeliveryMethods: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The methods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMethodListResponse"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is no administrator (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createDeliveryMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDeliveryMethodRequest"];
+            };
+        };
+        responses: {
+            /** @description The created method (`Location` names it). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMethodResponse"];
+                };
+            };
+            /** @description The body is not valid JSON, also a text that is not valid UTF-8 (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is no administrator (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Another method has the name (`delivery-method-name-taken`) or an active method would be the 21st (`delivery-method-limit-reached`); see `DeliveryConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["DeliveryConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type (problem details with `violations`, each at its field, with a Polish `title`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getDeliveryMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Delivery method id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The method. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMethodResponse"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is no administrator (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such method, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reviseDeliveryMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Delivery method id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseDeliveryMethodRequest"];
+            };
+        };
+        responses: {
+            /** @description The method as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryMethodResponse"];
+                };
+            };
+            /** @description The body is not valid JSON, also a text that is not valid UTF-8 (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is no administrator (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such method, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The method changed since the given version (`about:blank`), another method has the name (`delivery-method-name-taken`) or the method would be the 21st active one (`delivery-method-limit-reached`); see `DeliveryConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["DeliveryConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type (problem details with `violations`, each at its field, with a Polish `title`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listStock: {
         parameters: {
             query?: {
@@ -4324,6 +4930,105 @@ export interface operations {
                 };
             };
             /** @description The transition is unknown, the version is not an integer of at least 1, the note breaks its rules or is missing to cancel or register a return, or a key is missing or of a wrong type (problem details with Polish `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    changeOrderTrackingNumber: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Order id (UUID). */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeTrackingNumberRequest"];
+            };
+        };
+        responses: {
+            /** @description The order as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeOrder"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is neither an administrator nor in the warehouse (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The order changed since the given version, or it is neither shipped nor delivered (problem details with a stable `type`, see `BackofficeOrderConflictProblem`). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["BackofficeOrderConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The number is not a text or is of a wrong shape, the version is not an integer of at least 1, or a key is missing or of a wrong type (problem details with Polish `violations`). */
             422: {
                 headers: {
                     [name: string]: unknown;

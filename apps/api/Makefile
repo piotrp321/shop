@@ -1,4 +1,4 @@
-.PHONY: shell check phpstan deptrac cs-fix cs-check test test-unit init init-test warm-test-cache migrate migration openapi
+.PHONY: shell check audit phpstan deptrac cs-fix cs-check test test-unit init init-test warm-test-cache migrate migration openapi
 
 # Override RUN to run outside Docker Compose, e.g. inside CI.
 RUN ?= docker compose exec
@@ -6,7 +6,14 @@ RUN ?= docker compose exec
 shell:
 	$(RUN) api sh
 
-check: phpstan deptrac cs-check
+check: phpstan deptrac cs-check audit
+
+# Known vulnerabilities of the production dependencies in composer.lock (`composer audit --locked --no-dev` asks
+# Packagist for security advisories, so it needs the network): any advisory fails the target, abandoned packages are only
+# listed. A failing tool or no network is a failure too, never a clean result. The way out is to update the package; the
+# only exception is a `config.audit.ignore` entry in composer.json with the advisory id and the reason.
+audit:
+	$(RUN) api composer audit --locked --no-dev --abandoned=report
 
 phpstan:
 	$(RUN) api vendor/bin/phpstan analyse --memory-limit=1G --no-progress
@@ -27,7 +34,7 @@ PHPUNIT_ARGS ?=
 # keeps every test object (and the data of its data providers) until the run ends, so one process over all ~8000
 # tests peaks at about 250 MB, right at memory_limit (256 MB). With `--testsuite` (CI runs one suite per part) the
 # arguments go to a single run.
-PHPUNIT_SUITES = $(if $(findstring --testsuite,$(PHPUNIT_ARGS)),all,unit integration functional)
+PHPUNIT_SUITES = $(if $(findstring --testsuite,$(PHPUNIT_ARGS)),all,unit integration demo-data demo-data-orders functional)
 
 test: init-test warm-test-cache
 	$(foreach suite,$(PHPUNIT_SUITES),$(RUN) api vendor/bin/phpunit $(if $(filter all,$(suite)),,--testsuite $(suite)) $(PHPUNIT_ARGS) &&) true

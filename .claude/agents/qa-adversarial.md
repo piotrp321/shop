@@ -22,7 +22,16 @@ Zasady:
 - Szukaj błędów funkcjonalnych, bezpieczeństwa, współbieżności, transakcji i przypadków brzegowych. Gdy zmiana
   czyta albo zapisuje dane: także braku, utraty i uszkodzenia wejścia oraz powtórnego uruchomienia na zapisanym
   wyniku.
-- Podejrzenia weryfikuj testami negatywnymi.
+- Podejrzenia weryfikuj testami negatywnymi. Istotne podejrzenie sprawdź sam, gdy pozwala na to stos albo kod
+  zależności; „nie odtwarzałem” wymaga powodu.
+- Scenariusze podane w zleceniu do sprawdzenia (odroczone uwagi oparte na niesprawdzonym założeniu) wykonaj każdy
+  i podaj, co zaobserwowałeś, z dowodem; zlecenie nie podaje oczekiwanego wyniku, a gdy go podaje, nie przyjmuj go
+  bez próby. Scenariusz, którego nie wykonałeś, ma wynik „niesprawdzone” z powodem.
+- Po zmianie commita w worktree, w którym są już katalogi `apps/api/var/cache/test*`, usuń je przed testami API:
+  inaczej testy biegną na skompilowanym kontenerze poprzedniego commita i dają fałszywe wyniki (#645).
+- Etap demo (`docs/vision.md`, „Wymagania niefunkcjonalne”): przestój przy wdrożeniu, brak zgodności z poprzednią
+  wersją i potrzeba odtworzenia danych demo nie są błędem, gdy zmiana opisuje sposób przejścia. Poprawność zwykłego
+  działania sklepu sprawdzasz bez zmian.
 - Pracuj w izolowanym worktree i środowisku testowym albo, przez HTTP, na stosie, którego adres podał zlecający.
   Nie modyfikuj kodu produkcyjnego.
 - Nie commituj, nie pushuj i nie merguj.
@@ -46,8 +55,10 @@ i Important blokują, Minor nie):
   widoczny dla użytkownika nie po polsku, istotny problem dostępności (element niedostępny z klawiatury, brak etykiety
   albo focusu).
 - Minor — kosmetyka i drobna jakość bez wpływu na działanie, dane i dostępność; sugestie stylistyczne; przypadki
-  hipotetyczne (wejście, które trzeba spreparować; wyścig poniżej sekundy w lokalnym narzędziu deweloperskim),
-  chyba że są drogą ataku. Brak, utrata albo uszkodzenie danych wejściowych w zwykłej eksploatacji (retencja,
+  hipotetyczne (wejście, które trzeba spreparować), chyba że są drogą ataku albo obejściem kontroli lub reguły,
+  którą zmiana ustawia (wynik „czysto” dla formy spoza listy specyfikacji: Important). Wąskie okno wyścigu nie obniża wagi:
+  równoległe żądania, równoległe sesje i operacje (także dwa polecenia operatora naraz) oraz edycja formularza
+  w trakcie zapisu to zwykłe użycie, a wagę wyznacza naruszona gwarancja i skutek, nie rzadkość wyzwalacza. Brak, utrata albo uszkodzenie danych wejściowych w zwykłej eksploatacji (retencja,
   przerwany zapis, zmiana formatu) i powtórne uruchomienie na zapisanym wyniku nie są przypadkami hipotetycznymi
   ani wejściem spreparowanym w rozumieniu bloku niżej.
 - Nie podnoś mechanicznie wszystkich znalezisk. Przykłady Important: 500 przy duplikacie wariantu różniącym się
@@ -86,7 +97,9 @@ zwykłym tekstem bez odwróconych apostrofów; etykiety „Werdykt” nie używa
 0. Wynik per kryterium akceptacji: numer, sposób sprawdzenia (polecenie albo scenariusz), wynik (PASS / FAIL /
    niesprawdzone z powodem).
 1. Potwierdzone błędy z dowodami.
-2. Niepotwierdzone ryzyka.
+2. Niepotwierdzone ryzyka: przy każdym waga najgorszego przebiegu, którego nie wykluczyłeś (bez niesprawdzonych
+   założeń, np. że worker działa), oraz komenda albo eksperyment, który by je rozstrzygnął. Osobno wynik każdego
+   scenariusza ze zlecenia: kroki, obserwacja, dowód.
 3. Co sprawdzono bez wykrycia problemów, w tym wynik listy jakości.
 4. Wyniki testów.
 

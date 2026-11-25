@@ -73,7 +73,7 @@ final class OrderLineTest extends TestCase
             self::line(1, 2, PriceCopy::of(10_000, 2_300, 12_300, 2300, 'standard', Currency::PLN)),
             self::line(2, 3, PriceCopy::of(1_852, 148, 2_000, 800, 'reduced', Currency::PLN)),
             self::line(3, 1, PriceCopy::of(1, 0, 1, 0, 'zero', Currency::PLN)),
-        ]);
+        ], null);
 
         self::assertSame(20_000 + 5_556 + 1, $totals->net()->amount());
         self::assertSame(4_600 + 444, $totals->vat()->amount());
@@ -90,7 +90,7 @@ final class OrderLineTest extends TestCase
             $lines[] = self::line($i, 99, $price);
         }
 
-        $totals = OrderTotals::of($lines);
+        $totals = OrderTotals::of($lines, null);
 
         self::assertSame(50 * 99 * 99_999_999, $totals->gross()->amount());
         self::assertSame(494_999_995_050, $totals->gross()->amount());
@@ -101,7 +101,7 @@ final class OrderLineTest extends TestCase
     {
         $this->expectException(InvalidOrder::class);
 
-        OrderTotals::of([]);
+        OrderTotals::of([], null);
     }
 
     private static function line(int $variant, int $quantity, PriceCopy $price): OrderLine

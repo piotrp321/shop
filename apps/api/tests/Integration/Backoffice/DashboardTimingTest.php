@@ -12,6 +12,7 @@ use App\Backoffice\Application\Port\StockQueueCounts;
 use App\Backoffice\Application\Port\SystemHealth;
 use App\Backoffice\Application\Query\GetDashboard;
 use App\Backoffice\Application\Query\GetDashboardHandler;
+use App\Backoffice\Application\Query\MessagingHealth;
 use App\Backoffice\Application\Query\QueueAccess;
 use App\Backoffice\Infrastructure\MessagingStatisticsAdapter;
 use App\Backoffice\Infrastructure\ProbingSystemHealth;
@@ -25,11 +26,13 @@ use App\Shared\Infrastructure\Health\Probe\PostgresProbe;
 use App\Shared\Infrastructure\Health\Probe\RabbitMqProbe;
 use App\Shared\Infrastructure\Health\Probe\RedisProbe;
 use App\Shared\Infrastructure\Health\ServiceProbe;
+use App\Tests\Support\MessengerRows;
 use App\Tests\Unit\Backoffice\Application\RecordingOrderQueues;
 use App\Tests\Unit\Backoffice\Application\RecordingSalesSummary;
 use App\Tests\Unit\Backoffice\Application\RecordingStockQueues;
 use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Clock\Clock;
 use Symfony\Component\HttpClient\HttpClient;
 
 /**
@@ -59,6 +62,7 @@ final class DashboardTimingTest extends KernelTestCase
         $connection = self::getContainer()->get('doctrine.dbal.default_connection');
         self::assertInstanceOf(Connection::class, $connection);
 
+        $messaging = new MessagingStatisticsAdapter($connection, $client, $this->hangingUrl(), 'user', 'secret', 'test', new Clock(), MessengerRows::redeliverTimeouts(self::getContainer()));
         $handler = new GetDashboardHandler(
             $this->instantCatalog(),
             new ProbingSystemHealth([
@@ -71,7 +75,8 @@ final class DashboardTimingTest extends KernelTestCase
                 new ImgproxyProbe($client, $this->hangingUrl()),
                 new MailpitProbe($client, $this->hangingUrl()),
             ]),
-            new MessagingStatisticsAdapter($connection, $client, $this->hangingUrl(), 'user', 'secret', 'test'),
+            $messaging,
+            new MessagingHealth($messaging, 600),
             new RecordingOrderQueues(new OrderQueueCounts(null, null, null, null)),
             new RecordingStockQueues(new StockQueueCounts(new BoundedCount(0, false), new BoundedCount(0, false))),
             new RecordingSalesSummary(),
@@ -153,7 +158,7 @@ final class DashboardTimingTest extends KernelTestCase
         };
 
         $started = microtime(true);
-        $dashboard = (new GetDashboardHandler($slowCatalog, $health, $messaging, new RecordingOrderQueues(new OrderQueueCounts(null, null, null, null)), new RecordingStockQueues(new StockQueueCounts(new BoundedCount(0, false), new BoundedCount(0, false))), new RecordingSalesSummary()))(new GetDashboard(true, QueueAccess::none()));
+        $dashboard = (new GetDashboardHandler($slowCatalog, $health, $messaging, new MessagingHealth($messaging, 600), new RecordingOrderQueues(new OrderQueueCounts(null, null, null, null)), new RecordingStockQueues(new StockQueueCounts(new BoundedCount(0, false), new BoundedCount(0, false))), new RecordingSalesSummary()))(new GetDashboard(true, QueueAccess::none()));
         $elapsed = microtime(true) - $started;
 
         self::assertNotNull($dashboard->system);

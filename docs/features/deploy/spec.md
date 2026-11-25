@@ -30,7 +30,8 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
 - Ograniczenia startowe sterowane konfiguracją: pasek demonstracji, `X-Robots-Tag: noindex`, rejestracja
   i logowanie klientów, poczta zamówień; Cloudflare Access przed panelem.
 - Brzeg sieci: Cloudflare; origin przyjmuje HTTP(S) tylko od Cloudflare.
-- Weryfikacja bez serwera: statyczny check chartu w wymaganym CI i smoke test na k3d na standardowym runnerze.
+- Weryfikacja bez serwera: statyczny check chartu w wymaganym CI (przy zmianie `infra/k8s/**`, workflowów albo `infra/docker-compose.yml`) i przed każdym
+  wdrożeniem oraz smoke test na k3d na standardowym runnerze.
 - Bootstrap czystego VPS-a i wdrożenie wykonywalne przez Claude Code po SSH, z jawnymi punktami zgody i krokami
   użytkownika.
 
@@ -140,7 +141,7 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   unzip, entrypoint z `composer install`, jak w compose), `build` z `base` (`composer install --no-dev
   --classmap-authoritative`, rozgrzany cache `prod`), `prod` z `runtime` (kod i `vendor` z `build`, produkcyjne opcache,
   bez entrypointu instalującego zależności, bez Composera, git i SPX), `dev` z `base` jako ostatni (używa go compose).
-  Dane demo (`apps/api/fixtures`) są w obrazie. Ten sam obraz uruchamia worker (te same transporty co compose), Joby
+  Dane demo (`apps/api/fixtures`) są w obrazie. Ten sam obraz uruchamia oba workery (`worker` i `worker-commands`, te same transporty i limity co compose), Joby
   i CronJoby.
 - **store:** etap `prod`: `next build` z `output: "standalone"` włączanym zmienną tylko w buildzie obrazu (lokalny
   `STORE_MODE=production` bez zmian), komenda `node server.js`. Build nie woła API.
@@ -161,7 +162,7 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   wieloarchitekturowego>`, z tagiem takim jak w `infra/docker-compose.yml`; compose zostaje przy samych tagach.
 - Kontenery przy starcie niczego nie pobierają (wtyczek ani innych artefaktów); klaster pobiera tylko obrazy
   o przypiętych digestach.
-- Compose buduje `api` i `worker` z `target: dev`, a `store` i `admin` bez `target` (ostatni etap, `dev`), więc
+- Compose buduje `api` i oba workery (jeden obraz) z `target: dev`, a `store` i `admin` bez `target` (ostatni etap, `dev`), więc
   lokalny `make up` nie zależy od etapów `prod`.
 - Usługi bez własnego kodu używają obrazów i wersji z `infra/docker-compose.yml`. `garage-init` w klastrze: kontener
   Alpine uruchamia `infra/garage/init.sh` z binarką Garage zamontowaną z jej obrazu wolumenem typu `image` (bez kopii
@@ -179,8 +180,17 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 
 - Usługi stanowe (Postgres, Elasticsearch, RabbitMQ, Redis, Garage) jako StatefulSety z PVC `local-path`.
   Elasticsearch `single-node`, bez security (bez publicznego adresu).
-- Bezstanowe (api, worker, store, admin, imgproxy, varnish, keycloak, mailpit) jako Deploymenty z jedną repliką,
-  `maxUnavailable: 0`, sondami jak health checki compose.
+- Bezstanowe (api, worker, worker-commands, store, admin, imgproxy, varnish, keycloak, mailpit) jako Deploymenty z jedną repliką
+  i sondami jak health checki compose. Wszystkie poza Keycloakiem mają `RollingUpdate` z `maxUnavailable: 0`
+  i `maxSurge: 1`: nowy pod, który nie staje się gotowy, zostawia działający stary.
+- Keycloak ma strategię `Recreate`: przy starcie migruje schemat swojej bazy i nie wspiera dwóch wersji na jednej bazie,
+  więc stary pod kończy działanie, zanim wystartuje nowy. Przy zmianie szablonu poda Keycloaka (obraz, zmienne, zasoby)
+  logowanie i odświeżanie tokenów nie działają od zatrzymania starego poda do gotowości nowego (pobranie obrazu, start,
+  migracja); sesje są w bazie i przetrwają restart. Wdrożenie, które Keycloaka nie zmienia, go nie restartuje (etykiety
+  poda nie zawierają rewizji). Nowy pod, który nie staje się gotowy, nie zostawia starego: logowanie nie działa do
+  naprawy, a wdrożenie zatrzymuje się na Jobie `keycloak-config`, który czeka na gotowego Keycloaka. Powrotu do starszej
+  wersji na zmigrowanej bazie nie ma: baza `keycloak` wraca z kopii (`restore`) albo powstaje od nowa (`keycloak-config`
+  zakłada realmy, `create-admin` konta personelu).
 - Keycloak w trybie `start`, za proxy (`KC_PROXY_HEADERS=xforwarded`, `KC_HTTP_ENABLED=true`),
   `KC_HOSTNAME=https://auth.<domena>`, `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`, bez `--import-realm` (D9).
 - Fale i Joby (D8, D11):
@@ -190,12 +200,12 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   | −2 | Secret, ConfigMap, middleware Traefika, ServiceAccount `shop-wait` z Role i RoleBinding | – |
   | −1 | StatefulSety, Keycloak, Mailpit | Keycloak: Postgres |
   | 0 | Joby `garage-init`, `migrate` (`doctrine:migrations:migrate --no-interaction`, `catalog:search-index:setup`), `keycloak-config` | Garage; Postgres i Elasticsearch; gotowy Keycloak |
-  | 1 | Deploymenty api, worker, store, admin, imgproxy, varnish; Ingress; CronJob | api i worker: `doctrine:migrations:up-to-date` (api i worker także RabbitMQ); store: Redis; imgproxy: Garage z bucketami |
-  | 2 | Job `initialize` (dane startowe) | zakończony rollout Deploymentów api, varnish, store, worker |
+  | 1 | Deploymenty api, worker, worker-commands, store, admin, imgproxy, varnish; Ingress; CronJob | api, worker i worker-commands: `doctrine:migrations:up-to-date` (api i worker także RabbitMQ, `worker-commands` na RabbitMQ nie czeka); store: Redis; imgproxy: Garage z bucketami |
+  | 2 | Job `initialize` (dane startowe) | zakończony rollout Deploymentów api, varnish, store, worker, worker-commands |
   | 3 | Job `purge-caches` (`storefront:cache:purge-all`) | zakończony rollout Deploymentów api, varnish, store |
-  | 3 | Job `backfill` (`app:backfill`: dane, dla których migracje dodały tylko schemat; `apps/api/CLAUDE.md`) | zakończony rollout Deploymentów api, worker |
+  | 3 | Job `backfill` (`app:backfill`: dane, dla których migracje dodały tylko schemat; `apps/api/CLAUDE.md`) | zakończony rollout Deploymentów api, worker, worker-commands |
 
-  Nieudana migracja: nowe `api` i `worker` nigdy nie są gotowe, stare działają (`maxUnavailable: 0`).
+  Nieudana migracja: nowe `api`, `worker` i `worker-commands` nigdy nie są gotowe, stare działają (`maxUnavailable: 0`).
 - `initialize`, `purge-caches` i `backfill` czekają na rollout (`kubectl rollout status`) w initContainerach z obrazem `kubectl`,
   a nie na odpowiedź Service, którą mógłby jeszcze dać stary pod. Te Joby działają na ServiceAccount `shop-wait`
   (Role: tylko `get`, `list`, `watch` na `deployments`), a token API Kubernetes (wolumen `projected`) montują tylko te
@@ -214,7 +224,7 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 - CronJob `cart:purge-expired` (co godzinę, `concurrencyPolicy: Forbid`, strefa `Europe/Warsaw`).
 - CronJob `demo-data` (profile `prod`, `ci` i `load`; `demoData.enabled`): zawieszony (`suspend: true`), jego Job zastępuje
   dane sklepu danymi profilu generatora albo seedem, więc sam się nie uruchamia, a skrypt `files/scripts/demo-data.sh`
-  odmawia bez `DEMO_DATA_CONFIRM` (kod 64). W `prod` (`medium`, po zgodzie `server`) Job powstaje wyłącznie z celu
+  odmawia bez `DEMO_DATA_CONFIRM` (kod 64). W `prod` (profil `server`) Job powstaje wyłącznie z celu
   `make -C infra/k8s generate` po zgodzie użytkownika: zamyka sklep NetworkPolicy `shop-closed` (jedyna, tymczasowa;
   poza chartem), a po udanym Jobie `make -C infra/k8s open` sprawdza dane i otwiera go; nieudany przebieg zostawia
   sklep zamknięty. Strażnik wolnego miejsca
@@ -222,6 +232,10 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   `docs/features/demo-data/spec.md`.
 - CronJob `load` (każdy profil): zawieszony, obraz k6 z digestem w `images.k6`, Job uruchamia `load/smoke.js` na usługach
   klastra bez sekretów (sprawdzenie ścieżek sklepu po generowaniu danych przez `generate`).
+- CronJob `reindex` (każdy profil): zawieszony, obraz, środowisko i sekrety API, Job uruchamia `catalog:reindex` (limit
+  czasu `reindex.activeDeadlineSeconds`). Jego Joby tworzy wyłącznie `make -C infra/k8s reindex` po zgodzie
+  użytkownika. Liczbę shardów nowego indeksu daje `elasticsearch.shards` (`SEARCH_SHARDS` kontenerów z kodem API;
+  `prod` 4, pozostałe profile 1). Opis: `docs/features/search/spec.md`, „Infrastruktura”.
 - `rabbitmq-init` (vhost testów) nie istnieje.
 - Profile wartości:
   - `values.yaml` – wspólne; wymagane wartości walidowane schematem (`values.schema.json`), więc brak np. sekretu SMTP
@@ -246,7 +260,8 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
    drugiego digestu.
 3. Smoke test na k3d (niżej) instaluje chart z tym plikiem: klaster pobiera obrazy z GHCR po digeście i test sprawdza,
    że pody api, store, admin i elasticsearch działają na tych digestach.
-4. Po zielonym smoke teście workflow sprawdza render `prod` z tym plikiem (każdy obraz własny to dokładnie
+4. Po zielonym smoke teście i zielonym `make -C infra/k8s check` (job `k8s-check`, równolegle z obrazami i smoke
+   testem; czerwony albo anulowany zatrzymuje wdrożenie) workflow sprawdza render `prod` z tym plikiem (każdy obraz własny to dokładnie
    `ghcr.io/piotrp321/shop/<app>:<sha>@<digest>` z pliku) i jednym atomowym pushem przesuwa `deploy` fast-forwardem na ten
    commit oraz dodaje snapshot do `deploy-images` (D4). Ten job (`deploy`, jedyny z sekretem `DEPLOY_KEY`) działa w środowisku
    GitHub `production`: wymaga zatwierdzenia przez użytkownika (wymagany recenzent, „Prevent self-review” wyłączone, bo
@@ -266,12 +281,14 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 6. Wycofanie wersji: revert na `main` i nowe uruchomienie wdrożenia. Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
    `deploy-images` (jego obrazy zostają w GHCR), po wyłączeniu automatycznej synchronizacji `root` (inaczej przywraca ona
    `syncPolicy` aplikacji `shop`), a potem `shop`; po revercie automatyczną synchronizację włącza się z powrotem, najpierw
-   `root`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją; cofnięcie o więcej wersji to starszy snapshot
+   `root`. Schemat bazy nie musi być zgodny z poprzednią wersją kodu (etap demo, `docs/vision.md`); cofnięcie wersji
+   po zmianie niezgodnej to starszy snapshot
    `deploy-images` i odtworzenie kopii z czasu tej wersji (`make -C infra/k8s restore`, zgoda użytkownika; kopii nowszej
    niż wdrożony kod odtworzenie odmawia) albo pełne ponowne wczytanie danych (`reinitialize`, zgoda użytkownika).
 
-Zasady dla zmian w repo (dokumentacja w `apps/api/CLAUDE.md` i `CLAUDE.md`): migracje zgodne wstecz z poprzednią
-wersją kodu; wiadomości Messengera zgodne w obie strony między kolejnymi wersjami; zmiana usług, zmiennych,
+Zasady dla zmian w repo (dokumentacja w `apps/api/CLAUDE.md` i `CLAUDE.md`): zmiana schematu albo wiadomości
+Messengera niezgodna z poprzednią wersją jest dopuszczalna na etapie demo i ma opisany sposób przejścia przy
+wdrożeniu; zmiana usług, zmiennych,
 transportów workera albo sekretów w compose i zmiana realmów (nowy klient, rola, adres) wymagają tej samej zmiany
 w chartcie w tym samym PR.
 
@@ -363,11 +380,12 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
 - Odtworzenie: `make -C infra/k8s restore SNAPSHOT=<id> [PRE_RESTORE=skip]` (zgoda użytkownika) tworzy Joby z wstrzymanego
   CronJoba `restore` (`suspend: true`, `activeDeadlineSeconds: 10800`, `backoffLimit: 0`; obrazy i sekrety wdrożonej
   rewizji, bez tokenu API, sekret `shop-backup` tylko w kontenerze restic) i z Jobów wersji. Odmawia bez zmian: bez
-  `SNAPSHOT` (identyfikator, nigdy `latest`), przy aktywnym Jobie w przestrzeni `shop` (poza Jobem CronJoba `rate-limit-check`), trwającej synchronizacji `shop` w
+  `SNAPSHOT` (identyfikator, nigdy `latest`), przy aktywnym Jobie w przestrzeni `shop` (poza Jobami CronJobów `rate-limit-check`, `queue-check` i `order-expiry`, na które
+  czeka przed skalowaniem), trwającej synchronizacji `shop` w
   Argo CD i snapshocie z migracją spoza klas migracji obrazu `api` (Job w trybie `check`, przed pytaniem). Po słowie `tak`:
   kopia `pre-restore` (Job z CronJoba `backup` z `BACKUP_TAG=pre-restore`; jej błąd kończy odtworzenie bez zmian, chyba że
   `PRE_RESTORE=skip`, który ją pomija), przy Argo CD wyłączenie automatycznej synchronizacji `root`, potem `shop`,
-  wstrzymanie CronJobów `cart-purge-expired`, `backup` i `rate-limit-check`, `api`, `worker`, `store` i `keycloak` do zera, Job w trybie
+  wstrzymanie CronJobów `cart-purge-expired`, `backup`, `rate-limit-check`, `queue-check` i `order-expiry`, `api`, `worker`, `worker-commands`, `store` i `keycloak` do zera, Job w trybie
   `restore` (`restic restore` na `backup-work`, `DROP`/`CREATE` i `pg_restore` obu baz z właścicielami jak w
   `10-create-databases.sh`, `rclone sync` z usuwaniem do `product-images`, `FLUSHALL` Redisa, opróżnienie kolejek
   RabbitMQ), ponowienie `migrate`, `keycloak` i `keycloak-config`, Job w trybie `reindex` (`catalog:reindex`), powrót
@@ -420,15 +438,18 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
     `argocd-cm` ma standardową customizację zdrowia `Application`, więc `root` czeka na aplikacje-dzieci w falach, oraz
     customizację zdrowia PVC: `Bound` zdrowy, `Lost` zdegradowany, `Pending` zdrowy tylko z adnotacją
     `shop/bound-by-first-pod: "true"` (PVC wiązany przez pierwszy pod CronJoba, np. `backup-work`), inny `Pending` w toku.
-  - `kubeconfig`: kubeconfig klastra do katalogu poza repo (`KUBE_DIR`), dla `rerun`, `create-admin`, `restore` i `backups`.
+  - `kubeconfig`: kubeconfig klastra do katalogu poza repo (`KUBE_DIR`), dla `rerun`, `create-admin`, `restore`, `backups`,
+    `generate`, `open` i `reindex`.
     `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest usuwany po niej; trwałych kubeconfigów produkcji nie
     trzyma się w katalogach udostępnionych Dockerowi. Cel zapisuje bezwzględną ścieżkę w rejestrze
     `~/.local/state/shop-ops/kube-dirs`, z którego czyta start AO przez `/ao-run` (odmawia, dopóki zapisany katalog istnieje).
-    `kubeconfig`, `rerun`, `create-admin`, `restore` i `backups` odmawiają bez zmian (kod różny od 0, komunikat po angielsku: zatrzymaj AO albo
+    `kubeconfig`, `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex` odmawiają bez zmian (kod różny od 0, komunikat po angielsku: zatrzymaj AO albo
     poczekaj na koniec przebiegu), gdy działa AO albo jego wykonawca (`scripts/ao-guard.sh`, wołany w Makefile, nie w
     skryptach, więc test dymny działa jak dotąd); błąd listy procesów jest odmową.
   - `status`: stan aplikacji Argo, podów i Jobów (tylko odczyt).
   - `rerun JOB=…`: ponowienie Joba wersji (D11).
+  - `reindex`: przebudowa indeksu wyszukiwarki Jobem z CronJoba `reindex`, po potwierdzeniu słowem `tak`; agent uruchamia
+    go tylko po zgodzie użytkownika w rozmowie (`docs/features/search/spec.md`, „Infrastruktura”).
   - `create-admin`, `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa przez `bin/seed-demo` w podzie api):
     wypisują, co zrobią, i wymagają potwierdzenia słowem `tak`; agent uruchamia je tylko po zgodzie użytkownika w rozmowie.
   - `seal-secrets` (Sekrety) i `cloudflare-ips` (zakresy Cloudflare w `ipAllowList` z opublikowanych list; `CHECK=1`
@@ -463,7 +484,11 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   instalatora; prawdziwe są sprawdzenia, zapisy plików i idempotencja), z odmową bez roota i na innym systemie przed
   zmianami. Ostatni krok sprawdza gitem na hoście, że `.gitignore` nie ignoruje certyfikatu
   `environments/prod/sealed-secrets.pem`. `check` chartu działa w części `checks part k8s` wymaganego
-  checku `checks`, a lokalnie i w bramkach AO woła go główny `make check`. Testy skryptu `.github/scripts/deploy-ref.sh` (lokalne repo bare, także odrzucony
+  checku `checks`, gdy zmiana dotyka `infra/k8s/**`, `.github/workflows/**` albo `infra/docker-compose.yml` (`.github/scripts/scope.sh --k8s`; push na `epic/**` i błąd skryptu:
+  zawsze), w jobie `k8s-check` przy każdym wdrożeniu (`deploy` go wymaga), a lokalnie i w bramkach AO woła go główny
+  `make check`. Obraz zmieniony w compose bez tagu i digestu w chartcie nie przechodzi więc `checks` swojego PR;
+  zmiana realmów, której chart nie odzwierciedla, a która nie zmienia `infra/k8s/**` ani workflowów, przechodzi CI
+  swojego PR i zatrzymuje dopiero wdrożenie. Testy skryptu `.github/scripts/deploy-ref.sh` (lokalne repo bare, także odrzucony
   non-fast-forward) i struktury rulesetów (`tools/rulesets`) uruchamia job narzędzi repo w `ci.yml`.
 - `make -C infra/k8s smoke`: buduje cztery obrazy produkcyjne lokalnie i importuje je do k3d (bez wypychania; nazwa
   klastra i porty z `COMPOSE_PROJECT_NAME` i `.env` worktree), instaluje chart z profilem `ci` na pustym klastrze,
@@ -477,8 +502,9 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   komponent klienta. Dalej: `create-admin` (bez słowa `tak` niczego nie zmienia; z nim zakłada administratora i wysyła e-mail do
   Mailpita; istniejący login kończy się kodem 3 bez zmian; wynik nie zawiera sekretów), upgrade
   z nową rewizją (`initialize` i `keycloak-config` nie zmieniają danych ani realmów), upgrade z klientem dodanym do pliku
-  realmu `shop` (`keycloak-config` dodaje go, użytkownicy zostają), `rerun` zakończonego Joba, upgrade ze zepsutą
-  migracją (poprzednie `api` i `worker` działają) i upgrade na bazie z zamówieniami bez produktów (`initialize` kończy
+  realmu `shop` (`keycloak-config` dodaje go, użytkownicy zostają), `rerun` zakończonego Joba, `reindex` (bez słowa `tak`
+  nie powstaje żaden Job; z nim Job z CronJoba `reindex` przebudowuje indeks, a API listuje tyle samo produktów), upgrade ze zepsutą
+  migracją (poprzednie `api`, `worker` i `worker-commands` działają) i upgrade na bazie z zamówieniami bez produktów (`initialize` kończy
   się błędem stanu mieszanego bez zmian). Ostatnia faza uruchamia `generate PROFILE=small` i `open` (zamknięcie sklepu, Job `demo-data-run`
   z CronJoba `demo-data`, sprawdzenie danych, Job `load`, otwarcie; `docs/features/demo-scale/spec.md`, kryterium 7),
   z żądaniami przez ingress wysyłanymi bez przerwy: przestają dostawać 200 po zamknięciu, a po przebiegu sklep
@@ -497,7 +523,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   `apps/api/config/**`, `apps/api/bin/**`, `apps/api/composer.lock`, `apps/store/package-lock.json`,
   `apps/admin/package-lock.json`, `apps/store/next.config.ts`, `apps/admin/vite.config.ts` oraz sam workflow i `deploy-ref.sh` (obrazy z cache GHA)
   i na `workflow_dispatch` na innej gałęzi niż `main` (próba: tylko smoke, nic nie jest wypychane i `deploy` się nie
-  przesuwa), oraz zawsze przed wdrożeniem (`workflow_dispatch` na `main`: obrazy, smoke, `deploy`). Push do `main` nie
+  przesuwa), oraz zawsze przed wdrożeniem (`workflow_dispatch` na `main`: obrazy, smoke i obok nich `k8s-check`, potem `deploy`). Push do `main` nie
   uruchamia `deploy.yml`. `workflow_dispatch` GitHub oferuje dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`);
   wcześniej próbę daje zdarzenie `pull_request` (PR zmienia `deploy.yml`, który jest w filtrze ścieżek).
   `smoke` nie jest wymaganym checkiem `main`.
@@ -512,7 +538,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
 | Nieudany build albo smoke test wdrożenia (`workflow_dispatch` na `main`) | `deploy` i `deploy-images` bez zmian, działa poprzednia wersja, workflow czerwony |
 | Render `prod` z plikiem digestów nie zgadza się z plikiem albo odrzucony push (non-fast-forward, ruleset) | nic nie jest opublikowane (atomowy push), workflow czerwony |
 | Rewizja `deploy-images` bez pliku `values-images.yaml` albo z brakującym digestem | render chartu kończy się błędem z nazwą wartości, synchronizacja nie startuje, działa poprzednia wersja |
-| Nieudana migracja | Job `migrate` pada, nowe `api` i `worker` nie są gotowe, stare działają, aplikacja w Argo `Degraded` |
+| Nieudana migracja | Job `migrate` pada, nowe `api`, `worker` i `worker-commands` nie są gotowe, stare działają, aplikacja w Argo `Degraded` |
 | Nieudany `purge-caches` | nowa wersja działa, synchronizacja czerwona; `rerun` albo kolejna rewizja |
 | Brak wymaganej wartości (np. sekret SMTP przy `orderMail: brevo`) | render chartu kończy się błędem z nazwą wartości; synchronizacja nie startuje, działa poprzednia wersja |
 | Żądanie HTTP(S) na IP serwera spoza Cloudflare | 403 z `ipAllowList` |

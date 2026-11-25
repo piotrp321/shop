@@ -154,8 +154,9 @@ spec:
     {{- include "shop.waitRollout" (dict "root" .root "name" "api") | nindent 4 }}
     {{- include "shop.waitRollout" (dict "root" .root "name" "varnish") | nindent 4 }}
     {{- include "shop.waitRollout" (dict "root" .root "name" "store") | nindent 4 }}
-    {{- /* The worker has no endpoint either. */}}
+    {{- /* The workers have no endpoint either. */}}
     {{- include "shop.waitRollout" (dict "root" .root "name" "worker") | nindent 4 }}
+    {{- include "shop.waitRollout" (dict "root" .root "name" "worker-commands") | nindent 4 }}
   containers:
     - name: initialize
       image: {{ include "shop.appImage" (dict "root" .root "app" "api") }}
@@ -203,7 +204,7 @@ spec:
 {{- end }}
 
 {{- /*
-After the rollout of the new version (api and worker), the data the migrations added the schema for: app:backfill runs
+After the rollout of the new version (api and both workers), the data the migrations added the schema for: app:backfill runs
 the steps that have not completed yet (apps/api/CLAUDE.md). The migrations change the schema only.
 */ -}}
 {{- define "shop.job.backfill" -}}
@@ -216,6 +217,7 @@ spec:
   initContainers:
     {{- include "shop.waitRollout" (dict "root" .root "name" "api") | nindent 4 }}
     {{- include "shop.waitRollout" (dict "root" .root "name" "worker") | nindent 4 }}
+    {{- include "shop.waitRollout" (dict "root" .root "name" "worker-commands") | nindent 4 }}
   containers:
     - name: backfill
       image: {{ include "shop.appImage" (dict "root" .root "app" "api") }}

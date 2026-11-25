@@ -7,18 +7,22 @@ namespace App\Ordering\UI\Http;
 use App\Ordering\Domain\Contact;
 use App\Ordering\Domain\ControlCharacters;
 use App\Ordering\Domain\DiscountCodeText;
+use App\Ordering\Domain\Order;
+use App\Ordering\Domain\OrderLine;
 use App\Ordering\Domain\ShippingAddress;
+use App\Ordering\UI\Http\Validation\ExpectedLinesFormat;
 use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * Body of POST /api/v1/me/orders. The email is the one of the token, so the body has none (an `email` key is ignored,
- * like any unknown key: lines, quantities and prices never come from the body). Every key but `discountCode` is required: the
+ * like any unknown key: the lines, quantities and prices of the order never come from the body, `expectedLines` is only
+ * compared with the cart). Every key but `discountCode` is required: the
  * serializer gives `null` for a missing key (the properties are `mixed`). The values are taken as JSON gives them and
  * validated, never cast. The constraints of a field run in order up to the first violation, so a field gives at most
  * one, in Polish; the domain checks the same rules again. The rules are the same as in PlaceGuestOrderRequest.
  */
-#[OA\Schema(description: 'The contact and the address of an order of the cart of the customer, the total the customer saw and the discount code applied.', required: ['fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross'])]
+#[OA\Schema(description: 'The contact and the address of an order of the cart of the customer, the total and the lines the customer saw, the delivery method chosen and the discount code applied.', required: ['fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross', 'deliveryMethodId', 'expectedLines'])]
 final readonly class PlaceCustomerOrderRequest
 {
     public function __construct(
@@ -66,13 +70,36 @@ final readonly class PlaceCustomerOrderRequest
             new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Miejscowość zawiera niedozwolone znaki.'),
         ])]
         public mixed $city,
-        #[OA\Property(type: 'integer', minimum: 0, description: 'The gross total of the cart the customer saw, in grosze (`totals.gross` of the cart). Only compared with the total the API computes; another one is a 409.', example: 39998)]
+        #[OA\Property(type: 'integer', minimum: 0, description: 'The gross total the customer saw, in grosze, with the delivery: `totalGross` of the chosen option of `delivery.options` of the cart. Only compared with the total the API computes; another one is a 409.', example: 39998)]
         #[Assert\Sequentially([
             new Assert\NotNull(message: 'Kwota zamówienia jest wymagana.'),
             new Assert\Type('integer', message: 'Kwota zamówienia musi być liczbą całkowitą.'),
             new Assert\PositiveOrZero(message: 'Kwota zamówienia nie może być ujemna.'),
         ])]
         public mixed $expectedTotalGross,
+        #[OA\Property(type: 'string', format: 'uuid', description: 'Id of the delivery method the customer chose in the checkout (`methodId` of an option of `delivery.options` of the cart): a UUID in any letter case. Required: a request without it (a checkout from before the delivery) is a 422 asking to refresh the page. A method that is unknown or no longer active is a 409 `delivery-method-unavailable`; its cost is part of the total compared with `expectedTotalGross`.')]
+        #[Assert\Sequentially([
+            new Assert\NotNull(message: 'Kasa została zaktualizowana. Odśwież stronę i wybierz sposób dostawy.'),
+            new Assert\Type('string', message: 'Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie.'),
+            new Assert\NotBlank(message: 'Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie.'),
+            new Assert\Regex(pattern: PlaceGuestOrderRequest::CART_ID_PATTERN, message: 'Nieprawidłowy sposób dostawy. Odśwież stronę i wybierz go ponownie.'),
+        ])]
+        public mixed $deliveryMethodId,
+        #[OA\Property(
+            type: 'array',
+            minItems: 1,
+            maxItems: Order::MAX_LINES,
+            description: PlaceGuestOrderRequest::EXPECTED_LINES_DESCRIPTION,
+            items: new OA\Items(type: 'object', required: ['variantId', 'quantity'], properties: [
+                new OA\Property(property: 'variantId', type: 'string', format: 'uuid', description: 'Id of the variant of a line of the summary (`variantId` of a line of the cart): a UUID in any letter case.'),
+                new OA\Property(property: 'quantity', type: 'integer', minimum: 1, maximum: OrderLine::MAX_QUANTITY, description: 'The units of the line the summary showed (`quantity` of the line of the cart).'),
+            ]),
+        )]
+        #[Assert\Sequentially([
+            new Assert\NotNull(message: 'Kasa została zaktualizowana. Odśwież stronę.'),
+            new ExpectedLinesFormat(),
+        ])]
+        public mixed $expectedLines,
         #[OA\Property(type: 'string', nullable: true, maxLength: DiscountCodeText::MAX_LENGTH, description: 'The discount code the customer applied in the checkout, optional: a missing key, `null`, an empty text or one of white space only is no code. Compared without letter case. A code that gives no discount is a 409 with its own `type`; the order is not placed.', example: 'WITAJ10')]
         #[Assert\Sequentially([
             new Assert\Type('string', message: 'Kod rabatowy musi być tekstem.'),

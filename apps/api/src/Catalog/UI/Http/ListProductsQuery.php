@@ -11,7 +11,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
  * Query string of GET /api/v1/products, without the repeated `option` key (see {@see OptionFilter}). The violation
  * messages never contain the submitted value.
  */
-final readonly class ListProductsQuery
+final class ListProductsQuery
 {
     public const string SORT_RELEVANCE = 'relevance';
     public const string SORT_NAME = 'name';
@@ -20,29 +20,34 @@ final readonly class ListProductsQuery
     public const string AVAILABLE = 'true';
     // Strings, not ints: the query-string denormalizer would silently cut "10.5" to 10 (and deprecate doing so).
     private const string GROSZE_PATTERN = '/^\d{1,12}\z/';
+    private const string BAD_PRICE = 'Cena musi być liczbą całkowitą groszy, 0 albo więcej.';
 
     public function __construct(
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Uuid]
-        public ?string $category = null,
+        public readonly ?string $category = null,
         #[Assert\Length(min: 2, max: 100, normalizer: 'trim')]
-        public ?string $q = null,
+        public readonly ?string $q = null,
         #[Assert\NotBlank(allowNull: true)]
-        #[Assert\Regex(pattern: self::GROSZE_PATTERN, message: 'The price must be a whole number of grosze, 0 or more.')]
-        public ?string $priceMin = null,
+        #[Assert\Regex(pattern: self::GROSZE_PATTERN, message: self::BAD_PRICE)]
+        public readonly ?string $priceMin = null,
         #[Assert\NotBlank(allowNull: true)]
-        #[Assert\Regex(pattern: self::GROSZE_PATTERN, message: 'The price must be a whole number of grosze, 0 or more.')]
-        public ?string $priceMax = null,
+        #[Assert\Regex(pattern: self::GROSZE_PATTERN, message: self::BAD_PRICE)]
+        public readonly ?string $priceMax = null,
         #[Assert\Choice(choices: [self::AVAILABLE])]
-        public ?string $available = null,
+        public readonly ?string $available = null,
         #[Assert\Choice(choices: [self::SORT_RELEVANCE, self::SORT_NAME, self::SORT_PRICE_ASC, self::SORT_PRICE_DESC])]
-        public ?string $sort = null,
-        #[Assert\Positive]
-        public int $page = 1,
-        #[Assert\Range(min: 1, max: 48)]
-        public int $perPage = 24,
+        public readonly ?string $sort = null,
     ) {
     }
+
+    // Set after the constructor, not through it: a value the query-string denormalizer rejects as an int ("1.5") is
+    // reported as a type error and leaves the default here, while a constructor parameter would get the raw string,
+    // which PHP cuts to 1 (and deprecates doing so). Declared after the constructor to keep the order of the schema.
+    #[Assert\Positive]
+    public int $page = 1;
+    #[Assert\Range(min: 1, max: 48)]
+    public int $perPage = 24;
 
     /**
      * The trimmed phrase, null without `q`.
@@ -66,10 +71,10 @@ final readonly class ListProductsQuery
     public function validateCombinations(ExecutionContextInterface $context): void
     {
         if (1 === preg_match(self::GROSZE_PATTERN, $this->priceMin ?? '') && 1 === preg_match(self::GROSZE_PATTERN, $this->priceMax ?? '') && $this->priceMin() > $this->priceMax()) {
-            $context->buildViolation('The minimum price must not be higher than the maximum price.')->atPath('priceMin')->addViolation();
+            $context->buildViolation('Cena minimalna nie może być wyższa niż maksymalna.')->atPath('priceMin')->addViolation();
         }
         if (self::SORT_RELEVANCE === $this->sort && null === $this->q) {
-            $context->buildViolation('This sort order needs a search phrase.')->atPath('sort')->addViolation();
+            $context->buildViolation('To sortowanie wymaga szukanej frazy.')->atPath('sort')->addViolation();
         }
     }
 }

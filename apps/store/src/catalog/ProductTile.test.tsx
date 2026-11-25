@@ -13,7 +13,7 @@ const button = () => screen.queryByRole("button", { name: "Do koszyka" }) as HTM
 const choose = () => screen.queryByRole("button", { name: "Wybierz wariant" }) as HTMLButtonElement | null;
 const variantRadio = (label: string | RegExp) => screen.getByRole("radio", { name: label }) as HTMLInputElement;
 const expand = () => fireEvent.click(choose()!);
-const cartWith = (itemCount: number) => ({ id: "c", lines: [], totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN" as const, itemCount }, hasExcludedLines: false, discount: null });
+const cartWith = (itemCount: number) => ({ id: "c", lines: [], totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN" as const, itemCount }, hasExcludedLines: false, discount: null, delivery: null });
 
 // Shoes in three sizes: 42 at 300 zł, 43 not purchasable, 44 at 320 zł with the last units.
 const SIZES_OFFER = makeOffer(1, {

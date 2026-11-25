@@ -2,21 +2,22 @@
 # The restore of a snapshot of the backups: `make -C infra/k8s restore SNAPSHOT=<id> [PRE_RESTORE=skip]` (docs/features/deploy-ops/
 # spec.md, O4). The Jobs come from the CronJobs of the deployed chart (restore, backup) and the Jobs of its version, so the
 # restore runs the images and the secrets of the deployed revision. Steps:
-#   1. checks without changes: SNAPSHOT is an identifier (never latest); no Job of the namespace is active, except one of the CronJob
-#      rate-limit-check (a check of Redis of at most 60 s, which step 4 waits for); with Argo CD (the CRD
+#   1. checks without changes: SNAPSHOT is an identifier (never latest); no Job of the namespace is active, except one of the CronJobs
+#      rate-limit-check (a check of Redis of at most 60 s), queue-check (a check of the queues of messages, at most 120 s) and
+#      order-expiry (the expiry of the orders, at most 600 s), which step 4 waits for; with Argo CD (the CRD
 #      Application and the application shop) shop has no synchronization going on; the Jobs migrate, keycloak-config and
 #      purge-caches of the version are there; a Job of the CronJob restore in the mode check refuses a snapshot with a migration
 #      the deployed code does not know (a snapshot newer than the code);
 #   2. says which snapshot and what it will do (also whether the backup pre-restore is skipped), and goes on only after `tak`;
 #   3. a backup of the current state with the tag pre-restore (a Job of the CronJob backup); its failure stops the restore
 #      without changes, unless PRE_RESTORE=skip (then no backup is made);
-#   4. with Argo CD: the automatic synchronization of root off, then of shop; the CronJobs cart-purge-expired, backup and
-#      rate-limit-check suspended; a Job that started since step 1 is waited for (RESTORE_ACTIVE_JOBS_WAIT_SECONDS, 7200 by default, then an
-#      error with the applications still running); api, worker, store and keycloak scaled to zero (the replicas are remembered, the CronJobs are not: see 6);
+#   4. with Argo CD: the automatic synchronization of root off, then of shop; the CronJobs cart-purge-expired, backup,
+#      rate-limit-check, queue-check and order-expiry suspended; a Job that started since step 1 is waited for (RESTORE_ACTIVE_JOBS_WAIT_SECONDS, 7200 by default, then an
+#      error with the applications still running); api, worker, worker-commands, store and keycloak scaled to zero (the replicas are remembered, the CronJobs are not: see 6);
 #   5. a Job of the CronJob restore in the mode restore: the data of the snapshot (the databases, the objects; Redis flushed,
 #      the queues of RabbitMQ purged);
 #   6. migrate again (rerun), keycloak back and keycloak-config again, a Job of the CronJob restore in the mode reindex, api,
-#      worker, store and the CronJobs back (not suspended, as the chart has them, also after a restore that failed and
+#      worker, worker-commands, store and the CronJobs back (not suspended, as the chart has them, also after a restore that failed and
 #      left them suspended), the rollouts, purge-caches again; with Argo CD the automatic synchronization of root
 #      on (root brings back that of shop);
 #   7. a failure in the steps 4 to 6 says at which step it stopped and which snapshot pre-restore was made, and leaves the
@@ -65,11 +66,13 @@ fi
 exec 3<&0 < /dev/null
 
 stamp="$(date -u +%Y%m%d%H%M%S)"
-deployments="api worker store keycloak"
+deployments="api worker worker-commands store keycloak"
 # The containers of the pods of the CronJobs restore and backup, in the order they run.
 restore_containers="migrations restic databases objects redis rabbitmq api"
 backup_containers="cluster-id dump objects backup"
-cronjobs="cart-purge-expired backup rate-limit-check"
+cronjobs="cart-purge-expired backup rate-limit-check queue-check order-expiry"
+# The CronJobs of short checks: an active Job of theirs (by its owner) is no reason to refuse in step 1, and step 4 waits for it.
+check_cronjobs="rate-limit-check queue-check order-expiry"
 step=0
 pre_restore_snapshot=""
 argocd=0
@@ -91,9 +94,9 @@ on_exit() {
     {
       echo "restore: FAILED at step $step ($step_name), restoring the snapshot $snapshot"
       if [ "$scaled" -eq 1 ]; then
-        echo "restore: api, worker, store and keycloak may stay scaled to zero and the CronJobs cart-purge-expired, backup and rate-limit-check suspended: no shop runs on partly restored data"
+        echo "restore: api, worker, worker-commands, store and keycloak may stay scaled to zero and the CronJobs cart-purge-expired, backup, rate-limit-check, queue-check and order-expiry suspended: no shop runs on partly restored data"
       else
-        echo "restore: the CronJobs cart-purge-expired, backup and rate-limit-check may stay suspended; api, worker, store and keycloak were not scaled down yet, nothing was restored"
+        echo "restore: the CronJobs cart-purge-expired, backup, rate-limit-check, queue-check and order-expiry may stay suspended; api, worker, worker-commands, store and keycloak were not scaled down yet, nothing was restored"
       fi
       [ "$argocd" -eq 0 ] || echo "restore: the automatic synchronization of the applications root and shop of Argo CD stays off"
       if [ -n "$pre_restore_snapshot" ]; then
@@ -126,13 +129,13 @@ job_log() {
 # 1. Checks, without changes
 # ---------------------------------------------------------------------------------------------------------------
 # active_jobs <True|False>: the names of the Jobs of the namespace that run (neither Complete nor Failed), separated by spaces. The
-# argument says whether the Jobs of the CronJob rate-limit-check count (the check of the Redis of the rate limiters: every five
-# minutes for at most 60 s, so a refusal for it would depend on the minute). A Job is the check's by its owner, the CronJob, not by
-# its name: a Job someone made by hand is a Job like any other.
+# argument says whether the Jobs of the CronJobs of the checks (check_cronjobs: the Redis of the rate limiters, the queues of messages
+# and the expiry of the orders) count: they run every five minutes for at most 60, 120 and 600 s, so a refusal for them would depend
+# on the minute. A Job is a check's by its owner, the CronJob, not by its name: a Job someone made by hand is a Job like any other.
 active_jobs() {
   kubectl -n "$namespace" get jobs -o json | py_json '" ".join(j["metadata"]["name"] for j in d["items"]
     if not {c.get("type") for c in (j.get("status", {}).get("conditions") or []) if c.get("status") == "True"} & {"Complete", "Failed"}
-    and ('"$1"' or not any(o.get("kind") == "CronJob" and o.get("name") == "rate-limit-check" for o in j["metadata"].get("ownerReferences") or [])))'
+    and ('"$1"' or not any(o.get("kind") == "CronJob" and o.get("name") in "'"$check_cronjobs"'".split() for o in j["metadata"].get("ownerReferences") or [])))'
 }
 
 active="$(active_jobs False)" ||
@@ -188,10 +191,10 @@ else
 fi
 [ "$argocd" -eq 0 ] || echo "  - Argo CD: the automatic synchronization of root, then of shop, is turned off, and that of root on again at the end;"
 cat <<EOF
-  - the CronJobs cart-purge-expired, backup and rate-limit-check are suspended, api, worker, store and keycloak scaled to zero;
+  - the CronJobs cart-purge-expired, backup, rate-limit-check, queue-check and order-expiry are suspended, api, worker, worker-commands, store and keycloak scaled to zero;
   - the databases shop and keycloak are dropped and restored from the snapshot, the bucket product-images gets the objects of the
     snapshot (others are deleted), Redis is flushed (the customers are logged out) and the queues of RabbitMQ are purged;
-  - migrate and keycloak-config run again, the search index is rebuilt (catalog:reindex), api, worker, store and the CronJobs
+  - migrate and keycloak-config run again, the search index is rebuilt (catalog:reindex), api, worker, worker-commands, store and the CronJobs
     come back, and purge-caches runs again.
   Everything written since the snapshot is lost.
 EOF
@@ -238,7 +241,8 @@ for cronjob in $cronjobs; do
   kubectl -n "$namespace" patch cronjob "$cronjob" --type merge -p '{"spec":{"suspend":true}}' > /dev/null
 done
 # A Job that started since the check of step 1 (the CronJobs could fire until now) works on the same data: wait for it, and for a Job
-# of rate-limit-check, which step 1 let through (its deadline is 60 s). The CronJobs are suspended, so no new one comes.
+# of a CronJob of the checks, which step 1 let through (their deadlines are 60, 120 and 600 s). The CronJobs are suspended, so no new one
+# comes.
 step_name="waiting for the Jobs that started since the check"
 wait_until=$(($(date +%s) + active_wait))
 while :; do
@@ -257,7 +261,7 @@ for deployment in $deployments; do
   kubectl -n "$namespace" scale deployment "$deployment" --replicas=0 > /dev/null
 done
 deadline=$(($(date +%s) + 600))
-while [ -n "$(kubectl -n "$namespace" get pods -l 'app.kubernetes.io/name in (api,worker,store,keycloak)' -o name)" ]; do
+while [ -n "$(kubectl -n "$namespace" get pods -l 'app.kubernetes.io/name in (api,worker,worker-commands,store,keycloak)' -o name)" ]; do
   [ "$(date +%s)" -lt "$deadline" ] || { echo "restore: the pods of $deployments did not stop in 600 s" >&2; exit 1; }
   sleep "${RESTORE_POLL_SECONDS:-5}"
 done
@@ -310,8 +314,8 @@ cronjob_job restore "$reindex_job" RESTORE_MODE=reindex
 # shellcheck disable=SC2086 # a list of names
 wait_job "$reindex_job" || { job_logs "$reindex_job" $restore_containers >&2; exit 1; }
 
-step_name="api, worker, store and the CronJobs back"
-for deployment in api worker store; do
+step_name="api, worker, worker-commands, store and the CronJobs back"
+for deployment in api worker worker-commands store; do
   kubectl -n "$namespace" scale deployment "$deployment" "--replicas=$(replicas_of "$deployment")" > /dev/null
 done
 # As the chart has them: it never suspends these CronJobs, and a restore run again after a failed one finds them suspended, so the
@@ -319,7 +323,7 @@ done
 for cronjob in $cronjobs; do
   kubectl -n "$namespace" patch cronjob "$cronjob" --type merge -p '{"spec":{"suspend":false}}' > /dev/null
 done
-for deployment in api worker store; do
+for deployment in api worker worker-commands store; do
   kubectl -n "$namespace" rollout status "deployment/$deployment" --timeout=1500s > /dev/null
 done
 

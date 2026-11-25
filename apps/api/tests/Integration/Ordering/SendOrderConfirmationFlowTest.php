@@ -83,7 +83,7 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
 
         $this->consume('events');
 
-        // A failed handler would put the message back through the retry delay (100 ms ±10 %), so wait it out.
+        // A failed handler would put the message back through the retry delay (2 ms ±10 %), so wait it out.
         usleep(300_000);
         self::assertCount(1, $this->inbox->awaitMessages(1));
         self::assertSame(0, $this->eventsInQueue());
@@ -118,12 +118,12 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
         $order = $this->place();
 
         $this->consumeOutboxAndEvents();
-        // `events` retries three times, 100, 300 and 900 ms apart (1, 3 and 9 s in production).
-        for ($retry = 1; $retry <= 3; ++$retry) {
+        // `events` retries ten times, 2 ms apart at first and growing threefold (1 s in production).
+        for ($retry = 1; $retry <= 10; ++$retry) {
             $this->consume('events', 20);
         }
 
-        self::assertSame(4, $mailer->failedAttempts);
+        self::assertSame(11, $mailer->failedAttempts);
         self::assertSame(1, $this->rows('failed'));
         self::assertSame(0, $this->eventsInQueue());
         self::assertSame(0, $this->inbox->count());
@@ -191,7 +191,7 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
         $bus = self::getContainer()->get('command.bus');
         self::assertInstanceOf(MessageBusInterface::class, $bus);
 
-        $result = $bus->dispatch(new PlaceOrder(CartReference::guest($cart), $this->inbox->recipient, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', 12_300, 'key-'.$cart))
+        $result = $bus->dispatch(new PlaceOrder(CartReference::guest($cart), $this->inbox->recipient, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($db), 12_300, OrderingFixture::expectedOfCart($db, $cart), 'key-'.$cart))
             ->last(HandledStamp::class)?->getResult();
         self::assertInstanceOf(PlacedOrder::class, $result);
         self::assertSame(1, $this->rows('outbox'));

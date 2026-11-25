@@ -43,7 +43,9 @@ function stateOf(result: AccountResult<CustomerOrder>): State {
 
 /**
  * One order of the signed-in customer: its lines (valued before the discount of the code, which has its own line),
- * totals (after the discount), address and the dates of its statuses, all as the API gives them. Rendered in the browser from the store's `/api/account/orders/<id>`. A session that is missing or over
+ * delivery (the method and its cost, an order placed before the delivery has none), totals (after the discount and with
+ * the delivery), address, the shipment (the tracking number with its link, only once staff wrote a number) and the
+ * dates of its statuses, all as the API gives them. Rendered in the browser from the store's `/api/account/orders/<id>`. A session that is missing or over
  * takes the customer to the login, which brings them back to this order.
  */
 export function OrderDetailPage({ orderId }: { orderId: string }) {
@@ -138,6 +140,13 @@ function OrderContent({ order }: { order: CustomerOrder }) {
         </p>
       )}
 
+      {order.delivery === null ? null : (
+        <p data-testid="order-delivery" className="flex justify-between gap-6 self-end text-sm">
+          <span className="min-w-0 break-words">Dostawa ({order.delivery.methodName})</span>
+          <span>{order.delivery.gross === 0 ? "Darmowa" : formatPrice(order.delivery.gross, order.totals.currency)}</span>
+        </p>
+      )}
+
       <dl className="flex flex-col gap-1 self-end text-sm">
         <div className="flex justify-between gap-6">
           <dt>Wartość netto</dt>
@@ -164,6 +173,20 @@ function OrderContent({ order }: { order: CustomerOrder }) {
           </div>
         </address>
       </div>
+
+      {order.shipment === null ? null : (
+        <div role="group" aria-label="Przesyłka" className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold">Przesyłka</h2>
+          <p>
+            Numer przesyłki: <strong data-testid="tracking-number" className="break-all">{order.shipment.trackingNumber}</strong>
+          </p>
+          {order.shipment.trackingUrl === null ? null : (
+            <a href={order.shipment.trackingUrl} target="_blank" rel="noopener noreferrer" className="self-start underline">
+              Śledź przesyłkę <span className="sr-only">(otwiera się w nowej karcie)</span>
+            </a>
+          )}
+        </div>
+      )}
 
       <div role="group" aria-label="Daty zamówienia" className="flex flex-col gap-1">
         <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">

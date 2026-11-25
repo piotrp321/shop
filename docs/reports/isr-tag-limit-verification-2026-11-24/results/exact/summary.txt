@@ -1,0 +1,30 @@
+| Punkt | RSS MiB | working set MiB | anon MiB | sterta po GC MB |
+|---|---|---|---|---|
+| start | 106 | 67 | 54 | 36 |
+| po rozgrzewce | 485 | 488 | 473 | 145 |
+| 2,000,200 tagów | 537 | 534 | 521 | 168 |
+| 2,000,400 tagów (początek pauzy) | 537 | 534 | 521 | 168 |
+| 2,000,600 tagów (koniec pauzy 60 s) | 462 | 480 | 452 | 161 |
+| 4,000,300 tagów | 524 | 539 | 509 | 168 |
+| 6,000,300 tagów | 531 | 547 | 517 | 168 |
+| 8,000,300 tagów | 527 | 533 | 514 | 169 |
+| 10,000,300 tagów | 530 | 536 | 517 | 169 |
+| 12,000,300 tagów | 529 | 535 | 515 | 169 |
+| 14,000,400 tagów | 531 | 536 | 517 | 168 |
+| 16,000,400 tagów | 529 | 534 | 516 | 169 |
+| 18,000,400 tagów | 530 | 536 | 517 | 169 |
+| done sent=20,000,000 | 528 | 526 | 515 | 169 |
+
+events: [('seed', None, None), ('warm', None, None), ('pause-start', 2000400, None), ('pause-end', 2000600, None), ('done', 20000000, None)]
+peak RSS 544 MiB, peak working set 547 MiB, samples 248
+last sample: RSS 530 MiB at +504 s
+Mark-Compact: 286, longest pause 36 ms, heap after last 169 MB, max heap after GC 172 MB
+Mark-Compact pauses >= 100 ms: 0; total Mark-Compact pause 1.6 s; scavenges 0
+rate to pause: 59,708 tags/s
+state: running=true oomkilled=false exit=0 restarts=0
+non-GC log lines (last 12):
+   2026-11-24T22:10:51.125446925Z ▲ Next.js 16.4.6
+   2026-11-24T22:10:51.125460759Z - Local:         http://localhost:3000
+   2026-11-24T22:10:51.125461759Z - Network:       http://0.0.0.0:3000
+   2026-11-24T22:10:51.125462550Z ✓ Ready in 0ms
+   2026-11-24T22:10:51.127879842Z ✓ Running next.config took 1.3ms

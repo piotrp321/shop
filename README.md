@@ -78,8 +78,9 @@ założone w sklepie i zmiany z konsoli Keycloak).
 
 ### Zmiana kodu handlerów
 
-`worker` (konsument kolejek) ładuje kod i konfigurację handlerów przy starcie. Po zmianie kodu handlerów albo
-ich konfiguracji uruchom go od nowa: `docker compose restart worker` (`make up` też tworzy go od nowa).
+Oba workery (konsumenci kolejek: `worker` obsługuje zdarzenia, `worker-commands` komendy czekające w Postgresie) ładują
+kod i konfigurację handlerów przy starcie. Po zmianie kodu handlerów albo ich konfiguracji uruchom je od nowa:
+`docker compose restart worker worker-commands` (`make up` też tworzy je od nowa).
 
 ## Konta demo
 
@@ -103,7 +104,7 @@ kodu QR).
 | `make up` / `make down` | start (z oczekiwaniem na zdrowe usługi) i zatrzymanie stosu |
 | `make logs` / `make ps` | logi (ogon 100 linii, na żywo) i stan kontenerów |
 | `make seed` | reset katalogu i dane demo |
-| `make check` | analiza statyczna i lint wszystkich aplikacji |
+| `make check` | analiza statyczna, lint, audyt podatności zależności produkcyjnych wszystkich aplikacji i kontrola digestów obrazów bazowych |
 | `make test` | testy wszystkich aplikacji |
 | `make e2e` | testy Playwright na działającym stosie (po `make up` i `make seed`) |
 | `make e2e-check` | kontrola typów pakietu `e2e` (bez usług stosu) |
@@ -114,7 +115,8 @@ kodu QR).
 ## Testy i kontrola jakości
 
 ```bash
-make check   # PHPStan, Deptrac, PHP CS Fixer; ESLint i TypeScript w sklepie i panelu
+make check   # PHPStan, Deptrac, PHP CS Fixer; ESLint i TypeScript w sklepie i panelu; audyt zależności (composer, npm);
+             # obrazy bazowe Dockerfile z digestem
 make test    # PHPUnit i Vitest wszystkich aplikacji
 make -C apps/api test   # jedna aplikacja: make -C apps/<api|store|admin> <cel>
 make e2e     # testy Playwright na działającym stosie (najpierw make up i make seed)

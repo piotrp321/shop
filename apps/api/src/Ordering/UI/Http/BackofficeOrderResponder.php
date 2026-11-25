@@ -12,7 +12,8 @@ use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 /**
  * The answer of the detail, the status change and the refund completion: the order with what the staff member of the
  * token may do with it now. The transitions are the ones the status allows (statusTransitions) that the voter grants,
- * the refund may be completed when it is to do and the voter grants it; the rule of the roles stays in the voter.
+ * the refund may be completed when it is to do and the voter grants it, the tracking number may be changed while the
+ * order is shipped or delivered and the voter grants it; the rule of the roles stays in the voter.
  */
 final readonly class BackofficeOrderResponder
 {
@@ -29,7 +30,10 @@ final readonly class BackofficeOrderResponder
         $canCompleteRefund = null !== $order->refund && null === $order->refund->completedAt
             && $this->authorization->isGranted(BackofficeOrderAttributes::COMPLETE_REFUND);
 
-        $response = new JsonResponse(BackofficeOrderJson::order($order, $allowed, $canCompleteRefund));
+        $canChangeTrackingNumber = $order->trackingNumberChangeable
+            && $this->authorization->isGranted(BackofficeOrderAttributes::CHANGE_TRACKING_NUMBER);
+
+        $response = new JsonResponse(BackofficeOrderJson::order($order, $allowed, $canCompleteRefund, $canChangeTrackingNumber));
         $response->setPrivate();
         $response->headers->addCacheControlDirective('no-store');
 

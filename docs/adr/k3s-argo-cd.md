@@ -60,7 +60,8 @@ użytkownika. Szczegóły: `docs/features/deploy/spec.md`, uruchomienie: `infra/
   człowiek, a merge zostaje czynnością na repozytorium.
 - Rollback to revert na `main` i uruchomienie wdrożenia. Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
   `deploy-images`, po wyłączeniu automatycznej synchronizacji `root` (inaczej przywraca ona `syncPolicy` aplikacji `shop`),
-  a potem `shop`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu.
+  a potem `shop`. Schemat bazy nie musi być zgodny z poprzednią wersją kodu (etap demo, `docs/vision.md`): cofnięcie
+  wersji po zmianie niezgodnej wymaga odtworzenia kopii albo danych demo.
 - Żadna retencja GHCR ani workflow nie usuwa wersji pakietów (test w `make check`).
 - Klucz prywatny Sealed Secrets jest jedyną rzeczą, której nie da się odtworzyć z repo; jego utrata oznacza nowy
   certyfikat i ponowne zaszyfrowanie sekretów (w tym `shop-backup` z tym samym hasłem restic, bo inaczej kopie są nie do odczytania) oraz ponowne wczytanie danych albo odtworzenie z kopii.

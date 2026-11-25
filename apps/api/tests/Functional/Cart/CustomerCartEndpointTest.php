@@ -25,7 +25,7 @@ final class CustomerCartEndpointTest extends WebTestCase
         $view = $this->request('GET', '/api/v1/me/cart', token: TestTokenFactory::customer());
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
-        self::assertSame(['id' => null, 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null], $view);
+        self::assertSame(['id' => null, 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null, 'delivery' => null], $view);
         self::assertMatchesSchema('CartView', $view);
 
         self::assertSame(['itemCount' => 0], $this->request('GET', '/api/v1/me/cart/summary', token: TestTokenFactory::customer()));
@@ -194,7 +194,7 @@ final class CustomerCartEndpointTest extends WebTestCase
     {
         $carts = $this->connection->fetchOne('SELECT COUNT(*) FROM cart_cart');
         foreach ([null, TestTokenFactory::staff(['admin']), 'abc'] as $token) {
-            $this->assertProblem(401, 'Authentication is required.', $this->request($method, $path, $body, $token));
+            $this->assertProblem(401, 'Wymagane jest uwierzytelnienie.', $this->request($method, $path, $body, $token));
             self::assertSame('Bearer', $this->response()->headers->get('WWW-Authenticate'));
         }
         self::assertSame($carts, $this->connection->fetchOne('SELECT COUNT(*) FROM cart_cart'));

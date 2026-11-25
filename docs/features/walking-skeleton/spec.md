@@ -53,12 +53,13 @@ są przypięte w pliku compose, a wersja Elasticsearch w `infra/elasticsearch/Do
 | `imgproxy` | imgproxy 3, źródło S3 → Garage | przetwarzanie obrazów na żądanie | `imgproxy health` |
 | `mailpit` | Mailpit | SMTP dla realmu `shop` (weryfikacja e-mail, reset hasła) | `/readyz` |
 | `api` | własny obraz FrankenPHP, PHP 8.5, target `dev` (z SPX) | HTTP API | `GET /health` |
-| `worker` | obraz z tego samego Dockerfile i targetu co `api`, własny katalog cache (`APP_CACHE_DIR=/tmp/cache`) | `messenger:consume outbox events scheduled payment_simulator promotions jobs` | proces konsumenta działa |
+| `worker` | obraz z tego samego Dockerfile i targetu co `api`, własny katalog cache (`APP_CACHE_DIR=/tmp/cache`) | `messenger:consume outbox events --time-limit=86400 --memory-limit=192M`: relay outboxa i zdarzenia RabbitMQ | proces konsumenta działa |
+| `worker-commands` | ten sam obraz co `worker` i `api`, własny katalog cache, zależy tylko od `api` (nie czeka na RabbitMQ) | `messenger:consume payment_simulator scheduled promotions jobs --time-limit=86400 --memory-limit=192M`: komendy czekające w Postgresie | proces konsumenta działa |
 | `store` | Node 24, `next dev` | sklep | `GET /` |
 | `admin` | Node 24, `vite dev` | panel | `GET /` |
 | `e2e` | obraz Playwright, profil `e2e` | testy E2E i pomiar Lighthouse, uruchamiany tylko przez `make e2e` i `make lighthouse` | — |
 
-Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait` dla wszystkich usług poza `rabbitmq-init` i `worker`. Potem uruchamia `rabbitmq-init` przez `docker compose run --rm` (`up --wait` traktuje zakończoną usługę jednorazową, na którą nic nie czeka, jako błąd), krok inicjalizacji (niżej) i dopiero na końcu `worker`, bo bez migracji nie ma tabel transportu `outbox`. `worker` jest tworzony od nowa przy każdym `make up` (`--force-recreate`), więc działa na kodzie i konfiguracji skompilowanych przez `init`. Ma własny katalog cache poza bind mountem: gdy `api` przebudowuje kontener DI we wspólnym `var/cache` (po zmianie kodu), usuwa pliki, które długo działający worker wczytuje leniwie, a worker kończy się błędem na pierwszej wiadomości, której nie przetworzy przed `redeliver_timeout` (300 s).
+Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait` dla wszystkich usług poza `rabbitmq-init`, `worker` i `worker-commands`. Potem uruchamia `rabbitmq-init` przez `docker compose run --rm` (`up --wait` traktuje zakończoną usługę jednorazową, na którą nic nie czeka, jako błąd), krok inicjalizacji (niżej) i dopiero na końcu `worker` i `worker-commands`, bo bez migracji nie ma tabel transportów. Workery są tworzone od nowa przy każdym `make up` (`--force-recreate`), więc działają na kodzie i konfiguracji skompilowanych przez `init`. Każdy ma własny katalog cache poza bind mountem: gdy `api` przebudowuje kontener DI we wspólnym `var/cache` (po zmianie kodu), usuwa pliki, które długo działający worker wczytuje leniwie, a worker kończy się błędem na pierwszej wiadomości, której nie przetworzy przed `redeliver_timeout` (300 s).
 
 Obraz API zawiera rozszerzenia `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, `pcntl` (worker kończy bieżącą
 wiadomość i zatrzymuje się na SIGTERM), a target `dev` dodatkowo SPX.
@@ -66,12 +67,12 @@ Entrypoint `api` w trybie dev instaluje tylko zależności, jeśli zmienił się
 
 ### Inicjalizacja bazy i indeksu
 
-Migracje i indeks Elasticsearch nie powstają przy starcie kontenera (`api` ani `worker`). Robi to osobny,
+Migracje i indeks Elasticsearch nie powstają przy starcie kontenera (`api` ani workery). Robi to osobny,
 idempotentny krok, uruchamiany jawnie:
 
 | Gdzie | Krok |
 |---|---|
-| lokalnie | `make up` po starcie usług, a przed startem `worker`, wywołuje `make -C apps/api init`: `doctrine:migrations:migrate` i `catalog:search-index:setup` |
+| lokalnie | `make up` po starcie usług, a przed startem workerów, wywołuje `make -C apps/api init`: `doctrine:migrations:migrate` i `catalog:search-index:setup` |
 | testy na usługach stosu | `make -C apps/api init-test`: te same komendy w środowisku `test` (baza `shop_test`, alias `test_products`), przy czym indeks testowy powstaje od nowa (`catalog:search-index:setup --recreate`); cel `test` api wywołuje go przed testami |
 | CI | usługi potrzebne testom startują przed `make -C apps/api test`, który sam wywołuje `init-test` |
 | wdrożenie (Kubernetes) | osobny Job z tymi samymi komendami co `init`, przed wdrożeniem nowej wersji aplikacji |
@@ -163,7 +164,7 @@ są placeholderami podstawianymi przez Keycloak z env.
 | Klient OIDC | `store`: confidential, Authorization Code + PKCE S256, tylko standard flow | `admin`: public, Authorization Code + PKCE S256, tylko standard flow |
 | Przekierowania | `${STORE_URL}/auth/callback`; po wylogowaniu `${STORE_URL}/` | `${ADMIN_URL}/*`; web origin `${ADMIN_URL}` |
 | Audience w access tokenie | `shop-api` (mapper audience) | `backoffice-api` (mapper audience) |
-| Rejestracja | włączona, login e-mailem, weryfikacja e-mail wymagana | wyłączona |
+| Rejestracja | włączona, login e-mailem, weryfikacja e-mail wymagana; formularz bez hasła (e-mail, imię, nazwisko), hasło klient ustawia po otwarciu linku z e-maila weryfikacyjnego i dopiero wtedy jest zalogowany | wyłączona |
 | Reset hasła | włączony | wyłączony |
 | SMTP | `mailpit:1025`, nadawca `sklep@example.com` | brak |
 | 2FA | brak | własny browser flow z formularzem OTP jako krok wymaganym; polityka TOTP: SHA1, 6 cyfr, 30 s; nowe konto dostaje wymaganą akcję `CONFIGURE_TOTP` |
@@ -332,7 +333,7 @@ Transporty:
 `outbox` i `failed` dzielą tabelę `messenger_messages`, którą tworzy migracja (`auto_setup=false`). Worker odpytuje
 je co sekundę (`use_notify: false`, migracja nie tworzy wyzwalacza NOTIFY). Połączenie
 z RabbitMQ składa się ze zmiennych `RABBITMQ_HOST`, `RABBITMQ_USER`, `RABBITMQ_VHOST` (jawne, w `environment`
-usług `api` i `worker`) oraz `RABBITMQ_DEFAULT_PASS` (`.env.local`).
+usług `api` i obu workerów) oraz `RABBITMQ_DEFAULT_PASS` (`.env.local`).
 
 Przepływ:
 
@@ -357,8 +358,8 @@ Przepływ:
    a odbiorcy nigdy przy konsumpcji z `outbox`, więc nie ma pętli ani podwójnej obsługi.
 5. Ponowienia (z domyślnym jitterem ±10 %), potem transport `failed`, gdzie zdarzenie czeka na
    `messenger:failed:retry`:
-   - `events`: 3 próby z opóźnieniem 1 s i mnożnikiem 3,
-   - `outbox`: 30 prób z opóźnieniem 1 s, mnożnikiem 2 i najwyżej 60 s, razem około 25 minut. Błąd przekaźnika to
+   - `events`: 10 prób z opóźnieniem 1 s, mnożnikiem 3 i najwyżej 300 s, razem około 26 minut,
+   - `outbox`: 200 prób z opóźnieniem 1 s, mnożnikiem 2 i najwyżej 60 s, razem około 3 godzin. Błąd przekaźnika to
      zawsze niedostępny, odrzucający albo niemający trasy broker, więc restart RabbitMQ nie przenosi zdarzeń do
      `failed`.
      Ponowienie to nowy wiersz z późniejszym `available_at`.
@@ -394,8 +395,8 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
 - Aplikacja czyta i zapisuje przez alias (`products` w dev, `test_products` w testach, z parametru). Alias wskazuje
   dokładnie jeden fizyczny indeks `<alias>_<UTC rrrrmmddggmmssmmm>_<6 znaków hex>`, więc kolejne przebudowy nie
   kolidują nazwami.
-- `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Shardy i repliki pochodzą z parametrów
-  (domyślnie 1 i 0). W `_meta.definition_hash` indeksu zapisany jest hash definicji (mapping i analiza, bez
+- `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Shardy pochodzą ze zmiennej `SEARCH_SHARDS`
+  (bez niej 1; `docs/features/search/spec.md`, „Infrastruktura”), repliki z parametru (0). W `_meta.definition_hash` indeksu zapisany jest hash definicji (mapping i analiza, bez
   shardów i replik), z którym porównujemy indeks przy `setup` i przed przepięciem.
 - Analiza: `polish_text` (tokenizer standardowy, `lowercase`, `polish_stem` z wtyczki `analysis-stempel`,
   `asciifolding`: „kurtki” i „kurtka” dają ten sam token) i `folded_text` (tokenizer standardowy, `lowercase`,
@@ -834,7 +835,9 @@ Tokeny nigdy nie trafiają do przeglądarki. Serwer sklepu jest klientem confide
   traktowana jak wylogowana. Ciasteczko się nie zmienia.
 - Wszystkie odpowiedzi `/auth/*` mają `Cache-Control: private, no-store`, także 503, gdy brakuje konfiguracji.
 - Komponent konta w nagłówku to Client Component, który woła `/auth/session` i pokazuje „Zaloguj się” albo
-  „Zalogowany jako …” z przyciskiem wylogowania. HTML katalogu nie zależy od sesji.
+  „Zalogowany jako …” z przyciskiem wylogowania. HTML katalogu nie zależy od sesji. Sesję odczytaną później przez
+  stronę (kasa po zmianie kupującego albo po 401: `announceSession` w `apps/store/src/account/session-events.ts`)
+  pokazuje bez własnego żądania, także gdy jego własny odczyt odpowie po niej.
 
 ## Panel (`apps/admin`)
 
@@ -988,8 +991,9 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
 1. Katalog: strona główna pokazuje produkty z załadowanymi zdjęciami; wybór kategorii pokazuje też produkty
    z podkategorii; paginacja działa.
 2. Klient: logowanie kontem demo, „Zalogowany jako …”, wylogowanie.
-3. Rejestracja: nowe konto na unikalny adres, e-mail weryfikacyjny w Mailpicie (API Mailpita), otwarcie linku,
-   konto zweryfikowane i zalogowane w sklepie.
+3. Rejestracja: formularz bez pola hasła, nowe konto na unikalny adres, e-mail weryfikacyjny w Mailpicie (API
+   Mailpita), otwarcie linku, ustawienie hasła na stronie Keycloaka, klient zalogowany w sklepie; po wylogowaniu
+   logowanie tym hasłem działa.
 4. Pracownik: `admin` loguje się hasłem i kodem TOTP wyliczonym ze stałego sekretu i widzi oba działy dashboardu;
    `support` widzi dział „Katalog” bez działu „Stan systemu”.
 
@@ -998,18 +1002,23 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
 `.github/workflows/ci.yml`, uruchamiany przy każdym pull requeście (także ze zmianami wyłącznie w dokumentacji)
 i pushu na `main`, więc job `checks` może być wymaganym checkiem gałęzi `main`. Nowe uruchomienie dla tego samego
 PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikacji startują z `--no-deps`.
-Job `checks` tylko zbiera wynik czterech części (`checks part <nazwa>`), z których każda biegnie na własnym runnerze
+Job `checks` tylko zbiera wynik sześciu części (`checks part <nazwa>`), z których każda biegnie na własnym runnerze
 i ma tylko obrazy i usługi, których potrzebuje. Część pobiera tylko obrazy deweloperskie, których potrzebuje (`apps`: `api`, `store` i `admin`; części api: `api`),
 z GHCR (a brakujące zbudowane z cache buildx, `type=gha`) i instalacja zależności do wolumenów, jak lokalnie.
 Polecenia mają `RUN="docker compose run --rm --no-deps -T"`.
 
-1. `k8s`: `make -C infra/k8s check` (bez obrazów i usług).
+1. `k8s`: `make -C infra/k8s check` (bez obrazów i usług); pliki testów chartu i skryptów biegną równolegle
+   (`infra/k8s/tests/run_parallel.py`, tyle naraz, ile procesorów ma runner).
 2. `apps`: `make check-code` (`make check` bez `infra/k8s`), suita `unit` api (bez usług), aktualność kontraktu
    (`make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na `apps/api/openapi.json`,
    `apps/api/openapi-admin.json` i obu `schema.d.ts`), `make -C apps/store test` (z Redisem),
    `make -C apps/admin test`, testy VCL i testy skryptów.
-3. `api integration` i `api functional`: `make -C apps/api test` z `PHPUNIT_ARGS` jednej z suit, na usługach stosu.
-   Zmiana, która dodaje testy na usługach stosu, w tym samym PR uruchamia w CI te usługi przed testami.
+3. `api integration`, `api demo data`, `api demo data orders` i `api functional`: `make -C apps/api test`
+   z `PHPUNIT_ARGS` jednej z suit (`integration`; `demo-data` i `demo-data-orders`, czyli testy integracyjne generatora
+   danych demo podzielone na dwie części o podobnym czasie; `functional`), na usługach stosu.
+   Podsumowanie kroku każdej z nich podaje najwolniejsze testy i klasy z logu JUnit
+   (`.github/scripts/junit-slowest.py`). Zmiana, która dodaje testy na usługach stosu, w tym samym PR uruchamia
+   w CI te usługi przed testami.
 
 Osobny job `e2e` najpierw sprawdza typy testów i uruchamia testy skryptu median (`make e2e-check`), potem uruchamia pełny
 stos (`make up`, `make seed`) i `make e2e`. Po `make e2e` i testach `init-env.sh` uruchamia `make lighthouse` (sklep

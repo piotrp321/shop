@@ -14,6 +14,8 @@ use App\Ordering\Domain\IdempotencyKeyReused;
 use App\Ordering\Domain\LineAmounts;
 use App\Ordering\Domain\Money;
 use App\Ordering\Domain\Order;
+use App\Ordering\Domain\OrderDelivery;
+use App\Ordering\Domain\OrderDeliveryShare;
 use App\Ordering\Domain\OrderDiscount;
 use App\Ordering\Domain\OrderDiscountKind;
 use App\Ordering\Domain\OrderId;
@@ -35,7 +37,9 @@ use App\Ordering\Domain\ShippingAddress;
 use App\Ordering\Domain\StaffActor;
 use App\Ordering\Domain\StatusActor;
 use App\Ordering\Domain\StatusActorType;
+use App\Ordering\Domain\TrackingNumber;
 use App\Ordering\Domain\VariantId;
+use App\Ordering\Infrastructure\Persistence\Doctrine\Record\OrderDeliveryVatRecord;
 use App\Ordering\Infrastructure\Persistence\Doctrine\Record\OrderLineRecord;
 use App\Ordering\Infrastructure\Persistence\Doctrine\Record\OrderRecord;
 use App\Ordering\Infrastructure\Persistence\Doctrine\Record\OrderStatusChangeRecord;
@@ -56,8 +60,10 @@ use Symfony\Component\Uid\Uuid;
  * failed flush, so the transaction ends with it.
  *
  * The history of the statuses is written with the order: the entries the aggregate has beyond the stored rows are
- * added in their positions (rows are never changed). Lines and history entries are immutable, so a record of them
- * already in the identity map is never stale.
+ * added in their positions (rows are never changed). Lines, the shares of the delivery by VAT rate and history entries
+ * are immutable, so a record of them already in the identity map is never stale. The copy of the delivery and its
+ * shares are written only when the order is added; an order stored without a delivery (before it) is read with none.
+ * The tracking number of the shipment is written with the other changes (it is set by the shipment and corrected after it).
  */
 final readonly class DoctrineOrderRepository implements OrderRepository
 {
@@ -94,6 +100,9 @@ final readonly class DoctrineOrderRepository implements OrderRepository
             $lineRecord->promotionPercentOff = $promotion?->percentOff();
             $lineRecord->regularUnitGross = $promotion?->regularUnitGross()->amount();
             $record->lines->add($lineRecord);
+        }
+        foreach ($order->delivery()?->shares() ?? [] as $share) {
+            $record->deliveryShares->add(new OrderDeliveryVatRecord($record, $share->rateBp(), $share->gross()->amount(), $share->net()->amount(), $share->vat()->amount()));
         }
         $this->entityManager->persist($record);
 
@@ -210,6 +219,13 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         $record->discountKind = $discount?->kind()->value;
         $record->discountValue = $discount?->value();
         $record->discountGross = $discount?->amount()->amount();
+        $delivery = $order->delivery();
+        $record->deliveryMethodId = $delivery?->methodId();
+        $record->deliveryMethodName = $delivery?->methodName();
+        $record->deliveryTrackingUrlTemplate = $delivery?->trackingUrlTemplate();
+        $record->deliveryGross = $delivery?->gross()->amount() ?? 0;
+        $record->deliveryNet = $delivery?->net()->amount() ?? 0;
+        $record->deliveryVat = $delivery?->vat()->amount() ?? 0;
         $record->idempotencyKey = $order->idempotencyKey()->toString();
         $record->requestFingerprint = $order->requestFingerprint()->toString();
         $record->accessToken = $order->accessToken()?->toString();
@@ -230,6 +246,7 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         $record->shippedAt = $order->shippedAt();
         $record->deliveredAt = $order->deliveredAt();
         $record->returnedAt = $order->returnedAt();
+        $record->trackingNumber = $order->trackingNumber()?->toString();
         $refund = $order->refund();
         $record->refundAmount = $refund?->amount()->amount();
         $record->refundDueAt = $refund?->dueAt();
@@ -294,6 +311,7 @@ final readonly class DoctrineOrderRepository implements OrderRepository
             shippingAddress: ShippingAddress::inPoland($record->street, $record->postalCode, $record->city),
             lines: $lines,
             discount: null === $record->discountCode ? null : OrderDiscount::of($record->discountCode, OrderDiscountKind::from($record->discountKind ?? ''), $record->discountValue ?? 0, Money::of($record->discountGross ?? 0, $currency)),
+            delivery: self::delivery($record, $currency),
             status: OrderStatus::from($record->status),
             idempotencyKey: IdempotencyKey::fromString($record->idempotencyKey),
             requestFingerprint: RequestFingerprint::fromString($record->requestFingerprint),
@@ -309,7 +327,24 @@ final readonly class DoctrineOrderRepository implements OrderRepository
             refund: self::refund($record, $currency),
             history: array_values(array_map(self::statusChange(...), $record->statusChanges->toArray())),
             version: $record->version,
+            trackingNumber: null === $record->trackingNumber ? null : TrackingNumber::fromString($record->trackingNumber),
         );
+    }
+
+    /**
+     * The stored copy of the delivery, never computed anew; none for an order placed before the delivery (P17).
+     */
+    private static function delivery(OrderRecord $record, Currency $currency): ?OrderDelivery
+    {
+        if (null === $record->deliveryMethodId) {
+            return null;
+        }
+        $shares = array_values(array_map(
+            static fn (OrderDeliveryVatRecord $share): OrderDeliveryShare => OrderDeliveryShare::of($share->vatRateBp, $share->gross, $share->net, $share->vat, $currency),
+            $record->deliveryShares->toArray(),
+        ));
+
+        return OrderDelivery::of($record->deliveryMethodId, $record->deliveryMethodName ?? '', $record->deliveryTrackingUrlTemplate, $record->deliveryGross, $shares, $currency);
     }
 
     private static function refund(OrderRecord $record, Currency $currency): ?Refund

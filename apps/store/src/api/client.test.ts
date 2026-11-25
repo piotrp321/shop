@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CATALOG_TAG, nextCacheTagOf } from "@/catalog/isr-tags";
 import {
   addCartItem,
   changeCartItemQuantity,
@@ -439,6 +440,9 @@ describe("placeOrder", () => {
     city: "Warszawa",
     expectedTotalGross: 39998,
     provider: "demo-transfer",
+    deliveryMethodId: "00000000-0000-4000-8000-0000000000d1",
+    expectedLines: [{ variantId: "00000000-0000-4000-8000-00000000000a", quantity: 2 }],
+    buyer: "guest",
   };
   const REDIRECT_URL = "http://localhost:8000/payment-simulator/demo-transfer/pay/7d3f0a8e-4a1b-4c55-9f1e-2b3c4d5e6f70";
 
@@ -480,10 +484,12 @@ describe("placeOrder", () => {
     [409, { type: `${PROBLEMS}cart-not-orderable`, detail: "x" }, { status: "conflict", reason: "cart_not_orderable", detail: "x" }],
     [409, { type: `${PROBLEMS}insufficient-stock-for-order`, detail: "x" }, { status: "conflict", reason: "insufficient_stock", detail: "x" }],
     [409, { type: `${PROBLEMS}order-total-changed`, detail: "x" }, { status: "conflict", reason: "total_changed", detail: "x" }],
+    [409, { type: `${PROBLEMS}cart-changed`, detail: "x" }, { status: "conflict", reason: "cart_changed", detail: "x" }],
     [409, { type: `${PROBLEMS}idempotency-key-reused`, detail: "x" }, { status: "conflict", reason: "key_reused", detail: "x" }],
     [409, { type: `${PROBLEMS}discount-code-invalid`, detail: "x" }, { status: "conflict", reason: "discount_code_rejected", detail: "x" }],
     [409, { type: `${PROBLEMS}discount-code-used-up`, detail: "x" }, { status: "conflict", reason: "discount_code_rejected", detail: "x" }],
     [409, { type: `${PROBLEMS}discount-code-below-minimum`, detail: "x", minimumOrderGross: 30000 }, { status: "conflict", reason: "discount_code_rejected", detail: "x" }],
+    [409, { type: `${PROBLEMS}delivery-method-unavailable`, detail: "x" }, { status: "conflict", reason: "delivery_method_unavailable", detail: "x" }],
     [409, { type: "about:blank", detail: "Koszyk jest pusty." }, { status: "conflict", reason: "unknown", detail: "Koszyk jest pusty." }],
     [409, { type: `${PROBLEMS}something-new`, detail: "x" }, { status: "conflict", reason: "unknown", detail: "x" }],
     [409, { type: 42, detail: "x" }, { status: "conflict", reason: "unknown", detail: "x" }],
@@ -626,14 +632,33 @@ describe("getPaymentStatus", () => {
 describe("createApiClient cache tags", () => {
   it("passes the tags to fetch as next.tags, so the page that reads the data is tagged", async () => {
     const fetch = vi.fn(async () => Response.json([]));
-    const client = createApiClient({ baseUrl: "http://api.test", fetch, tags: ["catalog", "product-1"] });
+    const bucket = nextCacheTagOf("product-slug-x");
+    const client = createApiClient({ baseUrl: "http://api.test", fetch, tags: [CATALOG_TAG, bucket] });
 
     await client.GET("/api/v1/categories");
 
     expect(fetch).toHaveBeenCalledTimes(1);
     const calls = fetch.mock.calls as unknown as [Request, { next?: { tags?: string[] } }][];
     expect(calls[0][0].url).toBe("http://api.test/api/v1/categories");
-    expect(calls[0][1]).toEqual({ next: { tags: ["catalog", "product-1"] } });
+    expect(calls[0][1]).toEqual({ next: { tags: ["catalog", "product-bucket-72c4"] } });
+  });
+
+  // A test of the types, checked by `tsc --noEmit` in `make check`: `tags` takes only the tags of `isr-tags.ts`, so a
+  // read cannot carry a name built anywhere else (a tag with the id of an entity would grow the list of revalidated
+  // tags of Next.js without a bound). A cast (`as`) is the one way around it that a type cannot stop.
+  it("takes only the tags of isr-tags.ts", () => {
+    const id = "0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60";
+    const names: string[] = ["catalog"];
+    // @ts-expect-error a literal is not a tag of the Next.js cache, not even catalog
+    createApiClient({ baseUrl: "http://api.test", tags: ["catalog"] });
+    // @ts-expect-error a product tag written by hand
+    createApiClient({ baseUrl: "http://api.test", tags: ["product-1"] });
+    // @ts-expect-error a product tag built from the id
+    createApiClient({ baseUrl: "http://api.test", tags: [`product-${id}`] });
+    // @ts-expect-error a list of plain strings
+    createApiClient({ baseUrl: "http://api.test", tags: names });
+    // @ts-expect-error a bucket name written by hand
+    createApiClient({ baseUrl: "http://api.test", tags: ["product-bucket-72c4"] });
   });
 
   it("leaves fetch alone without tags", async () => {

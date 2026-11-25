@@ -29,7 +29,7 @@ final class PaymentFixture
         [$variant, $product] = OrderingFixture::variant($connection, 1_000, 10);
         $cart = CartFixture::cart($connection, expiresAt: '+30 days', lines: [[$variant, 1]]);
 
-        return [new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', self::GROSS, 'payment-order-'.Uuid::v7()->toRfc4122()), $variant, $product];
+        return [new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($connection), self::GROSS, OrderingFixture::expectedOfCart($connection, $cart), 'payment-order-'.Uuid::v7()->toRfc4122()), $variant, $product];
     }
 
     public static function placed(mixed $result): PlacedOrder

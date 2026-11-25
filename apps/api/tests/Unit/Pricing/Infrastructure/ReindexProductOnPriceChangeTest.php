@@ -46,24 +46,25 @@ final class ReindexProductOnPriceChangeTest extends TestCase
         $this->indexer = new RecordingProductIndexer();
     }
 
-    /**
-     * @return iterable<string, array{PriceChangeSource}>
-     */
-    public static function reindexingSources(): iterable
+    public function testReindexesTheProductOfTheVariantWithItsNewOffer(): void
     {
-        yield 'staff' => [PriceChangeSource::Staff];
-        yield 'tax reconciliation' => [PriceChangeSource::TaxReconciliation];
-    }
-
-    #[DataProvider('reindexingSources')]
-    public function testReindexesTheProductOfTheVariantWithItsNewOffer(PriceChangeSource $source): void
-    {
-        $this->consumer()(new VariantPriceChanged(self::VARIANT, $source, new \DateTimeImmutable()));
+        $this->consumer()(new VariantPriceChanged(self::VARIANT, PriceChangeSource::Staff, new \DateTimeImmutable()));
 
         self::assertSame([self::VARIANT], $this->catalog->asked);
         self::assertCount(1, $this->indexer->indexed);
         self::assertSame(self::PRODUCT, $this->indexer->indexed[0]->id);
         self::assertSame(5_900, $this->indexer->indexed[0]->fromGross);
+    }
+
+    /**
+     * The gross price and the history do not change in a reconciliation, and the index holds neither the rate nor the net.
+     */
+    public function testATaxReconciliationIsHandledWithoutAskingCatalogOrReindexing(): void
+    {
+        $this->consumer()(new VariantPriceChanged(self::VARIANT, PriceChangeSource::TaxReconciliation, new \DateTimeImmutable()));
+
+        self::assertSame([], $this->catalog->asked);
+        self::assertSame([], $this->indexer->indexed);
     }
 
     public function testAVariantUnknownToCatalogIsHandledWithoutReindexing(): void

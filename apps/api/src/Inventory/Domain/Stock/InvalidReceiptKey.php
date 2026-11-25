@@ -13,6 +13,7 @@ final class InvalidReceiptKey extends \DomainException implements InvalidInput
 {
     public function __construct()
     {
-        parent::__construct(\sprintf('A receipt key must have 1 to %d characters: letters, digits, ".", "_", ":" or "-".', ReceiptKey::MAX_LENGTH));
+        // The text of the malformed key of an order and of a payment.
+        parent::__construct('Nieprawidłowy klucz żądania.');
     }
 }

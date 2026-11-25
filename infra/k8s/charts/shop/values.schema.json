@@ -26,7 +26,10 @@
     "alerts",
     "cartPurge",
     "rateLimitCheck",
+    "queueCheck",
+    "orderExpiry",
     "storage",
+    "reindex",
     "elasticsearch",
     "keycloak",
     "resources"
@@ -283,7 +286,7 @@
             "api": {
               "type": "string",
               "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
-              "description": "DSN of the api, the worker and the jobs: https://<key>@<host>/<project id>; empty: Sentry off."
+              "description": "DSN of the api, the workers and the jobs: https://<key>@<host>/<project id>; empty: Sentry off."
             },
             "store": {
               "type": "string",
@@ -651,6 +654,40 @@
         }
       }
     },
+    "queueCheck": {
+      "type": "object",
+      "required": [
+        "schedule",
+        "timeZone"
+      ],
+      "properties": {
+        "schedule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeZone": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "orderExpiry": {
+      "type": "object",
+      "required": [
+        "schedule",
+        "timeZone"
+      ],
+      "properties": {
+        "schedule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeZone": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "storage": {
       "type": "object",
       "required": [
@@ -667,12 +704,19 @@
     "elasticsearch": {
       "type": "object",
       "required": [
-        "javaOpts"
+        "javaOpts",
+        "shards"
       ],
       "properties": {
         "javaOpts": {
           "type": "string",
           "minLength": 1
+        },
+        "shards": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024,
+          "description": "The primary shards of a new product index (SEARCH_SHARDS); Elasticsearch allows at most 1024."
         }
       }
     },
@@ -718,6 +762,7 @@
         "mailpit",
         "api",
         "worker",
+        "workerCommands",
         "store",
         "admin",
         "imgproxy",
@@ -890,6 +935,24 @@
             }
           }
         },
+        "workerCommands": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
         "store": {
           "type": "object",
           "required": [
@@ -1033,6 +1096,20 @@
               "type": "object"
             }
           }
+        }
+      }
+    },
+    "reindex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activeDeadlineSeconds"
+      ],
+      "properties": {
+        "activeDeadlineSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "The time limit of a Job of the CronJob reindex, in seconds."
         }
       }
     }

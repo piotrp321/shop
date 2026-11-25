@@ -32,6 +32,7 @@ final class GeneratedOrdersOnTheRealPathsTest extends WebTestCase
         foreach (['demo-data:categories', 'demo-data:products', 'demo-data:prices', 'demo-data:promotions', 'demo-data:orders', 'demo-data:stock', 'demo-data:order-numbers'] as $step) {
             $this->succeeds($step, ['--anchor' => $anchor->format(\DATE_ATOM)]);
         }
+        $this->analyze();
     }
 
     public function testThePanelListsFiltersAndShowsAGeneratedOrderWithItsHistoryAndPayment(): void
@@ -64,12 +65,12 @@ final class GeneratedOrdersOnTheRealPathsTest extends WebTestCase
         $paid = $this->connection()->fetchAllAssociative("SELECT id, version FROM ordering_order WHERE status = 'paid' ORDER BY number LIMIT 2");
         self::assertCount(2, $paid, 'The last days have paid orders.');
 
-        $shipped = $this->post('/api/v1/admin/orders/'.$this->text($paid[0]['id']).'/status-changes', ['transition' => 'ship', 'version' => $this->int($paid[0]['version']), 'note' => 'Kurier'], TestTokenFactory::staff(['warehouse']));
+        $shipped = $this->post('/api/v1/admin/orders/'.$this->text($paid[0]['id']).'/status-changes', ['transition' => 'ship', 'version' => $this->int($paid[0]['version']), 'note' => 'Kurier', 'trackingNumber' => null], TestTokenFactory::staff(['warehouse']));
         self::assertSame('shipped', $shipped['status']);
         self::assertSame('committed', $this->connection()->fetchOne('SELECT status FROM inventory_reservation WHERE reservation_key = ?', [$this->text($paid[0]['id'])]));
 
         $reservedBefore = $this->reservedOf($this->text($paid[1]['id']));
-        $cancelled = $this->post('/api/v1/admin/orders/'.$this->text($paid[1]['id']).'/status-changes', ['transition' => 'cancel', 'version' => $this->int($paid[1]['version']), 'note' => 'Klient zrezygnował'], TestTokenFactory::staff(['support']));
+        $cancelled = $this->post('/api/v1/admin/orders/'.$this->text($paid[1]['id']).'/status-changes', ['transition' => 'cancel', 'version' => $this->int($paid[1]['version']), 'note' => 'Klient zrezygnował', 'trackingNumber' => null], TestTokenFactory::staff(['support']));
         self::assertSame('cancelled', $cancelled['status']);
         self::assertSame('released', $this->connection()->fetchOne('SELECT status FROM inventory_reservation WHERE reservation_key = ?', [$this->text($paid[1]['id'])]));
         self::assertLessThan($reservedBefore, $this->reservedOf($this->text($paid[1]['id'])));

@@ -68,7 +68,8 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
 
 ## Tagi i nagłówki cache (API)
 
-- Słownik tagów, wspólny dla Varnisha i ISR: `catalog` (każda odpowiedź katalogu i każda strona produktu),
+- Słownik tagów, wspólny dla Varnisha i rewalidacji ISR (sklep zamienia tagi produktu na swoje tagi cache Next, patrz
+  „Cache ISR”): `catalog` (każda odpowiedź katalogu i każda strona produktu),
   `product-<productId>` (UUID małymi literami) dla każdego produktu, którego dane zawiera odpowiedź, i
   `product-slug-<slug>` (slug w formacie `Slug`) dla odpowiedzi 404 szczegółów i odczytu szczegółów strony produktu.
 - Nazwy tagów buduje jedna klasa w `Shared_Infrastructure` (`CacheTags`: `product(id)` z UUID małymi literami,
@@ -159,10 +160,10 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
     wywołań HTTP po każdym `make seed` opóźniałoby zdarzenia testów E2E w kolejce jednego workera.
 - Dostarczenie: istniejący outbox. Wiersz outboxu powstaje w transakcji zapisu ceny albo stanu i jest widoczny dla
   workera dopiero po jej commicie; wycofana transakcja nie zostawia zdarzenia. Worker przekazuje go do RabbitMQ
-  (ponowienia transportu `outbox`), a konsument czyta z transportu `events`. Unieważnienie nigdy nie startuje przed
+  (ponowienia transportu `outbox`: 200 prób, najwyżej co 60 s, około 3 godzin), a konsument czyta z transportu `events`. Unieważnienie nigdy nie startuje przed
   commitem zmiany, więc regenerowana strona czyta już nowe dane.
 - Ponowienia: wyjątek konsumenta (Varnish albo sklep niedostępny, status inny niż 200, timeout) to ponowienie
-  Messengera (transport `events`: 3 próby po 1, 3 i 9 s), potem `failed` (`messenger:failed:retry`). Do udanego
+  Messengera (transport `events`: 10 prób po 1, 3, 9, 27, 81 i 243 s, potem cztery razy po 300 s, razem około 26 minut), potem `failed` (`messenger:failed:retry`). Do udanego
   ponowienia dane są najwyżej tak stare jak siatka bezpieczeństwa (`s-maxage` i `revalidate` 3600 s).
 - Idempotencja: purge tagu i rewalidacja tagu nie zależą od stanu ani od liczby powtórzeń. Powtórzone, spóźnione albo
   przestawione zdarzenie powoduje najwyżej dodatkowe odświeżenie z bieżących danych (wyjątek: wyścig w „Ryzykach”).
@@ -218,12 +219,14 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
   i konto ładują Client Components.
 - Dane: `GET /api/v1/products/{slug}`, potem `GET /api/v1/product-offers?productId=<id>`, oba przez
   `API_CATALOG_URL`, wspólne dla `generateMetadata` i strony (`React.cache`). Tagi przekazuje opcja `tags`
-  klienta (`createApiClient` w `src/api/client.ts`, do `fetch` jako `next: { tags }`): odczyt szczegółów ma tagi
-  `catalog` i `product-slug-<slug>` (id nie jest jeszcze znane), odczyt oferty `catalog` i `product-<id>`. Slug spoza
+  klienta (`createApiClient` w `src/api/client.ts`, do `fetch` jako `next: { tags }`), wyłącznie tagi cache Next
+  z `src/catalog/isr-tags.ts` (patrz „Cache ISR”): odczyt szczegółów ma tagi `catalog` i kubełek nazwy
+  `product-slug-<slug>` (id nie jest jeszcze znane), odczyt oferty `catalog` i kubełek nazwy `product-<id>`. Slug spoza
   formatu `Slug` (ten sam wzorzec co w `/api/revalidate`: małe litery i cyfry w grupach łączonych pojedynczym `-`, do
   200 znaków) to strona 404 bez odczytu API, bo żaden produkt nie może go mieć. Strona
   dziedziczy sumę tagów odczytów, także strona 404 sluga, więc rewalidacja `product-<id>`, `product-slug-<slug>` albo
-  `catalog` unieważnia HTML, a następne wejście pobiera od nowa oba odczyty (przez Varnish, już po purge).
+  `catalog` (przez ich tagi cache Next) unieważnia HTML, a następne wejście pobiera od nowa oba odczyty (przez
+  Varnish, już po purge).
   Odczyty nie trafiają do data cache Next na dłużej niż HTML strony. Layout czyta też drzewo kategorii dla menu
   działów w nagłówku (`GET /api/v1/categories` z tagiem `catalog`); gdy odczyt zawiedzie, nagłówek jest bez menu,
   a strona renderuje się dalej.
@@ -282,7 +285,9 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
 - Route handler: `Authorization: Bearer <STORE_REVALIDATE_SECRET>` (porównanie w stałym czasie); treść
   `{tags: string[]}`, 1–100 tagów, każdy `catalog`, `product-<uuid małymi literami>` albo `product-slug-<slug>`
   (slug w formacie `Slug`: małe litery i cyfry w grupach łączonych pojedynczym `-`, do 200 znaków).
-- `revalidateTag(tag, { expire: 0 })` dla każdego tagu (P5); 200 `{revalidated: <liczba>}`.
+- Każdy tag z treści zamienia na tag cache Next (`src/catalog/isr-tags.ts`, patrz „Cache ISR”) i woła
+  `revalidateTag(<tag Next>, { expire: 0 })` raz dla każdej różnej nazwy (P5); 200 `{revalidated: <liczba tagów
+  treści>}`. Nazwa kubełka podana wprost (`product-bucket-…`) jest spoza słownika, więc daje 400.
 - Brak lub zły sekret: 401; zła treść lub inny `Content-Type` niż JSON: 400; brak `STORE_REVALIDATE_SECRET`
   w środowisku: 503. Wszystkie odpowiedzi `private, no-store`. Nie loguje sekretu.
 
@@ -313,13 +318,16 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
   szczyt po 2N nie wyższy niż po N, bez restartu. Ten sam ruch z cache na dysku (50 MB w pamięci) daje niższy RSS (do
   376 MiB), ale working set kontenera rośnie z każdą fazą (383, 478, 599 MiB) o pamięć podręczną plików cache, a na
   dysk trafia 85 822 plików.
+- **Tagi cache Next.** Nazwy tagów cache Next tworzy wyłącznie `src/catalog/isr-tags.ts` (typ `NextCacheTag`, jedyny
+  przyjmowany przez `tags` w `createApiClient`): `catalog` zostaje `catalog`, a tag produktu z API (`product-<id>`
+  albo `product-slug-<slug>`) dostaje nazwę `product-bucket-<4 cyfry szesnastkowe>`, czyli pierwsze 16 bitów SHA-256
+  pełnej nazwy z API (65 536 kubełków wspólnych dla identyfikatorów i slugów). Żaden tag cache Next nie zawiera
+  identyfikatora ani sluga.
 - Poza limitem cache jest lista rewalidowanych tagów Next (`tagsManifest`, mapa w pamięci procesu): każdy unikalny tag
-  rewalidowany od startu procesu zostaje w niej do restartu: ok. 180 B na tag (1 mln unikalnych tagów to 174 MiB
-  sterty po GC). Tagi rewaliduje tylko worker API przy zmianie produktu, ceny, poziomu dostępności albo promocji
-  (`product-<id>`, `product-slug-<slug>`, `catalog`); generator danych demo nie publikuje zdarzeń. Górna granica to
-  ok. dwa tagi na produkt zmieniony od startu poda: przy 1 mln produktów ok. 350 MiB, przy 10 mln więcej niż sterta
-  poda `prod`. Przy `medium` to przyjęte ograniczenie, które sprawdza test masowej rewalidacji tagów (PERFORMANCE,
-  #781); ograniczenie wzrostu listy jest warunkiem danych w skali `server`. Poza tym bez limitu są tylko
+  rewalidowany od startu procesu zostaje w niej do restartu (ok. 180 B na tag). Dzięki kubełkom lista ma najwyżej
+  65 537 wpisów (65 536 kubełków i `catalog`), niezależnie od liczby produktów i liczby zmian; w pomiarze 131 072
+  różne tagi z dłuższymi nazwami zajęły 32 MB sterty, a sterta i RSS nie rosły między 2 mln a 24 mln rewalidacji
+  (`docs/reports/isr-tag-revalidation-2026-11-24.md`). Poza tym bez limitu są tylko
   obiekty krótkotrwałe (renderowania w toku); bufor odpowiedzi Next z limitem 150 wpisów działa tylko w trybie
   `minimalMode`, którego sklep nie używa.
 - Testy: `tests/isr-cache.test.ts` (konfiguracja) i `make -C apps/store check-isr-memory-cache` na buildzie produkcyjnym
@@ -488,9 +496,13 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
 - Cache ISR mieści ok. 500 stron produktu: przy katalogu w skali wejście na rzadko odwiedzaną stronę zwykle renderuje
   ją od nowa (ok. 39 ms CPU zamiast ok. 1 ms, audyt wydajności), a seria unikalnych adresów (1000–2000 nieznanych
   slugów) wypycha z cache także strony odwiedzane często. Koszt CPU renderu pod ruchem robotów: PERFORMANCE (#781).
-- Lista rewalidowanych tagów Next (`tagsManifest`) jest w pamięci procesu poza limitem cache i rośnie o każdy unikalny
-  tag rewalidowany od startu procesu (pomiar: „Cache ISR”); znika przy restarcie poda. Przyjęte przy danych `medium`,
-  przed danymi `server` lista musi mieć ograniczenie (PERFORMANCE, #781).
+- Zbędne unieważnienia przez kubełki tagów (stała lista rewalidowanych tagów Next, „Cache ISR”): zmiana produktu
+  unieważnia też wpisy cache, których tag trafił do tego samego kubełka. Cache mieści najwyżej ok. 2000 przypisań do
+  65 536 kubełków (ok. 500 stron produktu po dwa kubełki albo 1000–2000 stron 404 po jednym), więc rewalidowany tag
+  trafia w cudzy wpis z prawdopodobieństwem ok. 3%, a zmiana produktu rewalidowana dwoma tagami (identyfikator i slug)
+  ok. 6%. Kolizja może unieważnić kilka wpisów naraz (strony kilku produktów i strony 404, razem z odczytami `fetch`
+  z tym tagiem); skutek dla każdego to jeden dodatkowy render przy następnym wejściu (ok. 39 ms CPU). Strona nigdy nie
+  jest przez to starsza: unieważniane są zawsze co najmniej wpisy z tagami zmienionego produktu.
 - Seed publikuje zdarzenie dla każdej ceny i zmiany poziomu (ok. 2 tys. wiadomości); konsument potwierdza je bez
   wywołań HTTP.
 - Wydajność nie jest potwierdzona testami obciążeniowymi.

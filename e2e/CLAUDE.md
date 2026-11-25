@@ -17,18 +17,23 @@ sklepu (`STORE_MODE`) opisuje sekcja „Tryb sklepu” niżej.
 
 ## CI
 
-- Zestaw biegnie w trzech jobach `e2e shard 1`…`3` (macierz `e2e-shard` w `ci.yml`), każdy na własnym
+- Zestaw biegnie w czterech jobach `e2e shard 1`…`4` (macierz `e2e-shard` w `ci.yml`), każdy na własnym
   runnerze z własnym, świeżo zasianym stosem, bo testy dzielą stan jednego stosu i działają po kolei (`workers: 1`).
   Część to całe pliki spec: test nie może zależeć od stanu, który zostawia inny plik, bo ten może być w innej części.
-  Granice części (`E2E_SHARD_WEIGHTS` w kroku `make e2e`; obecny podział opisuje komentarz tego kroku) leżą w środku
-  pliku, więc kilka dodanych testów nie przesuwa podziału. Po dodaniu testów przesuń granice, żeby wszystkie części
-  kończyły się mniej więcej razem (podział sprawdzisz bez stosu:
-  `docker compose --profile e2e run --rm --no-deps -e PWTEST_SHARD_WEIGHTS=<wagi> --entrypoint npx e2e playwright test --list --shard=<i>/3`).
+  Podział ustawiają wagi `E2E_SHARD_WEIGHTS` w kroku `make e2e`: to udziały testów na część, więc dodane testy
+  biegną dokładnie raz bez zmiany wag. Zadanie ani epik nie zmienia wag i nie ma kryterium o granicach części.
+  Wyrównanie części to osobny, mały PR do `main`: wagi liczy się z czasów plików w logach części z kilku pełnych
+  zielonych przebiegów na `main`, nie z liczby testów (test panelu trwa kilka razy dłużej niż test sklepu), a każda
+  granica zostaje w środku pliku z co najmniej 8 testami. Podział sprawdza się bez stosu: suma testów części równa
+  się liczbie testów całego zestawu
+  (`docker compose --profile e2e run --rm --no-deps -e PWTEST_SHARD_WEIGHTS=<wagi> --entrypoint npx e2e playwright test --list --shard=<i>/4`).
+  Powód do wyrównania podaje kontrola czasu CI na końcu epiku (`metrics.py ci-time`, rozrzut części E2E). Jedną
+  dodatnią wagę na każdą część macierzy sprawdza test `.claude/skills/integration/test_delta.py`.
 - Wymagany check `e2e` to osobny, lekki job, który jest zielony tylko wtedy, gdy zakończył się sukcesem job `scope`
   i wszystkie części (także po błędzie albo anulowaniu jednej z nich czerwony, nie pominięty). Części nie nazywają się `e2e`.
-- Część z `after_e2e` (trzecia) po `make e2e` uruchamia `make ci-after-e2e`: każdy cel, który fragment `make/*.mk` dopisuje
+- Część z `after_e2e` (ostatnia, czwarta) po `make e2e` uruchamia `make ci-after-e2e`: każdy cel, który fragment `make/*.mk` dopisuje
   do listy `CI_AFTER_E2E` (Lighthouse, trasy robots i sitemap, `make load-smoke`, testy `init-env.sh`). Nowe sprawdzenie
   na stosie trafia do swojego fragmentu, nie do `ci.yml`. Kolejność to kolejność plików fragmentów, więc żaden cel listy
   nie może od niej zależeć.
-- Lighthouse nie ma osobnego checka: niespełniony wynik SEO albo błąd pomiaru robi czerwony job `e2e shard 3`, a przez
+- Lighthouse nie ma osobnego checka: niespełniony wynik SEO albo błąd pomiaru robi czerwony job `e2e shard 4`, a przez
   niego wymagany `e2e`.

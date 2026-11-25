@@ -202,6 +202,7 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 | Cart | Pozycje koszyka, podgląd sum, koszyki gości i zalogowanych w PostgreSQL |
 | Ordering | Checkout, cykl życia zamówienia (przejścia jako metody agregatu `Order`), historia zamówień, modele odczytu z zamówień (sprzedaż godzinowa, klienci w panelu) |
 | Payment | Dostawcy płatności za jednym portem, status płatności, webhooki dostawców |
+| Delivery | Metody dostawy kurierem (cena, próg darmowej dostawy, kolejność, szablon linku śledzenia) i wycena dostawy dla wartości towarów (`docs/features/delivery/spec.md`) |
 | Inventory | Stany magazynowe, rezerwacja przy zamówieniu, zwolnienie przy anulowaniu |
 | Customer | Profil klienta, adresy; sama tożsamość jest w Keycloak (klient to tożsamość z tokenu, a klientów w panelu daje model odczytu Ordering) |
 
@@ -226,6 +227,18 @@ context ma własne value objecty.
 ## Wymagania niefunkcjonalne
 
 Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których dotyczą, a nie w szkielecie.
+
+**Etap demo**
+- Obecnie rozwijamy demo. Przestój podczas prac i wdrożeń, zmiana niezgodna z poprzednią wersją (schemat, format
+  wiadomości, kontrakt) i odtworzenie danych demo (reset i seed albo generator) są dopuszczalne.
+- Nie projektujemy bezprzerwowych wdrożeń, migracji zachowujących dane ani zgodności ze starszą wersją wyłącznie dla
+  ciągłości działania. Wybieramy proste wdrożenie i odtworzenie danych, jeśli spełniają wymagania zadania.
+- Poprawność zwykłego działania sklepu jest wymagana w pełni: zamówienia, płatności, stany magazynowe, bezpieczeństwo
+  i formularze, także przy równoległych żądaniach.
+- Zasada nie jest zgodą na operację: kasowanie albo zastępowanie danych na serwerze i wdrożenie wymagają zgody
+  właściciela (`CLAUDE.md`, „Serwer, GitHub i bezpieczeństwo agentów”). Istniejącego kodu nie przebudowujemy tylko
+  dlatego, że zasada pozwala go uprościć.
+- Zasadę zmienia decyzja właściciela, np. przed przyjęciem prawdziwych klientów.
 
 **Skala docelowa**
 - Katalog do 10 milionów produktów.
@@ -358,7 +371,9 @@ Cel: sprzedaż produkcyjna. Epiki i ich kolejność są na tablicy „Backlog sk
 
 1. Odporność i niezawodność: limity nadużyć oraz przetwarzanie w tle, które domyka zamówienia i płatności niezależnie
    od zaległości kolejki.
-2. Ścieżka sprzedaży: dostawa (metody, koszt, numer przesyłki, potem punkty odbioru), prawdziwy operator płatności ze
+2. Ścieżka sprzedaży: dostawa etapu 2 (punkty odbioru i Paczkomaty, etykiety i statusy przesyłek przez integrację
+   z przewoźnikiem albo brokerem; etap 1, metody kurierskie z kosztem i numerem przesyłki, opisuje
+   `docs/features/delivery/spec.md`), prawdziwy operator płatności ze
    zwrotami, strony prawne i zgody, obsługa żądań RODO, zakup na firmę i faktury, pełne dane produktu z importem
    i eksportem.
 3. Przed danymi prawdziwych klientów: kopie zapasowe i osłony operacji na produkcji, izolacja sekretów i sieci
@@ -400,10 +415,11 @@ Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra
   zdarzenia klastra i metryki z listy dozwolonych. Logi są maskowane w Alloy przed wysłaniem (hasła, tokeny, nagłówki
   `Authorization` i ciasteczka, adresy e-mail i IP, parametry zapytań Doctrine; linie `DETAIL` i `STATEMENT` Postgresa
   odrzucone), a Mailpit nie jest zbierany. Alloy czyta z klastra tylko sekret z tokenami Grafana Cloud.
-- **Alerty**: osiem reguł `PrometheusRule` w chartcie (tylko `prod`), które Alloy synchronizuje do Grafana Cloud jako reguły
+- **Alerty**: jedenaście reguł `PrometheusRule` w chartcie (tylko `prod`), które Alloy synchronizuje do Grafana Cloud jako reguły
   zarządzane przez Grafanę (powiadomienia e-mailem):
   nieudana albo brakująca kopia, nieudana albo brakująca weryfikacja kopii, wyłączone limitery tras (Redis, który nie przyjmuje
-  zapisu), zajęty dysk węzła, brak sygnału z klastra i niegotowy workload sklepu. Kopie są codziennie weryfikowane, a odtworzenie sprawdza test dymny; prawdziwe dane
+  zapisu), wiadomość w transporcie `failed` albo stojąca kolejka (CronJob `queue-check`), nieudane albo brakujące wygaszanie
+  zamówień po terminie i zamykanie porzuconych płatności (CronJob `order-expiry`), zajęty dysk węzła, brak sygnału z klastra i niegotowy workload sklepu. Kopie są codziennie weryfikowane, a odtworzenie sprawdza test dymny; prawdziwe dane
   i publiczny start dopiero po ćwiczeniu odtworzenia z runbooka na serwerze.
 - **Poczta**: Brevo SMTP dla Keycloaka i (za przełącznikiem) potwierdzeń zamówień; SPF, DKIM, DMARC w Cloudflare.
 - **Świadomie bez Ranchera**: przy jednym klastrze to narzut bez korzyści.

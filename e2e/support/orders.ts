@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { decideAtSimulator, expectSimulatorPage, WEBHOOK_TIMEOUT_MS } from "./payment";
-import { addVariantOf, chooseProvider, emptyCart, fillAddress, tileNamed } from "./shop";
+import { addVariantOf, chooseDelivery, chooseProvider, emptyCart, fillAddress, tileNamed } from "./shop";
 
 const PROVIDERS = {
   "Karta płatnicza (demo)": "demo-card",
@@ -9,14 +9,14 @@ const PROVIDERS = {
 
 export interface PlacedOrder {
   number: string;
-  /** The gross total as the cart showed it, e.g. "199,00 zł". */
+  /** The gross total with the delivery as the checkout showed it, e.g. "218,99 zł". */
   total: string;
 }
 
 /**
- * From a logged-in customer's page: empties the cart, orders one unit of `product` with the given provider, pays at the
- * simulator and waits for the confirmation page to say the payment is accepted (the webhook reaches the store through
- * the worker). Returns the number and the total of the order the test has just made.
+ * From a logged-in customer's page: empties the cart, orders one unit of `product` with the standard delivery and the
+ * given provider, pays at the simulator and waits for the confirmation page to say the payment is accepted (the webhook
+ * reaches the store through the worker). Returns the number and the total of the order the test has just made.
  */
 export async function placeAndPayOrder(page: Page, product: string, provider: keyof typeof PROVIDERS): Promise<PlacedOrder> {
   await emptyCart(page);
@@ -26,11 +26,12 @@ export async function placeAndPayOrder(page: Page, product: string, provider: ke
   await addVariantOf(page, tile, 1);
 
   await page.goto("/cart");
-  const total = (await page.getByTestId("cart-total").innerText()).trim();
   await page.getByRole("link", { name: "Przejdź do kasy" }).click();
   await expect(page).toHaveURL(/\/checkout$/);
   await expect(page.getByLabel("Imię i nazwisko")).not.toHaveValue("");
   await fillAddress(page);
+  await chooseDelivery(page);
+  const total = (await page.getByTestId("checkout-total").innerText()).trim();
   await chooseProvider(page, provider);
   await page.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" }).click();
 

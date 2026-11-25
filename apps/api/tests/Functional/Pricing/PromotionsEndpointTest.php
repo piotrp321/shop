@@ -757,6 +757,7 @@ final class PromotionsEndpointTest extends WebTestCase
         yield 'a version that is no number' => ['?version=one'];
         yield 'a version of 0' => ['?version=0'];
         yield 'a version that is letters' => ['?version=abc'];
+        yield 'a version of another kind' => ['?version[]=x'];
     }
 
     #[DataProvider('badVersions')]
@@ -770,6 +771,8 @@ final class PromotionsEndpointTest extends WebTestCase
         self::assertIsArray($problem['violations']);
         self::assertSame(['version'], array_column($problem['violations'], 'propertyPath'));
         self::assertSame(['Wersja musi być dodatnią liczbą całkowitą.'], array_column($problem['violations'], 'title'));
+        self::assertArrayNotHasKey('detail', $problem);
+        self::assertSame(1, $this->connection->fetchOne('SELECT count(*) FROM pricing_promotion WHERE id = ?', [$id]), 'the promotion is not deleted');
     }
 
     /**

@@ -1,5 +1,5 @@
 {{- /*
-The environment of the API, the worker and the jobs: the one of the compose file with the addresses of this environment.
+The environment of the API, the workers and the jobs: the one of the compose file with the addresses of this environment.
 The secrets come with envFrom (the .env.local of the compose file).
 */ -}}
 {{- define "shop.apiEnv" -}}
@@ -31,6 +31,10 @@ The secrets come with envFrom (the .env.local of the compose file).
   value: /
 - name: ELASTICSEARCH_URL
   value: http://elasticsearch:9200
+# The primary shards of a product index that setup and catalog:reindex create (SEARCH_SHARDS of compose). An index that exists
+# keeps its own number until make -C infra/k8s reindex builds a new one.
+- name: SEARCH_SHARDS
+  value: {{ .Values.elasticsearch.shards | quote }}
 # Keycloak: tokens carry the public URL as issuer, discovery and JWKS are fetched through the internal one.
 - name: KEYCLOAK_PUBLIC_URL
   value: {{ include "shop.url" (dict "root" . "sub" "auth") | quote }}
@@ -84,13 +88,13 @@ The secrets come with envFrom (the .env.local of the compose file).
   value: {{ include "shop.url" (dict "root" . "sub" "api") | quote }}
 - name: PAYMENT_WEBHOOK_BASE_URL
   value: http://api
-{{- /* Sentry of the api, the worker and the jobs: one project, only with a DSN (docs/features/sentry/spec.md, D3). */}}
+{{- /* Sentry of the api, the workers and the jobs: one project, only with a DSN (docs/features/sentry/spec.md, D3). */}}
 {{- with include "shop.sentryEnv" (dict "root" . "app" "api") }}
 {{ . | trim }}
 {{- end }}
 {{- end }}
 
-{{/* Waits until the migrations of this revision are applied (the api and the worker never start on an old schema). */}}
+{{/* Waits until the migrations of this revision are applied (the api and the workers never start on an old schema). */}}
 {{- define "shop.api.waitMigrations" -}}
 - name: wait-for-migrate
   image: {{ include "shop.appImage" (dict "root" . "app" "api") }}
@@ -128,21 +132,25 @@ readinessProbe:
   failureThreshold: 20
 {{- end }}
 
+{{/*
+The container of a worker: the same command line as the compose file (the transports of one worker, then the limits). A
+worker ends by itself after a day or at 192 MB (75% of the memory_limit of PHP), after the message it is handling, with
+exit code 0, and the Deployment starts it again. Parameters: root, transports (the list of the transports).
+*/}}
 {{- define "shop.worker.container" -}}
-imagePullPolicy: {{ .Values.image.pullPolicy }}
-# The transports one after another: the outbox relay, the events of RabbitMQ, the delayed commands, the webhook
-# deliveries of the payment simulator, the boundaries of the promotion periods and the batches of background jobs (the
-# same as in the compose file).
-command: ["php", "bin/console", "messenger:consume", "outbox", "events", "scheduled", "payment_simulator", "promotions", "jobs"]
+{{- $command := concat (list "php" "bin/console" "messenger:consume") .transports (list "--time-limit=86400" "--memory-limit=192M") -}}
+imagePullPolicy: {{ .root.Values.image.pullPolicy }}
+command: {{ toJson $command }}
 env:
-  {{- include "shop.apiEnv" . | nindent 2 }}
-{{ include "shop.envFromSecret" . }}
+  {{- include "shop.apiEnv" .root | nindent 2 }}
+{{ include "shop.envFromSecret" .root }}
 readinessProbe:
   exec:
     command:
       - sh
       - -c
-      - "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events scheduled payment_simulator promotions jobs'"
+      # Ready once PID 1 is this very consumer: the same command line, up to the last limit.
+      - {{ printf "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^%s'" (join " " $command) | quote }}
   periodSeconds: 5
   timeoutSeconds: 3
   failureThreshold: 6
@@ -153,6 +161,14 @@ readinessProbe:
   "initContainers" (include "shop.api.waitMigrations" .)
   "container" (include "shop.api.container" .)) }}
 ---
+{{- /* The events: the relay of the outbox to RabbitMQ (first) and the events of RabbitMQ. The only worker that needs the broker. */}}
 {{ include "shop.deployment" (dict "root" . "name" "worker" "wave" "1" "image" (include "shop.appImage" (dict "root" . "app" "api"))
   "initContainers" (print (include "shop.api.waitMigrations" .) "\n" (include "shop.wait" (dict "root" . "name" "rabbitmq" "check" "nc -z -w 2 rabbitmq 5672")))
-  "container" (include "shop.worker.container" .)) }}
+  "container" (include "shop.worker.container" (dict "root" . "transports" (list "outbox" "events")))) }}
+---
+{{- /* The commands that wait in Postgres: the webhook deliveries of the payment simulator come before the cancellations of
+unpaid orders (the worker starts from the first transport after every message), then the promotion boundaries and the
+batches of background jobs. It does not wait for RabbitMQ and does not need it. */}}
+{{ include "shop.deployment" (dict "root" . "name" "worker-commands" "resources" "workerCommands" "wave" "1" "image" (include "shop.appImage" (dict "root" . "app" "api"))
+  "initContainers" (include "shop.api.waitMigrations" .)
+  "container" (include "shop.worker.container" (dict "root" . "transports" (list "payment_simulator" "scheduled" "promotions" "jobs")))) }}

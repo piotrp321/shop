@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
-# Pinned: Node 24.22.3 (npm 11.19.1) on Alpine.
-FROM node:24.22.3-alpine AS node
+# Pinned: Node 24.22.3 (npm 11.19.1) on Alpine, by the digest of the multi-arch index of the tag
+# (`docker buildx imagetools inspect node:24.22.3-alpine`, line "Digest"); change the tag and the digest together.
+FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS node
 
 WORKDIR /app
 
@@ -33,7 +34,9 @@ RUN --mount=type=secret,id=sentry_auth_token \
 
 # Production image: nginx (unprivileged, port 8080) serving dist. /config.js is generated at container start from
 # VITE_API_URL, VITE_KEYCLOAK_URL, VITE_ADMIN_URL and VITE_STORE_URL; a missing variable stops the start with its name.
-FROM nginxinc/nginx-unprivileged:1.30.6-alpine AS prod
+# Pinned: nginx 1.30.6 (unprivileged) on Alpine, by the digest of the multi-arch index of the tag
+# (`docker buildx imagetools inspect nginxinc/nginx-unprivileged:1.30.6-alpine`, line "Digest").
+FROM nginxinc/nginx-unprivileged:1.30.6-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03 AS prod
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/security-headers.conf /etc/nginx/security-headers.conf

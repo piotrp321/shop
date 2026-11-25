@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadAccountSession, loadSiteSwitches } from "@/api/client";
+import { type AccountSessionResult, loadAccountSession, loadSiteSwitches } from "@/api/client";
 import { SiteSwitchesProvider } from "@/components/SiteSwitches";
 import { AccountMenu } from "./AccountMenu";
+import { announceSession } from "./session-events";
 
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -33,7 +34,7 @@ describe("AccountMenu", () => {
   });
 
   it("shows the name and a logout form that POSTs to /auth/logout", async () => {
-    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com" } });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com", buyer: "buyer-tag-of-jan" } });
     render(<AccountMenu />);
 
     expect(await screen.findByText("Zalogowany jako Jan")).toBeTruthy();
@@ -62,6 +63,60 @@ describe("AccountMenu", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+// The checkout reads the session again after a changed buyer (docs/features/checkout/spec.md, „Zmiana kupującego”):
+// the header shows what it read, without a request of its own (U3).
+describe("AccountMenu after another part of the page read the session", () => {
+  const JAN = { name: "Jan Kowalski", email: "jan.kowalski@example.com", buyer: "buyer-tag-of-jan" };
+  const ANNA = { name: "Anna Nowak", email: "anna.nowak@example.com", buyer: "buyer-tag-of-anna" };
+  const renderOnSite = () =>
+    render(
+      <SiteSwitchesProvider>
+        <AccountMenu />
+      </SiteSwitchesProvider>,
+    );
+
+  beforeEach(() => {
+    vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: false, customerAccounts: true });
+  });
+
+  it("shows the account announced, then nobody, with the login link, and reads nothing itself", async () => {
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: JAN });
+    renderOnSite();
+    expect(await screen.findByText("Zalogowany jako Jan Kowalski")).toBeTruthy();
+
+    act(() => announceSession(ANNA));
+    expect(screen.getByText("Zalogowany jako Anna Nowak")).toBeTruthy();
+    expect(screen.queryByText(/Jan Kowalski/)).toBeNull();
+
+    act(() => announceSession(null));
+    expect(screen.getByRole("link", { name: "Zaloguj się" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Wyloguj się" })).toBeNull();
+    expect(loadAccountSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the account announced to a guest", async () => {
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    renderOnSite();
+    await screen.findByRole("link", { name: "Zaloguj się" });
+
+    act(() => announceSession(JAN));
+    expect(screen.getByText("Zalogowany jako Jan Kowalski")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Zaloguj się" })).toBeNull();
+  });
+
+  it("keeps the session announced while its own read was on its way, when that read answers later", async () => {
+    let answer: (result: AccountSessionResult) => void = () => {};
+    vi.mocked(loadAccountSession).mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    renderOnSite();
+
+    act(() => announceSession(ANNA));
+    await act(async () => answer({ status: "ok", session: JAN }));
+
+    expect(screen.getByText("Zalogowany jako Anna Nowak")).toBeTruthy();
+    expect(screen.queryByText(/Jan Kowalski/)).toBeNull();
   });
 });
 
@@ -113,7 +168,7 @@ describe("AccountMenu with the site switches", () => {
 
   it("still shows a signed-in customer and the logout form when the customer accounts are off", async () => {
     vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: false, customerAccounts: false });
-    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com" } });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com", buyer: "buyer-tag-of-jan" } });
     renderOnSite();
 
     expect(await screen.findByText("Zalogowany jako Jan")).toBeTruthy();
@@ -123,7 +178,7 @@ describe("AccountMenu with the site switches", () => {
 
 describe("AccountMenu: the order history", () => {
   it("links a signed-in customer to their orders", async () => {
-    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com" } });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com", buyer: "buyer-tag-of-jan" } });
     render(<AccountMenu />);
 
     const link = await screen.findByRole("link", { name: "Moje zamówienia" });

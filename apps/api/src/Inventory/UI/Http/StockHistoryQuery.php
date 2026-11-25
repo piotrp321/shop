@@ -15,6 +15,7 @@ final readonly class StockHistoryQuery
 {
     /** Longer than any cursor the API hands out (a time and a UUID in JSON and base64url). */
     public const int MAX_CURSOR_LENGTH = 2048;
+    public const string BAD_CURSOR = 'Kursor stronicowania jest nieprawidłowy.';
 
     public function __construct(
         #[Assert\Length(min: 1, max: self::MAX_CURSOR_LENGTH)]

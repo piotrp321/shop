@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore generate open backups seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
+.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore generate open reindex backups seal-secrets bootstrap kubeconfig status failed failed-retry failed-remove reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render; git does not ignore the certificate of Sealed Secrets). The render also covers the application monitoring: the chart
@@ -31,7 +31,8 @@ check:
 # of the nodes, the token of Alloy given to a group of service accounts, BackupMissing and RateLimitsOff without the absent for a metric that is gone, NodeDiskFull
 # firing at exactly 85 percent, an alert rule that PromQL cannot parse, a demo-data CronJob that is not suspended (also only in prod),
 # its script without the check of DEMO_DATA_CONFIRM, without the space guard or stopping only the generator and not its process group,
-# a load CronJob that is not suspended, a k6 image of the chart with another digest than load/k6.sh).
+# a load CronJob that is not suspended, a reindex CronJob that is not suspended, make reindex going on without tak, a k6 image of the
+# chart with another digest than load/k6.sh).
 # Cases run in parallel (SELFTEST_JOBS=<n>, default the CPUs of the Docker daemon; SELFTEST_ONLY='<regex>' picks cases). On demand
 # only: CI does not run it (workflow k8s-selftest.yml, started by hand).
 selftest:
@@ -46,8 +47,8 @@ selftest:
 # products and orders, an image, the search, the snapshot pre-restore), and refuses a snapshot newer than the code; the later
 # phases run on the restored cluster. The last phase runs scripts/generate.sh PROFILE=small (make generate with tak, then make open; no
 # photo pool, no Argo CD) under traffic through the ingress (200 before, none while closed, 200 after) and checks the Jobs demo-data-run
-# and load, the numbers and that the rule shop-closed is gone. SMOKE_BREAK=migration|image|demo-data makes it fail on purpose. Needs
-# only Docker.
+# and load, the numbers and that the rule shop-closed is gone. Between the upgrades it runs make reindex (without tak no Job; with it the
+# Job of the CronJob reindex rebuilds the search index). SMOKE_BREAK=migration|image|demo-data makes it fail on purpose. Needs only Docker.
 smoke:
 	sh scripts/smoke.sh
 
@@ -122,7 +123,7 @@ create-admin:
 # SNAPSHOT is an identifier from make backups (never latest). Refuses without changes when a Job of the namespace is active, Argo CD
 # is synchronizing shop, or the snapshot has a migration that the deployed code does not know; says what it will do and asks for
 # the word tak; makes a backup pre-restore first (its failure stops it without changes; PRE_RESTORE=skip makes none), stops
-# Argo CD (root, then shop), the CronJobs and api, worker, store and keycloak, restores the data, runs migrate, keycloak-config,
+# Argo CD (root, then shop), the CronJobs and api, worker, worker-commands, store and keycloak, restores the data, runs migrate, keycloak-config,
 # the reindex and purge-caches again and brings everything back. A failure leaves the applications off and says at which step
 # and which pre-restore snapshot (infra/k8s/README.md). KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
 restore:
@@ -132,20 +133,36 @@ restore:
 # Replaces the data of the shop with the demo data of a profile, or with the seed again (docs/features/demo-scale/spec.md):
 # make -C infra/k8s generate PROFILE=<seed|profile of the CronJob demo-data> GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...']
 # KUBE_DIR=<directory>. Only after the consent of the user in the conversation that names the operation, the host and the profile. Checks
-# without changes, says what it will do and asks for the word tak; then takes the lock demo-data-lock (make generate and make open run
-# one at a time), closes the shop, runs the Job demo-data-run and, after it completed, make open under its lock. A failure leaves the
-# shop closed (exit 1; 2 for wrong arguments). The variables: the header of scripts/generate.sh.
+# without changes (no active Job, except one of the CronJobs rate-limit-check, queue-check and order-expiry), says what it will do
+# and asks for the word tak; then takes the lock demo-data-lock (make generate and make open run one at a time), closes the shop, runs
+# the Job demo-data-run and, after it completed, make open under its lock. A failure leaves the shop closed (exit 1; 2 for wrong
+# arguments). The variables: the header of scripts/generate.sh.
 generate:
 	@sh scripts/ao-guard.sh generate
 	PROFILE="$(PROFILE)" sh scripts/generate.sh
 
 # Checks the data of the Job demo-data-run of make generate (that completed) and opens the shop; make generate runs it, by hand after a
 # run that stopped: make -C infra/k8s open GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...'] KUBE_DIR=<directory>.
-# Idempotent; holds the lock demo-data-lock to its end and refuses while another make generate or make open holds it, or a Job runs.
+# Idempotent; holds the lock demo-data-lock to its end and refuses while another make generate or make open holds it, or a Job runs
+# (not one of the CronJobs rate-limit-check, queue-check and order-expiry, as for make generate: active_jobs of scripts/shop-closed.sh).
 # Exit 1 when a check fails (the shop stays closed). The variables: the header of scripts/open.sh.
 open:
 	@sh scripts/ao-guard.sh open
 	sh scripts/open.sh
+
+# Rebuilds the search index of the cluster (docs/features/search/spec.md, "Infrastruktura"): make -C infra/k8s reindex KUBE_DIR=<directory>.
+# Only after the consent of the user in the conversation that names the operation and the host. Refuses without changes when a Job of
+# the namespace is active (not one of the CronJobs rate-limit-check, queue-check and order-expiry), make generate or make open holds
+# the lock demo-data-lock, or the index of the alias products cannot be read;
+# says which index the alias is on and how many shards the new one gets (SEARCH_SHARDS of the deployed revision: elasticsearch.shards)
+# and asks for the word tak; then takes the lock (make generate and make open refuse meanwhile), reads the Jobs again, runs a Job of the
+# suspended CronJob reindex (catalog:reindex) and checks the index the alias is on after it. The shop stays open; a change written
+# during the build may be missing from the new index until the next change of that product, and no deployment may start until the Job
+# ends (its Job migrate would fail). Exit 1 when it refused (nothing changed) or failed (the message says where the alias is), 2
+# without KUBE_DIR. KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
+reindex:
+	@sh scripts/ao-guard.sh reindex
+	sh scripts/reindex.sh
 
 # The snapshots of the repository of the backups (identifier, time, host, tags, revision), the oldest first; only reads:
 # make -C infra/k8s backups. KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
@@ -182,6 +199,22 @@ kubeconfig:
 # make -C infra/k8s status HOST=<user>@<address>.
 status:
 	sh scripts/status.sh "$(HOST)"
+
+# The messages of the transport failed (the statistics and the first 200: id, class, error, date), read in the pod of worker-commands
+# over SSH; only reads: make -C infra/k8s failed HOST=<user>@<address>.
+failed:
+	@sh scripts/failed.sh "$$HOST"
+
+# Retries the messages of the transport failed in the pod of worker-commands (php -d memory_limit=128M): with ID one message, without it
+# app:messaging:failed-retry (the oldest MAX, 1 to 1000, 200 by default; prints its report): make -C infra/k8s failed-retry
+# HOST=<user>@<address> [ID=<id> | MAX=<n>]. A message kept after a failed attempt has a new id. Needs the consent of the user.
+failed-retry:
+	@sh scripts/failed-retry.sh "$$HOST" "$$ID" "$$MAX"
+
+# Removes one message of the transport failed after the word tak (shows it first; never a webhook of a payment):
+# make -C infra/k8s failed-remove HOST=<user>@<address> ID=<id>. Needs the consent of the user.
+failed-remove:
+	@sh scripts/failed-remove.sh "$$HOST" "$$ID"
 
 # Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak. Refuses with exit 1 before the
 # question while the shop is closed (the NetworkPolicy shop-closed of make generate; make generate PROFILE=seed goes back to the seed).

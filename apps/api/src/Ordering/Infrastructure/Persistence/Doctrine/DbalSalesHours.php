@@ -16,7 +16,9 @@ use Doctrine\DBAL\Types\Types;
  * ordering_sales_hour through DBAL, not through records of the ORM (SalesHourRecord only defines the schema): an
  * addition is one upsert that joins the transaction of the caller, so concurrent payments of one hour and shard wait
  * for each other's row instead of failing on its key. The hour and the shard are computed in SQL by the expressions
- * the rebuild groups the orders by (SalesSql), so both writes put an order in the same row.
+ * the rebuild groups the orders by (SalesSql), so both writes put an order in the same row. The gross is that of the
+ * goods after the discounts, without the delivery (docs/features/delivery/spec.md, P14): the payment adds
+ * OrderTotals::goodsGross(), the rebuild sums total_gross - delivery_gross.
  *
  * The rebuild of an hour runs in a transaction of its own (READ COMMITTED, the default): it creates the 16 rows of the
  * hour when missing and locks them, and only then counts the orders paid in the hour, each statement on what has
@@ -102,7 +104,7 @@ final readonly class DbalSalesHours implements SalesHours, SalesHoursRebuild
                     'UPDATE ordering_sales_hour AS h SET order_count = COALESCE(o.order_count, 0), gross = COALESCE(o.gross, 0)
                      FROM generate_series(0, 15) AS s(shard)
                      LEFT JOIN (
-                         SELECT %s AS shard, COUNT(*) AS order_count, SUM(total_gross) AS gross
+                         SELECT %s AS shard, COUNT(*) AS order_count, SUM(total_gross - delivery_gross) AS gross
                          FROM ordering_order WHERE paid_at >= :hour AND paid_at < :next GROUP BY 1
                      ) AS o ON o.shard = s.shard
                      WHERE h.hour_start = :hour AND h.shard = s.shard',

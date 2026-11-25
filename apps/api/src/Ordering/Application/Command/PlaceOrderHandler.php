@@ -10,6 +10,7 @@ use App\Ordering\Application\Port\CustomerSummaries;
 use App\Ordering\Application\Port\DiscountCodeRedemptions;
 use App\Ordering\Application\Port\OrderCart;
 use App\Ordering\Application\Port\OrderCatalog;
+use App\Ordering\Application\Port\OrderDeliveryQuotes;
 use App\Ordering\Application\Port\OrderNumbers;
 use App\Ordering\Application\Port\OrderPrices;
 use App\Ordering\Application\Port\OrderQuote;
@@ -18,12 +19,15 @@ use App\Ordering\Application\Port\UnpaidOrderExpiry;
 use App\Ordering\Application\UnpaidOrderLimit;
 use App\Ordering\Application\View\OrderView;
 use App\Ordering\Domain\AccessToken;
+use App\Ordering\Domain\CartContentChanged;
 use App\Ordering\Domain\CartEmpty;
 use App\Ordering\Domain\CartNotOrderable;
 use App\Ordering\Domain\Contact;
+use App\Ordering\Domain\DeliveryMethodUnavailable;
 use App\Ordering\Domain\DiscountCodeRejected;
 use App\Ordering\Domain\DiscountCodeText;
 use App\Ordering\Domain\EmailAddress;
+use App\Ordering\Domain\ExpectedLines;
 use App\Ordering\Domain\GuestOrderSize;
 use App\Ordering\Domain\GuestOrderTooLarge;
 use App\Ordering\Domain\IdempotencyKey;
@@ -31,6 +35,7 @@ use App\Ordering\Domain\IdempotencyKeyReused;
 use App\Ordering\Domain\InsufficientStockForOrder;
 use App\Ordering\Domain\InvalidOrderInput;
 use App\Ordering\Domain\Order;
+use App\Ordering\Domain\OrderDelivery;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderLine;
 use App\Ordering\Domain\OrderRepository;
@@ -40,6 +45,7 @@ use App\Ordering\Domain\RequestFingerprint;
 use App\Ordering\Domain\ShippingAddress;
 use App\Ordering\Domain\TooManyUnpaidOrders;
 use App\Ordering\Domain\UnpaidOrderIdentity;
+use App\Ordering\Domain\UuidFormat;
 use App\Ordering\Domain\VariantId;
 use App\Shared\Domain\Event\DomainEventPublisher;
 use App\Shared\Domain\Exception\NotFound;
@@ -59,9 +65,12 @@ use Symfony\Component\Uid\Uuid;
  * The steps follow the specification ("Złożenie zamówienia"): the replay check before the cart lock (so a replay
  * works also once the guest cart expired or was merged), the lock, the replay check under the lock (a concurrent
  * request with the same key may have placed the order meanwhile), the copies from one quote of Pricing with the code
- * (a rejected code is refused before the total is compared; the size of a guest order is checked right after the
- * empty cart, then the limit of unpaid orders under the locks of the address and of the identity, before the quote),
- * the total after the discount, the order id and the usage of the code (Pricing locks a code with a limit: the locks
+ * (a rejected code is refused before the total is compared; the lines of the cart are compared with the expected
+ * lines right after the empty cart, under the lock of the cart, then the size of a guest order is checked, then the
+ * limit of unpaid orders under the locks of the address and of the identity, before the quote),
+ * the delivery (docs/features/delivery/spec.md, W5: the chosen method quoted by Delivery for the goods after the
+ * discount, refused when unknown or not active, its cost split over the VAT rates of the lines by Pricing; reads
+ * without locks), the total after the discount with the delivery, the order id and the usage of the code (Pricing locks a code with a limit: the locks
  * are taken cart, address, identity, code, stock), the number, the cleared
  * cart, the reservation (the stock rows stay locked as briefly as possible) and the order last (so the flush of the
  * nested commands writes nothing of Ordering).
@@ -82,6 +91,7 @@ final readonly class PlaceOrderHandler
         private Clock $clock,
         private CustomerSummaries $customers,
         private UnpaidOrderLimit $unpaidOrders,
+        private OrderDeliveryQuotes $deliveries,
     ) {
     }
 
@@ -90,10 +100,12 @@ final readonly class PlaceOrderHandler
      * @throws NotFound                  the guest cart is not available (from Cart)
      * @throws IdempotencyKeyReused
      * @throws CartEmpty
+     * @throws CartContentChanged        the lines of the cart are not the expected ones, refused before the limits and the quote
      * @throws GuestOrderTooLarge        a guest cart over the size of a guest order, refused before the quote
      * @throws TooManyUnpaidOrders       the address, the email of the guest or the account has its limit of unpaid orders
      * @throws CartNotOrderable
      * @throws DiscountCodeRejected      in the quote, or when its usage is recorded
+     * @throws DeliveryMethodUnavailable
      * @throws OrderTotalChanged
      * @throws InsufficientStockForOrder
      */
@@ -103,8 +115,10 @@ final readonly class PlaceOrderHandler
         $contact = Contact::of(EmailAddress::fromString($command->email), $command->fullName, $command->phone);
         $address = ShippingAddress::inPoland($command->street, $command->postalCode, $command->city);
         $code = DiscountCodeText::normalised($command->discountCode);
+        $deliveryMethodId = self::deliveryMethodId($command->deliveryMethodId);
+        $expectedLines = ExpectedLines::of($command->expectedLines);
         $owner = $command->cart->owner();
-        $fingerprint = RequestFingerprint::of($command->cart->normalised(), $contact, $address, $command->expectedTotalGross, $code);
+        $fingerprint = RequestFingerprint::of($command->cart->normalised(), $contact, $address, $command->expectedTotalGross, $code, $deliveryMethodId, $expectedLines);
 
         $earlier = $this->orders->findByIdempotencyKey($key);
         if (null !== $earlier && $earlier->isReplayOf($fingerprint)) {
@@ -125,6 +139,9 @@ final readonly class PlaceOrderHandler
         if ([] === $cartLines) {
             throw new CartEmpty();
         }
+        if (!$expectedLines->matches(array_map(static fn (CartLineToOrder $line): array => [$line->variantId, $line->quantity], $cartLines))) {
+            throw new CartContentChanged();
+        }
         if ($owner->isGuest()) {
             GuestOrderSize::ensureWithin(array_map(static fn (CartLineToOrder $line): int => $line->quantity, $cartLines));
         }
@@ -136,7 +153,8 @@ final readonly class PlaceOrderHandler
         if (null !== $quote->rejection) {
             throw DiscountCodeRejected::of($quote->rejection->type, $quote->rejection->detail, $quote->rejection->minimumOrderGross);
         }
-        if (OrderTotals::of($lines)->gross()->amount() !== $command->expectedTotalGross) {
+        $delivery = $this->delivery($deliveryMethodId, $lines);
+        if (OrderTotals::of($lines, $delivery)->gross()->amount() !== $command->expectedTotalGross) {
             throw new OrderTotalChanged();
         }
 
@@ -148,7 +166,7 @@ final readonly class PlaceOrderHandler
         $this->cart->clearAfterOrder($command->cart);
         $this->reservations->reserve($id, $cartLines);
 
-        $order = Order::place($id, $number, $owner, $owner->isGuest() ? self::newAccessToken() : null, $contact, $address, $lines, $quote->discount, $key, $fingerprint, $this->clock->now());
+        $order = Order::place($id, $number, $owner, $owner->isGuest() ? self::newAccessToken() : null, $contact, $address, $lines, $quote->discount, $delivery, $key, $fingerprint, $this->clock->now());
         $this->orders->add($order);
         $this->unpaidOrders->claim($order->id(), $command->clientAddress, $identity, $order->expiryDueAt());
         $this->events->publish(...$order->releaseEvents());
@@ -159,6 +177,42 @@ final readonly class PlaceOrderHandler
         }
 
         return new PlacedOrder(OrderView::of($order), false);
+    }
+
+    /**
+     * @return string the UUID in lower case
+     *
+     * @throws InvalidOrderInput
+     */
+    private static function deliveryMethodId(string $value): string
+    {
+        try {
+            return UuidFormat::normalise($value, 'The id of a delivery method');
+        } catch (\InvalidArgumentException) {
+            throw InvalidOrderInput::deliveryMethod();
+        }
+    }
+
+    /**
+     * The chosen method quoted for the goods of the order (the lines after the discount) and its cost split over their
+     * VAT rates; a free delivery has nothing to split.
+     *
+     * @param list<OrderLine> $lines
+     *
+     * @throws DeliveryMethodUnavailable
+     */
+    private function delivery(string $methodId, array $lines): OrderDelivery
+    {
+        $goods = OrderTotals::of($lines, null)->goodsGross();
+        $method = $this->deliveries->quote($methodId, $goods->amount()) ?? throw new DeliveryMethodUnavailable();
+        $goodsByRate = [];
+        foreach ($lines as $line) {
+            $rate = $line->unitPrice()->vatRateBp();
+            $goodsByRate[$rate] = ($goodsByRate[$rate] ?? 0) + $line->lineGross()->amount();
+        }
+        $shares = 0 === $method->costGross ? [] : $this->prices->deliveryShares($method->costGross, $goodsByRate);
+
+        return OrderDelivery::of($method->methodId, $method->name, $method->trackingUrlTemplate, $method->costGross, $shares, $goods->currency());
     }
 
     /**

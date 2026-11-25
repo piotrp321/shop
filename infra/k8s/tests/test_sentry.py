@@ -1,7 +1,7 @@
 """D1, D2 and D3 of docs/features/sentry/spec.md: the SENTRY_* variables of the applications in the render.
 
 A variable is emitted only for an application whose DSN is not empty: the DSN of the api reaches every container with the
-environment of the api (api, worker, Jobs, init containers, the CronJobs), the DSN of the store only the store, the DSN of the
+environment of the api (api, the workers, Jobs, init containers, the CronJobs), the DSN of the store only the store, the DSN of the
 panel only the panel. The renders that must fail (a sample rate outside 0-1, a DSN in the wrong format) are in
 scripts/check.sh (do_schema), like every other refused value.
 """
@@ -16,7 +16,7 @@ ADMIN_DSN = "https://cccccccccccccccccccccccccccccccc@o1.ingest.de.sentry.io/3"
 # The marker of the environment of the api (shop.apiEnv): every container that has it is a container of the api image.
 API_MARKER = "SHOP_DB_HOST"
 # Containers that must get the DSN of the api, among others (the ones with the marker, which the test finds itself).
-API_WORKLOADS = {"api", "worker", "migrate", "initialize", "purge-caches", "backfill", "restore", "cart-purge-expired", "rate-limit-check"}
+API_WORKLOADS = {"api", "worker", "worker-commands", "migrate", "initialize", "purge-caches", "backfill", "restore", "cart-purge-expired", "rate-limit-check", "queue-check", "order-expiry"}
 
 
 def containers_of(case):

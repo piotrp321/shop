@@ -48,8 +48,8 @@ render() {
   render prod-accounts prod --set image.tag=$rev1 $digests --set customerAccounts=true
   render prod-nodemo prod --set image.tag=$rev1 $digests --set demoNotice=false
   render prod-order-brevo prod --set image.tag=$rev1 $digests --set orderMail=brevo
-  # The second step of the generator on the server (tests/test_demo_data.py): the profile server, its time limit.
-  render prod-demo-data-server prod --set image.tag=$rev1 $digests --set demoData.profile=server
+  # The way back to the first step of the generator on the server (tests/test_demo_data.py): the profile medium, its time limit.
+  render prod-demo-data-medium prod --set image.tag=$rev1 $digests --set demoData.profile=medium
 }
 # Argo CD renders prod from the two values files only: the profile and the images file of the branch deploy-images,
 # which scripts/images-values.sh writes (no --set). The file is in the output directory, which the helm container
@@ -62,6 +62,8 @@ render ci ci --set image.tag=$rev1
 # shellcheck disable=SC2046 # smoke_pull_args prints options
 render ci-images-file ci -f "/cache/${out##*/}/values-images.yaml" $(smoke_pull_args)
 render ci-rev2 ci --set image.tag=$rev2
+# The shards of the search index from the values (tests/test_reindex.py): SEARCH_SHARDS of every container of the API.
+render ci-shards ci --set image.tag=$rev1 --set elasticsearch.shards=3
 # The alerts on a profile that has other workloads than prod (Mailpit): the rule follows the render (tests/test_alerts.py).
 render ci-alerts ci --set image.tag=$rev1 --set alerts.enabled=true
 render ci-accounts ci --set image.tag=$rev1 --set customerAccounts=true

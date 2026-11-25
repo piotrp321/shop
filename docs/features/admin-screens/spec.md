@@ -20,6 +20,7 @@ W zakresie:
 - Ceny (`/prices`) i Stany magazynowe (`/inventory`) z oknami zmiany ceny, przyjęcia, korekty i historii.
 - Promocje (`/promotions`, `/promotions/new`, `/promotions/:id`) z wyborem wariantów, i kody rabatowe
   (`/discount-codes`, `/discount-codes/new`, `/discount-codes/:id`).
+- Dostawa: lista i formularz metod dostawy (`/delivery`, `/delivery/new`, `/delivery/:id`; sekcja „Dostawa”).
 - Zamówienia: lista (`/orders`, także „Zwroty do wykonania” `?refund=pending`) i szczegóły (`/orders/:id`) z osią czasu.
 - Panel bez PrimeVue, bez listy `LEGACY_FILES` w konfiguracji ESLint i bez mostu „starych list” w menu (sekcja
   „Usunięcie PrimeVue”).
@@ -225,10 +226,15 @@ wariantów z etykietą wariantu („Wariant domyślny” dla pustej etykiety).
     (Netto, VAT, Brutto albo „Brutto po rabacie”); poniżej 640 px widoczne Produkt, Ilość i ostatnia Wartość, a
     pozostałe kolumny są liniami komórki produktu), karta „Historia” z osią czasu i karta „Zwrot pieniędzy” (gdy
     `refund`: kwota, termin z „Po terminie”, stan „Do wykonania” albo „Wykonany”, wykonanie: data, pracownik, notatka,
-    płatność do zwrotu);
-  - kolumna boczna: karta „Akcje” (przyciski z `allowedTransitions` i „Oznacz zwrot jako wykonany” przy
-    `canCompleteRefund`; karta jest ukryta bez żadnej akcji), „Klient” (imię i nazwisko, e-mail jako `mailto:` z
-    zawijaniem w karcie, telefon, link „Inne zamówienia klienta” → `/orders?q=<e-mail>`), „Adres dostawy”, „Płatność”
+    płatność do zwrotu); nad sumami wiersz `delivery-line` „Dostawa (<nazwa metody>): 19,99 zł” (także „0,00 zł” przy
+    darmowej dostawie), gdy zamówienie ma metodę dostawy; sumy z API obejmują dostawę;
+  - kolumna boczna: karta „Akcje” (przyciski z `allowedTransitions`, „Oznacz zwrot jako wykonany” przy
+    `canCompleteRefund` i „Zmień numer przesyłki” („Dodaj numer przesyłki”, gdy numeru nie ma) przy
+    `canChangeTrackingNumber`, czyli dla `admin` i `warehouse` w zamówieniu `shipped` albo `delivered`; karta jest ukryta
+    bez żadnej akcji), „Klient” (imię i nazwisko, e-mail jako `mailto:` z
+    zawijaniem w karcie, telefon, link „Inne zamówienia klienta” → `/orders?q=<e-mail>`), „Adres dostawy”, „Przesyłka”
+    (tylko z `shipment`: „Numer przesyłki” krojem o stałej szerokości i link „Śledź przesyłkę (otwiera się w nowej
+    karcie)” z `target="_blank"` i `rel="noopener noreferrer"`, tylko przy `trackingUrl`), „Płatność”
     (data złożenia, termin płatności dla `new`, data opłacenia, daty wysłania, dostarczenia, anulowania z powodem i
     zwrócenia, identyfikator płatności `paymentId` krojem o stałej szerokości z przyciskiem „Kopiuj identyfikator
     płatności”).
@@ -238,14 +244,24 @@ wariantów z etykietą wariantu („Wariant domyślny” dla pustej etykiety).
   - **Okno zmiany statusu** (okno z polami): tytuł ze skutkiem i numerem („Anulować zamówienie R-100002?”, „Oznaczyć
     zamówienie R-100002 jako wysłane?”, „Oznaczyć zamówienie R-100002 jako dostarczone?”, „Przyjąć zwrot zamówienia
     R-100002?”, „Oznaczyć zwrot pieniędzy za R-100002 jako wykonany?”), pole „Notatka” z fokusem po otwarciu (wymagane
-    przy anulowaniu i przyjęciu zwrotu, 500 znaków), przycisk skutku (czerwony przy anulowaniu i zwrocie) i „Wróć”. 422
-    przy polu notatki, 403 i inne błędy w komunikacie okna z fokusem na nim (#260 F8), 409 zamyka okno, pokazuje
+    przy anulowaniu i przyjęciu zwrotu, 500 znaków), przy wysyłce także opcjonalne pole „Numer przesyłki (opcjonalnie)”
+    z podpowiedzią „Litery, cyfry i myślniki, do 40 znaków” (puste pole to brak numeru; żądanie niesie `trackingNumber`
+    tylko przy wysyłce, przy innych zmianach `null`), przycisk skutku (czerwony przy anulowaniu i zwrocie) i „Wróć”. 422
+    przy polu notatki albo numeru przesyłki (z fokusem w polu i `aria-describedby`), 403 i inne błędy w komunikacie okna z fokusem na nim (#260 F8), 409 zamyka okno, pokazuje
     komunikat `conflict` (`tabindex="-1"`) z fokusem na nim i wczytuje zamówienie ponownie. Po udanej akcji toast
     „Status zamówienia zmieniony: Wysłane.” (polska etykieta pola `status` z odpowiedzi API na zmianę statusu, ta sama
     co w etykiecie statusu, `statusLabel`; nigdy pusta: nieznany status pokazuje wartość z API) albo „Zwrot oznaczony
     jako wykonany.”, a fokus trafia na nagłówek karty „Akcje” (zestaw przycisków się zmienił); gdy karta „Akcje”
     zniknęła (brak dalszych akcji, np. po anulowaniu nieopłaconego zamówienia albo po wykonaniu zwrotu), na nagłówek
     karty „Historia”.
+  - **Okno numeru przesyłki** (akcja „Zmień numer przesyłki” albo „Dodaj numer przesyłki”, osobne małe okno): tytuł
+    „Zmienić numer przesyłki zamówienia R-100002?” („Dodać …”), pole „Numer przesyłki” z fokusem po otwarciu i z obecnym
+    numerem, podpowiedź „Litery, cyfry i myślniki, do 40 znaków. Puste pole usuwa numer.”, „Zapisz numer” i „Wróć”;
+    Enter w polu zapisuje. Wysyła `PUT /api/v1/admin/orders/{id}/tracking-number` z `version` widoku; pusty tekst to
+    `null` (usunięcie). Po zapisie toast „Numer przesyłki zapisany.” albo „Numer przesyłki usunięty.”, okno się zamyka
+    i fokus wraca na akcję (a gdy jej nie ma, na nagłówek karty „Akcje” albo „Historia”). Odmowy zostają w oknie:
+    422 przy polu numeru (z fokusem w polu), 409 (wersja albo status: zamówienie jest wczytywane ponownie, komunikat jak
+    w oknie zmiany statusu), 403 i inne błędy w komunikacie okna (`role="alert"`, fokus na nim).
   - 404: H1 „Nie znaleziono zamówienia” z linkiem do listy; błąd wczytania z „Spróbuj ponownie” (403 bez ponowienia).
   - Szczegóły działają przy 375 px bez przewijania strony w poziomie.
 - **Oś czasu** (`OrderTimeline`): wpisy `history` (`BackofficeOrderStatusChange`: `from`, `to`, `occurredAt`,
@@ -255,6 +271,45 @@ wariantów z etykietą wariantu („Wariant domyślny” dla pustej etykiety).
   null` sam status docelowy), aktor (`history-actor`: `staff` to `staffUsername`, a bez loginu „Pracownik” w
   `actorLabel`; `customer` „Klient”; `system` „System”, z etykietą „Kto:”) i notatka (`history-note`). Lista `<ol>`, bez
   sortowania i bez dokładania zdarzeń z innych pól; zwrot nie jest wpisem osi (karta „Zwrot pieniędzy”).
+
+## Dostawa
+
+Ekran metod dostawy (`/delivery`, `/delivery/new`, `/delivery/:id`; jedna ścieżka `delivery`, więc pozycja menu zostaje
+aktywna na formularzu), dla roli `admin`; opis metod, API i reguł: `docs/features/delivery/spec.md` (W1, W9, P7, P16).
+Panel tylko pokazuje i wysyła to, co API przyjmuje: długości, znaki, zakresy kwot, kolejności i formę linku sprawdza API
+(422 trafia do pola).
+
+- **Dostęp**: pozycja menu „Dostawa” (Sklep, po „Klientach”) jest tylko dla roli `admin` (`canManageDelivery`), a trasy
+  mają strażnika jak „Stan systemu” i „Klienci”: inna rola na każdym z trzech adresów trafia na pulpit z komunikatem „Nie
+  masz dostępu do tej strony.”. Gdy nie da się odczytać `/me`, trasa jest przepuszczana, a widok pokazuje 403 z API
+  („Nie masz dostępu do metod dostawy.”, bez „Spróbuj ponownie”).
+- **Lista** (H1 „Dostawa”, okruszki „Pulpit › Sklep › Dostawa”; bez stronicowania, wyszukiwania i filtrów): tabela
+  w kolejności API (aktywne po kolejności, pod nimi nieaktywne) z kolumnami Nazwa (link do formularza), Cena, Darmowa od
+  („—” bez progu), Kolejność, Status i Akcje („Edytuj: <nazwa>”); status jako `Badge` „Aktywna” albo „Nieaktywna”,
+  a wiersz nieaktywnej metody w wyciszonym tonie. Poniżej 1024 px Darmowa od i Kolejność są liniami komórki nazwy. Nad
+  tabelą „Aktywne: N z 20” (N to liczba aktywnych wierszy listy, limit 20 sprawdza API) i „Dodaj metodę”. Stany:
+  ładowanie (szkielet), błąd z „Spróbuj ponownie” (`role="alert"`), pusta lista „Brak metod dostawy. Dodaj pierwszą, żeby
+  sklep przyjmował zamówienia.” z przyciskiem „Dodaj metodę”.
+- **Formularz** (standard formularza, jedna kolumna; H1 „Nowa metoda dostawy” albo nazwa metody; karty „Metoda
+  dostawy”, „Cena”, „Dostępność”, „Śledzenie przesyłki”): „Nazwa”, „Opis (czas dostawy)”, „Cena brutto (zł)”, „Darmowa
+  od (zł, opcjonalnie)”, przełącznik „Aktywna”, „Kolejność” i „Link śledzenia (opcjonalnie)” z podpowiedzią „Adres
+  https:// z {numer} w miejscu numeru przesyłki”. Kwoty są w złotych z przecinkiem (`parseGross`; API dostaje grosze);
+  puste „Darmowa od”, opis i link idą jako `null`; tekst, którego nie da się odczytać jako kwoty albo liczby, jest błędem
+  pola bez żądania. Zapis niesie `version` odczytanej metody. Na czas żądania zapisu wszystkie pola są zablokowane
+  (`<fieldset disabled>`, także przełącznik „Aktywna”): odpowiedź buduje formularz od nowa z odpowiedzi API, więc
+  zmiana wpisana w tym czasie zostałaby nadpisana, a powrót na listę nie ostrzegłby o niej. Po błędzie (422, 409, brak
+  połączenia) pola wracają do edycji, zanim fokus trafi w pierwsze pole z błędem albo w komunikat.
+- **Błędy zapisu**: 422 trafia do pól z komunikatami API (pierwsze pole z błędem w kolejności dokumentu dostaje fokus);
+  każdy 409 (`delivery-method-name-taken`, `delivery-method-limit-reached`, `about:blank` przy innej wersji) jest
+  komunikatem nad formularzem (`role="alert"`) z fokusem. Nazwa zajęta i limit zostawiają wpisane wartości; inna wersja
+  odczytuje metodę ponownie (formularz pokazuje jej aktualny stan, komunikat zostaje). 403, 404, 503 i brak połączenia
+  to komunikaty nad formularzem.
+- **Po zapisie** toast „Metoda dostawy zapisana.” i powrót na listę (fokus na H1 listy daje powłoka). Metoda, której nie
+  da się wczytać, ma H1 „Nie udało się wczytać metody dostawy”, komunikat („Ta metoda dostawy nie istnieje.” przy 404)
+  i link „Wróć do listy metod dostawy”.
+- Testy: Vitest (`DeliveryMethodsView`, `DeliveryMethodFormView`, `routerDelivery`, `AppMenu`, `noStaffRole`) i E2E
+  `e2e/tests/admin-screens-delivery.spec.ts` (dodanie, zmiana i wyłączenie własnej metody, pola zablokowane w trakcie zapisu, błędy przy polach i 409,
+  brak dostępu innej roli, wygasła sesja 401, axe i reflow ekranów).
 
 ## Toasty
 

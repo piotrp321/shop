@@ -7,6 +7,8 @@
 #
 # CHECK_TESTS_FILTER=<pattern> runs only the tests whose name contains the pattern (unittest -k) in the step tests; the
 # self-test (selftest.sh) uses it to run the one test a case must break. A pattern that matches no test fails the step.
+# Without it the step runs the test files side by side (tests/run_parallel.py), CHECK_TESTS_JOBS at a time (default:
+# the CPUs that the container sees).
 #
 # The first failing step stops the script. REPO_ROOT (default: this repository) selects the tree to check; the
 # self-test (selftest.sh) points it at a copy with an injected error.
@@ -153,6 +155,22 @@ do_schema() {
       -f environments/ci/values.yaml --set image.tag=$rev --set demoData.terminationGracePeriodSeconds=30
     expect_failure "demoData.enabled that is not a boolean" "/demoData/enabled" -f environments/ci/values.yaml --set image.tag=$rev \
       --set-string demoData.enabled=true
+    # The shards of the search index (docs/features/search/spec.md, "Infrastruktura"): a whole number from 1, never a text, zero or
+    # a fraction, which the API would refuse only when it builds an index; the CronJob reindex has a time limit like load.
+    expect_failure "zero shards of the search index" "/elasticsearch/shards" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set elasticsearch.shards=0
+    expect_failure "shards of the search index that are a text" "/elasticsearch/shards" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set-string elasticsearch.shards=4
+    expect_failure "shards of the search index that are a fraction" "/elasticsearch/shards" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set-json elasticsearch.shards=1.5
+    expect_failure "more shards than Elasticsearch allows" "/elasticsearch/shards" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set elasticsearch.shards=1025
+    expect_failure "search index values without the shards" "missing property 'shards'" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set elasticsearch.shards=null
+    expect_failure "a time limit of the rebuild that is not a number" "/reindex/activeDeadlineSeconds" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set-string reindex.activeDeadlineSeconds=1h
+    expect_failure "a value of reindex that does not exist" "'schedule' not allowed" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set reindex.schedule=daily
     expect_failure "a profile of the generator that does not exist" "/demoData/profile" -f environments/ci/values.yaml --set image.tag=$rev \
       --set demoData.profile=huge
     expect_failure "an anchor that is not a date" "/demoData/anchor" -f environments/ci/values.yaml --set image.tag=$rev \
@@ -245,7 +263,7 @@ do_shellcheck() {
   step "shellcheck"
   # shellcheck disable=SC2046 # the file names have no spaces
   shellcheck -x -P SCRIPTDIR $(cd "$TOOLS_REPO/infra/k8s" && ls scripts/*.sh charts/shop/files/scripts/*.sh tests/bootstrap/*.sh) \
-    ../../.github/scripts/deploy-ref.sh ../../load/k6.sh ../../load/smoke.sh ../../load/test/cookies.sh
+    ../../.github/scripts/deploy-ref.sh ../../.github/scripts/merge-override.sh ../../load/k6.sh ../../load/smoke.sh ../../load/test/cookies.sh
 }
 
 # The workflows of the repository (deploy.yml among them), with shellcheck on their run: scripts.
@@ -260,16 +278,19 @@ do_tests() {
   [ -f "$work/prod.ndjson" ] || do_render
   if [ -n "${CHECK_TESTS_FILTER:-}" ]; then
     step "tests of the rendered chart and of the scripts matching '$CHECK_TESTS_FILTER'"
-    # unittest exits 5 when no test matches: a filter that selects nothing fails instead of passing.
-    tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests -k "$CHECK_TESTS_FILTER"
+    # unittest exits 5 when no test matches: a filter that selects nothing fails instead of passing. The pattern of the
+    # files is that of run_parallel.py, so both runs see the same tests.
+    tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests -p 'test_*.py' \
+      -k "$CHECK_TESTS_FILTER"
   else
     step "tests of the rendered chart and of the scripts"
-    tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests
+    tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I tests/run_parallel.py \
+      ${CHECK_TESTS_JOBS:+--jobs "$CHECK_TESTS_JOBS"} tests
   fi
 }
 
 # The alert rules (docs/features/deploy-ops/spec.md, O6): promtool checks and tests the groups of the PrometheusRule of the render of
-# prod with the backup switched on (prod-backup: all eight alerts), which tests/alerts/prepare.py takes from the render (no copy of the
+# prod with the backup switched on (prod-backup: all eleven alerts), which tests/alerts/prepare.py takes from the render (no copy of the
 # rules) and puts next to the scenarios of tests/alerts/alerts.test.yml.
 do_alerts() {
   [ -f "$work/prod-backup.ndjson" ] || do_render

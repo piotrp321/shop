@@ -18,12 +18,33 @@ export const ORDERS = "/api/v1/admin/orders";
 
 export const serviceNames = ["postgres", "redis", "elasticsearch", "rabbitmq", "keycloak", "garage", "imgproxy", "mailpit"];
 
+export type Messages = System["messages"];
+export type Transport = Messages["transports"][number];
+
+export const transportNames = ["outbox", "scheduled", "payment_simulator", "promotions", "jobs"];
+
+/** A queue of the database with nothing ready; a test gives the numbers it cares about. */
+export function transport(name: string, overrides: Partial<Transport> = {}): Transport {
+  return { name, ready: 0, capped: false, oldestReadyAgeSeconds: null, stalled: false, ...overrides };
+}
+
+/** Healthy messaging: nothing in `failed`, every queue of the database empty. */
+export function messages(overrides: Partial<Messages> = {}): Messages {
+  return {
+    healthy: true,
+    failed: { count: 0, capped: false, oldestAt: null },
+    transports: transportNames.map((name) => transport(name)),
+    ...overrides,
+  };
+}
+
 export function system(overrides: Partial<System> = {}): System {
   return {
     services: serviceNames.map((name, index) => ({ name, status: "up" as const, latencyMs: index + 1 })),
     outbox: { pending: 3 },
     queues: [{ name: "events", messages: 7, consumers: 1 }],
     searchIndex: { indexedProducts: 412, catalogProducts: 412, inSync: true },
+    messages: messages(),
     ...overrides,
   };
 }

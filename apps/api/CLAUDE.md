@@ -7,11 +7,15 @@ pola, przebiegi, komendy) opisują specyfikacje w `docs/features/<funkcja>/spec.
 ## Komendy
 
 Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
-- `check` – PHPStan, Deptrac, PHP CS Fixer
+- `check` – PHPStan, Deptrac, PHP CS Fixer i `audit`
+- `audit` – `composer audit --locked --no-dev --abandoned=report`: każde ogłoszenie bezpieczeństwa dla pakietu
+  produkcyjnego z `composer.lock` kończy cel błędem (ogłoszenia nie mają wagi), pakiety porzucone są tylko wypisywane;
+  błąd narzędzia i brak sieci to też błąd. Wyjątek to wyłącznie wpis `config.audit.ignore` w `composer.json`
+  z identyfikatorem ogłoszenia i powodem; zwykle zależność się aktualizuje (`composer update <pakiet>`)
 - `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ); dodatkowe
   argumenty PHPUnit w `PHPUNIT_ARGS`, np. `make -C apps/api test-unit PHPUNIT_ARGS='--filter CartTest'`.
-  CI uruchamia suity `unit`, `integration` i `functional` z `phpunit.dist.xml` po nazwie, w osobnych częściach
-  `checks`: nowa suita wymaga też nowej części w macierzy `checks-part` w `ci.yml`, inaczej CI jej nie uruchomi
+  CI uruchamia suity `unit`, `integration`, `demo-data`, `demo-data-orders` i `functional` z `phpunit.dist.xml` po
+  nazwie, w osobnych częściach `checks`: nowa suita wymaga też nowej części w macierzy `checks-part` w `ci.yml`, inaczej CI jej nie uruchomi
 - `init` – migracje bazy deweloperskiej i `catalog:search-index:setup` (alias `products` i indeks, jeśli ich nie ma);
   idempotentny, wywołuje go `make up` po starcie usług
 - `init-test` – migracje bazy `shop_test` i indeks testowy `test_products` tworzony od nowa
@@ -51,8 +55,9 @@ Narzędzia uruchamiane świadomie (nie wywołuje ich `make init`, `make up` ani 
 cały katalog w Varnishu i w sklepie. `ordering:read-models:rebuild` i `inventory:stock-records:sync` są krokami
 `app:backfill` (niżej).
 
-`app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
-`bin/seed-demo`) wypełnia dane, dla których migracje dodały tylko schemat (`docs/features/admin-features/spec.md`,
+`app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api`, `worker` i `worker-commands`, lokalnie koniec
+`bin/seed-demo`) wypełnia dane, dla których migracje dodały tylko schemat (wzorzec nieobowiązkowy na etapie demo:
+„Infrastruktura”, punkt o migracjach) (`docs/features/admin-features/spec.md`,
 „Wdrożenie: schemat w migracjach, wypełnienie po rolloucie”). Nowy krok implementuje `Shared\Infrastructure\Backfill\BackfillStep` w warstwie Infrastructure modułu
 (rejestracja tagiem z interfejsu, kolejność `#[AsTaggedItem(priority: …)]` malejąco), jest idempotentny, działa
 partiami w osobnych transakcjach i jest poprawny przy ruchu. Ukończony krok nie uruchomi się drugi raz bez `--force`,
@@ -253,6 +258,13 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
 - Wejście przez DTO z Symfony Validator. Domena dodatkowo pilnuje swoich niezmienników. Złe parametry zapytania
   (`#[MapQueryString]`) to 400, zła treść żądania (`#[MapRequestPayload]`, tylko JSON, typy bez rzutowania) to 422;
   oba z listą `violations`.
+- Domyślny język komunikatów walidatora to `pl` (`symfony/translation`, katalog frameworka `validators.pl.xlf`). Jeden
+  wpis projektu w `apps/api/translations` nadpisuje błąd typu: tekst bez nazwy typu PHP. Własne polskie komunikaty nie
+  mają wpisów w katalogu.
+- Nowy parametr zapytania albo nagłówek żądania (`Idempotency-Key`) dostaje wiersz w tabeli testu kontraktu wejścia
+  (`tests/Functional/Shared/InputContract`, pliki `*Cases.php` według modułu). Strażnik zamkniętej listy
+  (`ClosedInputListTest`) przerywa test, gdy parametr zapytania albo `Idempotency-Key` opisany w OpenAPI nie ma wiersza
+  albo trasa `/api/v1` nie jest opisana w `openapi.json` ani `openapi-admin.json`.
 - Parametry, których błąd typu (`q[]=…`) ma dawać ten sam polski komunikat co zła wartość, są w DTO typu `mixed`
   i sprawdzane w callbackach (np. `sort` list panelu, `q` zamówień, klientów i kodów, `level`, `images`,
   `productId`).
@@ -262,7 +274,9 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   jedno naruszenie „To pole jest wymagane.” przy kluczu; klasa żądania wtedy nie powstaje. Każde pole klasy żądania ma
   `Assert\Sequentially`, żeby dawało najwyżej jedno polskie naruszenie. Treść jest czytana późno, po `#[IsGranted]`,
   więc 403 atrybutu poprzedza 400, 415 i 422 treści (`docs/features/quality-fixes/spec.md`). Wyjątek: kody rabatowe
-  (`DiscountCodeBodyReader`), bo kontroler czyta tam treść sam, po sprawdzeniu 404.
+  (`DiscountCodeBodyReader`), bo kontroler czyta tam treść sam, po sprawdzeniu 404, i metody dostawy
+  (`#[ExistingDeliveryMethod]`: `DeliveryMethodExistenceListener` między `#[IsGranted]` a odczytem treści daje 404 przed
+  400, 415 i 422, `docs/features/delivery/spec.md`, W1).
 - Dokumentacja OpenAPI z kodu (NelmioApiDocBundle). Każdy endpoint ma opisane żądanie, odpowiedzi i błędy.
 - Autoryzacja: JWT z Keycloak, walidowany w authenticatorze Symfony. Dwa firewalle:
   `/api/v1/admin/...` przyjmuje tylko tokeny z realmu `backoffice` (pracownicy, `Staff`),
@@ -363,8 +377,11 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
 - Transporty Messengera na Doctrine (`scheduled`, `payment_simulator`, `promotions`, `jobs`; ta sama tabela
   `messenger_messages` i to samo połączenie co `outbox`) trzymają wiadomości zapisane w transakcji wywołującego, więc
   przestój workera tylko opóźnia ich obsługę. W `test` są w pamięci (jak `outbox`), w `test_messaging` prawdziwe.
-  Worker konsumuje `outbox events scheduled payment_simulator promotions jobs` po kolei (compose i chart, komenda
-  i healthcheck albo sonda), więc długa kolejka wcześniejszego transportu opóźnia następne. Granice promocji mają osobną
+  Dwa workery z jednego obrazu (compose i chart, komenda i healthcheck albo sonda z tej samej listy): `worker` konsumuje
+  `outbox events`, `worker-commands` `payment_simulator scheduled promotions jobs` po kolei, bez RabbitMQ (webhooki
+  symulatora przed anulowaniami), więc długa kolejka wcześniejszego transportu opóźnia następne w tym samym workerze
+  (`docs/features/async-reliability/spec.md`, W1). Każdy transport poza `failed` konsumuje któryś z workerów (test
+  chartu). Granice promocji mają osobną
   kolejkę `promotions`, bo `ordering:seed-demo` czyści całe `scheduled`. Nowy transport: compose i chart w tym samym PR
   (`infra/k8s/CLAUDE.md`).
 - **Wzorzec łańcucha partii** (transport `jobs`) to sposób zadań wywołanych zmianą w domenie i wykonywanych przez
@@ -379,15 +396,25 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   którego wiadomość trafiła do `failed`, zostaje bez `finished_at` i nikt go nie wznawia, a skutek naprawia narzędzie
   zadania (dla reindeksacji `catalog:reindex`).
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
-- Migracje zmieniają tylko schemat: nowe tabele, kolumny z wartością domyślną albo `NULL`, indeksy. Nie aktualizują
-  danych dużych tabel i nie wołają kodu aplikacji; dane wypełnia po rolloucie krok `app:backfill` (sekcja „Komendy”). Indeks na
-  dużej tabeli (`ordering_order`, `catalog_product`, `inventory_stock_item`) powstaje w osobnej migracji
+- Migracje nie wołają kodu aplikacji. Na etapie demo („Zgodność wersji” niżej) migracja może zmieniać schemat
+  niezgodnie z poprzednią wersją i wypełniać dane w tej samej wersji; przestój i blokada tabeli w jej trakcie są
+  dopuszczalne, a przy zmianie, której prostszym przejściem jest odtworzenie danych demo, wybierz odtworzenie.
+  Trzy wzorce niżej (dane wypełniane po rolloucie krokiem `app:backfill`, indeks `CONCURRENTLY`, CHECK `NOT VALID`
+  z osobnym `VALIDATE`) służą ciągłości działania i nie są obowiązkowe: stosuj je, gdy zwykła migracja na dużej
+  tabeli (`ordering_order`, `catalog_product`, `inventory_stock_item`) trwałaby na danych serwera demo dłużej, niż
+  można przyjąć jako przestój, albo gdy wymaga tego zadanie. Istniejących migracji i kroków `app:backfill` nie
+  przerabiamy.
+- Indeks na dużej tabeli tworzony bez blokady zapisów powstaje w osobnej migracji
   nietransakcyjnej (`isTransactional(): false`, bo `CONCURRENTLY` nie działa w transakcji; `all_or_nothing` jest
   wyłączone): `up()` sprawdza w `pg_index.indisvalid`, czy indeks o tej nazwie jest `INVALID` (zostawia go nieudane albo
   przerwane `CREATE INDEX CONCURRENTLY`), i tylko wtedy dodaje `DROP INDEX CONCURRENTLY IF EXISTS`, potem zawsze
   `CREATE INDEX CONCURRENTLY IF NOT EXISTS`. Poprawny indeks zostaje, więc ponowiony Job `migrate` przechodzi. Pozostałe
   zmiany schematu idą w zwykłej, transakcyjnej migracji obok. Wzór: `Version20261115120100IndexStockLevels`, test:
   `StockLevelIndexMigrationTest`.
+- Ograniczenie CHECK na dużej tabeli dodawane bez długiej blokady migracja zapisuje jako `NOT VALID` (bez skanu
+  tabeli pod blokadą `ACCESS EXCLUSIVE` migracji; nowe i zmieniane wiersze są sprawdzane od razu), a osobna, późniejsza migracja robi `VALIDATE CONSTRAINT`
+  (skan pod `SHARE UPDATE EXCLUSIVE`, odczyty i zapisy trwają). Wzór: `Version20261121100000AddOrderDelivery`
+  i `Version20261121100100ValidateOrderDeliveryChecks`, test: `OrderDeliveryMigrationTest`.
 - Mapowanie jest równe schematowi po migracjach: indeks częściowy ma w `#[ORM\Index]` warunek zapisany tak, jak zwraca
   go PostgreSQL; indeksy na wyrażeniach (mapowanie ich nie zna) narzędzia schematu pomijają. Zgodności pilnują testy
   schematu modułów (np. `OrderingSchemaTest`).
@@ -423,19 +450,28 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
 
 ## Zgodność wersji
 
-Wdrożenie wymienia pody po kolei (`maxUnavailable: 0`), a migracje uruchamia Job przed startem nowej wersji, więc przez
-chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia wersja workera wymieniają wiadomości.
+Etap demo (`docs/vision.md`, „Wymagania niefunkcjonalne”): zgodności między kolejnymi wersjami nie wymagamy. Zmiana
+niezgodna (usunięcie albo zmiana kolumny lub tabeli, nowe `NOT NULL` bez wartości domyślnej, zmiana typu, zmiana pól
+albo nazwy klasy wiadomości) idzie jedną wersją, bez rozbijania na dwie i bez klas przejściowych. Zadanie, które ją
+wprowadza, opisuje w specyfikacji albo w opisie PR skutek przy wdrożeniu i sposób przejścia: co przez chwilę nie
+działa i czego wdrożenie wymaga (np. opróżnienie kolejek, odtworzenie danych demo, kolejność kroków). Reviewer nie
+zgłasza samego braku zgodności; zgłasza brak takiego opisu. Operacje na serwerze dalej wymagają zgody właściciela
+(główny `CLAUDE.md`).
 
-- Migracja jest zgodna wstecz z poprzednią wersją kodu: poprzednia wersja musi działać na schemacie po migracji. Zmianę
-  niezgodną (usunięcie lub zmiana nazwy kolumny albo tabeli, nowe ograniczenie `NOT NULL` bez wartości domyślnej,
-  zmiana typu) rozbij na dwie wersje: najpierw dodaj nowe i zacznij je zapisywać, w kolejnej wersji usuń stare.
-  Schemat jest zgodny wstecz tylko z poprzednią wersją: cofnięcie o więcej wersji wymaga kopii zapasowej.
-- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator`, `promotions` i `jobs`) są zgodne w obie
-  strony między kolejnymi wersjami: nowa wersja czyta wiadomości zapisane przez poprzednią (kolejka może je jeszcze
-  mieć) i poprzednia czyta wiadomości nowej (stary worker działa do końca wymiany). Pola dodawaj jako opcjonalne
-  z wartością domyślną, nie usuwaj i nie zmieniaj znaczenia pól w jednej wersji, nie zmieniaj nazw klas wiadomości
-  i nazw transportów. Poprzednia wersja nie zdekoduje wiadomości ze stemplem nieznanej jej klasy: nową klasę stempla
-  dodaj w jednej wersji, a nadawaj ją dopiero w kolejnej.
+Fakty potrzebne do oceny skutku:
+
+- Wdrożenie wymienia pody po kolei (`maxUnavailable: 0`), a migracje uruchamia Job przed startem nowej wersji, więc
+  przez chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia wersja workera wymieniają
+  wiadomości (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator`, `promotions` i `jobs`).
+- Transporty Doctrine używają serializera PHP, a `unserialize` nie woła konstruktora: w klasie `final readonly` dodane
+  pole zostaje niezainicjalizowane, a pole, którego klasa nie ma, kończy dekodowanie błędem. Wiadomość zapisana przed
+  zmianą pól, nazwy klasy, stempla albo transportu nie zostanie obsłużona po zmianie. Zasada „pola dodawaj jako
+  opcjonalne” jest prawdziwa tylko dla JSON (`events`).
+- `MessageVersionCompatibilityTest` wykrywa zmianę kształtu na zapisach w `tests/Fixtures/MessageSerialization`: każda
+  klasa z `routing` w `messenger.yaml` i każda implementacja `DomainEvent` musi mieć zapis i dekodować się
+  z zainicjalizowanymi polami. Nowa klasa wiadomości lub zdarzenia dostaje zapis w tym samym PR (sposób: komentarz
+  testu). Celowa zmiana niezgodna wymienia zapis tej klasy w tym samym PR, razem z opisem przejścia; zapis klasy
+  usuwa się razem z jej handlerem.
 
 ## Testy
 
@@ -452,8 +488,9 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   `StartPaymentConcurrencyTest`). Rodzic woła przed forkiem `gc_collect_cycles()`: niezebrane cykle (np. połączenie AMQP po
   teście z kernelem `test_messaging`) dziecko odziedziczyłoby, a `Kernel::shutdown()` w jego procesie uruchomiłby ich
   destruktory na gnieździe wspólnym z rodzicem i czekał ~30 s na odpowiedź brokera.
-- Kernel `test_messaging` ma krótsze ponowienia transportu `events`: pierwsze opóźnienie 100 ms zamiast 1 s (liczba prób
-  i mnożnik jak w produkcji, pilnuje tego `EventsRetryStrategyTest`), a testy czekające na ponowienie śpią 300 ms.
+- Kernel `test_messaging` ma krótsze ponowienia transportu `events`: pierwsze opóźnienie 2 ms zamiast 1 s i `max_delay`
+  600 ms zamiast 300 s (liczba prób, mnożnik i proporcja opóźnień jak w produkcji, pilnuje tego
+  `EventsRetryStrategyTest`), a testy czekające na ponowienie śpią 300 ms.
   Worker w testach pyta o wiadomości co 50 ms (`--sleep`). Testy, które dowodzą limitów czasu z produkcji (sonda 1 s w
   `ProbesTest`, timeouty DSN Redisa, limity w `DashboardTimingTest` i podobne), czekają ich prawdziwy czas; test wolnego
   sklepu (`HttpStorefrontCacheTest`) używa klienta z pomniejszonymi limitami. Test, który czeka na powrót ponowienia do
@@ -462,7 +499,10 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   instancja kernela z własnym `EntityManager`, więc `flush` i błąd symulatora nie dotykają `UnitOfWork` wywołującego);
   testy błędów dostawcy podmieniają serwis na klienta ze stałymi odpowiedziami.
 - Testy generatora danych demo biegną na `shop_test` w transakcji testu, bez `bin/seed-demo` i bez czyszczenia cache
-  sklepu (worker i Varnish nie obsługują `shop_test`). Testy kont na Keycloaku stosu używają tymczasowych realmów
+  sklepu (worker i Varnish nie obsługują `shop_test`). Test, który po krokach czyta załadowane wiersze, kończy kroki
+  `demo-data:analyze` w swojej transakcji (`RunsDemoDataSteps::analyze()`, już w `catalogSteps()`): autovacuum innej
+  sesji nie liczy niezatwierdzonych wierszy testu, planer oczekuje wtedy pustych tabel i odczyty trwają minuty
+  (`StepsPlannerStatisticsTest`). Testy kont na Keycloaku stosu używają tymczasowych realmów
   (`KeycloakTestRealms`, `demo-data-test-*`, usuwane po teście), nigdy realmów `shop` i `backoffice`, i ziarna losowanego
   na test (id kont są globalne w Keycloaku).
 

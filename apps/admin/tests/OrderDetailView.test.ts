@@ -9,12 +9,13 @@ import OrderDetailView from "@/views/OrderDetailView.vue";
 
 type BackofficeOrder = components["schemas"]["BackofficeOrder"];
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
 
-vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get, POST: mocks.post }) }));
+vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get, POST: mocks.post, PUT: mocks.put }) }));
 
 const STATUS_CHANGES = "/api/v1/admin/orders/{orderId}/status-changes";
 const REFUND_COMPLETION = "/api/v1/admin/orders/{orderId}/refund-completion";
+const TRACKING_NUMBER = "/api/v1/admin/orders/{orderId}/tracking-number";
 const PAYMENT_ID = "0192f0c4-aaaa-7000-8000-000000000001";
 
 function order(overrides: Partial<BackofficeOrder> = {}): BackofficeOrder {
@@ -33,6 +34,8 @@ function order(overrides: Partial<BackofficeOrder> = {}): BackofficeOrder {
       { variantId: "v-2", productName: "Bidon", variantLabel: "", quantity: 1, unitGross: 2500, grossBeforeDiscount: 2500, discountGross: 0, lineGross: 2500, promotion: null },
     ],
     discount: null,
+    // An order placed before the delivery; the totals are those of its lines.
+    delivery: null,
     totals: { net: 32519, vat: 7479, gross: 39998, currency: "PLN" },
     placedAt: "2026-11-05T12:30:00+00:00",
     paymentDeadline: "2026-11-05T13:00:00+00:00",
@@ -48,8 +51,10 @@ function order(overrides: Partial<BackofficeOrder> = {}): BackofficeOrder {
       { from: "new", to: "paid", occurredAt: "2026-11-05T12:40:00+00:00", actorType: "system", staffId: null, staffUsername: null, note: null },
     ],
     refund: null,
+    shipment: null,
     allowedTransitions: ["ship", "cancel"],
     canCompleteRefund: false,
+    canChangeTrackingNumber: false,
     ...overrides,
   };
 }
@@ -98,6 +103,7 @@ describe("OrderDetailView", () => {
   beforeEach(() => {
     mocks.get.mockReset();
     mocks.post.mockReset();
+    mocks.put.mockReset();
     successToast = vi.spyOn(toast, "success").mockImplementation(() => 1);
   });
 
@@ -429,6 +435,350 @@ describe("OrderDetailView", () => {
     });
   });
 
+  describe("the delivery and the shipment", () => {
+    const FORMAT = "Numer przesyłki może mieć 1–40 znaków: litery bez polskich znaków, cyfry i myślniki.";
+    const shipped = (overrides: Partial<BackofficeOrder> = {}) =>
+      order({
+        status: "shipped",
+        version: 3,
+        shippedAt: "2026-11-06T09:00:00+00:00",
+        delivery: { methodName: "Kurier standardowy", gross: 1999 },
+        totals: { net: 34144, vat: 7853, gross: 41997, currency: "PLN" },
+        allowedTransitions: ["deliver", "return"],
+        canChangeTrackingNumber: true,
+        ...overrides,
+      });
+    const numbered = { carrier: "Kurier standardowy", trackingNumber: "JJD0002-4455", trackingUrl: "https://tracking.example.com/JJD0002-4455" };
+
+    async function open(testid: string) {
+      await wrapper!.get(`[data-testid=${testid}]`).trigger("click");
+      await flushPromises();
+    }
+    const tracking = (id: string) => page().get(`[data-testid=tracking-dialog] [data-testid=${id}]`);
+
+    it("shows the delivery method with its cost before the totals, which include it", async () => {
+      serve(order({ delivery: { methodName: "Kurier standardowy", gross: 1999 }, totals: { net: 34144, vat: 7853, gross: 41997, currency: "PLN" } }));
+      wrapper = await mountView();
+
+      expect(text("delivery-line")).toBe("Dostawa (Kurier standardowy): 19,99 zł");
+      expect(text("total-gross")).toBe("419,97 zł");
+    });
+
+    it("shows a free delivery as 0,00 zł and nothing for an order placed without a method", async () => {
+      serve(order({ delivery: { methodName: "Kurier standardowy", gross: 0 } }));
+      wrapper = await mountView();
+      expect(text("delivery-line")).toBe("Dostawa (Kurier standardowy): 0,00 zł");
+      wrapper.unmount();
+
+      serve(order());
+      wrapper = await mountView();
+      expect(wrapper.find("[data-testid=delivery-line]").exists()).toBe(false);
+    });
+
+    it("shows the number with a link that opens in a new tab only for an order with a shipment", async () => {
+      serve(shipped({ shipment: numbered }));
+      wrapper = await mountView();
+
+      expect(wrapper.get("[data-testid=shipment] h2").text()).toBe("Przesyłka");
+      expect(text("tracking-number")).toBe("JJD0002-4455");
+      const link = wrapper.get("[data-testid=tracking-link]");
+      expect(link.text()).toBe("Śledź przesyłkę (otwiera się w nowej karcie)");
+      expect(link.attributes("href")).toBe("https://tracking.example.com/JJD0002-4455");
+      expect(link.attributes("target")).toBe("_blank");
+      expect(link.attributes("rel")).toBe("noopener noreferrer");
+      wrapper.unmount();
+
+      serve(shipped());
+      wrapper = await mountView();
+      expect(wrapper.find("[data-testid=shipment]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=tracking-link]").exists()).toBe(false);
+    });
+
+    it("shows the number without a link when the method has no template", async () => {
+      serve(shipped({ shipment: { carrier: null, trackingNumber: "AB-12", trackingUrl: null } }));
+      wrapper = await mountView();
+
+      expect(text("tracking-number")).toBe("AB-12");
+      expect(wrapper.find("[data-testid=tracking-link]").exists()).toBe(false);
+    });
+
+    it("has the action „Dodaj numer przesyłki” without a number and „Zmień numer przesyłki” with one, only when the API allows it", async () => {
+      serve(shipped());
+      wrapper = await mountView();
+      expect(text("change-tracking-number")).toBe("Dodaj numer przesyłki");
+      wrapper.unmount();
+
+      serve(shipped({ shipment: numbered }));
+      wrapper = await mountView();
+      expect(text("change-tracking-number")).toBe("Zmień numer przesyłki");
+      wrapper.unmount();
+
+      serve(shipped({ canChangeTrackingNumber: false, shipment: numbered }));
+      wrapper = await mountView();
+      expect(wrapper.find("[data-testid=change-tracking-number]").exists()).toBe(false);
+    });
+
+    it("keeps the card Akcje for an order that has no other action, so that the warehouse can still correct the number", async () => {
+      serve(shipped({ status: "delivered", allowedTransitions: [], shipment: numbered }));
+      wrapper = await mountView("o-1", ["warehouse"]);
+
+      expect(wrapper.findAll("[data-testid=actions] button").map((button) => button.text())).toEqual(["Zmień numer przesyłki"]);
+    });
+
+    it("has the optional field „Numer przesyłki” with a hint in the window of a shipment, and in no other window", async () => {
+      serve(order({ allowedTransitions: ["ship", "cancel"] }));
+      wrapper = await mountView();
+
+      await open("action-ship");
+      const labels = page().findAll("[data-testid=change-dialog] label").map((label) => label.text());
+      expect(labels).toEqual(["Notatka (opcjonalnie)", "Numer przesyłki (opcjonalnie)"]);
+      const field = dialog("change-tracking-number-field");
+      expect(page().get("label[for=" + field.attributes("id") + "]").text()).toBe("Numer przesyłki (opcjonalnie)");
+      expect(page().get(`#${field.attributes("aria-describedby")!.split(" ")[0]}`).text()).toBe("Litery, cyfry i myślniki, do 40 znaków");
+      await dialog("change-cancel").trigger("click");
+      await flushPromises();
+
+      await open("action-cancel");
+      expect(page().find("[data-testid=change-tracking-number-field]").exists()).toBe(false);
+    });
+
+    it("limits the tracking number field of the shipping window to 40 characters, as the API does", async () => {
+      serve(order({ allowedTransitions: ["ship", "cancel"] }));
+      wrapper = await mountView();
+
+      await open("action-ship");
+
+      expect(dialog("change-tracking-number-field").attributes("maxlength")).toBe("40");
+    });
+
+    it("keeps the order number of the window titles in one unbreakable element", async () => {
+      serve(order({ allowedTransitions: ["ship", "cancel"] }));
+      wrapper = await mountView();
+
+      await open("action-ship");
+
+      const nowrap = page().findAll("[role=dialog] h2 .whitespace-nowrap");
+      expect(nowrap.map((element) => element.text())).toEqual(["R-100001"]);
+      expect(page().get("[role=dialog] h2").text()).toBe("Oznaczyć zamówienie R-100001 jako wysłane?");
+    });
+
+    it("ships with the number, shows the shipment of the order the API answers with, and has no number in the field next time", async () => {
+      serve(order());
+      wrapper = await mountView();
+      mocks.post.mockResolvedValue({ data: shipped({ shipment: numbered }), response: { status: 200 } });
+
+      await open("action-ship");
+      await dialog("change-tracking-number-field").setValue("JJD0002-4455");
+      await dialog("change-submit").trigger("click");
+      await flushPromises();
+
+      expect(mocks.post).toHaveBeenCalledWith(STATUS_CHANGES, {
+        params: { path: { orderId: "o-1" } },
+        body: { transition: "ship", version: 2, note: null, trackingNumber: "JJD0002-4455" },
+      });
+      expect(text("tracking-number")).toBe("JJD0002-4455");
+      expect(text("delivery-line")).toBe("Dostawa (Kurier standardowy): 19,99 zł");
+    });
+
+    it("submits the number with Enter in its field", async () => {
+      serve(order());
+      wrapper = await mountView();
+      mocks.post.mockResolvedValue({ data: shipped(), response: { status: 200 } });
+
+      await open("action-ship");
+      await dialog("change-tracking-number-field").setValue("AB-1");
+      await dialog("change-tracking-number-field").trigger("keydown.enter");
+      await flushPromises();
+
+      expect(mocks.post).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows a 422 of the number at its field, tied to it and with the focus in it, and keeps the window open", async () => {
+      serve(order());
+      wrapper = await mountView();
+      mocks.post.mockResolvedValue({ data: undefined, error: { violations: [{ propertyPath: "trackingNumber", title: FORMAT }] }, response: { status: 422 } });
+
+      await open("action-ship");
+      await dialog("change-tracking-number-field").setValue("Żółć 1");
+      await dialog("change-submit").trigger("click");
+      await flushPromises();
+
+      expect(dialog("change-tracking-number-field-error").text()).toBe(FORMAT);
+      expect(dialog("change-tracking-number-field").attributes("aria-invalid")).toBe("true");
+      expect(dialog("change-tracking-number-field").attributes("aria-describedby")).toContain("change-tracking-number-field-error");
+      expect(document.activeElement).toBe(dialog("change-tracking-number-field").element);
+      expect(page().find("[data-testid=change-dialog]").exists()).toBe(true);
+      expect(successToast).not.toHaveBeenCalled();
+    });
+
+    it("limits the field of the number to 40 characters and keeps the order number of the title unbreakable", async () => {
+      serve(shipped({ shipment: numbered }));
+      wrapper = await mountView();
+
+      await open("change-tracking-number");
+
+      expect(tracking("tracking-number-input").attributes("maxlength")).toBe("40");
+      expect(page().findAll("[role=dialog] h2 .whitespace-nowrap").map((element) => element.text())).toEqual(["R-100001"]);
+    });
+
+    it("opens the window of the number on its field, with the number there is, the title of the change and a hint", async () => {
+      serve(shipped({ shipment: numbered }));
+      wrapper = await mountView();
+
+      await open("change-tracking-number");
+
+      expect(page().get("[role=dialog] h2").text()).toBe("Zmienić numer przesyłki zamówienia R-100001?");
+      expect(page().get("[role=dialog] label").text()).toBe("Numer przesyłki");
+      expect((tracking("tracking-number-input").element as HTMLInputElement).value).toBe("JJD0002-4455");
+      expect(document.activeElement).toBe(tracking("tracking-number-input").element);
+      expect(page().get("#tracking-number-hint").text()).toBe("Litery, cyfry i myślniki, do 40 znaków. Puste pole usuwa numer.");
+      expect(tracking("tracking-number-input").attributes("aria-describedby")).toBe("tracking-number-hint");
+      expect(tracking("tracking-submit").text()).toBe("Zapisz numer");
+      expect(tracking("tracking-cancel").text()).toBe("Wróć");
+    });
+
+    it("opens the window of a number to add with the title „Dodać” and an empty field", async () => {
+      serve(shipped());
+      wrapper = await mountView();
+
+      await open("change-tracking-number");
+
+      expect(page().get("[role=dialog] h2").text()).toBe("Dodać numer przesyłki zamówienia R-100001?");
+      expect((tracking("tracking-number-input").element as HTMLInputElement).value).toBe("");
+    });
+
+    it("saves the number with the version, announces it, and gives the focus back to the action", async () => {
+      serve(shipped());
+      wrapper = await mountView();
+      mocks.put.mockResolvedValue({ data: shipped({ version: 4, shipment: numbered }), response: { status: 200 } });
+
+      const action = wrapper.get("[data-testid=change-tracking-number]").element as HTMLElement;
+      action.focus();
+      await open("change-tracking-number");
+      await tracking("tracking-number-input").setValue("JJD0002-4455");
+      await tracking("tracking-submit").trigger("click");
+      await flushPromises();
+
+      expect(mocks.put).toHaveBeenCalledWith(TRACKING_NUMBER, { params: { path: { orderId: "o-1" } }, body: { trackingNumber: "JJD0002-4455", version: 3 } });
+      expect(page().find("[data-testid=tracking-dialog]").exists()).toBe(false);
+      expect(text("tracking-number")).toBe("JJD0002-4455");
+      expect(successToast).toHaveBeenCalledWith("Numer przesyłki zapisany.");
+      expect(text("change-tracking-number")).toBe("Zmień numer przesyłki");
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=change-tracking-number]").element);
+    });
+
+    it("removes the number with an empty field and says so", async () => {
+      serve(shipped({ shipment: numbered }));
+      wrapper = await mountView();
+      mocks.put.mockResolvedValue({ data: shipped({ version: 4 }), response: { status: 200 } });
+
+      await open("change-tracking-number");
+      await tracking("tracking-number-input").setValue("");
+      await tracking("tracking-submit").trigger("click");
+      await flushPromises();
+
+      expect(mocks.put).toHaveBeenCalledWith(TRACKING_NUMBER, { params: { path: { orderId: "o-1" } }, body: { trackingNumber: null, version: 3 } });
+      expect(wrapper.find("[data-testid=shipment]").exists()).toBe(false);
+      expect(successToast).toHaveBeenCalledWith("Numer przesyłki usunięty.");
+      expect(text("change-tracking-number")).toBe("Dodaj numer przesyłki");
+    });
+
+    it("submits with Enter in the field", async () => {
+      serve(shipped());
+      wrapper = await mountView();
+      mocks.put.mockResolvedValue({ data: shipped({ version: 4, shipment: numbered }), response: { status: 200 } });
+
+      await open("change-tracking-number");
+      await tracking("tracking-number-input").setValue("AB-1");
+      await tracking("tracking-number-input").trigger("keydown.enter");
+      await flushPromises();
+
+      expect(mocks.put).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows a 422 at the field of the window, tied to it, with the focus in it, in a live region", async () => {
+      serve(shipped());
+      wrapper = await mountView();
+      mocks.put.mockResolvedValue({ data: undefined, error: { violations: [{ propertyPath: "trackingNumber", title: FORMAT }] }, response: { status: 422 } });
+
+      await open("change-tracking-number");
+      await tracking("tracking-number-input").setValue("Żółć");
+      await tracking("tracking-submit").trigger("click");
+      await flushPromises();
+
+      expect(tracking("tracking-number-error").text()).toBe(FORMAT);
+      expect(tracking("tracking-number-input").attributes("aria-invalid")).toBe("true");
+      expect(tracking("tracking-number-input").attributes("aria-describedby")).toBe("tracking-number-hint tracking-number-error");
+      expect(document.activeElement).toBe(tracking("tracking-number-input").element);
+      expect(page().find("[data-testid=tracking-dialog]").exists()).toBe(true);
+      expect(successToast).not.toHaveBeenCalled();
+    });
+
+    it("says in the window, as an alert with the focus, that the order changed (409), and shows the reloaded order", async () => {
+      serve(shipped());
+      wrapper = await mountView();
+      mocks.put.mockResolvedValue({ data: undefined, error: { status: 409 }, response: { status: 409 } });
+      serve(order({ status: "returned", version: 5, allowedTransitions: [], canChangeTrackingNumber: false }));
+
+      await open("change-tracking-number");
+      await tracking("tracking-submit").trigger("click");
+      await flushPromises();
+
+      expect(tracking("tracking-error").text()).toBe("Zamówienie zostało w międzyczasie zmienione – sprawdź jego stan.");
+      expect(tracking("tracking-error").attributes("role")).toBe("alert");
+      expect(document.activeElement).toBe(tracking("tracking-error").element);
+      expect(text("status")).toBe("Zwrócone");
+      expect(wrapper.find("[data-testid=change-tracking-number]").exists()).toBe(false);
+      expect(successToast).not.toHaveBeenCalled();
+    });
+
+    it("says in the window that the staff member may not make the change (403)", async () => {
+      serve(shipped());
+      wrapper = await mountView();
+      mocks.put.mockResolvedValue({ data: undefined, response: { status: 403 } });
+
+      await open("change-tracking-number");
+      await tracking("tracking-submit").trigger("click");
+      await flushPromises();
+
+      expect(tracking("tracking-error").text()).toBe("Nie masz uprawnień do tej zmiany.");
+      expect(tracking("tracking-error").attributes("role")).toBe("alert");
+      expect(document.activeElement).toBe(tracking("tracking-error").element);
+    });
+
+    it("closes with „Wróć”, gives the focus back to the action, and opens a fresh window next time", async () => {
+      serve(shipped({ shipment: numbered }));
+      wrapper = await mountView();
+
+      const action = wrapper.get("[data-testid=change-tracking-number]").element as HTMLElement;
+      action.focus();
+      await open("change-tracking-number");
+      await tracking("tracking-number-input").setValue("ZMIENIONY-1");
+      await tracking("tracking-cancel").trigger("click");
+      await flushPromises();
+
+      expect(page().find("[data-testid=tracking-dialog]").exists()).toBe(false);
+      expect(document.activeElement).toBe(action);
+      expect(mocks.put).not.toHaveBeenCalled();
+      await open("change-tracking-number");
+      expect((tracking("tracking-number-input").element as HTMLInputElement).value).toBe("JJD0002-4455");
+    });
+
+    it("closes the window of the number when the screen moves to another order", async () => {
+      serve(shipped());
+      wrapper = await mountView();
+      await open("change-tracking-number");
+      expect(page().find("[data-testid=tracking-dialog]").exists()).toBe(true);
+
+      serve(order({ orderId: "o-2", number: "R-100002" }));
+      await wrapper.router.push("/orders/o-2");
+      await flushPromises();
+
+      expect(page().find("[data-testid=tracking-dialog]").exists()).toBe(false);
+      expect(wrapper.get("h1").text()).toBe("Zamówienie R-100002");
+    });
+  });
+
   describe("the card Zwrot pieniędzy", () => {
     it("shows the refund with „Po terminie” and the payment to refund", async () => {
       serve(order({ status: "cancelled", allowedTransitions: [], canCompleteRefund: true, refund: refundOf({ overdue: true }) }));
@@ -541,7 +891,7 @@ describe("OrderDetailView", () => {
 
       expect(mocks.post).toHaveBeenCalledWith(STATUS_CHANGES, {
         params: { path: { orderId: "o-1" } },
-        body: { transition: "ship", version: 2, note: "Kurier DPD" },
+        body: { transition: "ship", version: 2, note: "Kurier DPD", trackingNumber: null },
       });
       expect(page().find("[data-testid=change-dialog]").exists()).toBe(false);
       expect(text("status")).toBe("Wysłane");
@@ -735,6 +1085,241 @@ describe("OrderDetailView", () => {
       await flushPromises();
 
       expect(mocks.post).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // K3 (docs/features/admin-ux-fixes/spec.md): while a change is sent, the window it was sent from stays open and takes no input.
+  describe("a save in flight", () => {
+    interface SaveWindow {
+      name: string;
+      /** The order the window is opened on. */
+      order: (overrides?: Partial<BackofficeOrder>) => BackofficeOrder;
+      /** The action that opens the window. */
+      opener: string;
+      root: string;
+      submit: string;
+      cancel: string;
+      /** The fields that take text. */
+      fields: string[];
+      /** The field a 422 points at, which Enter submits from. */
+      field: string;
+      send: () => typeof mocks.post;
+      error: string;
+    }
+
+    const answered = (overrides: Partial<BackofficeOrder> = {}) => order({ status: "shipped", version: 3, allowedTransitions: ["deliver"], canChangeTrackingNumber: true, ...overrides });
+    const windows: SaveWindow[] = [
+      {
+        name: "the window of a change",
+        order: (overrides) => order(overrides),
+        opener: "action-ship",
+        root: "change-dialog",
+        submit: "change-submit",
+        cancel: "change-cancel",
+        fields: ["change-note", "change-tracking-number-field"],
+        field: "change-tracking-number-field",
+        send: () => mocks.post,
+        error: "change-error",
+      },
+      {
+        name: "the window of the tracking number",
+        order: (overrides) => answered(overrides),
+        opener: "change-tracking-number",
+        root: "tracking-dialog",
+        submit: "tracking-submit",
+        cancel: "tracking-cancel",
+        fields: ["tracking-number-input"],
+        field: "tracking-number-input",
+        send: () => mocks.put,
+        error: "tracking-error",
+      },
+    ];
+
+    type Answer = { data?: BackofficeOrder; error?: unknown; response: { status: number } };
+    function deferred() {
+      let resolve!: (value: Answer) => void;
+      let reject!: (reason: unknown) => void;
+      const promise = new Promise<Answer>((done, fail) => {
+        resolve = done;
+        reject = fail;
+      });
+      return { promise, resolve, reject };
+    }
+
+    const pressEscape = () => (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    const clickOutside = () => document.querySelector("[data-slot=dialog-overlay]")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }));
+    const settle = async () => {
+      await new Promise((done) => setTimeout(done, 10));
+      await flushPromises();
+    };
+
+    describe.each(windows)("$name", (target) => {
+      const inWindow = (id: string) => page().get(`[data-testid=${target.root}] [data-testid=${id}]`);
+      const windowExists = () => page().find(`[data-testid=${target.root}]`).exists();
+      const closeButton = () => page().get(`[data-testid=${target.root}] [data-slot=dialog-close]`);
+
+      /** Opens the window, types into its field and sends the change, which the test answers later. */
+      async function sendHeld() {
+        serve(target.order());
+        wrapper = await mountView();
+        const held = deferred();
+        target.send().mockReturnValue(held.promise);
+        await wrapper.get(`[data-testid=${target.opener}]`).trigger("click");
+        await settle();
+        await inWindow(target.field).setValue("AB-1");
+        (inWindow(target.submit).element as HTMLElement).focus();
+        await inWindow(target.submit).trigger("click");
+        await flushPromises();
+        return held;
+      }
+
+      it.each(["Escape", "a click outside", "„Wróć”", "„Zamknij”"])("stays open on %s, and the change still ends with its toast", async (way) => {
+        const held = await sendHeld();
+        expect(target.send()).toHaveBeenCalledTimes(1);
+
+        const close: Record<string, () => Promise<unknown> | unknown> = {
+          Escape: pressEscape,
+          "a click outside": clickOutside,
+          "„Wróć”": () => inWindow(target.cancel).trigger("click"),
+          "„Zamknij”": () => closeButton().trigger("click"),
+        };
+        await close[way]!();
+        await settle();
+
+        expect(windowExists()).toBe(true);
+        expect(successToast).not.toHaveBeenCalled();
+        held.resolve({ data: answered({ shipment: { carrier: "Kurier", trackingNumber: "AB-1", trackingUrl: null } }), response: { status: 200 } });
+        await settle();
+
+        expect(successToast).toHaveBeenCalledTimes(1);
+        expect(windowExists()).toBe(false);
+      });
+
+      it("has aria-disabled instead of disabled on the button of the effect, keeps the focus on it, and takes no typing", async () => {
+        await sendHeld();
+
+        const submit = inWindow(target.submit);
+        expect(submit.attributes("aria-disabled")).toBe("true");
+        expect(submit.attributes("disabled")).toBeUndefined();
+        expect(document.activeElement).toBe(submit.element);
+        for (const id of target.fields) {
+          expect(inWindow(id).attributes("readonly"), id).toBeDefined();
+        }
+      });
+
+      it("sends one request for the second click, Enter and Space on the button and Enter in the field", async () => {
+        await sendHeld();
+        const submit = inWindow(target.submit);
+
+        await submit.trigger("click");
+        await submit.trigger("keydown.enter");
+        await submit.trigger("keydown.space");
+        await submit.trigger("keyup.space");
+        await submit.trigger("click");
+        await inWindow(target.field).trigger("keydown.enter");
+        await flushPromises();
+
+        expect(target.send()).toHaveBeenCalledTimes(1);
+      });
+
+      it("lifts the block after a 422: the window stays, the field keeps its value and takes changes, the error is at it with the focus", async () => {
+        const held = await sendHeld();
+        held.resolve({ data: undefined, error: { violations: [{ propertyPath: "trackingNumber", title: "Zły numer." }] }, response: { status: 422 } });
+        await settle();
+
+        expect(windowExists()).toBe(true);
+        expect(inWindow(target.submit).attributes("aria-disabled")).toBeUndefined();
+        expect((inWindow(target.field).element as HTMLInputElement).value).toBe("AB-1");
+        expect(inWindow(target.field).attributes("readonly")).toBeUndefined();
+        expect(page().get(`[data-testid=${target.root}] [data-form-error]`).text()).toBe("Zły numer.");
+        expect(document.activeElement).toBe(inWindow(target.field).element);
+        await inWindow(target.field).setValue("AB-2");
+        target.send().mockResolvedValue({ data: answered(), response: { status: 200 } });
+        await inWindow(target.submit).trigger("click");
+        await settle();
+
+        expect(target.send()).toHaveBeenCalledTimes(2);
+        expect(successToast).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        ["a network error", { reject: new Error("offline") }, /Sprawdź połączenie z API\./],
+        ["a 403", { answer: { data: undefined, response: { status: 403 } } }, /^Nie masz uprawnień do tej zmiany\.$/],
+        ["a 500", { answer: { data: undefined, response: { status: 500 } } }, /\(HTTP 500\)/],
+      ] as const)("lifts the block after %s: the message is in the window with the focus, the value stays, and the next try sends a new request", async (_name, outcome, message) => {
+        const held = await sendHeld();
+        if ("reject" in outcome) {
+          held.reject(outcome.reject);
+        } else {
+          held.resolve(outcome.answer);
+        }
+        await settle();
+
+        expect(windowExists()).toBe(true);
+        expect(inWindow(target.error).text()).toMatch(message);
+        expect(document.activeElement).toBe(inWindow(target.error).element);
+        expect(inWindow(target.submit).attributes("aria-disabled")).toBeUndefined();
+        expect((inWindow(target.field).element as HTMLInputElement).value).toBe("AB-1");
+        expect(inWindow(target.field).attributes("readonly")).toBeUndefined();
+        target.send().mockResolvedValue({ data: answered(), response: { status: 200 } });
+        await inWindow(target.submit).trigger("click");
+        await settle();
+
+        expect(target.send()).toHaveBeenCalledTimes(2);
+        expect(successToast).toHaveBeenCalledTimes(1);
+      });
+
+      it("lifts the block after a 409 and reloads the order", async () => {
+        const held = await sendHeld();
+        serve(answered({ version: 5, allowedTransitions: [] }));
+        held.resolve({ data: undefined, error: { status: 409 }, response: { status: 409 } });
+        await settle();
+
+        expect(mocks.get).toHaveBeenCalledTimes(2);
+        expect(text("status")).toBe("Wysłane");
+        expect(successToast).not.toHaveBeenCalled();
+        if (target.root === "change-dialog") {
+          // The window of a change closes, and the conflict, not the window, says what happened.
+          expect(windowExists()).toBe(false);
+          expect(document.activeElement).toBe(wrapper!.get("[data-testid=conflict]").element);
+        } else {
+          // The window of the number stays with the message and the value.
+          expect(windowExists()).toBe(true);
+          expect(inWindow(target.error).text()).toBe("Zamówienie zostało w międzyczasie zmienione – sprawdź jego stan.");
+          expect(document.activeElement).toBe(inWindow(target.error).element);
+          expect((inWindow(target.field).element as HTMLInputElement).value).toBe("AB-1");
+          expect(inWindow(target.field).attributes("readonly")).toBeUndefined();
+          expect(inWindow(target.submit).attributes("aria-disabled")).toBeUndefined();
+        }
+      });
+
+      it("closes the window when the screen moves to another order, drops the late answer, and closes the window opened there with Escape", async () => {
+        const held = await sendHeld();
+
+        serve(target.order({ orderId: "o-2", number: "R-100002" }));
+        await wrapper!.router.push("/orders/o-2");
+        await settle();
+        expect(windowExists()).toBe(false);
+        expect(wrapper!.get("h1").text()).toBe("Zamówienie R-100002");
+
+        // The save of the first order is still in flight: the new window waits for it, but is not locked.
+        const statusBefore = text("status");
+        await wrapper!.get(`[data-testid=${target.opener}]`).trigger("click");
+        await settle();
+        expect(windowExists()).toBe(true);
+        expect(inWindow(target.submit).attributes("aria-disabled")).toBe("true");
+        held.resolve({ data: answered(), response: { status: 200 } });
+        await settle();
+
+        expect(successToast).not.toHaveBeenCalled();
+        expect(wrapper!.get("h1").text()).toBe("Zamówienie R-100002");
+        expect(text("status")).toBe(statusBefore);
+        expect(windowExists()).toBe(true);
+        expect(inWindow(target.submit).attributes("aria-disabled")).toBeUndefined();
+        pressEscape();
+        await settle();
+        expect(windowExists()).toBe(false);
+      });
     });
   });
 

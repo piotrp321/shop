@@ -2,8 +2,10 @@
 """Measurement of AO and native epic runs (spec docs/features/metrics/spec.md). Python 3.9+, standard library only.
 
   metrics.py start EPIC [--resume] [--at TIME] [--worktree DIR] [--branch NAME] [--pr N] [--tasks N] [--session ID]
-                        [--projects DIR] [COMMON] < get_usage reading
-  metrics.py done EPIC [--at TIME] [COMMON] < get_usage reading
+                        [--projects DIR] [--user-dir DIR] [--accept-process-mismatch REASON] [COMMON] < get_usage reading
+  metrics.py done EPIC [--at TIME] [--worktree DIR] [--projects DIR] [--user-dir DIR] [COMMON] < get_usage reading
+  metrics.py pause EPIC --from TIME --to TIME [--reason TEXT] [COMMON]
+  metrics.py process [EPIC] [--worktree DIR] [--base REF] [--user-dir DIR] [--projects DIR] [COMMON]
   metrics.py epic EPIC [--ao-home DIR] [--projects DIR] [--manual-fixes FILE] [--no-gh] [COMMON]
   metrics.py backfill [--ao-root DIR] [COMMON]
   metrics.py trend [--last N] [--epic EPIC] [--json] [--no-gh] [COMMON]
@@ -23,14 +25,25 @@ the branch, the draft PR, the number of tasks of the plan.md manifest (night_que
 (--session or the newest transcript of the working directory under --projects, default ~/.claude/projects) and the
 limits read from stdin (night_queue.parse_usage; a terminal or an empty input is no reading); --resume appends a new session; done
 records the time the PR was marked ready and the second reading. Exit 2 without a branch, PR, number of tasks or
-session, on a second start without --resume, and on --resume or done without a run file.
+session, on a second start without --resume, and on --resume or done without a run file. start and start --resume
+refuse a session id that is in the run file of another epic (one lead session, one epic).
+
+process: the version of the process (process_version.py): `expected` (the base commit of the epic or HEAD), `disk`
+(the instruction files on disk in the worktree and in the main checkout, which a desktop session loads the agents and
+skills from) and, for an epic, `loaded` (what the transcripts confirm). start stores the reading in the run file field
+`process` and refuses a mismatch without --accept-process-mismatch REASON; start --resume, done and `process EPIC`
+compare the disk with that reading and add every change to `process.changes`. Exit 4 on a mismatch.
+
+pause: a pause of the computer (--from, --to) in the run file `pauses`; the record counts it as `host_pause`.
 
 epic: prints the record of the epic run as one JSON line and stores it in <state>/epics/<EPIC>.json. The run is the
 AO directory --ao-home (default: ao-<EPIC> under $SHOP_METRICS_AO_ROOT or ~/.local/state), `source: ao`; without it the
 run file of a native epic, `source: native` (the transcripts of its sessions and their subagents only, the messages
 from the start to the merge of the final PR, every message id once, the value from the API price list `pricing` of
-config.json, always an estimate; the time breakdown and the human messages from the lines of the transcripts, the
-reviews from the `SubagentHandback` reports of the review roles (the verdict only), the acceptance criteria from the
+config.json, always an estimate; every subagent run split into its orders (the resumes confirmed by the `SendMessage`
+calls of the lead), each with its own task, time, tokens and value; the time breakdown and the human messages from the
+lines of the transcripts, the reviews from the `SubagentHandback` reports of the review roles (the verdict only, with
+the task of their order), the acceptance criteria from the
 description of the final PR read through the origin gate (numbers only), the subscription from the two readings of
 the run file and the tokens of all local sessions; fields without a native source are null with a gap); without
 both exit 2. Fields
@@ -100,11 +113,15 @@ danych" without a difference below the thresholds of config.json `decisions`. St
 Exit codes: 0 success (also without alarms); 2 nothing recorded or printed: bad arguments or config.json, missing AO
 directory, unreadable or locked database, no epic row, unreadable --manual-fixes file, state not writable, waste.json
 unreadable or of another shape (never overwritten) (message on stderr, nothing on stdout);
-3 the record was printed and stored but a source failed (`gh` error; message on stderr, the gap is in `gaps`).
+3 the record was printed and stored but a source failed (`gh` error; message on stderr, the gap is in `gaps`);
+4 `process` printed its reading and the definitions differ (summary on stderr).
 trend, render and decide also end with 2 without a stored record (or without the requested epic), effect with a bad key
 or --at or without a stored record of a merged epic.
 """
 import argparse
+import bisect
+import contextlib
+import errno
 import fcntl
 import glob
 import json
@@ -123,10 +140,13 @@ import ao_events  # noqa: E402  (waits: the windows of waiting for the user, sha
 import night_queue  # noqa: E402  (window deltas, measurement intervals and their time format)
 sys.path.insert(0, os.path.join(HERE, '..', 'agent-security'))
 import github_trust  # noqa: E402  (the origin gate: the description of the final PR of a native epic)
+sys.path.insert(0, HERE)
+import process_version  # noqa: E402  (the version of the process: expected, disk and loaded instructions)
 
 DEFAULT_CONFIG = os.path.join(HERE, 'config.json')
 EXIT_FATAL = 2
 EXIT_SOURCE = 3
+EXIT_PROCESS = 4                # `process`: the definitions differ from the expected ones
 BREAKDOWN_CATEGORIES = ('work', 'human_wait', 'limit_wait', 'ci_wait', 'host_pause', 'github_wait', 'idle')
 
 
@@ -247,6 +267,23 @@ def _evals(value):
             and isinstance(value['results_dir'], str) and bool(value['results_dir']))
 
 
+# `ci_time` of config.json (spec: Czas CI po epiku). The thresholds are starting values: both the seconds and the
+# percent of a pair must be reached.
+CI_TIME_TEXTS = ('full_step', 'inactive_step', 'e2e_job_prefix', 'base_branch')
+CI_TIME_LISTS = ('aggregate_jobs',)
+CI_TIME_NUMBERS = ('baseline_runs', 'min_baseline_runs', 'recent_runs', 'scan_limit', 'run_min_s', 'run_min_pct',
+                   'job_min_s', 'job_min_pct', 'e2e_spread_s')
+CI_TIME_THRESHOLDS = ('run_min_s', 'run_min_pct', 'job_min_s', 'job_min_pct', 'e2e_spread_s')
+
+
+def _ci_time(value):
+    return (isinstance(value, dict) and set(value) == set(CI_TIME_TEXTS + CI_TIME_LISTS + CI_TIME_NUMBERS)
+            and all(isinstance(value[k], str) and value[k] for k in CI_TIME_TEXTS)
+            and all(_string_list(value[k]) for k in CI_TIME_LISTS)
+            and all(_is_int(value[k]) and value[k] > 0 for k in CI_TIME_NUMBERS)
+            and value['min_baseline_runs'] <= value['baseline_runs'])
+
+
 # The kinds of tokens of the price list (USD per million tokens); a model may lack a kind (its tokens have no value).
 PRICE_KINDS = ('input', 'output', 'cache_read', 'cache_write_5m', 'cache_write_1h')
 
@@ -305,6 +342,8 @@ CONFIG_SCHEMA = {
     'regression_window_days': (lambda v: _is_int(v) and v > 0, 'liczba dni (całkowita, dodatnia)'),
     'ci_workflow': (lambda v: isinstance(v, str) and bool(v), 'nazwa pliku workflowu CI (np. ci.yml)'),
     'ci_jobs': (_string_list, 'niepusta lista nazw zadań CI (przedrostki grup, np. checks i e2e)'),
+    'ci_time': (_ci_time, 'obiekt {%s}: nazwy niepuste, liczby całkowite dodatnie, min_baseline_runs najwyżej '
+                          'baseline_runs' % ', '.join(CI_TIME_TEXTS + CI_TIME_LISTS + CI_TIME_NUMBERS)),
     'trend_last': (lambda v: _is_int(v) and v > 0, 'liczba epików (całkowita, dodatnia)'),
     'weekly_window_label': (lambda v: isinstance(v, str) and bool(v), 'etykieta okna tygodniowego z get_usage'),
     'pricing': (_pricing, 'obiekt {source, read_at (RRRR-MM-DD), models: {model: {%s: USD za milion tokenów, '
@@ -1901,12 +1940,32 @@ COMMIT_LIMIT = 100              # commits per page of `gh api .../commits`
 COMMIT_PAGE_LIMIT = 10          # pages read at most: 1000 commits of the window
 
 
+class Unsettled(Exception):
+    """A source of the regressions has no settled answer yet (the CI run of the merge commit is not over or not
+    registered): the value is unknown, not zero, and the window stays open until a later run of the script settles it."""
+
+
 def red_ci(run, repo, config, sha):
+    """The number of red CI runs (push) of the merge commit. Unsettled while one of them is not over, while there is
+    none, or when none of the finished ones is red or green (cancelled only): a run in progress, not registered yet or
+    cancelled must not be read as a green one."""
     runs = gh_json(run, ['run', 'list', '--workflow', config['ci_workflow'], '--commit', sha, '--json',
-                         'conclusion,event', '--limit', '50'], repo)
+                         'conclusion,event,status', '--limit', '50'], repo)
     if not isinstance(runs, list):
         raise GhError('gh run list: nieoczekiwany kształt odpowiedzi')
-    return sum(1 for r in runs if isinstance(r, dict) and r.get('event') == 'push' and r.get('conclusion') == 'failure')
+    pushes = [r for r in runs if isinstance(r, dict) and r.get('event') == 'push']
+    if not pushes:
+        raise Unsettled('brak przebiegu CI (push) na commicie merge\'u: wynik nieznany, nie zero')
+    if any(not r.get('conclusion') or r.get('status') not in (None, 'completed') for r in pushes):
+        raise Unsettled('przebieg CI (push) na commicie merge\'u w toku: wynik nieznany, nie zero')
+    red = sum(1 for r in pushes if r.get('conclusion') in CI_RED)
+    if not red and not any(r.get('conclusion') == 'success' for r in pushes):
+        raise Unsettled('przebieg CI (push) na commicie merge\'u bez rozstrzygnięcia (anulowany albo pominięty): '
+                        'wynik nieznany, nie zero')
+    return red
+
+
+CI_RED = ('failure', 'timed_out', 'startup_failure')       # the conclusions of a run that count as a red CI
 
 
 def commits_of_window(run, repo, low, high, gaps, truncated):
@@ -2055,6 +2114,9 @@ def regressions_of(run, repo, config, epic_id, final_pr, merge_sha, merged, now,
             continue
         try:
             values[key] = compute()
+        except Unsettled as e:
+            complete = False
+            gaps.add(field, str(e))
         except GhError as e:
             complete = False
             errors.append(str(e))
@@ -2130,6 +2192,453 @@ def ci_of(run, repo, config, epic_id, tasks, final_pr, previous, gaps, errors):
         errors.append(str(e))
         gaps.add('ci', 'błąd gh: %s' % e)
         return None
+
+
+# ------------------------------------------------------------------------------------- CI time of an epic (ci-time)
+
+CI_RUN_FIELDS = 'databaseId,createdAt,conclusion,status,headSha,event,url,attempt'
+CI_TIME_SOURCES = ('final', 'recent', 'merge')      # what is compared with the baseline, in the order of the report
+
+
+def _ci_epoch(text):
+    try:
+        return night_queue.parse_time(text).timestamp()
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def ci_runs(run, repo, config, extra):
+    """The runs of the CI workflow that `gh run list` answers for the filter `extra`, newest first: {id, created
+    (epoch), sha, event, conclusion, status, url, attempt}. An entry without an id or a time is skipped."""
+    data = gh_json(run, ['run', 'list', '--workflow', config['ci_workflow']] + extra
+                   + ['--json', CI_RUN_FIELDS, '--limit', '100'], repo)
+    if not isinstance(data, list):
+        raise GhError('gh run list: nieoczekiwany kształt odpowiedzi')
+    found = []
+    for item in data:
+        created = _ci_epoch(item.get('createdAt')) if isinstance(item, dict) else None
+        if created is None or not _is_int(item.get('databaseId')):
+            continue
+        found.append({'id': item['databaseId'], 'created': created, 'sha': item.get('headSha'),
+                      'event': item.get('event'), 'conclusion': item.get('conclusion') or None,
+                      'status': item.get('status'), 'url': item.get('url'),
+                      'attempt': item['attempt'] if _is_int(item.get('attempt')) else 1})
+    return sorted(found, key=lambda r: (r['created'], r['id']), reverse=True)
+
+
+def _ci_green(entry):
+    return entry['conclusion'] == 'success' and entry['status'] in (None, 'completed')
+
+
+def _span(item):
+    """(start, end) in epoch seconds of a job or a step, or None without both times in order."""
+    if not isinstance(item, dict):
+        return None
+    start, end = _ci_epoch(item.get('startedAt')), _ci_epoch(item.get('completedAt'))
+    return (start, end) if start is not None and end is not None and end >= start else None
+
+
+def measure_ci_run(jobs, settings):
+    """The times of one CI run from its jobs, or None when no job has its times.
+    run_s: from the start of the first job to the end of the last one, so with the waits for a runner between the
+    jobs. jobs: {name: the seconds the job ran}, without the aggregate jobs and the names of a matrix that was not
+    expanded. steps: {job: {step: seconds}}. full: an e2e part ran the step `full_step` (not a limited scope).
+    inactive: the jobs that ran the step `inactive_step` (a part with no work for the scope of the change, e.g. the
+    `k8s` part of a change outside infra/k8s): their seconds are not a time of the job, so they are in neither `jobs`
+    nor `steps` and drop out of the baselines, the medians and the comparisons of that job; the run keeps their span."""
+    spans, found, steps, full, inactive = [], {}, {}, False, []
+    for job in jobs if isinstance(jobs, list) else []:
+        span, name = _span(job), job.get('name') if isinstance(job, dict) else None
+        if span is None or not isinstance(name, str):
+            continue
+        spans.append(span)
+        job_steps = [s for s in job.get('steps') or [] if isinstance(s, dict) and isinstance(s.get('name'), str)]
+        if name.startswith(settings['e2e_job_prefix']) and any(
+                s['name'] == settings['full_step'] and s.get('conclusion') == 'success' for s in job_steps):
+            full = True
+        if name in settings['aggregate_jobs'] or '${{' in name:
+            continue
+        if any(s['name'] == settings['inactive_step'] and s.get('conclusion') == 'success' for s in job_steps):
+            inactive.append(name)
+            continue
+        found[name] = round(span[1] - span[0], 1)
+        steps[name] = {s['name']: round(_span(s)[1] - _span(s)[0], 1) for s in job_steps
+                       if s.get('conclusion') == 'success' and _span(s) is not None}
+    if not spans:
+        return None
+    return {'run_s': round(max(e for _, e in spans) - min(b for b, _ in spans), 1), 'jobs': found, 'steps': steps,
+            'full': full, 'inactive': sorted(inactive)}
+
+
+class _CiMeasurer:
+    """Reads and keeps the measurement of every run looked at (`gh run view <id> --json jobs`, once per run)."""
+
+    def __init__(self, run, repo, settings):
+        self.run, self.repo, self.settings, self.cache = run, repo, settings, {}
+
+    def of(self, entry):
+        if entry['id'] not in self.cache:
+            data = gh_json(self.run, ['run', 'view', str(entry['id']), '--json', 'jobs'], self.repo)
+            self.cache[entry['id']] = measure_ci_run(data.get('jobs') if isinstance(data, dict) else None,
+                                                     self.settings)
+        return self.cache[entry['id']]
+
+    def comparable(self, entries, count):
+        """The first `count` of `entries` (newest first) that are green, over, run once and full, each with its
+        measurement; at most `scan_limit` runs are read. A run that was run again is not comparable: the jobs kept
+        from its first attempt have their old times, so its span holds the red attempt and the pause before the
+        rerun."""
+        found, scanned = [], 0
+        for entry in entries:
+            if len(found) >= count or scanned >= self.settings['scan_limit']:
+                break
+            if not _ci_green(entry) or entry['attempt'] > 1:
+                continue
+            scanned += 1
+            measured = self.of(entry)
+            if measured is not None and measured['full']:
+                found.append(dict(entry, measured=measured))
+        return found
+
+
+def _ci_ref(entry):
+    return {'id': entry['id'], 'sha': entry['sha'], 'created_at': iso(entry['created']), 'url': entry['url'],
+            'run_s': entry['measured']['run_s']}
+
+
+def _ci_value(measured, name):
+    return measured['run_s'] if name == 'run' else measured['jobs'].get(name)
+
+
+def _ci_median(entries, name, least=1):
+    values = [v for v in (_ci_value(e['measured'], name) for e in entries) if v is not None]
+    return round(median(values), 1) if len(values) >= least else None
+
+
+def _ci_compare(base, value, settings, kind):
+    """(diff_s, diff_pct, exceeded) of a value against the baseline; all None without one of them. Exceeded only when
+    both the seconds and the percent of the thresholds of the kind (run, job) are reached. The decision is made on
+    the values as they are: the rounded ones are for the report only (19.96% shown as 20.0 is still below 20)."""
+    if base is None or value is None or base <= 0:
+        return None, None, None
+    diff = value - base
+    pct = 100.0 * diff / base
+    exceeded = diff >= settings['%s_min_s' % kind] and pct >= settings['%s_min_pct' % kind]
+    return round(diff, 1), round(pct, 1), exceeded
+
+
+def _ci_steps(base_runs, measured, name):
+    """The steps of the job `name` that take longer than their baseline median, the largest growth first, and the
+    steps the baseline does not have (at most five entries)."""
+    grown, new = [], []
+    for step, seconds in (measured['steps'].get(name) or {}).items():
+        before = [e['measured']['steps'].get(name, {}).get(step) for e in base_runs]
+        before = [b for b in before if b is not None]
+        if not before:
+            if seconds > 0:
+                new.append({'name': step, 'base_s': None, 'final_s': seconds, 'diff_s': None})
+            continue
+        base = round(median(before), 1)
+        if seconds - base > 0:
+            grown.append({'name': step, 'base_s': base, 'final_s': seconds, 'diff_s': round(seconds - base, 1)})
+    grown.sort(key=lambda g: (-g['diff_s'], g['name']))
+    new.sort(key=lambda g: (-g['final_s'], g['name']))
+    return (grown + new)[:5]
+
+
+def _ci_final(candidates, head, measurer):
+    """(entry with its measurement or None, reason) of the full green run of the head commit of the final PR."""
+    own = [c for c in candidates if c['sha'] == head]
+    if not own:
+        return None, 'brak przebiegu CI końcowego SHA %s' % (head[:8] if isinstance(head, str) else head)
+    green = [c for c in own if _ci_green(c)]
+    for entry in [c for c in green if c['attempt'] == 1][:measurer.settings['scan_limit']]:
+        measured = measurer.of(entry)
+        if measured is not None and measured['full']:
+            return dict(entry, measured=measured), None
+    if any(c['attempt'] > 1 for c in green):
+        return None, 'przebieg końcowego SHA był ponowiony: jego czasy obejmują wcześniejszą próbę'
+    if green:
+        return None, 'przebieg końcowego SHA ma ograniczony zakres (bez pełnego CI)'
+    if any(not c['conclusion'] or c['status'] not in (None, 'completed') for c in own):
+        return None, 'przebieg CI końcowego SHA w toku'
+    return None, 'przebieg CI końcowego SHA nie jest zielony (czerwony albo anulowany)'
+
+
+def _ci_merge(run, repo, config, sha, measurer):
+    """{sha, state, run} of the push run of the merge commit on main: measured only when it is over, green and
+    full."""
+    if sha is None:
+        return {'sha': None, 'state': 'not_merged', 'run': None}, None
+    pushes = [r for r in ci_runs(run, repo, config, ['--commit', sha, '--event', 'push']) if r['event'] == 'push']
+    if not pushes:
+        return {'sha': sha, 'state': 'missing', 'run': None}, None
+    if any(not r['conclusion'] or r['status'] not in (None, 'completed') for r in pushes):
+        return {'sha': sha, 'state': 'in_progress', 'run': None}, None
+    found = measurer.comparable(pushes, 1)
+    if not found:
+        green = [r for r in pushes if _ci_green(r)]
+        state = 'not_green' if not green else 'rerun' if all(r['attempt'] > 1 for r in green) else 'limited'
+        return {'sha': sha, 'state': state, 'run': None}, None
+    return {'sha': sha, 'state': 'measured', 'run': _ci_ref(found[0])}, found[0]
+
+
+CI_MERGE_REASONS = {'missing': 'brak przebiegu CI na commicie merge\'u w main',
+                    'in_progress': 'przebieg CI na commicie merge\'u w main w toku',
+                    'not_green': 'przebieg CI na commicie merge\'u w main nie jest zielony',
+                    'rerun': 'przebieg CI na commicie merge\'u w main był ponowiony: jego czasy obejmują wcześniejszą '
+                             'próbę',
+                    'limited': 'przebieg CI na commicie merge\'u w main ma ograniczony zakres'}
+
+
+def _ci_no_data(settings, reason):
+    return {'status': 'no_data', 'reason': reason, 'thresholds': {k: settings[k] for k in CI_TIME_THRESHOLDS},
+            'baseline': {'before': None, 'runs': []}, 'final': {'sha': None, 'run': None, 'reason': None},
+            'recent': {'runs': []}, 'during': {'runs': []}, 'merge': {'sha': None, 'state': None, 'run': None},
+            'rows': [], 'jobs_changed': {'only_baseline': [], 'only_final': []}, 'e2e_parts_changed': False,
+            'e2e_spread': {'seconds': None, 'exceeded': None, 'longest': None, 'shortest': None}, 'exceeded': []}
+
+
+def ci_time_of(run, repo, config, run_file):
+    """(result, gh error or None): the CI time after an epic against the state before it (spec: Czas CI po epiku).
+
+    baseline: the last full green push runs of the base branch created before the start of the epic; final: the full
+    green run of the head commit of the final PR, shown apart; recent: the median of the last full green runs of the
+    PR; during: the runs of the base branch between the start of the epic and its last run (a possible outside
+    cause); merge: the push run of the merge commit. Missing data is `no_data`, never `ok`."""
+    settings = config['ci_time']
+    started = _ci_epoch(run_file.get('started_at'))
+    number, branch = run_file.get('pr'), _branch_of(run_file)
+    if started is None or not _is_int(number) or not branch:
+        return _ci_no_data(settings, 'brak numeru PR, gałęzi albo czasu startu w pliku przebiegu'), None
+    try:
+        pull = gh_json(run, ['pr', 'view', str(number), '--json', 'headRefOid,state,mergeCommit'], repo)
+        if not isinstance(pull, dict):
+            raise GhError('gh pr view: nieoczekiwany kształt odpowiedzi')
+        head = pull.get('headRefOid')
+        merge_sha = (pull.get('mergeCommit') or {}).get('oid') if pull.get('state') == 'MERGED' else None
+        merge_sha = merge_sha if isinstance(merge_sha, str) and SHA_PATTERN.match(merge_sha) else None
+        measurer = _CiMeasurer(run, repo, settings)
+        base_branch = settings['base_branch']
+
+        def mains(created):
+            # two bounded lists (before the start, from the start): the newest 100 runs of a busy branch may not
+            # reach back to the start of a long epic. The filter is repeated here: the answer is not trusted to be cut.
+            return [r for r in ci_runs(run, repo, config, ['--branch', base_branch, '--event', 'push', '--created',
+                                                           created])
+                    if r['event'] == 'push' and r['sha'] != merge_sha]
+
+        base_runs = measurer.comparable([r for r in mains('<%s' % iso(started)) if r['created'] < started],
+                                        settings['baseline_runs'])
+        pulls = [r for r in ci_runs(run, repo, config, ['--branch', branch, '--event', 'pull_request'])
+                 if r['event'] == 'pull_request']
+        final, final_reason = _ci_final(pulls, head, measurer)
+        recent = measurer.comparable(pulls, settings['recent_runs'])
+        last = max([r['created'] for r in recent] + ([final['created']] if final else []), default=None)
+        during = [] if last is None else measurer.comparable(
+            [r for r in mains('>=%s' % iso(started)) if started <= r['created'] < last], settings['baseline_runs'])
+        merge, merged = _ci_merge(run, repo, config, merge_sha, measurer)
+    except GhError as e:
+        return _ci_no_data(settings, 'błąd gh: %s' % e), str(e)
+
+    result = _ci_no_data(settings, None)
+    result.update(baseline={'before': iso(started), 'runs': [_ci_ref(r) for r in reversed(base_runs)]},
+                  final={'sha': head, 'run': _ci_ref(final) if final else None, 'reason': final_reason},
+                  recent={'runs': [_ci_ref(r) for r in reversed(recent)]},
+                  during={'runs': [_ci_ref(r) for r in reversed(during)]}, merge=merge)
+    names = set()
+    for entry in base_runs + recent + during + [e for e in (final, merged) if e]:
+        names.update(entry['measured']['jobs'])
+    enough = len(base_runs) >= settings['min_baseline_runs']
+    after = final or (recent[0] if recent else None)
+
+    def e2e_parts(entries):
+        return {n for e in entries for n in e['measured']['jobs'] if n.startswith(settings['e2e_job_prefix'])}
+
+    # In another matrix of e2e parts a part of the same name is another set of spec files. An e2e part is therefore
+    # compared, and its medians and the spread are taken, only among the runs with the matrix of the run after the
+    # epic (the final commit, else the newest PR run); too few of them is no data. The other jobs and the whole run
+    # use every run.
+    matrix = e2e_parts([after]) if after else set()
+
+    def same_matrix(entries, name):
+        if not name.startswith(settings['e2e_job_prefix']):
+            return entries
+        return [e for e in entries if e2e_parts([e]) == matrix]
+
+    result['e2e_parts_changed'] = bool(after) and any(
+        e2e_parts([e]) != matrix for e in base_runs + recent + during + ([merged] if merged else []))
+    for name in ['run'] + sorted(names):
+        kind = 'run' if name == 'run' else 'job'
+        # a job needs its own minimum of baseline runs: one that only a part of them has (a new job) has no baseline
+        row = {'name': name, 'kind': kind, 'steps': [], 'base_s': _ci_median(
+            same_matrix(base_runs, name), name, least=settings['min_baseline_runs']) if enough else None}
+        values = {'final': _ci_value(final['measured'], name) if final else None,
+                  'recent': _ci_median(same_matrix(recent, name), name, least=2),
+                  'during': _ci_median(same_matrix(during, name), name),
+                  'merge': _ci_value(merged['measured'], name) if same_matrix([merged] if merged else [], name)
+                  else None}
+        for source, value in values.items():
+            diff, pct, exceeded = _ci_compare(row['base_s'], value, settings, kind)
+            row.update({'%s_s' % source: value, '%s_diff_s' % source: diff, '%s_diff_pct' % source: pct,
+                        '%s_exceeded' % source: exceeded})
+            if exceeded and source in CI_TIME_SOURCES:
+                result['exceeded'].append({'name': name, 'source': source})
+        if kind == 'job' and (row['final_exceeded'] or row['merge_exceeded']):
+            row['steps'] = _ci_steps(same_matrix(base_runs, name),
+                                     (final if row['final_exceeded'] else merged)['measured'], name)
+        result['rows'].append(row)
+    result['exceeded'].sort(key=lambda e: (CI_TIME_SOURCES.index(e['source']), e['name'] != 'run', e['name']))
+    if after is not None:
+        # an inactive part is a job of the run all the same: the set of jobs changes only when a job is gone or new
+        def jobs_of(entry):
+            return set(entry['measured']['jobs']) | set(entry['measured']['inactive'])
+        before = set().union(*[jobs_of(r) for r in base_runs]) if base_runs else set()
+        result['jobs_changed'] = {'only_baseline': sorted(before - jobs_of(after)),
+                                  'only_final': sorted(jobs_of(after) - before) if before else []}
+    parts = {r['name']: r['recent_s'] for r in result['rows']
+             if r['name'].startswith(settings['e2e_job_prefix']) and r['recent_s'] is not None}
+    if len(parts) >= 2:
+        longest = max(sorted(parts), key=lambda n: parts[n])
+        shortest = min(sorted(parts), key=lambda n: parts[n])
+        spread = round(parts[longest] - parts[shortest], 1)
+        result['e2e_spread'] = {'seconds': spread, 'exceeded': spread >= settings['e2e_spread_s'],
+                                'longest': longest, 'shortest': shortest}
+    missing = None
+    if not enough:
+        missing = 'za mało porównywalnych przebiegów bazy sprzed startu epiku (%d, potrzeba %d)' % (
+            len(base_runs), settings['min_baseline_runs'])
+    elif final is None:
+        missing = final_reason
+    elif merge['state'] in CI_MERGE_REASONS:
+        missing = CI_MERGE_REASONS[merge['state']]
+    if result['exceeded']:
+        result['status'] = 'exceeded'
+        result['reason'] = missing
+    elif missing:
+        result['status'], result['reason'] = 'no_data', missing
+    else:
+        result['status'] = 'ok'
+    return result, None
+
+
+def _ci_minutes(seconds):
+    return 'brak danych' if seconds is None else ('%.1f min' % (seconds / 60.0)).replace('.', ',')
+
+
+def _ci_diff(row, source):
+    diff = row['%s_diff_s' % source]
+    if diff is None:
+        return 'brak danych'
+    # the percent from the seconds, not from the stored value: that one is already rounded to one decimal
+    text = ('%+.1f min' % (diff / 60.0)).replace('.', ',') + ' (%+.0f%%)' % (100.0 * diff / row['base_s'])
+    return text + (' **ponad progiem**' if row['%s_exceeded' % source] else '')
+
+
+def _ci_cell(row, source):
+    if row['%s_s' % source] is None:
+        return 'brak danych'
+    return '%s; %s' % (_ci_minutes(row['%s_s' % source]), _ci_diff(row, source))
+
+
+def _ci_links(runs):
+    return ', '.join('[%s](%s)' % (r['id'], r['url']) for r in runs) or 'brak'
+
+
+CI_TIME_TITLES = {'ok': 'bez przekroczenia progów', 'exceeded': 'przekroczony próg, do wyjaśnienia',
+                  'no_data': 'brak danych'}
+CI_SOURCE_NAMES = {'final': 'końcowy SHA', 'recent': 'mediana ostatnich przebiegów PR', 'merge': 'commit merge\'u w main'}
+
+
+def render_ci_time(epic, result):
+    """The Markdown block of `ci-time` for the description of the final PR."""
+    limits = result['thresholds']
+    head = result['final']['sha']
+    title = CI_TIME_TITLES[result['status']]
+    if result['status'] == 'ok' and result['e2e_spread']['exceeded']:
+        title = 'bez przekroczenia progów czasu; rozrzut części E2E ponad progiem'
+    lines = ['**Czas CI** (`metrics.py ci-time %s`): %s%s' % (
+        epic, title, ' (%s)' % result['reason'] if result['reason'] else '')]
+    lines.append('Progi startowe, do oceny po trzech kolejnych epikach (oba warunki naraz): przebieg %s i +%d%%, job '
+                 '%s i +%d%%, rozrzut części E2E %s. Decyzja zapada na wartościach niezaokrąglonych, więc wynik '
+                 'pokazany jako równy progowi może być tuż pod nim.' % (
+                     ('+%.1f min' % (limits['run_min_s'] / 60.0)).replace('.', ','), limits['run_min_pct'],
+                     ('+%.1f min' % (limits['job_min_s'] / 60.0)).replace('.', ','), limits['job_min_pct'],
+                     _ci_minutes(limits['e2e_spread_s'])))
+    lines.append('Cały przebieg: od startu pierwszego joba do końca ostatniego, razem z oczekiwaniem między jobami. '
+                 'Job: czas jego wykonania. Jobów nie sumuje się.')
+    if result['rows']:
+        merge = result['merge']
+        merged_title = 'Po merge\'u `%s`' % merge['sha'][:8] if merge['sha'] else 'Po merge\'u'
+        lines += ['', '| Pozycja | Baza sprzed epiku (mediana %d) | Końcowy SHA `%s` | Różnica | Mediana ostatnich PR '
+                      '(%d) | main w trakcie epiku (%d) | %s |' % (
+                          len(result['baseline']['runs']), head[:8] if isinstance(head, str) else '?',
+                          len(result['recent']['runs']), len(result['during']['runs']), merged_title),
+                  '|---|---|---|---|---|---|---|']
+        for row in result['rows']:
+            lines.append('| %s | %s | %s | %s | %s | %s | %s |' % (
+                'cały przebieg' if row['name'] == 'run' else row['name'], _ci_minutes(row['base_s']),
+                _ci_minutes(row['final_s']), _ci_diff(row, 'final'), _ci_cell(row, 'recent'),
+                _ci_cell(row, 'during'), _ci_cell(row, 'merge')))
+        lines.append('')
+    if result['final']['run'] is None and result['final']['reason']:
+        lines.append('Końcowy SHA: brak danych (%s).' % result['final']['reason'])
+    state = result['merge']['state']
+    if state == 'not_merged':
+        lines.append('Pomiar na commicie merge\'u w main: jeszcze przed merge\'em.')
+    elif state in CI_MERGE_REASONS:
+        lines.append('Pomiar na commicie merge\'u w main: brak danych (%s).' % CI_MERGE_REASONS[state])
+    if result['exceeded']:
+        names = ['%s (%s)' % ('cały przebieg' if e['name'] == 'run' else e['name'], CI_SOURCE_NAMES[e['source']])
+                 for e in result['exceeded']]
+        lines.append('Ponad progiem: %s. Przyczynę ustala sesja z dowodem: nowe testy, nierówny podział, wolniejsze '
+                     'testy, infrastruktura albo zmiana workflowu; wzrostu nie przypisuje się epikowi bez sprawdzenia.'
+                     % '; '.join(names))
+        outside = sorted({r['name'] for r in result['rows'] if r['during_exceeded']
+                          and any(r['%s_exceeded' % s] for s in CI_TIME_SOURCES)})
+        if outside:
+            lines.append('main w trakcie epiku też przekracza próg (%s): możliwy wpływ zewnętrzny, spoza epiku.'
+                         % ', '.join('cały przebieg' if n == 'run' else n for n in outside))
+        for row in result['rows']:
+            if row['steps']:
+                lines.append('Kroki joba %s z największą różnicą: %s.' % (row['name'], '; '.join(
+                    '%s %s → %s' % (s['name'], _ci_minutes(s['base_s']), _ci_minutes(s['final_s']))
+                    for s in row['steps'])))
+    spread = result['e2e_spread']
+    if spread['seconds'] is None and result['rows']:
+        lines.append('Rozrzut części E2E: brak danych (wśród ostatnich przebiegów PR mniej niż dwa o macierzy części '
+                     'przebiegu po epiku).')
+    if spread['seconds'] is not None:
+        lines.append('Rozrzut części E2E (mediany ostatnich przebiegów PR): %s między %s a %s%s.' % (
+            _ci_minutes(spread['seconds']), spread['longest'], spread['shortest'],
+            ' – ponad progiem: rekomendacja osobnego PR wyrównania wag (e2e/CLAUDE.md, „CI”)'
+            if spread['exceeded'] else ''))
+    if result['e2e_parts_changed']:
+        lines.append('Zmieniła się macierz części E2E (część o tej samej nazwie to inny zestaw plików): części są '
+                     'porównywane tylko z przebiegami o tej samej macierzy co końcowy SHA, a gdy jest ich za mało, '
+                     'mają „brak danych”. Cały przebieg i pozostałe joby liczą się ze wszystkich przebiegów.')
+    changed = result['jobs_changed']
+    if changed['only_baseline'] or changed['only_final']:
+        lines.append('Zmiana zestawu jobów (możliwa zmiana workflowu): tylko w bazie: %s; tylko po epiku: %s.' % (
+            ', '.join(changed['only_baseline']) or 'brak', ', '.join(changed['only_final']) or 'brak'))
+    final_run = [result['final']['run']] if result['final']['run'] else []
+    merge_run = [result['merge']['run']] if result['merge']['run'] else []
+    lines.append('Przebiegi: baza: %s; końcowy SHA: %s; ostatnie PR: %s; main w trakcie epiku: %s; po merge\'u: %s.' % (
+        _ci_links(result['baseline']['runs']), _ci_links(final_run), _ci_links(result['recent']['runs']),
+        _ci_links(result['during']['runs']), _ci_links(merge_run)))
+    return '\n'.join(lines)
+
+
+def cmd_ci_time(args, config, run):
+    path = run_path(_expand(args.state), checked_id(args.epic, 'epiku'))
+    run_file = read_run_file(path)
+    if run_file is None:
+        raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
+    result, error = ci_time_of(run, args.repo, config, run_file)
+    print(json.dumps(result, ensure_ascii=False) if args.json else render_ci_time(args.epic, result))
+    if error:
+        print('metrics: błąd gh: %s (czas CI: brak danych)' % error, file=sys.stderr)
+    return EXIT_SOURCE if error else 0
 
 
 def _get(record, path):
@@ -2426,19 +2935,38 @@ def manifest_tasks(run, worktree, epic_id):
 
 
 def cmd_start(args, run, now, stdin):
-    epic_id = native_epic_id(args.epic)
-    path = run_path(_expand(args.state), epic_id)
+    path = run_path(_expand(args.state), native_epic_id(args.epic))
+    with run_lock(path):
+        return _start(args, run, now, stdin, path)
+
+
+def _start(args, run, now, stdin, path):
+    epic_id = args.epic
     at = parse_at(args.at) if args.at else now
     worktree = _expand(args.worktree) if args.worktree else os.getcwd()
     session = checked_id(args.session or newest_session(_expand(args.projects), worktree), 'sesji')
+    other = epic_of_session(_expand(args.state), session, epic_id)
+    if other is not None:
+        raise MetricsError('sesja %s jest już w pliku przebiegu epiku %s: jedna sesja prowadzi jeden epik, nowy epik '
+                           'zaczyna nowa sesja (ten sam epik w nowej sesji: start --resume)' % (session, other))
+    accepted = accepted_reason(args.accept_process_mismatch)
     current = read_run_file(path)
     entry = {'id': session, 'worktree': worktree, 'at': iso(at)}
     if args.resume:
         if current is None:
             raise MetricsError('brak pliku przebiegu %s: wznowienie wymaga wcześniejszego start' % path)
         sessions = current.get('sessions') if isinstance(current.get('sessions'), list) else []
+        directory = None if args.at else check_dir(args, current, resume=True)     # the new session's worktree
         if not any(isinstance(s, dict) and s.get('id') == session for s in sessions):
             current['sessions'] = sessions + [entry]
+        if args.at:
+            skipped_check(current, at, 'resume', session)
+        else:
+            refusal = resume_check(run, current, directory, args, now, session, accepted)
+            if refusal is not None:
+                current['sessions'] = sessions          # the refused session is no session of the epic (D-n)
+                write_record(path, current)
+                raise MetricsError(refusal)
         data = current
     else:
         if current is not None:
@@ -2467,22 +2995,844 @@ def cmd_start(args, run, now, stdin):
             print('metrics: SHA origin/main nieznany (%s): base_sha null' % (reason or 'pusta odpowiedź'),
                   file=sys.stderr)
             sha = None
+        process = start_process(run, args, worktree, session, sha, branch, now, accepted)
         data = {'epic': epic_id, 'started_at': iso(at), 'base_sha': sha, 'branch': branch, 'pr': pr, 'tasks': tasks,
-                'sessions': [entry], 'usage_start': read_usage(stdin), 'done_at': None, 'usage_done': None}
+                'sessions': [entry], 'usage_start': read_usage(stdin), 'done_at': None, 'usage_done': None,
+                'process': process}
     write_record(path, data)
     print(json.dumps(data, ensure_ascii=False))
     return 0
 
 
-def cmd_done(args, now, stdin):
+def cmd_done(args, run, now, stdin):
     path = run_path(_expand(args.state), native_epic_id(args.epic))
+    with run_lock(path):
+        return _done(args, run, now, stdin, path)
+
+
+def _done(args, run, now, stdin, path):
     data = read_run_file(path)
     if data is None:
         raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
+    if args.at:
+        skipped_check(data, parse_at(args.at), 'done', None)
+    else:
+        worktree = check_dir(args, data)
+        try:
+            result = recheck(run, data, worktree, args, now, 'done', None, None)
+            if result['mismatch']:
+                print('metrics: wersja procesu niezgodna z bazą epiku (zapisano w process.changes): %s'
+                      % '; '.join(result['lines']), file=sys.stderr)
+        except process_version.CheckError as e:
+            if not isinstance(data.get('process'), dict):
+                data['process'] = {'status': 'check_failed', 'checked_at': iso(now), 'checked_on': 'done',
+                                   'reason': str(e), 'accepted': None, 'changes': []}
+            else:
+                add_change(data, failed_change(now, 'done', None, e, None))
+            print('metrics: kontrola wersji procesu nieudana (%s): zapisano w process.changes' % e, file=sys.stderr)
     data['done_at'] = iso(parse_at(args.at) if args.at else now)
     data['usage_done'] = read_usage(stdin)
     write_record(path, data)
     print(json.dumps(data, ensure_ascii=False))
+    return 0
+
+
+def cmd_pause(args):
+    path = run_path(_expand(args.state), native_epic_id(args.epic))
+    begin, end = parse_at(args.begin, '--from'), parse_at(args.end, '--to')
+    if begin >= end:
+        raise MetricsError('--from %s nie jest przed --to %s: przerwa musi mieć dodatnią długość' % (args.begin, args.end))
+    with run_lock(path):
+        return _pause(args, path, begin, end)
+
+
+def pause_over_work(run_file, projects, begin, end):
+    """The seconds of work from the transcripts of the epic's sessions that the pause (begin, end) covers (D-m), None
+    when no transcript can be read."""
+    gaps, marks = Gaps(), []
+    for kind, _, _, transcript, _ in native_transcripts(projects, _sessions(run_file), gaps):
+        data, _ = read_native(transcript, set())
+        if data is not None:
+            marks.append(data['marks'])
+    if not marks:
+        return None
+    return round(total(clip_merge(work_intervals(marks), begin, end)), 3)
+
+
+def _pause(args, path, begin, end):
+    data = read_run_file(path)
+    if data is None:
+        raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
+    pauses = data.get('pauses') if isinstance(data.get('pauses'), list) else []
+    reason = ' '.join(CONTROL.sub(' ', args.reason).split()) if args.reason else ''
+    data['pauses'] = pauses + [{'from': iso(begin), 'to': iso(end), 'reason': reason or None}]
+    covered = pause_over_work(data, _expand(args.projects), begin, end)
+    if covered:
+        print('metrics: przerwa %s–%s przykrywa %g s pracy z transkryptów epiku: zapisana (przerwa ma pierwszeństwo); '
+              'sprawdź czasy, jeśli komputer wtedy pracował' % (iso(begin), iso(end), covered), file=sys.stderr)
+    write_record(path, data)
+    print(json.dumps(data, ensure_ascii=False))
+    return 0
+
+
+# ------------------------------------------------------------------------------ native epics: the process version
+
+CONTROL = re.compile(r'[\x00-\x1f\x7f-\x9f\u2028\u2029]')
+PROCESS_HINT = ('sprawdź `metrics.py process`, zaktualizuj główny checkout według ADR (docs/adr/agentic-software-house.md, '
+                '„Wersja procesu”) albo podaj --accept-process-mismatch "<powód>"')
+NOT_CHECKED = 'zapis po fakcie (--at): dzisiejszy stan plików nie mówi nic o wersji z tamtej chwili'
+
+
+def accepted_reason(value):
+    """The reason of --accept-process-mismatch (control characters out, whitespace collapsed), None without the option;
+    a blank reason is an error."""
+    if value is None:
+        return None
+    text = ' '.join(CONTROL.sub(' ', value).split())
+    if not text:
+        raise MetricsError('pusty powód --accept-process-mismatch: podaj, dlaczego epik działa mimo różnicy wersji')
+    return text
+
+
+def epic_of_session(state, session, epic_id):
+    """The epic of another run file that already has the session (E1), or None."""
+    for name in sorted(glob.glob(os.path.join(glob.escape(os.path.join(state, 'runs')), '*.json'))):
+        other = os.path.basename(name)[:-len('.json')]
+        if other == epic_id:
+            continue
+        try:
+            data = read_run_file(name)
+        except MetricsError:
+            continue
+        sessions = data.get('sessions') if isinstance(data, dict) and isinstance(data.get('sessions'), list) else []
+        if any(isinstance(s, dict) and s.get('id') == session for s in sessions):
+            return other
+    return None
+
+
+def _sessions(run_file):
+    return [s['id'] for s in run_file.get('sessions') or [] if isinstance(s, dict) and isinstance(s.get('id'), str)
+            and SAFE_ID.match(s['id'])]
+
+
+def _roots(run_file, internal=None, process=None):
+    """The directories a CLAUDE.md path of a transcript is relative to: the worktrees of the sessions and the places."""
+    roots = [s.get('worktree') for s in run_file.get('sessions') or [] if isinstance(s, dict)]
+    if internal is not None:
+        roots += [internal['top'], internal['main']]
+    for place in (process or {}).get('disk') or []:
+        if isinstance(place, dict):
+            roots.append(place.get('path'))
+    return [r for r in roots if isinstance(r, str) and r]
+
+
+def _expected(run, top, expected):
+    """The texts of the expected instruction files (the blobs of `expected.files`) read from the repository of `top`;
+    an unknown base commit makes every text unavailable (`error`)."""
+    expected = expected if isinstance(expected, dict) else {}
+    files = expected.get('files') if isinstance(expected.get('files'), dict) else {}
+    return process_version.Expected(run, top, expected.get('ref'), files)
+
+
+def _session_worktrees(run_file):
+    return [s['worktree'] for s in run_file.get('sessions') or [] if isinstance(s, dict)
+            and isinstance(s.get('worktree'), str) and s['worktree']]
+
+
+def _epic_versions(run, top, expected, heads, worktrees):
+    """The versions of the files the epic made (process_version.EpicVersions) against the base of `expected`; None
+    without a runner."""
+    if run is None:
+        return None
+    return process_version.EpicVersions(run, top, expected.ref if expected.error is None else None, heads, worktrees)
+
+
+def _item_name(entry):
+    if entry.get('agent_id') and entry.get('role'):
+        return '%s (%s)' % (entry['agent_id'], entry['role'])
+    return entry.get('skill') or entry.get('path') or entry.get('origin') or '?'
+
+
+def _mismatch_lines(disk, users, loaded):
+    lines = process_version.summary(disk)
+    if users.get('skills'):
+        lines.append('skille użytkownika przesłaniają skille projektu: %s' % ', '.join(users['skills']))
+    for section, entry in process_version.loaded_items(loaded):
+        if entry.get('status') == 'differs':
+            lines.append('załadowana treść inna niż w bazie: %s %s' % (section, _item_name(entry)))
+    return lines
+
+
+def _branch_of(run_file):
+    branch = run_file.get('branch') if isinstance(run_file, dict) else None
+    return branch if isinstance(branch, str) and branch else None
+
+
+def _epic_heads(branch, record=False):
+    """The refs of the epic branch: in a check the local branch first, in the record origin/<branch> first."""
+    if not branch:
+        return []
+    return ['origin/%s' % branch, branch] if record else [branch, 'origin/%s' % branch]
+
+
+def checked_process(data, loaded, now, event):
+    differs = any(e.get('status') == 'differs' for e in loaded['session'])
+    return {'status': 'checked', 'checked_at': iso(now), 'checked_on': event, 'expected': data['expected'],
+            'disk': data['disk'], 'user_level': data['user_level'], 'loaded': dict(loaded, checked_at=iso(now)),
+            'match': data['match'] and not differs, 'accepted': None, 'changes': []}
+
+
+def start_process(run, args, worktree, session, base_sha, branch, now, accepted):
+    """The field `process` of a new run file (W2): the reading of the start, or a refusal (MetricsError) on a mismatch
+    (the rule of `mismatch_items`: a commit of the epic branch in the worktree is information) that is not accepted
+    with a reason; the acceptance of the start covers what the start shows."""
+    if args.at:
+        return {'status': 'not_checked', 'reason': NOT_CHECKED}
+    try:
+        data, internal = process_version.reading(run, worktree, base_sha, _expand(args.user_dir), branch)
+        expected = _expected(run, internal['top'], data['expected'])
+        own = [internal['top']]
+        loaded = process_version.loaded_of(_expand(args.projects), [session], expected,
+                                           [internal['top'], internal['main']], agents=False, window=(now, None),
+                                           parse_time=_epoch_of,
+                                           epic=_epic_versions(run, internal['top'], expected, _epic_heads(branch),
+                                                               own), own=own)
+    except process_version.CheckError as e:
+        if accepted is None:
+            raise MetricsError('kontrola wersji procesu nieudana: %s; %s' % (e, PROCESS_HINT))
+        return {'status': 'check_failed', 'checked_at': iso(now), 'checked_on': 'start', 'reason': str(e),
+                'accepted': accepted, 'changes': []}
+    process = checked_process(data, loaded, now, 'start')
+    # at the start only the CLAUDE.md of the session counts of `loaded` (the agents and skills have not run yet)
+    items = mismatch_items(data, {'session': loaded['session']}, process)
+    process['match'] = not items
+    if items:
+        if accepted is None:
+            raise MetricsError('wersja procesu różni się od bazy epiku %s (%s): %s. Epik nie startuje: %s' % (
+                data['expected']['describe'] or '-', data['expected']['ref'][:12],
+                '; '.join(i['line'] for i in items), PROCESS_HINT))
+        process['accepted'] = accepted
+        process['changes'].append(_acceptance(now, 'start', session, items, accepted))
+    return process
+
+
+def _fingerprints(places):
+    return {p.get('kind'): p.get('fingerprint') for p in places or [] if isinstance(p, dict)}
+
+
+def _place_state(place):
+    return place.get('state') or place.get('fingerprint')
+
+
+def _state_key(places, users):
+    """The state on disk the changes are recorded by: the state and branch of every place and the user skills."""
+    return [sorted([p.get('kind') or '', _place_state(p) or '', p.get('branch') or ''] for p in places or []
+                   if isinstance(p, dict)), sorted(_dict(users).get('skills') or [])]
+
+
+def _last_state(process):
+    """The state of the last record: the reading of the start, then the last disk change."""
+    key = _state_key(process.get('disk'), process.get('user_level'))
+    for change in process.get('changes') or []:
+        if isinstance(change, dict) and change.get('kind') == 'disk':
+            key = _state_key(change.get('disk'), change.get('user_level'))
+    return key
+
+
+def _accepted_keys(process):
+    """The keys of the mismatches accepted with a reason (the `accepted` entries of `process.changes`)."""
+    return [key for change in process.get('changes') or [] if isinstance(change, dict)
+            and change.get('kind') == 'accepted' for key in change.get('keys') or []]
+
+
+def _acceptance(now, event, session, items, reason):
+    return {'at': iso(now), 'event': event, 'session': session, 'kind': 'accepted', 'keys': [i['key'] for i in items],
+            'items': [i['line'] for i in items], 'reason': reason}
+
+
+def _place_accepted(place, accepted):
+    return ['disk', place.get('kind'), _place_state(place), place.get('branch')] in accepted
+
+
+def _read(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return f.read()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _explained(section, entry, places, accepted):
+    """D-i, D-n: a `differs` entry whose loaded text is the current file of a place in a state accepted with a reason
+    (compared by content, the same way as a confirmation): an agent with the role file of the main checkout, a skill
+    whose text matches the SKILL.md at its origin in an accepted place, a CLAUDE.md equal to the file of the place it
+    is read from (the worktree of the epic, after an accepted merge of main)."""
+    if section == 'agents':
+        main = next((p for p in places if p.get('kind') == 'main_checkout'), None)
+        if main is None or not entry.get('role') or not entry.get('digest') or not _place_accepted(main, accepted):
+            return False
+        text = _read(os.path.join(main['path'], '.claude', 'agents', '%s.md' % entry['role']))
+        return text is not None and process_version.digest(process_version.strip_frontmatter(text)) == entry['digest']
+    if section == 'skills':
+        origin = entry.get('origin') or ''
+        return bool(entry.get('origin_match')) and any(
+            _place_accepted(p, accepted) and process_version._under(origin + '/', [p.get('path')]) for p in places)
+    if section == 'session' and entry.get('path') and entry.get('digest'):
+        for place in places:
+            if entry['path'] in (place.get('files') or {}) and _place_accepted(place, accepted):
+                text = _read(os.path.join(place['path'], entry['path']))
+                if text is not None and process_version.digest(text.strip()) == entry['digest']:
+                    return True
+    return False
+
+
+def mismatch_items(data, loaded, process):
+    """[{key, line}] of the mismatches of a reading not accepted yet (D-a, D-e, D-g): always against the base; a place
+    with a problem (process_version.place_problems) by its state, a user skill shadowing a project skill, every
+    `differs` of `loaded` (a subagent explained by D-i is marked `explained` and is none)."""
+    accepted = _accepted_keys(process)
+    items = []
+    for place in data['disk']:
+        if process_version.place_problems(place):
+            key = ['disk', place['kind'], _place_state(place), place.get('branch')]
+            if key not in accepted:
+                items.append({'key': key, 'line': '; '.join(process_version.summary([place]))})
+    skills = sorted(data['user_level'].get('skills') or [])
+    if skills and ['user'] + skills not in accepted:
+        items.append({'key': ['user'] + skills,
+                      'line': 'skille użytkownika przesłaniają skille projektu: %s' % ', '.join(skills)})
+    for section, entry in process_version.loaded_items(loaded):
+        if entry.get('status') != 'differs':
+            continue
+        if _explained(section, entry, data['disk'], accepted):
+            entry['explained'] = 'accepted_disk'
+            continue
+        key = ['loaded'] + process_version.loaded_key(section, entry)
+        if key not in accepted:
+            items.append({'key': key, 'line': 'załadowana treść inna niż w bazie: %s %s%s' % (
+                section, _item_name(entry), ' (%s)' % entry['reason'] if entry.get('reason') else '')})
+    return items
+
+
+def _change_key(change):
+    kind = change.get('kind')
+    if kind == 'disk':
+        return [kind, _state_key(change.get('disk'), change.get('user_level'))]
+    if kind == 'loaded':
+        return [kind] + process_version.loaded_key(change.get('section'), change.get('item') or {})
+    if kind == 'accepted':
+        return [kind, change.get('at'), change.get('keys')]
+    return [kind, change.get('event'), change.get('reason')]
+
+
+def add_change(run_file, change):
+    """Appends `change` to `process.changes` unless the same change is there."""
+    process = run_file.get('process')
+    if not isinstance(process, dict):
+        return False
+    changes = process.setdefault('changes', [])
+    key = _change_key(change)
+    if any(isinstance(old, dict) and _change_key(old) == key for old in changes):
+        return False
+    changes.append(change)
+    return True
+
+
+def failed_change(now, event, session, error, accepted):
+    return {'at': iso(now), 'event': event, 'session': session, 'kind': 'check_failed', 'reason': str(error),
+            'accepted': accepted}
+
+
+def _epoch_of(text):
+    return night_queue.parse_time(text).timestamp()
+
+
+def _disk_of_change(places):
+    keep = ('kind', 'fingerprint', 'state', 'branch', 'differs', 'uncommitted', 'epic_branch', 'from_base',
+            'on_epic_branch', 'expected_branch', 'origin_known', 'from_main')
+    return [{k: p[k] for k in keep if k in p} for p in places]
+
+
+def recheck(run, run_file, worktree, args, now, event, session, accepted):
+    """The check of a running epic (W3) on the data of the run file, shared by `process EPIC`, `start --resume` and
+    `done`: today's disk and the transcripts of the sessions (`loaded`) against the base, by `mismatch_items`. A new
+    state on disk is one `disk` entry of `process.changes` (`informational` with the epic's own commits and no
+    mismatch, `returned` without either: back to the base or to an accepted state), a `differs` one `loaded` entry.
+    The mismatches are stored as `shown`; with `accepted` only the shown ones that are still there are accepted (D-h),
+    the others stay a mismatch and become the new `shown`. A run file without a reading (older, or a failed check at
+    the start) gets one now (`checked_on`), which accepts nothing. Mutates `run_file`; raises
+    process_version.CheckError when the check cannot run. Returns {status, late, disk, user_level, loaded, added,
+    mismatch, accepted, unshown, lines}."""
+    process = run_file.get('process')
+    if isinstance(process, dict) and process.get('status') == 'not_checked':
+        return {'status': 'not_checked', 'late': False, 'added': [], 'mismatch': False, 'lines': [],
+                'reason': process.get('reason')}
+    projects, sessions, branch = _expand(args.projects), _sessions(run_file), _branch_of(run_file)
+    started = _run_time(run_file, 'started_at', Gaps(), '')
+    late = not isinstance(process, dict) or process.get('status') != 'checked'
+    ref = run_file.get('base_sha') if late else (process.get('expected') or {}).get('ref')
+    ref = ref if isinstance(ref, str) and ref else None
+    try:
+        data, internal = process_version.reading(run, worktree, ref, _expand(args.user_dir), branch)
+    except process_version.CheckError:
+        if not late or ref is None:
+            raise
+        data, internal = process_version.reading(run, worktree, None, _expand(args.user_dir), branch)
+    expected = _expected(run, internal['top'], data['expected'] if late else process['expected'])
+    own = _session_worktrees(run_file) + [internal['top']]
+    loaded = process_version.loaded_of(projects, sessions, expected, _roots(run_file, internal, process),
+                                       window=(started, None), parse_time=_epoch_of,
+                                       epic=_epic_versions(run, internal['top'], expected, _epic_heads(branch), own),
+                                       own=own)
+    if late:
+        new = checked_process(data, loaded, now, event)
+        if isinstance(process, dict) and process.get('status') == 'check_failed':
+            new.update(start_failure={'reason': process.get('reason'), 'accepted': process.get('accepted')},
+                       changes=process.get('changes') or [])
+        run_file['process'] = process = new
+    items = mismatch_items(data, loaded, process)
+    added = []
+    if _state_key(data['disk'], data['user_level']) != _last_state(process):
+        disk_items = [i for i in items if i['key'][0] in ('disk', 'user')]
+        epic_own = [d for p in data['disk'] for d in process_version.own_changes(p)]
+        change = {'at': iso(now), 'event': event, 'session': session, 'kind': 'disk',
+                  'informational': bool(epic_own) and not disk_items, 'returned': not epic_own and not disk_items,
+                  'disk': _disk_of_change(data['disk']), 'user_level': data['user_level']}
+        process.setdefault('changes', []).append(change)          # a new state since the last record
+        added.append(change)
+    for section, entry in process_version.loaded_items(loaded):
+        if entry.get('status') == 'differs':
+            change = {'at': iso(now), 'event': event, 'session': session, 'kind': 'loaded', 'section': section,
+                      'item': entry}
+            if add_change(run_file, change):
+                added.append(change)
+    remaining, accepted_now = items, []
+    previous = _dict(process.get('shown'))
+    # what a refused resume showed for a session that is not in the run file yet stays shown for that resume, also
+    # after a `process EPIC` (which reads only the sessions of the run file)
+    pending = _dict(previous.get('resume')) or (previous if previous.get('event') == 'resume' else {})
+    if pending.get('session') in sessions and event != 'resume':
+        pending = {}
+    shown = list(previous.get('keys') or [])
+    if event == 'resume' and pending.get('session') == session:
+        shown += pending.get('keys') or []
+    if accepted is not None and items:
+        accepted_now = [i for i in items if i['key'] in shown]
+        remaining = [i for i in items if i['key'] not in shown]
+        if accepted_now:
+            change = _acceptance(now, event, session, accepted_now, accepted)
+            process.setdefault('changes', []).append(change)
+            added.append(change)
+    new_shown = {'at': iso(now), 'event': event, 'session': session, 'keys': [i['key'] for i in remaining]} \
+        if remaining else {}
+    if event != 'resume' and pending:
+        new_shown['resume'] = {'at': pending.get('at'), 'session': pending.get('session'), 'keys': pending.get('keys')}
+    if new_shown:
+        process['shown'] = new_shown
+    else:
+        process.pop('shown', None)
+    process['loaded'] = dict(loaded, checked_at=iso(now))
+    process['rechecked_at'] = iso(now)
+    return {'status': 'checked', 'late': late, 'disk': data['disk'], 'user_level': data['user_level'],
+            'loaded': process['loaded'], 'added': added, 'mismatch': bool(remaining), 'accepted': bool(accepted_now),
+            'unshown': accepted is not None and bool(remaining), 'lines': [i['line'] for i in remaining]}
+
+
+def check_dir(args, run_file, resume=False):
+    """The directory of the check of a running epic: --worktree; for `start --resume` the worktree of the new session
+    (the current directory, D-k); else the worktree of the last session of the run file (said on stderr when the
+    current directory is another checkout, D-d), and when that worktree is gone the current directory, also said."""
+    if args.worktree:
+        return _expand(args.worktree)
+    cwd = os.getcwd()
+    if resume:
+        return cwd
+    stored = _session_worktrees(run_file)
+    stored = stored[-1] if stored else None
+    if stored is None:
+        return cwd
+    if not os.path.isdir(stored):
+        print('metrics: worktree ostatniej sesji epiku %s już nie istnieje: kontrola wersji w bieżącym katalogu %s; '
+              'inny katalog: --worktree' % (stored, cwd), file=sys.stderr)
+        return cwd
+    here, there = os.path.realpath(cwd), os.path.realpath(stored)
+    if here != there and not here.startswith(there.rstrip('/') + '/'):
+        print('metrics: kontrola wersji w worktree ostatniej sesji epiku %s (z pliku przebiegu), nie w bieżącym '
+              'katalogu %s; inny katalog: --worktree' % (stored, cwd), file=sys.stderr)
+    return stored
+
+
+MISMATCH_HINT = ('co zrobić: usuń przyczynę (zaktualizuj główny checkout według ADR, docs/adr/agentic-software-house.md, '
+                 '„Wersja procesu”; zacommituj albo cofnij zmianę w worktree epiku) albo zaakceptuj różnicę z powodem: '
+                 'metrics.py process %s --accept-process-mismatch "<powód>"')
+UNSHOWN = ('nie zaakceptowano niezgodności, których nie pokazała poprzednia kontrola (zapisane teraz jako pokazane): '
+           'sprawdź je i powtórz z --accept-process-mismatch "<powód>"')
+
+
+def skipped_check(run_file, at, event, session):
+    """D-o: `start --resume --at` and `done --at` do not check (a record after the fact) and say so in
+    `process.changes`."""
+    process = run_file.get('process')
+    if isinstance(process, dict):
+        process.setdefault('changes', []).append({
+            'at': iso(at), 'event': event, 'session': session, 'kind': 'not_checked',
+            'reason': 'zapis po fakcie (--at): kontrola wersji pominięta'})
+
+
+def resume_check(run, run_file, worktree, args, now, session, accepted):
+    """`start --resume`: the recheck of the worktree of the new session, with the new session in `sessions`. None when
+    the resume may go on; else the message of the refusal (the caller writes the run file without the new session:
+    `process.shown` holds what was shown, so the same resume with an acceptance ends it, D-n). The first reading of a
+    run file without one refuses nothing."""
+    try:
+        result = recheck(run, run_file, worktree, args, now, 'resume', session, accepted)
+    except process_version.CheckError as e:
+        if accepted is None:
+            raise MetricsError('kontrola wersji procesu nieudana: %s; %s' % (e, PROCESS_HINT))
+        add_change(run_file, failed_change(now, 'resume', session, e, accepted))
+        return None
+    if not result['mismatch'] or result['late']:
+        return None
+    return ('wersja procesu niezgodna z bazą epiku: %s. Wznowienie wstrzymane%s: sprawdź te niezgodności i powtórz '
+            'z --accept-process-mismatch "<powód>" (akceptacja obejmuje tylko pokazane teraz) albo usuń przyczynę '
+            '(zaktualizuj główny checkout według ADR, docs/adr/agentic-software-house.md, „Wersja procesu”; zacommituj '
+            'albo cofnij zmianę w worktree)' % ('; '.join(result['lines']),
+                                                ' (są nowe względem poprzedniej kontroli)' if result['unshown'] else ''))
+
+
+LOCK_TIMEOUT_S = 60.0
+
+
+def lock_path_of(path):
+    """The lock of the run file <state>/runs/<epik>.json: <state>/locks/<epik>.lock (outside `runs`)."""
+    state = os.path.dirname(os.path.dirname(path))
+    return os.path.join(state, 'locks', os.path.basename(path)[:-len('.json')] + '.lock')
+
+
+@contextlib.contextmanager
+def run_lock(path):
+    """The exclusive lock of the run file `path` (`<epik>.lock` next to it) for the whole read, change and write of a
+    command (D-l); MetricsError after LOCK_TIMEOUT_S seconds of waiting."""
+    lock_path = lock_path_of(path)
+    try:
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+        handle = open(lock_path, 'a')
+    except OSError as e:
+        raise MetricsError('nie można założyć blokady %s: %s' % (lock_path, e.strerror or e))
+    deadline = time.monotonic() + LOCK_TIMEOUT_S
+    try:
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as e:
+                if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
+                    raise MetricsError('nie można założyć blokady %s: %s' % (lock_path, e.strerror or e))
+                if time.monotonic() >= deadline:
+                    raise MetricsError('plik przebiegu %s ma blokadę innego wywołania metrics.py dłużej niż %g s: '
+                                       'poczekaj, aż się skończy, i spróbuj ponownie' % (path, LOCK_TIMEOUT_S))
+                time.sleep(0.05)
+        yield
+    finally:
+        handle.close()
+
+
+def _without_times(run_file):
+    """The run file without the times of a recheck: equal when the recheck changed nothing."""
+    data = json.loads(json.dumps(run_file))
+    process = data.get('process') if isinstance(data.get('process'), dict) else {}
+    process.pop('rechecked_at', None)
+    if isinstance(process.get('loaded'), dict):
+        process['loaded'].pop('checked_at', None)
+    if isinstance(process.get('shown'), dict):
+        process['shown'].pop('at', None)
+    return data
+
+
+def active_epics(state, main_fingerprint):
+    """The epics of the run files without a merged record: {epic, started_at, done_at, has_record, note, fingerprint
+    (of the main checkout at the start; None without a reading), current (equal to today's; None when unknown)}; the
+    note tells an epic in progress from a ready PR without a record."""
+    found = []
+    for name in sorted(glob.glob(os.path.join(glob.escape(os.path.join(state, 'runs')), '*.json'))):
+        epic = os.path.basename(name)[:-len('.json')]
+        record = read_previous(state_path(state, epic))
+        if isinstance(record, dict) and record.get('merged_at'):
+            continue
+        try:
+            data = read_run_file(name) or {}
+        except MetricsError:
+            data = {}
+        process = data.get('process') if isinstance(data.get('process'), dict) else {}
+        fingerprint = _fingerprints(process.get('disk')).get('main_checkout') if process.get('status') == 'checked' \
+            else None
+        done = data.get('done_at')
+        note = ('w toku' if not done else 'PR gotowy, rekord bez merge\'u (uruchom metrics.py epic %s po merge\'u)'
+                % epic if isinstance(record, dict) else 'PR gotowy, brak rekordu (uruchom metrics.py epic %s)' % epic)
+        found.append({'epic': epic, 'started_at': data.get('started_at'), 'done_at': done,
+                      'has_record': isinstance(record, dict), 'note': note, 'fingerprint': fingerprint,
+                      'current': None if fingerprint is None or main_fingerprint is None
+                      else fingerprint == main_fingerprint})
+    return found
+
+
+def _files_count(places):
+    """The number of the files that are a mismatch in the places (process_version.mismatch_paths)."""
+    return sum(len(process_version.mismatch_paths(p)) for p in places or [] if isinstance(p, dict))
+
+
+def _kinds(places):
+    return ', '.join(p.get('kind') or '?' for p in places or [] if isinstance(p, dict)
+                     and process_version.place_problems(p)) or '-'
+
+
+def _epic_branch_paths(places):
+    """The files the epic's own commits changed in the worktree (information, not a mismatch)."""
+    return sorted({d.get('path') for p in places or [] if isinstance(p, dict)
+                   for d in process_version.own_changes(p) if isinstance(d, dict) and d.get('path')})
+
+
+def informational_changes(process):
+    """The disk changes of the run file that are information (the epic's own commits), plus the reading of the start
+    when its worktree already had such commits."""
+    found = [c for c in _list(process.get('changes')) if isinstance(c, dict) and c.get('kind') == 'disk'
+             and c.get('informational') is True]
+    return found + ([process] if _epic_branch_paths(process.get('disk')) else [])
+
+
+def checked_gaps(process, gaps):
+    """The `gaps` of a checked reading: a reading not from the start, a start accepted despite a difference, every
+    change and acceptance (a commit of the epic branch and a return to an accepted state as information, clearly
+    apart from a mismatch)."""
+    late = process.get('checked_on') != 'start'
+    if late:
+        gaps.add('process', 'odczyt wersji z %s, nie ze startu epiku' % process.get('checked_on'))
+    failure = process.get('start_failure')
+    if failure:
+        failure = _dict(failure) if isinstance(failure, dict) else {'reason': failure}
+        gaps.add('process', 'kontrola wersji przy starcie nieudana: %s; start zaakceptowany: %s'
+                 % (failure.get('reason'), failure.get('accepted') or 'brak akceptacji'))
+    if process.get('match') is False:
+        details = (_files_count(process.get('disk')), _kinds(process.get('disk')),
+                   ', '.join(_dict(process.get('user_level')).get('skills') or []) or 'brak')
+        if late:
+            gaps.add('process', 'start bez kontroli; różnica definicji wykryta przy %s (%d plików: %s; skille '
+                                'użytkownika: %s), bez akceptacji przy tym odczycie'
+                     % ((process.get('checked_on'),) + details))
+        else:
+            gaps.add('process', 'start mimo różnicy definicji (%d plików: %s; skille użytkownika: %s); powód: %s'
+                     % (details + (process.get('accepted') or 'brak akceptacji',)))
+    paths = _epic_branch_paths(process.get('disk'))
+    if paths:
+        gaps.add('process', 'informacja (nie niezgodność): pliki zmienione w gałęzi epiku przy starcie: %s'
+                 % ', '.join(paths))
+    for change in process.get('changes') or []:
+        if not isinstance(change, dict):
+            continue
+        if change.get('kind') == 'disk' and change.get('informational') is True:
+            gaps.add('process', 'informacja (nie niezgodność): pliki zmienione w gałęzi epiku przy %s %s: %s' % (
+                change.get('event'), change.get('at'), ', '.join(_epic_branch_paths(change.get('disk'))) or '-'))
+        elif change.get('kind') == 'disk' and change.get('returned') is True:
+            gaps.add('process', 'powrót do stanu bazy albo zaakceptowanego przy %s %s (nie niezgodność)'
+                     % (change.get('event'), change.get('at')))
+        elif change.get('kind') == 'disk':
+            gaps.add('process', 'zmiana definicji na dysku przy %s %s (%d plików: %s; skille użytkownika: %s)' % (
+                change.get('event'), change.get('at'), _files_count(change.get('disk')), _kinds(change.get('disk')),
+                ', '.join(_dict(change.get('user_level')).get('skills') or []) or 'brak'))
+        elif change.get('kind') == 'accepted' and change.get('event') != 'start':
+            gaps.add('process', 'zaakceptowano przy %s %s %d niezgodności: %s' % (
+                change.get('event'), change.get('at'), len(change.get('keys') or []), change.get('reason')))
+        elif change.get('kind') == 'check_failed':
+            accepted = '; zaakceptowano: %s' % change['accepted'] if change.get('accepted') else ''
+            gaps.add('process', 'kontrola wersji przy %s %s nieudana: %s%s' % (change.get('event'), change.get('at'),
+                                                                             change.get('reason'), accepted))
+        elif change.get('kind') == 'not_checked':
+            gaps.add('process', 'kontrola pominięta przy %s %s (zapis po fakcie --at)%s' % (
+                change.get('event'), change.get('at'), ', sesja %s' % change['session'] if change.get('session') else ''))
+
+
+def native_process(run_file, run, worktree, projects, started, until, attempts, now, gaps):
+    """W4: the field `process` of the native record: the one of the run file (the reading of the start and the
+    changes), its `loaded` computed again from every transcript of the epic (the sessions and the subagent runs from the
+    start to the merge) with `summary` and `by_role`, and the status of each subagent run in `attempts[].instructions`.
+    `gaps` (key `process`): no reading, not checked, a failed check, a start accepted despite a difference, every change
+    on disk, every `differs` and one entry with the number of `unconfirmed`. A matching reading adds no entry."""
+    process = run_file.get('process')
+    original = json.loads(json.dumps(process)) if isinstance(process, dict) else None
+    status = original.get('status') if original is not None else None
+    if original is None or status in ('not_checked', 'check_failed'):
+        process = unchecked_process(original, run_file, run, worktree, gaps)
+        if process is None or not process.get('expected'):
+            return process
+    elif status != 'checked':
+        gaps.add('process', 'nieznany stan odczytu wersji procesu')
+        return original
+    else:
+        process = original
+        process['disk_checked'] = True
+        checked_gaps(process, gaps)
+    return with_loaded(process, run_file, run, worktree, projects, started, until, attempts, now, gaps)
+
+
+DISK_NOT_CHECKED = {None: 'start sprzed kontroli wersji (plik przebiegu bez pola process)'}
+
+
+def unchecked_process(original, run_file, run, worktree, gaps):
+    """The `process` of the record for a run file without a disk check (no field, `not_checked`, `check_failed`):
+    with a `base_sha` the repository of `worktree` knows, `expected` from it now, `disk: null`, `disk_checked: false`
+    and the reason (`loaded` follows); else the field of the run file as it is (None without it) with its gap."""
+    status = original.get('status') if original is not None else None
+    if status is None:
+        reason = DISK_NOT_CHECKED[None]
+    elif status == 'not_checked':
+        reason = original.get('reason') or 'zapis po fakcie (--at)'
+    else:
+        reason = 'kontrola wersji przy starcie nieudana: %s; start zaakceptowany: %s' % (
+            original.get('reason'), original.get('accepted') or 'brak akceptacji')
+    base = run_file.get('base_sha')
+    expected = None
+    if run is not None and isinstance(base, str) and SHA_PATTERN.match(base):
+        try:
+            expected, _ = process_version.expected_of(run, worktree or os.getcwd(), base)
+        except process_version.CheckError:
+            expected = None
+    if expected is None:
+        if original is None:
+            gaps.add('process', 'brak odczytu wersji procesu w pliku przebiegu (%s); base_sha brak albo nieznany '
+                                'w repozytorium' % reason)
+        elif status == 'not_checked':
+            gaps.add('process', 'nie sprawdzono: %s' % reason)
+        else:
+            gaps.add('process', reason)
+        return original
+    process = dict(original or {}, status=status or 'not_checked', expected=expected, disk=None, disk_checked=False,
+                   disk_reason=reason, user_level=None, match=None)
+    process.setdefault('accepted', None)
+    process.setdefault('changes', [])
+    gaps.add('process', 'dysk: nie sprawdzono w czasie epiku (%s); expected z base_sha %s w chwili budowy rekordu'
+             % (reason, base[:12]))
+    for change in process['changes']:
+        if isinstance(change, dict) and change.get('kind') == 'check_failed':
+            gaps.add('process', 'kontrola wersji przy %s %s nieudana: %s' % (change.get('event'), change.get('at'),
+                                                                           change.get('reason')))
+        elif isinstance(change, dict) and change.get('kind') == 'not_checked':
+            gaps.add('process', 'kontrola pominięta przy %s %s (zapis po fakcie --at)' % (change.get('event'),
+                                                                                        change.get('at')))
+    return process
+
+
+def _explained_keys(process):
+    """The `loaded` keys a check of the epic explained (D-i, D-n): from the last `loaded` and the `loaded` entries of
+    `process.changes` of the run file."""
+    found = []
+    for section, entry in process_version.loaded_items(process.get('loaded')):
+        if entry.get('explained'):
+            found.append(process_version.loaded_key(section, entry))
+    for change in process.get('changes') or []:
+        if isinstance(change, dict) and change.get('kind') == 'loaded' and _dict(change.get('item')).get('explained'):
+            found.append(process_version.loaded_key(change.get('section'), change['item']))
+    return found
+
+
+def with_loaded(process, run_file, run, worktree, projects, started, until, attempts, now, gaps):
+    """`process.loaded` computed from every transcript of the epic against `process.expected`, with `summary`,
+    `by_role`, `attempts[].instructions` and the gaps of every `differs` and of the number of `unconfirmed`; a base
+    the repository of `worktree` does not have (a directory outside the repository) leaves every entry unconfirmed
+    with a gap, never drops the field."""
+    top = worktree or os.getcwd()
+    if run is None:
+        expected = process_version.Expected(lambda c: None, top, None, {})
+    else:
+        expected = _expected(run, top, process.get('expected'))
+    if expected.error:
+        gaps.add('process', 'treść bazy niedostępna (%s): loaded bez porównania, każda pozycja unconfirmed'
+                 % expected.error)
+    own = _session_worktrees(run_file)
+    epic = _epic_versions(run, top, expected, _epic_heads(_branch_of(run_file), record=True), own)
+    explained = _explained_keys(process)
+    loaded = process_version.loaded_of(projects, _sessions(run_file), expected, _roots(run_file, None, process),
+                                       window=(started, until), parse_time=_epoch_of, epic=epic, own=own)
+    for section, entry in process_version.loaded_items(loaded):
+        if entry.get('status') == 'differs' and process_version.loaded_key(section, entry) in explained:
+            entry['explained'] = 'accepted_disk'
+    entries = [entry for _, entry in process_version.loaded_items(loaded)]
+    by_role = {}
+    for entry in loaded['agents']:
+        if entry.get('role'):
+            cell = by_role.setdefault(entry['role'], dict.fromkeys(process_version.STATUSES, 0))
+            cell[entry['status']] += 1
+    loaded.update(checked_at=iso(now), summary=process_version.summary_of(entries), by_role=by_role)
+    process['loaded'] = loaded
+    statuses = {e['agent_id']: e['status'] for e in loaded['agents'] if e.get('agent_id')}
+    for attempt in attempts:
+        attempt['instructions'] = statuses.get(attempt.get('agent_id'))
+    for section, entry in process_version.loaded_items(loaded):
+        if entry.get('status') == 'differs':
+            gaps.add('process', 'załadowana wersja inna niż w bazie%s: %s %s%s%s' % (
+                ', zgodna z zaakceptowanym stanem %s' % ('worktree epiku' if section == 'session' else
+                                                          'głównego checkoutu') if entry.get('explained') else '',
+                section, _item_name(entry), ' (%s)' % entry['origin'] if entry.get('origin') else '',
+                ': %s' % entry['reason'] if entry.get('reason') else ''))
+    unconfirmed = loaded['summary']['unconfirmed']
+    if unconfirmed:
+        gaps.add('process', 'bez potwierdzenia w transkryptach (unconfirmed): %d pozycji, nie liczą się jako zgodne'
+                 % unconfirmed)
+    return process
+
+
+def cmd_process(args, run, now):
+    if args.epic is None:
+        if args.accept_process_mismatch is not None:
+            raise MetricsError('--accept-process-mismatch działa tylko z epikiem: metrics.py process EPIK')
+        worktree = _expand(args.worktree) if args.worktree else os.getcwd()
+        try:
+            data, _ = process_version.reading(run, worktree, args.base, _expand(args.user_dir))
+        except process_version.CheckError as e:
+            raise MetricsError('kontrola wersji procesu: %s' % e)
+        data['active_epics'] = active_epics(_expand(args.state), _fingerprints(data['disk']).get('main_checkout'))
+        print(json.dumps(data, ensure_ascii=False))
+        if not data['match']:
+            print('metrics: definicje różnią się od %s (%s): %s' % (
+                data['expected']['requested'], data['expected']['ref'][:12],
+                '; '.join(_mismatch_lines(data['disk'], data['user_level'], {}))), file=sys.stderr)
+            return EXIT_PROCESS
+        return 0
+    epic_id = native_epic_id(args.epic)
+    accepted = accepted_reason(args.accept_process_mismatch)
+    path = run_path(_expand(args.state), epic_id)
+    with run_lock(path):
+        run_file = read_run_file(path)
+        if run_file is None:
+            raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
+        sessions = _sessions(run_file)
+        if args.session:
+            session = checked_id(args.session, 'sesji')
+            if session not in sessions:
+                raise MetricsError('sesja %s nie należy do epiku %s (sesje pliku przebiegu: %s)'
+                                   % (session, epic_id, ', '.join(sessions) or 'brak'))
+        else:
+            session = sessions[-1] if sessions else None
+        before = _without_times(run_file)
+        try:
+            result = recheck(run, run_file, check_dir(args, run_file), args, now, 'process', session, accepted)
+        except process_version.CheckError as e:
+            raise MetricsError('kontrola wersji procesu: %s' % e)
+        if result['status'] == 'checked' and _without_times(run_file) != before:
+            write_record(path, run_file)
+    process = run_file.get('process') or {}
+    output = {'epic': epic_id, 'status': result['status'], 'late': result['late'],
+              'expected': process.get('expected'), 'disk': result.get('disk'),
+              'user_level': result.get('user_level'), 'loaded': result.get('loaded'), 'added': result['added'],
+              'mismatches': result['lines'], 'accepted': accepted if result.get('accepted') else None,
+              'match': not result['mismatch']}
+    if result['status'] == 'not_checked':
+        output['reason'] = result.get('reason')
+    print(json.dumps(output, ensure_ascii=False))
+    if result['mismatch']:
+        print('metrics: wersja procesu epiku %s niezgodna z bazą: %s; %s%s' % (
+            epic_id, '; '.join(result['lines']), MISMATCH_HINT % epic_id,
+            '; ' + UNSHOWN if result.get('unshown') else ''), file=sys.stderr)
+        return EXIT_PROCESS
     return 0
 
 
@@ -2496,6 +3846,11 @@ AGENT_META = re.compile(r'^agent-(.+)\.meta\.json$')
 
 HANDBACK = 'SubagentHandback'               # the tool call with which a subagent hands its report back (M4)
 AGENT_CALL = 'Agent'                        # the tool call with which the lead session starts a subagent
+SEND_MESSAGE = 'SendMessage'                # the tool call with which the lead writes to (or resumes) a subagent
+COORDINATOR = 'coordinator'                 # the `origin.kind` of the line that resumes a subagent in its transcript
+RESUME_WINDOW_S = 60                        # the most a resume of the lead may lie from the line it confirms
+EPIC_MARKER = 'EPIC'                        # `<EPIC>-EPIC`: an order of the review of the whole change (no task)
+UNKNOWN_TASK = 'unknown_task'               # the key of the orders whose task is unknown (a resume without an id)
 VERDICT_TOKENS = ('CHANGES_REQUIRED', 'INVESTIGATE', 'SIMPLIFY', 'REWORK', 'BLOCK', 'PASS', 'KEEP')
 _VERDICT_WORDS = '|'.join(VERDICT_TOKENS)
 _VERDICT_LABEL = r'(?i:werdykt|verdict)'
@@ -2545,14 +3900,18 @@ def read_native(path, seen_tools):
     key)] of the user and assistant lines with a timestamp (`line_mark`; key: the `uuid` of a human line), `untimed_human`
     (human lines without a timestamp), `user_lines` and `origin_lines` (the user lines that are no tool result, and
     those of them with an `origin`: without any, a human message cannot be told apart) and `reports` [(at, verdict word
-    or None)] of the `SubagentHandback` calls in file order and `launched` [(at, agent id)] of the subagents the file
-    starts (`toolUseResult.agentId` of the result of an `Agent` call) and `skipped` (the lines that are no JSON object,
-    blank lines aside); (None, reason) when the file is missing, unreadable, empty or has no line that is a JSON
-    object."""
+    or None, line)] of the `SubagentHandback` calls in file order and `launched` [(at, agent id)] of the subagents the
+    file starts (`toolUseResult.agentId` of the result of an `Agent` call) and `skipped` (the lines that are no JSON
+    object, blank lines aside). For the orders of a subagent (`native_orders`): `timed` [(line, at)] of the user and
+    assistant lines with a timestamp, `positions` {message id: its first line}, `candidates` [(line, at)] of the user
+    lines from the coordinator (`origin.kind` `coordinator`, no tool result: a resume), `resumes` [{id, agent, at,
+    summary}] of the `SendMessage` calls whose result resumed a subagent (`toolUseResult.resumedAgentId`; the summary
+    only for the task id, never stored). A line is its number among the JSON object lines of the file. (None, reason)
+    when the file is missing, unreadable, empty or has no line that is a JSON object."""
     data = {'messages': {}, 'inits': [], 'results': [], 'retries': [], 'denials': {}, 'tools': [], 'times': [],
             'marks': [], 'untimed_human': 0, 'user_lines': 0, 'origin_lines': 0, 'reports': [], 'launched': [],
-            'skipped': 0}
-    versions, reports, agent_calls, lines = set(), set(), set(), 0
+            'skipped': 0, 'timed': [], 'positions': {}, 'candidates': [], 'resumes': []}
+    versions, reports, agent_calls, send_calls, lines = set(), set(), set(), {}, 0
     try:
         with open(path, encoding='utf-8', errors='replace') as f:
             for raw in f:
@@ -2571,15 +3930,21 @@ def read_native(path, seen_tools):
                     continue
                 at = _timestamp(line.get('timestamp'))
                 mark = line_mark(line)
+                origin = line.get('origin')
                 if line['type'] == 'user' and mark != 'work':
                     data['user_lines'] += 1
-                    data['origin_lines'] += isinstance(line.get('origin'), dict)
+                    data['origin_lines'] += isinstance(origin, dict)
+                    if isinstance(origin, dict) and origin.get('kind') == COORDINATOR:
+                        data['candidates'].append((lines, at))
                 if at is not None:
                     data['times'].append(at)
+                    data['timed'].append((lines, at))
                     data['marks'].append((at, mark, line.get('uuid') if isinstance(line.get('uuid'), str) else None))
                 elif mark == 'human':
                     data['untimed_human'] += 1
                 message = line.get('message') if isinstance(line.get('message'), dict) else {}
+                if line['type'] == 'assistant' and isinstance(message.get('id'), str):
+                    data['positions'].setdefault(message['id'], lines)
                 launch = line.get('toolUseResult') if isinstance(line.get('toolUseResult'), dict) else {}
                 for block in message.get('content') if isinstance(message.get('content'), list) else []:
                     if not isinstance(block, dict):
@@ -2589,11 +3954,21 @@ def read_native(path, seen_tools):
                     if block.get('type') == 'tool_result' and block.get('tool_use_id') in agent_calls \
                             and isinstance(launch.get('agentId'), str):
                         data['launched'].append((at, launch['agentId']))
+                    if block.get('type') == 'tool_use' and block.get('name') == SEND_MESSAGE \
+                            and isinstance(block.get('id'), str):
+                        tool_input = block.get('input') if isinstance(block.get('input'), dict) else {}
+                        summary = tool_input.get('summary')
+                        send_calls.setdefault(block['id'], (at, summary if isinstance(summary, str) else None))
+                    if block.get('type') == 'tool_result' and block.get('tool_use_id') in send_calls \
+                            and isinstance(launch.get('resumedAgentId'), str):
+                        called, summary = send_calls[block['tool_use_id']]
+                        data['resumes'].append({'id': block['tool_use_id'], 'agent': launch['resumedAgentId'],
+                                                'at': at if at is not None else called, 'summary': summary})
                     if block.get('type') == 'tool_use' and block.get('name') == HANDBACK \
                             and block.get('id') not in reports:
                         reports.add(block.get('id'))
                         tool_input = block.get('input') if isinstance(block.get('input'), dict) else {}
-                        data['reports'].append((at, verdict_token(tool_input.get('message'))))
+                        data['reports'].append((at, verdict_token(tool_input.get('message')), lines))
     except FileNotFoundError:
         return None, 'brak pliku transkryptu'
     except OSError as e:
@@ -2637,12 +4012,55 @@ def read_meta(path, label, gaps):
     return found
 
 
-def task_of(description, epic_id):
-    """The task of a subagent run (D4): the first `<EPIC>-<n>` in the description of its call, else None."""
-    if not isinstance(description, str):
-        return None
-    found = re.search(r'(?<![A-Za-z0-9])%s-(\d+)(?![0-9])' % re.escape(epic_id), description, re.IGNORECASE)
-    return '%s-%s' % (epic_id.upper(), found.group(1)) if found else None
+def order_ref(text, epic_id):
+    """(kind, ref) of the source of an order (D4: the `description` of a run, the `summary` of a resume): the first
+    `<EPIC>-<id>` in it, case-insensitive, in upper case, whose id is letters and digits with a digit (`plan` when it is
+    digits only, else `outside_plan`), or the marker of the review of the whole change `<EPIC>-EPIC` (`epic`, no ref),
+    whichever comes first; any other word after the epic name and the name alone mean nothing: (None, None). The text
+    is only read, never stored."""
+    if not isinstance(text, str):
+        return None, None
+    for found in re.finditer(r'(?<![A-Za-z0-9])%s-([A-Za-z0-9]+)' % re.escape(epic_id), text, re.IGNORECASE):
+        word = found.group(1).upper()
+        if word == EPIC_MARKER:
+            return 'epic', None
+        if any(c.isdigit() for c in word):
+            return 'plan' if word.isdigit() else 'outside_plan', '%s-%s' % (epic_id.upper(), word)
+    return None, None
+
+
+def order_assignment(order, description, epic_id):
+    """{assignment, task, ref, task_source} of an order (spec: Identyfikator i przypisanie zlecenia): the first order
+    from the description of the run, a resume from the `summary` of the `SendMessage` call that confirmed it. `plan`
+    (a plan task), `outside_plan` (a known id outside the plan: `no_task` in the sections), `no_task` (the marker
+    `<EPIC>-EPIC`, or a description without an id) and `unknown`: a resume without an id or a marker, or a boundary
+    without a resume of the lead (`unknown_task` in the sections; the reason is added to the `notes` of the order).
+    The task is never taken from the order before."""
+    if order['boundary'] == 'launch':
+        kind, ref = order_ref(description, epic_id)
+        source = 'description'
+    elif order['resume'] is not None:
+        kind, ref = order_ref(order['resume']['summary'], epic_id)
+        source = 'summary'
+        if kind is None:
+            order['notes'].append('zlecenie %d: summary wznowienia bez ID zadania ani oznaczenia <EPIK>-EPIC: '
+                                  'zadanie nieustalone (unknown_task)' % order['n'])
+            return {'assignment': 'unknown', 'task': None, 'ref': None, 'task_source': None}
+    else:
+        order['notes'].append('zlecenie %d: wznowienie bez potwierdzenia w sesji prowadzącej: zadanie nieustalone '
+                              '(unknown_task)' % order['n'])
+        return {'assignment': 'unknown', 'task': None, 'ref': None, 'task_source': None}
+    if kind in ('plan', 'outside_plan'):
+        return {'assignment': kind, 'task': ref if kind == 'plan' else None, 'ref': ref, 'task_source': source}
+    return {'assignment': 'no_task', 'task': None, 'ref': None, 'task_source': source}
+
+
+def order_key(order):
+    """The key of an order in the sections by task: its plan task, `no_task` (also `outside_plan`, decision D2) or
+    `unknown_task`."""
+    if order['assignment'] == 'unknown':
+        return UNKNOWN_TASK
+    return order['task'] or NO_TASK
 
 
 def message_value(message, pricing):
@@ -2739,27 +4157,174 @@ def in_window(at, low, high):
     return at is None or ((low is None or at >= low) and (high is None or at <= high))
 
 
+def lead_resumes(datas):
+    """{agent id: [resume]} of the `SendMessage` calls of the lead transcripts that resumed a subagent (`read_native`),
+    every call once by its id (a resumed or forked lead session repeats the lines), in the order of their time; a
+    resume without a time cannot confirm a line and is left out."""
+    found, seen = {}, set()
+    for data in datas:
+        for resume in data['resumes']:
+            if resume['id'] in seen or resume['at'] is None:
+                continue
+            seen.add(resume['id'])
+            found.setdefault(resume['agent'], []).append(resume)
+    for resumes in found.values():
+        resumes.sort(key=lambda r: (r['at'], r['id']))
+    return found
+
+
+def native_orders(data, resumes):
+    """(orders, unmatched) of a subagent run: the orders [{n, start, boundary, resume, notes}] in the order of its
+    transcript and the resumes of the lead for it that confirmed no line. The first order starts at its first line
+    (`launch`); a line from the coordinator (`candidates`) starts the next one when the next resume of the lead for
+    this subagent lies at most RESUME_WINDOW_S from it (`resume`; without a report of the current order
+    `resume_unreported`) or, without such a resume, when the current order has a report (`resume_unconfirmed`); a line
+    with neither stays in the current order. `notes`: the gaps of an order (the last two kinds of a boundary, a line
+    that splits nothing), added only for the orders of the record (`native_fields`)."""
+    orders = [{'n': 1, 'start': 0, 'boundary': 'launch', 'resume': None, 'notes': []}]
+    reports = [line for _, _, line in data['reports']]
+    unmatched, following = [], 0
+    for line, at in data['candidates']:
+        matched = None
+        if at is not None:
+            while following < len(resumes) and resumes[following]['at'] < at - RESUME_WINDOW_S:
+                unmatched.append(resumes[following])
+                following += 1
+            if following < len(resumes) and resumes[following]['at'] <= at + RESUME_WINDOW_S:
+                matched = resumes[following]
+                following += 1
+        reported = any(orders[-1]['start'] <= report < line for report in reports)
+        n, notes = len(orders) + 1, []
+        if matched is not None and reported:
+            boundary = 'resume'
+        elif matched is not None:
+            boundary = 'resume_unreported'
+            notes.append('zlecenie %d: wznowienie bez raportu %s poprzedniego zlecenia (resume_unreported)'
+                         % (n, HANDBACK))
+        elif reported:
+            boundary = 'resume_unconfirmed'
+            notes.append('zlecenie %d: granica po raporcie bez potwierdzenia wznowienia w transkryptach sesji '
+                         'prowadzącej (resume_unconfirmed)' % n)
+        else:
+            orders[-1]['notes'].append('zlecenie %d: linia coordinator bez raportu poprzedniego zlecenia i bez '
+                                       'wznowienia w sesji prowadzącej: nie dzieli zlecenia' % orders[-1]['n'])
+            continue
+        orders.append({'n': n, 'start': line, 'boundary': boundary, 'resume': matched, 'notes': notes})
+    return orders, unmatched + resumes[following:]
+
+
+def unmatched_resumes(unmatched, data, started, until, agent, gaps):
+    """Gaps for the resumes of the lead in the interval of the epic that confirmed no line of the subagent: in the time
+    of its transcript (another format of the line that resumes it, a lost line) its orders may be unsplit and the time
+    of the run may hold the gaps between them; after its last line (an interrupted write) the order after the resume
+    has no line in the transcript, so its time and tokens are lost."""
+    times = [at for _, at in data['timed']]
+    found = [r for r in unmatched if times and r['at'] >= min(times) and in_window(r['at'], started, until)]
+    inside = sum(1 for r in found if r['at'] <= max(times))
+    if inside:
+        gaps.add('attempts.%s' % agent, 'wznowienia w sesji prowadzącej bez linii coordinator w transkrypcie '
+                                        'subagenta (%d): zlecenia mogą być niepodzielone, wall_s może zawierać '
+                                        'odstępy' % inside)
+    if len(found) > inside:
+        gaps.add('attempts.%s' % agent, 'wznowienia w sesji prowadzącej po ostatniej linii transkryptu subagenta (%d): '
+                                        'zlecenie po wznowieniu bez linii w transkrypcie, jego czas i tokeny utracone'
+                                        % (len(found) - inside))
+
+
+def order_parts(data, orders, started, until):
+    """[(order, times, messages, reports)] of the orders that have a line or a message in the interval: the timestamps
+    of their user and assistant lines in it, their counted messages (`data['messages']`, already cut to the interval;
+    a message belongs to the order of its first line) and their reports in it."""
+    starts = [order['start'] for order in orders]
+
+    def index(line):
+        return bisect.bisect_right(starts, line) - 1
+
+    parts = [([], [], []) for _ in orders]
+    for line, at in data['timed']:
+        if in_window(at, started, until):
+            parts[index(line)][0].append(at)
+    for message_id, message in data['messages'].items():
+        parts[index(data['positions'].get(message_id, 0))][1].append(message)
+    for at, token, line in data['reports']:
+        if in_window(at, started, until):
+            parts[index(line)][2].append((at, token))
+    return [(order,) + part for order, part in zip(orders, parts) if part[0] or part[1]]
+
+
+def run_time(orders, start, end, agent, gaps):
+    """{wall_s, idle_s} of a subagent run from its orders (decision D1): `wall_s` the sum of the time of its orders,
+    `idle_s` the rest of its span (the gaps between the orders). An order without a timestamp makes the sum a lower
+    bound (`incomplete`, a gap) and the rest unknown; a run without any timestamp has neither."""
+    if start is None:
+        return {'wall_s': None, 'idle_s': None}
+    walls = [order['wall_s'] for order in orders]
+    found = {'wall_s': round(sum(w for w in walls if w is not None), 3)}
+    if None in walls:
+        found['idle_s'] = None
+        found['incomplete'] = True
+        for order in orders:
+            if order['wall_s'] is None:
+                gaps.add('attempts.%s' % agent, 'zlecenie %d bez czasu wiadomości: wall_s przebiegu to dolna granica'
+                         % order['n'])
+    else:
+        found['idle_s'] = round(round(end - start, 3) - found['wall_s'], 3)
+        if found['idle_s'] < 0:
+            found['idle_s'] = None
+            gaps.add('attempts.%s' % agent, 'zlecenia nachodzą na siebie (znaczniki czasu nie po kolei): idle_s '
+                                            'nieznane, wall_s może liczyć część czasu podwójnie')
+    return found
+
+
+def native_by_task(runs, gaps):
+    """`by_task` of a native record from [(attempt, [(key, order number, wall_s)])]: per key the time of its orders
+    (`work`), the runs with an order of it (`attempts`) and its orders (`orders`); an order without a timestamp is left
+    out of `work` (`incomplete`, a gap)."""
+    by_task = {}
+    for attempt, rows in runs:
+        for key in sorted({row[0] for row in rows}):
+            by_task.setdefault(key, {'kind': None, 'work': 0.0, 'attempts': 0, 'orders': 0})['attempts'] += 1
+        for key, n, wall in rows:
+            entry = by_task[key]
+            entry['orders'] += 1
+            if wall is not None:
+                entry['work'] = round(entry['work'] + wall, 3)
+                continue
+            entry['incomplete'] = True
+            if attempt['wall_s'] is None:
+                gaps.add('by_task', 'przebieg %s bez czasu wiadomości: pominięty w czasie' % attempt['agent_id'])
+            else:
+                gaps.add('by_task', 'zlecenie %d przebiegu %s bez czasu wiadomości: pominięte w czasie (suma to '
+                                    'dolna granica)' % (n, attempt['agent_id']))
+    return by_task
+
+
 def native_fields(epic_id, projects, sessions, started, until, config, gaps):
     """{attempts, by_task, value, in_attempts, versions, marks, untimed_human, reviews, messages} of a native epic
     from the transcripts of its sessions: the messages from `started` to `until` (the merge of the final PR; None: no
     bound), every message id once (its first occurrence, also in a resumed or forked session), the lead session as
     `orchestrator` without a task, every subagent run one attempt with its role (agentType), task (D4), model and
-    effort. `marks`: the marks of every transcript (`read_native`, not cut to the interval); `reviews`: the reports
-    of the review roles in the interval (M4); `messages`: {message id: timestamp} of the counted messages; `coverage`:
-    `none` (no transcript of a session of the run file was read), `partial` (only some, or a subagent transcript of a
-    session read is lost: missing, empty or unreadable, also one the lead session started in the interval without
-    any file of it) or `full`; `no_origin`: the lead sessions have user lines but none with an `origin` (a change of
-    the transcript format); `transcripts_read`: the number of transcripts read (sessions and subagents, also those
-    without a line in the interval)."""
+    effort, split into its orders (`native_orders`; the time of the run is the sum of their time, `run_time`). The
+    lead transcripts are read before the subagents: their resumes confirm the orders. `marks`: the marks of every
+    transcript (`read_native`, not cut to the interval); `reviews`: the reports of the review roles in the interval
+    (M4); `messages`: {message id: timestamp} of the counted messages; `coverage`: `none` (no transcript of a session
+    of the run file was read), `partial` (only some, or a subagent transcript of a session read is lost: missing,
+    empty or unreadable, also one the lead session started in the interval without any file of it) or `full`;
+    `no_origin`: the lead sessions have user lines but none with an `origin` (a change of the transcript format);
+    `transcripts_read`: the number of transcripts read (sessions and subagents, also those without a line in the
+    interval)."""
     pricing = config['pricing']
     seen_ids, seen_tools = set(), set()
     attempts, items, datas, marks, reviews, messages = [], [], [], [], [], {}
     untimed_human, user_lines, origin_lines, read, lost, launched = 0, 0, 0, set(), set(), set()
     transcripts_read = 0
     transcripts = native_transcripts(projects, sessions, gaps)
-    for kind, session, agent, path, meta_path in transcripts:
+    loaded = [(kind, session, agent, meta_path) + read_native(path, seen_tools)
+              for kind, session, agent, path, meta_path in transcripts]
+    resumes = lead_resumes([data for kind, _, _, _, data, _ in loaded if kind == 'session' and data is not None])
+    runs = []
+    for kind, session, agent, meta_path, data, reason in loaded:
         label = 'sesja %s' % session if kind == 'session' else 'agent %s' % agent
-        data, reason = read_native(path, seen_tools)
         if data is None:
             gaps.add('sessions', '%s: %s' % (label, reason))
             if kind == 'agent':
@@ -2791,10 +4356,7 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
             items += native_items(NO_TASK, known, unknown)
             continue
         meta = read_meta(meta_path, 'attempts.%s' % agent, gaps)
-        task = task_of(meta['description'], epic_id)
         role = meta['role'] or SUBAGENT
-        known, unknown, usage_missing = native_cells(data['messages'].values(), role, pricing, label, gaps)
-        items += native_items(task or NO_TASK, known, unknown)
         models = {}
         for message in data['messages'].values():
             if message['model']:
@@ -2802,31 +4364,50 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
         model = max(sorted(models), key=lambda m: models[m]) if models else None
         if model is None:
             gaps.add('attempts.%s' % agent, 'brak message.model w wiadomościach przebiegu: model nieznany')
-        tokens = dict(ZERO_TOKENS)
-        for cells in (known, unknown):
-            for cell in cells.get(role, {}).values():
-                for key in ZERO_TOKENS:
-                    tokens[key] += cell['tokens'][key]
+        every, unmatched = native_orders(data, resumes.get(agent, []))
+        unmatched_resumes(unmatched, data, started, until, agent, gaps)
+        for order in every:
+            order.update(order_assignment(order, meta['description'], epic_id))
+        task = every[0]['task']
+        reviews += reviews_of_run(agent, meta['role'], data['reports'], every, started, until, gaps)
+        orders, rows, tokens, usd, usage_missing, unknown_value = [], [], dict(ZERO_TOKENS), 0.0, False, False
+        for order, times, found, reports in order_parts(data, every, started, until):
+            for note in order['notes']:
+                gaps.add('attempts.%s' % agent, note)
+            known, unknown, missing = native_cells(found, role, pricing, label, gaps)
+            items += native_items(order_key(order), known, unknown)
+            own = dict(ZERO_TOKENS)
+            for cells in (known, unknown):
+                for cell in cells.get(role, {}).values():
+                    for key in ZERO_TOKENS:
+                        own[key] += cell['tokens'][key]
+                        tokens[key] += cell['tokens'][key]
+            own_usd = sum(c['usd'] for c in known.get(role, {}).values())
+            usd += own_usd
+            usage_missing, unknown_value = usage_missing or missing, unknown_value or bool(unknown)
+            wall = round(max(times) - min(times), 3) if times else None
+            rows.append((order_key(order), order['n'], wall))
+            orders.append({'n': order['n'], 'boundary': order['boundary'], 'assignment': order['assignment'],
+                           'task': order['task'], 'ref': order['ref'], 'task_source': order['task_source'],
+                           'started_at': iso(min(times)) if times else None,
+                           'ended_at': iso(max(times)) if times else None, 'wall_s': wall,
+                           'reported_at': iso(reports[0][0]) if reports else None,
+                           'tokens': None if missing else _tokens_out(own),
+                           'value': None if unknown else _round_usd(own_usd), 'estimated': True})
         start, end = (min(data['times']), max(data['times'])) if data['times'] else (None, None)
-        value = None if unknown else _round_usd(sum(c['usd'] for c in known.get(role, {}).values()))
-        reviews += reviews_of_run(agent, task, meta['role'], data['reports'], started, until, gaps)
-        attempts.append({'agent_id': agent, 'task': task, 'role': meta['role'],
-                         'model': model if model is None or SAFE_NAME.match(model) else 'unknown',
-                         'effort': meta['effort'], 'started_at': iso(start), 'ended_at': iso(end),
-                         'wall_s': None if start is None else round(end - start, 3), 'value': value, 'estimated': True,
-                         'tokens': None if usage_missing else _tokens_out(tokens), 'finished': meta['finished']})
+        attempt = {'agent_id': agent, 'task': task, 'role': meta['role'],
+                   'model': model if model is None or SAFE_NAME.match(model) else 'unknown',
+                   'effort': meta['effort'], 'started_at': iso(start), 'ended_at': iso(end)}
+        attempt.update(run_time(orders, start, end, agent, gaps))
+        attempt.update({'value': None if unknown_value else _round_usd(usd), 'estimated': True,
+                        'tokens': None if usage_missing else _tokens_out(tokens), 'finished': meta['finished'],
+                        'orders': orders})
+        attempts.append(attempt)
+        runs.append((attempt, rows))
     for agent in sorted(launched - {t[2] for t in transcripts}):
         gaps.add('sessions', 'agent %s: uruchomiony w sesji prowadzącej, brak jego transkryptu i meta.json' % agent)
         lost.add(agent)
-    by_task = {}
-    for attempt in attempts:
-        entry = by_task.setdefault(attempt['task'] or NO_TASK, {'kind': None, 'work': 0.0, 'attempts': 0})
-        entry['attempts'] += 1
-        if attempt['wall_s'] is None:
-            entry['incomplete'] = True
-            gaps.add('by_task', 'przebieg %s bez czasu wiadomości: pominięty w czasie' % attempt['agent_id'])
-        else:
-            entry['work'] = round(entry['work'] + attempt['wall_s'], 3)
+    by_task = native_by_task(runs, gaps)
     compiled = compile_categories(config)
     in_attempts = in_attempts_of([commands_of(d, config, compiled) for d in datas])
     if not datas:
@@ -2851,24 +4432,35 @@ INTEGRATION_ROLES = ('architecture-reviewer', 'qa-adversarial', 'ux-reviewer')  
 NO_BREAKDOWN_SOURCE = ('limit_wait', 'ci_wait', 'host_pause', 'github_wait')
 
 
-def reviews_of_run(agent, task, role, reports, started, until, gaps):
-    """The reviews (M4) of one subagent run of a review role: one per report handed back in the interval, the first
-    report of the transcript `FULL`, every later one (after a resume) `DELTA`; the verdict only when it is one of the
-    role's contract (else None with a gap), never the text."""
+def reviews_of_run(agent, role, reports, orders, started, until, gaps):
+    """The reviews (M4) of one subagent run of a review role: one per report handed back in the interval, with the
+    task, the ref and the assignment of the order it lies in (`order_assignment`); `FULL` for the first report of the
+    run with that ref (for `no_task`: the first report of the run in that state), `DELTA` for the later ones, None with
+    a gap in an order whose task is unknown; the verdict only when it is one of the role's contract (else None with a
+    gap), never the text."""
     if role not in REVIEW_VERDICTS:
         return []
     if not reports:
         gaps.add('reviews', 'przebieg %s (%s) bez raportu %s' % (agent, role, HANDBACK))
         return []
-    found = []
-    for index, (at, token) in enumerate(reports):
+    starts = [order['start'] for order in orders]
+    found, seen = [], set()
+    for at, token, line in reports:
+        order = orders[bisect.bisect_right(starts, line) - 1]
+        key = None if order['assignment'] == 'unknown' else ('ref', order['ref']) if order['ref'] else (NO_TASK,)
+        mode = None if key is None else 'DELTA' if key in seen else 'FULL'
+        seen.add(key)
         if not in_window(at, started, until):
             continue
         verdict = token if token in REVIEW_VERDICTS[role] else None
         if verdict is None:
             gaps.add('reviews', 'raport %s (%s) bez rozpoznanego werdyktu: werdykt null' % (agent, role))
-        found.append({'task': task, 'role': role, 'agent_id': agent, 'at': iso(at), 'mode': 'DELTA' if index else 'FULL',
-                      'verdict': verdict, 'blocking': None if verdict is None else verdict in BLOCKING_VERDICTS})
+        if mode is None:
+            gaps.add('reviews', 'raport %s (%s) w zleceniu %d z zadaniem nieustalonym: tryb null'
+                     % (agent, role, order['n']))
+        found.append({'task': order['task'], 'ref': order['ref'], 'assignment': order['assignment'], 'role': role,
+                      'agent_id': agent, 'at': iso(at), 'mode': mode, 'verdict': verdict,
+                      'blocking': None if verdict is None else verdict in BLOCKING_VERDICTS})
     return found
 
 
@@ -2895,28 +4487,60 @@ def human_gaps(marks):
     return found
 
 
-def native_breakdown(work, pauses, started, done, config, gaps):
-    """M3 `breakdown` of a native epic from the start to `done`: `work` the union of the intervals of work of the lead
-    and the subagents, `human_wait` the pauses before a human line that no work covers, `idle` the rest; the other
-    categories have no native source (null)."""
+def native_pauses(run_file, gaps):
+    """The pauses of the computer of the run file (`metrics.py pause`) as merged (start, end) epochs; None without any
+    (no key or an empty list): the record then has no source of `host_pause`. A bad entry is skipped with a gap."""
+    entries = run_file.get('pauses')
+    if not isinstance(entries, list) or not entries:
+        return None
+    found = []
+    for entry in entries:
+        try:
+            begin = night_queue.parse_time(entry.get('from')).timestamp()
+            end = night_queue.parse_time(entry.get('to')).timestamp()
+        except (TypeError, ValueError, AttributeError):
+            gaps.add('pauses', 'wpis przerwy bez poprawnych from i to: pominięty')
+            continue
+        if begin >= end:
+            gaps.add('pauses', 'wpis przerwy z from nie przed to: pominięty')
+            continue
+        found.append((begin, end))
+    return clip_merge(found, float('-inf'), float('inf')) if found else None
+
+
+def native_breakdown(work, pauses, started, done, config, gaps, host=None):
+    """M3 `breakdown` of a native epic from the start to `done`: `host_pause` the recorded pauses of the computer
+    (`host`, cut to the interval; they come first), `work` the union of the intervals of work of the lead and the
+    subagents outside them, `human_wait` the pauses before a human line that neither covers, `idle` the rest; the
+    other categories have no native source (null), `host_pause` neither without a recorded pause."""
     if started is None or done is None:
         gaps.add('breakdown', 'brak czasu startu albo wywołania metrics.py done: rozkład czasu niemożliwy')
         return None
-    busy = clip_merge(work, started, done)
-    waiting = subtract(clip_merge(pauses, started, done), busy)
+    stopped = clip_merge(host or [], started, done)
+    worked = clip_merge(work, started, done)
+    busy = subtract(worked, stopped)
+    covered = round(total(worked) - total(busy), 3)
+    if covered > 0:
+        gaps.add('pauses', 'zapisane przerwy przykrywają %g s pracy z transkryptów (przerwa ma pierwszeństwo: ten czas '
+                           'jest w host_pause, nie w work); sprawdź czasy przerw' % covered)
+    waiting = subtract(subtract(clip_merge(pauses, started, done), busy), stopped)
     found = {name: None for name in config['breakdown_order']}
     found['work'], found['human_wait'] = round(total(busy), 3), round(total(waiting), 3)
-    found['idle'] = round(done - started - total(busy) - total(waiting), 3)
+    if host is not None:
+        found['host_pause'] = round(total(stopped), 3)
+    found['idle'] = round(done - started - total(busy) - total(waiting) - total(stopped), 3)
     for name in NO_BREAKDOWN_SOURCE:
-        gaps.add('breakdown.%s' % name, '%s: czas tej kategorii jest w work i idle' % NATIVE_SOURCE)
+        if name != 'host_pause' or host is None:
+            gaps.add('breakdown.%s' % name, '%s: czas tej kategorii jest w work i idle' % NATIVE_SOURCE)
     return found
 
 
-def native_human(pauses, work, untimed, started, until, manual_fixes, gaps):
+def native_human(pauses, work, untimed, started, until, manual_fixes, gaps, host=None):
     """M3 `human` of a native epic: every human line after the start (the start command comes before it) up to the
     merge is an intervention (an estimate: also a question about the progress counts); its event has the time and the
-    part of the pause before it that no work covers (`wait_s`), never the text."""
-    busy = clip_merge(work, float('-inf'), float('inf'))
+    part of the pause before it that neither work nor a recorded pause of the computer (`host`) covers (`wait_s`),
+    never the text."""
+    busy = clip_merge(list(work) + list(host or []), float('-inf'), float('inf'))
     events, seen = [], set()
     for start, at, key in sorted(pauses, key=lambda p: p[1]):
         if key in seen or (started is not None and at <= started) or (until is not None and at > until):
@@ -2949,6 +4573,9 @@ def native_integration(attempts, reviews, gaps):
     if any(a['wall_s'] is None for a in runs):
         found['incomplete'] = True
         gaps.add('integration', 'przebieg bez czasu wiadomości: pominięty w czasie')
+    elif any(a.get('incomplete') is True for a in runs):
+        found['incomplete'] = True
+        gaps.add('integration', 'zlecenie przebiegu bez czasu wiadomości: pominięte w czasie')
     return found
 
 
@@ -2962,6 +4589,9 @@ def native_retries(attempts, reviews, gaps):
     tasks = [r for r in reviews if r['task'] is not None]
     if any(r['verdict'] is None for r in tasks):
         gaps.add('retries.fix', 'przegląd zadania bez rozpoznanego werdyktu: liczba to dolna granica')
+    if any(r.get('assignment') == 'unknown' and r['blocking'] is not False for r in reviews):
+        gaps.add('retries.fix', 'blokujący albo nierozpoznany przegląd w zleceniu z zadaniem nieustalonym nie jest '
+                                'liczony: liczba to dolna granica')
     for field in ('attempts', 'repair', 'sync_prs'):
         gaps.add('retries.%s' % field, NATIVE_SOURCE)
     return {'attempts': None, 'failed_by_outcome': {'unfinished': unfinished} if unfinished else {}, 'repair': None,
@@ -3228,7 +4858,7 @@ def _run_time(run_file, field, gaps, reason):
 
 
 def build_native_record(epic_id, run_file, config, projects, now, run=None, no_gh=True, repo=None, previous=None,
-                        records=None, manual_fixes=None):
+                        records=None, manual_fixes=None, worktree=None):
     """(record, errors): the record of a native epic (spec ash-v1, M3) in the format of the AO record, `source:
     native`. A field without a native source is null with a gap; `errors` are the messages of failed GitHub calls (and
     of the origin gate). manual_fixes: the list of --manual-fixes or None."""
@@ -3276,6 +4906,7 @@ def build_native_record(epic_id, run_file, config, projects, now, run=None, no_g
     if any(a['value'] is None for a in fields['attempts']) or _get(fields['value'], ('total', 'incomplete')):
         gaps.add('value', 'część wiadomości bez wartości: suma niepełna')
     work, pauses = work_intervals(fields['marks']), human_gaps(fields['marks'])
+    host = native_pauses(run_file, gaps)
     record = {
         'epic': epic_id,
         'source': 'native',
@@ -3290,14 +4921,14 @@ def build_native_record(epic_id, run_file, config, projects, now, run=None, no_g
             'to_merge': round(merged - started, 3) if merged is not None and started is not None else None,
             'review': round(merged - done, 3) if merged is not None and done is not None else None,
         },
-        'breakdown': native_breakdown(work, [p[:2] for p in pauses], started, done, config, gaps),
+        'breakdown': native_breakdown(work, [p[:2] for p in pauses], started, done, config, gaps, host),
         'breakdown_incomplete': True,
         'integration': native_integration(fields['attempts'], fields['reviews'], gaps),
         'retries': native_retries(fields['attempts'], fields['reviews'], gaps),
         'parallel': None,
         'subscription': native_subscription(run_file, started, done, projects, fields['messages'], config, gaps),
         'gate_wait': None,
-        'human': native_human(pauses, work, fields['untimed_human'], started, known_merge, manual_fixes, gaps),
+        'human': native_human(pauses, work, fields['untimed_human'], started, known_merge, manual_fixes, gaps, host),
         'in_attempts': fields['in_attempts'],
         'by_task': fields['by_task'],
         'versions': fields['versions'],
@@ -3310,6 +4941,8 @@ def build_native_record(epic_id, run_file, config, projects, now, run=None, no_g
         'transcripts_read': fields['transcripts_read'],
         'pricing': {'source': config['pricing']['source'], 'read_at': config['pricing']['read_at']},
     }
+    record['process'] = native_process(run_file, run, worktree, projects, started, known_merge, record['attempts'],
+                                       now, gaps)
     for field in ('parallel', 'gate_wait', 'waste'):
         gaps.add(field, NATIVE_SOURCE)
     record['ci'] = None
@@ -3321,9 +4954,22 @@ def build_native_record(epic_id, run_file, config, projects, now, run=None, no_g
             gaps.add('ci', 'brak numeru PR albo gałęzi epiku w pliku przebiegu')
         else:
             try:
-                record['ci'] = {'final': ci_entry(run, repo, config, final_pr, branch), 'tasks': None}
+                record['ci'] = {'final': ci_entry(run, repo, config, final_pr, branch), 'tasks': None, 'time': None}
                 if not record['ci']['final']['runs']:
                     gaps.add('ci', 'brak przebiegów CI gałęzi: %s' % branch)
+                record['ci']['time'], time_error = ci_time_of(run, repo, config, run_file)
+                stored = _get(previous, ('ci', 'time'))
+                if time_error:
+                    errors.append(time_error)
+                    if isinstance(stored, dict) and stored.get('status') != 'no_data':
+                        # a gh error must not replace a measured result with "no data" (like the other gh fields)
+                        gaps.add('ci.time', 'błąd gh: %s; źródło niedostępne: zachowano poprzednią wartość' % time_error)
+                        record['ci']['time'] = stored
+                    else:
+                        gaps.add('ci.time', record['ci']['time']['reason'])
+                elif record['ci']['time']['reason']:
+                    # also next to `exceeded`: what could not be measured must be visible in the gaps
+                    gaps.add('ci.time', record['ci']['time']['reason'])
             except GhError as e:
                 errors.append(str(e))
                 gaps.add('ci', 'błąd gh: %s' % e)
@@ -3862,11 +5508,12 @@ def parse_effect_key(key):
                        % (key, D2_KEY, D3_KEY, '|'.join(D4_SUBJECTS)))
 
 
-def parse_at(text):
+def parse_at(text, option='--at'):
     try:
         return night_queue.parse_time(text).timestamp()
     except (ValueError, TypeError, AttributeError):
-        raise MetricsError('zły --at %r: oczekiwano czasu ISO 8601 z przesunięciem UTC albo Z (np. 2026-11-10T12:00:00Z)' % text)
+        raise MetricsError('zły %s %r: oczekiwano czasu ISO 8601 z przesunięciem UTC albo Z (np. 2026-11-10T12:00:00Z)'
+                           % (option, text))
 
 
 def _epoch(record, field):
@@ -4779,6 +6426,48 @@ def versions_topic(record):
     return ['Wersje CLI: %s; modele: %s' % (listed('cli', 'version') or 'brak', listed('models', 'model') or 'brak')]
 
 
+def process_topic(record):
+    """`Wersja procesu`: the expected version (`describe` and SHA), the disk (matching, or the number of differences
+    and the places) and the loaded instructions (confirmed, different, unconfirmed). Only names, SHAs and numbers (the
+    line also goes to the comment); a record without the field has no data."""
+    process = record.get('process')
+    if not isinstance(process, dict):
+        return ['Wersja procesu: %s' % NO_DATA]
+    unchecked = process.get('disk_checked') is False and isinstance(process.get('expected'), dict)
+    if process.get('status') == 'not_checked' and not unchecked:
+        return ['Wersja procesu: nie sprawdzono (zapis po fakcie)']
+    if process.get('status') != 'checked' and not unchecked:
+        return ['Wersja procesu: kontrola nieudana']
+    expected = _dict(process.get('expected'))
+    describe = expected.get('describe') if _safe(expected.get('describe')) else None
+    ref = expected.get('ref') if isinstance(expected.get('ref'), str) and SHA_PATTERN.match(expected['ref']) else None
+    parts = ['oczekiwana %s (%s)' % (describe or 'bez tagu', ref[:12] if ref else NO_DATA)]
+    changes = [c for c in _list(process.get('changes')) if isinstance(c, dict) and c.get('kind') == 'disk'
+               and c.get('informational') is not True]
+    branch = len(informational_changes(process))
+    branch_text = ' (zmian w gałęzi epiku %d)' % branch if branch else ''
+    differs = _files_count(process.get('disk'))
+    if unchecked:
+        parts.append('dysk: nie sprawdzono')
+    elif process.get('match') is True and not changes:
+        parts.append('dysk zgodny' + branch_text)
+    else:
+        places = [p.get('kind') for p in _list(process.get('disk')) if isinstance(p, dict)
+                  and process_version.mismatch_paths(p) and p.get('kind') in ('worktree', 'main_checkout')]
+        parts.append('dysk: różnic przy starcie %d%s%s%s' % (differs, ' (%s)' % ', '.join(places) if places else '',
+                                                             ', zmian w trakcie %d' % len(changes) if changes else '',
+                                                             branch_text))
+    summary = _dict(_dict(process.get('loaded')).get('summary'))
+    if all(_count(summary.get(s)) is not None for s in process_version.STATUSES):
+        epic = _count(summary.get('confirmed_epic'))
+        parts.append('załadowana: potwierdzone %d%s, różne %d, bez potwierdzenia %d' % (
+            summary['confirmed'], ' (w tym w wersji epiku %d)' % epic if epic else '', summary['differs'],
+            summary['unconfirmed']))
+    else:
+        parts.append('załadowana: %s' % NO_DATA)
+    return ['Wersja procesu: %s' % '; '.join(parts)]
+
+
 def ci_topic(record):
     ci = record.get('ci')
     if not isinstance(ci, dict):
@@ -4929,7 +6618,10 @@ def render_measurement(record, records, config, comment):
     topics += [gate_topic(record)]
     if not comment:
         topics += [human_topic(record)]
-    topics += [waste_topic(record), versions_topic(record), ci_topic(record)]
+    topics += [waste_topic(record), versions_topic(record)]
+    if source_of(record) == 'native':
+        topics += [process_topic(record)]
+    topics += [ci_topic(record)]
     if comment:
         topics += [[line] for line in regressions_topic(record)]
     topics += [position_topic(record, history, config, comment), gaps_topic(record, comment)]
@@ -5010,7 +6702,8 @@ def cmd_epic(args, config, run, now):
                                % (ao_home, run_file_path))
         record, errors = build_native_record(args.epic, run_file, config, _expand(args.projects), now, run=run,
                                              no_gh=args.no_gh, repo=args.repo, previous=read_previous(path),
-                                             records=read_records(_expand(args.state)), manual_fixes=manual_fixes)
+                                             records=read_records(_expand(args.state)), manual_fixes=manual_fixes,
+                                             worktree=_expand(args.worktree) if args.worktree else os.getcwd())
     write_record(path, record)
     print(json.dumps(record, ensure_ascii=False))
     for error in errors:
@@ -5459,14 +7152,34 @@ def build_parser():
     start.add_argument('--pr', type=_positive_int)
     start.add_argument('--tasks', type=_positive_int)
     start.add_argument('--session')
-    done = sub.add_parser('done', parents=[common])
+    start.add_argument('--user-dir', default='~/.claude')
+    start.add_argument('--accept-process-mismatch', metavar='REASON')
+    done = sub.add_parser('done', parents=[common, projects])
     done.add_argument('epic')
     done.add_argument('--at')
+    done.add_argument('--worktree')
+    done.add_argument('--user-dir', default='~/.claude')
+    pause = sub.add_parser('pause', parents=[common, projects])
+    pause.add_argument('epic')
+    pause.add_argument('--from', dest='begin', required=True)
+    pause.add_argument('--to', dest='end', required=True)
+    pause.add_argument('--reason')
+    process = sub.add_parser('process', parents=[common, projects])
+    process.add_argument('epic', nargs='?')
+    process.add_argument('--worktree')
+    process.add_argument('--base')
+    process.add_argument('--user-dir', default='~/.claude')
+    process.add_argument('--accept-process-mismatch', metavar='REASON')
+    process.add_argument('--session')
     epic = sub.add_parser('epic', parents=[common, projects])
     epic.add_argument('epic')
+    epic.add_argument('--worktree')
     epic.add_argument('--ao-home')
     epic.add_argument('--manual-fixes')
     epic.add_argument('--no-gh', action='store_true')
+    ci_time = sub.add_parser('ci-time', parents=[common])
+    ci_time.add_argument('epic')
+    ci_time.add_argument('--json', action='store_true')
     backfill = sub.add_parser('backfill', parents=[common])
     backfill.add_argument('--ao-root')
     render = sub.add_parser('render', parents=[common])
@@ -5501,9 +7214,15 @@ def main(argv=None, run=None, now=None):
         if args.command == 'start':
             return cmd_start(args, runner, now, sys.stdin)
         if args.command == 'done':
-            return cmd_done(args, now, sys.stdin)
+            return cmd_done(args, runner, now, sys.stdin)
+        if args.command == 'pause':
+            return cmd_pause(args)
+        if args.command == 'process':
+            return cmd_process(args, runner, now)
         if args.command == 'epic':
             return cmd_epic(args, config, runner, now)
+        if args.command == 'ci-time':
+            return cmd_ci_time(args, config, runner)
         if args.command == 'backfill':
             return cmd_backfill(args, config, runner, now)
         if args.command == 'trend':

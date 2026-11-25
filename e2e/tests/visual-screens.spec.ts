@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { addVariantOf, chooseProvider, tileNamed } from "../support/shop";
+import { addVariantOf, chooseDelivery, chooseProvider, tileNamed } from "../support/shop";
 
 // The cart and the checkout in the visual direction (VISUAL-DESIGN-9): no serious or critical axe violation and no
 // horizontal scroll on a phone and on a desktop, with an item in the cart of a guest.
@@ -49,12 +49,14 @@ for (const viewport of [DESKTOP, PHONE]) {
       await expect(page.getByRole("heading", { level: 1, name: "Kasa" })).toBeVisible();
       await expect(page.getByTestId("checkout-total")).toBeVisible();
       await expect(page.getByLabel("E-mail")).toBeVisible();
+      await expect(page.getByRole("group", { name: "Sposób dostawy" })).toBeVisible();
       await expectNoSeriousViolation(page, viewport);
     });
 
     test("the checkout with the messages of a refused order has no serious or critical axe violation and no horizontal scroll", async ({ page }) => {
       await page.goto("/checkout");
       await expect(page.getByTestId("checkout-total")).toBeVisible();
+      await chooseDelivery(page);
       await chooseProvider(page, "Szybki przelew (demo)");
       // The empty form is refused by the API: the messages of the fields appear and nothing is ordered.
       await page.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" }).click();

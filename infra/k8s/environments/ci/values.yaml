@@ -95,6 +95,7 @@ resources:
   mailpit: { requests: { cpu: 10m, memory: 16Mi } }
   api: { requests: { cpu: 50m, memory: 128Mi } }
   worker: { requests: { cpu: 50m, memory: 128Mi } }
+  workerCommands: { requests: { cpu: 20m, memory: 64Mi } }
   store: { requests: { cpu: 50m, memory: 128Mi } }
   admin: { requests: { cpu: 10m, memory: 16Mi } }
   imgproxy: { requests: { cpu: 20m, memory: 64Mi } }

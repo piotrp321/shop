@@ -107,7 +107,7 @@ final class KeycloakOutageTest extends WebTestCase
 
         self::assertSame(401, $response->getStatusCode());
         self::assertSame('Bearer', $response->headers->get('WWW-Authenticate'));
-        self::assertSame('Authentication is required.', $this->json($response)['detail']);
+        self::assertSame('Wymagane jest uwierzytelnienie.', $this->json($response)['detail']);
     }
 
     private function request(string $keySource, string $path, ?string $token): KernelBrowser

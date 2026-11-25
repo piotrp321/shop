@@ -3,6 +3,7 @@ import { computed, nextTick, ref, useId } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import FormField from "@/components/FormField.vue";
+import FormSafetyNotices from "@/components/FormSafetyNotices.vue";
 import FormSection from "@/components/FormSection.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import SaveBar from "@/components/SaveBar.vue";
@@ -24,7 +25,8 @@ import { useAuthStore } from "@/stores/auth";
 // What a failed save moves the focus to: the first error mark or field marked invalid, in the order of the document;
 // a disabled field cannot take focus.
 const FIRST_ERROR = '[data-form-error], [aria-invalid="true"]:not(:disabled)';
-// A field the staff member types in: a save that ends while the focus is in one leaves it there (#250 F16).
+// A field the staff member types in: a save that ends while the focus is in one leaves it there (#250 F16). The fields
+// are off while a save runs, so the focus is there only when the staff member moved to one before the save started.
 const EDITABLE_FIELD = 'input:not([type="file"]), textarea, select, [role="combobox"]';
 const FOCUSABLE = "input, textarea, select, button, a[href], [tabindex]";
 
@@ -40,6 +42,8 @@ const {
   loaded,
   loadError,
   busy,
+  locked,
+  safety,
   dirty,
   readOnly,
   codeLocked,
@@ -57,6 +61,10 @@ const {
   canManage: () => canManageDiscountCodes(auth.staff),
   onCreated: (id) => {
     void router.replace({ name: "discount-code", params: { id } });
+  },
+  // The answer of a save the staff member gave up on turned out to be a success: only this is said (B4).
+  onLateSaved: (text) => {
+    toast.success(text);
   },
 });
 
@@ -102,10 +110,18 @@ async function submit(): Promise<void> {
   target.scrollIntoView({ block: "center" });
 }
 
-// The bar goes away with „Odrzuć”, so the focus goes to the H1.
+// The bar goes away with „Odrzuć”, so the focus goes to the H1; when a message about the server stays (an unknown result,
+// the way to its state after a 409), `FormSafetyNotices` puts the focus on it.
 async function discardChanges(): Promise<void> {
-  discard();
+  const messageHasFocus = discard();
   await nextTick();
+  if (!messageHasFocus) {
+    header.value?.focus();
+  }
+}
+
+// „Odrzuć moje zmiany i pokaż stan z serwera” took the button with it: the focus goes to the H1.
+function focusHeader(): void {
   header.value?.focus();
 }
 
@@ -187,11 +203,22 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
       >
         <AlertDescription>{{ error }}</AlertDescription>
       </Alert>
+      <FormSafetyNotices
+        :safety="safety"
+        :list-to="{ name: 'discount-codes' }"
+        list-label="Lista kodów rabatowych"
+        @restored="focusHeader"
+      />
 
       <!-- From 1280 px two columns: the data on the left, the side column of 320 px on the right. Below that one column
-           with the side card above the data, which is the order of the source. -->
+           with the side card above the data, which is the order of the source. While a save runs and while a read replaces
+           the form, nothing can be typed or chosen: the answer rebuilds the form from the API and would overwrite it. -->
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
-        <div class="flex flex-col gap-6 xl:col-start-2 xl:row-start-1">
+        <fieldset
+          data-testid="code-status-fields"
+          :disabled="locked"
+          class="flex min-w-0 flex-col gap-6 xl:col-start-2 xl:row-start-1"
+        >
           <FormSection title="Status">
             <div
               v-if="view"
@@ -222,9 +249,13 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
               Aktywne użycia: <strong data-testid="active-uses">{{ view.activeUses }}</strong>
             </p>
           </FormSection>
-        </div>
+        </fieldset>
 
-        <div class="flex min-w-0 flex-col gap-6 xl:col-start-1 xl:row-start-1">
+        <fieldset
+          data-testid="code-fields"
+          :disabled="locked"
+          class="flex min-w-0 flex-col gap-6 xl:col-start-1 xl:row-start-1"
+        >
           <FormSection title="Kod i rabat">
             <FormField
               :control-id="ids.code"
@@ -399,7 +430,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
               </template>
             </FormField>
           </FormSection>
-        </div>
+        </fieldset>
       </div>
 
       <SaveBar

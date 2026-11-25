@@ -1,15 +1,18 @@
 # Deployment (docs/features/deploy/spec.md, "Wdrożenie nowej wersji" and D4). A version reaches the server only when the
 # user asks for it: `gh workflow run deploy.yml --ref main`. Nothing deploys on a push.
 #
-#   workflow_dispatch   on main (refs/heads/main): images -> smoke -> deploy. Builds the four production images and pushes
-#     on main           them to GitHub Container Registry tagged with the commit SHA and writes the images values file (the
-#                       revision and the four digests, infra/k8s/scripts/images-values.sh) once. The smoke test installs
-#                       the chart with that very file, so the cluster pulls the images from the registry by digest. Only
-#                       after it passes, and after the render of prod with that file is checked, does one atomic push move
-#                       the branch `deploy` to the commit by fast-forward and add a snapshot commit (the commit plus the
-#                       file) to the branch `deploy-images`, which Argo CD tracks (.github/scripts/deploy-ref.sh, deploy
-#                       key from the secret DEPLOY_KEY of the environment production; without the secret it ends with a
-#                       warning, not an error).
+#   workflow_dispatch   on main (refs/heads/main): images -> smoke -> deploy, with k8s-check next to images and smoke.
+#     on main           Builds the four production images and pushes them to GitHub Container Registry tagged with the
+#                       commit SHA and writes the images values file (the revision and the four digests,
+#                       infra/k8s/scripts/images-values.sh) once. The smoke test installs the chart with that very file, so
+#                       the cluster pulls the images from the registry by digest. k8s-check runs `make -C infra/k8s check`
+#                       on the commit: CI runs it only for a change under infra/k8s/** or .github/workflows/** or of
+#                       infra/docker-compose.yml, so a change elsewhere that the chart must mirror (Keycloak realms) is
+#                       caught here. Only after both pass, and after the render of prod with that file is checked,
+#                       does one atomic push move the branch `deploy` to the commit by fast-forward and add a
+#                       snapshot commit (the commit plus the file) to the branch `deploy-images`, which Argo CD
+#                       tracks (.github/scripts/deploy-ref.sh, deploy key from the secret DEPLOY_KEY of the
+#                       environment production; without the secret it ends with a warning, not an error).
 #   workflow_dispatch   on any other branch: smoke only, on that branch; the images are built from the GitHub Actions
 #                       cache, nothing is pushed and `deploy` does not move. GitHub offers it only once this file is on the
 #                       default branch (main), so before the merge of the epic the rehearsal on the epic branch is the pull
@@ -426,11 +429,27 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Publishes the version after a green smoke test (D4): checks the render of prod with the images values file, then one
-  # atomic push moves `deploy` to the commit by fast-forward and adds the snapshot to `deploy-images`. Without the secret
-  # DEPLOY_KEY the job ends with a warning. A failed check or push publishes nothing.
+  # The static checks of the chart (make -C infra/k8s check) on the commit being deployed, next to `images` and `smoke`;
+  # `deploy` needs it, so a failed or cancelled check publishes nothing. No secret, no package access.
+  k8s-check:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: make -C infra/k8s check
+        run: make -C infra/k8s check
+
+  # Publishes the version after a green smoke test and a green k8s-check (D4): checks the render of prod with the images
+  # values file, then one atomic push moves `deploy` to the commit by fast-forward and adds the snapshot to `deploy-images`.
+  # Without the secret DEPLOY_KEY the job ends with a warning. A failed check or push publishes nothing.
   deploy:
-    needs: [images, smoke]
+    needs: [images, smoke, k8s-check]
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -75,7 +75,7 @@ class Triggers(unittest.TestCase):
 
     def test_the_conditions_hold_only_for_a_dispatch_on_main(self):
         for event, ref, expected in EVENTS:
-            for expression in (jobs["images"]["if"], jobs["deploy"]["if"], workflow["env"]["DEPLOY"]):
+            for expression in (jobs["images"]["if"], jobs["k8s-check"]["if"], jobs["deploy"]["if"], workflow["env"]["DEPLOY"]):
                 self.assertIs(expected, evaluate(expression, event, ref), f"{event} on {ref}: {expression}")
 
     def test_a_dispatch_on_another_branch_is_a_smoke_rehearsal_only(self):
@@ -275,7 +275,7 @@ class SmokeValues(unittest.TestCase):
 
 class Deploy(unittest.TestCase):
     def test_it_needs_a_green_smoke_test_and_the_images(self):
-        self.assertEqual(["images", "smoke"], jobs["deploy"]["needs"])
+        self.assertEqual(["images", "smoke", "k8s-check"], jobs["deploy"]["needs"])
         self.assertNotIn("continue-on-error", jobs["smoke"])
         self.assertNotIn("continue-on-error", jobs["deploy"])
 
@@ -353,6 +353,33 @@ class Retention(unittest.TestCase):
             self.assertTrue(any(re.search(p, example, re.I) for p in self.FORBIDDEN), example)
 
 
+class K8sCheck(unittest.TestCase):
+    """CI runs `make -C infra/k8s check` only for a change under infra/k8s/** or .github/workflows/** or of
+    infra/docker-compose.yml (.github/scripts/scope.sh --k8s), so a change elsewhere that the chart must mirror (Keycloak
+    realms) is caught only by this job: every deployment runs it and nothing is published unless it passes."""
+
+    def test_deploy_waits_for_the_check(self):
+        self.assertIn("k8s-check", jobs["deploy"]["needs"])
+        # Without a status function in its condition `deploy` runs only when every job it needs succeeded: a failed,
+        # cancelled or skipped check publishes nothing.
+        self.assertNotRegex(jobs["deploy"]["if"], r"always\(|failure\(|cancelled\(|success\(|result")
+        self.assertNotIn("continue-on-error", jobs["k8s-check"])
+
+    def test_it_runs_the_check_on_every_deployment(self):
+        self.assertEqual(ON_MAIN, jobs["k8s-check"]["if"])
+        check = [s for s in steps("k8s-check") if s.get("run") == "make -C infra/k8s check"]
+        self.assertEqual(1, len(check))
+        self.assertNotIn("if", check[0])
+        self.assertNotIn("continue-on-error", check[0])
+
+    def test_it_runs_beside_the_images_and_the_smoke_test_with_read_access_only(self):
+        self.assertNotIn("needs", jobs["k8s-check"])
+        self.assertEqual({"contents": "read"}, jobs["k8s-check"]["permissions"])
+        self.assertNotIn("environment", jobs["k8s-check"])
+        checkout = next(s for s in steps("k8s-check") if uses(s, "actions/checkout"))
+        self.assertIs(False, checkout["with"]["persist-credentials"])
+
+
 class Shell(unittest.TestCase):
     """GitHub runs a step without `shell:` as `bash -e {0}` (no pipefail): the status of `make smoke | tee log` would be
     that of `tee`, a red smoke test would give a green job and `deploy` would move the branch. `shell: bash` is
@@ -400,25 +427,30 @@ class Production(unittest.TestCase):
         for name in jobs:
             if name == "deploy":
                 continue
-            for environment in ("production", {"name": "production"}, "staging", {"url": "https://x"}):
+            for environment in ("production", {"name": "production"}, "merge-override", "staging", {"url": "https://x"}):
                 with self.subTest(job=name, environment=environment):
                     found = misplaced_environments(variant(lambda w: w["jobs"][name].update(environment=environment)))
                     self.assertEqual([name], found)
 
 
 def misplaced_environments(copied):
-    """The jobs other than `deploy` whose environment is `production` or not one that admits only main."""
+    """The jobs other than `deploy` whose environment asks for an approval or is not one that admits only main."""
     return [
         name for name, job in copied["jobs"].items()
         if name != "deploy" and "environment" in job
-        and (environment_name(job) == "production" or environment_name(job) not in MAIN_ONLY_ENVIRONMENTS)
+        and (environment_name(job) in APPROVAL_ENVIRONMENTS or environment_name(job) not in MAIN_ONLY_ENVIRONMENTS)
     ]
 
 
 # The environments whose branch policy admits only main (Settings > Environments; infra/k8s/README.md says how the user sets
 # them). The test cannot see the settings of GitHub: this list is what the runbook promises, so a new entry needs a new
 # line of the runbook. The environment may be given as a name or as a mapping with a literal name.
-MAIN_ONLY_ENVIRONMENTS = ("production", "sentry")
+MAIN_ONLY_ENVIRONMENTS = ("production", "sentry", "merge-override")
+# Those of them that wait for the approval of the user, each with the one job of the repository that may use it. An approval
+# is read as "deploy" or "merge this pull request": another job in the same environment would get the same secret (the deploy
+# key, the key of the merge app) for one click on a request that looks the same.
+APPROVAL_JOBS = {"production": ("deploy.yml", "deploy"), "merge-override": ("merge-override.yml", "merge")}
+APPROVAL_ENVIRONMENTS = tuple(APPROVAL_JOBS)
 # A workflow expression is case-insensitive and allows spaces around the dot: `SECRETS .X`, `secrets . X`, `secrets['X']`,
 # `toJSON(secrets)` and `format('{0}', secrets.X)` all read a secret. The context is the word `secrets` that is not a property
 # of another object (`steps.a.outputs.secrets`) nor part of a longer name. Only the dotted GITHUB_TOKEN is exempt.
@@ -616,6 +648,239 @@ class SecretsOnlyInMainOnlyEnvironments(unittest.TestCase):
     def test_a_secret_declared_for_a_reusable_workflow_is_not_a_use(self):
         declared = {"workflow_call": {"secrets": {"TOKEN": {"required": True}}}}
         self.assertEqual([], secret_violations(variant(lambda w: w["on"].update(declared))))
+
+
+def environment_problems(workflows):
+    """The jobs of all workflows ({file name: parsed workflow}) whose environment is not a known literal name, or is one
+    that waits for an approval in another job than the one of APPROVAL_JOBS."""
+    found = []
+    for file, parsed in sorted(workflows.items()):
+        jobs_of = parsed.get("jobs") if isinstance(parsed.get("jobs"), dict) else {}
+        for name, job in jobs_of.items():
+            if not isinstance(job, dict) or "environment" not in job:
+                continue
+            environment = environment_name(job)
+            if not isinstance(environment, str) or environment not in MAIN_ONLY_ENVIRONMENTS:
+                found.append(f"{file}: {name}: the environment {environment!r} is not one of {MAIN_ONLY_ENVIRONMENTS}")
+            elif environment in APPROVAL_JOBS and (file, name) != APPROVAL_JOBS[environment]:
+                found.append(f"{file}: {name}: the environment {environment} belongs to the job {APPROVAL_JOBS[environment][1]} of {APPROVAL_JOBS[environment][0]} only")
+    return found
+
+
+class ApprovalEnvironments(unittest.TestCase):
+    """An environment that waits for the user is used by one job of the whole repository, so an approval always releases
+    the same, reviewed steps: a new workflow cannot ask for the same approval and get the deploy key or the key of the merge
+    app (docs/features/agent-security/spec.md, R5 and R8)."""
+
+    def setUp(self):
+        self.workflows = {path.name[: -len(".json")]: json.loads(path.read_text()) for path in sorted((RENDER / "workflows").glob("*.json"))}
+
+    def changed(self, change):
+        copied = copy.deepcopy(self.workflows)
+        change(copied)
+        return copied
+
+    def test_the_real_workflows_have_no_problems(self):
+        self.assertIn("deploy.yml", self.workflows)
+        self.assertIn("merge-override.yml", self.workflows)
+        self.assertEqual([], environment_problems(self.workflows))
+
+    def test_each_approval_environment_is_used_by_its_job(self):
+        for environment, (file, job) in APPROVAL_JOBS.items():
+            self.assertEqual(environment, environment_name(self.workflows[file]["jobs"][job]), environment)
+
+    def test_the_ways_of_borrowing_an_approval_environment_are_refused(self):
+        key = {"uses": "actions/create-github-app-token@" + "0" * 40, "with": {"private-key": "${{ secrets.MERGE_APP_PRIVATE_KEY }}", "skip-token-revoke": True}}
+        for environment in APPROVAL_JOBS:
+            for form in (environment, {"name": environment}, {"name": environment, "url": "https://x"}):
+                borrowed = {"runs-on": "ubuntu-latest", "environment": form, "steps": [key]}
+                copies = {
+                    "a new workflow": lambda w, job=borrowed: w.update({"x.yml": {"name": "Merge override", "on": {"workflow_dispatch": {}}, "jobs": {"merge": job}}}),
+                    "a job with the same name in another workflow": lambda w, job=borrowed: w["ci.yml"]["jobs"].update(merge=job, deploy=job),
+                    "another job of the same workflow": lambda w, job=borrowed, file=APPROVAL_JOBS[environment][0]: w[file]["jobs"].update(other=job),
+                }
+                for weakened, change in copies.items():
+                    with self.subTest(environment=environment, form=form, weakened=weakened):
+                        found = environment_problems(self.changed(change))
+                        self.assertTrue(any(f"the environment {environment} belongs to" in line for line in found), found)
+
+    def test_an_environment_that_is_not_a_known_literal_is_refused(self):
+        for form in ("staging", "Merge-Override", "merge-override ", "${{ vars.TARGET }}", "${{ 'merge-' }}override", {"url": "https://x"}, ["merge-override"], None):
+            with self.subTest(form=form):
+                found = environment_problems(self.changed(lambda w: w["ci.yml"]["jobs"].update(other={"environment": form, "steps": []})))
+                self.assertTrue(any("ci.yml: other: the environment" in line and "is not one of" in line for line in found), found)
+
+    def test_a_main_only_environment_without_an_approval_may_be_used_by_other_jobs(self):
+        found = environment_problems(self.changed(lambda w: w["ci.yml"]["jobs"].update(other={"environment": "sentry", "steps": []})))
+        self.assertEqual([], found)
+
+
+# The context `steps` of an expression, the way SECRETS_CONTEXT finds `secrets`: `steps.app.outputs.token`,
+# `steps.app.outputs['token']`, `toJSON(steps)` and `toJSON(steps.app.outputs)` all read the token of the merge app.
+STEPS_CONTEXT = re.compile(r"(?<![\w.\-])steps(?![\w\-])", re.I)
+
+
+def reads_a_step(text):
+    return any(STEPS_CONTEXT.search(STRING_LITERAL.sub("''", expression)) for expression in expressions(text))
+
+
+class MergeOverride(unittest.TestCase):
+    """.github/workflows/merge-override.yml merges a pull request past the required checks (docs/features/agent-security/
+    spec.md, R8). The key of the app that may bypass the ruleset is read in one step of the job that waits for the user in
+    the environment `merge-override`; nothing of the pull request and nothing typed into the form is ever run."""
+
+    KEY = "${{ secrets.MERGE_APP_PRIVATE_KEY }}"
+
+    def setUp(self):
+        self.workflow = json.loads((RENDER / "workflows" / "merge-override.yml.json").read_text())
+        self.jobs = self.workflow["jobs"]
+
+    def changed(self, change):
+        copied = copy.deepcopy(self.workflow)
+        change(copied)
+        return copied
+
+    def problems(self, workflow):
+        """What breaks the properties below in a copy of the workflow (the checks the fixtures must fail)."""
+        found = list(secret_violations(workflow))
+        if set(workflow.get("on") or {}) != {"workflow_dispatch"}:
+            found.append("another trigger than workflow_dispatch")
+        jobs_of = workflow.get("jobs", {})
+        if environment_name(jobs_of.get("merge", {})) != "merge-override":
+            found.append("the job merge is not in the environment merge-override")
+        if jobs_of.get("merge", {}).get("needs") not in ("validate", ["validate"]):
+            found.append("the job merge does not need validate")
+        # A job without `permissions` gets those of the workflow, a job with them only its own: both must be read-only.
+        tokens = [("the workflow", workflow.get("permissions"))] + [(name, job.get("permissions", {})) for name, job in jobs_of.items()]
+        for owner, permissions in tokens:
+            if not isinstance(permissions, dict):
+                found.append(f"{owner}: the token has the permissions {permissions!r}")
+                continue
+            found += [f"{owner}: the token has {scope}: {level}" for scope, level in permissions.items() if level != "read"]
+        for name, job in jobs_of.items():
+            if name != "merge" and "environment" in job:
+                found.append(f"{name}: an environment outside the job merge")
+            for step in job.get("steps", []):
+                label = f"{name}: {step.get('name', step.get('uses'))}"
+                if "${{" in step.get("run", ""):
+                    found.append(f"{label}: an expression inside a script")
+                if "uses" in step and not SHA_PIN.match(step["uses"]):
+                    found.append(f"{label}: an action that is not pinned by its commit")
+                if uses(step, "actions/checkout") and (set(step.get("with", {})) - {"persist-credentials"} or step.get("with", {}).get("persist-credentials") is not False):
+                    found.append(f"{label}: a checkout of another ref or one that keeps the credentials")
+        readers = [path for path, text in strings(workflow) if reads_a_secret(text)]
+        if readers != [("jobs", "merge", "steps", self.token_step_index(workflow), "with", "private-key")]:
+            found.append(f"a secret is read at {readers}")
+        # The token of the app is an output of a step: the one expression of the workflow that reads the context `steps`
+        # is the variable MERGE_TOKEN of the step that runs the merge script.
+        outputs = [(path, text) for path, text in strings(workflow) if reads_a_step(text)]
+        merge_steps = jobs_of.get("merge", {}).get("steps", [])
+        script = next((i for i, step in enumerate(merge_steps) if "merge-override.sh merge" in step.get("run", "")), None)
+        token_step = merge_steps[self.token_step_index(workflow)] if self.token_step_index(workflow) is not None else {}
+        if outputs != [(("jobs", "merge", "steps", script, "env", "MERGE_TOKEN"), "${{ steps.%s.outputs.token }}" % token_step.get("id"))]:
+            found.append(f"an output of a step is read at {[path for path, _ in outputs]}")
+        if set(token_step.get("with", {})) != {"client-id", "private-key"}:
+            found.append("the step that makes the token has other inputs than client-id and private-key")
+        return found
+
+    @staticmethod
+    def token_step_index(workflow):
+        steps_of = workflow.get("jobs", {}).get("merge", {}).get("steps", [])
+        return next((i for i, step in enumerate(steps_of) if uses(step, "actions/create-github-app-token")), None)
+
+    def test_the_real_workflow_has_no_problems(self):
+        self.assertEqual([], self.problems(self.workflow))
+
+    def test_it_starts_only_by_hand_with_the_three_inputs(self):
+        self.assertEqual({"workflow_dispatch"}, set(self.workflow["on"]))
+        inputs = self.workflow["on"]["workflow_dispatch"]["inputs"]
+        self.assertEqual({"pr", "sha", "reason"}, set(inputs))
+        for name, definition in inputs.items():
+            self.assertIs(True, definition["required"], name)
+
+    def test_only_the_job_merge_waits_in_the_environment(self):
+        self.assertEqual("merge-override", environment_name(self.jobs["merge"]))
+        self.assertNotIn("environment", self.jobs["validate"])
+        self.assertEqual(["validate", "merge"], list(self.jobs))
+        self.assertIn("merge-override", MAIN_ONLY_ENVIRONMENTS)
+        self.assertIn("merge-override", APPROVAL_ENVIRONMENTS)
+
+    def test_the_key_of_the_app_is_read_only_by_the_step_that_makes_its_token(self):
+        step = self.jobs["merge"]["steps"][self.token_step_index(self.workflow)]
+        self.assertEqual(self.KEY, step["with"]["private-key"])
+        self.assertEqual("${{ vars.MERGE_APP_CLIENT_ID }}", step["with"]["client-id"])
+        # The token is for this repository only (the default of the action without `owner` and `repositories`).
+        self.assertEqual({"client-id", "private-key"}, set(step["with"]))
+
+    def test_the_token_of_the_app_goes_only_to_the_merge_script(self):
+        token = "${{ steps.%s.outputs.token }}" % self.jobs["merge"]["steps"][self.token_step_index(self.workflow)]["id"]
+        places = [path for path, text in strings(self.workflow) if "outputs.token" in text]
+        self.assertEqual(1, len(places), places)
+        step = self.jobs["merge"]["steps"][places[0][3]]
+        self.assertEqual(token, step["env"]["MERGE_TOKEN"])
+        self.assertEqual("sh .github/scripts/merge-override.sh merge", step["run"].strip())
+        self.assertEqual("${{ secrets.GITHUB_TOKEN }}", step["env"]["GH_TOKEN"])
+
+    def test_the_inputs_reach_the_script_through_env(self):
+        for job, mode in (("validate", "validate"), ("merge", "merge")):
+            step = next(s for s in self.jobs[job]["steps"] if "merge-override.sh" in s.get("run", ""))
+            self.assertEqual(f"sh .github/scripts/merge-override.sh {mode}", step["run"].strip())
+            self.assertEqual("${{ inputs.pr }}", step["env"]["PR"])
+            self.assertEqual("${{ inputs.sha }}", step["env"]["SHA"])
+            self.assertEqual("${{ inputs.reason }}", step["env"]["REASON"])
+        for job in self.jobs.values():
+            for step in job["steps"]:
+                self.assertNotIn("${{", step.get("run", ""), step.get("name"))
+
+    def test_no_run_cancels_or_holds_another(self):
+        # Without a concurrency group a run that waits for the approval neither blocks nor cancels a newer request for the
+        # same pull request; every run is pinned to its commit, so approving a stale one merges nothing else.
+        self.assertNotIn("concurrency", self.workflow)
+        for name, job in self.jobs.items():
+            self.assertNotIn("concurrency", job, name)
+
+    def test_the_title_of_the_run_names_the_pull_request_and_the_commit(self):
+        # The title is what the list of runs, the notification and the approval request show.
+        self.assertEqual("Merge override of #${{ inputs.pr }} at ${{ inputs.sha }}", self.workflow["run-name"])
+
+    def test_every_run_step_has_pipefail(self):
+        self.assertEqual("bash", self.workflow["defaults"]["run"]["shell"])
+
+    def test_the_weakened_copies_are_refused(self):
+        # (what is weakened, the change, a text of the expected problem)
+        key = self.KEY
+        copies = {
+            "merge without its environment": (lambda w: w["jobs"]["merge"].pop("environment"), "environment"),
+            "merge in another environment": (lambda w: w["jobs"]["merge"].update(environment="production"), "not in the environment merge-override"),
+            "merge in an unknown environment": (lambda w: w["jobs"]["merge"].update(environment="staging"), "a secret in a job whose environment is 'staging'"),
+            "merge without validate": (lambda w: w["jobs"]["merge"].pop("needs"), "does not need validate"),
+            "the key in validate": (lambda w: w["jobs"]["validate"]["steps"].append({"run": "true", "env": {"KEY": key}}), "jobs/validate"),
+            "the key in the env of the workflow": (lambda w: w.update(env={"KEY": key}), "a secret at the level of the workflow"),
+            "the key in a second step of merge": (lambda w: w["jobs"]["merge"]["steps"].append({"run": "true", "env": {"KEY": key}}), "a secret is read at"),
+            "the key in a new job with the environment": (lambda w: w["jobs"].update(other={"environment": "merge-override", "steps": [{"run": "true", "env": {"KEY": key}}]}), "an environment outside the job merge"),
+            "a pull request trigger": (lambda w: w["on"].update(pull_request={}), "another trigger"),
+            "a pull_request_target trigger": (lambda w: w["on"].update(pull_request_target={}), "another trigger"),
+            "a push trigger": (lambda w: w["on"].update(push={"branches": ["main"]}), "another trigger"),
+            "a schedule": (lambda w: w["on"].update(schedule=[{"cron": "0 0 * * *"}]), "another trigger"),
+            "an input inside a script": (lambda w: w["jobs"]["validate"]["steps"].append({"run": "echo ${{ inputs.reason }}"}), "an expression inside a script"),
+            "the checkout of the pull request": (lambda w: w["jobs"]["merge"]["steps"][0].update({"with": {"persist-credentials": False, "ref": "${{ inputs.sha }}"}}), "a checkout of another ref"),
+            "a checkout that keeps the credentials": (lambda w: w["jobs"]["merge"]["steps"][0].pop("with"), "keeps the credentials"),
+            "an action by its tag": (lambda w: w["jobs"]["merge"]["steps"][1].update(uses="actions/create-github-app-token@v3"), "not pinned"),
+            "the token of the app in another step": (lambda w: w["jobs"]["merge"]["steps"].append({"run": "true", "env": {"T": "${{ steps.app.outputs['token'] }}"}}), "an output of a step is read at"),
+            "every output of the steps": (lambda w: w["jobs"]["merge"]["steps"].append({"uses": "actions/x@" + "0" * 40, "with": {"x": "${{ toJSON(steps) }}"}}), "an output of a step is read at"),
+            "the token of the app as an output of the job": (lambda w: w["jobs"]["merge"].update(outputs={"t": "${{ STEPS.app.outputs.token }}"}), "an output of a step is read at"),
+            "a token that is not revoked": (lambda w: w["jobs"]["merge"]["steps"][1]["with"].update({"skip-token-revoke": True}), "other inputs than client-id and private-key"),
+            "a token for other repositories": (lambda w: w["jobs"]["merge"]["steps"][1]["with"].update(owner="piotrp321"), "other inputs than client-id and private-key"),
+            "a job token that can write": (lambda w: w["jobs"]["merge"]["permissions"].update(contents="write"), "contents: write"),
+            "a workflow token that can write": (lambda w: w["permissions"].update({"pull-requests": "write"}), "pull-requests: write"),
+            "a workflow token with every permission": (lambda w: w.update(permissions="write-all"), "'write-all'"),
+            "a workflow without permissions": (lambda w: w.pop("permissions"), "the workflow: the token has the permissions None"),
+            "a job token with every permission": (lambda w: w["jobs"]["validate"].update(permissions="write-all"), "'write-all'"),
+        }
+        for weakened, (change, expected) in copies.items():
+            with self.subTest(weakened):
+                found = self.problems(self.changed(change))
+                self.assertTrue(any(expected in line for line in found), f"{expected!r} not in {found}")
 
 
 # Any way of reading the secret: `secrets.SENTRY_AUTH_TOKEN`, `secrets['SENTRY_AUTH_TOKEN']`, `secrets["SENTRY_AUTH_TOKEN"]`.

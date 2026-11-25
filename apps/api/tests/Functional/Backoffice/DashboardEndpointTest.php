@@ -16,6 +16,7 @@ use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Support\InMemory\FixedCountProductIndexer;
+use App\Tests\Support\MessengerRows;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\DBAL\Driver\Exception as DriverException;
 use Doctrine\DBAL\Exception\ConnectionException;
@@ -65,7 +66,7 @@ final class DashboardEndpointTest extends WebTestCase
         self::assertSame(['productCount' => ['value' => 3, 'estimated' => true], 'categoryCount' => 2], $body['catalog']);
         $system = $body['system'];
         self::assertIsArray($system);
-        self::assertSame(['services', 'outbox', 'queues', 'searchIndex'], array_keys($system));
+        self::assertSame(['services', 'outbox', 'queues', 'searchIndex', 'messages'], array_keys($system));
 
         self::assertIsArray($system['services']);
         self::assertSame(self::SERVICES, array_column($system['services'], 'name'));
@@ -81,6 +82,158 @@ final class DashboardEndpointTest extends WebTestCase
         self::assertIsArray($system['queues']);
         self::assertIsArray($system['searchIndex']);
         self::assertSame(['indexedProducts' => 2, 'catalogProducts' => 3, 'inSync' => false], $system['searchIndex']);
+    }
+
+    public function testAdminGetsTheMessagesOfTheQueuesInTheDatabase(): void
+    {
+        $client = static::createClient();
+        $connection = $this->connection();
+        MessengerRows::clear($connection);
+        MessengerRows::add($connection, 'failed', new \DateTimeImmutable('-1 hour'), new \DateTimeImmutable('2026-11-19 08:30:00 UTC'));
+        MessengerRows::add($connection, 'failed', new \DateTimeImmutable('-1 minute'), new \DateTimeImmutable('2026-11-20 08:30:00 UTC'));
+        MessengerRows::add($connection, 'outbox', new \DateTimeImmutable('-90 seconds'), times: 2);
+        MessengerRows::add($connection, 'scheduled', new \DateTimeImmutable('-3 seconds'), new \DateTimeImmutable('-35 minutes'));
+        MessengerRows::add($connection, 'scheduled', new \DateTimeImmutable('+20 minutes'));
+        MessengerRows::add($connection, 'jobs', new \DateTimeImmutable('-20 minutes'));
+
+        $this->get($client, TestTokenFactory::staff(['admin']));
+
+        self::assertResponseStatusCodeSame(200);
+        $messages = $this->messages($this->json($client->getResponse()));
+        self::assertSame(['healthy', 'failed', 'transports'], array_keys($messages));
+        self::assertFalse($messages['healthy']);
+        self::assertSame(['count' => 2, 'capped' => false, 'oldestAt' => '2026-11-19T08:30:00+00:00'], $messages['failed']);
+        $byName = $this->transports($messages);
+        self::assertSame(['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs'], array_keys($byName));
+        self::assertSame(['name', 'ready', 'capped', 'oldestReadyAgeSeconds', 'stalled'], array_keys($byName['outbox']));
+        self::assertSame(['ready' => 2, 'capped' => false, 'stalled' => false], array_intersect_key($byName['outbox'], array_flip(['ready', 'capped', 'stalled'])));
+        self::assertEqualsWithDelta(90, $byName['outbox']['oldestReadyAgeSeconds'], 5);
+        self::assertSame(['ready' => 1, 'capped' => false, 'stalled' => false], array_intersect_key($byName['scheduled'], array_flip(['ready', 'capped', 'stalled'])), 'the delayed message that is not due is not ready; the due one has just become');
+        self::assertEqualsWithDelta(3, $byName['scheduled']['oldestReadyAgeSeconds'], 5);
+        self::assertSame(['ready' => 0, 'capped' => false, 'oldestReadyAgeSeconds' => null, 'stalled' => false], array_diff_key($byName['promotions'], ['name' => true]));
+        self::assertSame(['ready' => 1, 'capped' => false, 'stalled' => true], array_intersect_key($byName['jobs'], array_flip(['ready', 'capped', 'stalled'])));
+        self::assertEqualsWithDelta(1200, $byName['jobs']['oldestReadyAgeSeconds'], 5);
+    }
+
+    public function testEmptyQueuesAreHealthy(): void
+    {
+        $client = static::createClient();
+        MessengerRows::clear($this->connection());
+
+        $this->get($client, TestTokenFactory::staff(['admin']));
+
+        $messages = $this->messages($this->json($client->getResponse()));
+        self::assertTrue($messages['healthy']);
+        self::assertSame(['count' => 0, 'capped' => false, 'oldestAt' => null], $messages['failed']);
+        self::assertIsArray($messages['transports']);
+        foreach ($messages['transports'] as $transport) {
+            self::assertIsArray($transport);
+            self::assertSame(0, $transport['ready']);
+            self::assertNull($transport['oldestReadyAgeSeconds']);
+            self::assertFalse($transport['stalled']);
+        }
+    }
+
+    public function testCountsAreLimitedTo1000WithTheCappedMark(): void
+    {
+        $client = static::createClient();
+        $connection = $this->connection();
+        MessengerRows::clear($connection);
+        MessengerRows::add($connection, 'failed', times: 1001);
+        MessengerRows::add($connection, 'jobs', new \DateTimeImmutable('-5 seconds'), times: 1000);
+        MessengerRows::add($connection, 'outbox', new \DateTimeImmutable('-5 seconds'), times: 1001);
+
+        $this->get($client, TestTokenFactory::staff(['admin']));
+
+        $messages = $this->messages($this->json($client->getResponse()));
+        self::assertIsArray($messages['failed']);
+        self::assertSame([1000, true], [$messages['failed']['count'], $messages['failed']['capped']]);
+        $byName = $this->transports($messages);
+        self::assertSame([1000, true], [$byName['outbox']['ready'], $byName['outbox']['capped']]);
+        self::assertSame([1000, false], [$byName['jobs']['ready'], $byName['jobs']['capped']]);
+    }
+
+    public function testAQueueThatStandsOnlyAboveTheLimitOf600Seconds(): void
+    {
+        $client = static::createClient();
+        $connection = $this->connection();
+        MessengerRows::clear($connection);
+        MessengerRows::add($connection, 'promotions', new \DateTimeImmutable('-9 minutes'));
+        MessengerRows::add($connection, 'payment_simulator', new \DateTimeImmutable('-11 minutes'));
+
+        $this->get($client, TestTokenFactory::staff(['admin']));
+
+        $messages = $this->messages($this->json($client->getResponse()));
+        $byName = $this->transports($messages);
+        self::assertFalse($byName['promotions']['stalled']);
+        self::assertTrue($byName['payment_simulator']['stalled']);
+        self::assertFalse($messages['healthy']);
+    }
+
+    public function testAMessageTakenByAWorkerThatDiedStandsOnceTheRedeliveryTimeoutHasPassed(): void
+    {
+        $client = static::createClient();
+        $connection = $this->connection();
+        MessengerRows::clear($connection);
+        // Taken an hour ago and never acknowledged: Messenger hands it out again, the queue has a ready message.
+        MessengerRows::add($connection, 'payment_simulator', new \DateTimeImmutable('-71 minutes'), deliveredAt: new \DateTimeImmutable('-1 hour'));
+        // Taken 10 seconds ago: a worker has it.
+        MessengerRows::add($connection, 'promotions', new \DateTimeImmutable('-71 minutes'), deliveredAt: new \DateTimeImmutable('-10 seconds'));
+
+        $this->get($client, TestTokenFactory::staff(['admin']));
+
+        $messages = $this->messages($this->json($client->getResponse()));
+        $byName = $this->transports($messages);
+        self::assertSame(1, $byName['payment_simulator']['ready']);
+        self::assertTrue($byName['payment_simulator']['stalled']);
+        self::assertSame(0, $byName['promotions']['ready']);
+        self::assertFalse($byName['promotions']['stalled']);
+        self::assertFalse($messages['healthy']);
+    }
+
+    /**
+     * The transports of the messages by name, in the order of the response.
+     *
+     * @param array<string, mixed> $messages
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function transports(array $messages): array
+    {
+        self::assertIsArray($messages['transports']);
+        $byName = [];
+        foreach ($messages['transports'] as $transport) {
+            self::assertIsArray($transport);
+            self::assertIsString($transport['name']);
+            $byName[$transport['name']] = $transport;
+        }
+
+        /** @var array<string, array<string, mixed>> $byName */
+        return $byName;
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     *
+     * @return array<string, mixed>
+     */
+    private function messages(array $body): array
+    {
+        self::assertIsArray($body['system']);
+        self::assertIsArray($body['system']['messages']);
+
+        /** @var array<string, mixed> $messages */
+        $messages = $body['system']['messages'];
+
+        return $messages;
+    }
+
+    private function connection(): \Doctrine\DBAL\Connection
+    {
+        $connection = self::getContainer()->get('doctrine.dbal.default_connection');
+        self::assertInstanceOf(\Doctrine\DBAL\Connection::class, $connection);
+
+        return $connection;
     }
 
     public function testSearchIndexWithAsManyDocumentsAsProductsIsInSync(): void

@@ -1797,7 +1797,7 @@
                     "Ordering"
                 ],
                 "summary": "Place an order of the cart of the customer",
-                "description": "Orders every line of the cart of the customer in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied. The email is the one of the token (an `email` key is ignored); the body carries no lines, quantities or prices, unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The optional `discountCode` (the code of the checkout) discounts the order: its gross total is after the discount and the usage of the code is recorded with the order (once, also on a replay). The `Idempotency-Key` identifies the request: sending it again with the same content answers 200 with the same order and changes nothing; the same key used by another customer, a guest or with other content is a 409 that tells nothing about the order.",
+                "description": "Orders every line of the cart of the customer in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied. The email is the one of the token (an `email` key is ignored); the order takes no lines, quantities or prices from the body, unknown keys are ignored. `expectedLines` is only compared with the lines of the cart and `expectedTotalGross` only with the computed gross total. The optional `discountCode` (the code of the checkout) discounts the order: its gross total is after the discount and the usage of the code is recorded with the order (once, also on a replay). The required `deliveryMethodId` is the delivery method chosen in the checkout: the order keeps a copy of it and its cost (Delivery quotes it for the goods after the discount, Pricing splits it over their VAT rates), and the gross total includes it. The `Idempotency-Key` identifies the request: sending it again with the same content answers 200 with the same order and changes nothing; the same key used by another customer, a guest or with other content is a 409 that tells nothing about the order.",
                 "operationId": "placeCustomerOrder",
                 "parameters": [
                     {
@@ -1865,7 +1865,7 @@
                         }
                     },
                     "409": {
-                        "description": "The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), too many orders waiting for their payment from the address of the client or of the account (the same answer for both), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved.",
+                        "description": "The cart is empty (also without a cart or with an expired one), has other lines or quantities than `expectedLines` (checked right after an empty cart, also at the same total), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a delivery method that is unknown or no longer active, a gross total other than `expectedTotalGross` (after the discount of the code, with the delivery), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), too many orders waiting for their payment from the address of the client or of the account (the same answer for both), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved.",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -1885,7 +1885,7 @@
                         }
                     },
                     "422": {
-                        "description": "A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field).",
+                        "description": "A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field); a request without `deliveryMethodId` (a checkout from before the delivery) or without `expectedLines` (a checkout from before the list) asks to refresh the page.",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -2006,7 +2006,7 @@
                     "Ordering"
                 ],
                 "summary": "Place an order of a guest cart",
-                "description": "Orders every line of the guest cart in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied (it stays open). The body carries no lines, quantities or prices; unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The optional `discountCode` (the code of the checkout) discounts the order: its gross total is after the discount and the usage of the code is recorded with the order (once, also on a replay). The `Idempotency-Key` identifies the request: sending it again with the same cart and content answers 200 with the same order and changes nothing, also once the cart expired or was merged; the same key with another cart or other content is a 409 that tells nothing about the order. The order cannot be read later, so there is no `Location`.",
+                "description": "Orders every line of the guest cart in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied (it stays open). The order takes no lines, quantities or prices from the body; unknown keys are ignored. `expectedLines` is only compared with the lines of the cart and `expectedTotalGross` only with the computed gross total. The optional `discountCode` (the code of the checkout) discounts the order: its gross total is after the discount and the usage of the code is recorded with the order (once, also on a replay). The required `deliveryMethodId` is the delivery method chosen in the checkout: the order keeps a copy of it and its cost (Delivery quotes it for the goods after the discount, Pricing splits it over their VAT rates), and the gross total includes it. The `Idempotency-Key` identifies the request: sending it again with the same cart and content answers 200 with the same order and changes nothing, also once the cart expired or was merged; the same key with another cart or other content is a 409 that tells nothing about the order. The order cannot be read later, so there is no `Location`.",
                 "operationId": "placeGuestOrder",
                 "parameters": [
                     {
@@ -2084,7 +2084,7 @@
                         }
                     },
                     "409": {
-                        "description": "The cart is empty, has more than 10 lines or more than 10 units of a line (a guest order is limited so that it cannot reserve much stock), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), too many orders waiting for their payment from the address of the client or of the email (the same answer for both), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved.",
+                        "description": "The cart is empty, has other lines or quantities than `expectedLines` (checked right after an empty cart, also at the same total), has more than 10 lines or more than 10 units of a line (a guest order is limited so that it cannot reserve much stock), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a delivery method that is unknown or no longer active, a gross total other than `expectedTotalGross` (after the discount of the code, with the delivery), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), too many orders waiting for their payment from the address of the client or of the email (the same answer for both), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved.",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -2104,7 +2104,7 @@
                         }
                     },
                     "422": {
-                        "description": "A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field).",
+                        "description": "A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field); a request without `deliveryMethodId` (a checkout from before the delivery) or without `expectedLines` (a checkout from before the list) asks to refresh the page.",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -3202,7 +3202,8 @@
                     "lines",
                     "totals",
                     "hasExcludedLines",
-                    "discount"
+                    "discount",
+                    "delivery"
                 ],
                 "properties": {
                     "id": {
@@ -3249,6 +3250,94 @@
                                 ]
                             }
                         ]
+                    },
+                    "delivery": {
+                        "description": "The delivery of the cart, computed from the goods after the discount code of the read; null for a cart without a purchasable line. Where the customer picks a method is the checkout.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/CartDelivery"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "CartDelivery": {
+                "description": "The delivery of a cart with a purchasable line, in grosze. Without active delivery methods `options` is empty and both amounts are null.",
+                "required": [
+                    "fromGross",
+                    "missingToFreeGross",
+                    "options"
+                ],
+                "properties": {
+                    "fromGross": {
+                        "description": "The cheapest cost of an option (\"Dostawa od\"); 0 when an option is free.",
+                        "type": "integer",
+                        "example": 1999,
+                        "nullable": true
+                    },
+                    "missingToFreeGross": {
+                        "description": "The smallest amount missing to make an option free; null when an option is free already, no option has a threshold or there is no option.",
+                        "type": "integer",
+                        "example": 5001,
+                        "nullable": true
+                    },
+                    "options": {
+                        "description": "The active delivery methods by position, then by name.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/CartDeliveryOption"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "CartDeliveryOption": {
+                "description": "A delivery method with its cost for the goods of the cart. The tracking link template is never part of it.",
+                "required": [
+                    "methodId",
+                    "name",
+                    "description",
+                    "costGross",
+                    "freeFromGross",
+                    "missingToFreeGross",
+                    "totalGross"
+                ],
+                "properties": {
+                    "methodId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Kurier"
+                    },
+                    "description": {
+                        "description": "Empty without a description.",
+                        "type": "string"
+                    },
+                    "costGross": {
+                        "description": "The cost of the delivery in grosze; 0 from the threshold of free delivery (inclusive) or for a free method.",
+                        "type": "integer",
+                        "example": 1999
+                    },
+                    "freeFromGross": {
+                        "description": "The threshold of free delivery (the goods after discounts); null without one.",
+                        "type": "integer",
+                        "example": 29900,
+                        "nullable": true
+                    },
+                    "missingToFreeGross": {
+                        "description": "The amount missing to the threshold; null when the cost is 0 or the method has no threshold.",
+                        "type": "integer",
+                        "example": 5001,
+                        "nullable": true
+                    },
+                    "totalGross": {
+                        "description": "The total of the cart with this method in grosze, `totals.gross` plus `costGross`. To show; the placement of an order checks the total again.",
+                        "type": "integer",
+                        "example": 41989
                     }
                 },
                 "type": "object"
@@ -3534,7 +3623,7 @@
                 "type": "object"
             },
             "OrderView": {
-                "description": "An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze; the totals are after the discount of the code.",
+                "description": "An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze; the totals are after the discount of the code, with the delivery.",
                 "required": [
                     "orderId",
                     "number",
@@ -3545,6 +3634,8 @@
                     "shippingAddress",
                     "lines",
                     "discount",
+                    "delivery",
+                    "shipment",
                     "totals",
                     "placedAt",
                     "paymentDeadline",
@@ -3593,6 +3684,24 @@
                         "allOf": [
                             {
                                 "$ref": "#/components/schemas/OrderDiscount"
+                            }
+                        ]
+                    },
+                    "delivery": {
+                        "description": "The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery).",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/OrderDelivery"
+                            }
+                        ]
+                    },
+                    "shipment": {
+                        "description": "The shipment, only once staff wrote a tracking number (at the shipment or afterwards); null without one.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/OrderShipment"
                             }
                         ]
                     },
@@ -3740,8 +3849,56 @@
                 },
                 "type": "object"
             },
+            "OrderDelivery": {
+                "description": "The delivery of an order, a copy of the method as it was when the order was placed.",
+                "required": [
+                    "methodName",
+                    "gross"
+                ],
+                "properties": {
+                    "methodName": {
+                        "type": "string",
+                        "example": "Kurier standardowy"
+                    },
+                    "gross": {
+                        "description": "The gross cost of the delivery in grosze, part of the totals; 0 for a free delivery.",
+                        "type": "integer",
+                        "example": 1999,
+                        "minimum": 0
+                    }
+                },
+                "type": "object"
+            },
+            "OrderShipment": {
+                "description": "The shipment of an order that has a tracking number. The carrier is the name of the delivery method of the placement.",
+                "required": [
+                    "carrier",
+                    "trackingNumber",
+                    "trackingUrl"
+                ],
+                "properties": {
+                    "carrier": {
+                        "description": "The name of the delivery method; null for an order placed without one.",
+                        "type": "string",
+                        "example": "Kurier standardowy",
+                        "nullable": true
+                    },
+                    "trackingNumber": {
+                        "description": "1 to 40 ASCII letters, digits and hyphens.",
+                        "type": "string",
+                        "example": "JJD0002-4455"
+                    },
+                    "trackingUrl": {
+                        "description": "The link that follows the shipment, from the copy of the template of the method with the number; null without a template.",
+                        "type": "string",
+                        "example": "https://tracking.example.com/JJD0002-4455",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
             "OrderTotals": {
-                "description": "Sums of the lines after the discount of the code; net + vat = gross.",
+                "description": "Sums of the lines after the discount of the code and of the delivery; net + vat = gross.",
                 "required": [
                     "net",
                     "vat",
@@ -3872,6 +4029,8 @@
                     "shippingAddress",
                     "lines",
                     "discount",
+                    "delivery",
+                    "shipment",
                     "totals",
                     "placedAt",
                     "paymentDeadline",
@@ -3909,6 +4068,24 @@
                         "allOf": [
                             {
                                 "$ref": "#/components/schemas/OrderDiscount"
+                            }
+                        ]
+                    },
+                    "delivery": {
+                        "description": "The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery).",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/OrderDelivery"
+                            }
+                        ]
+                    },
+                    "shipment": {
+                        "description": "The shipment, only once staff wrote a tracking number (at the shipment or afterwards); null without one.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/OrderShipment"
                             }
                         ]
                     },
@@ -4195,7 +4372,7 @@
                 "type": "object"
             },
             "OrderConflictProblem": {
-                "description": "A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, the `Idempotency-Key` was used by another request, or the discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`), its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the rejected code in the cart. Only the order of a guest can be too large (`guest-order-too-large`: more than 10 lines or 10 units of a line), checked before anything else about the cart. Too many orders wait for their payment (`too-many-unpaid-orders`): from the address of the client, of the email of a guest or of the account, with the same `detail` for all of them; a repeated request with the same `Idempotency-Key` and content still answers 200 with its order.",
+                "description": "A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has other lines or quantities than `expectedLines` (`cart-changed`, also at the same total), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, the `Idempotency-Key` was used by another request, or the delivery method chosen is unknown or no longer active (`delivery-method-unavailable`, checked after the discount code and before the total), or the discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`), its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the rejected code in the cart. Only the order of a guest can be too large (`guest-order-too-large`: more than 10 lines or 10 units of a line), checked right after the lines of the cart. Too many orders wait for their payment (`too-many-unpaid-orders`): from the address of the client, of the email of a guest or of the account, with the same `detail` for all of them; a repeated request with the same `Idempotency-Key` and content still answers 200 with its order.",
                 "required": [
                     "type",
                     "title",
@@ -4207,6 +4384,7 @@
                         "type": "string",
                         "enum": [
                             "tag:piotrp321.github.io,2026:shop/problems/cart-empty",
+                            "tag:piotrp321.github.io,2026:shop/problems/cart-changed",
                             "tag:piotrp321.github.io,2026:shop/problems/guest-order-too-large",
                             "tag:piotrp321.github.io,2026:shop/problems/too-many-unpaid-orders",
                             "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable",
@@ -4215,7 +4393,8 @@
                             "tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused",
                             "tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid",
                             "tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up",
-                            "tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum"
+                            "tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum",
+                            "tag:piotrp321.github.io,2026:shop/problems/delivery-method-unavailable"
                         ]
                     },
                     "title": {
@@ -4364,14 +4543,16 @@
                 "type": "object"
             },
             "PlaceCustomerOrderRequest": {
-                "description": "The contact and the address of an order of the cart of the customer, the total the customer saw and the discount code applied.",
+                "description": "The contact and the address of an order of the cart of the customer, the total and the lines the customer saw, the delivery method chosen and the discount code applied.",
                 "required": [
                     "fullName",
                     "phone",
                     "street",
                     "postalCode",
                     "city",
-                    "expectedTotalGross"
+                    "expectedTotalGross",
+                    "deliveryMethodId",
+                    "expectedLines"
                 ],
                 "properties": {
                     "fullName": {
@@ -4403,10 +4584,41 @@
                         "maxLength": 60
                     },
                     "expectedTotalGross": {
-                        "description": "The gross total of the cart the customer saw, in grosze (`totals.gross` of the cart). Only compared with the total the API computes; another one is a 409.",
+                        "description": "The gross total the customer saw, in grosze, with the delivery: `totalGross` of the chosen option of `delivery.options` of the cart. Only compared with the total the API computes; another one is a 409.",
                         "type": "integer",
                         "example": 39998,
                         "minimum": 0
+                    },
+                    "deliveryMethodId": {
+                        "description": "Id of the delivery method the customer chose in the checkout (`methodId` of an option of `delivery.options` of the cart): a UUID in any letter case. Required: a request without it (a checkout from before the delivery) is a 422 asking to refresh the page. A method that is unknown or no longer active is a 409 `delivery-method-unavailable`; its cost is part of the total compared with `expectedTotalGross`.",
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "expectedLines": {
+                        "description": "The lines of the summary the customer saw in the checkout: `variantId` and `quantity` of every line of the cart, in any order. Only compared with the lines of the cart, which the order is placed from: other lines or quantities are a 409 `cart-changed`, also at the same total. Required: a request without it (a checkout from before the list) is a 422 asking to refresh the page. 1 to 50 lines, each variant once (without letter case), 1 to 99 units.",
+                        "type": "array",
+                        "items": {
+                            "required": [
+                                "variantId",
+                                "quantity"
+                            ],
+                            "properties": {
+                                "variantId": {
+                                    "description": "Id of the variant of a line of the summary (`variantId` of a line of the cart): a UUID in any letter case.",
+                                    "type": "string",
+                                    "format": "uuid"
+                                },
+                                "quantity": {
+                                    "description": "The units of the line the summary showed (`quantity` of the line of the cart).",
+                                    "type": "integer",
+                                    "maximum": 99,
+                                    "minimum": 1
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "maxItems": 50,
+                        "minItems": 1
                     },
                     "discountCode": {
                         "description": "The discount code the customer applied in the checkout, optional: a missing key, `null`, an empty text or one of white space only is no code. Compared without letter case. A code that gives no discount is a 409 with its own `type`; the order is not placed.",
@@ -4438,7 +4650,7 @@
                 "type": "object"
             },
             "PlaceGuestOrderRequest": {
-                "description": "The guest cart, the contact and the address of an order, the total the guest saw and the discount code applied.",
+                "description": "The guest cart, the contact and the address of an order, the total and the lines the guest saw, the delivery method chosen and the discount code applied.",
                 "required": [
                     "cartId",
                     "email",
@@ -4447,7 +4659,9 @@
                     "street",
                     "postalCode",
                     "city",
-                    "expectedTotalGross"
+                    "expectedTotalGross",
+                    "deliveryMethodId",
+                    "expectedLines"
                 ],
                 "properties": {
                     "cartId": {
@@ -4491,10 +4705,41 @@
                         "maxLength": 60
                     },
                     "expectedTotalGross": {
-                        "description": "The gross total of the cart the guest saw, in grosze (`totals.gross` of the cart). Only compared with the total the API computes; another one is a 409.",
+                        "description": "The gross total the guest saw, in grosze, with the delivery: `totalGross` of the chosen option of `delivery.options` of the cart. Only compared with the total the API computes; another one is a 409.",
                         "type": "integer",
                         "example": 39998,
                         "minimum": 0
+                    },
+                    "deliveryMethodId": {
+                        "description": "Id of the delivery method the guest chose in the checkout (`methodId` of an option of `delivery.options` of the cart): a UUID in any letter case. Required: a request without it (a checkout from before the delivery) is a 422 asking to refresh the page. A method that is unknown or no longer active is a 409 `delivery-method-unavailable`; its cost is part of the total compared with `expectedTotalGross`.",
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "expectedLines": {
+                        "description": "The lines of the summary the customer saw in the checkout: `variantId` and `quantity` of every line of the cart, in any order. Only compared with the lines of the cart, which the order is placed from: other lines or quantities are a 409 `cart-changed`, also at the same total. Required: a request without it (a checkout from before the list) is a 422 asking to refresh the page. 1 to 50 lines, each variant once (without letter case), 1 to 99 units.",
+                        "type": "array",
+                        "items": {
+                            "required": [
+                                "variantId",
+                                "quantity"
+                            ],
+                            "properties": {
+                                "variantId": {
+                                    "description": "Id of the variant of a line of the summary (`variantId` of a line of the cart): a UUID in any letter case.",
+                                    "type": "string",
+                                    "format": "uuid"
+                                },
+                                "quantity": {
+                                    "description": "The units of the line the summary showed (`quantity` of the line of the cart).",
+                                    "type": "integer",
+                                    "maximum": 99,
+                                    "minimum": 1
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "maxItems": 50,
+                        "minItems": 1
                     },
                     "discountCode": {
                         "description": "The discount code the customer applied in the checkout, optional: a missing key, `null`, an empty text or one of white space only is no code. Compared without letter case. A code that gives no discount is a 409 with its own `type`; the order is not placed.",

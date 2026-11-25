@@ -55,7 +55,10 @@ class StartDoneTest(NativeEnv):
             return json.load(f)
 
     def start(self, *extra, runner=None, stdin='', epic='demo', now=testkit.T0):
-        return run_cli(['start', epic, '--state', self.state, '--projects', self.projects] + list(extra),
+        # the stub runner has no repository: the check of the process version fails and is accepted here (its own
+        # tests are in test_process_version.py)
+        return run_cli(['start', epic, '--state', self.state, '--projects', self.projects,
+                        '--accept-process-mismatch', 'test bez repozytorium'] + list(extra),
                        runner or Git(), now=now, stdin=stdin)
 
     def test_start_after_the_fact_writes_the_run_file_without_plan_md(self):
@@ -198,7 +201,8 @@ class StartDoneTest(NativeEnv):
     def test_a_valid_epic_name_is_accepted(self):
         for name in ('small-fixes', 'ash-v1', '2fa'):
             with self.subTest(epic=name):
-                code, out, err = self.start('--worktree', WORKTREE, '--session', 's1', '--tasks', '3', epic=name)
+                code, out, err = self.start('--worktree', WORKTREE, '--session', 's-' + name, '--tasks', '3',
+                                            epic=name)     # one session, one epic (E1)
                 self.assertEqual(code, 0, err)
                 self.assertEqual(self.run_file(name)['epic'], name)
 
@@ -357,8 +361,9 @@ class NativeRecordTest(NativeEnv):
                             runs={'feat/demo': [{'databaseId': 9, 'createdAt': iso_at(4000), 'conclusion': 'success'}]},
                             jobs={9: [{'name': 'checks', 'startedAt': iso_at(4000), 'completedAt': iso_at(4300)}]})
         record = self.native_record(runner=gh, no_gh=False)
-        self.assertEqual(record['ci'], {'final': {'pr': 752, 'runs': 1, 'checks_s': 300, 'e2e_s': None},
-                                        'tasks': None})
+        self.assertEqual(record['ci']['final'], {'pr': 752, 'runs': 1, 'checks_s': 300, 'e2e_s': None})
+        self.assertIsNone(record['ci']['tasks'])
+        self.assertEqual(record['ci']['time']['status'], 'no_data')       # no comparable run of main in the stub
         self.assertEqual(record['merged_at'], iso_at(5000))
         self.assertEqual(record['issue'], 496)
         self.assertEqual(record['wall']['to_merge'], 5000)

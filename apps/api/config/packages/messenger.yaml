@@ -29,10 +29,10 @@ framework:
                 dsn: 'doctrine://default?queue_name=outbox&auto_setup=false&redeliver_timeout=300'
                 options:
                     use_notify: false
-                # Relaying fails only when RabbitMQ does, so it keeps trying for about 25 minutes (1, 2, 4 … 32 s,
+                # Relaying fails only when RabbitMQ does, so it keeps trying for about 3 hours (1, 2, 4 … 32 s,
                 # then every 60 s) before the event goes to `failed`.
                 retry_strategy:
-                    max_retries: 30
+                    max_retries: 200
                     delay: 1000
                     multiplier: 2
                     max_delay: 60000
@@ -44,10 +44,14 @@ framework:
                     # RabbitMQ has the message. That it routed the message to a queue is checked by
                     # RoutedAmqpTransport (mandatory publish), which every AMQP transport is.
                     confirm_timeout: 5
+                # The consumers are idempotent and read the current state, so a failure of a service they call (the
+                # index, Varnish, the mail server) is retried for about 26 minutes: after 1, 3, 9, 27, 81 and 243 s,
+                # then four times after 300 s; then `failed`.
                 retry_strategy:
-                    max_retries: 3
+                    max_retries: 10
                     delay: 1000
                     multiplier: 3
+                    max_delay: 300000
             # Delayed commands (DelayStamp sets available_at): ExpireUnpaidOrder, written in the transaction of the
             # placement on the same connection, waits in the table through any restart or outage of the worker. A row
             # taken by a worker that died before the ack is retaken after redeliver_timeout, as in `outbox`.
@@ -56,7 +60,8 @@ framework:
                 options:
                     use_notify: false
                 # A version conflict (the order paid meanwhile) is retried at once by the next attempt; after 5 tries
-                # (1, 3, 9, 27, 81 s) the message goes to `failed` and the order stays new.
+                # (1, 3, 9, 27, 81 s) the message goes to `failed`, and the order stays new until the safety net
+                # ordering:expire-overdue (the CronJob order-expiry) cancels it, 10 minutes after its expiry.
                 retry_strategy:
                     max_retries: 5
                     delay: 1000
@@ -98,10 +103,18 @@ framework:
                     max_retries: 5
                     delay: 1000
                     multiplier: 3
+            # A message retried from here that fails again stays here (KeepFailedMessageListener; spec
+            # docs/features/async-reliability/spec.md, D6, W12): no retry of this strategy, so the listener writes it
+            # back at once under a new id. An error that forces a retry (RecoverableExceptionInterface) is sent back by
+            # Messenger with its delay whatever max_retries says. A bulk retry: app:messaging:failed-retry, never
+            # messenger:failed:retry without an id or messenger:consume of this transport (both disabled in the
+            # console, DisableBulkFailedRetryListener).
             failed:
                 dsn: 'doctrine://default?queue_name=failed&auto_setup=false'
                 options:
                     use_notify: false
+                retry_strategy:
+                    max_retries: 0
 
         routing:
             App\Shared\Domain\Event\DomainEvent: outbox

@@ -22,13 +22,13 @@ RUN ?= docker compose exec
 # One-shot services that nothing waits on yet. `docker compose up --wait` reports a service that
 # exited as an error unless a dependent service waits for it, so these run separately.
 ONESHOT := rabbitmq-init
-# Started last: the worker needs the tables that `init` creates. It is recreated on every `make up`, so that it
-# always runs the code (and handler wiring) as of that moment.
-LAST := worker
+# Started last: the workers (events and commands) need the tables that `init` creates. They are recreated on every
+# `make up`, so that they always run the code (and handler wiring) as of that moment.
+LAST := worker worker-commands
 
 up:
 	sh infra/scripts/init-env.sh
-	docker compose up -d --wait $$(docker compose config --services | grep -vx -e '$(ONESHOT)' -e '$(LAST)')
+	docker compose up -d --wait $$(docker compose config --services | grep -vx $(foreach s,$(ONESHOT) $(LAST),-e '$(s)'))
 	docker compose run --rm $(ONESHOT)
 	$(MAKE) -C apps/api init
 	docker compose up -d --wait --force-recreate $(LAST)

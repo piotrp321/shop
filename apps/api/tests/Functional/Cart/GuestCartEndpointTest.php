@@ -27,7 +27,7 @@ final class GuestCartEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
         self::assertIsString($cart['id']);
         self::assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/D', $cart['id'], 'a random UUID v4');
-        self::assertSame(['id' => $cart['id'], 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null], $cart);
+        self::assertSame(['id' => $cart['id'], 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null, 'delivery' => null], $cart);
         self::assertSame('/api/v1/guest-carts/'.$cart['id'], $this->response()->headers->get('Location'));
         $this->assertNoStore();
         self::assertMatchesSchema('CartView', $cart);

@@ -57,8 +57,14 @@ Powiadomienie push to `PushNotification` (do 200 znaków). Limit i procesy spraw
 - **Z `/ao-run`** (kolejka przeglądów po `/sweep`): to samo wejście z argumentem `<epik>`; sesja przeczytała ten
   skill i wykonuje go od „Warunków przed startem”.
 - **Epik natywny:** (prowadzony przez główną sesję według „Przebiegu epiku” w `docs/adr/agentic-software-house.md`,
-  z plikiem przebiegu `metrics.py start`): `/retro <epik>` uruchamia użytkownik po merge'u końcowego PR; sesja
-  prowadząca epik go nie uruchamia. `pending` wymienia taki epik po merge'u jego końcowego PR.
+  z plikiem przebiegu `metrics.py start`): `/retro <epik>` uruchamia użytkownik po merge'u końcowego PR, w nowej
+  sesji; sesja prowadząca epik go nie uruchamia, tylko zostawia w końcowym PR komentarz „Przekazanie do retro”
+  (ADR, krok 7, „Po merge'u”). Gdy skill wywołano w sesji, która prowadziła ten epik (jej identyfikator jest
+  w pliku przebiegu), powiedz to użytkownikowi i poproś o nową sesję zamiast zaczynać. `pending` wymienia taki
+  epik po merge'u jego końcowego PR. Raport retro epiku natywnego ma sekcję `## Zewnętrzne review`: potwierdzone
+  znaleziska z „Problemów i zastojów” końcowego PR w dwóch grupach, „nowe” i „powtarza odroczoną uwagę” (z podstawą
+  odroczenia: sprawdzone albo założenie niesprawdzone), z liczbą każdej grupy; bez znalezisk „brak”, a gdy opis PR
+  nie podaje grupy, „nieokreślone” (`docs/features/ash-process-fixes/spec.md`, C3).
 - **Nierozstrzygnięte decyzje** (krok 7) to `decisions_open` (propozycje issues) i pozycje PR retro bez `outcome` w
   `$RETRO_HOME/*/state.json`. Pokaż je tylko do odczytu (opcjonalny drugi argument to epik pomijany, bo jego pozycje są
   w propozycjach bieżącego przebiegu, krok 6):
@@ -207,8 +213,17 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    ```
 
    Pierwsza linia usuwa resztkę po zabitej sesji; blokada tego przebiegu gwarantuje, że `$WT` nie jest cudzy.
-   Błąd (kod różny od 0, w tym `gh`, `git` albo bramka pochodzenia): sprzątanie, `defer` z powodem z błędu (np. „błąd
-   zbierania danych: <komunikat>”), koniec. `collect` zapisuje `$RUN/input.json` (incydenty całej historii, fakty
+   **Wersja procesu.** `collect` najpierw porównuje definicje (agenci, skille, `CLAUDE.md`) na dysku w każdym miejscu
+   ładowania z `HEAD` `$WT` (`metrics.py process`), bo ten `SKILL.md` i `retro-analyst` są czytane z głównego
+   checkoutu. Odmowa (kod 2, komunikat `retro: wersja procesu: …`) to nie `defer`: pokaż użytkownikowi różnicę
+   z komunikatu (miejsca, pliki, epiki bez zmergowanego rekordu) i zapytaj, czy zaktualizować główny checkout według „Wersji procesu”
+   w `docs/adr/agentic-software-house.md` (potem sprzątanie, `unlock` i `/retro <epik>` w nowej sesji), czy
+   kontynuować: wtedy powtórz `collect` z `--accept-process-mismatch "<powód użytkownika>"`. Odmowa pustego powodu
+   (kod 2, `pusty albo nieprawidłowy powód`) też nie jest błędem: zapytaj użytkownika ponownie o powód. Fakt
+   `<epik>/process/check` (wersja, przy akceptacji różnica i powód) albo `<epik>/process/missing/check` (kontroli nie
+   dało się wykonać; retro idzie dalej) trafia do `report.md` (krok 6).
+   Inny błąd (kod różny od 0, w tym `gh`, `git` albo bramka pochodzenia): sprzątanie, `defer` z powodem z błędu (np.
+   „błąd zbierania danych: <komunikat>”), koniec. `collect` zapisuje `$RUN/input.json` (incydenty całej historii, fakty
    „Statusu” `status/*`, rejestry, pozycje otwartego PR retro, otwarte issues AO i `tech-debt` z `agent`, wpisy
    `external` niezaufanych autorów: tylko numer, autor i link) oraz pomiar z `tools/metrics/metrics.py`: incydenty
    rodzaju `optimization` (kandydaci reguł D1–D4 z `decide --history`), fakty `<epik>/measurement/*`
@@ -218,7 +233,11 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    Dla epiku natywnego `collect` najpierw odświeża jego rekord (`metrics.py epic <epik>`), a incydenty bierze z rekordu
    (czekanie na człowieka, przeglądy blokujące, niezakończone przebiegi subagentów, zgłoszenia `bug` z okna regresji)
    i z opisu końcowego PR przez bramkę pochodzenia („Decyzje bez pytania”, „Problemy i zastoje”, „Luki w
-   instrukcjach”); brak sekcji albo pola to fakt braku danych.
+   instrukcjach”); brak sekcji albo pola to fakt braku danych. Teksty punktów, dowodów, blokerów i issues są w
+   `input.json` w całości (jeden punkt to jeden incydent, tekst poza punktami to fakt `…/outside-points/…`). Dla
+   epiku natywnego `handoff` ma pełną treść komentarzy „Przekazanie do retro” końcowego PR (brak: fakt
+   `<epik>/missing/handoff`), a `materials` wskazania: specyfikację i plan w `$WT` (plan usunięty: `last_commit`
+   z ostatnią wersją), końcowy PR, plik przebiegu, rekord i sesje z katalogami transkryptów.
 3. **Agent `retro-analyst`** (narzędzie Agent, na pierwszym planie). Zlecenie:
 
    ```text
@@ -273,9 +292,11 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    `fix` idą jak zawsze.
 6. **Wynik.** Wywołaj `get_usage` (koniec pomiaru). Zapisz `$RUN/report.md` (po polsku): poprawki (commit, ID pozycji),
    obserwacje, propozycje issues z numerami (repo, tytuł, `existing_issue` albo nowe, dowody), `overflow`, zmiany
-   „Statusu”, PR, ostrzeżenie `warning` z `lock` (jeśli było), przy serii w toku sekcja `## Odroczone do końca serii`
-   (krok 5), nierozstrzygnięte decyzje poprzednich przebiegów (niżej), sekcja `## Zużycie` (krok 8) i
-   na samym końcu sekcja `## Decyzje optymalizacyjne` (niżej).
+   „Statusu”, PR, ostrzeżenie `warning` z `lock` (jeśli było), wersja procesu z faktu `<epik>/process/check` albo
+   `<epik>/process/missing/check` (przy akceptacji różnica i powód), przy serii w toku sekcja `## Odroczone do końca serii`
+   (krok 5), dla epiku natywnego sekcja `## Zewnętrzne review` (wyżej, „Epik natywny”), nierozstrzygnięte decyzje
+   poprzednich przebiegów (niżej), sekcja `## Zużycie` (krok 8) i na samym końcu sekcja `## Decyzje optymalizacyjne`
+   (niżej).
    Numery to
    `n` z `proposals.json` (wspólna numeracja pozycji `fix`,
    `issue` i `status`, bez przenumerowania); `issues --approve` i decyzje używają tych `n`. Nierozstrzygnięte decyzje

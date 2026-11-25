@@ -1,6 +1,6 @@
 #!/bin/sh
 # shellcheck disable=SC2154 # usage is defined by the script that sources this file
-# Sourced by generate.sh, open.sh and smoke.sh after tools.sh (docs/features/demo-scale/spec.md): what both read before the cluster, the cluster
+# Sourced by generate.sh, open.sh, reindex.sh and smoke.sh after tools.sh (docs/features/demo-scale/spec.md): what both read before the cluster, the cluster
 # through kubectl (KUBE_DIR, KUBE_NETWORK) in the namespace $namespace, and the probe of the public addresses. The caller defines usage
 # <message> (exit 2).
 #
@@ -8,12 +8,17 @@
 #                               GENERATE_CLOSE_WAIT (120), GENERATE_OPEN_WAIT (300), GENERATE_POLL (30), GENERATE_PROBE_POLL (5)
 #   kc <arguments>              kubectl in the namespace
 #   active_jobs                 the Jobs of the namespace that run (neither Complete nor Failed), separated by spaces; a Job owned by
-#                               the CronJob rate-limit-check (every 5 minutes, at most a minute) is not counted
+#                               one of the CronJobs of the short checks (check_cronjobs: rate-limit-check, queue-check and
+#                               order-expiry, every 5 minutes for at most 60, 120 and 600 s) is not counted. The owner decides, not
+#                               the name: a Job made by hand counts. They may run while the data is replaced: rate-limit-check
+#                               writes only a control key of Redis, queue-check only reads the queues, and order-expiry changes only
+#                               new orders past their deadline and pending payments, which the generator never writes
+#                               (docs/features/demo-data/spec.md, P8)
 #   probe <closed|open> <s>     0 once every address says <state> in one round, 1 when <s> seconds passed first (probe_report: the
 #                               last round). 502, 503 and 504 are closed, a code below 500 is open; any other code and no answer are
 #                               a failed reading, tried again, never closed or open.
 #
-# The lock: make generate and make open run one at a time. It is the ConfigMap demo-data-lock of the namespace (data: holder, who
+# The lock: make generate, make open and make reindex run one at a time. It is the ConfigMap demo-data-lock of the namespace (data: holder, who
 # holds it, and token, random), without labels and annotations (Argo CD does not track it). kubectl create makes it or fails with
 # AlreadyExists, so only one run gets it; a run deletes it only while the token in it is its own.
 #   lock_read                   lock_holder and lock_held_token of the lock (both empty: there is none); 1 when it cannot be read
@@ -56,12 +61,16 @@ read_environment() {
 
 kc() { kubectl -n "$namespace" "$@"; }
 
+# The CronJobs of the short checks: the Redis of the rate limiters, the queues of messages, the expiry of the orders.
+check_cronjobs="rate-limit-check queue-check order-expiry"
+
 active_jobs() {
   kc get jobs -o json | py -c '
 import json, sys
+checks = set(sys.argv[1].split())
 print(" ".join(j["metadata"]["name"] for j in json.load(sys.stdin)["items"]
     if not {c.get("type") for c in (j.get("status", {}).get("conditions") or []) if c.get("status") == "True"} & {"Complete", "Failed"}
-    and not any(o.get("kind") == "CronJob" and o.get("name") == "rate-limit-check" for o in j["metadata"].get("ownerReferences") or [])))'
+    and not any(o.get("kind") == "CronJob" and o.get("name") in checks for o in j["metadata"].get("ownerReferences") or [])))' "$check_cronjobs"
 }
 
 probe_round() {
@@ -110,7 +119,7 @@ lock_read() {
 }
 
 lock_message() {
-  echo "it stays after a make generate or make open killed with KILL, or one that could not release it; only when neither runs, the user (never an agent, which stops here) deletes it: kubectl -n $namespace delete configmap $lock_name (on the server: sudo k3s kubectl -n $namespace delete configmap $lock_name; make status shows it)"
+  echo "it stays after a make generate, make open or make reindex killed with KILL, or one that could not release it; only when none of them runs, the user (never an agent, which stops here) deletes it: kubectl -n $namespace delete configmap $lock_name (on the server: sudo k3s kubectl -n $namespace delete configmap $lock_name; make status shows it)"
 }
 
 lock_take() {
@@ -125,7 +134,7 @@ lock_take() {
   if lock_read && [ -n "$lock_held_token" ] && [ "$lock_held_token" != "$lock_token" ]; then
     # Another made it first, so this creation made nothing: there is nothing to release.
     lock_token=""
-    lock_error="the lock $lock_name is held by $lock_holder: make generate and make open run one at a time; $(lock_message)"
+    lock_error="the lock $lock_name is held by $lock_holder: make generate, make open and make reindex run one at a time; $(lock_message)"
   else
     lock_error="the lock $lock_name could not be made"
   fi

@@ -4,7 +4,7 @@ import { apiAmount, createDiscountCode, disableDiscountCode } from "../support/d
 import { waitForOrderEmail } from "../support/mailpit";
 import { decideAtSimulator, expectSimulatorPage, WEBHOOK_TIMEOUT_MS } from "../support/payment";
 import { PanelToken } from "../support/promotions";
-import { addVariantOf, chooseProvider, fillAddress, tileNamed } from "../support/shop";
+import { addVariantOf, chooseDelivery, chooseProvider, fillAddress, STANDARD_DELIVERY, tileNamed } from "../support/shop";
 import { loginStaff, waitForBearerToken } from "../support/staff-login";
 import { cartLineOf } from "../support/variants";
 
@@ -63,13 +63,18 @@ test("a guest sees that the cart is below the minimum of a code, applies it with
   expect(discount).toBeGreaterThan(0);
   await expect(page.getByTestId("checkout-discount")).toContainText(`Kod ${code}:`);
   expect(groszeOf((await page.getByTestId("checkout-discount").innerText()).replace(/^Kod \S+:/, ""))).toBe(discount);
-  const total = minimum - discount;
-  await expect.poll(async () => groszeOf(await page.getByTestId("checkout-total").innerText())).toBe(total);
-  const checkoutTotal = (await page.getByTestId("checkout-total").innerText()).trim();
+  const goods = minimum - discount;
 
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Imię i nazwisko").fill("Anna Testowa");
   await fillAddress(page);
+  // The delivery is priced for the goods after the code ("Darmowa" from the threshold of the method): the total to pay
+  // is the goods with it.
+  await chooseDelivery(page);
+  const delivery = groszeOf(await page.getByTestId("checkout-delivery").innerText());
+  const total = goods + delivery;
+  await expect.poll(async () => groszeOf(await page.getByTestId("checkout-total").innerText())).toBe(total);
+  const checkoutTotal = (await page.getByTestId("checkout-total").innerText()).trim();
   await chooseProvider(page, "Szybki przelew (demo)");
   await page.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" }).click();
 
@@ -82,10 +87,11 @@ test("a guest sees that the cart is below the minimum of a code, applies it with
   await expect(page.getByTestId("order-total")).toHaveText(checkoutTotal);
   expect(groszeOf(await page.getByTestId("order-total").innerText())).toBe(total);
 
-  // The e-mail has the items before the discount, the line of the code and the total after it.
+  // The e-mail has the items before the discount, the line of the code, the delivery and the total after the code with it.
   const confirmation = await waitForOrderEmail(email, number);
   expect(confirmation.text).toContain(PRODUCT);
   expect(confirmation.text).toContain(`Kod ${code}: −${apiAmount(discount)}`);
+  expect(confirmation.text).toContain(`Dostawa (${STANDARD_DELIVERY}): ${apiAmount(delivery)}`);
   expect(confirmation.text).toContain(`Suma brutto: ${apiAmount(total)}`);
 });
 
@@ -127,6 +133,7 @@ test("a code that stops working between the preview and the order leaves the liv
   await page.getByLabel("E-mail").fill(`e2e-kod+${Date.now()}@example.com`);
   await page.getByLabel("Imię i nazwisko").fill("Anna Testowa");
   await fillAddress(page);
+  await chooseDelivery(page);
   await chooseProvider(page, "Szybki przelew (demo)");
   await page.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Ten kod działa przy zamówieniu od" })).toHaveText(`Ten kod działa przy zamówieniu od ${apiAmount(twoUnits)}.`);

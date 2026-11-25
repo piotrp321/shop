@@ -390,7 +390,7 @@ final class WriteProductEndpointsTest extends WebTestCase
     {
         $this->api('PUT', self::PRODUCTS.'/'.self::UNKNOWN_ID, $this->body(['version' => 1]));
 
-        $this->assertProblem(404);
+        $this->assertProblem(404, null, 'Produkt nie istnieje.');
     }
 
     public function testEditNeedsTheVersionAndTheSameFieldsAsCreate(): void
@@ -577,7 +577,7 @@ final class WriteProductEndpointsTest extends WebTestCase
     {
         $this->api('POST', self::PRODUCTS.'/'.self::UNKNOWN_ID.'/'.$action, ['version' => 1]);
 
-        $this->assertProblem(404);
+        $this->assertProblem(404, null, 'Produkt nie istnieje.');
 
         foreach (InputValues::uuidsOutsideTheVersions() as [$uuid]) {
             $this->api('POST', self::PRODUCTS.'/'.$uuid.'/'.$action, ['version' => 1]);

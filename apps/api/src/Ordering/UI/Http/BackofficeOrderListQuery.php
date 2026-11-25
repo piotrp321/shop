@@ -35,9 +35,12 @@ final readonly class BackofficeOrderListQuery
     public const string CUSTOMER_EXCLUDES = 'Zamówienia klienta łączą się tylko z filtrem statusu: bez wyszukiwania, sortowania, zakresu dat i zwrotów.';
     /** Longer than any cursor the API hands out (a sort, a moment and a UUID in JSON and base64url). */
     public const int MAX_CURSOR_LENGTH = 2048;
+    /** Also of the cursor of the orders of a customer (CustomerOrderListQuery). */
+    public const string BAD_CURSOR = 'Kursor stronicowania jest nieprawidłowy.';
+    public const string BAD_STATUS = 'Status zamówienia jest nieprawidłowy.';
 
     public function __construct(
-        #[Assert\Choice(choices: self::STATUSES, message: 'The status is not one of the statuses of an order.')]
+        #[Assert\Choice(choices: self::STATUSES, message: self::BAD_STATUS)]
         public ?string $status = null,
         // A string checked by validateRefund.
         #[OA\Property(type: 'string', enum: self::REFUNDS, nullable: true)]

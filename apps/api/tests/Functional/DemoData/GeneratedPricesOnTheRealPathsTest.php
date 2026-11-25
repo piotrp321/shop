@@ -51,6 +51,7 @@ final class GeneratedPricesOnTheRealPathsTest extends WebTestCase
         foreach (['demo-data:categories', 'demo-data:products', 'demo-data:prices', 'demo-data:promotions'] as $step) {
             $this->succeeds($step, ['--anchor' => $this->anchor->format(\DATE_ATOM)]);
         }
+        $this->analyze();
     }
 
     public function testTheOmnibusPriceAfterPlanningAPromotionIsTheOneOfTheGeneratedHistory(): void

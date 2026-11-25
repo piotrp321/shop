@@ -56,6 +56,9 @@ test("Jan pays an order and finds it in his history, warehouse ships it in the p
     // The toast names the status of the answer, and the focus is on the card whose buttons changed.
     await expect(panel.page.getByRole("region", { name: "Powiadomienia", exact: true })).toContainText("Status zamówienia zmieniony: Wysłane.");
     await expect(panel.page.getByRole("heading", { level: 2, name: "Akcje" })).toBeFocused();
+    // Shipped without a number: no shipment card, and the warehouse may add the number (the action is its own).
+    await expect(panel.page.getByTestId("shipment")).toHaveCount(0);
+    await expect(panel.page.getByTestId("change-tracking-number")).toHaveText("Dodaj numer przesyłki");
     const lastChange = panel.page.getByTestId("history-row").last();
     await expect(lastChange.getByTestId("history-change")).toHaveText("Opłacone → Wysłane");
     await expect(lastChange.getByTestId("history-actor")).toHaveText(staff.warehouse.username);
@@ -70,10 +73,14 @@ test("Jan pays an order and finds it in his history, warehouse ships it in the p
   await historyEntry(page, number).getByRole("link", { name: number }).click();
   await expect(page.getByTestId("order-status")).toHaveText("Wysłane");
   await expect(page.getByRole("group", { name: "Daty zamówienia" }).getByText("Wysłane", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("order-delivery")).toContainText("Dostawa (Kurier standardowy)");
+  await expect(page.getByRole("group", { name: "Przesyłka" }), "shipped without a number has no shipment").toHaveCount(0);
 
   const email = await waitForOrderEmail(customers.jan.email, number, "shipped");
   expect(email.subject).toBe(`Zamówienie ${number} wysłane`);
   expect(email.text).toContain("Zamówienie zostało wysłane na adres:");
+  expect(email.text).toContain("Sposób dostawy: Kurier standardowy");
+  expect(email.text).not.toContain("Numer przesyłki");
 });
 
 test("support cancels Anna's paid order with a note, the panel shows the refund to do and it leaves the list once it is done", async ({

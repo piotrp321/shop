@@ -9,10 +9,14 @@ ways of weakening them: a bypass actor in the ruleset with the unconditional rul
 than `always`, another rule next to `creation` and `update`, either of them missing, a wider ref pattern.
 
 `main` and `epic/*` follow the same split into two rulesets: `main` and `epic` (deletion and non-fast-forward) and
-`main-merge` and `epic-merge` (pull request and the required checks `checks` and `e2e`). None of the four has a bypass
-actor, so nobody, the repository owner included, can merge a pull request without green `checks` and `e2e`, push
-directly, delete the branch or force-push. The tests try the ways of adding a bypass actor back (any actor type and
-mode) and of weakening the rules.
+`main-merge` and `epic-merge` (pull request and the required checks `checks` and `e2e`). No role and no account is a
+bypass actor of any of the four, so nobody, the repository owner included, can merge a pull request without green `checks`
+and `e2e` with a token of their own, push directly, delete the branch or force-push. `main-merge` has exactly one bypass
+actor: the GitHub App of the workflow merge-override (.github/workflows/merge-override.yml), in the mode `pull_request`
+(it can bypass when it merges a pull request, never with a direct push). Its key is a secret of the environment
+`merge-override`, so using it takes the approval of the user (docs/features/agent-security/spec.md, R8). The tests try
+the ways of adding another bypass actor (any actor type and mode, another app, a second actor, the app on `epic-merge`
+or on a ruleset with the unconditional rules) and of weakening the rules.
 """
 import copy
 import json
@@ -24,6 +28,12 @@ UNCONDITIONAL = {"deletion", "non_fast_forward"}
 DEPLOY_REFS = ["refs/heads/deploy", "refs/heads/deploy-images"]
 MERGE_RULES = ["pull_request", "required_status_checks"]
 REQUIRED_CHECKS = {"checks", "e2e"}
+# The GitHub App of the workflow merge-override (its App ID; infra/k8s/README.md, "Merge override"). Installed on this
+# repository only; the one actor that may merge a pull request into main past the required checks.
+MERGE_APP_ID = 5890224
+MERGE_APP_ACTOR = {"actor_id": MERGE_APP_ID, "actor_type": "Integration", "bypass_mode": "pull_request"}
+# The bypass actors of the merge ruleset of each branch ruleset, exactly: the app on main-merge, nobody on epic-merge.
+MERGE_BYPASS = {"main": [MERGE_APP_ACTOR], "epic": []}
 
 
 def load(name):
@@ -72,8 +82,8 @@ def problems(deploy, push):
 
 
 def merge_problems(plain, merge):
-    """What is wrong with a branch's pair of rulesets: `plain` (deletion, non-fast-forward) and `merge` (pull request,
-    required checks), both without a bypass actor."""
+    """What is wrong with a branch's pair of rulesets: `plain` (deletion, non-fast-forward; no bypass actor) and `merge`
+    (pull request, required checks; the bypass actors of MERGE_BYPASS and no other)."""
     found = []
     base = plain.get("name")
     if merge.get("name") != f"{base}-merge":
@@ -101,8 +111,10 @@ def merge_problems(plain, merge):
             checks = {check.get("context") for check in parameters.get("required_status_checks", [])}
     if not REQUIRED_CHECKS <= checks:
         found.append(f"{base}-merge: the required checks {sorted(checks)} lack checks or e2e")
-    if merge.get("bypass_actors") != []:
-        found.append(f"{base}-merge: has a bypass actor (it could merge without green checks and e2e)")
+    allowed = MERGE_BYPASS.get(base, [])
+    if merge.get("bypass_actors") != allowed:
+        who = "only the app of the workflow merge-override in the mode pull_request" if allowed else "nobody"
+        found.append(f"{base}-merge: wrong bypass actors ({who} may merge without green checks and e2e)")
     return found
 
 
@@ -244,12 +256,20 @@ class MergeRulesets(unittest.TestCase):
         for base in ("main", "epic"):
             self.assertEqual([], merge_problems(load(f"{base}.json"), load(f"{base}-merge.json")), base)
 
-    def test_nobody_can_bypass_the_merge_rulesets(self):
+    def test_only_the_merge_app_can_bypass_and_only_on_main_merge(self):
+        self.assertEqual([MERGE_APP_ACTOR], load("main-merge.json")["bypass_actors"])
+        self.assertEqual([], load("epic-merge.json")["bypass_actors"])
         for base in ("main", "epic"):
-            self.assertEqual([], load(f"{base}-merge.json")["bypass_actors"], base)
             self.assertEqual([], load(f"{base}.json")["bypass_actors"], base)
 
-    def test_ref_patterns(self):
+    def test_the_merge_app_is_a_real_app_id(self):
+        self.assertIs(int, type(MERGE_APP_ID))
+        self.assertGreater(MERGE_APP_ID, 0)
+
+    def test_names_and_ref_patterns(self):
+        for base in ("main", "epic"):
+            self.assertEqual(base, load(f"{base}.json")["name"])
+            self.assertEqual(f"{base}-merge", load(f"{base}-merge.json")["name"])
         self.assertEqual(["~DEFAULT_BRANCH"], load("main.json")["conditions"]["ref_name"]["include"])
         self.assertEqual(["refs/heads/epic/*"], load("epic.json")["conditions"]["ref_name"]["include"])
 
@@ -263,9 +283,16 @@ class MergeRulesets(unittest.TestCase):
 
 
 class AttemptsToWeakenTheMergeRulesets(unittest.TestCase):
-    """Each way of adding a bypass actor or weakening the merge rules must be caught."""
+    """Each way of adding another bypass actor or weakening the merge rules must be caught."""
 
     BYPASS_ACTORS = (
+        {"actor_type": "Integration", "actor_id": MERGE_APP_ID + 1, "bypass_mode": "pull_request"},
+        {"actor_type": "Integration", "actor_id": 15368, "bypass_mode": "pull_request"},
+        {"actor_type": "Integration", "actor_id": MERGE_APP_ID, "bypass_mode": "always"},
+        {"actor_type": "Integration", "actor_id": MERGE_APP_ID, "bypass_mode": "exempt"},
+        {"actor_type": "Integration", "actor_id": str(MERGE_APP_ID), "bypass_mode": "pull_request"},
+        {"actor_type": "Integration", "actor_id": MERGE_APP_ID, "bypass_mode": "pull_request", "extra": True},
+        {"actor_type": "User", "actor_id": MERGE_APP_ID, "bypass_mode": "pull_request"},
         {"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "pull_request"},
         {"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "always"},
         {"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "exempt"},
@@ -293,26 +320,44 @@ class AttemptsToWeakenTheMergeRulesets(unittest.TestCase):
     def keep(_):
         pass
 
-    def test_any_bypass_actor_on_the_merge_ruleset(self):
+    def test_any_other_bypass_actor_on_the_merge_ruleset(self):
         for actor in self.BYPASS_ACTORS:
-            def change(merge, actor=actor):
+            def replace(merge, actor=actor):
                 merge["bypass_actors"] = [dict(actor)]
-            self.assert_caught(self.keep, change, "-merge: has a bypass actor")
+            self.assert_caught(self.keep, replace, "-merge: wrong bypass actors")
 
-    def test_a_bypass_list_that_is_not_an_empty_list(self):
-        for value in (None, {}, [{}]):
+            def add(merge, actor=actor):
+                merge["bypass_actors"] = list(merge["bypass_actors"]) + [dict(actor)]
+            self.assert_caught(self.keep, add, "-merge: wrong bypass actors")
+
+    def test_a_bypass_list_of_another_shape(self):
+        for value in (None, {}, [{}], dict(MERGE_APP_ACTOR), [[dict(MERGE_APP_ACTOR)]]):
             def change(merge, value=value):
                 merge["bypass_actors"] = value
-            self.assert_caught(self.keep, change, "-merge: has a bypass actor")
+            self.assert_caught(self.keep, change, "-merge: wrong bypass actors")
 
         def drop(merge):
             del merge["bypass_actors"]
-        self.assert_caught(self.keep, drop, "-merge: has a bypass actor")
+        self.assert_caught(self.keep, drop, "-merge: wrong bypass actors")
+
+    def test_the_merge_app_on_epic_merge_or_twice(self):
+        epic = load("epic-merge.json")
+        epic["bypass_actors"] = [dict(MERGE_APP_ACTOR)]
+        self.assertIn("epic-merge: wrong bypass actors (nobody may", " ".join(merge_problems(load("epic.json"), epic)))
+        main = load("main-merge.json")
+        main["bypass_actors"] = [dict(MERGE_APP_ACTOR), dict(MERGE_APP_ACTOR)]
+        self.assertIn("main-merge: wrong bypass actors (only the app", " ".join(merge_problems(load("main.json"), main)))
+
+    def test_main_merge_without_the_app_differs_from_the_ruleset_on_github(self):
+        main = load("main-merge.json")
+        main["bypass_actors"] = []
+        self.assertIn("main-merge: wrong bypass actors", " ".join(merge_problems(load("main.json"), main)))
 
     def test_bypass_actor_on_the_plain_ruleset(self):
-        def change(plain):
-            plain["bypass_actors"] = [{"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "pull_request"}]
-        self.assert_caught(change, self.keep, "has a bypass actor")
+        for actor in ({"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "pull_request"}, MERGE_APP_ACTOR):
+            def change(plain, actor=actor):
+                plain["bypass_actors"] = [dict(actor)]
+            self.assert_caught(change, self.keep, "has a bypass actor")
 
     def test_unconditional_rule_moved_to_the_merge_ruleset(self):
         for moved in ("deletion", "non_fast_forward"):

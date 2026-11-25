@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { apiAmount } from "../support/discount-codes";
 import { waitForOrderEmail } from "../support/mailpit";
 import { decideAtSimulator, expectSimulatorPage, WEBHOOK_TIMEOUT_MS } from "../support/payment";
-import { addVariantOf, chooseProvider, fillAddress, tileNamed } from "../support/shop";
+import { addVariantOf, chooseDelivery, chooseProvider, fillAddress, STANDARD_DELIVERY, tileNamed } from "../support/shop";
 import { cartLineOf } from "../support/variants";
 
 // Every variant of it has 50 units (fixtures/stock.yaml): each run reserves 2, and the reservation of a paid order stays
@@ -18,18 +19,21 @@ test("a guest orders two units of a variant chosen on the tile, pays with the fa
   await page.getByRole("link", { name: /^Koszyk/ }).click();
   await expect(page).toHaveURL(/\/cart$/);
   await expect(cartLineOf(page, PRODUCT, label).getByRole("spinbutton")).toHaveValue("2");
-  const cartTotal = (await page.getByTestId("cart-total").innerText()).trim();
 
   await page.getByRole("link", { name: "Przejdź do kasy" }).click();
   await expect(page).toHaveURL(/\/checkout$/);
   await expect(page.getByRole("heading", { level: 1, name: "Kasa" })).toBeVisible();
-  // The summary of the checkout is the cart's: the same total from the API.
-  await expect(page.getByTestId("checkout-total")).toHaveText(cartTotal);
+  // The total to pay comes with the delivery method: until one is chosen, the summary asks for it.
+  await expect(page.getByTestId("checkout-total")).toHaveText("Wybierz sposób dostawy");
   await expect(page.getByRole("main").getByRole("link", { name: "Zaloguj się" })).toHaveAttribute("href", "/auth/login?returnTo=%2Fcheckout");
 
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Imię i nazwisko").fill("Anna Testowa");
   await fillAddress(page);
+  await chooseDelivery(page);
+  // The total of the option of the API: the goods with the delivery.
+  const checkoutTotal = (await page.getByTestId("checkout-total").innerText()).trim();
+  expect(checkoutTotal).toMatch(/zł$/);
   // No provider is chosen for the customer: without a choice nothing is ordered.
   await expect(page.getByRole("radio", { name: "Szybki przelew (demo)" })).not.toBeChecked();
   await expect(page.getByRole("radio", { name: "Karta płatnicza (demo)" })).not.toBeChecked();
@@ -44,12 +48,14 @@ test("a guest orders two units of a variant chosen on the tile, pays with the fa
   const number = (await page.getByTestId("order-number").innerText()).trim();
   expect(number).toMatch(/^R-\d{6,}$/);
   await expect(page.getByText(`Płatność przyjęta. Potwierdzenie wysłaliśmy na adres ${email}.`)).toBeVisible({ timeout: WEBHOOK_TIMEOUT_MS });
-  await expect(page.getByTestId("order-total")).toHaveText(cartTotal);
+  await expect(page.getByTestId("order-total")).toHaveText(checkoutTotal);
   await expect(page.getByTestId("cart-count")).toHaveText("0");
 
   const confirmation = await waitForOrderEmail(email, number);
   expect(confirmation.subject).toBe(`Potwierdzenie zamówienia ${number}`);
   expect(confirmation.text).toContain(PRODUCT);
+  expect(confirmation.text).toContain(`Dostawa (${STANDARD_DELIVERY}): `);
+  expect(confirmation.text).toContain(`Suma brutto: ${apiAmount(Number(checkoutTotal.replace(/\D/g, "")))}`);
   const payment = await waitForOrderEmail(email, number, "payment");
   expect(payment.subject).toBe(`Płatność przyjęta – zamówienie ${number}`);
 

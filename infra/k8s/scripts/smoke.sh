@@ -22,18 +22,24 @@
 #   SMOKE_TIMEOUT=900              seconds to wait for the cluster to settle after each install or upgrade
 #
 # Phases: install and checks (also a Job from the CronJob rate-limit-check, which must succeed on the Redis of the cluster; the store and
-# the panel in a browser, and create-admin); the backup (an S3 of its own in the
+# the panel in a browser, and create-admin); the failures of the messages (the CronJob order-expiry suspended; RabbitMQ scaled to zero: an
+# order past its deadline with its ready message is cancelled by worker-commands within two minutes, and after the broker is back every
+# workload is ready; a message in `failed`: a Job from the CronJob queue-check fails, a Job from order-expiry cancels the order, and after
+# the message is removed a Job from queue-check succeeds); the backup (an S3 of its own in the
 # namespace smoke-backup, a Job from the CronJob backup, the snapshot it leaves, a Job from the CronJob backup-verify; the time of the
 # phase and of the verification is printed); the restore on an empty cluster (make backups lists the snapshots, the namespace shop
 # is deleted with its volumes and the chart installed again, make restore brings back the snapshot nightly: the administrator, the
 # customer and its login, the numbers of products and orders, an image, the search, the home page, the snapshot pre-restore;
 # make restore refuses a snapshot with a migration the code does not know and the shop goes on, also while a Job of the CronJob
-# rate-limit-check runs (it is no reason to refuse); the time of the phase and the
+# rate-limit-check runs (it is no reason to refuse) and none of the CronJobs backup, cart-purge-expired, rate-limit-check, queue-check
+# and order-expiry is suspended by the refusal; the time of the phase and the
 # peak disk are printed); the later phases run on the restored cluster: upgrade with a new revision (initialize
 # and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
-# the users and their passwords stay); upgrade with an image whose migration fails (the previous api and worker keep
+# the users and their passwords stay); upgrade with an image whose migration fails (the previous api and both workers keep
 # serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
-# nothing). The last phase runs the demo data generator through make generate PROFILE=small (docs/features/demo-scale/spec.md): it
+# nothing); between the upgrades, on the revision r2, make reindex (without the word tak nothing is created; with it a Job of the
+# CronJob reindex rebuilds the search index and the API lists as many products as before). The last phase runs the demo data
+# generator through make generate PROFILE=small (docs/features/demo-scale/spec.md): it
 # waits until every StatefulSet and Deployment is rolled out and no Job runs (the upgrade before it ends on a failed job, with
 # Elasticsearch still on its way to the new image), and runs scripts/generate.sh (it prints the free space of the node) with the word tak
 # (without a file of the photo pool and without Argo CD, as in deploy.yml; generate runs make open after the Job) while requests go
@@ -351,6 +357,40 @@ wait_job_failed() {
 }
 
 job_name() { kc get jobs -l "app.kubernetes.io/name=$1" -o jsonpath='{.items[0].metadata.name}'; }
+
+# reindex <answer> <name of the log>: make -C infra/k8s reindex with the answer on the standard input.
+reindex() {
+  printf '%s\n' "$1" | KUBE_DIR="$KUBE_DIR" KUBE_NETWORK="$KUBE_NETWORK" KUBE_NAMESPACE="$namespace" RESTORE_POLL_SECONDS=2 \
+    sh "$here/reindex.sh" > "$work/reindex-$2.log" 2>&1
+}
+# listed_products: the number of products that the API lists through the ingress (the search index behind the alias products).
+listed_products() {
+  kc exec smoke-tools -- python -I -c "
+import json, urllib.request
+r = urllib.request.Request('http://traefik.kube-system.svc.cluster.local/api/v1/products?perPage=1', headers={'Host': 'api.localhost'})
+print(json.load(urllib.request.urlopen(r, timeout=30))['total'])"
+}
+# make reindex on the running shop: without tak no Job is created; with tak a Job of the CronJob reindex completes, the alias is on a
+# new index with the shards of the chart, and the API lists as many products as before.
+check_reindex() {
+  listed_before="$(listed_products)"
+  [ "$listed_before" -gt 0 ] || { echo "smoke: the API lists no products before the rebuild ($listed_before)" >&2; return 1; }
+  if reindex nie refused; then
+    echo "smoke: reindex went on without the word tak:" >&2; cat "$work/reindex-refused.log" >&2; return 1
+  fi
+  grep -q 'nothing changed' "$work/reindex-refused.log" || { cat "$work/reindex-refused.log" >&2; return 1; }
+  if kc get jobs -o name | grep -q '^job.batch/reindex-'; then
+    echo "smoke: reindex without tak created a Job" >&2; return 1
+  fi
+  echo "ok: reindex without tak changed nothing"
+  reindex tak rebuilt || { echo "smoke: reindex failed:" >&2; cat "$work/reindex-rebuilt.log" >&2; return 1; }
+  grep '^reindex: done: the alias products is on the index' "$work/reindex-rebuilt.log" ||
+    { echo "smoke: reindex did not say on which index the alias is:" >&2; cat "$work/reindex-rebuilt.log" >&2; return 1; }
+  listed_after="$(listed_products)"
+  [ "$listed_after" = "$listed_before" ] ||
+    { echo "smoke: the API lists $listed_after products after the rebuild, $listed_before before it" >&2; return 1; }
+  echo "ok: the API lists $listed_after products from the rebuilt index"
+}
 job_log() { kc logs "job/$1" --all-containers 2>&1 || true; }
 count() { kc exec statefulset/postgres -- psql -U shop -d shop -tAc "SELECT count(*) FROM $1" | tr -d '[:space:]'; }
 
@@ -675,6 +715,164 @@ check_rate_limit_check() {
   echo "ok: a Job of the CronJob rate-limit-check succeeds on the Redis of the cluster"
 }
 
+# expect_job_failed <cronjob> <job> [limit]: a Job made from the CronJob, as it makes it every five minutes, must end Failed (the check it
+# runs finds something wrong); a Job that succeeds, or does not end in the limit, fails the test with its log.
+expect_job_failed() {
+  kc create job "$2" --from="cronjob/$1" > /dev/null
+  limit="${3:-180}"
+  deadline=$(( $(date +%s) + limit ))
+  while :; do
+    state="$(kc get job "$2" -o jsonpath='{.status.succeeded}{" "}{.status.conditions[?(@.type=="Failed")].status}')"
+    case "$state" in
+      "1 "*)
+        echo "smoke: the Job $2 of the CronJob $1 succeeded, it must fail:" >&2
+        kc logs "job/$2" --all-containers --prefix --tail=40 >&2 || true
+        return 1 ;;
+      *" True")
+        echo "ok: the Job $2 of the CronJob $1 failed, as it must"
+        return 0 ;;
+    esac
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "smoke: the Job $2 of the CronJob $1 did not fail in $limit s" >&2
+      kc logs "job/$2" --all-containers --prefix --tail=40 >&2 || true
+      return 1
+    fi
+    sleep "${SMOKE_POLL:-5}"
+  done
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+# The failures of the messages (docs/features/async-reliability/spec.md, W9, criteria 3 to 5)
+# ---------------------------------------------------------------------------------------------------------------
+# sql <statement>: the answer of the statement on the database shop, without white space (one value).
+sql() { kc exec statefulset/postgres -- psql -U shop -d shop -v ON_ERROR_STOP=1 -tAc "$1" | tr -d '[:space:]'; }
+
+count_failed() { sql "SELECT count(*) FROM messenger_messages WHERE queue_name = 'failed'"; }
+
+# set_suspend <cronjob> <true|false>
+set_suspend() { kc patch cronjob "$1" --type merge -p "{\"spec\":{\"suspend\":$2}}" > /dev/null; }
+
+# wait_cronjob_idle <cronjob>: the CronJob has no active Job (a Job of its schedule that runs would do the work of the phase).
+wait_cronjob_idle() {
+  deadline=$(( $(date +%s) + ${SMOKE_IDLE_WAIT:-660} ))
+  while :; do
+    active="$(kc get cronjob "$1" -o jsonpath='{.status.active[*].name}')"
+    [ -n "$active" ] || return 0
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "smoke: the Job $active of the CronJob $1 did not end in ${SMOKE_IDLE_WAIT:-660} s" >&2
+      return 1
+    fi
+    sleep "${SMOKE_POLL:-5}"
+  done
+}
+
+# wait_no_pods <selector> <limit>: no pod matches the label selector.
+wait_no_pods() {
+  deadline=$(( $(date +%s) + $2 ))
+  while [ -n "$(kc get pods -l "$1" -o name)" ]; do
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "smoke: the pods with $1 did not stop in $2 s" >&2
+      kc get pods -l "$1" >&2 || true
+      return 1
+    fi
+    sleep "${SMOKE_POLL:-5}"
+  done
+}
+
+# wait_order_status <order id> <status> <limit>
+wait_order_status() {
+  deadline=$(( $(date +%s) + $3 ))
+  while :; do
+    current="$(sql "SELECT status FROM ordering_order WHERE id = '$1'")"
+    [ "$current" != "$2" ] || return 0
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "smoke: the order $1 is '$current' after $3 s, it must be $2" >&2
+      return 1
+    fi
+    sleep "${SMOKE_POLL:-5}"
+  done
+}
+
+# new_order <email>: places an order as a guest (checks.py); sets order_id.
+new_order() {
+  order_number="$(checks place-order "$1" | tail -n 1)"
+  case "$order_number" in
+    "" | *[!A-Za-z0-9-]*) echo "smoke: the order of $1 was not placed (got '$order_number')" >&2; return 1 ;;
+  esac
+  order_id="$(sql "SELECT id FROM ordering_order WHERE number = '$order_number'")"
+  case "$order_id" in
+    "" | *[!0-9a-f-]*) echo "smoke: no order $order_number in the database (got '$order_id')" >&2; return 1 ;;
+  esac
+}
+
+# overdue_order <order id>: the payment deadline of the order two hours ago (past the window of the webhooks and the grace of the expiry).
+overdue_order() {
+  changed="$(sql "WITH overdue AS (UPDATE ordering_order SET payment_deadline = now() - interval '2 hours' WHERE id = '$1' AND status = 'new' RETURNING 1) SELECT count(*) FROM overdue")"
+  [ "$changed" = 1 ] || { echo "smoke: the payment deadline of the order $1 was not moved ($changed rows)" >&2; return 1; }
+}
+
+# move_message <order id> <queue>: the delayed ExpireUnpaidOrder of the order is ready now, in the queue <queue> (scheduled: where the
+# worker takes it; failed: where it lies after it failed).
+move_message() {
+  moved="$(sql "WITH moved AS (UPDATE messenger_messages SET queue_name = '$2', available_at = (now() AT TIME ZONE 'utc') - interval '1 minute', delivered_at = NULL WHERE queue_name = 'scheduled' AND body LIKE '%$1%' RETURNING 1) SELECT count(*) FROM moved")"
+  case "$moved" in
+    "" | 0 | *[!0-9]*) echo "smoke: no message of the order $1 was found in the queue scheduled (got '$moved')" >&2; return 1 ;;
+  esac
+}
+
+# The criteria 3 to 5: the CronJob order-expiry is suspended for the whole phase, so that what cancels the orders is what is tested.
+#   1. RabbitMQ scaled to zero, an order past its deadline with its message ready: worker-commands (no broker needed) cancels it within
+#      two minutes; the broker comes back and every workload is ready (the pod of `worker` is deleted: it waits in a back-off);
+#   2. a message in `failed`: a Job of queue-check fails, a Job of order-expiry cancels an order whose message lies there, and when the
+#      message is removed a Job of queue-check succeeds.
+check_messaging_failures() {
+  messaging_started="$(date +%s)"
+  set_suspend order-expiry true
+  wait_cronjob_idle order-expiry
+  failed_before="$(count_failed)"
+  if [ "$failed_before" != 0 ]; then
+    echo "smoke: $failed_before messages are in the transport failed before the phase (a message that failed in an earlier phase):" >&2
+    kc exec statefulset/postgres -- psql -U shop -d shop -c "SELECT id, left(body, 120) AS body, created_at FROM messenger_messages WHERE queue_name = 'failed'" >&2 || true
+    return 1
+  fi
+
+  new_order smoke-no-broker@example.com
+  broker_order="$order_id"
+  kc scale statefulset/rabbitmq --replicas=0 > /dev/null
+  wait_no_pods app.kubernetes.io/name=rabbitmq "${SMOKE_BROKER_WAIT:-180}"
+  overdue_order "$broker_order"
+  move_message "$broker_order" scheduled
+  wait_order_status "$broker_order" cancelled "${SMOKE_EXPIRY_WAIT:-120}"
+  echo "ok: with RabbitMQ stopped worker-commands cancelled the order $order_number past its deadline"
+  kc scale statefulset/rabbitmq --replicas=1 > /dev/null
+  kc rollout status statefulset/rabbitmq --timeout=300s > /dev/null
+  # The pod of worker restarted in a loop while the broker was down: replace it and wait until the old one is gone, so that
+  # check_failures does not see the restarts of a pod that is terminating.
+  kc delete pod -l app.kubernetes.io/name=worker --wait=true --timeout=120s > /dev/null
+  wait_ready "RabbitMQ is back"
+
+  new_order smoke-failed-message@example.com
+  failed_order="$order_id"
+  overdue_order "$failed_order"
+  move_message "$failed_order" failed
+  expect_job_failed queue-check queue-check-smoke-failed 180
+  run_cronjob_job order-expiry order-expiry-smoke 600
+  wait_order_status "$failed_order" cancelled "${SMOKE_EXPIRY_WAIT:-120}"
+  echo "ok: the Job of order-expiry cancelled the order $order_number whose message is in failed"
+  [ "$(count_failed)" = 1 ] || { echo "smoke: the message of the cancelled order is no more in failed: $(count_failed) messages" >&2; return 1; }
+  message_id="$(sql "SELECT id FROM messenger_messages WHERE queue_name = 'failed' AND body LIKE '%$failed_order%'")"
+  case "$message_id" in
+    "" | *[!0-9]*) echo "smoke: cannot read the id of the message in failed (got '$message_id')" >&2; return 1 ;;
+  esac
+  kc exec deploy/worker-commands -- php -d memory_limit=128M bin/console messenger:failed:remove "$message_id" --force > /dev/null
+  [ "$(count_failed)" = 0 ] || { echo "smoke: the message $message_id is still in failed after the removal" >&2; return 1; }
+  run_cronjob_job queue-check queue-check-smoke-ok 180
+  echo "ok: after the removal of the message the Job of queue-check succeeds"
+  kc delete job queue-check-smoke-failed queue-check-smoke-ok order-expiry-smoke --now > /dev/null
+  set_suspend order-expiry false
+  echo "smoke: the phase of the failures of the messages took $(( $(date +%s) - messaging_started )) s"
+}
+
 # The snapshot of the backup: the tag nightly, the host of the cluster, the dumps of both databases, the object put into the
 # bucket and a manifest with the revision, the migrations and the objects.
 check_backup_snapshot() {
@@ -820,7 +1018,7 @@ restic backup --tag smoke-newer --host smoke-newer /work/dumps /work/objects /wo
 SH
 )"
   [ -n "$newer" ] || { echo "smoke: could not make the snapshot with a newer migration" >&2; return 1; }
-  pods_before="$(kc get pods -l 'app.kubernetes.io/name in (api,worker,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')"
+  pods_before="$(kc get pods -l 'app.kubernetes.io/name in (api,worker,worker-commands,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')"
   pre_restore_before="$(list_backups | awk '$4 == "pre-restore"' | wc -l | tr -d ' ')"
   # A Job of the CronJob rate-limit-check that is running (a copy of the Job of the CronJob with the command `sleep`, so that it
   # lasts) is no reason for make restore to refuse: the refusal below comes from the snapshot, after the check of the active Jobs.
@@ -846,14 +1044,14 @@ SH
   fi
   if grep -q 'type tak' "$work/restore-newer.log"; then echo "smoke: make restore asked before it refused the newer snapshot" >&2; return 1; fi
   all_ready || { echo "smoke: the shop is not running after the refused restore" >&2; dump_state; return 1; }
-  [ "$(kc get pods -l 'app.kubernetes.io/name in (api,worker,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')" = "$pods_before" ] \
+  [ "$(kc get pods -l 'app.kubernetes.io/name in (api,worker,worker-commands,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')" = "$pods_before" ] \
     || { echo "smoke: the refused restore restarted the applications" >&2; return 1; }
   if [ "$(count catalog_product)" != "$products_at_backup" ] || [ "$(count ordering_order)" != "$orders_at_backup" ]; then
     echo "smoke: the refused restore changed the data" >&2; return 1
   fi
   [ "$(list_backups | awk '$4 == "pre-restore"' | wc -l | tr -d ' ')" = "$pre_restore_before" ] \
     || { echo "smoke: the refused restore made a backup pre-restore" >&2; return 1; }
-  for cronjob in backup cart-purge-expired rate-limit-check; do
+  for cronjob in backup cart-purge-expired rate-limit-check queue-check order-expiry; do
     [ "$(kc get cronjob "$cronjob" -o jsonpath='{.spec.suspend}')" != true ] || { echo "smoke: the refused restore suspended $cronjob" >&2; return 1; }
   done
   echo "ok: make restore refused the snapshot $newer with a migration the code does not know; the shop runs, the data is unchanged"
@@ -1177,6 +1375,9 @@ else
   log "create-admin"
   check_create_admin
 
+  log "messages: RabbitMQ stopped, a message in failed"
+  check_messaging_failures
+
   log "backup"
   mark_product_for_the_search
   products_at_backup="$(count catalog_product)"
@@ -1230,6 +1431,9 @@ kc wait --for=condition=complete "job/$new_keycloak_config" --timeout=300s >/dev
 job_log "$new_keycloak_config" | grep -q 'keycloak-config: done' || { echo "smoke: the rerun job did not run" >&2; exit 1; }
 echo "smoke: rerun of $new_keycloak_config completed"
 
+log "make reindex: the rebuild of the search index on the running shop"
+check_reindex
+
 log "upgrade r3: a migration that fails"
 retag r2 r3
 break_migration r3
@@ -1238,7 +1442,7 @@ install r3
 failed_migrate="$(wait_job_failed migrate)"
 echo "smoke: the job $failed_migrate failed, as it must"
 job_log "$failed_migrate" | grep -q 'broken on purpose' || { echo "smoke: the migration failed for another reason:" >&2; job_log "$failed_migrate" >&2; exit 1; }
-for app in api worker; do
+for app in api worker worker-commands; do
   serving="$(kc get pods -l "app.kubernetes.io/name=$app" -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.spec.containers[0].image}{" "}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}')"
   echo "$serving" | grep -q "$registry/api:r2 True" || { echo "smoke: the previous $app pod does not serve:" >&2; echo "$serving" >&2; exit 1; }
   if echo "$serving" | grep -q "$registry/api:r3 True"; then echo "smoke: the new $app pod became ready on the failed migration" >&2; exit 1; fi
@@ -1248,7 +1452,7 @@ import urllib.request
 r = urllib.request.Request('http://traefik.kube-system.svc.cluster.local/health', headers={'Host': 'api.localhost'})
 print(urllib.request.urlopen(r, timeout=30).read().decode())")"
 echo "$status" | grep -q '"status":"ok"' || { echo "smoke: the previous api does not answer /health: $status" >&2; exit 1; }
-echo "smoke: the previous api and worker keep serving, the new ones are not ready"
+echo "smoke: the previous api and both workers keep serving, the new ones are not ready"
 
 log "upgrade r4: a good revision on a database with orders and without products"
 retag r2 r4

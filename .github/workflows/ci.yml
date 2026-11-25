@@ -3,14 +3,20 @@
 # it needs (no full stack: app containers start with --no-deps); the `checks` job only reports their joint result.
 # The `e2e-shard` jobs are the exception: each starts the full stack and runs one part of the Playwright tests; the
 # `e2e` job only reports their joint result.
-# `checks` and `e2e` run for every change, so they can be required status checks. For a pull request the `scope` job
-# says what it changes (.github/scripts/scope.sh): documentation only (docs/**, *.md outside .github/ and
+# `checks` and `e2e` run for every change, so they can be required status checks. The `scope` job says what the change
+# touches (.github/scripts/scope.sh): for a pull request against its base, for a push to main by the commits the push
+# adds (github.event.before to github.sha). Documentation only (docs/**, *.md outside .github/ and
 # .github/ISSUE_TEMPLATE/**) skips every step; repository tooling only (.claude/**, .ao/**, tools/**, possibly with
 # documentation) runs just the script tests (in the `apps` part); the Kubernetes deployment only (infra/k8s/**,
-# possibly with documentation) runs just `make -C infra/k8s check` (in the `k8s` part). Skipped steps
-# let the other jobs pass within seconds. Anything else,
-# and every push, runs it all. A full run uses 1 + 4 + 3 runners for its work (`scope`, the `checks-part` and
-# `e2e-shard` parts) and two more for the short `checks` and `e2e` reports.
+# possibly with documentation) runs just `make -C infra/k8s check` (in the `k8s` part). Skipped steps let the other jobs
+# pass within seconds. Anything else, and every push to an epic branch, runs it all, except the `k8s` part, which runs
+# only when the change touches infra/k8s/**, .github/workflows/** or infra/docker-compose.yml (scope.sh --k8s: the check
+# holds the tests of the workflows and the test that the chart has the image tags of compose, which fails an image bump
+# of Dependabot in compose until the chart has the same tag and digest; deploy.yml runs the same check before every
+# deployment).
+# An error of scope.sh, also a push whose earlier commit is unknown, gives the full CI with the `k8s` part. A full run
+# uses 1 + 6 + 4 runners for its work (`scope`, the `checks-part` and `e2e-shard` parts) and two more for the short
+# `checks` and `e2e` reports.
 name: CI
 
 on:
@@ -47,6 +53,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       scope: ${{ steps.scope.outputs.scope }}
+      k8s: ${{ steps.scope.outputs.k8s }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -55,30 +62,44 @@ jobs:
       - name: Scope script tests
         run: sh .github/scripts/test_scope.sh
 
-      # Pushes (main, epic/**) always run the full CI.
+      # A pull request against its base, a push to main by the commits it adds (`before` is all zeros or unknown when
+      # there is no earlier commit to compare with: scope.sh then answers full and yes). Pushes to epic/** run the full
+      # CI with the `k8s` part.
       - name: Detect the scope of the change
         id: scope
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           scope=full
+          k8s=yes
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            scope="$(sh .github/scripts/scope.sh "$BASE_SHA" "$HEAD_SHA")"
+            scope="$(sh .github/scripts/scope.sh "$PR_BASE_SHA" "$PR_HEAD_SHA")"
+            k8s="$(sh .github/scripts/scope.sh --k8s "$PR_BASE_SHA" "$PR_HEAD_SHA")"
+          elif [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+            scope="$(sh .github/scripts/scope.sh "$PUSH_BEFORE_SHA" "$GITHUB_SHA")"
+            k8s="$(sh .github/scripts/scope.sh --k8s "$PUSH_BEFORE_SHA" "$GITHUB_SHA")"
           fi
           echo "scope=$scope" | tee -a "$GITHUB_OUTPUT"
+          echo "k8s=$k8s" | tee -a "$GITHUB_OUTPUT"
 
   # The checks and the app tests in parts (matrix.include), each on its own runner with only the images and services it
   # needs, so the parts run side by side:
   #   k8s              make -C infra/k8s check (the Helm chart, environments, scripts): no images, no services; the
   #                    longest of the checks, so a part of its own
-  #   apps             make check-code (PHPStan, Deptrac, PHP CS Fixer, ESLint, tsc and the make/*.mk fragments), the api
-  #                    unit suite (a few seconds, no services), the contract freshness, the store and admin suites, the
-  #                    VCL tests and the script tests; Redis for the store integration tests
-  #   api integration  the api `integration` and `functional` suites, one part each, on PostgreSQL, Garage, imgproxy,
-  #   api functional   RabbitMQ, Elasticsearch, Keycloak, Redis and Mailpit
+  #   apps             make check-code (PHPStan, Deptrac, PHP CS Fixer, ESLint, tsc, the audits of the production
+  #                    dependencies `audit` of the three apps (they need the network) and the make/*.mk fragments),
+  #                    the api unit suite (a few seconds, no services), the contract freshness, the store and admin
+  #                    suites, the VCL tests and the script tests; Redis for the store integration tests
+  #   api integration, api demo data, api demo data orders, api functional
+  #                    the api suites `integration`, `demo-data` and `demo-data-orders` (the integration tests of the
+  #                    demo data generator, about two thirds of the integration time, split in two of about the same
+  #                    time) and `functional`, one part each, on PostgreSQL, Garage, imgproxy, RabbitMQ, Elasticsearch,
+  #                    Keycloak, Redis and Mailpit; the step summary of each lists its slowest tests and classes
+  #                    (.github/scripts/junit-slowest.py)
   # The parts are not named `checks`: the required check of that name is the job below. When the parts end far apart,
-  # move work between them (the api parts by test directory, `phpunit_args`).
+  # move work between them (the api parts by test directory: the suites of apps/api/phpunit.dist.xml).
   checks-part:
     name: checks part ${{ matrix.name }}
     needs: scope
@@ -92,7 +113,8 @@ jobs:
       matrix:
         include:
           # apps: the CI images the part pulls; stack: `full` starts the services of the api tests, `redis` only Redis;
-          # also: the scope (besides `full`) in which the part still has work.
+          # also: the scope (besides `full`) in which the part still has work; in the full CI the `k8s` part works only
+          # when the change touches infra/k8s/**, .github/workflows/** or infra/docker-compose.yml.
           - name: k8s
             apps: ''
             stack: none
@@ -106,6 +128,16 @@ jobs:
             stack: full
             also: none
             phpunit_args: --testsuite integration
+          - name: api demo data
+            apps: api
+            stack: full
+            also: none
+            phpunit_args: --testsuite demo-data
+          - name: api demo data orders
+            apps: api
+            stack: full
+            also: none
+            phpunit_args: --testsuite demo-data-orders
           - name: api functional
             apps: api
             stack: full
@@ -116,10 +148,12 @@ jobs:
       # Whether the part runs the steps with the app images, dependencies and services: in the full CI, and only the
       # parts that use an app image.
       FULL_CI: ${{ needs.scope.outputs.scope == 'full' && matrix.apps != '' }}
-      # Whether the part has work for the scope of the change: all parts in the full CI; in a tooling-only change the
-      # script tests (`apps`), in a Kubernetes-only one `make -C infra/k8s check` (`k8s`). The other parts only report
-      # success within seconds; a documentation-only change has no work for any part.
-      PART_ACTIVE: ${{ needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == matrix.also }}
+      # Whether the part has work for the scope of the change: in the full CI all parts, the `k8s` part only when the
+      # change touches infra/k8s/**, .github/workflows/** or infra/docker-compose.yml (`k8s` is `yes`); in a
+      # tooling-only change the script tests (`apps`), in a Kubernetes-only one `make -C infra/k8s check` (`k8s`). The other parts only report success within seconds; a
+      # documentation-only change has no work for any part.
+      PART_ACTIVE: ${{ (needs.scope.outputs.scope == 'full' && (matrix.name != 'k8s' || needs.scope.outputs.k8s == 'yes')) || needs.scope.outputs.scope == matrix.also }}
+      K8S: ${{ needs.scope.outputs.k8s }}
       APPS: ${{ matrix.apps }}
     steps:
       - name: Require the scope job
@@ -128,14 +162,16 @@ jobs:
 
       - name: Nothing to run in this part for the scope of the change
         if: env.PART_ACTIVE != 'true'
-        run: echo "The change is $SCOPE only"
+        run: echo "Nothing to run in this part (scope $SCOPE, infra/k8s touched $K8S)"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.PART_ACTIVE == 'true'
 
       # The compose stack of the app tests and E2E does not use infra/k8s: a change limited to it needs only these checks
-      # of the chart, environments, sealed secrets and server scripts, and a change that leaves it alone needs no
-      # `make -C infra/k8s check` in `check-code`: the part runs it in the full CI as well.
+      # of the chart, environments, sealed secrets and server scripts, and `check-code` leaves them to this part. The part
+      # runs them only when the change touches infra/k8s/**, .github/workflows/** or infra/docker-compose.yml (the check
+      # holds the tests of the workflows and of the image tags of compose in the chart); a change elsewhere that the
+      # chart must mirror (Keycloak realms) is caught by the same check in deploy.yml before the deployment.
       - name: make -C infra/k8s check
         if: matrix.name == 'k8s' && env.PART_ACTIVE == 'true'
         run: make -C infra/k8s check
@@ -289,12 +325,25 @@ jobs:
         if: env.FULL_CI == 'true' && matrix.stack != 'none'
         run: sh .github/scripts/background.sh wait services
 
-      # The api suite of the part; `test` migrates shop_test and recreates the test index first.
+      # The api suite of the part; `test` migrates shop_test and recreates the test index first. The JUnit log lands in
+      # apps/api/var (mounted into the container) for the step below.
       - name: api tests
         if: env.FULL_CI == 'true' && matrix.phpunit_args != ''
         env:
           PHPUNIT_ARGS: ${{ matrix.phpunit_args }}
-        run: make -C apps/api test RUN="$CI_RUN" PHPUNIT_ARGS="$PHPUNIT_ARGS"
+        run: make -C apps/api test RUN="$CI_RUN" PHPUNIT_ARGS="$PHPUNIT_ARGS --log-junit var/junit.xml"
+
+      # Also after failed tests; no log (the run did not get to the end) adds nothing.
+      # bash: pipefail, so a failing script fails the step instead of leaving an empty summary behind tee.
+      - name: Slowest api tests in the step summary
+        if: ${{ !cancelled() && env.FULL_CI == 'true' && matrix.phpunit_args != '' }}
+        shell: bash
+        env:
+          PART: ${{ matrix.name }}
+        run: |
+          [ -f apps/api/var/junit.xml ] || { echo "No JUnit log: the tests did not get to the end"; exit 0; }
+          { echo "### Slowest tests: $PART"; echo; python3 .github/scripts/junit-slowest.py apps/api/var/junit.xml; } \
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
       # The `apps` part: the static analysis (`check-code` is `make check` without `make -C infra/k8s check`, which the
       # `k8s` part runs) and the store and admin suites run in the background next to the steps below, the script tests
@@ -388,6 +437,8 @@ jobs:
           - index: 2
             after_e2e: false
           - index: 3
+            after_e2e: false
+          - index: 4
             after_e2e: true
     env:
       SCOPE: ${{ needs.scope.outputs.scope }}
@@ -443,7 +494,8 @@ jobs:
 
       # An app image the registry does not have is built from the GitHub Actions cache that the `apps` part of `checks-part` writes
       # (same contexts, targets and scopes), so this job only reads it. `make up` then finds the images and builds only
-      # garage-init. The worker runs the api image (same context and target), hence the second tag.
+      # garage-init. Both workers (`worker` and `worker-commands`) run one image of the api (same context and target) tagged
+      # `shop-worker` (infra/docker-compose.yml), hence the second tag; no third image is built.
       # `missing` lists the images the registry does not have: the steps below build and push them.
       - name: Wait for the prebuilt images
         id: missing
@@ -517,7 +569,7 @@ jobs:
         if: env.FULL_CI == 'true'
         run: touch -d '2000-01-01T00:00:00Z' apps/store/package-lock.json apps/admin/package-lock.json
 
-      # Starts every service, runs the migrations and starts the worker (`exec` needs -T), in the background while
+      # Starts every service, runs the migrations and starts the workers (`exec` needs -T), in the background while
       # the e2e image is built and the tests are type-checked.
       - name: Start the stack in the background
         if: env.FULL_CI == 'true'
@@ -571,17 +623,16 @@ jobs:
         run: make seed RUN="docker compose exec -T"
 
       # This part of the suite: `--shard=<index>/<number of parts>` runs whole spec files in file order. The weights (one
-      # per part, 110:118:122 of 350 tests) put the boundaries after 110 tests (inside admin-screens-orders, so the first
-      # part runs admin-customers to admin-screens-orders: 120 slow panel tests) and after 228 (inside home, so the
-      # second runs admin-screens-prices to home: 114 tests); the last part (listing-filters to
-      # visual-screens, 116 faster tests) also runs the checks after the tests, which take ~3 min. A spec file belongs to
-      # the part in which its first test starts before the boundary. When tests are added, move the boundaries so that
-      # the parts end about together.
+      # per part of the matrix) are the shares of the tests of the parts, so added tests run exactly once without a change
+      # here. A feature change does not move them: the parts are rebalanced in a change of its own, from the times of the
+      # spec files in the logs of the parts of full runs on main (a panel test takes several times as long as a store
+      # test), with every boundary inside a file of at least 8 tests (e2e/CLAUDE.md, "CI"). A spec file belongs to the
+      # part in which its first test starts before the boundary. The last part also runs the checks after the tests.
       - name: make e2e
         if: env.FULL_CI == 'true'
         env:
           E2E_SHARD: ${{ matrix.index }}/${{ strategy.job-total }}
-          E2E_SHARD_WEIGHTS: '110:118:122'
+          E2E_SHARD_WEIGHTS: '105:129:126:124'
         run: make e2e E2E_FLAGS=-T E2E_BUILD=
 
       # The checks on the running stack after the E2E tests of the part with `after_e2e`: every target a make/*.mk

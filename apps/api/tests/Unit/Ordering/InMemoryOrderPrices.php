@@ -11,6 +11,7 @@ use App\Ordering\Application\Port\QuotedOrderLine;
 use App\Ordering\Domain\Currency;
 use App\Ordering\Domain\LineAmounts;
 use App\Ordering\Domain\Money;
+use App\Ordering\Domain\OrderDeliveryShare;
 use App\Ordering\Domain\OrderDiscount;
 use App\Ordering\Domain\OrderDiscountKind;
 use App\Ordering\Domain\PriceCopy;
@@ -36,6 +37,8 @@ final class InMemoryOrderPrices implements OrderPrices
     /** @var list<?string> the code of each quote */
     public array $askedCodes = [];
     public ?OrderQuote $lastQuote = null;
+    /** @var list<array{int, array<int, int>}> the cost and the goods by rate of each split of a delivery */
+    public array $askedShares = [];
 
     public function __construct(private readonly Journal $journal)
     {
@@ -110,5 +113,40 @@ final class InMemoryOrderPrices implements OrderPrices
         }
 
         return $this->lastQuote = new OrderQuote($quoted, $subtotal, $applied, $codeId, $rejection);
+    }
+
+    /**
+     * A split like Pricing's, simpler: each rate (in descending order) gets the cost in proportion to its goods rounded
+     * down, the grosze left go to the highest rate; the VAT of a share is computed from its gross, a share of 0 is left
+     * out.
+     */
+    public function deliveryShares(int $costGross, array $goodsByRate): array
+    {
+        $this->journal->record('delivery-shares');
+        $this->askedShares[] = [$costGross, $goodsByRate];
+        krsort($goodsByRate);
+        $total = 0;
+        foreach ($goodsByRate as $goods) {
+            $total += $goods;
+        }
+        $amounts = [];
+        $given = 0;
+        foreach ($goodsByRate as $rateBp => $goods) {
+            $given += $amounts[$rateBp] = intdiv($costGross * $goods, $total);
+        }
+        foreach ($amounts as $rateBp => $amount) {
+            $amounts[$rateBp] = $amount + $costGross - $given;
+            break;
+        }
+
+        $shares = [];
+        foreach ($amounts as $rateBp => $gross) {
+            if ($gross > 0) {
+                $vat = intdiv($gross * $rateBp, 10_000 + $rateBp);
+                $shares[] = OrderDeliveryShare::of($rateBp, $gross, $gross - $vat, $vat, Currency::PLN);
+            }
+        }
+
+        return $shares;
     }
 }

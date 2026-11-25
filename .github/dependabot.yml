@@ -1,0 +1,28 @@
+# Version updates of the container images only, once a week, one grouped PR per ecosystem. Composer, npm and GitHub
+# Actions get no version updates: vulnerable packages and actions come from Dependabot alerts and security updates
+# (repository settings). The Playwright image of e2e/Dockerfile is not listed: its version must equal @playwright/test
+# in e2e/package.json, so both change together, by hand. A PR that changes an image in infra/docker-compose.yml fails
+# `checks` until the chart has the same tag and its digest (infra/k8s/CLAUDE.md, "Chart a compose").
+version: 2
+updates:
+  - package-ecosystem: docker
+    directories:
+      - /apps/api
+      - /apps/store
+      - /apps/admin
+      - /infra/elasticsearch
+    schedule:
+      interval: weekly
+    groups:
+      docker-images:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker-compose
+    directory: /infra
+    schedule:
+      interval: weekly
+    groups:
+      compose-images:
+        patterns:
+          - "*"

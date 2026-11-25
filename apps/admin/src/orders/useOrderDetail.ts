@@ -5,10 +5,10 @@ import { noteRequired, type OrderTransition, transitionLabel } from "./format";
 
 export type BackofficeOrder = components["schemas"]["BackofficeOrder"];
 
-/** The only field of the confirmation dialogs that a 422 of the API can point at. */
-export type ChangeField = "note";
+/** The fields of the windows of a change that a 422 of the API can point at: the note and the tracking number. */
+export type ChangeField = "note" | "trackingNumber";
 
-/** How a change of the status or the completion of the refund ended; the messages are for the staff member. */
+/** How a change of the status, the completion of the refund or the change of the tracking number ended; the messages are for the staff member. */
 export type OrderChange =
   | { status: "saved" }
   | { status: "invalid"; fields: Partial<Record<ChangeField, string>>; message: string | null }
@@ -44,6 +44,10 @@ const REFUND_TEXTS: ChangeTexts = {
   rejected: "API odrzuciło wykonanie zwrotu (HTTP 422).",
   failed: "Nie udało się oznaczyć zwrotu jako wykonanego",
 };
+const TRACKING_TEXTS: ChangeTexts = {
+  rejected: "API odrzuciło zmianę numeru przesyłki (HTTP 422).",
+  failed: "Nie udało się zapisać numeru przesyłki",
+};
 
 function problemDetail(body: unknown): string | null {
   const detail = typeof body === "object" && body !== null ? (body as { detail?: unknown }).detail : undefined;
@@ -51,8 +55,8 @@ function problemDetail(body: unknown): string | null {
 }
 
 /**
- * A 422 of the API: a violation of `note` goes to the note field; a violation of any other path and the `detail` of
- * a 422 without violations are the dialog's message.
+ * A 422 of the API: a violation of `note` goes to the note field, one of `trackingNumber` to the field of the number; a
+ * violation of any other path and the `detail` of a 422 without violations are the dialog's message.
  */
 function invalidChange(body: unknown, rejected: string): OrderChange {
   const fields: Partial<Record<ChangeField, string[]>> = {};
@@ -64,17 +68,20 @@ function invalidChange(body: unknown, rejected: string): OrderChange {
       if (typeof title !== "string" || title === "") {
         continue;
       }
-      if (propertyPath === "note") {
-        (fields.note ??= []).push(title);
+      if (propertyPath === "note" || propertyPath === "trackingNumber") {
+        (fields[propertyPath] ??= []).push(title);
       } else {
         rest.push(title);
       }
     }
   }
-  const hasViolations = fields.note !== undefined || rest.length > 0;
+  const hasViolations = fields.note !== undefined || fields.trackingNumber !== undefined || rest.length > 0;
   return {
     status: "invalid",
-    fields: fields.note ? { note: fields.note.join(" ") } : {},
+    fields: {
+      ...(fields.note ? { note: fields.note.join(" ") } : {}),
+      ...(fields.trackingNumber ? { trackingNumber: fields.trackingNumber.join(" ") } : {}),
+    },
     message: hasViolations ? (rest.length > 0 ? rest.join(" ") : null) : (problemDetail(body) ?? rejected),
   };
 }
@@ -89,13 +96,14 @@ function blankToNull(note: string | null): string | null {
 
 /**
  * One order of the panel. The buttons are what the API allows the staff member now (`allowedTransitions`,
- * `canCompleteRefund`); the panel decides nothing about statuses or roles.
+ * `canCompleteRefund`, `canChangeTrackingNumber`); the panel decides nothing about statuses or roles.
  *
- * `changeStatus` and `completeRefund` send the `version` of the order that is shown and put the order the API answers
- * with in its place. A 409 (the order changed, the status does not allow the change, no refund to do) reloads the
+ * `changeStatus`, `completeRefund` and `changeTrackingNumber` send the `version` of the order that is shown and put the
+ * order the API answers with in its place. A shipment may carry the tracking number the staff member typed; the other
+ * transitions send none. A 409 (the order changed, the status does not allow the change, no refund to do) reloads the
  * order, so the next attempt is based on its current state, and reports the conflict. A note is required to cancel and
  * to register a return, which the dialog checks before it sends; the API checks it again. Only one change is sent at
- * a time.
+ * a time. The format of the tracking number is the API's to judge (a 422 at the field).
  */
 export function useOrderDetail(orderId: MaybeRefOrGetter<string>) {
   const order = ref<BackofficeOrder | null>(null);
@@ -117,6 +125,7 @@ export function useOrderDetail(orderId: MaybeRefOrGetter<string>) {
     })),
   );
   const canCompleteRefund = computed(() => order.value?.canCompleteRefund ?? false);
+  const canChangeTrackingNumber = computed(() => order.value?.canChangeTrackingNumber ?? false);
 
   async function load(): Promise<void> {
     const request = ++latest;
@@ -207,7 +216,7 @@ export function useOrderDetail(orderId: MaybeRefOrGetter<string>) {
     }
   }
 
-  function changeStatus(transition: OrderTransition, note: string | null): Promise<OrderChange> {
+  function changeStatus(transition: OrderTransition, note: string | null, trackingNumber: string | null = null): Promise<OrderChange> {
     const current = order.value;
     if (current !== null && !current.allowedTransitions.includes(transition)) {
       return Promise.resolve({ status: "failed", message: "Ta zmiana nie jest teraz dostępna dla tego zamówienia." });
@@ -219,7 +228,22 @@ export function useOrderDetail(orderId: MaybeRefOrGetter<string>) {
     return change(STATUS_TEXTS, (shown) =>
       getApiClient().POST("/api/v1/admin/orders/{orderId}/status-changes", {
         params: { path: { orderId: shown.orderId } },
-        body: { transition, version: shown.version, note: sent },
+        // Only a shipment takes a number; whatever the window sends for another transition is dropped here.
+        body: { transition, version: shown.version, note: sent, trackingNumber: transition === "ship" ? blankToNull(trackingNumber) : null },
+      }),
+    );
+  }
+
+  /** Adds, replaces or (blank) removes the tracking number of the shipped or delivered order that is shown. */
+  function changeTrackingNumber(trackingNumber: string | null): Promise<OrderChange> {
+    if (order.value !== null && !order.value.canChangeTrackingNumber) {
+      return Promise.resolve({ status: "failed", message: "Ta zmiana nie jest teraz dostępna dla tego zamówienia." });
+    }
+    const sent = blankToNull(trackingNumber);
+    return change(TRACKING_TEXTS, (shown) =>
+      getApiClient().PUT("/api/v1/admin/orders/{orderId}/tracking-number", {
+        params: { path: { orderId: shown.orderId } },
+        body: { trackingNumber: sent, version: shown.version },
       }),
     );
   }
@@ -265,8 +289,10 @@ export function useOrderDetail(orderId: MaybeRefOrGetter<string>) {
     saving,
     actions,
     canCompleteRefund,
+    canChangeTrackingNumber,
     retry: load,
     changeStatus,
     completeRefund,
+    changeTrackingNumber,
   };
 }

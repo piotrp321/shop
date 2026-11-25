@@ -10,6 +10,6 @@ final class ProductNotFound extends \DomainException implements NotFound
 {
     public function __construct()
     {
-        parent::__construct('Product not found.');
+        parent::__construct('Produkt nie istnieje.');
     }
 }

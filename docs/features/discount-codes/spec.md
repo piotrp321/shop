@@ -285,7 +285,7 @@ Powtórzenie z tym samym kluczem i odciskiem zwraca istniejące zamówienie bez 
   zamówienia trafia tylko wycena z chwili złożenia (P2 CHECKOUT, 409 `OrderTotalChanged`). Linia niekupowalna ma
   `unitPrice` z `CartPrices` jak dziś i `lineTotal = null`.
 - `lineTotal` = `grossBeforeDiscount` (`g_i`), `unitPrice` = cena skuteczna jednostkowa; widok koszyka nie pokazuje
-  rabatu linii, więc linie plus wiersz kodu sumują się do „Razem”.
+  rabatu linii, więc linie plus wiersz kodu sumują się do „Do zapłaty”.
 - `GetCart(cartRef, discountCode | null)`. `CartTotals`: `subtotalGross`, `discountGross`, `gross` (do zapłaty),
   `currency`, `itemCount`. `CartView.discount`: `{code, status: applied, amountGross, kind, value}` albo `{code,
   status: rejected, reason, detail, minimumOrderGross | null}` (`reason`: `invalid`, `used_up`, `below_minimum`) albo
@@ -359,7 +359,7 @@ pozostali 403; odczyt: każdy pracownik):
 ## Sklep (`apps/store`)
 
 - Kasa: pole „Kod rabatowy” z przyciskiem „Zastosuj” pod podsumowaniem. Zastosowanie przeładowuje podsumowanie z
-  `discountCode` (BFF koszyka przekazuje parametr). Zastosowany kod: linia „Kod <KOD>: −X zł”, „Razem” po rabacie
+  `discountCode` (BFF koszyka przekazuje parametr). Zastosowany kod: linia „Kod <KOD>: −X zł”, „Do zapłaty” po rabacie
   i przycisk „Usuń kod”. Odrzucony: `detail` przy polu, podsumowanie bez rabatu.
 - Złożenie wysyła `discountCode` zastosowanego kodu i `expectedTotalGross` = `totals.gross` podsumowania. BFF
   (`CUSTOMER_ORDER_FIELDS` w `apps/store/src/checkout/api.ts`) przepuszcza `discountCode`; `problems.ts` zna trzy nowe
@@ -387,8 +387,16 @@ pozostali 403; odczyt: każdy pracownik):
   (etykieta, przełącznik „Aktywny” jako zwykłe pole formularza, aktywne użycia). Pola niedostępne według reguł edycji
   są zablokowane. Zmiana pól, także samego „Aktywny”, pokazuje pasek zapisu i trafia do API dopiero z „Zapisz”;
   opuszczenie formularza z niezapisanymi zmianami pyta w oknie. Po zapisie toast „Kod rabatowy zapisany.” i fokus na
-  nagłówku. 409 `discount-code-taken` przy polu kodu, inne 409: `detail` i odświeżenie. Kod, który nie istnieje:
-  komunikat „Ten kod rabatowy nie istnieje.” z linkiem do listy.
+  nagłówku. Od wysłania zapisu do jego wyniku wszystkie pola (także przełącznik „Aktywny” i rodzaj rabatu) są wyłączone,
+  a odpowiedź zapisu po przejściu do innego kodu albo formularza nowego jest pomijana. 409 `discount-code-taken` przy polu
+  kodu (po nieznanym wyniku utworzenia z dopisanym zdaniem „Możliwe, że utworzył go Twój wcześniejszy zapis.”); inne
+  409 zapisu: komunikat z `detail` (wersji: „Kod rabatowy został w międzyczasie zmieniony. Twoje zmiany zostają
+  w formularzu.”), szkic, stan bazowy i wersja zostają, bez automatycznego odczytu, z przyciskiem „Odrzuć moje zmiany
+  i pokaż stan z serwera” (stan z serwera zastępuje szkic dopiero po odpowiedzi 200). Zapis bez odpowiedzi w 10 s, błąd
+  sieci i odpowiedź 5xx to nieznany wynik: „Nie wiemy, czy zapis się powiódł. Twoje zmiany zostają w formularzu.”
+  z przyciskiem „Sprawdź stan” (dla nowego kodu „Odblokuj formularz” i link do listy); szczegóły i reguły:
+  `docs/features/admin-ux-fixes/spec.md`, „Etap 2”. Kod, który nie istnieje: komunikat „Ten kod rabatowy nie istnieje.”
+  z linkiem do listy.
 - Szczegóły zamówienia (`OrderDetailView`): wartość pozycji przed rabatem, kopia promocji przy pozycji, linia kodu,
   sumy po rabacie.
 

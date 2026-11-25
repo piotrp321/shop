@@ -58,7 +58,7 @@ final class ForbiddenCharactersInRequestsTest extends TestCase
     public function testTheNoteOfAStatusChangeIsRefused(string $note): void
     {
         foreach (['ship', 'cancel'] as $transition) {
-            self::assertSame([['note', 'Notatka zawiera niedozwolone znaki.']], $this->violations(new ChangeOrderStatusRequest($transition, 2, $note)), $transition);
+            self::assertSame([['note', 'Notatka zawiera niedozwolone znaki.']], $this->violations(new ChangeOrderStatusRequest($transition, 2, $note, null)), $transition);
         }
     }
 
@@ -72,10 +72,10 @@ final class ForbiddenCharactersInRequestsTest extends TestCase
     {
         foreach (['cancel', 'return'] as $transition) {
             foreach (["\u{00A0}", "\u{00A0} \u{3000}\u{2003}"] as $note) {
-                self::assertSame([['note', 'Notatka jest wymagana.']], $this->violations(new ChangeOrderStatusRequest($transition, 2, $note)), $transition);
+                self::assertSame([['note', 'Notatka jest wymagana.']], $this->violations(new ChangeOrderStatusRequest($transition, 2, $note, null)), $transition);
             }
         }
-        self::assertSame([], $this->violations(new ChangeOrderStatusRequest('ship', 2, "\u{00A0}")));
+        self::assertSame([], $this->violations(new ChangeOrderStatusRequest('ship', 2, "\u{00A0}", null)));
         self::assertSame([], $this->violations(new CompleteRefundRequest(3, "\u{00A0}")));
     }
 
@@ -83,9 +83,9 @@ final class ForbiddenCharactersInRequestsTest extends TestCase
     {
         $edges = "\u{00A0}\u{3000}";
 
-        self::assertSame([], $this->violations(new ChangeOrderStatusRequest('cancel', 2, $edges.str_repeat('ż', 500).$edges)));
+        self::assertSame([], $this->violations(new ChangeOrderStatusRequest('cancel', 2, $edges.str_repeat('ż', 500).$edges, null)));
         self::assertSame([], $this->violations(new CompleteRefundRequest(3, $edges.str_repeat('ż', 500).$edges)));
-        self::assertSame([['note', 'Notatka może mieć najwyżej 500 znaków.']], $this->violations(new ChangeOrderStatusRequest('cancel', 2, $edges.str_repeat('ż', 501).$edges)));
+        self::assertSame([['note', 'Notatka może mieć najwyżej 500 znaków.']], $this->violations(new ChangeOrderStatusRequest('cancel', 2, $edges.str_repeat('ż', 501).$edges, null)));
         self::assertSame([['note', 'Notatka może mieć najwyżej 500 znaków.']], $this->violations(new CompleteRefundRequest(3, $edges.str_repeat('ż', 501).$edges)));
     }
 
@@ -107,7 +107,7 @@ final class ForbiddenCharactersInRequestsTest extends TestCase
         foreach (self::forbidden() as $name => [$value]) {
             $text = 'email' === $field ? 'jan'.$value.'@example.com' : $value;
             $fields = ['email' => 'jan@example.com', 'fullName' => 'Jan Kowalski', 'street' => 'Długa 1', 'postalCode' => '00-950', 'city' => 'Warszawa', $field => $text];
-            $request = new PlaceGuestOrderRequest('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', $fields['email'], $fields['fullName'], '600100200', $fields['street'], $fields['postalCode'], $fields['city'], 1000);
+            $request = new PlaceGuestOrderRequest('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', $fields['email'], $fields['fullName'], '600100200', $fields['street'], $fields['postalCode'], $fields['city'], 1000, '0192f0c4-7c1a-7c4e-9a6e-00000000de10', [['variantId' => '0192f0c4-7c1a-7c4e-9a6e-00000000a001', 'quantity' => 1]]);
 
             self::assertSame([[$field, $message]], $this->violations($request), $name);
         }
@@ -130,7 +130,7 @@ final class ForbiddenCharactersInRequestsTest extends TestCase
     {
         foreach (self::forbidden() as $name => [$value]) {
             $fields = ['fullName' => 'Jan Kowalski', 'street' => 'Długa 1', 'postalCode' => '00-950', 'city' => 'Warszawa', $field => $value];
-            $request = new PlaceCustomerOrderRequest($fields['fullName'], '600100200', $fields['street'], $fields['postalCode'], $fields['city'], 1000);
+            $request = new PlaceCustomerOrderRequest($fields['fullName'], '600100200', $fields['street'], $fields['postalCode'], $fields['city'], 1000, '0192f0c4-7c1a-7c4e-9a6e-00000000de10', [['variantId' => '0192f0c4-7c1a-7c4e-9a6e-00000000a001', 'quantity' => 1]]);
 
             self::assertSame([[$field, $message]], $this->violations($request), $name);
         }

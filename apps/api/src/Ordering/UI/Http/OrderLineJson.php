@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace App\Ordering\UI\Http;
 
+use App\Ordering\Application\View\OrderDeliveryView;
 use App\Ordering\Application\View\OrderDiscountView;
 use App\Ordering\Application\View\OrderLineView;
+use App\Ordering\Application\View\OrderShipmentView;
 
 /**
- * The lines and the discount code of an order in the bodies of the store and the panel (schemas OrderLine,
- * OrderDiscount, BackofficeOrderLine and BackofficeOrderDiscount of nelmio_api_doc.yaml); only the panel adds the
- * promotion of a line.
+ * The lines, the discount code, the delivery and the shipment of an order in the bodies of the store and the panel (schemas
+ * OrderLine, OrderDiscount, OrderDelivery, BackofficeOrderLine, BackofficeOrderDiscount and BackofficeOrderDelivery of
+ * nelmio_api_doc.yaml); only the panel adds the promotion of a line.
  */
 final class OrderLineJson
 {
@@ -41,6 +43,29 @@ final class OrderLineJson
             'kind' => $discount->kind,
             'value' => $discount->value,
             'amountGross' => $discount->amountGross,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null null for an order placed without a delivery method
+     */
+    public static function delivery(?OrderDeliveryView $delivery): ?array
+    {
+        return null === $delivery ? null : [
+            'methodName' => $delivery->methodName,
+            'gross' => $delivery->gross,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null null for an order without a tracking number
+     */
+    public static function shipment(?OrderShipmentView $shipment): ?array
+    {
+        return null === $shipment ? null : [
+            'carrier' => $shipment->carrier,
+            'trackingNumber' => $shipment->trackingNumber,
+            'trackingUrl' => $shipment->trackingUrl,
         ];
     }
 }

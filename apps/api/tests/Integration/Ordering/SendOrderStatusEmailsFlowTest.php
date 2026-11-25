@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Ordering;
 
 use App\Ordering\Application\CartReference;
 use App\Ordering\Application\Command\ChangeOrderStatus;
+use App\Ordering\Application\Command\ChangeTrackingNumber;
 use App\Ordering\Application\Command\ExpireUnpaidOrder;
 use App\Ordering\Application\Command\MarkOrderPaid;
 use App\Ordering\Application\Command\MarkOrderPaidResult;
@@ -100,7 +101,7 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
     public function testAShippedOrderGetsOneEmailWithTheAddress(): void
     {
         $order = $this->placeAndPay();
-        $this->changeStatus($order->orderId, StaffTransition::Ship, 2, 'Kurier');
+        $this->changeStatus($order->orderId, StaffTransition::Ship, 2, 'Notatka magazynu');
 
         $this->consumeOutboxAndEvents(6);
         $this->redeliver(new OrderShipped($order->orderId, $this->clock->now));
@@ -108,9 +109,54 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         $emails = $this->emails('Zamówienie '.$order->number.' wysłane', 3);
         self::assertCount(1, $emails);
         self::assertStringContainsString("Zamówienie zostało wysłane na adres:\nJan Kowalski\nDługa 1\n00-950 Warszawa", str_replace("\r\n", "\n", $emails[0]['text']), 'SMTP sends the lines with CRLF');
-        self::assertStringNotContainsString('Kurier', $emails[0]['text'], 'the note of staff stays in the panel');
+        self::assertStringNotContainsString('Notatka magazynu', $emails[0]['text'], 'the note of staff stays in the panel');
         self::assertNotNull(OrderingFixture::notificationSentAt($this->connection(), $order->orderId, 'shipped'));
         self::assertSame(0, $this->rows('failed'));
+    }
+
+    public function testAShippedOrderWithANumberGetsTheMethodTheNumberAndTheLink(): void
+    {
+        $order = $this->placeAndPay();
+        $this->connection()->executeStatement("UPDATE ordering_order SET delivery_tracking_url_template = 'https://tracking.example.com/{numer}' WHERE id = ?", [$order->orderId]);
+        $this->changeStatus($order->orderId, StaffTransition::Ship, 2, null, 'JJD0002-4455');
+
+        $this->consumeOutboxAndEvents(6);
+
+        $emails = $this->emails('Zamówienie '.$order->number.' wysłane', 3);
+        self::assertCount(1, $emails);
+        $text = str_replace("\r\n", "\n", $emails[0]['text']);
+        self::assertStringContainsString("Sposób dostawy: Kurier testowy bez kosztu\nNumer przesyłki: JJD0002-4455\nŚledzenie przesyłki: https://tracking.example.com/JJD0002-4455", $text);
+        self::assertStringNotContainsString('Przewoźnik', $text);
+        self::assertSame(0, $this->rows('failed'));
+    }
+
+    public function testAShipmentWithoutANumberTellsTheMethodOnly(): void
+    {
+        $order = $this->placeAndPay();
+        $this->changeStatus($order->orderId, StaffTransition::Ship, 2, null);
+
+        $this->consumeOutboxAndEvents(6);
+
+        $emails = $this->emails('Zamówienie '.$order->number.' wysłane', 3);
+        self::assertCount(1, $emails);
+        $text = str_replace("\r\n", "\n", $emails[0]['text']);
+        self::assertStringContainsString('Sposób dostawy: Kurier testowy bez kosztu', $text);
+        self::assertStringNotContainsString('Numer przesyłki', $text);
+        self::assertStringNotContainsString('Śledzenie przesyłki', $text);
+    }
+
+    public function testACorrectionOfTheNumberAfterTheShipmentSendsNoEmail(): void
+    {
+        $order = $this->placeAndPay();
+        $this->changeStatus($order->orderId, StaffTransition::Ship, 2, null, 'AAA-1');
+        $this->consumeOutboxAndEvents(6);
+        self::assertCount(1, $this->emails('Zamówienie '.$order->number.' wysłane', 3));
+        $messages = $this->rows('outbox') + $this->eventsInQueue();
+
+        $this->bus()->dispatch(new ChangeTrackingNumber($order->orderId, 3, 'BBB-2'));
+
+        self::assertSame($messages, $this->rows('outbox') + $this->eventsInQueue(), 'no event');
+        self::assertCount(1, $this->emails('Zamówienie '.$order->number.' wysłane', 3), 'the email that went out is not sent again');
     }
 
     public function testAnOrderCancelledByStaffGetsOneEmailWithoutTheTextAboutThePayment(): void
@@ -153,9 +199,9 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         return $order;
     }
 
-    private function changeStatus(string $orderId, StaffTransition $transition, int $version, ?string $note): void
+    private function changeStatus(string $orderId, StaffTransition $transition, int $version, ?string $note, ?string $trackingNumber = null): void
     {
-        $this->bus()->dispatch(new ChangeOrderStatus($orderId, $transition, $version, $note, 'kc-staff-1', 'anna'));
+        $this->bus()->dispatch(new ChangeOrderStatus($orderId, $transition, $version, $note, 'kc-staff-1', 'anna', $trackingNumber));
     }
 
     /**
@@ -165,7 +211,7 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
     {
         $this->transport('events')->send(new Envelope($event, [new BusNameStamp('event.bus')]));
         $this->consume('events');
-        // A failed handler would put the message back through the retry delay (100 ms ±10 %), so wait it out.
+        // A failed handler would put the message back through the retry delay (2 ms ±10 %), so wait it out.
         usleep(300_000);
     }
 
@@ -194,7 +240,7 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         [$variant] = OrderingFixture::variant($db, 10_000, 5);
         $cart = CartFixture::cart($db, expiresAt: '+3 days', lines: [[$variant, 1]]);
 
-        $result = $this->bus()->dispatch(new PlaceOrder(CartReference::guest($cart), $this->inbox->recipient, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', 12_300, 'key-'.$cart))
+        $result = $this->bus()->dispatch(new PlaceOrder(CartReference::guest($cart), $this->inbox->recipient, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($db), 12_300, OrderingFixture::expectedOfCart($db, $cart), 'key-'.$cart))
             ->last(HandledStamp::class)?->getResult();
         self::assertInstanceOf(PlacedOrder::class, $result);
 

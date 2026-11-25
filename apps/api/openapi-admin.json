@@ -1491,6 +1491,374 @@
                 ]
             }
         },
+        "/api/v1/admin/delivery-methods": {
+            "get": {
+                "tags": [
+                    "Delivery"
+                ],
+                "summary": "The delivery methods",
+                "description": "Every delivery method, without pages: the active ones (at most 20) by position, then by name; then the inactive ones by name (a method is never deleted, only disabled). Administrators only.",
+                "operationId": "listDeliveryMethods",
+                "responses": {
+                    "200": {
+                        "description": "The methods.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeliveryMethodListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is no administrator (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Delivery"
+                ],
+                "summary": "Create a delivery method",
+                "description": "Administrators only. The name is unique among all methods (also the inactive ones) without regard to case; at most 20 methods are active. A method is never deleted; it is disabled with `active` false.",
+                "operationId": "createDeliveryMethod",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateDeliveryMethodRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The created method (`Location` names it).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeliveryMethodResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON, also a text that is not valid UTF-8 (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is no administrator (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Another method has the name (`delivery-method-name-taken`) or an active method would be the 21st (`delivery-method-limit-reached`); see `DeliveryConflictProblem`. Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeliveryConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A field is invalid, a key is missing or of a wrong type (problem details with `violations`, each at its field, with a Polish `title`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/delivery-methods/{id}": {
+            "get": {
+                "tags": [
+                    "Delivery"
+                ],
+                "summary": "A delivery method",
+                "description": "Administrators only.",
+                "operationId": "getDeliveryMethod",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Delivery method id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The method.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeliveryMethodResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is no administrator (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such method, also an id that is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Delivery"
+                ],
+                "summary": "Change a delivery method",
+                "description": "Sends the whole method as it should be, based on the `version` seen. Administrators only. Activating a method when 20 are active is a 409; a change that does not activate the method is never refused for the limit. Placed orders keep their copy of the method. An unknown method is a 404 before the body is read.",
+                "operationId": "reviseDeliveryMethod",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Delivery method id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ReviseDeliveryMethodRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The method as saved.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeliveryMethodResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON, also a text that is not valid UTF-8 (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is no administrator (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such method, also an id that is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The method changed since the given version (`about:blank`), another method has the name (`delivery-method-name-taken`) or the method would be the 21st active one (`delivery-method-limit-reached`); see `DeliveryConflictProblem`. Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeliveryConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A field is invalid, a key is missing or of a wrong type (problem details with `violations`, each at its field, with a Polish `title`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
         "/api/v1/admin/stock": {
             "get": {
                 "tags": [
@@ -2487,7 +2855,7 @@
                     "Ordering"
                 ],
                 "summary": "Change the status of an order",
-                "description": "Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel and register returns. A note is required to cancel and to register a return. Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The history entry names the staff member of the token. The customer gets an email about a shipment, a cancellation and a return.",
+                "description": "Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel and register returns. A note is required to cancel and to register a return. A shipment takes an optional tracking number (`trackingNumber`, null or blank for none; the other transitions take none). Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The history entry names the staff member of the token. The customer gets an email about a shipment (with the tracking number and its link, if there is one), a cancellation and a return.",
                 "operationId": "changeOrderStatus",
                 "parameters": [
                     {
@@ -2585,6 +2953,136 @@
                     },
                     "422": {
                         "description": "The transition is unknown, the version is not an integer of at least 1, the note breaks its rules or is missing to cancel or register a return, or a key is missing or of a wrong type (problem details with Polish `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/orders/{orderId}/tracking-number": {
+            "put": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Add, replace or remove the tracking number of an order",
+                "description": "Sets the tracking number of a shipped or delivered order (1 to 40 ASCII letters, digits and hyphens), replacing the one it has; null or a text of nothing but white space removes it. Administrators and the warehouse only. Only an order that is shipped or delivered takes the change. The number is not an event of the order: no history entry is added and no email is sent (the customer sees the current number and its link in the order; the email of the shipment keeps the number it was sent with). Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed. The change raises the version.",
+                "operationId": "changeOrderTrackingNumber",
+                "parameters": [
+                    {
+                        "name": "orderId",
+                        "in": "path",
+                        "description": "Order id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChangeTrackingNumberRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The order as saved.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrder"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is neither an administrator nor in the warehouse (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such order, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The order changed since the given version, or it is neither shipped nor delivered (problem details with a stable `type`, see `BackofficeOrderConflictProblem`). Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrderConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The number is not a text or is of a wrong shape, the version is not an integer of at least 1, or a key is missing or of a wrong type (problem details with Polish `violations`).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -4310,6 +4808,8 @@
                     "shippingAddress",
                     "lines",
                     "discount",
+                    "delivery",
+                    "shipment",
                     "totals",
                     "placedAt",
                     "paymentDeadline",
@@ -4323,7 +4823,8 @@
                     "history",
                     "refund",
                     "allowedTransitions",
-                    "canCompleteRefund"
+                    "canCompleteRefund",
+                    "canChangeTrackingNumber"
                 ],
                 "properties": {
                     "orderId": {
@@ -4377,6 +4878,24 @@
                         "allOf": [
                             {
                                 "$ref": "#/components/schemas/BackofficeOrderDiscount"
+                            }
+                        ]
+                    },
+                    "delivery": {
+                        "description": "The delivery method chosen at the placement and its cost; null for an order placed without one (before the delivery).",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BackofficeOrderDelivery"
+                            }
+                        ]
+                    },
+                    "shipment": {
+                        "description": "The shipment, only once a tracking number is written (at the shipment or afterwards); null without one.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BackofficeOrderShipment"
                             }
                         ]
                     },
@@ -4462,6 +4981,10 @@
                     },
                     "canCompleteRefund": {
                         "description": "The refund is to do and the staff member of the token may mark it made.",
+                        "type": "boolean"
+                    },
+                    "canChangeTrackingNumber": {
+                        "description": "The order is shipped or delivered and the staff member of the token (an administrator or the warehouse) may add, correct or remove its tracking number.",
                         "type": "boolean"
                     }
                 },
@@ -4616,8 +5139,56 @@
                 },
                 "type": "object"
             },
+            "BackofficeOrderDelivery": {
+                "description": "The delivery of an order, a copy of the method as it was when the order was placed.",
+                "required": [
+                    "methodName",
+                    "gross"
+                ],
+                "properties": {
+                    "methodName": {
+                        "type": "string",
+                        "example": "Kurier standardowy"
+                    },
+                    "gross": {
+                        "description": "The gross cost of the delivery in grosze, part of the totals; 0 for a free delivery.",
+                        "type": "integer",
+                        "example": 1999,
+                        "minimum": 0
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderShipment": {
+                "description": "The shipment of an order that has a tracking number. The carrier is the name of the delivery method of the placement.",
+                "required": [
+                    "carrier",
+                    "trackingNumber",
+                    "trackingUrl"
+                ],
+                "properties": {
+                    "carrier": {
+                        "description": "The name of the delivery method; null for an order placed without one.",
+                        "type": "string",
+                        "example": "Kurier standardowy",
+                        "nullable": true
+                    },
+                    "trackingNumber": {
+                        "description": "1 to 40 ASCII letters, digits and hyphens.",
+                        "type": "string",
+                        "example": "JJD0002-4455"
+                    },
+                    "trackingUrl": {
+                        "description": "The link that follows the shipment, from the copy of the template of the method with the number; null without a template.",
+                        "type": "string",
+                        "example": "https://tracking.example.com/JJD0002-4455",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
             "BackofficeOrderTotals": {
-                "description": "Sums of the lines after the discount of the code; net + vat = gross.",
+                "description": "Sums of the lines after the discount of the code and of the delivery; net + vat = gross.",
                 "required": [
                     "net",
                     "vat",
@@ -4759,7 +5330,7 @@
                 "type": "object"
             },
             "BackofficeOrderConflictProblem": {
-                "description": "A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the status of the order does not allow the change, the order has no refund to do, or (`about:blank`) the order changed since the `version` sent, also when a change that succeeded is sent again. Nothing is changed.",
+                "description": "A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the status of the order does not allow the change, the order has no refund to do, the order is neither shipped nor delivered so its tracking number cannot change, or (`about:blank`) the order changed since the `version` sent, also when a change that succeeded is sent again. Nothing is changed.",
                 "required": [
                     "type",
                     "title",
@@ -4772,6 +5343,7 @@
                         "enum": [
                             "tag:piotrp321.github.io,2026:shop/problems/order-transition-not-allowed",
                             "tag:piotrp321.github.io,2026:shop/problems/refund-not-pending",
+                            "tag:piotrp321.github.io,2026:shop/problems/tracking-number-not-changeable",
                             "about:blank"
                         ]
                     },
@@ -4833,6 +5405,40 @@
                             "type": "string",
                             "format": "uuid"
                         }
+                    }
+                },
+                "type": "object"
+            },
+            "DeliveryConflictProblem": {
+                "description": "A 409 of the delivery methods of the panel. `type` names the cause (the `detail` is Polish text for people and may change): another method has the name without regard to case (also an inactive one), the method would be one active method more than 20, or (`about:blank`) the method changed since the `version` sent. Nothing is changed.",
+                "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "tag:piotrp321.github.io,2026:shop/problems/delivery-method-name-taken",
+                            "tag:piotrp321.github.io,2026:shop/problems/delivery-method-limit-reached",
+                            "about:blank"
+                        ]
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Conflict"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "enum": [
+                            409
+                        ]
+                    },
+                    "detail": {
+                        "description": "Polish text for the staff member.",
+                        "type": "string"
                     }
                 },
                 "type": "object"
@@ -5372,6 +5978,138 @@
                 },
                 "type": "object"
             },
+            "CreateDeliveryMethodRequest": {
+                "description": "A new delivery method.",
+                "required": [
+                    "name",
+                    "description",
+                    "priceGross",
+                    "freeFromGross",
+                    "active",
+                    "position",
+                    "trackingUrlTemplate"
+                ],
+                "properties": {
+                    "name": {
+                        "description": "1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.",
+                        "type": "string",
+                        "example": "Kurier standardowy",
+                        "maxLength": 100
+                    },
+                    "description": {
+                        "description": "The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.",
+                        "type": "string",
+                        "example": "Dostawa w 2\u20133 dni robocze",
+                        "nullable": true,
+                        "maxLength": 200
+                    },
+                    "priceGross": {
+                        "description": "Gross price in grosze.",
+                        "type": "integer",
+                        "example": 1999,
+                        "maximum": 99999999,
+                        "minimum": 0
+                    },
+                    "freeFromGross": {
+                        "description": "The method is free for goods (gross after discounts, grosze) of at least this value. Null: no threshold.",
+                        "type": "integer",
+                        "example": 29900,
+                        "nullable": true,
+                        "maximum": 99999999999,
+                        "minimum": 1
+                    },
+                    "active": {
+                        "description": "Offered in the cart and the checkout. At most 20 methods are active.",
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "position": {
+                        "description": "Ascending position among the active methods; one position is ordered by name.",
+                        "type": "integer",
+                        "example": 10,
+                        "maximum": 999,
+                        "minimum": 0
+                    },
+                    "trackingUrlTemplate": {
+                        "description": "The tracking address of the carrier: https:// with a host name, `{numer}` exactly once in place of the tracking number, without white space, up to 500 characters. Null or white space only: no template.",
+                        "type": "string",
+                        "example": "https://tracking.example.com/{numer}",
+                        "nullable": true,
+                        "maxLength": 500
+                    }
+                },
+                "type": "object"
+            },
+            "ReviseDeliveryMethodRequest": {
+                "description": "A delivery method as it should be.",
+                "required": [
+                    "name",
+                    "description",
+                    "priceGross",
+                    "freeFromGross",
+                    "active",
+                    "position",
+                    "trackingUrlTemplate",
+                    "version"
+                ],
+                "properties": {
+                    "name": {
+                        "description": "1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.",
+                        "type": "string",
+                        "example": "Kurier standardowy",
+                        "maxLength": 100
+                    },
+                    "description": {
+                        "description": "The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.",
+                        "type": "string",
+                        "example": "Dostawa w 2\u20133 dni robocze",
+                        "nullable": true,
+                        "maxLength": 200
+                    },
+                    "priceGross": {
+                        "description": "Gross price in grosze.",
+                        "type": "integer",
+                        "example": 1999,
+                        "maximum": 99999999,
+                        "minimum": 0
+                    },
+                    "freeFromGross": {
+                        "description": "The method is free for goods (gross after discounts, grosze) of at least this value. Null: no threshold.",
+                        "type": "integer",
+                        "example": 29900,
+                        "nullable": true,
+                        "maximum": 99999999999,
+                        "minimum": 1
+                    },
+                    "active": {
+                        "description": "Offered in the cart and the checkout. At most 20 methods are active; activating one more is a 409.",
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "position": {
+                        "description": "Ascending position among the active methods; one position is ordered by name.",
+                        "type": "integer",
+                        "example": 10,
+                        "maximum": 999,
+                        "minimum": 0
+                    },
+                    "trackingUrlTemplate": {
+                        "description": "The tracking address of the carrier: https:// with a host name, `{numer}` exactly once in place of the tracking number, without white space, up to 500 characters. Null or white space only: no template.",
+                        "type": "string",
+                        "example": "https://tracking.example.com/{numer}",
+                        "nullable": true,
+                        "maxLength": 500
+                    },
+                    "version": {
+                        "description": "The `version` of the method the change is based on.",
+                        "type": "integer",
+                        "example": 1,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                    }
+                },
+                "type": "object"
+            },
             "BackofficeStockQuery": {
                 "properties": {
                     "q": {
@@ -5634,7 +6372,8 @@
                 "required": [
                     "transition",
                     "version",
-                    "note"
+                    "note",
+                    "trackingNumber"
                 ],
                 "properties": {
                     "transition": {
@@ -5661,6 +6400,37 @@
                         "example": "Kurier DPD",
                         "nullable": true,
                         "maxLength": 500
+                    },
+                    "trackingNumber": {
+                        "description": "The tracking number of the shipment, for `ship` only: 1 to 40 ASCII letters, digits and hyphens once trimmed of white space. Null or nothing but white space is no number, for every transition; any other value of another transition is refused.",
+                        "type": "string",
+                        "example": "JJD0002-4455",
+                        "nullable": true,
+                        "maxLength": 40
+                    }
+                },
+                "type": "object"
+            },
+            "ChangeTrackingNumberRequest": {
+                "description": "The tracking number of a shipped or delivered order, based on the version of the order the staff member saw.",
+                "required": [
+                    "trackingNumber",
+                    "version"
+                ],
+                "properties": {
+                    "trackingNumber": {
+                        "description": "The tracking number: 1 to 40 ASCII letters, digits and hyphens once trimmed of white space. Null or nothing but white space removes the number.",
+                        "type": "string",
+                        "example": "JJD0002-4455",
+                        "nullable": true,
+                        "maxLength": 40
+                    },
+                    "version": {
+                        "description": "The `version` of the order the change is based on.",
+                        "type": "integer",
+                        "example": 4,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
                     }
                 },
                 "type": "object"
@@ -6236,13 +7006,107 @@
                 },
                 "type": "object"
             },
+            "DashboardFailedMessagesResponse": {
+                "description": "Messages that failed all their attempts and wait in the `failed` transport for a decision of the operator.",
+                "required": [
+                    "count",
+                    "capped",
+                    "oldestAt"
+                ],
+                "properties": {
+                    "count": {
+                        "description": "Messages in `failed`, counted up to 1000.",
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "capped": {
+                        "description": "More than 1000 messages: `count` is 1000.",
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "oldestAt": {
+                        "description": "When the oldest of them was written to `failed`, RFC 3339 in UTC. Null without any.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-20T10:15:00+00:00",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardTransportResponse": {
+                "description": "A queue of the database that a worker takes messages from.",
+                "required": [
+                    "name",
+                    "ready",
+                    "capped",
+                    "oldestReadyAgeSeconds",
+                    "stalled"
+                ],
+                "properties": {
+                    "name": {
+                        "description": "The name of the transport: outbox, scheduled, payment_simulator, promotions or jobs.",
+                        "type": "string",
+                        "example": "outbox"
+                    },
+                    "ready": {
+                        "description": "Messages that a worker could take now (not handed to a worker, due), counted up to 1000.",
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "capped": {
+                        "description": "More than 1000 ready messages: `ready` is 1000.",
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "oldestReadyAgeSeconds": {
+                        "description": "How long the oldest ready message has been ready, in seconds (a delayed message from the moment it became due). Null without a ready message.",
+                        "type": "integer",
+                        "example": 3,
+                        "nullable": true
+                    },
+                    "stalled": {
+                        "description": "Whether the oldest ready message waits longer than the limit of the API (600 s): nothing takes the messages of the queue.",
+                        "type": "boolean",
+                        "example": false
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardMessagesResponse": {
+                "description": "The messages of the queues in the database (the outbox and the commands), judged by the API.",
+                "required": [
+                    "healthy",
+                    "failed",
+                    "transports"
+                ],
+                "properties": {
+                    "healthy": {
+                        "description": "Nothing is in `failed` and no queue stands.",
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "failed": {
+                        "$ref": "#/components/schemas/DashboardFailedMessagesResponse"
+                    },
+                    "transports": {
+                        "description": "Always in this order: outbox, scheduled, payment_simulator, promotions, jobs.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/DashboardTransportResponse"
+                        }
+                    }
+                },
+                "type": "object"
+            },
             "DashboardSystemResponse": {
                 "description": "The state of the system, for administrators.",
                 "required": [
                     "services",
                     "outbox",
                     "queues",
-                    "searchIndex"
+                    "searchIndex",
+                    "messages"
                 ],
                 "properties": {
                     "services": {
@@ -6265,6 +7129,9 @@
                     },
                     "searchIndex": {
                         "$ref": "#/components/schemas/DashboardSearchIndexResponse"
+                    },
+                    "messages": {
+                        "$ref": "#/components/schemas/DashboardMessagesResponse"
                     }
                 },
                 "type": "object"
@@ -6776,6 +7643,82 @@
                     },
                     "preview": {
                         "$ref": "#/components/schemas/ImagePreviewResponse"
+                    }
+                },
+                "type": "object"
+            },
+            "DeliveryMethodResponse": {
+                "description": "A delivery method of the panel. Amounts in grosze.",
+                "required": [
+                    "id",
+                    "name",
+                    "description",
+                    "priceGross",
+                    "freeFromGross",
+                    "active",
+                    "position",
+                    "trackingUrlTemplate",
+                    "version"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Kurier standardowy"
+                    },
+                    "description": {
+                        "description": "Empty without a description.",
+                        "type": "string",
+                        "example": "Dostawa w 2\u20133 dni robocze"
+                    },
+                    "priceGross": {
+                        "description": "Gross price.",
+                        "type": "integer",
+                        "example": 1999
+                    },
+                    "freeFromGross": {
+                        "description": "Free from this value of the goods after discounts (gross); null without a threshold.",
+                        "type": "integer",
+                        "example": 29900,
+                        "nullable": true
+                    },
+                    "active": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "position": {
+                        "description": "Ascending position among the active methods.",
+                        "type": "integer",
+                        "example": 10
+                    },
+                    "trackingUrlTemplate": {
+                        "description": "Null without a template.",
+                        "type": "string",
+                        "example": "https://tracking.example.com/{numer}",
+                        "nullable": true
+                    },
+                    "version": {
+                        "description": "Version of the method, for the optimistic locking of changes.",
+                        "type": "integer",
+                        "example": 1
+                    }
+                },
+                "type": "object"
+            },
+            "DeliveryMethodListResponse": {
+                "description": "Every delivery method, without pages: the active ones by position, then by name; then the inactive ones by name.",
+                "required": [
+                    "items"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/DeliveryMethodResponse"
+                        }
                     }
                 },
                 "type": "object"
@@ -8043,6 +8986,10 @@
         {
             "name": "Catalog",
             "description": "Catalog"
+        },
+        {
+            "name": "Delivery",
+            "description": "Delivery"
         },
         {
             "name": "Inventory",

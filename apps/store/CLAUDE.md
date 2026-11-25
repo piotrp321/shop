@@ -27,7 +27,9 @@ tej opcji.
 ## Komendy
 
 Uruchamiaj z katalogu głównego przez `make -C apps/store <cel>`:
-- `check` – ESLint i `tsc --noEmit` (po `next typegen`, który generuje typy tras do `.next/types`)
+- `check` – ESLint, `tsc --noEmit` (po `next typegen`, który generuje typy tras do `.next/types`) i `audit`
+- `audit` – `npm audit --omit=dev --audit-level=high`: podatność wagi high lub critical w pakiecie produkcyjnym
+  kończy cel błędem, błąd narzędzia i brak sieci też; bez wyjątków, podatny pakiet się aktualizuje
 - `test` – wszystkie testy (Vitest), także integracyjne na usługach stosu
 - `test-unit` – tylko testy jednostkowe, bez usług
 - `shell` – powłoka w kontenerze `store`
@@ -94,6 +96,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
     bezpośrednio (klient z `getAuthDeps()`), nigdy przez Varnish.
 - Klient API (`createApiClient`) przyjmuje `tags`: trafiają do fetch jako `next: { tags }` (przez `requestInitExt`
   openapi-fetch, bo biblioteka wywołuje fetch gotowym `Request`). Tylko tak odczyty dostają tagi cache Next.js.
+- Nazwy tagów cache Next.js powstają wyłącznie w `src/catalog/isr-tags.ts` (typ `NextCacheTag`, jedyny przyjmowany
+  przez `tags`; test typów w `src/api/client.test.ts`). Tag z identyfikatorem encji (id, slug) jest zabroniony: Next
+  trzyma każdy rewalidowany tag w pamięci do restartu procesu, więc taka lista rosłaby bez granicy. Nowy rodzaj tagu
+  dopisuje się do modułu jako stała liczba nazw (jak kubełki produktów). Rzutowania `as NextCacheTag` poza modułem typ
+  nie zablokuje: nie używaj go.
 - Domyślnie Server Components. Client Component tylko tam, gdzie potrzebna jest interakcja.
 - `generateMetadata` i strona pobierają listę przez `loadCatalogForRequest`, a drzewo kategorii przez
   `loadCategoryTreeForRequest` (oba `React.cache`), więc jedno wejście to jedno żądanie na endpoint
@@ -172,10 +179,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Dane (`loadProduct` w `src/catalog/load-product.ts`, wspólne dla `generateMetadata` i strony przez `React.cache`
   jako `loadProductForRequest`): `GET /api/v1/products/{slug}`, potem `GET /api/v1/product-offers?productId=<id>`, oba
   przez `API_CATALOG_URL`. Slug spoza formatu sluga produktu (`isProductSlug` w `load-product.ts`, ten sam wzorzec co
-  w `/api/revalidate`) to 404 bez wywołania API. Tagi cache Next to te same nazwy, które API wystawia w `xkey`:
-  szczegóły `catalog` i `product-slug-<slug>`, oferta `catalog` i `product-<id>` (UUID małymi literami). Strona
-  dziedziczy sumę tagów odczytów, więc `revalidateTag` tych nazw unieważnia jej HTML, także strony 404 sluga, który
-  właśnie został opublikowany.
+  w `/api/revalidate`) to 404 bez wywołania API. Tagi cache Next to tagi z `src/catalog/isr-tags.ts` dla nazw, które
+  API wystawia w `xkey`: szczegóły `catalog` i kubełek nazwy `product-slug-<slug>`, oferta `catalog` i kubełek nazwy
+  `product-<id>` (UUID małymi literami). Strona dziedziczy sumę tagów odczytów, więc rewalidacja tych nazw unieważnia
+  jej HTML, także strony 404 sluga, który właśnie został opublikowany (i wpisy innych produktów z tego samego kubełka).
 - 404 szczegółów → `notFound()` (strona 404 z `noindex`; `generateMetadata` zwraca wtedy `{}`). Każdy inny błąd
   szczegółów albo oferty (status, sieć, nieoczekiwana treść, brak oferty produktu) to wyjątek, czyli `app/error.tsx`,
   którego ISR nie cache'uje; strona bez ceny nigdy nie powstaje.
@@ -229,8 +236,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   i `timingSafeEqual`, więc nie zdradza też długości); treść JSON `{ tags }`, 1–100 tagów, każdy `catalog`,
   `product-<uuid małymi literami>` albo `product-slug-<slug>` (slug w formacie sluga produktu: małe litery i cyfry
   w grupach łączonych pojedynczym `-`, do 200 znaków; słownik tagów API).
-- Każdy tag: `revalidateTag(tag, { expire: 0 })`: następne wejście czeka na świeży render zamiast dostać starą stronę
-  (P5). Odpowiedź 200 `{ revalidated: <liczba tagów> }`.
+- Każdy tag treści zamienia `src/catalog/isr-tags.ts` na tag cache Next, a `revalidateTag(<tag Next>, { expire: 0 })`
+  idzie raz dla każdej różnej nazwy: następne wejście czeka na świeży render zamiast dostać starą stronę (P5).
+  Odpowiedź 200 `{ revalidated: <liczba tagów treści> }`.
 - Wszystkie odpowiedzi `private, no-store`. Sekret nie trafia do logów.
 
 ## Koszyk
@@ -284,8 +292,18 @@ Klienta API generuje `make api-client` z katalogu głównego.
   testy) albo bez nagłówka w żądaniu nic nie jest dodawane, a API liczy limity po adresie serwera sklepu. Wartość idzie
   bez zmian: API bierze ją tylko jako jeden poprawny adres IP (`docs/features/hardening/spec.md`, D2).
 - Do API trafiają tylko pola kontraktu (`pickFields` w `src/checkout/api.ts`: gość `email`, `fullName`, `phone`,
-  `street`, `postalCode`, `city`, `expectedTotalGross`, `discountCode`, klient bez `email`), z wartościami, jakie przysłała przeglądarka:
-  sprawdza je API. `cartId` pochodzi wyłącznie z ciasteczka; ceny, linie i inne pola przeglądarki są pomijane.
+  `street`, `postalCode`, `city`, `expectedTotalGross`, `deliveryMethodId`, `expectedLines`, `discountCode`, klient bez
+  `email`), z wartościami, jakie przysłała przeglądarka: sprawdza je API. `cartId` pochodzi wyłącznie z ciasteczka;
+  ceny i inne pola przeglądarki są pomijane. Pozycje i ilości (`expectedLines`, linie podsumowania pokazanego w kasie)
+  API tylko porównuje z koszykiem; zamówienie powstaje z koszyka (`docs/features/checkout/spec.md`, P2a).
+- Pole `buyer` (kupujący pokazany w kasie: `"guest"` z `src/checkout/buyer.ts` przy polu e-mail albo znacznik z
+  `/auth/session`, z którego pochodzi pokazany adres konta) BFF sprawdza przed listą dostawców, scaleniem koszyka
+  i API (`checkBuyer` w `src/checkout/bff.ts`) i nigdy nie przekazuje do API: konto zamówienia wynika wyłącznie z sesji.
+  Brak albo nie-tekst: 422. Bez sesji kasa konta dostaje 401, nigdy zamówienie gościa. Przy sesji BFF zostawia
+  odświeżanie tokenu bez zmian (`freshAccessToken`), potem czyta `sub` tej samej sesji i porównuje znacznik w stałym
+  czasie (`isBuyerOf` w `src/auth/buyer.ts`); inny kupujący to własny 409 `checkout-buyer-changed`
+  (`CHECKOUT_BUYER_CHANGED_TYPE`, poza mapą typów API w `src/checkout/problems.ts`). Tabela przypadków:
+  `docs/features/checkout/spec.md`, „BFF”.
 - Sukces (201 albo 200 przy powtórzeniu z tym samym kluczem): ciasteczko `store_order_confirmation` z `{orderId,
   number, email, totalGross, currency, accessToken}` z `OrderView` (gość ma `accessToken`, klient `null`; JSON
   w base64url, podpisany jak `store_cart`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina; stare ciasteczko
@@ -300,8 +318,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   także komunikat o dostawcy przy grupie.
 - Przyczynę 409 wyznacza wyłącznie `type` (`placeOrder` zwraca `reason` z `conflictReason`, mapa typów
   w `src/checkout/problems.ts` jest sprawdzana kompilatorem względem schematu), nigdy tekst `detail`. Żadne odrzucenie
-  nie ponawia zamówienia samo. Po każdym odrzuceniu fokus idzie na komunikat (`role="alert"`, `tabIndex={-1}`, bo
-  przycisk jest zablokowany na czas żądania), a po 422 z błędami pól na pierwsze błędne pole.
+  nie ponawia zamówienia samo. Po odrzuceniu fokus idzie na komunikat (`role="alert"`, `tabIndex={-1}`), a po 422
+  z błędami pól na pierwsze błędne pole, tylko gdy został na elemencie, z którego wyszło wysłanie, albo zginął
+  (`focusStayed` w `CheckoutPage.tsx`); przeniesiony przez klienta w trakcie żądania zostaje tam.
 - `/checkout/confirmation` (`noindex, nofollow`, Server Component): czyta `store_order_confirmation` (`cookies()`
   i `readOrderConfirmation`, sekret z `readAuthConfig`). Bez ciasteczka, z niepoprawnym podpisem albo treścią:
   „Nie znaleźliśmy informacji o zamówieniu.” i link „Wróć do sklepu”. Inaczej czyta status płatności (`readPaymentStatus`:
@@ -317,6 +336,13 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (Redis, OIDC, klient API) z `getAuthDeps()` w `src/auth/deps.ts`, a przy ich braku odpowiada 503 z `no-store`.
   `getCartDeps()` bierze z nich sesje, `freshAccessToken`, klienta API i konfigurację. Testy podmieniają zależności
   dublerami z `src/auth/test-support.ts` (domyślny klient API odrzuca każde wywołanie).
+- `GET /auth/session` zwraca obok `name` i `email` znacznik kupującego `buyer` (`buyerTag` w `src/auth/buyer.ts`:
+  HMAC-SHA256 z `sub` kluczem wyprowadzonym z `STORE_SESSION_SECRET` przez HKDF-SHA256, info `checkout-buyer`,
+  base64url) z `sub` tej samej sesji, której token odczytał `/api/v1/me`. Znacznik niczego nie otwiera i służy tylko
+  porównaniu w BFF kasy. Klucz znaczników jest inny niż klucz podpisów ciasteczek (`signValue` podpisuje samym
+  sekretem): żaden znacznik nie jest podpisem żadnej wartości ciasteczka. Nie licz znaczników ani innych wartości
+  pokazywanych przeglądarce samym `STORE_SESSION_SECRET` (poza podpisami ciasteczek z `signValue`). Odpowiedź nie zawiera `sub`, identyfikatora sesji ani
+  tokenów; znacznika, `sub` ani tokenów nie zapisuj w logach.
 - Nie loguj obiektów błędów openid-client (ich `cause` zawiera odpowiedzi z tokenami). Użyj `logFailure`.
 - `returnTo` przechodzi zawsze przez `sanitizeReturnTo`.
 - Limit `GET /auth/login` (`src/auth/login-rate-limit.ts`; licznik, klucz i okno: `docs/features/hardening/spec.md`,

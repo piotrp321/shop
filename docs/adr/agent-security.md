@@ -22,7 +22,8 @@ AGENT-ISOLATION (#498).
 - A1 Produkcja: klucz SSH serwera `~/.ssh/shop`, kubeconfig klastra (`~/.kube/*` i `KUBE_DIR` operacji), wdrożenie
   (`deploy.yml` na `main` z sekretem `DEPLOY_KEY` przesuwa gałąź `deploy`).
 - A2 GitHub: token `gh` użytkownika w Keychain, klucz `~/.ssh/id_rsa`, rulesety `main`, `main-merge`, `epic`,
-  `epic-merge`, `deploy`, `deploy-push`, sekrety Actions, `GITHUB_TOKEN` workflowów.
+  `epic-merge`, `deploy`, `deploy-push`, sekrety Actions (w tym klucz GitHub App workflowu `merge-override`),
+  `GITHUB_TOKEN` workflowów.
 - A3 Host: `~/.config/shop/demo-photos.env`, poświadczenia rejestrów Dockera, Keychain, `~/.claude`, pliki innych
   projektów, baza stanu AO (`$AO_HOME`), kod wykonywany poza sandboxem (AO, `.ao/*`, hooki git, wrapper wykonawcy).
 - A4 Sekrety lokalnego stosu (`.env.local` worktree): generowane na stos, bez wartości poza nim; ryzyko przyjęte.
@@ -51,7 +52,7 @@ AGENT-ISOLATION (#498).
 | 12 | Zmieniony `.ao/teardown` albo `.ao/setup` | `denyWrite` dla `<worktree>/.ao`, `deny` Edit/Write `.ao/**` (R2) | sonda |
 | 13 | Podmiana wrappera, profilu, bazy AO, `events.jsonl`, stanu innego zadania | kopia w `$AO_HOME/agent-security/`, dostęp tylko do katalogu własnego zadania (R2, R7) | sonda |
 | 14 | Kubeconfig produkcji w `KUBE_DIR` w trakcie przebiegu AO | cele montujące `KUBE_DIR` odmawiają przy działającym AO albo wykonawcy; rejestr `KUBE_DIR`, `ao-prepare` odmawia startu (R5, R7) | testy celów i `ao-prepare` |
-| 15 | Merge wykonawcy z pominięciem wymagań rulesetu (`gh pr merge --admin`, REST, GraphQL) | rulesety merge'a bez aktora bypass, token wykonawcy bez Administration (R4, R8) | `tools/rulesets/test_rulesets.py`, sonda: `current_user_can_bypass` = `never` |
+| 15 | Merge wykonawcy z pominięciem wymagań rulesetu (`gh pr merge --admin`, REST, GraphQL) | rola admin bez bypassu w rulesetach merge'a (jedyny aktor to App workflowu `merge-override`, którego użycie zatwierdza użytkownik), token wykonawcy bez Administration i Deployments (R4, R8) | `tools/rulesets/test_rulesets.py`, sonda: `current_user_can_bypass` = `never` |
 | 16 | Telemetria: odziedziczone `OTEL_*` i `CLAUDE_CODE_ENABLE_TELEMETRY` przekierowują eksport albo włączają treść, adres spoza Maca, fałszywe atrybuty własnego procesu | wrapper usuwa te zmienne przed startem binarki, `OTEL_LOG_*=0` w bloku `env`, tylko `http://127.0.0.1:<port>`, atrybuty ustala wrapper (R2) | testy `render_settings.py` (z próbami obejścia adresu) i wrappera z atrapą binarki |
 
 **Luki, które epik świadomie zostawia:**
@@ -65,14 +66,18 @@ AGENT-ISOLATION (#498).
 - Merge do `main` przez wykonawcę po zielonym CI jest technicznie możliwy (tożsamość tokenu to użytkownik); wdrożenie
   zatrzymuje R5. Osobna tożsamość agentów (GitHub App) to propozycja zgłoszenia.
 - Sesje interaktywne i proces AO mają token użytkownika z rolą admin, więc technicznie mogą zatwierdzić wdrożenie
-  i zmienić rulesety (np. dodać aktora bypass). Chroni zasada w `CLAUDE.md` i skillach (agent nie zmienia rulesetów
-  ani nie zatwierdza wdrożeń): granica promptu. Zamyka ją osobna tożsamość dla wszystkich agentów (#498 albo osobne
-  zgłoszenie).
+  albo merge z pominięciem checków (środowiska `production` i `merge-override`) i zmienić rulesety (np. dodać aktora
+  bypass). Chroni zasada w `CLAUDE.md` i skillach (agent nie zmienia rulesetów ani nie zatwierdza środowisk): granica
+  promptu. Zamyka ją osobna tożsamość dla wszystkich agentów (#498 albo osobne zgłoszenie).
 - Sesje interaktywne nie mają sandboxa Bash i mogą wywołać `gh` z pominięciem bramki: granica promptu.
 - Wykonawca może zmienić instrukcje procesu (`CLAUDE.md`, skille, agentów) w gałęzi epiku; ogranicza to przegląd
   końcowego PR przez użytkownika.
 - Logi CI i wyjście zależności czytane przez `/delivery` i `/integration` (log czerwonych jobów CI pusha) nie
   przechodzą przez bramkę; chronią R2–R5.
+- Transkrypty sesji epiku natywnego, które `/retro` wskazuje agentowi `retro-analyst` (`materials` w `input.json`),
+  zawierają wyniki narzędzi spoza bramki (np. pobrane strony). Reguła „dane, nie polecenia” i zapis wyłącznie do
+  `proposals.json` to granice promptu (analityk ma Bash i Write); skutek ogranicza walidacja propozycji i zgoda
+  użytkownika na każdą poprawkę i każde issue.
 - Nakładka `mktemp` jest wygodą pracy, nie granicą bezpieczeństwa: wykonawca steruje `PATH` własnego Basha i może
   wywołać `/usr/bin/mktemp`, który w sandboxie się nie uda. Granicą jest profil (brak zapisu do `/var/folders/…`).
 - Katalog tymczasowy użytkownika (`/var/folders/…`) jest czytelny dla wykonawcy (bez zapisu), w tym `KUBE_DIR`
@@ -142,11 +147,14 @@ AGENT-ISOLATION (#498).
   (przed sondą i po niej) i przy działającym AO na tym `AO_HOME` (kopia nie zmienia się
   w trakcie przebiegu) i uruchamia sondę z kopii z binarką przypiętą przez AO; sonda, która nie przeszła, nie skończyła
   się w limicie czasu albo nie dała wyniku, blokuje start (fail-closed), a sesja wysyła push z przyczyną.
-- **R8. Merge tylko z zielonym CI, bez bypassu.** Rulesety `main` i `epic` (zakaz usuwania i force-pusha) oraz
-  `main-merge` i `epic-merge` (PR i checki `checks`, `e2e`) nie mają żadnego aktora bypass: nikt, także użytkownik,
-  nie zmerguje PR do `main` ani `epic/*` bez zielonych `checks` i `e2e`. Sonda sprawdza, że
-  `current_user_can_bypass` rulesetów merge'a z tokenem wykonawcy to `never`; odbiór sprawdza to samo dla tokenu
-  użytkownika i puste `bypass_actors` obu rulesetów merge'a w GitHubie.
+- **R8. Merge tylko z zielonym CI; obejście tylko workflowem `merge-override`.** Rulesety `main` i `epic` (zakaz
+  usuwania i force-pusha) oraz `epic-merge` (PR i checki `checks`, `e2e`) nie mają żadnego aktora bypass. `main-merge`
+  ma jednego: GitHub App w trybie `pull_request`, której klucz jest sekretem środowiska `merge-override` (tylko
+  `main`, wymagane zatwierdzenie użytkownika). Nikt, także użytkownik, nie zmerguje PR do `main` ani `epic/*` bez
+  zielonych `checks` i `e2e` własnym tokenem; workflow `merge-override` merguje wskazany PR do `main` z pominięciem
+  checków dopiero po zatwierdzeniu użytkownika. Sonda sprawdza, że `current_user_can_bypass` rulesetów merge'a
+  z tokenem wykonawcy to `never`; odbiór sprawdza to samo dla tokenu użytkownika, a w GitHubie `bypass_actors`
+  równe wyłącznie tej App w `main-merge` i puste w `epic-merge`.
 
 ## Uzasadnienie
 
@@ -158,9 +166,11 @@ AGENT-ISOLATION (#498).
   poza sandboxem): bez Administration i Deployments wykonawca nie zmieni rulesetu ani nie zatwierdzi wdrożenia.
 - Bypass rulesetu nadaje się roli (admin), a nie tokenowi: fine-grained PAT wykonawcy, którego tożsamością jest
   właściciel repozytorium, dostałby przy aktorze bypass roli admin ten sam bypass (`pull_requests_only`) co token
-  użytkownika, mimo braku uprawnienia Administration. Rulesety merge'a nie mają więc żadnego aktora i oba tokeny mają
-  `never`; przy jednej tożsamości to jedyna techniczna granica. Osobna tożsamość agentów (#498) pozwoliłaby nadać
-  bypass wyłącznie użytkownikowi.
+  użytkownika, mimo braku uprawnienia Administration. Rulesety merge'a nie mają więc aktora roli ani konta i oba
+  tokeny mają `never`. Bypass ma osobny aktor, GitHub App, a jej klucz leży w sekrecie środowiska `merge-override`:
+  obejście checków wymaga tego samego zatwierdzenia użytkownika co wdrożenie, a nie samego tokenu. Token wykonawcy
+  środowiska nie zatwierdzi (brak Deployments: write); dla sesji z tokenem użytkownika to granica promptu, jak przy
+  `production`. Osobna tożsamość agentów (#498) pozwoliłaby nadać bypass wprost użytkownikowi.
 - Nakładka `mktemp` zamiast poszerzenia profilu o `/var/folders/…/T`: w tym katalogu są `KUBE_DIR` operacji
   produkcyjnych i pliki innych procesów, więc zapis tam nie wchodzi w grę. Zmiana skryptów repozytorium na jawne
   szablony w `TMPDIR` byłaby poprawniejsza u źródła, ale to zmiana poza zakresem epiku (osobne zgłoszenie); nakładka
@@ -180,7 +190,8 @@ AGENT-ISOLATION (#498).
 - Bramka wykonuje jedno zapytanie o uprawnienia na autora w każdym wywołaniu; błąd API (sieć, limit) zatrzymuje
   `/sweep` i `/retro` jak dziś błąd `gh`.
 - Każde wdrożenie na produkcję wymaga zatwierdzenia przez użytkownika w GitHubie.
-- Awaria produkcji w trakcie przebiegu AO wymaga zatrzymania AO przed `restore`, `rerun`, `backups` i `create-admin`.
+- Awaria produkcji w trakcie przebiegu AO wymaga zatrzymania AO przed `restore`, `rerun`, `backups`, `create-admin`, `generate`, `open`
+  i `reindex`.
 - Sonda działa przed każdym startem AO (krótki przebieg Haiku, limit 1 USD jako zabezpieczenie).
 - Zbyt wąski profil psuje pracę wykonawcy w rzadkim przypadku: bloker z `Operation not permitted` i poprawka profilu
   w PR. Epik zmieniający `.claude/settings*.json` albo `.mcp.json` nie idzie przez AO.

@@ -175,7 +175,7 @@ kwoty w USD, przyrosty limitu w pp:
   z pozycją `final_pr` w `gaps`; brak takiego PR albo kilka dają `null`.
 - `in_attempts`: czas poleceń powłoki w próbach (nazwy narzędzi powłoki w `config.json`: `Bash`, `bash`) według
   kategorii z `config.json` (`test`, `e2e`, `check`, `selftest`, `stack` dla `make up` i `.ao/setup`, `ci_watch` dla
-  `gh pr checks --watch` i `gh run watch`, `read` dla poleceń tylko do odczytu, `other` dla reszty), od `tool_use` do
+  `gh pr checks --watch`, `gh run watch` i `ci-wait.sh`, `read` dla poleceń tylko do odczytu, `other` dla reszty), od `tool_use` do
   `tool_result` o tym samym identyfikatorze; polecenia w tle (`run_in_background`) liczone tylko jako liczba; do tego:
   - `repeat_runs` (heurystyka, dolna granica): liczba i czas uruchomień polecenia z kategorii `test`, `e2e` albo `check`, którego
     klucz jest taki sam jak wcześniejszego uruchomienia w tej samej próbie, bez zmiany kodu pomiędzy nimi. Klucz to
@@ -274,15 +274,163 @@ ta sama funkcja co `night_queue.py start`), `sessions` (`[{id, worktree, at}]`: 
 `--session` albo najnowszy transkrypt `<id>.jsonl` w katalogu sesji katalogu roboczego `--worktree`, domyślnie
 bieżącego), `usage_start` (odczyt limitów z wejścia standardowego czytany jak w `night_queue.py start`: obiekt `plan`
 z `get_usage` albo cały obiekt `get_usage` `{"plan": …, "context": …}`, z którego brany jest `plan`; terminal albo puste
-wejście to `null`), `done_at` i `usage_done` (`null`). `metrics.py done <epik>` wpisuje czas
-oznaczenia PR jako gotowy (teraz albo `--at`; kolejne wywołanie go zastępuje) i drugi odczyt limitów. `start --resume`
-dopisuje do `sessions` nową sesję z jej katalogiem roboczym (raz). Bez gałęzi, PR, liczby zadań albo transkryptu sesji
+wejście to `null`), `done_at` i `usage_done` (`null`) oraz `process` (wersja procesu, niżej). `metrics.py done <epik>`
+wpisuje czas oznaczenia PR jako gotowy (teraz albo `--at`; kolejne wywołanie go zastępuje) i drugi odczyt limitów.
+`start --resume` dopisuje do `sessions` nową sesję z jej katalogiem roboczym (raz). Jedna sesja prowadzi jeden epik:
+`start` i `start --resume` z identyfikatorem sesji, który jest już w pliku przebiegu innego epiku (`runs/*.json`,
+`sessions[].id`), kończą się kodem 2 z nazwą tamtego epiku, bez zapisu; ten sam epik w nowej sesji to `--resume`.
+`metrics.py pause <epik> --from CZAS --to CZAS [--reason TEKST]` dopisuje do pliku przebiegu `pauses`
+(`[{from, to, reason}]`, czas jak w `--at`, powód bez znaków sterujących, pusty to `null`): przerwę komputera, którą
+podaje sesja prowadząca (narzędzie przerw nie wykrywa i nie zgaduje); brak pliku przebiegu, czas nie do odczytania
+albo `from` nie przed `to` dają kod 2 bez zapisu. Bez gałęzi, PR, liczby zadań albo transkryptu sesji
 `start` kończy się kodem 2 z nazwą opcji, która to poda; drugi `start` bez `--resume` i `--resume` albo `done` bez pliku
-przebiegu też dają kod 2, bez zapisu. Nazwa epiku w `start` (także z `--resume`) i `done` musi pasować do
+przebiegu też dają kod 2, bez zapisu. Nazwa epiku w `start` (także z `--resume`), `done` i `pause` musi pasować do
 `^[a-z0-9][a-z0-9-]*$`, tego samego wzorca co `EPIC_NAME` w `/retro` (wielkie litery, `.` i `_` dają kod 2 z polskim
 komunikatem, bez zapisu): `/retro` rozpoznaje plik przebiegu tylko po tej nazwie. `epic` i pozostałe komendy przyjmują
 też dłuższy zestaw znaków identyfikatora (rekordy AO). Opcje `--at`, `--worktree`, `--branch`, `--pr`, `--tasks` i `--session` pozwalają
 zapisać plik po fakcie, także gdy `plan.md` już nie istnieje.
+
+**Wersja procesu.** Sesja w worktree uruchomiona z aplikacji desktopowej czyta `CLAUDE.md` z worktree, a agentów
+i skille z głównego checkoutu repozytorium (`https://code.claude.com/docs/en/worktrees.md`), więc epik może pracować
+na innych definicjach niż te z jego bazy. Narzędzie porównuje treść plików (git blob sha), nigdy długość promptu ani
+numer commita. Pole `process` pliku przebiegu ma trzy poziomy:
+
+- `expected`: baza epiku. `ref` (SHA: `base_sha`, bez niego `HEAD` worktree; w komendzie `process` bez epiku `--base`
+  albo `HEAD`), `requested` (podana rewizja), `describe` (`git describe --tags --match 'ash-v*' --always`, `null`,
+  gdy się nie da), `fingerprint` (odcisk drzewa definicji: pierwsze 16 znaków sha256 z posortowanych linii
+  `<ścieżka>\t<blob sha>\n` wszystkich plików pod `.claude/agents` i `.claude/skills`) i `files` (`{ścieżka: blob sha}`
+  plików instrukcji bazy: każdy śledzony `CLAUDE.md`, `.claude/agents/*.md`, `.claude/skills/*/SKILL.md`,
+  `docs/adr/agentic-software-house.md`).
+- `disk`: stan plików na dysku w każdym miejscu ładowania, lista `{kind, path, head, branch, dirty, fingerprint,
+  state, files, differs}`. `kind` `worktree` (worktree epiku; `CLAUDE.md`, ADR, agenci i skille) i `main_checkout`
+  (główny checkout z `git rev-parse --git-common-dir`; tylko agenci i skille); worktree, który jest głównym
+  checkoutem, to jedno miejsce `main_checkout` z pełnym zakresem. Pliki na dysku to śledzone i nieśledzone bez
+  ignorowanych (`git ls-files -co --exclude-standard`, `git hash-object`), więc `__pycache__` nie daje różnicy.
+  `differs`: `[{path, state}]` względem `expected` w zakresie miejsca, `state` `changed`, `missing` (plik bazy, którego
+  nie ma na dysku) albo `extra`; `state`: skrót wszystkich plików miejsca (definicje i pliki instrukcji), jeden na stan
+  na dysku; `dirty`: niezacommitowane zmiany w zakresie miejsca (`git status` bez odświeżania indeksu). Worktree ma
+  też `uncommitted` (pliki na dysku względem jego `HEAD`), `epic_branch` (`HEAD` względem bazy), `from_base` (czy
+  `HEAD` pochodzi od bazy), `on_epic_branch` i `expected_branch` (czy stoi na gałęzi epiku z pliku przebiegu; `null`
+  bez niej), `origin_known` (czy `origin/main` jest znany) i `from_main` (pliki `epic_branch`, które zmienił commit
+  osiągalny z `origin/main`: zmiana procesu przyniesiona z main). Obok `user_level` (`{agents, skills}`): nazwy
+  agentów i skilli z katalogu użytkownika (`--user-dir`, domyślnie `~/.claude`) o nazwie agenta albo skilla bazy, bez
+  treści; skill użytkownika przesłania skill projektu (niezgodność), agent użytkownika to informacja (projekt wygrywa).
+
+  Jedna reguła zmian na dysku, zależna od miejsca, a nie od rodzaju pliku, zawsze względem bazy. Własna zmiana epiku
+  to wyłącznie commit gałęzi epiku nieosiągalny z bazy ani z `origin/main`, w worktree stojącym na gałęzi z pliku
+  przebiegu: taka różnica (także `CLAUDE.md`, ADR i kopia `.claude`) to informacja. Niezgodność to: niezacommitowana
+  zmiana pliku instrukcji albo definicji w worktree (`uncommitted`), `HEAD`, który nie pochodzi od bazy, worktree na
+  innej gałęzi niż gałąź epiku, ścieżka z `base..HEAD` zmieniona przez commit osiągalny z `origin/main` (zmiana
+  procesu przyniesiona z main, np. `git merge origin/main`, także gdy tę ścieżkę zmienił też epik), różnica, której
+  pochodzenia nie da się ustalić (brak `origin/main`), każda różnica głównego checkoutu (stąd sesja desktopowa
+  ładuje agentów i skille) i niepuste `user_level.skills`. Niezgodność trwa, dopóki nie zostanie zaakceptowana
+  z powodem (niżej). Ograniczenie: inna gałąź zmergowana do epiku, zanim trafi do `origin/main`, jest dla tej reguły
+  nie do odróżnienia od własnej zmiany epiku i liczy się jako informacja.
+- `loaded`: wyłącznie to, co potwierdza transkrypt, nigdy wniosek z dysku. `session` (pliki `CLAUDE.md` bazy i ADR, na
+  sesję prowadzącą), `agents` (na przebieg subagenta roli projektu: `session`, `agent_id`, `role`) i `skills` (na
+  wczytanie skilla projektu: `session`, `agent_id`, `skill`); każdy wpis ma `status`, `version`, `origin` (ścieżka
+  z dowodu), `digest` (pierwsze 16 znaków sha256 załadowanej treści, gdy różni się od bazy) i `reason`. Status:
+  `confirmed` (załadowana treść równa oczekiwanej), `differs` (inna) albo `unconfirmed` (brak dowodu, z powodem).
+  `version` przy `confirmed`: `base` (treść bazy) albo `epic` (wersja zmieniona przez sam epik), inaczej `null`. Brak
+  dowodu nigdy nie jest `confirmed` ani pominięty; nieznany kształt wpisu, brak pola albo inny typ to `unconfirmed`
+  z powodem. Wersja epiku dotyczy tylko `CLAUDE.md` wczytanego z worktree sesji (z pliku przebiegu; w kontroli też
+  z `--worktree`): treść inna niż w bazie jest `confirmed` z `version: "epic"` tylko wtedy, gdy jest wersją tego
+  pliku z commitów gałęzi epiku z pliku przebiegu (`git rev-list <baza>..<gałąź> ^origin/main -- <plik>`; w kontroli
+  lokalna `<branch>`, a bez niej `origin/<branch>`, w rekordzie odwrotnie; po squash-merge te commity dalej są
+  nieosiągalne z `origin/main`). Inna treść: wersja z commitów `origin/main` po bazie to `differs` („wersja z main
+  późniejszego niż baza”), bieżący plik worktree sesji spoza commitów epiku to `differs` („treść niezacommitowana”),
+  bez gałęzi albo `origin/main` `unconfirmed` („treść inna niż w bazie, historia gałęzi epiku niedostępna”), każda
+  inna i plik wczytany z innego miejsca `differs`. Agenci i skille ładują się z głównego checkoutu, więc ich wersją
+  oczekiwaną jest zawsze baza: definicja zmieniona w gałęzi epiku ma `differs`.
+  Źródła dowodu (CLI 2.1.325): `CLAUDE.md` z wpisów `type: "attachment"` sesji prowadzącej, `attachment.type`
+  `instructions` (`files[]` z `path`, `type: "Project"`, `content`) i `nested_memory` (`content.path`,
+  `content.content`; plik obszaru doczytany później), porównanie po `strip()`; ścieżka z dowodu względem worktree sesji
+  albo miejsca ładowania, a `CLAUDE.md` spoza bazy to `differs`. Agent: pierwszy blok `systemPrompt` każdego wpisu
+  `prompt_snapshot` transkryptu subagenta (rola z `agentType` w `agent-<id>.meta.json`) musi być równy plikowi
+  `.claude/agents/<rola>.md` bazy bez frontmatteru (oba po `strip()`); prompt, który tylko zawiera tę treść (np.
+  z dopisanym akapitem), ma `differs`; wbudowane role (bez pliku w bazie) nie mają wpisu. Skill: linia użytkownika
+  `Base directory for this skill: <katalog>` (pochodzenie) i dalej treść `SKILL.md` bez frontmatteru, w której CLI
+  podstawia argumenty (`$ARGUMENTS`, `$ARGUMENTS[n]`, `$n`, `${…}`): treść bazy z każdym takim miejscem jako dowolnym
+  tekstem musi pokryć całą załadowaną treść. Skill bez takiego miejsca wywołany z argumentem dostaje od CLI na końcu
+  dwie puste linie i `ARGUMENTS: <argumenty>` (`brainstorm`, `prepare-epic` w prawdziwych transkryptach); ten dopisek
+  nie jest różnicą, każdy inny tak. ADR czyta sesja narzędziem Read, więc zawsze ma `unconfirmed`. Bez wpisu (np. bez
+  przebiegu albo wywołania) lista ma jeden wpis `unconfirmed` z powodem.
+
+Treść instrukcji nie trafia do pliku przebiegu ani rekordu, tylko ścieżki, skróty i statusy. Kontrola (`start`,
+`process <epik>`, `start --resume`, `done`) i rekord korzystają z tego samego pola, bez osobnego rejestru:
+
+- `start` zapisuje `process` `{status: "checked", checked_at, checked_on: "start", expected, disk, user_level, loaded,
+  match, accepted: null, changes: []}`; `loaded.session` z transkryptu bieżącej sesji, `loaded.agents` i `loaded.skills`
+  `unconfirmed` („jeszcze nie uruchomione”). `match` jest fałszem przy niezgodności według reguły wyżej albo gdy
+  `CLAUDE.md` sesji ma `differs`; wtedy `start` odmawia (kod 2, plik nie powstaje) z miejscem, powodem, liczbą plików,
+  pierwszymi ścieżkami i wskazówką (`metrics.py process`, aktualizacja głównego checkoutu według ADR, „Wersja
+  procesu”, albo `--accept-process-mismatch "<powód>"`). Commity gałęzi epiku w worktree (zwykle pierwszy commit
+  „Status” planu) nie dają odmowy: są w `disk[].epic_branch`. Z opcją akceptacji (powód bez znaków sterujących, pusty
+  po przycięciu daje kod 2) plik powstaje z `accepted` = powód i wpisem akceptacji tego, co start pokazał. Kontrola,
+  która nie może się wykonać (brak gita, katalog spoza repozytorium), też odmawia; z akceptacją zapisuje `{status:
+  "check_failed", checked_at, checked_on, reason, accepted, changes: []}`. Zapis po fakcie (`--at`) to `{status:
+  "not_checked", reason}`, bez kontroli i bez odmowy. `start --resume --at` i `done --at` też nie sprawdzają (zapis po
+  fakcie, nie sposób na ominięcie odmowy): dopisują do `process.changes` wpis `{at, event, session, kind:
+  "not_checked", reason}`, który rekord pokazuje w `gaps` („kontrola pominięta”).
+- `metrics.py process <epik>` (przed każdą falą zadań, przed przeglądem epiku i zaraz po starcie pierwszego subagenta
+  danej roli), `start --resume` i `done` sprawdzają dzisiejszy `disk` według reguły wyżej i czytają transkrypty sesji
+  z pliku przebiegu (subagenci, których wiadomości nie leżą w całości przed `started_at`), zastępując `loaded`
+  (`rechecked_at`). Katalog: `--worktree`; bez niego `start --resume` sprawdza worktree nowej sesji (bieżący
+  katalog), a `process <epik>` i `done` worktree ostatniej sesji z pliku przebiegu (komunikat na stderr, gdy bieżący
+  katalog jest innym checkoutem; gdy ten worktree już nie istnieje, bieżący katalog, też z komunikatem). Nowy stan
+  na dysku (inny `state` albo gałąź któregoś miejsca albo inne `user_level.skills` niż w ostatnim zapisie) to wpis
+  `{at, event, session, kind: "disk", informational, returned, disk: [{kind, fingerprint, state, branch, differs,
+  uncommitted, epic_branch, from_base, on_epic_branch, expected_branch, origin_known, from_main}], user_level}`
+  w `process.changes`: `informational: true` przy niepustych zmianach z commitów epiku i bez niezgodności,
+  `returned: true` bez jednego i drugiego (powrót do bazy albo do stanu zaakceptowanego). `differs` w `loaded` to
+  wpis `{at, event, session, kind: "loaded", section, item}` (raz na wpis), nieudana kontrola `{at, event, session,
+  kind: "check_failed", reason, accepted}`. Wpis `differs`, którego załadowana treść jest bieżącym plikiem miejsca
+  w zaakceptowanym stanie, zostaje `differs` z `explained: "accepted_disk"` i nie jest nową niezgodnością: subagent
+  z rolą równą (po tym samym zdjęciu frontmatteru) plikowi tej roli w głównym checkoucie (tryb awaryjny ADR po starcie
+  mimo różnicy), skill, którego treść pokrywa `SKILL.md` w jego katalogu pochodzenia w zaakceptowanym miejscu, i
+  `CLAUDE.md` równy plikowi worktree epiku w zaakceptowanym stanie (np. po zaakceptowanym `git merge origin/main`
+  nowa sesja, która wczytała zmergowany plik, wznawia bez ponownej akceptacji). Rekord przenosi `explained`
+  z pliku przebiegu do swoich wpisów `loaded`, liczy je w `summary` jako `differs`, a w `gaps` pisze „inna niż
+  w bazie, zgodna z zaakceptowanym stanem głównego checkoutu” (albo „worktree epiku”).
+  Niezgodność to pozycja (stan miejsca, lista skilli użytkownika albo wpis `differs`) bez akceptacji; `unconfirmed`
+  nie jest niezgodnością. Każda kontrola zapisuje bieżące niezgodności jako `process.shown` (`{at, event, session,
+  keys}`).
+  Akceptacja (`--accept-process-mismatch "<powód>"` w `process <epik>` i `start --resume`; te same zasady powodu co
+  w `start`; sesja: `--session`, domyślnie ostatnia z pliku przebiegu, spoza pliku przebiegu kod 2) obejmuje tylko
+  pozycje z `shown`, które nadal występują, i zapisuje wpis `{at, event, session, kind: "accepted", keys, items,
+  reason}`; pozycje nowe względem ostatniej pokazanej kontroli (także przy pierwszym wywołaniu od razu z opcją)
+  zostają niezgodnością z kodem 4, ich listą, prośbą o sprawdzenie i powtórzenie z opcją i zapisem jako nowe
+  `shown`. Po akceptacji ta sama pozycja nie daje kodu 4, nowa zmiana znów daje. `process <epik>` wypisuje stan jako
+  JSON (`mismatches`: lista niezgodności, `accepted`) i kończy się kodem 4 przy niezgodności, z komunikatem, co
+  zrobić: usunąć przyczynę (aktualizacja głównego checkoutu według ADR, commit albo cofnięcie zmiany w worktree)
+  albo zaakceptować ją z powodem; zapisuje plik przebiegu tylko wtedy, gdy coś się zmieniło (poza czasami kontroli).
+  `start --resume` liczy `loaded` także dla nowej sesji; przy niezgodności odmawia (kod 2) i pod blokadą zapisuje
+  plik przebiegu bez nowej sesji, ale z `shown` (`event: "resume"`, `session` nowej sesji, także jej klucze), więc
+  to samo wznowienie z `--accept-process-mismatch "<powód>"` akceptuje pokazane pozycje, dopisuje sesję i kończy się
+  kodem 0, a pozycje nowe od odmowy dają kod 2 z listą i nowym `shown`; komunikat mówi „powtórz
+  z --accept-process-mismatch "<powód>"”. `process <epik>` między odmową a akceptacją czyta tylko sesje pliku
+  przebiegu, więc to, co pokazała odmowa dla nowej sesji, zachowuje w `shown.resume` (`{at, session, keys}`) do jej
+  wznowienia. `done` zawsze
+  zapisuje `done_at` (kod 0), niezgodność i nieudaną kontrolę zapisuje w `process.changes` z ostrzeżeniem na stderr.
+  Plik przebiegu bez `process` (sprzed kontroli) albo z `check_failed` dostaje odczyt teraz (`checked_on`: `resume`,
+  `done` albo `process`; przy `check_failed` `start_failure: {reason, accepted}`); ten odczyt nic nie akceptuje, więc
+  różnica względem bazy daje kod 4 przy każdym `process <epik>`, dopóki nie zostanie zaakceptowana (pierwsze
+  wznowienie takiego pliku nie odmawia).
+- `metrics.py process` bez epiku wypisuje `{worktree, worktree_head, expected, disk, user_level, match, active_epics}`
+  bez `loaded` i bez zapisu (`--worktree`, domyślnie bieżący katalog; `--accept-process-mismatch` tylko z epikiem);
+  `match` według tej samej reguły bez sprawdzania gałęzi (commity worktree ponad `--base` nieosiągalne
+  z `origin/main` to informacja). `active_epics`: pliki przebiegu bez rekordu ze znanym `merged_at` (`{epic,
+  started_at, done_at, has_record, note, fingerprint, current}`: `note` „w toku”, „PR gotowy, brak rekordu (uruchom
+  metrics.py epic <epik>)” albo „PR gotowy, rekord bez merge'u”; odcisk głównego checkoutu zapisany na starcie, `null`
+  bez odczytu, i czy jest równy dzisiejszemu; `null`, gdy nie wiadomo). Kod 0 przy `match`, 4 przy różnicy
+  (podsumowanie na stderr), 2 poza repozytorium git, bez definicji w bazie i na dysku albo z nieznaną rewizją.
+
+Kontrola nie odczytuje promptu, który subagent dostał poza transkryptem, i wykrywa zmianę przy `process <epik>`,
+`--resume` i `done`, nie w chwili zmiany. Każda komenda, która zapisuje plik przebiegu (`start`, `start --resume`,
+`done`, `pause`, `process <epik>`), trzyma przez cały odczyt, zmianę i zapis wyłączną blokadę
+`<state>/locks/<epik>.lock` (`fcntl.flock`); czeka tylko na blokadę zajętą przez inne wywołanie (po 60 s kod 2
+z komunikatem), a inny błąd blokady (np. system plików bez blokad) zgłasza od razu kodem 2 z jego treścią, więc
+równoległe wywołania nie gubią swoich zapisów.
 
 **Transkrypty epiku.** Tylko sesje z pliku przebiegu: `<id>.jsonl` w katalogu projektów Claude Code
 (`~/.claude/projects/*/`, opcja `--projects`) i ich subagenci `<id>/subagents/agent-<agent>.jsonl` z
@@ -293,19 +441,66 @@ z pozycją `sessions` w `gaps`), każdy `message.id` raz: pierwsze wystąpienie 
 z pozycją w `gaps`. Linia transkryptu, która nie jest obiektem JSON, jest pomijana z pozycją `sessions` w `gaps`
 z liczbą takich linii; transkrypt bez żadnej linii będącej obiektem JSON (pusty albo całkiem uszkodzony) jest
 nieczytelny: sesja prowadząca bez przeczytanego transkryptu, subagent z utraconym. Czytane pola: wiadomości `assistant` (`message.id`, `message.model`, `message.usage`, `timestamp`,
-bloki `tool_use`, w tym `SubagentHandback` z tekstem raportu), `tool_result` w wiadomościach użytkownika (przy wyniku
-wywołania `Agent` także `toolUseResult.agentId`), `origin.kind`
-i `uuid` linii użytkownika, `timestamp` linii i `version` (wersja CLI); z `meta.json` `agentType`, `description`,
-`effort`, `finished`; model przebiegu pochodzi z jego wiadomości, a pole `model` z `meta.json` nie jest czytane (przebieg
-uruchomiony z domyślnymi ustawieniami go nie ma). Opis zlecenia służy tylko do ustalenia zadania, a tekst raportu tylko do odczytu
-werdyktu; żaden nie trafia do rekordu. Transkrypt subagenta jest utracony, gdy jest tylko jego `meta.json`, plik jest
+bloki `tool_use`, w tym `SubagentHandback` z tekstem raportu i `SendMessage` z polem `summary`), `tool_result`
+w wiadomościach użytkownika (przy wyniku wywołania `Agent` także `toolUseResult.agentId`, przy wyniku `SendMessage`
+`toolUseResult.resumedAgentId`), `origin.kind` i `uuid` linii użytkownika, `timestamp` linii i `version` (wersja CLI);
+z `meta.json` `agentType`, `description`, `effort`, `finished`; model przebiegu pochodzi z jego wiadomości, a pole
+`model` z `meta.json` nie jest czytane (przebieg uruchomiony z domyślnymi ustawieniami go nie ma). `description`
+i `summary` służą tylko do ustalenia zadania, a tekst raportu tylko do odczytu werdyktu; żaden nie trafia do rekordu. Transkrypt subagenta jest utracony, gdy jest tylko jego `meta.json`, plik jest
 nieczytelny (także pusty albo uszkodzony), albo gdy sesja prowadząca uruchomiła go w przedziale epiku (wynik wywołania `Agent`
 z `toolUseResult.agentId`), a w katalogach sesji epiku nie ma żadnego jego pliku; utracony transkrypt to pozycja
 `sessions` w `gaps` i liczy się jak brak transkryptu części sesji (niżej, „Brak transkryptów”).
 
-**Rola i zadanie (D4).** Sesja prowadząca to rola `orchestrator` bez zadania; przebieg subagenta to rola z `agentType`
-i zadanie, którego ID (`<EPIK>-<n>`, wielkość liter bez znaczenia) występuje w `description` jako pierwsze. Bez ID
-przebieg należy do pozycji `no_task` („bez zadania”), tak jak sesja prowadząca.
+**Rola i zadanie (D4).** Sesja prowadząca to rola `orchestrator` bez zadania (pozycja `no_task`, „bez zadania”);
+przebieg subagenta to rola z `agentType` podzielona na zlecenia, a zadanie ma każde zlecenie osobno.
+
+*Zlecenie* to odcinek transkryptu subagenta od linii, która go zaczyna, do linii przed następnym zleceniem. Pierwsze
+zlecenie (`boundary: "launch"`) zaczyna pierwsza linia transkryptu. Kandydatem na kolejne jest linia `user`
+z `origin.kind = "coordinator"`, która nie jest wynikiem narzędzia. Wznowienie po stronie prowadzącego to wynik
+wywołania `SendMessage` z `toolUseResult.resumedAgentId` tego subagenta w transkryptach sesji epiku, kolejny
+w kolejności czasu i nie dalej niż 60 s od kandydata; każde wywołanie liczy się raz (`id` bloku `tool_use`), także gdy
+wznowiona albo rozgałęziona sesja prowadząca powtarza linie.
+
+| Wznowienie u prowadzącego | Raport `SubagentHandback` poprzedniego zlecenia | Wynik |
+|---|---|---|
+| jest | jest | granica, `boundary: "resume"` |
+| jest | brak | granica, `boundary: "resume_unreported"`, pozycja w `gaps` |
+| brak | jest | granica, `boundary: "resume_unconfirmed"`, pozycja w `gaps` |
+| brak | brak | nie jest granicą: linia należy do trwającego zlecenia, pozycja w `gaps` |
+
+Linia `attachment` typu `queued_command` (wiadomość do pracującego subagenta, powiadomienie zadania w tle) nigdy nie
+jest granicą, tak jak wynik `SendMessage` bez `resumedAgentId` (wiadomość do pracującego subagenta). Wiadomość należy
+do zlecenia, w którym jest jej pierwsza linia; czas zlecenia to różnica między ostatnią i pierwszą linią `user` albo
+`assistant` zlecenia w przedziale epiku. Zlecenie w całości poza przedziałem nie wchodzi do rekordu; przecięte jego
+granicą liczy tylko linie z przedziału. Utracony albo nieczytelny transkrypt sesji prowadzącej daje granice z samych
+raportów (`resume_unconfirmed`). Wznowienie u prowadzącego w przedziale epiku i w czasie transkryptu subagenta, które
+nie potwierdziło żadnej linii (np. inny format linii wznowienia), daje pozycję w `gaps`: zlecenia mogą być
+niepodzielone, a `wall_s` przebiegu może zawierać odstępy. Takie wznowienie po ostatniej linii transkryptu
+subagenta (przerwany zapis) też daje pozycję w `gaps`: zlecenie po nim nie ma linii, więc jego czas i tokeny są
+utracone. Wznowienie po merge'u pozycji nie daje. Pozycje `gaps` o granicach i przypisaniu dotyczą tylko zleceń,
+które są w rekordzie.
+
+*Identyfikator (`ref`).* Źródłem zlecenia jest `description` przebiegu (pierwsze zlecenie) albo `summary` wywołania
+`SendMessage`, które potwierdza wznowienie; tekst wiadomości nie jest źródłem. W źródle liczy się pierwsze wystąpienie
+`<EPIK>-<identyfikator>` (identyfikator: litery i cyfry z co najmniej jedną cyfrą, np. `2`, `QA1`) albo oznaczenia
+przeglądu całej zmiany `<EPIK>-EPIC`, bez rozróżniania wielkości liter, zapisane wielkimi literami. Każdy inny wyraz po
+nazwie epiku i sama nazwa epiku niczego nie oznaczają.
+
+| Źródło | `assignment` | `task` | `ref` | Klucz w przekrojach |
+|---|---|---|---|---|
+| `ref` z samych cyfr po nazwie epiku | `plan` | `<EPIK>-<n>` | ten sam | `<EPIK>-<n>` |
+| `ref` z innym identyfikatorem (`QA1`, `CX2`) | `outside_plan` | `null` | pełny identyfikator | `no_task` |
+| oznaczenie `<EPIK>-EPIC` (start albo wznowienie) | `no_task` | `null` | `null` | `no_task` |
+| start: `description` bez `ref` i bez oznaczenia (także bez `meta.json`) | `no_task` | `null` | `null` | `no_task` |
+| wznowienie: `summary` bez `ref` i bez oznaczenia (także sama nazwa epiku albo brak `summary`) | `unknown` | `null` | `null` | `unknown_task` |
+| granica bez wznowienia u prowadzącego (`resume_unconfirmed`) | `unknown` | `null` | `null` | `unknown_task` |
+
+Zadanie nie jest dziedziczone z poprzedniego zlecenia: bez dowodu przypisanie jest nieznane (`unknown`), z pozycją
+w `gaps`. Czas, tokeny i wartość takiego zlecenia są w sumie epiku i w przekrojach według roli i modelu, a w przekrojach
+według zadania pod kluczem `unknown_task`, nigdy pod zadaniem planu ani w `no_task`. Klucze `no_task` i `unknown_task`
+oraz zlecenia `outside_plan` nie są próbkami zadań planu w `decide`, `effect` ani w wąskich gardłach: te reguły
+wybierają wpisy `by_task` po `kind`, a w rekordzie natywnym `kind` ma `null`. Rekord zbudowany starszą wersją narzędzia
+nie ma `orders`, `idle_s`, `by_task.orders` ani `unknown_task`; czytające go komendy traktują brak pola jak brak danych.
 
 **Wartość (D3).** Transkrypt sesji natywnej nie ma kosztu policzonego przez CLI, więc wartość wiadomości to suma tokenów
 każdego rodzaju razy stawka cennika API z `config.json` (`pricing`: dla każdego modelu USD za milion tokenów wejścia,
@@ -323,20 +518,22 @@ w sumie) i pozycja `value` w `gaps`; wiadomość bez tokenów (np. `<synthetic>`
 | `source` | `native` |
 | `tasks`, `started_at`, `done_at` | plik przebiegu (brak: `null` i pozycja w `gaps`) |
 | `final_pr`, `issue`, `merged_at`, `wall` | `pr` z pliku przebiegu i `gh pr view`, jak w AO; `to_done` to `started_at` → `done_at` |
-| `value` | przekroje jak w AO (`total`, `by_role`, `by_model`, `by_task`, `by_role_model`, `by_task_role`), wartość z cennika |
-| `attempts` | jeden wpis na przebieg subagenta: `agent_id`, `task`, `role` (`agentType`), `model` (najczęstszy model jego wiadomości; `null` z pozycją w `gaps`, gdy żadna wiadomość go nie ma), `effort`, `started_at` i `ended_at` (pierwsza i ostatnia wiadomość w przedziale epiku), `wall_s`, `tokens`, `value`, `estimated`, `finished` (z `meta.json`); bez `meta.json` rola, zadanie, effort i `finished` to `null` z pozycją w `gaps` (w przekrojach `value` rola `subagent`) |
-| `by_task` | `{zadanie: {kind: null, work, attempts}}`: suma `wall_s` i liczba przebiegów na zadanie (`no_task` dla przebiegów bez zadania) |
+| `value` | przekroje jak w AO (`total`, `by_role`, `by_model`, `by_task`, `by_role_model`, `by_task_role`), wartość z cennika; w `by_task` i `by_task_role` wiadomość liczy się do klucza zlecenia, w którym leży (zadanie planu, `no_task`, `unknown_task`), a suma kluczy `by_task` równa się `total` |
+| `attempts` | jeden wpis na przebieg subagenta: `agent_id`, `task` (zadanie planu pierwszego zlecenia albo `null`), `role` (`agentType`), `model` (najczęstszy model jego wiadomości; `null` z pozycją w `gaps`, gdy żadna wiadomość go nie ma), `effort`, `started_at` i `ended_at` (pierwsza i ostatnia linia w przedziale epiku), `wall_s` (czas realizacji: suma `wall_s` zleceń), `idle_s` (odstępy między zleceniami: `ended_at − started_at − wall_s`), `tokens`, `value`, `estimated`, `finished` (z `meta.json`), `orders`, `instructions` (status `loaded.agents` przebiegu; `null` dla roli wbudowanej; tylko w rekordzie z odczytem `process`); bez `meta.json` rola, zadanie, effort i `finished` to `null` z pozycją w `gaps` (w przekrojach `value` rola `subagent`). Zlecenie bez linii ze znacznikiem czasu ma `wall_s`, `started_at` i `ended_at` `null`; wtedy `wall_s` przebiegu jest dolną granicą (`incomplete: true`, `idle_s` `null`, pozycja w `gaps`). Zlecenia, które nachodzą na siebie (znaczniki czasu nie po kolei, odstęp ujemny), dają `idle_s` `null` z pozycją w `gaps`: `wall_s` może wtedy liczyć część czasu podwójnie |
+| `attempts[].orders` | zlecenia w kolejności transkryptu (wyżej, „Rola i zadanie”): `n` (numer zlecenia w transkrypcie, od 1), `boundary` (`launch`, `resume`, `resume_unreported`, `resume_unconfirmed`), `assignment`, `task`, `ref`, `task_source` (`description`, `summary`, przy `unknown` `null`), `started_at`, `ended_at`, `wall_s`, `reported_at` (pierwszy raport zlecenia w przedziale albo `null`), `tokens`, `value`, `estimated`; suma tokenów i wartości zleceń równa się tokenom i wartości przebiegu |
+| `by_task` | `{klucz: {kind: null, work, attempts, orders}}`, klucze: zadania planu, `no_task`, `unknown_task` (tylko gdy są takie zlecenia): `work` to suma `wall_s` zleceń klucza, `attempts` liczba przebiegów ze zleceniem tego klucza, `orders` liczba zleceń; zlecenie bez czasu daje `incomplete: true` z pozycją w `gaps` |
 | `in_attempts`, `versions` | polecenia powłoki i wersja CLI ze wszystkich transkryptów epiku (prowadzący i subagenci), reguły jak w AO |
 | `ci` | `final`: przebiegi CI gałęzi `branch` z pliku przebiegu i PR `pr`; `tasks`: `null` |
 | `regressions`, `found_after_merge`, `bottlenecks` | jak w AO |
 | `sessions` | identyfikatory sesji z pliku przebiegu (bez katalogów roboczych) |
 | `transcripts_read` | liczba przeczytanych transkryptów epiku (sesje i subagenci; niżej, „Brak transkryptów”) |
 | `pricing` | `source` i `read_at` cennika, z którego policzono wartość |
-| `breakdown` | `work`, `human_wait`, `idle` od `started_at` do `done_at` (niżej, „Czas i człowiek”); `limit_wait`, `ci_wait`, `host_pause`, `github_wait` `null` z pozycją w `gaps`, rekord ma `breakdown_incomplete: true`; bez `started_at` albo `done_at` całe `null` |
+| `breakdown` | `work`, `human_wait`, `idle` od `started_at` do `done_at` (niżej, „Czas i człowiek”); `host_pause` z `pauses` pliku przebiegu, bez zapisanej przerwy `null` z pozycją w `gaps`; `limit_wait`, `ci_wait`, `github_wait` `null` z pozycją w `gaps`, rekord ma `breakdown_incomplete: true`; bez `started_at` albo `done_at` całe `null` |
+| `process` | pole `process` pliku przebiegu (wyżej, „Wersja procesu”) z `loaded` policzonym od nowa ze wszystkich transkryptów epiku (sesje i przebiegi subagentów od `started_at` do merge'u; repozytorium do odczytu treści bazy: `--worktree`, domyślnie bieżący katalog; baza niedostępna w repozytorium daje `unconfirmed` z powodem) oraz `loaded.summary` (`{confirmed, differs, unconfirmed}` wszystkich wpisów i `confirmed_epic`: potwierdzone w wersji epiku) i `loaded.by_role` (to samo na rolę agenta); odczyt z kontrolą dysku ma `disk_checked: true`. Plik przebiegu bez kontroli dysku (bez pola `process`, `not_checked`, `check_failed`) z `base_sha`, który repozytorium zna: `status` (`not_checked`, także bez pola, albo `check_failed`), `expected` liczone z `base_sha` w chwili budowy rekordu, `disk: null`, `disk_checked: false`, `disk_reason` (start sprzed kontroli, `--at` albo błąd kontroli), `user_level` i `match` `null`, `loaded` jak wyżej; plik przebiegu się nie zmienia. Bez `base_sha` albo z commitem nieznanym w repozytorium: pole pliku przebiegu bez zmian (bez pola: `null`) |
 | `human` | `interventions` (szacunek, `interventions_estimated: true`), `waits`, `wait_s`, `events` (`[{at, wait_s}]`), `manual_fixes` z `--manual-fixes` (bez opcji `null` z pozycją w `gaps`) |
 | `reviews` | lista przeglądów (niżej, „Przeglądy”); pusta bez przebiegów ról przeglądowych |
-| `integration` | `work_s` (suma `wall_s`) i `attempts` przebiegów `architecture-reviewer`, `qa-adversarial`, `ux-reviewer`; `rounds`: największa liczba raportów jednej z tych ról; bez takich przebiegów `null` z pozycją w `gaps` |
-| `retries` | `fix`: przeglądy zadań (`reviews` z zadaniem) z werdyktem blokującym; `failed_by_outcome`: `{unfinished: n}` przebiegów z `finished: false` (`{}` bez nich; przebieg bez `finished` to pozycja w `gaps`, liczba jest dolną granicą); `attempts`, `repair`, `sync_prs` `null` z pozycją w `gaps` |
+| `integration` | `work_s` (suma `wall_s`, czyli bez odstępów między zleceniami) i `attempts` przebiegów `architecture-reviewer`, `qa-adversarial`, `ux-reviewer`; `rounds`: największa liczba raportów jednej z tych ról; bez takich przebiegów `null` z pozycją w `gaps` |
+| `retries` | `fix`: przeglądy zadań planu (`reviews` z `task`) z werdyktem blokującym; blokujący przegląd w zleceniu `unknown` nie jest liczony, a pozycja w `gaps` mówi, że liczba jest dolną granicą; `failed_by_outcome`: `{unfinished: n}` przebiegów z `finished: false` (`{}` bez nich; przebieg bez `finished` to pozycja w `gaps`, liczba jest dolną granicą); `attempts`, `repair`, `sync_prs` `null` z pozycją w `gaps` |
 | `acceptance` | liczby z tabeli kryteriów opisu końcowego PR (niżej, „Kryteria akceptacji”); brak: `null` z pozycją w `gaps` |
 | `subscription` | `windows`: przyrost każdego okna limitu między `usage_start` i `usage_done` (reguły `night_queue._window_deltas`: okno odnowione między odczytami albo stan inny niż `ok` daje `null` z pozycją w `gaps`); `share`: udział tokenów epiku w tokenach sesji lokalnych (niżej), `share_estimated: true`; `overlap` `null` z pozycją w `gaps`; bez obu odczytów całe `null` z pozycją w `gaps` |
 | `parallel`, `gate_wait`, `waste` | `null`, pozycja w `gaps` („brak źródła w przebiegu natywnym”) |
@@ -356,6 +553,41 @@ z pozycją `human` w `gaps`. Gdy żadna linia użytkownika sesji prowadzących p
 (zmiana formatu CLI), wiadomości człowieka nie da się rozpoznać: `interventions`, `waits`, `wait_s`, `events`
 i `breakdown.human_wait` mają `null` z pozycją w `gaps` (czas czekania jest w `idle`).
 
+**Przerwy komputera (`host_pause`).** Przerwy z `pauses` pliku przebiegu (`metrics.py pause`), scalone i przycięte do
+`started_at` → `done_at`, mają pierwszeństwo przed wszystkim: ich czas nie jest `work` (przedział między dwiema
+liniami transkryptu, który obejmuje przerwę, jest pracą tylko poza nią), `human_wait` ani `idle`, a ich suma to
+`breakdown.host_pause` (przerwa całkiem poza przedziałem daje 0). `human.events[].wait_s` i `human.wait_s` nie
+obejmują czasu przerw. Suma kategorii dalej równa się `to_done`. Wpis przerwy bez poprawnych `from` i `to` albo
+z `from` nie przed `to` jest pomijany z pozycją `pauses` w `gaps`. Bez zapisanej przerwy `host_pause` ma `null`
+z pozycją w `gaps`, jak dotąd: narzędzie przerw nie wykrywa. Dzięki temu przerwa nie podnosi `human_wait`, więc nie
+uruchamia reguły `D4:human_wait`. Przerwa, która przykrywa pracę z transkryptów, liczy się tak samo (przerwa ma
+pierwszeństwo), ale rekord ma pozycję `pauses` w `gaps` z liczbą przykrytych sekund pracy, a `pause` (z `--projects`,
+domyślnie `~/.claude/projects`) wypisuje przy zapisie ostrzeżenie na stderr, gdy przeczyta transkrypty sesji epiku;
+nic nie jest odrzucane ani poprawiane.
+
+**Wersja procesu w rekordzie.** `gaps` pod kluczem `process`: brak kontroli dysku (jeden wpis „dysk: nie sprawdzono”
+z powodem, gdy `expected` pochodzi z `base_sha`, przy `check_failed` z „start zaakceptowany: <powód>”; bez `base_sha`
+znanego w repozytorium brak odczytu, `not_checked` albo `check_failed` jak w pliku przebiegu), odczyt spoza startu
+(`checked_on`), start zaakceptowany mimo różnicy (z liczbą niezgodnych plików, miejscami i powodem), przy odczycie
+późnym „start bez kontroli; różnica wykryta przy …, bez akceptacji przy tym odczycie”, każda zmiana na dysku będąca
+niezgodnością (liczba plików według tej samej reguły co niezgodność: `process_version.mismatch_paths`), każda
+akceptacja w trakcie (z liczbą pozycji i powodem), nieudana kontrola z `process.changes`, każdy wpis `differs`
+w `loaded` (z powodem) i jeden zbiorczy wpis z liczbą `unconfirmed` (brak potwierdzenia nie liczy się jako
+zgodność). Zmiana z commitów gałęzi epiku (przy starcie i `informational: true`) to osobny wpis zaczynający się od
+„informacja (nie niezgodność)” z listą plików epiku, a powrót do bazy albo do stanu zaakceptowanego (`returned:
+true`) wpis „powrót do stanu bazy albo zaakceptowanego”. Rekord budowany poza repozytorium (`--worktree` bez bazy
+epiku) zachowuje `expected`, `disk` i `changes`, `loaded` ma wtedy same `unconfirmed`, a `gaps` wpis „treść bazy
+niedostępna”. Zgodny odczyt bez zmian i bez `unconfirmed` nie daje wpisu. `render` (raport i komentarz) ma dla rekordu natywnego linię „Wersja procesu”: oczekiwana (`describe`
+i 12 znaków SHA), dysk („zgodny”, liczba różnic przy starcie z miejscami i liczba zmian w trakcie albo „nie
+sprawdzono” przy `disk_checked: false`; z dopiskiem „zmian w gałęzi epiku N” tylko dla wpisów informacyjnych), załadowana
+(liczby potwierdzonych, w tym w wersji epiku, różnych i bez potwierdzenia); rekord bez pola ma „brak danych”, rekord
+AO tej linii nie ma.
+Dowód sesji (`instructions`, `nested_memory`, wczytanie skilla) i przebiegi subagentów liczą się do merge'u końcowego
+PR (bez znanego merge'u bez górnej granicy, jak reszta rekordu), po czasie wpisu; wpis bez `timestamp` się liczy.
+Wczytania `CLAUDE.md` sprzed `started_at` zostają, bo sesja zaczyna się przed `metrics.py start` i od tej chwili ma je
+w kontekście; wczytania skilli i przebiegi subagentów liczą się dopiero od `started_at`. Sesja, która prowadziła dwa
+epiki, daje rekordowi pierwszego tylko wczytania do jego merge'u.
+
 **Brak transkryptów.** Gdy nie da się przeczytać transkryptu żadnej sesji z pliku przebiegu (retencja, zły
 identyfikator sesji), pola procesu z transkryptów (`breakdown`, `reviews`, `integration`, `human` poza
 `manual_fixes`, `retries.fix`, `retries.failed_by_outcome`, `subscription.share`) mają `null` z pozycją w `gaps`, nigdy
@@ -369,9 +601,11 @@ tych pól i jego liczbę, z pozycją w `gaps` („zachowano poprzednią wartoś�
 `transcripts_read` tego porównania nie ma.
 
 **Przeglądy (M4).** Raport to wywołanie `SubagentHandback` w transkrypcie subagenta roli `code-reviewer`,
-`qa-adversarial`, `architecture-reviewer` albo `ux-reviewer`, w przedziale epiku. Wpis: `task` (zadanie według D4,
-`null` dla przeglądu całej zmiany), `role`, `agent_id`, `at`, `mode` (pierwszy raport transkryptu `FULL`, każdy
-kolejny, po wznowieniu subagenta, `DELTA`), `verdict` i `blocking`. Werdykt to słowo werdyktu tuż po etykiecie
+`qa-adversarial`, `architecture-reviewer` albo `ux-reviewer`, w przedziale epiku. Wpis: `task`, `ref` i `assignment`
+zlecenia, w którym jest raport (wyżej, „Rola i zadanie”; `task` `null` poza zadaniem planu), `role`, `agent_id`, `at`,
+`mode` (`FULL` dla pierwszego raportu przebiegu z danym `ref`, a przy `no_task` dla pierwszego raportu przebiegu w tym
+stanie; `DELTA` dla kolejnych; `null` z pozycją `reviews` w `gaps` dla raportu w zleceniu `unknown`), `verdict`
+i `blocking`. Werdykt to słowo werdyktu tuż po etykiecie
 „Werdykt” albo „Verdict” w tekście raportu (między nimi tylko odstępy, dwukropek, myślnik, odwrócone apostrofy,
 pogrubienie, znaki nagłówka i jedno słowo `to`, `jest` albo `is`). Raport podaje werdykt na początku, więc wygrywa
 pierwsza etykieta na początku linii (po znaczniku listy, nagłówka, cytatu lub pogrubienia), także gdy dalej cytuje
@@ -400,7 +634,10 @@ się raz, tokeny są ważone `token_weights` (wejście 1, zapis cache 5 min 1,25
 Transkrypt zmodyfikowany ostatnio przed `started_at` nie jest czytany. Użycia z innych urządzeń nie widać, więc `share`
 jest szacunkiem (`share_estimated: true`); bez tokenów w przedziale `share` ma `null` z pozycją w `gaps`.
 
-Rekord natywny nie zawiera treści wiadomości, zleceń, raportów, opisu PR, poleceń ani ścieżek katalogów roboczych. Format transkryptów nie
+Rekord natywny nie zawiera treści wiadomości, zleceń, `description` ani `summary` (tylko identyfikator `ref`),
+raportów, opisu PR, poleceń ani instrukcji; ścieżki katalogów
+roboczych ma tylko pole `process` (pochodzenie plików instrukcji: miejsca ładowania i ścieżki z dowodu), którego
+komentarz po merge'u nie wypisuje. Format transkryptów nie
 jest stabilnym interfejsem CLI: brak pola daje `null` i pozycję w `gaps`, nie błąd. Testy używają syntetycznych
 transkryptów z samymi czytanymi polami; treść prawdziwych transkryptów nie trafia do repozytorium.
 
@@ -463,7 +700,10 @@ czasu), potencjalnie −4,1 h (D4)”.
 
 W oknie 14 dni od merge'u końcowego PR (`regressions.until`):
 
-- czerwony przebieg CI na `main` dla commita merge'u epiku (`gh run list --commit`);
+- czerwony przebieg CI na `main` dla commita merge'u epiku (`gh run list --commit`). Liczy się tylko zakończony
+  przebieg `push` z wynikiem czerwonym (`failure`, `timed_out`, `startup_failure`) albo zielonym: dopóki któryś
+  trwa, żadnego jeszcze nie ma albo jedyny został anulowany, wynik jest nieznany (`ci_red: null` z luką,
+  `complete: false`, okno zostaje otwarte i przelicza je kolejne `trend` albo `epic`), nie zero;
 - commit na `main`, który wycofuje końcowy PR (`Revert` z jego numerem);
 - issue `bug`, którego nowe pole „Wprowadzone przez (epik albo PR, jeśli znane)” w formularzu `bug`
   (`.github/ISSUE_TEMPLATE/bug.yml`) wskazuje ID epiku albo numer jego PR, założone albo ostatnio zmienione przez
@@ -472,6 +712,61 @@ W oknie 14 dni od merge'u końcowego PR (`regressions.until`):
 
 `found_after_merge`: issues z propozycji `/sweep` tego epiku (raport przeglądu z nazwą epiku) w tym samym oknie,
 osobno od regresji, bo przegląd znajduje też stare problemy.
+
+### Czas CI po epiku
+
+`metrics.py ci-time <epik>` porównuje czas CI po epiku ze stanem sprzed epiku. Tylko odczyt (`gh`), niczego nie
+uruchamia i nie blokuje merge'u: wynik to „bez przekroczenia progów”, „przekroczony próg, do wyjaśnienia” albo „brak
+danych”. Ten sam wynik jest w rekordzie epiku natywnego (`ci.time`).
+
+- **Przebieg porównywalny:** zakończony, zielony przebieg workflowu `ci_workflow`, pełny: część E2E wykonała krok
+  `full_step` (`make e2e`). Przebiegi o ograniczonym zakresie (dokumentacja, narzędzia, k8s), czerwone, anulowane,
+  w toku i ponowione (`attempt` > 1: joby zachowane z pierwszej próby mają stare czasy, więc czas przebiegu obejmuje
+  czerwoną próbę i przerwę przed ponowieniem) nie wchodzą do porównania.
+- **Dwie miary, nigdy sumowane:** czas całego przebiegu, od startu pierwszego joba do końca ostatniego (zawiera
+  oczekiwanie na runner między jobami, więc nie jest czasem „bez kolejek”), i czas wykonania każdego joba (`checks part
+  *`, `e2e shard *`; bez jobów zbiorczych `aggregate_jobs`).
+- **Część nieaktywna:** część `checks` bez pracy dla zakresu zmiany (część `k8s` w pełnym CI zmiany, która nie dotyka
+  `infra/k8s/**`, `.github/workflows/**` ani `infra/docker-compose.yml`) kończy się w kilka sekund krokiem `inactive_step` („Nothing to run in this
+  part for the scope of the change”). Jej czas nie jest czasem joba: w tym przebiegu job nie wchodzi do bazy, median
+  ani porównań (przebieg zostaje porównywalny, czas całego przebiegu liczy się jak zwykle). Baza joba to więc mediana
+  przebiegów, w których był aktywny, z tym samym minimum `min_baseline_runs`; za mało takich przebiegów to brak danych
+  dla joba. Część nieaktywna nie jest zmianą zestawu jobów.
+- **Baza:** mediana `baseline_runs` (5) ostatnich porównywalnych przebiegów `push` na `base_branch` utworzonych przed
+  startem epiku (`started_at` pliku przebiegu). Mniej niż `min_baseline_runs` (3): brak danych; to samo minimum
+  dotyczy każdego joba osobno (job obecny tylko w części przebiegów bazy nie ma bazy).
+- **Po epiku, trzy osobne pozycje:** przebieg końcowego SHA końcowego PR (pojedynczy przebieg, pokazany osobno, żeby
+  mediana wcześniejszych wersji nie ukryła regresji), mediana `recent_runs` (3) ostatnich porównywalnych przebiegów PR
+  (od dwóch przebiegów) i, po merge'u, przebieg `push` commita merge'u na `main`. Przebieg merge'u w toku, czerwony,
+  o ograniczonym zakresie albo niezarejestrowany to brak danych, nie potwierdzenie.
+- **`main` w trakcie epiku:** mediana porównywalnych przebiegów `push` na `main` od startu epiku do jego ostatniego
+  przebiegu, bez commita merge'u epiku. Przebieg PR testuje scalenie z bieżącym `main`, więc wzrost widoczny też tutaj
+  to możliwy wpływ zewnętrzny, spoza epiku.
+- **Progi (startowe, do oceny po trzech kolejnych epikach):** pozycja przekracza próg, gdy różnica względem bazy
+  osiąga oba warunki naraz: cały przebieg `run_min_s` (180 s) i `run_min_pct` (20%), job `job_min_s` (240 s)
+  i `job_min_pct` (30%). Decyzja zapada na wartościach niezaokrąglonych; zaokrąglone są tylko liczby w raporcie. Wartości pochodzą z 203 pełnych zielonych przebiegów z 16–23.11.2026: przy niezmienionym
+  kodzie mediany przebiegu różniły się do 2,4 min (18%), a mediany jednego joba do ok. 2 min (20%); znane realne
+  wzrosty to +3,8 do +6,2 min (+31 do +50%) dla przebiegu i +5,8 do +9,4 min dla joba.
+- **Zmieniona macierz części E2E:** w innej macierzy część o tej samej nazwie to inny zestaw plików. Część E2E jest
+  więc porównywana, a jej mediany i rozrzut liczone, tylko z przebiegów o tej samej macierzy co przebieg po epiku
+  (końcowy SHA, a bez niego najnowszy przebieg PR): dotyczy to bazy, ostatnich przebiegów PR, `main` w trakcie epiku
+  i przebiegu commita merge'u. Okno przebiegów jest wybierane najpierw (ostatnie porównywalne: 5 bazy, 3 PR,
+  5 `main` w trakcie epiku), a przebiegi innej macierzy z niego odpadają; narzędzie nie sięga po starsze przebiegi
+  tej samej macierzy, bo starszy przebieg PR to starsza wersja zmiany. Za mało przebiegów w oknie to brak danych
+  dla części. Cały przebieg i pozostałe joby
+  liczą się ze wszystkich przebiegów. Zmiany samych wag (wyrównanie na `main` przy tej samej liczbie części)
+  narzędzie nie wykrywa: to jedna z przyczyn, które sprawdza sesja.
+- **Rozrzut części E2E:** różnica median ostatnich przebiegów PR (tej samej macierzy, od dwóch przebiegów; inaczej
+  brak danych) między najdłuższą a najkrótszą częścią; od
+  `e2e_spread_s` (240 s) raport rekomenduje osobny PR wyrównania wag (`e2e/CLAUDE.md`, „CI”). Poniżej tego zysk
+  z wyrównania mieści się w rozrzucie pojedynczych przebiegów.
+- **Raport** (Markdown do opisu PR albo `--json`): baza, wynik, różnica w minutach i procentach dla każdej pozycji,
+  joby tylko po jednej stronie (możliwa zmiana workflowu), dla joba ponad progiem kroki z największą różnicą, linki
+  do wszystkich użytych przebiegów. Brak wartości to „brak danych”, nigdy zero ani PASS.
+- **Przyczyna** nie jest ustalana automatycznie: przekroczenie sesja wyjaśnia z dowodem (nowe testy, nierówny podział,
+  wolniejsze testy, infrastruktura, zmiana workflowu) według „Przebiegu epiku” w ADR.
+- Kody wyjścia: `0` (każdy wynik raportu), `3` przy błędzie `gh` (raport „brak danych”), `2` bez pliku przebiegu.
+  W rekordzie błąd `gh` nie zastępuje zapisanego, zmierzonego `ci.time`: zostaje poprzednia wartość z luką.
 
 ### Bezproduktywne zużycie
 
@@ -767,6 +1062,14 @@ użytkownika.
     z efektem z `metrics.py effect` dla kluczy z `applied.jsonl` albo „za mało danych”.
 17. Skrypty mają testy ścieżek błędu (nieczytelna albo zajęta baza, brak katalogu, błąd `gh`, nieczytelny
     `waste.json`, zły `config.json`) z kodem i komunikatem; skan fixture'ów w repo przechodzi.
+18. `ci-time` z podstawionym `gh`: baza tylko z pełnych zielonych przebiegów `push` na `main` sprzed startu epiku;
+    końcowy SHA osobno od mediany ostatnich przebiegów PR (regresja tylko na końcowym SHA jest przekroczeniem);
+    przebieg commita merge'u liczony dopiero po zakończeniu; próg wymaga obu warunków (sam procent ani sam czas nie
+    wystarcza, a decyzja nie zależy od zaokrąglenia); `main` w trakcie epiku osobno; przebieg ponowiony nie jest
+    porównywalny; części E2E są porównywane i mają rozrzut tylko z przebiegów tej samej macierzy; za mało przebiegów, brak przebiegu końcowego SHA, błąd `gh` (kod 3)
+    i brak danych w pliku przebiegu dają „brak danych”, nigdy „bez przekroczenia”; brak pliku przebiegu to kod 2.
+    Czerwone CI commita merge'u: przebieg w toku, brak przebiegu i sam przebieg anulowany dają `ci_red: null`
+    i otwarte okno.
 
 ## Ryzyka
 

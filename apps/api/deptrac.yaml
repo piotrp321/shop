@@ -133,6 +133,22 @@ deptrac:
       collectors:
         - type: classNameRegex
           value: '#^App\\Payment\\UI\\#'
+    - name: Delivery_Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Delivery\\Domain\\#'
+    - name: Delivery_Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Delivery\\Application\\#'
+    - name: Delivery_Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Delivery\\Infrastructure\\#'
+    - name: Delivery_UI
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Delivery\\UI\\#'
     # A fake external system, not a domain of the shop (flat module, one layer): see the ruleset.
     - name: PaymentSimulator
       collectors:
@@ -344,12 +360,13 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
-      # Adapters of Cart's ports (ProductCatalog, CartPrices, StockAvailability) ask the other modules through their
-      # queries on query.bus: Catalog GetProductSummaries, Pricing GetCurrentPrices, Inventory GetStockLevels. Only
-      # their Application layer, never their Domain or Infrastructure.
+      # Adapters of Cart's ports (ProductCatalog, CartPrices, StockAvailability, CartDelivery) ask the other modules
+      # through their queries on query.bus: Catalog GetProductSummaries, Pricing GetCurrentPrices, Inventory
+      # GetStockLevels, Delivery QuoteDelivery. Only their Application layer, never their Domain or Infrastructure.
       - Catalog_Application
       - Pricing_Application
       - Inventory_Application
+      - Delivery_Application
     Cart_UI:
       - Native
       - Cart_Application
@@ -381,12 +398,13 @@ deptrac:
       # Adapters of Ordering's ports (OrderCart, OrderPrices, DiscountCodeRedemptions, OrderCatalog, StockReservations)
       # dispatch the commands and queries of the other modules on command.bus and query.bus, nested in the transaction
       # of PlaceOrder: Cart LockCartForOrder and ClearCartAfterOrder, Pricing QuoteBasket and RedeemDiscountCode
-      # (ReleaseDiscountCodeUsage in ExpireUnpaidOrder), Catalog GetVariantSummaries, Inventory ReserveStock. Only
-      # their Application layer, never their Domain or Infrastructure.
+      # (ReleaseDiscountCodeUsage in ExpireUnpaidOrder), Catalog GetVariantSummaries, Inventory ReserveStock, Delivery
+      # QuoteDelivery (OrderDeliveryQuotes). Only their Application layer, never their Domain or Infrastructure.
       - Cart_Application
       - Catalog_Application
       - Pricing_Application
       - Inventory_Application
+      - Delivery_Application
       # OrderVoter decides on the staff roles of AuthenticatedStaffMember: Ordering uses only the security contract
       # of Backoffice (its Application layer), never StaffUser of Backoffice_Infrastructure.
       - Backoffice_Application
@@ -407,9 +425,9 @@ deptrac:
       # free of Backoffice.
       - Backoffice_Application
     # Only Payment depends on Ordering, one way (Payment_Infrastructure → Ordering_Application: the query
-    # GetOrderForPayment and the command MarkOrderPaid); Ordering depends on Payment in no layer, and no other
-    # module depends on Payment. Payment_Domain and Payment_Application never see another module: the ports speak
-    # Payment's own OrderId, Amount and order data.
+    # GetOrderForPayment, the query GetOrderPayability and the command MarkOrderPaid); Ordering depends on Payment in
+    # no layer, and no other module depends on Payment. Payment_Domain and Payment_Application never see another
+    # module: the ports speak Payment's own OrderId, Amount and order data.
     Payment_Domain:
       - Native
       - Shared_Domain
@@ -425,8 +443,8 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
-      # PayableOrders asks Ordering through GetOrderForPayment on query.bus, OrderPayments pays orders through
-      # MarkOrderPaid on command.bus. Only its Application layer, never its Domain or Infrastructure.
+      # PayableOrders asks Ordering through GetOrderForPayment and GetOrderPayability on query.bus, OrderPayments pays
+      # orders through MarkOrderPaid on command.bus. Only its Application layer, never its Domain or Infrastructure.
       - Ordering_Application
     Payment_UI:
       - Native
@@ -438,6 +456,35 @@ deptrac:
       # The controllers of a customer's payment take the customer from AuthenticatedCustomer, the security contract
       # of Customer, never CustomerUser of Customer_Infrastructure.
       - Customer_Application
+    # Delivery (docs/features/delivery/spec.md, A1) depends on no other context: its layers see only Shared and the
+    # vendors, and only Cart_Infrastructure and Ordering_Infrastructure depend on it, on its Application layer (the
+    # query QuoteDelivery on query.bus). The one exception is DeliveryVoter, which decides on the staff roles of
+    # AuthenticatedStaffMember, the security contract of Backoffice, like the voters of the other contexts.
+    Delivery_Domain:
+      - Native
+      - Shared_Domain
+    Delivery_Application:
+      - Native
+      - Delivery_Domain
+      - Shared_Domain
+      - Vendor
+    Delivery_Infrastructure:
+      - Native
+      - Delivery_Application
+      - Delivery_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      - Backoffice_Application
+    Delivery_UI:
+      - Native
+      - Delivery_Application
+      - Delivery_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      # The panel's controllers read their body with RequiredKeysBody (Shared_UI), see CLAUDE.md.
+      - Shared_UI
+      - Vendor
     # The simulator of the payment providers talks to the shop over HTTP only, like a real provider: it depends on no
     # context and no context depends on it (nor does Payment, which calls it through its HTTP adapters).
     PaymentSimulator:

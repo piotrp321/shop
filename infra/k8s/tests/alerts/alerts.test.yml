@@ -434,6 +434,269 @@ tests:
               cronjob: rate-limit-check
             exp_annotations: *rate_limits_off
 
+  # --- MessagingUnhealthy (queue-check) and OrderExpiryFailed (order-expiry): a failed Job of the CronJob, newer than its last success,
+  # as BackupFailed, but ONE instance per CronJob however many Jobs failed (a message that stays in `failed` makes every run of
+  # queue-check fail, so a new failed Job comes every five minutes); the labels are the namespace and the CronJob, never the Job.
+  # Three Jobs of queue-check failed (minutes 120, 125, 130) after the last success (minute 60): one alert, silent before the first
+  # failure; the Job of order-expiry that succeeded does not matter and the alert of order-expiry does not look at queue-check.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="queue-check"}'
+        values: '3600x400'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="order-expiry"}'
+        values: '3600x400'
+      - series: 'kube_job_owner{namespace="shop",job_name="queue-check-1",owner_kind="CronJob",owner_name="queue-check",owner_is_controller="true"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="queue-check-1",condition="Failed",status="true"}'
+        values: '_x120 1x280'
+      - series: 'kube_job_owner{namespace="shop",job_name="queue-check-2",owner_kind="CronJob",owner_name="queue-check",owner_is_controller="true"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="queue-check-2",condition="Failed",status="true"}'
+        values: '_x125 1x275'
+      - series: 'kube_job_owner{namespace="shop",job_name="queue-check-3",owner_kind="CronJob",owner_name="queue-check",owner_is_controller="true"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="queue-check-3",condition="Failed",status="true"}'
+        values: '_x130 1x270'
+      - series: 'kube_job_owner{namespace="shop",job_name="order-expiry-1",owner_kind="CronJob",owner_name="order-expiry",owner_is_controller="true"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="order-expiry-1",condition="Complete",status="true"}'
+        values: '_x120 1x280'
+    alert_rule_test:
+      - eval_time: 119m
+        alertname: MessagingUnhealthy
+        exp_alerts: []
+      - eval_time: 125m
+        alertname: MessagingUnhealthy
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: shop
+              cronjob: queue-check
+            exp_annotations: &messaging_unhealthy
+              summary: "Wiadomości w kolejkach utknęły albo się nie powiodły"
+              description: "Job z CronJoba queue-check zakończył się błędem i po nim nie ma udanego sprawdzenia: wiadomość jest w transporcie failed albo kolejka stoi dłużej niż 10 minut. Sprawdź ekran „Stan systemu” w panelu i make -C infra/k8s failed, ponów albo usuń wiadomość według runbooka (Eksploatacja); log Joba: make -C infra/k8s status. Alert znika po następnym udanym Jobie. Runbook: Eksploatacja."
+      # Three failed Jobs, one instance.
+      - eval_time: 140m
+        alertname: MessagingUnhealthy
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: shop
+              cronjob: queue-check
+            exp_annotations: *messaging_unhealthy
+      # The failed Jobs of queue-check are not those of order-expiry.
+      - eval_time: 140m
+        alertname: OrderExpiryFailed
+        exp_alerts: []
+
+  # The Jobs of order-expiry failed twice: one OrderExpiryFailed, and MessagingUnhealthy stays silent (its CronJob has no failed Job); a failed
+  # Job that no CronJob of ours owns (migrate) triggers none.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="order-expiry"}'
+        values: '3600x400'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="queue-check"}'
+        values: '3600x400'
+      - series: 'kube_job_owner{namespace="shop",job_name="order-expiry-1",owner_kind="CronJob",owner_name="order-expiry",owner_is_controller="true"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="order-expiry-1",condition="Failed",status="true"}'
+        values: '_x120 1x280'
+      - series: 'kube_job_owner{namespace="shop",job_name="order-expiry-2",owner_kind="CronJob",owner_name="order-expiry",owner_is_controller="true"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="order-expiry-2",condition="Failed",status="true"}'
+        values: '_x125 1x275'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="migrate-1",condition="Failed",status="true"}'
+        values: '_x100 1x300'
+    alert_rule_test:
+      - eval_time: 119m
+        alertname: OrderExpiryFailed
+        exp_alerts: []
+      - eval_time: 130m
+        alertname: OrderExpiryFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: order-expiry
+            exp_annotations: &order_expiry_failed
+              summary: "Wygaszanie zamówień po terminie nie powiodło się"
+              description: "Job z CronJoba order-expiry zakończył się błędem i po nim nie ma udanego przebiegu: zamówienie albo płatność nie dało się obsłużyć, a towar i kody zostają zajęte. Sprawdź log Joba (make -C infra/k8s status), znajdź zamówienie albo płatność z błędem i zdecyduj według runbooka (Eksploatacja). Alert znika po następnym udanym Jobie. Runbook: Eksploatacja."
+      - eval_time: 130m
+        alertname: MessagingUnhealthy
+        exp_alerts: []
+
+  # The next runs succeed: the CronJobs record a success at minute 151 (the failed Jobs are still in their history), and both alerts have
+  # gone out; a failed Job that came before the success never brings them back.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="queue-check"}'
+        values: '3600x150 9060x249'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="order-expiry"}'
+        values: '3600x150 9060x249'
+      - series: 'kube_job_owner{namespace="shop",job_name="queue-check-1",owner_kind="CronJob",owner_name="queue-check",owner_is_controller="true"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="queue-check-1",condition="Failed",status="true"}'
+        values: '_x120 1x280'
+      - series: 'kube_job_owner{namespace="shop",job_name="order-expiry-1",owner_kind="CronJob",owner_name="order-expiry",owner_is_controller="true"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="order-expiry-1",condition="Failed",status="true"}'
+        values: '_x125 1x275'
+    alert_rule_test:
+      - eval_time: 150m
+        alertname: MessagingUnhealthy
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: shop
+              cronjob: queue-check
+            exp_annotations: *messaging_unhealthy
+      - eval_time: 150m
+        alertname: OrderExpiryFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: order-expiry
+            exp_annotations: *order_expiry_failed
+      - eval_time: 160m
+        alertname: MessagingUnhealthy
+        exp_alerts: []
+      - eval_time: 160m
+        alertname: OrderExpiryFailed
+        exp_alerts: []
+      - eval_time: 390m
+        alertname: MessagingUnhealthy
+        exp_alerts: []
+
+  # A Job that failed whose retry succeeded is Complete and its condition Failed is false (the series exists with the value 0): nothing
+  # fires. A CronJob that has never had a success and whose first Job failed fires at once, as BackupFailed does.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="order-expiry"}'
+        values: '3600x100'
+      - series: 'kube_job_owner{namespace="shop",job_name="order-expiry-1",owner_kind="CronJob",owner_name="order-expiry",owner_is_controller="true"}'
+        values: '1x100'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="order-expiry-1",condition="Failed",status="true"}'
+        values: '0x100'
+      - series: 'kube_job_owner{namespace="shop",job_name="queue-check-1",owner_kind="CronJob",owner_name="queue-check",owner_is_controller="true"}'
+        values: '1x100'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="queue-check-1",condition="Failed",status="true"}'
+        values: '_x20 1x80'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: OrderExpiryFailed
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: MessagingUnhealthy
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: shop
+              cronjob: queue-check
+            exp_annotations: *messaging_unhealthy
+
+  # --- OrderExpiryMissing: the last success of order-expiry (every 5 min) older than 30 min, or its metric gone for 30 min. Successes
+  # every 5 minutes: silent.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="order-expiry"}'
+        values: '0x4 300x4 600x4 900x4 1200x4 1500x4 1800x4 2100x4 2400x4 2700x4 3000x4 3300x4'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: OrderExpiryMissing
+        exp_alerts: []
+      - eval_time: 59m
+        alertname: OrderExpiryMissing
+        exp_alerts: []
+
+  # No success after minute 10 (CronJob suspended, its Jobs failing or not starting): exactly 30 minutes old at minute 40 is not older than
+  # 30 minutes, a minute later the alert fires, once, and keeps firing; two instances of kube-state-metrics are one alert.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="order-expiry",instance="ksm-a"}'
+        values: '0x4 300x4 600x119'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="order-expiry",instance="ksm-b"}'
+        values: '0x4 300x4 600x119'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: OrderExpiryMissing
+        exp_alerts: []
+      - eval_time: 41m
+        alertname: OrderExpiryMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: order-expiry
+            exp_annotations: &order_expiry_missing
+              summary: "Brak udanego wygaszania zamówień po terminie"
+              description: "Ostatni udany przebieg CronJoba order-expiry jest starszy niż 30 minut albo brak jego metryki od 30 minut (CronJob wstrzymany po przerwanym restore, usunięty, serwer albo Alloy nie działa). Sprawdź make -C infra/k8s status i pole suspend CronJoba. Runbook: Eksploatacja."
+      - eval_time: 100m
+        alertname: OrderExpiryMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: order-expiry
+            exp_annotations: *order_expiry_missing
+
+  # The metric disappears after minute 10: silent for the first 30 min of the absence, then it fires; with no metric at all it fires at once.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="order-expiry"}'
+        values: '0x4 300x4 600'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: OrderExpiryMissing
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: OrderExpiryMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: order-expiry
+            exp_annotations: *order_expiry_missing
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x100'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: OrderExpiryMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: order-expiry
+            exp_annotations: *order_expiry_missing
+
+  # The thresholds are those of each alert: a success 20 minutes old is fresh for order-expiry (30 min) and for the backup (26 h), late for
+  # rate-limit-check (17 min).
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="order-expiry"}'
+        values: '0x60'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup"}'
+        values: '0x60'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="rate-limit-check"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: OrderExpiryMissing
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: BackupMissing
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: RateLimitsOff
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: shop
+              cronjob: rate-limit-check
+            exp_annotations: *rate_limits_off
+
   # --- NodeDiskFull: a file system of the node used in more than 85% for 10 min, temporary file systems left out.
   - interval: 1m
     input_series:

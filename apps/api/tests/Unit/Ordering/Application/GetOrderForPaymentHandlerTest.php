@@ -43,6 +43,7 @@ final class GetOrderForPaymentHandlerTest extends TestCase
             shippingAddress: $customerOrder->shippingAddress(),
             lines: $customerOrder->lines(),
             discount: null,
+            delivery: $customerOrder->delivery(),
             status: $customerOrder->status(),
             idempotencyKey: $customerOrder->idempotencyKey(),
             requestFingerprint: $customerOrder->requestFingerprint(),
@@ -106,13 +107,13 @@ final class GetOrderForPaymentHandlerTest extends TestCase
     {
         $staff = StaffActor::of('kc-staff-1', 'anna');
         $at = new \DateTimeImmutable('2026-11-06 09:00:00+00:00');
-        yield 'shipped' => [static fn (Order $order) => $order->ship($staff, null, $at), 'paid'];
+        yield 'shipped' => [static fn (Order $order) => $order->ship($staff, null, null, $at), 'paid'];
         yield 'delivered' => [static function (Order $order) use ($staff, $at): void {
-            $order->ship($staff, null, $at);
+            $order->ship($staff, null, null, $at);
             $order->deliver($staff, null, $at);
         }, 'paid'];
         yield 'returned' => [static function (Order $order) use ($staff, $at): void {
-            $order->ship($staff, null, $at);
+            $order->ship($staff, null, null, $at);
             $order->registerReturn($staff, 'Zwrot', $at);
         }, 'paid'];
         yield 'cancelled by staff' => [static fn (Order $order) => $order->cancel($staff, 'Brak towaru', $at), 'cancelled'];

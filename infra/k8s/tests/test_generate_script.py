@@ -112,7 +112,7 @@ def job_doc(name):
     now = job_state(job)
     meta = {"name": name, "labels": job.get("labels", {})}
     if job.get("owner"):
-        meta["ownerReferences"] = [{"apiVersion": "batch/v1", "kind": "CronJob", "name": job["owner"], "controller": True}]
+        meta["ownerReferences"] = [{"apiVersion": "batch/v1", "kind": job.get("owner_kind", "CronJob"), "name": job["owner"], "controller": True}]
     return {"apiVersion": "batch/v1", "kind": "Job", "metadata": meta, "spec": {"activeDeadlineSeconds": job["deadline"]},
             "status": {"conditions": [] if now == "Running" else [{"type": now, "status": "True"}]}}
 
@@ -1196,24 +1196,84 @@ class Secret(Case):
         self.assertEqual(CLOSING + ["delete secret demo-photos"] + GENERATION, without_stamps(cluster.events())[:5])
 
 
-class RateLimitCheck(Case):
-    """The Jobs of the CronJob rate-limit-check (every 5 minutes, one minute at most) run all the time: they block neither target.
-    The owner decides, not the name."""
+class CheckCronJobs(Case):
+    """The Jobs of the CronJobs of the short checks rate-limit-check, queue-check and order-expiry (every 5 minutes, at most 60, 120
+    and 600 s) run all the time: they block neither target in any of the three readings of the active Jobs (make generate before tak,
+    make generate again right before the Job demo-data-run, make open). The owner decides, not the name: a Job without an owner, a Job
+    of another CronJob and a Job whose owner is not a CronJob block like any other."""
 
-    def test_only_a_job_owned_by_the_cronjob_rate_limit_check_is_not_an_active_job(self):
-        for job, blocks in ((finished_job("Running", "rate-limit-check"), False), (finished_job("Running", None), True),
-                            (finished_job("Running", "cart-purge-expired"), True)):
-            for script in (GENERATE, OPEN):
-                with self.subTest(owner=job["owner"], script=script.name):
-                    jobs = {**initial_state()["jobs"], "rate-limit-check-29000000": job, JOB: finished_job()}
-                    cluster = self.cluster(jobs=jobs, netpol=CLOSED)
-                    result = cluster.run(script, answer="nie\n")
-                    if blocks:
-                        self.assert_unchanged(cluster, result)
-                        self.assertIn("rate-limit-check-29000000", result.stderr)
-                    else:
-                        self.assertNotIn("rate-limit-check-29000000", result.stderr)
-                        self.assertEqual(1 if script == GENERATE else 0, result.returncode, result.stderr)
+    CHECKS = ("rate-limit-check", "queue-check", "order-expiry")
+    # (name, owner, kind of the owner): Jobs that look like those of the checks and block.
+    LOOKALIKES = (("queue-check-123", None, None), ("order-expiry-29925735", "backup", "CronJob"),
+                  ("queue-check-29925735", "demo-data", "CronJob"), ("queue-check-29925740", "queue-check", "Job"),
+                  ("order-expiry-29925740", "order-expiry", "Deployment"), ("rate-limit-check-29000000", None, None),
+                  ("cart-purge-expired-2934", "cart-purge-expired", "CronJob"))
+
+    @staticmethod
+    def running(owner, kind="CronJob"):
+        return dict(finished_job("Running", owner), **({"owner_kind": kind} if kind else {}))
+
+    def with_previous(self, **changes):
+        return self.cluster(jobs={**initial_state()["jobs"], JOB: finished_job(previous=True)}, netpol=CLOSED, **changes)
+
+    def job_after_the_secret(self, name, job):
+        """The Job starts after the first check, between the Secret and the reading right before the Job demo-data-run."""
+        jobs = {**initial_state()["jobs"], JOB: finished_job(previous=True), name: job}
+        return self.with_previous(inject_after={"event": "create Secret demo-photos", "changes": {"jobs": jobs}})
+
+    def test_a_job_of_a_check_that_runs_through_the_whole_run_blocks_no_reading(self):
+        for check in self.CHECKS:
+            with self.subTest(check=check):
+                name = f"{check}-29925735"
+                cluster = self.cluster(jobs={**initial_state()["jobs"], name: self.running(check)})
+                result = cluster.run()
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertNotIn(name, result.stderr)
+                self.assertIn(f"create Job {JOB}", cluster.events())
+                self.assertIsNone(cluster.state()["netpol"])
+                self.assertIn(name, cluster.state()["jobs"])
+
+    def test_a_job_of_a_check_that_starts_right_before_the_job_demo_data_run_does_not_stop_the_run(self):
+        for check in self.CHECKS:
+            with self.subTest(check=check):
+                name = f"{check}-29925740"
+                cluster = self.job_after_the_secret(name, self.running(check))
+                result = cluster.run()
+                self.assertEqual(0, result.returncode, result.stderr)
+                events = cluster.events()
+                self.assertEqual(f"create Job {JOB}", events[events.index(f"delete job {JOB}") + 1])
+                self.assertNotIn("previous", cluster.state()["jobs"][JOB])
+                self.assertIsNone(cluster.state()["netpol"])
+
+    def test_make_open_by_hand_opens_while_a_job_of_a_check_runs(self):
+        for check in self.CHECKS:
+            with self.subTest(check=check):
+                cluster = self.cluster(jobs={**initial_state()["jobs"], JOB: finished_job(), f"{check}-29925745": self.running(check)},
+                                       netpol=CLOSED)
+                result = cluster.open()
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(OPENING, without_stamps(cluster.events()))
+
+    def test_a_job_that_only_looks_like_one_of_a_check_blocks_every_reading(self):
+        for name, owner, kind in self.LOOKALIKES:
+            job = self.running(owner, kind)
+            with self.subTest(name=name, owner=owner, kind=kind, reading="generate before tak"):
+                cluster = self.cluster(jobs={**initial_state()["jobs"], name: job})
+                result = cluster.run()
+                self.assert_unchanged(cluster, result)
+                self.assertIn(name, result.stderr)
+            with self.subTest(name=name, owner=owner, kind=kind, reading="generate before the Job demo-data-run"):
+                cluster = self.job_after_the_secret(name, job)
+                result = cluster.run()
+                self.assertEqual(1, result.returncode, result.stderr)
+                self.assertIn(f"Jobs are active in the namespace shop: {name}", result.stderr)
+                self.assertNotIn(f"delete job {JOB}", cluster.events())
+                self.assertTrue(cluster.state()["jobs"][JOB]["previous"])
+            with self.subTest(name=name, owner=owner, kind=kind, reading="open"):
+                cluster = self.cluster(jobs={**initial_state()["jobs"], JOB: finished_job(), name: job}, netpol=CLOSED)
+                result = cluster.open()
+                self.assert_unchanged(cluster, result)
+                self.assertIn(name, result.stderr)
 
 
 if __name__ == "__main__":

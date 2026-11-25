@@ -4,6 +4,7 @@ import { computed, nextTick, ref, useId } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import FormSafetyNotices from "@/components/FormSafetyNotices.vue";
 import FormField from "@/components/FormField.vue";
 import FormSection from "@/components/FormSection.vue";
 import PageHeader from "@/components/PageHeader.vue";
@@ -28,7 +29,8 @@ import { useAuthStore } from "@/stores/auth";
 // What a failed save moves the focus to: the first error mark or field marked invalid, in the order of the document;
 // a disabled field cannot take focus.
 const FIRST_ERROR = '[data-form-error], [aria-invalid="true"]:not(:disabled)';
-// A field the staff member types in: an action that ends while the focus is in one leaves it there (#250 F16).
+// A field the staff member types in: an action of the card „Status” that ends while the focus is in one leaves it there
+// (#250 F16). A save cannot: the fields are off while it runs.
 const EDITABLE_FIELD = 'input:not([type="file"]), textarea, select, [role="combobox"]';
 const FOCUSABLE = "input, textarea, select, button, a[href], [tabindex]";
 
@@ -44,6 +46,8 @@ const {
   loaded,
   loadError,
   busy,
+  locked,
+  safety,
   dirty,
   status: promotionStatus,
   readOnly,
@@ -56,6 +60,9 @@ const {
   ending,
   endNotice,
   endError,
+  starting,
+  startNotice,
+  startError,
   errorsAt,
   isConflicting,
   save,
@@ -79,9 +86,22 @@ const {
   onEnded: (text) => {
     toast.success(text);
   },
+  // The answer of a save the staff member gave up on turned out to be a success: only this is said (B4).
+  onLateSaved: (text) => {
+    toast.success(text);
+  },
 });
 
-const ids = { name: useId(), percent: useId(), starts: useId(), startNow: useId(), ends: useId(), ending: useId(), reason: useId() };
+const ids = {
+  name: useId(),
+  percent: useId(),
+  starts: useId(),
+  startNow: useId(),
+  ends: useId(),
+  ending: useId(),
+  starting: useId(),
+  reason: useId(),
+};
 
 const root = ref<HTMLElement | null>(null);
 const header = ref<InstanceType<typeof PageHeader> | null>(null);
@@ -92,8 +112,8 @@ const picker = ref<InstanceType<typeof PromotionVariantPicker> | null>(null);
 // The result of an action: a success says so in a toast (a save and the immediate end by the text of the form, a
 // deletion by its own) and moves the focus to where the button was: the save bar goes away with its button, so the focus
 // goes to the H1; ending replaces its button, so it goes to the heading of the card „Status”; after a deletion the view
-// leaves and the shell takes the focus to the H1 of the list. Unless the staff member moved to a field while the request
-// ran: then it stays there. A failure moves the focus to the first field with an error, else to the message of the form,
+// leaves and the shell takes the focus to the H1 of the list. Unless the staff member moved to a field while an action of
+// the card „Status” ran: then it stays there (the fields are off while a save runs). A failure moves the focus to the first field with an error, else to the message of the form,
 // and brings it into view (#304 F3).
 async function run(action: () => Promise<ActionResult>, after: "page" | "status" | "left", toastText?: string): Promise<void> {
   const result = await action();
@@ -129,23 +149,35 @@ async function run(action: () => Promise<ActionResult>, after: "page" | "status"
   target.scrollIntoView({ block: "center" });
 }
 
-// The bar goes away with „Odrzuć”, so the focus goes to the H1.
+// The bar goes away with „Odrzuć”, so the focus goes to the H1; when a message about the server stays (an unknown result,
+// the way to its state after a 409), `FormSafetyNotices` puts the focus on it.
 async function discardChanges(): Promise<void> {
-  discard();
+  const messageHasFocus = discard();
   await nextTick();
-  header.value?.focus();
+  if (!messageHasFocus) {
+    header.value?.focus();
+  }
 }
 
-// „Odśwież” is gone with the message about a failed read, so the focus goes to the heading of the card; when the read
-// fails as well, the message of the load replaces the form and the card with it, so it goes to the H1.
-async function refreshAfterEnd(): Promise<void> {
+// „Odśwież” is gone with the message about a failed read (of the end or of the start), so the focus goes to the heading
+// of the card; when the read fails as well, the form stays and the message to try again takes the focus
+// (`FormSafetyNotices`).
+async function refreshAfterRead(): Promise<void> {
   await refresh();
   await nextTick();
+  if (safety.readFailed.value) {
+    return;
+  }
   if (statusCard.value === null) {
     header.value?.focus();
   } else {
     statusCard.value.focusHeading();
   }
+}
+
+// „Odrzuć moje zmiany i pokaż stan z serwera” took the button with it: the focus goes to the H1.
+function focusHeader(): void {
+  header.value?.focus();
 }
 
 const { open: leaveOpen, leave } = useUnsavedChangesGuard(() => dirty.value);
@@ -211,8 +243,12 @@ const crumbs = computed(() => [
   { label: loadError.value ? "Promocja" : title.value },
 ]);
 
-// What explains a disabled „Zakończ teraz” or „Usuń”: the wait for the end, or the changes to save first.
-const actionReason = computed(() => (ending.value ? ids.ending : dirty.value ? ids.reason : undefined));
+// What explains a disabled „Zakończ teraz” or „Usuń”: the wait for the end or for the start, or the changes to save first.
+const actionReason = computed(() => (ending.value ? ids.ending : starting.value ? ids.starting : dirty.value ? ids.reason : undefined));
+// What explains a disabled „Zapisz”: the wait for the end or for the start.
+const saveReason = computed(() => (ending.value ? ids.ending : starting.value ? ids.starting : undefined));
+// A read of the promotion after „Zakończ teraz” or after a save „od teraz” that failed or ran out of time.
+const readError = computed(() => endError.value ?? startError.value);
 
 // The text of an error is the colour of the status „danger” (#446): the contrast of the default one is lower on the card.
 const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-description]:text-status-danger";
@@ -266,6 +302,12 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
       >
         <AlertDescription>{{ error }}</AlertDescription>
       </Alert>
+      <FormSafetyNotices
+        :safety="safety"
+        :list-to="{ name: 'promotions' }"
+        list-label="Lista promocji"
+        @restored="focusHeader"
+      />
 
       <!-- From 1280 px two columns: the data on the left, the side column of 320 px on the right. Below that one column
            with the side card above the data, which is the order of the source. -->
@@ -321,21 +363,36 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
               >
                 {{ endNotice }}
               </p>
+              <p
+                v-if="starting"
+                :id="ids.starting"
+                data-testid="starting-note"
+                class="text-sm text-muted-foreground"
+              >
+                Promocja rozpoczyna się.
+              </p>
+              <p
+                v-if="startNotice"
+                data-testid="start-notice"
+                class="text-sm"
+              >
+                {{ startNotice }}
+              </p>
             </div>
             <Alert
-              v-if="endError"
-              data-testid="end-error"
+              v-if="readError"
+              :data-testid="endError ? 'end-error' : 'start-error'"
               variant="destructive"
               :class="ERROR_ALERT"
             >
               <AlertDescription class="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <span>{{ endError }}</span>
+                <span>{{ readError }}</span>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   data-testid="end-refresh"
-                  @click="refreshAfterEnd"
+                  @click="refreshAfterRead"
                 >
                   Odśwież
                 </Button>
@@ -368,7 +425,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
                 Usuń
               </Button>
               <p
-                v-if="dirty && !ending"
+                v-if="dirty && !ending && !starting"
                 :id="ids.reason"
                 data-testid="action-reason"
                 class="text-sm text-muted-foreground"
@@ -379,112 +436,124 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
           </FormSection>
         </div>
 
+        <!-- While a save runs, while the form waits for the start of a promotion saved „od teraz” and while „Odśwież”
+             reads the promotion, nothing can be typed or chosen: the answer rebuilds the form from the API and would
+             overwrite it (#580). -->
         <div class="flex min-w-0 flex-col gap-6 xl:col-start-1 xl:row-start-1">
-          <FormSection title="Dane promocji">
-            <p
-              v-if="scheduleLocked && !readOnly"
-              data-testid="schedule-locked-note"
-              class="text-sm text-muted-foreground"
-            >
-              Promocja trwa. Możesz zmienić jej nazwę i koniec; procent, początek i warianty są zablokowane.
-            </p>
+          <!-- The card „Warianty” is outside the disabled fieldset on purpose: its tables scroll in focusable regions, and
+               everything inside a disabled fieldset counts as not focusable (axe: `scrollable-region-focusable`). Its
+               controls are disabled one by one with `locked`. -->
+          <fieldset
+            data-testid="promotion-fields"
+            :disabled="locked"
+            class="flex min-w-0 flex-col gap-6"
+          >
+            <FormSection title="Dane promocji">
+              <p
+                v-if="scheduleLocked && !readOnly"
+                data-testid="schedule-locked-note"
+                class="text-sm text-muted-foreground"
+              >
+                Promocja trwa. Możesz zmienić jej nazwę i koniec; procent, początek i warianty są zablokowane.
+              </p>
 
-            <FormField
-              :control-id="ids.name"
-              label="Nazwa"
-              :errors="errorsAt('name')"
-              error-testid="name-error"
-            >
-              <template #default="{ describedBy, invalid }">
-                <Input
-                  :id="ids.name"
-                  v-model="data.name"
-                  data-testid="name-input"
-                  maxlength="100"
-                  autocomplete="off"
-                  :disabled="readOnly"
-                  :aria-invalid="invalid ? 'true' : undefined"
-                  :aria-describedby="describedBy"
-                />
-              </template>
-            </FormField>
-
-            <FormField
-              :control-id="ids.percent"
-              label="Obniżka (%)"
-              :errors="errorsAt('percentOff')"
-              error-testid="percent-error"
-            >
-              <template #default="{ describedBy, invalid }">
-                <Input
-                  :id="ids.percent"
-                  v-model="data.percentOff"
-                  data-testid="percent-input"
-                  inputmode="numeric"
-                  autocomplete="off"
-                  :disabled="variantsLocked"
-                  :aria-invalid="invalid ? 'true' : undefined"
-                  :aria-describedby="describedBy"
-                />
-              </template>
-            </FormField>
-
-            <FormField
-              :control-id="ids.starts"
-              label="Początek"
-              :errors="errorsAt('startsAt')"
-              error-testid="starts-error"
-            >
-              <template #default="{ describedBy, invalid }">
-                <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <FormField
+                :control-id="ids.name"
+                label="Nazwa"
+                :errors="errorsAt('name')"
+                error-testid="name-error"
+              >
+                <template #default="{ describedBy, invalid }">
                   <Input
-                    :id="ids.starts"
-                    v-model="data.startsAt"
-                    data-testid="starts-input"
-                    type="datetime-local"
-                    class="w-auto"
-                    :disabled="startDisabled"
+                    :id="ids.name"
+                    v-model="data.name"
+                    data-testid="name-input"
+                    maxlength="100"
+                    autocomplete="off"
+                    :disabled="readOnly"
                     :aria-invalid="invalid ? 'true' : undefined"
                     :aria-describedby="describedBy"
                   />
-                  <div class="flex items-center gap-3">
-                    <Switch
-                      :id="ids.startNow"
-                      v-model="data.startNow"
-                      data-testid="start-now"
-                      :disabled="variantsLocked"
-                    />
-                    <Label :for="ids.startNow">
-                      Od teraz
-                    </Label>
-                  </div>
-                </div>
-              </template>
-            </FormField>
+                </template>
+              </FormField>
 
-            <FormField
-              :control-id="ids.ends"
-              label="Koniec"
-              :errors="errorsAt('endsAt')"
-              error-testid="ends-error"
-            >
-              <template #default="{ describedBy, invalid }">
-                <Input
-                  :id="ids.ends"
-                  v-model="data.endsAt"
-                  data-testid="ends-input"
-                  type="datetime-local"
-                  class="w-auto"
-                  :disabled="readOnly"
-                  :aria-invalid="invalid ? 'true' : undefined"
-                  :aria-describedby="describedBy"
-                />
-              </template>
-            </FormField>
-            <p class="text-sm text-muted-foreground">
-              Czas w strefie Europe/Warsaw (czas polski).
-            </p>
-          </FormSection>
+              <FormField
+                :control-id="ids.percent"
+                label="Obniżka (%)"
+                :errors="errorsAt('percentOff')"
+                error-testid="percent-error"
+              >
+                <template #default="{ describedBy, invalid }">
+                  <Input
+                    :id="ids.percent"
+                    v-model="data.percentOff"
+                    data-testid="percent-input"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    :disabled="variantsLocked"
+                    :aria-invalid="invalid ? 'true' : undefined"
+                    :aria-describedby="describedBy"
+                  />
+                </template>
+              </FormField>
+
+              <FormField
+                :control-id="ids.starts"
+                label="Początek"
+                :errors="errorsAt('startsAt')"
+                error-testid="starts-error"
+              >
+                <template #default="{ describedBy, invalid }">
+                  <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <Input
+                      :id="ids.starts"
+                      v-model="data.startsAt"
+                      data-testid="starts-input"
+                      type="datetime-local"
+                      class="w-auto"
+                      :disabled="startDisabled"
+                      :aria-invalid="invalid ? 'true' : undefined"
+                      :aria-describedby="describedBy"
+                    />
+                    <div class="flex items-center gap-3">
+                      <Switch
+                        :id="ids.startNow"
+                        v-model="data.startNow"
+                        data-testid="start-now"
+                        :disabled="variantsLocked"
+                      />
+                      <Label :for="ids.startNow">
+                        Od teraz
+                      </Label>
+                    </div>
+                  </div>
+                </template>
+              </FormField>
+
+              <FormField
+                :control-id="ids.ends"
+                label="Koniec"
+                :errors="errorsAt('endsAt')"
+                error-testid="ends-error"
+              >
+                <template #default="{ describedBy, invalid }">
+                  <Input
+                    :id="ids.ends"
+                    v-model="data.endsAt"
+                    data-testid="ends-input"
+                    type="datetime-local"
+                    class="w-auto"
+                    :disabled="readOnly"
+                    :aria-invalid="invalid ? 'true' : undefined"
+                    :aria-describedby="describedBy"
+                  />
+                </template>
+              </FormField>
+              <p class="text-sm text-muted-foreground">
+                Czas w strefie Europe/Warsaw (czas polski).
+              </p>
+            </FormSection>
+          </fieldset>
 
           <FormSection title="Warianty">
             <div class="flex flex-wrap items-center justify-between gap-3">
@@ -500,6 +569,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
                 type="button"
                 variant="outline"
                 data-testid="open-picker"
+                :disabled="locked"
                 :aria-expanded="pickerOpen"
                 @click="togglePicker"
               >
@@ -521,6 +591,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
               v-if="pickerOpen && !variantsLocked"
               ref="picker"
               :chosen="chosenIds"
+              :locked="locked"
               @add="addVariants"
               @close="closePicker"
             />
@@ -624,6 +695,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
                         variant="outline"
                         size="sm"
                         data-testid="remove-variant"
+                        :disabled="locked"
                         :aria-label="`Usuń: ${chosenName(row.productName, row.label)}`"
                         @click="removeChosen(row.variantId)"
                       >
@@ -645,7 +717,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
         new-label="Nowa promocja"
         :busy="busy"
         :save-disabled="!canSave"
-        :save-described-by="ending ? ids.ending : undefined"
+        :save-described-by="saveReason"
         @save="run(save, 'page')"
         @discard="discardChanges"
         @cancel="router.push({ name: 'promotions' })"

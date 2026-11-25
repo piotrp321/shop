@@ -5,11 +5,11 @@ Uruchomienie środowiska wdrożeniowego (`docs/features/deploy/spec.md`) po merg
 - **agent** – wykonuje go Claude Code celem Makefile albo zmianą w repo (PR), gdy użytkownik zlecił uruchomienie środowiska;
 - **zgoda użytkownika** – agent opisuje, co zrobi, pyta w rozmowie i czeka na odpowiedź; dopiero potem uruchamia (firewall,
   operacje kasujące dane, zakładanie kont);
-- **użytkownik** – robi to użytkownik sam (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare, ruleset, środowiska `production` i `sentry`, deploy key,
+- **użytkownik** – robi to użytkownik sam (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare, ruleset, środowiska `production` i `sentry`, klucz GitHub App i sekret środowiska `merge-override`, deploy key,
   backup VPS-a); agent tego nie wykonuje i nie podejmuje tych decyzji.
 
 Agent wykonuje operacje na serwerze wyłącznie celami `make -C infra/k8s …` (`bootstrap`, `kubeconfig`, `status`, `rerun`,
-`create-admin`, `restore`, `backups`, `reinitialize`, `generate`, `open`, `seal-secrets`, `cloudflare-ips`). Nie łączy się z serwerem inaczej i nie uruchamia `kubectl` ani
+`create-admin`, `restore`, `backups`, `failed`, `failed-retry`, `failed-remove`, `reinitialize`, `generate`, `open`, `reindex`, `seal-secrets`, `cloudflare-ips`). Nie łączy się z serwerem inaczej i nie uruchamia `kubectl` ani
 `helm` na serwerze. Wszystkie cele potrzebują tylko Dockera (oraz `ssh` na komputerze użytkownika). Opcje `ssh` (klucz, port):
 `SSH_OPTS="-i ~/.ssh/shop -p 2222"`.
 
@@ -29,9 +29,9 @@ Aplikacje Argo CD, Jobów, fale i reszta mechanizmu: `docs/features/deploy/spec.
    buduje i testuje obrazy, a job `deploy` czeka na zatwierdzenie w środowisku `production` (1.3); bez sekretu `DEPLOY_KEY`
    tego środowiska kończy się po nim z ostrzeżeniem (nic nie publikuje).
 
-## 1. GitHub: obrazy, ruleset, środowiska `production` i `sentry`, deploy key
+## 1. GitHub: obrazy, ruleset, środowiska `production`, `sentry` i `merge-override`, deploy key
 
-Wszystko **użytkownik** (wymaga uprawnień administratora repo).
+Wszystko **użytkownik** (wymaga uprawnień administratora repo), poza częścią kroku 6 oznaczoną inaczej.
 
 1. Widoczność pakietów GHCR: po pierwszym udanym wdrożeniu (**zgoda użytkownika**, `gh workflow run deploy.yml --ref main`, sekcja 7) pakiety `shop/api`, `shop/store`, `shop/admin`
    i `shop/elasticsearch` ustaw na **publiczne** (Packages → pakiet → Package settings → Change visibility), żeby k3s
@@ -90,6 +90,47 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo).
    | usunięcie: `git push origin :refs/heads/deploy` (i `:refs/heads/deploy-images`) | odrzucone |
    | force push starszego commita: `git push --force origin origin/main~1:refs/heads/deploy` (i `deploy-images`) | odrzucony |
    | push deploy keyem | przyjęty: to udany krok `Publish deploy and deploy-images` ze zwykłego runu; ręcznie na `deploy-images` nie pushujemy (snapshot tworzy tylko workflow) |
+6. Merge override: merge PR do `main` z pominięciem wymaganych checków (`docs/features/agent-security/spec.md`, R8).
+   Kolejność ma znaczenie: środowisko musi istnieć **przed** pierwszym przebiegiem workflowu `merge-override.yml`,
+   bo GitHub zakłada brakujące środowisko sam i bez zabezpieczeń. App i środowisko bez klucza (formularz App,
+   zatwierdzający, polityka gałęzi, zmienna) agent może założyć na wyraźne polecenie w rozmowie (**zgoda
+   użytkownika**). Klucz prywatny App, sekret `MERGE_APP_PRIVATE_KEY`, ruleset i zatwierdzanie przebiegów to zawsze
+   **użytkownik**: agent klucza nie generuje, nie pobiera i nie wpisuje.
+   1. GitHub App: Settings (konta) → Developer settings → GitHub Apps → New GitHub App. Nazwa dowolna, Homepage URL
+      adres repozytorium, **Webhook** wyłączony, **Repository permissions**: Contents „Read and write”, Pull requests
+      „Read and write”, Workflows „Read and write”; „Only on this account”. Po utworzeniu: zapisz **App ID** (liczba)
+      i **Client ID**, wygeneruj klucz prywatny (plik `.pem`; GitHub wymaga go przed instalacją), a w **Install App**
+      zainstaluj ją tylko na `piotrp321/shop` („Only select repositories”). App ID jest w `tools/rulesets/main-merge.json` i w jego teście
+      (`MERGE_APP_ID`): nowa App to PR zmieniający oba miejsca, a test z innym identyfikatorem nie przechodzi.
+   2. Środowisko: Settings → Environments → New environment `merge-override`:
+      - **Required reviewers**: użytkownik; **Prevent self-review** wyłączone (jak w `production`);
+      - **Deployment branches and tags** → Selected branches and tags → reguła `main`;
+      - **Environment secrets**: `MERGE_APP_PRIVATE_KEY` (cała treść pliku `.pem`);
+      - **Environment variables**: `MERGE_APP_CLIENT_ID` (Client ID App).
+
+      Po zapisaniu sekretu usuń plik `.pem` z dysku: klucz pozwala zmergować dowolny PR z pominięciem checków.
+   3. Ruleset, po merge'u zmiany pliku do `main` (agent rulesetów nie zmienia):
+
+      ```sh
+      id="$(gh api repos/piotrp321/shop/rulesets --jq '.[] | select(.name == "main-merge") | .id')"
+      gh api -X PUT "repos/piotrp321/shop/rulesets/$id" --input tools/rulesets/main-merge.json
+      gh api "repos/piotrp321/shop/rulesets/$id" --jq '{bypass_actors, current_user_can_bypass}'
+      ```
+
+      Oczekiwane: jeden aktor `Integration` w trybie `pull_request` i `current_user_can_bypass` równe `never`
+      (bypass ma App, nie konto).
+   4. Użycie: `gh workflow run merge-override.yml --ref main -f pr=<nr> -f sha=<commit głowy PR> -f reason=<powód>`
+      (użytkownik albo sesja na jego wyraźne polecenie w rozmowie) albo Actions → Merge override → Run workflow. Job
+      `validate` pokazuje w podsumowaniu, co zostanie zmergowane; job `merge` czeka na zatwierdzenie: **użytkownik**
+      zatwierdza je na stronie przebiegu (Review deployments), z powiadomienia albo w aplikacji mobilnej GitHuba; agent
+      tego nie robi. Odrzucenie (Reject) kończy przebieg bez merge'a. Tytuł przebiegu podaje numer PR i SHA: zatwierdzaj
+      tylko przebieg, który sam zleciłeś, a po pushu do PR odrzuć stary przebieg i uruchom nowy z nowym SHA.
+   5. Wyciek albo podejrzenie wycieku klucza: od razu usuń klucz w ustawieniach App (Private keys → Delete) albo
+      odinstaluj App; od tej chwili nikt nim nie zmerguje. Potem wygeneruj nowy klucz i podmień sekret
+      `MERGE_APP_PRIVATE_KEY` albo wycofaj obejście (niżej).
+   6. Wycofanie: odinstaluj App i usuń środowisko `merge-override` (obejście przestaje działać), potem PR, który
+      przywraca w `tools/rulesets/main-merge.json` i teście pustą listę `bypass_actors` i usuwa workflow, a po jego
+      merge'u wgraj plik jak w kroku 3.
 
 ## 2. Serwer: bootstrap
 
@@ -131,7 +172,7 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo).
 
 5. **agent** – commituje certyfikat (jest publiczny) w PR do `main`; merge robi **użytkownik**.
 6. **agent** – `kubeconfig` pobiera kubeconfig klastra (dane administratora klastra, nie trafia do repo) do katalogu, z
-   którego korzystają `rerun`, `create-admin`, `restore` i `backups` (`KUBE_DIR`). Katalog powstaje na jedną operację i znika
+   którego korzystają `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex` (`KUBE_DIR`). Katalog powstaje na jedną operację i znika
    po niej:
 
    ```sh
@@ -147,11 +188,11 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo).
    - `kubeconfig` zapisuje bezwzględną ścieżkę `KUBE_DIR` w rejestrze `~/.local/state/shop-ops/kube-dirs` (prywatny plik, jedna
      ścieżka w wierszu). `ao-prepare` (start AO przez `/ao-run`) odmawia, dopóki któryś zapisany katalog istnieje, więc
      zapomniany `KUBE_DIR` zatrzymuje start AO, aż go usuniesz.
-   - `kubeconfig`, `rerun`, `create-admin`, `restore` i `backups` odmawiają pracy (kod różny od 0, bez żadnych zmian), gdy
+   - `kubeconfig`, `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex` odmawiają pracy (kod różny od 0, bez żadnych zmian), gdy
      działa AO (`python3 -m orchestrator … run`) albo jego wykonawca (proces `claude-agent` albo runner AO): zatrzymaj AO albo
      poczekaj na koniec przebiegu (wykonawca przeżywa śmierć AO, więc samo zatrzymanie AO nie zawsze wystarcza: poczekaj, aż
      skończą się jego procesy). Błąd `ps` też jest odmową. Test dymny (`smoke`) tych odmów nie dotyczy. Słowo `tak` w
-     `create-admin` i `restore` podaje się na standardowym wejściu tego celu.
+     `create-admin`, `restore`, `generate` i `reindex` podaje się na standardowym wejściu tego celu.
 
 ## 3. Sekrety
 
@@ -269,7 +310,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 | `https://auth.<domena>/realms/master/` | użytkownik | niedostępny (404); dostępne tylko `/realms/shop/`, `/realms/backoffice/`, `/resources/` |
 | Próby rulesetów (1.5) | użytkownik | zgodnie z tabelą |
 | `make -C infra/k8s status HOST=…` | agent | wszystko `Synced`, `Healthy`, Joby `Complete` |
-| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, konto serwisowe i punkt kontaktowy: użytkownik | osiem reguł zarządzanych przez Grafanę w folderze `agent/shop/…` (cztery przy wyłączonych kopiach), alert z reguły dochodzi e-mailem; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
+| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, konto serwisowe i punkt kontaktowy: użytkownik | jedenaście reguł zarządzanych przez Grafanę w folderze `agent/shop/…` (siedem przy wyłączonych kopiach), alert z reguły dochodzi e-mailem; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
 | Grafana Cloud (9.) | agent | metryki klastra i logi `namespace="shop"` są, logów `mailpit` nie ma, przegląd próbki logów bez sekretów i danych klientów |
 | Sentry (10.): po wpisaniu DSN-ów i wdrożeniu | użytkownik | zdarzenia i trace'y w projektach `api`, `store` i `admin` z wersją (rewizja obrazu) i środowiskiem `demo`; przegląd próbki zdarzeń bez danych osobowych |
 | AppArmor (sekcja 2, krok 3): na serwerze `sudo dmesg \| grep 'apparmor="DENIED"' \| grep -c cri-containerd` po `reinitialize` i `create-admin` | użytkownik | wpisy `signal` są oczekiwane (szum); oba cele kończą się sukcesem, a pody nie restartują się przez sondy |
@@ -277,7 +318,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 ## 7. Eksploatacja
 
 - **Nowa wersja**: merge PR do `main` niczego nie wdraża. Wdrożenie startuje tylko na życzenie: **zgoda użytkownika**, potem
-  `gh workflow run deploy.yml --ref main` (obrazy, smoke test, publikacja snapshotu; postęp: `gh run list --workflow deploy.yml`,
+  `gh workflow run deploy.yml --ref main` (obrazy, smoke test i `make -C infra/k8s check`, publikacja snapshotu; postęp: `gh run list --workflow deploy.yml`,
   `gh run watch`), a Argo CD synchronizuje klaster. Job `deploy` czeka na zatwierdzenie w środowisku `production`: **użytkownik**
   zatwierdza je na stronie przebiegu (Review deployments), z powiadomienia albo w aplikacji mobilnej GitHuba; agent tego nie robi.
   Wdraża się bieżący commit `main`; przebieg czekający na zatwierdzenie zajmuje grupę `concurrency` dla `main`, więc nowsze
@@ -285,8 +326,8 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   (Reject) przepuszcza najnowszy, który wdraża bieżący commit `main`, a przebieg niezatwierdzony w ciągu 30 dni wygasa. Błąd renderu albo migracji zatrzymuje wdrożenie, a poprzednia wersja działa dalej
   (aplikacja `Degraded`). Uruchomienie na innej gałęzi (`--ref <gałąź>`) to tylko próba: smoke test, nic nie jest
   wypychane i `deploy` się nie przesuwa.
-- **Cofnięcie wersji**: revert na `main` i nowe uruchomienie wdrożenia. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu;
-  cofnięcie o więcej wersji to synchronizacja `shop` ze starszym snapshotem `deploy-images` (jak niżej) i odtworzenie kopii
+- **Cofnięcie wersji**: revert na `main` i nowe uruchomienie wdrożenia. Schemat bazy nie musi być zgodny z poprzednią wersją kodu (etap demo, `docs/vision.md`);
+  cofnięcie wersji po zmianie niezgodnej to synchronizacja `shop` ze starszym snapshotem `deploy-images` (jak niżej) i odtworzenie kopii
   z czasu tej wersji (8.; `restore` odmawia kopii nowszej niż wdrożony kod) albo `reinitialize`. Awaryjnie **użytkownik** wyłącza w Argo CD
   automatyczną synchronizację aplikacji `root`, a potem aplikacji `shop` (kolejność ma znaczenie: `root` z `selfHeal`
   przywraca z gita `syncPolicy` aplikacji `shop`, a Argo CD nie synchronizuje do innej rewizji aplikacji z automatyczną
@@ -294,6 +335,20 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   na `main`, uruchamia wdrożenie (**zgoda użytkownika**, `gh workflow run deploy.yml --ref main`), a po opublikowaniu
   nowego snapshotu włącza automatyczną synchronizację `root` (z `prune` i `selfHeal`, jak w
   `argocd/root.yaml`): `root` przywraca z gita automatyczną synchronizację `shop`, która wdraża nowy snapshot.
+- **Przebudowa indeksu wyszukiwarki** – **zgoda użytkownika** (nazywa operację i host): `make -C infra/k8s reindex
+  KUBE_DIR=<katalog z kubeconfigiem>`. Potrzebna po zmianie `elasticsearch.shards` (istniejący indeks zachowuje swoją
+  liczbę shardów) i gdy indeks rozjechał się z bazą. Cel wypisuje indeks aliasu `products` i liczbę shardów nowego,
+  pyta o `tak`, uruchamia Job `reindex-<czas UTC>` z zawieszonego CronJoba `reindex` i sprawdza indeks po nim.
+  Sklep działa w trakcie na starym indeksie; milion produktów to na serwerze ok. 17 minut. Cel trzyma do końca blokadę
+  `demo-data-lock`, więc `generate` i `open` w tym czasie odmawiają. **Nie wdrażaj nowej wersji w trakcie przebudowy**:
+  Job `migrate` wdrożenia kończy się wtedy błędem (`catalog:search-index:setup` odmawia przy trwającej przebudowie),
+  a po jej końcu trzeba go ponowić (`make -C infra/k8s rerun JOB=<migrate-…>`). Odmowa (kod 1, „nothing changed”):
+  aktywny Job w przestrzeni nazw (poczekaj na koniec; Joby CronJobów `rate-limit-check`, `queue-check` i `order-expiry` nie
+  są powodem odmowy), blokada `demo-data-lock` innego przebiegu albo nieczytelny indeks. Porażka (kod 1, „FAILED”):
+  komunikat mówi, na którym indeksie jest alias (nieudany Job zostawia go na starym), log Joba jest w wyjściu celu i w Grafana Cloud; po usunięciu przyczyny uruchom cel ponownie (nie `rerun`). Liczba
+  dokumentów w wyjściu celu to dokumenty Lucene (razem z zagnieżdżonymi wariantami), więcej niż produktów w logu Joba. Zmiana produktu, ceny albo stanu zapisana w trakcie budowy może nie trafić do nowego indeksu
+  do następnej zmiany tego produktu, więc przebudowę uruchamiaj poza godzinami zmian w panelu. Powrót do poprzedniej
+  liczby shardów: zmiana `elasticsearch.shards`, wdrożenie i ponowna przebudowa.
 - **Argo CD i inne narzędzia** (bez publicznego adresu): `ssh -L 8080:localhost:8080 <user>@<adres> 'sudo k3s kubectl -n argocd
   port-forward svc/argocd-server 8080:80'`, hasło w sekrecie `argocd-initial-admin-secret` (**użytkownik**).
 - **Utrata klucza Sealed Secrets**: bez kopii (2.4) sekretów z repo nie da się odszyfrować. Nowy certyfikat: usuń
@@ -328,6 +383,67 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   minut, i to nie jest awaria. Awaria krótsza niż ok. 10 minut (mniej niż trzy przebiegi)
   nie wywołuje alertu; ostrzeżenia kanału `cache` w logach `api` pokazują pojedyncze błędy. Wyciszenie na czas `restore` i
   prac: 9. w sekcji 9.
+- **`MessagingUnhealthy`** (`warning`, CronJob `queue-check`; odpala do ok. 15 minut od zdarzenia, gaśnie po następnym udanym
+  przebiegu): w `failed` leży wiadomość albo najstarsza gotowa wiadomość jakiejś kolejki jest starsza niż 10 minut (worker stoi,
+  zawisł albo nie nadąża). Log nieudanego Joba `queue-check` ma sekcja „logs of the failed jobs” wyniku
+  `make -C infra/k8s status HOST=…` (bez treści wiadomości); ekran „Stan systemu” w panelu pokazuje, które kolejki stoją.
+  1. **agent** – przegląd, tylko odczyt: `make -C infra/k8s failed HOST=…` (statystyki i do 200 najstarszych wiadomości: ID,
+     klasa, błąd, data) i `status` (pody `worker` i `worker-commands`, restarty, zdarzenia). Stoi kolejka bez wiadomości
+     w `failed`: worker nie działa (`WorkloadNotReady`, log poda w Grafana Cloud), a nie wiadomość.
+  2. **agent** – ustala przyczynę z błędu przy wiadomości (`failed` pokazuje go przy każdej) i logu `worker` w Grafana Cloud.
+     Poprawka w kodzie albo konfiguracji idzie normalnym PR i wdrożeniem (**zgoda użytkownika**); ponawianie przed nią tylko
+     zużywa wiadomości na ten sam błąd.
+  3. **zgoda użytkownika** – ponowienie po usunięciu przyczyny: `make -C infra/k8s failed-retry HOST=… ID=<id>` (jedna
+     wiadomość: `messenger:failed:retry <id> --force`) albo bez `ID` ponowienie zbiorcze (`app:messaging:failed-retry`,
+     najstarsze `MAX` wiadomości, domyślnie 200, najwyżej 1000; raport mówi, ile obsłużono, ile zachowano po błędzie i czy
+     „zostały kolejne”: wtedy to samo polecenie jeszcze raz). Zbiorczego `messenger:failed:retry` bez ID ani
+     `messenger:consume failed` aplikacja nie przepuszcza (kod 113), a cele ich nie wołają. Co trzeba wiedzieć:
+     - **ID się zmienia.** Wiadomość, której ponowienie zawiodło, zostaje w `failed` pod nowym ID (raport podaje stare i nowe),
+       więc kolejne ponowienie albo usunięcie bierze ID z `make failed`, nie z poprzedniego wyniku. Ponowienie z błędem,
+       który Symfony każe ponowić (`Recoverable…`), zostawia wiadomość z opóźnieniem: przez chwilę nie ma jej na liście
+       `failed`, choć pulpit ją liczy.
+     - **Bez gwarancji „dokładnie raz”.** Przerwanie procesu (restart poda, `Ctrl-C`, utrata połączenia SSH) może zostawić
+       duplikat wiadomości: obsługa jest idempotentna, a nadmiarową kopię usuwa `failed-remove`.
+     - Proces ponowienia uruchamia się w podzie `worker-commands` z `php -d memory_limit=128M`, a przebieg nie kończy się
+       sam: sprawdź wynik `make failed` po nim.
+  4. **zgoda użytkownika** – usunięcie wiadomości, której nie da się ani nie warto obsłużyć (np. zamówienie już nie istnieje,
+     duplikat): `make -C infra/k8s failed-remove HOST=… ID=<id>` pokazuje wiadomość i usuwa ją dopiero po słowie `tak`;
+     nie do cofnięcia. **Nigdy nie usuwa się wiadomości z webhookiem płatności** (np. o opłaceniu): jej utrata zostawia
+     opłacone zamówienie jako nieopłacone, a dostawca nie wyśle jej drugi raz. Takie wiadomości tylko ponawia się po
+     naprawie przyczyny; gdy nie da się jej naprawić, decyzję podejmuje właściciel.
+  5. **agent** – sprawdza wynik: `make failed` pokazuje pusty `failed`, ekran „Stan systemu” jest zdrowy, a następny Job
+     `queue-check` kończy się sukcesem i alert gaśnie.
+  - **Zator `worker-commands` dłuższy niż karencja wygaszania** (alert po 10 minutach zatoru): `order-expiry` anuluje
+    wtedy zamówienia po terminie także wtedy, gdy webhook ich opłacenia czeka jeszcze w kolejce `payment_simulator`
+    (obsługa komend stoi). Po przywróceniu workera i opróżnieniu kolejki **agent** sprawdza w logach `api` w Grafana Cloud
+    z okresu zatoru wpisy poziomu `error` z komunikatem
+    „Payment webhook: the payment cannot pay its order and requires a manual refund.” (webhook opłacenia zamówienia, które już anulowano; pola `orderId`, `paymentId`, `reason`, czyli
+    `order_cancelled`, `paid_after_deadline` albo `duplicate`). Ten sam powód zapisuje kolumna `refund_required_reason`
+    płatności `succeeded` w bazie (do odczytu zleca **użytkownikowi**, agent nie sięga do bazy). Zgłasza zamówienia
+    użytkownikowi do zwrotu (rejestru zwrotów nie ma); sam zwrotów nie wykonuje. Wiadomości z webhookami płatności ze stojącej kolejki się nie usuwa.
+- **`OrderExpiryFailed`** (`critical`, CronJob `order-expiry`; do ok. 15 minut): Job wygaszania zamówień po terminie i zamykania
+  porzuconych płatności (`ordering:expire-overdue`, potem `payment:close-abandoned`, zawsze obie) kończy się błędem.
+  **Agent** czyta log nieudanego Joba `order-expiry` w sekcji „logs of the failed jobs” wyniku `status`: log wskazuje
+  identyfikator zamówienia albo płatności, której przebieg nie obsłużył (błąd stanu rezerwacji, niedostępny dostawca płatności,
+  baza), albo przekroczony limit czasu (duża zaległość: kolejne przebiegi ją nadrabiają i kończą pracę, bo komendy są
+  idempotentne). Jedna z przyczyn to wpis `payment:close-abandoned: the order of the payment could not be read` (pola
+  `paymentId`, `orderId`, `reason`; szukaj go w logu Joba i w logach `api` w Grafana Cloud): zamówienie płatności `pending`,
+  którego Ordering nie potrafi odczytać (brak zamówienia, uszkodzone dane). Płatność zostaje `pending`, a każdy kolejny
+  przebieg kończy się tym samym błędem (kod 2), więc alert pali się stale, dopóki dane się nie zmienią; to błąd danych do
+  decyzji **właściciela** (naprawa albo zamknięcie płatności), nie coś, co naprawi ponowienie. Pojedyncze zamówienie z błędem
+  zostaje `new` do poprawki, a reszta jest wygaszona. Przyczynę usuwa poprawka
+  w kodzie (PR, wdrożenie: **zgoda użytkownika**) albo decyzja właściciela co do zamówienia lub płatności (**użytkownik**:
+  ręczne anulowanie, zwrot). Wiadomość `ExpireUnpaidOrder` w `failed` wygasza CronJob, więc jej ponawianie nie jest
+  potrzebne; `MessagingUnhealthy` z tego powodu można zamknąć usunięciem wiadomości (4.), jeśli zamówienie jest już
+  `cancelled`. Alert gaśnie po następnym udanym Jobie.
+- **`OrderExpiryMissing`** (`critical`; brak udanego przebiegu `order-expiry` od 30 minut albo brak jego metryki): CronJob
+  jest wstrzymany (`suspend: true`) po przerwanym `restore` albo ręcznie, usunięty albo Joby nie startują (węzeł wyłączony,
+  Alloy bez metryk: razem z nim `ClusterSilent`). **Agent** czyta stan (`status`: Joby i zdarzenia) i wynik
+  `ssh <user>@<adres> 'sudo k3s kubectl -n shop get cronjob order-expiry queue-check -o wide'` zleca **użytkownikowi** (agent nie
+  uruchamia `kubectl` na serwerze). `suspend: true` po przerwanym odtworzeniu: „Odtworzenie przerwane w trakcie” w 8.
+  (`restore` ponowiony przywraca `suspend: false`), a po ręcznym wstrzymaniu zdejmuje je **użytkownik**:
+  `ssh <user>@<adres> 'sudo k3s kubectl -n shop patch cronjob order-expiry -p "{\"spec\":{\"suspend\":false}}"'`. Zaległe
+  zamówienia i płatności nadrabia pierwszy udany przebieg. Alert gaśnie po nim.
 - **Pozostałe alerty**: `NodeDiskFull` (system plików węzła zajęty w ponad 85% przez 10 minut: miejsce zwalnia albo dysk powiększa
   **użytkownik**), `ClusterSilent` (brak metryk klastra przez 15 minut: serwer, k3s albo Alloy; `status` i panel OVH),
   `WorkloadNotReady` (Deployment albo StatefulSet w `shop`, w tym Redis, ma mniej gotowych replik niż oczekiwane albo go nie ma
@@ -378,12 +494,12 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
   make -C infra/k8s restore SNAPSHOT=<identyfikator świeżego snapshotu nightly tego serwera> KUBE_DIR=<katalog>
   ```
 
-  `restore` sprawdza (bez zmian) brak aktywnych Jobów (poza Jobem CronJoba `rate-limit-check`, który trwa najwyżej 60 s i nie jest powodem odmowy), brak trwającej synchronizacji `shop` w Argo CD i zgodność migracji
+  `restore` sprawdza (bez zmian) brak aktywnych Jobów (poza Jobami CronJobów `rate-limit-check`, `queue-check` i `order-expiry`, które trwają najwyżej 60, 120 i 600 s i nie są powodem odmowy), brak trwającej synchronizacji `shop` w Argo CD i zgodność migracji
   snapshotu z wdrożonym kodem, wypisuje snapshot i skutki i czeka na słowo `tak` (wpisuje je agent dopiero po zgodzie). Potem:
   kopia `pre-restore`, wyłączenie automatycznej synchronizacji `root`, potem `shop` (przejdzie też, gdy jej już nie ma),
-  wstrzymanie CronJobów (`cart-purge-expired`, `backup`, `rate-limit-check`), ponowne sprawdzenie Jobów, także Joba `rate-limit-check` (nocna kopia mogła wystartować po pierwszym sprawdzeniu: `restore` czeka
+  wstrzymanie CronJobów (`cart-purge-expired`, `backup`, `rate-limit-check`, `queue-check`, `order-expiry`), ponowne sprawdzenie Jobów, także Jobów trzech ostatnich (nocna kopia mogła wystartować po pierwszym sprawdzeniu: `restore` czeka
   na nią do 2 godzin, `RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, a potem kończy się błędem z działającymi aplikacjami), `api`, `worker`,
-  `store` i `keycloak` do zera, odtworzenie danych, `migrate`, `keycloak-config`, reindeks, powrót aplikacji, `purge-caches` i
+  `worker-commands`, `store` i `keycloak` do zera, odtworzenie danych, `migrate`, `keycloak-config`, reindeks, powrót aplikacji, `purge-caches` i
   włączenie synchronizacji `root` (ten przywraca `shop`). Kończy się wierszem `restore: done` z identyfikatorem snapshotu
   `pre-restore`. Sprawdzenie: `make -C infra/k8s status HOST=…` (aplikacje `Synced`/`Healthy`, pody `Running`), sklep i
   panel w przeglądarce (**użytkownik**: logowanie do panelu). Wynik (czas, snapshot, `pre-restore`) w komentarzu do #178.
@@ -395,7 +511,7 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
   odtworzonych danych), przy Argo CD synchronizacja `root` i `shop` zostaje wyłączona; komunikat podaje krok, log Joba i
   snapshot `pre-restore`. Agent czyta przyczynę (komunikat, `status`), po usunięciu jej (np. poprawka w repo, dostęp do R2) i
   po **zgodzie użytkownika** uruchamia `restore` ponownie z tym samym `SNAPSHOT` i `PRE_RESTORE=skip` (kopia stanu sprzed
-  pierwszej próby już jest; aplikacje na zerze wracają z jedną repliką, a wstrzymane `cart-purge-expired`, `backup` i `rate-limit-check` z `suspend: false`) albo wraca do stanu sprzed odtworzenia:
+  pierwszej próby już jest; aplikacje na zerze wracają z jedną repliką, a wstrzymane `cart-purge-expired`, `backup`, `rate-limit-check`, `queue-check` i `order-expiry` z `suspend: false`) albo wraca do stanu sprzed odtworzenia:
   `restore SNAPSHOT=<pre-restore>`. Ponowne uruchomienie przy wyłączonej synchronizacji `root` jej nie włącza: włącza ją
   **użytkownik** w Argo CD (z `prune` i `selfHeal`, jak w `argocd/root.yaml`).
 - **Utrata serwera** – **zgoda użytkownika** przy każdym kroku z niej: nowy VPS (**użytkownik**, 0.), `bootstrap` z kopią
@@ -423,7 +539,8 @@ uwierzytelnienia: każdy pod klastra, także w `monitoring`, sięga do nich po s
 
 Alerty to `PrometheusRule` `shop-alerts` chartu `shop` (`alerts.enabled: true` w `prod`; `docs/features/deploy-ops/spec.md`, O6):
 `BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `RateLimitsOff` (brak udanego sprawdzenia Redisa
-limiterów od 17 minut), `NodeDiskFull` (ponad 85% przez 10 minut), `ClusterSilent` (brak metryk klastra przez 15 minut) i `WorkloadNotReady` (Deployment albo StatefulSet w `shop` niegotowy albo
+limiterów od 17 minut), `MessagingUnhealthy` (nieudany Job `queue-check`: wiadomość w `failed` albo kolejka stoi),
+`OrderExpiryFailed` (nieudany Job `order-expiry`), `OrderExpiryMissing` (brak udanego `order-expiry` od 30 minut), `NodeDiskFull` (ponad 85% przez 10 minut), `ClusterSilent` (brak metryk klastra przez 15 minut) i `WorkloadNotReady` (Deployment albo StatefulSet w `shop` niegotowy albo
 usunięty przez 10 minut). Alloy synchronizuje je przez API importu Grafany stosu (`/api/convert`, cel `grafana-alerting`) jako
 reguły zarządzane przez Grafanę; ewaluuje je Grafana Cloud poza serwerem, więc alert przychodzi także wtedy, gdy serwer albo Alloy
 nie żyje, a powiadomienia idą przez Alertmanager Grafany. Ruler metryk stosu nie ma Alertmanagera (nowe stosy Grafana Cloud go nie
@@ -447,7 +564,7 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
    `Healthy`. Brak konta albo zły token zostawia `Degraded` tylko `monitoring` (log Alloy w przestrzeni `monitoring`); sklep działa i
    się wdraża. W Grafana Cloud widać metryki klastra (np. `up`, `kube_node_info`) i logi (`namespace="shop"`), a logów podów
    `mailpit` nie ma.
-5. **agent** – po wdrożeniu przegląd próbki logów w Grafana Cloud (Explore, logi każdego źródła: `api`, `worker`, `store`, `admin`,
+5. **agent** – po wdrożeniu przegląd próbki logów w Grafana Cloud (Explore, logi każdego źródła: `api`, `worker`, `worker-commands`, `store`, `admin`,
    `keycloak`, `postgres`, `imgproxy` i zdarzenia klastra) pod kątem sekretów i danych klientów: haseł, tokenów, nagłówków,
    ciasteczek, adresów e-mail i IP, imion i adresów w treści wyjątków. Znalezisko to nowa reguła maskowania w
    `extraLogProcessingStages` manifestu `monitoring` z wierszem w korpusie `infra/k8s/tests/log-corpus` albo wyłączenie źródła w
@@ -455,15 +572,16 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
 6. **agent** – po wdrożeniu sprawdza w Grafana Cloud liczbę aktywnych serii (darmowy plan: 10 tys.); przy przekroczeniu Grafana Cloud
    odrzuca nadmiar, a agent zawęża listę metryk w manifeście.
 7. **użytkownik** – w Grafana Cloud (Alerting → Contact points) dodaje punkt kontaktowy e-mail i ustawia go jako domyślny w drzewie
-   powiadomień Alertmanagera Grafany. Alerty to `NodeDiskFull` z `severity: warning` i reszta z `critical`; że alerty reguł trafiają
+   powiadomień Alertmanagera Grafany. Alerty `NodeDiskFull`, `RateLimitsOff` i `MessagingUnhealthy` mają `severity: warning`, reszta `critical`; że alerty reguł trafiają
    do tego punktu kontaktowego, potwierdza dopiero krok 8.
-8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać osiem reguł grup `shop-backup`, `shop-rate-limits` i `shop-cluster`
-   (przy kopiach wyłączonych w `prod`, 3.: cztery reguły grup `shop-rate-limits` i `shop-cluster`)
+8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać jedenaście reguł grup `shop-backup`, `shop-rate-limits`, `shop-messaging` i `shop-cluster`
+   (przy kopiach wyłączonych w `prod`, 3.: siedem reguł grup `shop-rate-limits`, `shop-messaging` i `shop-cluster`)
    w folderze `agent/shop/shop-alerts/…`, oznaczonych jako provisioned (źródło: `PrometheusRule` `shop-alerts` w przestrzeni
    `shop`, synchronizowany przez Alloy przez API importu Grafany; zmiana reguły to zmiana chartu, nie edycja w UI). Brak reguł
    po 10 minutach od wdrożenia: log Alloy (`mimir.rules.kubernetes`, np. 401 przy złym tokenie konta serwisowego). **`BackupMissing` i
    `BackupVerifyMissing` odpalają od startu aż do pierwszej udanej kopii i weryfikacji (metryki jeszcze nie ma, reguła ma
-   `absent`): to oczekiwane, nie awaria.** Po pierwszej nocnej kopii i weryfikacji gasną.
+   `absent`): to oczekiwane, nie awaria.** Po pierwszej nocnej kopii i weryfikacji gasną. Tak samo `OrderExpiryMissing` (i
+   `RateLimitsOff`) po pierwszym wdrożeniu z regułą odpala, dopóki CronJob nie ma pierwszego udanego Joba (kilka minut).
    To też sprawdzenie od końca do końca, które wykonuje **użytkownik** (agent nie ma dostępu do jego skrzynki): jeśli Grafana
    Cloud powstała przed pierwszą udaną kopią, `BackupMissing` odpala zaraz po załadowaniu reguły (`absent_over_time` bez `for`),
    więc e-mail o nim powinien przyjść wkrótce po synchronizacji reguły. Agent widzi stronę alertu: w Alertmanagerze Grafany
@@ -473,8 +591,8 @@ dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. os
    (`agent/shop/delivery-test`), sprawdza odbiorcę `email` i próbę wysyłki bez błędu, a potem usuwa regułę i folder; e-mail
    potwierdza użytkownik.
 9. **użytkownik** – przed świadomym `restore` i planowanymi pracami (restart serwera, aktualizacja k3s, ćwiczenie odtworzenia)
-   wycisza alerty w Grafana Cloud (Alerting → Silences): dla `restore` dopasowanie `alertname=~"WorkloadNotReady|Backup.*|RateLimitsOff"` (`restore` wstrzymuje CronJob
-   `rate-limit-check`, więc po 17 minutach alert odpaliłby bez awarii), dla innych prac `alertname=~"WorkloadNotReady|RateLimitsOff"`
+   wycisza alerty w Grafana Cloud (Alerting → Silences): dla `restore` dopasowanie `alertname=~"WorkloadNotReady|Backup.*|RateLimitsOff|OrderExpiryMissing"` (`restore` wstrzymuje CronJoby
+   `rate-limit-check` i `order-expiry`, więc po 17 i po 30 minutach alerty odpaliłyby bez awarii), dla innych prac `alertname=~"WorkloadNotReady|RateLimitsOff|OrderExpiryMissing"`
    (Redis wyłączony razem z serwerem albo restartem k3s kończy sprawdzenie błędem; przy wyłączeniu całego serwera także
    `ClusterSilent`), na czas prac z zapasem.
    Wyciszenia nie zakłada automat. Po pracach sprawdza, że wyciszenie wygasło, albo je usuwa. Brak CRD `PrometheusRule`
@@ -491,7 +609,7 @@ poszerzenia wyjątku node-exportera albo usunięcia polityki.
 
 ## 10. Błędy i trace'y: Sentry
 
-Błędy i trace'y api (z workerem i Jobami), serwera i przeglądarki sklepu oraz przeglądarki panelu idą do Sentry SaaS
+Błędy i trace'y api (z workerami i Jobami), serwera i przeglądarki sklepu oraz przeglądarki panelu idą do Sentry SaaS
 (`docs/features/sentry/spec.md`, `docs/adr/backups-observability.md`). Każda aplikacja włącza SDK tylko przy swoim DSN: chart
 przekazuje go jako `SENTRY_DSN` razem z `SENTRY_ENVIRONMENT` (`sentry.environment`, w `prod` `demo`), `SENTRY_RELEASE` (rewizja
 obrazów, `image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` (`sentry.tracesSampleRate`, w `prod` 0,1). `prod` ma DSN-y trzech projektów
@@ -500,7 +618,7 @@ organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem
 (`https://<klucz>@<host>/<id projektu>`) i `tracesSampleRate` (0 do 1).
 
 1. **użytkownik** – zakłada konto Sentry (darmowy plan) i organizację w regionie UE (adresy `*.ingest.de.sentry.io`) oraz trzy projekty:
-   `api` (PHP/Symfony; obejmuje api, worker i Joby), `store` (Next.js) i `admin` (Vue). Z każdego bierze DSN (Settings → Client Keys)
+   `api` (PHP/Symfony; obejmuje api, oba workery i Joby), `store` (Next.js) i `admin` (Vue). Z każdego bierze DSN (Settings → Client Keys)
    i podaje go agentowi (DSN nie jest tajny).
 2. **użytkownik** – w ustawieniach Sentry (limity darmowego planu są małe, a DSN jawny, więc każdy może wysyłać zdarzenia do
    projektu): włącza ochronę przed skokami (Spike Protection) dla organizacji i ustawia limit zdarzeń na każdym projekcie
@@ -518,7 +636,7 @@ organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem
    budowanie błędem, a brak którejś z trzech zmiennych kończy job `images` błędem z jej nazwą, przed budowaniem. Mapy
    nie zostają w obrazach (etapy `prod` nie mają plików `.map`).
 5. **agent** – po pierwszym wdrożeniu z DSN-ami (`make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`, `Healthy`) sprawdza, że
-   kontenery `api`, `worker`, `store` i `admin` mają `SENTRY_*` (`SENTRY_DSN`, `SENTRY_ENVIRONMENT=demo`, `SENTRY_RELEASE` równe
+   kontenery `api`, `worker`, `worker-commands`, `store` i `admin` mają `SENTRY_*` (`SENTRY_DSN`, `SENTRY_ENVIRONMENT=demo`, `SENTRY_RELEASE` równe
    rewizji `image.tag`), a **użytkownik** w Sentry, że w trzech projektach pojawiają się zdarzenia z tą wersją i środowiskiem `demo`
    oraz trace'y (próbkowanie 0,1, więc widać je po pewnym ruchu).
 6. **użytkownik** (z agentem) – po wdrożeniu przegląd próbki zdarzeń w Sentry (Issues i Performance każdego z trzech projektów,
@@ -623,12 +741,13 @@ czeka na L9. `open` zmienia serwer (otwiera sklep), więc też wymaga zgody, kt�
    `demo-photos` na czas przebiegu (usuwany przy każdym wyjściu `generate`, także po błędzie; po jego zabiciu usuwa go
    `open`). Profil `seed` pliku nie potrzebuje.
 2. **agent** – wdrożona rewizja ma ten profil: `generate` przyjmuje `seed` albo `demoData.profile` CronJoba
-   (`environments/prod/values.yaml`; `medium`, a `server` po zmianie wartości w PR i zwykłym wdrożeniu). Wdrożenie:
+   (`environments/prod/values.yaml`: `server`; powrót do `medium` to zmiana wartości w PR i zwykłe wdrożenie). Wdrożenie:
    sekcja 7 (zgoda użytkownika); nie w trakcie generowania, bo restartuje pody, których generator potrzebuje.
 3. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: sklep otwarty, bez blokady `demo-data-lock`, Job
    `demo-data-run` (poprzedniego przebiegu), aktywne Joby, aplikacje `Synced` i `Healthy`, wszystkie Deploymenty
    i StatefulSety gotowe (generator potrzebuje Elasticsearcha, Postgresa, Keycloaka, `worker`, Varnisha i sklepu), żaden
-   Job nie jest aktywny.
+   Job nie jest aktywny poza Jobami CronJobów `rate-limit-check`, `queue-check` i `order-expiry` (co 5 minut, najwyżej
+   60, 120 i 600 s; `generate` i `open` je pomijają, bo generator nie zapisuje niczego, co zmieniają).
 4. **agent** – wolne miejsce: `medium` wymaga co najmniej 32 GB (`demoData.minFreeGb`; 1,25 × `diskPeakGb` `medium`, czyli
    26,25 GB, jest mniejsze), `server` co najmniej 120 GB (1,25 × `diskPeakGb` 96 GB; to szacunek z ekstrapolacji, nie
    pomiar). Odczytem miejsca jest kubelet; `generate` sam odmawia bez zapasu. Strażnik w Jobie zatrzymuje generator, gdy
@@ -670,7 +789,7 @@ make -C infra/k8s generate PROFILE=medium \
   i restarcie Traefika), `GENERATE_OPEN_WAIT` 300 s (czas, w którym ma podać „otwarty” po usunięciu reguły),
   `GENERATE_POLL` 30 s (odstęp odczytów Joba), `GENERATE_PROBE_POLL` 5 s (odstęp rund sondy). Wartością jest liczba
   całkowita sekund; inna to kod 2.
-- `generate` i `open` działają pojedynczo: blokadą jest ConfigMap `demo-data-lock` (kto ją trzyma: polecenie, profil,
+- `generate`, `open` i `reindex` działają pojedynczo: blokadą jest ConfigMap `demo-data-lock` (kto ją trzyma: polecenie, profil,
   host operatora, pid, czas startu; `status` ją pokazuje). `generate` zakłada ją po `tak` i trzyma do końca, razem
   z `open`, który woła; `open` uruchomiony ręcznie zakłada ją na starcie. Drugi `generate` albo `open` odmawia w tym
   czasie bez zmian i podaje posiadacza. Oba cele zwalniają ją przy każdym wyjściu poza zabiciem sygnałem KILL (i utratą
@@ -687,7 +806,8 @@ make -C infra/k8s generate PROFILE=medium \
   make -C infra/k8s open GENERATE_PROBE_URL='https://api.worf.pl/ https://worf.pl/' KUBE_DIR="$KUBE_DIR"
   ```
 
-  `open` odmawia przy blokadzie innego przebiegu, przy aktywnym Jobie, bez Joba `demo-data-run` i z Jobem innym niż
+  `open` odmawia przy blokadzie innego przebiegu, przy aktywnym Jobie (poza Jobami CronJobów `rate-limit-check`,
+  `queue-check` i `order-expiry`, tak jak `generate`), bez Joba `demo-data-run` i z Jobem innym niż
   `Complete`; `generate` usuwa Job poprzedniego przebiegu tuż przed nowym (po zamknięciu), więc sukces poprzedniego
   przebiegu nie otworzy sklepu po przerwanym nowym. Gdy `generate` skończył się przed tym usunięciem (np. sonda nie
   potwierdziła zamknięcia), dane są nietknięte, a `open` otwiera sklep na Jobie poprzedniego przebiegu, jeśli jest
@@ -720,8 +840,8 @@ generatora: odmawia kodem 3 i wskazuje `generate`.
   zmian; `make open` otwiera sklep na tym Jobie, jeśli jest `Complete`, a po poprawie adresów sondy można ponowić
   `generate`.
 - Pozostawiony sekret `demo-photos` (zabity skrypt; `status` go pokazuje): usuwa go `open`, gdy żaden Job nie działa.
-- Pozostawiona blokada `demo-data-lock` (`status`: `lock demo-data-lock: HELD by …`; `generate` i `open` odmawiają z jej
-  posiadaczem) po `generate` albo `open` zabitym sygnałem KILL albo bez połączenia przy zwalnianiu: **użytkownik**
+- Pozostawiona blokada `demo-data-lock` (`status`: `lock demo-data-lock: HELD by …`; `generate`, `open` i `reindex` odmawiają z jej
+  posiadaczem) po `generate`, `open` albo `reindex` zabitym sygnałem KILL albo bez połączenia przy zwalnianiu: **użytkownik**
   sprawdza, że żaden `generate` ani `open` nie działa (komputer i proces z danych posiadacza), i usuwa ją na serwerze:
 
   ```sh

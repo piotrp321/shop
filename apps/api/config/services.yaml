@@ -8,7 +8,10 @@ parameters:
     app.storefront_cache.retry_delay: 5.0
     # Search index (spec: "Indeks Elasticsearch"). The application reads and writes through the alias.
     app.search.alias: products
-    app.search.shards: 1
+    # The primary shards of an index that setup and catalog:reindex create: SEARCH_SHARDS of the environment, 1 without
+    # it. An index that exists keeps its own number until the next catalog:reindex.
+    env(SEARCH_SHARDS): '1'
+    app.search.shards: '%env(int:SEARCH_SHARDS)%'
     app.search.replicas: 0
     # Keycloak realms: tokens carry the public URL as issuer, keys are discovered through the internal URL
     # (the trailing slash is needed, discovery paths are resolved relative to it).
@@ -18,6 +21,20 @@ parameters:
     app.oidc.shop.discovery_url: '%env(KEYCLOAK_INTERNAL_URL)%/realms/shop/'
     # Vhost of the `events` transport, whose queues the dashboard lists (the tests use their own, see below).
     app.rabbitmq.vhost: '%env(RABBITMQ_VHOST)%'
+    # A queue of the database stands when its oldest ready message waits longer than this many seconds: the dashboard shows
+    # it and app:messaging:check (the CronJob queue-check) fails (docs/features/async-reliability/spec.md, W7).
+    app.messaging.stalled_after_seconds: 600
+    # `redeliver_timeout` in seconds of every Doctrine transport the statistics report (the DSNs in messenger.yaml; a test
+    # compares them): a message handed to a worker is ready again only after it, so the age of a queue counts it from then.
+    app.messaging.redeliver_timeouts:
+        outbox: 300
+        scheduled: 300
+        payment_simulator: 300
+        promotions: 300
+        jobs: 300
+    # ordering:expire-overdue cancels a new order only this many seconds after its expiry (the deadline and the window of the
+    # webhooks), so the delayed ExpireUnpaidOrder handles the usual case (docs/features/async-reliability/spec.md, W5).
+    app.ordering.expiry_grace_seconds: 600
     # Products per bulk request in catalog:reindex (overridden by --batch-size).
     app.search.batch_size: 500
     # The client never retries; timeouts are in seconds.
@@ -269,6 +286,11 @@ services:
             $user: '%env(RABBITMQ_USER)%'
             $password: '%env(RABBITMQ_DEFAULT_PASS)%'
             $vhost: '%app.rabbitmq.vhost%'
+            $redeliverTimeouts: '%app.messaging.redeliver_timeouts%'
+
+    App\Backoffice\Application\Query\MessagingHealth:
+        arguments:
+            $stalledAfterSeconds: '%app.messaging.stalled_after_seconds%'
 
     App\Backoffice\Application\Port\CatalogStatistics: '@App\Backoffice\Infrastructure\QueryBusCatalogStatistics'
     App\Backoffice\Application\Port\SystemHealth: '@App\Backoffice\Infrastructure\ProbingSystemHealth'
@@ -473,6 +495,9 @@ when@test: &test
             public: true
         # Replaced by the delivery tests with a builder that signs with the secrets of the shared test vector.
         App\PaymentSimulator\SimulatedWebhooks:
+            public: true
+        # Public (and so never inlined), so a test can replace it with one whose write of the copy fails.
+        App\Shared\Infrastructure\Messaging\KeepFailedMessageListener:
             public: true
         # The HTTP client of the Sentry SDK in the tests (config/packages/sentry.yaml): keeps what would be sent.
         App\Tests\Functional\Shared\Sentry\RecordingSentryHttpClient:

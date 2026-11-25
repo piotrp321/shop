@@ -83,9 +83,10 @@ Przyjęte przez użytkownika 2026-11-13 (rekomendacje z przygotowania epiku):
   z `apps/api/fixtures/images`.
 - **P7. Okres historii zamówień.** 3 lata przed chwilą odniesienia, z rosnącym ruchem i sezonowością.
 - **P8. Bez danych „w toku”.** Generator nie tworzy zamówień nieopłaconych (`new`) ani aktywnych promocji: zamówienie
-  `new` wygasa tylko przez zaplanowaną wiadomość `ExpireUnpaidOrder`, a koniec promocji przez wiadomość granicy
-  (`docs/features/promotions/spec.md`), a generator wiadomości nie planuje. W danych są zamówienia opłacone i dalej
-  oraz anulowane, promocje zakończone; aktywne promocje i kody z seeda działają jak dziś.
+  `new` wygasa przez zaplanowaną wiadomość `ExpireUnpaidOrder` (bez niej dopiero przez siatkę bezpieczeństwa
+  `ordering:expire-overdue`, CronJob `order-expiry` w klastrze, `docs/features/async-reliability/spec.md`, W5), a koniec
+  promocji przez wiadomość granicy (`docs/features/promotions/spec.md`), a generator wiadomości nie planuje. W danych
+  są zamówienia opłacone i dalej oraz anulowane, promocje zakończone; aktywne promocje i kody z seeda działają jak dziś.
 - **Zgłoszenie sekretu.** Rozdzielenie sekretu administratora Keycloaka od sekretu aplikacji: #485.
 - **P9. Konta w Keycloak zostają w tym epiku.** Recenzja architektury proponowała rezygnację, bo w tym epiku kont nic
   nie czyta (API bierze tożsamość z tokenu, zamówienia mają kopię danych klienta, k6 się nie loguje); konta zostają,
@@ -289,8 +290,10 @@ Krok 6 to SQL po załadowaniu zamówień (`INSERT … SELECT` z sumami narastaj�
 - opublikowany produkt nie ma wariantu albo wariant nie ma ceny lub rekordu stanu;
 - `reserved` wariantu różni się od sumy aktywnych linii rezerwacji, ostatni ruch wariantu nie zgadza się ze stanem
   albo zamówienie `paid` nie ma aktywnej rezerwacji;
-- suma linii zamówienia minus rabat różni się od sumy zamówienia, opłacone zamówienie nie ma płatności z tą kwotą
-  albo zamówienie z kodem nie ma użycia kodu;
+- suma linii zamówienia minus rabat plus koszt dostawy (`delivery_gross`) różni się od sumy zamówienia, sumy netto,
+  VAT i brutto linii z `delivery_net`, `delivery_vat` i `delivery_gross` różnią się od sum zamówienia, opłacone
+  zamówienie nie ma płatności z tą kwotą albo zamówienie z kodem nie ma użycia kodu (wygenerowane zamówienia nie mają
+  metody dostawy, ich dostawa to 0);
 - cena jednostkowa linii różni się od ceny skutecznej wariantu w chwili złożenia albo linia w okresie promocji nie ma
   jej kopii;
 - zamówienie klienta wskazuje klienta spoza wygenerowanych kont;
@@ -404,7 +407,8 @@ Opis szczegółowy: `docs/features/search/spec.md`.
 
 ### Testy i lokalnie
 
-- Testy API (`make -C apps/api test`, w CI w częściach `checks part api integration` i `checks part api functional`) uruchamiają kroki `demo-data:*` z profilem `small`
+- Testy API (`make -C apps/api test`; testy integracyjne generatora to suity `demo-data` i `demo-data-orders` (testy zamówień),
+  w CI w częściach `checks part api demo data` i `checks part api demo data orders`, testy funkcjonalne w części `checks part api functional`) uruchamiają kroki `demo-data:*` z profilem `small`
   osobno, na bazie `shop_test`, bez `bin/seed-demo` i bez czyszczenia cache sklepu (worker i Varnish nie obsługują
   `shop_test`): w procesie testu, w transakcji testu, a test determinizmu przy innej liczbie procesów w osobnej grupie
   z czyszczeniem tabel po sobie. Krok kont w testach pracuje na tymczasowych realmach zakładanych i usuwanych przez

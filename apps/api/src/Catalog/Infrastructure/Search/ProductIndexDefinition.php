@@ -20,8 +20,20 @@ final readonly class ProductIndexDefinition
     private const string POLISH_TEXT = 'polish_text';
     private const string FOLDED_TEXT = 'folded_text';
 
+    /**
+     * @param int $shards   the primary shards of a new index, from SEARCH_SHARDS; an index that exists keeps its own
+     * @param int $replicas the replicas of every shard
+     */
     public function __construct(private int $shards, private int $replicas)
     {
+        if ($shards < 1) {
+            // The container refuses an empty or non-numeric SEARCH_SHARDS itself; 0 and less would reach Elasticsearch,
+            // whose refusal does not name the variable.
+            throw new \InvalidArgumentException(\sprintf('SEARCH_SHARDS must be a whole number of at least 1, got %d.', $shards));
+        }
+        if ($replicas < 0) {
+            throw new \InvalidArgumentException(\sprintf('The number of replicas of the search index must not be negative, got %d.', $replicas));
+        }
     }
 
     public function hash(): string

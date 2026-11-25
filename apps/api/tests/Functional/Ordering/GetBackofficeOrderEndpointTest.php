@@ -69,6 +69,24 @@ final class GetBackofficeOrderEndpointTest extends WebTestCase
         self::assertSame('kc-anna', $order['customerId']);
     }
 
+    public function testAnOrderWithADeliveryHasItsMethodAndCostAndOneWithoutHasNone(): void
+    {
+        $withDelivery = OrderingFixture::order($this->connection, deliveryGross: 1_999);
+        $without = OrderingFixture::order($this->connection);
+
+        $order = $this->getJson($this->path($withDelivery), self::staff(['admin']));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertMatchesSchema('BackofficeOrder', $order);
+        self::assertSame(['methodName' => 'Kurier testowy', 'gross' => 1_999], $order['delivery']);
+        self::assertSame(['net' => 1_000 + 1_625, 'vat' => 230 + 374, 'gross' => 1_230 + 1_999, 'currency' => 'PLN'], $order['totals']);
+
+        $order = $this->getJson($this->path($without), self::staff(['admin']));
+        self::assertMatchesSchema('BackofficeOrder', $order);
+        self::assertArrayHasKey('delivery', $order);
+        self::assertNull($order['delivery']);
+    }
+
     public function testAnIdInUpperCaseIsTheSameOrder(): void
     {
         [$orderId] = $this->paidOrder();

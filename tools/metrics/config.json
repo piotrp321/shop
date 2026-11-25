@@ -39,7 +39,8 @@
     ],
     "ci_watch": [
       "\\bgh\\s+pr\\s+checks\\b[^|;&>]*--watch[^|;&>]*",
-      "\\bgh\\s+run\\s+watch\\b[^|;&>]*"
+      "\\bgh\\s+run\\s+watch\\b[^|;&>]*",
+      "\\bci-wait\\.sh\\b[^|;&>]*"
     ]
   },
   "code_change_tools": ["Edit", "Write", "NotebookEdit"],
@@ -85,6 +86,22 @@
   "regression_window_days": 14,
   "ci_workflow": "ci.yml",
   "ci_jobs": ["checks", "e2e"],
+  "ci_time": {
+    "full_step": "make e2e",
+    "inactive_step": "Nothing to run in this part for the scope of the change",
+    "e2e_job_prefix": "e2e shard",
+    "base_branch": "main",
+    "aggregate_jobs": ["scope", "checks", "e2e"],
+    "baseline_runs": 5,
+    "min_baseline_runs": 3,
+    "recent_runs": 3,
+    "scan_limit": 15,
+    "run_min_s": 180,
+    "run_min_pct": 20,
+    "job_min_s": 240,
+    "job_min_pct": 30,
+    "e2e_spread_s": 240
+  },
   "trend_last": 10,
   "weekly_window_label": "Weekly \u00b7 all models",
   "pricing": {

@@ -58,7 +58,7 @@ trait BackofficeOrderEndpointTestTrait
     {
         [$variant] = OrderingFixture::variant($this->connection, 10_000, 5);
         $cart = CartFixture::cart($this->connection, expiresAt: '+3 days', lines: [[$variant, 2]]);
-        $placed = $this->dispatch(new PlaceOrder(CartReference::guest($cart), $email, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', 2 * 12_300, 'key-'.$cart));
+        $placed = $this->dispatch(new PlaceOrder(CartReference::guest($cart), $email, 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', OrderingFixture::freeDeliveryMethod($this->connection), 2 * 12_300, OrderingFixture::expectedOfCart($this->connection, $cart), 'key-'.$cart));
         self::assertInstanceOf(PlacedOrder::class, $placed);
         $this->dispatch(new MarkOrderPaid($placed->order->orderId, Uuid::v7()->toRfc4122(), 2 * 12_300, 'PLN', new \DateTimeImmutable()));
         $this->entityManager->clear();
@@ -92,11 +92,31 @@ trait BackofficeOrderEndpointTestTrait
      */
     private function postJson(string $path, array|string $body, ?string $token, string $contentType = 'application/json'): array
     {
+        return $this->sendJson('POST', $path, $body, $token, $contentType);
+    }
+
+    /**
+     * @param array<mixed>|string $body an array is sent as JSON, a string as it is
+     *
+     * @return array<mixed>
+     */
+    private function putJson(string $path, array|string $body, ?string $token, string $contentType = 'application/json'): array
+    {
+        return $this->sendJson('PUT', $path, $body, $token, $contentType);
+    }
+
+    /**
+     * @param array<mixed>|string $body
+     *
+     * @return array<mixed>
+     */
+    private function sendJson(string $method, string $path, array|string $body, ?string $token, string $contentType): array
+    {
         $server = ['CONTENT_TYPE' => $contentType];
         if (null !== $token) {
             $server['HTTP_AUTHORIZATION'] = 'Bearer '.$token;
         }
-        $this->client->request('POST', $path, server: $server, content: \is_array($body) ? json_encode($body, \JSON_THROW_ON_ERROR) : $body);
+        $this->client->request($method, $path, server: $server, content: \is_array($body) ? json_encode($body, \JSON_THROW_ON_ERROR) : $body);
         $this->entityManager->clear();
 
         return $this->decoded();

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Cart;
 
+use App\Cart\Application\Port\CartDeliveryOption;
+use App\Cart\Application\Port\CartDeliveryQuote;
 use App\Cart\Application\Port\CartPrice;
 use App\Cart\Application\Port\CartQuoteLine;
 use App\Cart\Application\Port\CartQuoteResult;
@@ -21,6 +23,7 @@ use App\Cart\Domain\StockLevel;
 use App\Cart\Domain\VariantId;
 use App\Cart\Domain\VariantPromotion;
 use App\Cart\Infrastructure\Catalog\QueryBusProductCatalog;
+use App\Cart\Infrastructure\Delivery\QueryBusCartDelivery;
 use App\Cart\Infrastructure\Inventory\QueryBusStockAvailability;
 use App\Cart\Infrastructure\Pricing\QueryBusCartPrices;
 use App\Cart\Infrastructure\Pricing\QueryBusCartQuote;
@@ -35,6 +38,7 @@ use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Inventory\StockFixture;
 use App\Tests\Support\StatementCounter;
+use Doctrine\DBAL\ParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -195,6 +199,23 @@ final class QueryBusAdaptersTest extends KernelTestCase
             new VariantAvailability(VariantId::fromString($none), 0, StockLevel::OutOfStock),
             new VariantAvailability(VariantId::fromString($unknown), 0, StockLevel::OutOfStock),
         ], $levels);
+    }
+
+    public function testDeliveryGivesTheActiveOptionsPricedForTheGoodsWithoutTheTrackingTemplate(): void
+    {
+        $connection = $this->entityManager->getConnection();
+        $connection->executeStatement('DELETE FROM delivery_method');
+        $insert = 'INSERT INTO delivery_method (id, name, description, price_gross, free_from_gross, active, position, tracking_url_template, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)';
+        $kurier = (string) Uuid::v7();
+        $connection->executeStatement($insert, [$kurier, 'Kurier', 'W 2 dni', 1_999, 29_900, true, 10, 'https://sledzenie.example.com/{numer}'], [5 => ParameterType::BOOLEAN]);
+        $connection->executeStatement($insert, [(string) Uuid::v7(), 'Wyłączona', '', 500, null, false, 5, null], [5 => ParameterType::BOOLEAN]);
+
+        $delivery = new QueryBusCartDelivery($this->queryBus);
+
+        self::assertEquals(new CartDeliveryQuote(1_999, 19_900, [new CartDeliveryOption($kurier, 'Kurier', 'W 2 dni', 1_999, 29_900, 19_900)]), $delivery->quote(10_000));
+        self::assertEquals(new CartDeliveryQuote(0, null, [new CartDeliveryOption($kurier, 'Kurier', 'W 2 dni', 0, 29_900, null)]), $delivery->quote(29_900));
+        $connection->executeStatement('DELETE FROM delivery_method');
+        self::assertEquals(new CartDeliveryQuote(null, null, []), $delivery->quote(10_000));
     }
 
     public function testNoIdAsksNoQuery(): void

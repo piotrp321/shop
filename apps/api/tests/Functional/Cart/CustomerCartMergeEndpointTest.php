@@ -120,7 +120,7 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
     {
         $token = TestTokenFactory::customer();
         $variant = $this->variant();
-        $empty = ['cart' => ['id' => null, 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null], 'result' => 'nothing_to_merge', 'truncated' => false];
+        $empty = ['cart' => ['id' => null, 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null, 'delivery' => null], 'result' => 'nothing_to_merge', 'truncated' => false];
         $expired = CartFixture::cart($this->connection, expiresAt: '-1 second', lines: [[$variant, 1]]);
         $other = CartFixture::cart($this->connection, customerId: 'another-customer', lines: [[$variant, 1]]);
 
@@ -185,7 +185,7 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
 
         $problem = $this->request('POST', self::PATH, json_encode(['guestCartId' => $guest], \JSON_THROW_ON_ERROR), 'staff' === $token ? TestTokenFactory::staff(['admin']) : $token);
 
-        $this->assertProblem(401, 'Authentication is required.', $problem);
+        $this->assertProblem(401, 'Wymagane jest uwierzytelnienie.', $problem);
         self::assertSame('Bearer', $this->response()->headers->get('WWW-Authenticate'));
         self::assertSame(1, $this->connection->fetchOne("SELECT COUNT(*) FROM cart_cart WHERE id = ? AND status = 'open'", [$guest]));
     }

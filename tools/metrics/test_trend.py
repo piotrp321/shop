@@ -228,6 +228,8 @@ class RegressionWindowTest(TrendEnv):
         return record
 
     def gh(self, **kwargs):
+        # a finished green CI run of the merge commit unless the test says otherwise: without one the value is unknown
+        kwargs.setdefault('runs', {self.SHA: [{'conclusion': 'success', 'status': 'completed', 'event': 'push'}]})
         return FakeGh(prs={7: merged_pr('2026-11-10T10:00:00Z', sha=self.SHA)}, **kwargs)
 
     def stored_record(self):
@@ -242,6 +244,19 @@ class RegressionWindowTest(TrendEnv):
         self.assertEqual(self.stored_record()['regressions']['ci_red'], 1)
         self.assertEqual(table['recomputed'], ['a'])
         self.assertTrue(self.stored_record()['regressions']['open'])
+
+    def test_a_ci_run_in_progress_leaves_the_window_open_and_the_next_trend_settles_it(self):
+        self.stored()
+        late = self.now + 30 * 86400
+        self.table(runner=self.gh(runs={self.SHA: [{'conclusion': '', 'status': 'in_progress', 'event': 'push'}]}),
+                   now=late)
+        stored = self.stored_record()['regressions']
+        self.assertEqual((stored['ci_red'], stored['open'], stored['complete']), (None, True, False))
+        table = self.table(runner=self.gh(runs={self.SHA: [{'conclusion': 'failure', 'status': 'completed',
+                                                           'event': 'push'}]}), now=late)
+        stored = self.stored_record()['regressions']
+        self.assertEqual((stored['ci_red'], stored['open'], stored['complete']), (1, False, True))
+        self.assertEqual(table['recomputed'], ['a'])
 
     def test_a_closed_window_is_not_recomputed(self):
         record = self.stored()

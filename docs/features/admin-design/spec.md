@@ -195,13 +195,14 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
   | Sklep | Katalog | Produkty (Lista produktów `/products`, Dodaj produkt `/products/new`), Ceny `/prices`, Stany magazynowe `/inventory` | wszyscy; „Dodaj produkt” tylko `admin` i `marketing` |
   | Sklep | Zamówienia | Lista zamówień `/orders` (`admin`, `support`, `warehouse`), Zwroty do wykonania `/orders?refund=pending` (`admin`, `support`: tylko oni wykonują zwroty) | `admin`, `support`, `warehouse` |
   | Sklep | Klienci `/customers` | — | `admin`, `support` |
+  | Sklep | Dostawa `/delivery` | — | `admin` |
   | Marketing | Promocje `/promotions`, Kody rabatowe `/discount-codes` | — | wszyscy |
   | System | Stan systemu `/system` | — | `admin` |
 
   Grupa (Katalog, Zamówienia, Produkty) to przycisk z `aria-expanded` i strzałką; grupa z bieżącą trasą jest rozwinięta
   przy wejściu i przy każdej zmianie trasy (zamyka ją tylko jej przycisk). Bieżąca pozycja ma `aria-current="page"` i tylko ona jest wyróżniona: „Pulpit” jest aktywny wyłącznie
   na `/` (#251 F15). Formularze i szczegóły podświetlają pozycję listy (`/products/:id` → „Lista produktów”,
-  `/orders/:id` → „Lista zamówień”, `/promotions/:id` → „Promocje”, `/customers/:id` → „Klienci”); `/orders?refund=pending` podświetla „Zwroty do
+  `/orders/:id` → „Lista zamówień”, `/promotions/:id` → „Promocje”, `/customers/:id` → „Klienci”, `/delivery/new` i `/delivery/:id` → „Dostawa”); `/orders?refund=pending` podświetla „Zwroty do
   wykonania”, a nie „Lista zamówień” (rola bez tej pozycji ma podświetloną „Listę zamówień”). Pozycje do czasu wczytania `/me` wymagające roli są ukryte.
 - **Topbar**: na początku przycisk „Menu” (tylko poniżej 1024 px, otwiera szufladę); pole „Szukaj produktu…”
   (`role="search"`, `searchbox` z etykietą). Enter z frazą, która po przycięciu ma 2–100 znaków (punkty kodowe, jak
@@ -369,7 +370,10 @@ do adresu trafia dopiero zastosowana fraza.
   (publikacja, wycofanie, zakończenie, usunięcie) są w karcie bocznej „Status”, nie w pasku.
 - **Po zapisie**: toast („Produkt zapisany.”, „Promocja zapisana.”, „Kod rabatowy zapisany.”), pasek znika, a fokus
   przechodzi na H1 formularza (`tabindex="-1"`), bo przycisk „Zapisz” zniknął razem z paskiem. Wyjątek (#250 F16):
-  gdy w trakcie żądania pracownik przeniósł fokus do pola, fokus zostaje w tym polu. Po nieudanym zapisie fokus trafia
+  gdy w trakcie żądania pracownik przeniósł fokus do pola, fokus zostaje w tym polu. Wyjątek nie dotyczy zapisu żadnego
+  z formularzy (produkt, promocja, kod rabatowy, metoda dostawy) ani publikacji i wycofania produktu: w ich trakcie pola
+  są wyłączone, więc fokus nie jest w polu (wyjątek zostaje dla akcji, które pól nie wyłączają: „Zakończ teraz” i „Usuń”
+  promocji w karcie „Status”). Po nieudanym zapisie fokus trafia
   na pierwsze pole z błędem albo komunikat formularza, a komunikat jest przewinięty do widoku (#304 F3).
 - **Strażnik niezapisanych zmian** we wszystkich trzech formularzach (produkt, promocja, kod rabatowy), jeden composable `useUnsavedChangesGuard` (globalny `router.beforeEach`) z oknem
   `UnsavedChangesDialog`: przejście na inną trasę panelu z niezapisanymi zmianami otwiera okno „Masz niezapisane
@@ -436,10 +440,14 @@ błędu z czasem pokazanych danych; dotyczy kafli katalogu i „Ostatnich zamów
   - „Kody rabatowe” → `/discount-codes?status=active` (`admin`, `marketing`).
   Każda rola widzi co najmniej jeden wiersz, a rola z kilku widzi każdy raz. Do czasu wczytania `/me` karty nie ma;
   do czasu wczytania pulpitu (i po błędzie jego pobrania) wiersze ról pokazują się bez liczb.
-- **„Ostatnie zamówienia”** (role `admin`, `support`, `warehouse`): tabela pięciu najnowszych (numer jako link, klient,
-  data, pozycje `itemCount`, kwota, status) i link „Wszystkie zamówienia →”. Błąd tej karty nie psuje reszty pulpitu
-  (komunikat w karcie z „Spróbuj ponownie”, a 403 bez ponowienia; nieudane odświeżenie zostawia pokazane zamówienia
-  i podaje czas ich pobrania).
+- **„Ostatnie zamówienia”** (role `admin`, `support`, `warehouse`): tabela pięciu najnowszych i link „Wszystkie zamówienia →”.
+  Kolumny: numer (link), klient, pozycje (`itemCount`), kwota, status. Data zamówienia jest drugą linią komórki
+  „Klient”. „Pozycje” są kolumną tylko w karcie szerokiej na co najmniej 40 rem (container query na szerokości karty,
+  nie okna: karta ma 2/3 albo całą szerokość pulpitu), węższa pokazuje liczbę pozycji jako trzecią linię komórki
+  „Klient”. Tabela mieści się w karcie przy 1280 i 1440 px; gdy region mimo to się przewija (telefon), ma cień przy
+  krawędzi, za którą jest dalszy ciąg, jak `DataTable` (wspólny kod `useScrollEdges` i `ScrollEdgeShadows`).
+  Błąd tej karty nie psuje reszty pulpitu (komunikat w karcie z „Spróbuj ponownie”, a 403 bez ponowienia;
+  nieudane odświeżenie zostawia pokazane zamówienia i podaje czas ich pobrania).
 - Komunikat „Nie masz dostępu do tej strony.” po przekierowaniu ze strażnika (sekcja „Powłoka”).
 
 **Stan systemu** (`/system`, H1 „Stan systemu”, tylko `admin`, pozycja menu w sekcji System): dzisiejsza zawartość
@@ -476,6 +484,10 @@ o stanie systemu. Ten ekran jest dla administratorów.”.
   „Zdjęcia”, „Warianty”. Kolumna boczna: „Status” (etykieta, „Opublikuj” albo „Wycofaj z publikacji”, wyłączone przy
   niezapisanych zmianach z widocznym powodem „Najpierw zapisz zmiany.”; karta tylko dla zapisanego produktu),
   „Organizacja” (kategoria główna i dodatkowe).
+  Na czas zapisu, publikacji, wycofania i odczytu stanu z serwera („Sprawdź stan”, „Odrzuć moje zmiany i pokaż stan z serwera”, „Spróbuj ponownie”) pola,
+  wybór kategorii, edytor wariantów i zdjęcia (opis, kolejność, usuwanie, dodawanie plików) są wyłączone; karta „Ceny
+  i stany” nie, bo ma własne żądania i nie należy do szkicu. Szkic zmienia tylko pracownik: 409 wersji zostawia go
+  i nie czyta produktu sam, brak odpowiedzi przez 10 s, błąd sieci i 5xx to nieznany wynik zapisu (`FormSafetyNotices`).
   Zachowanie zapisu, błędów 409/422 i ról opisuje kod: `apps/admin/src/products/useProductForm.ts` i `permissions.ts`.
 - **Zdjęcia**: po usunięciu zdjęcia fokus przechodzi na przycisk usuwania zdjęcia, które zajęło jego miejsce, a bez
   następnego na „Dodaj zdjęcia”; po ukryciu wyniku wysyłania („Ukryj: <plik>”) na następny wynik albo „Dodaj zdjęcia”,

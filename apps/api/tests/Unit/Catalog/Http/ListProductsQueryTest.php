@@ -25,9 +25,9 @@ final class ListProductsQueryTest extends TestCase
             priceMax: '999999999999',
             available: 'true',
             sort: 'price_desc',
-            page: 1,
-            perPage: 48,
         );
+        $query->page = 1;
+        $query->perPage = 48;
 
         self::assertSame([], $this->paths($query));
     }
@@ -70,9 +70,9 @@ final class ListProductsQueryTest extends TestCase
         yield 'sort is unknown' => [new ListProductsQuery(sort: 'popular'), 'sort'];
         yield 'sort is empty' => [new ListProductsQuery(sort: ''), 'sort'];
         yield 'relevance without a phrase' => [new ListProductsQuery(sort: 'relevance'), 'sort'];
-        yield 'page is zero' => [new ListProductsQuery(page: 0), 'page'];
-        yield 'perPage is zero' => [new ListProductsQuery(perPage: 0), 'perPage'];
-        yield 'perPage over the maximum' => [new ListProductsQuery(perPage: 49), 'perPage'];
+        yield 'page is zero' => [self::paged(0, 24), 'page'];
+        yield 'perPage is zero' => [self::paged(1, 0), 'perPage'];
+        yield 'perPage over the maximum' => [self::paged(1, 49), 'perPage'];
     }
 
     #[DataProvider('invalidQueries')]
@@ -95,6 +95,15 @@ final class ListProductsQueryTest extends TestCase
     {
         self::assertSame('buty', (new ListProductsQuery(q: '  buty '))->phrase());
         self::assertNull((new ListProductsQuery())->phrase());
+    }
+
+    private static function paged(int $page, int $perPage): ListProductsQuery
+    {
+        $query = new ListProductsQuery();
+        $query->page = $page;
+        $query->perPage = $perPage;
+
+        return $query;
     }
 
     /**

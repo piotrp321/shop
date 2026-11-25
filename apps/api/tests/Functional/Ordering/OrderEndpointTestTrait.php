@@ -9,14 +9,18 @@ use App\Tests\Integration\Ordering\OrderingFixture;
 
 /**
  * What the tests of the order endpoints share, on top of the cart helpers (client, variants with a price and a stock,
- * problem, violation, `Cache-Control` and schema checks): a placement with its `Idempotency-Key`, a valid body, and
- * the rows an order leaves. On shop_test, rolled back after each test.
+ * problem, violation, `Cache-Control` and schema checks): a placement with its `Idempotency-Key`, a valid body (with
+ * the free delivery method FREE_DELIVERY, so the totals are those of the goods), and the rows an order leaves. On
+ * shop_test, rolled back after each test.
  */
 trait OrderEndpointTestTrait
 {
     use CartEndpointTestTrait;
 
     private const string KEY = 'checkout-0192f0c4-7c1a-7c4e-9a6e-000000000001';
+
+    /** An active delivery method that costs nothing, created by place() (docs/features/delivery/spec.md, W5). */
+    private const string FREE_DELIVERY = OrderingFixture::FREE_DELIVERY_METHOD;
 
     /** What the order of a valid body keeps of the contact and the address (trimmed, the phone as +48 and 9 digits). */
     private const array CONTACT = [
@@ -27,7 +31,8 @@ trait OrderEndpointTestTrait
 
     /**
      * POST of an order. An array body is sent as JSON (a float keeps its fraction: 2.0 stays 2.0), a string as it is;
-     * a null key sends no header.
+     * a null key sends no header. The delivery method FREE_DELIVERY of details() exists from the first placement of a
+     * test on.
      *
      * @param array<mixed>|string $body
      *
@@ -35,6 +40,7 @@ trait OrderEndpointTestTrait
      */
     private function place(string $path, array|string $body, ?string $key = self::KEY, ?string $token = null, string $contentType = 'application/json'): array
     {
+        OrderingFixture::freeDeliveryMethod($this->connection);
         $server = ['CONTENT_TYPE' => $contentType];
         if (null !== $key) {
             $server['HTTP_IDEMPOTENCY_KEY'] = $key;
@@ -54,11 +60,14 @@ trait OrderEndpointTestTrait
 
     /**
      * The fields of the contact and the address of a valid body, as a customer sends them (with spaces to trim and
-     * a phone with separators), with the given expected total.
+     * a phone with separators), with the given expected total, the free delivery method and the lines the checkout
+     * showed (spec cart-order-consistency, Z1).
+     *
+     * @param list<array{string, int}> $expectedLines variant id and quantity, as CartFixture takes the lines of a cart
      *
      * @return array<string, mixed>
      */
-    private static function details(int $expectedTotalGross): array
+    private static function details(int $expectedTotalGross, array $expectedLines): array
     {
         return [
             'fullName' => '  Anna Nowak ',
@@ -67,6 +76,8 @@ trait OrderEndpointTestTrait
             'postalCode' => '00-950',
             'city' => 'Warszawa ',
             'expectedTotalGross' => $expectedTotalGross,
+            'deliveryMethodId' => self::FREE_DELIVERY,
+            'expectedLines' => OrderingFixture::expected($expectedLines),
         ];
     }
 

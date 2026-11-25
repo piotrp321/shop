@@ -41,9 +41,11 @@ a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie k
 - Odczyt cen (`GetCurrentPrices`) czyta wyłącznie tabele Pricing (ceny, promocje, historia), bez odczytu z Catalog.
 - Każdy zapis zmiany ceny (panel, seed, `pricing:reconcile-tax`, przeliczenie po zmianie klasy) publikuje `VariantPriceChanged {variantId, source,
   occurredAt}`: `DoctrineVariantPriceRepository::save` wpisuje je do outboxu w transakcji zapisu ceny i historii, więc
-  zapis odrzucony albo wycofany nie zostawia zdarzenia. Jedyny konsument (`Pricing_Infrastructure`) unieważnia cache
-  sklepu produktu wariantu (`docs/features/product-page/spec.md`, „Unieważnianie”); zdarzenie ze źródła `seed`
-  potwierdza bez unieważnienia.
+  zapis odrzucony albo wycofany nie zostawia zdarzenia. Konsumenci (`Pricing_Infrastructure`, transport `events`)
+  reindeksują produkt wariantu (`ReindexProductOnPriceChange`) i unieważniają jego cache sklepu
+  (`InvalidateStorefrontOnPriceChange`, `docs/features/product-page/spec.md`, „Unieważnianie”); zdarzenia ze źródeł `seed`
+  i `tax_reconciliation` (brutto, historia i oferta się nie zmieniają, a cache i indeks nie zawierają stawki ani netto)
+  potwierdza bez unieważnienia i bez reindeksacji.
 - Granice okresów promocji publikują `PromotionPricesChanged {productId, source, occurredAt}`, jedno na produkt
   promocji (niżej, „Granice promocji”). Konsumenci w `Pricing_Infrastructure` (transport `events`):
   `ReindexProductOnPromotionChange` (reindeksacja produktu) i `InvalidateStorefrontOnPromotionChange` (unieważnienie
@@ -263,6 +265,24 @@ Reguły i decyzje: `docs/features/discount-codes/spec.md` („Wycena koszyka i r
   percentOff} | null, grossBeforeDiscount, discountGross, net, vat, gross}`. `rejection.code` to tekst po przycięciu
   i zamianie liter ASCII na wielkie (bajty spoza UTF-8 zastąpione), `type` i `detail` z `DiscountCodeRejection`.
   Wołający: Cart (`QueryBusCartQuote`, widok koszyka).
+
+## Podział kosztu dostawy na stawki VAT
+
+Reguła i decyzje: `docs/features/delivery/spec.md` (W3, P4, A3). Brutto dostawy dzieli się proporcjonalnie do brutto
+towarów zamówienia po rabatach w poszczególnych stawkach VAT, a każdy udział dostaje stawkę swoich towarów.
+
+- `DeliveryCostSplit::of(cost, goodsByRate)` (`Pricing\Domain\Basket`, czysta funkcja): `goodsByRate` to stawka
+  w punktach bazowych → brutto towarów po rabacie (≥ 0, suma > 0), koszt od 0 do `PriceBreakdown::MAX_LINE_GROSS`.
+  Stawki malejąco; koszt rozkłada `BasketQuote::allocate(wartości, Σ wartości, koszt)` (ta sama metoda największych
+  reszt co rabat, poprawna także dla kosztu ≥ Σ wartości), więc udziały sumują się do kosztu, a remis reszt daje grosz
+  wyższej stawce. Netto i VAT udziału z `PriceBreakdown::ofLineGross` (netto `HALF_UP`, VAT = brutto − netto). Wynik:
+  lista `LineBreakdown` udziałów większych od 0, stawkami malejąco; grupa o wartości 0 nie ma udziału, koszt 0 (darmowa
+  dostawa) daje pustą listę. Pusta mapa, suma wartości 0, wartość albo koszt poza zakresem i stawka poza 0–10000 punktów
+  bazowych: `InvalidArgumentException`.
+- `SplitDeliveryCost(costGross, goodsByRate)` (`query.bus`): wynik `DeliveryCostShares {shares: [{rateBp, gross, net,
+  vat}]}` z `DeliveryCostSplit`. Błędne dane to błąd wołającego (`InvalidArgumentException`, nie `InvalidInput`):
+  zamówienie ma zawsze towary za co najmniej 1 grosz. Wołający: Ordering przy złożeniu zamówienia z dostawą
+  (`docs/features/delivery/spec.md`, W5).
 
 ## Persystencja i transakcje
 
@@ -592,6 +612,10 @@ z tokenem realmu `shop`: 401):
   maksymalny koszyk 50 × 99 × `GrossPrice::MAX` przy 90% liczony dokładnie, kopia promocji, każde odrzucenie, Q7),
   `QuoteBasketHandlerTest` (kod po tekście znormalizowanym, użycia tylko dla kodu z limitem, kod pusty, zły format,
   bajty spoza UTF-8, 65 znaków, granice linii).
+- Podział kosztu dostawy (TDD): `DeliveryCostSplitTest` (przykład z W3 specyfikacji dostawy, jedna stawka, grupa 0,
+  koszt 0, koszt większy niż towary, remis reszt na korzyść wyższej stawki, kolejność stawek niezależna od mapy,
+  maksymalne wartości, losowe dane: Σ udziałów = koszt, netto + VAT = brutto, każdy udział > 0; odrzucone dane;
+  `allocate` dla kosztu ≥ sumy), `SplitDeliveryCostHandlerTest`.
 - Vitest: sklep – `formatPrice` (kafelek z ofertą opisuje `docs/features/cart/spec.md`); panel – zamiana kwoty
   na grosze, widok cen (wiersz na wariant, kolumna „Wariant”, akcje na wierszu wariantu, 403, 409, pusty wynik),
   historia.

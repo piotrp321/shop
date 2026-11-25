@@ -1,7 +1,8 @@
-import { Activity, LayoutDashboard, Package, Percent, ShoppingCart, Ticket, Users } from "lucide-vue-next";
+import { Activity, LayoutDashboard, Package, Percent, ShoppingCart, Ticket, Truck, Users } from "lucide-vue-next";
 import type { Component } from "vue";
 import type { RouteLocationNormalizedLoaded, RouteLocationRaw } from "vue-router";
 import { canViewSystem } from "@/dashboard/permissions";
+import { canManageDelivery } from "@/delivery/permissions";
 import { canViewCustomers } from "@/customers/permissions";
 import { canCompleteRefunds, canViewOrders } from "@/orders/permissions";
 import { canManageProducts } from "@/products/permissions";
@@ -101,6 +102,15 @@ export const MENU: MenuSection[] = [
         ],
       },
       { kind: "leaf", id: "customers", label: "Klienci", to: { name: "customers" }, icon: Users, matches: named("customers", "customer"), visible: canViewCustomers },
+      {
+        kind: "leaf",
+        id: "delivery",
+        label: "Dostawa",
+        to: { name: "delivery" },
+        icon: Truck,
+        matches: named("delivery", "delivery-method-new", "delivery-method"),
+        visible: canManageDelivery,
+      },
     ],
   },
   {

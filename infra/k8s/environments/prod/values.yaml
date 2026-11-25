@@ -78,14 +78,15 @@ backup:
   secretName: shop-backup
 
 # The demo data in scale on the server (docs/features/demo-scale/spec.md, "Job generatora na serwerze (chart)"): the suspended CronJob
-# demo-data, whose Job only make -C infra/k8s generate creates (after the consent of the owner). First medium, then server after the
-# analysis of medium and another consent (U2): changing the profile is a PR with this value and a deployment. The anchor stays the same,
-# so that generating again gives the same data. The Secret of the photo pool exists only for a run (make generate creates and deletes
-# it). The guard stops the generator at 32 GB free (just above the alert NodeDiskFull and the watermarks of Elasticsearch). The time
-# limits: medium 6 h, server 24 h (U6); both are estimates, not measurements on this server.
+# demo-data, whose Job only make -C infra/k8s generate creates (after the consent of the owner). The profile is server, the second step
+# after the run of medium and its analysis (U2); every run needs its own consent, and going back to medium is a PR with this value and a
+# deployment. The anchor stays the same, so that generating again gives the same data. The Secret of the photo pool exists only for a
+# run (make generate creates and deletes it). The guard stops the generator at 32 GB free (just above the alert NodeDiskFull and the
+# watermarks of Elasticsearch). The time limits: medium 6 h (its Job took 67 minutes on this server), server 24 h (U6; an estimate
+# from that run, not a measurement).
 demoData:
   enabled: true
-  profile: medium
+  profile: server
   anchor: "2026-11-19T00:00:00Z"
   photosSecretName: demo-photos
   minFreeGb: 32
@@ -100,6 +101,9 @@ alerts:
 
 elasticsearch:
   javaOpts: -Xms2g -Xmx2g
+  # Four threads for a listing of a wide result set (docs/features/search/spec.md, "Infrastruktura"); the index of the cluster
+  # gets them with make -C infra/k8s reindex.
+  shards: 4
 
 keycloak:
   javaHeap: -Xms512m -Xmx1g
@@ -115,7 +119,9 @@ resources:
   keycloak: { requests: { cpu: 500m, memory: 1536Mi }, limits: { memory: 2Gi } }
   mailpit: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 256Mi } }
   api: { requests: { cpu: "1", memory: 512Mi }, limits: { memory: 2Gi } }
-  worker: { requests: { cpu: 500m, memory: 512Mi }, limits: { memory: 1Gi } }
+  # Together as much as the one worker before: 500m, 512Mi of requests, 1Gi of limits.
+  worker: { requests: { cpu: 300m, memory: 320Mi }, limits: { memory: 640Mi } }
+  workerCommands: { requests: { cpu: 200m, memory: 192Mi }, limits: { memory: 384Mi } }
   # ephemeral-storage guards the disk of the node against writes to the writable layer (the ISR cache stays in memory);
   # over the limit the pod is evicted (small-fixes spec, D4).
   store: { requests: { cpu: 500m, memory: 512Mi, ephemeral-storage: 256Mi }, limits: { memory: 1536Mi, ephemeral-storage: 2Gi } }

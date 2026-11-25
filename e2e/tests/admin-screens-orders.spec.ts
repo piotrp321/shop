@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { confirmWithNote, ensurePaidOrder, listHasRows, ORDERED_PRODUCT, placeOrderAsJan } from "../support/panel-orders";
 import { documentWidths, expectControlsReachable, expectWithinWidth, viewports, WCAG_TAGS } from "../support/panel-layout";
 import { closePanelContexts, go, inState, newPanelPage, type PanelState, signInPanelRoles, violationsOf } from "../support/panel-states";
@@ -6,13 +6,17 @@ import { closePanelContexts, go, inState, newPanelPage, type PanelState, signInP
 // The list and the detail of the orders of the panel (docs/features/admin-screens/spec.md, „Zamówienia”): the look and the
 // accessibility of the list (a table, cards on a phone), of the refunds to do and of the detail with its window of a
 // change, the number in one line (#261), the date as a line of the cell of the number, the timeline and the copying of the
-// payment id. The orders of the tests are the ones the stack has: a stack without a paid order or without a refund to do
-// gets one from the customer and the panel. The tests change nothing; the changes of an order are in order-management.spec.ts.
+// payment id, and the shipment of a shipped order (the card „Przesyłka”, the field of the number in the window of a
+// shipment, the window of the number). The orders of the tests are the ones the stack has: a stack without a paid order,
+// without a refund to do or without a shipped order with a number gets one from the customer and the panel. The tests change
+// nothing, except the two of „a change in flight” (docs/features/admin-ux-fixes/spec.md, K3): each changes the status of an
+// order it places itself; the other changes of an order are in order-management.spec.ts and delivery-tracking.spec.ts.
 
 const SEARCH = "Szukaj po numerze zamówienia lub e-mailu";
 
 let paidOrderId = "";
 let refundOrderId = "";
+let shippedOrderId = "";
 
 /** The id of the order of the first row of a list at `address`, the list being the one that has rows (the caller made sure). */
 async function firstOrderOf(page: Page, address: string): Promise<{ id: string; number: string }> {
@@ -41,6 +45,27 @@ test.beforeAll(async ({ browser }) => {
       await confirmWithNote(page, "E2E: zwrot do wykonania");
     }
     refundOrderId = (await firstOrderOf(page, "/orders?refund=pending")).id;
+
+    // A shipped order with a number: the shipment is the card „Przesyłka” and the number the window of the correction.
+    if (!(await listHasRows(page, "/orders?status=shipped"))) {
+      const number = await placeOrderAsJan(browser, ORDERED_PRODUCT);
+      await go(page, `/orders?q=${encodeURIComponent(number)}`);
+      await page.getByTestId("order-row").getByTestId("number").click();
+      await expect(page.getByRole("heading", { level: 1, name: `Zamówienie ${number}` })).toBeVisible();
+      await page.getByTestId("action-ship").click();
+      await confirmWithNote(page, "E2E: wysłane do przeglądu szczegółów");
+    }
+    shippedOrderId = (await firstOrderOf(page, "/orders?status=shipped")).id;
+    await go(page, `/orders/${shippedOrderId}`);
+    await expect(page.getByTestId("status")).toHaveText("Wysłane");
+    if ((await page.getByTestId("shipment").count()) === 0) {
+      await page.getByTestId("change-tracking-number").click();
+      const window = page.getByTestId("tracking-dialog");
+      await window.getByTestId("tracking-number-input").fill(`E2E-${Date.now()}`);
+      await window.getByTestId("tracking-submit").click();
+      await expect(window).toBeHidden();
+      await expect(page.getByTestId("shipment")).toBeVisible();
+    }
   } finally {
     await page.close();
   }
@@ -93,6 +118,28 @@ const states: PanelState[] = [
       return null;
     },
   },
+  {
+    name: "the detail of a shipped order with its shipment and the delivery",
+    role: "admin",
+    open: async (page) => {
+      await go(page, `/orders/${shippedOrderId}`);
+      await expect(page.getByTestId("shipment").getByTestId("tracking-number")).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: "the detail of a shipped order with the window of the tracking number",
+    role: "admin",
+    overlay: true,
+    open: async (page) => {
+      await go(page, `/orders/${shippedOrderId}`);
+      await expect(page.getByTestId("status")).toHaveText("Wysłane");
+      await page.getByTestId("change-tracking-number").click();
+      const dialog = page.getByTestId("tracking-dialog");
+      await expect(dialog).toBeVisible();
+      return dialog;
+    },
+  },
 ];
 
 test.describe("axe with the rules of WCAG 2.2 AA", () => {
@@ -129,6 +176,28 @@ test.describe("at 375 px", () => {
     await inState(states[2]!, viewports.phone, async (page, overlay) => {
       await expectWithinWidth(overlay!, viewports.phone.width, "the window of a change of the status");
       await expect.poll(async () => (await documentWidths(page)).scrollWidth).toBeLessThanOrEqual(viewports.phone.width);
+    });
+  });
+
+  test("the window of the tracking number and the field of a shipment lie in the screen", async () => {
+    test.setTimeout(60_000);
+    await inState(states[5]!, viewports.phone, async (page, overlay) => {
+      await expectWithinWidth(overlay!, viewports.phone.width, "the window of the tracking number");
+      await expect.poll(async () => (await documentWidths(page)).scrollWidth).toBeLessThanOrEqual(viewports.phone.width);
+    });
+    await inState(states[2]!, viewports.phone, async (page, overlay) => {
+      await expect(overlay!.getByLabel("Numer przesyłki (opcjonalnie)")).toBeVisible();
+      await expectWithinWidth(overlay!.getByLabel("Numer przesyłki (opcjonalnie)"), viewports.phone.width, "the field of the number of a shipment");
+    });
+  });
+
+  test("the shipment and the delivery of a shipped order do not scroll the detail sideways at 375 px", async () => {
+    test.setTimeout(60_000);
+    await inState(states[4]!, viewports.phone, async (page) => {
+      await expect(page.getByTestId("delivery-line")).toBeVisible();
+      await expectWithinWidth(page.getByTestId("shipment"), viewports.phone.width, "the card of the shipment");
+      const widths = await documentWidths(page);
+      expect(widths.scrollWidth, "the detail does not scroll sideways").toBeLessThanOrEqual(viewports.phone.width);
     });
   });
 
@@ -309,6 +378,89 @@ test.describe("the detail", () => {
       await dialog.getByRole("button", { name: "Wróć" }).click();
       await expect(dialog).toBeHidden();
       await expect(cancel).toBeFocused();
+    } finally {
+      await page.close();
+    }
+  });
+});
+
+test.describe("a change in flight", () => {
+  const CHANGES = "**/api/v1/admin/orders/*/status-changes";
+
+  /** A paid order of the test itself (the change of the status must not touch the shared ones); opens its detail from the list. */
+  async function openOwnOrder(browser: Browser, page: Page): Promise<string> {
+    const number = await placeOrderAsJan(browser, ORDERED_PRODUCT);
+    await go(page, `/orders?q=${encodeURIComponent(number)}`);
+    await page.getByTestId("order-row").getByTestId("number").click();
+    await expect(page.getByRole("heading", { level: 1, name: `Zamówienie ${number}` })).toBeVisible();
+    await expect(page.getByTestId("status")).toHaveText("Opłacone");
+    return number;
+  }
+
+  test("the window of a status change stays open with the focus on its button while the answer is held, and ends with the toast and the focus on the card", async ({ browser }) => {
+    test.setTimeout(120_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await openOwnOrder(browser, page);
+      await page.route(CHANGES, async (route) => {
+        await new Promise((done) => setTimeout(done, 3_000));
+        await route.continue();
+      });
+      await page.getByTestId("action-ship").click();
+      const dialog = page.getByTestId("change-dialog");
+      const note = dialog.getByTestId("change-note");
+      await note.fill("E2E: zapis w toku");
+
+      const submit = dialog.getByTestId("change-submit");
+      await submit.focus();
+      await page.keyboard.press("Enter");
+      await expect(submit).toHaveAttribute("aria-disabled", "true");
+      await expect(submit).toBeFocused();
+
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeVisible();
+      await expect(submit).toBeFocused();
+      // Typing has to focus the field first, so it comes after the focus checks.
+      await note.pressSequentially("x");
+      await expect(note).toHaveValue("E2E: zapis w toku");
+
+      const toasts = page.getByRole("region", { name: "Powiadomienia", exact: true });
+      await expect(toasts).toContainText("Status zamówienia zmieniony: Wysłane.");
+      await expect(dialog).toBeHidden();
+      await expect(page.getByRole("heading", { level: 2, name: "Akcje" })).toBeFocused();
+    } finally {
+      await page.close();
+    }
+  });
+
+  // A control, not a test of the change: the way out of a held save is Back of the browser, which the window does not block.
+  test("Back of the browser leaves the screen of the order while the answer is held, and the answer that comes later brings no toast", async ({ browser }) => {
+    test.setTimeout(120_000);
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await openOwnOrder(browser, page);
+      let release!: () => void;
+      const gate = new Promise<void>((done) => {
+        release = done;
+      });
+      await page.route(CHANGES, async (route) => {
+        await gate;
+        await route.continue();
+      });
+      await page.getByTestId("action-ship").click();
+      const dialog = page.getByTestId("change-dialog");
+      const sent = page.waitForRequest((request) => request.method() === "POST" && request.url().includes("/status-changes"));
+      await dialog.getByTestId("change-submit").click();
+      await sent;
+
+      await page.goBack();
+      await expect(page.getByRole("heading", { level: 1, name: "Zamówienia" })).toBeVisible();
+      await expect(dialog).toBeHidden();
+
+      release();
+      // The answer arrives at a screen that has left the order: no toast, whatever the server did with the change.
+      await page.waitForTimeout(1_500);
+      await expect(page.getByRole("region", { name: "Powiadomienia", exact: true })).not.toContainText("Status zamówienia zmieniony");
     } finally {
       await page.close();
     }

@@ -14,6 +14,8 @@ use App\Ordering\Domain\IdempotencyKeyReused;
 use App\Ordering\Domain\LineAmounts;
 use App\Ordering\Domain\Money;
 use App\Ordering\Domain\Order;
+use App\Ordering\Domain\OrderDelivery;
+use App\Ordering\Domain\OrderDeliveryShare;
 use App\Ordering\Domain\OrderDiscount;
 use App\Ordering\Domain\OrderDiscountKind;
 use App\Ordering\Domain\OrderId;
@@ -33,9 +35,12 @@ use App\Ordering\Domain\RequestFingerprint;
 use App\Ordering\Domain\ShippingAddress;
 use App\Ordering\Domain\StaffActor;
 use App\Ordering\Domain\StatusActor;
+use App\Ordering\Domain\TrackingNumber;
+use App\Ordering\Domain\TrackingNumberNotChangeable;
 use App\Ordering\Domain\VariantId;
 use App\Ordering\Infrastructure\Persistence\Doctrine\DbalOrderNumbers;
 use App\Ordering\Infrastructure\Persistence\Doctrine\DoctrineOrderRepository;
+use App\Tests\Integration\Ordering\OrderingFixture;
 use App\Tests\Unit\Ordering\OrderExamples;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\DriverException;
@@ -103,7 +108,7 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         $order = Order::place($base->id(), $base->number(), $base->owner(), $base->accessToken(), $base->contact(), $base->shippingAddress(), [
             OrderLine::of(VariantId::fromString(Uuid::v7()->toRfc4122()), ProductId::fromString(Uuid::v7()->toRfc4122()), 'Buty Asfalt', 'czarne, 42', 2, $price, LineAmounts::of(7_380, 54_000, 12_420, 66_420, Currency::PLN), $promotion),
             OrderLine::of(VariantId::fromString(Uuid::v7()->toRfc4122()), ProductId::fromString(Uuid::v7()->toRfc4122()), 'Mapa Gorce', '', 1, PriceCopy::of(1_626, 374, 2_000, 2300, 'standard', Currency::PLN), LineAmounts::of(200, 1_463, 337, 1_800, Currency::PLN), null),
-        ], OrderDiscount::of('WITAJ10', OrderDiscountKind::Percent, 10, Money::of(7_580, Currency::PLN)), $base->idempotencyKey(), $base->requestFingerprint(), $base->placedAt());
+        ], OrderDiscount::of('WITAJ10', OrderDiscountKind::Percent, 10, Money::of(7_580, Currency::PLN)), OrderExamples::freeDelivery(), $base->idempotencyKey(), $base->requestFingerprint(), $base->placedAt());
         $this->orders->add($order);
         $this->entityManager->clear();
 
@@ -120,6 +125,54 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
             [[7_380, 54_000, 12_420, 66_420, $promotion->promotionId(), 'Jesień -20%', 20, 46_125], [200, 1_463, 337, 1_800, null, null, null, null]],
             $this->connection->fetchAllNumeric('SELECT discount_gross, line_net, line_vat, line_gross, promotion_id, promotion_name, promotion_percent_off, regular_unit_gross FROM ordering_order_line WHERE order_id = ? ORDER BY position', [$order->id()->toString()]),
         );
+    }
+
+    public function testAnOrderWithADeliveryIsStoredAndReadBackWithTheCopyOfTheMethodAndItsShares(): void
+    {
+        $delivery = OrderDelivery::of(OrderExamples::DELIVERY_METHOD, 'Kurier standardowy', 'https://tracking.example.com/{numer}', 1_999, [
+            OrderDeliveryShare::of(2300, 1_948, 1_584, 364, Currency::PLN),
+            OrderDeliveryShare::of(0, 51, 51, 0, Currency::PLN),
+        ], Currency::PLN);
+        $order = $this->order('key-delivery', delivery: $delivery);
+        $this->orders->add($order);
+        $this->entityManager->clear();
+
+        $stored = $this->orders->get($order->id());
+
+        self::assertEquals($delivery, $stored->delivery());
+        self::assertSame([77_800 + 1_999, 77_800, 63_626 + 1_635, 14_174 + 364], [$stored->totals()->gross()->amount(), $stored->totals()->goodsGross()->amount(), $stored->totals()->net()->amount(), $stored->totals()->vat()->amount()]);
+        self::assertSame(
+            ['delivery_method_id' => OrderExamples::DELIVERY_METHOD, 'delivery_method_name' => 'Kurier standardowy', 'delivery_tracking_url_template' => 'https://tracking.example.com/{numer}', 'delivery_gross' => 1_999, 'delivery_net' => 1_635, 'delivery_vat' => 364, 'total_gross' => 79_799, 'tracking_number' => null],
+            $this->connection->fetchAssociative('SELECT delivery_method_id, delivery_method_name, delivery_tracking_url_template, delivery_gross, delivery_net, delivery_vat, total_gross, tracking_number FROM ordering_order WHERE id = ?', [$order->id()->toString()]),
+        );
+        self::assertSame(
+            [[0, 51, 51, 0], [2300, 1_948, 1_584, 364]],
+            $this->connection->fetchAllNumeric('SELECT vat_rate_bp, gross, net, vat FROM ordering_order_delivery_vat WHERE order_id = ? ORDER BY vat_rate_bp', [$order->id()->toString()]),
+        );
+    }
+
+    public function testAFreeDeliveryHasItsMethodAndNoShares(): void
+    {
+        $order = $this->order('key-free-delivery');
+        $this->orders->add($order);
+        $this->entityManager->clear();
+
+        self::assertEquals(OrderExamples::freeDelivery(), $this->orders->get($order->id())->delivery());
+        self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM ordering_order_delivery_vat WHERE order_id = ?', [$order->id()->toString()]));
+    }
+
+    public function testAnOrderStoredWithoutADeliveryIsReadWithNoneAndChangesAsBefore(): void
+    {
+        $id = OrderingFixture::order($this->connection, paid: true);
+
+        $stored = $this->orders->get(OrderId::fromString($id));
+
+        self::assertNull($stored->delivery());
+        self::assertSame([1_230, 1_230], [$stored->totals()->gross()->amount(), $stored->totals()->goodsGross()->amount()]);
+        $stored->ship(StaffActor::of('kc-staff', 'magazyn'), null, null, new \DateTimeImmutable());
+        $this->orders->save($stored);
+        $this->entityManager->clear();
+        self::assertSame(['shipped', null, null, 0, 0, 0], $this->connection->fetchNumeric('SELECT status, delivery_method_id, delivery_method_name, delivery_gross, delivery_net, delivery_vat FROM ordering_order WHERE id = ?', [$id]));
     }
 
     public function testAnOrderWithoutACodeHasNoDiscountColumnsAndLinesWithoutDiscount(): void
@@ -208,6 +261,68 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         self::assertSame(['cancelled', 'payment_timeout'], $this->connection->fetchNumeric('SELECT status, cancellation_reason FROM ordering_order WHERE id = ?', [$order->id()->toString()]));
     }
 
+    public function testTheNumberSetAtTheShipmentIsReadBackAndTheCorrectionsAreStored(): void
+    {
+        $order = $this->order('key-tracking');
+        $this->orders->add($order);
+        $id = $order->id();
+        $placedAt = $order->placedAt();
+        $anna = StaffActor::of('kc-staff-1', 'anna');
+        $this->change($id, static fn (Order $o) => $o->markPaid(PaymentId::fromString(Uuid::v7()->toRfc4122()), 77_800, 'PLN', $placedAt, $placedAt->modify('+1 minute')));
+        $this->entityManager->clear();
+        self::assertNull($this->orders->get($id)->trackingNumber());
+
+        $this->change($id, static fn (Order $o) => $o->ship($anna, null, TrackingNumber::fromString('JJD0002-4455'), $placedAt->modify('+60 minutes')));
+        $this->entityManager->clear();
+
+        $shipped = $this->orders->get($id);
+        self::assertSame('JJD0002-4455', $shipped->trackingNumber()?->toString());
+        self::assertSame('JJD0002-4455', $this->connection->fetchOne('SELECT tracking_number FROM ordering_order WHERE id = ?', [$id->toString()]));
+        self::assertSame(3, $shipped->version());
+
+        $this->change($id, static fn (Order $o) => $o->changeTrackingNumber(TrackingNumber::fromString('XY-9')));
+        $this->entityManager->clear();
+        $replaced = $this->orders->get($id);
+        self::assertSame('XY-9', $replaced->trackingNumber()?->toString());
+        self::assertSame(4, $replaced->version(), 'the correction raises the version');
+        self::assertCount(\count($shipped->history()), $replaced->history(), 'and adds no entry of the history');
+
+        $this->change($id, static fn (Order $o) => $o->changeTrackingNumber(null));
+        $this->entityManager->clear();
+        self::assertNull($this->orders->get($id)->trackingNumber());
+        self::assertNull($this->connection->fetchOne('SELECT tracking_number FROM ordering_order WHERE id = ?', [$id->toString()]) ?: null);
+    }
+
+    public function testAShipmentWithoutANumberStoresNone(): void
+    {
+        $order = $this->order('key-no-tracking');
+        $this->orders->add($order);
+        $id = $order->id();
+        $placedAt = $order->placedAt();
+        $this->change($id, static fn (Order $o) => $o->markPaid(PaymentId::fromString(Uuid::v7()->toRfc4122()), 77_800, 'PLN', $placedAt, $placedAt->modify('+1 minute')));
+        $this->change($id, static fn (Order $o) => $o->ship(StaffActor::of('kc-staff-1', 'anna'), null, null, $placedAt->modify('+60 minutes')));
+        $this->entityManager->clear();
+
+        self::assertNull($this->orders->get($id)->trackingNumber());
+        self::assertNull($this->connection->fetchOne('SELECT tracking_number FROM ordering_order WHERE id = ?', [$id->toString()]) ?: null);
+    }
+
+    public function testTheNumberOfAnOrderThatIsNotShippedIsNotChangedAndNothingIsStored(): void
+    {
+        $order = $this->order('key-not-shipped');
+        $this->orders->add($order);
+        $this->entityManager->clear();
+
+        try {
+            $this->change($order->id(), static fn (Order $o) => $o->changeTrackingNumber(TrackingNumber::fromString('AB-1')));
+            self::fail('Expected TrackingNumberNotChangeable.');
+        } catch (TrackingNumberNotChangeable) {
+            $this->addToAssertionCount(1);
+        }
+        $this->entityManager->clear();
+        self::assertNull($this->connection->fetchOne('SELECT tracking_number FROM ordering_order WHERE id = ?', [$order->id()->toString()]) ?: null);
+    }
+
     public function testSaveAppendsTheHistoryAndWritesTheLifecycleAndTheRefund(): void
     {
         $order = $this->order('key-1');
@@ -220,7 +335,7 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         $at = static fn (int $minutes): \DateTimeImmutable => $placedAt->modify(\sprintf('+%d minutes', $minutes));
 
         $this->change($id, static fn (Order $o) => $o->markPaid(PaymentId::fromString($paymentId), 77_800, 'PLN', $placedAt, $at(1)));
-        $this->change($id, static fn (Order $o) => $o->ship($anna, null, $at(60)));
+        $this->change($id, static fn (Order $o) => $o->ship($anna, null, null, $at(60)));
         $this->change($id, static fn (Order $o) => $o->deliver($anna, 'Odebrane', $at(120)));
         $this->change($id, static fn (Order $o) => $o->registerReturn($bartek, 'Paczka wróciła', $at(180)));
         $this->change($id, static fn (Order $o) => $o->completeRefund($bartek, 'Przelew', $at(240)));
@@ -457,7 +572,7 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         $this->orders->save($order);
     }
 
-    private function order(string $key, ?OrderOwner $owner = null): Order
+    private function order(string $key, ?OrderOwner $owner = null, ?OrderDelivery $delivery = null): Order
     {
         $contact = Contact::of(EmailAddress::fromString('jan@example.com'), 'Jan Kowalski', '600 100 200');
         $address = ShippingAddress::inPoland('Długa 1', '00-950', 'Warszawa');
@@ -477,6 +592,7 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
                 OrderLine::of(VariantId::fromString(Uuid::v7()->toRfc4122()), ProductId::fromString(Uuid::v7()->toRfc4122()), 'Książka', '', 1, PriceCopy::of(2_000, 0, 2_000, 0, 'zero', Currency::PLN), OrderExamples::undiscounted(PriceCopy::of(2_000, 0, 2_000, 0, 'zero', Currency::PLN), 1), null),
             ],
             null,
+            $delivery ?? OrderExamples::freeDelivery(),
             IdempotencyKey::fromString($key),
             RequestFingerprint::of('guest:'.$key, $contact, $address, 77_800),
             new \DateTimeImmutable('@'.time()),

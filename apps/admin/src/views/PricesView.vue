@@ -220,6 +220,7 @@ function onAction(key: string, row: PriceRow, trigger: HTMLElement): void {
     <PriceDialogs
       ref="dialogs"
       :rows="rows"
+      :tax-classes="taxClasses"
       :change-price="changePrice"
       :fallback-focus="() => header?.heading ?? null"
     />

@@ -7,7 +7,9 @@ opis domeny w `docs/vision.md`.
 ## Komendy
 
 Uruchamiaj z katalogu głównego przez `make -C apps/admin <cel>`:
-- `check` – ESLint i `vue-tsc --noEmit`
+- `check` – ESLint, `vue-tsc --noEmit` i `audit`
+- `audit` – `npm audit --omit=dev --audit-level=high`: podatność wagi high lub critical w pakiecie produkcyjnym
+  kończy cel błędem, błąd narzędzia i brak sieci też; bez wyjątków, podatny pakiet się aktualizuje
 - `test` – wszystkie testy (Vitest)
 - `shell` – powłoka w kontenerze `admin`
 
@@ -34,7 +36,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `docs/features/dashboard-data-freshness/spec.md`.
 - `src/composables/` – współdzielona logika reaktywna. `useNameSearch({ initial, apply })`: jedyne miejsce reguł
   wyszukiwania po nazwie listy produktów, listy cen, listy stanów i wyboru wariantów promocji. Reguły są testowane raz,
-  w `tests/useNameSearch.test.ts`. Pozostałe composables (`useCursorPager`, `useListUrlState`, `useUnsavedChangesGuard`,
+  w `tests/useNameSearch.test.ts`. `useFormSafety` i `formRequests`: wspólna ochrona szkicu formularza przed jego własnymi żądaniami (patrz „Wygląd”).
+  Pozostałe composables (`useCursorPager`, `useListUrlState`, `useUnsavedChangesGuard`,
   `usePagerFocus`) opisują komentarze w ich plikach i `docs/features/admin-design/spec.md`.
 - `src/categories/` – ekran „Kategorie” (`/categories`, `CategoriesView`, menu Sklep › Katalog › Kategorie; docs/features/admin-features/spec.md,
   „Kategorie”). Panel nie liczy reguł drzewa (głębokość, cykl, pustość, unikalność sluga to API); wyłącza tylko to, co oczywiście niemożliwe: własne
@@ -54,7 +57,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   i `docs/features/admin-features/spec.md` (sekcja 2); zapis, błędy 409/422 i role: `src/products/useProductForm.ts`.
 - `src/orders/` – zamówienia (widoki `OrdersView` pod `/orders` i `OrderDetailView` pod `/orders/:orderId`, dwie trasy
   jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach). `useOrderDetail(orderId)`: szczegóły z `GET /api/v1/admin/orders/{id}`;
-  przyciski to wyłącznie `allowedTransitions` (`actions`) i `canCompleteRefund` z API, panel nie liczy statusów ani ról.
+  przyciski to wyłącznie `allowedTransitions` (`actions`), `canCompleteRefund` i `canChangeTrackingNumber` z API, panel nie
+  liczy statusów ani ról.
   Opis: `docs/features/admin-screens/spec.md` („Zamówienia”) i `docs/features/order-management/spec.md`.
 - `src/customers/` – klienci (menu Sklep › Klienci, trasy `/customers` i `/customers/:customerId`: dwie trasy jednej ścieżki
   `customers`, więc pozycja menu zostaje aktywna na karcie). Klient to konto sklepu z co najmniej jednym
@@ -197,7 +201,17 @@ Spec: `docs/features/sentry/spec.md`.
   `aria-describedby`, `aria-invalid` przy błędzie), `SaveBar` i `useUnsavedChangesGuard` z `UnsavedChangesDialog` zamiast
   `window.confirm`. Po zapisie toast (`vue-sonner`, region `aria-live`) i fokus na H1 (chyba że pracownik przeniósł go do
   pola), po akcji, która zastępuje swój przycisk, na nagłówek karty; po błędzie na pierwszy `data-form-error` albo pole
-  `aria-invalid`. Akcje nieodwracalne pytają `ConfirmDialog`.
+  `aria-invalid`. Akcje nieodwracalne pytają `ConfirmDialog`. W trakcie każdego żądania, którego odpowiedź
+  zastępuje pola formularza albo jego stan bazowy (zapis, „Odśwież”, ponowny odczyt po zapisie), pola formularza są
+  zablokowane, nie tylko przyciski paska zapisu (wzór zapisu i odczytu: `safety.locked` z `useFormSafety` w
+  `usePromotionForm`); sprawdza to test Vitest z niezałatwioną obietnicą mocka każdego takiego żądania. „Zapisz” paska zapisu jest wtedy nieaktywny przez `aria-disabled`, nie `disabled` (jak przycisk `ConfirmDialog`): przycisk, który pracownik nacisnął, zachowuje fokus do odpowiedzi.
+- Szkic formularza zmienia tylko pracownik: odczyt, 409 ani spóźniona odpowiedź go nie zastępują (wyjątki: potwierdzony
+  sukces zapisu, zgodność przy „Sprawdź stan”, udany odczyt po „Odrzuć moje zmiany i pokaż stan z serwera”). Brak
+  odpowiedzi przez 10 s, błąd sieci i każde 5xx to „nieznany wynik” zapisu, nigdy komunikat, że zapis się nie powiódł;
+  limit nie przerywa żądania i panel niczego nie ponawia sam. Tę logikę ma jeden wspólny kod, bez kopii w formularzach:
+  `src/composables/useFormSafety.ts` (stan żądań formularza: zapis, „Sprawdź stan”, odczyty z limitem), `formRequests.ts`
+  (limit, teksty, klasyfikacja odpowiedzi, porównanie żądań) i komponent `FormSafetyNotices` (komunikaty i przyciski);
+  wzorem jest `usePromotionForm`. Nowy formularz używa ich, nie pisze własnych limitów ani odczytów po 409.
 - Lista według standardu: `PageHeader`, karta z `ListToolbar`, `DataTable` i `ListPager`; stan listy (wyszukiwanie, filtry,
   rozmiar strony 10/25/50, domyślnie 25, w Cenach i Stanach 10) jest w adresie przez `useListUrlState`,
   stronicowanie przez `useCursorPager`, a

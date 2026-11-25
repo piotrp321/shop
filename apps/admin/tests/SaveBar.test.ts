@@ -64,11 +64,39 @@ describe("SaveBar", () => {
 
   it("disables „Zapisz” when saving is not possible and shows the request in progress", async () => {
     const bar = render({ saveDisabled: true });
-    expect(button("Zapisz")?.disabled).toBe(true);
+    expect(button("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
 
     await bar.setProps({ saveDisabled: false, busy: true });
     expect(button("Zapisz")?.getAttribute("aria-busy")).toBe("true");
-    expect(button("Zapisz")?.disabled).toBe(true);
+    expect(button("Zapisz")?.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("keeps „Zapisz” focusable while a request runs: aria-disabled instead of disabled, and a press emits nothing", async () => {
+    const bar = render({ busy: true, saveDisabled: true });
+    const save = button("Zapisz")!;
+    save.focus();
+
+    expect(save.disabled).toBe(false);
+    expect(save.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(save);
+    save.click();
+    expect(bar.emitted("save")).toBeUndefined();
+
+    await bar.setProps({ busy: false, saveDisabled: false });
+    expect(save.hasAttribute("aria-disabled")).toBe(false);
+    save.click();
+    expect(bar.emitted("save")).toHaveLength(1);
+  });
+
+  it("is off for a press when saving is not possible, without taking the focus from the button", () => {
+    const bar = render({ saveDisabled: true });
+    const save = button("Zapisz")!;
+    save.focus();
+    save.click();
+
+    expect(save.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(save);
+    expect(bar.emitted("save")).toBeUndefined();
   });
 
   it("does not let „Odrzuć” run while saving is not possible (a request or an upload is running)", async () => {

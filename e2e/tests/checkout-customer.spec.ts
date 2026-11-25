@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { customers } from "../support/accounts";
 import { waitForOrderEmail } from "../support/mailpit";
 import { decideAtSimulator, expectSimulatorPage, WEBHOOK_TIMEOUT_MS } from "../support/payment";
-import { addVariantOf, chooseProvider, emptyCart, fillAddress, logInAsJan, tileNamed } from "../support/shop";
+import { addVariantOf, chooseDelivery, chooseProvider, emptyCart, fillAddress, logInAsJan, tileNamed } from "../support/shop";
 
 // Every variant of it has 45 units (fixtures/stock.yaml): each run reserves 1, and the reservation of the paid order
 // stays until it is shipped (ORDER-MANAGEMENT). The rejected first payment reserves nothing more: it is the same order.
@@ -19,7 +19,6 @@ test("Jan orders his cart with the e-mail of his account, his card payment is re
   await addVariantOf(page, tile, 1);
 
   await page.goto("/cart");
-  const cartTotal = (await page.getByTestId("cart-total").innerText()).trim();
   await page.getByRole("link", { name: "Przejdź do kasy" }).click();
   await expect(page).toHaveURL(/\/checkout$/);
 
@@ -27,8 +26,10 @@ test("Jan orders his cart with the e-mail of his account, his card payment is re
   await expect(page.getByTestId("account-email")).toHaveText(customers.jan.email);
   await expect(page.getByLabel("E-mail")).toHaveCount(0);
   await expect(page.getByLabel("Imię i nazwisko")).not.toHaveValue("");
-  await expect(page.getByTestId("checkout-total")).toHaveText(cartTotal);
+  await expect(page.getByTestId("checkout-total")).toHaveText("Wybierz sposób dostawy");
   await fillAddress(page);
+  await chooseDelivery(page);
+  const checkoutTotal = (await page.getByTestId("checkout-total").innerText()).trim();
   await chooseProvider(page, "Karta płatnicza (demo)");
   await page.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" }).click();
 
@@ -38,7 +39,7 @@ test("Jan orders his cart with the e-mail of his account, his card payment is re
   const number = (await page.getByTestId("order-number").innerText()).trim();
   expect(number).toMatch(/^R-\d{6,}$/);
   await expect(page.getByText("Płatność nie powiodła się.")).toBeVisible({ timeout: WEBHOOK_TIMEOUT_MS });
-  await expect(page.getByTestId("order-total")).toHaveText(cartTotal);
+  await expect(page.getByTestId("order-total")).toHaveText(checkoutTotal);
   await expect(page.getByTestId("cart-count")).toHaveText("0");
 
   // ...he chooses again (no provider is chosen for him) and pays the same order.
@@ -53,7 +54,7 @@ test("Jan orders his cart with the e-mail of his account, his card payment is re
   await expect(page.getByText(`Płatność przyjęta. Potwierdzenie wysłaliśmy na adres ${customers.jan.email}.`)).toBeVisible({
     timeout: WEBHOOK_TIMEOUT_MS,
   });
-  await expect(page.getByTestId("order-total")).toHaveText(cartTotal);
+  await expect(page.getByTestId("order-total")).toHaveText(checkoutTotal);
 
   // Jan gets e-mails for every order of every run: the ones of this order are found by the address and the number.
   const confirmation = await waitForOrderEmail(customers.jan.email, number);

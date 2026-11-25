@@ -11,7 +11,8 @@
 #        SELFTEST_JOBS=<n> selftest.sh         n cases at a time (default: the CPUs of the Docker daemon, which run the tools;
 #                                              1 runs them one after another). Every case has a tree of its own and the
 #                                              unbroken copy runs next to the cases; the output of a case is printed whole,
-#                                              when the case ends.
+#                                              when the case ends. The cases already fill the CPUs, so the step tests of
+#                                              each check.sh runs its files one at a time (CHECK_TESTS_JOBS, default 1).
 # What the cases share is the cache of the tools (TOOLS_CACHE): check.sh and render.sh write their files to directories named
 # by their process, and a chart archive enters the cache of monitoring-render.sh only after its digest is checked. kubeconform
 # writes the schemas it downloads to its cache in place, not atomically: on a cold cache two cases that run it at the same time
@@ -227,7 +228,8 @@ run_case() {
 run_check() {
   check_id="$1" check_filter="$2"
   shift 2
-  CHECK_TESTS_FILTER="$check_filter" sh "$tree/infra/k8s/scripts/check.sh" "$@" > "$base/$check_id.check" 2>&1 &
+  CHECK_TESTS_FILTER="$check_filter" CHECK_TESTS_JOBS="${CHECK_TESTS_JOBS:-1}" \
+    sh "$tree/infra/k8s/scripts/check.sh" "$@" > "$base/$check_id.check" 2>&1 &
   check_pid=$!
   check_status=0
   wait "$check_pid" || check_status=$?
@@ -280,10 +282,11 @@ brevo_without_secret_allowed() { replace infra/k8s/charts/shop/values.schema.jso
 keycloak_config_prints_a_secret() { replace infra/k8s/charts/shop/files/scripts/keycloak-config.sh 'echo "keycloak-config: done"' 'echo "keycloak-config: done $STORE_CLIENT_SECRET"'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
 create_admin_without_confirmation() { replace infra/k8s/scripts/create-admin.sh 'if [ "$answer" != tak ]; then' 'if [ "$answer" = never ]; then'; }
-deploy_needs_a_missing_job() { replace .github/workflows/deploy.yml 'needs: [images, smoke]' 'needs: [images, smok]'; }
+deploy_needs_a_missing_job() { replace .github/workflows/deploy.yml 'needs: [images, smoke, k8s-check]' 'needs: [images, smok, k8s-check]'; }
 # shellcheck disable=SC2016 # the texts are lines of the workflow, with their variables
 deploy_script_unquoted() { replace .github/workflows/deploy.yml '-u "$GITHUB_ACTOR" --password-stdin' '-u $GITHUB_ACTOR --password-stdin'; }
-deploy_without_the_smoke_test() { replace .github/workflows/deploy.yml 'needs: [images, smoke]' 'needs: [images]'; }
+deploy_without_the_smoke_test() { replace .github/workflows/deploy.yml 'needs: [images, smoke, k8s-check]' 'needs: [images, k8s-check]'; }
+deploy_without_the_k8s_check() { replace .github/workflows/deploy.yml 'needs: [images, smoke, k8s-check]' 'needs: [images, smoke]'; }
 deploy_images_pushed_for_every_event() { replace .github/workflows/deploy.yml "    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'" "    if: github.event_name != 'schedule'"; }
 deploy_on_every_push() { replace .github/workflows/deploy.yml '  pull_request:' '  push:
     branches: [main]
@@ -464,6 +467,11 @@ open_without_the_lock() { replace infra/k8s/scripts/open.sh 'lock_take open || r
 # The CronJob load (docs/features/demo-scale/spec.md): a Job of it checkouts an order in the data, so a CronJob that is not suspended
 # would run on its schedule; the k6 image of the chart is the one of load/k6.sh (a new k6 is changed in both places).
 load_not_suspended() { replace_after infra/k8s/charts/shop/templates/load.yaml 'schedule: "0 0 1 1 *"' 'suspend: true' 'suspend: false'; }
+# The CronJob reindex (docs/features/search/spec.md, "Infrastruktura"): not suspended it would rebuild the index on its schedule, and
+# make reindex that goes on without the word tak would rebuild it without the confirmation.
+reindex_not_suspended() { replace_after infra/k8s/charts/shop/templates/reindex.yaml 'schedule: "0 0 1 1 *"' 'suspend: true' 'suspend: false'; }
+# shellcheck disable=SC2016 # the text is a line of the script, with its variables
+reindex_without_confirmation() { replace infra/k8s/scripts/reindex.sh '[ "$answer" = tak ] || refuse' '[ "$answer" = never ] && refuse'; }
 load_k6_digest_differs() { replace infra/k8s/charts/shop/values.yaml '@sha256:2dd4756ec6e1' '@sha256:2dd4756ec6e0'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 # The alert rules (docs/features/deploy-ops/spec.md, O6): the render test sees the rule without its absent, promtool sees an
@@ -496,6 +504,7 @@ run_case "create-admin going on without tak" "test_without_the_word_tak_nothing_
 run_case "deploy.yml needing a job that does not exist" "needs job \"smok\"" "actionlint" deploy_needs_a_missing_job
 run_case "unquoted variable in a run script of deploy.yml (shellcheck)" "SC2086" "actionlint" deploy_script_unquoted
 run_case "deploy without waiting for the smoke test" "test_it_needs_a_green_smoke_test_and_the_images" "tests" deploy_without_the_smoke_test
+run_case "deploy without waiting for make -C infra/k8s check" "test_deploy_waits_for_the_check" "tests" deploy_without_the_k8s_check
 run_case "images pushed for every event" "test_images_are_pushed_and_deploy_moves_only_for_a_dispatch_on_main" "tests" deploy_images_pushed_for_every_event
 run_case "deploy.yml triggered by a push to main" "test_there_is_no_push_trigger" "tests" deploy_on_every_push
 run_case "deployment for a dispatch on any branch" "test_images_are_pushed_and_deploy_moves_only_for_a_dispatch_on_main" "tests" deploy_for_a_dispatch_on_any_branch
@@ -582,6 +591,8 @@ run_case "make open after a Job demo-data-run that did not complete" "test_witho
 run_case "make open without the lock of make generate and make open" "test_make_open_keeps_the_rule_while_another_make_generate_would_replace_the_job" \
   "tests" open_without_the_lock
 run_case "load CronJob that is not suspended" "test_the_load_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" load_not_suspended
+run_case "reindex CronJob that is not suspended" "test_the_reindex_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" reindex_not_suspended
+run_case "make reindex going on without tak" "test_reindex_without_the_word_tak_creates_no_job" "tests" reindex_without_confirmation
 run_case "k6 image of the chart with another digest than load/k6.sh" "test_the_values_pin_the_image_of_the_runner_of_the_scripts" "tests" load_k6_digest_differs
 run_case "BackupMissing without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" backup_missing_without_absent
 run_case "RateLimitsOff without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" rate_limits_off_without_absent

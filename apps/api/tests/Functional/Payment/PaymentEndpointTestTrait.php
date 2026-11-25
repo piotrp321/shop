@@ -28,8 +28,9 @@ trait PaymentEndpointTestTrait
      */
     private function guestOrder(): array
     {
-        $cart = CartFixture::cart($this->connection, lines: [[$this->variant(self::GROSS, 10), 1]]);
-        $order = $this->place('/api/v1/orders', ['cartId' => $cart, 'email' => 'anna.nowak@example.com', ...self::details(self::GROSS)], key: 'order-'.bin2hex(random_bytes(6)));
+        $variant = $this->variant(self::GROSS, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$variant, 1]]);
+        $order = $this->place('/api/v1/orders', ['cartId' => $cart, 'email' => 'anna.nowak@example.com', ...self::details(self::GROSS, [[$variant, 1]])], key: 'order-'.bin2hex(random_bytes(6)));
         self::assertResponseStatusCodeSame(201);
         self::assertSame(self::CONTACT, array_intersect_key($order, self::CONTACT));
         \assert(\is_string($order['orderId']) && \is_string($order['number']) && \is_string($order['accessToken']));
@@ -48,9 +49,9 @@ trait PaymentEndpointTestTrait
         if (\is_string($cart)) {
             CartFixture::line($this->connection, $cart, $variant, 1);
         } else {
-            CartFixture::cart($this->connection, customerId: $customerId, lines: [[$variant, 1]]);
+            $cart = CartFixture::cart($this->connection, customerId: $customerId, lines: [[$variant, 1]]);
         }
-        $order = $this->place('/api/v1/me/orders', self::details(self::GROSS), key: 'order-'.bin2hex(random_bytes(6)), token: TestTokenFactory::customer(['sub' => $customerId]));
+        $order = $this->place('/api/v1/me/orders', self::details(self::GROSS, CartFixture::lines($this->connection, $cart)), key: 'order-'.bin2hex(random_bytes(6)), token: TestTokenFactory::customer(['sub' => $customerId]));
         self::assertResponseStatusCodeSame(201);
         \assert(\is_string($order['orderId']) && \is_string($order['number']));
 

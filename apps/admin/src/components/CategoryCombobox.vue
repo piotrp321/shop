@@ -117,8 +117,23 @@ function onInput(event: Event) {
   searchTerm.value = (event.target as HTMLInputElement).value;
 }
 
-function onOpenChange() {
+// Whether the list is open: reka sets `aria-activedescendant` from the highlighted option, which stays set after the
+// list is closed or filtered down to nothing, when its options are removed from the DOM.
+const listOpen = ref(false);
+// An empty object leaves the attribute to reka; with the list closed or without options the key is present and
+// undefined, so it is removed. Disabled options cannot be highlighted, so a list of only those has no active option.
+const hasHighlightableOption = computed(() => visibleOptions.value.some((option) => !props.disabledIds.includes(option.id)));
+const activeDescendantWhenClosed = computed(() => (listOpen.value && hasHighlightableOption.value ? {} : { "aria-activedescendant": undefined }));
+
+function onOpenChange(open: boolean) {
+  listOpen.value = open;
   searchTerm.value = "";
+}
+
+// A mouse press on an option would move the focus to the option (`tabindex="-1"`) and, as the list closes, to the page;
+// in single mode it is kept in the field, so typing goes on and a window around the field keeps the focus.
+function keepFocusInField(event: MouseEvent) {
+  if (!props.multiple) event.preventDefault();
 }
 
 function onUpdate(value: unknown) {
@@ -206,6 +221,7 @@ async function remove(id: string) {
           :display-value="(value: unknown) => (multiple ? '' : (nameById.get(String(value)) ?? ''))"
           class="min-w-24 flex-1 bg-transparent py-1 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed"
           autocomplete="off"
+          v-bind="activeDescendantWhenClosed"
           @input="onInput"
         />
         <ChevronDown
@@ -227,6 +243,7 @@ async function remove(id: string) {
             :aria-label="option.path"
             :data-depth="option.depth"
             :style="{ paddingLeft: `${0.5 + option.depth * 1.25}rem` }"
+            @mousedown="keepFocusInField"
           >
             <span>{{ option.name }}</span>
             <ComboboxItemIndicator>

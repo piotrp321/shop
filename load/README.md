@@ -8,9 +8,9 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
 - `make load-smoke` – jeden użytkownik, jedna iteracja każdego scenariusza (strony katalogu, wyszukiwarka z filtrem i bez,
   koszyk, checkout gościa na 1 sztukę) na działającym stosie compose (`make up`, `make seed`). Bez progów wydajności, ale
   niepowodzenie scenariusza (odpowiedź inna niż oczekiwana, żądanie z błędem, checkout bez zamówienia i rozpoczętej płatności)
-  kończy się kodem niezerowym (99; 2 – stos nie działa). k6 biegnie w sieci stosu i woła `http://store:3000` oraz
-  `http://api`; `Origin` zapisów to publiczny adres sklepu (`STORE_URL` kontenera sklepu), którego BFF wymaga. CI uruchamia
-  ten cel po testach E2E.
+  kończy się kodem niezerowym (99; 108 – odrzucone zamówienie przerywa przebieg; 2 – stos nie działa). k6 biegnie
+  w sieci stosu i woła `http://store:3000` oraz `http://api`; `Origin` zapisów to publiczny adres sklepu (`STORE_URL`
+  kontenera sklepu), którego BFF wymaga. CI uruchamia ten cel po testach E2E.
 - `make load-cookies` – test klienta k6 (`lib/http.js`) na serwerze, który ustawia ciasteczko z `Secure`, w Dockerze, bez stosu
   (`test/cookies.sh`). Sklep za ingressem z TLS (klaster) ustawia ciasteczka z `Secure`, a k6 woła go po `http://store:3000`, gdzie
   takich ciasteczek nie odsyła; gdy `STORE_URL` jest `http:`, a `STORE_ORIGIN` `https:`, klient odsyła je mimo to, jak przeglądarka.
@@ -37,6 +37,9 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
   dokumenty HTML i wywołania API sklepu, bez plików statycznych i zdjęć.
 - Checkout: dodanie losowego wariantu możliwego do kupienia (ilość 1), odczyt koszyka i `POST /api/checkout` z losowym
   dostawcą płatności. Zamówienie z rozpoczętą płatnością (`redirectUrl`) to sukces.
+  Zamówienie dostaje listę pozycji odczytanego koszyka i kupującego `buyer: "guest"` (jak kasa gościa); odpowiedź 422
+  albo 409 `cart-changed` to błąd skryptu, więc kończy przebieg (kod 108) komunikatem ze statusem, typem i polami
+  naruszeń.
 - Dane wejściowe czyta `setup()` (`lib/data.js`) z publicznego API; pusty katalog przerywa przebieg. Katalog nie jest
   nigdy listowany w całości, więc liczba żądań w `setup()` nie zależy od jego rozmiaru:
   - kategorie: drzewo `GET /api/v1/categories` (ścieżki do stron `/c/<ścieżka>`) i dostawcy płatności;

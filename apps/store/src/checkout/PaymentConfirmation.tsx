@@ -80,6 +80,10 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [attention, setAttention] = useState<{ id: string; seq: number } | null>(null);
+  // The refresh by itself (or the check on request) that changed the page while an element had the focus; see the effects.
+  const [polled, setPolled] = useState<{ active: Element; seq: number } | null>(null);
+  const [checked, setChecked] = useState(0);
+  const checkRef = useRef<HTMLButtonElement>(null);
   // The key of one payment attempt, kept for a retry of an uncertain result with the same provider.
   const attempt = useRef<{ provider: string; key: string } | null>(null);
   // Only the newest read may change the page.
@@ -93,7 +97,11 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
       const read = ++newestRead.current;
       void getPaymentStatus().then((result) => {
         const next = viewOf(result);
-        if (read === newestRead.current && next !== null) setView(next);
+        if (read !== newestRead.current || next === null) return;
+        const active = document.activeElement;
+        setView(next);
+        // The change may remove the element with the focus (the way back to the payment): the effect below checks that.
+        if (active && active !== document.body) setPolled((current) => ({ active, seq: (current?.seq ?? 0) + 1 }));
       });
     }, POLL_INTERVAL_MS);
     const stop = setTimeout(() => setWindowOpen(false), POLL_WINDOW_MS);
@@ -107,6 +115,17 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
     if (attention) document.getElementById(attention.id)?.focus();
   }, [attention]);
 
+  // The refresh by itself never moves the focus, except off an element that it removed: that goes to the heading.
+  useEffect(() => {
+    if (polled && !polled.active.isConnected && document.activeElement === document.body) document.getElementById(HEADING_ID)?.focus();
+  }, [polled]);
+
+  // After a check on request the focus was where the customer left it (on the button, or lost with it): it stays on the
+  // button when that is still on the screen, and goes to the heading when it is not.
+  useEffect(() => {
+    if (checked > 0) (checkRef.current ?? document.getElementById(HEADING_ID))?.focus();
+  }, [checked]);
+
   const focus = (id: string) => setAttention((current) => ({ id, seq: (current?.seq ?? 0) + 1 }));
   const firstProviderId = providers?.length ? `${PROVIDER_PREFIX}${providers[0].code}` : MESSAGE_ID;
 
@@ -118,16 +137,22 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
     return next;
   }
 
-  async function checkAgain() {
+  async function checkAgain(trigger: HTMLElement) {
     if (busy) return;
     setBusy(true);
     setMessage(null);
-    const next = await refresh();
-    if (next === null) {
-      // A page that already has a status keeps it; one that has none says so.
-      setMessage(view.kind === "ok" ? READ_FAILED : null);
-    }
+    const read = ++newestRead.current;
+    const next = viewOf(await getPaymentStatus());
+    // The customer may have gone to another control while the read ran: then the focus stays there.
+    const active = document.activeElement;
+    const keepsFocus = active === trigger || active === document.body || active === null;
+    if (read === newestRead.current && next !== null) setView(next);
+    // The customer moved the focus to another control, and the answer may remove it: the effect on `polled` checks that.
+    if (!keepsFocus && active) setPolled((current) => ({ active, seq: (current?.seq ?? 0) + 1 }));
+    // A page that already has a status keeps it and says the read failed; one that has none shows its own message.
+    if (next === null) setMessage(view.kind === "ok" ? READ_FAILED : null);
     setBusy(false);
+    if (keepsFocus) setChecked((count) => count + 1);
   }
 
   async function pay() {
@@ -234,7 +259,15 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
     />
   );
   const checkButton = (
-    <Button type="button" variant="outline" disabled={busy} onClick={() => void checkAgain()}>
+    // aria-disabled, not disabled: a disabled button would drop the keyboard focus for the time of the read.
+    <Button
+      ref={checkRef}
+      type="button"
+      variant="outline"
+      aria-disabled={busy || undefined}
+      className="aria-disabled:cursor-not-allowed aria-disabled:border-border aria-disabled:text-muted-foreground"
+      onClick={(event) => void checkAgain(event.currentTarget)}
+    >
       Sprawdź ponownie
     </Button>
   );
@@ -262,7 +295,12 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
 
       {view.kind === "failed" ? (
         <div className="flex flex-col items-start gap-3">
-          <p>{READ_FAILED}</p>
+          {/* Gone while the check runs, back after a failed one; the button and its focus stay. */}
+          {busy ? null : (
+            <Alert variant="destructive">
+              <AlertDescription>{READ_FAILED}</AlertDescription>
+            </Alert>
+          )}
           {checkButton}
         </div>
       ) : null}
@@ -279,12 +317,30 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
         </Alert>
       ) : null}
 
-      {status && phase === "paid" ? <p>Płatność przyjęta. Potwierdzenie wysłaliśmy na adres {order.email}.</p> : null}
-      {status && phase === "cancelled" ? <p>Zamówienie zostało anulowane.</p> : null}
+      {/* The one region of the status sentences: present from the first render, empty when there is no status. The
+          negative margin takes back the gap of the empty one. */}
+      <div role="status" data-testid="payment-status" className="flex flex-col items-start gap-4 empty:-mb-4">
+        {status && phase === "paid" ? <p>Płatność przyjęta. Potwierdzenie wysłaliśmy na adres {order.email}.</p> : null}
+        {status && phase === "cancelled" ? <p>Zamówienie zostało anulowane.</p> : null}
+        {status && phase === "pending" ? (
+          <>
+            <p>Opłać do {formatDeadlineTime(status.paymentDeadline)}</p>
+            <p>Czekamy na potwierdzenie płatności…</p>
+            {windowOpen ? null : <p>Nie mamy jeszcze potwierdzenia płatności.</p>}
+          </>
+        ) : null}
+        {status && phase === "after_deadline" ? (
+          <p>Minął termin płatności. Jeśli zapłaciłeś, czekamy na potwierdzenie; w przeciwnym razie zamówienie zostanie anulowane.</p>
+        ) : null}
+        {status && phase === "retry" ? (
+          <>
+            <p>Opłać do {formatDeadlineTime(status.paymentDeadline)}</p>
+            {status.latestPayment?.status === "failed" ? <p>Płatność nie powiodła się.</p> : null}
+          </>
+        ) : null}
+      </div>
       {status && phase === "pending" ? (
         <>
-          <p>Opłać do {formatDeadlineTime(status.paymentDeadline)}</p>
-          <p>Czekamy na potwierdzenie płatności…</p>
           {status.latestPayment?.resumeUrl ? (
             <Button asChild variant="link" className="px-0 underline">
               <a href={status.latestPayment.resumeUrl}>Wróć do płatności</a>
@@ -292,26 +348,14 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
           ) : null}
           {windowOpen ? null : (
             <div className="flex flex-col items-start gap-3">
-              <p>Nie mamy jeszcze potwierdzenia płatności.</p>
               {checkButton}
               {payForm("Zapłać innym sposobem")}
             </div>
           )}
         </>
       ) : null}
-      {status && phase === "after_deadline" ? (
-        <>
-          <p>Minął termin płatności. Jeśli zapłaciłeś, czekamy na potwierdzenie; w przeciwnym razie zamówienie zostanie anulowane.</p>
-          {windowOpen ? null : checkButton}
-        </>
-      ) : null}
-      {status && phase === "retry" ? (
-        <>
-          <p>Opłać do {formatDeadlineTime(status.paymentDeadline)}</p>
-          {status.latestPayment?.status === "failed" ? <p>Płatność nie powiodła się.</p> : null}
-          {payForm("Zapłać")}
-        </>
-      ) : null}
+      {status && phase === "after_deadline" && !windowOpen ? checkButton : null}
+      {status && phase === "retry" ? payForm("Zapłać") : null}
 
       <Button asChild variant="link" className="px-0 underline">
         <Link href="/">Wróć do sklepu</Link>

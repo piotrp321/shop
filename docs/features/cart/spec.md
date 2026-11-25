@@ -12,8 +12,9 @@ Cena wariantu w koszyku i w ofercie listy to cena skuteczna z Pricing (w aktywne
 `docs/features/promotions/spec.md`); koszyk nie oznacza promocji. Ceny i sumy linii możliwych do kupienia pochodzą
 z jednej wyceny Pricing (`QuoteBasket`, ta sama co przy złożeniu zamówienia), a odczyt koszyka przyjmuje kod rabatowy
 do podglądu w kasie (`docs/features/discount-codes/spec.md`); kod nie jest zapisywany w koszyku. Poza zakresem:
-rezerwacja stanu (robi ją złożenie zamówienia w Ordering), płatności, koszty dostawy, strona produktu, panel
-administracyjny. Zakładanie koszyków gościa, zmiany ich pozycji i podgląd kodu mają limity na adres klienta
+rezerwacja stanu (robi ją złożenie zamówienia w Ordering), płatności, strona produktu, panel administracyjny. Odczyt
+koszyka pokazuje też koszt dostawy, próg darmowej dostawy i opcje (metody dostawy z Delivery, `delivery`;
+`docs/features/delivery/spec.md`, W4); metodę wybiera klient dopiero w kasie. Zakładanie koszyków gościa, zmiany ich pozycji i podgląd kodu mają limity na adres klienta
 (`docs/features/abuse-limits/spec.md`, L2, L3).
 
 ## Decyzje biznesowe
@@ -39,6 +40,7 @@ administracyjny. Zakładanie koszyków gościa, zmiany ich pozycji i podgląd ko
 | Catalog | `GetVariantSummaries` (produkt, nazwa produktu, etykieta wariantu i zdjęcie produktu dla linii koszyka), `ListProductVariants` (osie i warianty produktów listy dla oferty) |
 | Pricing | `GetCurrentPrices` (autorytatywna cena aktualna wariantu: kupowalność i oferta listy), `QuoteBasket` (wycena linii możliwych do kupienia z kodem rabatowym) |
 | Inventory | `GetStockLevels` (dostępna liczba sztuk wariantu i jej poziom, tylko w procesie API) |
+| Delivery | `QuoteDelivery` (aktywne metody dostawy z kosztem dla wartości towarów po rabatach, progiem darmowej dostawy i brakującą kwotą) |
 | Customer | `AuthenticatedCustomer::id()` (`sub` z tokena realmu `shop`) |
 | Ordering | składa zamówienie z koszyka: blokuje go i czyta jego linie (`LockCartForOrder`), po złożeniu opróżnia (`ClearCartAfterOrder`) |
 | Sklep | BFF koszyka i wyświetlanie wartości z API; żadnych obliczeń |
@@ -50,7 +52,7 @@ w żadnej warstwie):
 |---|---|
 | `Cart_Domain` | `Native`, `Shared_Domain` |
 | `Cart_Application` | `Native`, `Cart_Domain`, `Shared_Domain`, `Vendor` |
-| `Cart_Infrastructure` | `Native`, `Cart_Application`, `Cart_Domain`, `Shared_Domain`, `Shared_Infrastructure`, `Vendor`, `Catalog_Application`, `Pricing_Application`, `Inventory_Application` |
+| `Cart_Infrastructure` | `Native`, `Cart_Application`, `Cart_Domain`, `Shared_Domain`, `Shared_Infrastructure`, `Vendor`, `Catalog_Application`, `Pricing_Application`, `Inventory_Application`, `Delivery_Application` |
 | `Cart_UI` | `Native`, `Cart_Application`, `Cart_Domain`, `Shared_Domain`, `Shared_Infrastructure`, `Vendor`, `Customer_Application` |
 
 - Adaptery portów Cart w `Cart_Infrastructure` wołają zapytania innych contextów przez `query.bus`, jak
@@ -165,6 +167,15 @@ Stan linii, w kolejności priorytetu:
   wykluczone) nie ma wyceny: sumy 0 i `discount = null`, także gdy przyszedł kod. Koszyk z liniami wykluczonymi
   i kupowalnymi dostaje wycenę kodu z linii kupowalnych.
 - `totals.itemCount` = suma ilości wszystkich linii (licznik w nagłówku).
+- `delivery` (`docs/features/delivery/spec.md`, W4): `null`, gdy nie ma wyceny (żadnej linii `purchasable`); inaczej
+  `{fromGross, missingToFreeGross, options}` z portu `CartDelivery` (adapter `QueryBusCartDelivery`, zapytanie Delivery
+  `QuoteDelivery`) policzone od `totals.gross`, czyli od wartości towarów po promocjach i po kodzie z odczytu: kod,
+  który obniża towary poniżej progu darmowej dostawy, przywraca koszt i brakującą kwotę, a sam koszt dostawy nigdy
+  nie jest obniżany. Każda opcja ma `methodId`, `name`, `description`, `costGross`, `freeFromGross`,
+  `missingToFreeGross` i `totalGross` = `totals.gross` + `costGross` (liczy API); szablonu linku śledzenia widok nie
+  ma. Bez aktywnych metod `options` jest puste, a `fromGross` i `missingToFreeGross` to `null`. `totalGross` służy do
+  wyświetlenia; złożenie zamówienia sprawdza sumę ponownie wobec `expectedTotalGross`. Komendy odpowiadają widokiem
+  z `delivery` jak odczyt bez kodu.
 - `discount`: kod odczytu zastosowany `{status: applied, code, amountGross, kind, value}` albo odrzucony `{status:
   rejected, code, reason, detail, minimumOrderGross | null}` (`reason`: `invalid`, `used_up`, `below_minimum`; `detail`
   po polsku z Pricing, ten sam co w 409 złożenia), `null` bez kodu. Komendy (dodanie, zmiana, usunięcie, scalenie)
@@ -330,6 +341,7 @@ Porty (`Cart_Application/Port`) i adaptery (`Cart_Infrastructure`):
 | `ProductCatalog::variantsOf(productIds)` → `ProductVariants {productId, variantAxes, variants: [{variantId, label}]}` | `QueryBusProductCatalog` | Catalog `ListProductVariants` |
 | `CartPrices::current(variantIds, withLowestPriorPrice = false)` → `CartPrice {variantId, gross: Money, regularGross: Money, promotion: VariantPromotion {endsAt, lowestPriorGross: Money\|null}\|null}` | `QueryBusCartPrices` | Pricing `GetCurrentPrices` |
 | `CartQuote::quote(lines {variantId, quantity}, discountCode)` → `CartQuoteResult {lines: {unitGross, grossBeforeDiscount} po wariancie, subtotalGross, discountGross, gross, discount}` (1–50 linii `purchasable`) | `QueryBusCartQuote` | Pricing `QuoteBasket` |
+| `CartDelivery::quote(goodsGross)` → `CartDeliveryQuote {fromGross, missingToFreeGross, options: [CartDeliveryOption {methodId, name, description, costGross, freeFromGross, missingToFreeGross}]}` (bez szablonu linku śledzenia) | `QueryBusCartDelivery` | Delivery `QuoteDelivery` |
 | `StockAvailability::of(variantIds)` → `VariantAvailability {variantId, available, level}` | `QueryBusStockAvailability` | Inventory `GetStockLevels` |
 | `CartReader::find(id)`, `findForCustomer(customerId)` | `DbalCartReader` | odczyt DBAL |
 | `ExpiredCarts::purgeBatch(now, limit)` | `DbalExpiredCarts` | usunięcie partii DBAL |
@@ -428,7 +440,12 @@ wystawcy tokenu: 503):
   discount: { status: "applied", code: string, amountGross: int, kind: "percent" | "amount", value: int }
           | { status: "rejected", code: string, reason: "invalid" | "used_up" | "below_minimum", detail: string,
               minimumOrderGross: int | null }
-          | null
+          | null,
+  delivery: {
+    fromGross: int | null, missingToFreeGross: int | null,
+    options: [{ methodId: uuid, name: string, description: string, costGross: int, freeFromGross: int | null,
+                missingToFreeGross: int | null, totalGross: int }]
+  } | null
 }
 ```
 
@@ -533,10 +550,88 @@ zwracana.
   zdjęcie (`ProductPhoto`), nazwa, pod nią etykieta wariantu (pusta dla wariantu domyślnego), cena jednostkowa, ilość
   (pole 1–99 opisane nazwą i etykietą wariantu, zatwierdzane po opuszczeniu pola lub Enterem;
   wartość niebędąca liczbą całkowitą 1–99 albo bez zmiany wraca do bieżącej ilości bez żądania), wartość linii, „Usuń”;
-  podsumowanie: wartość brutto i liczba sztuk; pod nim przycisk „Przejdź do kasy” (link do `/checkout`,
-  `docs/features/checkout/spec.md`). Przy `hasExcludedLines` przycisk jest nieaktywny, a pod nim tekst „Usuń albo popraw
+  podsumowanie: wartość brutto i liczba sztuk, pod nimi wiersze dostawy z `delivery` w regionie `aria-live="polite"`
+  (jest w DOM przed zmianą, więc każda zmiana koszyka jest ogłaszana): „Dostawa od 19,99 zł” przy `fromGross` > 0,
+  „Darmowa dostawa” przy 0, „Do darmowej dostawy brakuje 50,01 zł” przy `missingToFreeGross` różnym od `null`; bez
+  wiersza przy `fromGross` `null` i przy `delivery: null`; pod nim przycisk „Przejdź do kasy” (link do `/checkout`,
+  `docs/features/checkout/spec.md`; w trakcie zapisu: „Przejście do kasy” niżej). Przy `hasExcludedLines` przycisk jest nieaktywny, a pod nim tekst „Usuń albo popraw
   oznaczone pozycje, żeby złożyć zamówienie.”. Pusty koszyk: „Twój koszyk jest pusty” i link „Zobacz produkty”, bez
   przycisku.
+- Akcje w trakcie zapisu: strona koszyka wysyła jedną operację (zmianę ilości albo usunięcie) naraz. Akcję wykonaną
+  w trakcie zapisu zapamiętuje przy pozycji: najwyżej jedną, nowsza zastępuje starszą, usunięcie zastępuje ilość,
+  a akcja zastępująca zajmuje miejsce zastąpionej. Po odpowiedzi wysyła akcje czekające w kolejności ich zlecenia.
+  Zapisy koszyka i tak idą po kolei przez kolejkę `queueWrite` (`src/api/client.ts`); strona trzyma swoje akcje sama,
+  żeby po wygaśnięciu sesji nie wysyłać żądań już niepotrzebnych.
+
+  | Sytuacja | Zachowanie |
+  |---|---|
+  | Zapis ilości pozycji jest w drodze | Tylko pole tej pozycji jest do odczytu (`aria-disabled`, `readOnly`, fokus zostaje); pola innych pozycji są edytowalne. „Usuń” tej pozycji działa: usunięcie wykonuje się po zapisie, także nieudanym. |
+  | Ilość pozycji czeka na wysłanie | Pole pokazuje wpisaną wartość i jest edytowalne. Zmiana wpisu porzuca wartość czekającą; nowa idzie po zatwierdzeniu (opuszczenie pola, Enter, aktywacja „Przejdź do kasy”). |
+  | Usunięcie zlecone (w drodze albo czeka) | Pole ilości i „Usuń” pozycji mają `aria-disabled` (bez `disabled`, fokus zostaje); kolejna aktywacja „Usuń” nie wysyła żądania. |
+  | Odpowiedź operacji innej pozycji | Nie nadpisuje pola, które ma niezatwierdzony wpis albo wartość czekającą; pole bez wpisu pokazuje ilość z odpowiedzi. Pole z wpisem wraca do ilości z odpowiedzi tylko po odpowiedzi na własną operację. |
+  | Błąd operacji (5xx, sieć, 409, 429, 404 pozycji, która jest w koszyku) | Komunikat przy pozycji (teksty z tabeli niżej), zostaje na czas następnej operacji tej pozycji i znika dopiero po jej udanej odpowiedzi (przy kolejnym błędzie dostaje jego tekst), żeby wiersz nie zmienił wysokości w chwili jej startu, który wypada na naciśnięciu kontrolki niżej. Odpowiedź, która przychodzi, gdy wskaźnik jest wciśnięty (od `pointerdown` do `pointerup`), jest stosowana po jego zwolnieniu (najwyżej po ok. 1 s): zmiana widoku, komunikat pozycji, region statusu i fokus, także wiersze dostawy w podsumowaniu i usunięta pozycja, więc nic nie przesuwa kontrolki przed kliknięciem. Operacja trwa do zastosowania odpowiedzi, więc kliknięcie „Przejdź do kasy” przy zwolnieniu czeka na nią jak na każdą operację w drodze. Pole wraca do ostatniej potwierdzonej ilości; to nie jest pewny stan serwera, bo wynik zapisu może być nieznany. Akcje czekające innych pozycji wykonują się dalej. |
+  | Sesja wygasła (401 operacji albo ponownego odczytu koszyka po 404) | Akcje czekające są porzucane bez wysłania. Strona pokazuje widok wygasłej sesji: sam komunikat z linkiem logowania, bez listy pozycji i bez „Przejdź do kasy”. Fokus na `<body>` albo na elemencie koszyka, który znika z widokiem (pole ilości, „Usuń”, link „Przejdź do kasy”, także innej pozycji), idzie na nagłówek „Koszyk”; fokus poza koszykiem (np. w nagłówku sklepu) zostaje tam. |
+  | Klient opuszcza koszyk (nawigacja w sklepie) | Akcje już zlecone wykonują się do końca, bez nawigacji i komunikatów (licznik w nagłówku dostaje liczbę sztuk z odpowiedzi); po 401 są porzucane. Koszyk otwarty ponownie w tym czasie pokazuje wczytywanie i czyta koszyk z serwera dopiero po ich zakończeniu (po 401 od razu). Przeładowanie albo zamknięcie karty gubi akcje jeszcze niewysłane. |
+
+- Przejście do kasy: „Przejdź do kasy” jest linkiem do `/checkout`. Aktywacja (kliknięcie, dotyk, Enter) najpierw
+  zatwierdza niezatwierdzony wpis w polu ilości, które ma fokus. Gdy żadna operacja nie jest w drodze i żadna nie czeka,
+  link działa jak zwykły link. Inaczej strona czeka na operacje (zamiar przejścia): link ma `aria-disabled="true"`
+  i zachowuje fokus (aktywacja z pola ilości przenosi go na link), region statusu mówi „Zapisujemy zmiany w koszyku…”,
+  pola ilości i „Usuń” wszystkich pozycji mają `aria-disabled` i nie przyjmują edycji, a kolejna aktywacja nic nie
+  zmienia. Kliknięcie z Ctrl, Cmd, Shift, Alt albo środkowym przyciskiem zostaje zachowaniem przeglądarki (nowa karta
+  albo okno), bez czekania.
+
+  | Wynik operacji | Zachowanie |
+  |---|---|
+  | Wszystkie zapisane, koszyk da się zamówić | Oczekiwanie się kończy i strona aktywuje sam link po wyświetleniu koszyka z ostatniej odpowiedzi (także gdy wcześniejsza odpowiedź zastąpiła link nieaktywnym przyciskiem): przejście do `/checkout` jak bez oczekiwania (nawigacja w sklepie, bez wczytania całej strony). Oczekiwanie kończy się w chwili tego kliknięcia: kontrolki pozycji są znowu aktywne jak przy linku bez oczekiwania, więc strona koszyka, która zostaje (np. przywrócona przyciskiem „Wstecz” albo po przejściu linkiem nagłówka do koszyka w trakcie otwierania kasy), na nic nie czeka. Zmiana zlecona, zanim kasa się otworzy (koszyk zostaje na ekranie, dopóki serwer nie odpowie na nawigację), jest zmianą tej strony: kasa czyta koszyk dopiero po jej zakończeniu (`actionsFinished()`), jak koszyk otwarty ponownie. |
+  | Błąd którejkolwiek (5xx, sieć, 409, 429, 404 pozycji, która jest w koszyku) | Zamiar kończy się na stałe: późniejszy sukces innej akcji go nie przywraca. Klient zostaje w koszyku; pod linkiem jest `role="alert"` „Nie udało się zapisać zmian w koszyku. Sprawdź pozycje i spróbuj ponownie.” (do następnej aktywacji linku), przy pozycji jej komunikat. Fokus zostaje na linku, akcje czekające wykonują się dalej. |
+  | 404 pozycji, której nie ma w koszyku | Zamiar kończy się bez komunikatu przy linku: koszyk z odpowiedzi i „Pozycja została już usunięta” w regionie statusu. |
+  | 401 | Widok wygasłej sesji (jak przy 401 operacji), bez przejścia. |
+  | Koszyk pusty albo z pozycjami nie do kupienia | Widok tych stanów, bez przejścia. |
+  | Klient opuścił koszyk | Akcje wykonują się do końca (jak wyżej), a spóźniona odpowiedź nie otwiera kasy. |
+
+  Gdy odpowiedź dowolnej operacji (także po błędzie albo 404, które zakończyły oczekiwanie) daje koszyk bez linku
+  (pusty albo z pozycjami nie do kupienia), fokus z linku albo z `<body>` idzie na „Twój koszyk jest pusty” albo, przy
+  pozycjach nie do kupienia, na nagłówek „Koszyk”; fokus przeniesiony na inną kontrolkę zostaje tam.
+
+  Granica ochrony: kasa otwarta tym linkiem w tej samej karcie otwiera się dopiero po zakończeniu wszystkich zmian
+  zleconych na tej stronie koszyka (niezatwierdzony wpis, operacja w drodze, akcje czekające). Zamówienie powstaje
+  tylko wtedy, gdy koszyk na serwerze ma w chwili złożenia te same pozycje i ilości co podsumowanie pokazane w kasie
+  i ta sama jest kwota do zapłaty, a kupujący jest ten sam (gość albo to samo konto), także gdy kasę otwarto inną drogą (nowa karta albo okno, menu kontekstowe, adres
+  wpisany ręcznie, wstecz i dalej) albo koszyk zmieniono w innej karcie, przeglądarce lub na innym urządzeniu po
+  wczytaniu kasy; inaczej 409 i kasa pokazuje, co się zmieniło (`docs/features/cart-order-consistency/spec.md`,
+  „Granica ochrony zamówienia”). Poza gwarancją: zmiana zlecona w innej karcie, która nie dotarła do serwera przed
+  zamówieniem (zapisy koszyka i zamówienie nie mają wspólnej kolejności między kartami: `queueWrite` obejmuje zapisy
+  koszyka, nie `placeOrder`), więc zamówienie jest zgodne z kasą, a spóźniony zapis trafia w opróżniony koszyk (zmiana
+  ilości: 404, usunięcie: 200 bez zmian, dodanie: nowa pozycja w koszyku); dwie zmiany cen, które się znoszą przy tej
+  samej kwocie i tych samych ilościach; przeładowanie albo zamknięcie karty w trakcie zapisu (akcje jeszcze niewysłane
+  przepadają). Kasa czyta koszyk z serwera przy każdym wejściu, więc pokazuje stan faktyczny, także po nieudanym
+  zapisie.
+
+- Region statusu: jeden element `role="status"` (`data-testid="cart-status"`) jest ostatnim elementem ekranu (pojawienie się i zniknięcie
+  jego tekstu, także przy naciśnięciu myszą, które zatwierdza pole ilości i zaczyna operację, nie przesuwa kontrolki, którą
+  klient właśnie naciska) i istnieje od pierwszego renderu przez wczytywanie, błąd wczytania, treść, pusty koszyk i widok wygasłej sesji; zmienia się tylko jego
+  tekst, a tekst nie występuje w DOM nigdzie indziej. Mówi: „Wczytywanie koszyka…” (pierwsze wczytanie i ponowienie),
+  „Usunięto z koszyka: <nazwa pozycji>.” (nazwa z etykietą wariantu tak, jak w etykiecie pola ilości: „Buty, czarne, 42”;
+  pozycja bez nazwy: „Usunięto pozycję z koszyka.”), „Pozycja została już usunięta” (404 linii, której nie ma
+  w koszyku) i „Zapisujemy zmiany w koszyku…” (na czas zamiaru przejścia do kasy, który czyści wcześniejszy tekst). Tekst zostaje do startu następnej operacji, którą zlecił klient po zakończeniu poprzednich: ta go czyści,
+  więc taki sam tekst po kolejnej operacji jest ogłaszany ponownie. Operacja, która czekała na inną (wysłana z kolejki akcji
+  czekających), czyści tekst tylko wtedy, gdy zastępuje go własnym, więc „Pozycja została już usunięta” zostaje do końca
+  następnej akcji. Nazwę usuniętej pozycji i następną pozycję strona czyta z ostatniego widoku, nie z widoku sprzed
+  zapisu, który uruchomił wysyłanie. Błędy zostają w `role="alert"` (przy pozycji, przy przycisku), region dostawy bez zmian.
+- Fokus po usunięciu pozycji (także gdy 404 pokazał, że jej już nie ma): na „Usuń” następnej pozycji, a po usunięciu
+  ostatniej na liście na „Usuń” poprzedniej; po opróżnieniu koszyka na tekst „Twój koszyk jest pusty” (`tabIndex=-1`,
+  w DOM raz). Fokus przenosi się tylko wtedy, gdy w chwili odpowiedzi jest nadal na „Usuń”, z którego wyszła akcja (także
+  akcja, która czekała na wysłanie), albo zginął razem z nim (`<body>`); przy zmianie ilości, której 404 pokazał, że
+  pozycji już nie ma, liczy się pole ilości i „Usuń” tej pozycji (ilość zatwierdzona Tabem zostawia fokus na „Usuń”); klient, który przeszedł w tym czasie do innej
+  kontrolki, zostaje tam. Po nieudanym usunięciu wiersz, przycisk i fokus zostają. Pozycja, którą usunięto, kiedy
+  strona koszyka była już opuszczona, niczego nie fokusuje.
+- „Spróbuj ponownie” po nieudanym wczytaniu zostaje na ekranie na czas ponowienia z `aria-disabled` (bez `disabled`, więc
+  fokus zostaje); kolejna aktywacja (Enter, Spacja, kliknięcie) nie wysyła żądania. Komunikat „Nie udało się wczytać
+  koszyka” (`role="alert"`, przycisk jest poza nim) znika na ten czas, a region mówi „Wczytywanie koszyka…”. Sukces: fokus
+  na nagłówek „Koszyk”. Ponowny błąd: fokus na przycisku, komunikat wraca i jest ogłaszany ponownie. Fokus przeniesiony
+  w trakcie ponowienia na inną kontrolkę zostaje tam.
+- Pusty koszyk BFF (`emptyCart` w `src/cart/bff.ts`) ma `delivery: null`.
 - Kwoty przez `formatPrice`. Front niczego nie liczy: każdy widok pochodzi z ostatniej odpowiedzi API.
 
 | Sytuacja | UI |
@@ -544,12 +639,12 @@ zwracana.
 | dodanie OK | komunikat „Dodano do koszyka”, licznik z `itemCount` |
 | 409 przy dodaniu albo zmianie ilości | `detail` z API przy kafelku albo linii; linia pokazuje poprzednią ilość z ostatniego widoku |
 | 404 produktu przy dodaniu | „Produkt nie jest już dostępny” |
-| 404 linii przy zmianie albo usunięciu | strona wczytuje koszyk ponownie i rozstrzyga po nim (404 nie dowodzi, że linii nie ma: zmiana ilości linii `unavailable_product` też dostaje 404). Linii nie ma w koszyku: „Pozycja została już usunięta”. Linia jest w koszyku: przy linii `detail` z 404 (dla `unavailable_product` „Produkt nie jest już dostępny.”), a bez `detail` „Nie udało się zapisać zmian. Spróbuj ponownie.”; pole ilości pokazuje ilość z wczytanego koszyka, „Usuń” zostaje. Wczytanie dało 401: „Twoja sesja wygasła. Zaloguj się ponownie.”; wczytanie nie udało się inaczej: „Nie udało się zapisać zmian. Spróbuj ponownie.” przy linii. W obu ostatnich przypadkach pole ilości pokazuje ilość z ostatniego widoku |
+| 404 linii przy zmianie albo usunięciu | strona wczytuje koszyk ponownie i rozstrzyga po nim (404 nie dowodzi, że linii nie ma: zmiana ilości linii `unavailable_product` też dostaje 404). Linii nie ma w koszyku: „Pozycja została już usunięta” w regionie statusu. Linia jest w koszyku: przy linii `detail` z 404 (dla `unavailable_product` „Produkt nie jest już dostępny.”), a bez `detail` „Nie udało się zapisać zmian. Spróbuj ponownie.”; pole ilości pokazuje ilość z wczytanego koszyka, „Usuń” zostaje. Wczytanie dało 401: widok wygasłej sesji (jak przy 401); wczytanie nie udało się inaczej: „Nie udało się zapisać zmian. Spróbuj ponownie.” przy linii, a pole ilości pokazuje ilość z ostatniego widoku |
 | 429 przy dodaniu, zmianie ilości albo usunięciu | „Zbyt wiele zmian koszyka. Spróbuj ponownie za kilka minut.” (`role="alert"`) przy kafelku albo linii; linia pokazuje poprzednią ilość z ostatniego widoku |
 | 429 podglądu kodu w kasie | „Zbyt wiele prób sprawdzenia kodu. Spróbuj ponownie za kilka minut.” przy polu kodu; kasa czyta koszyk bez kodu, formularz zostaje |
 | 403, 422, 503, 5xx, błąd sieci | „Nie udało się zapisać zmian. Spróbuj ponownie.” (bez automatycznego ponowienia) |
-| 401 (sesja wygasła), także przy wczytaniu `/cart` | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem „Zaloguj się” (`/auth/login?returnTo=…`) |
-| błąd wczytania koszyka | „Nie udało się wczytać koszyka” i przycisk „Spróbuj ponownie” |
+| 401 (sesja wygasła), także przy wczytaniu `/cart` | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem „Zaloguj się” (`/auth/login?returnTo=…`); na stronie koszyka sam komunikat, bez listy pozycji i bez „Przejdź do kasy” |
+| błąd wczytania koszyka | „Nie udało się wczytać koszyka” (`role="alert"`) i przycisk „Spróbuj ponownie” (w trakcie ponowienia: patrz „Fokus” i „Spróbuj ponownie” wyżej) |
 | `hasExcludedLines` | przy sumie: „Część produktów nie jest wliczona”; „Przejdź do kasy” nieaktywny z tekstem „Usuń albo popraw oznaczone pozycje, żeby złożyć zamówienie.” |
 | `notice: merge_truncated` | „Część produktów z koszyka gościa nie zmieściła się w koszyku” (`CartBadge`: osobny wiersz nagłówka pod pozostałymi, na pełną szerokość, w przepływie strony) |
 | `no_price` | „Cena niedostępna” |
@@ -616,6 +711,8 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
   linii `purchasable` z wyceny (inne niż z `CartPrices`), wycena tylko linii `purchasable` w kolejności koszyka z kodem,
   linie wykluczone z `lineTotal = null`, bez linii `purchasable` brak wyceny, sumy 0 i `discount = null` także z kodem,
   linia pominięta przez wycenę jako `no_price` (wszystkie pominięte: sumy 0 i `discount = null` także z kodem), `itemCount` ze wszystkich linii, `hasExcludedLines`, pusty koszyk.
+  Dostawa (z `FakeCartDelivery`): `null` i brak zapytania bez linii `purchasable` (także gdy wycena pominęła wszystkie),
+  zapytanie o `totals.gross` po kodzie, `totalGross` opcji = towary + koszt, puste opcje bez aktywnych metod.
 - `GetCart` przekazuje kod do wyceny; komendy wyceniają bez kodu.
 - Handlery: 404 dla gościa nieznanego, wygasłego i scalonego; `ProductNotFound`; `nothing_to_merge` dla nieznanego,
   wygasłego i klienckiego `guestCartId`; `GetCart` klienta bez koszyka nic nie zakłada.
@@ -688,6 +785,10 @@ minimum), każdy powód odrzucenia z `detail` i `minimumOrderGross` (nieznany, w
 format, znak sterujący, 64 znaki, wykorzystany, poniżej minimum), kod pusty i z samych białych znaków jak brak kodu,
 400 z polskim naruszeniem (65 znaków, także polskich liter, tablica, bajty spoza UTF-8), koszyk bez linii możliwych do
 kupienia bez wyceny, odpowiedź komendy bez kodu. Pozostałe testy koszyka sprawdzają nowe pola sum i `discount: null`.
+`CartDeliveryEndpointTest`: koszyk gościa i klienta, `delivery` `null` bez linii do kupienia (pusty, same wykluczone,
+klient bez koszyka), koszt metody i `missingToFreeGross` poniżej progu, koszt 0 od progu, kod obniżający towary poniżej
+progu przywraca koszt płatny (P6), `totalGross` = `totals.gross` + `costGross`, kolejność po `position`, brak aktywnych
+metod, brak szablonu linku śledzenia w odpowiedzi, odpowiedź komendy z `delivery`; adapter w `QueryBusAdaptersTest`.
 
 ### Architektura
 
@@ -710,8 +811,8 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   „od”, produkt niedostępny bez ceny, listy i przycisku, błąd wywołania ofert; `load-catalog.test.ts`: jedno wywołanie
   ofert dla strony i lista bez ofert przy błędzie.
 - `AddToCartButton` (`AddToCartButton.test.tsx`): blokada na czas żądania, sukces, 409 z `detail`, 404, błąd sieci.
-- `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, przycisk „Przejdź do kasy” (aktywny, nieaktywny, brak przy pustym koszyku), pusty koszyk, zmiana ilości z błędem 409
-  (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem.
+- `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, przycisk „Przejdź do kasy” (aktywny, nieaktywny, brak przy pustym koszyku), wiersze dostawy (od, darmowa, brakująca kwota, brak wiersza, region `aria-live` obecny przed zmianą), pusty koszyk, zmiana ilości z błędem 409
+  (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem; akcje w trakcie zapisu na wstrzymanych obietnicach z liczbą wysłanych zmian i usunięć (usunięcie zaraz po wpisie, wpis w innej pozycji, porzucenie wartości czekającej, odpowiedź innej pozycji przy wpisie, błąd i 401 z akcją czekającą, dwie aktywacje „Usuń”, kolejność, opuszczenie strony); region statusu (ten sam węzeł w każdym stanie, teksty, czyszczenie przy starcie operacji klienta, brak czyszczenia przez operację z kolejki, jedyny `role="status"`); fokus po usunięciu (następna, poprzednia, pusty koszyk, wstrzymane usunięcie, fokus przeniesiony w trakcie, także przy usunięciu czekającym, widok z ostatniej odpowiedzi, nieudane usunięcie, 404); ponowienie wczytania (przycisk zostaje z `aria-disabled`, drugie żądanie nie wychodzi, sukces, ponowny błąd, fokus przeniesiony w trakcie); przejście do kasy z nawigacją linku przechwyconą w teście (przejście po oczekiwaniu przez sam link, bez `navigateTo`, także po odpowiedzi pośredniej z pozycją nie do kupienia, strona bezczynna po kliknięciu linku, gdy nawigacja się nie odbyła; link zostaje linkiem bez operacji i przy kliknięciu z klawiszem, oczekiwanie z zablokowanymi kontrolkami, tekstem regionu i fokusem na linku, druga aktywacja bez skutku, zatwierdzenie wpisu z fokusem, wpis zastępujący wartość czekającą, błąd 5xx, 409 i 429 z późniejszym sukcesem innej akcji, 401, 404, pusty koszyk, pozycje nie do kupienia, opuszczenie strony, fokus z linku po błędzie albo 404, które opróżniły koszyk albo zostawiły pozycje nie do kupienia). Stan modułu `cart-actions.ts` jest wspólny dla testów pliku: `afterEach` rozstrzyga wstrzymane zapisy (401) i czeka na `actionsFinished()`.
 - `CartBadge` (`CartBadge.test.tsx`, `events.test.ts`): liczba sztuk, aktualizacja po zmianie, ukrycie przy błędzie,
   komunikat scalenia.
 - `src/api/client.test.ts`: wywołania `/api/cart/*`, kolejka zapisów z dublerem `navigator.locks` i bez niego (każdy
@@ -727,6 +828,21 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   koszyk zostaje) zmienia ilość na 3, wartość linii i suma są równe 3 × cena z kafelka, usuwa pozycję, koszyk jest
   pusty także po odświeżeniu. Dwie karty jednego kontekstu przeglądarki bez `store_cart` klikają równocześnie
   „Do koszyka” na dwóch różnych produktach (z wyborem wariantu, gdy kafelek go ma); po odświeżeniu licznik pokazuje 2, a `/cart` ma oba produkty.
+- `store-ux-cart.spec.ts`: „Usuń” zaraz po wpisaniu ilości (mysz przy 1280 px, dotyk przy 375 px, bez opóźnienia
+  i ze zmianą ilości wstrzymaną w przeglądarce na 3 s): usunięta jest wskazana pozycja, wpisana ilość zostaje zapisana,
+  wychodzi jedna zmiana i jedno usunięcie na próbę, a po odświeżeniu serwer ma to samo; powrót do koszyka linkiem
+  nagłówka, zanim akcje opuszczonej strony się skończą, pokazuje koszyk po nich; ponowienie wczytania po 500 `GET /api/cart`
+  z odpowiedzią wstrzymaną (przycisk z fokusem i `aria-disabled`, drugi Enter i Spacja bez żądania, region z tekstem
+  wczytywania bez komunikatu błędu, sukces: fokus na „Koszyk”, ponowny błąd: fokus na przycisku, fokus przeniesiony w trakcie
+  zostaje); usunięcie klawiaturą jednej z kilku pozycji (fokus na „Usuń” następnej, po ostatniej na poprzedniej),
+  jedynej (fokus na „Twój koszyk jest pusty”) i z wstrzymanym DELETE (fokus na przycisku, przeniesiony zostaje); ten sam
+  podłączony węzeł regionu przez wczytywanie, treść i pusty koszyk; tekst usunięcia bez przewijania poziomego przy 320
+  i 375 px; „Przejdź do kasy” przy zmianie ilości wstrzymanej w przeglądarce (kliknięcie przy 1280 px, dotyk przy 375 px,
+  Tab i Enter: adres zostaje `/cart`, link z `aria-disabled` i fokusem, tekst regionu, wpis w innym polu, „Usuń” i druga
+  aktywacja bez skutku, po zwolnieniu kasa z zapisaną ilością i kwotą z serwera jako nawigacja w sklepie (znacznik na `window` zostaje), jedna zmiana; zamówienie gościa złożone
+  z tej kasy ma tę ilość), zmiana ilości zatwierdzona w koszyku, gdy nawigacja do kasy po oczekiwaniu jest wstrzymana
+  (kasa czyta koszyk po jej odpowiedzi, pokazuje i zamawia nową ilość, koszyk po zamówieniu jest pusty), przejście linkiem nagłówka w trakcie oczekiwania (adres zostaje, serwer ma zmiany), fokus z linku na „Twój koszyk jest pusty” po 404 zmiany pozycji usuniętej w innej karcie oraz tekst
+  regionu i komunikat po błędzie 500 bez przewijania poziomego przy 320 i 375 px.
 - `cart-merge.spec.ts` (wybór pierwszego dostępnego wariantu, gdy kafelek ma wybór): Jan loguje się, opróżnia swój koszyk w UI, dodaje B i wylogowuje się; jako gość dodaje A i B;
   po zalogowaniu licznik pokazuje 3, ciasteczko `store_cart` znika, a koszyk ma A × 1 i B × 2; drugi kontekst
   przeglądarki zalogowany jako Jan widzi ten sam koszyk.

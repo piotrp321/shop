@@ -386,7 +386,7 @@ final class BackofficeProductsEndpointTest extends WebTestCase
     {
         $this->api('GET', '/api/v1/admin/products/'.self::UNKNOWN_ID);
 
-        $this->assertProblem(404);
+        $this->assertProblem(404, null, 'Produkt nie istnieje.');
     }
 
     public function testTheViewOfSomethingThatIsNoIdIsNotFound(): void
