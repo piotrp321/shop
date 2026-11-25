@@ -340,45 +340,45 @@ final class ProductEditTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{list<string>}> two axis names stored before the rule of texts, one identity now
+     * @return iterable<string, array{list<string>}> two axis names stored before the rule of texts that repeat each
+     *                                               other once the forbidden characters are spaces and the ends are
+     *                                               trimmed (T2), without regard to case
      */
-    public static function storedAxesWithOneIdentity(): iterable
+    public static function storedAxesThatRepeatEachOther(): iterable
     {
         yield 'U+200B at the end of the second' => [['Kolor', "Kolor\u{200B}"]];
-        yield 'a forbidden character in the second, corrected to the first' => [['Kolor', "Kol\u{9F}or"]];
-        yield 'one letter and a forbidden character, every correction the first' => [['A', "\u{9F}A"]];
+        yield 'U+009F at the end of the second' => [['Kolor', "Kolor\u{9F}"]];
+        yield 'U+009F before the one letter of the second' => [['A', "\u{9F}A"]];
     }
 
     /**
-     * Of two stored axis names with one identity, the second takes a new name once (E7: the field has to be fixed and
-     * the fix has to save); the axes keep their count and order, the variants their identifiers and values.
+     * Of two stored axis names that repeat each other, the first stays locked and the second takes a new name once (E7:
+     * the field has to be fixed and the fix has to save); the axes keep their count and order, the variants their
+     * identifiers and values. Once saved, the names differ and K5 locks both again: a new name of either is refused
+     * with the usual detail, a change of case is not.
      *
      * @param list<string> $stored
      */
-    #[DataProvider('storedAxesWithOneIdentity')]
-    public function testAfterThePublicationTheSecondOfTwoStoredAxesWithOneIdentityTakesANewName(array $stored): void
+    #[DataProvider('storedAxesThatRepeatEachOther')]
+    public function testAfterThePublicationTheSecondOfTwoStoredAxesThatRepeatEachOtherTakesANewNameOnce(array $stored): void
     {
         $product = StoredProducts::publishedAsStored($stored, self::VARIANTS);
         $first = IdentityText::shown($stored[0]);
+        try {
+            $this->edit($product, axes: ['Barwa', 'Rozmiar'], variants: self::VARIANTS);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame(\sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter. Nową nazwę może dostać tylko druga oś, która powtarza tę nazwę.', $first), $e->getMessage());
+        }
 
         $this->edit($product, description: 'Nowy opis', axes: [$first, 'Rozmiar'], variants: self::VARIANTS);
 
         self::assertSame([$first, 'Rozmiar'], $product->variantAxes()->names());
         self::assertSame('Nowy opis', $product->shortDescription()->value());
         self::assertSame([self::BLACK_M => 'czarne, M', self::BLACK_XL => 'czarne, XL'], $this->labels($product));
-    }
-
-    /**
-     * Once saved, the names differ and K5 locks both again: a new name of either is refused with the usual detail, a
-     * change of case is not.
-     */
-    public function testAfterTheNewNameOfARepeatedAxisBothAxesAreLockedAgain(): void
-    {
-        $product = StoredProducts::publishedAsStored(['Kolor', "Kolor\u{200B}"], self::VARIANTS);
-        $this->edit($product, axes: self::AXES, variants: self::VARIANTS);
         $product->releaseEvents();
 
-        foreach ([[['Kolor', 'Materiał'], 'Rozmiar'], [['Barwa', 'Rozmiar'], 'Kolor']] as [$axes, $locked]) {
+        foreach ([[[$first, 'Materiał'], 'Rozmiar'], [['Barwa', 'Rozmiar'], $first]] as [$axes, $locked]) {
             try {
                 $this->edit($product, axes: $axes, variants: self::VARIANTS);
                 self::fail('Expected VariantIdentityLocked.');
@@ -386,12 +386,13 @@ final class ProductEditTest extends TestCase
                 self::assertSame(\sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter.', $locked), $e->getMessage());
             }
         }
-        self::assertSame(self::AXES, $product->variantAxes()->names());
+        self::assertSame([$first, 'Rozmiar'], $product->variantAxes()->names());
         self::assertSame([], $product->releaseEvents());
 
-        $this->edit($product, axes: ['kolor', 'ROZMIAR'], variants: self::VARIANTS);
+        $this->edit($product, axes: [mb_strtolower($first), 'ROZMIAR'], variants: self::VARIANTS);
 
-        self::assertSame(['kolor', 'ROZMIAR'], $product->variantAxes()->names());
+        self::assertSame([mb_strtolower($first), 'ROZMIAR'], $product->variantAxes()->names());
+        self::assertSame([self::BLACK_M => 'czarne, M', self::BLACK_XL => 'czarne, XL'], $this->labels($product));
     }
 
     /**
@@ -438,6 +439,9 @@ final class ProductEditTest extends TestCase
         yield 'two names' => [self::AXES];
         yield 'a space inside is part of the name' => [['Kolor', 'Ko lor']];
         yield 'a forbidden character, corrected to another name' => [['Kolor', "Roz\tmiar"]];
+        // A forbidden character is a space in the comparison: these names repeat the first only without it.
+        yield 'U+009F inside the second' => [['Kolor', "Kol\u{9F}or"]];
+        yield 'U+009F before a space inside the second' => [['Kolor', "Ko\u{9F} lor"]];
     }
 
     /**
@@ -460,6 +464,37 @@ final class ProductEditTest extends TestCase
         }
 
         self::assertSame($stored, $product->variantAxes()->names());
+    }
+
+    /**
+     * @return iterable<string, array{string, string}> the stored second axis name with a forbidden character and the
+     *                                                  correction that does not repeat the first
+     */
+    public static function secondAxesWithAForbiddenCharacterAndTheirCorrection(): iterable
+    {
+        yield 'U+009F inside' => ["Kol\u{9F}or", 'Kol or'];
+        yield 'U+009F before a space inside' => ["Ko\u{9F} lor", 'Ko lor'];
+    }
+
+    /**
+     * A second axis name with a forbidden character that does not repeat the first once the character is a space keeps
+     * its correction (the usual way out), and the detail of a new name says so.
+     */
+    #[DataProvider('secondAxesWithAForbiddenCharacterAndTheirCorrection')]
+    public function testAfterThePublicationASecondAxisThatDoesNotRepeatTheFirstTakesOnlyItsCorrection(string $stored, string $correction): void
+    {
+        $product = StoredProducts::publishedAsStored(['Kolor', $stored], self::VARIANTS);
+        try {
+            $this->edit($product, axes: ['Kolor', 'Materiał'], variants: self::VARIANTS);
+            self::fail('Expected VariantIdentityLocked.');
+        } catch (VariantIdentityLocked $e) {
+            self::assertSame(\sprintf('Oś „%s” nie może zmienić nazwy po pierwszej publikacji. Zapisana nazwa ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter.', IdentityText::shown($stored)), $e->getMessage());
+        }
+
+        $this->edit($product, axes: ['Kolor', $correction], variants: self::VARIANTS);
+
+        self::assertSame(['Kolor', $correction], $product->variantAxes()->names());
+        self::assertSame([self::BLACK_M => 'czarne, M', self::BLACK_XL => 'czarne, XL'], $this->labels($product));
     }
 
     public function testAfterThePublicationANewVariantIsAccepted(): void
