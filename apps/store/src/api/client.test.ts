@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CATALOG_TAG, nextCacheTagOf } from "@/catalog/isr-tags";
 import {
   addCartItem,
   changeCartItemQuantity,
@@ -631,14 +632,33 @@ describe("getPaymentStatus", () => {
 describe("createApiClient cache tags", () => {
   it("passes the tags to fetch as next.tags, so the page that reads the data is tagged", async () => {
     const fetch = vi.fn(async () => Response.json([]));
-    const client = createApiClient({ baseUrl: "http://api.test", fetch, tags: ["catalog", "product-1"] });
+    const bucket = nextCacheTagOf("product-slug-x");
+    const client = createApiClient({ baseUrl: "http://api.test", fetch, tags: [CATALOG_TAG, bucket] });
 
     await client.GET("/api/v1/categories");
 
     expect(fetch).toHaveBeenCalledTimes(1);
     const calls = fetch.mock.calls as unknown as [Request, { next?: { tags?: string[] } }][];
     expect(calls[0][0].url).toBe("http://api.test/api/v1/categories");
-    expect(calls[0][1]).toEqual({ next: { tags: ["catalog", "product-1"] } });
+    expect(calls[0][1]).toEqual({ next: { tags: ["catalog", "product-bucket-72c4"] } });
+  });
+
+  // A test of the types, checked by `tsc --noEmit` in `make check`: `tags` takes only the tags of `isr-tags.ts`, so a
+  // read cannot carry a name built anywhere else (a tag with the id of an entity would grow the list of revalidated
+  // tags of Next.js without a bound). A cast (`as`) is the one way around it that a type cannot stop.
+  it("takes only the tags of isr-tags.ts", () => {
+    const id = "0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60";
+    const names: string[] = ["catalog"];
+    // @ts-expect-error a literal is not a tag of the Next.js cache, not even catalog
+    createApiClient({ baseUrl: "http://api.test", tags: ["catalog"] });
+    // @ts-expect-error a product tag written by hand
+    createApiClient({ baseUrl: "http://api.test", tags: ["product-1"] });
+    // @ts-expect-error a product tag built from the id
+    createApiClient({ baseUrl: "http://api.test", tags: [`product-${id}`] });
+    // @ts-expect-error a list of plain strings
+    createApiClient({ baseUrl: "http://api.test", tags: names });
+    // @ts-expect-error a bucket name written by hand
+    createApiClient({ baseUrl: "http://api.test", tags: ["product-bucket-72c4"] });
   });
 
   it("leaves fetch alone without tags", async () => {

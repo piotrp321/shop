@@ -1,0 +1,3 @@
+{"t":1795557514654,"event":"seed","products":191,"catalog":1000191,"mode":"exact","total":20000}
+{"t":1795558236635,"event":"warm","statuses":{"200":382,"404":2309}}
+{"t":1795558237408,"event":"done","sent":20000,"failed":0,"stopped":false,"statuses":{"200":390,"404":2309}}

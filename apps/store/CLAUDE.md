@@ -96,6 +96,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
     bezpośrednio (klient z `getAuthDeps()`), nigdy przez Varnish.
 - Klient API (`createApiClient`) przyjmuje `tags`: trafiają do fetch jako `next: { tags }` (przez `requestInitExt`
   openapi-fetch, bo biblioteka wywołuje fetch gotowym `Request`). Tylko tak odczyty dostają tagi cache Next.js.
+- Nazwy tagów cache Next.js powstają wyłącznie w `src/catalog/isr-tags.ts` (typ `NextCacheTag`, jedyny przyjmowany
+  przez `tags`; test typów w `src/api/client.test.ts`). Tag z identyfikatorem encji (id, slug) jest zabroniony: Next
+  trzyma każdy rewalidowany tag w pamięci do restartu procesu, więc taka lista rosłaby bez granicy. Nowy rodzaj tagu
+  dopisuje się do modułu jako stała liczba nazw (jak kubełki produktów). Rzutowania `as NextCacheTag` poza modułem typ
+  nie zablokuje: nie używaj go.
 - Domyślnie Server Components. Client Component tylko tam, gdzie potrzebna jest interakcja.
 - `generateMetadata` i strona pobierają listę przez `loadCatalogForRequest`, a drzewo kategorii przez
   `loadCategoryTreeForRequest` (oba `React.cache`), więc jedno wejście to jedno żądanie na endpoint
@@ -174,10 +179,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Dane (`loadProduct` w `src/catalog/load-product.ts`, wspólne dla `generateMetadata` i strony przez `React.cache`
   jako `loadProductForRequest`): `GET /api/v1/products/{slug}`, potem `GET /api/v1/product-offers?productId=<id>`, oba
   przez `API_CATALOG_URL`. Slug spoza formatu sluga produktu (`isProductSlug` w `load-product.ts`, ten sam wzorzec co
-  w `/api/revalidate`) to 404 bez wywołania API. Tagi cache Next to te same nazwy, które API wystawia w `xkey`:
-  szczegóły `catalog` i `product-slug-<slug>`, oferta `catalog` i `product-<id>` (UUID małymi literami). Strona
-  dziedziczy sumę tagów odczytów, więc `revalidateTag` tych nazw unieważnia jej HTML, także strony 404 sluga, który
-  właśnie został opublikowany.
+  w `/api/revalidate`) to 404 bez wywołania API. Tagi cache Next to tagi z `src/catalog/isr-tags.ts` dla nazw, które
+  API wystawia w `xkey`: szczegóły `catalog` i kubełek nazwy `product-slug-<slug>`, oferta `catalog` i kubełek nazwy
+  `product-<id>` (UUID małymi literami). Strona dziedziczy sumę tagów odczytów, więc rewalidacja tych nazw unieważnia
+  jej HTML, także strony 404 sluga, który właśnie został opublikowany (i wpisy innych produktów z tego samego kubełka).
 - 404 szczegółów → `notFound()` (strona 404 z `noindex`; `generateMetadata` zwraca wtedy `{}`). Każdy inny błąd
   szczegółów albo oferty (status, sieć, nieoczekiwana treść, brak oferty produktu) to wyjątek, czyli `app/error.tsx`,
   którego ISR nie cache'uje; strona bez ceny nigdy nie powstaje.
@@ -231,8 +236,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   i `timingSafeEqual`, więc nie zdradza też długości); treść JSON `{ tags }`, 1–100 tagów, każdy `catalog`,
   `product-<uuid małymi literami>` albo `product-slug-<slug>` (slug w formacie sluga produktu: małe litery i cyfry
   w grupach łączonych pojedynczym `-`, do 200 znaków; słownik tagów API).
-- Każdy tag: `revalidateTag(tag, { expire: 0 })`: następne wejście czeka na świeży render zamiast dostać starą stronę
-  (P5). Odpowiedź 200 `{ revalidated: <liczba tagów> }`.
+- Każdy tag treści zamienia `src/catalog/isr-tags.ts` na tag cache Next, a `revalidateTag(<tag Next>, { expire: 0 })`
+  idzie raz dla każdej różnej nazwy: następne wejście czeka na świeży render zamiast dostać starą stronę (P5).
+  Odpowiedź 200 `{ revalidated: <liczba tagów treści> }`.
 - Wszystkie odpowiedzi `private, no-store`. Sekret nie trafia do logów.
 
 ## Koszyk

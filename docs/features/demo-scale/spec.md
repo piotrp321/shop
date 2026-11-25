@@ -554,9 +554,10 @@ Utrzymywana razem z kodem. Dokumenty, które opisują tę funkcję albo jej zasa
   (`docs/features/product-page/spec.md`, „Cache ISR”, poprawka L9 z PR #800), nie zapisuje na dysk, a pamięć sklepu pod takim
   ruchem stabilizuje się poniżej limitu kontenera. Dlatego dane w skali trafiają na serwer dopiero po wdrożeniu tej
   poprawki i jej weryfikacji (warunek w „Wymagane przed startem”). Poza limitem cache zostaje lista rewalidowanych
-  tagów (ok. 180 B na tag, do restartu poda): przy `medium` najwyżej ok. 350 MiB, przyjęte ograniczenie; przy `server`
-  więcej niż sterta poda sklepu, jeśli od startu poda zmieni się większość produktów (product-page spec, „Cache ISR”),
-  dlatego `server` czeka na ograniczenie tej listy (warunek w „Wymagane przed startem”).
+  tagów (ok. 180 B na tag, do restartu poda); sklep rewaliduje kubełki zamiast tagów z identyfikatorem i slugiem
+  produktu, więc lista ma najwyżej 65 537 wpisów przy każdej liczbie produktów (`docs/features/isr-tag-limit/spec.md`,
+  product-page spec, „Cache ISR”). `server` czeka na weryfikację tej zmiany na serwerze (warunek w „Wymagane przed
+  startem”).
 - `count(*)` w `initialize` przy 10 mln produktów: obserwowane w krokach na serwerze, poprawka poza tym etapem.
 
 ## Wymagane przed startem
@@ -578,6 +579,6 @@ Utrzymywana razem z kodem. Dokumenty, które opisują tę funkcję albo jej zasa
     400 MB wpisów 404); pamięć kontenera `store` (`container_memory_working_set_bytes`) przestaje rosnąć i zostaje
     poniżej 1 GiB przy limicie 1536 MiB; liczba restartów poda sklepu (`kube_pod_container_status_restarts_total`)
     się nie zmienia.
-- Przed `generate` z profilem `server` na serwerze dodatkowo: wdrożone i zweryfikowane na serwerze ograniczenie wzrostu
-  listy rewalidowanych tagów cache ISR sklepu (PERFORMANCE, #781). Przy `medium` lista bez limitu jest przyjętym
-  ograniczeniem.
+- Przed `generate` z profilem `server` na serwerze dodatkowo: wdrożone ograniczenie listy rewalidowanych tagów cache ISR
+  sklepu (`docs/features/isr-tag-limit/spec.md`) i jego weryfikacja na serwerze według tej specyfikacji („Weryfikacja na
+  serwerze (D4)”, wynik w komentarzu w #781).
