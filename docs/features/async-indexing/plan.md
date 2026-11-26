@@ -2,7 +2,7 @@
 
 Specyfikacja: `docs/features/async-indexing/spec.md`. Plan jest dokumentem roboczym: po ukończeniu funkcji go usuń.
 Plan zakłada zaakceptowane D1–D5 (z warunkami: prostota, wspólna logika trybów, brak logiki domenowej Catalog w `Shared`).
-Istotne decyzje DDD są w specyfikacji; zmiana któregokolwiek rozstrzygnięcia zmienia zadania 2–6.
+Istotne decyzje DDD są w specyfikacji; zmiana któregokolwiek rozstrzygnięcia zmienia zadania 2–5.
 
 ## Status
 
@@ -11,15 +11,16 @@ Istotne decyzje DDD są w specyfikacji; zmiana któregokolwiek rozstrzygnięcia 
 | 0 | 1 (pomiar przyczyny) + **brama**: użytkownik zatwierdza kryterium wydajnościowe (spec, kryterium 12) | |
 | 1 | 2 (wspólna logika, wiadomość, rejestr typów, szyna) | |
 | 2 | 3 (przebieg, rejestr, wykluczanie, finalizacja) | |
-| 3 | 4 (producent i komenda), 5 (compose i chart) | |
-| 4 | 6 (abort, nadzór), 7 (integracje i dokumentacja) | |
-| 5 | 8 (pomiar po wdrożeniu) | |
+| 3 | 4 (producent i komenda) | |
+| 4 | 5 (abort, nadzór), 6 (integracje i dokumentacja) | |
+| 5 | 7 (pomiar po wdrożeniu) | |
 
-Zadanie 2 nie startuje przed bramą po zadaniu 1: kryterium wydajnościowe (R, B, T, C) jest wpisane do specyfikacji
-i zatwierdzone. Zadania 4 i 5 są niezależne (komenda kontra konfiguracja usług; wspólny kontrakt: nazwa transportu
-`indexing` i polecenie workera z zadania 2). Pozostałe idą po kolei, każde jako osobny PR (2 i 5 mogą być jednym, jeśli diff
-zostaje czytelny). Nowy transport i worker trafiają do compose i chartu w tym samym PR co pierwszy kod, który z nich
-korzysta, albo wcześniej.
+**Realizacja:** w nowej sesji z Opus High, zaczynając wyłącznie od zadania 1. Sesja kończy się na bramie: przedstawia
+użytkownikowi wyniki pomiarów i proponowane kryteria wydajnościowe (R, B, T, C) do akceptacji i nie zaczyna zadania 2 bez niej.
+Zadanie 2 nie startuje przed bramą: kryterium jest wpisane do specyfikacji i zatwierdzone. Zadania idą po kolei, każde jako
+osobny PR. **Transport, compose i chart są jednym PR (zadanie 2):** definicja transportów w `messenger.yaml`, usługa
+`worker-indexing` w compose i w chartcie, zmienne i test chartu trafiają razem, więc żaden commit nie zostawia transportu
+bez konsumenta ani usługi bez transportu.
 
 ## Zadania
 
@@ -41,7 +42,7 @@ korzysta, albo wcześniej.
   się z liczbą procesów, użytkownik decyduje, czy kontynuować.
 - **Akceptacja:** raport podaje metodę, komendy i liczby; hipotezy bez pomiaru są oznaczone. Ryzyko: FAST (pomiar).
 
-### 2. Wspólna logika, wiadomość `IndexDocuments`, rejestr typów i szyna bez transakcji
+### 2. Wspólna logika, wiadomość `IndexDocuments`, rejestr typów, szyna, transporty, compose i chart
 
 - **Cel:** jeden kod zapisu i przełączenia dla obu trybów; cienka warstwa ogólna w `Shared` (D5).
 - **Zakres:**
@@ -51,8 +52,16 @@ korzysta, albo wcześniej.
     `IndexDocumentsHandler`;
   - Catalog: `ProductDocumentIndexer` (walidacja UUID i limitu 5000, `ProductSearchSource::findMany`, zapis przez
     `ProductBatchIndexer`; rozliczenie paczki dopiero w zadaniu 3);
-  - szyna `indexing.bus` bez `doctrine_transaction`, transport `indexing` i routing w `messenger.yaml` z komentarzem,
-    parametr `app.search.indexing_batch_size` z `SEARCH_INDEX_BATCH_SIZE` (walidacja `1..5000`).
+  - `ProductBatchIndexer::write(index, snapshots, version)` **przyjmuje wersję od wołającego**, który bierze ją tuż przed
+    odczytem migawek (`fill` przed `page`, handler przed `findMany`); wersja nie jest brana wewnątrz `write`;
+  - szyna `indexing.bus` bez `doctrine_transaction`, transport AMQP `indexing` i transport Doctrine `indexing_finalize`
+    (`redeliver_timeout` ponad najdłuższy etap finalizacji) z routingiem i komentarzem w `messenger.yaml`, parametr
+    `app.search.indexing_batch_size` z `SEARCH_INDEX_BATCH_SIZE` (walidacja `1..5000`);
+  - **w tym samym PR infrastruktura:** usługa `worker-indexing` w `infra/docker-compose.yml` (`messenger:consume
+    indexing_finalize indexing --time-limit=86400 --memory-limit=...`, zależność od RabbitMQ i `api`, healthcheck jak
+    pozostałe, `make up`), Deployment w chartcie z `workers.indexing.replicas` (domyślnie 1), zasobami i `initContainers`
+    jak `worker`, `SEARCH_INDEX_BATCH_SIZE` w kontenerach API, test chartu „każdy transport poza `failed` ma konsumenta”
+    obejmujący oba nowe transporty, `make -C infra/k8s check`.
 - **Testy (TDD: RED przed implementacją, komendy i wyniki obu uruchomień w raporcie):** istniejące testy
   `ProductSearchIndexRebuilderTest` przechodzą bez zmian po refaktorze (zachowanie sync nietknięte); `ProductBatchIndexer`:
   paczka w całości zapisana, `allIndexed` fałsz kończy się błędem (przejściowa i trwała pozycja bulka, stale), fakty ofert
@@ -61,15 +70,21 @@ korzysta, albo wcześniej.
   błąd trwały bez zapisu; wyjątki przejściowe nie są trwałe; **handler paczki nie działa w transakcji bazy** (test:
   `Connection::isTransactionActive()` fałsz w trakcie zapisu do ES; to samo dla `command.bus` byłoby prawdą, więc test
   pilnuje wyboru szyny); `SEARCH_INDEX_BATCH_SIZE` 0, ujemna, nieliczbowa i powyżej limitu odrzucone przy starcie; Deptrac
-  przechodzi bez edycji `deptrac.yaml`.
-- **Akceptacja:** kryteria 6 i 10 (część), zachowanie sync bez zmian; `make -C apps/api check` i testy API.
+  przechodzi bez edycji `deptrac.yaml`; **test wersji:** zegar sztuczny i atrapy zapisują kolejność, wersja dokumentu równa
+  czasowi sprzed `page`/`findMany` (sync i handler paczki, także po ponowieniu); **test spójności infrastruktury:** każdy
+  transport z `messenger.yaml` poza `failed` ma konsumenta w compose i w chartcie, polecenie workera w compose zgadza się
+  z chartem (test chartu, w tym przypadek negatywny: transport bez konsumenta jest odrzucony), worker bez RabbitMQ nie
+  przechodzi healthchecku, a `worker-commands` nadal konsumuje tylko `payment_simulator scheduled promotions jobs`.
+- **Akceptacja:** kryteria 6, 10 i 11 (część infrastrukturalna), zachowanie sync bez zmian; `make -C apps/api check`, testy API
+  i `make -C infra/k8s check`. Nie dotyka serwera; wdrożenie to osobna operacja użytkownika (`gh workflow run deploy.yml`,
+  tylko na jego polecenie).
 - **Ryzyko:** STANDARD.
 
 ### 3. Przebieg, rejestr, wzajemne wykluczanie i finalizacja
 
 - **Cel:** bezpieczny stan przebiegu, liczenie paczek raz, dokładnie jedna finalizacja wznawialna na każdym etapie.
-- **Zakres:** (a) **najpierw test mechanizmu**: wiadomość `FinalizeSearchRebuild` wysłana przez `command.bus` z `BusNameStamp
-  ('indexing.bus')` powstaje w transakcji nadawcy (wycofana transakcja: brak wiersza w `jobs`) i po stronie konsumenta jest
+- **Zakres:** (a) **najpierw test mechanizmu**: wiadomość `FinalizeSearchRebuild` (transport `indexing_finalize`) wysłana przez `command.bus` z `BusNameStamp
+  ('indexing.bus')` powstaje w transakcji nadawcy (wycofana transakcja: brak wiersza w tabeli transportu) i po stronie konsumenta jest
   obsłużona na szynie bez transakcji; jeśli nie, wariant zapasowy ze spec. (b) migracja (nowa; tabele przebiegu i paczek,
   unikalny indeks częściowy „jeden aktywny przebieg na typ”), rekordy ORM, repozytorium i agregat `SearchRebuildRun`
   z przejściami statusów; (c) wzajemne wykluczanie: blokada `SearchIndexRebuildLock` + sprawdzenie aktywnego przebiegu
@@ -81,16 +96,17 @@ korzysta, albo wcześniej.
   **dwa procesy** rozliczające ostatnie paczki naraz dają jedną finalizację (jak `CategoryReindexConcurrencyTest`);
   paczki rozliczone przed `total_batches`, potem producent kończy: finalizacja wysłana raz (obie kolejności); `total = 0`
   (pusty katalog): od razu finalizacja; wiadomość finalizacji nie istnieje po wycofaniu przejścia i istnieje po zatwierdzeniu
-  (awaria procesu między statusem a wysyłką niemożliwa: test na prawdziwej transakcji); finalizacja przerwana w każdym
+  (awaria procesu między statusem a wysyłką niemożliwa: test na prawdziwej transakcji); **dwa procesy obsługujące tę samą wiadomość finalizacji** w każdym statusie (atrapa ES wstrzymuje etap, liczy żądania `activate` i `delete`): `succeeded`, alias na `target`, brak nadpisania statusu przez przegranego; finalizacja przerwana w każdym
   etapie (`finalizing`, `verified`, `activating` z aliasem na `previous` i z aliasem już na `target`, `activated`) i wznowiona
   kończy się `succeeded`, a alias zmienia się najwyżej raz (atrapa ES liczy żądania `activate`); `activating` z aliasem na
   trzecim indeksie i nieczytelnym aliasem: `failed`, oba indeksy zachowane; porażka `verify`: nowy indeks usunięty, alias bez
-  zmian; błąd usunięcia poprzedniego to ostrzeżenie, przebieg `succeeded`; paczka przebiegu nieaktywnego bez zapisu;
+  zmian; błąd usunięcia poprzedniego to ostrzeżenie, przebieg `succeeded`; paczka przebiegu nieaktywnego bez zapisu; **paczka w trakcie zapisu podczas abortu** (zapis wstrzymany, abort, zwolnienie): rozliczenie bez skutku, indeks aliasu nietknięty; **kopia rozliczonej paczki zapisywana podczas `verify` i po `activate`:** liczba dokumentów i alias bez zmian;
   wykluczanie: sync rebuild, async start, `setup` i `reset` w obu kolejnościach (druga odmawia z przyczyną; dwa procesy
   startujące naraz: jeden wygrywa); `setup` i `reset` odmawiają w każdym aktywnym statusie, także `activating`; migracja
   zgodna z mapowaniem (test schematu modułu); plan zapytania rozliczenia używa klucza głównego (bez `Seq Scan` po tabeli
   paczek).
-- **Akceptacja:** kryteria 3, 4, 5, 7, 9 ze specyfikacji.
+- **Akceptacja:** kryteria 3, 4, 5, 7, 9 ze specyfikacji; finalizacja w toku nie opóźnia `worker-commands` (test: kolejka `scheduled`
+  jest obsługiwana, gdy `indexing_finalize` ma wiadomość w toku).
 - **Ryzyko:** CRITICAL (współbieżność, przełączenie aliasu, nowa persystencja). Zależy od: 2.
 
 ### 4. Producent i komenda `catalog:reindex --async`
@@ -109,21 +125,9 @@ korzysta, albo wcześniej.
   (kill po zapisie do ES, przed rozliczeniem) daje komplet dokumentów i jedną finalizację; **koszt rozliczenia**: przebieg
   z dużą liczbą małych paczek (np. 5000 paczek po 1) kończy się w czasie niezależnym od liczby paczek w tabeli (brak rosnącego
   kosztu rozliczenia).
-- **Akceptacja:** kryteria 1, 2, 3, 5, 10 ze specyfikacji. **Ryzyko:** CRITICAL. Zależy od: 3. Równolegle z: 5.
+- **Akceptacja:** kryteria 1, 2, 3, 5, 10 ze specyfikacji. **Ryzyko:** CRITICAL. Zależy od: 3.
 
-### 5. Transport `indexing` i worker w compose i chart
-
-- **Zakres:** usługa `worker-indexing` w `infra/docker-compose.yml` (ten sam obraz, `messenger:consume indexing
-  --time-limit=86400 --memory-limit=...`, zależność od RabbitMQ i `api`, healthcheck jak pozostałe; `make up` startuje ją);
-  chart: Deployment `worker-indexing` z `workers.indexing.replicas` (domyślnie 1) i zasobami, `initContainers` jak `worker`,
-  `SEARCH_INDEX_BATCH_SIZE` w kontenerach API; test chartu „każdy transport poza `failed` ma konsumenta” obejmuje `indexing`;
-  `make -C infra/k8s check` (zmiana compose uruchamia go w CI).
-- **Testy:** test chartu (konsument każdego transportu, repliki z wartości, zasoby); ścieżka błędu: transport bez konsumenta
-  wywala test chartu; worker bez RabbitMQ nie przechodzi healthchecku.
-- **Akceptacja:** kryteria 10 i 11 (część infrastrukturalna). **Ryzyko:** STANDARD. Nie dotyka serwera; wdrożenie to osobna
-  operacja użytkownika (`gh workflow run deploy.yml`, tylko na jego polecenie). Równolegle z: 4.
-
-### 6. Abort i nadzór
+### 5. Abort i nadzór
 
 - **Zakres:** `catalog:reindex:abort` (warunkowy `UPDATE … WHERE status IN ('producing','running')`, potem usunięcie
   `target_index`; odmowa od `finalizing`; przebieg żywy wymaga `--force`, martwy po limicie heartbeatu, domyślnie 30 minut,
@@ -137,32 +141,32 @@ korzysta, albo wcześniej.
   zapisu; wykrycie martwego przebiegu zegarem sztucznym.
 - **Akceptacja:** kryterium 8. **Ryzyko:** STANDARD (współbieżność: CRITICAL dla części abort/finalizacja). Zależy od: 4.
 
-### 7. Integracje i dokumentacja
+### 6. Integracje i dokumentacja
 
 - **Zakres:** `bin/generate-demo` i `make -C infra/k8s reindex` wołają `catalog:reindex --async --wait` (ze skalowaniem
   `worker-indexing` tam, gdzie dziś skaluje się `worker`, i odmową przy aktywnym przebiegu); aktualizacja dokumentów ze
   specyfikacji („Dokumentacja”) i skryptów smoke/E2E, które wołają przebudowę (`git grep catalog:reindex`).
 - **Testy:** `generate-demo` bez działającego workera kończy się po limicie brakiem postępu, nie wisi; cele Makefile
   `infra/k8s` na ścieżce błędu (przebieg aktywny, brak workera); `shellcheck`.
-- **Akceptacja:** kryterium 11; dokumenty bez opisu historii. **Ryzyko:** STANDARD. Zależy od: 4, 5.
+- **Akceptacja:** kryterium 11; dokumenty bez opisu historii. **Ryzyko:** STANDARD. Zależy od: 4.
 
-### 8. Pomiar po wdrożeniu (kryterium, nie obietnica)
+### 7. Pomiar po wdrożeniu (kryterium, nie obietnica)
 
 - **Warunek:** wdrożenie na polecenie użytkownika i zgoda w rozmowie nazywająca operację i host; tylko cele
   `infra/k8s/Makefile`.
 - **Zakres:** przebieg `--async --wait` na profilu `server` (10 mln) według (R, B) z kryterium 12 oraz wariantów wokół nich;
   odczyt z logów przebiegu i Grafany (tylko odczyt), wpływ na sklep w trakcie.
 - **Wynik:** raport w `docs/reports/` z porównaniem do (T, C) i do 391 dokumentów/s; spełnienie albo niespełnienie kryterium
-  podane wprost. Wąskie gardło po stronie bazy lub ES tworzy osobne zadanie. Ryzyko: FAST; zależy od: 7.
+  podane wprost. Wąskie gardło po stronie bazy lub ES tworzy osobne zadanie. Ryzyko: FAST; zależy od: 6.
 
 ## Wpływ na skalę, infrastrukturę i dokumentację
 
 - **Skala (10 mln):** 20 000 wiadomości, 20 000 wierszy paczek i 20 000 krótkich aktualizacji wiersza przebiegu przy paczce
   500; brak `count(*)` po paczkach; producent i rejestr nie ładują katalogu do pamięci. Wpływ na tempo zależy od wąskiego
-  gardła z zadania 1; do pomiaru z zadania 8 niczego nie twierdzimy.
+  gardła z zadania 1; do pomiaru z zadania 7 niczego nie twierdzimy.
 - **Chart i compose:** transport `indexing`, usługa `worker-indexing`, `SEARCH_INDEX_BATCH_SIZE`, repliki i zasoby
-  (zadanie 5); zmiana `infra/docker-compose.yml` uruchamia w CI `make -C infra/k8s check`.
-- **Dokumentacja:** w tym samym PR co kod (zadania 2–7), bez historii; plan usuwany po zadaniu 8.
+  (zadanie 2); zmiana `infra/docker-compose.yml` uruchamia w CI `make -C infra/k8s check`.
+- **Dokumentacja:** w tym samym PR co kod (zadania 2–6), bez historii; plan usuwany po zadaniu 7.
 - **Etap demo:** przestój i odtworzenie danych są dopuszczalne; nie projektujemy zgodności ze starymi wiadomościami.
   Przebudowa online poza zakresem (ograniczenie z `walking-skeleton` zostaje).
 

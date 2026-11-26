@@ -23,7 +23,7 @@ Zakres: `apps/api` (Catalog, cienka warstwa w Shared), `infra/docker-compose.yml
   przebiegu liczy paczki, a alias zmienia się atomowo dopiero po ostatniej udanej paczce. Błąd paczki nie przełącza
   aliasu.
 - Pominięcie outboxa: paczki przebiegu idą wprost do RabbitMQ (zob. D2). Jedyna wiadomość przebiegu, która nie może zginąć
-  (finalizacja), idzie istniejącym transportem transakcyjnym (zob. „Finalizacja”).
+  (finalizacja), idzie istniejącym transportem transakcyjnym (zob. „Finalizacja”: transport `indexing_finalize`).
 - Poza zakresem: zmiana tego, co jest w dokumencie, zapytań, shardów, ustawień Elasticsearcha i pamięci Postgresa
   (jeśli pomiar wskaże je jako wąskie gardło, to osobne zadanie), indeksowanie pojedynczych zmian produktu (zostaje
   przez zdarzenia i outbox, `docs/features/search/spec.md`, „Wyzwalacze”), przebudowa online (zmiana produktu, ceny albo stanu w trakcie budowy może nie trafić do nowego indeksu aż do następnej
@@ -110,6 +110,14 @@ woła go i kiedy:
   (`ProductOfferFacts::of`), wersja dokumentu (czas przed odczytem), budowa dokumentów, zapis jednym bulkiem
   i sprawdzenie `allIndexed()` (błąd, gdy cokolwiek się nie zapisało). To dzisiejsza treść pętli `fill`; `fill` woła ją
   na stronie z `page`, handler paczki woła ją na wyniku `findMany(ids)`.
+- **Wersja dokumentu jest wyznaczana przed odczytem.** Dziś `fill` bierze `ProductIndexing::version($clock->now())` przed
+  `page`, a wersja przechodzi do `builder->build`. Po wydzieleniu `write` dostaje już odczytane migawki, więc nie może sam
+  brać czasu (wersja z chwili po odczycie złamałaby regułę z `ProductIndexing`: odczyt rozpoczęty później widzi co najmniej
+  te same dane). Dlatego `write(string $index, list<ProductSearchSnapshot> $snapshots, int $version)` **przyjmuje wersję od
+  wołającego**, a ten bierze ją bezpośrednio przed odczytem (`fill` przed `page`, handler paczki przed `findMany`);
+  zapisywany jest czas przed odczytem migawek, a fakty ofert czyta `write` po nim. Test porządku: zegar sztuczny, odczyt
+  i zapis zapisują kolejność wywołań, wersja dokumentu równa czasowi sprzed `page`/`findMany`, także po ponowieniu paczki
+  (nowa wersja przy każdej obsłudze).
 - `SearchIndexSwitch` (Catalog Application): `verify`, `activate`, usunięcie poprzedniego indeksu i zbudowanie
   `RebuildReport`, wydzielone z `replaceIndex`; woła je `ProductSearchIndexRebuilder` (synchronicznie) i finalizacja
   przebiegu (zob. niżej, z etapami wznawialnymi).
@@ -168,9 +176,17 @@ IndexDocuments {
   --memory-limit=...`; liczba replik to ustawienie chartu (`workers.indexing.replicas`), `prefetch_count` 1. Worker nie
   obsługuje `outbox`, `events` ani transportów Postgresa, więc długa kolejka przebudowy nie opóźnia zdarzeń sklepu
   (webhooków, wygaszania zamówień). Każdy transport poza `failed` ma konsumenta (test chartu); nowy transport i worker trafiają
-  do compose i chartu w tym samym PR co kod (`infra/k8s/CLAUDE.md`).
-- `FinalizeSearchRebuild` idzie transportem `jobs` (Postgres, ta sama baza), konsumowanym przez istniejący `worker-commands`,
-  a obsługuje go handler na `indexing.bus`: nadawca wysyła ją przez `command.bus` z jawnym `BusNameStamp('indexing.bus')`,
+  do compose i chartu w tym samym PR co definicja transportu w `messenger.yaml` (`infra/k8s/CLAUDE.md`): transporty
+  `indexing` i `indexing_finalize`, szyna `indexing.bus`, usługa `worker-indexing` (compose i chart), zmienna
+  `SEARCH_INDEX_BATCH_SIZE`, `redeliver_timeout` i test chartu „każdy transport ma konsumenta” (zadanie 2).
+- `FinalizeSearchRebuild` idzie własnym transportem Doctrine `indexing_finalize` (Postgres, ta sama baza, `redeliver_timeout`
+  ponad najdłuższy etap finalizacji, np. 3600 s; ponowienia 1, 3, 9, 27, 81 s, potem `failed`), konsumowanym przez
+  `worker-indexing` (`messenger:consume indexing_finalize indexing`, finalizacja pierwsza). **Nie** idzie przez `jobs`:
+  `worker-commands` obsługuje `payment_simulator scheduled promotions jobs` po kolei, jednym procesem, więc finalizacja
+  (`verify` z `refresh` i liczeniem dokumentów oraz usunięcie indeksu 10 mln dokumentów trwają minuty, a przy błędach dłużej)
+  wstrzymałaby webhooki symulatora płatności, wygaszanie zamówień i granice promocji. Na `worker-indexing` finalizacja
+  nie blokuje niczego poza paczkami tej samej przebudowy, które w tym czasie już się skończyły. Obsługuje ją handler
+  na `indexing.bus`: nadawca wysyła ją przez `command.bus` z jawnym `BusNameStamp('indexing.bus')`,
   więc wiadomość powstaje w transakcji nadawcy, a po stronie workera trafia na szynę bez transakcji. Zadanie 3 zaczyna od
   testu tego mechanizmu (wiadomość w wycofanej transakcji nie istnieje, w zatwierdzonej istnieje i jest obsłużona na
   `indexing.bus`); jeśli `BusNameStamp` tak nie działa, handler finalizacji zostaje na `command.bus` i wykonuje ES poza
@@ -213,7 +229,7 @@ w `DbalCatalogReset`) wykluczają się wzajemnie jedną regułą:
    `status IN ('producing','running')`.
 3. Jeśli po zmianie `total_batches IS NOT NULL AND done_batches = total_batches` i status `running`, ta sama transakcja
    przestawia `running → finalizing` warunkowym `UPDATE` (`WHERE status = 'running'`) i wysyła `FinalizeSearchRebuild`
-   transportem `jobs`. Wiersz przebiegu jest blokowany przez `UPDATE` (blokada wiersza do końca transakcji), więc współbieżne
+   transportem `indexing_finalize`. Wiersz przebiegu jest blokowany przez `UPDATE` (blokada wiersza do końca transakcji), więc współbieżne
    rozliczenia paczek ustawiają się w kolejce; dokładnie jedno widzi komplet. Nie ma `count(*)` po tabeli paczek: licznik
    jest kolumną, więc koszt rozliczenia nie zależy od liczby paczek.
 
@@ -237,8 +253,8 @@ zakończyć się przed końcem produkcji; to ścieżka opisana wyżej.
 ### Finalizacja i jej wznawianie
 
 Handler `FinalizeSearchRebuild` (na `indexing.bus`, bez transakcji wokół ES) przechodzi przez etapy; po każdym zapisuje status
-krótką transakcją, a każdy etap jest idempotentny, więc ponowienie wiadomości (transport `jobs` ponawia 1, 3, 9, 27, 81 s,
-potem `failed`; `app:messaging:failed-retry`) albo restart workera wznawia od zapisanego etapu:
+krótką transakcją, a każdy etap jest idempotentny, więc ponowienie wiadomości (transport `indexing_finalize`; po `failed`
+`app:messaging:failed-retry`) albo restart workera wznawia od zapisanego etapu:
 
 | Status przy starcie | Co robi | Stan po awarii w tym miejscu |
 |---|---|---|
@@ -247,6 +263,23 @@ potem `failed`; `app:messaging:failed-retry`) albo restart workera wznawia od za
 | `activating` | czyta `activeIndex()`. Równy `previous_index`: woła `activate(target, previous)` (jedno atomowe żądanie), potem czyta alias. Równy `target_index`: alias już przełączony (żądanie zdążyło przed awarią). Inny albo nieczytelny: `failed`, oba indeksy zachowane, jak dziś kod wyjścia 2 | `activate` powtórzony nie przełączy dwa razy: oczekuje poprzedniego indeksu |
 | `activated` (alias na `target`) | `deleteIndex(previous)`, potem `succeeded`. Błąd usunięcia to ostrzeżenie (indeks osierocony), przebieg i tak `succeeded`, jak dziś | powtórzone usunięcie; brak indeksu (404) liczy się jako usunięty (wymaga testu i ewentualnej poprawki `deleteIndex`) |
 | `succeeded`, `failed`, `aborted` | koniec bez skutku | — |
+
+**Dwie wiadomości finalizacji naraz.** Zdarza się to przy zwykłym użyciu: `redeliver_timeout` minął, a pierwszy handler
+jeszcze pracuje (długi `verify` albo usuwanie dużego indeksu), albo wiadomość ponowiono ręcznie. Rozwiązanie bez dzierżawy
+i bez blokady trzymanej podczas operacji na ES:
+
+- każdy etap jest idempotentny (`verify`, `deleteIndex` z 404 jako sukcesem), a `activate(target, previous)` jest jednym
+  atomowym żądaniem z oczekiwanym poprzednim indeksem, po którym zawsze następuje odczyt aliasu: odczyt równy `target`
+  to sukces niezależnie od tego, które z dwóch żądań go wykonało;
+- **każde przejście statusu to warunkowy `UPDATE … WHERE status = :widziany`**, także przejścia do `failed`: handler, który
+  przegrał, zmienia 0 wierszy i kończy się bez skutku (albo przechodzi dalej od aktualnego statusu), więc spóźniony
+  handler nie nadpisze `succeeded` przez `failed` ani nie cofnie statusu;
+- dwa handlery mogą więc wykonać ten sam etap dwa razy (zbędna praca, nie błąd), ale nigdy nie przełączą aliasu dwa razy
+  ani nie zakończą przebiegu dwa razy. Dzierżawy (`lease_until`) nie dodajemy: dałaby tylko oszczędność pracy kosztem
+  kolumny, odnawiania i ścieżek wygaśnięcia.
+
+Test: dwa procesy obsługujące tę samą wiadomość w każdym statusie (wstrzymywanie ES w atrapie), atrapa liczy żądania
+`activate` i `delete`; końcowy stan `succeeded`, alias na `target`, `previous` usunięty, brak zmiany statusu przez przegranego.
 
 `deleteIndex` już dziś odmawia usunięcia indeksu, na który wskazuje alias (`ElasticsearchSearchIndexMaintenance::deleteIndex`),
 więc usunięcie błędnego indeksu nie jest możliwe także przy błędzie logiki.
@@ -258,8 +291,26 @@ wskazuje go alias (sprawdza to `deleteIndex`). Przebieg w `finalizing` i dalej: 
 dokańcza ponowienie jej wiadomości (jeśli wiadomość jest w `failed`, ponawia ją `app:messaging:failed-retry`). Przebieg
 żywy (heartbeat nie starszy niż limit) wymaga `--force`; martwy (limit domyślnie 30 minut) nie.
 
-**Paczki a stan przebiegu.** Paczka przebiegu, który nie jest `producing`/`running` (`aborted`, `failed`, finalizujący),
-kończy się bez zapisu i rozliczenia; paczka przebiegu `aborted` w kolejce nie pisze do indeksu, którego już nie ma.
+**Paczki a stan przebiegu (paczka w trakcie zapisu podczas abortu lub finalizacji).** Handler paczki ma stałą kolejność:
+(1) czyta przebieg bez blokady i kończy bez zapisu, gdy nie jest `producing`/`running`; (2) zapisuje do `target_index`
+(bez transakcji); (3) rozlicza warunkowym `UPDATE … WHERE status IN ('producing','running')` i wiersz paczki w jednej
+transakcji; 0 zmienionych wierszy (przebieg już `aborted`, `failed` albo `finalizing`) kończy się bez skutku.
+`abort` nie czeka na paczki w trakcie zapisu. Skutki, bez dodatkowego mechanizmu:
+
+- **Abort w trakcie zapisu paczki.** Paczka zapisana już po usunięciu `target_index` może w Elasticsearchu (domyślne
+  `action.auto_create_index`, repo go nie zmienia) odtworzyć pusty indeks o tej nazwie z dynamicznym mapowaniem. To indeks
+  bez aliasu, którego nikt nie czyta; `catalog:reindex --async` i `setup` wykrywają indeksy bez aliasu jako osierocone, a start
+  przebiegu usuwa je przed budową nowego (`docs/features/demo-scale/spec.md`, Z5). Ryzyko: tymczasowy osierocony indeks
+  do następnego startu; nie wpływa na sklep.
+- **Paczka w trakcie zapisu, gdy rusza finalizacja.** Finalizacja startuje dopiero po rozliczeniu wszystkich paczek, więc
+  w trakcie zapisu może być tylko **kopia już rozliczonej paczki** (redelivery po restarcie albo ponowieniu). Taka kopia
+  czyta aktualny stan produktów, zapisuje te same identyfikatory z nowszą wersją (`external_gte`), więc nie zmienia liczby
+  dokumentów, `verify` ani wyniku; po przełączeniu aliasu to zapis do żywego indeksu aktualnych danych, poprawny jak
+  zapis `ProductIndexing`. Rozliczenie takiej kopii kończy się bez skutku (`ON CONFLICT`, status).
+- Po `failed` przebiegu kopie w kolejce kończą się bez zapisu (krok 1).
+
+Testy: abort w trakcie zapisu paczki (atrapa ES wstrzymuje zapis): rozliczenie bez skutku, indeks aliasu nietknięty;
+kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokumentów i alias bez zmian.
 
 ### Przebieg komendy
 
@@ -282,9 +333,9 @@ kończy się bez zapisu i rozliczenia; paczka przebiegu `aborted` w kolejce nie 
 - **Postęp i pomiar bez nowych narzędzi.** Postęp przebiegu to log `info` kanałem `search_rebuild` (przebieg, paczki zrobione
   i razem, dokumenty, `documents_per_second`), trafiający do Grafany jak dziś log postępu przebudowy; wynik `--wait` na
   konsoli. Głębokość kolejki `indexing` odczytuje się z RabbitMQ (zarządzanie albo metryki, jeśli już są zbierane) i zadanie
-  planu sprawdza, co jest dostępne; nowego eksportera, panelu ani frameworka benchmarkowego nie budujemy. Pomiary zadań 1 i 8
+  planu sprawdza, co jest dostępne; nowego eksportera, panelu ani frameworka benchmarkowego nie budujemy. Pomiary zadań 1 i 7
   używają Grafany, logów przebiegu i czasów z SPX/logów (`docs/reports/`), zgodnie z `apps/api/CLAUDE.md` („Profilowanie”).
-- Nadzór kolejki `indexing` w `queue-check`: zadanie 6 ocenia, czy dodać (głębokość i wiek AMQP), czy zapisać decyzję, że jej
+- Nadzór kolejki `indexing` w `queue-check`: zadanie 5 ocenia, czy dodać (głębokość i wiek AMQP), czy zapisać decyzję, że jej
   nie obejmuje (przebieg ma własny sygnał: martwy przebieg po heartbeacie i brak postępu w `--wait`).
 
 ## Skala (10 mln produktów)
@@ -310,8 +361,12 @@ kończy się bez zapisu i rozliczenia; paczka przebiegu `aborted` w kolejce nie 
 | Wszystkie paczki rozliczone przed końcem produkcji | Komplet wykrywa producent w swojej końcowej transakcji i wysyła finalizację |
 | Pusty katalog | `total_batches = 0`; producent od razu finalizuje, indeks pusty, alias przełączony |
 | Dwa rozliczenia ostatnich paczek jednocześnie | Blokada wiersza przebiegu: jedno widzi `done = total` i wysyła finalizację, drugie widzi `finalizing` i nic nie wysyła |
-| Utrata finalizacji między commitem a publikacją | Niemożliwa: wiadomość jest wierszem tabeli `jobs` w tej samej transakcji co przejście `running → finalizing` |
+| Utrata finalizacji między commitem a publikacją | Niemożliwa: wiadomość jest wierszem tabeli transportu `indexing_finalize` w tej samej transakcji co przejście `running → finalizing` |
 | Awaria w trakcie finalizacji (każdy etap) | Ponowienie wiadomości wznawia od zapisanego statusu (tabela „Finalizacja”); alias przełącza się najwyżej raz |
+| Dwie wiadomości finalizacji naraz (redelivery przy długim etapie, ręczne ponowienie) | Etapy idempotentne, przejścia statusu warunkowe; alias przełączony najwyżej raz, `succeeded` nie jest nadpisany; zbędna praca możliwa |
+| Paczka w trakcie zapisu podczas abortu | Rozliczenie bez skutku; zapis po usunięciu indeksu może odtworzyć osierocony indeks, sprzątany przy następnym starcie |
+| Kopia rozliczonej paczki zapisuje się podczas finalizacji | Te same identyfikatory, nowsza wersja; liczba dokumentów i alias bez zmian |
+| Długa finalizacja (minuty) | Obsługuje ją `worker-indexing`; `worker-commands` (webhooki, wygaszanie zamówień, promocje) jej nie widzi |
 | Finalizacja w `failed` (po ponowieniach) | Status zostaje etapem (np. `activating`), alias bez zmian albo już przełączony; operator ponawia wiadomość (`app:messaging:failed-retry`) |
 | `verify` nie przechodzi | `failed`, nowy indeks usunięty, alias bez zmian |
 | `activate` w stanie nieznanym | `failed`, oba indeksy zachowane, kod wyjścia 2 |
@@ -348,7 +403,9 @@ kończy się bez zapisu i rozliczenia; paczka przebiegu `aborted` w kolejce nie 
    produkcji i pusty katalog kończą się finalizacją.
 6. Zła wiadomość trafia do `failed` bez zapisu.
 7. Wiadomość finalizacji nie ginie: nie istnieje bez zatwierdzonego przejścia statusu i istnieje po jego zatwierdzeniu.
-   Przerwanie w każdym etapie finalizacji i jego ponowienie kończy przebieg poprawnie; alias zmienia się najwyżej raz.
+   Przerwanie w każdym etapie finalizacji i jego ponowienie, a także dwie wiadomości finalizacji obsługiwane równocześnie,
+   kończą przebieg poprawnie; alias zmienia się najwyżej raz, a `succeeded` nie jest nadpisany.
+   Finalizacja nie opóźnia wiadomości `worker-commands`. Wersja dokumentu jest czasem sprzed odczytu migawek także w paczce.
 8. `abort` nie usuwa indeksu aliasu, nie ściga się z finalizacją, odmawia po `finalizing`.
 9. Przebudowa synchroniczna, asynchroniczna, `setup` i `reset` wykluczają się w obu kolejnościach startu.
 10. `catalog:reindex` bez `--async` działa jak dziś; zdarzenia sklepu nie czekają na `indexing`.
@@ -357,7 +414,7 @@ kończy się bez zapisu i rozliczenia; paczka przebiegu `aborted` w kolejce nie 
     równoległych zapisów i proponuje wartość docelową (dokumenty/s i czas dla 10 mln); użytkownik ją zatwierdza i wpisuje tu
     **przed rozpoczęciem zadania 2**: „na profilu `server` przy ≤ R replikach i paczce B stałe tempo ≥ T dokumentów/s
     (mediana ze środkowych 80% przebiegu), czas przebiegu ≤ C”. Wartości R, B, T, C: do uzupełnienia po zadaniu 1. Wynik
-    pomiaru zadania 8 porównuje się z nimi i z 391 dokumentami/s z 2026-11-26. Do pomiaru nie twierdzimy, że wydajność jest
+    pomiaru zadania 7 porównuje się z nimi i z 391 dokumentami/s z 2026-11-26. Do pomiaru nie twierdzimy, że wydajność jest
     osiągnięta; jeśli zadanie 1 pokaże, że wąskie gardło nie skaluje się z liczbą procesów, użytkownik decyduje, czy
     kontynuować.
 
@@ -377,5 +434,5 @@ kończy się bez zapisu i rozliczenia; paczka przebiegu `aborted` w kolejce nie 
   paczki są ustawieniami.
 - **Gorący wiersz przebiegu.** Aktualizacja per paczka jednego wiersza: pomiar w zadaniu 4; gdyby był wąskim gardłem, rozliczanie
   w grupach (np. wiersz paczki bez licznika, licznik z `count` co N paczek) to zmiana lokalna.
-- **`BusNameStamp` na `jobs`.** Mechanizm finalizacji z szyną bez transakcji wymaga potwierdzenia testem (zadanie 3) i ma
+- **`BusNameStamp` na `indexing_finalize`.** Mechanizm finalizacji z szyną bez transakcji wymaga potwierdzenia testem (zadanie 3) i ma
   zapasowy wariant opisany wyżej.
