@@ -1,0 +1,8 @@
+cur t_orig1 all_name took 567 search pool tasks per request 2
+cur t_orig1 root_color took 86 search pool tasks per request 2
+flat2 t_flat1 all_name took 145 search pool tasks per request 2
+flat2 t_flat1 root_color took 84 search pool tasks per request 2
+cur t_orig4 all_name took 149 search pool tasks per request 9
+cur t_orig4 root_color took 26 search pool tasks per request 9
+flat2 t_flat4 all_name took 41 search pool tasks per request 9
+flat2 t_flat4 root_color took 29 search pool tasks per request 9

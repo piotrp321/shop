@@ -1,0 +1,135 @@
+                     Table "public.ordering_sales_hour"
+   Column    |            Type             | Collation | Nullable | Default 
+-------------+-----------------------------+-----------+----------+---------
+ hour_start  | timestamp(0) with time zone |           | not null | 
+ shard       | smallint                    |           | not null | 
+ order_count | integer                     |           | not null | 
+ gross       | bigint                      |           | not null | 
+Indexes:
+    "ordering_sales_hour_pkey" PRIMARY KEY, btree (hour_start, shard)
+Check constraints:
+    "ordering_sales_hour_hour_check" CHECK (hour_start = date_bin('01:00:00'::interval, hour_start, '2000-01-01 00:00:00+00'::timestamp with time zone))
+    "ordering_sales_hour_shard_check" CHECK (shard >= 0 AND shard <= 15)
+    "ordering_sales_hour_totals_check" CHECK (order_count >= 0 AND gross >= 0)
+
+                    Table "public.inventory_stock_item"
+   Column   |            Type             | Collation | Nullable | Default 
+------------+-----------------------------+-----------+----------+---------
+ variant_id | uuid                        |           | not null | 
+ physical   | integer                     |           | not null | 
+ reserved   | integer                     |           | not null | 
+ version    | integer                     |           | not null | 
+ updated_at | timestamp(0) with time zone |           | not null | 
+ product_id | uuid                        |           |          | 
+Indexes:
+    "inventory_stock_item_pkey" PRIMARY KEY, btree (variant_id)
+    "inventory_stock_item_low_stock_idx" btree (product_id) WHERE (physical - reserved) >= 1 AND (physical - reserved) <= 5
+    "inventory_stock_item_out_of_stock_idx" btree (product_id) WHERE (physical - reserved) = 0
+Check constraints:
+    "inventory_stock_item_quantities_check" CHECK (reserved >= 0 AND physical >= reserved AND physical <= 1000000)
+
+=== D1 sales 60 days (30 + previous 30)
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=3712.19..3712.20 rows=1 width=16) (actual time=3.621..3.622 rows=1.00 loops=1)
+   Buffers: shared hit=3 read=233
+   ->  Bitmap Heap Scan on ordering_sales_hour  (cost=578.50..3617.52 rows=18934 width=12) (actual time=0.792..2.494 rows=19206.00 loops=1)
+         Recheck Cond: ((hour_start >= (now() - '60 days'::interval)) AND (hour_start < now()))
+         Heap Blocks: exact=154
+         Buffers: shared hit=3 read=233
+         ->  Bitmap Index Scan on ordering_sales_hour_pkey  (cost=0.00..573.77 rows=18934 width=0) (actual time=0.672..0.673 rows=19206.00 loops=1)
+               Index Cond: ((hour_start >= (now() - '60 days'::interval)) AND (hour_start < now()))
+               Index Searches: 1
+               Buffers: shared hit=3 read=79
+ Planning:
+   Buffers: shared hit=55 read=6
+ Planning Time: 0.206 ms
+ Execution Time: 3.638 ms
+(14 rows)
+
+Time: 4.188 ms
+=== D2 out of stock count (limit 1000)
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=49.61..49.62 rows=1 width=8) (actual time=0.745..0.746 rows=1.00 loops=1)
+   Buffers: shared read=9
+   ->  Limit  (cost=0.42..37.10 rows=1001 width=4) (actual time=0.214..0.696 rows=1001.00 loops=1)
+         Buffers: shared read=9
+         ->  Index Only Scan using inventory_stock_item_out_of_stock_idx on inventory_stock_item  (cost=0.42..551.74 rows=15047 width=4) (actual time=0.214..0.625 rows=1001.00 loops=1)
+               Index Cond: (product_id IS NOT NULL)
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared read=9
+ Planning:
+   Buffers: shared hit=52 read=5
+ Planning Time: 0.247 ms
+ Execution Time: 0.757 ms
+(13 rows)
+
+Time: 1.202 ms
+=== D3 low stock count
+                                                                                      QUERY PLAN                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=48.55..48.56 rows=1 width=8) (actual time=0.646..0.646 rows=1.00 loops=1)
+   Buffers: shared hit=1 read=7
+   ->  Limit  (cost=0.42..36.03 rows=1001 width=4) (actual time=0.155..0.598 rows=1001.00 loops=1)
+         Buffers: shared hit=1 read=7
+         ->  Index Only Scan using inventory_stock_item_low_stock_idx on inventory_stock_item  (cost=0.42..535.75 rows=15047 width=4) (actual time=0.155..0.528 rows=1001.00 loops=1)
+               Index Cond: (product_id IS NOT NULL)
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared hit=1 read=7
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.050 ms
+ Execution Time: 0.654 ms
+(13 rows)
+
+Time: 0.818 ms
+=== D4 products without images (limit 1000)
+                                                                                     QUERY PLAN                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=1015.47..1015.48 rows=1 width=8) (actual time=1.887..1.888 rows=1.00 loops=1)
+   Buffers: shared hit=677 read=244
+   ->  Limit  (cost=0.41..1002.96 rows=1001 width=4) (actual time=0.025..1.834 rows=1001.00 loops=1)
+         Buffers: shared hit=677 read=244
+         ->  Index Only Scan using catalog_product_without_images_idx on catalog_product p  (cost=0.41..19650.71 rows=19620 width=4) (actual time=0.025..1.766 rows=1001.00 loops=1)
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared hit=677 read=244
+ Planning:
+   Buffers: shared hit=141 read=11
+ Planning Time: 0.287 ms
+ Execution Time: 1.895 ms
+(12 rows)
+
+Time: 2.452 ms
+=== D5 recent orders (perPage 5)
+                                                                                  QUERY PLAN                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..51.83 rows=6 width=32) (actual time=0.051..0.063 rows=6.00 loops=1)
+   Buffers: shared hit=29
+   ->  Index Only Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..8567309.73 rows=1000066 width=32) (actual time=0.050..0.062 rows=6.00 loops=1)
+         Heap Fetches: 6
+         Index Searches: 1
+         Buffers: shared hit=29
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.006..0.006 rows=1.00 loops=6)
+                 Buffers: shared hit=24
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.005..0.005 rows=2.33 loops=6)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 6
+                       Buffers: shared hit=24
+ Planning:
+   Buffers: shared hit=296
+ Planning Time: 0.421 ms
+ Execution Time: 0.076 ms
+(17 rows)
+
+Time: 0.897 ms
+  oos   |  low   
+--------+--------
+ 225141 | 292762
+(1 row)
+
+Time: 81.130 ms

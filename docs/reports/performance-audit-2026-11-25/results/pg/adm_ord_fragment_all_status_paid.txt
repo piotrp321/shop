@@ -1,0 +1,71 @@
+-- adm_ord_fragment_all_status_paid
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('example') || '%' AND o.status='paid' ORDER BY o.total_gross DESC, o.id DESC LIMIT 50
+
+SET
+SET
+                                                                                      QUERY PLAN                                                                                       
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..552.98 rows=50 width=108) (actual time=0.112..1.704 rows=50.00 loops=1)
+   Buffers: shared hit=188 read=69
+   ->  Index Scan Backward using ordering_order_status_total_gross_id_idx on ordering_order o  (cost=0.42..35363.99 rows=3200 width=108) (actual time=0.112..1.693 rows=50.00 loops=1)
+         Index Cond: ((status)::text = 'paid'::text)
+         Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%example%'::text)
+         Index Searches: 1
+         Buffers: shared hit=188 read=69
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.027..0.027 rows=1.00 loops=50)
+                 Buffers: shared hit=153 read=51
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.025..0.026 rows=2.64 loops=50)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 50
+                       Buffers: shared hit=153 read=51
+ Planning:
+   Buffers: shared hit=424
+ Planning Time: 0.975 ms
+ Execution Time: 1.736 ms
+(18 rows)
+
+                                                                                      QUERY PLAN                                                                                       
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..552.98 rows=50 width=108) (actual time=0.018..0.208 rows=50.00 loops=1)
+   Buffers: shared hit=257
+   ->  Index Scan Backward using ordering_order_status_total_gross_id_idx on ordering_order o  (cost=0.42..35363.99 rows=3200 width=108) (actual time=0.017..0.205 rows=50.00 loops=1)
+         Index Cond: ((status)::text = 'paid'::text)
+         Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%example%'::text)
+         Index Searches: 1
+         Buffers: shared hit=257
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.002..0.002 rows=1.00 loops=50)
+                 Buffers: shared hit=204
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.002..0.002 rows=2.64 loops=50)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 50
+                       Buffers: shared hit=204
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.118 ms
+ Execution Time: 0.228 ms
+(18 rows)
+
+                                                                                      QUERY PLAN                                                                                       
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..552.98 rows=50 width=108) (actual time=0.012..0.170 rows=50.00 loops=1)
+   Buffers: shared hit=257
+   ->  Index Scan Backward using ordering_order_status_total_gross_id_idx on ordering_order o  (cost=0.42..35363.99 rows=3200 width=108) (actual time=0.012..0.167 rows=50.00 loops=1)
+         Index Cond: ((status)::text = 'paid'::text)
+         Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%example%'::text)
+         Index Searches: 1
+         Buffers: shared hit=257
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.002..0.002 rows=1.00 loops=50)
+                 Buffers: shared hit=204
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.001..0.002 rows=2.64 loops=50)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 50
+                       Buffers: shared hit=204
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.092 ms
+ Execution Time: 0.179 ms
+(18 rows)
+

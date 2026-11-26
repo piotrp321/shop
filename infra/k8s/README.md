@@ -186,8 +186,7 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo), poza części�
      wykonawcy AO i jego Docker widzą te katalogi, a kubeconfig daje administratora klastra. Przy każdej operacji pobiera się go
      od nowa.
    - `kubeconfig` zapisuje bezwzględną ścieżkę `KUBE_DIR` w rejestrze `~/.local/state/shop-ops/kube-dirs` (prywatny plik, jedna
-     ścieżka w wierszu). `ao-prepare` (start AO przez `/ao-run`) odmawia, dopóki któryś zapisany katalog istnieje, więc
-     zapomniany `KUBE_DIR` zatrzymuje start AO, aż go usuniesz.
+     ścieżka w wierszu).
    - `kubeconfig`, `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex` odmawiają pracy (kod różny od 0, bez żadnych zmian), gdy
      działa AO (`python3 -m orchestrator … run`) albo jego wykonawca (proces `claude-agent` albo runner AO): zatrzymaj AO albo
      poczekaj na koniec przebiegu (wykonawca przeżywa śmierć AO, więc samo zatrzymanie AO nie zawsze wystarcza: poczekaj, aż

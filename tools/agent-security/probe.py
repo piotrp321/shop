@@ -69,7 +69,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WRAPPER = os.path.join(HERE, 'claude-agent')
-# Loaded by path: ao-prepare runs the probe with python3 -I, which leaves this directory out of sys.path.
+# Loaded by path: under python3 -I this directory is not in sys.path.
 _spec = importlib.util.spec_from_file_location('_probe_otlp_receiver', os.path.join(HERE, 'otlp_receiver.py'))
 otlp_receiver = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(otlp_receiver)
@@ -403,8 +403,8 @@ def _export_verdict(received, expected):
 
 
 def _body_of(request):
-    """How a reason names the body of a request: by its path only when that is a telemetry path. ao-prepare copies
-    the reasons to run.log and the /ao-run session quotes them, so no text a sender chose goes into a reason."""
+    """How a reason names the body of a request: by its path only when that is a telemetry path. A session
+    quotes the reasons, so no text a sender chose goes into a reason."""
     path = request.get('path')
     return 'ciało %s' % path if path in TELEMETRY_PATHS else 'ciało żądania pod inną ścieżką'
 
@@ -1120,7 +1120,7 @@ def main(argv=None):
                                                '(odbiór ze stosem)')
     args = parser.parse_args(argv)
     if not args.agent_claude_bin:
-        parser.error('brak --agent-claude-bin (binarka przypięta przez claude_pin.py)')
+        parser.error('brak --agent-claude-bin (binarka wersji przypiętej przez AO)')
     if args.otel_forward is not None:
         try:
             otlp_receiver.forward_endpoint(args.otel_forward)

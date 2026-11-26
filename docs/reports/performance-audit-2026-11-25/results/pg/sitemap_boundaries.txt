@@ -1,0 +1,73 @@
+-- sitemap_boundaries
+SELECT id FROM (SELECT id, row_number() OVER (ORDER BY id) AS position FROM catalog_product) numbered WHERE position > 1 AND (position - 1) % 10000 = 0 ORDER BY position
+
+SET
+SET
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=80017.66..80021.86 rows=1683 width=24) (actual time=1306.929..1306.948 rows=100.00 loops=1)
+   Sort Key: numbered."position"
+   Sort Method: quicksort  Memory: 28kB
+   Buffers: shared hit=655966 read=7290
+   ->  Subquery Scan on numbered  (cost=0.48..79927.47 rows=1683 width=24) (actual time=5.869..1302.666 rows=100.00 loops=1)
+         Filter: ((numbered."position" > 1) AND (((numbered."position" - 1) % '10000'::bigint) = 0))
+         Rows Removed by Filter: 1000091
+         Buffers: shared hit=655963 read=7290
+         ->  WindowAgg  (cost=0.48..59735.85 rows=1009581 width=24) (actual time=0.050..1169.058 rows=1000191.00 loops=1)
+               Window: w1 AS (ORDER BY catalog_product.id ROWS UNBOUNDED PRECEDING)
+               Storage: Memory  Maximum Storage: 17kB
+               Buffers: shared hit=655963 read=7290
+               ->  Index Only Scan using catalog_product_pkey on catalog_product  (cost=0.42..44592.14 rows=1009581 width=16) (actual time=0.044..737.961 rows=1000191.00 loops=1)
+                     Heap Fetches: 0
+                     Index Searches: 1
+                     Buffers: shared hit=655963 read=7290
+ Planning:
+   Buffers: shared hit=286
+ Planning Time: 0.858 ms
+ Execution Time: 1307.005 ms
+(20 rows)
+
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=80017.66..80021.86 rows=1683 width=24) (actual time=615.365..615.371 rows=100.00 loops=1)
+   Sort Key: numbered."position"
+   Sort Method: quicksort  Memory: 28kB
+   Buffers: shared hit=663253
+   ->  Subquery Scan on numbered  (cost=0.48..79927.47 rows=1683 width=24) (actual time=5.487..615.281 rows=100.00 loops=1)
+         Filter: ((numbered."position" > 1) AND (((numbered."position" - 1) % '10000'::bigint) = 0))
+         Rows Removed by Filter: 1000091
+         Buffers: shared hit=663253
+         ->  WindowAgg  (cost=0.48..59735.85 rows=1009581 width=24) (actual time=0.019..530.876 rows=1000191.00 loops=1)
+               Window: w1 AS (ORDER BY catalog_product.id ROWS UNBOUNDED PRECEDING)
+               Storage: Memory  Maximum Storage: 17kB
+               Buffers: shared hit=663253
+               ->  Index Only Scan using catalog_product_pkey on catalog_product  (cost=0.42..44592.14 rows=1009581 width=16) (actual time=0.014..212.792 rows=1000191.00 loops=1)
+                     Heap Fetches: 0
+                     Index Searches: 1
+                     Buffers: shared hit=663253
+ Planning Time: 0.114 ms
+ Execution Time: 615.399 ms
+(18 rows)
+
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=80017.66..80021.86 rows=1683 width=24) (actual time=554.263..554.269 rows=100.00 loops=1)
+   Sort Key: numbered."position"
+   Sort Method: quicksort  Memory: 28kB
+   Buffers: shared hit=663253
+   ->  Subquery Scan on numbered  (cost=0.48..79927.47 rows=1683 width=24) (actual time=4.533..554.206 rows=100.00 loops=1)
+         Filter: ((numbered."position" > 1) AND (((numbered."position" - 1) % '10000'::bigint) = 0))
+         Rows Removed by Filter: 1000091
+         Buffers: shared hit=663253
+         ->  WindowAgg  (cost=0.48..59735.85 rows=1009581 width=24) (actual time=0.011..475.193 rows=1000191.00 loops=1)
+               Window: w1 AS (ORDER BY catalog_product.id ROWS UNBOUNDED PRECEDING)
+               Storage: Memory  Maximum Storage: 17kB
+               Buffers: shared hit=663253
+               ->  Index Only Scan using catalog_product_pkey on catalog_product  (cost=0.42..44592.14 rows=1009581 width=16) (actual time=0.008..194.128 rows=1000191.00 loops=1)
+                     Heap Fetches: 0
+                     Index Searches: 1
+                     Buffers: shared hit=663253
+ Planning Time: 0.095 ms
+ Execution Time: 554.292 ms
+(18 rows)
+

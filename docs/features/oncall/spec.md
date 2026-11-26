@@ -349,8 +349,8 @@ i krótkie ID issues Sentry. Nie zawiera tytułów ani treści zdarzeń:
   - rollback tylko z sygnałów klastra o nowej wersji (K1, K2);
   - zawieszone wdrożenie, brak danych, cisza klastra i sygnały Sentry dają najwyżej `NIEROZSTRZYGNIĘTE`;
   - stopa błędów Sentry nie jest liczona; liczby obu okien są informacyjne.
-- D7: tokeny lokalne, tylko do odczytu, minimalne zakresy; eksperyment na rzeczywistych API przed `/ao-run`, a nie
-  przed akceptacją specyfikacji.
+- D7: tokeny lokalne, tylko do odczytu, minimalne zakresy; eksperyment na rzeczywistych API przed implementacją,
+  a nie przed akceptacją specyfikacji.
 - Podział kroku 11: ONCALL bez LLM i MCP, niezależny od ONCALL-INVESTIGATE. Agent, serwery MCP (D1), dobowy limit
   śledztw (D5), odkładanie przy AO (D6), triage i etykieta `oncall` w bramce pochodzenia należą do
   ONCALL-INVESTIGATE.

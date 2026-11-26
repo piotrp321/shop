@@ -1,0 +1,67 @@
+-- sitemap_chunk
+SELECT slug, status, updated_at FROM catalog_product WHERE id >= '80000000-0000-0000-0000-000000000000' AND id < '81000000-0000-0000-0000-000000000000' ORDER BY id LIMIT 50001
+
+SET
+SET
+                                                                     QUERY PLAN                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=31946.14..31971.38 rows=10096 width=77) (actual time=34.075..34.968 rows=3924.00 loops=1)
+   Buffers: shared hit=537 read=3342
+   ->  Sort  (cost=31946.14..31971.38 rows=10096 width=77) (actual time=34.073..34.653 rows=3924.00 loops=1)
+         Sort Key: id
+         Sort Method: quicksort  Memory: 618kB
+         Buffers: shared hit=537 read=3342
+         ->  Bitmap Heap Scan on catalog_product  (cost=399.91..31274.68 rows=10096 width=77) (actual time=1.906..31.991 rows=3924.00 loops=1)
+               Recheck Cond: ((id >= '80000000-0000-0000-0000-000000000000'::uuid) AND (id < '81000000-0000-0000-0000-000000000000'::uuid))
+               Heap Blocks: exact=3842
+               Buffers: shared hit=534 read=3342
+               ->  Bitmap Index Scan on catalog_product_pkey  (cost=0.00..397.38 rows=10096 width=0) (actual time=0.821..0.821 rows=3924.00 loops=1)
+                     Index Cond: ((id >= '80000000-0000-0000-0000-000000000000'::uuid) AND (id < '81000000-0000-0000-0000-000000000000'::uuid))
+                     Index Searches: 1
+                     Buffers: shared hit=34
+ Planning:
+   Buffers: shared hit=277
+ Planning Time: 0.804 ms
+ Execution Time: 35.526 ms
+(18 rows)
+
+                                                                     QUERY PLAN                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=31946.14..31971.38 rows=10096 width=77) (actual time=6.718..7.258 rows=3924.00 loops=1)
+   Buffers: shared hit=3876
+   ->  Sort  (cost=31946.14..31971.38 rows=10096 width=77) (actual time=6.717..6.931 rows=3924.00 loops=1)
+         Sort Key: id
+         Sort Method: quicksort  Memory: 618kB
+         Buffers: shared hit=3876
+         ->  Bitmap Heap Scan on catalog_product  (cost=399.91..31274.68 rows=10096 width=77) (actual time=1.422..5.276 rows=3924.00 loops=1)
+               Recheck Cond: ((id >= '80000000-0000-0000-0000-000000000000'::uuid) AND (id < '81000000-0000-0000-0000-000000000000'::uuid))
+               Heap Blocks: exact=3842
+               Buffers: shared hit=3876
+               ->  Bitmap Index Scan on catalog_product_pkey  (cost=0.00..397.38 rows=10096 width=0) (actual time=0.823..0.823 rows=3924.00 loops=1)
+                     Index Cond: ((id >= '80000000-0000-0000-0000-000000000000'::uuid) AND (id < '81000000-0000-0000-0000-000000000000'::uuid))
+                     Index Searches: 1
+                     Buffers: shared hit=34
+ Planning Time: 0.100 ms
+ Execution Time: 7.783 ms
+(16 rows)
+
+                                                                     QUERY PLAN                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=31946.14..31971.38 rows=10096 width=77) (actual time=5.115..5.645 rows=3924.00 loops=1)
+   Buffers: shared hit=3876
+   ->  Sort  (cost=31946.14..31971.38 rows=10096 width=77) (actual time=5.114..5.325 rows=3924.00 loops=1)
+         Sort Key: id
+         Sort Method: quicksort  Memory: 618kB
+         Buffers: shared hit=3876
+         ->  Bitmap Heap Scan on catalog_product  (cost=399.91..31274.68 rows=10096 width=77) (actual time=1.247..3.556 rows=3924.00 loops=1)
+               Recheck Cond: ((id >= '80000000-0000-0000-0000-000000000000'::uuid) AND (id < '81000000-0000-0000-0000-000000000000'::uuid))
+               Heap Blocks: exact=3842
+               Buffers: shared hit=3876
+               ->  Bitmap Index Scan on catalog_product_pkey  (cost=0.00..397.38 rows=10096 width=0) (actual time=0.627..0.628 rows=3924.00 loops=1)
+                     Index Cond: ((id >= '80000000-0000-0000-0000-000000000000'::uuid) AND (id < '81000000-0000-0000-0000-000000000000'::uuid))
+                     Index Searches: 1
+                     Buffers: shared hit=34
+ Planning Time: 0.067 ms
+ Execution Time: 6.037 ms
+(16 rows)
+

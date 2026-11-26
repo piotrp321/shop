@@ -1,0 +1,272 @@
+-- reindex_page_500_mid
+WITH page AS ( SELECT id, name, slug, short_description, primary_category_id, images, variant_axes, status FROM catalog_product WHERE id > CAST('80000000-0000-0000-0000-000000000000' AS uuid) ORDER BY id LIMIT 500 )
+SELECT p.id, p.name, p.slug, p.short_description, p.primary_category_id, p.images->0 AS main_image, main.path AS main_path, COALESCE(extra.ids, '[]') AS additional_ids, COALESCE(extra.paths, '[]') AS additional_paths, p.variant_axes, COALESCE(variants.list, '[]') AS variants, COALESCE(names.list, '[]') AS category_names, p.status
+FROM page p JOIN catalog_category main ON main.id = p.primary_category_id
+LEFT JOIN LATERAL ( SELECT json_agg(pc.category_id ORDER BY pc.category_id) AS ids, json_agg(c.path ORDER BY pc.category_id) AS paths FROM catalog_product_category pc JOIN catalog_category c ON c.id = pc.category_id WHERE pc.product_id = p.id ) extra ON true
+LEFT JOIN LATERAL ( SELECT json_agg(json_build_object('id', v.id, 'values', v.option_values) ORDER BY v.position) AS list FROM catalog_product_variant v WHERE v.product_id = p.id ) variants ON true
+LEFT JOIN LATERAL ( SELECT json_agg(a.name ORDER BY a.path) AS list FROM catalog_category a WHERE a.id IN ( SELECT CAST(ancestor AS uuid) FROM catalog_category c CROSS JOIN LATERAL unnest(string_to_array(trim(BOTH '/' FROM c.path), '/')) AS ancestor WHERE c.id = p.primary_category_id OR c.id IN (SELECT pc.category_id FROM catalog_product_category pc WHERE pc.product_id = p.id) ) ) names ON true
+ORDER BY p.id
+
+SET
+SET
+                                                                                                        QUERY PLAN                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop Left Join  (cost=81.20..40892.38 rows=500 width=554) (actual time=0.402..52.859 rows=500.00 loops=1)
+   Buffers: shared hit=10197 read=1031
+   ->  Nested Loop Left Join  (cost=40.91..20734.96 rows=500 width=743) (actual time=0.220..18.076 rows=500.00 loops=1)
+         Buffers: shared hit=3693 read=1031
+         ->  Nested Loop Left Join  (cost=12.34..6441.62 rows=500 width=711) (actual time=0.173..11.037 rows=500.00 loops=1)
+               Buffers: shared hit=2202 read=505
+               ->  Nested Loop  (cost=0.58..552.31 rows=500 width=647) (actual time=0.053..4.956 rows=500.00 loops=1)
+                     Buffers: shared hit=202 read=501
+                     ->  Limit  (cost=0.42..515.70 rows=500 width=547) (actual time=0.039..4.241 rows=500.00 loops=1)
+                           Buffers: shared hit=4 read=501
+                           ->  Index Scan using catalog_product_pkey on catalog_product  (cost=0.42..525413.95 rows=509838 width=547) (actual time=0.038..4.139 rows=500.00 loops=1)
+                                 Index Cond: (id > '80000000-0000-0000-0000-000000000000'::uuid)
+                                 Index Searches: 1
+                                 Buffers: shared hit=4 read=501
+                     ->  Memoize  (cost=0.15..0.23 rows=1 width=116) (actual time=0.001..0.001 rows=1.00 loops=500)
+                           Cache Key: catalog_product.primary_category_id
+                           Cache Mode: logical
+                           Hits: 401  Misses: 99  Evictions: 0  Overflows: 0  Memory Usage: 24kB
+                           Buffers: shared hit=198
+                           ->  Index Scan using catalog_category_pkey on catalog_category main  (cost=0.14..0.22 rows=1 width=116) (actual time=0.002..0.002 rows=1.00 loops=99)
+                                 Index Cond: (id = catalog_product.primary_category_id)
+                                 Index Searches: 99
+                                 Buffers: shared hit=198
+               ->  Aggregate  (cost=11.76..11.77 rows=1 width=64) (actual time=0.012..0.012 rows=1.00 loops=500)
+                     Buffers: shared hit=2000 read=4
+                     ->  Sort  (cost=11.74..11.75 rows=1 width=116) (actual time=0.011..0.011 rows=0.20 loops=500)
+                           Sort Key: pc.category_id
+                           Sort Method: quicksort  Memory: 25kB
+                           Buffers: shared hit=2000 read=4
+                           ->  Hash Join  (cost=4.45..11.73 rows=1 width=116) (actual time=0.006..0.009 rows=0.20 loops=500)
+                                 Hash Cond: (c.id = pc.category_id)
+                                 Buffers: shared hit=1997 read=4
+                                 ->  Seq Scan on catalog_category c  (cost=0.00..6.80 rows=180 width=116) (actual time=0.001..0.017 rows=180.00 loops=100)
+                                       Buffers: shared hit=500
+                                 ->  Hash  (cost=4.44..4.44 rows=1 width=16) (actual time=0.002..0.002 rows=0.20 loops=500)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                       Buffers: shared hit=1497 read=4
+                                       ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..4.44 rows=1 width=16) (actual time=0.002..0.002 rows=0.20 loops=500)
+                                             Index Cond: (product_id = catalog_product.id)
+                                             Heap Fetches: 0
+                                             Index Searches: 500
+                                             Buffers: shared hit=1497 read=4
+         ->  Aggregate  (cost=28.57..28.58 rows=1 width=32) (actual time=0.013..0.013 rows=1.00 loops=500)
+               Buffers: shared hit=1491 read=526
+               ->  Index Scan using catalog_product_variant_position_key on catalog_product_variant v  (cost=0.43..28.53 rows=6 width=40) (actual time=0.009..0.009 rows=2.98 loops=500)
+                     Index Cond: (product_id = catalog_product.id)
+                     Index Searches: 500
+                     Buffers: shared hit=1491 read=526
+   ->  Aggregate  (cost=40.29..40.30 rows=1 width=32) (actual time=0.069..0.069 rows=1.00 loops=500)
+         Buffers: shared hit=6504
+         ->  Sort  (cost=40.24..40.26 rows=10 width=116) (actual time=0.067..0.067 rows=3.37 loops=500)
+               Sort Key: a.path
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=6504
+               ->  Hash Join  (cost=32.62..40.07 rows=10 width=116) (actual time=0.033..0.062 rows=3.37 loops=500)
+                     Hash Cond: (a.id = (ancestor.ancestor)::uuid)
+                     Buffers: shared hit=6501
+                     ->  Seq Scan on catalog_category a  (cost=0.00..6.80 rows=180 width=132) (actual time=0.001..0.017 rows=180.00 loops=500)
+                           Buffers: shared hit=2500
+                     ->  Hash  (cost=32.50..32.50 rows=10 width=32) (actual time=0.027..0.027 rows=3.37 loops=500)
+                           Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                           Buffers: shared hit=4001
+                           ->  HashAggregate  (cost=32.40..32.50 rows=10 width=32) (actual time=0.024..0.025 rows=3.37 loops=500)
+                                 Group Key: (ancestor.ancestor)::uuid
+                                 Batches: 1  Memory Usage: 32kB
+                                 Buffers: shared hit=4001
+                                 ->  Nested Loop  (cost=4.45..30.15 rows=900 width=32) (actual time=0.015..0.023 rows=3.60 loops=500)
+                                       Buffers: shared hit=4001
+                                       ->  Seq Scan on catalog_category c_1  (cost=4.44..12.14 rows=90 width=100) (actual time=0.011..0.018 rows=1.20 loops=500)
+                                             Filter: ((id = catalog_product.primary_category_id) OR (ANY (id = (hashed SubPlan 1).col1)))
+                                             Rows Removed by Filter: 179
+                                             Buffers: shared hit=4001
+                                             SubPlan 1
+                                               ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc_1  (cost=0.42..4.44 rows=1 width=16) (actual time=0.001..0.001 rows=0.20 loops=500)
+                                                     Index Cond: (product_id = catalog_product.id)
+                                                     Heap Fetches: 0
+                                                     Index Searches: 500
+                                                     Buffers: shared hit=1501
+                                       ->  Function Scan on unnest ancestor  (cost=0.01..0.11 rows=10 width=32) (actual time=0.002..0.002 rows=3.00 loops=600)
+ Planning:
+   Buffers: shared hit=554 read=5
+ Planning Time: 1.740 ms
+ Execution Time: 53.138 ms
+(83 rows)
+
+                                                                                                        QUERY PLAN                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop Left Join  (cost=81.20..40892.38 rows=500 width=554) (actual time=0.234..43.649 rows=500.00 loops=1)
+   Buffers: shared hit=11222
+   ->  Nested Loop Left Join  (cost=40.91..20734.96 rows=500 width=743) (actual time=0.105..10.637 rows=500.00 loops=1)
+         Buffers: shared hit=4721
+         ->  Nested Loop Left Join  (cost=12.34..6441.62 rows=500 width=711) (actual time=0.086..6.995 rows=500.00 loops=1)
+               Buffers: shared hit=2704
+               ->  Nested Loop  (cost=0.58..552.31 rows=500 width=647) (actual time=0.020..1.353 rows=500.00 loops=1)
+                     Buffers: shared hit=703
+                     ->  Limit  (cost=0.42..515.70 rows=500 width=547) (actual time=0.011..0.795 rows=500.00 loops=1)
+                           Buffers: shared hit=505
+                           ->  Index Scan using catalog_product_pkey on catalog_product  (cost=0.42..525413.95 rows=509838 width=547) (actual time=0.011..0.739 rows=500.00 loops=1)
+                                 Index Cond: (id > '80000000-0000-0000-0000-000000000000'::uuid)
+                                 Index Searches: 1
+                                 Buffers: shared hit=505
+                     ->  Memoize  (cost=0.15..0.23 rows=1 width=116) (actual time=0.001..0.001 rows=1.00 loops=500)
+                           Cache Key: catalog_product.primary_category_id
+                           Cache Mode: logical
+                           Hits: 401  Misses: 99  Evictions: 0  Overflows: 0  Memory Usage: 24kB
+                           Buffers: shared hit=198
+                           ->  Index Scan using catalog_category_pkey on catalog_category main  (cost=0.14..0.22 rows=1 width=116) (actual time=0.001..0.001 rows=1.00 loops=99)
+                                 Index Cond: (id = catalog_product.primary_category_id)
+                                 Index Searches: 99
+                                 Buffers: shared hit=198
+               ->  Aggregate  (cost=11.76..11.77 rows=1 width=64) (actual time=0.011..0.011 rows=1.00 loops=500)
+                     Buffers: shared hit=2001
+                     ->  Sort  (cost=11.74..11.75 rows=1 width=116) (actual time=0.010..0.010 rows=0.20 loops=500)
+                           Sort Key: pc.category_id
+                           Sort Method: quicksort  Memory: 25kB
+                           Buffers: shared hit=2001
+                           ->  Hash Join  (cost=4.45..11.73 rows=1 width=116) (actual time=0.006..0.008 rows=0.20 loops=500)
+                                 Hash Cond: (c.id = pc.category_id)
+                                 Buffers: shared hit=2001
+                                 ->  Seq Scan on catalog_category c  (cost=0.00..6.80 rows=180 width=116) (actual time=0.001..0.017 rows=180.00 loops=100)
+                                       Buffers: shared hit=500
+                                 ->  Hash  (cost=4.44..4.44 rows=1 width=16) (actual time=0.002..0.002 rows=0.20 loops=500)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                       Buffers: shared hit=1501
+                                       ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..4.44 rows=1 width=16) (actual time=0.001..0.001 rows=0.20 loops=500)
+                                             Index Cond: (product_id = catalog_product.id)
+                                             Heap Fetches: 0
+                                             Index Searches: 500
+                                             Buffers: shared hit=1501
+         ->  Aggregate  (cost=28.57..28.58 rows=1 width=32) (actual time=0.007..0.007 rows=1.00 loops=500)
+               Buffers: shared hit=2017
+               ->  Index Scan using catalog_product_variant_position_key on catalog_product_variant v  (cost=0.43..28.53 rows=6 width=40) (actual time=0.002..0.003 rows=2.98 loops=500)
+                     Index Cond: (product_id = catalog_product.id)
+                     Index Searches: 500
+                     Buffers: shared hit=2017
+   ->  Aggregate  (cost=40.29..40.30 rows=1 width=32) (actual time=0.065..0.065 rows=1.00 loops=500)
+         Buffers: shared hit=6501
+         ->  Sort  (cost=40.24..40.26 rows=10 width=116) (actual time=0.064..0.064 rows=3.37 loops=500)
+               Sort Key: a.path
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=6501
+               ->  Hash Join  (cost=32.62..40.07 rows=10 width=116) (actual time=0.030..0.059 rows=3.37 loops=500)
+                     Hash Cond: (a.id = (ancestor.ancestor)::uuid)
+                     Buffers: shared hit=6501
+                     ->  Seq Scan on catalog_category a  (cost=0.00..6.80 rows=180 width=132) (actual time=0.001..0.017 rows=180.00 loops=500)
+                           Buffers: shared hit=2500
+                     ->  Hash  (cost=32.50..32.50 rows=10 width=32) (actual time=0.025..0.025 rows=3.37 loops=500)
+                           Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                           Buffers: shared hit=4001
+                           ->  HashAggregate  (cost=32.40..32.50 rows=10 width=32) (actual time=0.022..0.023 rows=3.37 loops=500)
+                                 Group Key: (ancestor.ancestor)::uuid
+                                 Batches: 1  Memory Usage: 32kB
+                                 Buffers: shared hit=4001
+                                 ->  Nested Loop  (cost=4.45..30.15 rows=900 width=32) (actual time=0.013..0.021 rows=3.60 loops=500)
+                                       Buffers: shared hit=4001
+                                       ->  Seq Scan on catalog_category c_1  (cost=4.44..12.14 rows=90 width=100) (actual time=0.010..0.016 rows=1.20 loops=500)
+                                             Filter: ((id = catalog_product.primary_category_id) OR (ANY (id = (hashed SubPlan 1).col1)))
+                                             Rows Removed by Filter: 179
+                                             Buffers: shared hit=4001
+                                             SubPlan 1
+                                               ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc_1  (cost=0.42..4.44 rows=1 width=16) (actual time=0.001..0.001 rows=0.20 loops=500)
+                                                     Index Cond: (product_id = catalog_product.id)
+                                                     Heap Fetches: 0
+                                                     Index Searches: 500
+                                                     Buffers: shared hit=1501
+                                       ->  Function Scan on unnest ancestor  (cost=0.01..0.11 rows=10 width=32) (actual time=0.002..0.002 rows=3.00 loops=600)
+ Planning:
+   Buffers: shared hit=14
+ Planning Time: 0.648 ms
+ Execution Time: 43.779 ms
+(83 rows)
+
+                                                                                                        QUERY PLAN                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop Left Join  (cost=81.20..40892.38 rows=500 width=554) (actual time=0.246..44.933 rows=500.00 loops=1)
+   Buffers: shared hit=11222
+   ->  Nested Loop Left Join  (cost=40.91..20734.96 rows=500 width=743) (actual time=0.106..11.210 rows=500.00 loops=1)
+         Buffers: shared hit=4721
+         ->  Nested Loop Left Join  (cost=12.34..6441.62 rows=500 width=711) (actual time=0.088..7.420 rows=500.00 loops=1)
+               Buffers: shared hit=2704
+               ->  Nested Loop  (cost=0.58..552.31 rows=500 width=647) (actual time=0.021..1.450 rows=500.00 loops=1)
+                     Buffers: shared hit=703
+                     ->  Limit  (cost=0.42..515.70 rows=500 width=547) (actual time=0.013..0.825 rows=500.00 loops=1)
+                           Buffers: shared hit=505
+                           ->  Index Scan using catalog_product_pkey on catalog_product  (cost=0.42..525413.95 rows=509838 width=547) (actual time=0.012..0.766 rows=500.00 loops=1)
+                                 Index Cond: (id > '80000000-0000-0000-0000-000000000000'::uuid)
+                                 Index Searches: 1
+                                 Buffers: shared hit=505
+                     ->  Memoize  (cost=0.15..0.23 rows=1 width=116) (actual time=0.001..0.001 rows=1.00 loops=500)
+                           Cache Key: catalog_product.primary_category_id
+                           Cache Mode: logical
+                           Hits: 401  Misses: 99  Evictions: 0  Overflows: 0  Memory Usage: 24kB
+                           Buffers: shared hit=198
+                           ->  Index Scan using catalog_category_pkey on catalog_category main  (cost=0.14..0.22 rows=1 width=116) (actual time=0.001..0.001 rows=1.00 loops=99)
+                                 Index Cond: (id = catalog_product.primary_category_id)
+                                 Index Searches: 99
+                                 Buffers: shared hit=198
+               ->  Aggregate  (cost=11.76..11.77 rows=1 width=64) (actual time=0.011..0.011 rows=1.00 loops=500)
+                     Buffers: shared hit=2001
+                     ->  Sort  (cost=11.74..11.75 rows=1 width=116) (actual time=0.011..0.011 rows=0.20 loops=500)
+                           Sort Key: pc.category_id
+                           Sort Method: quicksort  Memory: 25kB
+                           Buffers: shared hit=2001
+                           ->  Hash Join  (cost=4.45..11.73 rows=1 width=116) (actual time=0.006..0.009 rows=0.20 loops=500)
+                                 Hash Cond: (c.id = pc.category_id)
+                                 Buffers: shared hit=2001
+                                 ->  Seq Scan on catalog_category c  (cost=0.00..6.80 rows=180 width=116) (actual time=0.001..0.017 rows=180.00 loops=100)
+                                       Buffers: shared hit=500
+                                 ->  Hash  (cost=4.44..4.44 rows=1 width=16) (actual time=0.002..0.002 rows=0.20 loops=500)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                       Buffers: shared hit=1501
+                                       ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..4.44 rows=1 width=16) (actual time=0.001..0.001 rows=0.20 loops=500)
+                                             Index Cond: (product_id = catalog_product.id)
+                                             Heap Fetches: 0
+                                             Index Searches: 500
+                                             Buffers: shared hit=1501
+         ->  Aggregate  (cost=28.57..28.58 rows=1 width=32) (actual time=0.007..0.007 rows=1.00 loops=500)
+               Buffers: shared hit=2017
+               ->  Index Scan using catalog_product_variant_position_key on catalog_product_variant v  (cost=0.43..28.53 rows=6 width=40) (actual time=0.003..0.003 rows=2.98 loops=500)
+                     Index Cond: (product_id = catalog_product.id)
+                     Index Searches: 500
+                     Buffers: shared hit=2017
+   ->  Aggregate  (cost=40.29..40.30 rows=1 width=32) (actual time=0.067..0.067 rows=1.00 loops=500)
+         Buffers: shared hit=6501
+         ->  Sort  (cost=40.24..40.26 rows=10 width=116) (actual time=0.065..0.065 rows=3.37 loops=500)
+               Sort Key: a.path
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=6501
+               ->  Hash Join  (cost=32.62..40.07 rows=10 width=116) (actual time=0.031..0.060 rows=3.37 loops=500)
+                     Hash Cond: (a.id = (ancestor.ancestor)::uuid)
+                     Buffers: shared hit=6501
+                     ->  Seq Scan on catalog_category a  (cost=0.00..6.80 rows=180 width=132) (actual time=0.001..0.017 rows=180.00 loops=500)
+                           Buffers: shared hit=2500
+                     ->  Hash  (cost=32.50..32.50 rows=10 width=32) (actual time=0.026..0.026 rows=3.37 loops=500)
+                           Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                           Buffers: shared hit=4001
+                           ->  HashAggregate  (cost=32.40..32.50 rows=10 width=32) (actual time=0.024..0.024 rows=3.37 loops=500)
+                                 Group Key: (ancestor.ancestor)::uuid
+                                 Batches: 1  Memory Usage: 32kB
+                                 Buffers: shared hit=4001
+                                 ->  Nested Loop  (cost=4.45..30.15 rows=900 width=32) (actual time=0.014..0.022 rows=3.60 loops=500)
+                                       Buffers: shared hit=4001
+                                       ->  Seq Scan on catalog_category c_1  (cost=4.44..12.14 rows=90 width=100) (actual time=0.011..0.017 rows=1.20 loops=500)
+                                             Filter: ((id = catalog_product.primary_category_id) OR (ANY (id = (hashed SubPlan 1).col1)))
+                                             Rows Removed by Filter: 179
+                                             Buffers: shared hit=4001
+                                             SubPlan 1
+                                               ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc_1  (cost=0.42..4.44 rows=1 width=16) (actual time=0.001..0.001 rows=0.20 loops=500)
+                                                     Index Cond: (product_id = catalog_product.id)
+                                                     Heap Fetches: 0
+                                                     Index Searches: 500
+                                                     Buffers: shared hit=1501
+                                       ->  Function Scan on unnest ancestor  (cost=0.01..0.11 rows=10 width=32) (actual time=0.002..0.002 rows=3.00 loops=600)
+ Planning:
+   Buffers: shared hit=14
+ Planning Time: 0.662 ms
+ Execution Time: 45.050 ms
+(83 rows)
+
