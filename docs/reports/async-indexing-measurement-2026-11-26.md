@@ -104,69 +104,111 @@ Zakres odczytywany w tej serii częściowo pokrywał się z wcześniejszymi prze
 wartości niż w pkt 1–3), więc **liczy się tylko kształt**: płasko między 250 a 1000, spadek o ok. 10–13% przy 100 i przy
 2000–5000. Czas paczki rośnie liniowo z B (np. 5000: ok. 1,2 s, pamięć paczki większa).
 
-### Zmierzone na serwerze (z istniejących raportów, nie z tej sesji)
+### 6. Zmierzone na serwerze: odczyt istniejących metryk Grafany (2026-11-26, tylko do odczytu)
 
-- Specyfikacja ASYNC-INDEXING: ok. 391 dok./s na profilu `server` (10 mln, 2026-11-26), ok. 880 dok./s przy 1 mln.
-- `docs/reports/search-shards-worf-2026-11-25.md`: przebudowa 1 000 191 produktów na worf.pl (8 vCPU, 22,9 GiB RAM,
-  4 shardy) 13:53–14:13 (20 min), 849 dok./s; szczyt w trakcie: Elasticsearch 0,26 rdzenia, Postgres 0,45 rdzenia.
-  Chart: Job `reindex` ma `requests` 100m CPU i brak limitu CPU (`infra/k8s/environments/prod/values.yaml`).
+Za zgodą użytkownika w rozmowie odczytano istniejące metryki Prometheus i logi Loki w Grafana Cloud (host
+`cosmiccinnamon1835.grafana.net`, zapytania do źródeł `grafanacloud-prom` i `grafanacloud-logs`). Nic nie uruchamiano,
+nie instalowano i nie zmieniano na serwerze. Okna czasowe z logów `search_rebuild` (pierwsza i ostatnia linia postępu):
 
-## Hipotezy (niezmierzone albo niepotwierdzone)
+| Przebieg | Okno (UTC) | Czas | Tempo (dok./s) |
+|---|---|---|---|
+| 1 mln, 20.11 | 13:53:20 + 998 s | 16,6 min | 1000 (początek 1020) |
+| 1 mln, 25.11 (4 shardy) | 13:53:37 + 1177 s | 19,6 min | 849 |
+| **10 mln, 26.11** | 05:35:54 + 26 178 s | **7,27 godz.** | **382–393, spada liniowo z 393 do 382** |
 
-- **H1: na serwerze odczyt z Postgresa czeka na dysk.** Poparcie: korelacja fizyczna ≈ 0 w każdej tabeli (pkt 4), ok. 88
-  odczytów bloków na dokument lokalnie, a na serwerze niski CPU Postgresa (0,45 rdzenia) przy 849 dok./s; zbiór roboczy
-  profilu `server` (ok. 10× większy niż `medium`) przekracza `shared_buffers` Postgresa 2 GiB i prawdopodobnie cache
-  systemu. Brak: pomiaru I/O (iowait, `pg_stat_io`, `blks_read` w czasie przebiegu) na serwerze. Lokalnie nie odtworzyłem
-  zimnej pamięci: restart Postgresa i zrzut cache maszyny wirtualnej Dockera nie spowolniły odczytu, bo cache gospodarza
-  pozostaje, więc ten eksperyment jest nierozstrzygający.
-- **H2: opóźnienie sieciowe między podami (API → Postgres, API → ES) przy pętli szeregowej.** Paczka robi kilka kolejnych
-  zapytań i jeden bulk; przy większym RTT niż lokalnie czas rośnie bez wzrostu CPU. Brak pomiaru RTT w klastrze.
-- **H3: słabszy procesor serwera** (współdzielony VPS, ES i Postgres obok sklepu) wydłuża część PHP (budowa dokumentów,
-  dekodowanie JSON zapytania `page`). Lokalnie PHP to ok. 2% paczki, więc samo to nie tłumaczy 3,4×.
-- **H4: zapis do ES staje się wąskim gardłem przy 10 mln** (większe segmenty, merge, heap 2 GiB). Lokalnie zapis to 13%
-  paczki i nie rośnie z indeksem do 1 mln; dla 10 mln brak danych.
-- Hipoteza z wcześniejszych prac, że przyczyną jest ES (4 shardy, heap) albo pamięć Postgresa, **nie ma poparcia w
-  obserwacji procesora serwera** (ES 0,26 rdzenia), ale I/O ES nie mierzono.
+Tempo 10 mln jest płaskie: 393 po pierwszych 500 tys., 382 na końcu (−3%). Nie ma więc załamania przy dużym indeksie
+(segmenty, merge, GC w ES nie wydłużają przebiegu w sposób widoczny w tempie). Spadek względem 1 mln (849) jest skokowy,
+a nie narastający w czasie.
+
+Średnie z okna przebiegu (rate 3 min, krok 60 s), pody `postgres-0`, `elasticsearch-0` i Job `demo-data-run-*`
+(wykonuje przebudowę):
+
+| Wielkość | 1 mln, 20.11 | 1 mln, 25.11 | 10 mln, 26.11 |
+|---|---|---|---|
+| Postgres: odczyty z dysku (IOPS, container_fs_reads_total) | 3480 | 4444 | **4436** (szczyt 5894) |
+| Postgres: odczyt MB/s | 40,1 | 42,8 | 36,9 (szczyt 79,3) |
+| Odczyty z dysku na dokument (IOPS / dok./s) | 3,5 | 5,2 | **11,4** |
+| Średni rozmiar odczytu | ok. 11,5 KB | ok. 9,6 KB | ok. 8,3 KB |
+| Postgres CPU (rdzenie; szczyt 10 mln) | 0,47 | 0,41 | 0,31 (0,90) |
+| Elasticsearch CPU (rdzenie; szczyt 10 mln) | 0,24 | 0,25 | 0,14 (1,30) |
+| Job (PHP) CPU (rdzenie) | 0,21 | brak w top | 0,105 (szczyt 0,12) |
+| Węzeł: CPU zajęty / iowait (z 8 vCPU) | 0,24 / 0,031 | 0,26 / 0,049 | 0,24 / 0,064 (iowait szczyt 0,079) |
+
+Pozostałe pomiary z okna 10 mln:
+- Postgres: zapis średnio 0,8 MB/s i 55 IOPS; pamięć robocza kontenera 0,36 GiB przy limicie 2 GiB.
+- Elasticsearch: odczyt 1,2 MB/s (3 IOPS), zapis 2,3 MB/s (27 IOPS), pamięć robocza 3,83 GiB przy limicie 4 GiB.
+- Throttling CPU: brak metryk dla tych podów (pody bez limitu CPU nie raportują okresów throttlingu; throttling dotyczy tylko
+  `monitoring-*`). Postgres, ES i Job mają limit tylko pamięci (2, 4 i 4 GiB).
+- Pamięć węzła: dostępne min. 14,1 GiB z 22,9, cache systemu ok. 9,4 GiB. Brak swapu.
+- Logi Loki z okna 10 mln: 0 linii dopasowanych do `gc|overhead`, `reject|circuit|429` w `elasticsearch-0` oraz do
+  `duration:`, `error|fatal|checkpoint` w `postgres-0`. Nie sprawdzono, czy logi tych podów są w ogóle zbierane w pełni,
+  więc to nie dowodzi braku zdarzeń.
+
+**Czego w Grafanie brakuje (nie zgaduję):** metryk urządzenia (`node_disk_*`: IOPS i opóźnienie urządzenia, kolejka,
+zajętość), PSI (`node_pressure_*`), eksportera Postgresa (`pg_stat_database` blks_read/blks_hit, cache hit ratio,
+`pg_stat_statements`, czasy zapytań), metryk ES (indexing latency, merge, GC JVM, thread_pool rejected). Niemożliwe jest
+więc ustalenie opóźnienia pojedynczego odczytu, głębokości kolejki ani limitu IOPS dysku VPS; podaję tylko to, co daje
+`container_fs_*` i `node_cpu_seconds_total{mode="iowait"}`.
+
+## Hipotezy: weryfikacja po odczycie z serwera
+
+- **H1: odczyt z Postgresa czeka na dysk. Mocno poparta (nadal nie dowiedziona co do limitu dysku).** W każdym z trzech
+  przebiegów Postgres czyta z dysku ok. 3,5–4,4 tys. IOPS, a ES, Job i PHP są prawie bezczynne (Job 0,1 rdzenia). Tempo
+  dok./s jest odwrotnie proporcjonalne do liczby odczytów na dokument: 1 mln → 5,2 odczytu/dok. i 849 dok./s, 10 mln →
+  11,4 odczytu/dok. i 390 dok./s, przy niemal tym samym IOPS (4,4 tys.). Iowait węzła rośnie z 0,031 do 0,064 rdzenia.
+  Nie wiadomo, czy 4,4 tys. IOPS to limit dysku (szczyt 5,9 tys. jest o 33% wyższy, więc to nie sztywny sufit), ani
+  jakie jest opóźnienie odczytu.
+- **H5 (nowa): pamięć podręczna Postgresa jest za mała dla 10 mln.** Pod ma limit 2 GiB (cgroup), pamięć robocza 0,36 GiB,
+  a węzeł ma 14 GiB wolne i 9,4 GiB cache; odczyty z dysku rosną z 5,2 do 11,4 na dokument wraz z rozmiarem danych.
+  Zgodne z tym, że zbiór roboczy zapytania `page` i ofert nie mieści się w `shared_buffers` ani w cache objętym limitem
+  kontenera. Niezmierzone (brak `blks_hit/blks_read` i `shared_buffers` w Grafanie). To jest sprawa PERF-1/PERF-2, nie
+  tego zadania; zmiana limitu pamięci serwera nie jest częścią pomiaru.
+- **H2: opóźnienie sieciowe między podami: odrzucona jako główna przyczyna** (nie wykluczona). Gdyby czekanie było w sieci,
+  Postgres nie czytałby ciągle 4,4 tys. IOPS na dokument rosnący z rozmiarem danych. Sieci nie mierzono.
+- **H3: słabszy procesor serwera: odrzucona.** Job zużywa 0,1 rdzenia, więc PHP prawie nie pracuje; czas nie jest po
+  stronie CPU żadnego z podów.
+- **H4: zapis do ES wąskim gardłem przy 10 mln: odrzucona.** ES zużywa 0,14 rdzenia średnio, zapis 27 IOPS, tempo płaskie
+  przez 7 godzin. Szczyt ES 1,30 rdzenia był krótki (merge); w logach nie ma odrzuceń ani GC, ale metryk ES brak.
+- Hipoteza z wcześniejszych prac, że przyczyną jest ES (4 shardy, heap) albo CPU, **nie ma poparcia**.
 
 ## Wnioski i ograniczenia
 
-- Lokalnie kod indeksowania jest ograniczony odczytem z Postgresa i ofertami (ok. 85% czasu paczki), nie zapisem do ES
-  i nie PHP. Kilka procesów zapisu do osobnych indeksów daje kolejne dokumenty/s do co najmniej 4 procesów, aż do
-  nasycenia Postgresa (203% CPU przy 4 procesach, spadek tempa na proces do 2430–2670).
-- Różnica 3,4× między lokalnym (2922) a serwerem `medium` (849) dok./s nie jest wyjaśniona. Nie wiadomo, czy tę część
-  czasu, której lokalnie nie ma, da się skrócić równoległością: jeśli to opóźnienie lub czekanie na dysk (H1, H2), więcej
-  procesów zwykle pomaga do nasycenia dysku; jeśli to nasycony dysk serwera, nie.
-- **Wnioski o skali 10 mln wymagają pomiaru na serwerze.** Lokalnego profilu `server` nie zbudowano (`docs/reports/
-  demo-load-medium-2026-11-19.md`: pełny wymaga ok. 313 GB). Dane `medium` mieszczą się w pamięci podręcznej maszyny.
-- Szum: równoległe stosy innych worktree na tej samej maszynie, jeden powtórzony przebieg tylko dla pkt 1 i 3, N=4 z
-  nierównym startem. Wartości T poniżej nie wynikają z progów policzonych na małej próbie.
+- Zmierzone na serwerze: wąskim gardłem przebudowy jest odczyt z Postgresa (losowy dostęp, patrz pkt 4), nie zapis do ES
+  i nie PHP. Lokalnie to samo: odczyt i oferty to ok. 85% czasu paczki.
+- Różnica 3,4× między lokalnym (2922) a serwerem `medium` (849) dok./s pasuje do H1: lokalnie dane `medium` mieszczą się w
+  cache maszyny, na serwerze nie. Nie jest to zmierzone wprost.
+- **Czy równoległość pomoże, nie jest rozstrzygnięte.** Pętla jest szeregowa (jedno zapytanie naraz). Jeśli dysk VPS ma zapas
+  IOPS (szczyty 5,9 tys. sugerują, że nie jest sztywno nasycony), więcej procesów podniesie IOPS i tempo, a lokalnie
+  skalowanie 2,3× przy 4 procesach jest zmierzone. Jeśli 4,4–5,9 tys. IOPS to limit urządzenia, równoległość da mało, a
+  poprawić trzeba liczbę odczytów na dokument (kolejność odczytu zgodna z fizycznym układem, rozmiar cache Postgresa).
+- Tempo 10 mln (390) jest ok. 2,2× niższe niż 1 mln (849) przy tym samym IOPS. Skoro odczyty/dok. rosną z rozmiarem danych,
+  cel T nie może być wyprowadzony z 1 mln.
+- Ograniczenia: wyniki lokalne z innego sprzętu; pojedyncze przebiegi (po jednym 10 mln); metryki CPU pochodzą z kontenerów
+  (cadvisor), z rozdzielczością 60 s; brak metryk urządzenia i eksporterów (wyżej); kod w momencie przebiegów serwera
+  mógł różnić się od rewizji `9d061e73` (nie sprawdzano, który obraz działał 26.11).
 
 ## Propozycja kryterium (R, B, T, C) do akceptacji
 
-Założenia: równoległość pomaga w tym zakresie, w którym Postgres i dysk serwera nie są nasycone, a tego nie wiem; serwer ma
-8 vCPU współdzielonych ze sklepem, więc ponad 4 procesy indeksujące nie mają uzasadnienia przy dzisiejszym profilu.
+Po odczycie z serwera zmieniam T i C na ostrożniejsze, bo zmierzono, że nic poza odczytem z dysku Postgresa nie ogranicza
+tempa, a nie zmierzono limitu dysku:
 
-- **B = 500** (jak dziś): płasko w 250–1000, większe paczki wydłużają ponowienie i pamięć, mniejsze zwiększają narzut
-  (pkt 5). Opcja `--batch-size` zostaje do strojenia w zadaniu 7.
-- **R = 4** repliki `worker-indexing` (górna granica z pkt 3 i z liczby vCPU serwera).
-- **T = 1200 dok./s** (mediana ze środkowych 80% przebiegu), czyli ok. 3× dzisiejsze 391. Uzasadnienie: lokalnie 4 procesy
-  dają ok. 2,3× tempa jednego, a serwer nie jest nasycony procesorem; ponad 3× nie obiecuję bez pomiaru I/O serwera.
-- **C = 2,5 godz.** dla 10 mln (10 000 000 / 1200 = 2,3 godz. plus finalizacja `verify` i usunięcie poprzedniego indeksu).
-  Dziś ok. 7,1 godz.
+- **B = 500** (płasko w 250–1000, pkt 5; nic z serwera tego nie zmienia).
+- **R = 4** repliki `worker-indexing` jako górna granica (8 vCPU serwera; Job użył 0,1 rdzenia, więc CPU nie ogranicza).
+- **T = 800 dok./s** (mediana ze środkowych 80% przebiegu 10 mln), czyli ok. 2× dzisiejsze 391. Ambitny cel 1200 (3×)
+  zależy od tego, czy IOPS dysku serwera rośnie z liczbą procesów; to wymaga potwierdzenia w zadaniu 7 na 2 i 4 replikach.
+- **C = 3,5 godz.** dla 10 mln (10 000 000 / 800 = 3,5 godz. plus finalizacja `verify` i usunięcie poprzedniego indeksu).
+  Dziś 7,27 godz. (zmierzone 26.11).
 
-Wariant ostrożny: T = 800 dok./s (2×), C = 3,5 godz.; wariant ambitny: T = 1600 dok./s (4×, liniowe skalowanie), C = 1,8 godz.
-Rekomenduję środkowy, a zadanie 7 mierzy wynik względem niego i podaje spełnienie wprost.
+Wariant ambitny: T = 1200, C = 2,5 godz. Wariant zachowawczy (równoległość bez efektu, np. 4,4 tys. IOPS to sufit): T
+bez zmian (ok. 400), a kryterium trzeba osiągać przez mniejszą liczbę odczytów na dokument, nie przez R.
 
 ## Brama: decyzja użytkownika
 
-1. Zatwierdzić albo zmienić (R, B, T, C) powyżej (kryterium 12 specyfikacji).
-2. Lokalnie wąskie gardło się skaluje, ale przyczyna niskiego tempa na serwerze jest nieustalona. Do wyboru:
-   - (a) kontynuować z (R, B, T, C) jako celem i zmierzyć tempo na serwerze dopiero w zadaniu 7 (ryzyko: jeśli dysk serwera
-     jest nasycony, cel T nie zostanie osiągnięty i trzeba wtedy zająć się zapytaniami odczytu, np. wspólna kolejność
-     odczytu, a nie równoległością);
-   - (b) przed zadaniem 2 dokonać odczytu tylko do odczytu z Grafany (CPU, I/O i opóźnienie Postgresa, CPU Joba) dla
-     przebiegu 2026-11-25 oraz wskazać ewentualny przebieg diagnostyczny na serwerze. Wymaga Twojej zgody w rozmowie z
-     nazwaną operacją i hostem.
+1. Zatwierdzić albo zmienić (R, B, T, C) powyżej (kryterium 12 specyfikacji). Rekomendacja: R=4, B=500, T=800, C=3,5 godz.
+2. Z czym wejść w zadanie 2: odczyt z Grafany potwierdził H1 (odczyt z dysku Postgresa), ale nie odpowiada na pytanie, czy
+   dysk serwera ma zapas IOPS. Rozstrzygnie to dopiero pomiar na serwerze z 2 i 4 procesami (zadanie 7) albo diagnostyczny
+   przebieg na serwerze, który wymaga Twojej zgody (cel `infra/k8s/Makefile` i nazwana operacja). Rozważ też, czy H5
+   (pamięć Postgresa, `shared_buffers`) rozstrzygnie PERF-1/PERF-2 przed implementacją.
 3. Po zakończeniu PERF-2 etapu B zadanie 2 dostosuje specyfikację do rzeczywistego kontraktu w kodzie (obsługa 409,
    alias `products-rebuild`); nie jest częścią tego zadania.
 
