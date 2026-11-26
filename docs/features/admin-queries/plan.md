@@ -6,27 +6,30 @@ otwartym od początku jako szkic; zadania realizuje subagent we własnym worktre
 zadań do gałęzi epiku. Zadania jednej fali z listą `parallel_with` mogą iść naraz. Plan jest dokumentem roboczym: po
 ukończeniu epiku usuń go.
 
-Start dopiero po raporcie PERF-0, zatwierdzeniu W1–W20 i decyzjach D1–D3 (specyfikacja, „Wymagane przed startem”).
+Start dopiero po raporcie PERF-0 i zatwierdzeniu W1–W20 (specyfikacja, „Wymagane przed startem”).
+
+**Bramka po zadaniu 1.** Fala 2 rusza dopiero, gdy właściciel zatwierdzi w rozmowie warianty K, F, Z i M wybrane
+w raporcie zadania 1 (specyfikacja, „Warianty”, „Decyzje”). Zadania 2–5 implementują wyłącznie zatwierdzony wariant;
+zadanie, którego obszar zostaje bez zmian (np. Z0), odpada, a jego przypadki mierzy zadanie 7.
 
 ## Status
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | PERF-7-1 | |
+| 1 | PERF-7-1, bramka właściciela | |
 | 2 | PERF-7-2, PERF-7-4, PERF-7-5, PERF-7-6 | |
 | 3 | PERF-7-3 | |
 | 4 | PERF-7-7 | |
 
-Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
+Kolumnę „Status” (zmergowane do gałęzi epiku, commit, zadanie odpadło) uzupełnia sesja orkiestrująca.
 
 ## TDD i pomiary w zadaniach
 
-Zadania 2–6 dopisują najpierw testy (równoważność wyników, testy planów, walidacja, pager), uruchamiają je i zapisują
-w raporcie komendę i wynik RED, potem zmiana i GREEN, `check` i testy dotkniętych aplikacji. Test planu, który
-przechodzi przed zmianą dla klasy już dziś ograniczonej (np. lista bez filtrów), jest regresją i raport to zaznacza.
-Zadania 1 i 7 to pomiary: raport podaje polecenia, wersję danych, konfigurację Postgresa i wyniki trzech przebiegów
-z rozrzutem. Lokalne pomiary nie nakładają się na ciężkie pomiary PERF-2; pomiar na worf.pl tylko żądaniami GET i za
-osobną zgodą właściciela.
+Zadania 2–6 dopisują najpierw testy (równoważność wyników, testy planów, gwarancje mapy strony, pager), uruchamiają
+je i zapisują w raporcie komendę i wynik RED, potem zmiana i GREEN, `check` i testy dotkniętych aplikacji. Test
+planu, który przechodzi przed zmianą, raport zaznacza jako regresję. Zadania 1 i 7 to pomiary: raport podaje
+polecenia, wersję danych, konfigurację Postgresa i wyniki trzech przebiegów z rozrzutem. Lokalne pomiary nie
+nakładają się na ciężkie pomiary PERF-2; każdy pomiar na worf.pl tylko za osobną zgodą właściciela.
 
 ## Zadania
 
@@ -38,13 +41,14 @@ osobną zgodą właściciela.
   "tasks": [
     {
       "id": "PERF-7-1",
-      "title": "Scenariusze W7 i P4, pomiar przed zmianą, prototypy progów",
-      "scope": "Scenariusz HTTP mieszanki panelu (k6 w `load/`, token administratora jak w E2E, mieszanka generowana z danych i zapisywana z wynikiem), zestaw zapytań macierzy (`EXPLAIN (ANALYZE, BUFFERS)`, na bazie plików `.sql` z `docs/reports/performance-audit-2026-11-25/results/admin` i `results/pg`, uzupełnionych o przypadki macierzy, których audyt nie miał) i scenariusz P4 (W1 i W5 z równoległym panelem i bez, scenariusze PERF-0). Pomiar przed zmianą na `small` i `medium`. Sprawdzenie hipotez specyfikacji: duży liść z typem na końcu alfabetu na `medium`, zapytanie żyjące w `pg_stat_activity` po przerwaniu klienta (A3). Prototypy SQL strategii (zbiór kandydatów, gałęzie kategorii na tymczasowej tabeli członkostwa, przejście okienkowe, kandydaci z GIN bigramów, granice z histogramu) na kopii `medium`; wybór T, W i B z pomiaru. Bez zmian kodu aplikacji.",
+      "title": "Dowody: pomiar przed zmianą i wybór wariantów",
+      "scope": "Scenariusz HTTP mieszanki panelu (k6 w `load/`, token administratora jak w E2E, mieszanka generowana z danych i zapisywana z wynikiem), zestaw zapytań macierzy (`EXPLAIN (ANALYZE, BUFFERS)`, na bazie plików `.sql` z `docs/reports/performance-audit-2026-11-25/results/admin` i `results/pg`, uzupełnionych tylko o przypadki macierzy, których audyt nie miał) i scenariusz P4 (specyfikacja, „Wpływ na sklep”). Pomiar przed zmianą na `small` i `medium`. Hipotezy H1 i H2. Plan zapytania dla każdego fragmentu zamówień i klientów z macierzy (czy pg_trgm wyciąga trygram). Prototypy SQL na kopii `medium` (tymczasowe indeksy i tabele, bez zmian kodu aplikacji): K0–K3, F1–F2, Z1, M1–M2; dla każdego koszt odczytu przypadków swojego obszaru z licznikiem pierwszej strony, zmienna kosztu i ekstrapolacja do `server`, koszt zapisu (WAL z różnicy `pg_current_wal_lsn()` i czas na zapis produktu, cykl zamówienia, zapis klienta), rozmiar. Dla K2 i K3 także przegląd miejsc zapisu z pominięciem repozytorium (`git grep`). Jeśli dostępne jest środowisko `server` (lokalnie albo worf.pl za zgodą właściciela, tylko odczyt), `EXPLAIN` przypadków granicznych także tam. Wybór według reguły specyfikacji: pierwszy wariant od najprostszego, który spełnia P2 i P8.",
       "acceptance_criteria": [
         "Scenariusze uruchamia jedno polecenie opisane w `load/README.md`; mieszanka i wynik są zapisane razem.",
-        "Raport w `docs/reports/` z tabelą macierzy (czas i bufory, `small` i `medium`), W7 mieszanki i P4 przed zmianą, trzy przebiegi z rozrzutem.",
-        "Raport rozstrzyga obie hipotezy specyfikacji wynikiem pomiaru i podaje wybrane T, W i B z uzasadnieniem z prototypów.",
-        "Jeśli prototyp pokazuje, że rekomendacja D1, D2 albo D3 nie spełnia P2 albo P3, zadanie kończy się raportem i pytaniem do właściciela, zanim ruszy fala 2."
+        "Raport w `docs/reports/` z tabelą macierzy (czas, bufory, wiersze, zmienna kosztu; `small` i `medium`), W7 mieszanki i P4 przed zmianą, trzy przebiegi z rozrzutem.",
+        "Raport rozstrzyga H1, H2 i listę fragmentów bez trygramu wynikiem pomiaru.",
+        "Dla każdego obszaru tabela wariantów z kosztem odczytu, kosztem zapisu, rozmiarem i ekstrapolacją do `server` (oznaczoną jako szacunek), wybrany wariant z uzasadnieniem i przypadki, których żaden wariant nie spełnia.",
+        "Zadanie kończy się raportem i pytaniem do właściciela o zatwierdzenie wariantów; fala 2 nie rusza bez odpowiedzi."
       ],
       "risk": "STANDARD",
       "depends_on": [],
@@ -53,30 +57,29 @@ osobną zgodą właściciela.
     },
     {
       "id": "PERF-7-2",
-      "title": "Lista produktów: wybór planu po liczbie trafień dla frazy, szkiców i bez zdjęć",
-      "scope": "`DbalBackofficeProductSource` (albo wydzielona klasa wyboru planu w tym samym module): ograniczone liczniki filtrów selektywnych, zbiór kandydatów do T, przejście okienkowe z budżetem B i przejściem na kandydatów z GIN, licznik pierwszej strony z tej samej strategii. Funkcja `catalog_name_bigrams` i indeks GIN bigramów (migracja nietransakcyjna, `CONCURRENTLY`) dla fraz bez trygramu. Filtr kategorii zostaje w obecnej postaci do zadania 3. Specyfikacja: „Strategia listy produktów” (kroki 1, 2, 4, 5), „Frazy krótkie i bez trygramu” (produkty). Komentarz o planach w `DbalBackofficeProductSource` opisuje stan po zmianie.",
+      "title": "Lista produktów: fraza, szkice i bez zdjęć według zatwierdzonego wariantu F",
+      "scope": "`DbalBackofficeProductSource` (klasy pomocnicze wyboru drogi, jeśli potrzebne, w `Persistence/Doctrine/BackofficeProductList/`): wariant F zatwierdzony po zadaniu 1 (F1: przejście indeksu sortowania z budżetem B, potem kandydaci z GIN, licznik pierwszej strony tą samą drogą; F2 dodatkowo funkcja `catalog_name_bigrams` i indeks GIN bigramów w migracji nietransakcyjnej `CONCURRENTLY`). Filtr bez zdjęć według wyniku zadania 1. Filtr kategorii zostaje w obecnej postaci do zadania 3. Komentarz o planach w `DbalBackofficeProductSource` opisuje stan po zmianie.",
       "acceptance_criteria": [
-        "Kryterium 1 specyfikacji dla fraz, szkiców i bez zdjęć: test równoważności z obecnym SQL (wiersze, kolejność, kursory, liczniki), także dla fraz z polskimi znakami, wielkością liter, `%`, `_` i `\\`.",
-        "Kryterium 2 dla klas „zbiór kandydatów”, „przejście okienkowe” i „przejście okienkowe + kandydaci”: testy planów na ok. 100 tys. wierszy pokazują liczbę wierszy ograniczoną klasą; przypadek skorelowany (fraza skupiona na końcu alfabetu) i 2-znakowy rzadki są w testach.",
-        "Kandydaci z GIN bigramów są nadzbiorem wyniku `ILIKE` w teście na korpusie z polskimi znakami i wielkimi literami.",
+        "Kryterium 1 specyfikacji dla fraz, szkiców i bez zdjęć: równoważność z obecnym SQL (wiersze, kolejność, kursory, liczniki), także dla fraz z polskimi znakami, wielkością liter, `%`, `_` i `\\`.",
+        "Kryterium 2 dla zmienionych dróg: testy planów na ok. 100 tys. wierszy, w tym fraza skupiona na końcu alfabetu, fraza gęsta i 2-znakowa rzadka; asercje według zmiennej klasy (budżet B, liczba trafień), nie stałego kosztu.",
+        "Przy F2: kandydaci z GIN bigramów są nadzbiorem wyniku `ILIKE` na korpusie z polskimi znakami i wielkimi literami; kryterium 8 (WAL i czas zapisu produktu przed i po) w raporcie zadania.",
         "Ekrany Ceny, Stany i wybór wariantów promocji: istniejące testy przechodzą bez zmian.",
         "`make -C apps/api check` i `make -C apps/api test` przechodzą."
       ],
       "risk": "STANDARD",
       "depends_on": ["PERF-7-1"],
       "parallel_with": ["PERF-7-4", "PERF-7-5", "PERF-7-6"],
-      "paths": ["apps/api/src/Catalog/", "apps/api/migrations/", "apps/api/tests/"]
+      "paths": ["apps/api/src/Catalog/Infrastructure/Persistence/Doctrine/DbalBackofficeProductSource.php", "apps/api/src/Catalog/Infrastructure/Persistence/Doctrine/BackofficeProductList/", "apps/api/migrations/", "apps/api/tests/"]
     },
     {
       "id": "PERF-7-3",
-      "title": "Tabela członkostwa kategorii i gałęzie kategorii w liście produktów",
-      "scope": "Wariant wybrany w D1 (rekomendacja: `catalog_product_category_listing`). Migracja tabeli i indeksów z wypełnieniem `INSERT … SELECT`; utrzymanie w `DoctrineProductRepository::save` w tej samej transakcji; uzupełnienie w każdym miejscu, które zapisuje `catalog_product` albo `catalog_product_category` z pominięciem repozytorium (`git grep` obu nazw: generator `DemoData`, `ProductPhotos`, seed). Filtr kategorii w liście: poddrzewo jako identyfikatory, licznik kategorii w strategii z zadania 2, gałęzie kategorii ze scaleniem i usunięciem powtórzeń, licznik pierwszej strony po kluczu głównym tabeli. Specyfikacja: „Strategia listy produktów” (krok 3), „Tabela członkostwa kategorii (D1)”.",
+      "title": "Lista produktów: filtr kategorii według zatwierdzonego wariantu K",
+      "scope": "Wariant K zatwierdzony po zadaniu 1. K0: przepisanie warunku kategorii na gałęzie połączone `UNION`. K1: dodatkowo indeksy `(primary_category_id, name, id)` i `(primary_category_id, updated_at, id)` (migracja `CONCURRENTLY`) i gałąź na kategorię poddrzewa. K2 albo K3 tylko po decyzji właściciela: kopia kluczy w tej samej transakcji co zapis produktu, utrzymanie w każdym miejscu zapisu z pominięciem repozytorium, wypełnienie w migracji. Licznik pierwszej strony i dalsze strony w tej samej strategii co zadanie 2. Ryzyko CRITICAL zakłada K2 albo K3; przy zatwierdzonym K0 albo K1 sesja orkiestrująca obniża je do STANDARD przed zleceniem.",
       "acceptance_criteria": [
-        "Kryterium 9 specyfikacji: test zgodności tabeli z danymi źródłowymi po zapisie produktu (nazwa, status, zdjęcia, kategorie dodatkowe), usunięciu produktu, aktualizacji zdjęć z `DemoData` i po generatorze.",
-        "Kryterium 1 dla filtra kategorii, także z frazą, szkicami i bez zdjęć: równoważność z obecnym SQL, w tym produkt z kategorią główną i dodatkową w tym samym poddrzewie (bez duplikatu) i kategoria pusta.",
-        "Kryterium 2 dla klasy „gałęzie kategorii”: testy planów na ok. 100 tys. wierszy dla małej kategorii, dużego liścia z typem na końcu alfabetu, działu i kategorii głównie dodatkowej.",
-        "Zmiana nazwy i przeniesienie kategorii nie zmieniają tabeli, a lista po nich pokazuje produkty nowego poddrzewa (test).",
-        "Czas generatora dla `medium` przed i po w raporcie zadania (wpływ na W20); rozmiar tabeli i indeksów na `medium`.",
+        "Kryterium 1 specyfikacji dla filtra kategorii, także z frazą, szkicami i bez zdjęć: równoważność z obecnym SQL, w tym produkt z kategorią główną i dodatkową w tym samym poddrzewie (bez duplikatu) i kategoria pusta.",
+        "Kryterium 2: testy planów na ok. 100 tys. wierszy dla małej kategorii, dużego liścia z typem na końcu alfabetu, działu i kategorii głównie dodatkowej; asercje według zmiennej klasy wariantu.",
+        "Zmiana nazwy i przeniesienie kategorii: lista po nich pokazuje produkty nowego poddrzewa (test).",
+        "Kryterium 8 (WAL i czas zapisu produktu przed i po) i rozmiar nowych struktur na `medium` w raporcie zadania; przy K2 albo K3 także kryterium 9 i czas generatora `medium` przed i po (W20).",
         "`make -C apps/api check` i `make -C apps/api test` przechodzą."
       ],
       "risk": "CRITICAL",
@@ -86,32 +89,32 @@ osobną zgodą właściciela.
     },
     {
       "id": "PERF-7-4",
-      "title": "Granice porcji mapy strony ze stałym kosztem",
-      "scope": "Wariant wybrany w D3 (rekomendacja: histogram statystyk z keysetem dla końca zakresu i bez statystyk). `DbalSitemapProductSource::boundaries`, migracja `SET STATISTICS` dla `catalog_product.id`. `CachingSitemapProductSource` bez zmian. Dokumentacja: decyzja D1 i opis zapytania granic w `docs/features/seo/spec.md`, opis odpowiedzi w OpenAPI (`product-chunks`) jeśli mówi o dokładnej liczbie produktów porcji, eksport specyfikacji i klientów TS.",
+      "title": "Granice mapy strony: gwarancje G1–G3 i wariant M",
+      "scope": "`DbalSitemapProductSource::boundaries` według zatwierdzonego wariantu M (M1 albo M2; przy M0 tylko gwarancje), sprawdzenie każdej porcji w chwili cięcia (G2), unieważnienie wpisu granic w `cache.sitemap` po przepełnieniu porcji przy odczycie (G3), `LIMIT` porcji bez zmian (G1). Przy M2 migracja `SET STATISTICS` dla `catalog_product.id` i aktualizacja decyzji D1 w `docs/features/seo/spec.md`; opis w OpenAPI (`product-chunks`), eksport specyfikacji i klientów TS, jeśli opis mówi o dokładnej liczbie produktów porcji.",
       "acceptance_criteria": [
-        "Kryterium 6 specyfikacji: każda porcja do `row_limit`, każdy produkt w dokładnie jednej porcji, pierwsza bez początku i ostatnia bez końca; testy ze statystykami, bez statystyk i z produktami dodanymi po `ANALYZE`.",
-        "Test planu: zapytanie granic nie czyta całego klucza głównego przy aktualnych statystykach.",
+        "Kryterium 6 specyfikacji: porcja do `row_limit` także przy statystykach celowo błędnych (np. po masowym wstawieniu bez `ANALYZE`) i bez statystyk; każdy produkt w dokładnie jednej porcji, pierwsza bez początku i ostatnia bez końca; przepełnienie po cięciu unieważnia granice, a następna mapa jest pełna.",
+        "Czas zimnego obliczenia granic na `medium` przed i po w raporcie zadania.",
         "`make -C apps/api check`, `make -C apps/api test` i `make -C apps/store check` przechodzą."
       ],
       "risk": "STANDARD",
       "depends_on": ["PERF-7-1"],
       "parallel_with": ["PERF-7-2", "PERF-7-5", "PERF-7-6"],
-      "paths": ["apps/api/src/Catalog/", "apps/api/migrations/", "apps/api/tests/", "apps/api/openapi.json", "apps/store/src/api/schema.d.ts", "docs/features/seo/spec.md"]
+      "paths": ["apps/api/src/Catalog/Infrastructure/Persistence/Doctrine/DbalSitemapProductSource.php", "apps/api/src/Catalog/Infrastructure/CachingSitemapProductSource.php", "apps/api/migrations/", "apps/api/tests/", "apps/api/openapi.json", "apps/store/src/api/schema.d.ts", "docs/features/seo/spec.md"]
     },
     {
       "id": "PERF-7-5",
-      "title": "Frazy zamówień i klientów z trygramem",
-      "scope": "Wariant wybrany w D2 (rekomendacja: fragment z co najmniej trzema kolejnymi literami lub cyframi, inaczej 400 z polem `q` i komunikatem „Wpisz co najmniej 3 litery lub cyfry obok siebie.”). `OrderSearchTerm` i `BackofficeCustomerSearchTerm`; numer `R-…` i pełny e-mail bez zmian. Panel: ta sama wskazówka przy polu przed wysłaniem w listach zamówień i klientów. OpenAPI panelu i klient TS, jeśli zmienia się opis parametru. Specyfikacje list zamówień i klientów (miejsca reguły minimum 3 znaków w `docs/features/`, `git grep`) opisują regułę.",
+      "title": "Wyszukiwanie zamówień i klientów: fragmenty bez trygramu (tylko przy Z1)",
+      "scope": "Zadanie odpada, jeśli zatwierdzono Z0. Przy Z1: indeksy GIN bigramów na wyrażeniach dzisiejszych indeksów trygramów zamówień i klientów (migracja `CONCURRENTLY`), kandydaci po bigramach dla fragmentu bez trygramu, warunek dokładny bez zmian. Semantyka `OrderSearchTerm` i `BackofficeCustomerSearchTerm` bez zmian.",
       "acceptance_criteria": [
-        "Kryterium 8 specyfikacji: `#!#`, `---`, `a.b` dają 400 z polem i polskim komunikatem; `ab-cd`, `R-1000`, `ąęś`, `kowal` i pełny e-mail przechodzą; reguła liczy litery Unicode.",
-        "Test planu: każdy przyjęty fragment idzie przez GIN (bez przejścia całego indeksu `placed_at`).",
-        "Panel: wskazówka w `aria-live`, lista bez zmiany przy frazie odrzuconej (test komponentu).",
-        "`make -C apps/api check`, `make -C apps/api test`, `make -C apps/admin check` i `make -C apps/admin test` przechodzą."
+        "Kryterium 1 specyfikacji dla zamówień i klientów: `#!#`, `---`, `a.b`, `ab-cd`, `ąęś`, `kowal`, numer `R-…` i pełny e-mail dają te same wyniki co obecny SQL; fragment 2-znakowy dalej daje 400.",
+        "Test planu: fragment bez trygramu nie przechodzi całej tabeli.",
+        "Kryterium 8: WAL i czas na cykl zamówienia i zapis klienta przed i po w raporcie zadania.",
+        "`make -C apps/api check` i `make -C apps/api test` przechodzą."
       ],
       "risk": "STANDARD",
       "depends_on": ["PERF-7-1"],
       "parallel_with": ["PERF-7-2", "PERF-7-4", "PERF-7-6"],
-      "paths": ["apps/api/src/Ordering/", "apps/api/tests/", "apps/api/openapi-admin.json", "apps/admin/src/", "docs/features/"]
+      "paths": ["apps/api/src/Ordering/", "apps/api/migrations/", "apps/api/tests/"]
     },
     {
       "id": "PERF-7-6",
@@ -129,10 +132,11 @@ osobną zgodą właściciela.
     },
     {
       "id": "PERF-7-7",
-      "title": "Pomiar po zmianie i raport epiku",
-      "scope": "Scenariusze z zadania 1 na tej samej konfiguracji i danych: macierz na `small` i `medium`, W7 mieszanki, P4, granice mapy strony; rozmiary nowych indeksów i tabeli. Pomiar W7 na `server` na worf.pl po wdrożeniu tylko żądaniami GET i za osobną zgodą właściciela; bez zgody raport oznacza go jako niezmierzony. Status PERF-7 w `docs/features/performance-program/plan.md`.",
+      "title": "Pomiar po zmianie na `medium` i `server`, raport epiku",
+      "scope": "Scenariusze z zadania 1 na tej samej konfiguracji i danych: macierz na `small` i `medium`, W7 mieszanki, P4, granice mapy strony, koszt zapisu (P8), rozmiary nowych indeksów i struktur. Pomiar akceptacyjny na `server`: P1, P2, P3, P4 i czas z P5, na worf.pl po wdrożeniu za osobną zgodą właściciela (W7 tylko żądaniami GET; P4 z zapisami W5 wymaga zgody na zapisy) albo lokalnie na profilu `server`. Status PERF-7 w `docs/features/performance-program/plan.md`.",
       "acceptance_criteria": [
-        "Kryteria 3, 4, 5 i 11 specyfikacji: raport w `docs/reports/` z tabelą przed i po, rozrzutem trzech przebiegów, poleceniami do powtórzenia i listą niespełnionych wymagań z przyczyną (w tym R1–R4 z wynikiem).",
+        "Kryteria 3, 4, 5, 8 i 11 specyfikacji: raport w `docs/reports/` z tabelą przed i po, rozrzutem trzech przebiegów, poleceniami do powtórzenia i listą niespełnionych albo niepotwierdzonych wymagań z przyczyną (w tym R1–R5 z wynikiem).",
+        "Wymagania wydajnościowe są w raporcie i w planie programu oznaczone jako spełnione wyłącznie na podstawie pomiaru na `server`; bez niego jako niepotwierdzone.",
         "`make check` i testy `apps/api` i `apps/admin` przechodzą na gałęzi epiku."
       ],
       "risk": "STANDARD",
@@ -146,6 +150,7 @@ osobną zgodą właściciela.
 
 ## Przegląd całej zmiany
 
-Po fali 4 przegląd w świeżym kontekście: `architecture-reviewer` (model odczytu, granice modułu `Catalog`, wzrost
-kosztu z N) i `qa-adversarial` (równoważność wyników, współbieżny zapis produktu a tabela członkostwa, kursory
-między strategiami). `ux-reviewer` tylko dla zmian zadań 5 i 6 (wskazówka frazy, brak błędu po przerwaniu).
+Po fali 4 przegląd w świeżym kontekście: `architecture-reviewer` (zgodność z regułą „najprostszy wariant”, granice
+modułu `Catalog`, zmienne kosztu) i `qa-adversarial` (równoważność wyników, kursory między drogami, gwarancje mapy
+strony; przy K2 albo K3 także współbieżny zapis produktu a kopia kluczy). `ux-reviewer` tylko dla zmian zadania 6
+(brak błędu po przerwaniu).
