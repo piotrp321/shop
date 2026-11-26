@@ -13,13 +13,16 @@ namespace App\Tests\Support\Concurrency;
 final readonly class SaveProductWithoutTheSkuCheck
 {
     /**
-     * @param list<string> $skus one variant per SKU, in this order
+     * @param list<string> $skus              one variant per SKU, in this order
+     * @param int          $delayMilliseconds how long the handler waits before it saves, so that another write that started
+     *                                        at the same moment is certain to be first
      */
     public function __construct(
         public string $productId,
         public string $slug,
         public string $categoryId,
         public array $skus,
+        public int $delayMilliseconds = 0,
     ) {
     }
 }
