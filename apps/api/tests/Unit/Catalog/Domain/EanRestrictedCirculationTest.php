@@ -20,7 +20,7 @@ final class EanRestrictedCirculationTest extends TestCase
      */
     public static function restrictedCirculation(): iterable
     {
-        // 2.1.11.1: RCN-8 with the prefix 0 or 2 (six zeros of the 14-digit form, the seventh digit is 0 or 2).
+        // 2.1.11.1: RCN-8 with the prefix 0 or 2 (digits 2 to 6 of the 14-digit form are zeros, the seventh digit is 0 or 2).
         yield 'RCN-8 with the prefix 0' => ['00000017'];
         yield 'RCN-8 with the prefix 2' => ['20000011'];
         // 2.1.11.2: RCN-13 with the GS1 prefix 04 and RCN-12 with the U.P.C. prefix 4.
