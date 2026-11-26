@@ -3,8 +3,10 @@
 Punkt 4 „Zakresu MVP” z `docs/vision.md`: wyszukiwarka i listing kategorii z filtrami na Elasticsearch, mega menu
 dla wielu działów, breadcrumby i SEO listingu.
 
-Issues: #94
-Zakres: `apps/api/src/Catalog`, `apps/api/src/Cart/Infrastructure`, `apps/api/src/Pricing/Infrastructure`, `apps/api/src/Inventory/Infrastructure`, `apps/api/tests`, `apps/api/config`, `apps/api/fixtures/catalog.yaml`, `apps/api/openapi.json`, `apps/api/openapi-admin.json`, `apps/store/src/api/schema.d.ts`, `apps/admin/src/api/schema.d.ts`, `apps/store/src/catalog`, `apps/store/src/components/ui`, `apps/store/app`, `infra/docker-compose.yml`, `infra/elasticsearch`, `Makefile`, `.github/workflows/ci.yml`, `e2e/tests/catalog.spec.ts`, `e2e/tests/price-change.spec.ts`, `e2e/tests/stock-receipt.spec.ts`, `e2e/tests/cart-variants.spec.ts`, `e2e/tests/product-page.spec.ts`, `e2e/tests/search.spec.ts`, `e2e/tests/listing-filters.spec.ts`, `e2e/tests/site-header.spec.ts`, `e2e/support`, `docs/vision.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `docs/features/walking-skeleton/spec.md`, `docs/features/catalog-page-metadata/spec.md`, `docs/features/catalog-unknown-category/spec.md`, `docs/features/product-page/spec.md`, `docs/features/variants/spec.md`
+Issues: #94. Model indeksu i zapytań: PERF-2 etap B programu wydajności
+(`docs/features/performance-program/plan.md`, decyzje właściciela z 2026-11-26; pomiary modelu:
+`docs/reports/perf-2-search-model-2026-11-25.md`), decyzje M1–M8.
+Zakres: `apps/api/src/Catalog`, `infra/k8s/charts/shop`, `infra/k8s/environments`, `infra/k8s/README.md`, `load`, `apps/api/src/Cart/Infrastructure`, `apps/api/src/Pricing/Infrastructure`, `apps/api/src/Inventory/Infrastructure`, `apps/api/tests`, `apps/api/config`, `apps/api/fixtures/catalog.yaml`, `apps/api/openapi.json`, `apps/api/openapi-admin.json`, `apps/store/src/api/schema.d.ts`, `apps/admin/src/api/schema.d.ts`, `apps/store/src/catalog`, `apps/store/src/components/ui`, `apps/store/app`, `infra/docker-compose.yml`, `infra/elasticsearch`, `Makefile`, `.github/workflows/ci.yml`, `e2e/tests/catalog.spec.ts`, `e2e/tests/price-change.spec.ts`, `e2e/tests/stock-receipt.spec.ts`, `e2e/tests/cart-variants.spec.ts`, `e2e/tests/product-page.spec.ts`, `e2e/tests/search.spec.ts`, `e2e/tests/listing-filters.spec.ts`, `e2e/tests/site-header.spec.ts`, `e2e/support`, `docs/vision.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `docs/features/walking-skeleton/spec.md`, `docs/features/catalog-page-metadata/spec.md`, `docs/features/catalog-unknown-category/spec.md`, `docs/features/product-page/spec.md`, `docs/features/variants/spec.md`
 
 Funkcja opiera się na stronie produktu (`docs/features/product-page/spec.md`): zdarzeniach `VariantPriceChanged`
 i `StockLevelChanged`, Varnishu przed odczytami katalogu (`API_CATALOG_URL`), tagach `catalog` i `product-<id>`,
@@ -49,6 +51,14 @@ Poza zakresem:
 | A1 | Ceny i dostępność w indeksie: Catalog dostaje port `ProductOfferFacts`, którego adapter jest w `Cart_Infrastructure` i woła Cart `GetProductOffers` (ta sama reguła „możliwy do kupienia” i cena „od” co na kafelku). Catalog nie zależy od Pricing, Inventory ani Cart. |
 | A2 | Polska analiza tekstu przez oficjalną wtyczkę Elasticsearch `analysis-stempel`: własny obraz `infra/elasticsearch/Dockerfile` (`FROM` oficjalnego obrazu + instalacja wtyczki). |
 | A3 | Kategoria dostaje slug w domenie Catalog (`CategorySlug`, unikalny wśród rodzeństwa); ścieżkę slugów liczy odczyt drzewa, bez kolumny w bazie. Nazwa osi wariantu nie może zawierać `:` (reguła `VariantAxes`, potrzebna formatowi filtra). |
+| M1 | Model R: warunki i fasety liczone z pól produktu (tokeny), `nested` jednego poziomu tylko tam, gdzie cena musi należeć do tego samego wariantu co opcja. Równoważność z warunkiem „ten sam wariant” (S2) wynika z dwóch reguł domeny: wariant ma najwyżej 2 osie (`VariantAxes::MAX_AXES`), a krotki opcji wariantów jednego produktu są unikalne (`ProductVariants`, `DuplicateVariantValues`). Budowa dokumentu odrzuca produkt, który ich nie spełnia (`SearchIndexError`), zamiast liczyć go błędnie. |
+| M2 | Listing to jedno żądanie `_msearch`: wyniki strony oraz grupy agregacji pogrupowane według zestawu warunków (każda grupa `size: 0` z warunkami w `query`), zakres cen bez warunków opcji dwoma wyszukiwaniami „top 1”. Listing z frazą liczy dopasowanie tekstu raz (jedno żądanie). Błąd którejkolwiek części `_msearch` to błąd całej odpowiedzi (jak dziś: 503 albo 500), nigdy częściowe fasety. Odpowiedź `GET /api/v1/products` i sklep bez zmian. |
+| M3 | Indeks ma 1 shard (`SEARCH_SHARDS` = 1 we wszystkich profilach) i sortowanie indeksu po `sort_path` (ścieżka głównej kategorii), więc produkty jednej kategorii leżą obok siebie. |
+| M4 | `refresh_interval` z parametru `SEARCH_REFRESH_INTERVAL` (domyślnie `1s`; w `prod` `5s` warunkowo, do potwierdzenia pomiarem W16 razem z PERF-6). Ustawienie dynamiczne: `catalog:search-index:setup` nadaje je istniejącemu indeksowi, bez przebudowy. Nie wchodzi do skrótu definicji. |
+| M5 | Przebudowa nie gubi zapisów (W19a): na czas przebudowy nowy indeks ma drugi alias `<alias>-rebuild`, a każdy pojedynczy zapis idzie jednym `_bulk` do obu aliasów z wersją `external_gte`. |
+| M6 | Fasety korzystają z natywnego request cache Elasticsearcha (żądania `size: 0`, unieważniane przy odświeżeniu); bez cache aplikacyjnego i bez materializowanych liczników faset (decyzja o licznikach po PERF-0). |
+| M7 | Zmiana definicji indeksu nie blokuje wdrożenia: `catalog:search-index:setup` przy innym `definition_hash` wypisuje ostrzeżenie z instrukcją `catalog:reindex` i kończy się powodzeniem. Pozostałe odmowy `setup` bez zmian, w tym przy zajętej blokadzie przebudowy. Na etapie demo przejście na nową definicję to okno serwisowe: wdrożenie, potem przebudowa; do jej końca listing nie działa poprawnie. Bez zgodności starej i nowej wersji i bez mechanizmu migracji. |
+| M8 | Wymagania W8 i W9 bez zmian. Etap B nie buduje materializowanych faset; gdy pomiar na worf.pl pokaże, że model ich nie spełnia, etap kończy się raportem z wariantami i decyzją właściciela. |
 
 ## Przepływ danych
 
@@ -93,19 +103,37 @@ Pola dokumentu istotne dla wyszukiwania i filtrów (`ProductIndexDefinition`, `d
 | `name` | `text` z analizatorem `polish_text`, podpola `name.sort` (`keyword` z normalizerem: małe litery, `asciifolding`) i `name.folded` | nazwa |
 | `category_names` | `text` z `polish_text`, podpole `folded` | nazwy kategorii produktu i ich przodków |
 | `short_description` | `text` z `polish_text`, podpole `folded` | krótki opis |
-| `variants` | `nested` | jeden obiekt na wariant: `gross` (`long`, brak przy braku ceny), `purchasable` (`boolean`), `options` (`keyword`, pary `<oś>␟<wartość>`, separator U+001F; na nich dopasowuje się warunek wariantu), `pairs` (`nested` w wariancie: obiekt `{axis, value}` (`keyword`) na każdą parę; po nich liczą się fasety osi) |
+| `variants` | `nested` (jeden poziom) | jeden obiekt na wariant: `gross` (`long`, brak przy braku ceny), `purchasable` (`boolean`), `options` (`keyword`, pary `<oś>␟<wartość>`, separator U+001F), `axes` (`keyword`, osie wariantu). Czytane tylko przez warunki i agregacje, w których cena musi należeć do tego samego wariantu co opcja, i przez fasetę osi z kilkoma wartościami jednej osi |
+| `facets` | `keyword` | tokeny produktu do warunków i faset jednym przejściem: `#<id>` każdej kategorii z `category_ancestor_ids`, `@<oś>` każdej osi wariantów, `<oś>␟<wartość>` każdej opcji wariantów, `$`, gdy produkt ma wariant możliwy do kupienia |
+| `buy_facets` | `keyword` | to samo z samych wariantów możliwych do kupienia (bez `$`); pusta lista bez takiego wariantu |
+| `pair_any`, `pair_buy` | `keyword` | dla wariantu z opcjami x i y (dwie osie) tokeny `x␞y`, `y␞x`, `x␞@<oś y>`, `y␞@<oś x>` (separator U+001E); `pair_buy` tylko z wariantów możliwych do kupienia |
+| `purchasable` | `boolean` | produkt ma wariant możliwy do kupienia |
+| `buy_prices` | `long`, bez `doc_values` | różne ceny wariantów możliwych do kupienia; tylko filtr zakresu ceny |
 | `from_gross` | `long` | cena „od” (najniższa cena wariantów możliwych do kupienia); brak, gdy produkt nie ma takiego wariantu |
+| `max_gross` | `long` | najwyższa cena wariantów możliwych do kupienia; brak jak wyżej |
+| `sort_path` | `keyword`, nieindeksowane (`index: false`) | identyfikatory ścieżki głównej kategorii od korzenia połączone `/`; klucz sortowania indeksu (M3) |
 | `status` | `keyword` | `published` albo `draft`; każde zapytanie sklepu dopasowuje tylko `published` |
 
 Pozostałe pola (`id`, `version`, `slug`, `main_category_id`, `category_ids`, `category_ancestor_ids` z filtrem
 kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
 
+- Tokeny i ich składnię buduje jedna klasa w `Catalog_Infrastructure` (`ProductFacetTokens`), z której korzystają
+  zapis dokumentu (`ProductIndexDefinition::source`) i zapytania; `ProductDocument` dostaje ścieżkę głównej kategorii
+  (`mainCategoryPath`) z migawki. Odczyt tokenu: zawiera U+001F → opcja; inaczej `#` → kategoria, `@` → oś, `$` →
+  dostępność. Oś i wartość nie zawierają znaków sterujących (reguła tekstów `Text::hasForbiddenCharacters`, w tym
+  U+001E i U+001F), więc separatory są jednoznaczne; `#`, `@`, `$` i znaki wyrażeń regularnych w nazwach osi
+  i wartościach są dozwolone, a zapytania z prefiksem (`include` w `terms`) ucieczkują każdy znak poza literą i cyfrą.
+- Budowa dokumentu kończy się `SearchIndexError` z identyfikatorem produktu (przebudowa kończy się błędem, alias
+  zostaje na starym indeksie; wiadomość reindeksacji trafia do `failed`), gdy wariant ma więcej niż 2 opcje, dwa warianty produktu mają tę samą krotkę opcji albo oś lub wartość
+  zawiera U+001E lub U+001F (dane zapisane przed regułą tekstów).
+
 - Analizator `polish_text`: tokenizer standardowy, `lowercase`, `polish_stem` (wtyczka `analysis-stempel`, A2),
   `asciifolding`. Podpola `folded`: tokenizer standardowy, `lowercase`, `asciifolding` (bez stemmera):
   łapie frazy bez polskich znaków i formy, których stemmer nie sprowadza.
-- `options` i `pairs` wariantu: te same pary oś–wartość, dokładnie jak w Catalog (bez zmiany wielkości liter); osie
+- `options`, `axes` i tokeny: te same pary oś–wartość, dokładnie jak w Catalog (bez zmiany wielkości liter); osie
   i wartości nie mają identyfikatorów, więc indeks używa ich nazw. Wariant domyślny (produkt bez osi) ma puste
-  `options` i `pairs`. `pairs` jest zapisywane z `options` przy zapisie dokumentu, nie jest czytane z powrotem.
+  `options` i `axes`, a produkt bez osi nie ma tokenów `@` ani opcji. Pola pochodne (`axes`, tokeny, `purchasable`,
+  `buy_prices`, `max_gross`, `sort_path`) są zapisywane przy zapisie dokumentu, nie są czytane z powrotem.
 - `gross`, `purchasable` i `from_gross` pochodzą z portu `ProductOfferFacts` (A1). Reguła „możliwy do kupienia”
   (`VariantOffer::isPurchasable`: cena istnieje i `available > 0`) i cena „od” (`ProductOfferSummary`) są tylko w Cart,
   więc indeks liczy je tak samo jak kafelek.
@@ -113,8 +141,8 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
   Dokumentów się nie usuwa, więc wersja szkicu chroni przed spóźnionym zapisem starszego stanu bez limitu czasu (bez
   zależności od `index.gc_deletes`), a liczba dokumentów zostaje równa liczbie produktów (statystyki panelu). Fakty
   oferty szkicu są puste (Catalog ukrywa jego warianty przed ofertą sklepu), więc jego dokument nie ma cen.
-- Zmiana definicji zmienia `definition_hash`, więc `catalog:search-index:setup` na istniejącym indeksie kończy się
-  błędem z instrukcją `catalog:reindex` (patrz „Ryzyka”).
+- Zmiana definicji zmienia `definition_hash`, więc `catalog:search-index:setup` na istniejącym indeksie ostrzega
+  i podaje instrukcję `catalog:reindex` (M7, „Ryzyka”).
 
 ### Port `ProductOfferFacts` (A1)
 
@@ -142,9 +170,40 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
 - Przebudowa (`catalog:reindex`) indeksuje wszystkie produkty, także szkice, i pobiera fakty ofert dla każdej paczki
   produktów; błąd faktów przerywa przebudowę.
 - Przebudowa wypełnia nowy indeks z wyłączonym odświeżaniem (`refresh_interval` `-1`): indeks jest tworzony z tym
-  ustawieniem, a `verify` przywraca domyślny interwał (`null` w `_settings`) przed jawnym `refresh`, sprawdzeniem
-  zdrowia, liczby dokumentów i skrótu definicji, czyli przed przepięciem aliasu. Skrót definicji nie obejmuje ustawień,
-  więc odświeżanie go nie zmienia. Indeks z `catalog:search-index:setup` zostaje z domyślnym odświeżaniem.
+  ustawieniem, a `verify` ustawia interwał z `SEARCH_REFRESH_INTERVAL` (M4) przed jawnym `refresh`, sprawdzeniem
+  zdrowia, liczby dokumentów i skrótu definicji, czyli przed przepięciem aliasu. Skrót definicji obejmuje mapping,
+  analizę i sortowanie indeksu (ustawienie statyczne: zmiana wymaga przebudowy), a nie obejmuje shardów, replik ani
+  interwału odświeżania. Indeks z
+  `catalog:search-index:setup` dostaje interwał z parametru, a `setup` na istniejącym indeksie ustawia go, gdy jest
+  inny.
+
+#### Zapisy w trakcie przebudowy (W19a, M5)
+
+- Przebudowa tworzy nowy indeks razem z aliasem `<alias>-rebuild` (jedno żądanie, przed odczytem pierwszej paczki)
+  i zdejmuje go w tym samym żądaniu `_aliases`, które przepina `<alias>`. Nieudana przebudowa usuwa nowy indeks razem
+  z aliasem. Po awarii procesu alias zostaje na osieroconym indeksie (wypisuje go `setup`), więc zapisy trafiają tam
+  bez szkody; kolejna przebudowa najpierw zdejmuje `<alias>-rebuild` z każdego indeksu (najwyżej jedna przebudowa
+  naraz: blokada przebudowy).
+- `ProductIndexer` zapisuje dokument jednym `_bulk` z dwiema pozycjami `index` (`require_alias: true`, ta sama wersja
+  `external_gte`): do `<alias>` i do `<alias>-rebuild`. Pozycja do `<alias>` ma dzisiejsze znaczenie (zapisany,
+  przestarzały, błąd przejściowy albo trwały). Pozycja do `<alias>-rebuild`: 404 `index_not_found_exception` (aliasu
+  nie ma, bo nie trwa przebudowa) i 409 (w nowym indeksie jest nowsza wersja) są pomijane; każdy inny błąd tej pozycji
+  kończy zapis błędem przejściowym albo trwałym jak pozycja główna, więc wiadomość jest ponawiana, a powtórzenie obu
+  pozycji jest nieszkodliwe (wersja). Zachowanie `_bulk` z `require_alias` w pozycji i brakującym aliasem (404 tylko tej
+  pozycji, bez tworzenia indeksu) sprawdzone na Elasticsearch 9.4.0.
+- Dlaczego nic nie ginie: alias powstaje przed odczytem pierwszej paczki, a `ProductIndexing` czyta bazę przed
+  zapisem. Zmiana zatwierdzona, zanim alias powstał, jest w odczycie przebudowy; zmiana zatwierdzona później wywołuje
+  reindeksację (zdarzenie po zatwierdzeniu), której zapis trafia do obu indeksów. Kolejność zapisu paczki i zapisu
+  pojedynczego rozstrzyga wersja (jak w „Zapis i kolejność”), więc nowszy odczyt wygrywa w obu indeksach.
+- Paczki przebudowy zapisują do nowego indeksu po jego nazwie fizycznej, nie przez alias. Alias przebudowy służy
+  tylko zapisom pojedynczym (`ProductIndexer`).
+- Paczka przebudowy z pozycją przestarzałą (409: zapis pojedynczy był nowszy) jest poprawna; pozycje przejściowe są
+  ponawiane jak dziś, a pozycja trwale odrzucona kończy przebudowę błędem (nowy indeks usunięty, alias bez zmian;
+  ponowienie to kolejne uruchomienie przebudowy od początku).
+- Wiadomość, która wyczerpała ponowienia w trakcie przebudowy, jest w `failed` (W13 wymaga 0); jej ponowienie
+  (`failed-retry`) zapisuje aktualny stan do indeksu aktywnego.
+- Katalog nie usuwa produktów (szkic to dokument `draft`), więc przebudowa nie ma usunięć do przeniesienia. Te same
+  zasady obejmują reindeksację kategorii (paczki `ProductIndexing`).
 - Zapis paczki (`ElasticsearchSearchIndexMaintenance::write`) ponawia to, co zawiodło przejściowo: pozycje odrzucone
   jako przejściowe (429, `es_rejected_execution_exception`, 502, 503, 504, czyli to, co `ElasticsearchErrorClassifier`
   uznaje za `SearchUnavailable`) oraz całe żądanie, które zakończyło się takim błędem albo przekroczeniem czasu.
@@ -212,22 +271,49 @@ jak `productId` w `/api/v1/product-offers`) wysyła bez zmian:
 - Ranking: nazwa > kategoria > opis (wagi pól), dokładne przed przybliżonymi (waga gałęzi).
 - Koszt zapytania ograniczają: fraza do 100 znaków, `prefix_length` i `max_expansions` gałęzi literówek, limity
   `option` i okno wyników.
-- Warunek wariantu (S2) to jedno zapytanie `nested` na `variants`, w którym wszystkie warunki dotyczą tego samego
-  wariantu: dla każdej osi z `option` `terms` na `variants.options` (wartości tej osi); przy `priceMin`/`priceMax`
-  `purchasable` i `gross` w zakresie; przy `available` `purchasable`. Bez żadnego z tych parametrów brak warunku.
-- Warunek wariantu idzie do `post_filter`, a nie do `query`, żeby fasety mogły liczyć wyniki bez części warunków.
+- Warunek wariantu (S2: wszystkie warunki dotyczą tego samego wariantu) to zapytanie na polach produktu (M1), „kup.”
+  = przy `available` albo cenie:
+  - bez osi: brak warunku, a z „kup.” `term` `purchasable`;
+  - jedna oś (jedna albo kilka wartości): `terms` na `facets` (z „kup.”: `buy_facets`) z tokenami `<oś>␟<wartość>`;
+  - dwie osie: `terms` na `pair_any` (z „kup.”: `pair_buy`) z tokenami `x␞y` każdej pary wybranych wartości;
+  - trzy i więcej osi: brak wyników (wariant ma najwyżej 2 osie);
+  - cena: `range` na `buy_prices`; razem z osią dodatkowo zapytanie `nested` na `variants` (opcje, `purchasable`
+    i `gross` w zakresie w jednym wariancie), zawężone już warunkami na polach produktu.
+- Warunek wariantu jest w `query` żądania wyników (bez agregacji w tym żądaniu); każda grupa faset ma własny zestaw
+  warunków w swoim `query` (M2), więc `post_filter` nie jest potrzebny.
 - Produkt bez wariantu możliwego do kupienia (`from_gross` brak) jest w wynikach bez `priceMin`, `priceMax`
   i `available`; którykolwiek z nich go wyklucza. Nie wchodzi do `facets.price`.
 - Sortowanie: `relevance` → `_score`, potem `name.sort`, `id`; `name` → `name.sort`, `id`; `price_asc`/`price_desc` →
   `from_gross` (brakujące na końcu), potem `name.sort`, `id`.
 - Okno wyników to 10 000 (`index.max_result_window`): strona zaczynająca się za oknem jest pusta z prawdziwym `total`.
-  `total` jest dokładny i uwzględnia `post_filter`.
+  `total` jest dokładny i uwzględnia warunek wariantu.
 
 ### Fasety
 
-Odpowiedź `ProductPage` ma pole `facets`, liczone agregacjami w tej samej odpowiedzi ES. Agregacje widzą wyniki
-`query` (status, fraza, kategoria); każda faseta dodaje warunek wariantu bez swojego warunku (gałąź `filter` na każdą
-wybraną oś, cenę i `available`):
+Odpowiedź `ProductPage` ma pole `facets`, liczone w tym samym `_msearch` co wyniki (M2). Każda faseta widzi status,
+frazę i kategorię oraz warunek wariantu bez swojego warunku. Faseta z tym samym zestawem warunków należy do jednej
+grupy, czyli jednego wyszukiwania `size: 0` z tymi warunkami w `query`. Wyszukiwania faset nie zależą od strony ani
+sortowania, więc trafiają do natywnego request cache (M6); listing bez frazy liczy fasety bez dopasowania tekstu:
+
+| Warunki faset | Jak liczone |
+|---|---|
+| bez osi i ceny (z dostępnością albo bez) | jedno `terms` po `facets` (z dostępnością: `buy_facets`): kategorie (`#`), osie (`@`), wartości i `availableCount` (`$`) naraz |
+| jedna wartość jednej osi, bez ceny | `terms` po `pair_any` (`pair_buy`) z prefiksem `x␞`: osie (`@`) i wartości innych osi wariantów z tą wartością |
+| dwie osie bez ceny | wartości osi wybranych z `pair_*`; innych osi nie ma (wariant ma najwyżej 2) |
+| oś wybrana bez ceny i bez innej osi | to samo wyszukiwanie co faseta listingu bez osi (ten sam wpis cache) |
+| cena, kilka wartości jednej osi przy osiach bez wyboru | `nested` na `variants` zawężone polami produktu, `terms` na `variants.axes` i `variants.options` z `reverse_nested` (produkt raz) |
+| `categories` przy warunkach osi albo ceny | `filters` po `category_ancestor_ids` (jeden `term` na kategorię fasety) w grupie z pełnym warunkiem wariantu |
+| `availableCount` przy warunkach osi albo ceny | liczba trafień wyszukiwania z warunkiem wariantu i dostępnością (`size: 0`, dokładny `total`); przy `available` albo cenie równa `total` |
+| `price` bez warunków osi | dwa wyszukiwania „top 1” sortowane po `from_gross` rosnąco i `max_gross` malejąco wśród produktów z `purchasable` |
+| `price` z warunkami osi | `nested` (cena i opcja w tym samym wariancie), `min` i `max` z `variants.gross` |
+
+- `terms` po polach tokenów zwracają wszystkie kubełki (rozmiar 10 000, jeden shard, więc liczby są dokładne);
+  odpowiedź z `sum_other_doc_count` > 0 to `SearchIndexError` (500), nigdy ucięte fasety. Limity 10 osi i 30 wartości
+  stosuje API przy budowie odpowiedzi, z tą samą kolejnością (liczba produktów malejąco, potem nazwa).
+- Liczby kubełków tokenów to liczby produktów (token jest raz w dokumencie produktu), więc `reverse_nested` jest
+  potrzebny tylko w agregacjach `nested`.
+
+Znaczenie liczb (bez zmian względem S2):
 
 - `categories`: dzieci kategorii z filtra (bez filtra: kategorie główne), które mają pasujące produkty: `{id, name,
   slug, path, count}`, w kolejności drzewa. Liczone z pełnym warunkiem wariantu.
@@ -235,16 +321,12 @@ wybraną oś, cenę i `available`):
   produktów, które mają wariant z wartością v spełniający wszystkie pozostałe warunki wariantu (inne osie, cena,
   dostępność), czyli `total` po dodaniu v do filtra (dla osi z wyborem: po wybraniu tylko v tej osi, bo liczba jest
   liczona bez warunku własnej osi). Bez globalnego limitu par oś–wartość; limity dotyczą tylko
-  wyniku: 10 osi bez wyboru i 30 wartości na oś.
-  - Osie bez wyboru: jedna agregacja `nested` na `variants` → filtr wszystkich warunków wariantu → `nested` na
-    `variants.pairs` → `terms` na `axis` (10, bez osi wybranych) → w nim `terms` na `value` (30). Warunki i para
-    należą do tego samego wariantu, więc nie ma kombinacji z różnych wariantów. Każdy `terms` sortuje po liczbie
-    produktów z `reverse_nested` do korzenia (produkt raz, nie raz na obiekt zagnieżdżony), malejąco, potem po `_key`
-    rosnąco.
-  - Oś wybrana (z `option`): osobna agregacja z warunkami wariantu bez warunku tej osi → `nested` na `pairs` → filtr
-    `axis` = oś → `terms` na `value` (30) i `terms` z wybranymi wartościami (żeby wybrana wartość ucięta limitem miała
-    prawdziwą liczbę). Wybrana wartość jest zawsze w liście, także z liczbą 0; ucięta limitem dochodzi po pozostałych,
-    więc lista może przekroczyć 30.
+  wyniku: 10 osi bez wyboru i 30 wartości na oś. Warunki i wartość należą do tego samego wariantu (nie ma kombinacji
+  z różnych wariantów).
+  - Osie bez wyboru: 10 osi z największą liczbą produktów, każda z 30 wartościami o największej liczbie produktów,
+    przy równej liczbie po nazwie.
+  - Oś wybrana (z `option`): wartości liczone bez warunku tej osi. Wybrana wartość jest zawsze w liście, także
+    z liczbą 0; ucięta limitem dochodzi po pozostałych, więc lista może przekroczyć 30.
   - Kolejność osi: liczba produktów w wynikach (z wszystkimi warunkami) malejąco, potem nazwa; oś wybrana ma ich
     `total`. Oś wybrana jest zawsze w liście (także przy `total` = 0), ponad limit 10 osi bez wyboru; oś bez wartości
     się nie pojawia.
@@ -357,15 +439,24 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 - `make seed`: `catalog:seed-demo`, `pricing:seed-demo`, `ordering:seed-demo`, `inventory:seed-demo`,
   `catalog:reindex`, `storefront:cache:purge-all`.
 - Liczba shardów nowego indeksu to zmienna `SEARCH_SHARDS` (parametr `app.search.shards`): w compose z `.env` worktree
-  (bez niej 1), w chartcie z `elasticsearch.shards` (domyślnie 1, w `prod` 4). Dostają ją wszystkie kontenery z kodem
-  API. Indeks, który istnieje, zachowuje swoją liczbę shardów (hash definicji jej nie obejmuje, więc `setup` go nie
-  odrzuca); nową dostaje dopiero indeks z następnej przebudowy. Wartość mniejsza od 1 kończy budowę definicji błędem
-  z nazwą zmiennej, pustą i nieliczbową odrzuca kontener, a schemat chartu przyjmuje tylko liczbę całkowitą od 1 do
-  1024.
-- Agregacje faset zapytania listingu liczy na jednym shardzie jeden wątek (pomiar na kopii indeksu 1 mln produktów,
-  Elasticsearch 9.4.0: czas CPU zapytania równy czasowi jego wykonania), więc na kilku shardach liczą się równolegle.
-  Czas CPU zapytania się przy tym nie zmniejsza, a przy wielu równoległych zapytaniach shardy konkurują o te same
-  rdzenie. Skutek 4 shardów na serwerze nie jest potwierdzony pomiarem na serwerze.
+  (bez niej 1), w chartcie z `elasticsearch.shards` (1 we wszystkich profilach, M3). Dostają ją wszystkie kontenery
+  z kodem API. Indeks, który istnieje, zachowuje swoją liczbę shardów (hash definicji jej nie obejmuje, więc `setup` go
+  nie odrzuca); nową dostaje dopiero indeks z następnej przebudowy. Wartość mniejsza od 1 kończy budowę definicji
+  błędem z nazwą zmiennej, pustą i nieliczbową odrzuca kontener, a schemat chartu przyjmuje tylko liczbę całkowitą od
+  1 do 1024. Jeden shard: shardy na jednym węźle kosztowały w etapie A 1,6–1,75 razy więcej CPU, a czas pojedynczego
+  zapytania skraca równoległe przeszukiwanie segmentów (domyślne w ES 9, zostaje włączone).
+- `SEARCH_REFRESH_INTERVAL` (parametr `app.search.refresh_interval`, M4): w compose z `.env` worktree (bez niej `1s`),
+  w chartcie z `elasticsearch.refreshInterval` (domyślnie `1s`, w `prod` `5s` z komentarzem o warunkowej decyzji
+  i PERF-6). Zmiana wartości działa po wdrożeniu (`setup` w Jobie `migrate`), bez przebudowy. Dozwolony format to
+  liczba z jednostką `ms` albo `s`; inną wartość odrzuca kontener (i schemat chartu).
+- Request cache: ustawienia domyślne Elasticsearcha (włączony dla `size: 0`, rozmiar 1% sterty). Pomiar akceptacyjny
+  podaje trafienia i wyrugowania (`_nodes/stats/indices/request_cache`); rozmiar zmienia się tylko po wykazanych
+  wyrugowaniach.
+- Pamięć: etap B nie zmienia sterty ani limitów. Gorące dane modelu R przy 10 mln to ok. 4,5 GB (etap A, górna
+  granica), a `prod` ma limit 4 GiB przy stercie 2 GiB, czyli 1–1,5 GiB na cache plików; docelowe wartości ustala
+  PERF-1 (D2, D3: według szacunku ok. 8 GiB limitu przy stercie 2 GiB). Pomiar akceptacyjny etapu B biegnie przy
+  wartościach PERF-1 wdrożonych na worf.pl i podaje limit, stertę, rozmiar indeksu i odczyty z dysku w stanie
+  ustalonym.
 - Przebudowa indeksu na klastrze: `make -C infra/k8s reindex KUBE_DIR=<katalog>`, tylko po zgodzie użytkownika
   w rozmowie, która nazywa operację i host. Cel odmawia bez zmian, gdy w przestrzeni nazw działa Job (poza Jobami
   CronJobów `rate-limit-check`, `queue-check` i `order-expiry`), gdy blokadę `demo-data-lock` trzyma `generate` albo
@@ -376,9 +467,19 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   czeka na niego i sprawdza, że alias wskazuje nowy indeks o liczbie shardów z `SEARCH_SHARDS`. Sklep działa w trakcie
   na starym indeksie; nieudany przebieg zostawia alias bez zmian. Wdrożenie rozpoczęte w trakcie przebudowy kończy
   się nieudanym Jobem `migrate` (`catalog:search-index:setup` odmawia przy zajętej blokadzie przebudowy), który po
-  końcu przebudowy ponawia `rerun`. Obowiązują ograniczenia przebudowy z `docs/features/walking-skeleton/spec.md`
-  („Ograniczenia tej przebudowy”): zmiana produktu, ceny albo poziomu stanu zapisana w trakcie budowy może nie trafić
-  do nowego indeksu aż do następnej zmiany tego produktu albo następnej przebudowy.
+  końcu przebudowy ponawia `rerun`. Zmiany zapisane w trakcie przebudowy trafiają do nowego indeksu („Zapisy
+  w trakcie przebudowy”), więc przebudowa pod normalnym ruchem jest dopuszczalna. Nieudaną przebudowę ponawia się
+  kolejnym uruchomieniem celu (zaczyna od początku, alias do tego czasu na starym indeksie).
+- Zmiana definicji indeksu na klastrze (M7) to okno serwisowe, za zgodą użytkownika na każdy krok: wdrożenie
+  (`setup` w Jobie `migrate` ostrzega o nieaktualnym indeksie i wdrożenie przechodzi), potem
+  `make -C infra/k8s reindex`. Między wdrożeniem a przepięciem aliasu nowa wersja czyta indeks starej definicji: listing
+  nie pokazuje poprawnych wyników ani faset, a zapis dokumentu nowej definicji do starego indeksu (`dynamic: strict`)
+  jest trwale odrzucany, więc wiadomości reindeksacji z tego czasu trafiają do `failed`; do nowego indeksu trafiają przez
+  alias przebudowy. Po przebudowie: `make -C infra/k8s failed-retry`, kontrola `smoke`. Stara i nowa wersja nie są ze
+  sobą zgodne i nie muszą być. Wycofanie: revert zmiany na `main`, wdrożenie i znów `reindex` (ta sama procedura
+  w drugą stronę). Działa, bo wersja, do której się wraca, też ostrzega zamiast odmawiać: zachowanie `setup` z M7
+  trafia na `main` i na worf.pl osobną, wcześniejszą zmianą niż model. Synchronizacja poprzedniego snapshotu
+  `deploy-images` sprzed M7 zatrzymałaby się na Jobie `migrate`. Kroki są w runbooku.
 
 ## Scenariusze błędów
 
@@ -394,6 +495,11 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 | Wariant ze zdarzenia nieznany Catalogowi | wiadomość obsłużona bez reindeksacji |
 | Zdarzenie ze źródła `seed` | obsłużone bez reindeksacji (indeks przebudowuje `make seed`) |
 | Wybrana wartość osi bez wyników | lista pusta, wartość widoczna z liczbą 0, „Wyczyść filtry” |
+| Błąd jednej części `_msearch` (przejściowy albo trwały) | cała odpowiedź 503 albo 500, bez częściowych faset |
+| Więcej różnych tokenów w listingu niż rozmiar `terms` | 500 (`SearchIndexError`), wpis w logu; nigdy ucięte fasety |
+| Indeks starej definicji po wdrożeniu (M7) | `setup` ostrzega; do przebudowy listing niepoprawny, zapisy reindeksacji w `failed` |
+| Produkt łamiący regułę modelu (ponad 2 opcje w wariancie, powtórzona krotka, U+001E/U+001F w osi albo wartości) | `SearchIndexError` z identyfikatorem produktu: przebudowa kończy się błędem, wiadomość reindeksacji w `failed` |
+| Zapis do aliasu przebudowy nieudany przejściowo albo trwale | zapis kończy się błędem, wiadomość ponawiana, po wyczerpaniu prób w `failed` |
 
 ## Kryteria akceptacji
 
@@ -413,6 +519,18 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
    i kanoniczny bez parametrów; `/szukaj` zawsze `noindex, follow`, bez kanonicznego; `/c/` ma JSON-LD `BreadcrumbList`.
 8. Catalog nie zależy od Pricing, Inventory ani Cart (Deptrac).
 9. Obraz Elasticsearch ma wtyczkę `analysis-stempel` (`elasticsearch-plugin list` w kontenerze).
+10. Model R daje te same wyniki co model sprzed PERF-2 B (liczba trafień, fasety z liczbami, zakres cen, pierwsza
+    strona) w teście z wyrocznią w PHP (`Testy`) na ręcznie zbudowanym katalogu przypadków brzegowych modelu wariantów
+    oraz w porównaniu odpowiedzi `GET /api/v1/products` przed i po zmianie na lokalnym stosie `medium` dla mieszanki
+    adresów PERF-0 (ten sam stan danych, 0 różnic; kolejność „Trafność” porównywana przy tej samej liczbie shardów).
+11. Zapis wykonany w trakcie przebudowy jest w nowym indeksie po przepięciu aliasu (W19a), także gdy paczka
+    przebudowy dostaje pozycję przestarzałą albo przejściowo odrzuconą.
+12. Zmiana `SEARCH_REFRESH_INTERVAL` działa na istniejącym indeksie po `setup`, bez przebudowy; indeks ma 1 shard
+    i sortowanie po `sort_path`.
+13. Kryteria pomiarowe etapu B z `docs/features/performance-program/plan.md` (PERF-2, „Kryteria etapu B”, 1–3 i 5)
+    zmierzone na worf.pl przy 10 mln produktów, wartościach pamięci z PERF-1 i `refresh_interval` 5 s; wynik w raporcie
+    w `docs/reports/` z porównaniem do linii bazowej PERF-0. Niespełnione W8 albo W9 kończą etap raportem z wariantami
+    i decyzją właściciela, bez obniżania wymagań i bez liczników faset (M8).
 
 ## Testy
 
@@ -432,7 +550,29 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   `make test`), wersja `external_gte` (starszy odczyt przestarzały), przebudowa z faktami ofert, ponawianie zapisów
   przebudowy (transport wstrzykujący 429 pozycji, 503 i przekroczenia czasu do prawdziwego Elasticsearcha: sukces po
   kilku błędach, wyczerpanie 5 prób i błąd trwały kończą przebudowę z nowym indeksem usuniętym i aliasem bez zmian),
-  `refresh_interval` `-1` w trakcie wypełniania i domyślny po udanej przebudowie, log postępu (test jednostkowy).
+  `refresh_interval` `-1` w trakcie wypełniania i z `SEARCH_REFRESH_INTERVAL` po udanej przebudowie, log postępu (test
+  jednostkowy).
+- Zgodność modelu R (kryterium 10). Wyrocznia: istniejący model faset liczony w PHP wprost z definicji S2 (bez
+  Elasticsearcha), rozszerzony o liczbę trafień, zakres cen i pierwszą stronę. Katalog testowy budowany ręcznie,
+  a nie z generatora danych demo, z każdym przypadkiem brzegowym modelu wariantów: produkt bez osi (wariant
+  domyślny), jedna i dwie osie, dwie opcje w tym samym wariancie wobec tych samych opcji w różnych wariantach, kilka
+  wartości jednej osi z wartością drugiej, opcja łączona z dostępnością (wariant z opcją niedostępny, inny dostępny),
+  cena łączona z opcją i dostępnością (także cena w zakresie tylko w wariancie bez opcji), wariant bez ceny, ta sama
+  wartość na różnych osiach, wartości i osie ze znakami `#`, `@`, `$`, `␟`-podobnymi znakami Unicode i znakami
+  wyrażeń regularnych (`.`, `*`, `(`, `\`), polskie znaki i wielkość liter, szkic, produkt w kilku kategoriach, oraz
+  zmiana opcji, ceny i dostępności istniejącego produktu (ponowny zapis i porównanie). Zestaw kryteriów wyliczany
+  wyczerpująco na tym katalogu: każdy podzbiór osi (0–3) z jedną i dwiema wartościami, z ceną i bez, z dostępnością
+  i bez, z kategorią i bez, z frazą i bez; porównanie całej odpowiedzi. Dodatkowo test reguł domeny, na których stoi
+  model: `VariantAxes` odrzuca trzecią oś, `ProductVariants` powtórzoną krotkę (także różniącą się wielkością liter),
+  `Text` znaki U+001E i U+001F; budowa dokumentu odrzuca dane łamiące te reguły.
+- Porównanie przed i po na `medium` (kryterium 10, druga część): odpowiedzi API dla mieszanki adresów PERF-0 zapisane
+  na rewizji sprzed zmiany i porównane z odpowiedziami po przebudowie na tych samych danych (skrypt w katalogu raportu
+  etapu B, bez nowego narzędzia w `load/`).
+- W19a (kryterium 11), integracyjne na prawdziwym Elasticsearchu: zapis pojedynczy w trakcie wypełniania (przed
+  i po paczce z tym produktem) jest w nowym indeksie po przepięciu; pozycja przestarzała w paczce nie przerywa
+  przebudowy; zapis bez trwającej przebudowy (404 aliasu przebudowy pominięty); błąd przejściowy i trwały pozycji
+  aliasu przebudowy kończy zapis błędem; nieudana przebudowa usuwa nowy indeks z aliasem, a kolejna zdejmuje alias
+  osierocony; `setup` przy innym skrócie definicji ostrzega i kończy się kodem 0.
 - Funkcjonalne API: `GET /api/v1/products` z każdym parametrem (adres w formacie klienta) i błędami 400 (każdy
   niepoprawny parametr, `relevance` bez `q`), `facets` w odpowiedzi, nagłówki `Cache-Control` i `xkey`; `GET /api/v1/categories`
   i `GET /api/v1/admin/categories` ze `slug` i `path`; `breadcrumb` z `path` w szczegółach produktu.
@@ -448,13 +588,86 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   `/c/` w `catalog.spec.ts`, `price-change.spec.ts`, `stock-receipt.spec.ts`, `cart-variants.spec.ts`,
   `product-page.spec.ts` i pomocnikach `e2e/support`.
 
+## Weryfikacja wydajności (PERF-2 etap B)
+
+Kryteria pomiarowe są w planie programu (PERF-2, „Kryteria etapu B”); tu narzędzia i zasady pomiaru.
+
+- Odczyty: narzędzie PERF-0 (`load/baseline.py`: tryby `single`, `open`, `burst`) z mieszanką adresów zapisaną
+  z wynikiem, ta sama przed i po. Zasoby i CPU usług z Grafana Cloud (metryki kontenerów), request cache z
+  `_nodes/stats`. Bez nowego narzędzia pomiaru odczytów.
+- Zapisy (kryterium 3): scenariusz k6 w `load/` (rozszerzenie istniejącej biblioteki `load/lib`), uruchamiany jak
+  pozostałe scenariusze przez `load/k6.sh` (lokalnie i wobec worf.pl), bez zmian w `make -C infra/k8s load`. Wysyła w modelu otwartym zadaną liczbę zmian
+  na sekundę przez API panelu (`PUT /api/v1/admin/variants/{variantId}/price`, `POST …/stock/receipts`), więc przechodzi
+  pełną ścieżkę: transakcja, historia, zdarzenie, reindeksacja. Uwierzytelnienie: token odświeżania sesji panelu
+  (publiczny klient `admin`) podany w zmiennej środowiska, odświeżany przez skrypt; bez nowego konta i klienta
+  Keycloaka. Próbka zmian ceny mierzy świeżość (W16): czas od odpowiedzi zapisu do chwili, gdy zapytanie wariantu
+  (niżej) znajduje nową cenę.
+- Zapytanie wariantu: `GET /api/v1/products` z pominięciem Varnisha, z kategorią produktu, wartością każdej osi
+  wariantu (`option=<oś>:<wartość>`) i `priceMin` = `priceMax` = sprawdzana cena, przeglądane do ostatniej strony.
+  Produkt jest w wynikach wtedy i tylko wtedy, gdy ten konkretny wariant jest w indeksie możliwy do kupienia za tę
+  cenę: warunki wariantu dotyczą jednego wariantu, zakres ceny tylko wariantów możliwych do kupienia (S2), a kombinacja
+  wartości osi jest w produkcie unikalna (`ProductVariants`; produkt bez osi ma jeden wariant).
+  Warianty, których osi nie da się podać w `option` (dwukropek w nazwie osi), nie wchodzą do próby.
+- Skutki zapisów są trwałe i scenariusz ich nie cofa: każda zmiana zostaje w historii cen i ruchów magazynowych,
+  w zdarzeniach, w wersjach agregatów i dokumentów indeksu. Ograniczenie skutków zamiast kompensacji: zmiany tylko na
+  wybranej na początku przebiegu próbie wariantów z ceną w opublikowanych produktach (lista zapisana z wynikiem), cena
+  w granicach ±1 gr od wartości z początku przebiegu, stan tylko przyjęciami (nigdy nie odbiera dostępności ani nie
+  dotyka rezerwacji zamówień). Część próby (udział z parametru scenariusza) to warianty bez dostępnego stanu na
+  początku przebiegu: indeks przechowuje tylko, czy wariant można kupić, więc tylko przyjęcie u takiego wariantu
+  zmienia dokument i daje się sprawdzić; brak takich wariantów przy udziale większym od zera kończy przebieg błędem.
+  Zmiany ceny dotyczą tylko wariantów możliwych do kupienia na początku przebiegu, przyjęcia wszystkich wariantów próby.
+  Przerwany przebieg zostawia warianty próby z ceną różną od początkowej o najwyżej 1 gr i ze stanem wyższym,
+  a warianty bez stanu, które dostały przyjęcie, możliwe do kupienia; wynik przebiegu podaje listę wariantów i liczbę
+  wykonanych zmian. Na worf.pl wyłącznie za zgodą właściciela na konkretny przebieg; najpierw lokalnie.
+- Po każdym pomiarze z zapisami: zgodność indeksu z bazą dla zmienionych wariantów i 0 wiadomości w `failed` (W13).
+  Zgodność sprawdza koniec scenariusza zapytaniami wariantu, bez nowego polecenia i celu. Oczekiwany stan każdego
+  wariantu próby scenariusz liczy z własnych potwierdzonych zapisów: cena ostatnia zapisana albo początkowa,
+  dostępność początkowa albo „tak” po przyjęciu. Po ustaniu zapisów i odczekaniu `refresh_interval` zapytanie wariantu
+  z oczekiwaną ceną znajduje produkt wtedy i tylko wtedy, gdy wariant ma być możliwy do kupienia: wariant z próby
+  cen sprawdza ostatnią cenę, a wariant bez stanu na początku to, czy przyjęcie uczyniło go dostępnym. Kontrola
+  zakłada, że w trakcie przebiegu nikt poza scenariuszem nie zmienia wariantów próby (zamówienie klienta może dać
+  fałszywą niezgodność). Wariant, którego zapis nie dostał odpowiedzi, sprawdza się względem każdego stanu, który ten
+  zapis mógł zostawić; wynik podaje liczbę takich wariantów. Każda niezgodność
+  (wariant, stan oczekiwany i znaleziony) to błąd przebiegu. Zapisy zmieniają tylko cenę i stan wariantu, a z nich
+  indeks przechowuje cenę i to, czy wariant można kupić, więc tylko te pola dokumentu mogą się rozjechać.
+- Zimny request cache: request cache Elasticsearcha opróżniany przed przebiegiem. Model R liczy fasety żądaniami
+  `size: 0`, które ES buforuje domyślnie, a obecny model ich nie buforuje. Na worf.pl robi to nowy cel `infra/k8s`,
+  który dodaje etap B: tylko `POST /<alias indeksu produktów>/_cache/clear?request=true`, wyłącznie dla indeksu
+  produktów, bez zmiany danych i bez innych pamięci podręcznych. Lista adresów pochodzi z `load/baseline.py urls`,
+  wraca z wynikiem, a trafienia cache HTTP wyklucza `report`. Poza tym celem etap B nie dodaje infrastruktury
+  pomiarowej.
+- Raport rozróżnia dwa stany: zimny request cache (opróżniony celem powyżej, cache plików systemu ciepły) i zimny
+  cache plików systemu (pierwszy przebieg po starcie Elasticsearcha albo po przebudowie indeksu). Cache plików nie
+  jest opróżniany żadnym narzędziem; jego stan raport podaje z tego, co poprzedziło przebieg, a wynik bez znanego stanu
+  oznacza jako taki. Wyniki obu stanów nie są łączone w jedną wartość.
+
+## Kolejność zmian i dokumentacja (PERF-2 etap B)
+
+1. M7 (`setup` ostrzega przy innym skrócie definicji) osobnym PR do `main`, wdrożony na worf.pl przed modelem
+   (warunek wycofania, „Infrastruktura”); razem z nim `docs/features/walking-skeleton/spec.md` (opis `setup`).
+2. Epik: model R (M1–M6), W19a, testy z kryteriów 10–12, scenariusz zapisów w `load/`; w tym samym PR
+   `docs/features/walking-skeleton/spec.md` („Ograniczenia tej przebudowy” bez punktu o zapisach w trakcie
+   przebudowy), `infra/k8s/README.md` (okno serwisowe zmiany definicji, wycofanie, przebudowa pod ruchem dozwolona),
+   wartości chartu (`elasticsearch.shards` 1 w `prod`, `elasticsearch.refreshInterval`), `load/README.md` i „Status”
+   w `docs/features/performance-program/plan.md`.
+3. Po merge'u, każdy krok za zgodą właściciela: wdrożenie i przebudowa na worf.pl (okno serwisowe), pomiary
+   z kryterium 13, raport w `docs/reports/`. Pomiar akceptacyjny czeka na profil `server` (10 mln) i pamięć z PERF-1
+   na worf.pl; pomiary lokalne i każdy pomiar na worf.pl są uzgadniane z sesją PERF-0.
+
 ## Ryzyka i ograniczenia
 
-- Zmiana definicji indeksu: lokalny stos z indeksem zbudowanym z poprzedniej definicji kończy `make up` błędem
-  `catalog:search-index:setup` z instrukcją `catalog:reindex` (jednorazowo `docker compose exec api bin/console
-  catalog:reindex`, potem `make up`). Świeże stosy (AO, CI) nie są dotknięte.
-- Zapisy w trakcie przebudowy: zmiana ceny albo stanu obsłużona w czasie `catalog:reindex` trafia do starego indeksu
-  i znika po przepięciu aliasu, aż do następnej zmiany produktu (przebudowa nie jest online).
+- Zmiana definicji indeksu (M7): lokalny stos z indeksem z poprzedniej definicji startuje z ostrzeżeniem `setup`,
+  a listing nie działa poprawnie do `catalog:reindex` (jednorazowo `docker compose exec api bin/console
+  catalog:reindex`). Świeże stosy (CI) nie są dotknięte. Na worf.pl to okno serwisowe („Infrastruktura”).
+- Model R opiera się na regułach domeny (najwyżej 2 osie, unikalne krotki opcji); ich zmiana, np. trzecia oś
+  wariantu, wymaga zmiany modelu indeksu. Pilnują tego testy reguł i odmowa budowy dokumentu (M1).
+- Dokładne fasety liczone przy każdym żądaniu kosztują liniowo w liczbie pasujących produktów (cały katalog 10 mln:
+  ok. 2 s CPU serwera według etapu A); etap A szacuje, że sam model nie spełni W8 i W9 (M8). Listingi z filtrem ceny
+  i opcją na całym katalogu zostają złączeniem `nested`.
+- Faseta z ponad 10 000 różnych tokenów w jednym listingu (kategorie, osie i wartości razem) kończy się błędem
+  zamiast uciętym wynikiem; dane `server` mają ok. 400 (180 kategorii, 21 osi, 208 wartości).
+- Fasety w request cache są ważne do odświeżenia indeksu; przy ciągłych zapisach żyją tyle co `refresh_interval`
+  (M4, warunkowo 5 s).
 - Wartości osi są wolnym tekstem: różne formy („czarne”, „czarna”) i różna wielkość liter tworzą osobne wartości fasety.
 - Cena „od” na kafelku i sortowanie po cenie dotyczą całego produktu, a filtr i podpowiedzi ceny wariantów
   spełniających filtry: przy „Cena 100–150 zł” kafelek może pokazać „od 90 zł” (tańszy wariant poza filtrem osi).
@@ -467,20 +680,9 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   filtr `published` (bez niego pokazałoby szkice; pilnują tego testy listy i faset).
 - Wersja dokumentu z zegara: przy kilku workerach na różnych hostach przesunięcie zegarów może przepuścić starszy
   odczyt; skutek naprawia następna zmiana albo przebudowa.
-- Fasety na 10 mln produktów (agregacje `nested` z `reverse_nested`) nie są potwierdzone testami obciążeniowymi.
-- `pairs` to obiekty `nested` w `nested`: każda para jest osobnym dokumentem Lucene, więc indeks ma więcej dokumentów
-  (w danych demo ok. 2,4 raza) i jest większy. Produkt ma najwyżej 100 wariantów po 2 osie, czyli do 300 obiektów
-  zagnieżdżonych, daleko od limitu `index.mapping.nested_objects.limit` (10 000).
-- `terms` sortowane po liczbie z `reverse_nested` jest dokładne przy jednym shardzie. Przy kilku shardach
-  (`SEARCH_SHARDS` większe od 1) każdy shard oddaje tylko `shard_size` najliczniejszych kubełków (domyślnie
-  `size × 1,5 + 10`, czyli 25 osi i 55 wartości osi), więc faseta `options` jest dokładna, dopóki wyniki na jednym
-  shardzie mają najwyżej 25 różnych osi i najwyżej 55 różnych wartości jednej osi. Dane demo mieszczą się w tych
-  granicach: profil `medium` ma 21 osi i najwyżej 36 wartości jednej osi. Powyżej granic liczby i kolejność wartości
-  mogą się różnić od wyniku na jednym shardzie; pełna dokładność wymagałaby jawnego `shard_size` nie mniejszego niż
-  liczba różnych osi i wartości na shardzie. Granica 55 wartości dotyczy też listy wartości osi z wyborem. Fasety
-  `categories`, `price` i `availableCount` oraz liczby wartości wybranych w filtrze (`terms` z `include`) są
-  dokładne przy każdej liczbie shardów.
-- Sortowanie po trafności przy kilku shardach: statystyki słów (IDF) liczy każdy shard z własnych dokumentów
-  (domyślne `query_then_fetch`), więc kolejność wyników frazy może się różnić od kolejności na jednym shardzie. Przy
-  dużym indeksie różnica jest mała, przy kilkuset produktach widoczna. Liczba trafień i fasety od tego nie zależą.
+- Fasety są dokładne, bo indeks ma jeden shard (M3): przy kilku shardach `terms` zwracałby z każdego shardu tylko
+  `shard_size` kubełków, a kolejność „Trafność” zależałaby od statystyk słów każdego shardu. Przejście worf.pl
+  z 4 shardów na 1 może więc zmienić kolejność wyników frazy; liczby trafień i fasety się nie zmieniają.
+- Produkt ma najwyżej 100 wariantów, czyli do 100 obiektów zagnieżdżonych, daleko od limitu
+  `index.mapping.nested_objects.limit` (10 000).
 - Obraz Elasticsearch budowany lokalnie pobiera wtyczkę z sieci przy pierwszym buildzie.
