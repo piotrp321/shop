@@ -111,8 +111,7 @@ serwera” i „Smoke test i check”).
   bez zmian), gdy działa AO albo żywy wykonawca; błąd `ps` też jest odmową, a żadna zmienna nie wyłącza sprawdzenia.
   Skrypty `rerun.sh`, `create-admin.sh`, `restore.sh`, `backups.sh`, `generate.sh`, `open.sh` i `reindex.sh` same go nie wołają, bo
   woła je `smoke.sh` (test dymny działa też w trakcie przebiegu AO). `kubeconfig`
-  dopisuje bezwzględną ścieżkę `KUBE_DIR` do rejestru `~/.local/state/shop-ops/kube-dirs`, z którego czyta `ao-prepare`
-  i odmawia startu AO, dopóki zapisany katalog istnieje.
+  dopisuje bezwzględną ścieżkę `KUBE_DIR` do rejestru `~/.local/state/shop-ops/kube-dirs`.
 - Serwer obsługują cele po SSH (`HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `bootstrap`, `kubeconfig`, `status` i `failed` (tylko
   odczyt), `failed-retry` i `failed-remove` (tylko po zgodzie, `HOST` i `ID`/`MAX` z linii poleceń) i `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`, nie przy
   zamkniętym sklepie), a z klastrem łączą się też `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex`;

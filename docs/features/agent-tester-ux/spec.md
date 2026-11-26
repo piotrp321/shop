@@ -6,14 +6,13 @@ reviewer w `/integration`. Zgłoszenia agentów trafiają do backlogu dopiero po
 
 ## Cel i kryteria sukcesu
 
-- Po merge'u epiku `/sweep [epik]` (uruchomiony przez `/ao-run` albo ręcznie) daje raport z co najwyżej pięcioma
+- Po merge'u epiku `/sweep [epik]` daje raport z co najwyżej pięcioma
   propozycjami zgłoszeń. Triage zajmuje jedną odpowiedź w sesji.
 - Każda propozycja jest odtworzonym problemem z kompletem pól formularza `bug` albo `ux`, więc nigdy nie dostaje
   `needs-info`. Hipotez agenci nie zgłaszają jako błędów.
 - `/integration` przy epiku zmieniającym `apps/store` lub `apps/admin` dostaje ocenę UX zmienionych ekranów na kodzie
   epiku, zanim powstanie końcowy PR.
-- Po merge'u epiku `/sweep <epik>` uruchamia sesja `/ao-run` (krok 12 planu, sekcja „Przegląd po merge'u”
-  w `docs/features/ao-run/spec.md`). Użytkownik może go też uruchomić ręcznie. Triage zawsze robi użytkownik.
+- Po merge'u epiku `/sweep <epik>` uruchamia ręcznie użytkownik. Triage zawsze robi użytkownik.
 
 ## Dwa zakresy
 
@@ -152,8 +151,8 @@ klawiaturą i reflow przy 320 px (sekcja „Panel” niżej).
 
 ## `/sweep [epik]` (`.claude/skills/sweep/SKILL.md`)
 
-Sesja interaktywna użytkownika w aplikacji desktop: ręcznie albo z `/ao-run` po merge'u epiku, który wykonuje
-kroki 1–6 tego skilla i zostawia triage użytkownikowi. `epik` to katalog w `docs/features/`; bez niego tester przechodzi
+Sesja interaktywna użytkownika w aplikacji desktop, uruchamiana ręcznie: wykonuje kroki 1–6 tego skilla i zostawia
+triage użytkownikowi. `epik` to katalog w `docs/features/`; bez niego tester przechodzi
 tylko krytyczne ścieżki, a UX ich ekrany.
 
 1. **Warunki startu:** działa Docker i `gh`, `git fetch origin main`, przy podanym epiku `docs/features/<epik>/spec.md`
@@ -236,16 +235,6 @@ Zmiana w `.claude/skills/integration/SKILL.md`, bez zmian w AO:
 - `docs/adr/agentic-software-house.md`: agent tester i agent UX w tabeli komponentów z `/sweep` i rolą w `/integration`.
 - `CLAUDE.md`: `/sweep` w sekcji o skillach, agent UX w opisie `/integration`, cel `make e2e-agent` w środowisku.
 
-### Kryteria akceptacji kroku 12
-
-7. Po merge'u końcowego PR epiku sesja `/ao-run` uruchamia `/sweep <epik>` bez polecenia użytkownika, wysyła push
-   z liczbą propozycji i zostawia triage w rozmowie. Pokazane na pierwszym prawdziwym merge'u po wdrożeniu.
-8. „Tak” na „Zacząć epik?” w trakcie przeglądu uruchamia epik dopiero po końcu kolejki przeglądów; dwa merge'e
-   po nocy dają dwa przeglądy po kolei, także gdy oba startują na tym samym commicie `main`.
-9. Pominięcie z pushem i podpowiedzią `/sweep <epik>`: okno limitu ≥ 95% (`night_queue.py room --max-percent 95`
-   z testami) i odmowa `/sweep` (np. zajęty port). Zasilania sesja nie sprawdza. Sprawdzone testami `room` i ręcznie
-   dla portu.
-
 ## Ryzyka i ograniczenia
 
 - Ocena UX i eksploracja zależą od modelu. Wymóg odtworzenia i limit pięciu propozycji ograniczają szum, nie trafność.
@@ -253,5 +242,3 @@ Zmiana w `.claude/skills/integration/SKILL.md`, bez zmian w AO:
   a UX około 142 tys. tokenów (Sonnet).
 - Agent UX wydłuża nocne `/integration` epików z frontem (działa po QA).
 - Zrzutów ekranu nie ma w issue; zostają lokalnie w katalogu przebiegu.
-- Przegląd uruchamiany po każdym merge'u zużywa limit (ostatnie przebiegi: 250–540 tys. tokenów Sonnet, 15–60 min)
-  i opóźnia start następnego epiku o czas przeglądu. Pominięcie przy limicie ≥ 95% chroni tylko resztkę limitu: przegląd ma pierwszeństwo przed zapasem na następny epik.

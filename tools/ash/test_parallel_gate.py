@@ -1,0 +1,461 @@
+"""Tests of parallel_gate.py: python3 -m unittest discover -s tools/ash -p 'test_*.py'"""
+import fcntl
+import importlib.util
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import unittest
+from datetime import datetime, timedelta, timezone
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+spec = importlib.util.spec_from_file_location('parallel_gate', os.path.join(HERE, 'parallel_gate.py'))
+pg = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(pg)
+import next_epic  # noqa: E402  (loaded by parallel_gate via sys.path)
+
+NOW = datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc)
+
+HOLDER = (
+    "import fcntl,sys\n"
+    "f=open(sys.argv[1],%r)\n"
+    "fcntl.flock(f,%s)\n"
+    "print('held',flush=True)\n"
+    "sys.stdin.read()\n"
+)
+
+
+def hold(path, mode='a', flag='fcntl.LOCK_EX'):
+    proc = subprocess.Popen([sys.executable, '-c', HOLDER % (mode, flag), path],
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    assert proc.stdout.readline().strip() == 'held'
+    return proc
+
+
+def release_child(proc):
+    proc.stdin.close()
+    proc.wait(10)
+    proc.stdout.close()
+
+
+class StateLockTest(unittest.TestCase):
+    def test_acquire_and_release(self):
+        with tempfile.TemporaryDirectory() as d:
+            state = os.path.join(d, 'sub', 'state')
+            with pg.state_lock(state):
+                self.assertTrue(os.path.exists(os.path.join(state, 'gate.lock')))
+                with self.assertRaises(pg.LockTimeout):
+                    with pg.state_lock(state, timeout=0.3, poll=0.05):
+                        pass
+            with pg.state_lock(state, timeout=0.3):
+                pass
+
+    def test_other_process_holds(self):
+        with tempfile.TemporaryDirectory() as d:
+            proc = hold(os.path.join(d, 'gate.lock'))
+            try:
+                with self.assertRaisesRegex(pg.LockTimeout, 'blokada bramki zajęta'):
+                    with pg.state_lock(d, timeout=0.5, poll=0.05):
+                        pass
+            finally:
+                release_child(proc)
+            with pg.state_lock(d, timeout=1):
+                pass
+
+
+class WriteAtomicTest(unittest.TestCase):
+    def test_replaces_content_without_temp_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'f.json')
+            pg.write_atomic(p, 'one')
+            pg.write_atomic(p, 'two')
+            with open(p) as f:
+                self.assertEqual('two', f.read())
+            self.assertEqual(['f.json'], os.listdir(d))
+
+    def test_missing_directory(self):
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(pg.StateFileError):
+                pg.write_atomic(os.path.join(d, 'nope', 'f'), 'x')
+
+    def test_read_only_directory_keeps_old_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'f')
+            pg.write_atomic(p, 'old')
+            os.chmod(d, 0o500)
+            try:
+                if os.access(d, os.W_OK):
+                    self.skipTest('directory still writable (root)')
+                with self.assertRaises(pg.StateFileError):
+                    pg.write_atomic(p, 'new')
+            finally:
+                os.chmod(d, 0o700)
+            with open(p) as f:
+                self.assertEqual('old', f.read())
+            self.assertEqual(['f'], os.listdir(d))
+
+
+class ClaimsTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_missing_file_is_empty(self):
+        self.assertEqual({'claims': [], 'owners': {}}, pg.read_claims(self.dir))
+
+    def test_reserve_new_writes_iso_times(self):
+        token = pg.reserve(self.dir, 'cart', NOW)
+        self.assertEqual(16, len(token))
+        data = pg.read_claims(self.dir)
+        c = data['claims'][0]
+        self.assertEqual(('cart', token), (c['dir'], c['claim']))
+        self.assertEqual(NOW.isoformat(), c['at'])
+        self.assertEqual((NOW + timedelta(minutes=30)).isoformat(), c['expires_at'])
+
+    def test_renew_same_token(self):
+        token = pg.reserve(self.dir, 'cart', NOW)
+        later = NOW + timedelta(minutes=10)
+        self.assertEqual(token, pg.reserve(self.dir, 'cart', later, claim=token))
+        claims = pg.read_claims(self.dir)['claims']
+        self.assertEqual(1, len(claims))
+        self.assertEqual((later + timedelta(minutes=30)).isoformat(), claims[0]['expires_at'])
+
+    def test_conflict_other_token(self):
+        pg.reserve(self.dir, 'cart', NOW)
+        with self.assertRaises(pg.ClaimConflict):
+            pg.reserve(self.dir, 'cart', NOW, claim='other')
+        with self.assertRaises(pg.ClaimConflict):
+            pg.reserve(self.dir, 'cart', NOW)
+
+    def test_expired_ignored_and_pruned(self):
+        old = pg.reserve(self.dir, 'cart', NOW)
+        pg.reserve(self.dir, 'seo', NOW)
+        later = NOW + timedelta(minutes=31)
+        new = pg.reserve(self.dir, 'cart', later)
+        self.assertNotEqual(old, new)
+        data = pg.read_claims(self.dir)
+        self.assertEqual({'cart'}, {c['dir'] for c in data['claims']})
+        self.assertEqual([new], [c['claim'] for c in pg.valid_claims(data, later)])
+        self.assertEqual([], pg.valid_claims(data, later + timedelta(hours=1)))
+
+    def test_release(self):
+        token = pg.reserve(self.dir, 'cart', NOW)
+        self.assertFalse(pg.release(self.dir, 'cart', 'wrong'))
+        self.assertEqual(1, len(pg.read_claims(self.dir)['claims']))
+        self.assertTrue(pg.release(self.dir, 'cart', token))
+        self.assertEqual([], pg.read_claims(self.dir)['claims'])
+        self.assertFalse(pg.release(self.dir, 'cart', token))
+        self.assertFalse(pg.release(self.dir, 'none', 'x'))
+
+    def test_owner(self):
+        pg.claim_to_owner(self.dir, 'cart', 'tok', NOW)
+        self.assertEqual('tok', pg.owner(pg.read_claims(self.dir), 'cart'))
+        self.assertIsNone(pg.owner(pg.read_claims(self.dir), 'seo'))
+
+    def test_claim_to_owner_with_claim(self):
+        token = pg.reserve(self.dir, 'cart', NOW)
+        pg.reserve(self.dir, 'seo', NOW)
+        self.assertEqual(token, pg.claim_to_owner(self.dir, 'cart', token, NOW))
+        data = pg.read_claims(self.dir)
+        self.assertEqual(['seo'], [c['dir'] for c in data['claims']])
+        self.assertEqual(token, pg.owner(data, 'cart'))
+
+    def test_claim_to_owner_expired_and_no_claim(self):
+        token = pg.reserve(self.dir, 'cart', NOW)
+        later = NOW + timedelta(hours=2)
+        self.assertEqual(token, pg.claim_to_owner(self.dir, 'cart', token, later))
+        self.assertEqual([], pg.read_claims(self.dir)['claims'])
+        fresh = pg.claim_to_owner(self.dir, 'seo', None, later)
+        self.assertEqual(16, len(fresh))
+        self.assertEqual(fresh, pg.owner(pg.read_claims(self.dir), 'seo'))
+
+    def test_claim_to_owner_keeps_other_sessions_valid_claim(self):
+        other = pg.reserve(self.dir, 'cart', NOW)
+        mine = pg.claim_to_owner(self.dir, 'cart', 'mine', NOW)
+        data = pg.read_claims(self.dir)
+        self.assertEqual('mine', mine)
+        self.assertEqual([other], [c['claim'] for c in data['claims']])
+        self.assertEqual('mine', pg.owner(data, 'cart'))
+
+    def test_claim_to_owner_drops_expired_other_claim(self):
+        pg.reserve(self.dir, 'cart', NOW)
+        pg.claim_to_owner(self.dir, 'cart', 'mine', NOW + timedelta(hours=1))
+        self.assertEqual([], pg.read_claims(self.dir)['claims'])
+
+    def test_unreadable_and_wrong_shape(self):
+        path = os.path.join(self.dir, 'claims.json')
+        for text in ['{not json', '[]', '{"claims": {}}', '{"claims": [], "owners": []}',
+                     '{"claims": [1], "owners": {}}']:
+            with self.subTest(text=text):
+                with open(path, 'w') as f:
+                    f.write(text)
+                with self.assertRaisesRegex(pg.StateFileError, 'nieczytelny plik'):
+                    pg.read_claims(self.dir)
+                with self.assertRaises(pg.StateFileError):
+                    pg.reserve(self.dir, 'cart', NOW)
+
+    def test_missing_keys_normalized(self):
+        with open(os.path.join(self.dir, 'claims.json'), 'w') as f:
+            json.dump({}, f)
+        self.assertEqual({'claims': [], 'owners': {}}, pg.read_claims(self.dir))
+
+
+class ClassificationTest(unittest.TestCase):
+    def test_is_allowed(self):
+        allowed = list(pg.GENERATED) + list(pg.REGISTRATION) + [
+            'docs/vision.md', 'docs', 'docs/features/x/spec.md', 'README.md', 'infra/k8s/README.md', 'CLAUDE.md',
+            'apps/api/CLAUDE.md', '.github/workflows/ci.yml', '.github', 'make/demo-data.mk', 'Makefile', 'infra',
+            'infra/k8s/tests', 'apps/api/tests/Unit/Cart', 'apps/admin/tests', 'e2e', 'apps/api/config',
+            'apps/api/composer.json', 'apps/store/package-lock.json', 'apps/api/migrations', '.claude/skills/ao-run',
+            '.ao', 'tools', 'apps/api/src/CLAUDE.md', 'apps/store/src/README.md', 'apps/store/public']
+        denied = ['apps/api/src', 'apps/api/src/Cart/Cart.php', 'apps/store/src/components', 'apps/store/app',
+                  'apps/store/app/page.tsx', 'apps/admin/src/main.ts', 'apps/new/src/x.ts', 'apps/api', 'apps/new',
+                  'apps']
+        for p in allowed:
+            with self.subTest(p=p):
+                self.assertTrue(pg.is_allowed(p))
+        for p in denied:
+            with self.subTest(p=p):
+                self.assertFalse(pg.is_allowed(p))
+
+    def test_bypass_attempts_are_code(self):
+        # A directory that holds a generated or registration file is still code; prefixes compare by segments.
+        for p in ['apps/store/src/api', 'apps/admin/src/api', 'apps/admin/src/layout', 'apps/admin/src/router',
+                  'apps/store/src/api/schema.d.ts.bak', 'apps/admin/src/layout/AppMenu.vue.orig',
+                  'apps/api/src/Cart/CLAUDE.md.php', 'apps/api/src/READMEx.md']:
+            with self.subTest(p=p):
+                self.assertFalse(pg.is_allowed(p))
+        for p in ['apps/api/srcx', 'apps/api/src-old', 'apps/store/application', 'apps/api/tests/src',
+                  'docs/apps/api/src', 'infra/apps/api/src', 'apps/api/config/src']:
+            with self.subTest(p=p):
+                self.assertTrue(pg.is_allowed(p))
+
+    def test_is_app_code(self):
+        self.assertTrue(pg.is_app_code('apps/api/src/Cart/Cart.php'))
+        self.assertFalse(pg.is_app_code('apps/api/tests/Unit/CartTest.php'))
+        self.assertFalse(pg.is_app_code('apps/store/src/api/schema.d.ts'))
+        self.assertTrue(pg.is_app_code('apps'))
+
+    def test_is_claude_md(self):
+        self.assertTrue(pg.is_claude_md('CLAUDE.md'))
+        self.assertTrue(pg.is_claude_md('apps/api/CLAUDE.md'))
+        self.assertFalse(pg.is_claude_md('apps/api/NOTCLAUDE.md'))
+        self.assertFalse(pg.is_claude_md('CLAUDE.md/x'))
+
+    def test_common_paths(self):
+        cp = pg.common_paths
+        self.assertEqual(['apps/api/src/Cart'], cp(['apps/api/src'], ['apps/api/src/Cart']))
+        self.assertEqual(['apps/api/src/Cart'], cp(['apps/api/src/Cart'], ['apps/api/src']))
+        self.assertEqual(['a/b'], cp(['a/b'], ['a/b']))
+        self.assertEqual([], cp(['apps/api/src/Cart'], ['apps/api/src/CartX']))
+        self.assertEqual([], cp(['a'], ['b']))
+        self.assertEqual(['a/b', 'c/d/e'], cp(['c/d', 'a/b', 'a/b'], ['a', 'c/d/e', 'a/b']))
+
+
+    def test_task_conflicts(self):
+        tc = pg.task_conflicts
+        # Application code, a CLAUDE.md or a file in the common part keeps two tasks apart.
+        self.assertEqual(['apps/api/src/Cart'], tc(['apps/api/src/'], ['apps/api/src/Cart/']))
+        self.assertEqual(['apps/api/src'], tc(['apps/api/'], ['apps/api/src/']))
+        self.assertEqual(['apps/api/src/Cart/Cart.php'], tc(['apps/'], ['apps/api/src/Cart/Cart.php']))
+        self.assertEqual(['CLAUDE.md'], tc(['CLAUDE.md'], ['CLAUDE.md']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/'], ['infra/k8s/CLAUDE.md']))
+        self.assertEqual(['docs/vision.md'], tc(['docs/vision.md'], ['docs/']))
+        self.assertEqual(['apps/api/openapi.json'], tc(['apps/api/openapi.json'], ['apps/api/openapi.json']))
+        self.assertEqual(['apps/admin/src/router/index.ts'],
+                         tc(['apps/admin/src/router/index.ts'], ['apps/admin/src/router/index.ts']))
+        # A path declared as a file on one side is a file, even when the other side names it as a directory.
+        self.assertEqual(['docs/x'], tc(['docs/x'], ['docs/x/']))
+        self.assertEqual(['docs/x/y'], tc(['docs/x'], ['docs/x/y/']))
+        # Two directories outside application code may overlap; disjoint paths never conflict.
+        self.assertEqual([], tc(['docs/'], ['docs/features/cart/']))
+        self.assertEqual([], tc(['apps/api/tests/', 'infra/', '.github/workflows/'],
+                                ['apps/api/tests/Unit/', 'infra/k8s/', '.github/workflows/']))
+        self.assertEqual([], tc(['apps/api/src/Cart/'], ['apps/api/src/CartX/', 'apps/store/src/cart/']))
+        self.assertEqual([], tc(['docs/a.md'], ['docs/b.md']))
+        self.assertEqual(['CLAUDE.md', 'apps/api/src/Cart', 'docs/x.md'],
+                         tc(['docs/', 'CLAUDE.md', 'apps/api/src/Cart/'], ['apps/api/', 'docs/x.md', 'CLAUDE.md']))
+
+    def test_task_conflicts_with_a_tracked_claude_md_in_a_common_directory(self):
+        tracked = ('CLAUDE.md', 'apps/api/CLAUDE.md', 'e2e/CLAUDE.md', 'infra/k8s/CLAUDE.md')
+
+        def tc(a, b):
+            return pg.task_conflicts(a, b, claude_md=tracked)
+
+        # A common directory that contains a tracked CLAUDE.md blocks the pair with that file, in both directions.
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/k8s/'], ['infra/k8s/']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/'], ['infra/k8s/']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/k8s/'], ['infra/']))
+        self.assertEqual(['e2e/CLAUDE.md', 'infra/k8s/CLAUDE.md'], tc(['infra/k8s/', 'e2e/'], ['e2e/', 'infra/k8s/']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/k8s/CLAUDE.md'], ['infra/']))
+        self.assertEqual(['apps/api', 'apps/api/CLAUDE.md'], tc(['apps/api/'], ['apps/api/']))
+        # A common directory without a tracked CLAUDE.md stays allowed.
+        self.assertEqual([], tc(['infra/k8s/charts/'], ['infra/k8s/charts/']))
+        self.assertEqual([], tc(['e2e/'], ['e2e/tests/']))
+        self.assertEqual([], tc(['docs/'], ['docs/']))
+        self.assertEqual([], tc(['apps/api/tests/'], ['apps/api/']))
+        # Without the list of tracked files only the declared paths count.
+        self.assertEqual([], pg.task_conflicts(['infra/k8s/'], ['infra/k8s/']))
+
+    def test_task_conflicts_ignore_the_case_of_paths(self):
+        # The file system of the host (APFS) does not tell the case apart: two spellings are one path.
+        self.assertEqual(['apps/API/src'], pg.task_conflicts(['apps/API/src/'], ['apps/api/src/']))
+        self.assertEqual(['apps/api/src/Cart'], pg.task_conflicts(['apps/api/src/Cart/'], ['apps/api/src/cart/']))
+        self.assertEqual(['docs/Vision.md'], pg.task_conflicts(['docs/Vision.md'], ['docs/vision.md']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'],
+                         pg.task_conflicts(['INFRA/k8s/'], ['infra/k8s/'], claude_md=('infra/k8s/CLAUDE.md',)))
+        self.assertEqual(['infra/k8s/claude.md'], pg.task_conflicts(['infra/k8s/claude.md'], ['infra/k8s/CLAUDE.md']))
+
+    def test_task_conflicts_treat_executable_tool_code_as_blocking(self):
+        tc = pg.task_conflicts
+        # Directories of executable code block a common directory, also when both sides declare it (#638).
+        self.assertEqual(['tools/metrics'], tc(['tools/metrics/'], ['tools/metrics/']))
+        self.assertEqual(['tools/metrics'], tc(['tools/metrics/'], ['tools/']))
+        self.assertEqual(['.ao'], tc(['.ao/'], ['.ao/']))
+        self.assertEqual(['.github/scripts'], tc(['.github/scripts/'], ['.github/scripts/']))
+        self.assertEqual(['infra/scripts'], tc(['infra/scripts/'], ['infra/']))
+        self.assertEqual(['.claude/skills/x'], tc(['.claude/'], ['.claude/skills/x/']))
+        self.assertEqual(['.claude/skills/ao-run'], tc(['.claude/skills/ao-run/'], ['.claude/skills/ao-run/']))
+        # A broader declaration contains the code, as `apps` contains apps/<app>/src.
+        self.assertEqual(['infra'], tc(['infra/'], ['infra/']))
+        self.assertEqual(['.github'], tc(['.github/'], ['.github/']))
+        # Other directories stay as they were.
+        self.assertEqual([], tc(['.claude/skills/ao-run/'], ['.claude/skills/retro/']))
+        self.assertEqual([], tc(['.github/workflows/'], ['.github/workflows/']))
+        self.assertEqual([], tc(['docs/'], ['docs/']))
+        self.assertEqual([], tc(['.claude/agents/'], ['.claude/agents/']))
+        self.assertEqual([], tc(['e2e/'], ['e2e/']))
+        self.assertEqual([], tc(['load/'], ['load/']))
+        self.assertEqual([], tc(['infra/k8s/'], ['infra/k8s/']))
+        self.assertEqual([], tc(['infra/k8s/'], ['infra/']))
+        self.assertEqual([], tc(['apps/api/tests/'], ['apps/api/tests/']))
+        # Bypass attempts: another segment is another directory, the case does not matter.
+        self.assertEqual([], tc(['toolsx/'], ['tools/']))
+        self.assertEqual([], tc(['tools/metrics/'], ['tools/metrics2/']))
+        self.assertEqual(['Tools/metrics'], tc(['Tools/metrics/'], ['tools/metrics/']))
+        self.assertEqual(['.CLAUDE/skills/x'], tc(['.CLAUDE/skills/x/'], ['.claude/skills/x/']))
+        # Exceptions of step 5: a README.md is a file in common, never executable code; so is a CLAUDE.md.
+        self.assertEqual(['tools/README.md'], tc(['tools/README.md'], ['tools/README.md']))
+        self.assertFalse(pg.is_executable_code('tools/README.md'))
+        self.assertFalse(pg.is_executable_code('tools/metrics/CLAUDE.md'))
+        self.assertFalse(pg.is_executable_code('apps/api/openapi.json'))
+
+    def test_is_executable_code(self):
+        for path in ('tools', 'tools/x.py', 'tools/metrics', '.claude', '.claude/skills', '.claude/skills/x/a.py',
+                     '.ao', '.ao/setup', '.github', '.github/scripts', '.github/scripts/a.sh', 'infra',
+                     'infra/scripts', 'infra/scripts/init-env.sh', 'apps', 'apps/api/src/Cart'):
+            with self.subTest(path=path):
+                self.assertTrue(pg.is_executable_code(path))
+        for path in ('docs', 'docs/a.md', 'e2e', '.claude/agents', '.claude/agents/a.md', '.claude/settings.json',
+                     '.github/workflows', '.github/workflows/ci.yml', 'infra/k8s', 'infra/scripts2', 'toolsx',
+                     'tools/README.md', 'tools/CLAUDE.md', 'apps/api/tests', 'apps/api/openapi.json'):
+            with self.subTest(path=path):
+                self.assertFalse(pg.is_executable_code(path))
+
+    def test_the_gate_of_19a_keeps_treating_tool_code_as_allowed(self):
+        self.assertFalse(pg.is_app_code('tools/x.py'))
+        self.assertTrue(pg.is_allowed('tools/x.py'))
+        self.assertTrue(pg.is_allowed('tools/ash/parallel_gate.py'))
+        self.assertTrue(pg.is_allowed('infra/scripts/init-env.sh'))
+        self.assertFalse(pg.is_allowed('apps/api/src/Cart/Cart.php'))
+
+
+class MaxParallelTest(unittest.TestCase):
+    def test_max_parallel_is_two(self):
+        self.assertEqual(2, pg.MAX_PARALLEL)
+
+
+STATS_OUT = '\n'.join([
+    'ao-x-api-1\t94.33MiB / 31.29GiB',
+    'ao-x-db-1\t1GiB / 31GiB',
+    'shop-api-1\t512MiB / 31GiB',
+    'ghost-1\t2048KiB / 31GiB',
+    'big\t1TiB / 31GiB',
+    'si\t1000kB / 1GB',
+    'b\t1048576B / 1GB',
+]) + '\n'
+PS_OUT = 'ao-x-api-1\tao-x\nao-x-db-1\tao-x\nshop-api-1\tshop\nbig\t\nsi\tshop\nb\tshop\n'
+
+
+def fake_run(table):
+    def run(args):
+        for key, val in table.items():
+            if key in ' '.join(args):
+                if isinstance(val, Exception):
+                    raise val
+                return val
+        raise AssertionError(args)
+    return run
+
+
+class DockerTest(unittest.TestCase):
+    def test_snapshot(self):
+        run = fake_run({'info': str(32 * 1024 ** 3) + '\n', 'docker ps': PS_OUT, 'stats': STATS_OUT})
+        s = pg.docker_snapshot(run)
+        self.assertEqual(32768.0, s['total_mib'])
+        self.assertEqual(round(94.33 + 1024, 1), s['ao_mib'])
+        other = 512 + 2 + 1024 * 1024 + 1000 * 1000 / 1048576 + 1.0
+        self.assertEqual(round(other, 1), s['other_mib'])
+
+    def test_failure(self):
+        err = next_epic.CommandError(['docker', 'info'], 'daemon down')
+        with self.assertRaisesRegex(pg.DockerError, '^docker: '):
+            pg.docker_snapshot(fake_run({'info': err}))
+
+    def test_garbage(self):
+        for table in [
+            {'info': 'abc', 'docker ps': '', 'stats': ''},
+            {'info': '1000', 'docker ps': '', 'stats': 'x\tnonsense'},
+            {'info': '1000', 'docker ps': '', 'stats': 'oneword'},
+        ]:
+            with self.subTest(table=table):
+                with self.assertRaisesRegex(pg.DockerError, 'docker: nieczytelne wyjście'):
+                    pg.docker_snapshot(fake_run(table))
+
+    def test_free_mib(self):
+        snap = {'total_mib': 10000.0, 'ao_mib': 3000.0, 'other_mib': 2000.0}
+        self.assertEqual(5000.0, pg.free_mib(snap, 1, 1000))
+        self.assertEqual(4000.0, pg.free_mib(snap, 2, 2000))
+        self.assertEqual(5000.0, pg.free_mib(snap, 2, 500))
+
+
+class OrchestratorRunningTest(unittest.TestCase):
+    def test_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(pg.orchestrator_running(os.path.join(d, 'none')))
+            self.assertFalse(pg.orchestrator_running(d))
+            self.assertFalse(os.path.exists(os.path.join(d, 'orchestrator.lock')))
+
+    def test_free_lock(self):
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, 'orchestrator.lock'), 'w').close()
+            self.assertFalse(pg.orchestrator_running(d))
+
+    def test_unreadable_lock_file_counts_as_running(self):
+        if os.geteuid() == 0:
+            self.skipTest('root ignores file modes')
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'orchestrator.lock')
+            open(path, 'w').close()
+            os.chmod(path, 0)
+            self.assertTrue(pg.orchestrator_running(d))
+
+    def test_held(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'orchestrator.lock')
+            open(path, 'w').close()
+            proc = hold(path, mode='r+', flag='fcntl.LOCK_EX')
+            try:
+                self.assertTrue(pg.orchestrator_running(d))
+            finally:
+                release_child(proc)
+            self.assertFalse(pg.orchestrator_running(d))
+
+
+if __name__ == '__main__':
+    unittest.main()

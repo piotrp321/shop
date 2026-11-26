@@ -34,7 +34,7 @@ AO_HOME="${AO_STATE_HOME:-$HOME/.local/state}"
 METRICS_STATE="${SHOP_METRICS_STATE:-$HOME/.local/state/shop-metrics}"
 R="$SKILL_ROOT/.claude/skills/retro/retro.py"
 GT="$SKILL_ROOT/tools/agent-security/github_trust.py"
-NQ="$SKILL_ROOT/.claude/skills/ao-run/night_queue.py"
+NQ="$SKILL_ROOT/tools/ash/night_queue.py"
 EPIC="<epik>"
 RUN="$RETRO_HOME/$EPIC"
 WT="$RUN/worktree"
@@ -54,8 +54,6 @@ Powiadomienie push to `PushNotification` (do 200 znaków). Limit i procesy spraw
   poprzednich przebiegów (niżej), potem weź najstarszy epik z `python3 "$R" pending --repo "$SHOP"` (lista JSON
   `epic`, `merged_at`, `attempts`, `reason`; pusta: powiedz „brak retro do zrobienia” i skończ). Opcje wspólne
   (`--repo`) stoją po nazwie komendy.
-- **Z `/ao-run`** (kolejka przeglądów po `/sweep`): to samo wejście z argumentem `<epik>`; sesja przeczytała ten
-  skill i wykonuje go od „Warunków przed startem”.
 - **Epik natywny:** (prowadzony przez główną sesję według „Przebiegu epiku” w `docs/adr/agentic-software-house.md`,
   z plikiem przebiegu `metrics.py start`): `/retro <epik>` uruchamia użytkownik po merge'u końcowego PR, w nowej
   sesji; sesja prowadząca epik go nie uruchamia, tylko zostawia w końcowym PR komentarz „Przekazanie do retro”
@@ -168,15 +166,9 @@ innego nie pomija retro trwale (brak przebiegu AO i pliku przebiegu natywnego to
 **3. Odroczenie:** `python3 "$R" defer <epik> --reason "<powód>" --repo "$SHOP"` (powód do 200 znaków: próba i
 powód zapisują się w state.json, epik zostaje w `pending`) i push „Retro `<epik>` odroczone: <powód>”. Powody:
 - limit (zasilania nie sprawdzasz): wywołaj `mcp__ccd_session_mgmt__get_usage` i wklej obiekt `plan` dosłownie.
-  Próg zależy od wejścia: z `/ao-run` (kolejka przeglądów, jedne zasady z `/sweep`) 95%, przy przebiegu ręcznym
-  (`/retro` wywołane przez użytkownika) 80%, czyli domyślny próg `room`:
+  Próg to 80%, domyślny próg `room`:
 
   ```bash
-  # z /ao-run
-  python3 "$NQ" room --hours 2 --max-percent 95 <<'USAGE'
-  <obiekt plan z get_usage>
-  USAGE
-  # przebieg ręczny
   python3 "$NQ" room --hours 2 <<'USAGE'
   <obiekt plan z get_usage>
   USAGE
@@ -184,10 +176,6 @@ powód zapisują się w state.json, epik zostaje w `pending`) i push „Retro `<
 
   `{"ok": false, "reason": …}`, kod różny od 0 albo nieczytelne wyjście: powód z wyjścia. Brak narzędzia `get_usage`:
   powód „brak stanu limitów”;
-- tylko przy przebiegu ręcznym (nie z `/ao-run`, która sama pilnuje swojego procesu AO): działa proces AO, czyli
-  `pgrep -f -- '-m orchestrator --home [^ ]+ run( |$)'` coś zwraca. Wzorzec trafia w
-  `python3 -m orchestrator --home … run` i jego wrappery (`caffeinate`, `bash -c`), a nie w monitory `watch` sesji
-  `/ao-run`, które nie wstrzymują retro (powód „działa AO”);
 - `cd "$SHOP" && gh auth status` albo `git fetch origin main` zawodzi (powód z błędu);
 - blokada: `python3 "$R" lock <epik> --repo "$SHOP"` kończy się kodem 2, bo należy do innego przebiegu (powód
   „blokada innego retro”). Udana blokada należy do tego przebiegu i dalej obowiązuje krok 1 „Przebiegu”. Pole `warning` wyniku `lock`
@@ -370,7 +358,7 @@ Jeden otwarty PR retro naraz; retro idą po kolei (blokada), więc dwa nie pisz�
   commit w PR, zarejestruj PR: `python3 "$R" observe "$RETRO_HOME/<ten epik>" --pr <nr> --branch <gałąź> --repo
   "$SHOP"` (powtórzenie nie dubluje obserwacji). Inaczej zostaw PR poza rejestrem. W obu przypadkach opisz to w
   raporcie.
-- **Commity:** każda poprawka to osobny commit w formacie Conventional Commits (np. `docs(ao-run): …`) z linią
+- **Commity:** każda poprawka to osobny commit w formacie Conventional Commits (np. `docs(retro): …`) z linią
   `Retro-item: <epik> #<n> <key>` w treści (po niej szukają commitu revert i `updates`) i stopką współautora jak w innych commitach sesji. Poprawka tylko w plikach z `files` pozycji
   (lista dozwolona jest sprawdzona przez `validate`); przed commitem `git diff --name-only` ma wskazywać tylko je.
   Pozycja z `updates` zastępuje commit tamtej pozycji: `git revert` starego commitu (po epiku i `key` w
@@ -387,7 +375,7 @@ Jeden otwarty PR retro naraz; retro idą po kolei (blokada), więc dwa nie pisz�
   <plik>`. Numer PR i gałąź idą do `observe --pr <nr> --branch <gałąź>`.
 - **Opis PR:** sekcja na każdy epik z jego poprawkami (problem, incydenty z odnośnikami do źródeł, przyczyna, zmiana,
   dlaczego zapobiegnie, jak sprawdzimy; pozycja z `previous_fix` mówi wprost, że poprzednia poprawka nie zadziałała)
-  i obserwacjami; sekcja „Status”; zdanie, że poprawki skilli działają od następnej sesji `/ao-run` i od następnego
+  i obserwacjami; sekcja „Status”; zdanie, że poprawki skilli działają od następnego
   epiku (trwająca sesja ma instrukcję z chwili startu). Opis nie powtarza opisów starszych epików z PR: przy
   istniejącym PR dopisz sekcję nowego epiku do jego treści (`cd "$SHOP" && python3 "$GT" prs --state open --head
   <gałąź> --json body`).
@@ -400,7 +388,7 @@ Jeden otwarty PR retro naraz; retro idą po kolei (blokada), więc dwa nie pisz�
 - Nie uruchamiasz `ao` ani niczego w katalogach `~/.local/state/ao-*` poza odczytem (`sqlite3` w trybie `mode=ro`,
   pliki tekstowe).
 - Nie zmieniasz kodu, konfiguracji ani plików spoza listy dozwolonej (`CLAUDE.md`, `apps/*/CLAUDE.md`, skille, agenci,
-  `docs/features/{ao-run,agent-tester-ux,retro}/spec.md`, `docs/adr/agentic-software-house.md` z „Przebiegiem
+  `docs/features/{agent-tester-ux,retro}/spec.md`, `docs/adr/agentic-software-house.md` z „Przebiegiem
   epiku”) i „Statusu” planu bez manifestu; reszta
   to propozycja `issue`, nie poprawka.
 - Nie zakładasz issues ani komentarzy bez „tak” użytkownika w rozmowie i nie ponad jego wybór; nie zamykasz ani nie

@@ -4,9 +4,8 @@
 # written into KUBE_DIR (private, mode 600), which must be outside the repository, and never printed.
 #
 # The absolute path of KUBE_DIR is also recorded in the registry ~/.local/state/shop-ops/kube-dirs (a private file in a private
-# directory, outside the reach of the executors), one path per line, without duplicates and without a trailing slash. The
-# registry is a contract: ao-prepare (tools/agent-security/ao-prepare) reads it and refuses to start AO while any recorded
-# directory still exists, because the kubeconfig of production in it is readable by an executor and its Docker. The runbook
+# directory, outside the reach of the executors), one path per line, without duplicates and without a trailing slash. It
+# lists the directories that hold the kubeconfig of production, which an executor and its Docker can read. The runbook
 # (README.md) says to remove KUBE_DIR after the operation. A registry that cannot be written stops the script before the
 # directory and the kubeconfig are created.
 #

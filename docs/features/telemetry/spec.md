@@ -9,7 +9,7 @@ w prywatnym repo `piotrp321/agent-observability` i nie należy do tego epiku. St
 epików natywnych z rekordów METRICS (`docs/features/ash-dashboard/spec.md`).
 
 Issues: #577
-Zakres: `tools/agent-security`, `tools/telemetry`, `.claude/skills/ao-run/SKILL.md`, `docs/features/ao-run/spec.md`, `docs/features/agent-security/spec.md`, `docs/adr/agent-security.md`, `docs/adr/agentic-software-house.md`
+Zakres: `tools/agent-security`, `tools/telemetry`, `docs/features/agent-security/spec.md`, `docs/adr/agent-security.md`, `docs/adr/agentic-software-house.md`
 
 ## Cel i kryteria sukcesu
 
@@ -23,18 +23,18 @@ Zakres: `tools/agent-security`, `tools/telemetry`, `.claude/skills/ao-run/SKILL.
   - stos jest przeciążony albo restartuje;
   - Claude Code zmieni zachowanie w kolejnej wersji.
 
-  Opóźnienie przy stosie, który przyjmuje połączenie, ale nie odpowiada, nie zostało zmierzone. Sonda (R3) i odbiór
-  (R7) sprawdzają eksport na przypiętej wersji.
+  Opóźnienie przy stosie, który przyjmuje połączenie, ale nie odpowiada, nie zostało zmierzone. Sonda (R3) sprawdza
+  eksport na przypiętej wersji.
 - Sesje interaktywne użytkownika trafiają do tego samego stosu po wklejeniu bloku z `telemetry.py snippet`
   do `~/.claude/settings.json`: sesje CLI z `shop.source=interactive`, sesje aplikacji desktop bez tego atrybutu (R8).
 - Do stosu nie trafia treść: promptów, odpowiedzi, poleceń, argumentów i wyników narzędzi ani surowe ciała żądań API.
   Zostają długości, nazwy narzędzi, wynik (`success`, `error_type`) i liczby.
 - Brak danych telemetrii nie zatrzymuje AO. Ani niedziałający stos, ani brak eksportu (np. po zmianie wersji
-  Claude Code), ani techniczna niemożność sprawdzenia prywatności nie są odmową startu. Dane z tego okresu
-  przepadają, a `ao-prepare` mówi o tym linią ostrzeżenia (R5). Start AO zatrzymują tylko dwie sytuacje:
-  - wykryty wyciek treści, czyli wynik `fail` przypadku `telemetry_no_content` (R3);
+  Claude Code), ani techniczna niemożność sprawdzenia prywatności nie są odmową. Dane z tego okresu przepadają.
+  Odmową są tylko dwie sytuacje:
+  - wykryty wyciek treści, czyli wynik `fail` przypadku `telemetry_no_content` (sonda kod 1, R3);
   - niepoprawna konfiguracja adresu (`AGENT_OTEL_ENDPOINT` spoza `http://127.0.0.1:<port>`). To wyjątek celowy:
-    zła wartość mogłaby skierować eksport poza Maca, więc wrapper i `ao-prepare` odmawiają (R2, R5).
+    zła wartość mogłaby skierować eksport poza Maca, więc wrapper odmawia startu (R2).
 - Dane w stosie nie są gwarantowane co do integralności. Wykonawca AO może dopisać fałszywe punkty i, przez Dockera,
   usunąć wolumeny stosu (model zagrożeń). Liczby z dashboardu to obraz pomocniczy, a nie dowód. Źródłem prawdy
   o przebiegach epików zostaje METRICS (baza AO i wyniki CLI, a dla epiku natywnego plik przebiegu i transkrypty
@@ -90,8 +90,7 @@ Research (raport „Telemetria agentów kodujących”, 2026-11-17) i eksperymen
     Integralności danych telemetrii specyfikacja nie przedstawia jako zagwarantowanej.
   - Q3: lokalny odczyt metadanych przez anonimowego Viewera jest zaakceptowanym ryzykiem, z opisem w modelu
     zagrożeń.
-  - Q4: epik obejmuje ostrzeżenie `ao-prepare` (R5), sekcję „Odbiór TELEMETRY” w `/ao-run` (R7) i opcję sondy
-    `--otel-forward` (R3).
+  - Q4: epik obejmuje opcję sondy `--otel-forward` (R3).
   - Q5: `telemetry.py check` zależy od adresu Grafany i uid źródła `prometheus` (R4).
   - Q6: propozycje researchu odrzucone (sekcja „Poza zakresem”).
   - Q7: brak eksportu nie zatrzymuje AO. Statusy przypadków telemetrii rozdzielają brak eksportu, wykryty wyciek
@@ -107,10 +106,10 @@ Research (raport „Telemetria agentów kodujących”, 2026-11-17) i eksperymen
 - Monitoring klastra demo (Grafana Cloud), dostęp do dashboardu spoza Maca, monitoring produkcji i dyżur agenta
   (krok 11).
 - Ślady (traces, w Claude Code beta) i `TRACEPARENT`. Złączenie z METRICS daje `shop.task` z czasem próby.
-- Alerty Grafany, także `absent()` na brak danych. Brak danych przy starcie przebiegu sygnalizuje `/ao-run`.
+- Alerty Grafany, także `absent()` na brak danych.
 - Inne agenty (Codex, Gemini CLI). AO uruchamia tylko Claude Code.
 - Telemetria sondy w stosie. Sonda wysyła telemetrię do
-  własnego odbiornika (R3; przekazanie do stosu tylko przy odbiorze, opcją `--otel-forward`).
+  własnego odbiornika (R3; przekazanie do stosu opcją `--otel-forward`).
 - Ochrona danych stosu przed wykonawcą przez Docker (#498) i przez HTTP na pętli zwrotnej (model zagrożeń, „Poza
   zakresem”).
 - Propozycje z researchu, których epik nie przyjmuje:
@@ -123,17 +122,16 @@ Research (raport „Telemetria agentów kodujących”, 2026-11-17) i eksperymen
 ## Wymagane przed startem
 
 - Działający stos `agent-observability` na Macu (`make up` w tamtym repo), z punktem OTLP `http://127.0.0.1:4318`
-  i Grafaną `http://127.0.0.1:3030` ze źródłem danych `prometheus` dostępnym dla anonimowego Viewera. Po co: odbiór
-  epiku przez sesję `/ao-run` (R7). Zadania stosu nie potrzebują: ich testy używają atrap odbiorników. Źródło:
-  istnieje: `piotrp321/agent-observability` (merge 2026-11-16), sprawdzone przy przygotowaniu.
+  i Grafaną `http://127.0.0.1:3030` ze źródłem danych `prometheus` dostępnym dla anonimowego Viewera. Po co:
+  `telemetry.py check` i przekazanie sondy `--otel-forward`. Zadania stosu nie potrzebują: ich testy używają atrap
+  odbiorników. Źródło: istnieje: `piotrp321/agent-observability` (merge 2026-11-16), sprawdzone przy przygotowaniu.
 - Claude Code 2.1.311 eksportuje z `claude -p` przed końcem procesu, z blokiem `env` z `--settings`, w profilu sandboxa.
   Źródło: istnieje: eksperymenty E1–E4 (sekcja „Ustalenia”), polecenie
   `env -i HOME PATH USER claude -p … --settings "<render_settings.py + env>" --setting-sources project --strict-mcp-config --model haiku`.
-  Zmianę wersji wykrywa sonda przy każdym starcie AO (`no_export` i `unverifiable` to ostrzeżenie, `fail`
-  `telemetry_no_content` to odmowa); odbiór (R7) sprawdza tylko wersję przypiętą w chwili odbioru tego epiku.
-- Przebiegi z prawdziwym modelem (tylko sonda) i ze stosem wykonuje przy odbiorze sesja
-  `/ao-run`, nie wykonawca: sandbox wykonawcy nie czyta Keychain ani binarki przypiętej pod `~` (jak odbiór
-  AGENT-SECURITY). Źródło: zadanie dokumentacji `/ao-run` (R7).
+  Zmianę wersji wykrywa sonda (`no_export` i `unverifiable` to ostrzeżenie, `fail` `telemetry_no_content` to
+  odmowa).
+- Przebiegi z prawdziwym modelem (tylko sonda) i ze stosem wykonuje sesja, nie wykonawca: sandbox wykonawcy nie czyta
+  Keychain ani binarki przypiętej pod `~`.
 
 ## Model zagrożeń
 
@@ -153,7 +151,7 @@ Drogi ataku w zakresie:
    Sprawdzenie: test wrappera (istniejący P12). Osobnego sprawdzenia tego, że Claude Code ignoruje `OTEL_*` z ustawień
    projektu, nie ma (R4). W sesjach interaktywnych projekt może wyłączyć niektóre eksportery, więc telemetria sesji
    interaktywnej nie ma gwarancji kompletności.
-2. Odziedziczone środowisko (`OTEL_*` i `CLAUDE_CODE_ENABLE_TELEMETRY` z sesji `/ao-run` albo z powłoki użytkownika)
+2. Odziedziczone środowisko (`OTEL_*` i `CLAUDE_CODE_ENABLE_TELEMETRY` z sesji albo z powłoki użytkownika)
    zmienia adres albo włącza treść. Zamyka to wrapper, który usuwa te zmienne przed startem binarki (R2), oraz profil,
    który ustawia `0` dla każdego `OTEL_LOG_*` (R1). Sprawdzenie: test wrappera z atrapą binarki (R2) i przypadek
    sondy `telemetry_no_content` (R3).
@@ -202,7 +200,7 @@ Poza zakresem (świadomie otwarte, założenia):
   `claude-agent`. Interfejs modułu:
   `render(..., telemetry=None)`, gdzie `telemetry` to `{'endpoint': str, 'attributes': dict}` albo `None`.
 - Stała `DEFAULT_TELEMETRY_ENDPOINT = 'http://127.0.0.1:4318'` i lista zmiennych bloku są w `render_settings.py`.
-  Wrapper, `ao-prepare` i `telemetry.py` korzystają z nich bez kopii.
+  Wrapper i `telemetry.py` korzystają z nich bez kopii.
 - Adres: dokładnie `http://127.0.0.1:<port>` (port 1–65535, bez ścieżki, użytkownika, zapytania i fragmentu). Inny
   adres to `SettingsError` i kod 1.
 - Atrybuty: klucze z listy `shop.source`, `shop.epic`, `shop.task`, `shop.task_kind`. Wartości pasują do
@@ -225,7 +223,7 @@ Poza zakresem (świadomie otwarte, założenia):
   także przy `--version` i `auth status`.
 - Adres: `AGENT_OTEL_ENDPOINT`, a bez niej `DEFAULT_TELEMETRY_ENDPOINT`. Wartość `off` wyłącza telemetrię: bez opcji
   `--telemetry-*`, ustawienia jak przed epikiem. Zmienną ustawia tylko proces spoza sandboxa (sonda, testy, sesja
-  `/ao-run` na polecenie użytkownika). Niepoprawny adres oznacza odmowę startu (kod 2), jak każdy błąd
+  na polecenie użytkownika). Niepoprawny adres oznacza odmowę startu (kod 2), jak każdy błąd
   `render_settings.py`.
 - Atrybuty wrapper ustala bez bazy AO, z danych, które już sprawdza:
   - `shop.source=ao`;
@@ -277,16 +275,14 @@ Poza zakresem (świadomie otwarte, założenia):
   wszystkich scenariuszach. Sonda zatrzymuje odbiornik po zakończeniu procesu wykonawcy, więc ta droga wymaga
   eksportu wysłanego w ostatniej chwili; zmianę architektury odbiornika opisuje #719.
 - Co blokuje (wyjątek od reguły sondy, że każdy przypadek ma przejść):
-  - Statusy `no_export` i `unverifiable` nigdy nie blokują: ani kod wyjścia sondy w żadnym trybie, ani `ao-prepare`.
-    Sonda zapisuje je w wyniku z przyczyną, a `ao-prepare` wypisuje dla nich linię ostrzeżenia (R5). Przyczyna nie
-    zawiera tekstu z żądania, bo sesja `/ao-run` cytuje tę linię w rozmowie: ścieżkę podaje tylko dla `/v1/logs`
-    i `/v1/metrics`, wartości `Content-Encoding` nie podaje.
-  - Start AO blokuje tylko `fail` przypadku `telemetry_no_content`, jak `fail` każdego przypadku `bypass`.
-  - Odbiór (R7) wymaga `pass` obu przypadków, sprawdzanego w JSON wyniku, nie tylko kodu wyjścia.
+  - Statusy `no_export` i `unverifiable` nigdy nie blokują: nie zmieniają kodu wyjścia sondy w żadnym trybie.
+    Sonda zapisuje je w wyniku z przyczyną. Przyczyna nie zawiera tekstu z żądania, bo sesja cytuje ją w rozmowie:
+    ścieżkę podaje tylko dla `/v1/logs` i `/v1/metrics`, wartości `Content-Encoding` nie podaje.
+  - Blokuje tylko `fail` przypadku `telemetry_no_content`, jak `fail` każdego przypadku `bypass`.
 - Sonda startuje wykonawcę w środowisku z `OTEL_LOG_USER_PROMPTS=1`, `OTEL_LOG_TOOL_DETAILS=1` i
   `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:<port drugiego odbiornika>`. Wrapper musi je usunąć.
 - Opcja `--otel-forward URL` (tylko `http://127.0.0.1:<port>`) przekazuje każde odebrane żądanie bez zmian także pod
-  ten adres. Ocena przypadków jest taka sama. Używa jej tylko odbiór ze stosem (R7).
+  ten adres. Ocena przypadków jest taka sama.
 - Przypadku „ustawienia projektu przekierowują eksport” sonda nie ma. P12 odmawia startu przy zmienionych
   `.claude/settings*.json`, a `OTEL_*` Claude Code czyta tylko przy starcie, więc w sesji AO tej drogi nie da się
   odtworzyć. Żadne polecenie tego przypadku nie sprawdza (uzasadnienie w R4); chroni P12 i `--settings`.
@@ -338,25 +334,6 @@ Python 3.9+, wyłącznie biblioteka standardowa (stała adresu i lista zmiennych
   niepoprawny adres (komunikat podaje nazwę podanej opcji) oraz nieznane opcje `--project-override` i `--claude-bin`
   (kod 2).
 
-### R5. Ostrzeżenie przy starcie przebiegu (`ao-prepare`, `/ao-run`)
-
-- `ao-prepare` przed sondą sprawdza połączenie TCP z adresem telemetrii (`AGENT_OTEL_ENDPOINT` z jego środowiska
-  albo `DEFAULT_TELEMETRY_ENDPOINT`; przy `off` nie sprawdza), z limitem 2 s. Niepoprawny `AGENT_OTEL_ENDPOINT` to
-  odmowa przed sondą: `ao-prepare: niepoprawny AGENT_OTEL_ENDPOINT <wartość>: <przyczyna>`. To jedyny błąd
-  konfiguracji telemetrii, który zatrzymuje start (sekcja „Cel”).
-- Wynik sondy: przypadki telemetrii ze statusem `no_export` albo `unverifiable` nie są odmową. Reguła `ao-prepare`
-  „wynik z przypadkiem, który nie przeszedł, to odmowa” ich nie obejmuje. Dla każdego `ao-prepare` wypisuje linię
-  `ao-prepare: telemetria: sonda <przypadek> <status> (<przyczyna>)` przed linią wyniku sondy.
-- Gdy połączenia nie ma, wypisuje na stderr jedną linię `ao-prepare: telemetria: brak stosu pod <adres>; dane tego
-  przebiegu nie trafią do stosu`. Linia jest przed linią sondy, więc ostatnią linią `run.log` zostaje wynik sondy
-  albo odmowa. Kod wyjścia się nie zmienia, a start nie jest wstrzymany.
-- `/ao-run` czyta tę linię z `run.log` po starcie AO i podaje ją w rozmowie. Linia `ao-prepare: telemetria:` nigdy
-  nie jest odmową, także gdy jest ostatnia.
-- Testy `test_ao_prepare.py`:
-  - linia przy zamkniętym porcie, brak linii przy otwartym porcie i przy `off`, kolejność linii, kod wyjścia bez zmian;
-  - odmowa przy niepoprawnym `AGENT_OTEL_ENDPOINT`;
-  - wynik sondy z `no_export` i `unverifiable` to start z ostrzeżeniem, a z `telemetry_no_content` `fail` to odmowa.
-
 ### R6. Dokumentacja (w zadaniach implementacji)
 
 - `docs/features/agent-security/spec.md`: R1–R3 tego epiku w sekcjach R2 (blok telemetrii, usuwanie `OTEL_*`) i R6
@@ -364,25 +341,8 @@ Python 3.9+, wyłącznie biblioteka standardowa (stała adresu i lista zmiennych
 - `docs/adr/agent-security.md`: telemetria jako ruch sieciowy procesu CLI (pętla zwrotna, poza sandboxem Bash)
   i luki zapisu do stosu i odczytu z niego.
 - `docs/adr/agentic-software-house.md`: komponent „Metryki i evale” wskazuje telemetrię w lokalnym stosie.
-- `docs/features/ao-run/spec.md` i `.claude/skills/ao-run/SKILL.md`: ostrzeżenie z R5 i sekcja „Odbiór TELEMETRY”
-  (R7).
 - `tools/telemetry/README.md`: polecenia, adresy i uid źródła danych, ograniczenia sesji interaktywnych, związek
   z `agent-observability` i METRICS (złączenie po `shop.task` i czasie próby).
-
-### R7. Odbiór (sesja `/ao-run`)
-
-Sekcja „Odbiór TELEMETRY” w `.claude/skills/ao-run/SKILL.md`, wzorowana na „Odbiorze AGENT-SECURITY”. Obejmuje tylko
-epik TELEMETRY i działa przed raportem odbioru i przed merge'em końcowego PR, z HEAD końcowego PR, w osobnym worktree:
-
-1. `telemetry.py check`: kod 0 (stos działa).
-2. Sonda w przebiegu domyślnym z `--otel-forward http://127.0.0.1:4318`, potem sonda w `--mode ao`. W każdym
-   przebiegu wymagany jest kod 0 oraz status `pass` przypadków `telemetry_export` i `telemetry_no_content` w JSON
-   wyniku. Sam kod 0 nie wystarcza, bo `no_export` i `unverifiable` go nie zmieniają.
-3. Zapytanie przez proxy Grafany (Loki) zwraca zdarzenia `api_request` zadania sondy z `shop_source="ao"`
-   z ostatniego przebiegu.
-
-Wyniki (kody, czas, koszt sondy, zapytanie) trafiają do raportu odbioru. Nieudany punkt to brak merge'a, także na
-polecenie, do czasu usunięcia przyczyny, jak w „Odbiorze AGENT-SECURITY”.
 
 ### R8. Sesja natywna: epik, zadanie, model i subagent
 
@@ -420,18 +380,17 @@ w toku, bez sum i kosztu.
 
 | Sytuacja | Zachowanie |
 |---|---|
-| Stos wyłączony albo port zamknięty | w E2 wykonawca działał bez zmian, dane przepadają; `ao-prepare` ostrzega (R5); `telemetry.py check` kod 1 |
-| Nowa wersja Claude Code przestaje eksportować | sonda: `telemetry_export` i `telemetry_no_content` `no_export`, ostrzeżenie, start AO bez zmian; odbiór zgłasza błąd |
-| Ciało eksportu w nieznanym kodowaniu | `telemetry_no_content` `unverifiable`, ostrzeżenie, start AO bez zmian; odbiór nie przechodzi |
-| Nowa wersja Claude Code wysyła treść mimo `OTEL_LOG_*=0` | `telemetry_no_content` `fail` (wykryty wyciek): `ao-prepare` odmawia startu AO |
-| `AGENT_OTEL_ENDPOINT` niepoprawny w środowisku `ao-prepare` | odmowa startu przed sondą (wyjątek konfiguracji, R5) |
+| Stos wyłączony albo port zamknięty | w E2 wykonawca działał bez zmian, dane przepadają; `telemetry.py check` kod 1 |
+| Nowa wersja Claude Code przestaje eksportować | sonda: `telemetry_export` i `telemetry_no_content` `no_export`, ostrzeżenie, kod sondy bez zmian |
+| Ciało eksportu w nieznanym kodowaniu | `telemetry_no_content` `unverifiable`, ostrzeżenie, kod sondy bez zmian |
+| Nowa wersja Claude Code wysyła treść mimo `OTEL_LOG_*=0` | `telemetry_no_content` `fail` (wykryty wyciek): sonda kod 1 |
 | `AO_TASK_ID` albo nazwa `AGENT_AO_HOME` spoza wzorca | atrybut `unknown`, start bez zmian |
 | `AGENT_OTEL_ENDPOINT` niepoprawny | odmowa startu wrappera (kod 2) z przyczyną |
 | Próba zabita po limicie czasu AO | tracone do 10 s metryk i 5 s zdarzeń z bufora |
 
 ## Kryteria akceptacji
 
-Kryteria 1–5 sprawdzają testy zadań bez modelu i bez stosu. Kryterium 6 sprawdza sesja `/ao-run` przy odbiorze.
+Kryteria 1–4 sprawdzają testy zadań bez modelu i bez stosu.
 
 1. `render_settings.py` z `--telemetry-*` daje blok `env` z R1. Bez opcji wynik jest bajt w bajt taki jak przed
    epikiem. Niepoprawny adres, klucz albo wartość kończy się kodem 1 bez wyjścia na stdout, także przy próbach
@@ -443,10 +402,7 @@ Kryteria 1–5 sprawdzają testy zadań bez modelu i bez stosu. Kryterium 6 spra
 3. Sonda ma przypadki `telemetry_export` i `telemetry_no_content` ze statusami z R3, odbiornik z dekoderem
    i `--otel-forward`. Testy `evaluate` (wszystkie statusy w obu trybach) i odbiornika z R3 przechodzą.
 4. `telemetry.py snippet` i `check` działają według R4. Testy obejmują ścieżki błędu.
-5. `ao-prepare` działa według R5: ostrzeżenia nie zmieniają kodu wyjścia, a odmowa jest tylko przy niepoprawnym
-   adresie i przy `fail` `telemetry_no_content`. Testy obejmują kolejność linii.
-6. Odbiór z R7 przechodzi wszystkie trzy punkty, a wyniki są w raporcie odbioru.
-7. Testy skryptów (`.github/scripts/script-tests.sh`) przechodzą w CI. Dokumentacja z R6 jest zaktualizowana
+5. Testy skryptów (`.github/scripts/script-tests.sh`) przechodzą w CI. Dokumentacja z R6 jest zaktualizowana
    w zadaniach, które zmieniają opisane zachowanie.
 
 ## Ryzyka
@@ -455,16 +411,15 @@ Kryteria 1–5 sprawdzają testy zadań bez modelu i bez stosu. Kryterium 6 spra
   Wnioski o kosztach i przebiegach opieramy na METRICS, a dashboard służy do przeglądu.
 - Zachowanie eksportu potwierdzono eksperymentami na jednej wersji i w zwykłych warunkach. Kolejna wersja Claude Code
   albo inne warunki (zabity proces, przeciążony stos, punkt, który przyjmuje połączenie i nie odpowiada) mogą dać
-  utratę danych albo opóźnienie końca procesu. Wykrywa to sonda przy każdym starcie AO (ostrzeżenie) i odbiór.
+  utratę danych albo opóźnienie końca procesu. Wykrywa to sonda (ostrzeżenie).
 
-- Claude Code zmienia nazwy zmiennych `OTEL_LOG_*` albo atrybutów między wersjami. Ochrona: sonda
-  przy każdym starcie AO (odbiór R7 sprawdza tylko wersję z chwili odbioru tego epiku).
+- Claude Code zmienia nazwy zmiennych `OTEL_LOG_*` albo atrybutów między wersjami. Ochrona: sonda.
 - Liczba serii w Prometheusie rośnie z `session_id` (domyślnie włączone w Claude Code), a nie z `shop.task`: każda
   sesja ma jedno zadanie. Przy jednym użytkowniku to dziesiątki tysięcy serii rocznie, co mieści się w możliwościach
   lokalnego Prometheusa. Wyłączenie `session_id` na metrykach łączyłoby strumienie równoległych procesów w procesorze
   `delta_to_cumulative` stosu, więc epik go nie wyłącza.
 - Odbiornik nie zapisuje połączeń nieprzyjętych przed zatrzymaniem (R3, znane ograniczenie, #719), więc `pass`
-  przypadku `telemetry_no_content`, także w odbiorze R7, nie dowodzi prywatności eksportu we wszystkich scenariuszach.
+  przypadku `telemetry_no_content` nie dowodzi prywatności eksportu we wszystkich scenariuszach.
 - Przypadki telemetrii ocenia odbiornik, więc nie zależą od tekstu modelu. Zależą tylko od tego, czy wykonawca sondy
   w ogóle wysłał żądanie do API.
 - Minimalny dekoder protobufa może nie rozpoznać nowego układu wiadomości OTLP. Wtedy `telemetry_export` ma

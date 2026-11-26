@@ -6,7 +6,7 @@ wymagały interwencji naprawczej. Wynik to jeden PR do `main` z poprawkami proce
 „Status” planu Agentic Software House oraz propozycje issues do zatwierdzenia. Skrypt `retro.py` zbiera fakty,
 sprawdza propozycje i prowadzi trwałe rejestry. Kod AO się nie zmienia.
 
-Zakres: .claude/skills/retro, .claude/agents/retro-analyst.md, .claude/skills/ao-run, .claude/skills/planner/SKILL.md, docs/features/ao-run/spec.md, docs/features/agentic-software-house/plan.md, docs/adr/agentic-software-house.md, CLAUDE.md, .github/workflows/ci.yml
+Zakres: .claude/skills/retro, .claude/agents/retro-analyst.md, tools/ash, .claude/skills/planner/SKILL.md, docs/features/agentic-software-house/plan.md, docs/adr/agentic-software-house.md, CLAUDE.md, .github/workflows/ci.yml
 
 ## Cel i kryteria sukcesu
 
@@ -31,9 +31,8 @@ Zakres: .claude/skills/retro, .claude/agents/retro-analyst.md, .claude/skills/ao
   - sekcja „Status” w planach bez manifestu AO (dziś tylko `docs/features/agentic-software-house/plan.md`); gdy
     takiego planu nie ma, pozycji `status` nie ma;
   - propozycje issues: problem w AO jako issue w `piotrp321/agentic-orchestrator`, poprawka wymagająca zmiany
-    skryptu albo innego kodu w `shop` jako issue `tech-debt` z etykietą `agent` (kod przechodzi TDD w `/delivery`,
-    nie w PR retro); problem z istniejącym otwartym issue to komentarz z nowymi incydentami do tego issue, nie nowe
-    issue. Issues i komentarze powstają dopiero po „tak” użytkownika.
+    skryptu albo innego kodu w `shop` jako issue `tech-debt` z etykietą `agent` (kod przechodzi TDD poza PR retro);
+    problem z istniejącym otwartym issue to komentarz z nowymi incydentami do tego issue, nie nowe issue. Issues i komentarze powstają dopiero po „tak” użytkownika.
 - **Limit:** najwyżej 5 poprawek procesu i 3 propozycje issues (nowych albo komentarzy) na przebieg. Nadmiar trafia
   do raportu po jednej linii i może wrócić w następnym przebiegu.
 - **Poza zakresem:** zmiany kodu i konfiguracji AO, skryptów i aplikacji sklepu; tabele fal planów epików
@@ -68,12 +67,12 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
 - **Daty:** start epiku to `epics.created_at`; merge to `mergedAt` końcowego PR z `gh pr view` (stan `MERGED`).
 - **Zadania i próby:** tabele `tasks` (`kind`: `plan`, `integration`, `fix`, `finalize`, `repair`; `pr_number`)
   i `attempts` (`started_at`, `ended_at`, `outcome`, `exit_code`).
-- **Zdarzenia:** `events.jsonl` (format z `docs/features/ao-run/spec.md`), w tym `human_action`; brak pliku: fakt
+- **Zdarzenia:** `events.jsonl` (format w docstringu `tools/ash/ao_events.py`), w tym `human_action`; brak pliku: fakt
   „brak zdarzeń” (np. CART).
 - **Decyzje nocne:** `night-decisions.log` (czas lokalny strefy systemu, bez strefy w linii).
 - **Znaleziska `/integration`:** zapisany `epics/<epik>/report.md` (sekcja „Znaleziska Critical i Important rundy
   N”: tytuł, pliki, zadanie), tylko do odczytu; brak pliku: fakt „brak raportu AO”.
-- **Ręczne poprawki:** komentarz z pomiarem w issue epiku (sekcja 7 `/ao-run`), tylko od zaufanego autora, w issue
+- **Ręczne poprawki:** komentarz z pomiarem w issue epiku, tylko od zaufanego autora, w issue
   zaufanego autora; komentarz niezaufanego, także podszywający się pod pomiar i dodany po prawdziwym, nie zmienia
   pomiaru. Issue epiku od niezaufanego autora nie ma tytułu, więc nie zastępuje issue epiku o tej samej nazwie.
 - **Przeglądy:** raport `/sweep` z nazwą epiku (`~/.local/state/shop-sweep/<data>-<sha7>-<epik>/report.md`).
@@ -122,11 +121,6 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
 
 ## Uruchamianie
 
-- **Po merge'u epiku (`/ao-run`).** Przy `MERGED` końcowego PR (sekcja 7 skilla `/ao-run`) sesja dopisuje do kolejki
-  przeglądów po `/sweep <epik>` pozycję `/retro <epik>`. Przegląd i retro idą po kolei, jeden naraz, nigdy razem
-  z procesem AO tej sesji ani z procedurą sync (reguły sekcji „Przegląd po merge'u” w
-  `docs/features/ao-run/spec.md`). Retro nie czeka na triage `/sweep`: czyta jego raport. Pominięty przegląd nie
-  pomija retro.
 - **Epik natywny:** `/retro <epik>` uruchamia użytkownik po merge'u końcowego PR; sesja prowadząca epik go nie
   uruchamia.
 - **Ręcznie:** `/retro [epik]` w sesji Claude Code (`disable-model-invocation: true`). Bez argumentu najpierw pokazuje
@@ -134,7 +128,7 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
   Z argumentem działa dla każdego zmergowanego epiku, także sprzed wdrożenia (pierwszy przebieg: `visual-design`).
 - **Do zrobienia (`retro.py pending`)** to lista wyliczana z danych, nie zapisywana kolejka: epiki AO i natywne (sekcja
   „Źródła”) z końcowym PR `MERGED` po dacie `RETRO_SINCE` (stała w `retro.py`: 2026-11-10 00:00 UTC, świadomie ustalona
-  data; od niej automatyczne retro obejmuje m.in. VISUAL-DESIGN, LIGHTHOUSE i HARDENING) i bez stanu `done` albo `skipped` w `~/.local/state/shop-retro/<epik>/state.json`, od najstarszego
+  data; od niej `pending` obejmuje m.in. VISUAL-DESIGN, LIGHTHOUSE i HARDENING) i bez stanu `done` albo `skipped` w `~/.local/state/shop-retro/<epik>/state.json`, od najstarszego
   merge'u. Wpisu nie da się zgubić, bo nie ma czego zgubić.
 - **Warunki przed startem**, po kolei:
   1. Odmowa bez zapisu (komunikat w rozmowie): nazwa epiku nie pasuje do `^[a-z0-9][a-z0-9-]*$`; retro tego epiku ma
@@ -147,19 +141,13 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
      („pomiń retro X: <powód>”). Nic innego nie pomija retro trwale.
   3. Odroczenie (`retro.py defer <epik> --reason …`: próba i powód w `state.json`, push „Retro `<epik>` odroczone:
      <powód>”, do 200 znaków; epik zostaje w `pending`):
-     - limit (zasilania nie sprawdza): `night_queue.py room --hours 2` (stdin: obiekt `plan` z `get_usage`) zwraca
-       `ok`; brak narzędzia `get_usage` to powód „brak stanu limitów”. Próg zależy od wejścia: z kolejki `/ao-run`
-       `--max-percent 95`, jak dla przeglądu po merge'u, przy przebiegu ręcznym 80% (domyślny próg `room`);
-     - przebieg ręczny: nie działa żaden proces AO, `pgrep -f -- '-m orchestrator --home [^ ]+ run( |$)'` nic nie
-       zwraca (wzorzec trafia w `python3 -m orchestrator --home … run` i jego wrappery, a nie w monitory `watch`
-       sesji `/ao-run`);
+     - limit (zasilania nie sprawdza): `tools/ash/night_queue.py room --hours 2` (stdin: obiekt `plan`
+       z `get_usage`) zwraca `ok` przy domyślnym progu `room` (80%); brak narzędzia `get_usage` to powód „brak stanu
+       limitów”;
      - `gh auth status` i `git fetch origin main` się udają;
      - blokada `retro.py lock` należy do innego przebiegu (sekcja „Rejestry”).
-- **Ponowienie odroczonego retro.** Epik odroczony w sesji `/ao-run` wraca do jej kolejki przeglądów dopiero przy
-  następnym zdarzeniu: kolejny merge epiku, koniec procesu AO tej sesji albo start nowego przebiegu `/ao-run`
-  (także w nowej sesji, która sprawdza `retro.py pending`). Odroczone retro nie czeka w kolejce, więc nie blokuje
-  startu epiku (nowy epik czeka tylko na pozycje w kolejce). Ręczne `/retro` bez argumentu też je bierze. Odroczenie
-  nie wygasa. Push z sekcji 8 `/ao-run` przy pustej kolejce epików podaje liczbę epików w `pending`.
+- **Ponowienie odroczonego retro.** Ręczne `/retro` bez argumentu bierze najstarszy epik z `pending`, także
+  odroczony. Odroczenie nie wygasa.
 
 ## Przebieg
 
@@ -218,7 +206,7 @@ deterministyczne i stabilne między przebiegami; czasy w kluczach to pełne seku
 
 | Rodzaj | Kotwica i klucz | Fakty dołączane do incydentu |
 |---|---|---|
-| `wait` | czekanie z `ao_events.waits()`: początek `status_changed` do `BLOCKED`/`FAILED` (zadanie) albo `epic_blocked`/`queue_held` (epik), koniec następny `human_action` albo `auto_action` (automatyczne przedłużenie `/ao-run`: nie jest decyzją człowieka, więc incydent nie ma `human_action` i nie jest naprawczy) z tym samym kluczem albo brak (czekanie otwarte); klucz `<zadanie albo epik>@<początek>` | pytania blokera, powód (`executor`, `policy`, `max_qa_rounds`…), `human_action` zamykający, wpisy `night-decisions.log` z czasem w oknie domkniętym z obu stron, nieudana próba tego zadania, która skończyła się jako ostatnia przed początkiem okna, najwyżej 10 minut przed nim |
+| `wait` | czekanie z `ao_events.waits()`: początek `status_changed` do `BLOCKED`/`FAILED` (zadanie) albo `epic_blocked`/`queue_held` (epik), koniec następny `human_action` albo `auto_action` (automatyczne przedłużenie przebiegu AO: nie jest decyzją człowieka, więc incydent nie ma `human_action` i nie jest naprawczy) z tym samym kluczem albo brak (czekanie otwarte); klucz `<zadanie albo epik>@<początek>` | pytania blokera, powód (`executor`, `policy`, `max_qa_rounds`…), `human_action` zamykający, wpisy `night-decisions.log` z czasem w oknie domkniętym z obu stron, nieudana próba tego zadania, która skończyła się jako ostatnia przed początkiem okna, najwyżej 10 minut przed nim |
 | `failed_attempt` | próba z `outcome` innym niż `result`, niedołączona do `wait`; klucz `<zadanie>#<numer próby>` | `outcome`, `exit_code` |
 | `finding` | znalezisko `Critical` albo `Important` z raportu AO; klucz to skrót odcisku (waga, tytuł małymi literami bez znaków `` ` `` i ze zwiniętymi spacjami, posortowane pliki), jak odcisk w `.claude/skills/integration/integration_result.py`; ten sam odcisk w kilku rundach to jeden incydent | rundy, pliki, zadanie |
 | `repair` | zadanie `kind` `repair` albo dowolne zadanie z `fix_count` > 0 poprawek PR; klucz `<zadanie>` | PR, liczba poprawek |
@@ -372,7 +360,7 @@ błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do plan
   sprawdzenia) do 65536 znaków; dłuższy tekst to błąd `field` z nazwami pól do skrócenia (`retro.py issues` odmawia
   takiej pozycji przed wywołaniem `gh`). Skrypt nigdy nie skraca tekstu sam;
 - `files` tylko z listy dozwolonej: `CLAUDE.md` i `apps/*/CLAUDE.md`, `.claude/skills/*/SKILL.md`,
-  `.claude/agents/*.md`, `docs/features/{ao-run,agent-tester-ux,retro}/spec.md`, `docs/adr/agentic-software-house.md`
+  `.claude/agents/*.md`, `docs/features/{agent-tester-ux,retro}/spec.md`, `docs/adr/agentic-software-house.md`
   („Przebieg epiku”); zmiana
   w innym pliku to błąd (taka poprawka jest pozycją `issue` z `repo: shop`);
 - **otwarty PR:** `key` pozycji z otwartego PR retro jest dopuszczalny tylko z polem `updates` (numer tej pozycji),
@@ -395,12 +383,12 @@ błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do plan
   `headRefName` zaczyna się od `retro/`, od zaufanego autora (bramka: `github_trust.py prs --state open --json
   headRefName`; gałąź `retro/…` z forka nie jest PR retro), zapisany też w `state.json`. Kolejne retro pracuje na jego gałęzi: `git merge origin/main` (bez force push), nowe commity
   i „Status” przepisany od nowa na bieżących danych. Retro idą po kolei (blokada), więc dwa nie piszą do jednej
-  gałęzi naraz, także z dwóch sesji `/ao-run`.
-- **Commity:** każda poprawka to osobny commit (Conventional Commits, np. `docs(ao-run): …`) z ID pozycji w treści;
+  gałęzi naraz, także z dwóch sesji.
+- **Commity:** każda poprawka to osobny commit (Conventional Commits, np. `docs(retro): …`) z ID pozycji w treści;
   „Status” to osobny commit przy każdym retro.
 - **Opis PR:** sekcja na każdy epik z jego poprawkami (problem, incydenty z odnośnikami do źródeł, przyczyna,
   zmiana, dlaczego zapobiegnie, jak sprawdzimy) i obserwacjami; sekcja „Status”; informacja, że poprawki skilli
-  działają od następnej sesji `/ao-run` i od następnego epiku.
+  działają od następnej sesji i od następnego epiku.
 - **CI:** PR zmienia tylko pliki `*.md`, więc zakres to „docs” (`.github/scripts/scope.sh`): CI niczego nie
   uruchamia.
 - **`retro.py sync`** na początku każdego przebiegu i przed `pending`:
@@ -459,7 +447,7 @@ Retro przepisuje sekcję „Status” planu `docs/features/agentic-software-hous
 - `status/pending-retro`: epiki w `retro.py pending`.
 
 Status kroku w tabeli zmienia się tylko pozycją `status` z dowodem (np. krok 12 zweryfikowany dopiero przy raporcie
-`/sweep` z nazwą epiku po merge'u; po VISUAL-DESIGN go nie ma, bo jego sesja `/ao-run` ruszyła przed wejściem
+`/sweep` z nazwą epiku po merge'u; po VISUAL-DESIGN go nie ma, bo jego przebieg ruszył przed wejściem
 kroku 12 na `main`: incydent `no_sweep`). Plany z manifestem AO (`"schema_version"`) nie są zmieniane. Szablon
 `/planner` mówi: „Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`”.
 
@@ -474,7 +462,7 @@ kroku 12 na `main`: incydent `no_sweep`). Plany z manifestem AO (`"schema_versio
     {"n": 1, "kind": "fix", "key": "qa-rounds-docs-only-finalize", "title": "...",
      "evidence": ["visual-design/wait/visual-design@1794272499", "discount-codes/wait/discount-codes@..."],
      "classes": {"visual-design/wait/visual-design@1794272499": {"class": "corrective", "corrective_reason": "..."}},
-     "cause": "...", "files": [".claude/skills/ao-run/SKILL.md"], "change": "...",
+     "cause": "...", "files": [".claude/skills/retro/SKILL.md"], "change": "...",
      "why_prevents": "...", "verify": "...", "previously_rejected": null, "previous_fix": null, "updates": null},
     {"n": 2, "kind": "issue", "key": "...", "repo": "ao", "title": "...", "existing_issue": 46, "body": null,
      "evidence": ["..."], "classes": {}, "cause": "...", "why_prevents": "...", "verify": "...",
@@ -500,12 +488,8 @@ Klucze i ID w przykładzie są ilustracją.
   `observe --committed` (pozycje `fix` w PR retro przy serii w toku). Komendy `gh` i `git` przez
   wstrzykiwany runner `next_epic.make_runner`, `metrics.py` przez osobny wstrzykiwany runner (`make_metrics_runner`); `retro.py` importuje `next_epic` (tablica) i `ao_events` (`waits`)
   bez kopii ich kodu; `night_queue.py room` (limit) uruchamia sesja, a wynik podaje jako powód `defer`.
-- `.claude/skills/ao-run/ao_events.py` i `test_ao_events.py`: funkcja `waits()` i `summarize` liczące z niej sumy
+- `tools/ash/ao_events.py` i `test_ao_events.py`: funkcja `waits()` i `summarize` liczące z niej sumy
   (`summary`).
-- `.claude/skills/ao-run/SKILL.md` i `docs/features/ao-run/spec.md`: retro w kolejce przeglądów po `/sweep`
-  (sekcja 7a), ponowienie odroczonych (`pending` przy kolejnym merge'u, po końcu procesu AO i na starcie przebiegu),
-  liczba epików w `pending` w pushu sekcji 8; komentarz z pomiarem (sekcja 7) podaje ręczne poprawki jako
-  „Ręczne poprawki: N” i po jednej linii `- PR #<nr>: <opis>` (albo `- <opis>` bez PR).
 - Testy `.claude/skills/retro` uruchamia w CI `.github/scripts/script-tests.sh`, który znajduje je po położeniu (bez zmiany `ci.yml`).
 
 ## Wymagane przed startem
@@ -566,13 +550,11 @@ Klucze i ID w przykładzie są ilustracją.
      z niesprawdzonym dyskiem, z nieudaną kontrolą, z `null` i bez pola, w nieoczekiwanym kształcie.
 
    CI uruchamia testy `retro` nową linią w `ci.yml`.
-2. Warunki startu na ścieżce błędu: limit (≥ 95% z `/ao-run`, ≥ 80% ręcznie) i działający AO przy przebiegu ręcznym odraczają (epik
-   w `pending`); wzorzec `pgrep` sprawdzony na prawdziwym procesie `ao run` i monitorze `watch`; PR `CLOSED` pomija
+2. Warunki startu na ścieżce błędu: limit (≥ 80%) odracza (epik
+   w `pending`); PR `CLOSED` pomija
    trwale z przyczyną; PR `OPEN` i zły argument odmawiają bez zapisu; cudza blokada odracza. Żadna ścieżka nie
    zmienia niczego w GitHubie. Pokazane.
-3. `/ao-run`: retro w kolejce po `/sweep`; odroczone retro nie blokuje startu epiku i wraca przy następnym merge'u
-   albo starcie przebiegu. Pokazane na prawdziwym merge'u epiku.
-4. Prawdziwy przebieg `/retro visual-design`: incydent `no_sweep` w raporcie i krok 12 nie jest oznaczony jako
+3. Prawdziwy przebieg `/retro visual-design`: incydent `no_sweep` w raporcie i krok 12 nie jest oznaczony jako
    zweryfikowany. Problem `--add-qa-rounds` po `FINALIZE` zmieniającym tylko dokumentację (VISUAL-DESIGN raz,
    DISCOUNT-CODES raz) przechodzi próg i jest rozpoznany jako istniejące issue AO #46 (`existing_issue`), bez nowego
    issue. Drugie `--add-qa-rounds` w VISUAL-DESIGN (po REPAIR-1 z merge'em `origin/main`) jest osobnym incydentem
@@ -584,19 +566,19 @@ Klucze i ID w przykładzie są ilustracją.
   próg, wspólny PR, retro do zrobienia wyliczane z danych), stan roli „Retrospektywa epiku”.
 - `docs/adr/agentic-software-house.md`: wiersz „Pętla uczenia” wskazuje `/retro` (bez „po evalach”: evale są poza
   planem).
-- `CLAUDE.md`: `/retro` w sekcji o skillach (po merge'u w kolejce `/ao-run`, PR merguje użytkownik, issues po „tak”).
+- `CLAUDE.md`: `/retro` w sekcji o skillach (PR merguje użytkownik, issues po „tak”).
 - `.claude/skills/planner/SKILL.md`: zdanie o kolumnie „Status” (sekcja „Manifest”, wzór `plan.md`).
 
 ## Ryzyka i ograniczenia
 
 - Grupowanie incydentów w problem i ocena klasy zależą od modelu. Skrypt pilnuje istnienia dowodów, progu, odrzuceń
   i skuteczności; decyzję podejmuje użytkownik przy merge'u.
-- Poprawki skilli działają od następnej sesji `/ao-run` i od następnego epiku: trwająca sesja ma instrukcję z chwili
+- Poprawki skilli działają od następnej sesji i od następnego epiku: trwająca sesja ma instrukcję z chwili
   swojego startu.
 - `retro.py` czyta bazę AO bezpośrednio. AO jest zamrożone; po jego zmianie schemat może się rozjechać, a epik dostaje
   wtedy fakt „brak danych AO”, bez błędu.
 - PR retro zmienia `CLAUDE.md` albo skille, gdy inny epik jest w toku: możliwy konflikt w jego końcowym PR, który
   naprawia REPAIR.
 - Rejestry żyją tylko na tym komputerze, jak stan `/sweep`.
-- Odroczone retro wraca tylko przy przebiegu `/ao-run` albo ręcznym `/retro`; bez nich czeka w `pending`.
+- Odroczone retro wraca tylko przy ręcznym `/retro`; bez niego czeka w `pending`.
 - Koszt przebiegu nie jest jeszcze zmierzony; sekcja `## Zużycie` mierzy go od pierwszego przebiegu.
