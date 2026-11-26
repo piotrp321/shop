@@ -55,7 +55,15 @@ final readonly class ProductParameter
      */
     public function nameKey(): string
     {
-        return mb_strtolower(Text::normalize($this->name));
+        return self::keyOfName($this->name);
+    }
+
+    /**
+     * The same key for a name that is not (yet) a parameter, e.g. one of a definition of the demo data.
+     */
+    public static function keyOfName(string $name): string
+    {
+        return mb_strtolower(Text::normalize($name));
     }
 
     private static function text(string $text, string $field, int $maxLength): string

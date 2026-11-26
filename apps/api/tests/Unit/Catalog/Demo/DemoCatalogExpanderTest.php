@@ -379,6 +379,26 @@ final class DemoCatalogExpanderTest extends TestCase
         self::assertSame([['name' => 'Materiał cholewki', 'value' => 'siatka'], ['name' => 'WAGA', 'value' => '250 g']], $parameters);
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function namesOfWagaThatTheRuleOfTextsTrimsButPhpTrimDoesNot(): iterable
+    {
+        yield 'a zero width space at the end' => ["Waga\u{200B}"];
+        yield 'a no-break space at the end' => ["Waga\u{00A0}"];
+        yield 'a byte order mark at the start' => ["\u{FEFF}Waga"];
+    }
+
+    #[DataProvider('namesOfWagaThatTheRuleOfTextsTrimsButPhpTrimDoesNot')]
+    public function testParameterOfTheModelReplacesTheOneOfTheTypeWhenItsNameDiffersOnlyByWhatTheRuleOfTextsTrims(string $name): void
+    {
+        $data = $this->with(['templates', 0, 'models', 0, 'parameters'], [['name' => $name, 'value' => '250 g']]);
+
+        $parameters = new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES)->products[0]->parameters;
+
+        self::assertSame([['name' => 'Materiał cholewki', 'value' => 'siatka'], ['name' => $name, 'value' => '250 g']], $parameters);
+    }
+
     public function testNameRepeatedInTheParametersOfOneModelIsNotMergedAway(): void
     {
         $data = $this->with(['templates', 0, 'models', 0, 'parameters'], [['name' => 'Waga', 'value' => '250 g'], ['name' => 'waga', 'value' => '260 g']]);

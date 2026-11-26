@@ -20,7 +20,7 @@ final class EanRestrictedCirculationTest extends TestCase
      */
     public static function restrictedCirculation(): iterable
     {
-        // 2.1.11.1: RCN-8 with the prefix 0 or 2 (six zeros of the 14-digit form, the seventh digit is 0 or 2).
+        // 2.1.11.1: RCN-8 with the prefix 0 or 2 (digits 2 to 6 of the 14-digit form are zeros, the seventh digit is 0 or 2).
         yield 'RCN-8 with the prefix 0' => ['00000017'];
         yield 'RCN-8 with the prefix 2' => ['20000011'];
         // 2.1.11.2: RCN-13 with the GS1 prefix 04 and RCN-12 with the U.P.C. prefix 4.
@@ -50,6 +50,10 @@ final class EanRestrictedCirculationTest extends TestCase
         yield 'a 14-digit code over an RCN-13 of the prefix 02' => ['10200000000001'];
         yield 'a 14-digit code over an RCN-13 of the prefix 2' => ['12000000000005'];
         yield 'a 14-digit code over an RCN-12 of the U.P.C. prefix 0' => ['10001000000059'];
+        // Row 1 too: the indicator is no part of an RCN-8 or of a velocity code, which have no 14-digit form.
+        yield 'a 14-digit code over a velocity code of the U.P.C. company prefix 000000' => ['10000000009994'];
+        yield 'a 14-digit code over a velocity code of zeros' => ['10000000000007'];
+        yield 'a 14-digit code over an RCN-8 of the prefix 2' => ['10000020000018'];
     }
 
     /**
@@ -81,6 +85,8 @@ final class EanRestrictedCirculationTest extends TestCase
         yield 'EAN-13 with the prefix 700' => ['7001234567898'];
         yield 'EAN-13 with the prefix 100' => ['1001234567894'];
         yield 'a GTIN-14 over an ordinary EAN-13 of Germany 400' => ['14001686301262'];
+        yield 'a GTIN-14 with an indicator over an ordinary GTIN-8 of the prefix 1' => ['10000012345677'];
+        yield 'a GTIN-14 with an indicator over an ordinary GTIN-8 of the prefix 5' => ['10000059012341'];
     }
 
     #[DataProvider('restrictedCirculation')]

@@ -118,7 +118,7 @@ kodu (kod dopełniony zerami z lewej):
 
 | Rodzaj i paragraf | Reguła na postaci 14-cyfrowej | Przykłady (z cyfrą kontrolną) |
 |---|---|---|
-| RCN-8 z prefiksem 0 albo 2 (§2.1.11.1) | sześć zer na początku (kod 8-cyfrowy), siódma cyfra 0 albo 2 | `00000017`, `20000011` |
+| RCN-8 z prefiksem 0 albo 2 (§2.1.11.1) | cyfry 2–6 to zera, siódma cyfra to `0` albo `2` (kod 8-cyfrowy; także prefiks firmowy `000000` kodów „velocity”) | `00000017`, `20000011` |
 | RCN-13 z prefiksem GS1 04 i RCN-12 z prefiksem U.P.C. 4 (§2.1.11.2) | cyfry 2–3 to `04` | `0400000000008`, `400000000008` |
 | RCN-12 z prefiksem U.P.C. 0: LAC i RZSC (§2.1.11.3) | druga cyfra to `0` (kod jest U.P.C.-12, także dopełniony do 13 albo 14 cyfr, albo GTIN-14 nad nim), a cyfry 3–8 (U.P.C. Company Prefix) są w zakresie `001000`–`007999`; prefiks firmowy `000000` (kody „velocity”) spełnia pierwszy wiersz | `001000000052`, `007999000097`, `001000001004`, `005000009992`, `000000000000`, `000000009997` |
 | Prefiksy GS1 02 i 20–29, w tym RCN-12 z prefiksem U.P.C. 2 (§2.1.11.4) | cyfry 2–3 to `02` albo druga cyfra to `2` | `0200000000004`, `2000000000008`, `2999999999991`, `200000000004` |
@@ -127,8 +127,10 @@ kodu (kod dopełniony zerami z lewej):
   kontrolne zgadzają się z rysunkiem. §2.1.11.3 wymienia prefiksy firmowe `000000` i `001000`–`007999` jako użyte w tym
   zastosowaniu, a rysunek zawęża je do 40 500 numerów. Reguła bierze całe prefiksy firmowe (nadzbiór rysunku):
   `gtin` jest twierdzeniem o globalnej identyfikacji, więc przy wątpliwości zostaje puste.
-- Kod 14-cyfrowy, którego 13 ostatnich cyfr spełnia wiersz 2, 3 albo 4, też nie dostaje `gtin`: RCN nie ma postaci
-  14-cyfrowej.
+- Kod 14-cyfrowy, którego 13 ostatnich cyfr spełnia wiersz 2, 3 albo 4, albo którego cyfry 2–7 spełniają wiersz 1
+  (RCN-8 albo kod „velocity”, np. `10000000009994`), też nie dostaje `gtin`: RCN nie ma postaci 14-cyfrowej, więc
+  cyfra wskaźnika (pierwsza) nie jest brana pod uwagę w żadnym wierszu. Kod 14-cyfrowy nad zwykłym GTIN-8 (siódma cyfra
+  inna niż `0` i `2`, np. `10000012345677`) ma `gtin`.
 - Prefiksy spoza §2.1.11 (np. `03`, `05`, `30`, prefiksy firmowe U.P.C. `000999` i `008000`, kod 8-cyfrowy
   zaczynający się od `1` albo `9`) nie są RCN. Kod 13-cyfrowy, którego druga cyfra postaci 14-cyfrowej nie jest zerem
   (np. `3001234567892`, `4006381333931`), nie jest U.P.C.-12, więc nie podlega wierszowi 3 (ma `gtin`, jeśli nie spełnia innego wiersza).
@@ -366,6 +368,9 @@ Decyzje etapu, które wpływają na planowane 10 mln produktów (`docs/features/
 2. **worf.pl dziś (`medium`).** Po wdrożeniu etapu 1 istniejące produkty (seed i 1 mln wygenerowanych) mają puste nowe
    pola, więc karta wygląda jak dziś. Poprawę na serwerze daje dopiero ponowne `generate` (osobna zgoda właściciela
    z nazwą operacji, hosta i profilu); produkty dodane albo uzupełnione w panelu pokazują nowe pola od razu.
+   Podczas wdrożenia etapu 1 stare pody API odtwarzają warianty bez SKU i EAN przy zmianie zestawu wariantów, więc
+   w tym czasie nie edytuje się wariantów w panelu; ryzyko jest przyjęte na etapie demo (`CLAUDE.md`), żaden mechanizm
+   go nie pilnuje.
 3. **Rozmiar tabel: pomiar.** Etap mierzy, nie szacuje, rozmiar `catalog_product` i `catalog_product_variant`: sterta,
    TOAST i każdy indeks osobno, w tym indeks unikalny SKU. Dwa pomiary, każdy przed zmianą i po niej, z tego samego
    ziarna:
@@ -402,8 +407,9 @@ Decyzje etapu, które wpływają na planowane 10 mln produktów (`docs/features/
    2 min z 67 min przebiegu `medium` na serwerze, a limit Joba `server` to 24 h przy prognozie 11 h. Dwa nowe
    sprawdzenia `demo-data:verify` to po jednym przejściu po tabeli produktów i wariantów; ich czas zadanie mierzy
    na `small` i zapisuje jako składnik szacunku.
-6. **Wyszukiwarka.** Bez zmiany mapowania i dokumentów: czas i pamięć reindeksacji 10 mln się nie zmieniają, a pomiar
-   shardów (#928) nie zależy od etapu.
+6. **Wyszukiwarka.** Mapowanie i dokumenty indeksu się nie zmieniają. Źródło wyszukiwarki czyta jednak szersze wiersze
+   PostgreSQL (nowe kolumny `catalog_product`), więc wpływu etapu na czas i pamięć reindeksacji 10 mln nie mierzono
+   (pomiar shardów, #928, nie zależy od etapu).
 7. **Decyzje odwracalne tylko przez ponowne generowanie.** Marka jako tekst (D2) i parametry bez słownika (D4):
    późniejszy filtr marki wymaga zmiany dokumentów i pełnej reindeksacji, a słownik marek albo atrybutów także
    przepisania danych demo. Jeśli filtr marki albo fasety parametrów mają wejść przed `generate PROFILE=server`,
@@ -510,9 +516,9 @@ Etap nie potwierdza działania przy 10 mln produktów: weryfikacja skali należy
 11. JSON-LD i `gtin`. (a) Odpowiedź sklepu ma w wariancie `gtin` równe `ean` dla globalnego numeru towaru i puste dla
     numeru obiegu ograniczonego według tabeli §2.1.11 z sekcji „Pola i reguły”. Test tabelaryczny domeny obejmuje
     każdy przykład tabeli (w tym sześć numerów RCN-12 z prefiksem U.P.C. 0 z rysunku 2-1), ten sam RCN-12 zapisany
-    jako 13 cyfr z zerem z lewej, kod 14-cyfrowy nad RCN-13 oraz kody, które RCN nie są: prefiksy `03`, `05`, `19`
+    jako 13 cyfr z zerem z lewej, kod 14-cyfrowy nad RCN-13, nad RCN-8 i nad kodem „velocity” oraz kody, które RCN nie są: prefiksy `03`, `05`, `19`
     i `30`, prefiksy firmowe U.P.C. `000999` i `008000`, kod 8-cyfrowy zaczynający się od `1` i `9`, GTIN-14
-    z cyfrą wskaźnika nad zwykłym GTIN-13. (b) JSON-LD `Product` ma `brand`, a `Offer` wariantu `sku` i `gtin`, każde tylko przy niepustym polu
+    z cyfrą wskaźnika nad zwykłym GTIN-13 i nad zwykłym GTIN-8. (b) JSON-LD `Product` ma `brand`, a `Offer` wariantu `sku` i `gtin`, każde tylko przy niepustym polu
     odpowiedzi; wariant z EAN o prefiksie „2” ma na karcie „EAN: …”, a w JSON-LD nie ma `gtin`. (c) Produkt bez nowych
     danych daje JSON-LD jak przed etapem.
 12. Dokument i mapowanie Elasticsearch, `GET /api/v1/products`, `GET /api/v1/product-offers` i kontrakty między

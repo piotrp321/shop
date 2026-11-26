@@ -142,7 +142,8 @@ final readonly class CatalogVerifier
     /**
      * One pass over the table counts what is missing; only when something is, a second query names the first products.
      * A brand or a description is missing as NULL, as an empty text and as a text without a visible character (T3), a
-     * list of parameters as an empty one, and a parameter as an entry without a name or a value of that kind.
+     * list of parameters as an empty one, and a parameter as an entry that is no object or whose name or value
+     * is no JSON string (a number, a boolean, an object, an array, JSON null, a missing key) or is a text of that kind.
      *
      * @param list<string> $seedSlugs
      *
@@ -156,9 +157,9 @@ final readonly class CatalogVerifier
             'no_description' => ['A generated product has no description', BlankText::missing('description', $visible)],
             'no_parameters' => ['A generated product has no parameters', "(parameters = '[]'::jsonb OR jsonb_typeof(parameters) <> 'array')"],
             'blank_parameter' => ['A generated product has a parameter without a name or a value', \sprintf(
-                "(CASE WHEN jsonb_typeof(parameters) = 'array' THEN EXISTS (SELECT 1 FROM jsonb_array_elements(parameters) AS parameter(entry) WHERE jsonb_typeof(parameter.entry) <> 'object' OR %s OR %s) ELSE false END)",
-                BlankText::missing("parameter.entry ->> 'name'", $visible),
-                BlankText::missing("parameter.entry ->> 'value'", $visible),
+                "(CASE WHEN jsonb_typeof(parameters) = 'array' THEN EXISTS (SELECT 1 FROM jsonb_array_elements(parameters) AS parameter(entry) WHERE jsonb_typeof(parameter.entry) IS DISTINCT FROM 'object' OR %s OR %s) ELSE false END)",
+                self::blankJsonText('parameter.entry', 'name', $visible),
+                self::blankJsonText('parameter.entry', 'value', $visible),
             )],
         ];
         $counts = [];
@@ -184,6 +185,21 @@ final readonly class CatalogVerifier
         }
 
         return $violations;
+    }
+
+    /**
+     * The key of a JSON object holds no text: it is no JSON string (->> would read a number or a boolean as a visible text,
+     * and a missing key is SQL NULL, which a plain <> does not count, IS DISTINCT FROM does), or it is a string without a
+     * visible character.
+     */
+    private static function blankJsonText(string $object, string $key, string $quotedPattern): string
+    {
+        return \sprintf(
+            "(jsonb_typeof(%s -> '%s') IS DISTINCT FROM 'string' OR %s)",
+            $object,
+            $key,
+            BlankText::missing(\sprintf("%s ->> '%s'", $object, $key), $quotedPattern),
+        );
     }
 
     /**

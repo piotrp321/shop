@@ -7,6 +7,7 @@ namespace App\Catalog\Infrastructure\Demo;
 use App\Catalog\Application\Demo\DemoCatalog;
 use App\Catalog\Application\Demo\DemoCategory;
 use App\Catalog\Application\Demo\DemoProduct;
+use App\Catalog\Domain\Product\ProductParameter;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\VariantKey;
 use App\Catalog\Domain\Product\VariantValues;
@@ -198,7 +199,7 @@ final readonly class DemoCatalogExpander
 
     private function nameKey(string $name): string
     {
-        return mb_strtolower(trim($name));
+        return ProductParameter::keyOfName($name);
     }
 
     /**

@@ -37,6 +37,9 @@ final readonly class SaveProductWithoutTheSkuCheckHandler
 
     public function __invoke(SaveProductWithoutTheSkuCheck $message): void
     {
+        if ($message->delayMilliseconds > 0) {
+            usleep($message->delayMilliseconds * 1000);
+        }
         $now = new \DateTimeImmutable();
         $variants = [];
         foreach ($message->skus as $index => $sku) {
