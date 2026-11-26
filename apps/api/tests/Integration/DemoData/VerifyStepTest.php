@@ -158,6 +158,9 @@ final class VerifyStepTest extends KernelTestCase
         yield 'a parameter with a JSON null for a name' => [$withParameters('[{"name":null,"value":"2,4 kg"}]'), $parameter];
         yield 'a parameter with a JSON null for a value' => [$withParameters('[{"name":"Waga","value":null}]'), $parameter];
         yield 'a parameter without the key of a name' => [$withParameters('[{"value":"2,4 kg"}]'), $parameter];
+        yield 'parameters as an object' => [$withParameters('{}'), 'A generated product has no parameters'];
+        yield 'parameters as a JSON null' => [$withParameters('null'), 'A generated product has no parameters'];
+        yield 'a parameter that is no object' => [$withParameters('[5]'), $parameter];
     }
 
     #[DataProvider('spoiledContent')]

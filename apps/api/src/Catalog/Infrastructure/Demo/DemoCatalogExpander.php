@@ -167,7 +167,7 @@ final readonly class DemoCatalogExpander
     }
 
     /**
-     * The parameters of the type; one of the model with the same name (trimmed, without regard to case) takes its place,
+     * The parameters of the type; one of the model with the same name (by the key of the domain, ProductParameter::keyOfName) takes its place,
      * the others follow. A name repeated within the parameters of the model, or of the type, stays repeated for the
      * domain to refuse.
      *

@@ -354,8 +354,9 @@ stron w pamięci, a nie zwiększa jej zużycia.
   co przed etapem identyfikatory, slugi, nazwy, krótkie opisy, warianty i ceny, a nowe pola są deterministyczne
   i niezależne od liczby procesów.
 - `COPY` dostaje nowe kolumny (`CatalogLoader`); `demo-data:verify` sprawdza, że żaden wygenerowany produkt nie ma
-  marki, opisu ani parametrów (brak to `NULL`, pusty tekst albo tekst bez znaku widocznego według T3; parametr bez nazwy
-  lub wartości też jest naruszeniem) i żaden wygenerowany wariant nie jest bez SKU albo EAN (ta sama definicja braku).
+  marki, opisu ani parametrów (brak to `NULL`, pusty tekst albo tekst bez znaku widocznego według T3; parametry, które nie
+  są niepustą tablicą JSON, i parametr, który nie jest obiektem z nazwą i wartością będącymi tekstem JSON ze znakiem
+  widocznym, też są naruszeniem) i żaden wygenerowany wariant nie jest bez SKU albo EAN (ta sama definicja braku).
 
 ## Skala i dane na serwerze
 
@@ -420,6 +421,8 @@ Etap nie potwierdza działania przy 10 mln produktów: weryfikacja skali należy
 ## Wdrożenie i zgodność wersji
 
 - Migracje, bez zmian compose i chartu.
+- W trakcie wdrożenia nie edytuje się wariantów w panelu: stare pody API odtwarzają je bez SKU i EAN (ryzyko przyjęte
+  na etapie demo, „Skala i dane na serwerze”, p. 2).
 - Treść zapisu produktu zyskuje wymagane klucze. Panel otwarty sprzed wdrożenia dostaje przy zapisie 422 przy nowych
   polach i nie nadpisuje danych; po odświeżeniu działa. Na etapie demo bez działań.
 - Odpowiedź szczegółów produktu w Varnishu sprzed wdrożenia nie ma nowych kluczy; wdrożenie kończy się zadaniem
