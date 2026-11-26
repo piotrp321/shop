@@ -20,7 +20,8 @@ product pages as store pages and API calls. Reading the data touches only listin
 category tree and the sitemap (not cached), never a product page of the mix.
 
 run, single: every address once (cold), then at once again (warm). open: an open model, requests leave at a constant rate
-whatever the earlier ones do, each address used once; a request that left more than 100 ms late is a failure. burst: N
+whatever the earlier ones do, each address used once; a request that left more than 100 ms late is a failure; the run stops
+sending once more than 20% of at least 20 finished requests failed (exit 1). burst: N
 addresses released together, rounds apart. Every sample keeps the status, the curl timings (DNS, TCP connect, TLS, first
 byte, total), the cache headers and the contract check.
 
@@ -148,9 +149,13 @@ def build_urls(args):
 
     kinds = ["home", "home_deep", "department", "department_deep", "leaf", "leaf_filter", "phrase", "phrase_deep", "phrase_filter"]
     attempts = 0
-    while sum(1 for e in entries if e["target"] == "store") < args.listings and attempts < args.listings * 20:
+    made = 0
+    while made < args.listings and attempts < args.listings * 20:
+        kind = kinds[attempts % len(kinds)]
         attempts += 1
-        add(kinds[len(entries) // 2 % len(kinds)], *listing(kinds[len(entries) // 2 % len(kinds)]))
+        made += add(kind, *listing(kind))
+    if made < args.listings:
+        fail(f"only {made} different listings of {args.listings} after {attempts} tries; the data has too few categories or phrases")
 
     chunks = [c["key"] for c in api_json(args.api, "/api/v1/sitemap/product-chunks")["chunks"]]
     if not chunks:
@@ -254,6 +259,12 @@ def run(args):
             for i, entry in enumerate(entries[:count]):
                 at = start + i / args.rate
                 time.sleep(max(0.0, at - time.monotonic()))
+                with lock:
+                    failed = sum(1 for s in samples if not s["ok"])
+                    done_count = len(samples)
+                if done_count >= 20 and failed > 0.2 * done_count:
+                    print(f"baseline: stopped after {i} of {count} requests: {failed} of {done_count} finished ones failed (more than 20%)", file=sys.stderr)
+                    break
                 thread = threading.Thread(target=lambda e=entry, a=at: record(fetch(base[e["target"]], e, f"open-{args.rate}", a)))
                 thread.start()
                 threads.append(thread)
@@ -293,20 +304,27 @@ def report(args):
         with open(args.samples) as file:
             for line in file:
                 s = json.loads(line)
-                cached = any(s["headers"].get(h, "").upper().startswith("HIT") for h in ("x-cache", "x-nextjs-cache", "cf-cache-status"))
-                groups.setdefault((s["label"], s["target"], s["kind"]), []).append((s, cached))
+                heads = s["headers"]
+                values = [heads.get(h, "").upper() for h in ("x-cache", "x-nextjs-cache", "cf-cache-status")]
+                state = "hit" if any(v.startswith(("HIT", "STALE")) for v in values) else "miss" if any(v.startswith("MISS") for v in values) else "unconfirmed"
+                groups.setdefault((s["label"], s["target"], s["kind"]), []).append((s, state))
     except (OSError, ValueError) as error:
         fail(f"cannot read {args.samples}: {error}")
-    print("label\ttarget\tkind\tn\tfull\tcold_hit\tp50\tp95\tp99\tmax\tserver_est_p50\tserver_est_p95\trtt_p50\tstatuses")
+    # Percentiles of the cold labels leave out the samples that a cache answered (hit); a sample whose headers name no cache
+    # state (unconfirmed: the store listing renders on every request and shows no state of the Varnish behind it) stays in
+    # and is counted in its column.
+    print("label\ttarget\tkind\tn\tfull\tcache_hit_excluded\tunconfirmed\tp50\tp95\tp99\tmax\tserver_est_p50\tserver_est_p95\trtt_p50\tstatuses")
     for (label, target, kind), rows in sorted(groups.items()):
-        full = [s for s, _ in rows if s["ok"]]
+        warm = label == "warm"
+        full = [s for s, state in rows if s["ok"] and (warm or state != "hit")]
         statuses = {}
         for s, _ in rows:
             statuses[s["status"]] = statuses.get(s["status"], 0) + 1
         totals = [s["total"] for s in full]
         est = [s["server_est"] for s in full]
-        hits = sum(1 for _, c in rows if c) if label != "warm" else "-"
-        print("\t".join(str(v) for v in (label, target, kind, len(rows), len(full), hits, pct(totals, 50), pct(totals, 95), pct(totals, 99),
+        hits = "-" if warm else sum(1 for s, state in rows if s["ok"] and state == "hit")
+        unconfirmed = "-" if warm else sum(1 for s, state in rows if s["ok"] and state == "unconfirmed")
+        print("\t".join(str(v) for v in (label, target, kind, len(rows), len(full), hits, unconfirmed, pct(totals, 50), pct(totals, 95), pct(totals, 99),
                                           pct(totals, 100), pct(est, 50), pct(est, 95), pct([s["rtt"] for s, _ in rows if "rtt" in s], 50), statuses)))
 
 
