@@ -17,7 +17,8 @@ i specyfikacjach funkcji.
 | PERF-2 etap B | nie rozpoczęty; gotowy do przekazania nowej sesji (start: opis PERF-2, „Start etapu B”) |
 | PERF-0 | w toku: W1–W20 zaakceptowane jako cel, zestaw benchmarków `load/baseline.py`; lokalny B5 na `medium` przyjęty jako częściowa linia bazowa; pomiar na `server` po zakończeniu generowania i otwarciu sklepu przez właściciela |
 | PERF-7 | specyfikacja i plan w `docs/features/admin-queries/` zaakceptowane; start po PERF-0 i zatwierdzeniu W1–W20; warianty wybiera zadanie 1, zatwierdza właściciel |
-| PERF-1, PERF-3 … PERF-6, PERF-8, PERF-9 | nie rozpoczęte |
+| PERF-1 | specyfikacja i plan w `docs/features/runtime-config/` zaakceptowane 2026-11-26; start po PERF-0 w osobnej sesji |
+| PERF-3 … PERF-6, PERF-8, PERF-9 | nie rozpoczęte |
 
 ## Zasady programu (decyzje właściciela)
 
