@@ -7,10 +7,11 @@ uzasadnienie liczbowe albo regułę z dokumentacji technologii; reszta zostaje d
 
 Podstawa: audyt `docs/reports/performance-audit-2026-11-25.md` (P4, P5, P14 i „Średnie i niskie”), raporty obszarów
 `performance-audit-2026-11-25/findings/infra.md` i `postgres.md`, raport generowania `medium` na worf.pl
-`docs/reports/demo-scale-medium-worf-2026-11-20.md`, pomiar #928 `docs/reports/search-shards-worf-2026-11-25.md`.
-Twierdzenia o kodzie dotyczą `main` `ef6f6473`. Oznaczenia: **[PERF-0]** decyzja wymaga wyniku linii bazowej,
-**[server]** wymaga danych z generowania profilu `server` na worf.pl, **[PERF-2A]** wymaga wyniku eksperymentu modeli
-wyszukiwania.
+`docs/reports/demo-scale-medium-worf-2026-11-20.md`, pomiar #928 `docs/reports/search-shards-worf-2026-11-25.md`,
+raport etapu A PERF-2 `docs/reports/perf-2-search-model-2026-11-25.md`. Twierdzenia o kodzie dotyczą `main`
+`9d061e73`. Oznaczenia: **[PERF-0]** decyzja wymaga wyniku linii bazowej, **[server]** wymaga danych z generowania
+profilu `server` na worf.pl, **[PERF-2B]** wymaga pomiaru Elasticsearcha z kryterium 2 etapu B PERF-2 (model R,
+1 shard).
 
 Wymagania programu, które epik zamyka: W15 (zasoby), warunek „zapytanie ponad limit czasu jest przerywane i zwalnia
 wątek”, W3, W5 i W6 przed i po; ADR z liczbami.
@@ -23,28 +24,32 @@ Zakres: `infra/k8s/charts/shop`, `infra/k8s/environments`, `infra/k8s/tests`, `i
 
 | Poza PERF-1 | Epik |
 |---|---|
-| liczba shardów, mapping, zapytania, request cache Elasticsearcha | PERF-2 |
+| linia bazowa W1–W20, zasoby `server` z Grafany, wynik generowania i reindeksu `server`; PERF-1 ich nie powtarza | PERF-0 |
+| model, mapping, liczba shardów, zapytania, request cache i `refresh_interval` Elasticsearcha; pomiar sterty, pamięci i gorących danych modelu R przy docelowym limicie (kryterium 2 etapu B), z którego PERF-1 ustala limit i stertę | PERF-2 |
 | `max_wait_time` FrankenPHP, pule i kolejki wątków Elasticsearcha, limit współbieżności wyszukiwarki, grace, purge i obsługa 503 w Varnishu, limit czasu w sklepie, `inFlightReq` Traefika | PERF-3 |
 | tryb worker FrankenPHP, trwałe połączenia z bazą | PERF-4 |
 | repliki sklepu i API | PERF-5 |
-| przetwarzanie wsadowe, równoległy reindeks, usuwanie starego indeksu po zamianie aliasu | PERF-6 |
-| plany zapytań panelu i mapy strony | PERF-7 |
+| przetwarzanie wsadowe, równoległy reindeks (`worker-indexing`, `docs/features/async-indexing/`), usuwanie starego indeksu po zamianie aliasu | PERF-6 |
+| plany zapytań i nowe indeksy panelu i mapy strony (ich rozmiar wchodzi w gorące dane D2) | PERF-7 |
 | indeksy zapisu, autovacuum per tabela, retencja tabel kolejek i historii | PERF-8 |
 
-PERF-1 nie zmienia liczby wątków FrankenPHP (zapisuje ją jawnie, Z5) ani pul wątków Elasticsearcha.
+PERF-1 nie zmienia liczby wątków FrankenPHP (zapisuje ją jawnie, Z5) ani pul wątków Elasticsearcha. Repliki
+`worker-indexing` liczy w budżecie pamięci i połączeń z wartością z chartu. PERF-7 korzysta ze `statement_timeout`
+i odpowiedzi 503 z PERF-1. Chart i compose zmieniają też PERF-2 B i ASYNC-INDEXING: kolejność merge'ów wspólnych plików
+(`values.yaml`, `docker-compose.yml`) sesje uzgadniają przed zadaniami 2 i 4.
 
 ## Stan wyjściowy
 
 | Obszar | Dziś | Dowód |
 |---|---|---|
-| Węzeł | 22,9 GiB, `allocatable` = pojemność (brak `system-reserved`), bez swapu; system, k3s i jądro ok. 2,1 GiB; pody ok. 5,9 GiB; dostępne minimum 14,0 GiB z 7 dni; cache plików węzła 13,8 GiB | Grafana 2026-11-25 (audyt 2.6, sekcja 4; `server-bootstrap.sh` bez rezerw) |
+| Węzeł | 22,9 GiB, `allocatable` = pojemność (brak `system-reserved`, próg eksmisji domyślny 100 Mi), bez swapu; system, k3s i jądro ok. 2,1 GiB; pody ok. 5,9 GiB; dostępne minimum 14,0 GiB z 7 dni; cache plików węzła 13,8 GiB | Grafana 2026-11-25 (audyt 2.6, sekcja 4; `server-bootstrap.sh` bez rezerw) |
 | Suma limitów `prod` | sklep 16,9 GiB + monitoring 1,4 GiB = 18,3 GiB z 20 GiB dopuszczonych testem; requesty CPU 4,9 + 0,36 z 7 vCPU | `environments/prod/values.yaml`, `test_workloads.py` `test_prod_fits_the_server` |
 | Limity CPU | brak; 0 throttlingu, szczyt CPU węzła 64%, iowait do 18% | Grafana (audyt 2.6) |
-| Elasticsearch | sterta 2 GiB w limicie 4 GiB, request 1 vCPU; proces 2885 MiB, working set do 3589 MiB (88%) przy indeksie 1 GB; na cache indeksu zostaje ok. 1–1,5 GiB | #928, audyt P5 |
-| Postgres | wyłącznie wartości domyślne PG 18 (`shared_buffers` 128 MB, `work_mem` 4 MB, `max_wal_size` 1 GB, `jit` on, bez `pg_stat_statements`, bez limitów czasu); limit 2 GiB; proces do 70 MiB, reszta limitu to cache plików; `/dev/shm` 64 MB; `max_connections` 100 | audyt P4, `postgres.md` K1–K3 |
+| Elasticsearch | sterta 2 GiB w limicie 4 GiB, request 1 vCPU; working set do 3589 MiB (88%) przy indeksie 1 GB. Model R przy 10 mln: gorące dane ok. 4,5 GB [SZACUNEK etapu A], nie mieszczą się w limicie 4 GiB | #928, audyt P5, raport etapu A sekcja 8 |
+| Postgres | wyłącznie wartości domyślne PG 18 (`shared_buffers` 128 MB, `work_mem` 4 MB, `max_wal_size` 1 GB, `jit` on, bez `pg_stat_statements`, bez limitów czasu); limit 2 GiB; proces do 70 MiB, reszta limitu to cache plików; `/dev/shm` 64 MB; `max_connections` 100; kopia przez `pg_dump`, bez archiwizacji WAL i slotów | audyt P4, `postgres.md` K1–K3, `backup.sh` |
 | Postgres przy generowaniu `medium` | 2,52 rdzenia, working set 357 MiB | raport z 2026-11-20 |
 | API | tryb klasyczny, `num_threads` domyślne 2 × CPU = 16 (w k3d `load` 20), `memory_limit` 256M × 16 = 4 GiB przy limicie 2 GiB; 87 MiB w spoczynku | `Caddyfile`, `docker/php/conf.d`, raport z 2026-11-20 |
-| Redis | bez `maxmemory`, RDB domyślne, limit 512 MiB | `templates/redis.yaml` |
+| Redis | bez `maxmemory` (polityka domyślna `noeviction` nie działa bez limitu), RDB domyślne, limit 512 MiB; zastosowania w sekcji „Redis” | `templates/redis.yaml`, kod (sekcja „Redis”) |
 | Varnish | `malloc` 100 MB (domyślne obrazu), Transient bez limitu, limit poda 512 MiB | `templates/varnish.yaml` |
 | Keycloak | sterta 512m–1g w 2 GiB, pula bazy domyślnie do 100 połączeń, 3,9 rdzenia przy generatorze kont | `templates/keycloak.yaml`, audyt |
 | imgproxy | `IMGPROXY_WORKERS` domyślne 2 × CPU = 16 przy źródłach do 50 MP i limicie 1 GiB | `templates/imgproxy.yaml` |
@@ -52,19 +57,44 @@ PERF-1 nie zmienia liczby wątków FrankenPHP (zapisuje ją jawnie, Z5) ani pul 
 
 ## Zasady konfiguracji
 
-**Z1. Pamięć: request to pamięć nieodzyskiwalna, limit to request plus cache plików.** Cgroup v2 wlicza cache plików
-do limitu kontenera i odzyskuje go przy limicie, zanim dojdzie do OOM. OOM grozi tylko wtedy, gdy pamięć
-nieodzyskiwalna (anonimowa, `shmem`: także `shared_buffers` Postgresa, bo węzeł nie ma swapu) przekroczy limit
-kontenera albo pamięć węzła. Dlatego:
+**Z1. Pamięć: request to pamięć nieodzyskiwalna, limit to request plus zapas, a dla Postgresa i Elasticsearcha także
+cache plików.** Kierunek przyjęty przez właściciela 2026-11-26; reguła węzła to decyzja **D1**.
 
-- `requests.memory` każdej usługi = zmierzona pamięć nieodzyskiwalna w szczycie (`anon` + `shmem` z `memory.stat`
-  albo `container_memory_rss`) z zapasem 25%, nie mniej niż wynika z konfiguracji (sterta JVM, `shared_buffers`);
-- `limits.memory` = request + przeznaczony cache plików; cache dostają tylko Postgres i Elasticsearch, pozostałe usługi
-  mają limit blisko requestu (zapas na skoki);
-- suma requestów pamięci + system (zmierzony, z zapasem) ≤ pamięć węzła; to jest warunek braku OOM węzła i zastępuje
-  w teście warunek „suma limitów ≤ 20 GiB”;
-- suma limitów może przekroczyć pamięć węzła wyłącznie o cache plików Postgresa i Elasticsearcha. To nadprzydział
-  limitów, nie pamięci: przy braku pamięci jądro odbiera cache wszystkim cgroupom. Decyzja **D1**.
+Fakty, na których stoi zasada (cgroup v2, dokumentacja jądra i Kubernetesa):
+
+- `memory.current` kontenera obejmuje pamięć anonimową, `shmem` (tmpfs, `/dev/shm`, `shared_buffers` Postgresa), cache
+  plików i pamięć jądra przypisaną do cgroupy (slab, bufory gniazd, tablice stron). Przy limicie jądro odzyskuje cache
+  plików i odzyskiwalny slab; OOM następuje, gdy reszta nie mieści się w limicie. Bez swapu `shmem` jest nieodzyskiwalny.
+- cAdvisor na cgroup v2: `container_memory_rss` = `anon` (bez `shmem`), `container_memory_cache` = `file` (z `shmem`),
+  `container_memory_working_set_bytes` = `memory.current` − `inactive_file` (z aktywnym cache i pamięcią jądra). Żadna
+  seria nie podaje pamięci nieodzyskiwalnej wprost: lokalnie liczymy ją z `memory.stat` (`anon` + `shmem` +
+  `slab_unreclaimable` + `kernel_stack` + `pagetables` + `sock`), na serwerze jako `rss` + `shmem` znany z konfiguracji
+  (`shared_buffers`, zajętość `/dev/shm`) + zmierzony lokalnie narzut jądra. Zadanie 1 porównuje obie metody na tym
+  samym kontenerze.
+- Kubelet liczy `memory.available` węzła z `working_set`, więc aktywny cache plików liczy się jako zajęty. Poniżej progu
+  `evictionHard` eksmituje najpierw pody, których zużycie najbardziej przekracza request, zanim jądro odbierze im cache.
+  Pod z dużym cache ponad requestem (Postgres, Elasticsearch) jest pierwszym kandydatem. To udokumentowane zachowanie
+  Kubernetesa (node-pressure eviction).
+
+Reguła (rekomendacja D1, wariant A):
+
+- `requests.memory` = szczyt pamięci nieodzyskiwalnej przy jednoczesnym obciążeniu usług (mieszanka nominalna z zapisami
+  i jednocześnie generator albo reindeks), z zapasem 25%, nie mniej niż wynika z konfiguracji (sterta JVM,
+  `shared_buffers`, `maintenance_work_mem` × procesy);
+- `limits.memory` = request + zmierzone chwilowe alokacje (najcięższe żądania naraz, fork RDB); Postgres
+  i Elasticsearch dodatkowo przyznany cache plików;
+- warunek węzła (test chartu): suma **limitów** wszystkich podów + system (k3s, jądro poza cgroupami podów, Argo CD,
+  kube-system; zmierzony) + rezerwa węzła (próg eksmisji i zapas, kandydat 1 GiB) ≤ pamięć węzła. Wtedy nawet wszystkie
+  usługi naraz na swoich limitach mieszczą się w pamięci, każda cgroupa odzyskuje własny cache przy swoim limicie
+  i węzeł nie dochodzi do progu eksmisji. Suma requestów sama nie gwarantuje braku OOM, bo nie obejmuje chwilowych
+  alokacji usług działających naraz.
+
+Wariant B (nadprzydział): suma limitów przekracza pamięć węzła o cache Postgresa i Elasticsearcha, żeby jeden mógł
+zająć cache niewykorzystany przez drugi. Przy pełnej pamięci węzła kubelet eksmituje wtedy Postgresa albo
+Elasticsearcha. Wariant wymaga rezerw kubeleta (`system-reserved`, `kube-reserved`), żeby limit cgroupy `kubepods`
+leżał poniżej progu eksmisji i jądro odzyskiwało cache wcześniej [do potwierdzenia testem], czyli zmiany k3s celem
+`bootstrap` za zgodą właściciela, oraz biegu W14 na `server` bez eksmisji. Stosujemy go tylko wtedy, gdy wariant A po
+pomiarze na `server` nie daje dość cache (odsetek trafień bufora, iowait przy W1 i W3).
 
 **Z2. CPU: requesty jako wagi pierwszeństwa, bez limitów na ścieżce żądania.** Bez limitów CPU nie ma throttlingu, a przy
 rywalizacji udział w CPU wyznacza `cpu.weight` z requestu. Usługi ścieżki żądania (Elasticsearch, Postgres, API, sklep)
@@ -84,9 +114,9 @@ w Varnishu).
 **Z5. Jawne wartości tam, gdzie domyślne zależą od liczby CPU.** `num_threads` FrankenPHP i `IMGPROXY_WORKERS` są
 zapisane w konfiguracji, więc `prod`, `load` (k3d z ≥ 10 CPU) i compose działają tak samo.
 
-**Z6. Bez nowych usług i własnych narzędzi.** Bez PgBouncera, huge pages, eksportera Varnisha, własnych skryptów
-diagnostycznych. Pomiar wewnętrzny natywnymi widokami (`pg_stat_*`, `_nodes/stats`, `varnishstat`, `memory.stat`)
-lokalnie i natywnymi komponentami Alloy na serwerze (**D7**).
+**Z6. Bez nowych usług i własnych narzędzi.** Bez PgBouncera, huge pages, eksportera Varnisha i Redisa, własnych
+skryptów diagnostycznych. Pomiar natywnymi widokami (`pg_stat_*`, `_nodes/stats`, `varnishstat`, `memory.stat`,
+`INFO`) lokalnie i natywnymi komponentami Alloy na serwerze (**D7**).
 
 ## Ustawienia
 
@@ -98,11 +128,14 @@ wartość po wskazanym pomiarze; podana wartość to kandydat, punkt startu pomi
 | Ustawienie | Dziś | Proponowane | Uzasadnienie | Kiedy |
 |---|---|---|---|---|
 | `shared_preload_libraries` | – | `pg_stat_statements` | jedyne natywne źródło kosztu zapytań bez logowania parametrów; warunek pomiaru W3, W5, W6 | teraz |
+| `pg_stat_statements.track_utility` | on | off | polecenia użytkowe (np. `ALTER ROLE … PASSWORD`) mogą trafić do widoku z literałami; koszt zapytań ich nie potrzebuje | teraz |
 | `track_io_timing` | off | on | czas odczytów w `pg_stat_statements` i `pg_stat_database` odróżnia brak pamięci od kosztu CPU; narzut zależy od zegara, zadanie sprawdza go `pg_test_timing` lokalnie | teraz |
-| `log_lock_waits` | off | on | blokady dłuższe niż `deadlock_timeout` (1 s) widoczne w logu; log nie zawiera wartości parametrów | teraz |
-| `log_min_duration_statement` | -1 | bez zmiany | loguje parametry zapytań (dane osobowe w Loki, wbrew maskowaniu logów O7); źródłem wolnych zapytań jest `pg_stat_statements` | – |
+| `log_lock_waits` | off | on | blokady dłuższe niż `deadlock_timeout` (1 s) widoczne w logu; sam komunikat ma tylko numery procesów i typ blokady | teraz |
+| `log_error_verbosity` | default | `terse` | bez linii DETAIL, HINT, QUERY i CONTEXT, które niosą wartości kluczy, wiersze `COPY` i treść zapytań zakleszczenia (sekcja „Dane w logach i metrykach”) | teraz |
+| `log_min_error_statement` | `error` | `panic` | bez tekstu zapytania przy błędzie; zapytanie identyfikuje `pg_stat_statements` | teraz |
+| `log_min_duration_statement` | -1 | bez zmiany | loguje parametry zapytań; źródłem wolnych zapytań jest `pg_stat_statements` | – |
 | `wal_compression` | off | `lz4` | mniej zapisu WAL z pełnymi obrazami stron przy generatorze i reindeksie, mniej I/O na wspólnym dysku | teraz |
-| `max_wal_size` | 1 GB | kandydat 8 GB | rzadsze checkpointy wymuszone rozmiarem przy generatorze (4 procesy COPY); miara: `pg_stat_checkpointer.num_requested` wobec `num_timed`; zajmuje do tyle dysku | [server] (budżet dysku, D6) |
+| `max_wal_size` | 1 GB | kandydat 8 GB | rzadsze checkpointy wymuszone rozmiarem przy generatorze (4 procesy COPY); miara: `pg_stat_checkpointer.num_requested` wobec `num_timed`. Limit miękki: przy ciężkim zapisie WAL rośnie ponad niego, dopóki checkpoint nie nadąży; budżet dysku liczy zmierzony szczyt `pg_wal` (D6) | [server] |
 | `checkpoint_timeout` | 5 min | kandydat 15 min | razem z `max_wal_size`; dłuższe odtwarzanie po awarii jest dopuszczalne na etapie demo | [server] |
 | `shared_buffers` | 128 MB | kandydat 25% limitu pamięci Postgresa (np. 2 GiB) | gorące indeksy sklepu `server` to ok. 9,5 GB; bufory są `shmem` (nieodzyskiwalne), więc wchodzą w request; reszta gorących danych w cache plików | [PERF-0] [server] (D2) |
 | `effective_cache_size` | 4 GB | `shared_buffers` + cache plików przyznany w limicie | tylko informacja dla planera, musi odpowiadać Z1 | razem z D2 |
@@ -111,12 +144,12 @@ wartość po wskazanym pomiarze; podana wartość to kandydat, punkt startu pomi
 | `jit` | on | decyzja z `pg_stat_statements.jit_*_time` | wyłączamy, jeśli czas kompilacji JIT jest istotną częścią zapytań API; inaczej domyślne | [PERF-0] |
 | `random_page_cost` | 4 | bez zmiany | zmienia plany; zmieniamy tylko po planie `EXPLAIN` pokazującym zły wybór (PERF-7, PERF-8) | – |
 | `max_connections` | 100 | bez zmiany | budżet niżej mieści się z zapasem | – |
-| `/dev/shm` | 64 MB | `emptyDir` `Memory` 1 GiB (chart), `shm_size` (compose) | zapytania równoległe używają `dynamic_shared_memory_type=posix`; za mały segment kończy zapytanie błędem; wlicza się do pamięci poda | teraz |
+| `/dev/shm` | 64 MB | `emptyDir` `Memory` 1 GiB (chart), `shm_size` (compose) | zapytania równoległe używają `dynamic_shared_memory_type=posix`; za mały segment kończy zapytanie błędem; zajętość jest `shmem` poda i wchodzi w request | teraz |
 
 **Budżet połączeń** (zapisany w ADR i w komentarzu `values.yaml`): API 16 (połączenie na żądanie, najwyżej jedno na
-wątek), workery 2, joby cykliczne 3, reindeks albo generator 4, kopia zapasowa 1, eksporter Alloy 1, Keycloak
-`KC_DB_POOL_MAX_SIZE` (kandydat 20; zmierzony szczyt w generatorze kont i przy logowaniach lokalnie), rezerwa
-superużytkownika 3. Razem ok. 50 z 100.
+wątek), workery 2, `worker-indexing` × repliki z chartu, joby cykliczne 3, reindeks albo generator 4, kopia
+zapasowa 1, eksporter Alloy 1, Keycloak `KC_DB_POOL_MAX_SIZE` (kandydat 20; zmierzony szczyt w generatorze kont
+i przy logowaniach lokalnie), rezerwa superużytkownika 3. Razem ok. 50 z 100 przy jednej replice `worker-indexing`.
 
 ### Limity czasu w bazie
 
@@ -144,14 +177,15 @@ superużytkownika 3. Razem ok. 50 z 100.
 
 | Ustawienie | Dziś | Proponowane | Kiedy |
 |---|---|---|---|
-| sterta | 2 GiB (`-Xms2g -Xmx2g`) | najmniejsza, przy której po GC zajętość sterty ≤ 75% i brak wyłączników przy obciążeniu W8 na indeksie `server`; kandydat 2–3 GiB | [PERF-2A] [server] (D3) |
-| limit pamięci | 4 GiB | sterta + pamięć poza stertą (zmierzona) + cache indeksu (D2) | [PERF-0] [server] |
+| sterta | 2 GiB (`-Xms2g -Xmx2g`) | najmniejsza, przy której po GC zajętość sterty ≤ 75% i brak wyłączników przy obciążeniu W8 na indeksie `server`; kandydat 2–3 GiB | [PERF-2B] (D3) |
+| limit pamięci | 4 GiB | sterta + pamięć poza stertą (zmierzona) + cache indeksu (D2) | [PERF-2B] [server] |
 | request CPU | 1 | kandydat 2,5 (Z2) | [PERF-0] |
 | `node.processors`, pule wątków | domyślne | bez zmiany (brak limitu CPU; pule to PERF-3) | – |
 | `bootstrap.memory_lock` | – | bez zmiany (węzeł bez swapu) | – |
 
-Elasticsearch zaleca stertę najwyżej połowę pamięci i resztę dla cache systemu plików; przy limicie kontenera ta
-reszta musi być w limicie (Z1).
+PERF-1 nie mierzy Elasticsearcha osobno: stertę, pamięć poza stertą, gorące dane i odczyty z dysku bierze z pomiaru
+etapu B PERF-2 na worf.pl. Dopóki go nie ma, sterta i limit zostają bez zmian. Elasticsearch zaleca stertę najwyżej
+połowę pamięci i resztę dla cache systemu plików; przy limicie kontenera ta reszta musi być w limicie (Z1).
 
 ### API (FrankenPHP)
 
@@ -163,11 +197,33 @@ reszta musi być w limicie (Z1).
 
 ### Redis
 
-- `maxmemory` kandydat 75% limitu poda, `maxmemory-policy volatile-lru`: przy zapełnieniu Redis usuwa najdawniej
-  używane klucze z TTL (sesje, liczniki limiterów) zamiast zostać zabity przez OOM. Zadanie sprawdza, że każdy klucz
-  sesji, limitera i blokady ma TTL (`redis-cli --scan` + `TTL` lokalnie po scenariuszu logowania).
-- Rozmiar: zmierzony `MEMORY USAGE` sesji × docelowa liczba aktywnych sesji (D5). RDB zostaje, a `fork` przy zapisie
-  wchodzi w zapas limitu (D5).
+Zastosowania (kod `main`; cache OIDC i granic mapy strony są w puli plikowej API, nie w Redisie):
+
+| Klucze | Kto | TTL | Skutek usunięcia |
+|---|---|---|---|
+| `session:<id>` | sklep, sesja klienta | czas życia refresh tokena | wylogowanie |
+| `login:<id>` | sklep, transakcja logowania | 600 s | nieudane logowanie w toku |
+| `login-rate:<klucz>`, blokada odświeżenia tokena | sklep | okno limitu, kilka sekund | otwarcie limitu logowań, podwójne odświeżenie |
+| liczniki limiterów (`cache.rate_limiter`) | API | okno limitera | otwarcie limitu zamówień, płatności, webhooków, koszyków gościa, podglądu kodu |
+| blokady limiterów | API | 5 s | równoległe żądania ponad limit |
+
+Każdy klucz ma TTL, ale żaden nie jest cache: usunięcie dowolnego łamie gwarancję. Dlatego polityka usuwająca
+(`volatile-lru` i każda inna) jest niedopuszczalna.
+
+- `maxmemory-policy noeviction` jawnie i `maxmemory`. Bez `maxmemory` zapełnienie kończy się OOM-kill procesu: znikają
+  wszystkie klucze, a po restarcie wraca ostatni zrzut RDB. Z `maxmemory` Redis odrzuca zapisy, a odczyty działają.
+- Zachowanie aplikacji przy odrzuconym zapisie (z kodu; zadanie 4 sprawdza je testem z małym `maxmemory`): API nie
+  zakłada blokady limitera i przepuszcza żądanie bez limitu z ostrzeżeniem (fail open, ta sama ścieżka co niedziałający
+  Redis, decyzja D7 `hardening`); sklep odpowiada 503 na nowe logowanie, odświeżenie tokena i licznik logowań,
+  a istniejące sesje czyta dalej. Stan ten wykrywa istniejący alert `RateLimitsOff` (CronJob `rate-limit-check`
+  sprawdza zapis).
+- Żadna polityka nie chroni liczników przy zalaniu Redisa kluczami (wiele adresów). Ochroną jest `maxmemory`
+  z dużym zapasem wobec zmierzonego szczytu: `MEMORY USAGE` sesji i kluczy limiterów × docelowa liczba aktywnych
+  sesji i kluczy. **[PERF-0]**
+- RDB zostaje (sesje przeżywają restart). Zapis forkuje proces, a strony zmieniane w trakcie zapisu kopiują się
+  (copy-on-write), w najgorszym razie do rozmiaru danych. Limit poda ≥ 2 × `maxmemory` + narzut (fragmentacja,
+  bufory klientów); szczyt z `INFO` (`rdb_last_cow_size`, `mem_fragmentation_ratio`) w zadaniu 1.
+  `stop-writes-on-bgsave-error yes` zostaje domyślne: nieudany zrzut daje tę samą ścieżkę co `maxmemory`.
 
 ### Varnish
 
@@ -187,41 +243,60 @@ reszta musi być w limicie (Z1).
 
 - Rozmiary PVC w `prod` odpowiadają zmierzonym rozmiarom `server` z zapasem (`local-path` ich nie egzekwuje; to opis
   dla czytelności i przyszłej klasy pamięci). **[server]**
-- Budżet dysku (ADR): system i obrazy, baza, WAL do `max_wal_size`, indeks × 2 przy przebudowie aliasu, kopia
-  zapasowa, Garage. Szczyt ≤ 80% dysku (próg `low` Elasticsearcha to 85%). Jeśli szczyt reindeksu `server` przekracza
-  80%, decyzja **D6**. **[server]**
+- Budżet dysku (ADR): system i obrazy, baza, zmierzony szczyt `pg_wal` z zapasem (nie sama wartość `max_wal_size`),
+  indeks × 2 przy przebudowie aliasu, kopia zapasowa (`pg_dump` na dysku węzła), Garage. Szczyt ≤ 80% dysku (próg
+  `low` Elasticsearcha to 85%). Jeśli szczyt reindeksu `server` przekracza 80%, decyzja **D6**. **[server]**
 
-## Budżet pamięci węzła (kandydat)
+## Dane w logach i metrykach
 
-Liczby nieodzyskiwalne poza Postgresem i Elasticsearchem pochodzą z odczytu Grafany przy `medium`; tabela pokazuje
-metodę i rząd wielkości, nie wartości do wdrożenia. Wartości ustala zadanie 4 z pomiarów linii bazowej.
+- Dziś Postgres loguje błędy z liniami DETAIL (wartości kluczy, np. adres e-mail przy naruszeniu unikalności), CONTEXT
+  (np. wiersz `COPY`) i STATEMENT (tekst zapytania; parametry jako `$n`, wartości tylko w literałach). Alloy usuwa
+  linie zaczynające się od `DETAIL:` i `STATEMENT:` i maskuje `Key (…)=(…)` (`test_log_masking.py`), ale przepuszcza
+  CONTEXT i linie kontynuacji wielowierszowego DETAIL (zakleszczenie: `Process N: <zapytanie>`) oraz STATEMENT.
+- PERF-1 dodaje takie wpisy (`log_lock_waits`, przerwania `statement_timeout`), więc usuwa je u źródła:
+  `log_error_verbosity = terse` i `log_min_error_statement = panic`; `log_parameter_max_length_on_error` zostaje 0
+  (domyślne). Maskowanie Alloy zostaje drugą warstwą bez zmian.
+- `pg_stat_statements` trzyma tekst znormalizowany (stałe jako `$n`); `track_utility = off` wyłącza polecenia użytkowe.
+  Widok czyta tylko rola z `pg_read_all_stats` (eksporter, superużytkownik); tekst zapytań nie trafia do metryk.
+- Eksportery Alloy (D7): `prometheus.exporter.postgres` bez kolektora `stat_statements` i bez tekstu zapytań, DSN
+  z sekretu Kubernetesa jako wartość typu `secret`, rola tylko z `pg_monitor`; `prometheus.exporter.elasticsearch` tylko
+  statystyki klastra i węzła. Etykiety serii to nazwy baz, ról, indeksów i węzłów; lista dozwolonych serii i ich
+  etykiet jest w teście.
 
-| Pozycja | Nieodzyskiwalne (request) | Cache plików w limicie |
+## Budżet pamięci węzła (kandydat, wariant A)
+
+Liczby poza Postgresem i Elasticsearchem pochodzą z odczytu Grafany przy `medium`; tabela pokazuje metodę i rząd
+wielkości, nie wartości do wdrożenia. Wartości ustala zadanie 4 z linii bazowej PERF-0 i pomiaru zadania 1.
+
+| Pozycja | Request (nieodzyskiwalna z zapasem) | Limit |
 |---|---|---|
-| system, k3s, jądro, Argo CD, kube-system | ok. 2,8 GiB (poza podami sklepu) | – |
-| monitoring | ok. 0,7 GiB | – |
-| Elasticsearch: sterta 2–3 GiB + poza stertą ok. 1 GiB | 3–4 GiB | 4–6 GiB |
-| Postgres: `shared_buffers` 2 GiB + procesy + `maintenance_work_mem` | ok. 3 GiB | 6–8 GiB |
-| API, sklep, Keycloak, workery, Redis, RabbitMQ, Varnish, imgproxy, Garage, pozostałe (dziś razem ok. 1,6 GiB) | ok. 4–5 GiB (szczyty pod obciążeniem z zapasem) | – |
-| **Razem** | **ok. 14–15 GiB z 22,9** | **ok. 8 GiB z pozostałych** |
+| system, k3s, jądro, Argo CD, kube-system | – | ok. 2,8 GiB (zmierzone, poza podami sklepu) |
+| rezerwa węzła | – | 1 GiB |
+| monitoring | ok. 0,7 GiB | ok. 1,4 GiB |
+| API, sklep, Keycloak, workery, Redis, RabbitMQ, Varnish, imgproxy, Garage, pozostałe (dziś zużywają razem ok. 1,6 GiB) | ok. 4 GiB | ok. 5 GiB (z chwilowymi alokacjami) |
+| Postgres: `shared_buffers` 2 GiB + procesy + `maintenance_work_mem` | ok. 3 GiB | request + cache plików |
+| Elasticsearch: sterta 2–3 GiB + poza stertą ok. 1 GiB | 3–4 GiB | request + cache plików |
+| **Razem** | | **≤ 22,9 GiB; Postgres i Elasticsearch dostają łącznie ok. 6 GiB cache** |
 
-Wniosek wstępny: przy Z1 Postgres i Elasticsearch mogą dostać łącznie ok. 10 GiB na bufory i cache plików wobec
-ok. 13,5 GB gorących danych `server` szacowanych w audycie (9,5 GB indeksów sklepu w Postgresie, ok. 4 GB indeksu);
-dziś dostają ok. 3,5 GiB. Czy to wystarcza, pokażą `blks_hit` / `blks_read`
-i iowait przy W3 i W1 na `server`. Jeśli nie, decyzja należy do właściciela (program, zasada 7).
+Wniosek wstępny: na bufory i cache plików Postgres i Elasticsearch dostają łącznie ok. 8 GiB (`shared_buffers`
+i cache) wobec ok. 3,5 GiB dziś i ok. 14 GB gorących danych `server` (9,5 GB indeksów sklepu w Postgresie z audytu,
+ok. 4,5 GB indeksu w modelu R). Czy to wystarcza, pokażą `blks_hit` / `blks_read` i iowait przy W3 i W1 na `server`.
+Jeśli nie, wariant B albo decyzja właściciela (program, zasada 7).
 
 ## Ryzyka
 
 | Ryzyko | Mechanizm | Zabezpieczenie i pomiar |
 |---|---|---|
-| OOM węzła | suma pamięci nieodzyskiwalnej > pamięć | Z1: test sumy requestów; W14 (2 h) bez OOM; `kube_pod_container_status_last_terminated_reason` |
-| OOM kontenera | sterta JVM, `work_mem` × połączenia, 16 × `memory_limit`, Redis bez `maxmemory`, imgproxy 16 × 50 MP | requesty z pomiaru szczytu, `maxmemory`, `IMGPROXY_WORKERS`, pomiar równoległych ciężkich żądań |
-| eksmisja przez kubelet | kubelet liczy aktywny cache plików do `working_set`; przy `memory.available` < 100 Mi wybiera pod najbardziej ponad requestem, czyli Elasticsearch albo Postgres z dużym cache [HIPOTEZA] | W14 bez eksmisji; jeśli wystąpi: rezerwy i próg eksmisji k3s w `server-bootstrap.sh` (cel `bootstrap`, zgoda właściciela) |
-| W15 a cache plików | W15 mierzy pamięć kontenera wobec limitu; `working_set` obejmuje aktywny cache, więc pełny cache (cel Z1) wygląda jak przekroczenie | **D4**: W15 dla pamięci liczone z pamięci nieodzyskiwalnej |
+| OOM węzła | pamięć nieodzyskiwalna i chwilowe alokacje usług działających naraz, pamięć jądra i system > pamięć węzła | Z1 wariant A: suma limitów + system + rezerwa ≤ pamięć węzła (test); W14 na `server` bez OOM |
+| OOM kontenera | sterta JVM, `work_mem` × połączenia, 16 × `memory_limit`, imgproxy 16 × 50 MP, fork RDB | requesty i limity z pomiaru szczytu, `maxmemory` z zapasem na copy-on-write, `IMGPROXY_WORKERS` |
+| eksmisja przez kubelet | udokumentowane: `working_set` z aktywnym cache liczy się jako zajęty; pod najbardziej ponad requestem idzie pierwszy | wariant A: cache zawsze w limitach mieszczących się w węźle; wariant B tylko z rezerwami kubeleta; W14 na `server` bez eksmisji |
+| W15 a cache plików | `working_set` obejmuje aktywny cache, więc pełny cache (cel Z1) wygląda jak przekroczenie | **D4** |
+| Redis pełny | odrzucone zapisy: limity API otwarte, logowania 503 | `maxmemory` z zapasem, `noeviction`, alert `RateLimitsOff` |
+| dane osobowe w logach | DETAIL, CONTEXT i STATEMENT Postgresa | `terse`, `log_min_error_statement = panic`, maskowanie Alloy |
 | blokady | zabity proces w transakcji zamówienia trzyma `FOR UPDATE` | `idle_in_transaction_session_timeout`; `log_lock_waits` |
 | przeciążenie bazy | wolne zapytanie panelu trzyma wątek API i backend | `statement_timeout` dla API; 503 zamiast 500 |
 | `too many clients` | pula Keycloaka do 100 przy `max_connections` 100 | `KC_DB_POOL_MAX_SIZE`, budżet połączeń |
-| dysk | WAL do `max_wal_size`, indeks × 2 przy reindeksie | budżet dysku, alert `NodeDiskFull`, strażnik generatora |
+| dysk | WAL ponad `max_wal_size` przy ciężkim zapisie, indeks × 2 przy reindeksie | budżet ze zmierzonego szczytu, alert `NodeDiskFull`, strażnik generatora |
 | restart Postgresa przy wdrożeniu | `shared_preload_libraries` i `/dev/shm` wymagają restartu | dopuszczalne na etapie demo; wdrożenie za zgodą |
 
 ## Czego nie robimy (uproszczenia)
@@ -231,32 +306,39 @@ i iowait przy W3 i W1 na `server`. Jeśli nie, decyzja należy do właściciela 
 - Bez `log_min_duration_statement` i bez zmian `random_page_cost` i `work_mem` bez pomiaru.
 - Bez pliku `postgresql.conf` w ConfigMapie dla wartości pamięci: jeden plik dla ustawień stałych, `-c` dla zależnych
   od środowiska.
-- Bez zmian k3s (`system-reserved`, progi eksmisji), dopóki W14 nie pokaże eksmisji.
+- Bez zmian k3s (`system-reserved`, progi eksmisji) w wariancie A.
+- Bez eksportera Redisa i nowego alertu Redisa: stan „Redis nie przyjmuje zapisu” wykrywa `RateLimitsOff`.
+- Bez własnych pomiarów Elasticsearcha i linii bazowej: dane z PERF-2 B i PERF-0.
 
 ## Pomiar
 
-- Na worf.pl tylko to, co program już dopuszcza: żądania GET (W3) i Grafana (W15). Wdrożenie zmian i każda operacja na
-  serwerze za osobną zgodą właściciela.
-- Lokalnie na `medium` (obraz produkcyjny, zasoby `prod`): W3, W5, W6 przed i po, `memory.stat` kontenerów,
-  `pg_stat_database`, `pg_statio_user_indexes`, `pg_stat_statements`, `pg_stat_checkpointer`, `varnishstat`,
-  `_nodes/stats/jvm,breaker`, `redis-cli info memory`. Pomiary lokalne nie biegną równolegle z benchmarkami PERF-2 na
-  tej samej maszynie; sesja epiku uzgadnia okno z właścicielem.
-- Grafana: `container_memory_rss` i `container_memory_cache` (jeśli ich nie ma na liście dozwolonych metryk, zadanie 1
-  je dopisuje; `shared_buffers` Postgresa cAdvisor liczy jako cache, więc dla Postgresa pamięć nieodzyskiwalna to RSS
-  + `shared_buffers`) oraz PSI węzła (`node_pressure_*`), żeby odróżnić rywalizację o CPU i I/O od samego wykorzystania.
+- Linię bazową W1–W20, zasoby `server` z Grafany i wynik generowania `server` bierzemy z raportu PERF-0, a stertę,
+  pamięć i gorące dane Elasticsearcha z etapu B PERF-2. PERF-1 tych pomiarów nie powtarza; pomiar po zmianie używa
+  tych samych poleceń.
+- Lokalnie (`medium`, obraz produkcyjny, zasoby `prod`) tylko to, czego PERF-0 nie zbiera: `memory.stat` kontenerów,
+  `pg_stat_statements`, `pg_stat_database`, `pg_statio_user_indexes`, `pg_stat_checkpointer`, szczyt `pg_wal`,
+  `varnishstat`, `INFO` Redisa. Pomiary lokalne nie biegną równolegle z benchmarkami PERF-2 na tej samej maszynie;
+  sesja epiku uzgadnia okno z właścicielem.
+- Pomiar lokalny na `medium` weryfikuje działanie konfiguracji i daje porównanie względne. Nie zamyka kryteriów
+  bezpieczeństwa zasobów dla `server` (pamięć nieodzyskiwalna, OOM, eksmisje, restarty, dostępna pamięć węzła, szczyt
+  dysku). Te zamyka wyłącznie pomiar na worf.pl po wdrożeniu, a bieg W14 tam wymaga osobnej zgody właściciela. Bez
+  zgody kryteria zostają w raporcie jako niepotwierdzone.
+- Na worf.pl bez zgody tylko to, co program już dopuszcza: żądania GET (W3) i Grafana (W15).
+- Grafana: `container_memory_rss` i `container_memory_cache` (zadanie 5 dopisuje je, jeśli nie zrobił tego PERF-0)
+  oraz PSI węzła (`node_pressure_*`), żeby odróżnić rywalizację o pamięć, CPU i I/O od samego wykorzystania.
 - Raport pomiaru w `docs/reports/` z wartościami przed i po; wynik obowiązujący to `server` na worf.pl.
 
 ## Decyzje właściciela
 
 | ID | Decyzja | Rekomendacja | Wymaga |
 |---|---|---|---|
-| D1 | Zasada Z1: request = pamięć nieodzyskiwalna, suma limitów może przekroczyć pamięć węzła o cache plików Postgresa i Elasticsearcha; test „suma limitów ≤ 20 GiB” zastępuje „suma requestów + system ≤ pamięć węzła” | przyjąć: inaczej 14 GiB pamięci węzła zostaje niewykorzystane przez bazę i indeks | [PERF-0] (zmierzona pamięć nieodzyskiwalna usług) |
-| D2 | Podział pamięci cache między Postgres i Elasticsearch | według zmierzonych gorących danych: rozmiar indeksów sklepu i odsetek trafień Postgresa, rozmiar indeksu i doc values wybranego modelu | [server] [PERF-2A] |
-| D3 | Sterta Elasticsearcha | najmniejsza spełniająca kryterium z tabeli | [PERF-2A] [server] |
-| D4 | W15 dla pamięci liczone z pamięci nieodzyskiwalnej (Z1) wobec requestu (≤ 85%), a nie z `working_set` wobec limitu; dla Postgresa i Elasticsearcha dodatkowo iowait ≤ 5% (już w W15) | przyjąć: inaczej W15 zabrania celu Z1 | zmiana definicji wymagania (program, zasada 10) |
-| D5 | Sesje w Redisie: usuwanie najdawniej używanych przy zapełnieniu (wylogowanie) i zachowanie RDB | przyjąć `volatile-lru` z RDB; rozmiar z liczby aktywnych sesji | – |
-| D6 | Dysk, jeśli szczyt reindeksu `server` przekroczy 80%: krótszy `max_wal_size`, reindeks bez równoległego generatora, albo usunięcie starego indeksu tuż po zamianie aliasu (PERF-6) | według zmierzonego szczytu | [server] |
-| D7 | Metryki Postgresa i Elasticsearcha na serwerze komponentami Alloy (`prometheus.exporter.postgres` z rolą `pg_monitor`, `prometheus.exporter.elasticsearch`, lista ok. 40 serii), jeśli nie dodał ich PERF-0 | przyjąć: W14, W15 i PERF-9 potrzebują ich na serwerze, a agent nie czyta `pg_stat_*` na worf.pl inaczej | – |
+| D1 | Reguła węzła dla Z1: wariant A (suma limitów + system + rezerwa ≤ pamięć węzła, cache tylko w limitach Postgresa i Elasticsearcha) albo wariant B (nadprzydział o cache z rezerwami kubeleta) | A; B tylko, gdy pomiar na `server` pokaże za mało cache | [PERF-0] [server] |
+| D2 | Podział pamięci cache między Postgres i Elasticsearch | według zmierzonych gorących danych: indeksy sklepu (z PERF-7) i odsetek trafień Postgresa, rozmiar indeksu i doc values modelu R | [server] [PERF-2B] |
+| D3 | Sterta Elasticsearcha | najmniejsza spełniająca kryterium z tabeli | [PERF-2B] |
+| D4 | Pamięć w W15 mierzona osobno: pamięć nieodzyskiwalna kontenera ≤ request; cache plików bez progu. Kontrole zostają: 0 OOM, eksmisji i restartów, minimum dostępnej pamięci węzła ≥ rezerwa, PSI pamięci `full` nie wyżej niż w linii bazowej, iowait ≤ 5% | przyjąć; zmienia się tylko miara pamięci w W15, wymagania wydajnościowe W1–W14 zostają; gdy nie da się ich spełnić w budżecie, decyzja właściciela (program, zasada 7) | zmiana definicji wymagania (program, zasada 10) |
+| D5 | Redis: `noeviction` z `maxmemory`, RDB z limitem poda ≥ 2 × `maxmemory` + narzut | przyjąć; alternatywa bez RDB usuwa ryzyko copy-on-write, ale restart wylogowuje wszystkich i zeruje limity | [PERF-0] (rozmiar) |
+| D6 | Dysk, jeśli zmierzony szczyt reindeksu `server` (z `pg_wal` ponad `max_wal_size`) przekroczy 80%: mniejszy `max_wal_size`, reindeks bez równoległego generatora, albo usunięcie starego indeksu tuż po zamianie aliasu (PERF-6) | według zmierzonego szczytu | [server] |
+| D7 | Metryki Postgresa i Elasticsearcha na serwerze komponentami Alloy, jeśli nie dodał ich PERF-0 | przyjęta 2026-11-26 | – |
 
 ## Kryteria akceptacji
 
@@ -267,11 +349,16 @@ i iowait przy W3 i W1 na `server`. Jeśli nie, decyzja należy do właściciela 
    po polsku w czasie limitu, a wątek i połączenie są wolne dla kolejnego żądania; komenda konsoli w kontenerze API nie ma
    tego limitu; transakcja bezczynna dłużej niż limit traci połączenie i blokady (test).
 3. Każda usługa `prod` ma request pamięci ≥ zmierzonemu szczytowi pamięci nieodzyskiwalnej i limit zgodny z Z1; test
-   `infra/k8s/tests` sprawdza sumę requestów pamięci + system ≤ pamięć węzła i sumę requestów CPU ≤ 7 vCPU.
-4. `num_threads`, `IMGPROXY_WORKERS`, `VARNISH_SIZE`, `KC_DB_POOL_MAX_SIZE` i `maxmemory` Redisa są jawne w chartcie
-   i compose; budżet połączeń w ADR.
-5. W15 spełnione na `server` na worf.pl w definicji z D4 przy obciążeniu nominalnym; W14 (lokalnie albo na serwerze
-   za zgodą) bez OOM, eksmisji i restartów.
-6. W3, W5, W6 zmierzone przed i po tą samą mieszanką; odsetek trafień bufora Postgresa i iowait przy W3 przed i po.
-7. ADR `docs/adr/runtime-resources.md` z budżetem pamięci, CPU, połączeń i dysku oraz uzasadnieniem każdego
+   `infra/k8s/tests` sprawdza regułę węzła z D1 i sumę requestów CPU ≤ 7 vCPU.
+4. `num_threads`, `IMGPROXY_WORKERS`, `VARNISH_SIZE`, `KC_DB_POOL_MAX_SIZE`, `maxmemory` i `maxmemory-policy noeviction`
+   Redisa są jawne w chartcie i compose; budżet połączeń w ADR. Redis przy `maxmemory` nie usuwa kluczy, a API i sklep
+   zachowują się jak w sekcji „Redis” (test).
+5. Na compose naruszenie unikalności, zakleszczenie, czekanie na blokadę i przerwane zapytanie nie zostawiają w logu
+   Postgresa wartości ani tekstu zapytania; seria eksporterów nie ma etykiety z tekstem zapytania (test).
+6. Na `server` na worf.pl, po wdrożeniu za zgodą: W15 w definicji z D4 przy obciążeniu nominalnym i szczyt dysku
+   w budżecie; W14 tam za osobną zgodą bez OOM, eksmisji i restartów. Bez zgody te kryteria są w raporcie jako
+   niepotwierdzone; pomiar na `medium` ich nie zamyka.
+7. W3, W5, W6 zmierzone po zmianie tymi samymi poleceniami co w PERF-0; odsetek trafień bufora Postgresa i iowait przy
+   W3 przed i po.
+8. ADR `docs/adr/runtime-resources.md` z budżetem pamięci, CPU, połączeń i dysku oraz uzasadnieniem każdego
    ustawienia innego niż domyślne; raport pomiaru w `docs/reports/`.

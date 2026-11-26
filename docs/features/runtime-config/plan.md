@@ -5,17 +5,18 @@ z jedną gałęzią epiku (poza `epic/*`) i szkicem PR do `main` od początku. Z
 mogą iść naraz. Plan jest dokumentem roboczym: po ukończeniu epiku usuń go.
 
 **Warunki startu.** Raport PERF-0 na `main` (linia bazowa `server`: pamięć, CPU i dysk usług z Grafany, wynik
-generatora i reindeksu). Zadania 2–5 ruszają dopiero po decyzjach D1–D7, które właściciel podejmuje na podstawie
-raportu zadania 1. Wartości zależne od D2 i D3 czekają dodatkowo na raport PERF-2 etap A; do tego czasu zadanie 4
-zostawia stertę i limit Elasticsearcha bez zmian. Wdrożenie na worf.pl i każda operacja na serwerze wyłącznie za osobną
-zgodą właściciela.
+generatora i reindeksu). Zadania 2–5 ruszają dopiero po decyzjach D1–D6 (D7 przyjęta), które właściciel podejmuje na
+podstawie raportu zadania 1. Wartości zależne od D2 i D3 czekają dodatkowo na pomiar Elasticsearcha z etapu B PERF-2
+(kryterium 2); do tego czasu zadanie 4 zostawia stertę i limit Elasticsearcha bez zmian. Kolejność merge'ów chartu
+i compose z PERF-2 B i ASYNC-INDEXING sesja uzgadnia przed zadaniami 2 i 4. Wdrożenie na worf.pl i każda operacja na
+serwerze wyłącznie za osobną zgodą właściciela.
 
 ## Status
 
 | Fala | Zadania | Status |
 |---|---|---|
 | 1 | RUNTIME-CONFIG-1 | |
-| – | decyzje D1–D7 | |
+| – | decyzje D1–D6 | |
 | 2 | RUNTIME-CONFIG-2, RUNTIME-CONFIG-3 | |
 | 3 | RUNTIME-CONFIG-4, RUNTIME-CONFIG-5 | |
 | 4 | RUNTIME-CONFIG-6 | |
@@ -25,7 +26,8 @@ zgodą właściciela.
 TDD obowiązuje zadanie 3 (mapowanie przerwanego zapytania na 503, zakres limitu na procesy): RED i GREEN w raporcie.
 Zadania konfiguracji (2, 4, 5) weryfikują się testami renderu chartu w `infra/k8s/tests`, `make -C infra/k8s check`
 i komendami z kryteriów, także na ścieżce błędu, bez sztucznej fazy RED. Pomiary lokalne (zadania 1 i 6) nie biegną
-równolegle z benchmarkami PERF-2 na tej samej maszynie.
+równolegle z benchmarkami PERF-2 na tej samej maszynie, nie powtarzają pomiarów PERF-0 i nie zamykają kryteriów
+bezpieczeństwa zasobów `server` (spec, „Pomiar”).
 
 ## Zadania
 
@@ -37,11 +39,11 @@ równolegle z benchmarkami PERF-2 na tej samej maszynie.
   "tasks": [
     {
       "id": "RUNTIME-CONFIG-1",
-      "title": "Pomiar przed zmianą i wartości do decyzji D1–D7",
-      "scope": "Lokalny stos `medium` z obrazów produkcyjnych i zasobami `prod` (nadpisanie compose poza repo, jak w audycie z 2026-11-25), z `pg_stat_statements` i `track_io_timing` włączonymi tylko w nadpisaniu. Mieszanka adresów i scenariusze W3, W5, W6 z PERF-0. Zbiera natywnymi widokami: szczyt pamięci nieodzyskiwalnej każdej usługi (`memory.stat`: `anon`, `shmem`, `file`), `pg_stat_database` i `pg_statio_user_indexes`, top `pg_stat_statements` (czasy, `temp_blks_written`, `jit_*_time`), `pg_stat_checkpointer`, połączenia według ról w generatorze kont i przy logowaniach, `varnishstat`, `_nodes/stats/jvm,breaker`, `redis-cli info memory` i `MEMORY USAGE` sesji, pamięć API przy 16 równoległych najcięższych żądaniach, pamięć imgproxy przy 16 zimnych przetworzeniach, `pg_test_timing`. Z raportu PERF-0 bierze zużycie serwera przy `server`. Wynik: raport w `docs/reports/` z wartościami przed i z propozycjami D1–D7 (budżet pamięci, CPU, połączeń i dysku w liczbach). Bez zmian w repo poza raportem.",
+      "title": "Pomiar przed zmianą i wartości do decyzji D1–D6",
+      "scope": "Lokalny stos `medium` z obrazów produkcyjnych i zasobami `prod` (nadpisanie compose poza repo, jak w audycie z 2026-11-25), z `pg_stat_statements` i `track_io_timing` włączonymi tylko w nadpisaniu. Scenariusze i mieszanka z PERF-0, jednocześnie z generatorem albo reindeksem. Wartości W1–W20 i zasoby `server` bierze z raportu PERF-0, a Elasticsearcha z etapu B PERF-2; nie mierzy ich ponownie. Zbiera natywnymi widokami tylko to, czego PERF-0 nie ma: szczyt pamięci nieodzyskiwalnej każdej usługi z `memory.stat` (`anon`, `shmem`, `slab_unreclaimable`, `kernel_stack`, `pagetables`, `sock`) porównany z `container_memory_rss` i `container_memory_cache` tego samego kontenera, top `pg_stat_statements` (czasy, `temp_blks_written`, `jit_*_time`), `pg_stat_database`, `pg_statio_user_indexes`, `pg_stat_checkpointer`, szczyt `pg_wal` (`pg_ls_waldir()`) przy generatorze, połączenia według ról w generatorze kont i przy logowaniach, `varnishstat`, `INFO` Redisa (`used_memory`, `mem_fragmentation_ratio`, `rdb_last_cow_size`) i `MEMORY USAGE` sesji i kluczy limiterów, pamięć API przy 16 równoległych najcięższych żądaniach, pamięć imgproxy przy 16 zimnych przetworzeniach, `pg_test_timing`. Wynik: raport w `docs/reports/` z propozycjami D1–D6 (budżet pamięci, CPU, połączeń i dysku w liczbach). Bez zmian w repo poza raportem.",
       "acceptance_criteria": [
-        "Raport podaje W3, W5, W6 lokalnie (trzy przebiegi, mediana i rozrzut) i W3 z worf.pl z PERF-0.",
-        "Dla każdej usługi `prod` raport podaje szczyt pamięci nieodzyskiwalnej i źródło (lokalnie albo Grafana `server`) oraz proponowany request i limit według Z1.",
+        "Raport odwołuje się do wartości PERF-0 i PERF-2 B zamiast je powtarzać; każda liczba ma źródło (lokalny `medium`, PERF-0 `server`, PERF-2 B).",
+        "Dla każdej usługi `prod` raport podaje szczyt pamięci nieodzyskiwalnej przy jednoczesnym obciążeniu, chwilowe alokacje i źródło oraz proponowany request i limit według Z1; różnicę metod `memory.stat` i cAdvisor dla tego samego kontenera.",
         "Raport podaje odsetek trafień bufora Postgresa przy W3 i budżet połączeń z pomiaru szczytu połączeń według ról.",
         "Każda wartość oznaczona „kandydat” w specyfikacji ma w raporcie pomiar albo powód, dla którego czeka na `server` lub PERF-2A.",
         "Komendy pomiaru są w raporcie i dają się powtórzyć."
@@ -54,12 +56,13 @@ równolegle z benchmarkami PERF-2 na tej samej maszynie.
     {
       "id": "RUNTIME-CONFIG-2",
       "title": "Postgres: plik ustawień stałych, pamięć z wartości środowiska, `/dev/shm`, `pg_stat_statements`",
-      "scope": "`infra/postgres/postgresql.conf` z ustawieniami stałymi ze specyfikacji (sekcja „Postgres”, „Kiedy: teraz” oraz rozstrzygnięte w D2 i zadaniu 1: `jit`, `max_wal_size`, `checkpoint_timeout`), montowany w compose i dowiązaniem w chartcie, z sumą kontrolną w adnotacji poda; wartości pamięci (`shared_buffers`, `effective_cache_size`) jako `-c` z `values.yaml` dla `prod`, `load` i `ci`; `emptyDir` `Memory` na `/dev/shm` w chartcie i `shm_size` w compose; rozszerzenie `pg_stat_statements` w bazie `postgres` dla nowej bazy (skrypt init) i dla istniejącej (krok istniejącej ścieżki z uprawnieniami superużytkownika); `KC_DB_POOL_MAX_SIZE` w chartcie i compose; budżet połączeń w komentarzu `values.yaml`; przy przyjętym D7 rola eksportera z `pg_monitor` (skrypt init i istniejąca baza) i jej sekret w `init-env.sh` i chartcie. Dokumentacja: `infra/k8s/CLAUDE.md` tylko jeśli zmienia się zasada.",
+      "scope": "`infra/postgres/postgresql.conf` z ustawieniami stałymi ze specyfikacji (sekcja „Postgres”, „Kiedy: teraz”, w tym ustawienia logów i `pg_stat_statements.track_utility`, oraz rozstrzygnięte w D2 i zadaniu 1: `jit`, `max_wal_size`, `checkpoint_timeout`), montowany w compose i dowiązaniem w chartcie, z sumą kontrolną w adnotacji poda; wartości pamięci (`shared_buffers`, `effective_cache_size`) jako `-c` z `values.yaml` dla `prod`, `load` i `ci`; `emptyDir` `Memory` na `/dev/shm` w chartcie i `shm_size` w compose; rozszerzenie `pg_stat_statements` w bazie `postgres` dla nowej bazy (skrypt init) i dla istniejącej (krok istniejącej ścieżki z uprawnieniami superużytkownika); `KC_DB_POOL_MAX_SIZE` w chartcie i compose; budżet połączeń w komentarzu `values.yaml`; rola eksportera tylko z `pg_monitor` (D7; skrypt init i istniejąca baza) i jej sekret w `init-env.sh` i chartcie. Dokumentacja: `infra/k8s/CLAUDE.md` tylko jeśli zmienia się zasada.",
       "acceptance_criteria": [
         "Kryterium 1 specyfikacji: `SHOW` każdego ustawienia w compose i w renderze `prod`, `load` i `ci` daje wartość z tabeli; `SELECT count(*) FROM pg_stat_statements` działa w compose i k3d `load`.",
         "Test renderu chartu sprawdza obecność pliku ustawień, `-c` z wartości środowiska, `/dev/shm` i `KC_DB_POOL_MAX_SIZE`; zmiana pliku zmienia sumę kontrolną w adnotacji poda.",
         "Ścieżka błędu: błędna nazwa ustawienia w pliku zatrzymuje start Postgresa z czytelnym błędem w logu, a `make -C infra/k8s check` albo test wyłapuje brak dowiązania pliku w chartcie.",
         "Zapytanie równoległe z dużym hash join nie kończy się błędem `could not resize shared memory segment` (test na compose).",
+        "Kryterium 5 specyfikacji (logi): na compose naruszenie unikalności, zakleszczenie, czekanie na blokadę i przerwane zapytanie nie zostawiają w logu Postgresa linii DETAIL, CONTEXT ani STATEMENT, wartości ani tekstu zapytania (test).",
         "`make check` i `make -C apps/api test` przechodzą."
       ],
       "risk": "STANDARD",
@@ -86,11 +89,11 @@ równolegle z benchmarkami PERF-2 na tej samej maszynie.
     {
       "id": "RUNTIME-CONFIG-4",
       "title": "Zasoby usług według Z1 i Z2 oraz jawne ustawienia usług",
-      "scope": "Requesty i limity pamięci oraz requesty CPU w `prod` (i `load`, które je odzwierciedla) według decyzji D1–D3 i raportu zadania 1; test `test_prod_fits_the_server` zmieniony na: suma requestów pamięci + zmierzony system ≤ pamięć węzła, suma requestów CPU ≤ 7 vCPU, limit pamięci ≥ request, limit ponad request tylko dla Postgresa i Elasticsearcha; sterta Elasticsearcha z D3 (bez zmiany, dopóki brak wyniku PERF-2A); `num_threads` 16 w `Caddyfile`; `IMGPROXY_WORKERS`, `VARNISH_SIZE`, `maxmemory` i `maxmemory-policy` Redisa w chartcie i compose; rozmiary PVC `prod` z pomiaru `server`; zmienna `-c` `effective_cache_size` spójna z limitem. Dokumentacja: komentarz nagłówka `environments/prod/values.yaml` (nowa reguła budżetu).",
+      "scope": "Requesty i limity pamięci oraz requesty CPU w `prod` (i `load`, które je odzwierciedla) według decyzji D1–D3 i raportu zadania 1; test `test_prod_fits_the_server` według reguły węzła z D1 (wariant A: suma limitów + zmierzony system + rezerwa ≤ pamięć węzła), suma requestów CPU ≤ 7 vCPU, limit pamięci ≥ request, cache plików tylko w limitach Postgresa i Elasticsearcha; sterta Elasticsearcha z D3 (bez zmiany, dopóki brak wyniku PERF-2A); `num_threads` 16 w `Caddyfile`; `IMGPROXY_WORKERS`, `VARNISH_SIZE`, `maxmemory` i `maxmemory-policy noeviction` Redisa (D5, limit poda ≥ 2 × `maxmemory` + narzut) w chartcie i compose; rozmiary PVC `prod` z pomiaru `server`; zmienna `-c` `effective_cache_size` spójna z limitem. Dokumentacja: komentarz nagłówka `environments/prod/values.yaml` (nowa reguła budżetu).",
       "acceptance_criteria": [
-        "Kryterium 3 i 4 specyfikacji: test renderu `prod` sprawdza nową regułę budżetu, w tym przypadki obejścia (limit poniżej requestu, cache przyznany usłudze innej niż Postgres i Elasticsearch, suma requestów ponad pamięć węzła), i jawne wartości usług.",
+        "Kryterium 3 i 4 specyfikacji: test renderu `prod` sprawdza regułę budżetu z D1, w tym przypadki obejścia (limit poniżej requestu, cache przyznany usłudze innej niż Postgres i Elasticsearch, suma limitów ponad pamięć węzła, pominięty pod albo kontener pomocniczy), i jawne wartości usług.",
         "Ścieżka błędu: wartość `values.yaml` łamiąca budżet daje czytelny błąd `make -C infra/k8s check` z nazwą usługi i sumą.",
-        "Lokalnie na `medium` z zasobami `prod`: 16 równoległych najcięższych żądań API i 16 zimnych przetworzeń imgproxy bez OOM; Redis przy `maxmemory` usuwa klucze z TTL zamiast kończyć się OOM (test z małym `maxmemory`).",
+        "Lokalnie na `medium` z zasobami `prod`: 16 równoległych najcięższych żądań API i 16 zimnych przetworzeń imgproxy bez OOM. Redis z małym `maxmemory` (test): żaden klucz nie znika, zapis daje błąd, API przepuszcza żądanie bez limitu z ostrzeżeniem, sklep daje 503 przy logowaniu i czyta istniejącą sesję, `rate-limit-check` kończy się błędem.",
         "Compose i chart mają te same jawne wartości usług (`num_threads`, `IMGPROXY_WORKERS`, `VARNISH_SIZE`, Redis).",
         "`make check` i testy dotkniętych aplikacji przechodzą."
       ],
@@ -102,9 +105,9 @@ równolegle z benchmarkami PERF-2 na tej samej maszynie.
     {
       "id": "RUNTIME-CONFIG-5",
       "title": "Metryki pamięci, PSI, Postgresa i Elasticsearcha w Grafanie",
-      "scope": "Według D7, jeśli PERF-0 ich nie dodał: `container_memory_rss` i `container_memory_cache` (jeśli brak na liście dozwolonych), `node_pressure_*` węzła, komponenty Alloy `prometheus.exporter.postgres` (rola i sekret z zadania 2) i `prometheus.exporter.elasticsearch` z listą dozwolonych serii (ok. 40); liczba aktywnych serii po zmianie w planie darmowym. Dokumentacja: `docs/adr/backups-observability.md` i spec `deploy-ops` w części metryk.",
+      "scope": "Według D7, jeśli PERF-0 ich nie dodał: `container_memory_rss` i `container_memory_cache` (jeśli brak na liście dozwolonych), `node_pressure_*` węzła, komponenty Alloy `prometheus.exporter.postgres` (rola i sekret z zadania 2, DSN jako wartość typu `secret`, bez kolektora `stat_statements`) i `prometheus.exporter.elasticsearch` (statystyki klastra i węzła) z listą dozwolonych serii (ok. 40); liczba aktywnych serii po zmianie w planie darmowym. Dokumentacja: `docs/adr/backups-observability.md` i spec `deploy-ops` w części metryk.",
       "acceptance_criteria": [
-        "Test monitoringu (jak `test_log_masking.py` i testy listy metryk) sprawdza listę dozwolonych serii nowych komponentów; liczba nowych serii w raporcie zadania.",
+        "Test monitoringu (jak `test_log_masking.py` i testy listy metryk) sprawdza listę dozwolonych serii i ich etykiet nowych komponentów (żadna etykieta z tekstem zapytania), wyłączony `stat_statements` i DSN spoza ConfigMapy; liczba nowych serii w raporcie zadania.",
         "Rola eksportera Postgresa ma tylko `pg_monitor`, bez prawa odczytu tabel sklepu (test albo komenda z wynikiem).",
         "Ścieżka błędu: niedostępny Postgres albo Elasticsearch nie zatrzymuje Alloy ani zbierania pozostałych metryk (`monitoring-smoke` albo test komponentu).",
         "`make check` przechodzi."
@@ -117,10 +120,10 @@ równolegle z benchmarkami PERF-2 na tej samej maszynie.
     {
       "id": "RUNTIME-CONFIG-6",
       "title": "Pomiar po zmianie, ADR i raport",
-      "scope": "Ten sam pomiar co w zadaniu 1 na gałęzi epiku lokalnie; po wdrożeniu za zgodą właściciela W3 i W15 na worf.pl (GET i Grafana), W14 lokalnie albo na serwerze za osobną zgodą. ADR `docs/adr/runtime-resources.md`: budżet pamięci, CPU, połączeń i dysku z liczbami, zasady Z1–Z6, każde ustawienie inne niż domyślne z powodem i pomiarem. Aktualizacja `docs/features/performance-program/plan.md` („Status”) i W15 w `docs/vision.md`, jeśli właściciel przyjął D4.",
+      "scope": "Ten sam pomiar co w zadaniu 1 na gałęzi epiku lokalnie i W3, W5, W6 poleceniami PERF-0; po wdrożeniu za zgodą właściciela W3, W15 i szczyt dysku na worf.pl (GET i Grafana), W14 na worf.pl za osobną zgodą. Kryteria bezpieczeństwa zasobów `server` zamyka tylko pomiar na worf.pl. ADR `docs/adr/runtime-resources.md`: budżet pamięci, CPU, połączeń i dysku z liczbami, zasady Z1–Z6, każde ustawienie inne niż domyślne z powodem i pomiarem. Aktualizacja `docs/features/performance-program/plan.md` („Status”) i W15 w `docs/vision.md`, jeśli właściciel przyjął D4.",
       "acceptance_criteria": [
-        "Kryteria 5–7 specyfikacji: raport przed i po z W3, W5, W6, odsetkiem trafień bufora, iowait i pamięcią nieodzyskiwalną usług; różnice podane wobec rozrzutu przebiegów.",
-        "W15 na `server` w definicji z D4 albo wpis „niezmierzone” z powodem (brak zgody na wdrożenie, profil niewygenerowany).",
+        "Kryteria 7 i 8 specyfikacji: raport przed i po z W3, W5, W6, odsetkiem trafień bufora, iowait i pamięcią nieodzyskiwalną usług; różnice podane wobec rozrzutu przebiegów.",
+        "Kryterium 6 specyfikacji: W15 w definicji z D4, szczyt dysku i W14 na `server` na worf.pl albo wpis „niepotwierdzone” z powodem (brak zgody na wdrożenie albo bieg W14, profil niewygenerowany); wynik z `medium` nie jest podany jako ich spełnienie.",
         "ADR nie zawiera historii zmian i odwołuje się do raportu pomiaru."
       ],
       "risk": "FAST",
