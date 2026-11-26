@@ -1,4 +1,4 @@
-"""Tests of next_epic.py: python3 -m unittest discover -s .claude/skills/ao-run -p 'test_*.py'"""
+"""Tests of next_epic.py: python3 -m unittest discover -s tools/ash -p 'test_*.py'"""
 import contextlib
 import importlib.util
 import io

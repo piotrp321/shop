@@ -6,7 +6,7 @@
 #   claude-agent <AO arguments>                 $AGENT_CLAUDE_BIN <AO arguments> --settings <JSON> --strict-mcp-config
 #                                               --setting-sources project
 #
-# Environment: AGENT_CLAUDE_BIN (the pinned binary), AGENT_AO_HOME (~/.local/state/ao-<name>, set by ao-prepare),
+# Environment: AGENT_CLAUDE_BIN (the pinned binary), AGENT_AO_HOME (~/.local/state/ao-<name>, set outside the sandbox),
 # AO_TASK_ID (set by AO), AGENT_OTEL_ENDPOINT (optional, set only outside the sandbox: the telemetry endpoint
 # http://127.0.0.1:<port>, or off). The settings come from render_settings.py next to this script: the working
 # directory, the .git of the main clone, the task directory $AGENT_AO_HOME/tasks/$AO_TASK_ID (its briefs and attempts
@@ -30,7 +30,7 @@
 #
 # The executor's PATH starts with bin/ next to this script (the mktemp overlay: a bare `mktemp` on macOS writes to the
 # user's read-only temp, the overlay gives the system mktemp a template in TMPDIR). The directory is read-only in the
-# profile and must come from a copy the executor cannot write (ao-prepare copies bin/ with the other files); the
+# profile and must come from a copy the executor cannot write (bin/ next to this script); the
 # environment has AGENT_EXECUTOR_SANDBOX=1, which the tests of tools/agent-security read.
 set -u
 
@@ -53,7 +53,7 @@ g() {
 
 # Telemetry (spec docs/features/telemetry/spec.md, R2). The endpoint comes only from AGENT_OTEL_ENDPOINT (unset: the
 # default of render_settings.py; off: no telemetry), which the wrapper takes out of the environment. Inherited OTEL_*
-# and CLAUDE_CODE_ENABLE_TELEMETRY (from the /ao-run session or the user's shell) could redirect the export or turn
+# and CLAUDE_CODE_ENABLE_TELEMETRY (from the calling session or the user's shell) could redirect the export or turn
 # content on, so none of them reaches the binary, also with --version and auth status. The names come from env (in the
 # C locale, failing closed): a value with a newline can look like further NAME=value lines, which at worst unsets an
 # OTEL_* name that is not set. A name that is not a shell identifier (OTEL_A.B) cannot be unset in sh and is left;
@@ -73,7 +73,7 @@ for otel_name in $otel_names; do
 done
 unset AGENT_OTEL_ENDPOINT CLAUDE_CODE_ENABLE_TELEMETRY environment otel_names
 
-[ -n "${AGENT_CLAUDE_BIN:-}" ] || die "brak AGENT_CLAUDE_BIN (binarka wersji przypiętej przez AO, z ao-prepare)"
+[ -n "${AGENT_CLAUDE_BIN:-}" ] || die "brak AGENT_CLAUDE_BIN (binarka wersji przypiętej przez AO)"
 [ -f "$AGENT_CLAUDE_BIN" ] && [ -x "$AGENT_CLAUDE_BIN" ] || die "AGENT_CLAUDE_BIN $AGENT_CLAUDE_BIN nie jest plikiem wykonywalnym"
 
 if [ "$#" -eq 1 ] && [ "$1" = --version ]; then
@@ -92,7 +92,7 @@ for arg in "$@"; do
     esac
 done
 
-[ -n "${AGENT_AO_HOME:-}" ] || die "brak AGENT_AO_HOME (katalog AO ~/.local/state/ao-<nazwa>, z ao-prepare)"
+[ -n "${AGENT_AO_HOME:-}" ] || die "brak AGENT_AO_HOME (katalog AO ~/.local/state/ao-<nazwa>)"
 [ -n "${AO_TASK_ID:-}" ] || die "brak AO_TASK_ID (AO nadaje go zadaniom z hookiem .ao/setup)"
 case $AO_TASK_ID in
 [A-Za-z0-9]*) ;;

@@ -211,7 +211,7 @@ class DecompressTest(unittest.TestCase):
             self.assertEqual('nieznane Content-Encoding', problem, encoding)
 
     def test_the_problem_never_carries_text_of_the_request(self):
-        # The problem ends up in a line of run.log that the /ao-run session quotes: no text a sender chose.
+        # A session quotes the problem: no text a sender chose.
         for encoding in (INJECTION, 'gzip ' + INJECTION, INJECTION * 1000):
             body, problem = otlp_receiver.decompress(b'abc', encoding)
             self.assertIsNone(body)

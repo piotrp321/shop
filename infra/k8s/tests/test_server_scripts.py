@@ -239,9 +239,9 @@ class Kubeconfig(ServerScripts):
 
 
 class KubeDirRegistry(ServerScripts):
-    """kubeconfig.sh writes the absolute KUBE_DIR to ~/.local/state/shop-ops/kube-dirs, one path per line: the registry that
-    ao-prepare reads before it starts AO and that refuses while a registered directory still exists (the kubeconfig of
-    production must be gone, runbook). It is outside the reach of the executors."""
+    """kubeconfig.sh writes the absolute KUBE_DIR to ~/.local/state/shop-ops/kube-dirs, one path per line: the registry of
+    the directories that hold the kubeconfig of production (it must be gone after the operation, runbook). It is outside
+    the reach of the executors."""
 
     HOST = "deploy@203.0.113.7"
 
@@ -291,7 +291,7 @@ class KubeDirRegistry(ServerScripts):
         self.assertFalse(self.registry().exists())
 
     def test_a_registry_that_cannot_be_written_stops_before_the_credentials_are_written(self):
-        # fail closed: a kubeconfig that ao-prepare would not know about is never created
+        # fail closed: a kubeconfig missing from the registry is never created
         (self.registry().parent.parent).mkdir(parents=True)
         self.registry().parent.write_text("a file where the directory should be")
         result = self.run_script("kubeconfig.sh", self.HOST, KUBE_DIR=str(self.kube))

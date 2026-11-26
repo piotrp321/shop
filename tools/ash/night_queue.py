@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Night queue of several epics for the /ao-run skill. Python 3.9+, standard library only.
+"""Night queue and parallel gate of the AO runs, and the room in the usage limits. tools/metrics reads the measurements
+and the gate log of the historical AO runs with it; /retro calls `room` before it starts. Python 3.9+, standard
+library only.
 
   night_queue.py [--repo DIR] [--state DIR] scope <spec.md>
   night_queue.py [--repo DIR] [--state DIR] start <dir> [--claim TOKEN]  (stdin: the `plan` object of get_usage)
@@ -99,7 +101,7 @@ ahead: reads the board and prints {"epics": [{dir, id, issue, title, tasks, minu
 "full": <bool>}: prepared epics not in progress. `full` is true when the sum reaches the night (540 minutes), or, when
 nothing is measured, when there is at least one epic.
 
-gate: the parallel epics gate (docs/features/parallel-work/spec.md, „Bramka”, „Rezerwacja”). Epics in progress: board
+gate: the parallel epics gate of the AO runs. Epics in progress: board
 epics with an `origin/epic/<dir>` branch whose final PR epic/<dir> -> main is not merged (merged ones go to
 `merged_open`), plus valid reservations (30 minutes) in <state>/claims.json except the caller's own one (--dir with the
 --claim token), which is neither in progress, active nor listed for it. Active: reservations and branch epics whose last
@@ -140,8 +142,7 @@ gate.jsonl), so a failure never leaves a token in claims.json that was not print
 
 release: removes the reservation of <dir> with the --claim token and prints {"released": <bool>}, exit 0.
 
-hold: the parallel hold after a critical problem of a pair (docs/features/parallel-work/spec.md, „Metryki
-par”): writes <state>/parallel-hold.json {at, reason} and prints it, exit 0; an existing hold is kept (printed,
+hold: the parallel hold after a critical problem of a pair of AO runs: writes <state>/parallel-hold.json {at, reason} and prints it, exit 0; an existing hold is kept (printed,
 not overwritten); an empty or blank --reason exits 2. While it exists, the gate (also `next` case (c)) makes every
 candidate next to an epic in progress wait; nothing in progress still passes, so serial work goes on. unhold: removes
 the hold (the user's decision) and prints {"removed": <bool>}, exit 0 also without a hold. An unreadable
@@ -797,7 +798,7 @@ PASS, SKIP, WAIT = 'pass', 'skip', 'wait'
 
 
 class GateContext:
-    """What one gate call knows about the board and the epics in progress (spec parallel-work, „Pojęcia”).
+    """What one gate call knows about the board and the epics in progress (the AO runs).
 
     in_progress: [{dir, id, issue, branch, active}]: board epics with an `origin/epic/<dir>` branch and no merged final
     PR (active when their last measurements.jsonl event is `start` or they have none), then valid claims of other
@@ -1159,7 +1160,7 @@ def _new_token():
 
 def gate_resume(ctx, result, entry, claim, takeover, ao_root, reserve):
     """Resume of `entry`, in progress from its branch: no gate steps and no reservation, only the owner check
-    (spec parallel-work, „Wznowienie”). Writes nothing; returns (result, owner): `owner` is the new owner token the
+    (an AO run resumed in a new session). Writes nothing; returns (result, owner): `owner` is the new owner token the
     caller records in claims.json as the last step (None when the owner stays, on a refusal and without `reserve`:
     then the resume only reads and `claim` is null)."""
     name = entry['id']

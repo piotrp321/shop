@@ -72,8 +72,8 @@ DOCKER_SOCKET_SUFFIX = 'docker.sock'
 TEMP_PARENT = os.path.realpath('/tmp')   # /private/tmp on macOS
 CLAUDE_SHARED_NAMES = ('claude-', 'cc-socks')   # Claude Code's per-uid directory and sockets shared by sessions
 
-# Telemetry (spec docs/features/telemetry/spec.md, R1). The variables of the env block, in their order; the wrapper,
-# ao-prepare and tools/telemetry use these constants and telemetry_env(), never a copy.
+# Telemetry (spec docs/features/telemetry/spec.md, R1). The variables of the env block, in their order; the wrapper
+# and tools/telemetry use these constants and telemetry_env(), never a copy.
 DEFAULT_TELEMETRY_ENDPOINT = 'http://127.0.0.1:4318'
 TELEMETRY_ENDPOINT_VARIABLE = 'OTEL_EXPORTER_OTLP_ENDPOINT'
 TELEMETRY_ATTRIBUTES_VARIABLE = 'OTEL_RESOURCE_ATTRIBUTES'

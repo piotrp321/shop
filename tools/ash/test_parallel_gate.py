@@ -1,4 +1,4 @@
-"""Tests of parallel_gate.py: python3 -m unittest discover -s .claude/skills/ao-run -p 'test_*.py'"""
+"""Tests of parallel_gate.py: python3 -m unittest discover -s tools/ash -p 'test_*.py'"""
 import fcntl
 import importlib.util
 import json
@@ -360,33 +360,14 @@ class ClassificationTest(unittest.TestCase):
     def test_the_gate_of_19a_keeps_treating_tool_code_as_allowed(self):
         self.assertFalse(pg.is_app_code('tools/x.py'))
         self.assertTrue(pg.is_allowed('tools/x.py'))
-        self.assertTrue(pg.is_allowed('.claude/skills/ao-run/parallel_gate.py'))
+        self.assertTrue(pg.is_allowed('tools/ash/parallel_gate.py'))
         self.assertTrue(pg.is_allowed('infra/scripts/init-env.sh'))
         self.assertFalse(pg.is_allowed('apps/api/src/Cart/Cart.php'))
 
 
 class MaxParallelTest(unittest.TestCase):
-    SKILL = os.path.join(HERE, 'SKILL.md')
-
-    def commands(self):
-        """Every shell command of SKILL.md that starts the orchestrator's `run`, continuation lines joined."""
-        with open(self.SKILL, encoding='utf-8') as f:
-            text = f.read().replace('\\\n', ' ')
-        return [line for line in text.splitlines() if re.search(r'-m orchestrator\b.*\srun(\s|$)', line)]
-
     def test_max_parallel_is_two(self):
         self.assertEqual(2, pg.MAX_PARALLEL)
-
-    def test_every_run_of_the_skill_passes_the_gate_value(self):
-        commands = self.commands()
-        self.assertTrue(commands)
-        for command in commands:
-            with self.subTest(command=command):
-                self.assertIn('--max-parallel %d ' % pg.MAX_PARALLEL, command + ' ')
-        with open(self.SKILL, encoding='utf-8') as f:
-            values = re.findall(r'--max-parallel\s+([^\s`]+)', f.read())
-        self.assertTrue(values)
-        self.assertEqual({str(pg.MAX_PARALLEL)}, set(values))
 
 
 STATS_OUT = '\n'.join([

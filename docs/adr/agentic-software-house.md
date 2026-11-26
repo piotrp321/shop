@@ -1,4 +1,4 @@
-# Agentic Software House: najpierw natywne, AO jako rozwiązanie awaryjne
+# Agentic Software House: natywny przebieg epiku, bez AO
 
 ## Kontekst
 
@@ -41,22 +41,20 @@ Audyt z 2026-11-18 (`docs/reports/agentic-software-house-audit-2026-11-18.md`) u
 3. **Polityka przeglądu.** Dwie rundy to domyślny budżet, nie twardy limit. Luki bezpieczeństwa, utrata danych, błędy
    logiki biznesowej i istotne regresje muszą być naprawione; drobne uwagi, hipotetyczne przypadki brzegowe i styl
    są odraczane bez pytania właściciela; kolejna runda wymaga konkretnego uzasadnienia. Wagę nadaje reviewer według
-   skutku w normalnym użyciu; definicje są w plikach agentów, a dla AO także w skillu `/integration`. Blokują
+   skutku w normalnym użyciu; definicje są w plikach agentów. Blokują
    `BLOCKER`, `Critical`, `IMPORTANT` i `Important` oraz werdykt `REWORK` agenta `architecture-reviewer`;
    `SUGGESTION` i `Minor` trafiają do opisu PR jako odroczone. Uwagi, która opisuje konkretną ścieżkę błędu, sesja nie
    odracza po samej etykiecie: najpierw ocenia ją według kroku 4 „Przebiegu epiku”.
 4. **Merge do `main`** zawsze należy do użytkownika albo do sesji na jego wyraźne polecenie, które wskazuje PR.
-   Squash i usunięcie gałęzi. Wyjątki procedury AO (niżej) obowiązują tylko przy jej uruchomieniu.
+   Squash i usunięcie gałęzi.
 5. **Modele.** Sesja orkiestrująca może działać na najmocniejszym modelu. Model i effort w definicji agenta to wartości
    domyślne: sesja prowadząca dobiera je w zleceniu do trudności i ryzyka zadania. Skille `/brainstorm` i `/planner`
    działają na modelu sesji, która je wywołuje.
-6. **AO jest zamrożony.** Nie rozwijamy AO, skilli istniejących tylko dla niego (`/ao-run`, `/delivery`,
-   `/sweep`) ani narzędzi z nimi związanych. `/retro` nie jest zamrożony: obsługuje też epiki natywne. AO zostaje
-   uruchamialny jako rozwiązanie awaryjne, dopóki nie ocenimy serii trzech epików dostarczonych natywnie (wersja
-   procesu `ash-v1.0`: ABUSE-LIMITS, ASYNC-RELIABILITY, DELIVERY etap 1). Seria jest zakończona (retrospektywa:
-   `docs/reports/ash-v1-series-retrospective-2026-11-21.md`); decyzja o archiwizacji AO należy do użytkownika.
-   ONCALL i pozostałe zaplanowane prace infrastrukturalne związane z AO są wstrzymane. Kroki przejścia i ich stan:
-   [plan](../features/agentic-software-house/plan.md), sekcja „Status”.
+6. **Bez AO.** Repozytorium nie ma skilli ani procedury uruchamiania AO. Moduły `tools/ash/` (zdarzenia
+   przebiegu, kolejka, bramka epików) zostają, bo `tools/metrics` i `/retro` czytają nimi dane historycznych przebiegów
+   AO i limity subskrypcji. `/sweep` to ręczne narzędzie użytkownika. ONCALL i pozostałe zaplanowane prace
+   infrastrukturalne związane z AO są wstrzymane ([plan](../features/agentic-software-house/plan.md), sekcja
+   „Status”).
 7. Zabezpieczenia agentów są techniczne i wynikają z modelu zagrożeń ([`agent-security.md`](agent-security.md)), nie
    tylko z instrukcji w promptach. Człowiek zatwierdza istotne decyzje biznesowe i końcową integrację (merge funkcji,
    wdrożenie na produkcję). Agent nie wykonuje samodzielnie destrukcyjnych operacji produkcyjnych, w tym rollbacku.
@@ -336,102 +334,16 @@ ASH v1.0 jest zakończona.
 Mała zmiana (poprawka albo do trzech zadań niskiego ryzyka) nie potrzebuje tej ścieżki: jedna gałąź i jeden PR do
 `main` w zwykłej sesji.
 
-### Zasady obowiązujące tylko przy uruchomieniu AO
+### Stosy zadań
 
-Poniższe zasady obowiązują wyłącznie wtedy, gdy sesja uruchamia AO albo któryś ze skilli `/ao-run`, `/delivery`,
-`/sweep`. Pracy natywnej dotyczą tylko te z nich, które powtarza główny `CLAUDE.md`
-(zgoda na merge, squash, rulesety bez bypassu roli i konta). Procedurę przebiegu opisuje
-`docs/features/ao-run/spec.md`, zabezpieczenia wykonawców `docs/adr/agent-security.md` (R2, R5–R8), a proces epiku AO
-plan Agentic Software House (sekcje „Proces”, „Kontrakt planu i backlogu”, „Punkty zatrzymania”).
-
-Przepływ AO: `Intake → spec.md i plan.md → Backlog → AO → /delivery → /integration → Merge`. AO odpowiada za
-orkiestrację, stan i wykonywanie, a nie za decyzje architektoniczne; decyzje spoza granic zadania wracają jako
-blokery do użytkownika. Kontrakt wyniku `/delivery` jest interfejsem zewnętrznym dla AO: zmiany w nim wymagają zmian po obu
-stronach. Równoległość epików i zadań fali wymaga bramki ryzyka (bez wspólnego kodu aplikacji, wolna pamięć Dockera
-na `max-parallel` stosów na epik, zapas limitu), osobnych stosów Docker na zadanie, a integracja i merge'e idą po
-kolei; wykonanie szeregowe jest rozwiązaniem awaryjnym. Epik startuje dopiero po „tak” użytkownika na pytanie
-„Zacząć epik X?” albo na listę nocy, a kolejny epik listy rusza bez pytania tylko przy spełnionych warunkach nocy
-z `docs/features/ao-run/spec.md` (bramka, czas, limity). Start mimo niespełnionej bramki i przejęcie epiku innej sesji
-wymagają osobnego „tak” użytkownika, w nocy ich nie ma (`docs/features/parallel-work/spec.md`).
-
-Zasady przebiegu AO:
-
-- Backlog jest w GitHub Issues: etykieta `epic` to funkcja z „Zakresu MVP” (`docs/vision.md`), `bug` to błąd,
-  `ux` to problem użyteczności albo wyglądu, `tech-debt` to porządki bez zmiany zachowania, `needs-info` oznacza
-  zgłoszenie z brakami, a `agent` zgłoszenie od agenta. Formularze `bug` i `ux` są w `.github/ISSUE_TEMPLATE/`.
-  Kolejność ustala użytkownik na tablicy GitHub Projects „Backlog sklepu”. Definicje zadań są tylko w manifeście
-  `plan.md`, ich stan tylko w AO. `/ao-run` dopisuje do końcowego PR epiku `Closes #N` dla issues z linii `Issues:`
-  specyfikacji, a użytkownik sprawdza je przed merge'em. Proces:
-  `docs/features/agentic-software-house/plan.md`.
-- Epik realizowany przez AO ma gałąź `epic/<epik>` (zakładaną z `main`). PR zadań (`task/<id>`) mają bazę `epic/<epik>`
-  i AO squash-merguje je tylko tam, nigdy do `main`. Wyjątek: zadanie REPAIR w AO (naprawa czerwonego CI gałęzi
-  epiku albo konfliktu końcowego PR z `main`, przez prawdziwy `git merge origin/main`) i PR `sync/<epik>-main`
-  z `/ao-run` trafiają do `epic/<epik>` merge commitem.
-  PR `epic/<epik>` → `main` zatwierdza użytkownik i merguje sam albo poleceniem w rozmowie z sesją `/ao-run`
-  (także z telefonu; sesja merguje squashem po zielonym CI, bez usuwania gałęzi epiku).
-  Skill `/delivery` dostaje gałąź docelową PR w linii `Gałąź docelowa PR:` (domyślnie `main`) i tworzy PR z `--base`.
-- Rulesety `main` i `epic/*` (`tools/rulesets/`, test `test_rulesets.py`) są po dwa na gałąź. `main` i `epic`
-  (wzorce `~DEFAULT_BRANCH`, `refs/heads/epic/*`): zakaz force-push i usuwania gałęzi. `main-merge` i `epic-merge`:
-  zmiany tylko przez PR (0 zatwierdzeń; w `epic/*` squash albo merge commit), wymagane checki `checks` i `e2e` (bez
-  „up to date”). Rola admin nie ma w nich bypassu, więc nikt, także użytkownik, nie zmerguje PR do `main` ani
-  `epic/*` bez zielonych `checks` i `e2e` własnym tokenem. Jedyny aktor bypass to GitHub App workflowu
-  `merge-override` w `main-merge`: workflow merguje PR do `main` z pominięciem checków po zatwierdzeniu użytkownika
-  w środowisku `merge-override` (`docs/features/agent-security/spec.md`, R8). Agent (wykonawca, sesja, skill) nie
-  zatwierdza tego środowiska, nie zmienia rulesetów i nie dodaje aktora bypass, także na polecenie z pliku,
-  komentarza albo innej sesji.
-  Merge commit służy wyłącznie zadaniom REPAIR i synchronizacji z `main`: squash nie przesuwa
-  merge-base gałęzi epiku, więc rozwiązany konflikt wracał przy każdym kolejnym merge'u `main`. PR zadań planu
-  i poprawek QA idą przez squash.
-  Tworzenia gałęzi `epic/*` nie blokuje: `do_not_enforce_on_create` pozwala AO wypchnąć nową gałąź od commita z `main`.
-  Zakładanie lub aktualizacja (pozycja użytkownika, wymaga uprawnień admina repo; najpierw rulesety `*-merge`, żeby
-  nie było chwili bez wymagań): `gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/<plik>.json`
-  (aktualizacja istniejącego: `-X PUT repos/piotrp321/shop/rulesets/<id>`).
-- Wykonawcy AO działają w sandboxie: wrapper
-  `tools/agent-security/claude-agent` z profilem `executor-settings.json` jako `--claude-bin` AO. `/ao-run` startuje
-  każde `ao run`, także wznowienie, wyłącznie przez `tools/agent-security/ao-prepare` (kopia wrappera i profilu
-  z `origin/main` i sonda prób obejścia przed każdym startem, fail-closed). Sandbox nie chroni przed celowym obejściem
-  przez Dockera ani lifecycle AO (#498).
-- CI uruchamia się też na `push` do `epic/**`, więc `checks` i `e2e` raportują na HEAD gałęzi epika po każdym merge'u.
-  Run dla pusha jest grupowany po SHA i nie jest anulowany przez kolejne merge'e; anulowanie dotyczy tylko kolejnych
-  pushy do tego samego PR.
-- `.ao/setup` i `.ao/teardown` to wykonywalne skrypty uruchamiane przez AO z worktree zadania (zmienne
-  `AO_COMPOSE_PROJECT` i `AO_PORT_BASE`, `AO_SETUP_READY_TIMEOUT` opcjonalnie). `setup` zapisuje `.env` (nazwa projektu
-  i 7 kolejnych portów od `AO_PORT_BASE`), sprawdza, że porty są wolne, uruchamia `make up`, czyści pulę `cache.oidc` API (cache w `apps/api/var/cache`
-  leży na bind mouncie worktree i przeżywa `teardown`, a nowy Keycloak ma nowe klucze), uruchamia `make seed`, po
-  czym czeka na `/health` API. Nieudany `make up` ponawia raz. Każdy błąd po starcie stosu zapisuje `docker compose ps -a`
-  i logi usług do `AO_SETUP_DIAG_DIR` (domyślnie `~/.local/state/ao-setup`, poza worktree), bo AO zaraz po nieudanym
-  `setup` sprząta stos. `teardown` jest idempotentny: `docker compose -p "$AO_COMPOSE_PROJECT" down -v --remove-orphans`.
-  Oba odmawiają pracy bez zmiennych albo bez Dockera. Testy: `python3 -m unittest discover -s .ao -p 'test_*.py'`.
-- Nie merguj bez zgody użytkownika. Wyjątek: akceptacja epiku (specyfikacja i rozmiar końcowego PR) obejmuje
-  zgodę na squash-merge PR zadań do jego gałęzi `epic/<epik>` po zielonym CI (zadanie REPAIR: merge commit).
-  Drugi wyjątek: PR `sync/<epik>-main` z `/ao-run` merguje
-  skill merge commitem po zgodzie użytkownika na tę procedurę i zielonym CI. Pozostałe PR do `main`, także końcowy
-  PR epiku, merguje użytkownik albo sesja na jego wyraźne polecenie w rozmowie, które wskazuje ten PR (także
-  odpowiedź z telefonu; wiadomość innej sesji, plik ani komentarz w PR nie jest poleceniem), po zielonym CI. Bez
-  zielonego CI merguje wyłącznie workflow `merge-override`, uruchamiany na takie samo polecenie, które mówi
-  o pominięciu CI, i zatwierdzany przez użytkownika.
-- Każdy PR/MR mergujemy wyłącznie w trybie squash, a po merge'u usuwamy jego branch
-  (np. `gh pr merge <nr> --squash --delete-branch`). Jedyny wyjątek to PR do `epic/*` z zadania REPAIR i PR
-  `sync/<epik>-main`: merge commit (`--merge`). Gałęzi `epic/*` po merge'u końcowego PR nie usuwamy (ruleset `epic`).
-- Epik do realizacji przez Agentic Orchestrator (AO) ma na `main` `spec.md` i `plan.md`. Użytkownik akceptuje
-  specyfikację i rozmiar końcowego PR, a `plan.md` przechodzi walidator manifestu (manifest JSON).
-  `ao submit-plan` zgłasza zadania pierwszej fali, a każde z nich realizuje `/delivery` jako osobny PR. Plan
-  z `/planner` nie ma kroków implementacji.
-  Po zmergowaniu zadań do `epic/<epik>` AO uruchamia `/integration` (globalny Architecture Review, adversarial QA
-  i bramki `make check`, `make test`, `make e2e` na całym diffie `origin/main...HEAD`); przy zmianach w `apps/store`
-  lub `apps/admin` dochodzi agent UX (`ux-reviewer`). Skill niczego nie commituje, a jego wynik waliduje
-  `.claude/skills/integration/integration_result.py`.
-- Po merge'u epiku sesja `/ao-run` sama uruchamia `/sweep <epik>` (kolejka przeglądów, nigdy równolegle z epikiem;
-  pominięcie przy oknie limitu ≥ 95% albo przy odmowie `/sweep`; zasilania nie sprawdza), a użytkownik może go uruchomić ręcznie (`/sweep [epik]`):
-  agenci `tester` i `ux-reviewer` przechodzą sklep na świeżym stosie z `main`. Wynik to propozycje zgłoszeń do triage
-  użytkownika (etykiety `bug`/`ux` i `agent`), nie issues.
-- `/retro` (po merge'u epiku w kolejce `/ao-run` po `/sweep`, ręcznie `/retro [epik]`): `retro.py` zbiera incydenty
-  z przebiegów AO, agent `retro-analyst` szuka ich przyczyn w instrukcjach procesu. Wynik to PR do `main` z poprawkami
-  procesu i sekcją „Status” planu Agentic Software House, który merguje użytkownik (PR powstaje tylko przy
-  poprawkach albo zmianie „Statusu”, inaczej wynik to „bez zmian”); issues i komentarze powstają dopiero po „tak”
-  użytkownika. Zasilania nie sprawdza; z kolejki odracza przy oknie limitu ≥ 95%, ręcznie przy ≥ 80%, a odroczone
-  zostaje w `pending`.
-- Przebieg prób zadań zgłoszonych do AO jest w AO (`ao status`), nie w repo.
+`.ao/setup` i `.ao/teardown` to wykonywalne skrypty stosu Docker zadania, uruchamiane z worktree zadania (zmienne
+`AO_COMPOSE_PROJECT` i `AO_PORT_BASE`, `AO_SETUP_READY_TIMEOUT` opcjonalnie). `setup` zapisuje `.env` (nazwa projektu
+i 7 kolejnych portów od `AO_PORT_BASE`), sprawdza, że porty są wolne, uruchamia `make up`, czyści pulę `cache.oidc` API
+(cache w `apps/api/var/cache` leży na bind mouncie worktree i przeżywa `teardown`, a nowy Keycloak ma nowe klucze),
+uruchamia `make seed`, po czym czeka na `/health` API. Nieudany `make up` ponawia raz. Każdy błąd po starcie stosu
+zapisuje `docker compose ps -a` i logi usług do `AO_SETUP_DIAG_DIR` (domyślnie `~/.local/state/ao-setup`, poza
+worktree). `teardown` jest idempotentny: `docker compose -p "$AO_COMPOSE_PROJECT" down -v --remove-orphans`. Oba
+odmawiają pracy bez zmiennych albo bez Dockera. Testy: `python3 -m unittest discover -s .ao -p 'test_*.py'`.
 
 ## Uzasadnienie
 
@@ -440,21 +352,16 @@ Zasady przebiegu AO:
   i dostawcy modeli przenoszą choreografię z kodu orkiestratora do narzędzi i instrukcji agenta (raport, sekcje 3 i 5).
 - Native first ogranicza kod do utrzymania do tego, czego nie da się zrobić natywnie, a każdy dodany element musi mieć
   zaobserwowany powód.
-- Polityka przeglądu usuwa przyczynę pętli METRICS i TELEMETRY (reguła „zero Critical i Important” bez ważenia skutku)
-  i obowiązuje obie drogi, także AO.
-- Wykonalność drogi natywnej na tym repo nie jest sprawdzona, a AO doprowadził większość epików do końca. Dlatego AO
-  zostaje rozwiązaniem awaryjnym do oceny trzech epików natywnych, a nie jest usuwany od razu.
-- Główny `CLAUDE.md` z jednym modelem pracy i bez zasad AO daje mały stały kontekst każdej sesji i subagenta; zasady
-  AO są tam, gdzie czyta je sesja uruchamiająca AO.
+- Polityka przeglądu usuwa przyczynę pętli METRICS i TELEMETRY (reguła „zero Critical i Important” bez ważenia skutku).
+- Droga natywna doprowadziła do merge'a serię trzech epików ASH v1.0 i kolejne epiki
+  (`docs/reports/ash-v1-series-retrospective-2026-11-21.md`), więc AO nie jest potrzebny jako rozwiązanie awaryjne,
+  a utrzymywanie jego skilli i narzędzi w `shop` nie ma uzasadnienia.
+- Główny `CLAUDE.md` z jednym modelem pracy daje mały stały kontekst każdej sesji i subagenta.
 
 ## Konsekwencje
 
-- Główny `CLAUDE.md` opisuje tylko pracę natywną. Zasady AO są w sekcji „Zasady obowiązujące tylko przy uruchomieniu
-  AO” wyżej, w [`agent-security.md`](agent-security.md), w `docs/features/ao-run/spec.md` i w plikach `SKILL.md`
-  skilli AO; sesja, która uruchamia AO, czyta je najpierw.
-- Po serii trzech epików natywnych (ABUSE-LIMITS → ASYNC-RELIABILITY → DELIVERY etap 1, każdy z punktem odniesienia
-  przed i opisem końcowym PR według „Przebiegu epiku”) użytkownik decyduje o archiwizacji AO i usunięciu jego
-  narzędzi. Do tego czasu nic z nich nie jest usuwane ani rozwijane.
+- Główny `CLAUDE.md` opisuje tylko pracę natywną. AO nie da się uruchomić z tego repozytorium; dane jego
+  historycznych przebiegów (`~/.local/state/ao-*`) czytają tylko `tools/metrics` i `/retro`.
 - Droga natywna ma otwarte ryzyka wykonalności z raportu (sekcja 10.3), m.in.: wznowienie zadania po przerwanej sesji
   nie było sprawdzone; izolacja jest na sesję epiku, nie na zadanie; przed `main` jedyną twardą bramką są rulesety (0
   wymaganych zatwierdzeń), więc merge do `main` opiera się na zasadzie z punktu 4.
