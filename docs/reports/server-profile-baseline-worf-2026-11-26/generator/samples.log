@@ -1,0 +1,1447 @@
+=== 2026-11-25T19:41:20Z
+fs avail GB 182.0 used GB 25.0 mem avail GiB 13.48 cpu nanocores 4357776827
+574 MB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 398: 500 products, 1496 variants (100 parts done)
+=== 2026-11-25T19:46:23Z
+fs avail GB 179.2 used GB 27.9 mem avail GiB 13.5 cpu nanocores 2844455416
+3170 MB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 3597: 500 products, 1516 variants (900 parts done)
+=== 2026-11-25T19:51:26Z
+fs avail GB 178.9 used GB 28.1 mem avail GiB 13.44 cpu nanocores 2790634867
+4670 MB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 5597: 500 products, 1460 variants (1400 parts done)
+=== 2026-11-25T19:56:29Z
+fs avail GB 177.6 used GB 29.5 mem avail GiB 13.51 cpu nanocores 2520362136
+5969 MB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 7197: 500 products, 1497 variants (1800 parts done)
+=== 2026-11-25T20:01:32Z
+fs avail GB 176.4 used GB 30.7 mem avail GiB 13.5 cpu nanocores 2665042580
+7116 MB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 8797: 500 products, 1534 variants (2200 parts done)
+=== 2026-11-25T20:06:35Z
+fs avail GB 175.2 used GB 31.8 mem avail GiB 13.59 cpu nanocores 2742292944
+8150 MB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 9999: 500 products, 1502 variants (2500 parts done)
+=== 2026-11-25T20:11:38Z
+fs avail GB 174.2 used GB 32.9 mem avail GiB 13.52 cpu nanocores 2341250292
+9166 MB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 11199: 500 products, 1479 variants (2800 parts done)
+=== 2026-11-25T20:16:42Z
+fs avail GB 173.2 used GB 33.9 mem avail GiB 13.48 cpu nanocores 2202874356
+10135 MB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 12399: 500 products, 1495 variants (3100 parts done)
+=== 2026-11-25T20:21:46Z
+fs avail GB 172.2 used GB 34.9 mem avail GiB 13.57 cpu nanocores 2185814187
+11 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 13599: 500 products, 1519 variants (3400 parts done)
+=== 2026-11-25T20:26:49Z
+fs avail GB 171.2 used GB 35.8 mem avail GiB 13.57 cpu nanocores 2209166918
+12 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 14799: 500 products, 1548 variants (3700 parts done)
+=== 2026-11-25T20:31:52Z
+fs avail GB 170.3 used GB 36.7 mem avail GiB 13.51 cpu nanocores 2241111325
+13 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 15999: 500 products, 1499 variants (4000 parts done)
+=== 2026-11-25T20:36:55Z
+fs avail GB 169.5 used GB 37.6 mem avail GiB 13.52 cpu nanocores 2236041692
+13 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 16799: 500 products, 1478 variants (4200 parts done)
+=== 2026-11-25T20:41:59Z
+fs avail GB 168.6 used GB 38.5 mem avail GiB 13.55 cpu nanocores 2194515098
+14 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 17999: 500 products, 1437 variants (4500 parts done)
+=== 2026-11-25T20:47:02Z
+fs avail GB 167.6 used GB 39.4 mem avail GiB 13.52 cpu nanocores 2345563019
+15 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 19199: 500 products, 1480 variants (4800 parts done)
+=== 2026-11-25T20:52:05Z
+fs avail GB 164.4 used GB 42.7 mem avail GiB 13.46 cpu nanocores 2385769756
+16 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+
+=== 2026-11-25T20:57:08Z
+fs avail GB 164.0 used GB 43.1 mem avail GiB 13.52 cpu nanocores 1646737792
+16 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 164.14 GB (160289732 KiB), the floor is 32 GB (reading 150)
+=== 2026-11-25T21:02:11Z
+fs avail GB 163.6 used GB 43.5 mem avail GiB 13.47 cpu nanocores 1572773880
+16 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 163.76 GB (159925384 KiB), the floor is 32 GB (reading 160)
+=== 2026-11-25T21:07:15Z
+fs avail GB 163.2 used GB 43.8 mem avail GiB 13.49 cpu nanocores 1739475951
+17 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 163.38 GB (159548180 KiB), the floor is 32 GB (reading 170)
+=== 2026-11-25T21:12:18Z
+fs avail GB 162.9 used GB 44.2 mem avail GiB 13.43 cpu nanocores 1371389892
+17 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 163.03 GB (159205344 KiB), the floor is 32 GB (reading 180)
+=== 2026-11-25T21:17:21Z
+fs avail GB 162.5 used GB 44.5 mem avail GiB 13.46 cpu nanocores 1574032870
+17 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 162.67 GB (158859536 KiB), the floor is 32 GB (reading 190)
+=== 2026-11-25T21:22:24Z
+fs avail GB 162.5 used GB 44.6 mem avail GiB 13.42 cpu nanocores 1209219864
+17 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 162.49 GB (158684808 KiB), the floor is 32 GB (reading 200)
+=== 2026-11-25T21:27:27Z
+fs avail GB 162.4 used GB 44.6 mem avail GiB 13.43 cpu nanocores 1275801909
+17 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 162.44 GB (158637132 KiB), the floor is 32 GB (reading 210)
+=== 2026-11-25T21:32:31Z
+fs avail GB 162.1 used GB 44.9 mem avail GiB 13.42 cpu nanocores 1270331539
+18 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 162.34 GB (158538644 KiB), the floor is 32 GB (reading 220)
+=== 2026-11-25T21:37:34Z
+fs avail GB 161.8 used GB 45.3 mem avail GiB 13.53 cpu nanocores 1456464032
+18 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 161.94 GB (158145568 KiB), the floor is 32 GB (reading 230)
+=== 2026-11-25T21:42:37Z
+fs avail GB 161.7 used GB 45.4 mem avail GiB 13.5 cpu nanocores 1317460844
+18 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 161.69 GB (157898524 KiB), the floor is 32 GB (reading 240)
+=== 2026-11-25T21:47:40Z
+fs avail GB 161.7 used GB 45.4 mem avail GiB 13.42 cpu nanocores 1212999529
+18 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 161.68 GB (157888960 KiB), the floor is 32 GB (reading 250)
+=== 2026-11-25T21:52:44Z
+fs avail GB 161.5 used GB 45.6 mem avail GiB 13.45 cpu nanocores 1206256362
+18 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 161.66 GB (157874844 KiB), the floor is 32 GB (reading 260)
+=== 2026-11-25T21:57:47Z
+fs avail GB 161.1 used GB 46.0 mem avail GiB 13.35 cpu nanocores 1596645939
+19 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 161.29 GB (157511924 KiB), the floor is 32 GB (reading 270)
+=== 2026-11-25T22:02:50Z
+fs avail GB 160.9 used GB 46.1 mem avail GiB 13.33 cpu nanocores 1247826987
+19 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 160.94 GB (157164824 KiB), the floor is 32 GB (reading 280)
+=== 2026-11-25T22:07:53Z
+fs avail GB 160.9 used GB 46.1 mem avail GiB 13.34 cpu nanocores 1292281631
+19 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 160.93 GB (157155032 KiB), the floor is 32 GB (reading 290)
+=== 2026-11-25T22:12:56Z
+fs avail GB 160.8 used GB 46.2 mem avail GiB 13.22 cpu nanocores 1367475755
+19 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 160.91 GB (157143060 KiB), the floor is 32 GB (reading 300)
+=== 2026-11-25T22:17:59Z
+fs avail GB 160.5 used GB 46.6 mem avail GiB 13.29 cpu nanocores 1608411524
+19 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 160.69 GB (156925064 KiB), the floor is 32 GB (reading 310)
+=== 2026-11-25T22:23:03Z
+fs avail GB 160.3 used GB 46.8 mem avail GiB 13.25 cpu nanocores 1295785053
+19 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 160.31 GB (156548516 KiB), the floor is 32 GB (reading 320)
+=== 2026-11-25T22:28:06Z
+fs avail GB 160.2 used GB 46.8 mem avail GiB 13.33 cpu nanocores 1300022164
+19 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 160.25 GB (156496904 KiB), the floor is 32 GB (reading 330)
+=== 2026-11-25T22:33:09Z
+fs avail GB 160.2 used GB 46.9 mem avail GiB 13.36 cpu nanocores 1298260615
+20 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+
+=== 2026-11-25T22:38:12Z
+fs avail GB 159.5 used GB 47.5 mem avail GiB 13.2 cpu nanocores 2738970335
+21 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 2797: 1477 variants, 1898 history entries (700 parts done)
+=== 2026-11-25T22:43:15Z
+fs avail GB 157.9 used GB 49.1 mem avail GiB 13.25 cpu nanocores 2906609005
+23 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 5197: 1474 variants, 1927 history entries (1300 parts done)
+=== 2026-11-25T22:48:19Z
+fs avail GB 156.6 used GB 50.5 mem avail GiB 13.3 cpu nanocores 2652527226
+24 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 7197: 1497 variants, 1951 history entries (1800 parts done)
+=== 2026-11-25T22:53:22Z
+fs avail GB 155.4 used GB 51.7 mem avail GiB 13.3 cpu nanocores 2660406672
+25 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 8797: 1534 variants, 1989 history entries (2200 parts done)
+=== 2026-11-25T22:58:25Z
+fs avail GB 154.3 used GB 52.7 mem avail GiB 13.26 cpu nanocores 2695728115
+26 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 10397: 1556 variants, 2002 history entries (2600 parts done)
+=== 2026-11-25T23:03:28Z
+fs avail GB 153.3 used GB 53.7 mem avail GiB 13.16 cpu nanocores 2518589318
+27 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 11997: 1460 variants, 1903 history entries (3000 parts done)
+=== 2026-11-25T23:08:32Z
+fs avail GB 152.3 used GB 54.7 mem avail GiB 13.19 cpu nanocores 2331859516
+28 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 13197: 1608 variants, 2074 history entries (3300 parts done)
+=== 2026-11-25T23:13:35Z
+fs avail GB 151.4 used GB 55.7 mem avail GiB 13.26 cpu nanocores 2454969546
+29 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 14796: 1517 variants, 1978 history entries (3700 parts done)
+=== 2026-11-25T23:18:38Z
+fs avail GB 150.5 used GB 56.5 mem avail GiB 13.33 cpu nanocores 2247426017
+30 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 15997: 1554 variants, 2009 history entries (4000 parts done)
+=== 2026-11-25T23:23:41Z
+fs avail GB 149.6 used GB 57.5 mem avail GiB 13.29 cpu nanocores 2264582597
+31 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 17198: 1451 variants, 1857 history entries (4300 parts done)
+=== 2026-11-25T23:28:45Z
+fs avail GB 148.8 used GB 58.3 mem avail GiB 13.23 cpu nanocores 2154372401
+31 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 18398: 1542 variants, 1996 history entries (4600 parts done)
+=== 2026-11-25T23:33:48Z
+fs avail GB 147.9 used GB 59.1 mem avail GiB 13.18 cpu nanocores 2234808539
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 19597: 1517 variants, 1972 history entries (4900 parts done)
+=== 2026-11-25T23:38:51Z
+fs avail GB 147.9 used GB 59.2 mem avail GiB 12.95 cpu nanocores 4637749616
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 20000 imported
+=== 2026-11-25T23:43:55Z
+fs avail GB 147.8 used GB 59.3 mem avail GiB 12.97 cpu nanocores 4628346318
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 90000 imported
+=== 2026-11-25T23:48:58Z
+fs avail GB 147.7 used GB 59.4 mem avail GiB 12.96 cpu nanocores 4642043725
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 160000 imported
+=== 2026-11-25T23:54:01Z
+fs avail GB 147.6 used GB 59.5 mem avail GiB 12.97 cpu nanocores 4690191283
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 240000 imported
+=== 2026-11-25T23:59:05Z
+fs avail GB 147.5 used GB 59.5 mem avail GiB 12.87 cpu nanocores 4657842221
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 310000 imported
+=== 2026-11-26T00:04:08Z
+fs avail GB 147.4 used GB 59.6 mem avail GiB 12.85 cpu nanocores 4777668113
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 380000 imported
+=== 2026-11-26T00:09:11Z
+fs avail GB 147.3 used GB 59.7 mem avail GiB 12.78 cpu nanocores 4764875886
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 450000 imported
+=== 2026-11-26T00:14:14Z
+fs avail GB 147.2 used GB 59.8 mem avail GiB 12.86 cpu nanocores 4722541757
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 530000 imported
+=== 2026-11-26T00:19:18Z
+fs avail GB 147.1 used GB 59.9 mem avail GiB 12.99 cpu nanocores 4555975917
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 600000 imported
+=== 2026-11-26T00:24:21Z
+fs avail GB 147.1 used GB 60.0 mem avail GiB 12.89 cpu nanocores 4741269250
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 680000 imported
+=== 2026-11-26T00:29:24Z
+fs avail GB 147.0 used GB 60.1 mem avail GiB 12.99 cpu nanocores 4597620934
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 750000 imported
+=== 2026-11-26T00:34:27Z
+fs avail GB 146.9 used GB 60.2 mem avail GiB 13.04 cpu nanocores 4650033600
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 820000 imported
+=== 2026-11-26T00:39:30Z
+fs avail GB 146.8 used GB 60.3 mem avail GiB 12.84 cpu nanocores 2672628931
+32 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+shop: 890000 imported
+=== 2026-11-26T00:44:34Z
+fs avail GB 146.1 used GB 61.0 mem avail GiB 12.78 cpu nanocores 2631439909
+33 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 399: 500 orders, 948 lines (100 parts done)
+=== 2026-11-26T00:49:37Z
+fs avail GB 145.4 used GB 61.6 mem avail GiB 12.59 cpu nanocores 2580864779
+33 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 799: 500 orders, 974 lines (200 parts done)
+=== 2026-11-26T00:54:40Z
+fs avail GB 144.7 used GB 62.3 mem avail GiB 12.71 cpu nanocores 2330288728
+34 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 1199: 500 orders, 947 lines (300 parts done)
+=== 2026-11-26T00:59:43Z
+fs avail GB 144.0 used GB 63.1 mem avail GiB 12.67 cpu nanocores 1932383045
+35 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 1599: 500 orders, 953 lines (400 parts done)
+=== 2026-11-26T01:04:46Z
+fs avail GB 143.3 used GB 63.8 mem avail GiB 12.57 cpu nanocores 2134144297
+35 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 1996: 500 orders, 963 lines (500 parts done)
+=== 2026-11-26T01:09:50Z
+fs avail GB 142.6 used GB 64.4 mem avail GiB 12.61 cpu nanocores 2169734163
+36 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 2396: 500 orders, 967 lines (600 parts done)
+=== 2026-11-26T01:14:53Z
+fs avail GB 142.0 used GB 65.0 mem avail GiB 12.54 cpu nanocores 2143491322
+37 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 2796: 500 orders, 945 lines (700 parts done)
+=== 2026-11-26T01:19:56Z
+fs avail GB 141.4 used GB 65.7 mem avail GiB 12.59 cpu nanocores 2208740960
+37 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 3196: 500 orders, 1004 lines (800 parts done)
+=== 2026-11-26T01:25:00Z
+fs avail GB 140.8 used GB 66.3 mem avail GiB 12.45 cpu nanocores 2214349939
+38 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 140.75 GB (137452716 KiB), the floor is 32 GB (reading 690)
+=== 2026-11-26T01:30:03Z
+fs avail GB 140.1 used GB 66.9 mem avail GiB 12.47 cpu nanocores 2206086703
+38 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 3997: 500 orders, 939 lines (1000 parts done)
+=== 2026-11-26T01:35:06Z
+fs avail GB 139.5 used GB 67.5 mem avail GiB 12.51 cpu nanocores 3819532185
+39 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 139.52 GB (136249568 KiB), the floor is 32 GB (reading 710)
+=== 2026-11-26T01:40:10Z
+fs avail GB 138.9 used GB 68.1 mem avail GiB 12.58 cpu nanocores 2337743461
+39 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 138.91 GB (135658504 KiB), the floor is 32 GB (reading 720)
+=== 2026-11-26T01:45:13Z
+fs avail GB 138.3 used GB 68.8 mem avail GiB 12.53 cpu nanocores 2371754628
+40 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 138.31 GB (135072692 KiB), the floor is 32 GB (reading 730)
+=== 2026-11-26T01:50:16Z
+fs avail GB 137.7 used GB 69.4 mem avail GiB 12.56 cpu nanocores 2302266768
+41 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 137.72 GB (134492668 KiB), the floor is 32 GB (reading 740)
+=== 2026-11-26T01:55:19Z
+fs avail GB 137.1 used GB 70.0 mem avail GiB 12.72 cpu nanocores 922332343
+41 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 137.11 GB (133898388 KiB), the floor is 32 GB (reading 750)
+=== 2026-11-26T02:00:23Z
+fs avail GB 136.5 used GB 70.6 mem avail GiB 12.63 cpu nanocores 2180848235
+42 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 136.51 GB (133308100 KiB), the floor is 32 GB (reading 760)
+=== 2026-11-26T02:05:26Z
+fs avail GB 135.9 used GB 71.2 mem avail GiB 12.67 cpu nanocores 2145558824
+42 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 135.91 GB (132727408 KiB), the floor is 32 GB (reading 770)
+=== 2026-11-26T02:10:29Z
+fs avail GB 135.3 used GB 71.8 mem avail GiB 12.6 cpu nanocores 2251407985
+43 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 135.32 GB (132147520 KiB), the floor is 32 GB (reading 780)
+=== 2026-11-26T02:15:32Z
+fs avail GB 134.7 used GB 72.4 mem avail GiB 12.62 cpu nanocores 2298009296
+43 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 7199: 500 orders, 971 lines (1800 parts done)
+=== 2026-11-26T02:20:36Z
+fs avail GB 134.1 used GB 73.0 mem avail GiB 12.66 cpu nanocores 2359097203
+44 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 7598: 500 orders, 950 lines (1900 parts done)
+=== 2026-11-26T02:25:39Z
+fs avail GB 133.5 used GB 73.6 mem avail GiB 12.66 cpu nanocores 2259996140
+45 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 133.54 GB (130409804 KiB), the floor is 32 GB (reading 810)
+=== 2026-11-26T02:30:42Z
+fs avail GB 132.9 used GB 74.2 mem avail GiB 12.61 cpu nanocores 1906418804
+45 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 132.95 GB (129831944 KiB), the floor is 32 GB (reading 820)
+=== 2026-11-26T02:35:45Z
+fs avail GB 132.3 used GB 74.8 mem avail GiB 12.55 cpu nanocores 2085030374
+46 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 132.38 GB (129277260 KiB), the floor is 32 GB (reading 830)
+=== 2026-11-26T02:40:49Z
+fs avail GB 131.7 used GB 75.3 mem avail GiB 12.65 cpu nanocores 2137286639
+46 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 131.80 GB (128714508 KiB), the floor is 32 GB (reading 840)
+=== 2026-11-26T02:45:52Z
+fs avail GB 131.1 used GB 75.9 mem avail GiB 12.61 cpu nanocores 2123288488
+47 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 131.24 GB (128162056 KiB), the floor is 32 GB (reading 850)
+=== 2026-11-26T02:50:55Z
+fs avail GB 130.6 used GB 76.5 mem avail GiB 12.65 cpu nanocores 2061625086
+47 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+part 9596: 500 orders, 889 lines (2400 parts done)
+=== 2026-11-26T02:55:58Z
+fs avail GB 130.0 used GB 77.0 mem avail GiB 12.72 cpu nanocores 1421948362
+48 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+
+=== 2026-11-26T03:01:02Z
+fs avail GB 125.7 used GB 81.4 mem avail GiB 12.81 cpu nanocores 1738867743
+52 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 126.11 GB (123157884 KiB), the floor is 32 GB (reading 880)
+=== 2026-11-26T03:06:05Z
+fs avail GB 124.5 used GB 82.5 mem avail GiB 12.82 cpu nanocores 1503917100
+53 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 124.71 GB (121782352 KiB), the floor is 32 GB (reading 890)
+=== 2026-11-26T03:11:08Z
+fs avail GB 123.7 used GB 83.3 mem avail GiB 12.9 cpu nanocores 1519484429
+54 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 123.87 GB (120964444 KiB), the floor is 32 GB (reading 900)
+=== 2026-11-26T03:16:11Z
+fs avail GB 123.1 used GB 84.0 mem avail GiB 12.76 cpu nanocores 1358722279
+54 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 123.19 GB (120305636 KiB), the floor is 32 GB (reading 910)
+=== 2026-11-26T03:21:15Z
+fs avail GB 122.5 used GB 84.5 mem avail GiB 12.82 cpu nanocores 1323686772
+55 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 122.65 GB (119778700 KiB), the floor is 32 GB (reading 920)
+=== 2026-11-26T03:26:18Z
+fs avail GB 122.1 used GB 85.0 mem avail GiB 12.85 cpu nanocores 1204426869
+55 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 122.19 GB (119323584 KiB), the floor is 32 GB (reading 930)
+=== 2026-11-26T03:31:21Z
+fs avail GB 121.7 used GB 85.4 mem avail GiB 12.94 cpu nanocores 1176052474
+55 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 121.77 GB (118913440 KiB), the floor is 32 GB (reading 940)
+=== 2026-11-26T03:36:24Z
+fs avail GB 121.3 used GB 85.8 mem avail GiB 12.86 cpu nanocores 1140512474
+56 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 121.39 GB (118548684 KiB), the floor is 32 GB (reading 950)
+=== 2026-11-26T03:41:27Z
+fs avail GB 121.0 used GB 86.1 mem avail GiB 12.87 cpu nanocores 1118132395
+56 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 121.05 GB (118213896 KiB), the floor is 32 GB (reading 960)
+=== 2026-11-26T03:46:31Z
+fs avail GB 120.6 used GB 86.4 mem avail GiB 12.81 cpu nanocores 1127212993
+56 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 120.73 GB (117896152 KiB), the floor is 32 GB (reading 970)
+=== 2026-11-26T03:51:34Z
+fs avail GB 120.3 used GB 86.8 mem avail GiB 12.71 cpu nanocores 1162716967
+57 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 120.40 GB (117579832 KiB), the floor is 32 GB (reading 980)
+=== 2026-11-26T03:56:37Z
+fs avail GB 120.0 used GB 87.0 mem avail GiB 12.94 cpu nanocores 1143117300
+57 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 120.11 GB (117297624 KiB), the floor is 32 GB (reading 990)
+=== 2026-11-26T04:01:41Z
+fs avail GB 119.7 used GB 87.3 mem avail GiB 12.8 cpu nanocores 1060508955
+57 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 119.81 GB (117006156 KiB), the floor is 32 GB (reading 1000)
+=== 2026-11-26T04:06:44Z
+fs avail GB 119.4 used GB 87.6 mem avail GiB 12.88 cpu nanocores 1072009817
+58 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 119.51 GB (116704168 KiB), the floor is 32 GB (reading 1010)
+=== 2026-11-26T04:11:47Z
+fs avail GB 119.1 used GB 87.9 mem avail GiB 12.87 cpu nanocores 1197303776
+58 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 119.23 GB (116436500 KiB), the floor is 32 GB (reading 1020)
+=== 2026-11-26T04:16:50Z
+fs avail GB 118.9 used GB 88.2 mem avail GiB 12.82 cpu nanocores 1085149005
+58 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 118.95 GB (116162208 KiB), the floor is 32 GB (reading 1030)
+=== 2026-11-26T04:21:53Z
+fs avail GB 118.6 used GB 88.5 mem avail GiB 12.89 cpu nanocores 1077956041
+58 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 118.68 GB (115894488 KiB), the floor is 32 GB (reading 1040)
+=== 2026-11-26T04:26:57Z
+fs avail GB 118.3 used GB 88.7 mem avail GiB 12.88 cpu nanocores 1089193321
+59 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 118.41 GB (115636496 KiB), the floor is 32 GB (reading 1050)
+=== 2026-11-26T04:32:00Z
+fs avail GB 118.1 used GB 89.0 mem avail GiB 12.82 cpu nanocores 1222155686
+59 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 118.15 GB (115382008 KiB), the floor is 32 GB (reading 1060)
+=== 2026-11-26T04:37:03Z
+fs avail GB 117.8 used GB 89.3 mem avail GiB 12.8 cpu nanocores 1042773858
+59 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 117.89 GB (115130004 KiB), the floor is 32 GB (reading 1070)
+=== 2026-11-26T04:42:06Z
+fs avail GB 117.5 used GB 89.5 mem avail GiB 12.82 cpu nanocores 1426661798
+59 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 117.64 GB (114882232 KiB), the floor is 32 GB (reading 1080)
+=== 2026-11-26T04:47:10Z
+fs avail GB 117.3 used GB 89.7 mem avail GiB 12.76 cpu nanocores 1624167916
+60 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 117.40 GB (114649892 KiB), the floor is 32 GB (reading 1090)
+=== 2026-11-26T04:52:13Z
+fs avail GB 117.1 used GB 90.0 mem avail GiB 12.78 cpu nanocores 1505108577
+60 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 117.17 GB (114424712 KiB), the floor is 32 GB (reading 1100)
+=== 2026-11-26T04:57:16Z
+fs avail GB 116.9 used GB 90.2 mem avail GiB 12.84 cpu nanocores 1501668555
+60 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 116.96 GB (114216120 KiB), the floor is 32 GB (reading 1110)
+=== 2026-11-26T05:02:19Z
+fs avail GB 116.6 used GB 90.4 mem avail GiB 12.85 cpu nanocores 1124409319
+60 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 116.73 GB (113993600 KiB), the floor is 32 GB (reading 1120)
+=== 2026-11-26T05:07:22Z
+fs avail GB 116.4 used GB 90.7 mem avail GiB 12.77 cpu nanocores 1219333813
+60 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 116.50 GB (113772040 KiB), the floor is 32 GB (reading 1130)
+=== 2026-11-26T05:12:26Z
+fs avail GB 114.1 used GB 92.9 mem avail GiB 12.79 cpu nanocores 1455394909
+61 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 116.28 GB (113552688 KiB), the floor is 32 GB (reading 1140)
+=== 2026-11-26T05:17:29Z
+fs avail GB 113.5 used GB 93.5 mem avail GiB 12.84 cpu nanocores 1631034938
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 114.36 GB (111679452 KiB), the floor is 32 GB (reading 1150)
+=== 2026-11-26T05:22:32Z
+fs avail GB 112.3 used GB 94.7 mem avail GiB 12.88 cpu nanocores 1670819484
+64 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-data: free space of /: 112.85 GB (110209652 KiB), the floor is 32 GB (reading 1160)
+=== 2026-11-26T05:27:36Z
+fs avail GB 114.9 used GB 92.1 mem avail GiB 12.89 cpu nanocores 1560037947
+62 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+sales: 26000 hours rebuilt, up to 2026-11-07 07:00 UTC
+=== 2026-11-26T05:32:39Z
+fs avail GB 114.3 used GB 92.7 mem avail GiB 12.9 cpu nanocores 1628869355
+62 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+customers: 1200 batches rebuilt, 600000 customers, up to ae7b0664-8f13-5c14-85b1-e5ce66440ee4
+=== 2026-11-26T05:37:42Z
+fs avail GB 114.0 used GB 93.1 mem avail GiB 12.74 cpu nanocores 1284342388
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":44500,"documents_per_second":391.3},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T05:37:45.964812+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T05:42:46Z
+fs avail GB 113.9 used GB 93.2 mem avail GiB 12.76 cpu nanocores 1085707251
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":163500,"documents_per_second":392.4},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T05:42:48.924390+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T05:47:49Z
+fs avail GB 113.8 used GB 93.3 mem avail GiB 12.81 cpu nanocores 1152980891
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":282000,"documents_per_second":392.3},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T05:47:51.116413+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T05:52:52Z
+fs avail GB 113.7 used GB 93.3 mem avail GiB 12.71 cpu nanocores 1159254745
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":402000,"documents_per_second":393.2},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T05:52:54.656159+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T05:57:55Z
+fs avail GB 113.7 used GB 93.4 mem avail GiB 12.76 cpu nanocores 1158446421
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":521500,"documents_per_second":393.5},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T05:57:57.531722+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T06:02:58Z
+fs avail GB 113.6 used GB 93.4 mem avail GiB 12.73 cpu nanocores 1129880020
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":641500,"documents_per_second":393.8},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T06:03:01.332937+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T06:08:02Z
+fs avail GB 113.5 used GB 93.5 mem avail GiB 12.74 cpu nanocores 1260715452
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":759500,"documents_per_second":393.2},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T06:08:04.053958+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T06:13:05Z
+fs avail GB 113.5 used GB 93.6 mem avail GiB 12.69 cpu nanocores 1112742333
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":878500,"documents_per_second":392.8},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T06:13:08.476893+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T06:18:08Z
+fs avail GB 113.4 used GB 93.7 mem avail GiB 12.61 cpu nanocores 1132297845
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":998000,"documents_per_second":393.0},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T06:18:11.682757+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T06:23:11Z
+fs avail GB 113.3 used GB 93.8 mem avail GiB 12.73 cpu nanocores 1136382182
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":1116000,"documents_per_second":392.6},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T06:23:14.815263+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T06:28:15Z
+fs avail GB 113.2 used GB 93.9 mem avail GiB 12.63 cpu nanocores 1048987390
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":1235000,"documents_per_second":392.7},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T06:28:17.345820+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T06:33:18Z
+fs avail GB 113.1 used GB 94.0 mem avail GiB 12.56 cpu nanocores 1074408611
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":1350500,"documents_per_second":391.6},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T06:33:20.622703+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T06:38:21Z
+fs avail GB 113.0 used GB 94.1 mem avail GiB 12.59 cpu nanocores 1311046865
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":1470000,"documents_per_second":391.8},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T06:38:24.049752+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T06:43:24Z
+fs avail GB 112.9 used GB 94.2 mem avail GiB 12.62 cpu nanocores 1341497252
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":1592500,"documents_per_second":392.7},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T06:43:27.666768+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T06:48:27Z
+fs avail GB 112.7 used GB 94.4 mem avail GiB 12.58 cpu nanocores 1352620819
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":1712500,"documents_per_second":392.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T06:48:30.795312+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T06:53:31Z
+fs avail GB 112.7 used GB 94.4 mem avail GiB 12.59 cpu nanocores 1280216838
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":1831000,"documents_per_second":392.8},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T06:53:33.331831+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T06:58:34Z
+fs avail GB 112.5 used GB 94.5 mem avail GiB 12.53 cpu nanocores 1152760808
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":1950500,"documents_per_second":392.8},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T06:58:37.243935+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T07:03:37Z
+fs avail GB 112.4 used GB 94.6 mem avail GiB 12.51 cpu nanocores 1160603631
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":2070000,"documents_per_second":392.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T07:03:40.513878+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T07:08:41Z
+fs avail GB 112.3 used GB 94.7 mem avail GiB 12.57 cpu nanocores 1407980618
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":2187500,"documents_per_second":392.6},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T07:08:43.378611+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T07:13:44Z
+fs avail GB 112.2 used GB 94.8 mem avail GiB 12.47 cpu nanocores 1255254416
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":2301500,"documents_per_second":391.8},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T07:13:46.632316+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T07:18:47Z
+fs avail GB 112.1 used GB 95.0 mem avail GiB 12.57 cpu nanocores 1184691059
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":2417000,"documents_per_second":391.3},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T07:18:49.664381+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T07:23:50Z
+fs avail GB 112.0 used GB 95.1 mem avail GiB 12.42 cpu nanocores 1125829260
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":2533000,"documents_per_second":390.8},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T07:23:53.327515+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T07:28:53Z
+fs avail GB 111.9 used GB 95.2 mem avail GiB 12.38 cpu nanocores 1234331856
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":2652000,"documents_per_second":390.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T07:28:56.760251+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T07:33:57Z
+fs avail GB 111.7 used GB 95.3 mem avail GiB 12.43 cpu nanocores 1135131851
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":2770500,"documents_per_second":390.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T07:33:59.071494+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T07:39:00Z
+fs avail GB 111.3 used GB 95.7 mem avail GiB 12.44 cpu nanocores 1139790216
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":2890500,"documents_per_second":391.1},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T07:39:03.545342+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T07:44:03Z
+fs avail GB 111.5 used GB 95.6 mem avail GiB 12.37 cpu nanocores 1147788502
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":3008500,"documents_per_second":391.1},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T07:44:05.529987+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T07:49:06Z
+fs avail GB 109.5 used GB 97.5 mem avail GiB 12.62 cpu nanocores 2776659092
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":3128500,"documents_per_second":391.2},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T07:49:09.761696+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T07:54:10Z
+fs avail GB 111.3 used GB 95.8 mem avail GiB 12.44 cpu nanocores 1187414293
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":3249000,"documents_per_second":391.4},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T07:54:12.310286+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T07:59:13Z
+fs avail GB 111.2 used GB 95.9 mem avail GiB 12.28 cpu nanocores 1173930423
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":3368500,"documents_per_second":391.5},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T07:59:15.777306+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T08:04:16Z
+fs avail GB 111.1 used GB 96.0 mem avail GiB 12.42 cpu nanocores 1264417227
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":3488500,"documents_per_second":391.7},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T08:04:18.725975+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T08:09:19Z
+fs avail GB 110.9 used GB 96.1 mem avail GiB 12.42 cpu nanocores 1208693830
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":3608000,"documents_per_second":391.7},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T08:09:22.320097+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T08:14:22Z
+fs avail GB 110.8 used GB 96.3 mem avail GiB 12.53 cpu nanocores 1191769073
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":3723000,"documents_per_second":391.4},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T08:14:24.952493+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T08:19:26Z
+fs avail GB 110.7 used GB 96.4 mem avail GiB 12.44 cpu nanocores 1476029410
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":3837000,"documents_per_second":390.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T08:19:29.252322+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T08:24:29Z
+fs avail GB 110.5 used GB 96.5 mem avail GiB 12.52 cpu nanocores 1215606979
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":3951500,"documents_per_second":390.5},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T08:24:31.937010+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T08:29:32Z
+fs avail GB 110.4 used GB 96.6 mem avail GiB 12.27 cpu nanocores 1218699413
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":4065500,"documents_per_second":390.1},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T08:29:34.697356+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T08:34:35Z
+fs avail GB 110.3 used GB 96.7 mem avail GiB 12.39 cpu nanocores 1258192156
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":4179500,"documents_per_second":389.6},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T08:34:38.939602+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T08:39:39Z
+fs avail GB 110.2 used GB 96.9 mem avail GiB 12.31 cpu nanocores 1233713073
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":4295000,"documents_per_second":389.4},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T08:39:41.169629+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T08:44:42Z
+fs avail GB 109.9 used GB 97.1 mem avail GiB 12.07 cpu nanocores 1365126598
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":4411000,"documents_per_second":389.2},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T08:44:44.314507+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T08:49:45Z
+fs avail GB 109.9 used GB 97.1 mem avail GiB 12.23 cpu nanocores 1320456991
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":4526000,"documents_per_second":389.0},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T08:49:47.609758+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T08:54:48Z
+fs avail GB 109.6 used GB 97.5 mem avail GiB 12.0 cpu nanocores 1234136900
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":4638500,"documents_per_second":388.5},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T08:54:51.702339+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T08:59:51Z
+fs avail GB 109.7 used GB 97.4 mem avail GiB 12.16 cpu nanocores 1104929669
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":4760500,"documents_per_second":388.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T08:59:53.983049+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T09:04:55Z
+fs avail GB 109.6 used GB 97.5 mem avail GiB 12.18 cpu nanocores 1067505802
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":4883500,"documents_per_second":389.3},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T09:04:57.523658+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T09:09:58Z
+fs avail GB 109.4 used GB 97.6 mem avail GiB 12.09 cpu nanocores 1282724586
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":5000500,"documents_per_second":389.2},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T09:10:01.652402+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T09:15:01Z
+fs avail GB 109.3 used GB 97.7 mem avail GiB 12.13 cpu nanocores 1485060297
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":5111000,"documents_per_second":388.6},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T09:15:04.682821+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T09:20:05Z
+fs avail GB 109.2 used GB 97.9 mem avail GiB 12.23 cpu nanocores 1344257101
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":5222000,"documents_per_second":388.1},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T09:20:07.791608+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T09:25:08Z
+fs avail GB 109.1 used GB 98.0 mem avail GiB 12.08 cpu nanocores 1382191557
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":5330000,"documents_per_second":387.4},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T09:25:10.667880+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T09:30:11Z
+fs avail GB 108.9 used GB 98.1 mem avail GiB 12.08 cpu nanocores 1904671697
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":5439000,"documents_per_second":386.8},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T09:30:14.370836+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T09:35:14Z
+fs avail GB 108.8 used GB 98.2 mem avail GiB 12.03 cpu nanocores 1206084498
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":5547500,"documents_per_second":386.2},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T09:35:17.300149+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T09:40:18Z
+fs avail GB 108.7 used GB 98.3 mem avail GiB 12.5 cpu nanocores 1413796250
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":5660500,"documents_per_second":385.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T09:40:20.920932+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T09:45:21Z
+fs avail GB 108.6 used GB 98.5 mem avail GiB 12.61 cpu nanocores 1143646944
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":5773000,"documents_per_second":385.6},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T09:45:23.492354+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T09:50:24Z
+fs avail GB 108.3 used GB 98.7 mem avail GiB 12.53 cpu nanocores 1144698100
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":5885500,"documents_per_second":385.3},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T09:50:27.164971+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T09:55:27Z
+fs avail GB 108.3 used GB 98.7 mem avail GiB 12.51 cpu nanocores 1351091577
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":5998000,"documents_per_second":385.0},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T09:55:29.560098+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T10:00:30Z
+fs avail GB 108.1 used GB 98.9 mem avail GiB 12.51 cpu nanocores 1259974841
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":6110000,"documents_per_second":384.7},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T10:00:33.482253+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T10:05:34Z
+fs avail GB 108.1 used GB 98.9 mem avail GiB 12.38 cpu nanocores 1326910241
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":6225500,"documents_per_second":384.6},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T10:05:37.264400+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T10:10:37Z
+fs avail GB 108.0 used GB 99.1 mem avail GiB 12.49 cpu nanocores 1298862807
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":6339000,"documents_per_second":384.5},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T10:10:40.022554+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T10:15:40Z
+fs avail GB 107.9 used GB 99.2 mem avail GiB 12.29 cpu nanocores 1242938117
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":6452500,"documents_per_second":384.3},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T10:15:42.661534+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T10:20:43Z
+fs avail GB 107.8 used GB 99.3 mem avail GiB 12.53 cpu nanocores 1296176549
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":6564500,"documents_per_second":384.0},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T10:20:46.824863+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T10:25:47Z
+fs avail GB 107.7 used GB 99.4 mem avail GiB 12.62 cpu nanocores 1204478210
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":6678500,"documents_per_second":383.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T10:25:49.850007+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T10:30:50Z
+fs avail GB 107.5 used GB 99.5 mem avail GiB 12.61 cpu nanocores 1088448462
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":6797000,"documents_per_second":384.0},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T10:30:53.071441+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T10:35:53Z
+fs avail GB 107.4 used GB 99.7 mem avail GiB 12.56 cpu nanocores 1096851309
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":6920000,"documents_per_second":384.4},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T10:35:56.211508+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T10:40:56Z
+fs avail GB 107.3 used GB 99.8 mem avail GiB 12.6 cpu nanocores 1180771521
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":7040000,"documents_per_second":384.5},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T10:40:59.537649+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T10:45:59Z
+fs avail GB 107.1 used GB 99.9 mem avail GiB 12.45 cpu nanocores 1398247291
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":7156000,"documents_per_second":384.5},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T10:46:01.673741+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T10:51:02Z
+fs avail GB 106.9 used GB 100.1 mem avail GiB 12.54 cpu nanocores 1274244070
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":7271000,"documents_per_second":384.5},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T10:51:04.701161+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T10:56:06Z
+fs avail GB 106.8 used GB 100.3 mem avail GiB 12.52 cpu nanocores 1563185362
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":7385000,"documents_per_second":384.3},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T10:56:08.734413+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T11:01:09Z
+fs avail GB 106.8 used GB 100.3 mem avail GiB 12.53 cpu nanocores 1223632005
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":7500000,"documents_per_second":384.2},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T11:01:11.425692+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T11:06:12Z
+fs avail GB 106.6 used GB 100.4 mem avail GiB 12.4 cpu nanocores 1210224189
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":7617000,"documents_per_second":384.3},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T11:06:14.976405+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T11:11:15Z
+fs avail GB 106.5 used GB 100.5 mem avail GiB 12.49 cpu nanocores 1227092327
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":7733000,"documents_per_second":384.2},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T11:11:18.472675+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T11:16:19Z
+fs avail GB 106.4 used GB 100.7 mem avail GiB 12.56 cpu nanocores 1275572747
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":7849500,"documents_per_second":384.2},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T11:16:21.635122+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T11:21:22Z
+fs avail GB 106.3 used GB 100.8 mem avail GiB 12.57 cpu nanocores 1205428890
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":7961500,"documents_per_second":384.0},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T11:21:24.460983+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T11:26:25Z
+fs avail GB 106.1 used GB 100.9 mem avail GiB 12.53 cpu nanocores 1225785724
+63 GB
+NAME                                READY   STATUS      RESTARTS   AGE
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":8071000,"documents_per_second":383.7},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T11:26:27.867730+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T11:31:28Z
+fs avail GB 106.0 used GB 101.0 mem avail GiB 12.6 cpu nanocores 1228274919
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (47s ago)   24h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (49s ago)   24h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":8180500,"documents_per_second":383.4},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T11:31:30.759955+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T11:36:32Z
+fs avail GB 105.9 used GB 101.1 mem avail GiB 12.45 cpu nanocores 1337600903
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (5m50s ago)   24h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (5m52s ago)   24h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":8292000,"documents_per_second":383.1},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T11:36:35.060850+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T11:41:35Z
+fs avail GB 105.8 used GB 101.3 mem avail GiB 12.61 cpu nanocores 1168194973
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (10m ago)   24h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (10m ago)   24h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":8404000,"documents_per_second":383.0},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T11:41:37.409183+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T11:46:38Z
+fs avail GB 105.7 used GB 101.4 mem avail GiB 12.56 cpu nanocores 1230405263
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (15m ago)   24h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (15m ago)   24h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":8520000,"documents_per_second":382.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T11:46:41.561151+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T11:51:41Z
+fs avail GB 105.3 used GB 101.7 mem avail GiB 12.42 cpu nanocores 1907264857
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (20m ago)   24h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (21m ago)   24h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":8636000,"documents_per_second":382.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T11:51:43.573299+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T11:56:44Z
+fs avail GB 105.4 used GB 101.6 mem avail GiB 12.46 cpu nanocores 1194569453
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (26m ago)   24h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (26m ago)   24h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":8752500,"documents_per_second":383.0},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T11:56:46.705381+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T12:01:48Z
+fs avail GB 105.1 used GB 102.0 mem avail GiB 12.31 cpu nanocores 1751043171
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (31m ago)   24h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (31m ago)   24h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":8867000,"documents_per_second":382.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T12:01:50.274886+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T12:06:51Z
+fs avail GB 105.2 used GB 101.9 mem avail GiB 12.29 cpu nanocores 1186364088
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (36m ago)   24h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (36m ago)   24h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":8982500,"documents_per_second":382.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T12:06:53.487827+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T12:11:54Z
+fs avail GB 105.1 used GB 102.0 mem avail GiB 12.44 cpu nanocores 1286004147
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (41m ago)   24h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (41m ago)   24h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":9099500,"documents_per_second":382.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T12:11:57.061458+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T12:16:57Z
+fs avail GB 104.9 used GB 102.1 mem avail GiB 12.3 cpu nanocores 1240853977
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (46m ago)   24h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (46m ago)   24h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":9221500,"documents_per_second":383.1},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T12:17:00.114140+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T12:22:00Z
+fs avail GB 104.8 used GB 102.3 mem avail GiB 12.31 cpu nanocores 1476398885
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (51m ago)   24h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (51m ago)   24h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":9342500,"documents_per_second":383.4},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T12:22:02.762743+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T12:27:04Z
+fs avail GB 104.7 used GB 102.4 mem avail GiB 12.22 cpu nanocores 1630094266
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (56m ago)   24h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (56m ago)   24h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":9448500,"documents_per_second":382.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T12:27:06.016724+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T12:32:07Z
+fs avail GB 104.6 used GB 102.5 mem avail GiB 12.43 cpu nanocores 1588196530
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (61m ago)   25h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (61m ago)   25h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":9556000,"documents_per_second":382.6},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T12:32:10.142357+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T12:37:10Z
+fs avail GB 104.4 used GB 102.7 mem avail GiB 12.43 cpu nanocores 1726759640
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (66m ago)   25h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (66m ago)   25h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":9652500,"documents_per_second":381.8},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T12:37:13.383822+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T12:42:13Z
+fs avail GB 104.3 used GB 102.7 mem avail GiB 12.46 cpu nanocores 1469215464
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (71m ago)   25h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (71m ago)   25h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":9768000,"documents_per_second":381.8},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T12:42:16.423205+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T12:47:16Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 12.31 cpu nanocores 1360874321
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (76m ago)   25h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (76m ago)   25h
+{"message":"Search index rebuild progress.","context":{"index":"products_20261126053552075_f3e89f","documents":9886500,"documents_per_second":381.9},"level":200,"level_name":"INFO","channel":"search_rebuild","datetime":"2026-11-26T12:47:19.551670+00:00","extra":{"correlation_id":"01a2165a-62e4-77d7-90d5-7a2275877dca"}}
+=== 2026-11-26T12:52:20Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.9 cpu nanocores 1604214384
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (81m ago)   25h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (81m ago)   25h
+
+=== 2026-11-26T12:57:23Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 12.01 cpu nanocores 1146582628
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (86m ago)   25h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (86m ago)   25h
+demo-data: free space of /: 104.08 GB (101638628 KiB), the floor is 32 GB (reading 2070)
+=== 2026-11-26T13:02:26Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 12.02 cpu nanocores 872281405
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (91m ago)   25h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (91m ago)   25h
+demo-data: free space of /: 104.08 GB (101644484 KiB), the floor is 32 GB (reading 2080)
+=== 2026-11-26T13:07:29Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 12.0 cpu nanocores 1042157851
+63 GB
+NAME                                READY   STATUS      RESTARTS      AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (96m ago)   25h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (96m ago)   25h
+demo-data: free space of /: 104.08 GB (101643944 KiB), the floor is 32 GB (reading 2090)
+=== 2026-11-26T13:12:33Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.97 cpu nanocores 958216499
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (101m ago)   25h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (101m ago)   25h
+demo-data: free space of /: 104.08 GB (101643204 KiB), the floor is 32 GB (reading 2100)
+=== 2026-11-26T13:17:36Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.9 cpu nanocores 960212480
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (106m ago)   25h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (106m ago)   25h
+demo-data: free space of /: 104.09 GB (101650696 KiB), the floor is 32 GB (reading 2110)
+=== 2026-11-26T13:22:39Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.96 cpu nanocores 1033019744
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (111m ago)   25h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (111m ago)   25h
+demo-data: free space of /: 104.09 GB (101649992 KiB), the floor is 32 GB (reading 2120)
+=== 2026-11-26T13:27:42Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.92 cpu nanocores 1001710867
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (117m ago)   25h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (117m ago)   25h
+demo-data: free space of /: 104.09 GB (101649284 KiB), the floor is 32 GB (reading 2130)
+=== 2026-11-26T13:32:45Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 11.98 cpu nanocores 963377285
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (122m ago)   26h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (122m ago)   26h
+demo-data: free space of /: 104.10 GB (101658836 KiB), the floor is 32 GB (reading 2140)
+=== 2026-11-26T13:37:48Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 11.88 cpu nanocores 1105464338
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (127m ago)   26h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (127m ago)   26h
+demo-data: free space of /: 104.11 GB (101674524 KiB), the floor is 32 GB (reading 2150)
+=== 2026-11-26T13:42:52Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 11.96 cpu nanocores 916333034
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (132m ago)   26h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (132m ago)   26h
+demo-data: free space of /: 104.11 GB (101673832 KiB), the floor is 32 GB (reading 2160)
+=== 2026-11-26T13:47:55Z
+fs avail GB 104.0 used GB 103.1 mem avail GiB 11.85 cpu nanocores 1721024654
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (137m ago)   26h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (137m ago)   26h
+demo-data: free space of /: 104.13 GB (101689524 KiB), the floor is 32 GB (reading 2170)
+=== 2026-11-26T13:52:58Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 11.95 cpu nanocores 846401108
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (142m ago)   26h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (142m ago)   26h
+demo-data: free space of /: 104.13 GB (101688812 KiB), the floor is 32 GB (reading 2180)
+=== 2026-11-26T13:58:01Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 11.84 cpu nanocores 873892184
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (147m ago)   26h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (147m ago)   26h
+demo-data: free space of /: 104.12 GB (101683528 KiB), the floor is 32 GB (reading 2190)
+=== 2026-11-26T14:03:04Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 11.94 cpu nanocores 972390101
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (152m ago)   26h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (152m ago)   26h
+demo-data: free space of /: 104.12 GB (101682708 KiB), the floor is 32 GB (reading 2200)
+=== 2026-11-26T14:08:08Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 11.98 cpu nanocores 1057220219
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (157m ago)   26h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (157m ago)   26h
+demo-data: free space of /: 104.12 GB (101682124 KiB), the floor is 32 GB (reading 2210)
+=== 2026-11-26T14:13:11Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 11.98 cpu nanocores 928026048
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (162m ago)   26h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (162m ago)   26h
+demo-data: free space of /: 104.12 GB (101681388 KiB), the floor is 32 GB (reading 2220)
+=== 2026-11-26T14:18:14Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 11.98 cpu nanocores 963659738
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (167m ago)   26h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (167m ago)   26h
+demo-data: free space of /: 104.12 GB (101680696 KiB), the floor is 32 GB (reading 2230)
+=== 2026-11-26T14:23:17Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 12.08 cpu nanocores 1091297839
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (172m ago)   26h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (172m ago)   26h
+demo-data: free space of /: 104.12 GB (101679996 KiB), the floor is 32 GB (reading 2240)
+=== 2026-11-26T14:28:21Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 11.93 cpu nanocores 1145806132
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (177m ago)   26h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (177m ago)   26h
+demo-data: free space of /: 104.12 GB (101679320 KiB), the floor is 32 GB (reading 2250)
+=== 2026-11-26T14:43:01Z
+Unable to connect to the server: dial tcp 167.114.184.246:6443: connect: network is unreachable
+Unable to connect to the server: dial tcp 167.114.184.246:6443: connect: network is unreachable
+=== 2026-11-26T16:42:46Z
+fs avail GB 104.1 used GB 102.9 mem avail GiB 12.01 cpu nanocores 973694243
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (5h12m ago)   29h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (5h12m ago)   29h
+demo-data: free space of /: 104.11 GB (101665392 KiB), the floor is 32 GB (reading 2520)
+=== 2026-11-26T16:47:49Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 12.06 cpu nanocores 937342805
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (5h17m ago)   29h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (5h17m ago)   29h
+demo-data: free space of /: 104.10 GB (101664684 KiB), the floor is 32 GB (reading 2530)
+=== 2026-11-26T16:52:53Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.99 cpu nanocores 904199231
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (5h22m ago)   29h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (5h22m ago)   29h
+demo-data: free space of /: 104.10 GB (101664000 KiB), the floor is 32 GB (reading 2540)
+=== 2026-11-26T16:57:56Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.99 cpu nanocores 1242400618
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (5h27m ago)   29h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (5h27m ago)   29h
+demo-data: free space of /: 104.09 GB (101655112 KiB), the floor is 32 GB (reading 2550)
+=== 2026-11-26T17:02:59Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.85 cpu nanocores 1083294984
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (5h32m ago)   29h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (5h32m ago)   29h
+demo-data: free space of /: 104.09 GB (101654320 KiB), the floor is 32 GB (reading 2560)
+=== 2026-11-26T17:08:02Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.94 cpu nanocores 1020909265
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (5h37m ago)   29h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (5h37m ago)   29h
+demo-data: free space of /: 104.09 GB (101653716 KiB), the floor is 32 GB (reading 2570)
+=== 2026-11-26T17:13:05Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.94 cpu nanocores 985021123
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (5h42m ago)   29h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (5h42m ago)   29h
+demo-data: free space of /: 104.09 GB (101653012 KiB), the floor is 32 GB (reading 2580)
+=== 2026-11-26T17:18:08Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 12.0 cpu nanocores 989366721
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (5h47m ago)   29h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (5h47m ago)   29h
+demo-data: free space of /: 104.10 GB (101663160 KiB), the floor is 32 GB (reading 2590)
+=== 2026-11-26T17:23:11Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.96 cpu nanocores 924082860
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (5h52m ago)   29h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (5h52m ago)   29h
+demo-data: free space of /: 104.10 GB (101662460 KiB), the floor is 32 GB (reading 2600)
+=== 2026-11-26T17:28:15Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.98 cpu nanocores 938413094
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (5h57m ago)   29h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (5h57m ago)   29h
+demo-data: free space of /: 104.10 GB (101661764 KiB), the floor is 32 GB (reading 2610)
+=== 2026-11-26T17:33:18Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.94 cpu nanocores 1073439328
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (6h2m ago)   30h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (6h2m ago)   30h
+demo-data: free space of /: 104.10 GB (101661072 KiB), the floor is 32 GB (reading 2620)
+=== 2026-11-26T17:38:21Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 12.0 cpu nanocores 1070524407
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (6h7m ago)   30h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (6h7m ago)   30h
+demo-data: free space of /: 104.10 GB (101660396 KiB), the floor is 32 GB (reading 2630)
+=== 2026-11-26T17:43:24Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.98 cpu nanocores 1170320355
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (6h12m ago)   30h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (6h12m ago)   30h
+demo-data: free space of /: 104.10 GB (101659684 KiB), the floor is 32 GB (reading 2640)
+=== 2026-11-26T17:48:27Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.85 cpu nanocores 1067340745
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (6h17m ago)   30h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (6h17m ago)   30h
+demo-data: free space of /: 104.10 GB (101659008 KiB), the floor is 32 GB (reading 2650)
+=== 2026-11-26T17:53:30Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 12.03 cpu nanocores 1014038181
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (6h22m ago)   30h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (6h22m ago)   30h
+demo-data: free space of /: 104.10 GB (101658308 KiB), the floor is 32 GB (reading 2660)
+=== 2026-11-26T17:58:33Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 12.01 cpu nanocores 1080127435
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (6h27m ago)   30h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (6h27m ago)   30h
+demo-data: free space of /: 104.10 GB (101657636 KiB), the floor is 32 GB (reading 2670)
+=== 2026-11-26T18:03:36Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 12.01 cpu nanocores 1025097207
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (6h32m ago)   30h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (6h32m ago)   30h
+demo-data: free space of /: 104.09 GB (101648640 KiB), the floor is 32 GB (reading 2680)
+=== 2026-11-26T18:08:40Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.9 cpu nanocores 959929726
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (6h37m ago)   30h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (6h38m ago)   30h
+demo-data: free space of /: 104.09 GB (101648048 KiB), the floor is 32 GB (reading 2690)
+=== 2026-11-26T18:13:43Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.94 cpu nanocores 967353183
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (6h43m ago)   30h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (6h43m ago)   30h
+demo-data: free space of /: 104.09 GB (101647308 KiB), the floor is 32 GB (reading 2700)
+=== 2026-11-26T18:18:46Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 12.01 cpu nanocores 943482022
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (6h48m ago)   30h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (6h48m ago)   30h
+demo-data: free space of /: 104.09 GB (101646628 KiB), the floor is 32 GB (reading 2710)
+=== 2026-11-26T18:23:49Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.89 cpu nanocores 995883365
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (6h53m ago)   30h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (6h53m ago)   30h
+demo-data: free space of /: 104.09 GB (101645944 KiB), the floor is 32 GB (reading 2720)
+=== 2026-11-26T18:28:52Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.94 cpu nanocores 1038559881
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (6h58m ago)   30h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (6h58m ago)   30h
+demo-data: free space of /: 104.08 GB (101645260 KiB), the floor is 32 GB (reading 2730)
+=== 2026-11-26T18:33:55Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.78 cpu nanocores 970251676
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (7h3m ago)   31h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (7h3m ago)   31h
+demo-data: free space of /: 104.08 GB (101644568 KiB), the floor is 32 GB (reading 2740)
+=== 2026-11-26T18:38:58Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.9 cpu nanocores 1023414611
+63 GB
+NAME                                READY   STATUS      RESTARTS       AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (7h8m ago)   31h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (7h8m ago)   31h
+demo-data: free space of /: 104.08 GB (101643888 KiB), the floor is 32 GB (reading 2750)
+=== 2026-11-26T18:44:02Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.9 cpu nanocores 1016926501
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (7h13m ago)   31h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (7h13m ago)   31h
+demo-data: free space of /: 104.08 GB (101643192 KiB), the floor is 32 GB (reading 2760)
+=== 2026-11-26T18:49:05Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.89 cpu nanocores 981075960
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (7h18m ago)   31h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (7h18m ago)   31h
+demo-data: free space of /: 104.08 GB (101642520 KiB), the floor is 32 GB (reading 2770)
+=== 2026-11-26T18:54:08Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.93 cpu nanocores 955010774
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (7h23m ago)   31h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (7h23m ago)   31h
+demo-data: free space of /: 104.08 GB (101641812 KiB), the floor is 32 GB (reading 2780)
+=== 2026-11-26T18:59:11Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.9 cpu nanocores 861968401
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (7h28m ago)   31h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (7h28m ago)   31h
+demo-data: free space of /: 104.08 GB (101641136 KiB), the floor is 32 GB (reading 2790)
+=== 2026-11-26T19:04:14Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.84 cpu nanocores 850807344
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (7h33m ago)   31h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (7h33m ago)   31h
+demo-data: free space of /: 104.08 GB (101640312 KiB), the floor is 32 GB (reading 2800)
+=== 2026-11-26T19:09:17Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 12.02 cpu nanocores 1046094806
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (7h38m ago)   31h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (7h38m ago)   31h
+demo-data: free space of /: 104.08 GB (101639712 KiB), the floor is 32 GB (reading 2810)
+=== 2026-11-26T19:14:20Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.93 cpu nanocores 944431491
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (7h43m ago)   31h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (7h43m ago)   31h
+demo-data: free space of /: 104.08 GB (101639012 KiB), the floor is 32 GB (reading 2820)
+=== 2026-11-26T19:19:24Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.94 cpu nanocores 998281655
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (7h48m ago)   31h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (7h48m ago)   31h
+demo-data: free space of /: 104.08 GB (101638328 KiB), the floor is 32 GB (reading 2830)
+=== 2026-11-26T19:24:27Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.84 cpu nanocores 935358877
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (7h53m ago)   31h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (7h53m ago)   31h
+demo-data: free space of /: 104.07 GB (101629432 KiB), the floor is 32 GB (reading 2840)
+=== 2026-11-26T19:29:30Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 12.0 cpu nanocores 905012084
+63 GB
+NAME                                READY   STATUS      RESTARTS        AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (7h58m ago)   31h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (7h58m ago)   31h
+demo-data: free space of /: 104.07 GB (101628736 KiB), the floor is 32 GB (reading 2850)
+=== 2026-11-26T19:34:33Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.95 cpu nanocores 925848507
+63 GB
+NAME                                READY   STATUS      RESTARTS     AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (8h ago)   32h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (8h ago)   32h
+demo-data: free space of /: 104.07 GB (101628028 KiB), the floor is 32 GB (reading 2860)
+=== 2026-11-26T19:39:36Z
+fs avail GB 104.1 used GB 103.0 mem avail GiB 11.83 cpu nanocores 1004008486
+63 GB
+NAME                                READY   STATUS      RESTARTS     AGE
+worker-bdf97884-qwlgc               1/1     Running     1 (8h ago)   32h
+worker-commands-f7cb89bbf-hlz57     1/1     Running     1 (8h ago)   32h
+demo-data: free space of /: 104.07 GB (101627196 KiB), the floor is 32 GB (reading 2870)

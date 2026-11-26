@@ -1,0 +1,2089 @@
+20:42:01
+admin-57fbffdfd-wnnzn             1m     7Mi      
+api-6f665cf598-57w82              2m     145Mi    
+elasticsearch-0                   10m    2983Mi   
+garage-0                          4m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s         13m    63Mi     
+keycloak-5ccdbb8d58-zjkjl         3m     1355Mi   
+mailpit-6574989b45-cqb7s          6m     16Mi     
+postgres-0                        17m    310Mi    
+rabbitmq-0                        309m   118Mi    
+redis-0                           6m     19Mi     
+store-6869ff9cc-7fz6f             2m     362Mi    
+varnish-6d78c9fc4b-qj875          4m     68Mi     
+worker-bdf97884-qwlgc             4m     27Mi     
+worker-commands-f7cb89bbf-hlz57   4m     22Mi     
+vps-3585bd22   682m   8%    10470Mi   44%   
+20:42:19
+admin-57fbffdfd-wnnzn             1m     8Mi      
+api-6f665cf598-57w82              2m     145Mi    
+elasticsearch-0                   8m     2982Mi   
+garage-0                          4m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s         15m    63Mi     
+keycloak-5ccdbb8d58-zjkjl         3m     1356Mi   
+mailpit-6574989b45-cqb7s          5m     16Mi     
+postgres-0                        11m    310Mi    
+rabbitmq-0                        280m   117Mi    
+redis-0                           5m     19Mi     
+store-6869ff9cc-7fz6f             1m     362Mi    
+varnish-6d78c9fc4b-qj875          5m     68Mi     
+worker-bdf97884-qwlgc             5m     26Mi     
+worker-commands-f7cb89bbf-hlz57   5m     22Mi     
+vps-3585bd22   755m   9%    10462Mi   44%   
+20:42:37
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                21m     147Mi    
+elasticsearch-0                     1481m   3367Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           17m     1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   103m    16Mi     
+postgres-0                          72m     316Mi    
+rabbitmq-0                          318m    116Mi    
+redis-0                             7m      19Mi     
+store-6869ff9cc-7fz6f               2m      362Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3418m   42%   10667Mi   45%   
+20:42:56
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                38m     147Mi    
+elasticsearch-0                     2618m   3299Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   24m     14Mi     
+postgres-0                          40m     317Mi    
+rabbitmq-0                          332m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               107m    367Mi    
+varnish-6d78c9fc4b-qj875            6m      70Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3590m   44%   11072Mi   47%   
+20:43:14
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                38m     147Mi    
+elasticsearch-0                     3224m   2996Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   7m      14Mi     
+postgres-0                          23m     317Mi    
+rabbitmq-0                          277m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               16m     365Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   4073m   50%   10884Mi   46%   
+20:43:32
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                27m     145Mi    
+elasticsearch-0                     2922m   3384Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   19m     14Mi     
+postgres-0                          27m     317Mi    
+rabbitmq-0                          384m    116Mi    
+redis-0                             7m      19Mi     
+store-6869ff9cc-7fz6f               32m     387Mi    
+varnish-6d78c9fc4b-qj875            6m      70Mi     
+worker-bdf97884-qwlgc               4m      28Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3803m   47%   11312Mi   48%   
+20:43:50
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                24m     145Mi    
+elasticsearch-0                     3056m   3539Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           19m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   7m      14Mi     
+postgres-0                          27m     317Mi    
+rabbitmq-0                          384m    116Mi    
+redis-0                             6m      20Mi     
+store-6869ff9cc-7fz6f               24m     390Mi    
+varnish-6d78c9fc4b-qj875            5m      70Mi     
+worker-bdf97884-qwlgc               4m      28Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3835m   47%   11300Mi   48%   
+20:44:08
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                28m     145Mi    
+elasticsearch-0                     2692m   3725Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           13m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   9m      14Mi     
+postgres-0                          24m     317Mi    
+rabbitmq-0                          362m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               36m     389Mi    
+varnish-6d78c9fc4b-qj875            5m      70Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   3514m   43%   10707Mi   45%   
+20:44:26
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                28m     145Mi    
+elasticsearch-0                     2692m   3725Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            7m      16Mi     
+perf-measure-20261126204153-r76cv   12m     16Mi     
+postgres-0                          29m     317Mi    
+rabbitmq-0                          303m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               19m     392Mi    
+varnish-6d78c9fc4b-qj875            5m      70Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3519m   43%   10622Mi   45%   
+20:44:44
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                29m     146Mi    
+elasticsearch-0                     2922m   3696Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           19m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   14m     15Mi     
+postgres-0                          22m     321Mi    
+rabbitmq-0                          309m    153Mi    
+redis-0                             7m      19Mi     
+store-6869ff9cc-7fz6f               18m     391Mi    
+varnish-6d78c9fc4b-qj875            6m      70Mi     
+worker-bdf97884-qwlgc               7m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3976m   49%   11441Mi   48%   
+20:45:02
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                26m     147Mi    
+elasticsearch-0                     3260m   3193Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           18m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   10m     15Mi     
+postgres-0                          25m     318Mi    
+rabbitmq-0                          364m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               23m     392Mi    
+varnish-6d78c9fc4b-qj875            5m      70Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      23Mi     
+vps-3585bd22   4272m   53%   10662Mi   45%   
+20:45:20
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                21m     145Mi    
+elasticsearch-0                     3669m   3092Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   6m      15Mi     
+postgres-0                          23m     318Mi    
+rabbitmq-0                          267m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               15m     392Mi    
+varnish-6d78c9fc4b-qj875            6m      70Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   4786m   59%   10913Mi   46%   
+20:45:38
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                25m     146Mi    
+elasticsearch-0                     2914m   3009Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           16m     1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   19m     14Mi     
+postgres-0                          24m     318Mi    
+rabbitmq-0                          347m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               20m     391Mi    
+varnish-6d78c9fc4b-qj875            7m      70Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3984m   49%   10965Mi   46%   
+20:45:56
+admin-57fbffdfd-wnnzn               1m      8Mi      
+api-6f665cf598-57w82                28m     145Mi    
+elasticsearch-0                     2947m   3148Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   8m      15Mi     
+postgres-0                          28m     318Mi    
+rabbitmq-0                          306m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               27m     397Mi    
+varnish-6d78c9fc4b-qj875            5m      70Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3829m   47%   10799Mi   46%   
+20:46:15
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                27m     145Mi    
+elasticsearch-0                     3421m   3162Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   15m     15Mi     
+postgres-0                          20m     316Mi    
+rabbitmq-0                          374m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               44m     393Mi    
+varnish-6d78c9fc4b-qj875            6m      70Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4283m   53%   11055Mi   47%   
+20:46:33
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                24m     145Mi    
+elasticsearch-0                     3223m   3370Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   4m      15Mi     
+postgres-0                          29m     318Mi    
+rabbitmq-0                          287m    116Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               12m     394Mi    
+varnish-6d78c9fc4b-qj875            5m      70Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4215m   52%   11057Mi   47%   
+20:46:51
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                25m     145Mi    
+elasticsearch-0                     3509m   3895Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   4m      15Mi     
+postgres-0                          23m     318Mi    
+rabbitmq-0                          385m    190Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               23m     392Mi    
+varnish-6d78c9fc4b-qj875            6m      70Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3878m   48%   10789Mi   45%   
+20:47:09
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                35m     146Mi    
+elasticsearch-0                     2892m   3978Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   14m     15Mi     
+postgres-0                          23m     318Mi    
+rabbitmq-0                          296m    116Mi    
+redis-0                             6m      20Mi     
+store-6869ff9cc-7fz6f               11m     401Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               6m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4183m   52%   11035Mi   47%   
+20:47:27
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                27m     145Mi    
+elasticsearch-0                     2941m   3280Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   14m     15Mi     
+postgres-0                          29m     317Mi    
+rabbitmq-0                          370m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               20m     397Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   3801m   47%   10677Mi   45%   
+20:47:45
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                32m     146Mi    
+elasticsearch-0                     3017m   3632Mi   
+garage-0                            7m      52Mi     
+imgproxy-6b57bf7f7d-kjc6s           18m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   17m     15Mi     
+postgres-0                          25m     318Mi    
+rabbitmq-0                          294m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               58m     402Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3952m   49%   11357Mi   48%   
+20:48:03
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                37m     146Mi    
+elasticsearch-0                     2645m   3569Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           23m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   8m      15Mi     
+postgres-0                          37m     318Mi    
+rabbitmq-0                          341m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               50m     404Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3569m   44%   10781Mi   45%   
+20:48:21
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                20m     146Mi    
+elasticsearch-0                     2878m   3297Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   9m      15Mi     
+postgres-0                          23m     319Mi    
+rabbitmq-0                          295m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               33m     403Mi    
+varnish-6d78c9fc4b-qj875            7m      70Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      23Mi     
+vps-3585bd22   3693m   46%   10867Mi   46%   
+20:48:39
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                28m     146Mi    
+elasticsearch-0                     2887m   3109Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   15m     15Mi     
+postgres-0                          29m     319Mi    
+rabbitmq-0                          316m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               30m     401Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      23Mi     
+vps-3585bd22   3676m   45%   10781Mi   45%   
+20:48:57
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                35m     147Mi    
+elasticsearch-0                     2806m   3123Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           14m     69Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   22m     15Mi     
+postgres-0                          28m     319Mi    
+rabbitmq-0                          316m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               31m     404Mi    
+varnish-6d78c9fc4b-qj875            7m      70Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3545m   44%   11102Mi   47%   
+20:49:15
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                31m     147Mi    
+elasticsearch-0                     3154m   3487Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   13m     15Mi     
+postgres-0                          38m     320Mi    
+rabbitmq-0                          316m    116Mi    
+redis-0                             6m      20Mi     
+store-6869ff9cc-7fz6f               44m     399Mi    
+varnish-6d78c9fc4b-qj875            6m      70Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   4261m   53%   10975Mi   46%   
+20:49:33
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                27m     146Mi    
+elasticsearch-0                     3354m   3283Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           18m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   14m     15Mi     
+postgres-0                          25m     319Mi    
+rabbitmq-0                          344m    116Mi    
+redis-0                             6m      20Mi     
+store-6869ff9cc-7fz6f               44m     399Mi    
+varnish-6d78c9fc4b-qj875            6m      70Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4197m   52%   10696Mi   45%   
+20:49:52
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                28m     146Mi    
+elasticsearch-0                     3264m   2981Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           18m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   11m     15Mi     
+postgres-0                          27m     320Mi    
+rabbitmq-0                          332m    116Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               10m     400Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3940m   49%   10901Mi   46%   
+20:50:10
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                30m     147Mi    
+elasticsearch-0                     3172m   3939Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   18m     15Mi     
+postgres-0                          27m     318Mi    
+rabbitmq-0                          316m    116Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               43m     402Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4109m   51%   11070Mi   47%   
+20:50:28
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                34m     147Mi    
+elasticsearch-0                     2509m   3666Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   14m     15Mi     
+postgres-0                          29m     320Mi    
+rabbitmq-0                          392m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               39m     403Mi    
+varnish-6d78c9fc4b-qj875            6m      70Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     6m      23Mi     
+vps-3585bd22   3790m   47%   10818Mi   46%   
+20:50:46
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                27m     147Mi    
+elasticsearch-0                     2925m   3430Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   16m     16Mi     
+postgres-0                          29m     320Mi    
+rabbitmq-0                          288m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               29m     402Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3397m   42%   11027Mi   47%   
+20:51:04
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                29m     147Mi    
+elasticsearch-0                     3289m   4019Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           13m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   13m     16Mi     
+postgres-0                          31m     320Mi    
+rabbitmq-0                          288m    116Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               29m     400Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4256m   53%   11404Mi   48%   
+20:51:22
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                23m     148Mi    
+elasticsearch-0                     3755m   3830Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   4m      16Mi     
+postgres-0                          20m     320Mi    
+rabbitmq-0                          339m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               16m     399Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      23Mi     
+vps-3585bd22   4568m   57%   11080Mi   47%   
+20:51:40
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                20m     145Mi    
+elasticsearch-0                     3440m   3952Mi   
+garage-0                            37m     52Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           5m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   8m      15Mi     
+postgres-0                          32m     320Mi    
+rabbitmq-0                          282m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               20m     399Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4625m   57%   11031Mi   47%   
+20:51:58
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                33m     145Mi    
+elasticsearch-0                     3178m   3264Mi   
+garage-0                            60m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   8m      15Mi     
+postgres-0                          44m     320Mi    
+rabbitmq-0                          338m    186Mi    
+redis-0                             7m      19Mi     
+store-6869ff9cc-7fz6f               20m     399Mi    
+varnish-6d78c9fc4b-qj875            7m      68Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3779m   47%   11557Mi   49%   
+20:52:16
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                43m     145Mi    
+elasticsearch-0                     2444m   3914Mi   
+garage-0                            41m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   24m     16Mi     
+postgres-0                          35m     321Mi    
+rabbitmq-0                          338m    186Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               51m     401Mi    
+varnish-6d78c9fc4b-qj875            7m      68Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3709m   46%   10643Mi   45%   
+20:52:35
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                26m     145Mi    
+elasticsearch-0                     3020m   3384Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   10m     15Mi     
+postgres-0                          22m     320Mi    
+rabbitmq-0                          312m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               22m     403Mi    
+varnish-6d78c9fc4b-qj875            5m      68Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   3866m   48%   11341Mi   48%   
+20:52:53
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                23m     145Mi    
+elasticsearch-0                     3401m   3054Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   8m      15Mi     
+postgres-0                          24m     320Mi    
+rabbitmq-0                          390m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               11m     401Mi    
+varnish-6d78c9fc4b-qj875            5m      68Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4254m   53%   11095Mi   47%   
+20:53:11
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                22m     145Mi    
+elasticsearch-0                     2767m   3601Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           14m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   10m     15Mi     
+postgres-0                          27m     320Mi    
+rabbitmq-0                          279m    159Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               11m     401Mi    
+varnish-6d78c9fc4b-qj875            5m      68Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3672m   45%   11425Mi   48%   
+20:53:29
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                26m     145Mi    
+elasticsearch-0                     3432m   3096Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            7m      16Mi     
+perf-measure-20261126204153-r76cv   17m     15Mi     
+postgres-0                          27m     321Mi    
+rabbitmq-0                          340m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               46m     400Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4119m   51%   11554Mi   49%   
+20:53:47
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                31m     145Mi    
+elasticsearch-0                     3432m   3096Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           13m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   10m     15Mi     
+postgres-0                          24m     321Mi    
+rabbitmq-0                          301m    116Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               17m     402Mi    
+varnish-6d78c9fc4b-qj875            5m      68Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4244m   53%   11188Mi   47%   
+20:54:05
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                20m     146Mi    
+elasticsearch-0                     3391m   3309Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           21m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   7m      16Mi     
+postgres-0                          21m     321Mi    
+rabbitmq-0                          330m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               31m     403Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               6m      27Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   4437m   55%   11155Mi   47%   
+20:54:23
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                22m     145Mi    
+elasticsearch-0                     3441m   3543Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           18m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           15m     1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   11m     15Mi     
+postgres-0                          32m     321Mi    
+rabbitmq-0                          346m    117Mi    
+redis-0                             6m      24Mi     
+store-6869ff9cc-7fz6f               30m     405Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      23Mi     
+vps-3585bd22   4052m   50%   10895Mi   46%   
+20:54:42
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                34m     145Mi    
+elasticsearch-0                     2823m   3222Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           15m     1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   4m      15Mi     
+postgres-0                          24m     321Mi    
+rabbitmq-0                          303m    116Mi    
+redis-0                             6m      20Mi     
+store-6869ff9cc-7fz6f               30m     408Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3586m   44%   11156Mi   47%   
+20:55:00
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                24m     145Mi    
+elasticsearch-0                     2536m   3060Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   4m      15Mi     
+postgres-0                          26m     321Mi    
+rabbitmq-0                          350m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               31m     406Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3328m   41%   11168Mi   47%   
+20:55:18
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                32m     145Mi    
+elasticsearch-0                     2491m   3249Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           14m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   18m     16Mi     
+postgres-0                          28m     321Mi    
+rabbitmq-0                          280m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               14m     404Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3502m   43%   10841Mi   46%   
+20:55:36
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                29m     146Mi    
+elasticsearch-0                     2644m   3040Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   18m     16Mi     
+postgres-0                          25m     319Mi    
+rabbitmq-0                          401m    117Mi    
+redis-0                             7m      19Mi     
+store-6869ff9cc-7fz6f               23m     406Mi    
+varnish-6d78c9fc4b-qj875            6m      70Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   3839m   47%   10844Mi   46%   
+20:55:54
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                22m     146Mi    
+elasticsearch-0                     2537m   3070Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           14m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   16m     16Mi     
+postgres-0                          29m     322Mi    
+rabbitmq-0                          299m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               59m     406Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   3295m   41%   11003Mi   46%   
+20:56:12
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                29m     147Mi    
+elasticsearch-0                     2498m   3280Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   14m     16Mi     
+postgres-0                          30m     322Mi    
+rabbitmq-0                          355m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               44m     405Mi    
+varnish-6d78c9fc4b-qj875            7m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3335m   41%   10566Mi   45%   
+20:56:30
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                26m     146Mi    
+elasticsearch-0                     3490m   3162Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1356Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   16m     16Mi     
+postgres-0                          26m     321Mi    
+rabbitmq-0                          293m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               54m     409Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     4m      22Mi     
+vps-3585bd22   4122m   51%   10766Mi   45%   
+20:56:48
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                33m     146Mi    
+elasticsearch-0                     2833m   3401Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           18m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   11m     16Mi     
+postgres-0                          26m     321Mi    
+rabbitmq-0                          318m    181Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               41m     405Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   3859m   48%   10497Mi   44%   
+20:57:06
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                24m     147Mi    
+elasticsearch-0                     3402m   3589Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           13m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   12m     16Mi     
+postgres-0                          27m     321Mi    
+rabbitmq-0                          347m    118Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               23m     402Mi    
+varnish-6d78c9fc4b-qj875            4m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   4270m   53%   11114Mi   47%   
+20:57:25
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                24m     146Mi    
+elasticsearch-0                     3146m   3333Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           18m     1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   13m     16Mi     
+postgres-0                          31m     322Mi    
+rabbitmq-0                          325m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               39m     406Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3912m   48%   10987Mi   46%   
+20:57:43
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                23m     147Mi    
+elasticsearch-0                     3222m   3701Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           13m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   8m      16Mi     
+postgres-0                          29m     322Mi    
+rabbitmq-0                          297m    116Mi    
+redis-0                             7m      19Mi     
+store-6869ff9cc-7fz6f               36m     406Mi    
+varnish-6d78c9fc4b-qj875            5m      68Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     4m      22Mi     
+vps-3585bd22   4047m   50%   10743Mi   45%   
+20:58:01
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                29m     146Mi    
+elasticsearch-0                     3222m   3701Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   20m     16Mi     
+postgres-0                          30m     322Mi    
+rabbitmq-0                          352m    116Mi    
+redis-0                             7m      19Mi     
+store-6869ff9cc-7fz6f               33m     410Mi    
+varnish-6d78c9fc4b-qj875            7m      68Mi     
+worker-bdf97884-qwlgc               3m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3835m   47%   11056Mi   47%   
+20:58:19
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                25m     146Mi    
+elasticsearch-0                     3154m   3281Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   6m      16Mi     
+postgres-0                          25m     322Mi    
+rabbitmq-0                          346m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               35m     403Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               6m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   3883m   48%   10884Mi   46%   
+20:58:37
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                21m     147Mi    
+elasticsearch-0                     2993m   3352Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   9m      16Mi     
+postgres-0                          27m     322Mi    
+rabbitmq-0                          324m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               33m     408Mi    
+varnish-6d78c9fc4b-qj875            5m      68Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3825m   47%   10521Mi   44%   
+20:58:55
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                24m     147Mi    
+elasticsearch-0                     2916m   3318Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           13m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   9m      16Mi     
+postgres-0                          32m     322Mi    
+rabbitmq-0                          342m    117Mi    
+redis-0                             6m      20Mi     
+store-6869ff9cc-7fz6f               60m     407Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3581m   44%   10840Mi   46%   
+20:59:13
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                22m     147Mi    
+elasticsearch-0                     3097m   3606Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   6m      16Mi     
+postgres-0                          22m     323Mi    
+rabbitmq-0                          313m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               13m     403Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3793m   47%   11375Mi   48%   
+20:59:31
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                31m     147Mi    
+elasticsearch-0                     2902m   3776Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   12m     16Mi     
+postgres-0                          26m     322Mi    
+rabbitmq-0                          392m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               35m     405Mi    
+varnish-6d78c9fc4b-qj875            5m      68Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     4m      22Mi     
+vps-3585bd22   3716m   46%   11101Mi   47%   
+20:59:50
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                31m     147Mi    
+elasticsearch-0                     2754m   3127Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           19m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   15m     16Mi     
+postgres-0                          34m     322Mi    
+rabbitmq-0                          260m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               25m     409Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     4m      22Mi     
+vps-3585bd22   3532m   44%   10905Mi   46%   
+21:00:08
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                33m     148Mi    
+elasticsearch-0                     2499m   3349Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   26m     16Mi     
+postgres-0                          33m     322Mi    
+rabbitmq-0                          378m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               61m     405Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4855m   60%   11129Mi   47%   
+21:00:26
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                22m     148Mi    
+elasticsearch-0                     3165m   3051Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           25m     1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   10m     16Mi     
+postgres-0                          39m     322Mi    
+rabbitmq-0                          367m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               20m     406Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4067m   50%   10721Mi   45%   
+21:00:44
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                33m     147Mi    
+elasticsearch-0                     2577m   3245Mi   
+garage-0                            7m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           19m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   24m     17Mi     
+postgres-0                          25m     322Mi    
+rabbitmq-0                          348m    117Mi    
+redis-0                             7m      19Mi     
+store-6869ff9cc-7fz6f               47m     407Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     7m      22Mi     
+vps-3585bd22   3450m   43%   10837Mi   46%   
+21:01:02
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                24m     148Mi    
+elasticsearch-0                     2951m   3246Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   8m      16Mi     
+postgres-0                          25m     322Mi    
+rabbitmq-0                          348m    117Mi    
+redis-0                             7m      19Mi     
+store-6869ff9cc-7fz6f               31m     406Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3626m   45%   10910Mi   46%   
+21:01:20
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                27m     147Mi    
+elasticsearch-0                     3356m   3263Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   14m     16Mi     
+postgres-0                          26m     322Mi    
+rabbitmq-0                          326m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               31m     406Mi    
+varnish-6d78c9fc4b-qj875            7m      70Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     4m      22Mi     
+vps-3585bd22   4075m   50%   10769Mi   45%   
+21:01:38
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                33m     147Mi    
+elasticsearch-0                     3095m   3375Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   15m     16Mi     
+postgres-0                          27m     322Mi    
+rabbitmq-0                          306m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               32m     405Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     4m      22Mi     
+vps-3585bd22   4342m   54%   10938Mi   46%   
+21:01:56
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                33m     147Mi    
+elasticsearch-0                     3494m   3264Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           24m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   10m     16Mi     
+postgres-0                          27m     323Mi    
+rabbitmq-0                          272m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               43m     407Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   4191m   52%   11165Mi   47%   
+21:02:14
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                20m     148Mi    
+elasticsearch-0                     3597m   3030Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           13m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   5m      17Mi     
+postgres-0                          20m     322Mi    
+rabbitmq-0                          341m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               7m      407Mi    
+varnish-6d78c9fc4b-qj875            4m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     4m      23Mi     
+vps-3585bd22   4563m   57%   10714Mi   45%   
+21:02:33
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                25m     147Mi    
+elasticsearch-0                     2916m   3166Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   8m      16Mi     
+postgres-0                          25m     323Mi    
+rabbitmq-0                          316m    185Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               22m     404Mi    
+varnish-6d78c9fc4b-qj875            6m      70Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3426m   42%   11228Mi   47%   
+21:02:51
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                24m     147Mi    
+elasticsearch-0                     3328m   3258Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   7m      16Mi     
+postgres-0                          25m     323Mi    
+rabbitmq-0                          322m    116Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               29m     412Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4249m   53%   11208Mi   47%   
+21:03:09
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                26m     148Mi    
+elasticsearch-0                     3262m   3241Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            7m      16Mi     
+perf-measure-20261126204153-r76cv   7m      16Mi     
+postgres-0                          22m     323Mi    
+rabbitmq-0                          271m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               14m     406Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3913m   48%   11100Mi   47%   
+21:03:27
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                28m     148Mi    
+elasticsearch-0                     2955m   3529Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           16m     1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   20m     16Mi     
+postgres-0                          31m     323Mi    
+rabbitmq-0                          377m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               36m     407Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               6m      27Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   3874m   48%   11097Mi   47%   
+21:03:45
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                22m     147Mi    
+elasticsearch-0                     2866m   2977Mi   
+garage-0                            6m      54Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   9m      17Mi     
+postgres-0                          28m     323Mi    
+rabbitmq-0                          302m    116Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               36m     405Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3792m   47%   10823Mi   46%   
+21:04:03
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                23m     147Mi    
+elasticsearch-0                     3232m   3185Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           14m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   7m      17Mi     
+postgres-0                          21m     322Mi    
+rabbitmq-0                          340m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               16m     406Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      23Mi     
+vps-3585bd22   3885m   48%   10766Mi   45%   
+21:04:21
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                27m     147Mi    
+elasticsearch-0                     2723m   3432Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           21m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   16m     16Mi     
+postgres-0                          24m     322Mi    
+rabbitmq-0                          291m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               56m     409Mi    
+varnish-6d78c9fc4b-qj875            5m      68Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     4m      22Mi     
+vps-3585bd22   4138m   51%   10679Mi   45%   
+21:04:39
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                29m     147Mi    
+elasticsearch-0                     2497m   3349Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   23m     17Mi     
+postgres-0                          34m     323Mi    
+rabbitmq-0                          341m    116Mi    
+redis-0                             6m      20Mi     
+store-6869ff9cc-7fz6f               53m     404Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   3185m   39%   10805Mi   46%   
+21:04:57
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                36m     147Mi    
+elasticsearch-0                     2497m   3349Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           18m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   29m     17Mi     
+postgres-0                          34m     323Mi    
+rabbitmq-0                          326m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               49m     408Mi    
+varnish-6d78c9fc4b-qj875            8m      68Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     4m      22Mi     
+vps-3585bd22   3586m   44%   10495Mi   44%   
+21:05:16
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                32m     147Mi    
+elasticsearch-0                     2799m   3521Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   18m     17Mi     
+postgres-0                          25m     323Mi    
+rabbitmq-0                          346m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               18m     408Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   3314m   41%   11165Mi   47%   
+21:05:34
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                29m     148Mi    
+elasticsearch-0                     2559m   3988Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   28m     17Mi     
+postgres-0                          31m     323Mi    
+rabbitmq-0                          346m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               66m     410Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3831m   47%   10614Mi   45%   
+21:05:52
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                37m     147Mi    
+elasticsearch-0                     2553m   3476Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   27m     17Mi     
+postgres-0                          36m     323Mi    
+rabbitmq-0                          356m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               62m     408Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3633m   45%   11118Mi   47%   
+21:06:10
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                24m     149Mi    
+elasticsearch-0                     3094m   3654Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           5m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   4m      17Mi     
+postgres-0                          23m     323Mi    
+rabbitmq-0                          302m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               27m     409Mi    
+varnish-6d78c9fc4b-qj875            7m      69Mi     
+worker-bdf97884-qwlgc               6m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4535m   56%   10849Mi   46%   
+21:06:28
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                25m     148Mi    
+elasticsearch-0                     2889m   3206Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           16m     1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   12m     17Mi     
+postgres-0                          24m     323Mi    
+rabbitmq-0                          398m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               23m     412Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3621m   45%   11410Mi   48%   
+21:06:47
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                17m     148Mi    
+elasticsearch-0                     3123m   3775Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   6m      18Mi     
+postgres-0                          25m     323Mi    
+rabbitmq-0                          311m    116Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               29m     404Mi    
+varnish-6d78c9fc4b-qj875            5m      68Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3926m   49%   10680Mi   45%   
+21:07:05
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                35m     148Mi    
+elasticsearch-0                     3533m   3649Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   17m     17Mi     
+postgres-0                          42m     324Mi    
+rabbitmq-0                          304m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               35m     408Mi    
+varnish-6d78c9fc4b-qj875            6m      71Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3914m   48%   10589Mi   45%   
+21:07:23
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                23m     149Mi    
+elasticsearch-0                     3233m   3719Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   11m     17Mi     
+postgres-0                          31m     323Mi    
+rabbitmq-0                          387m    117Mi    
+redis-0                             6m      20Mi     
+store-6869ff9cc-7fz6f               21m     406Mi    
+varnish-6d78c9fc4b-qj875            7m      69Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   4280m   53%   10635Mi   45%   
+21:07:41
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                25m     148Mi    
+elasticsearch-0                     3603m   2976Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   11m     17Mi     
+postgres-0                          23m     322Mi    
+rabbitmq-0                          387m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               21m     406Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4334m   54%   10993Mi   46%   
+21:07:59
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                30m     148Mi    
+elasticsearch-0                     2860m   3281Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   12m     17Mi     
+postgres-0                          25m     324Mi    
+rabbitmq-0                          330m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               23m     412Mi    
+varnish-6d78c9fc4b-qj875            7m      68Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3622m   45%   10641Mi   45%   
+21:08:18
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                20m     148Mi    
+elasticsearch-0                     3458m   3086Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            7m      16Mi     
+perf-measure-20261126204153-r76cv   21m     17Mi     
+postgres-0                          24m     323Mi    
+rabbitmq-0                          257m    117Mi    
+redis-0                             7m      19Mi     
+store-6869ff9cc-7fz6f               45m     411Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4039m   50%   10647Mi   45%   
+21:08:36
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                22m     149Mi    
+elasticsearch-0                     3219m   2995Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           18m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   8m      17Mi     
+postgres-0                          24m     323Mi    
+rabbitmq-0                          401m    187Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               11m     406Mi    
+varnish-6d78c9fc4b-qj875            6m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4092m   51%   10743Mi   45%   
+21:08:54
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                23m     149Mi    
+elasticsearch-0                     2936m   3117Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   15m     17Mi     
+postgres-0                          25m     324Mi    
+rabbitmq-0                          286m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               44m     410Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3781m   47%   10788Mi   45%   
+21:09:12
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                24m     148Mi    
+elasticsearch-0                     3642m   3345Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           18m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   15m     17Mi     
+postgres-0                          24m     323Mi    
+rabbitmq-0                          371m    190Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               20m     407Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4304m   53%   10973Mi   46%   
+21:09:30
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                21m     149Mi    
+elasticsearch-0                     3578m   3372Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           12m     1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   3m      17Mi     
+postgres-0                          27m     323Mi    
+rabbitmq-0                          311m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               25m     408Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4419m   55%   11197Mi   47%   
+21:09:49
+admin-57fbffdfd-wnnzn               1m      8Mi      
+api-6f665cf598-57w82                28m     147Mi    
+elasticsearch-0                     3246m   3201Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   10m     17Mi     
+postgres-0                          26m     323Mi    
+rabbitmq-0                          319m    189Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               43m     411Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   3558m   44%   10826Mi   46%   
+21:10:07
+admin-57fbffdfd-wnnzn               1m      8Mi      
+api-6f665cf598-57w82                26m     147Mi    
+elasticsearch-0                     2918m   3005Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   17m     17Mi     
+postgres-0                          23m     323Mi    
+rabbitmq-0                          320m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               6m      413Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4383m   54%   10697Mi   45%   
+21:10:25
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                20m     147Mi    
+elasticsearch-0                     3376m   3016Mi   
+garage-0                            5m      52Mi     
+imgproxy-6b57bf7f7d-kjc6s           19m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   5m      17Mi     
+postgres-0                          24m     323Mi    
+rabbitmq-0                          319m    117Mi    
+redis-0                             6m      20Mi     
+store-6869ff9cc-7fz6f               20m     413Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   4395m   54%   10594Mi   45%   
+21:10:43
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                24m     147Mi    
+elasticsearch-0                     3376m   3016Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           19m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           5m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   5m      17Mi     
+postgres-0                          26m     324Mi    
+rabbitmq-0                          364m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               37m     406Mi    
+varnish-6d78c9fc4b-qj875            5m      69Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      23Mi     
+vps-3585bd22   4148m   51%   10903Mi   46%   
+21:11:02
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                31m     147Mi    
+elasticsearch-0                     3396m   3239Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           12m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   30m     15Mi     
+postgres-0                          26m     324Mi    
+rabbitmq-0                          279m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               35m     404Mi    
+varnish-6d78c9fc4b-qj875            6m      68Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   3517m   43%   11140Mi   47%   
+21:11:20
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                65m     147Mi    
+elasticsearch-0                     1759m   3006Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   18m     20Mi     
+postgres-0                          94m     326Mi    
+rabbitmq-0                          342m    182Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               26m     407Mi    
+varnish-6d78c9fc4b-qj875            8m      70Mi     
+worker-bdf97884-qwlgc               5m      26Mi     
+worker-commands-f7cb89bbf-hlz57     4m      22Mi     
+vps-3585bd22   3957m   49%   11047Mi   47%   
+21:11:38
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                40m     161Mi    
+elasticsearch-0                     1250m   3501Mi   
+garage-0                            4m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           18m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   33m     15Mi     
+postgres-0                          184m    329Mi    
+rabbitmq-0                          349m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               51m     407Mi    
+varnish-6d78c9fc4b-qj875            11m     73Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     6m      22Mi     
+vps-3585bd22   3968m   49%   10636Mi   45%   
+21:11:56
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                66m     160Mi    
+elasticsearch-0                     4081m   3704Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           19m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   23m     23Mi     
+postgres-0                          76m     325Mi    
+rabbitmq-0                          307m    183Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               4m      407Mi    
+varnish-6d78c9fc4b-qj875            7m      73Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     4m      22Mi     
+vps-3585bd22   3237m   40%   10928Mi   46%   
+21:12:14
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                66m     160Mi    
+elasticsearch-0                     1420m   3281Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   10m     23Mi     
+postgres-0                          249m    326Mi    
+rabbitmq-0                          276m    116Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               1m      407Mi    
+varnish-6d78c9fc4b-qj875            6m      74Mi     
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   1252m   15%   10969Mi   46%   
+21:12:33
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                123m   173Mi    
+elasticsearch-0                     865m   3270Mi   
+garage-0                            5m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m    63Mi     
+keycloak-5ccdbb8d58-zjkjl           25m    1355Mi   
+mailpit-6574989b45-cqb7s            5m     16Mi     
+perf-measure-20261126204153-r76cv   79m    18Mi     
+postgres-0                          249m   326Mi    
+rabbitmq-0                          276m   116Mi    
+redis-0                             6m     19Mi     
+store-6869ff9cc-7fz6f               125m   419Mi    
+varnish-6d78c9fc4b-qj875            13m    80Mi     
+worker-bdf97884-qwlgc               5m     26Mi     
+worker-commands-f7cb89bbf-hlz57     5m     22Mi     
+vps-3585bd22   3891m   48%   10953Mi   46%   
+21:12:51
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                123m    173Mi    
+elasticsearch-0                     1739m   3591Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   27m     23Mi     
+postgres-0                          148m    326Mi    
+rabbitmq-0                          329m    117Mi    
+redis-0                             6m      20Mi     
+store-6869ff9cc-7fz6f               125m    419Mi    
+varnish-6d78c9fc4b-qj875            7m      83Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     4m      23Mi     
+vps-3585bd22   1615m   20%   11250Mi   47%   
+21:13:09
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                43m    189Mi    
+elasticsearch-0                     9m     3591Mi   
+garage-0                            4m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           21m    64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m     1355Mi   
+mailpit-6574989b45-cqb7s            6m     16Mi     
+perf-measure-20261126204153-r76cv   39m    45Mi     
+postgres-0                          230m   336Mi    
+rabbitmq-0                          393m   117Mi    
+redis-0                             6m     19Mi     
+store-6869ff9cc-7fz6f               35m    429Mi    
+varnish-6d78c9fc4b-qj875            6m     79Mi     
+worker-bdf97884-qwlgc               4m     27Mi     
+worker-commands-f7cb89bbf-hlz57     4m     22Mi     
+vps-3585bd22   934m   11%   11236Mi   47%   
+21:13:27
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                182m    175Mi    
+elasticsearch-0                     2233m   3147Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m     64Mi     
+keycloak-5ccdbb8d58-zjkjl           4m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   70m     15Mi     
+postgres-0                          83m     326Mi    
+rabbitmq-0                          339m    193Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               125m    474Mi    
+varnish-6d78c9fc4b-qj875            17m     85Mi     
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     4m      22Mi     
+vps-3585bd22   4374m   54%   11338Mi   48%   
+21:13:45
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                31m     174Mi    
+elasticsearch-0                     2124m   3213Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           13m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   12m     24Mi     
+postgres-0                          83m     326Mi    
+rabbitmq-0                          333m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               2m      474Mi    
+varnish-6d78c9fc4b-qj875            6m      88Mi     
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   1494m   18%   10923Mi   46%   
+21:14:03
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                44m    190Mi    
+elasticsearch-0                     9m     3220Mi   
+garage-0                            6m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m    63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m     1355Mi   
+mailpit-6574989b45-cqb7s            4m     16Mi     
+perf-measure-20261126204153-r76cv   10m    24Mi     
+postgres-0                          222m   327Mi    
+rabbitmq-0                          267m   185Mi    
+redis-0                             6m     19Mi     
+store-6869ff9cc-7fz6f               2m     475Mi    
+varnish-6d78c9fc4b-qj875            7m     86Mi     
+worker-bdf97884-qwlgc               5m     27Mi     
+worker-commands-f7cb89bbf-hlz57     5m     22Mi     
+vps-3585bd22   981m   12%   10947Mi   46%   
+21:14:22
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                44m    191Mi    
+elasticsearch-0                     9m     3220Mi   
+garage-0                            5m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           14m    63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m     1355Mi   
+mailpit-6574989b45-cqb7s            7m     16Mi     
+perf-measure-20261126204153-r76cv   10m    24Mi     
+postgres-0                          244m   335Mi    
+rabbitmq-0                          323m   117Mi    
+redis-0                             6m     19Mi     
+store-6869ff9cc-7fz6f               16m    342Mi    
+varnish-6d78c9fc4b-qj875            7m     86Mi     
+worker-bdf97884-qwlgc               5m     27Mi     
+worker-commands-f7cb89bbf-hlz57     5m     22Mi     
+vps-3585bd22   979m   12%   10749Mi   45%   
+21:14:40
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                41m    190Mi    
+elasticsearch-0                     9m     3220Mi   
+garage-0                            5m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m    63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m     1355Mi   
+mailpit-6574989b45-cqb7s            4m     16Mi     
+perf-measure-20261126204153-r76cv   9m     24Mi     
+postgres-0                          239m   327Mi    
+rabbitmq-0                          301m   117Mi    
+redis-0                             5m     19Mi     
+store-6869ff9cc-7fz6f               2m     343Mi    
+varnish-6d78c9fc4b-qj875            6m     86Mi     
+worker-bdf97884-qwlgc               5m     26Mi     
+worker-commands-f7cb89bbf-hlz57     6m     23Mi     
+vps-3585bd22   901m   11%   10742Mi   45%   
+21:14:58
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                277m   179Mi    
+elasticsearch-0                     528m   3166Mi   
+garage-0                            5m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           21m    63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m     1355Mi   
+mailpit-6574989b45-cqb7s            6m     16Mi     
+perf-measure-20261126204153-r76cv   10m    24Mi     
+postgres-0                          232m   352Mi    
+rabbitmq-0                          313m   182Mi    
+redis-0                             6m     19Mi     
+store-6869ff9cc-7fz6f               245m   436Mi    
+varnish-6d78c9fc4b-qj875            7m     86Mi     
+worker-bdf97884-qwlgc               4m     26Mi     
+worker-commands-f7cb89bbf-hlz57     6m     23Mi     
+vps-3585bd22   4245m   53%   10739Mi   45%   
+21:15:16
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                277m    179Mi    
+elasticsearch-0                     4578m   3201Mi   
+garage-0                            6m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           21m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           6m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   83m     15Mi     
+postgres-0                          108m    326Mi    
+rabbitmq-0                          371m    143Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               76m     457Mi    
+varnish-6d78c9fc4b-qj875            19m     101Mi    
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   4320m   54%   10858Mi   46%   
+21:15:34
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                84m     185Mi    
+elasticsearch-0                     1800m   3256Mi   
+garage-0                            5m      52Mi     
+imgproxy-6b57bf7f7d-kjc6s           13m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           14m     1355Mi   
+mailpit-6574989b45-cqb7s            4m      16Mi     
+perf-measure-20261126204153-r76cv   8m      23Mi     
+postgres-0                          159m    354Mi    
+rabbitmq-0                          345m    117Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               98m     478Mi    
+varnish-6d78c9fc4b-qj875            6m      103Mi    
+worker-bdf97884-qwlgc               4m      26Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   2584m   32%   11334Mi   48%   
+21:15:53
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                247m    180Mi    
+elasticsearch-0                     1800m   3256Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           14m     1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   97m     15Mi     
+postgres-0                          127m    325Mi    
+rabbitmq-0                          324m    116Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               120m    487Mi    
+varnish-6d78c9fc4b-qj875            19m     110Mi    
+worker-bdf97884-qwlgc               4m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   615m   7%    10703Mi   45%   
+21:16:11
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                2m     181Mi    
+elasticsearch-0                     9m     2976Mi   
+garage-0                            6m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           14m    64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m     1355Mi   
+mailpit-6574989b45-cqb7s            5m     16Mi     
+perf-measure-20261126204153-r76cv   0m     15Mi     
+postgres-0                          12m    324Mi    
+rabbitmq-0                          325m   117Mi    
+redis-0                             5m     19Mi     
+store-6869ff9cc-7fz6f               2m     488Mi    
+varnish-6d78c9fc4b-qj875            5m     110Mi    
+worker-bdf97884-qwlgc               4m     27Mi     
+worker-commands-f7cb89bbf-hlz57     5m     23Mi     
+vps-3585bd22   659m   8%    10702Mi   45%   
+21:16:29
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                1m     180Mi    
+elasticsearch-0                     9m     2976Mi   
+garage-0                            4m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           15m    63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m     1355Mi   
+mailpit-6574989b45-cqb7s            5m     16Mi     
+perf-measure-20261126204153-r76cv   0m     15Mi     
+postgres-0                          15m    324Mi    
+rabbitmq-0                          328m   118Mi    
+redis-0                             5m     19Mi     
+store-6869ff9cc-7fz6f               1m     488Mi    
+varnish-6d78c9fc4b-qj875            5m     110Mi    
+worker-bdf97884-qwlgc               5m     27Mi     
+worker-commands-f7cb89bbf-hlz57     5m     22Mi     
+vps-3585bd22   657m   8%    10705Mi   45%   
+21:16:47
+admin-57fbffdfd-wnnzn               1m     8Mi      
+api-6f665cf598-57w82                3m     180Mi    
+elasticsearch-0                     9m     2975Mi   
+garage-0                            5m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           17m    64Mi     
+keycloak-5ccdbb8d58-zjkjl           4m     1355Mi   
+mailpit-6574989b45-cqb7s            6m     16Mi     
+perf-measure-20261126204153-r76cv   0m     15Mi     
+postgres-0                          14m    324Mi    
+rabbitmq-0                          305m   188Mi    
+redis-0                             6m     20Mi     
+store-6869ff9cc-7fz6f               2m     488Mi    
+varnish-6d78c9fc4b-qj875            4m     108Mi    
+worker-bdf97884-qwlgc               4m     26Mi     
+worker-commands-f7cb89bbf-hlz57     5m     22Mi     
+vps-3585bd22   716m   8%    10705Mi   45%   
+21:17:05
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                3m     180Mi    
+elasticsearch-0                     9m     2975Mi   
+garage-0                            5m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           14m    63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m     1355Mi   
+mailpit-6574989b45-cqb7s            4m     16Mi     
+perf-measure-20261126204153-r76cv   0m     15Mi     
+postgres-0                          13m    324Mi    
+rabbitmq-0                          265m   117Mi    
+redis-0                             6m     20Mi     
+store-6869ff9cc-7fz6f               2m     488Mi    
+varnish-6d78c9fc4b-qj875            5m     109Mi    
+worker-bdf97884-qwlgc               4m     26Mi     
+worker-commands-f7cb89bbf-hlz57     5m     23Mi     
+vps-3585bd22   669m   8%    10712Mi   45%   
+21:17:23
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                259m    182Mi    
+elasticsearch-0                     3446m   3161Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           11m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            5m      16Mi     
+perf-measure-20261126204153-r76cv   64m     129Mi    
+postgres-0                          111m    324Mi    
+rabbitmq-0                          328m    117Mi    
+redis-0                             5m      19Mi     
+store-6869ff9cc-7fz6f               133m    474Mi    
+varnish-6d78c9fc4b-qj875            13m     112Mi    
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     5m      22Mi     
+vps-3585bd22   5885m   73%   10963Mi   46%   
+21:17:42
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                32m    181Mi    
+elasticsearch-0                     360m   3234Mi   
+garage-0                            6m     52Mi     
+imgproxy-6b57bf7f7d-kjc6s           21m    64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m     1355Mi   
+mailpit-6574989b45-cqb7s            5m     16Mi     
+perf-measure-20261126204153-r76cv   18m    15Mi     
+postgres-0                          15m    325Mi    
+rabbitmq-0                          385m   187Mi    
+redis-0                             6m     20Mi     
+store-6869ff9cc-7fz6f               3m     474Mi    
+varnish-6d78c9fc4b-qj875            7m     112Mi    
+worker-bdf97884-qwlgc               5m     27Mi     
+worker-commands-f7cb89bbf-hlz57     6m     22Mi     
+vps-3585bd22   817m   10%   10917Mi   46%   
+21:18:00
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                3m     179Mi    
+elasticsearch-0                     11m    3234Mi   
+garage-0                            5m     52Mi     
+imgproxy-6b57bf7f7d-kjc6s           21m    64Mi     
+keycloak-5ccdbb8d58-zjkjl           3m     1355Mi   
+mailpit-6574989b45-cqb7s            5m     16Mi     
+perf-measure-20261126204153-r76cv   0m     15Mi     
+postgres-0                          15m    324Mi    
+rabbitmq-0                          268m   117Mi    
+redis-0                             5m     19Mi     
+store-6869ff9cc-7fz6f               3m     474Mi    
+varnish-6d78c9fc4b-qj875            4m     112Mi    
+worker-bdf97884-qwlgc               4m     26Mi     
+worker-commands-f7cb89bbf-hlz57     4m     22Mi     
+vps-3585bd22   662m   8%    10924Mi   46%   
+21:18:18
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                2m     179Mi    
+elasticsearch-0                     10m    3234Mi   
+garage-0                            6m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m    65Mi     
+keycloak-5ccdbb8d58-zjkjl           4m     1355Mi   
+mailpit-6574989b45-cqb7s            5m     16Mi     
+perf-measure-20261126204153-r76cv   0m     15Mi     
+postgres-0                          16m    324Mi    
+rabbitmq-0                          348m   184Mi    
+redis-0                             7m     19Mi     
+store-6869ff9cc-7fz6f               2m     474Mi    
+varnish-6d78c9fc4b-qj875            6m     112Mi    
+worker-bdf97884-qwlgc               5m     26Mi     
+worker-commands-f7cb89bbf-hlz57     6m     23Mi     
+vps-3585bd22   715m   8%    10924Mi   46%   
+21:18:36
+admin-57fbffdfd-wnnzn               1m     7Mi      
+api-6f665cf598-57w82                3m     179Mi    
+elasticsearch-0                     9m     3234Mi   
+garage-0                            5m     51Mi     
+imgproxy-6b57bf7f7d-kjc6s           16m    64Mi     
+keycloak-5ccdbb8d58-zjkjl           4m     1355Mi   
+mailpit-6574989b45-cqb7s            6m     16Mi     
+perf-measure-20261126204153-r76cv   0m     15Mi     
+postgres-0                          17m    324Mi    
+rabbitmq-0                          275m   116Mi    
+redis-0                             5m     19Mi     
+store-6869ff9cc-7fz6f               2m     475Mi    
+varnish-6d78c9fc4b-qj875            6m     111Mi    
+worker-bdf97884-qwlgc               4m     26Mi     
+worker-commands-f7cb89bbf-hlz57     5m     22Mi     
+vps-3585bd22   820m   10%   10929Mi   46%   
+21:18:54
+admin-57fbffdfd-wnnzn               1m      7Mi      
+api-6f665cf598-57w82                218m    180Mi    
+elasticsearch-0                     1529m   3523Mi   
+garage-0                            5m      51Mi     
+imgproxy-6b57bf7f7d-kjc6s           20m     63Mi     
+keycloak-5ccdbb8d58-zjkjl           3m      1355Mi   
+mailpit-6574989b45-cqb7s            6m      16Mi     
+perf-measure-20261126204153-r76cv   125m    132Mi    
+postgres-0                          88m     354Mi    
+rabbitmq-0                          326m    116Mi    
+redis-0                             6m      19Mi     
+store-6869ff9cc-7fz6f               2m      475Mi    
+varnish-6d78c9fc4b-qj875            5m      111Mi    
+worker-bdf97884-qwlgc               5m      27Mi     
+worker-commands-f7cb89bbf-hlz57     4m      22Mi     
+vps-3585bd22   1646m   20%   11244Mi   47%   

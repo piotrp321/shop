@@ -1,0 +1,6 @@
+440 addresses: {'department_deep': 36, 'product': 200, 'phrase_filter': 36, 'home_deep': 34, 'leaf_filter': 36, 'phrase': 20, 'phrase_deep': 26, 'leaf': 36, 'department': 14, 'home': 2}
+120 samples, 0 failures, written to open-product-2.jsonl
+label	target	kind	cache	n	full	p50	p95	p99	max	server_est_p50	server_est_p95	rtt_p50	statuses
+open-2.0	api	product	hit	17	17	0.003	0.004	0.005	0.005	0.0	0.0	0.0	{200: 17}
+open-2.0	api	product	miss	44	44	0.036	0.042	0.057	0.057	0.033	0.039	0.0	{200: 44}
+open-2.0	store	product	miss	59	59	0.118	0.15	0.161	0.177	0.115	0.146	0.0	{200: 59}
