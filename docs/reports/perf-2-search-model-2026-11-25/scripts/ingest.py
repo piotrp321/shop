@@ -1,6 +1,6 @@
 """Indexing cost of a model: bulk rate (server-side _reindex of 1M products without a script, one task) and the cost
 of rewriting single products one by one (the incremental path), with the CPU time of the Elasticsearch container.
-usage: ingest.py <source index> <kind cur|h>"""
+usage: ingest.py <source index> <kind cur|h|r> [index sort field]"""
 import json, sys, time
 import mk, cpu as cg
 from mk import esq

@@ -1,6 +1,7 @@
 """Automatic equivalence check: every scenario of models.ALL, candidate against the current model.
 Compares the total, the category, availability, price and option facets (as the API shows them) and the ids of the page.
-usage: check.py <ref index> <index> <kind,...> [out.json]   kind: flat3 | pl | pl-split"""
+usage: check.py <ref index> <index> <kind,...> [out.json]   kind: flat3 | pl | pl-split | plm
+MIX=1 compares the listings of ../results/mix.json instead of the scenarios."""
 import json, os, sys
 import models as m
 from models import esq

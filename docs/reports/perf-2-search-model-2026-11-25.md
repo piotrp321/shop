@@ -381,24 +381,57 @@ pozycji), a dopasowanie frazy 60–150 ms niezależnie od modelu.
 
 ## 12. Odtworzenie
 
-Wszystkie polecenia z katalogu `docs/reports/perf-2-search-model-2026-11-25/scripts`, Python 3 na hoście, kontener
-`es-audit` na `127.0.0.1:19200`.
+**Wymagania wstępne.**
 
-| Krok | Polecenie |
-|---|---|
-| indeks odniesienia 10 mln | `python3 mk.py c10 cur 1 10 \| python3 wait.py` |
-| indeks modelu R 10 mln | `python3 mk.py r10 r 1 10 products sort_path \| python3 wait.py` |
-| nadzbiór pól (`flat3`, `pl`) | `python3 mk.py h10 h 1 10 \| python3 wait.py` |
-| mieszanka | `python3 mix.py h1` |
-| zgodność | `python3 check.py c10 r10 plm`, `MIX=1 python3 check.py c10 r10 plm` |
-| pojedyncze zapytania | `LABEL=r10 python3 bench.py single r10 plm` |
-| klasy adresów | `LABEL=r10 python3 classes.py r10 plm` |
-| współbieżność, skok, stałe tempo | `python3 bench.py conc r10 plm 30 1,8,100 mix`, `bench.py burst r10 plm 100`, `bench.py open r10 plm 15 60` |
-| cache, odświeżenie, zapisy | `cachetest.py r10`, `refresh.py r10 plm all_name`, `writes.py r10 50 75` równolegle z `CACHE=tok bench.py conc …` |
-| indeksowanie, rozmiar | `ingest.py r10 r sort_path`, `disk.py r1` |
-| wariant jako dokument | `python3 mkv.py v1 products`, `python3 vd.py v1 r1` |
-| serie w całości | `batch2.sh`, `batch3.sh` |
-| tabele | `python3 tables.py` |
+- Python 3 na hoście (sama biblioteka standardowa) i polecenie `docker` (odczyt CPU z cgroup kontenera, `cpu.py`).
+  Skrypty importują `esq.py`, `variants.py`, `mapping_orig.json`, `settings_orig.json` i `tree.json` z
+  `docs/reports/performance-audit-2026-11-25/results/es/`.
+- Kontener `es-audit` z audytu: obraz Elasticsearcha projektu (`infra/elasticsearch/Dockerfile`, ES 9.4.0 z wtyczką
+  analizy), `--cpus=8`, pamięć 10 GiB, `ES_JAVA_OPTS=-Xms2g -Xmx2g`, `discovery.type=single-node`,
+  `xpack.security.enabled=false`, port `127.0.0.1:19200`, wolumen `es-audit-data`. Inny adres: zmienna `ES`
+  (zapytania przez `esq.py`) oraz stałe `HOST` i `PORT` w `bench.py`; inna nazwa kontenera: `ES_CONTAINER`.
+- Dane źródłowe: alias `products` w tym kontenerze, indeks profilu `medium` (1 000 191 produktów) zbudowany przez
+  aplikację na `2b4258c7`. Ten indeks jest w wolumenie `es-audit-data`; dane `medium` są też w wolumenach zatrzymanego
+  stosu `shop-perf25`. Audyt nie zapisał polecenia, którym utworzył kontener i wczytał indeks, więc odtworzenie od
+  zera (bez tego wolumenu) wymaga wygenerowania `medium` (`make seed-scale PROFILE=medium`, z dostępem do puli zdjęć),
+  reindeksu i uruchomienia kontenera o parametrach jak wyżej na kopii wolumenu Elasticsearcha tego stosu. Tej ścieżki
+  nie sprawdzałem.
+- Mieszanka jest zapisana (`results/mix.json`, losowanie ze stałym ziarnem), więc pomiary nie wymagają jej ponownego
+  generowania.
+
+Wszystkie polecenia z katalogu `docs/reports/perf-2-search-model-2026-11-25/scripts`. `bench.py`, `classes.py`
+i pozostałe skrypty pomiarowe dopisują wiersze do `results/bench.jsonl` z etykietą ze zmiennej `LABEL`.
+
+| Krok | Polecenie | Wynik |
+|---|---|---|
+| indeksy 1 mln | `t_orig1` z audytu (`mk_indices.py`); `python3 mk.py h1 h 1 1 \| python3 wait.py`; `r1` buduje `batch3.sh` | |
+| indeks odniesienia 10 mln | `python3 mk.py c10 cur 1 10 \| python3 wait.py` | `build_c10.json` |
+| nadzbiór pól (`flat3`, `pl`, `plm`) | `python3 mk.py h10 h 1 10 \| python3 wait.py` | `build_h10.json` |
+| indeks modelu R 10 mln | `python3 mk.py r10 r 1 10 products sort_path \| python3 wait.py` | `build_r10.json` |
+| mieszanka | `python3 mix.py h1` | `mix.json` |
+| zgodność kandydatów | `python3 check.py c10 h10 flat3,pl,pl-split ../results/equivalence_10m.json`; `MIX=1 python3 check.py t_orig1 h1 flat3,pl,plm ../results/equivalence_mix_1m.json` | `equivalence_*.json` |
+| zgodność modelu R | `python3 check.py c10 r10 plm`, `MIX=1 python3 check.py c10 r10 plm` | `equivalence_r10.json`, `equivalence_mix_r10.json` |
+| kandydaci: pojedyncze zapytania | `LABEL=10m python3 bench.py single c10 cur`; to samo dla `h10` z `flat3`, `pl`, `pl-split`, `plm` | etykieta `10m` |
+| kandydaci: klasy adresów | `LABEL=10m-class python3 classes.py c10 cur`; to samo dla `h10` z `flat3`, `pl`, `plm` | `10m-class` |
+| kandydaci: współbieżność i skok | `LABEL=10m-cpu8 python3 bench.py conc c10 cur 30 1,8,100 mix`, `LABEL=10m-cpu8 python3 bench.py burst c10 cur 100`; to samo dla `h10` z `flat3`, `pl`, `plm` | `10m-cpu8` |
+| ustawienia silnika, cache na `h10` | `batch2.sh` (równoległość segmentów, 4 shardy, sort po głównej kategorii) | `10m-nopar`, `10m-s4`, `10m-sort`, `batch2.log` |
+| model R: wszystkie pomiary | `batch3.sh` (pojedyncze, klasy, współbieżność, skok, stałe tempo, cache, odświeżenie, `--cpus=3`, indeksowanie, wariant jako dokument, zapisy równoległe) | `r10*`, `c10-*`, `ingest.jsonl`, `vd.jsonl`, `batch3.log` |
+| pojedyncze kroki z `batch3.sh` | `LABEL=r10 python3 bench.py single r10 plm`, `bench.py conc r10 plm 30 1,8,100 mix`, `bench.py burst r10 plm 100`, `bench.py open r10 plm 15 60`, `cachetest.py r10`, `refresh.py r10 plm all_name`, `writes.py r10 50 75` równolegle z `CACHE=tok bench.py conc …`, `ingest.py r10 r sort_path`, `mkv.py v1 products`, `vd.py v1 r1` | |
+| kalibracja i kontrola rozrzutu | `LABEL=1m-calib python3 bench.py single t_orig1 cur all_name,root_name,leaf_name`; `LABEL=recheck python3 bench.py single r10 plm all_name,root_name,leaf_name` | `1m-calib`, `recheck` |
+| rozmiary pól | `python3 disk.py r1`, `python3 disk.py t_orig1` | `disk.jsonl` |
+| pełne przeliczenie faset bez warunków | `python3 sweep.py r10` | wiersz `sweep` |
+| operacje pierwotne, profil agregacji | `python3 prim.py r10`, `python3 prof.py h10 pl all_color` | na ekran |
+| tabele raportu | `python3 tables.py` | `tables.md` |
+
+Uwagi do odtwarzania:
+
+- Serie kandydatów (`10m`, `10m-class`, `10m-cpu8`) uruchamiałem poleceniami z tabeli, bez skryptu serii. `sweep.py`
+  to zapisany kod, który w eksperymencie wykonałem jednorazowo z wiersza poleceń; jako plik nie był uruchamiany.
+- `batch3.sh` zmienia limit CPU kontenera (`docker update --cpus 3`, potem 8), a zapisy równoległe (`writes.py`)
+  przepisują istniejące dokumenty `r10` i `c10`: treść się nie zmienia, układ segmentów tak.
+- Liczby trafień i fasety są deterministyczne. Czasy i CPU zależą od maszyny, obciążenia w tle i układu segmentów
+  (rozrzut do ok. 25%, sekcja 2), a przebiegi współbieżne były pojedyncze, więc powtórzenie da te same proporcje
+  między modelami, nie te same wartości.
 
 Stan po eksperymencie: kontener `es-audit` zatrzymany, limit pamięci 10 GiB; zostają indeksy `c10`, `r10`, `r1`, `h1`
 i indeksy audytu (`products_*`, `t_orig*`, `t_flat*`); `h10`, `h10s4`, `h10sort` i `v1` usunięte (odtwarzalne
