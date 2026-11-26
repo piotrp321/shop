@@ -27,8 +27,11 @@ byte, total), the cache headers and the contract check.
 
 A sample counts only as a full response: 2xx and the contract (API listing: items, total, facets; API product: id; store
 listing: the product grid or the empty result and the price facet; store product: JSON-LD of the product). Its cache state
-is from the headers: X-Cache of Varnish (API), x-nextjs-cache of the store, cf-cache-status; a cold sample that shows a hit
-is reported as not cold, not as a success of W1/W3.
+is from the headers of its own target: hit when X-Cache, x-nextjs-cache or cf-cache-status says HIT or STALE; miss only
+when the layer of the target says MISS (API: X-Cache of Varnish; store: x-nextjs-cache, so a miss of the API behind a store
+page never confirms the store page); otherwise unconfirmed (a store listing renders on every request and names no state).
+report gives every non-warm label one row per state: only the miss rows are evidence of the cold path (W1, W3); hit and
+unconfirmed rows are shown, never counted as cold.
 
 Network estimate: the TCP connect time is one round trip; the time to the first byte minus the TLS end and one round trip
 is the estimated server time. Both are estimates, reported next to the client times, never instead of them.
@@ -298,34 +301,37 @@ def pct(values, p):
     return round(values[min(len(values) - 1, int(round(p / 100 * (len(values) - 1))))], 3) if values else None
 
 
+LAYER = {"api": "x-cache", "store": "x-nextjs-cache"}
+
+
+def cache_state(sample):
+    heads = sample["headers"]
+    if any(heads.get(h, "").upper().startswith(("HIT", "STALE")) for h in ("x-cache", "x-nextjs-cache", "cf-cache-status")):
+        return "hit"
+    return "miss" if heads.get(LAYER[sample["target"]], "").upper().startswith("MISS") else "unconfirmed"
+
+
 def report(args):
     groups = {}
     try:
         with open(args.samples) as file:
             for line in file:
                 s = json.loads(line)
-                heads = s["headers"]
-                values = [heads.get(h, "").upper() for h in ("x-cache", "x-nextjs-cache", "cf-cache-status")]
-                state = "hit" if any(v.startswith(("HIT", "STALE")) for v in values) else "miss" if any(v.startswith("MISS") for v in values) else "unconfirmed"
-                groups.setdefault((s["label"], s["target"], s["kind"]), []).append((s, state))
-    except (OSError, ValueError) as error:
+                cache = "any" if s["label"] == "warm" else cache_state(s)
+                groups.setdefault((s["label"], s["target"], s["kind"], cache), []).append(s)
+    except (OSError, ValueError, KeyError) as error:
         fail(f"cannot read {args.samples}: {error}")
-    # Percentiles of the cold labels leave out the samples that a cache answered (hit); a sample whose headers name no cache
-    # state (unconfirmed: the store listing renders on every request and shows no state of the Varnish behind it) stays in
-    # and is counted in its column.
-    print("label\ttarget\tkind\tn\tfull\tcache_hit_excluded\tunconfirmed\tp50\tp95\tp99\tmax\tserver_est_p50\tserver_est_p95\trtt_p50\tstatuses")
-    for (label, target, kind), rows in sorted(groups.items()):
-        warm = label == "warm"
-        full = [s for s, state in rows if s["ok"] and (warm or state != "hit")]
+    # One row per cache state of a non-warm label: only cache=miss is evidence of the cold path; hit and unconfirmed are not.
+    print("label\ttarget\tkind\tcache\tn\tfull\tp50\tp95\tp99\tmax\tserver_est_p50\tserver_est_p95\trtt_p50\tstatuses")
+    for (label, target, kind, cache), rows in sorted(groups.items()):
+        full = [s for s in rows if s["ok"]]
         statuses = {}
-        for s, _ in rows:
+        for s in rows:
             statuses[s["status"]] = statuses.get(s["status"], 0) + 1
         totals = [s["total"] for s in full]
         est = [s["server_est"] for s in full]
-        hits = "-" if warm else sum(1 for s, state in rows if s["ok"] and state == "hit")
-        unconfirmed = "-" if warm else sum(1 for s, state in rows if s["ok"] and state == "unconfirmed")
-        print("\t".join(str(v) for v in (label, target, kind, len(rows), len(full), hits, unconfirmed, pct(totals, 50), pct(totals, 95), pct(totals, 99),
-                                          pct(totals, 100), pct(est, 50), pct(est, 95), pct([s["rtt"] for s, _ in rows if "rtt" in s], 50), statuses)))
+        print("\t".join(str(v) for v in (label, target, kind, cache, len(rows), len(full), pct(totals, 50), pct(totals, 95), pct(totals, 99),
+                                          pct(totals, 100), pct(est, 50), pct(est, 95), pct([s["rtt"] for s in rows if "rtt" in s], 50), statuses)))
 
 
 def main():
