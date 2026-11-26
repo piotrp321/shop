@@ -1,0 +1,53 @@
+scenarios 294 kinds 1 mismatches 0
+scenarios 26 kinds 1 mismatches 0
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "all", "n": 12, "cpu_ms": 581.9, "wall_p50": 171, "wall_max": 178, "share_of_mix_pct": 4.1}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "all_filtered", "n": 18, "cpu_ms": 847.5, "wall_p50": 188, "wall_max": 571, "share_of_mix_pct": 6.1}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "root", "n": 36, "cpu_ms": 137.4, "wall_p50": 35, "wall_max": 56, "share_of_mix_pct": 12.2}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "root_filtered", "n": 24, "cpu_ms": 269.3, "wall_p50": 41, "wall_max": 313, "share_of_mix_pct": 8.2}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "mid", "n": 30, "cpu_ms": 68.0, "wall_p50": 21, "wall_max": 29, "share_of_mix_pct": 10.2}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "mid_filtered", "n": 18, "cpu_ms": 125.3, "wall_p50": 24, "wall_max": 111, "share_of_mix_pct": 6.1}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "leaf", "n": 60, "cpu_ms": 41.0, "wall_p50": 11, "wall_max": 18, "share_of_mix_pct": 20.4}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "leaf_filtered", "n": 36, "cpu_ms": 70.0, "wall_p50": 13, "wall_max": 46, "share_of_mix_pct": 12.2}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "phrase", "n": 42, "cpu_ms": 95.9, "wall_p50": 47, "wall_max": 126, "share_of_mix_pct": 14.3}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "phrase_filtered", "n": 12, "cpu_ms": 137.0, "wall_p50": 84, "wall_max": 262, "share_of_mix_pct": 4.1}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "deep", "n": 6, "cpu_ms": 547.3, "wall_p50": 200, "wall_max": 285, "share_of_mix_pct": 2.0}
+{"kind": "plm", "mix_cpu_ms": 176.5}
+{"test": "cache", "index": "h10", "mix_addresses": 294, "size0_requests": 538, "distinct_size0_requests": 423, "most_shared": 25, "miss_took_cpu": [171, 565.3], "hit_took_cpu": [0, 1.9], "hit2_took_cpu": [0, 1.8], "after_write_took_cpu": [250, 934.9], "after_write_hit_took_cpu": [0, 1.8], "concurrent20_cpu_ms": 654, "concurrent20_latency_min_max": [621, 624], "request_cache_stats": {"memory_size_in_bytes": 7904, "evictions": 0, "hit_count": 156, "miss_count": 407}}
+{"kind": "plm", "mix_cpu_ms": 182.3}
+{"label": "10m-nopar", "test": "conc", "index": "h10", "kind": "plm", "what": "mix", "n": 1, "requests": 221, "qps": 7.4, "p50": 54, "p95": 608, "p99": 621, "max": 1832, "errors": 0, "rejected": 0, "cpu_ms": 185.2, "cpu_cores": 1.36, "young_gc_ms": 13, "old_gc": 0, "heap_pct": 70}
+{"label": "10m-nopar", "test": "conc", "index": "h10", "kind": "plm", "what": "mix", "n": 8, "requests": 1153, "qps": 36.6, "p50": 97, "p95": 993, "p99": 1120, "max": 2966, "errors": 0, "rejected": 0, "cpu_ms": 211.0, "cpu_cores": 7.71, "young_gc_ms": 77, "old_gc": 0, "heap_pct": 37}
+{"label": "10m-nopar", "test": "conc", "index": "h10", "kind": "plm", "what": "mix", "n": 100, "requests": 1125, "qps": 34.5, "p50": 2657, "p95": 4806, "p99": 5533, "max": 7131, "errors": 0, "rejected": 0, "cpu_ms": 227.0, "cpu_cores": 7.84, "young_gc_ms": 82, "old_gc": 0, "heap_pct": 66}
+{"label": "10m-nopar", "test": "burst", "index": "h10", "kind": "plm", "n": 100, "round": 0, "ok": 100, "errors": 0, "p50": 3256, "p95": 3329, "slowest": 3650, "all_done_ms": 3656, "cpu_ms_total": 27566.99199999869, "cpu_ms": 275.7}
+{"label": "10m-nopar", "test": "burst", "index": "h10", "kind": "plm", "n": 100, "round": 1, "ok": 100, "errors": 0, "p50": 2138, "p95": 2190, "slowest": 2733, "all_done_ms": 2738, "cpu_ms_total": 19066.357999999076, "cpu_ms": 190.7}
+{"label": "10m-nopar", "test": "burst", "index": "h10", "kind": "plm", "n": 100, "round": 2, "ok": 94, "errors": 0, "p50": 1967, "p95": 2137, "slowest": 2366, "all_done_ms": 2381, "cpu_ms_total": 17315.904999997467, "cpu_ms": 173.2}
+{"index": "h10s4", "products": 10001910, "seconds": 236, "products_per_s": 42453, "lucene_docs": 40095410, "store_gb": 15.29, "segments": 152, "failures": []}
+{"kind": "plm", "mix_cpu_ms": 282.0}
+{"label": "10m-s4", "test": "single", "index": "h10s4", "kind": "plm", "scenario": "all_name", "took": 91, "min": 72, "max": 132, "cpu_ms": 783.6}
+{"label": "10m-s4", "test": "single", "index": "h10s4", "kind": "plm", "scenario": "all_color", "took": 178, "min": 137, "max": 195, "cpu_ms": 1178.5}
+{"label": "10m-s4", "test": "single", "index": "h10s4", "kind": "plm", "scenario": "all_price", "took": 275, "min": 263, "max": 304, "cpu_ms": 2160.7}
+{"label": "10m-s4", "test": "single", "index": "h10s4", "kind": "plm", "scenario": "root_name", "took": 21, "min": 20, "max": 30, "cpu_ms": 207.1}
+{"label": "10m-s4", "test": "single", "index": "h10s4", "kind": "plm", "scenario": "root_color", "took": 42, "min": 38, "max": 44, "cpu_ms": 292.8}
+{"label": "10m-s4", "test": "single", "index": "h10s4", "kind": "plm", "scenario": "leaf_name", "took": 7, "min": 6, "max": 7, "cpu_ms": 74.6}
+{"label": "10m-s4", "test": "conc", "index": "h10s4", "kind": "plm", "what": "mix", "n": 1, "requests": 572, "qps": 19.0, "p50": 33, "p95": 181, "p99": 284, "max": 352, "errors": 0, "rejected": 0, "cpu_ms": 311.8, "cpu_cores": 5.94, "young_gc_ms": 128, "old_gc": 0, "heap_pct": 66}
+{"label": "10m-s4", "test": "conc", "index": "h10s4", "kind": "plm", "what": "mix", "n": 8, "requests": 734, "qps": 24.1, "p50": 302, "p95": 593, "p99": 778, "max": 979, "errors": 0, "rejected": 0, "cpu_ms": 331.9, "cpu_cores": 8.0, "young_gc_ms": 129, "old_gc": 0, "heap_pct": 88}
+{"label": "10m-s4", "test": "conc", "index": "h10s4", "kind": "plm", "what": "mix", "n": 100, "requests": 796, "qps": 25.5, "p50": 4003, "p95": 4374, "p99": 4984, "max": 6085, "errors": 0, "rejected": 0, "cpu_ms": 314.3, "cpu_cores": 8.0, "young_gc_ms": 171, "old_gc": 0, "heap_pct": 53}
+{"label": "10m-s4", "test": "burst", "index": "h10s4", "kind": "plm", "n": 100, "round": 0, "ok": 100, "errors": 0, "p50": 4608, "p95": 4923, "slowest": 4934, "all_done_ms": 4937, "cpu_ms_total": 39457.765000000596, "cpu_ms": 394.6}
+{"label": "10m-s4", "test": "burst", "index": "h10s4", "kind": "plm", "n": 100, "round": 1, "ok": 100, "errors": 0, "p50": 3616, "p95": 3912, "slowest": 3914, "all_done_ms": 3917, "cpu_ms_total": 31707.343000000343, "cpu_ms": 317.1}
+{"label": "10m-s4", "test": "burst", "index": "h10s4", "kind": "plm", "n": 100, "round": 2, "ok": 94, "errors": 0, "p50": 3372, "p95": 3576, "slowest": 3585, "all_done_ms": 3588, "cpu_ms_total": 28774.24200000055, "cpu_ms": 287.7}
+{"acknowledged":true}+ SLICES=8
+{"index": "h10sort", "products": 10001910, "seconds": 240, "products_per_s": 41595, "lucene_docs": 40095410, "store_gb": 12.7, "segments": 92, "failures": []}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "all", "n": 12, "cpu_ms": 598.6, "wall_p50": 200, "wall_max": 203, "share_of_mix_pct": 4.1}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "all_filtered", "n": 18, "cpu_ms": 781.0, "wall_p50": 206, "wall_max": 572, "share_of_mix_pct": 6.1}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "root", "n": 36, "cpu_ms": 122.5, "wall_p50": 30, "wall_max": 45, "share_of_mix_pct": 12.2}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "root_filtered", "n": 24, "cpu_ms": 188.9, "wall_p50": 39, "wall_max": 247, "share_of_mix_pct": 8.2}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "mid", "n": 30, "cpu_ms": 49.9, "wall_p50": 13, "wall_max": 23, "share_of_mix_pct": 10.2}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "mid_filtered", "n": 18, "cpu_ms": 82.0, "wall_p50": 16, "wall_max": 83, "share_of_mix_pct": 6.1}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "leaf", "n": 60, "cpu_ms": 19.9, "wall_p50": 6, "wall_max": 11, "share_of_mix_pct": 20.4}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "leaf_filtered", "n": 36, "cpu_ms": 40.0, "wall_p50": 8, "wall_max": 34, "share_of_mix_pct": 12.2}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "phrase", "n": 42, "cpu_ms": 77.5, "wall_p50": 32, "wall_max": 77, "share_of_mix_pct": 14.3}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "phrase_filtered", "n": 12, "cpu_ms": 69.4, "wall_p50": 38, "wall_max": 122, "share_of_mix_pct": 4.1}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "deep", "n": 6, "cpu_ms": 528.6, "wall_p50": 202, "wall_max": 286, "share_of_mix_pct": 2.0}
+{"kind": "plm", "mix_cpu_ms": 146.4}
+{"label": "10m-sort", "test": "conc", "index": "h10sort", "kind": "plm", "what": "mix", "n": 8, "requests": 1614, "qps": 53.0, "p50": 85, "p95": 460, "p99": 983, "max": 2542, "errors": 0, "rejected": 0, "cpu_ms": 149.3, "cpu_cores": 7.9, "young_gc_ms": 144, "old_gc": 0, "heap_pct": 72}
+{"acknowledged":true}+ echo BATCH2 DONE
+BATCH2 DONE
