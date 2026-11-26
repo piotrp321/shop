@@ -61,7 +61,7 @@ final class AccountsVerifyTest extends KernelTestCase
 
         $missing = $this->step('demo-data:verify', $this->accountOptions());
         self::assertSame(Command::FAILURE, $missing->getStatusCode());
-        self::assertStringContainsString($this->realms->shop.': the group '.AccountReconciler::GROUP.' does not exist', $missing->getDisplay());
+        self::assertStringContainsString($this->realms->shop.': the group '.AccountReconciler::GROUP.' does not exist', preg_replace('/\s+/', ' ', $missing->getDisplay()));
 
         $this->succeeds('demo-data:accounts', $this->accountOptions() + ['--batch-size' => 3]);
         $this->succeeds('demo-data:verify', $this->accountOptions());
@@ -96,6 +96,6 @@ final class AccountsVerifyTest extends KernelTestCase
         $tester = $this->step('demo-data:verify', $this->accountOptions() + ['--keycloak-url' => 'http://127.0.0.1:9']);
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
-        self::assertStringContainsString('Keycloak at http://127.0.0.1:9 does not answer', $tester->getDisplay());
+        self::assertStringContainsString('Keycloak at http://127.0.0.1:9 does not answer', preg_replace('/\s+/', ' ', $tester->getDisplay()));
     }
 }
