@@ -145,6 +145,19 @@ final class VerifyStepTest extends KernelTestCase
         yield 'a product with a parameter without a name' => ['UPDATE catalog_product SET parameters = \'[{"name":"","value":"2,4 kg"}]\'::jsonb WHERE id = :product', 'A generated product has a parameter without a name or a value'];
         yield 'a product with a parameter of a blank value' => ["UPDATE catalog_product SET parameters = '[{\"name\":\"Waga\",\"value\":\"\u{00A0}\"}]'::jsonb WHERE id = :product", 'A generated product has a parameter without a name or a value'];
         yield 'a product with a parameter without the key of a value' => ['UPDATE catalog_product SET parameters = \'[{"name":"Waga"}]\'::jsonb WHERE id = :product', 'A generated product has a parameter without a name or a value'];
+
+        // A name or a value that is no JSON string (->> would turn a number or a boolean into a visible text, and a missing
+        // key into SQL NULL, which a plain <> would not count).
+        $parameter = 'A generated product has a parameter without a name or a value';
+        $withParameters = static fn (string $json): string => "UPDATE catalog_product SET parameters = '$json'::jsonb WHERE id = :product";
+        yield 'a parameter with a number for a name' => [$withParameters('[{"name":5,"value":"2,4 kg"}]'), $parameter];
+        yield 'a parameter with a number for a value' => [$withParameters('[{"name":"Waga","value":5}]'), $parameter];
+        yield 'a parameter with a boolean for a value' => [$withParameters('[{"name":"Waga","value":true}]'), $parameter];
+        yield 'a parameter with an object for a value' => [$withParameters('[{"name":"Waga","value":{"kg":"2,4"}}]'), $parameter];
+        yield 'a parameter with an array for a name' => [$withParameters('[{"name":["Waga"],"value":"2,4 kg"}]'), $parameter];
+        yield 'a parameter with a JSON null for a name' => [$withParameters('[{"name":null,"value":"2,4 kg"}]'), $parameter];
+        yield 'a parameter with a JSON null for a value' => [$withParameters('[{"name":"Waga","value":null}]'), $parameter];
+        yield 'a parameter without the key of a name' => [$withParameters('[{"value":"2,4 kg"}]'), $parameter];
     }
 
     #[DataProvider('spoiledContent')]
