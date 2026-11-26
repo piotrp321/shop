@@ -15,7 +15,8 @@ i specyfikacjach funkcji.
 | Profil `server` na worf.pl | generuje go osobna sesja; jej wynik jest linią bazową (PERF-0) |
 | PERF-2 etap A | zakończony: raport [`perf-2-search-model-2026-11-25.md`](../../reports/perf-2-search-model-2026-11-25.md); właściciel zaakceptował model R 2026-11-26 (decyzje w opisie PERF-2) |
 | PERF-2 etap B | nie rozpoczęty; gotowy do przekazania nowej sesji (start: opis PERF-2, „Start etapu B”) |
-| PERF-0, PERF-1, PERF-3 … PERF-9 | nie rozpoczęte |
+| PERF-7 | specyfikacja i plan w `docs/features/admin-queries/` zaakceptowane; start po PERF-0 i zatwierdzeniu W1–W20; warianty wybiera zadanie 1, zatwierdza właściciel |
+| PERF-0, PERF-1, PERF-3 … PERF-6, PERF-8, PERF-9 | nie rozpoczęte |
 
 ## Zasady programu (decyzje właściciela)
 
