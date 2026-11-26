@@ -1,0 +1,2060 @@
+{
+ "mix_000_all": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_001_leaf": {
+  "total": 107070,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_002_mid": {
+  "total": 575570,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_003_root_filtered": {
+  "total": 124780,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_004_leaf_filtered": {
+  "total": 80740,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_005_root_filtered": {
+  "total": 63580,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_006_leaf_filtered": {
+  "total": 1370,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_007_phrase": {
+  "total": 144290,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_008_root": {
+  "total": 2027330,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_009_phrase": {
+  "total": 62500,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_010_phrase": {
+  "total": 144150,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_011_root": {
+  "total": 1182490,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_012_deep": {
+  "total": 1525060,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_013_leaf": {
+  "total": 58110,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_014_leaf": {
+  "total": 187200,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_015_root": {
+  "total": 1432210,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_016_phrase_filtered": {
+  "total": 1090,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_017_root_filtered": {
+  "total": 140870,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_018_leaf_filtered": {
+  "total": 11830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_019_leaf": {
+  "total": 61290,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_020_leaf_filtered": {
+  "total": 60890,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_021_root": {
+  "total": 1054660,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_022_phrase": {
+  "total": 498530,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_023_leaf": {
+  "total": 58110,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_024_leaf": {
+  "total": 64570,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_025_root_filtered": {
+  "total": 68760,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_026_all_filtered": {
+  "total": 1053490,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_027_phrase": {
+  "total": 234460,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_028_leaf": {
+  "total": 107860,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_029_root_filtered": {
+  "total": 1233370,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_030_all_filtered": {
+  "total": 964230,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_031_mid_filtered": {
+  "total": 86940,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_032_root": {
+  "total": 1315860,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_033_mid": {
+  "total": 297830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_034_leaf": {
+  "total": 98840,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_035_leaf": {
+  "total": 100410,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_036_root_filtered": {
+  "total": 63940,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_037_leaf_filtered": {
+  "total": 74630,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_038_leaf_filtered": {
+  "total": 9470,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_039_leaf_filtered": {
+  "total": 75790,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_040_mid": {
+  "total": 397640,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_041_phrase": {
+  "total": 406210,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_042_leaf_filtered": {
+  "total": 85860,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_043_leaf_filtered": {
+  "total": 52750,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_044_mid": {
+  "total": 481700,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_045_mid": {
+  "total": 257140,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_046_leaf_filtered": {
+  "total": 840,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_047_root": {
+  "total": 1315860,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_048_mid": {
+  "total": 257140,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_049_mid": {
+  "total": 211000,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_050_leaf_filtered": {
+  "total": 50420,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_051_root": {
+  "total": 1525060,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_052_all": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_053_root": {
+  "total": 1182490,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_054_leaf_filtered": {
+  "total": 28330,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_055_leaf": {
+  "total": 103140,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_056_root": {
+  "total": 1182490,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_057_all_filtered": {
+  "total": 9533750,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_058_root_filtered": {
+  "total": 168260,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_059_leaf": {
+  "total": 144590,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_060_leaf_filtered": {
+  "total": 3320,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_061_leaf": {
+  "total": 104900,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_062_root": {
+  "total": 1525060,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_063_mid": {
+  "total": 345530,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_064_leaf": {
+  "total": 60620,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_065_leaf": {
+  "total": 61330,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_066_root_filtered": {
+  "total": 824540,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_067_mid_filtered": {
+  "total": 142740,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_068_all": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_069_leaf": {
+  "total": 233400,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_070_leaf": {
+  "total": 103350,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_071_leaf": {
+  "total": 103100,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_072_leaf": {
+  "total": 105030,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_073_mid_filtered": {
+  "total": 55110,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_074_all_filtered": {
+  "total": 956360,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_075_mid": {
+  "total": 498530,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_076_mid": {
+  "total": 222120,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_077_all_filtered": {
+  "total": 15420,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_078_leaf": {
+  "total": 143840,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_079_root_filtered": {
+  "total": 1487640,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_080_phrase": {
+  "total": 105660,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_081_leaf": {
+  "total": 103340,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_082_mid": {
+  "total": 575570,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_083_all_filtered": {
+  "total": 4221670,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_084_leaf": {
+  "total": 143770,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_085_all_filtered": {
+  "total": 956360,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_086_phrase": {
+  "total": 101570,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_087_phrase": {
+  "total": 4880,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_088_all": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_089_all_filtered": {
+  "total": 139390,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_090_all_filtered": {
+  "total": 957250,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_091_all_filtered": {
+  "total": 4221670,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_092_root": {
+  "total": 1315860,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_093_phrase": {
+  "total": 2800,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_094_root_filtered": {
+  "total": 38790,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_095_leaf_filtered": {
+  "total": 49830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_096_leaf": {
+  "total": 58100,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_097_mid": {
+  "total": 248860,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_098_root": {
+  "total": 1315860,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_099_all_filtered": {
+  "total": 966360,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_100_phrase_filtered": {
+  "total": 2350,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_101_leaf": {
+  "total": 107070,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_102_root": {
+  "total": 1054660,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_103_root": {
+  "total": 1432210,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_104_mid": {
+  "total": 261800,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_105_mid": {
+  "total": 341400,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_106_root_filtered": {
+  "total": 219650,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_107_mid": {
+  "total": 295580,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_108_leaf_filtered": {
+  "total": 68300,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_109_mid_filtered": {
+  "total": 21170,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_110_phrase": {
+  "total": 4560,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_111_leaf": {
+  "total": 64290,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_112_root_filtered": {
+  "total": 15640,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_113_phrase": {
+  "total": 373210,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_114_phrase": {
+  "total": 100420,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_115_root": {
+  "total": 1525060,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_116_leaf": {
+  "total": 146890,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_117_all": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_118_phrase": {
+  "total": 603660,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_119_root_filtered": {
+  "total": 488340,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_120_root_filtered": {
+  "total": 488340,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_121_phrase": {
+  "total": 292470,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_122_leaf_filtered": {
+  "total": 1000,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_123_all_filtered": {
+  "total": 60,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_124_root_filtered": {
+  "total": 1958390,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_125_mid": {
+  "total": 501310,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_126_leaf_filtered": {
+  "total": 111530,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_127_mid": {
+  "total": 520170,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_128_leaf": {
+  "total": 61500,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_129_all": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_130_phrase": {
+  "total": 406210,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_131_phrase": {
+  "total": 199310,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_132_root": {
+  "total": 2027330,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_133_phrase": {
+  "total": 204230,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_134_leaf": {
+  "total": 102240,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_135_deep": {
+  "total": 2027330,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_136_phrase": {
+  "total": 120140,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_137_root": {
+  "total": 1263480,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_138_mid": {
+  "total": 688680,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_139_leaf": {
+  "total": 189820,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_140_leaf_filtered": {
+  "total": 53860,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_141_root": {
+  "total": 1315860,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_142_root": {
+  "total": 1054660,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_143_mid_filtered": {
+  "total": 68010,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_144_leaf": {
+  "total": 187200,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_145_phrase": {
+  "total": 42920,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_146_mid": {
+  "total": 469570,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_147_root_filtered": {
+  "total": 44560,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_148_phrase": {
+  "total": 185610,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_149_leaf": {
+  "total": 62500,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_150_leaf": {
+  "total": 62470,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_151_phrase": {
+  "total": 169730,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_152_deep": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_153_all_filtered": {
+  "total": 345510,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_154_leaf": {
+  "total": 63550,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_155_all_filtered": {
+  "total": 134260,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_156_leaf": {
+  "total": 105030,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_157_leaf": {
+  "total": 224980,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_158_root_filtered": {
+  "total": 247130,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_159_all_filtered": {
+  "total": 906270,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_160_phrase": {
+  "total": 215120,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_161_phrase": {
+  "total": 144590,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_162_root": {
+  "total": 1182490,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_163_mid_filtered": {
+  "total": 122220,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_164_leaf_filtered": {
+  "total": 24250,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_165_leaf": {
+  "total": 193090,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_166_leaf_filtered": {
+  "total": 44680,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_167_phrase": {
+  "total": 4680,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_168_leaf_filtered": {
+  "total": 55180,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_169_root": {
+  "total": 1315860,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_170_mid_filtered": {
+  "total": 18880,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_171_phrase": {
+  "total": 320930,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_172_leaf_filtered": {
+  "total": 80,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_173_deep": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_174_leaf": {
+  "total": 98470,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_175_phrase": {
+  "total": 106700,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_176_leaf_filtered": {
+  "total": 460,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_177_root": {
+  "total": 1432210,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_178_phrase": {
+  "total": 215970,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_179_phrase": {
+  "total": 61240,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_180_leaf_filtered": {
+  "total": 25440,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_181_phrase_filtered": {
+  "total": 18520,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_182_all": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_183_leaf": {
+  "total": 144270,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_184_root": {
+  "total": 2027330,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_185_leaf_filtered": {
+  "total": 260,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_186_phrase": {
+  "total": 62600,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_187_leaf": {
+  "total": 105930,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_188_leaf": {
+  "total": 98470,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_189_root": {
+  "total": 1432210,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_190_all": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_191_deep": {
+  "total": 1054660,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_192_leaf": {
+  "total": 103390,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_193_phrase_filtered": {
+  "total": 115890,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_194_leaf_filtered": {
+  "total": 2160,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_195_phrase_filtered": {
+  "total": 25450,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_196_mid": {
+  "total": 345310,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_197_leaf_filtered": {
+  "total": 61520,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_198_leaf": {
+  "total": 103750,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_199_root": {
+  "total": 1525060,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_200_phrase": {
+  "total": 185610,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_201_mid": {
+  "total": 221620,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_202_leaf": {
+  "total": 140160,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_203_phrase_filtered": {
+  "total": 140,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_204_phrase": {
+  "total": 100,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_205_phrase": {
+  "total": 83670,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_206_leaf": {
+  "total": 103610,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_207_leaf": {
+  "total": 103390,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_208_root": {
+  "total": 1263480,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_209_root": {
+  "total": 1054660,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_210_leaf_filtered": {
+  "total": 49240,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_211_root": {
+  "total": 1054660,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_212_phrase_filtered": {
+  "total": 140870,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_213_phrase_filtered": {
+  "total": 53860,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_214_leaf": {
+  "total": 64570,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_215_mid": {
+  "total": 345310,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_216_all": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_217_mid": {
+  "total": 407240,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_218_leaf_filtered": {
+  "total": 20600,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_219_leaf": {
+  "total": 61750,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_220_phrase": {
+  "total": 104900,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_221_root": {
+  "total": 2027330,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_222_root": {
+  "total": 1182490,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_223_all_filtered": {
+  "total": 1367980,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_224_all_filtered": {
+  "total": 62570,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_225_leaf": {
+  "total": 102740,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_226_all_filtered": {
+  "total": 61780,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_227_leaf_filtered": {
+  "total": 105010,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_228_leaf": {
+  "total": 103750,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_229_all": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_230_mid": {
+  "total": 498530,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_231_mid": {
+  "total": 221620,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_232_mid_filtered": {
+  "total": 101140,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_233_root_filtered": {
+  "total": 82110,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_234_leaf": {
+  "total": 60520,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_235_root": {
+  "total": 1432210,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_236_phrase": {
+  "total": 245720,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_237_leaf": {
+  "total": 233400,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_238_mid_filtered": {
+  "total": 672080,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_239_phrase_filtered": {
+  "total": 440,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_240_phrase_filtered": {
+  "total": 84660,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_241_phrase": {
+  "total": 110320,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_242_phrase": {
+  "total": 267070,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_243_root_filtered": {
+  "total": 79350,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_244_phrase": {
+  "total": 146890,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_245_mid_filtered": {
+  "total": 209070,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_246_root": {
+  "total": 1263480,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_247_leaf": {
+  "total": 226400,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_248_mid": {
+  "total": 688680,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_249_phrase_filtered": {
+  "total": 3130,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_250_leaf": {
+  "total": 144270,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_251_root_filtered": {
+  "total": 230720,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_252_leaf_filtered": {
+  "total": 112510,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_253_leaf_filtered": {
+  "total": 188360,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_254_mid": {
+  "total": 222120,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_255_root_filtered": {
+  "total": 290280,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_256_mid_filtered": {
+  "total": 561050,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_257_phrase": {
+  "total": 3740,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_258_leaf": {
+  "total": 60100,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_259_root": {
+  "total": 1263480,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_260_all": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_261_root": {
+  "total": 1525060,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_262_leaf_filtered": {
+  "total": 280,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_263_mid": {
+  "total": 701320,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_264_leaf": {
+  "total": 104250,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_265_mid_filtered": {
+  "total": 234960,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_266_leaf_filtered": {
+  "total": 46590,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_267_leaf": {
+  "total": 145210,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_268_leaf": {
+  "total": 99280,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_269_phrase": {
+  "total": 6580,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_270_deep": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_271_root_filtered": {
+  "total": 645850,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_272_root_filtered": {
+  "total": 244610,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_273_root": {
+  "total": 1054660,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_274_leaf": {
+  "total": 60520,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_275_phrase": {
+  "total": 144590,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_276_root": {
+  "total": 1432210,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_277_all": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_278_leaf_filtered": {
+  "total": 1150,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_279_mid_filtered": {
+  "total": 31190,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_280_leaf": {
+  "total": 103930,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_281_mid_filtered": {
+  "total": 143600,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_282_mid_filtered": {
+  "total": 440,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_283_root_filtered": {
+  "total": 226080,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_284_mid": {
+  "total": 261220,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_285_mid": {
+  "total": 295580,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_286_phrase_filtered": {
+  "total": 311920,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_287_mid_filtered": {
+  "total": 62310,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_288_mid_filtered": {
+  "total": 730,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_289_leaf_filtered": {
+  "total": 16490,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_290_mid_filtered": {
+  "total": 55610,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_291_leaf": {
+  "total": 103390,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_292_leaf": {
+  "total": 61500,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "mix_293_phrase": {
+  "total": 97560,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ }
+}
