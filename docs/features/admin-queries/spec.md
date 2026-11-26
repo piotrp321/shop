@@ -117,9 +117,10 @@ Każdy przypadek dla sortów `name` i `-updatedAt`, pierwszej i dalszej strony, 
 
 ## Warianty
 
-Dla każdego obszaru warianty są ułożone od najprostszego. Zadanie 1 mierzy je na prototypach i wybiera pierwszy,
-który spełnia P2 i P8 dla przypadków swojego obszaru (na `medium` z ekstrapolacją po zmiennej kosztu, potwierdzenie
-na `server`). Wybór idzie do właściciela przed falą 2 (plan, bramka po zadaniu 1).
+Dla każdego obszaru warianty są ułożone od najprostszego. Zadanie 1 mierzy je po kolei na prototypach i wybiera
+pierwszy, który spełnia P2 i P8 dla przypadków swojego obszaru (na `medium` z ekstrapolacją po zmiennej kosztu,
+potwierdzenie na `server`). Porównanie obszaru kończy się na tym wariancie: bardziej złożonych nie prototypujemy.
+Wybór idzie do właściciela przed falą 2 (plan, bramka po zadaniu 1).
 
 ### Filtr kategorii w liście produktów
 
@@ -189,7 +190,12 @@ Gwarancje, niezależne od wybranego wariantu i od statystyk:
   zapewnia to `LIMIT` w `DbalSitemapProductSource::publishedInRange` i tak zostaje.
 - **G2, kompletność w chwili cięcia:** granice dzielą całą przestrzeń kluczy (pierwsza porcja bez początku, ostatnia
   bez końca), więc każdy produkt należy do dokładnie jednej porcji; każda porcja ma w chwili cięcia najwyżej
-  `row_limit` produktów, sprawdzone odczytem kluczy, nie oszacowaniem.
+  `row_limit` produktów, sprawdzone odczytem kluczy, nie oszacowaniem. Cięcie złożone z kilku zapytań (M1, M2)
+  idzie w jednej transakcji tylko do odczytu na poziomie `REPEATABLE READ`, więc wszystkie zapytania widzą ten sam
+  stan danych mimo równoległych wstawień i usunięć; granice są ściśle rosnące, a granicą może być identyfikator
+  produktu usuniętego później (przedziały są po wartościach, nie po istniejących wierszach). Test: równoległe
+  wstawienia i usunięcia w trakcie cięcia, potem każdy produkt ze stanu transakcji w dokładnie jednej porcji
+  i każda porcja do `row_limit`.
 - **G3, zmiany po cięciu:** porcja, która między cięciem a odczytem urosła ponad `row_limit`, jest dziś obcinana
   z ostrzeżeniem w logu do następnego cięcia (do godziny). Po zmianie takie przepełnienie dodatkowo unieważnia
   wpis granic w `cache.sitemap`, więc następne pobranie indeksu mapy tnie od nowa. Test: przepełnienie po dodaniu
@@ -290,8 +296,8 @@ Po zadaniu 1 właściciel zatwierdza wybrane warianty K, F, Z i M z liczbami alb
    `medium` przed i po jako porównanie. Bez pomiaru na `server` wymagania są niepotwierdzone (R5).
 5. P4: tabela z sekcji „Wpływ na sklep” na `server`, trzy przebiegi każdego wariantu tła, z rozrzutem.
 6. P5: testy G1–G3 (porcja do `row_limit` także przy błędnych statystykach, każdy produkt w dokładnie jednej
-   porcji, przepełnienie po cięciu unieważnia granice i następna mapa jest pełna); czas zimnego obliczenia granic na
-   `server`.
+   porcji, także przy równoległych wstawieniach i usunięciach w trakcie cięcia, przepełnienie po cięciu unieważnia
+   granice i następna mapa jest pełna); czas zimnego obliczenia granic na `server`.
 7. P6: test pagera (przerwanie poprzedniego żądania, brak błędu po przerwaniu, przerwanie przy odmontowaniu) dla
    wszystkich list używających `useCursorPager`.
 8. P8: WAL i czas zapisu przed i po dla każdego nowego indeksu albo struktury; W6 i W11 z nowymi indeksami, jeśli

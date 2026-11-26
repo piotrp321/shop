@@ -12,6 +12,11 @@ Start dopiero po raporcie PERF-0 i zatwierdzeniu W1–W20 (specyfikacja, „Wyma
 w raporcie zadania 1 (specyfikacja, „Warianty”, „Decyzje”). Zadania 2–5 implementują wyłącznie zatwierdzony wariant;
 zadanie, którego obszar zostaje bez zmian (np. Z0), odpada, a jego przypadki mierzy zadanie 7.
 
+**Pominięte zadanie.** Sesja orkiestrująca w tym samym commicie co zapis bramki: oznacza zadanie w „Statusie” jako
+„odpadło (wariant …)”, usuwa jego identyfikator z `depends_on` i `parallel_with` pozostałych zadań, a zależności, które
+szły przez nie, przenosi na jego zależności (np. bez PERF-7-2 zadanie PERF-7-3 zależy od PERF-7-1), i sprawdza plan
+walidatorem planera przed zleceniem fali 2.
+
 ## Status
 
 | Fala | Zadania | Status |
@@ -42,7 +47,7 @@ nakładają się na ciężkie pomiary PERF-2; każdy pomiar na worf.pl tylko za 
     {
       "id": "PERF-7-1",
       "title": "Dowody: pomiar przed zmianą i wybór wariantów",
-      "scope": "Scenariusz HTTP mieszanki panelu (k6 w `load/`, token administratora jak w E2E, mieszanka generowana z danych i zapisywana z wynikiem), zestaw zapytań macierzy (`EXPLAIN (ANALYZE, BUFFERS)`, na bazie plików `.sql` z `docs/reports/performance-audit-2026-11-25/results/admin` i `results/pg`, uzupełnionych tylko o przypadki macierzy, których audyt nie miał) i scenariusz P4 (specyfikacja, „Wpływ na sklep”). Pomiar przed zmianą na `small` i `medium`. Hipotezy H1 i H2. Plan zapytania dla każdego fragmentu zamówień i klientów z macierzy (czy pg_trgm wyciąga trygram). Prototypy SQL na kopii `medium` (tymczasowe indeksy i tabele, bez zmian kodu aplikacji): K0–K3, F1–F2, Z1, M1–M2; dla każdego koszt odczytu przypadków swojego obszaru z licznikiem pierwszej strony, zmienna kosztu i ekstrapolacja do `server`, koszt zapisu (WAL z różnicy `pg_current_wal_lsn()` i czas na zapis produktu, cykl zamówienia, zapis klienta), rozmiar. Dla K2 i K3 także przegląd miejsc zapisu z pominięciem repozytorium (`git grep`). Jeśli dostępne jest środowisko `server` (lokalnie albo worf.pl za zgodą właściciela, tylko odczyt), `EXPLAIN` przypadków granicznych także tam. Wybór według reguły specyfikacji: pierwszy wariant od najprostszego, który spełnia P2 i P8.",
+      "scope": "Scenariusz HTTP mieszanki panelu (k6 w `load/`, token administratora jak w E2E, mieszanka generowana z danych i zapisywana z wynikiem), zestaw zapytań macierzy (`EXPLAIN (ANALYZE, BUFFERS)`, na bazie plików `.sql` z `docs/reports/performance-audit-2026-11-25/results/admin` i `results/pg`, uzupełnionych tylko o przypadki macierzy, których audyt nie miał) i scenariusz P4 (specyfikacja, „Wpływ na sklep”). Pomiar przed zmianą na `small` i `medium`. Hipotezy H1 i H2. Plan zapytania dla każdego fragmentu zamówień i klientów z macierzy (czy pg_trgm wyciąga trygram). Prototypy SQL na kopii `medium` (tymczasowe indeksy i tabele, bez zmian kodu aplikacji): K0–K3, F1–F2, Z1, M1–M2; dla każdego koszt odczytu przypadków swojego obszaru z licznikiem pierwszej strony, zmienna kosztu i ekstrapolacja do `server`, koszt zapisu (WAL z różnicy `pg_current_wal_lsn()` i czas na zapis produktu, cykl zamówienia, zapis klienta), rozmiar. Dla K2 i K3 także przegląd miejsc zapisu z pominięciem repozytorium (`git grep`). Jeśli dostępne jest środowisko `server` (lokalnie albo worf.pl za zgodą właściciela, tylko odczyt), `EXPLAIN` przypadków granicznych także tam. Wybór według reguły specyfikacji: warianty obszaru prototypowane po kolei od najprostszego; pierwszy, który spełnia P2 i P8, kończy porównanie obszaru, bardziej złożonych się nie prototypuje.",
       "acceptance_criteria": [
         "Scenariusze uruchamia jedno polecenie opisane w `load/README.md`; mieszanka i wynik są zapisane razem.",
         "Raport w `docs/reports/` z tabelą macierzy (czas, bufory, wiersze, zmienna kosztu; `small` i `medium`), W7 mieszanki i P4 przed zmianą, trzy przebiegi z rozrzutem.",
@@ -92,7 +97,7 @@ nakładają się na ciężkie pomiary PERF-2; każdy pomiar na worf.pl tylko za 
       "title": "Granice mapy strony: gwarancje G1–G3 i wariant M",
       "scope": "`DbalSitemapProductSource::boundaries` według zatwierdzonego wariantu M (M1 albo M2; przy M0 tylko gwarancje), sprawdzenie każdej porcji w chwili cięcia (G2), unieważnienie wpisu granic w `cache.sitemap` po przepełnieniu porcji przy odczycie (G3), `LIMIT` porcji bez zmian (G1). Przy M2 migracja `SET STATISTICS` dla `catalog_product.id` i aktualizacja decyzji D1 w `docs/features/seo/spec.md`; opis w OpenAPI (`product-chunks`), eksport specyfikacji i klientów TS, jeśli opis mówi o dokładnej liczbie produktów porcji.",
       "acceptance_criteria": [
-        "Kryterium 6 specyfikacji: porcja do `row_limit` także przy statystykach celowo błędnych (np. po masowym wstawieniu bez `ANALYZE`) i bez statystyk; każdy produkt w dokładnie jednej porcji, pierwsza bez początku i ostatnia bez końca; przepełnienie po cięciu unieważnia granice, a następna mapa jest pełna.",
+        "Kryterium 6 specyfikacji: porcja do `row_limit` także przy statystykach celowo błędnych (np. po masowym wstawieniu bez `ANALYZE`) i bez statystyk; cięcie z kilku zapytań w jednej transakcji `REPEATABLE READ`, test z równoległymi wstawieniami i usunięciami w trakcie cięcia; każdy produkt w dokładnie jednej porcji, pierwsza bez początku i ostatnia bez końca; przepełnienie po cięciu unieważnia granice, a następna mapa jest pełna.",
         "Czas zimnego obliczenia granic na `medium` przed i po w raporcie zadania.",
         "`make -C apps/api check`, `make -C apps/api test` i `make -C apps/store check` przechodzą."
       ],
