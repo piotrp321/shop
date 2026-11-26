@@ -368,6 +368,9 @@ Decyzje etapu, które wpływają na planowane 10 mln produktów (`docs/features/
 2. **worf.pl dziś (`medium`).** Po wdrożeniu etapu 1 istniejące produkty (seed i 1 mln wygenerowanych) mają puste nowe
    pola, więc karta wygląda jak dziś. Poprawę na serwerze daje dopiero ponowne `generate` (osobna zgoda właściciela
    z nazwą operacji, hosta i profilu); produkty dodane albo uzupełnione w panelu pokazują nowe pola od razu.
+   Podczas wdrożenia etapu 1 stare pody API odtwarzają warianty bez SKU i EAN przy zmianie zestawu wariantów, więc
+   w tym czasie nie edytuje się wariantów w panelu; ryzyko jest przyjęte na etapie demo (`CLAUDE.md`), żaden mechanizm
+   go nie pilnuje.
 3. **Rozmiar tabel: pomiar.** Etap mierzy, nie szacuje, rozmiar `catalog_product` i `catalog_product_variant`: sterta,
    TOAST i każdy indeks osobno, w tym indeks unikalny SKU. Dwa pomiary, każdy przed zmianą i po niej, z tego samego
    ziarna:
@@ -404,8 +407,9 @@ Decyzje etapu, które wpływają na planowane 10 mln produktów (`docs/features/
    2 min z 67 min przebiegu `medium` na serwerze, a limit Joba `server` to 24 h przy prognozie 11 h. Dwa nowe
    sprawdzenia `demo-data:verify` to po jednym przejściu po tabeli produktów i wariantów; ich czas zadanie mierzy
    na `small` i zapisuje jako składnik szacunku.
-6. **Wyszukiwarka.** Bez zmiany mapowania i dokumentów: czas i pamięć reindeksacji 10 mln się nie zmieniają, a pomiar
-   shardów (#928) nie zależy od etapu.
+6. **Wyszukiwarka.** Mapowanie i dokumenty indeksu się nie zmieniają. Źródło wyszukiwarki czyta jednak szersze wiersze
+   PostgreSQL (nowe kolumny `catalog_product`), więc wpływu etapu na czas i pamięć reindeksacji 10 mln nie mierzono
+   (pomiar shardów, #928, nie zależy od etapu).
 7. **Decyzje odwracalne tylko przez ponowne generowanie.** Marka jako tekst (D2) i parametry bez słownika (D4):
    późniejszy filtr marki wymaga zmiany dokumentów i pełnej reindeksacji, a słownik marek albo atrybutów także
    przepisania danych demo. Jeśli filtr marki albo fasety parametrów mają wejść przed `generate PROFILE=server`,
