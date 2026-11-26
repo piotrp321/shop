@@ -10,8 +10,11 @@ connection every time, so every sample carries the same network cost.
   baseline.py run   URLS.json OUT.jsonl --mode burst --n N [--rounds 3] [--pause 90] [--kinds k1,k2]
   baseline.py report OUT.jsonl
 
-urls draws the mix from the data (fresh random addresses every call: a product page stays an hour in Varnish and in the
-ISR cache of the store, so a list used before is not cold) and saves it. Listings: the home page, departments and their deep pages
+urls draws the mix from the data and saves it; a comparison before and after a change runs the same saved list (run reads
+it in its order, so the same --mode and options send the same addresses). A list used before is cold again only once its
+entries left the caches: a listing stays 60 s in Varnish, a product page an hour in Varnish and in the ISR cache of the store
+(until it is revalidated or the store restarts); every sample shows its cache state, so a reused list that is still warm is
+seen in the report, never counted as cold. Listings: the home page, departments and their deep pages
 (2–200), leaves, phrases, filters (option, price, availability, sort) and deep pages, as store pages and as API calls;
 product pages as store pages and API calls. Reading the data touches only listings with perPage=48 (60 s in Varnish), the
 category tree and the sitemap (not cached), never a product page of the mix.
