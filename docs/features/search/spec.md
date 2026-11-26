@@ -325,15 +325,24 @@ sortowania, więc trafiają do natywnego request cache (M6); listing bez frazy l
   10 000 (jeden shard, więc liczby są dokładne). Limity 10 osi i 30 wartości stosuje API przy budowie odpowiedzi,
   z tą samą kolejnością: liczba produktów malejąco, potem nazwa.
 - Grupa z większą liczbą różnych tokenów (`sum_other_doc_count` > 0) nie kończy się błędem ani uciętymi fasetami.
-  API liczy ją dokładnie drugim `_msearch`, z warunkami tej grupy:
-  - `terms` po tokenach osi (`@`, z prefiksem pary `x␞@` w `pair_*`) o rozmiarze 10;
-  - dla każdej zwróconej osi `terms` po jej wartościach z prefiksem `<oś>␟` (w `pair_*`: `x␞<oś>␟`) o rozmiarze 30;
-  - kategorie i `$` przez `include` z listy.
+  API liczy ją dokładnie dalszymi wyszukiwaniami z warunkami tej grupy, tymi samymi regułami co model sprzed etapu B
+  (`ProductSearchQuery`: 10 osi, 30 wartości, bez limitu różnych wartości) i znaczeniem liczb niżej:
+  - osie bez wyboru: `terms` po tokenach osi (`@`, w `pair_*` z prefiksem pary `x␞@`) o rozmiarze 10, z `exclude`
+    osi wybranych, więc oś wybrana nie zajmuje miejsca osi bez wyboru;
+  - wartości każdej zwróconej osi: `terms` po tokenach z prefiksem `<oś>␟` (w `pair_*`: `x␞<oś>␟`) o rozmiarze 30;
+  - oś wybrana: w swojej grupie (bez warunku tej osi) wartości z prefiksem o rozmiarze 30 oraz wybrane wartości
+    przez `include` z listą dokładnych tokenów; wybrana wartość bez kubełka ma liczbę 0;
+  - kategorie fasety i `$`: `include` z listą dokładnych tokenów;
+  - grupy `nested` (cena): każda liczba i kolejność kubełków to liczba produktów z `reverse_nested`
+    (`order` po niej, jak `BY_PRODUCTS`), nigdy liczba wariantów.
 
-  Kolejność `terms` jest ta sama co wyżej, więc odpowiedź jest taka sama jak przy jednym kroku i jak w modelu sprzed
-  etapu B (`ProductSearchQuery`: 10 osi, 30 wartości, bez limitu różnych wartości). Drugi krok kosztuje dodatkowe
-  żądanie tylko w listingach z przepełnieniem. Rozmiar 10 000 jest parametrem budowy zapytania, który testy
-  zmniejszają, żeby przejść drugi krok.
+  Prefiks i lista dokładnych tokenów nie interpretują nazw osi ani wartości: prefiks to wyrażenie regularne
+  Lucene z każdym znakiem nazwy zapisanym dosłownie (ucieczka) i separatorem `␟` na końcu, więc oś „Kolor” nie łapie
+  „Kolor ramy”. Kolejność `terms` jest ta sama co wyżej (liczba produktów malejąco, potem `_key`), więc odpowiedź
+  jest taka sama jak przy jednym kroku. Liczba żądań wynika z poprawności, nie odwrotnie: wartości osi zależą od
+  zwróconych osi, więc osie (z kategoriami i `$`) i wartości to dwa kolejne `_msearch` po pierwszym; każde łączy
+  wszystkie grupy z przepełnieniem. Dodatkowe żądania są tylko w listingach z przepełnieniem. Rozmiar 10 000 jest
+  parametrem budowy zapytania, który testy zmniejszają, żeby przejść tę ścieżkę.
 - Liczby kubełków tokenów to liczby produktów (token jest raz w dokumencie produktu), więc `reverse_nested` jest
   potrzebny tylko w agregacjach `nested`.
 
@@ -520,7 +529,7 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 | Zdarzenie ze źródła `seed` | obsłużone bez reindeksacji (indeks przebudowuje `make seed`) |
 | Wybrana wartość osi bez wyników | lista pusta, wartość widoczna z liczbą 0, „Wyczyść filtry” |
 | Błąd jednej części `_msearch` (przejściowy albo trwały) | cała odpowiedź 503 albo 500, bez częściowych faset |
-| Więcej różnych tokenów w listingu niż rozmiar `terms` | drugi krok liczy grupę dokładnie (10 osi, 30 wartości); nigdy ucięte fasety ani błąd |
+| Więcej różnych tokenów w listingu niż rozmiar `terms` | dalsze wyszukiwania liczą grupę dokładnie, z regułami osi i wartości wybranych; nigdy ucięte fasety ani błąd |
 | Indeks starej definicji po wdrożeniu (M7) | `setup` ostrzega; do przebudowy listing niepoprawny, zapisy reindeksacji w `failed` |
 | Produkt łamiący regułę modelu (ponad 2 opcje w wariancie, powtórzona krotka, U+001E/U+001F w osi albo wartości) | `SearchIndexError` z identyfikatorem produktu: przebudowa kończy się błędem, wiadomość reindeksacji w `failed` |
 | Zapis do aliasu przebudowy nieudany przejściowo albo trwale | zapis kończy się błędem, wiadomość ponawiana, po wyczerpaniu prób w `failed` |
@@ -547,7 +556,7 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
     strona) w teście z wyrocznią w PHP (`Testy`) na ręcznie zbudowanym katalogu przypadków brzegowych modelu wariantów
     oraz w porównaniu odpowiedzi `GET /api/v1/products` przed i po zmianie na lokalnym stosie `medium` dla mieszanki
     adresów PERF-0 (ten sam stan danych, 0 różnic; kolejność „Trafność” porównywana przy tej samej liczbie shardów).
-    Także przy przepełnieniu `terms` (drugi krok faset), bez błędu i bez ucięcia.
+    Także przy przepełnieniu `terms` (ścieżka przepełnienia faset), bez błędu i bez ucięcia.
 11. Zapis wykonany w trakcie przebudowy jest w nowym indeksie po przepięciu aliasu (W19a), także gdy paczka
     przebudowy dostaje pozycję przestarzałą albo przejściowo odrzuconą i gdy przepięcie z usunięciem starego indeksu
     wypada między odczytem bazy a `_bulk`; źródło rozwiązywania aliasów w `_bulk` jest wpisane w specyfikacji.
@@ -589,8 +598,14 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   zmiana opcji, ceny i dostępności istniejącego produktu (ponowny zapis i porównanie). Zestaw kryteriów wyliczany
   wyczerpująco na tym katalogu: każdy podzbiór osi (0–3) z jedną i dwiema wartościami, z ceną i bez, z dostępnością
   i bez, z kategorią i bez, z frazą i bez; porównanie całej odpowiedzi. Cały zestaw biegnie drugi raz z rozmiarem
-  `terms` zmniejszonym tak, że każda grupa faset przechodzi drugi krok (więcej niż 10 osi i 30 wartości w katalogu),
-  z tym samym wynikiem wyroczni. Dodatkowo test reguł domeny, na których stoi
+  `terms` zmniejszonym tak, że każda grupa faset przechodzi ścieżkę przepełnienia, z tym samym wynikiem wyroczni.
+  Katalog ma do tego: więcej niż 10 osi i 30 wartości na osi; remisy liczby produktów na granicy 10. osi
+  i 30. wartości (kolejność po nazwie); oś wybraną z liczbą, która mieści ją w pierwszej dziesiątce (nie zabiera
+  miejsca osi bez wyboru), i oś wybraną spoza dziesiątki; wybraną wartość spoza 30 i wybraną wartość z liczbą 0;
+  grupę z ceną, w której jeden produkt ma wiele wariantów z tą samą wartością, a inna wartość jest w większej liczbie
+  produktów po jednym wariancie (kolejność po wariantach różni się od kolejności po produktach); oś będącą prefiksem
+  innej osi („Kolor”, „Kolor ramy”) i znaki wyrażeń regularnych w nazwach osi i wartości przy przepełnieniu; grupę
+  jednej wartości jednej osi (tokeny `pair_*`) z przepełnieniem. Dodatkowo test reguł domeny, na których stoi
   model: `VariantAxes` odrzuca trzecią oś, `ProductVariants` powtórzoną krotkę (także różniącą się wielkością liter),
   `Text` znaki U+001E i U+001F; budowa dokumentu odrzuca dane łamiące te reguły.
 - Porównanie przed i po na `medium` (kryterium 10, druga część): odpowiedzi API dla mieszanki adresów PERF-0 zapisane
@@ -713,8 +728,8 @@ Kryteria pomiarowe są w planie programu (PERF-2, „Kryteria etapu B”); tu na
 - Dokładne fasety liczone przy każdym żądaniu kosztują liniowo w liczbie pasujących produktów (cały katalog 10 mln:
   ok. 2 s CPU serwera według etapu A); etap A szacuje, że sam model nie spełni W8 i W9 (M8). Listingi z filtrem ceny
   i opcją na całym katalogu zostają złączeniem `nested`.
-- Listing z ponad 10 000 różnych tokenów (kategorie, osie i wartości razem) liczy fasety w dwóch krokach, czyli
-  wolniej. Dane `server` mają ok. 400 tokenów (180 kategorii, 21 osi, 208 wartości).
+- Listing z ponad 10 000 różnych tokenów (kategorie, osie i wartości razem) liczy fasety w trzech kolejnych
+  `_msearch`, czyli wolniej. Dane `server` mają ok. 400 tokenów (180 kategorii, 21 osi, 208 wartości).
 - Fasety w request cache są ważne do odświeżenia indeksu; przy ciągłych zapisach żyją tyle co `refresh_interval`
   (M4, warunkowo 5 s).
 - Wartości osi są wolnym tekstem: różne formy („czarne”, „czarna”) i różna wielkość liter tworzą osobne wartości fasety.
