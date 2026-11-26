@@ -185,7 +185,7 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
   bez szkody; kolejna przebudowa najpierw zdejmuje `<alias>-rebuild` z każdego indeksu (najwyżej jedna przebudowa
   naraz: blokada przebudowy).
 - `ProductIndexer` zapisuje dokument jednym `_bulk` z dwiema pozycjami `index` (`require_alias: true`, ta sama wersja
-  `external_gte`): do `<alias>` i do `<alias>-rebuild`. Pozycja do `<alias>` ma dzisiejsze znaczenie (zapisany,
+  `external_gte`): najpierw do `<alias>-rebuild`, potem do `<alias>`. Pozycja do `<alias>` ma dzisiejsze znaczenie (zapisany,
   przestarzały, błąd przejściowy albo trwały). Pozycja do `<alias>-rebuild`: 404 `index_not_found_exception` (aliasu
   nie ma, bo nie trwa przebudowa) i 409 (w nowym indeksie jest nowsza wersja) są pomijane; każdy inny błąd tej pozycji
   kończy zapis błędem przejściowym albo trwałym jak pozycja główna, więc wiadomość jest ponawiana, a powtórzenie obu
@@ -195,6 +195,20 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
   zapisem. Zmiana zatwierdzona, zanim alias powstał, jest w odczycie przebudowy; zmiana zatwierdzona później wywołuje
   reindeksację (zdarzenie po zatwierdzeniu), której zapis trafia do obu indeksów. Kolejność zapisu paczki i zapisu
   pojedynczego rozstrzyga wersja (jak w „Zapis i kolejność”), więc nowszy odczyt wygrywa w obu indeksach.
+- Zapis pojedynczy w chwili przepięcia aliasu. Przepięcie (`_aliases`) jest atomowe, a `_bulk` rozwiązuje aliasy
+  pozycji przed zapisem na shardach. Zapis jest bezpieczny, gdy pozycje rozwiązuje się w jednym stanie klastra albo
+  w kolejności żądania; który z tych przypadków zachodzi w Elasticsearch 9.4.0, PERF-2B-5 potwierdza w kodzie
+  Elasticsearcha i wpisuje tu źródło. Gdy żaden nie zachodzi, zadanie zatrzymuje się z pytaniem do właściciela.
+  Przypadki:
+  - Oba aliasy rozwiązane przed przepięciem: dokument trafia do nowego indeksu po jego nazwie, a do starego tylko
+    przez pozycję główną.
+  - Oba po przepięciu: pozycja przebudowy dostaje 404 i jest pominięta, a główna trafia do nowego indeksu.
+  - Pozycja przebudowy przed przepięciem, główna po nim: obie trafiają do nowego indeksu, a rozstrzyga wersja.
+  - Odwrotnej kolejności wyklucza kolejność pozycji w żądaniu.
+
+  Przebudowa usuwa stary indeks po przepięciu. Pozycja główna rozwiązana do starego indeksu, który zniknął przed
+  zapisem (`index_not_found_exception`), jest więc błędem przejściowym: wiadomość jest ponawiana i zapisuje aktualny
+  stan przez `<alias>`. Nie trafia do `failed`.
 - Paczki przebudowy zapisują do nowego indeksu po jego nazwie fizycznej, nie przez alias. Alias przebudowy służy
   tylko zapisom pojedynczym (`ProductIndexer`).
 - Paczka przebudowy z pozycją przestarzałą (409: zapis pojedynczy był nowszy) jest poprawna; pozycje przejściowe są
@@ -210,8 +224,8 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
   Prób jest najwyżej 5 (łącznie z pierwszą), a odstęp rośnie dwukrotnie: 1, 2, 4 i 8 s (`retryBaseDelayMs`, w testach
   podmieniany `sleeper`). Ponowienie obejmuje tylko pozycje, które jeszcze nie zostały zaindeksowane, a wersja
   `external_gte` sprawia, że powtórzenie dokumentu, który przekroczone żądanie zdążyło zapisać, jest nieszkodliwe.
-  Pozycja trwale odrzucona i pozycja przestarzała (409; w świeżym indeksie nie powinna się zdarzyć) nie są ponawiane:
-  przebudowa kończy się jak przy każdym innym błędzie. Po wyczerpaniu prób wynik zawiera pozycje przejściowe
+  Pozycja przestarzała (409: zapis pojedynczy przez alias przebudowy był nowszy) jest poprawna i nie jest ponawiana.
+  Pozycja trwale odrzucona nie jest ponawiana: przebudowa kończy się jak przy każdym innym błędzie. Po wyczerpaniu prób wynik zawiera pozycje przejściowe
   z informacją o liczbie prób (albo żądanie kończy się `SearchUnavailable`), a przebudowa kończy się porażką: nowy
   indeks jest usuwany, a alias zostaje na poprzednim. Każde ponowienie trafia do logu (`warning`). Zapis przez
   `ProductIndexer` (pojedyncze dokumenty) tego nie dotyczy.
@@ -307,9 +321,19 @@ sortowania, więc trafiają do natywnego request cache (M6); listing bez frazy l
 | `price` bez warunków osi | dwa wyszukiwania „top 1” sortowane po `from_gross` rosnąco i `max_gross` malejąco wśród produktów z `purchasable` |
 | `price` z warunkami osi | `nested` (cena i opcja w tym samym wariancie), `min` i `max` z `variants.gross` |
 
-- `terms` po polach tokenów zwracają wszystkie kubełki (rozmiar 10 000, jeden shard, więc liczby są dokładne);
-  odpowiedź z `sum_other_doc_count` > 0 to `SearchIndexError` (500), nigdy ucięte fasety. Limity 10 osi i 30 wartości
-  stosuje API przy budowie odpowiedzi, z tą samą kolejnością (liczba produktów malejąco, potem nazwa).
+- `terms` po polach tokenów i po `variants.axes` i `variants.options` zwracają wszystkie kubełki, gdy jest ich do
+  10 000 (jeden shard, więc liczby są dokładne). Limity 10 osi i 30 wartości stosuje API przy budowie odpowiedzi,
+  z tą samą kolejnością: liczba produktów malejąco, potem nazwa.
+- Grupa z większą liczbą różnych tokenów (`sum_other_doc_count` > 0) nie kończy się błędem ani uciętymi fasetami.
+  API liczy ją dokładnie drugim `_msearch`, z warunkami tej grupy:
+  - `terms` po tokenach osi (`@`, z prefiksem pary `x␞@` w `pair_*`) o rozmiarze 10;
+  - dla każdej zwróconej osi `terms` po jej wartościach z prefiksem `<oś>␟` (w `pair_*`: `x␞<oś>␟`) o rozmiarze 30;
+  - kategorie i `$` przez `include` z listy.
+
+  Kolejność `terms` jest ta sama co wyżej, więc odpowiedź jest taka sama jak przy jednym kroku i jak w modelu sprzed
+  etapu B (`ProductSearchQuery`: 10 osi, 30 wartości, bez limitu różnych wartości). Drugi krok kosztuje dodatkowe
+  żądanie tylko w listingach z przepełnieniem. Rozmiar 10 000 jest parametrem budowy zapytania, który testy
+  zmniejszają, żeby przejść drugi krok.
 - Liczby kubełków tokenów to liczby produktów (token jest raz w dokumencie produktu), więc `reverse_nested` jest
   potrzebny tylko w agregacjach `nested`.
 
@@ -496,7 +520,7 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 | Zdarzenie ze źródła `seed` | obsłużone bez reindeksacji (indeks przebudowuje `make seed`) |
 | Wybrana wartość osi bez wyników | lista pusta, wartość widoczna z liczbą 0, „Wyczyść filtry” |
 | Błąd jednej części `_msearch` (przejściowy albo trwały) | cała odpowiedź 503 albo 500, bez częściowych faset |
-| Więcej różnych tokenów w listingu niż rozmiar `terms` | 500 (`SearchIndexError`), wpis w logu; nigdy ucięte fasety |
+| Więcej różnych tokenów w listingu niż rozmiar `terms` | drugi krok liczy grupę dokładnie (10 osi, 30 wartości); nigdy ucięte fasety ani błąd |
 | Indeks starej definicji po wdrożeniu (M7) | `setup` ostrzega; do przebudowy listing niepoprawny, zapisy reindeksacji w `failed` |
 | Produkt łamiący regułę modelu (ponad 2 opcje w wariancie, powtórzona krotka, U+001E/U+001F w osi albo wartości) | `SearchIndexError` z identyfikatorem produktu: przebudowa kończy się błędem, wiadomość reindeksacji w `failed` |
 | Zapis do aliasu przebudowy nieudany przejściowo albo trwale | zapis kończy się błędem, wiadomość ponawiana, po wyczerpaniu prób w `failed` |
@@ -523,8 +547,10 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
     strona) w teście z wyrocznią w PHP (`Testy`) na ręcznie zbudowanym katalogu przypadków brzegowych modelu wariantów
     oraz w porównaniu odpowiedzi `GET /api/v1/products` przed i po zmianie na lokalnym stosie `medium` dla mieszanki
     adresów PERF-0 (ten sam stan danych, 0 różnic; kolejność „Trafność” porównywana przy tej samej liczbie shardów).
+    Także przy przepełnieniu `terms` (drugi krok faset), bez błędu i bez ucięcia.
 11. Zapis wykonany w trakcie przebudowy jest w nowym indeksie po przepięciu aliasu (W19a), także gdy paczka
-    przebudowy dostaje pozycję przestarzałą albo przejściowo odrzuconą.
+    przebudowy dostaje pozycję przestarzałą albo przejściowo odrzuconą i gdy przepięcie z usunięciem starego indeksu
+    wypada między odczytem bazy a `_bulk`; źródło rozwiązywania aliasów w `_bulk` jest wpisane w specyfikacji.
 12. Zmiana `SEARCH_REFRESH_INTERVAL` działa na istniejącym indeksie po `setup`, bez przebudowy; indeks ma 1 shard
     i sortowanie po `sort_path`.
 13. Kryteria pomiarowe etapu B z `docs/features/performance-program/plan.md` (PERF-2, „Kryteria etapu B”, 1–3 i 5)
@@ -562,7 +588,9 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   wyrażeń regularnych (`.`, `*`, `(`, `\`), polskie znaki i wielkość liter, szkic, produkt w kilku kategoriach, oraz
   zmiana opcji, ceny i dostępności istniejącego produktu (ponowny zapis i porównanie). Zestaw kryteriów wyliczany
   wyczerpująco na tym katalogu: każdy podzbiór osi (0–3) z jedną i dwiema wartościami, z ceną i bez, z dostępnością
-  i bez, z kategorią i bez, z frazą i bez; porównanie całej odpowiedzi. Dodatkowo test reguł domeny, na których stoi
+  i bez, z kategorią i bez, z frazą i bez; porównanie całej odpowiedzi. Cały zestaw biegnie drugi raz z rozmiarem
+  `terms` zmniejszonym tak, że każda grupa faset przechodzi drugi krok (więcej niż 10 osi i 30 wartości w katalogu),
+  z tym samym wynikiem wyroczni. Dodatkowo test reguł domeny, na których stoi
   model: `VariantAxes` odrzuca trzecią oś, `ProductVariants` powtórzoną krotkę (także różniącą się wielkością liter),
   `Text` znaki U+001E i U+001F; budowa dokumentu odrzuca dane łamiące te reguły.
 - Porównanie przed i po na `medium` (kryterium 10, druga część): odpowiedzi API dla mieszanki adresów PERF-0 zapisane
@@ -572,7 +600,10 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   i po paczce z tym produktem) jest w nowym indeksie po przepięciu; pozycja przestarzała w paczce nie przerywa
   przebudowy; zapis bez trwającej przebudowy (404 aliasu przebudowy pominięty); błąd przejściowy i trwały pozycji
   aliasu przebudowy kończy zapis błędem; nieudana przebudowa usuwa nowy indeks z aliasem, a kolejna zdejmuje alias
-  osierocony; `setup` przy innym skrócie definicji ostrzega i kończy się kodem 0.
+  osierocony. Przepięcie w trakcie zapisu: zapis z odczytem bazy przed przepięciem i `_bulk` po nim (przepięcie
+  i usunięcie starego indeksu wstrzyknięte między odczyt a zapis) jest w nowym indeksie, a 404 pozycji głównej
+  ponawia wiadomość bez `failed`. Próba współbieżna: zapisy pojedyncze w pętli równolegle z kilkoma przebudowami
+  małego indeksu, po każdej każdy zapisany produkt ma w aktywnym indeksie swoją ostatnią wersję; `setup` przy innym skrócie definicji ostrzega i kończy się kodem 0.
 - Funkcjonalne API: `GET /api/v1/products` z każdym parametrem (adres w formacie klienta) i błędami 400 (każdy
   niepoprawny parametr, `relevance` bez `q`), `facets` w odpowiedzi, nagłówki `Cache-Control` i `xkey`; `GET /api/v1/categories`
   i `GET /api/v1/admin/categories` ze `slug` i `path`; `breadcrumb` z `path` w szczegółach produktu.
@@ -600,13 +631,20 @@ Kryteria pomiarowe są w planie programu (PERF-2, „Kryteria etapu B”); tu na
   na sekundę przez API panelu (`PUT /api/v1/admin/variants/{variantId}/price`, `POST …/stock/receipts`), więc przechodzi
   pełną ścieżkę: transakcja, historia, zdarzenie, reindeksacja. Uwierzytelnienie: token odświeżania sesji panelu
   (publiczny klient `admin`) podany w zmiennej środowiska, odświeżany przez skrypt; bez nowego konta i klienta
-  Keycloaka. Próbka zmian ceny mierzy świeżość (W16): czas od odpowiedzi zapisu do chwili, gdy zapytanie wariantu
-  (niżej) znajduje nową cenę.
+  Keycloaka. Świeżość (W16) mierzy próbka zmian ceny i zmian dostępności: czas od odpowiedzi zapisu do chwili, gdy
+  zapytanie wariantu (niżej) widzi nowy stan.
+  - Zmiana ceny: wariant z nową ceną jest w wynikach. Próbka ceny to osobne warianty próby, na których kolejna zmiana
+    rusza dopiero po zobaczeniu poprzedniej. Ceny ±1 gr się powtarzają, więc bez tego wcześniejsza, jeszcze widoczna
+    cena dałaby fałszywie krótki czas.
+  - Zmiana dostępności: pierwsze przyjęcie u wariantu bez stanu, po którym wariant z ceną początkową jest
+    w wynikach.
 - Zapytanie wariantu: `GET /api/v1/products` z pominięciem Varnisha, z kategorią produktu, wartością każdej osi
   wariantu (`option=<oś>:<wartość>`) i `priceMin` = `priceMax` = sprawdzana cena, przeglądane do ostatniej strony.
   Produkt jest w wynikach wtedy i tylko wtedy, gdy ten konkretny wariant jest w indeksie możliwy do kupienia za tę
   cenę: warunki wariantu dotyczą jednego wariantu, zakres ceny tylko wariantów możliwych do kupienia (S2), a kombinacja
-  wartości osi jest w produkcie unikalna (`ProductVariants`; produkt bez osi ma jeden wariant).
+  wartości osi jest w produkcie unikalna (`ProductVariants`; produkt bez osi ma jeden wariant). Okno wyników to
+  10 000. Do próby wchodzą więc tylko warianty, których zapytanie przy każdej możliwej cenie (początkowa, ±1 gr) ma
+  `total` w oknie, a produkt nieznaleziony przy `total` ponad oknem to błąd przebiegu, nigdy zgodność ani niezgodność.
   Warianty, których osi nie da się podać w `option` (dwukropek w nazwie osi), nie wchodzą do próby.
 - Skutki zapisów są trwałe i scenariusz ich nie cofa: każda zmiana zostaje w historii cen i ruchów magazynowych,
   w zdarzeniach, w wersjach agregatów i dokumentów indeksu. Ograniczenie skutków zamiast kompensacji: zmiany tylko na
@@ -622,14 +660,25 @@ Kryteria pomiarowe są w planie programu (PERF-2, „Kryteria etapu B”); tu na
 - Po każdym pomiarze z zapisami: zgodność indeksu z bazą dla zmienionych wariantów i 0 wiadomości w `failed` (W13).
   Zgodność sprawdza koniec scenariusza zapytaniami wariantu, bez nowego polecenia i celu. Oczekiwany stan każdego
   wariantu próby scenariusz liczy z własnych potwierdzonych zapisów: cena ostatnia zapisana albo początkowa,
-  dostępność początkowa albo „tak” po przyjęciu. Po ustaniu zapisów i odczekaniu `refresh_interval` zapytanie wariantu
-  z oczekiwaną ceną znajduje produkt wtedy i tylko wtedy, gdy wariant ma być możliwy do kupienia: wariant z próby
-  cen sprawdza ostatnią cenę, a wariant bez stanu na początku to, czy przyjęcie uczyniło go dostępnym. Kontrola
-  zakłada, że w trakcie przebiegu nikt poza scenariuszem nie zmienia wariantów próby (zamówienie klienta może dać
-  fałszywą niezgodność). Wariant, którego zapis nie dostał odpowiedzi, sprawdza się względem każdego stanu, który ten
-  zapis mógł zostawić; wynik podaje liczbę takich wariantów. Każda niezgodność
-  (wariant, stan oczekiwany i znaleziony) to błąd przebiegu. Zapisy zmieniają tylko cenę i stan wariantu, a z nich
-  indeks przechowuje cenę i to, czy wariant można kupić, więc tylko te pola dokumentu mogą się rozjechać.
+  dostępność początkowa albo „tak” po przyjęciu. Po ustaniu zapisów kontrola powtarza zapytania wariantów, aż każde
+  zgadza się z oczekiwanym stanem, najdłużej do limitu czasu z parametru scenariusza. Wariant niezgodny po limicie
+  to błąd przebiegu. Zapytanie wariantu z oczekiwaną ceną ma znaleźć produkt wtedy i tylko wtedy, gdy wariant ma być
+  możliwy do kupienia.
+  - Samo odczekanie `refresh_interval` nie wystarcza, bo kolejka reindeksacji może mieć zaległość. Pusta kolejka nie
+    jest jednak potrzebna: reindeksacja czyta bazę w chwili przetwarzania, a wersja `external_gte` odrzuca starszy
+    odczyt. Gdy indeks pokazuje końcowy stan wariantu, wiadomości jeszcze w kolejce zapiszą ten sam albo nowszy stan
+    i go nie cofną.
+  - Po kontroli liczbę wiadomości w `failed` sprawdza istniejący cel `make -C infra/k8s failed`, a lokalnie
+    `messenger:failed:show` w kontenerze API.
+  - Wariant z próby cen sprawdza ostatnią cenę, a wariant bez stanu na początku to, czy przyjęcie uczyniło go
+    dostępnym.
+  - Kontrola zakłada, że w trakcie przebiegu nikt poza scenariuszem nie zmienia wariantów próby. Zamówienie klienta
+    może dać fałszywą niezgodność.
+  - Wariant, którego zapis nie dostał odpowiedzi, jest sprawdzany względem każdego stanu, jaki ten zapis mógł
+    zostawić; wynik podaje liczbę takich wariantów.
+  - Każda niezgodność (wariant, stan oczekiwany i znaleziony) to błąd przebiegu.
+  - Zapisy zmieniają tylko cenę i stan wariantu, a indeks przechowuje z nich cenę i to, czy wariant można kupić,
+    więc tylko te pola dokumentu mogą się rozjechać.
 - Zimny request cache: request cache Elasticsearcha opróżniany przed przebiegiem. Model R liczy fasety żądaniami
   `size: 0`, które ES buforuje domyślnie, a obecny model ich nie buforuje. Na worf.pl robi to nowy cel `infra/k8s`,
   który dodaje etap B: tylko `POST /<alias indeksu produktów>/_cache/clear?request=true`, wyłącznie dla indeksu
@@ -664,8 +713,8 @@ Kryteria pomiarowe są w planie programu (PERF-2, „Kryteria etapu B”); tu na
 - Dokładne fasety liczone przy każdym żądaniu kosztują liniowo w liczbie pasujących produktów (cały katalog 10 mln:
   ok. 2 s CPU serwera według etapu A); etap A szacuje, że sam model nie spełni W8 i W9 (M8). Listingi z filtrem ceny
   i opcją na całym katalogu zostają złączeniem `nested`.
-- Faseta z ponad 10 000 różnych tokenów w jednym listingu (kategorie, osie i wartości razem) kończy się błędem
-  zamiast uciętym wynikiem; dane `server` mają ok. 400 (180 kategorii, 21 osi, 208 wartości).
+- Listing z ponad 10 000 różnych tokenów (kategorie, osie i wartości razem) liczy fasety w dwóch krokach, czyli
+  wolniej. Dane `server` mają ok. 400 tokenów (180 kategorii, 21 osi, 208 wartości).
 - Fasety w request cache są ważne do odświeżenia indeksu; przy ciągłych zapisach żyją tyle co `refresh_interval`
   (M4, warunkowo 5 s).
 - Wartości osi są wolnym tekstem: różne formy („czarne”, „czarna”) i różna wielkość liter tworzą osobne wartości fasety.
