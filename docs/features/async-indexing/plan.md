@@ -8,7 +8,7 @@ Istotne decyzje DDD są w specyfikacji; zmiana któregokolwiek rozstrzygnięcia 
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 0 | 1 (pomiar przyczyny) + **brama**: użytkownik zatwierdza kryterium wydajnościowe (spec, kryterium 12) | |
+| 0 | 1 (pomiar przyczyny) + **brama**: użytkownik zatwierdza kryterium wydajnościowe (spec, kryterium 12) | zrobione 2026-11-26 (R=4, B=500, T=800, C=3 godz. 45 min); fala 1 rusza po zakończeniu PERF-2 etapu B i dostosowaniu specyfikacji do kodu |
 | 1 | 2 (wspólna logika, wiadomość, rejestr typów, szyna) | |
 | 2 | 3 (przebieg, rejestr, wykluczanie, finalizacja) | |
 | 3 | 4 (producent i komenda) | |

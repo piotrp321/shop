@@ -213,3 +213,9 @@ bez zmian (ok. 400), a kryterium trzeba osiągać przez mniejszą liczbę odczyt
    alias `products-rebuild`); nie jest częścią tego zadania.
 
 Raport nie twierdzi, że wymagania wydajnościowe są spełnione.
+
+## Decyzja użytkownika (2026-11-26)
+
+Zatwierdzono R = 4, B = 500, T = 800 dok./s, C = 3 godz. 45 min; cel ambitny T = 1200. Wartości są w kryterium 12
+specyfikacji. Hipoteza H5 (pamięć Postgresa) idzie do sesji PERF, poza zakresem ASYNC-INDEXING. Po implementacji: pomiar
+1, 2 i 4 workerów na tym samym zbiorze 10 mln i tej samej konfiguracji infrastruktury.
