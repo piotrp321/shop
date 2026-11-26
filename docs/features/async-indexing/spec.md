@@ -410,13 +410,14 @@ kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokum
 9. Przebudowa synchroniczna, asynchroniczna, `setup` i `reset` wykluczają się w obu kolejnościach startu.
 10. `catalog:reindex` bez `--async` działa jak dziś; zdarzenia sklepu nie czekają na `indexing`.
 11. `make check` i testy API przechodzą; chart i compose mają `worker-indexing`; `generate-demo` kończy `--async --wait`.
-12. **Kryterium wydajnościowe, ustalane przed implementacją.** Zadanie 1 (pomiar) podaje tempo bazowe, skalowanie
-    równoległych zapisów i proponuje wartość docelową (dokumenty/s i czas dla 10 mln); użytkownik ją zatwierdza i wpisuje tu
-    **przed rozpoczęciem zadania 2**: „na profilu `server` przy ≤ R replikach i paczce B stałe tempo ≥ T dokumentów/s
-    (mediana ze środkowych 80% przebiegu), czas przebiegu ≤ C”. Wartości R, B, T, C: do uzupełnienia po zadaniu 1. Wynik
-    pomiaru zadania 7 porównuje się z nimi i z 391 dokumentami/s z 2026-11-26. Do pomiaru nie twierdzimy, że wydajność jest
-    osiągnięta; jeśli zadanie 1 pokaże, że wąskie gardło nie skaluje się z liczbą procesów, użytkownik decyduje, czy
-    kontynuować.
+12. **Kryterium wydajnościowe** (zatwierdzone 2026-11-26 na podstawie
+    `docs/reports/async-indexing-measurement-2026-11-26.md`): na profilu `server` przy ≤ R = 4 replikach `worker-indexing`
+    i paczce B = 500 stałe tempo ≥ T = 800 dokumentów/s (mediana ze środkowych 80% przebiegu), czas przebiegu 10 mln
+    produktów ≤ C = 3 godz. 45 min. Cel ambitny: T = 1200 dokumentów/s. Punkt odniesienia: 391 dokumentów/s i 7,27 godz.
+    (przebieg 2026-11-26 przed zmianą). Pomiar zadania 7 porównuje 1, 2 i 4 repliki na tym samym zbiorze 10 mln i tej samej
+    konfiguracji infrastruktury, i podaje spełnienie wprost; do pomiaru nie twierdzimy, że wydajność jest osiągnięta. Odczyt z
+    dysku Postgresa jest dobrze poparta, ale nie udowodnioną przyczyną niskiego tempa (raport, pkt 6): jeśli skalowanie
+    liczby replik nie podnosi tempa, użytkownik decyduje, czy kontynuować, a przyczyną zajmują się zadania PERF.
 
 ## Dokumentacja
 

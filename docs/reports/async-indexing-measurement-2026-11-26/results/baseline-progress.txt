@@ -1,0 +1,10 @@
+"documents":100000,"documents_per_second":2827.2
+"documents":200000,"documents_per_second":2852.4
+"documents":300000,"documents_per_second":2885.5
+"documents":400000,"documents_per_second":2899.3
+"documents":500000,"documents_per_second":2923.9
+"documents":600000,"documents_per_second":2921.5
+"documents":700000,"documents_per_second":2931.3
+"documents":800000,"documents_per_second":2920.9
+"documents":900000,"documents_per_second":2922.9
+"documents":1000000,"documents_per_second":2922.3
