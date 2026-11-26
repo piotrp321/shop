@@ -476,7 +476,7 @@ class TelemetryTest(RenderTestCase):
         self.assertNotIn('env', module.render(template(), self.home, self.work, telemetry=None))
 
     def test_the_variables_are_module_constants(self):
-        # ao-prepare and tools/telemetry use them without a copy; the snippet of interactive sessions has no intervals.
+        # The wrapper and tools/telemetry use them without a copy; the snippet of interactive sessions has no intervals.
         module = load_module()
         self.assertEqual(module.telemetry_env('http://127.0.0.1:4318', {'shop.source': 'ao', 'shop.epic': 'x',
                                                                          'shop.task': 'X-1', 'shop.task_kind': 'plan'}),

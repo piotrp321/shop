@@ -50,15 +50,15 @@ FENCE = re.compile(r'^```[ \t]*$')
 # Glob metacharacters: a manifest path names a file or a directory, never a pattern.
 GLOB = '*?[]{}'
 
-# The file rule of parallel work lives here and nowhere else; the AO parallel gate imports it from this file.
+# The file rule of parallel work lives here and nowhere else; tools/ash/parallel_gate.py imports it from this file.
 GENERATED = ('apps/api/openapi.json', 'apps/api/openapi-admin.json', 'apps/store/src/api/schema.d.ts',
              'apps/admin/src/api/schema.d.ts')
 # Application code files that epics only append entries to; REPAIR merges them like any other shared file.
 REGISTRATION = ('apps/admin/src/layout/AppMenu.vue', 'apps/admin/src/router/index.ts')
 # Directories of application code inside apps/<app>/.
 CODE_DIRS = ('src', 'app')
-# Directories of executable repository code outside the applications (step 19b only): tools, skills, AO hooks and
-# scripts of CI and infrastructure. Compared by segments.
+# Directories of executable repository code outside the applications (step 19b only): tools, skills, the task stack
+# scripts (.ao) and scripts of CI and infrastructure. Compared by segments.
 EXECUTABLE_DIRS = ('tools', '.claude/skills', '.ao', '.github/scripts', 'infra/scripts')
 
 

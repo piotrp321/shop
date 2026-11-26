@@ -1,0 +1,4436 @@
+[
+{
+"class": "all",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 2
+},
+{
+"class": "leaf",
+"c": {
+"category": "e77ca681-5575-588c-be72-a87e86dd1f73",
+"facet_cats": [],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "mid",
+"c": {
+"category": "2c4ff27c-adc5-5571-8331-8626052e4e4f",
+"facet_cats": [
+"bfb94e29-3a8a-531b-9d71-67402b9c94fc",
+"4019c778-96c0-56be-b0a3-04af8c24337c"
+]
+},
+"page": 1
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"facet_cats": [
+"2c4ff27c-adc5-5571-8331-8626052e4e4f",
+"1e458f55-1552-5eac-bffe-411c91036786",
+"a5bff447-a759-5048-8534-e5b052a4839c",
+"c4b9431b-efe9-510f-8615-58bbd4ef86c2",
+"24f060dc-a340-56d7-9601-378eb1ef0b3f",
+"c593aa0a-a5db-5c48-97b3-cbf27cef971c",
+"5b0bb826-c5c6-5c66-8dae-dbe98eb45416"
+],
+"options": {
+"Rozmiar": [
+"27,5\""
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839",
+"facet_cats": [],
+"options": {
+"Rozmiar": [
+"45",
+"39"
+]
+}
+},
+"page": 1,
+"filter": "opt2v"
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+"facet_cats": [
+"f6f867f6-b41b-5131-9b4d-8a30fbea6c2b",
+"b046c3bb-67cf-575e-85de-475b0a4231db",
+"1a27b41d-f17e-5928-b73d-e9953916221a",
+"a58050fa-627a-5c6f-aa94-3f392baa4385",
+"1eca62e7-3a2e-526f-b689-4d43a343b30d",
+"70134891-dc80-5215-9109-23f8f80ad40a",
+"8114f947-c901-5ec4-a342-8680b736d727",
+"266c5e49-3e83-5a60-98d2-e2e142d46edb",
+"eb2174f3-d536-50f3-8832-51736f2da26d"
+],
+"options": {
+"Porcja": [
+"300 g"
+]
+},
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "72ce749c-5110-5ce8-b243-4919a8319937",
+"facet_cats": [],
+"options": {
+"Smak": [
+"truskawkowy"
+]
+}
+},
+"page": 2,
+"filter": "opt"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "baton proteinowy",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 5
+},
+{
+"class": "root",
+"c": {
+"category": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+"facet_cats": [
+"f6f867f6-b41b-5131-9b4d-8a30fbea6c2b",
+"b046c3bb-67cf-575e-85de-475b0a4231db",
+"1a27b41d-f17e-5928-b73d-e9953916221a",
+"a58050fa-627a-5c6f-aa94-3f392baa4385",
+"1eca62e7-3a2e-526f-b689-4d43a343b30d",
+"70134891-dc80-5215-9109-23f8f80ad40a",
+"8114f947-c901-5ec4-a342-8680b736d727",
+"266c5e49-3e83-5a60-98d2-e2e142d46edb",
+"eb2174f3-d536-50f3-8832-51736f2da26d"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "ocieplacze do butów",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "gogle",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"facet_cats": [
+"9c9cc83c-63e5-5d6f-a933-c135928c19db",
+"2d2c640f-4ea6-5539-b375-fc161e7936b7",
+"c5f17e8c-4d5e-5db3-8d61-2298306917f8",
+"80e6ad64-55c8-5d19-928f-c7ab460a9a7f",
+"81e88cb5-168e-5589-86fe-e14b2a3b22cb",
+"592d133b-169f-5d84-b197-b877925beda1"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "deep",
+"c": {
+"category": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"facet_cats": [
+"4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+"d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"e7ab4de1-752a-53ab-8842-3405c065bed5",
+"1fba7250-7014-5beb-9a01-583bb76fd12d",
+"2fa47594-eefe-5fd5-9c28-e1b2c42bf611",
+"129b82c8-66b5-5855-9666-cf98d86c1cf2"
+]
+},
+"page": 200
+},
+{
+"class": "leaf",
+"c": {
+"category": "65288cdd-cbe1-52de-a4fe-be264eb4e86c",
+"facet_cats": [],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "3517a750-6af6-5e5f-af3f-a7a64e7f727a",
+"facet_cats": [],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"facet_cats": [
+"2c4ff27c-adc5-5571-8331-8626052e4e4f",
+"1e458f55-1552-5eac-bffe-411c91036786",
+"a5bff447-a759-5048-8534-e5b052a4839c",
+"c4b9431b-efe9-510f-8615-58bbd4ef86c2",
+"24f060dc-a340-56d7-9601-378eb1ef0b3f",
+"c593aa0a-a5db-5c48-97b3-cbf27cef971c",
+"5b0bb826-c5c6-5c66-8dae-dbe98eb45416"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "phrase_filtered",
+"c": {
+"phrase": "buty trekkingowe nivlavek",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Rozmiar": [
+"40"
+]
+},
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+"facet_cats": [
+"f6f867f6-b41b-5131-9b4d-8a30fbea6c2b",
+"b046c3bb-67cf-575e-85de-475b0a4231db",
+"1a27b41d-f17e-5928-b73d-e9953916221a",
+"a58050fa-627a-5c6f-aa94-3f392baa4385",
+"1eca62e7-3a2e-526f-b689-4d43a343b30d",
+"70134891-dc80-5215-9109-23f8f80ad40a",
+"8114f947-c901-5ec4-a342-8680b736d727",
+"266c5e49-3e83-5a60-98d2-e2e142d46edb",
+"eb2174f3-d536-50f3-8832-51736f2da26d"
+],
+"options": {
+"Pojemność": [
+"1 l"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "4744a6a8-69df-52c4-8142-b3d5c2024a00",
+"facet_cats": [],
+"options": {
+"Rozmiar": [
+"L"
+],
+"Kolor": [
+"szary"
+]
+}
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "leaf",
+"c": {
+"category": "72ce749c-5110-5ce8-b243-4919a8319937",
+"facet_cats": [],
+"sort": "price_desc"
+},
+"page": 3
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "9ccd83b7-01ac-5692-8201-b3df5690447c",
+"facet_cats": [],
+"options": {
+"Typ": [
+"linka"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "root",
+"c": {
+"category": "6f62a979-6012-5f5a-a39b-13948746e108",
+"facet_cats": [
+"4465893d-be57-5bbf-a8f9-b09bcb2de278",
+"6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+"0bed0d4e-ca39-559b-94b7-d44506c0ac99",
+"d6c6d458-cbe7-5eb9-bd6c-f6bf4c7ca6f7",
+"c30c66bb-d85b-589b-85c6-5a5a4817f05c",
+"d8db2ee0-5605-5e61-8788-c3df42b6a7fb",
+"ebcde635-4d3b-503f-82d2-4bad17c400b0"
+],
+"sort": "price_asc"
+},
+"page": 3
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "kuchenka",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_asc"
+},
+"page": 4
+},
+{
+"class": "leaf",
+"c": {
+"category": "65288cdd-cbe1-52de-a4fe-be264eb4e86c",
+"facet_cats": []
+},
+"page": 3
+},
+{
+"class": "leaf",
+"c": {
+"category": "4c351e8e-ff75-5a37-81ef-cae675c8eea8",
+"facet_cats": []
+},
+"page": 3
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "6f62a979-6012-5f5a-a39b-13948746e108",
+"facet_cats": [
+"4465893d-be57-5bbf-a8f9-b09bcb2de278",
+"6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+"0bed0d4e-ca39-559b-94b7-d44506c0ac99",
+"d6c6d458-cbe7-5eb9-bd6c-f6bf4c7ca6f7",
+"c30c66bb-d85b-589b-85c6-5a5a4817f05c",
+"d8db2ee0-5605-5e61-8788-c3df42b6a7fb",
+"ebcde635-4d3b-503f-82d2-4bad17c400b0"
+],
+"pmin": 6300,
+"pmax": 13500,
+"options": {
+"Kolor": [
+"zielona"
+]
+}
+},
+"page": 1,
+"filter": "opt_price"
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Kolor": [
+"niebieskie"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "polar turystyczny",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "73706765-ed3e-58bf-86d9-b66cd3fa71c0",
+"facet_cats": [],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+"facet_cats": [
+"a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb",
+"9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+"b175a428-2d6c-57b8-aaa6-b4983ed7d9f4",
+"cba30644-78d8-59a2-8741-ac02e83f0f34",
+"64531934-c33c-5ae7-8d7a-94cbb3961c8d",
+"bc18f6f0-fcc5-5e7f-bd57-08945163c1ee"
+],
+"available": true,
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "avail"
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Kolor": [
+"czarna"
+]
+},
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+"facet_cats": [
+"72311dc1-30dd-536a-9f09-25b0116774f0",
+"38e42a09-5462-5dc5-aea9-71883ee43c0b",
+"6c750d4c-0fcc-5779-8ce2-a0afd3a26c9e",
+"a50706d4-19e4-5633-9d75-2b2d96e1b78d"
+],
+"options": {
+"Opór": [
+"bardzo mocny"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "root",
+"c": {
+"category": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"facet_cats": [
+"4ceaad5a-8588-5e5c-a11a-1a2507542a33",
+"2fd19aa6-9371-50cb-b4b5-e3faec23f858",
+"573b3efd-5c6c-5577-8528-e54817ea4242",
+"b24e7921-99db-51d6-b6cf-382103f299df",
+"9c5e2afb-1a3c-50dc-89d8-58cbc018ebb7"
+],
+"sort": "price_asc"
+},
+"page": 2
+},
+{
+"class": "mid",
+"c": {
+"category": "b175a428-2d6c-57b8-aaa6-b4983ed7d9f4",
+"facet_cats": [
+"04e1dc67-674c-52bf-b27d-5bcc115be6b2"
+]
+},
+"page": 3
+},
+{
+"class": "leaf",
+"c": {
+"category": "a0beff7c-040f-5490-825a-f50b663ab769",
+"facet_cats": [],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "4662120e-64b1-574a-97a3-da28807d0bf3",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"facet_cats": [
+"2c4ff27c-adc5-5571-8331-8626052e4e4f",
+"1e458f55-1552-5eac-bffe-411c91036786",
+"a5bff447-a759-5048-8534-e5b052a4839c",
+"c4b9431b-efe9-510f-8615-58bbd4ef86c2",
+"24f060dc-a340-56d7-9601-378eb1ef0b3f",
+"c593aa0a-a5db-5c48-97b3-cbf27cef971c",
+"5b0bb826-c5c6-5c66-8dae-dbe98eb45416"
+],
+"options": {
+"Montaż": [
+"tył"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "fd305193-a5ad-5aac-932f-fc408a98d4c7",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"czarna"
+]
+}
+},
+"page": 5,
+"filter": "opt"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "a0beff7c-040f-5490-825a-f50b663ab769",
+"facet_cats": [],
+"pmin": 11000,
+"pmax": 18300,
+"options": {
+"Rozmiar": [
+"38"
+]
+}
+},
+"page": 1,
+"filter": "opt_price"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "3517a750-6af6-5e5f-af3f-a7a64e7f727a",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"zielone"
+]
+}
+},
+"page": 1,
+"filter": "opt2v"
+},
+{
+"class": "mid",
+"c": {
+"category": "a58050fa-627a-5c6f-aa94-3f392baa4385",
+"facet_cats": [
+"ab5e7d61-6ce9-5e20-9732-15b515592c9c",
+"22652b43-0274-5fd4-b1b8-76cd4469ead0",
+"e77ca681-5575-588c-be72-a87e86dd1f73"
+]
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "rękawice",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "cba69693-5bac-5f63-9a03-afda4e98456f",
+"facet_cats": [],
+"pmin": 8500,
+"pmax": 14300
+},
+"page": 1,
+"filter": "price"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "dc2cc256-8af4-5216-a48c-c59eda3ad57e",
+"facet_cats": [],
+"available": true,
+"options": {
+"Rozmiar": [
+"XS"
+]
+}
+},
+"page": 1,
+"filter": "opt_avail"
+},
+{
+"class": "mid",
+"c": {
+"category": "1e458f55-1552-5eac-bffe-411c91036786",
+"facet_cats": [
+"dc2cc256-8af4-5216-a48c-c59eda3ad57e",
+"e8c18c90-891d-5c38-bb73-5543a35a733b",
+"83b4ec95-c5b5-56bf-8dc5-b2eeab72bd8e",
+"817c0300-9678-5875-9eca-9206c0edf96e"
+]
+},
+"page": 1
+},
+{
+"class": "mid",
+"c": {
+"category": "c5f17e8c-4d5e-5db3-8d61-2298306917f8",
+"facet_cats": [
+"263ac5d1-7e52-5ec8-bbe0-0db1b8ee1d37",
+"d25bb972-a498-5781-a6e4-198c33c1d273"
+]
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "0b2f5958-b932-5345-a821-6e520b7ea133",
+"facet_cats": [],
+"options": {
+"Rozmiar": [
+"35-38"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "root",
+"c": {
+"category": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"facet_cats": [
+"4ceaad5a-8588-5e5c-a11a-1a2507542a33",
+"2fd19aa6-9371-50cb-b4b5-e3faec23f858",
+"573b3efd-5c6c-5577-8528-e54817ea4242",
+"b24e7921-99db-51d6-b6cf-382103f299df",
+"9c5e2afb-1a3c-50dc-89d8-58cbc018ebb7"
+],
+"sort": "price_desc"
+},
+"page": 5
+},
+{
+"class": "mid",
+"c": {
+"category": "c5f17e8c-4d5e-5db3-8d61-2298306917f8",
+"facet_cats": [
+"263ac5d1-7e52-5ec8-bbe0-0db1b8ee1d37",
+"d25bb972-a498-5781-a6e4-198c33c1d273"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "mid",
+"c": {
+"category": "d6c6d458-cbe7-5eb9-bd6c-f6bf4c7ca6f7",
+"facet_cats": [
+"3c923ddd-9bbb-5675-bb2c-522e6f15770a"
+]
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "3cc2055d-461d-5238-bc2c-f387db0bb1c4",
+"facet_cats": [],
+"options": {
+"Długość": [
+"115 cm"
+]
+}
+},
+"page": 5,
+"filter": "opt"
+},
+{
+"class": "root",
+"c": {
+"category": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"facet_cats": [
+"4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+"d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"e7ab4de1-752a-53ab-8842-3405c065bed5",
+"1fba7250-7014-5beb-9a01-583bb76fd12d",
+"2fa47594-eefe-5fd5-9c28-e1b2c42bf611",
+"129b82c8-66b5-5855-9666-cf98d86c1cf2"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "all",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"facet_cats": [
+"9c9cc83c-63e5-5d6f-a933-c135928c19db",
+"2d2c640f-4ea6-5539-b375-fc161e7936b7",
+"c5f17e8c-4d5e-5db3-8d61-2298306917f8",
+"80e6ad64-55c8-5d19-928f-c7ab460a9a7f",
+"81e88cb5-168e-5589-86fe-e14b2a3b22cb",
+"592d133b-169f-5d84-b197-b877925beda1"
+],
+"sort": "price_asc"
+},
+"page": 3
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "fe332289-01f9-59d7-abb2-c1cb44a98639",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"zielony",
+"niebieski"
+]
+}
+},
+"page": 3,
+"filter": "opt2v"
+},
+{
+"class": "leaf",
+"c": {
+"category": "04e1dc67-674c-52bf-b27d-5bcc115be6b2",
+"facet_cats": [],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"facet_cats": [
+"9c9cc83c-63e5-5d6f-a933-c135928c19db",
+"2d2c640f-4ea6-5539-b375-fc161e7936b7",
+"c5f17e8c-4d5e-5db3-8d61-2298306917f8",
+"80e6ad64-55c8-5d19-928f-c7ab460a9a7f",
+"81e88cb5-168e-5589-86fe-e14b2a3b22cb",
+"592d133b-169f-5d84-b197-b877925beda1"
+]
+},
+"page": 1
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"available": true
+},
+"page": 1,
+"filter": "avail"
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+"facet_cats": [
+"a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb",
+"9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+"b175a428-2d6c-57b8-aaa6-b4983ed7d9f4",
+"cba30644-78d8-59a2-8741-ac02e83f0f34",
+"64531934-c33c-5ae7-8d7a-94cbb3961c8d",
+"bc18f6f0-fcc5-5e7f-bd57-08945163c1ee"
+],
+"options": {
+"Kolor": [
+"czerwona"
+]
+},
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf",
+"c": {
+"category": "bc323677-54bc-538f-b6ee-4e780a9e6015",
+"facet_cats": []
+},
+"page": 4
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "0e811f7e-c801-572b-a28d-ceea69c2c019",
+"facet_cats": [],
+"options": {
+"Rozmiar": [
+"XS"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf",
+"c": {
+"category": "257b6632-6a7c-5d42-b358-d5e3ebb3b246",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"facet_cats": [
+"4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+"d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"e7ab4de1-752a-53ab-8842-3405c065bed5",
+"1fba7250-7014-5beb-9a01-583bb76fd12d",
+"2fa47594-eefe-5fd5-9c28-e1b2c42bf611",
+"129b82c8-66b5-5855-9666-cf98d86c1cf2"
+],
+"sort": "price_asc"
+},
+"page": 2
+},
+{
+"class": "mid",
+"c": {
+"category": "a5bff447-a759-5048-8534-e5b052a4839c",
+"facet_cats": [
+"90de0a73-6628-527b-8e56-f5ee9313d506",
+"9ccd83b7-01ac-5692-8201-b3df5690447c",
+"a9edcf8a-8f67-598f-8e19-9680587be9a1"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "a67024ec-e724-556f-9be1-1cdbb251f333",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "6492d0ed-95ce-5363-847a-6a02485be76a",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+"facet_cats": [
+"f6f867f6-b41b-5131-9b4d-8a30fbea6c2b",
+"b046c3bb-67cf-575e-85de-475b0a4231db",
+"1a27b41d-f17e-5928-b73d-e9953916221a",
+"a58050fa-627a-5c6f-aa94-3f392baa4385",
+"1eca62e7-3a2e-526f-b689-4d43a343b30d",
+"70134891-dc80-5215-9109-23f8f80ad40a",
+"8114f947-c901-5ec4-a342-8680b736d727",
+"266c5e49-3e83-5a60-98d2-e2e142d46edb",
+"eb2174f3-d536-50f3-8832-51736f2da26d"
+],
+"pmin": 13200,
+"pmax": 43200
+},
+"page": 4,
+"filter": "price"
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "a5bff447-a759-5048-8534-e5b052a4839c",
+"facet_cats": [
+"90de0a73-6628-527b-8e56-f5ee9313d506",
+"9ccd83b7-01ac-5692-8201-b3df5690447c",
+"a9edcf8a-8f67-598f-8e19-9680587be9a1"
+],
+"pmin": 4600,
+"pmax": 11400
+},
+"page": 1,
+"filter": "price"
+},
+{
+"class": "all",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_asc"
+},
+"page": 3
+},
+{
+"class": "leaf",
+"c": {
+"category": "4744a6a8-69df-52c4-8142-b3d5c2024a00",
+"facet_cats": [],
+"sort": "price_asc"
+},
+"page": 2
+},
+{
+"class": "leaf",
+"c": {
+"category": "f34d1972-3acd-579a-9b7f-672093624ed8",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "ce6e471b-05e0-5d0b-a18d-04ef56a356c8",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "06779c21-78cd-532d-bce9-4f8ddbc7edf8",
+"facet_cats": [],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "573b3efd-5c6c-5577-8528-e54817ea4242",
+"facet_cats": [
+"53d1ca5a-11de-5a39-b349-0fd771563e81",
+"50c88614-0100-5a37-88f9-02f94d258909"
+],
+"available": true,
+"options": {
+"Kolor": [
+"czarne"
+]
+}
+},
+"page": 3,
+"filter": "opt_avail"
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Kolor": [
+"niebieski"
+]
+},
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "mid",
+"c": {
+"category": "b046c3bb-67cf-575e-85de-475b0a4231db",
+"facet_cats": [
+"4b68d4ca-f126-562f-a142-65edd596cc0c",
+"73706765-ed3e-58bf-86d9-b66cd3fa71c0",
+"93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd",
+"4c351e8e-ff75-5a37-81ef-cae675c8eea8"
+]
+},
+"page": 1
+},
+{
+"class": "mid",
+"c": {
+"category": "1fba7250-7014-5beb-9a01-583bb76fd12d",
+"facet_cats": [
+"29133c6e-e2bb-51b9-a778-810e56071f05",
+"12feeac5-837f-5d48-98fd-621b45298787",
+"fe332289-01f9-59d7-abb2-c1cb44a98639"
+]
+},
+"page": 1
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Kolor": [
+"szary"
+],
+"Pojemność": [
+"750 ml"
+]
+}
+},
+"page": 2,
+"filter": "two"
+},
+{
+"class": "leaf",
+"c": {
+"category": "f361b3a2-744b-5b3f-908c-ec535fc5489b",
+"facet_cats": []
+},
+"page": 5
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"facet_cats": [
+"4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+"d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"e7ab4de1-752a-53ab-8842-3405c065bed5",
+"1fba7250-7014-5beb-9a01-583bb76fd12d",
+"2fa47594-eefe-5fd5-9c28-e1b2c42bf611",
+"129b82c8-66b5-5855-9666-cf98d86c1cf2"
+],
+"available": true,
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "avail"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "rekawice treningowe",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "a50706d4-19e4-5633-9d75-2b2d96e1b78d",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "mid",
+"c": {
+"category": "2c4ff27c-adc5-5571-8331-8626052e4e4f",
+"facet_cats": [
+"bfb94e29-3a8a-531b-9d71-67402b9c94fc",
+"4019c778-96c0-56be-b0a3-04af8c24337c"
+],
+"sort": "price_desc"
+},
+"page": 3
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"pmin": 2700,
+"pmax": 11200
+},
+"page": 5,
+"filter": "price"
+},
+{
+"class": "leaf",
+"c": {
+"category": "6c750d4c-0fcc-5779-8ce2-a0afd3a26c9e",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Kolor": [
+"niebieski"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "kijki narciarskie",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_desc"
+},
+"page": 2
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "rekawice zimowe halmiten",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "all",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 3
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Pojemność": [
+"30 l",
+"750 ml"
+]
+}
+},
+"page": 1,
+"filter": "opt2v"
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Kolor": [
+"szary"
+]
+},
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"pmin": 2700,
+"pmax": 11200
+},
+"page": 1,
+"filter": "price"
+},
+{
+"class": "root",
+"c": {
+"category": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"facet_cats": [
+"4ceaad5a-8588-5e5c-a11a-1a2507542a33",
+"2fd19aa6-9371-50cb-b4b5-e3faec23f858",
+"573b3efd-5c6c-5577-8528-e54817ea4242",
+"b24e7921-99db-51d6-b6cf-382103f299df",
+"9c5e2afb-1a3c-50dc-89d8-58cbc018ebb7"
+],
+"sort": "price_desc"
+},
+"page": 2
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "deska snowboardowa balmiten",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+"facet_cats": [
+"a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb",
+"9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+"b175a428-2d6c-57b8-aaa6-b4983ed7d9f4",
+"cba30644-78d8-59a2-8741-ac02e83f0f34",
+"64531934-c33c-5ae7-8d7a-94cbb3961c8d",
+"bc18f6f0-fcc5-5e7f-bd57-08945163c1ee"
+],
+"pmin": 19900,
+"pmax": 85700,
+"options": {
+"Kolor": [
+"zielony"
+]
+}
+},
+"page": 1,
+"filter": "opt_price"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "3cc2055d-461d-5238-bc2c-f387db0bb1c4",
+"facet_cats": [],
+"pmin": 7900,
+"pmax": 14000
+},
+"page": 1,
+"filter": "price"
+},
+{
+"class": "leaf",
+"c": {
+"category": "6d0c1925-ed98-59f9-a489-a7f2d40666bb",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "mid",
+"c": {
+"category": "0bed0d4e-ca39-559b-94b7-d44506c0ac99",
+"facet_cats": [
+"d8c6ffaf-4a83-5331-b52c-1e58d84bbdba",
+"a0beff7c-040f-5490-825a-f50b663ab769"
+]
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"facet_cats": [
+"4ceaad5a-8588-5e5c-a11a-1a2507542a33",
+"2fd19aa6-9371-50cb-b4b5-e3faec23f858",
+"573b3efd-5c6c-5577-8528-e54817ea4242",
+"b24e7921-99db-51d6-b6cf-382103f299df",
+"9c5e2afb-1a3c-50dc-89d8-58cbc018ebb7"
+]
+},
+"page": 2
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Kolor": [
+"zielona"
+]
+}
+},
+"page": 5,
+"filter": "opt"
+},
+{
+"class": "phrase_filtered",
+"c": {
+"phrase": "opona rowerowa arnanor",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Rozmiar": [
+"29\"",
+"26\""
+]
+},
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "opt2v"
+},
+{
+"class": "leaf",
+"c": {
+"category": "e77ca681-5575-588c-be72-a87e86dd1f73",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "6f62a979-6012-5f5a-a39b-13948746e108",
+"facet_cats": [
+"4465893d-be57-5bbf-a8f9-b09bcb2de278",
+"6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+"0bed0d4e-ca39-559b-94b7-d44506c0ac99",
+"d6c6d458-cbe7-5eb9-bd6c-f6bf4c7ca6f7",
+"c30c66bb-d85b-589b-85c6-5a5a4817f05c",
+"d8db2ee0-5605-5e61-8788-c3df42b6a7fb",
+"ebcde635-4d3b-503f-82d2-4bad17c400b0"
+]
+},
+"page": 4
+},
+{
+"class": "root",
+"c": {
+"category": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"facet_cats": [
+"2c4ff27c-adc5-5571-8331-8626052e4e4f",
+"1e458f55-1552-5eac-bffe-411c91036786",
+"a5bff447-a759-5048-8534-e5b052a4839c",
+"c4b9431b-efe9-510f-8615-58bbd4ef86c2",
+"24f060dc-a340-56d7-9601-378eb1ef0b3f",
+"c593aa0a-a5db-5c48-97b3-cbf27cef971c",
+"5b0bb826-c5c6-5c66-8dae-dbe98eb45416"
+]
+},
+"page": 3
+},
+{
+"class": "mid",
+"c": {
+"category": "e7ab4de1-752a-53ab-8842-3405c065bed5",
+"facet_cats": [
+"b0ed1cc4-90db-5613-893f-18c7ea01a680",
+"fc35f69d-dfd2-5ef1-a0bb-a71183c657c3",
+"a67024ec-e724-556f-9be1-1cdbb251f333"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "mid",
+"c": {
+"category": "6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+"facet_cats": [
+"8ee0f92c-a366-5df3-a805-ddabaf51a683",
+"e1c570ef-a23e-5ed5-97f5-206aeb619072",
+"384a4602-0ce1-516a-beaf-0b613a4bc901",
+"4d4ea9f8-7e78-507d-ac8b-df49d14e1913"
+]
+},
+"page": 2
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+"facet_cats": [
+"a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb",
+"9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+"b175a428-2d6c-57b8-aaa6-b4983ed7d9f4",
+"cba30644-78d8-59a2-8741-ac02e83f0f34",
+"64531934-c33c-5ae7-8d7a-94cbb3961c8d",
+"bc18f6f0-fcc5-5e7f-bd57-08945163c1ee"
+],
+"options": {
+"Kolor": [
+"szare",
+"szary"
+]
+},
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "opt2v"
+},
+{
+"class": "mid",
+"c": {
+"category": "2d2c640f-4ea6-5539-b375-fc161e7936b7",
+"facet_cats": [
+"fe787d53-e898-598f-881c-9e2c74ce33c9",
+"99244f60-1601-5b5f-b51c-32613783aa78"
+]
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "b624ae3d-2145-5a7e-9b42-4ca631d5358d",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"szary"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "c4b9431b-efe9-510f-8615-58bbd4ef86c2",
+"facet_cats": [
+"67a7eaa7-4725-5233-be8d-133e240c37b9"
+],
+"pmin": 10900,
+"pmax": 18600,
+"options": {
+"Kolor": [
+"czarna"
+]
+}
+},
+"page": 1,
+"filter": "opt_price"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "kurtka trekkingowa velven",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "0e811f7e-c801-572b-a28d-ceea69c2c019",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"facet_cats": [
+"9c9cc83c-63e5-5d6f-a933-c135928c19db",
+"2d2c640f-4ea6-5539-b375-fc161e7936b7",
+"c5f17e8c-4d5e-5db3-8d61-2298306917f8",
+"80e6ad64-55c8-5d19-928f-c7ab460a9a7f",
+"81e88cb5-168e-5589-86fe-e14b2a3b22cb",
+"592d133b-169f-5d84-b197-b877925beda1"
+],
+"options": {
+"Liczba sztuk": [
+"40"
+],
+"Kolor": [
+"czerwony"
+]
+},
+"sort": "price_asc"
+},
+"page": 2,
+"filter": "two"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "polar",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "worek wodoszczelny",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"facet_cats": [
+"4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+"d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"e7ab4de1-752a-53ab-8842-3405c065bed5",
+"1fba7250-7014-5beb-9a01-583bb76fd12d",
+"2fa47594-eefe-5fd5-9c28-e1b2c42bf611",
+"129b82c8-66b5-5855-9666-cf98d86c1cf2"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "90de0a73-6628-527b-8e56-f5ee9313d506",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "all",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "zestaw",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"facet_cats": [
+"9c9cc83c-63e5-5d6f-a933-c135928c19db",
+"2d2c640f-4ea6-5539-b375-fc161e7936b7",
+"c5f17e8c-4d5e-5db3-8d61-2298306917f8",
+"80e6ad64-55c8-5d19-928f-c7ab460a9a7f",
+"81e88cb5-168e-5589-86fe-e14b2a3b22cb",
+"592d133b-169f-5d84-b197-b877925beda1"
+],
+"pmin": 2600,
+"pmax": 9600
+},
+"page": 1,
+"filter": "price"
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"facet_cats": [
+"9c9cc83c-63e5-5d6f-a933-c135928c19db",
+"2d2c640f-4ea6-5539-b375-fc161e7936b7",
+"c5f17e8c-4d5e-5db3-8d61-2298306917f8",
+"80e6ad64-55c8-5d19-928f-c7ab460a9a7f",
+"81e88cb5-168e-5589-86fe-e14b2a3b22cb",
+"592d133b-169f-5d84-b197-b877925beda1"
+],
+"pmin": 2600,
+"pmax": 9600
+},
+"page": 4,
+"filter": "price"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "pletwy",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "4c351e8e-ff75-5a37-81ef-cae675c8eea8",
+"facet_cats": [],
+"options": {
+"Rozmiar": [
+"39-42"
+]
+},
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Kolor": [
+"zielony"
+],
+"Rozmiar ramy": [
+"M"
+]
+},
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+"facet_cats": [
+"f6f867f6-b41b-5131-9b4d-8a30fbea6c2b",
+"b046c3bb-67cf-575e-85de-475b0a4231db",
+"1a27b41d-f17e-5928-b73d-e9953916221a",
+"a58050fa-627a-5c6f-aa94-3f392baa4385",
+"1eca62e7-3a2e-526f-b689-4d43a343b30d",
+"70134891-dc80-5215-9109-23f8f80ad40a",
+"8114f947-c901-5ec4-a342-8680b736d727",
+"266c5e49-3e83-5a60-98d2-e2e142d46edb",
+"eb2174f3-d536-50f3-8832-51736f2da26d"
+],
+"available": true
+},
+"page": 3,
+"filter": "avail"
+},
+{
+"class": "mid",
+"c": {
+"category": "a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb",
+"facet_cats": [
+"ef462a66-fe55-50aa-99b1-36061187ca88",
+"cba69693-5bac-5f63-9a03-afda4e98456f",
+"30fbd65b-4264-5b8a-a2c0-9e501a868a77"
+]
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "a8b4bd26-ef8b-5c5b-8cdf-56cacf4e02d6",
+"facet_cats": [],
+"options": {
+"Rozmiar": [
+"39-42"
+]
+},
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "mid",
+"c": {
+"category": "4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+"facet_cats": [
+"72311dc1-30dd-536a-9f09-25b0116774f0",
+"38e42a09-5462-5dc5-aea9-71883ee43c0b",
+"6c750d4c-0fcc-5779-8ce2-a0afd3a26c9e",
+"a50706d4-19e4-5633-9d75-2b2d96e1b78d"
+]
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "593c1e74-88fa-5baa-b380-c1e14517c9fd",
+"facet_cats": [],
+"sort": "price_asc"
+},
+"page": 2
+},
+{
+"class": "all",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_asc"
+},
+"page": 2
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "rękawice",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "ochraniacze",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+"facet_cats": [
+"f6f867f6-b41b-5131-9b4d-8a30fbea6c2b",
+"b046c3bb-67cf-575e-85de-475b0a4231db",
+"1a27b41d-f17e-5928-b73d-e9953916221a",
+"a58050fa-627a-5c6f-aa94-3f392baa4385",
+"1eca62e7-3a2e-526f-b689-4d43a343b30d",
+"70134891-dc80-5215-9109-23f8f80ad40a",
+"8114f947-c901-5ec4-a342-8680b736d727",
+"266c5e49-3e83-5a60-98d2-e2e142d46edb",
+"eb2174f3-d536-50f3-8832-51736f2da26d"
+],
+"sort": "price_asc"
+},
+"page": 3
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "pilka",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 5
+},
+{
+"class": "leaf",
+"c": {
+"category": "6f882286-87e4-5dd4-ae76-e1dc1f062cc1",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "deep",
+"c": {
+"category": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+"facet_cats": [
+"f6f867f6-b41b-5131-9b4d-8a30fbea6c2b",
+"b046c3bb-67cf-575e-85de-475b0a4231db",
+"1a27b41d-f17e-5928-b73d-e9953916221a",
+"a58050fa-627a-5c6f-aa94-3f392baa4385",
+"1eca62e7-3a2e-526f-b689-4d43a343b30d",
+"70134891-dc80-5215-9109-23f8f80ad40a",
+"8114f947-c901-5ec4-a342-8680b736d727",
+"266c5e49-3e83-5a60-98d2-e2e142d46edb",
+"eb2174f3-d536-50f3-8832-51736f2da26d"
+]
+},
+"page": 300
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "wiazania",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 5
+},
+{
+"class": "root",
+"c": {
+"category": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+"facet_cats": [
+"a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb",
+"9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+"b175a428-2d6c-57b8-aaa6-b4983ed7d9f4",
+"cba30644-78d8-59a2-8741-ac02e83f0f34",
+"64531934-c33c-5ae7-8d7a-94cbb3961c8d",
+"bc18f6f0-fcc5-5e7f-bd57-08945163c1ee"
+],
+"sort": "price_desc"
+},
+"page": 2
+},
+{
+"class": "mid",
+"c": {
+"category": "4ceaad5a-8588-5e5c-a11a-1a2507542a33",
+"facet_cats": [
+"ea0de14f-769d-5b4c-9701-512e48a07103",
+"7bdc5e4b-a475-588e-96a8-f109fa446d8b",
+"32b216b0-5c10-5324-ae8d-506334daa25e"
+]
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "802a97c9-9558-5a47-aa2c-bd21da57e6cb",
+"facet_cats": []
+},
+"page": 3
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "4019c778-96c0-56be-b0a3-04af8c24337c",
+"facet_cats": [],
+"options": {
+"Rozmiar": [
+"27,5\""
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "root",
+"c": {
+"category": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"facet_cats": [
+"4ceaad5a-8588-5e5c-a11a-1a2507542a33",
+"2fd19aa6-9371-50cb-b4b5-e3faec23f858",
+"573b3efd-5c6c-5577-8528-e54817ea4242",
+"b24e7921-99db-51d6-b6cf-382103f299df",
+"9c5e2afb-1a3c-50dc-89d8-58cbc018ebb7"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "6f62a979-6012-5f5a-a39b-13948746e108",
+"facet_cats": [
+"4465893d-be57-5bbf-a8f9-b09bcb2de278",
+"6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+"0bed0d4e-ca39-559b-94b7-d44506c0ac99",
+"d6c6d458-cbe7-5eb9-bd6c-f6bf4c7ca6f7",
+"c30c66bb-d85b-589b-85c6-5a5a4817f05c",
+"d8db2ee0-5605-5e61-8788-c3df42b6a7fb",
+"ebcde635-4d3b-503f-82d2-4bad17c400b0"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "1a27b41d-f17e-5928-b73d-e9953916221a",
+"facet_cats": [
+"c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839",
+"c46367b5-ebd9-5214-83cf-f336dac3fedb",
+"22cf1459-445c-5f09-9c57-cffac2a03b1b"
+],
+"available": true,
+"options": {
+"Rozmiar": [
+"46"
+]
+}
+},
+"page": 1,
+"filter": "opt_avail"
+},
+{
+"class": "leaf",
+"c": {
+"category": "3517a750-6af6-5e5f-af3f-a7a64e7f727a",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "sztanga olimpijska",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 2
+},
+{
+"class": "mid",
+"c": {
+"category": "9c9cc83c-63e5-5d6f-a933-c135928c19db",
+"facet_cats": [
+"eede7500-b01e-5a87-a489-5dbfb0da8b00",
+"c0e422fd-b002-56d0-bfda-f15645a0fd56",
+"f663f97c-e400-58b4-b8f7-d6a979f89073"
+]
+},
+"page": 1
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"facet_cats": [
+"4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+"d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"e7ab4de1-752a-53ab-8842-3405c065bed5",
+"1fba7250-7014-5beb-9a01-583bb76fd12d",
+"2fa47594-eefe-5fd5-9c28-e1b2c42bf611",
+"129b82c8-66b5-5855-9666-cf98d86c1cf2"
+],
+"options": {
+"Waga": [
+"15 kg"
+]
+}
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "komin zimowy",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "989656d1-06af-59c6-a505-1f6f6c7b83b8",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "1313daa3-8176-5aa8-abff-f8c8e36d3c3e",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "bluza trekkingowa",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "deep",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 400
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Rozmiar": [
+"39"
+]
+},
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf",
+"c": {
+"category": "67a7eaa7-4725-5233-be8d-133e240c37b9",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Rozmiar": [
+"S"
+],
+"Kolor": [
+"szara"
+]
+}
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "leaf",
+"c": {
+"category": "06779c21-78cd-532d-bce9-4f8ddbc7edf8",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "eede7500-b01e-5a87-a489-5dbfb0da8b00",
+"facet_cats": [],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "6f62a979-6012-5f5a-a39b-13948746e108",
+"facet_cats": [
+"4465893d-be57-5bbf-a8f9-b09bcb2de278",
+"6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+"0bed0d4e-ca39-559b-94b7-d44506c0ac99",
+"d6c6d458-cbe7-5eb9-bd6c-f6bf4c7ca6f7",
+"c30c66bb-d85b-589b-85c6-5a5a4817f05c",
+"d8db2ee0-5605-5e61-8788-c3df42b6a7fb",
+"ebcde635-4d3b-503f-82d2-4bad17c400b0"
+],
+"options": {
+"Kolor": [
+"czerwony",
+"czerwone"
+]
+}
+},
+"page": 1,
+"filter": "opt2v"
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"available": true,
+"options": {
+"Kolor": [
+"czarna"
+]
+}
+},
+"page": 1,
+"filter": "opt_avail"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "talerze",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "legginsy biegowe",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"facet_cats": [
+"9c9cc83c-63e5-5d6f-a933-c135928c19db",
+"2d2c640f-4ea6-5539-b375-fc161e7936b7",
+"c5f17e8c-4d5e-5db3-8d61-2298306917f8",
+"80e6ad64-55c8-5d19-928f-c7ab460a9a7f",
+"81e88cb5-168e-5589-86fe-e14b2a3b22cb",
+"592d133b-169f-5d84-b197-b877925beda1"
+]
+},
+"page": 4
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "4465893d-be57-5bbf-a8f9-b09bcb2de278",
+"facet_cats": [
+"35390330-b4e7-5ca1-85f6-d1668d68f583",
+"65288cdd-cbe1-52de-a4fe-be264eb4e86c",
+"9c0322b5-2a7c-57cd-9dc6-17a5142e9f46"
+],
+"options": {
+"Rozmiar": [
+"S"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "f0babb15-50fb-58dd-a99f-fb8ef70f98d8",
+"facet_cats": [],
+"pmin": 9900,
+"pmax": 16900,
+"options": {
+"Montaż": [
+"komplet"
+]
+},
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "opt_price"
+},
+{
+"class": "leaf",
+"c": {
+"category": "fd305193-a5ad-5aac-932f-fc408a98d4c7",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "4662120e-64b1-574a-97a3-da28807d0bf3",
+"facet_cats": [],
+"pmin": 5900,
+"pmax": 9600
+},
+"page": 1,
+"filter": "price"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "ksiazka gorska doremon",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "4744a6a8-69df-52c4-8142-b3d5c2024a00",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"czarny"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "root",
+"c": {
+"category": "492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"facet_cats": [
+"4ceaad5a-8588-5e5c-a11a-1a2507542a33",
+"2fd19aa6-9371-50cb-b4b5-e3faec23f858",
+"573b3efd-5c6c-5577-8528-e54817ea4242",
+"b24e7921-99db-51d6-b6cf-382103f299df",
+"9c5e2afb-1a3c-50dc-89d8-58cbc018ebb7"
+]
+},
+"page": 1
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "b046c3bb-67cf-575e-85de-475b0a4231db",
+"facet_cats": [
+"4b68d4ca-f126-562f-a142-65edd596cc0c",
+"73706765-ed3e-58bf-86d9-b66cd3fa71c0",
+"93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd",
+"4c351e8e-ff75-5a37-81ef-cae675c8eea8"
+],
+"pmin": 2400,
+"pmax": 8400,
+"options": {
+"Kolor": [
+"czarny"
+]
+},
+"sort": "price_asc"
+},
+"page": 5,
+"filter": "opt_price"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "opaska",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "53d1ca5a-11de-5a39-b349-0fd771563e81",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"szary"
+],
+"Rozmiar": [
+"XL"
+]
+}
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "deep",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 300
+},
+{
+"class": "leaf",
+"c": {
+"category": "3c923ddd-9bbb-5675-bb2c-522e6f15770a",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "sandały turystyczne",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "a50706d4-19e4-5633-9d75-2b2d96e1b78d",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"szary"
+],
+"Pojemność": [
+"1000 ml"
+]
+},
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "root",
+"c": {
+"category": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"facet_cats": [
+"2c4ff27c-adc5-5571-8331-8626052e4e4f",
+"1e458f55-1552-5eac-bffe-411c91036786",
+"a5bff447-a759-5048-8534-e5b052a4839c",
+"c4b9431b-efe9-510f-8615-58bbd4ef86c2",
+"24f060dc-a340-56d7-9601-378eb1ef0b3f",
+"c593aa0a-a5db-5c48-97b3-cbf27cef971c",
+"5b0bb826-c5c6-5c66-8dae-dbe98eb45416"
+]
+},
+"page": 4
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "koszulka z",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "kosz do koszykowki",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "a67024ec-e724-556f-9be1-1cdbb251f333",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"szary"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "phrase_filtered",
+"c": {
+"phrase": "rekawice skiturowe",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Kolor": [
+"czarna"
+]
+}
+},
+"page": 2,
+"filter": "opt"
+},
+{
+"class": "all",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_desc"
+},
+"page": 4
+},
+{
+"class": "leaf",
+"c": {
+"category": "274c86ed-b705-5b5b-8f57-b13b40454891",
+"facet_cats": [],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+"facet_cats": [
+"f6f867f6-b41b-5131-9b4d-8a30fbea6c2b",
+"b046c3bb-67cf-575e-85de-475b0a4231db",
+"1a27b41d-f17e-5928-b73d-e9953916221a",
+"a58050fa-627a-5c6f-aa94-3f392baa4385",
+"1eca62e7-3a2e-526f-b689-4d43a343b30d",
+"70134891-dc80-5215-9109-23f8f80ad40a",
+"8114f947-c901-5ec4-a342-8680b736d727",
+"266c5e49-3e83-5a60-98d2-e2e142d46edb",
+"eb2174f3-d536-50f3-8832-51736f2da26d"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "72311dc1-30dd-536a-9f09-25b0116774f0",
+"facet_cats": [],
+"pmin": 9300,
+"pmax": 37800,
+"options": {
+"Smak": [
+"cytrynowy"
+]
+}
+},
+"page": 1,
+"filter": "opt_price"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "opaska kompresyjna",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "f0babb15-50fb-58dd-a99f-fb8ef70f98d8",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "3c923ddd-9bbb-5675-bb2c-522e6f15770a",
+"facet_cats": [],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"facet_cats": [
+"2c4ff27c-adc5-5571-8331-8626052e4e4f",
+"1e458f55-1552-5eac-bffe-411c91036786",
+"a5bff447-a759-5048-8534-e5b052a4839c",
+"c4b9431b-efe9-510f-8615-58bbd4ef86c2",
+"24f060dc-a340-56d7-9601-378eb1ef0b3f",
+"c593aa0a-a5db-5c48-97b3-cbf27cef971c",
+"5b0bb826-c5c6-5c66-8dae-dbe98eb45416"
+]
+},
+"page": 2
+},
+{
+"class": "all",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 5
+},
+{
+"class": "deep",
+"c": {
+"category": "6f62a979-6012-5f5a-a39b-13948746e108",
+"facet_cats": [
+"4465893d-be57-5bbf-a8f9-b09bcb2de278",
+"6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+"0bed0d4e-ca39-559b-94b7-d44506c0ac99",
+"d6c6d458-cbe7-5eb9-bd6c-f6bf4c7ca6f7",
+"c30c66bb-d85b-589b-85c6-5a5a4817f05c",
+"d8db2ee0-5605-5e61-8788-c3df42b6a7fb",
+"ebcde635-4d3b-503f-82d2-4bad17c400b0"
+]
+},
+"page": 400
+},
+{
+"class": "leaf",
+"c": {
+"category": "32b216b0-5c10-5324-ae8d-506334daa25e",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "phrase_filtered",
+"c": {
+"phrase": "pas do",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"pmin": 6400,
+"pmax": 19600,
+"sort": "price_asc"
+},
+"page": 2,
+"filter": "price"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "d05af239-af23-5e43-a79a-035233a9e084",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"szary"
+]
+}
+},
+"page": 4,
+"filter": "opt"
+},
+{
+"class": "phrase_filtered",
+"c": {
+"phrase": "spodnie",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"pmin": 14900,
+"pmax": 24200,
+"options": {
+"Rozmiar": [
+"XXL"
+]
+},
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "opt_price"
+},
+{
+"class": "mid",
+"c": {
+"category": "2fd19aa6-9371-50cb-b4b5-e3faec23f858",
+"facet_cats": [
+"3517a750-6af6-5e5f-af3f-a7a64e7f727a",
+"1313daa3-8176-5aa8-abff-f8c8e36d3c3e"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "9ccd83b7-01ac-5692-8201-b3df5690447c",
+"facet_cats": [],
+"options": {
+"Typ": [
+"łańcuch"
+]
+}
+},
+"page": 2,
+"filter": "two"
+},
+{
+"class": "leaf",
+"c": {
+"category": "a9edcf8a-8f67-598f-8e19-9680587be9a1",
+"facet_cats": [],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"facet_cats": [
+"4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+"d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"e7ab4de1-752a-53ab-8842-3405c065bed5",
+"1fba7250-7014-5beb-9a01-583bb76fd12d",
+"2fa47594-eefe-5fd5-9c28-e1b2c42bf611",
+"129b82c8-66b5-5855-9666-cf98d86c1cf2"
+]
+},
+"page": 5
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "komin",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "mid",
+"c": {
+"category": "b24e7921-99db-51d6-b6cf-382103f299df",
+"facet_cats": [
+"c2a92470-bddd-5c3a-9b84-ed06bfd4caad",
+"593c1e74-88fa-5baa-b380-c1e14517c9fd",
+"6492d0ed-95ce-5363-847a-6a02485be76a"
+]
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "3e2e82bc-4e57-5b53-a985-186669fa6a67",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "phrase_filtered",
+"c": {
+"phrase": "dętka",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Kolor": [
+"niebieska"
+],
+"Rozmiar": [
+"S"
+]
+},
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "shaker halelik wydra",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "pacholki treningowe",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "8817c9ae-db65-5809-91cf-03293463de59",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "b0ed1cc4-90db-5613-893f-18c7ea01a680",
+"facet_cats": []
+},
+"page": 5
+},
+{
+"class": "root",
+"c": {
+"category": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+"facet_cats": [
+"a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb",
+"9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+"b175a428-2d6c-57b8-aaa6-b4983ed7d9f4",
+"cba30644-78d8-59a2-8741-ac02e83f0f34",
+"64531934-c33c-5ae7-8d7a-94cbb3961c8d",
+"bc18f6f0-fcc5-5e7f-bd57-08945163c1ee"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "6f62a979-6012-5f5a-a39b-13948746e108",
+"facet_cats": [
+"4465893d-be57-5bbf-a8f9-b09bcb2de278",
+"6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+"0bed0d4e-ca39-559b-94b7-d44506c0ac99",
+"d6c6d458-cbe7-5eb9-bd6c-f6bf4c7ca6f7",
+"c30c66bb-d85b-589b-85c6-5a5a4817f05c",
+"d8db2ee0-5605-5e61-8788-c3df42b6a7fb",
+"ebcde635-4d3b-503f-82d2-4bad17c400b0"
+]
+},
+"page": 5
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "3517a750-6af6-5e5f-af3f-a7a64e7f727a",
+"facet_cats": [],
+"options": {
+"Rozmiar": [
+"43"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "root",
+"c": {
+"category": "6f62a979-6012-5f5a-a39b-13948746e108",
+"facet_cats": [
+"4465893d-be57-5bbf-a8f9-b09bcb2de278",
+"6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+"0bed0d4e-ca39-559b-94b7-d44506c0ac99",
+"d6c6d458-cbe7-5eb9-bd6c-f6bf4c7ca6f7",
+"c30c66bb-d85b-589b-85c6-5a5a4817f05c",
+"d8db2ee0-5605-5e61-8788-c3df42b6a7fb",
+"ebcde635-4d3b-503f-82d2-4bad17c400b0"
+]
+},
+"page": 1
+},
+{
+"class": "phrase_filtered",
+"c": {
+"phrase": "termos",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Pojemność": [
+"1 l"
+]
+},
+"sort": "price_desc"
+},
+"page": 3,
+"filter": "opt"
+},
+{
+"class": "phrase_filtered",
+"c": {
+"phrase": "dętka rowerowa",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Rozmiar": [
+"27,5\""
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf",
+"c": {
+"category": "4c351e8e-ff75-5a37-81ef-cae675c8eea8",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "mid",
+"c": {
+"category": "2fd19aa6-9371-50cb-b4b5-e3faec23f858",
+"facet_cats": [
+"3517a750-6af6-5e5f-af3f-a7a64e7f727a",
+"1313daa3-8176-5aa8-abff-f8c8e36d3c3e"
+]
+},
+"page": 1
+},
+{
+"class": "all",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "mid",
+"c": {
+"category": "9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+"facet_cats": [
+"b624ae3d-2145-5a7e-9b42-4ca631d5358d",
+"3cc2055d-461d-5238-bc2c-f387db0bb1c4",
+"d9f2cca5-ac47-58b3-9231-14f5fbab564f",
+"5539f772-3a11-5ffe-a2ae-a0e823a5bb3a",
+"80dcb48e-b80c-5a8d-a7b4-59da04ed3215"
+]
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "d05af239-af23-5e43-a79a-035233a9e084",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"czarna"
+]
+},
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf",
+"c": {
+"category": "fe332289-01f9-59d7-abb2-c1cb44a98639",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "siodełko",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+"facet_cats": [
+"f6f867f6-b41b-5131-9b4d-8a30fbea6c2b",
+"b046c3bb-67cf-575e-85de-475b0a4231db",
+"1a27b41d-f17e-5928-b73d-e9953916221a",
+"a58050fa-627a-5c6f-aa94-3f392baa4385",
+"1eca62e7-3a2e-526f-b689-4d43a343b30d",
+"70134891-dc80-5215-9109-23f8f80ad40a",
+"8114f947-c901-5ec4-a342-8680b736d727",
+"266c5e49-3e83-5a60-98d2-e2e142d46edb",
+"eb2174f3-d536-50f3-8832-51736f2da26d"
+]
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"facet_cats": [
+"9c9cc83c-63e5-5d6f-a933-c135928c19db",
+"2d2c640f-4ea6-5539-b375-fc161e7936b7",
+"c5f17e8c-4d5e-5db3-8d61-2298306917f8",
+"80e6ad64-55c8-5d19-928f-c7ab460a9a7f",
+"81e88cb5-168e-5589-86fe-e14b2a3b22cb",
+"592d133b-169f-5d84-b197-b877925beda1"
+],
+"sort": "price_desc"
+},
+"page": 2
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Rozmiar": [
+"M"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Pojemność": [
+"1,2 l"
+]
+},
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf",
+"c": {
+"category": "fc35f69d-dfd2-5ef1-a0bb-a71183c657c3",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "all_filtered",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Rozmiar": [
+"41"
+],
+"Kolor": [
+"granatowe"
+]
+},
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "73706765-ed3e-58bf-86d9-b66cd3fa71c0",
+"facet_cats": [],
+"available": true,
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "avail"
+},
+{
+"class": "leaf",
+"c": {
+"category": "a9edcf8a-8f67-598f-8e19-9680587be9a1",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "all",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 4
+},
+{
+"class": "mid",
+"c": {
+"category": "b046c3bb-67cf-575e-85de-475b0a4231db",
+"facet_cats": [
+"4b68d4ca-f126-562f-a142-65edd596cc0c",
+"73706765-ed3e-58bf-86d9-b66cd3fa71c0",
+"93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd",
+"4c351e8e-ff75-5a37-81ef-cae675c8eea8"
+],
+"sort": "price_desc"
+},
+"page": 4
+},
+{
+"class": "mid",
+"c": {
+"category": "b24e7921-99db-51d6-b6cf-382103f299df",
+"facet_cats": [
+"c2a92470-bddd-5c3a-9b84-ed06bfd4caad",
+"593c1e74-88fa-5baa-b380-c1e14517c9fd",
+"6492d0ed-95ce-5363-847a-6a02485be76a"
+]
+},
+"page": 5
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"facet_cats": [
+"865e162c-7fc4-55c7-84f2-39f301865e39",
+"ce6e471b-05e0-5d0b-a18d-04ef56a356c8",
+"72ce749c-5110-5ce8-b243-4919a8319937",
+"f4e75bdd-1644-5d47-ba9b-9cbbac702ee5"
+],
+"pmin": 1400,
+"pmax": 3700,
+"options": {
+"Pojemność": [
+"1000 ml"
+]
+}
+},
+"page": 1,
+"filter": "opt_price"
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+"facet_cats": [
+"a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb",
+"9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+"b175a428-2d6c-57b8-aaa6-b4983ed7d9f4",
+"cba30644-78d8-59a2-8741-ac02e83f0f34",
+"64531934-c33c-5ae7-8d7a-94cbb3961c8d",
+"bc18f6f0-fcc5-5e7f-bd57-08945163c1ee"
+],
+"available": true,
+"options": {
+"Rozmiar": [
+"41"
+]
+}
+},
+"page": 1,
+"filter": "opt_avail"
+},
+{
+"class": "leaf",
+"c": {
+"category": "80dcb48e-b80c-5a8d-a7b4-59da04ed3215",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"facet_cats": [
+"2c4ff27c-adc5-5571-8331-8626052e4e4f",
+"1e458f55-1552-5eac-bffe-411c91036786",
+"a5bff447-a759-5048-8534-e5b052a4839c",
+"c4b9431b-efe9-510f-8615-58bbd4ef86c2",
+"24f060dc-a340-56d7-9601-378eb1ef0b3f",
+"c593aa0a-a5db-5c48-97b3-cbf27cef971c",
+"5b0bb826-c5c6-5c66-8dae-dbe98eb45416"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "deska",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "4744a6a8-69df-52c4-8142-b3d5c2024a00",
+"facet_cats": [],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "4ceaad5a-8588-5e5c-a11a-1a2507542a33",
+"facet_cats": [
+"ea0de14f-769d-5b4c-9701-512e48a07103",
+"7bdc5e4b-a475-588e-96a8-f109fa446d8b",
+"32b216b0-5c10-5324-ae8d-506334daa25e"
+],
+"available": true
+},
+"page": 3,
+"filter": "avail"
+},
+{
+"class": "phrase_filtered",
+"c": {
+"phrase": "bagażnik rowerowy cornezor",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Pojemność": [
+"20 l"
+],
+"Kolor": [
+"granatowa"
+]
+}
+},
+"page": 4,
+"filter": "two"
+},
+{
+"class": "phrase_filtered",
+"c": {
+"phrase": "bluza",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"pmin": 15500,
+"pmax": 25600
+},
+"page": 1,
+"filter": "price"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "ochraniacze piłkarskie",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "pas do",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+"facet_cats": [
+"f6f867f6-b41b-5131-9b4d-8a30fbea6c2b",
+"b046c3bb-67cf-575e-85de-475b0a4231db",
+"1a27b41d-f17e-5928-b73d-e9953916221a",
+"a58050fa-627a-5c6f-aa94-3f392baa4385",
+"1eca62e7-3a2e-526f-b689-4d43a343b30d",
+"70134891-dc80-5215-9109-23f8f80ad40a",
+"8114f947-c901-5ec4-a342-8680b736d727",
+"266c5e49-3e83-5a60-98d2-e2e142d46edb",
+"eb2174f3-d536-50f3-8832-51736f2da26d"
+],
+"pmin": 13200,
+"pmax": 43200,
+"options": {
+"Kolor": [
+"czerwona"
+]
+},
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "opt_price"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "lampka rowerowa",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 1
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"facet_cats": [
+"865e162c-7fc4-55c7-84f2-39f301865e39",
+"ce6e471b-05e0-5d0b-a18d-04ef56a356c8",
+"72ce749c-5110-5ce8-b243-4919a8319937",
+"f4e75bdd-1644-5d47-ba9b-9cbbac702ee5"
+],
+"pmin": 1400,
+"pmax": 3700
+},
+"page": 1,
+"filter": "price"
+},
+{
+"class": "root",
+"c": {
+"category": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+"facet_cats": [
+"a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb",
+"9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+"b175a428-2d6c-57b8-aaa6-b4983ed7d9f4",
+"cba30644-78d8-59a2-8741-ac02e83f0f34",
+"64531934-c33c-5ae7-8d7a-94cbb3961c8d",
+"bc18f6f0-fcc5-5e7f-bd57-08945163c1ee"
+]
+},
+"page": 5
+},
+{
+"class": "leaf",
+"c": {
+"category": "865e162c-7fc4-55c7-84f2-39f301865e39",
+"facet_cats": [],
+"sort": "price_desc"
+},
+"page": 5
+},
+{
+"class": "mid",
+"c": {
+"category": "4ceaad5a-8588-5e5c-a11a-1a2507542a33",
+"facet_cats": [
+"ea0de14f-769d-5b4c-9701-512e48a07103",
+"7bdc5e4b-a475-588e-96a8-f109fa446d8b",
+"32b216b0-5c10-5324-ae8d-506334daa25e"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "phrase_filtered",
+"c": {
+"phrase": "wiązania narciarskie",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"options": {
+"Kolor": [
+"granatowe"
+]
+},
+"sort": "price_desc"
+},
+"page": 3,
+"filter": "opt"
+},
+{
+"class": "leaf",
+"c": {
+"category": "274c86ed-b705-5b5b-8f57-b13b40454891",
+"facet_cats": [],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"facet_cats": [
+"9c9cc83c-63e5-5d6f-a933-c135928c19db",
+"2d2c640f-4ea6-5539-b375-fc161e7936b7",
+"c5f17e8c-4d5e-5db3-8d61-2298306917f8",
+"80e6ad64-55c8-5d19-928f-c7ab460a9a7f",
+"81e88cb5-168e-5589-86fe-e14b2a3b22cb",
+"592d133b-169f-5d84-b197-b877925beda1"
+],
+"options": {
+"Rozmiar": [
+"L"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "cba69693-5bac-5f63-9a03-afda4e98456f",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"czerwona",
+"granatowa"
+]
+}
+},
+"page": 1,
+"filter": "opt2v"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "fd305193-a5ad-5aac-932f-fc408a98d4c7",
+"facet_cats": [],
+"available": true
+},
+"page": 1,
+"filter": "avail"
+},
+{
+"class": "mid",
+"c": {
+"category": "1fba7250-7014-5beb-9a01-583bb76fd12d",
+"facet_cats": [
+"29133c6e-e2bb-51b9-a778-810e56071f05",
+"12feeac5-837f-5d48-98fd-621b45298787",
+"fe332289-01f9-59d7-abb2-c1cb44a98639"
+],
+"sort": "price_desc"
+},
+"page": 5
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+"facet_cats": [
+"a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb",
+"9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+"b175a428-2d6c-57b8-aaa6-b4983ed7d9f4",
+"cba30644-78d8-59a2-8741-ac02e83f0f34",
+"64531934-c33c-5ae7-8d7a-94cbb3961c8d",
+"bc18f6f0-fcc5-5e7f-bd57-08945163c1ee"
+],
+"options": {
+"Rozmiar": [
+"S",
+"45"
+]
+}
+},
+"page": 1,
+"filter": "opt2v"
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "2c4ff27c-adc5-5571-8331-8626052e4e4f",
+"facet_cats": [
+"bfb94e29-3a8a-531b-9d71-67402b9c94fc",
+"4019c778-96c0-56be-b0a3-04af8c24337c"
+],
+"available": true,
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "avail"
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "kijki trekkingowe alitar",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 3
+},
+{
+"class": "leaf",
+"c": {
+"category": "f4e75bdd-1644-5d47-ba9b-9cbbac702ee5",
+"facet_cats": [],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "root",
+"c": {
+"category": "fb2be761-1a8c-5d94-9c3f-2917db623644",
+"facet_cats": [
+"a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb",
+"9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+"b175a428-2d6c-57b8-aaa6-b4983ed7d9f4",
+"cba30644-78d8-59a2-8741-ac02e83f0f34",
+"64531934-c33c-5ae7-8d7a-94cbb3961c8d",
+"bc18f6f0-fcc5-5e7f-bd57-08945163c1ee"
+]
+},
+"page": 1
+},
+{
+"class": "all",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_desc"
+},
+"page": 5
+},
+{
+"class": "root",
+"c": {
+"category": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"facet_cats": [
+"4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+"d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"e7ab4de1-752a-53ab-8842-3405c065bed5",
+"1fba7250-7014-5beb-9a01-583bb76fd12d",
+"2fa47594-eefe-5fd5-9c28-e1b2c42bf611",
+"129b82c8-66b5-5855-9666-cf98d86c1cf2"
+]
+},
+"page": 1
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "b0ed1cc4-90db-5613-893f-18c7ea01a680",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"szary"
+],
+"Pojemność": [
+"500 ml"
+]
+},
+"sort": "price_desc"
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "mid",
+"c": {
+"category": "f6f867f6-b41b-5131-9b4d-8a30fbea6c2b",
+"facet_cats": [
+"4744a6a8-69df-52c4-8142-b3d5c2024a00",
+"fd305193-a5ad-5aac-932f-fc408a98d4c7",
+"3a031e2a-97e1-5099-b9f5-b34bf28d36e0"
+]
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "4019c778-96c0-56be-b0a3-04af8c24337c",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"facet_cats": [
+"865e162c-7fc4-55c7-84f2-39f301865e39",
+"ce6e471b-05e0-5d0b-a18d-04ef56a356c8",
+"72ce749c-5110-5ce8-b243-4919a8319937",
+"f4e75bdd-1644-5d47-ba9b-9cbbac702ee5"
+],
+"pmin": 2300,
+"pmax": 5400
+},
+"page": 1,
+"filter": "price"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "35390330-b4e7-5ca1-85f6-d1668d68f583",
+"facet_cats": [],
+"options": {
+"Kolor": [
+"czerwony"
+]
+},
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf",
+"c": {
+"category": "38e42a09-5462-5dc5-aea9-71883ee43c0b",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "d8c6ffaf-4a83-5331-b52c-1e58d84bbdba",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "buty startowe yarrinik",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "deep",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+]
+},
+"page": 200
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"facet_cats": [
+"4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+"d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"e7ab4de1-752a-53ab-8842-3405c065bed5",
+"1fba7250-7014-5beb-9a01-583bb76fd12d",
+"2fa47594-eefe-5fd5-9c28-e1b2c42bf611",
+"129b82c8-66b5-5855-9666-cf98d86c1cf2"
+],
+"pmin": 1300,
+"pmax": 4700
+},
+"page": 1,
+"filter": "price"
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "6f62a979-6012-5f5a-a39b-13948746e108",
+"facet_cats": [
+"4465893d-be57-5bbf-a8f9-b09bcb2de278",
+"6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+"0bed0d4e-ca39-559b-94b7-d44506c0ac99",
+"d6c6d458-cbe7-5eb9-bd6c-f6bf4c7ca6f7",
+"c30c66bb-d85b-589b-85c6-5a5a4817f05c",
+"d8db2ee0-5605-5e61-8788-c3df42b6a7fb",
+"ebcde635-4d3b-503f-82d2-4bad17c400b0"
+],
+"options": {
+"Rozmiar": [
+"XL"
+]
+},
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "root",
+"c": {
+"category": "6f62a979-6012-5f5a-a39b-13948746e108",
+"facet_cats": [
+"4465893d-be57-5bbf-a8f9-b09bcb2de278",
+"6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+"0bed0d4e-ca39-559b-94b7-d44506c0ac99",
+"d6c6d458-cbe7-5eb9-bd6c-f6bf4c7ca6f7",
+"c30c66bb-d85b-589b-85c6-5a5a4817f05c",
+"d8db2ee0-5605-5e61-8788-c3df42b6a7fb",
+"ebcde635-4d3b-503f-82d2-4bad17c400b0"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "80dcb48e-b80c-5a8d-a7b4-59da04ed3215",
+"facet_cats": []
+},
+"page": 3
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "legginsy biegowe",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_desc"
+},
+"page": 4
+},
+{
+"class": "root",
+"c": {
+"category": "f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"facet_cats": [
+"2c4ff27c-adc5-5571-8331-8626052e4e4f",
+"1e458f55-1552-5eac-bffe-411c91036786",
+"a5bff447-a759-5048-8534-e5b052a4839c",
+"c4b9431b-efe9-510f-8615-58bbd4ef86c2",
+"24f060dc-a340-56d7-9601-378eb1ef0b3f",
+"c593aa0a-a5db-5c48-97b3-cbf27cef971c",
+"5b0bb826-c5c6-5c66-8dae-dbe98eb45416"
+]
+},
+"page": 1
+},
+{
+"class": "all",
+"c": {
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_desc"
+},
+"page": 2
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "802a97c9-9558-5a47-aa2c-bd21da57e6cb",
+"facet_cats": [],
+"options": {
+"Moc": [
+"800 lm"
+]
+}
+},
+"page": 3,
+"filter": "opt"
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "9145411b-0ed4-5bd8-b099-7a3f9c6a6ed2",
+"facet_cats": [
+"b624ae3d-2145-5a7e-9b42-4ca631d5358d",
+"3cc2055d-461d-5238-bc2c-f387db0bb1c4",
+"d9f2cca5-ac47-58b3-9231-14f5fbab564f",
+"5539f772-3a11-5ffe-a2ae-a0e823a5bb3a",
+"80dcb48e-b80c-5a8d-a7b4-59da04ed3215"
+],
+"options": {
+"Zakres DIN": [
+"4-12"
+]
+}
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "leaf",
+"c": {
+"category": "c2a92470-bddd-5c3a-9b84-ed06bfd4caad",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "6bfd73f0-4ba9-5fbc-a306-ea49e9957b6d",
+"facet_cats": [
+"8ee0f92c-a366-5df3-a805-ddabaf51a683",
+"e1c570ef-a23e-5ed5-97f5-206aeb619072",
+"384a4602-0ce1-516a-beaf-0b613a4bc901",
+"4d4ea9f8-7e78-507d-ac8b-df49d14e1913"
+],
+"pmin": 4000,
+"pmax": 14100,
+"sort": "price_asc"
+},
+"page": 1,
+"filter": "price"
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "a58050fa-627a-5c6f-aa94-3f392baa4385",
+"facet_cats": [
+"ab5e7d61-6ce9-5e20-9732-15b515592c9c",
+"22652b43-0274-5fd4-b1b8-76cd4469ead0",
+"e77ca681-5575-588c-be72-a87e86dd1f73"
+],
+"options": {
+"Rozmiar": [
+"44"
+],
+"Kolor": [
+"niebieskie"
+]
+}
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "root_filtered",
+"c": {
+"category": "7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"facet_cats": [
+"4f3d1ad7-c1b6-58a2-ae80-23449ee6a86b",
+"d6f345a3-cfe9-5ccc-80f0-413cd5c2cbab",
+"e7ab4de1-752a-53ab-8842-3405c065bed5",
+"1fba7250-7014-5beb-9a01-583bb76fd12d",
+"2fa47594-eefe-5fd5-9c28-e1b2c42bf611",
+"129b82c8-66b5-5855-9666-cf98d86c1cf2"
+],
+"options": {
+"Kolor": [
+"granatowy"
+]
+},
+"sort": "price_desc"
+},
+"page": 2,
+"filter": "opt"
+},
+{
+"class": "mid",
+"c": {
+"category": "cba30644-78d8-59a2-8741-ac02e83f0f34",
+"facet_cats": [
+"8817c9ae-db65-5809-91cf-03293463de59",
+"4b055553-ed86-5229-ad0c-33befd29e15f"
+]
+},
+"page": 1
+},
+{
+"class": "mid",
+"c": {
+"category": "2d2c640f-4ea6-5539-b375-fc161e7936b7",
+"facet_cats": [
+"fe787d53-e898-598f-881c-9e2c74ce33c9",
+"99244f60-1601-5b5f-b51c-32613783aa78"
+],
+"sort": "price_desc"
+},
+"page": 1
+},
+{
+"class": "phrase_filtered",
+"c": {
+"phrase": "opaska",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"available": true
+},
+"page": 1,
+"filter": "avail"
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "b046c3bb-67cf-575e-85de-475b0a4231db",
+"facet_cats": [
+"4b68d4ca-f126-562f-a142-65edd596cc0c",
+"73706765-ed3e-58bf-86d9-b66cd3fa71c0",
+"93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd",
+"4c351e8e-ff75-5a37-81ef-cae675c8eea8"
+],
+"options": {
+"Pojemność": [
+"0,8 l"
+]
+}
+},
+"page": 4,
+"filter": "two"
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "1e458f55-1552-5eac-bffe-411c91036786",
+"facet_cats": [
+"dc2cc256-8af4-5216-a48c-c59eda3ad57e",
+"e8c18c90-891d-5c38-bb73-5543a35a733b",
+"83b4ec95-c5b5-56bf-8dc5-b2eeab72bd8e",
+"817c0300-9678-5875-9eca-9206c0edf96e"
+],
+"pmin": 6000,
+"pmax": 14600,
+"options": {
+"Kolor": [
+"czerwony"
+]
+}
+},
+"page": 1,
+"filter": "opt_price"
+},
+{
+"class": "leaf_filtered",
+"c": {
+"category": "5067b323-b777-57bc-9802-bdc59fd33175",
+"facet_cats": [],
+"options": {
+"Smak": [
+"cytrynowy"
+],
+"Waga": [
+"2 kg"
+]
+}
+},
+"page": 1,
+"filter": "two"
+},
+{
+"class": "mid_filtered",
+"c": {
+"category": "2d2c640f-4ea6-5539-b375-fc161e7936b7",
+"facet_cats": [
+"fe787d53-e898-598f-881c-9e2c74ce33c9",
+"99244f60-1601-5b5f-b51c-32613783aa78"
+],
+"options": {
+"Liczba sztuk": [
+"20"
+]
+}
+},
+"page": 1,
+"filter": "opt"
+},
+{
+"class": "leaf",
+"c": {
+"category": "b0ed1cc4-90db-5613-893f-18c7ea01a680",
+"facet_cats": [],
+"sort": "price_asc"
+},
+"page": 1
+},
+{
+"class": "leaf",
+"c": {
+"category": "593c1e74-88fa-5baa-b380-c1e14517c9fd",
+"facet_cats": []
+},
+"page": 1
+},
+{
+"class": "phrase",
+"c": {
+"phrase": "kamizelka asekuracyjna",
+"facet_cats": [
+"d7c098d0-4bae-595e-a1e1-e4a923448956",
+"7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"fb2be761-1a8c-5d94-9c3f-2917db623644",
+"8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"6f62a979-6012-5f5a-a39b-13948746e108"
+],
+"sort": "price_asc"
+},
+"page": 1
+}
+]

@@ -13,8 +13,10 @@ i specyfikacjach funkcji.
 | Kierunek programu | zaakceptowany przez właściciela 2026-11-25 |
 | Nowe epiki funkcjonalne | wstrzymane do zakończenia programu |
 | Profil `server` na worf.pl | generuje go osobna sesja; jej wynik jest linią bazową (PERF-0) |
+| PERF-2 etap A | zakończony: raport [`perf-2-search-model-2026-11-25.md`](../../reports/perf-2-search-model-2026-11-25.md); właściciel zaakceptował model R 2026-11-26 (decyzje w opisie PERF-2) |
+| PERF-2 etap B | nie rozpoczęty; gotowy do przekazania nowej sesji (start: opis PERF-2, „Start etapu B”) |
 | PERF-7 | specyfikacja i plan w `docs/features/admin-queries/` zaakceptowane; start po PERF-0 i zatwierdzeniu W1–W20; warianty wybiera zadanie 1, zatwierdza właściciel |
-| pozostałe PERF-0 … PERF-9 | nie rozpoczęte |
+| PERF-0, PERF-1, PERF-3 … PERF-6, PERF-8, PERF-9 | nie rozpoczęte |
 
 ## Zasady programu (decyzje właściciela)
 
@@ -189,12 +191,61 @@ Kryteria etapu A: każdy kandydat zmierzony tym samym zestawem na 10 mln; zgodno
 dla rekomendowanego modelu policzony budżet W1, W8 i W9 na obecnym serwerze (pomiar lokalny przeliczony zmierzonym
 stosunkiem szybkości rdzeni, oznaczony jako szacunek do potwierdzenia na worf.pl).
 
-**Etap B: implementacja wybranego modelu.** Mapping, zapytania, indeksowanie, kontrakt API i sklep jako konsument,
+**Etap B: implementacja modelu R.** Mapping, zapytania, indeksowanie, kontrakt API i sklep jako konsument,
 przebudowa indeksu spełniająca W19a.
 
-Kryteria etapu B: W1, W8 i W9 spełnione na `server` na worf.pl z wyłączonym cache HTTP; test równoważności wyników
-z obecnym modelem na danych z wieloma wariantami; W19a spełnione testem (zapis w trakcie przebudowy widoczny w nowym
-indeksie); W13 po pomiarze; porównanie z linią bazową.
+Decyzje właściciela po etapie A (2026-11-26):
+
+- Podstawą etapu B jest model R z raportu etapu A (sekcja 3): warunki i fasety z pól produktu, `nested` jednego
+  poziomu tylko dla ceny łączonej z opcją, agregacje pogrupowane według zestawu warunków w jednym `_msearch`, listing
+  z frazą jednym żądaniem, fasety jako osobne żądania `size: 0`.
+- Ustawienia silnika: 1 shard, sortowanie indeksu po ścieżce kategorii.
+- `refresh_interval` 5 s warunkowo: do potwierdzenia pomiarem W16 razem z PERF-6. Do tego czasu wartość jest
+  ustawieniem, które da się zmienić bez przebudowy indeksu.
+- W8 i W9 zostają bez zmian. Decyzja o materializowanych licznikach facetów zapadnie po wynikach PERF-0 i ustaleniu
+  docelowej mieszanki obciążenia; etap B ich nie buduje.
+
+Kryteria etapu B:
+
+1. **Pomiar na worf.pl przy 10 mln produktów.** W1, W8 i W9 zmierzone na profilu `server` na worf.pl według
+   metodologii programu (model otwarty, cache HTTP wyłączony, mieszanka PERF-0), z porównaniem do linii bazowej.
+   Pomiar lokalny ani przeliczenie z etapu A nie jest wynikiem akceptacji. Etap A szacuje, że sam model nie zamknie
+   W8 i W9 (brak ok. 3 razy, z natywnym cache faset ok. 1,5 raza): jeśli pomiar to potwierdzi, etap kończy się
+   raportem z wariantami i decyzją właściciela (zasada z „Ryzyk”), bez obniżania wymagań i bez liczników.
+2. **Docelowy limit pamięci Elasticsearcha.** Pomiary z kryterium 1 biegną przy limicie pamięci i stercie, z którymi
+   Elasticsearch ma działać na worf.pl (wartość z PERF-1, a gdy jej jeszcze nie ma, z chartu). Raport podaje limit,
+   stertę, rozmiar indeksu i gorących danych oraz odczyty z dysku w stanie ustalonym. Etap A mierzył przy stercie
+   2 GiB i limicie 10 GiB, a gorące dane szacuje na ok. 4,5 GB.
+3. **Równoległe odczyty i zapisy.** W1 i W9 zmierzone także przy 50 zmianach cen i stanów na sekundę i przy docelowym
+   `refresh_interval`; po pomiarze W13 (indeks zgodny z bazą dla próby produktów, 0 wiadomości w `failed`) i zmierzona
+   świeżość zmiany w wynikach (W16).
+4. **Pełna zgodność funkcjonalna.** Automatyczny test równoważności z obecnym modelem (liczba trafień, fasety
+   z liczbami, zakres cen, pierwsza strona) na danych z wieloma wariantami, w tym przypadki brzegowe kombinacji
+   wariantów: produkt bez opcji, jedna i dwie osie, dwie opcje w tym samym wariancie wobec tych samych opcji
+   w różnych wariantach, kilka wartości jednej osi z wartością drugiej, opcja łączona z dostępnością (wariant z opcją
+   niedostępny, inny dostępny), cena łączona z opcją i dostępnością, ta sama wartość na różnych osiach, wartości ze
+   znakami użytymi jako separatory tokenów, zmiana opcji, ceny i dostępności istniejącego produktu. Reguły domeny,
+   na których opiera się model (najwyżej 2 osie, unikalne krotki opcji w produkcie), ma pilnować test.
+5. **Powtarzalne pomiary zimnej i ciepłej ścieżki.** W1 (zimna, także pierwsze zapytanie po odświeżeniu indeksu) i W2
+   (ciepła): trzy przebiegi, wynik środkowy i rozrzut, mieszanka zapisana z wynikiem, każdy pomiar jednym poleceniem
+   z raportu.
+6. W19a spełnione testem (zapis w trakcie przebudowy widoczny w nowym indeksie).
+
+**Start etapu B.** Prowadzi go nowa sesja (Opus, effort high) według „Przebiegu epiku”
+w `docs/adr/agentic-software-house.md`. Zaczyna od specyfikacji (`/brainstorm`) i planu zadań (`/planner`)
+zaakceptowanych przez właściciela i zmergowanych do `main`; dopiero potem implementacja.
+
+- Wejście: raport etapu A (model R w sekcji 3, zgodność w 4, cache faset w 7, budżet w 10), skrypty i wyniki
+  w `docs/reports/perf-2-search-model-2026-11-25/` (`models.py` to wzorzec zapytań modelu R, `mk.py` mappingu
+  i budowy pól, `check.py` porównania z obecnym modelem), audyt `docs/reports/performance-audit-2026-11-25.md`.
+- Otwarte dla specyfikacji: sposób przebudowy indeksu spełniający W19a, miejsce budowy tokenów w kodzie, zakres zmian
+  kontraktu API (model R nie wymaga zmiany odpowiedzi), sposób przejścia worf.pl z 4 shardów na 1.
+- Bez nowych usług, narzędzi i mechanizmów bez potrzeby wykazanej pomiarem; pomiary istniejącymi skryptami (PERF-0,
+  `load/`, raport etapu A).
+- PERF-0 mierzy równolegle lokalnie i na worf.pl: obciążenia lokalne i każdy pomiar na worf.pl sesja uzgadnia
+  z sesją PERF-0, a mieszankę i linię bazową bierze z jej raportu. Wdrożenie, `reindex` i pomiary z zapisami na
+  worf.pl wyłącznie za osobną zgodą właściciela.
+- Lokalny kontener `es-audit` (zatrzymany) ma indeksy 10 mln `c10` (obecny model) i `r10` (model R) do porównań.
 
 ### Backlog pozostałych epików
 

@@ -1,0 +1,184 @@
+{
+ "all_name": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "all_price_asc": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "all_avail": {
+  "total": 9533750,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "all_price": {
+  "total": 3830920,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "all_color": {
+  "total": 1048770,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "all_color_avail": {
+  "total": 986730,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "all_color_price": {
+  "total": 260080,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "all_color2_size": {
+  "total": 154750,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "all_color_size_price": {
+  "total": 43130,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "root_name": {
+  "total": 2027330,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "root_price_desc": {
+  "total": 2027330,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "root_color": {
+  "total": 218300,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "root_color2": {
+  "total": 330380,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "root_color_size": {
+  "total": 11780,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "root_color2_size": {
+  "total": 24220,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "root_price": {
+  "total": 764770,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "root_avail": {
+  "total": 1958390,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "root_color_price": {
+  "total": 70030,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "leaf_name": {
+  "total": 233400,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "leaf_color_price": {
+  "total": 1050,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "phrase_kurtka": {
+  "total": 193190,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "phrase_typo": {
+  "total": 30,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "phrase_color": {
+  "total": 74730,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "three_axes": {
+  "total": 0,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "all_p400": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ },
+ "all_p100": {
+  "total": 9800830,
+  "plm": {
+   "facets": true,
+   "page": true
+  }
+ }
+}

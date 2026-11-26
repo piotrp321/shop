@@ -1,0 +1,32 @@
+{"index": "r1", "products": 1000191, "seconds": 85, "products_per_s": 11747, "lucene_docs": 4009541, "store_gb": 0.92, "segments": 8, "failures": []}
+scenarios 26 kinds 1 mismatches 0
+scenarios 294 kinds 1 mismatches 0
+{"index": "r10", "products": 10001910, "seconds": 211, "products_per_s": 47377, "lucene_docs": 40095410, "store_gb": 11.11, "segments": 75, "failures": []}
+scenarios 26 kinds 1 mismatches 0
+scenarios 294 kinds 1 mismatches 0
+{"kind": "plm", "mix_cpu_ms": 157.1}
+{"test": "refresh", "index": "r10", "kind": "plm", "scenario": "all_name", "first_cpu_ms": 854, "first_wall_ms": 231, "repeat_cpu_ms": 809, "repeat_wall_ms": 226}
+{"test": "refresh", "index": "c10", "kind": "cur", "scenario": "all_name", "first_cpu_ms": 5838, "first_wall_ms": 5225, "repeat_cpu_ms": 5784, "repeat_wall_ms": 5152}
+{"test": "ingest", "kind": "cur", "sort": null, "bulk_products": 1000000, "bulk_seconds": 59.6, "bulk_products_per_s": 16766, "bulk_cpu_ms_per_product": 0.063, "lucene_docs": 8885236, "store_mb": 854, "update_n": 2000, "update_ms_per_product": 0.85, "update_cpu_ms_per_product": 0.49}
+{"test": "ingest", "kind": "r", "sort": null, "bulk_products": 1000000, "bulk_seconds": 60.3, "bulk_products_per_s": 16595, "bulk_cpu_ms_per_product": 0.063, "lucene_docs": 4133547, "store_mb": 834, "update_n": 2000, "update_ms_per_product": 0.86, "update_cpu_ms_per_product": 0.36}
+{"test": "ingest", "kind": "r", "sort": "sort_path", "bulk_products": 1000000, "bulk_seconds": 64.1, "bulk_products_per_s": 15592, "bulk_cpu_ms_per_product": 0.067, "lucene_docs": 4133547, "store_mb": 835, "update_n": 2000, "update_ms_per_product": 1.0, "update_cpu_ms_per_product": 0.55}
+{"index": "v1", "products": 1000191, "docs": 3009350, "seconds": 179, "store_gb": 1.34}
+{"test": "vd", "index": "v1", "scenario": "all_name", "took": 77, "cpu_ms": 100.1, "numbers": 181, "wrong_numbers": 0, "max_rel_error_pct": 0, "total_exact": 980083, "total_got": 980083, "price_equal": false, "same_page": true}
+{"test": "vd", "index": "v1", "scenario": "root_name", "took": 17, "cpu_ms": 18.9, "numbers": 81, "wrong_numbers": 0, "max_rel_error_pct": 0, "total_exact": 202733, "total_got": 202733, "price_equal": false, "same_page": true}
+{"test": "vd", "index": "v1", "scenario": "all_color", "took": 483, "cpu_ms": 508.4, "numbers": 63, "wrong_numbers": 40, "max_rel_error_pct": 0.35, "total_exact": 104877, "total_got": 105079, "price_equal": true, "same_page": true}
+{"test": "vd", "index": "v1", "scenario": "root_color", "took": 175, "cpu_ms": 179.5, "numbers": 49, "wrong_numbers": 18, "max_rel_error_pct": 0.02, "total_exact": 21830, "total_got": 21830, "price_equal": true, "same_page": true}
+{"test": "vd", "index": "v1", "scenario": "all_price", "took": 854, "cpu_ms": 860.6, "numbers": 166, "wrong_numbers": 55, "max_rel_error_pct": 0.27, "total_exact": 383092, "total_got": 384139, "price_equal": true, "same_page": true}
+{"test": "vd", "index": "v1", "scenario": "root_price", "took": 253, "cpu_ms": 260.7, "numbers": 62, "wrong_numbers": 37, "max_rel_error_pct": 0.15, "total_exact": 76477, "total_got": 76503, "price_equal": true, "same_page": true}
+{"test": "vd", "index": "v1", "scenario": "all_color_price", "took": 391, "cpu_ms": 400.1, "numbers": 60, "wrong_numbers": 24, "max_rel_error_pct": 0.06, "total_exact": 26008, "total_got": 26004, "price_equal": true, "same_page": true}
+{"test": "vd", "index": "v1", "scenario": "root_color_price", "took": 125, "cpu_ms": 129.8, "numbers": 45, "wrong_numbers": 20, "max_rel_error_pct": 0.02, "total_exact": 7003, "total_got": 7004, "price_equal": true, "same_page": true}
+{"test": "vd", "index": "v1", "scenario": "all_avail", "took": 1182, "cpu_ms": 1201.8, "numbers": 181, "wrong_numbers": 96, "max_rel_error_pct": 0.38, "total_exact": 953375, "total_got": 953825, "price_equal": true, "same_page": true}
+{"test": "vd", "index": "v1", "scenario": "all_color2_size", "took": 293, "cpu_ms": 300.8, "numbers": 52, "wrong_numbers": 33, "max_rel_error_pct": 0.06, "total_exact": 15475, "total_got": 15474, "price_equal": true, "same_page": true}
+{"writes": 2250, "seconds": 45.0}
+{"writes": 3750, "seconds": 75.0}
+{"writes": 3750, "seconds": 75.0}
+{"writes": 3750, "seconds": 75.0}
+{"writes": 3750, "seconds": 75.0}
+{"writes": 3750, "seconds": 75.0}
+{"writes": 3750, "seconds": 75.0}
+{"writes": 2250, "seconds": 45.0}
+BATCH3 DONE

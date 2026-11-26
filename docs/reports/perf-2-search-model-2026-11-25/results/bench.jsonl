@@ -1,0 +1,351 @@
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "all_name", "took": 922, "min": 902, "max": 940, "cpu_ms": 930.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "all_price_asc", "took": 939, "min": 934, "max": 957, "cpu_ms": 949.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "all_avail", "took": 981, "min": 965, "max": 990, "cpu_ms": 984.8}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "all_price", "took": 2550, "min": 2531, "max": 2603, "cpu_ms": 2607.6}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "all_color", "took": 2148, "min": 2122, "max": 2175, "cpu_ms": 2160.2}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "all_color_avail", "took": 2005, "min": 1986, "max": 2025, "cpu_ms": 2012.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "all_color_price", "took": 1924, "min": 1894, "max": 1955, "cpu_ms": 1930.0}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "all_color2_size", "took": 1834, "min": 1821, "max": 1852, "cpu_ms": 1843.1}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "all_color_size_price", "took": 746, "min": 719, "max": 787, "cpu_ms": 750.5}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "root_name", "took": 211, "min": 211, "max": 219, "cpu_ms": 216.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "root_price_desc", "took": 216, "min": 213, "max": 239, "cpu_ms": 255.6}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "root_color", "took": 505, "min": 499, "max": 518, "cpu_ms": 512.2}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "root_color2", "took": 511, "min": 509, "max": 520, "cpu_ms": 517.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "root_color_size", "took": 634, "min": 627, "max": 642, "cpu_ms": 656.3}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "root_color2_size", "took": 468, "min": 466, "max": 475, "cpu_ms": 473.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "root_price", "took": 569, "min": 562, "max": 581, "cpu_ms": 574.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "root_avail", "took": 222, "min": 218, "max": 227, "cpu_ms": 224.5}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "root_color_price", "took": 497, "min": 490, "max": 502, "cpu_ms": 505.6}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "leaf_name", "took": 42, "min": 41, "max": 47, "cpu_ms": 44.1}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "leaf_color_price", "took": 130, "min": 128, "max": 136, "cpu_ms": 132.8}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "phrase_kurtka", "took": 32, "min": 32, "max": 40, "cpu_ms": 110.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "phrase_typo", "took": 5, "min": 4, "max": 8, "cpu_ms": 10.5}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "phrase_color", "took": 179, "min": 176, "max": 191, "cpu_ms": 206.3}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "three_axes", "took": 34, "min": 34, "max": 43, "cpu_ms": 36.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "all_p400", "took": 1159, "min": 1135, "max": 1233, "cpu_ms": 1171.6}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl", "scenario": "all_p100", "took": 1005, "min": 973, "max": 1020, "cpu_ms": 1007.3}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "all_name", "took": 170, "min": 166, "max": 171, "cpu_ms": 573.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "all_price_asc", "took": 169, "min": 168, "max": 170, "cpu_ms": 566.1}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "all_avail", "took": 172, "min": 164, "max": 174, "cpu_ms": 670.0}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "all_price", "took": 546, "min": 536, "max": 564, "cpu_ms": 1987.1}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "all_color", "took": 2067, "min": 2054, "max": 2258, "cpu_ms": 2145.8}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "all_color_avail", "took": 1932, "min": 1918, "max": 1937, "cpu_ms": 1958.0}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "all_color_price", "took": 1659, "min": 1645, "max": 1732, "cpu_ms": 1702.8}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "all_color2_size", "took": 1833, "min": 1815, "max": 1877, "cpu_ms": 1855.5}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "all_color_size_price", "took": 628, "min": 620, "max": 641, "cpu_ms": 663.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "root_name", "took": 38, "min": 37, "max": 39, "cpu_ms": 168.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "root_price_desc", "took": 38, "min": 38, "max": 38, "cpu_ms": 173.0}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "root_color", "took": 486, "min": 478, "max": 492, "cpu_ms": 500.8}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "root_color2", "took": 503, "min": 499, "max": 510, "cpu_ms": 527.1}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "root_color_size", "took": 626, "min": 622, "max": 632, "cpu_ms": 634.8}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "root_color2_size", "took": 457, "min": 451, "max": 486, "cpu_ms": 475.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "root_price", "took": 125, "min": 122, "max": 133, "cpu_ms": 471.8}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "root_avail", "took": 39, "min": 39, "max": 41, "cpu_ms": 176.6}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "root_color_price", "took": 418, "min": 409, "max": 426, "cpu_ms": 453.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "leaf_name", "took": 8, "min": 8, "max": 10, "cpu_ms": 47.8}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "leaf_color_price", "took": 115, "min": 114, "max": 124, "cpu_ms": 127.6}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "phrase_kurtka", "took": 18, "min": 18, "max": 24, "cpu_ms": 124.6}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "phrase_typo", "took": 4, "min": 4, "max": 7, "cpu_ms": 25.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "phrase_color", "took": 119, "min": 119, "max": 127, "cpu_ms": 168.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "three_axes", "took": 0, "min": 0, "max": 1, "cpu_ms": 2.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "all_p400", "took": 275, "min": 270, "max": 281, "cpu_ms": 850.0}
+{"label": "10m", "test": "single", "index": "h10", "kind": "pl-split", "scenario": "all_p100", "took": 168, "min": 168, "max": 172, "cpu_ms": 643.5}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "all_name", "took": 1363, "min": 1350, "max": 1385, "cpu_ms": 1373.8}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "all_price_asc", "took": 1384, "min": 1366, "max": 1401, "cpu_ms": 1387.2}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "all_avail", "took": 5560, "min": 5497, "max": 6046, "cpu_ms": 5766.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "all_price", "took": 3886, "min": 3841, "max": 3923, "cpu_ms": 3921.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "all_color", "took": 2153, "min": 2130, "max": 2157, "cpu_ms": 2156.3}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "all_color_avail", "took": 3431, "min": 3403, "max": 3633, "cpu_ms": 3498.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "all_color_price", "took": 1848, "min": 1819, "max": 1875, "cpu_ms": 1860.3}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "all_color2_size", "took": 1265, "min": 1232, "max": 1304, "cpu_ms": 1292.5}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "all_color_size_price", "took": 793, "min": 790, "max": 815, "cpu_ms": 803.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "root_name", "took": 296, "min": 294, "max": 322, "cpu_ms": 303.0}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "root_price_desc", "took": 304, "min": 300, "max": 312, "cpu_ms": 306.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "root_color", "took": 501, "min": 498, "max": 514, "cpu_ms": 506.8}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "root_color2", "took": 603, "min": 590, "max": 608, "cpu_ms": 607.0}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "root_color_size", "took": 320, "min": 307, "max": 323, "cpu_ms": 321.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "root_color2_size", "took": 382, "min": 377, "max": 386, "cpu_ms": 385.3}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "root_price", "took": 829, "min": 823, "max": 853, "cpu_ms": 855.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "root_avail", "took": 1169, "min": 1161, "max": 1177, "cpu_ms": 1174.5}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "root_color_price", "took": 481, "min": 476, "max": 523, "cpu_ms": 492.1}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "leaf_name", "took": 42, "min": 41, "max": 42, "cpu_ms": 43.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "leaf_color_price", "took": 130, "min": 128, "max": 134, "cpu_ms": 132.1}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "phrase_kurtka", "took": 46, "min": 45, "max": 48, "cpu_ms": 156.5}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "phrase_typo", "took": 5, "min": 5, "max": 6, "cpu_ms": 9.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "phrase_color", "took": 240, "min": 234, "max": 245, "cpu_ms": 265.5}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "three_axes", "took": 472, "min": 464, "max": 478, "cpu_ms": 477.2}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "all_p400", "took": 1654, "min": 1592, "max": 1712, "cpu_ms": 1651.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "flat3", "scenario": "all_p100", "took": 1437, "min": 1406, "max": 1449, "cpu_ms": 1435.1}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "all_name", "took": 5629, "min": 5531, "max": 6023, "cpu_ms": 5799.8}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "all_price_asc", "took": 5671, "min": 5399, "max": 5816, "cpu_ms": 5723.7}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "all_avail", "took": 5811, "min": 5689, "max": 6009, "cpu_ms": 5873.6}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "all_price", "took": 5174, "min": 5028, "max": 5314, "cpu_ms": 5223.4}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "all_color", "took": 3527, "min": 3445, "max": 3602, "cpu_ms": 3569.6}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "all_color_avail", "took": 3513, "min": 3470, "max": 3544, "cpu_ms": 3540.3}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "all_color_price", "took": 3057, "min": 3032, "max": 3090, "cpu_ms": 3067.0}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "all_color2_size", "took": 2572, "min": 2544, "max": 2631, "cpu_ms": 2609.9}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "all_color_size_price", "took": 2382, "min": 2350, "max": 2437, "cpu_ms": 2398.1}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "root_name", "took": 1217, "min": 1202, "max": 1241, "cpu_ms": 1224.0}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "root_price_desc", "took": 1221, "min": 1207, "max": 1232, "cpu_ms": 1245.5}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "root_color", "took": 841, "min": 831, "max": 853, "cpu_ms": 848.6}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "root_color2", "took": 915, "min": 906, "max": 922, "cpu_ms": 922.8}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "root_color_size", "took": 615, "min": 599, "max": 630, "cpu_ms": 621.1}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "root_color2_size", "took": 659, "min": 651, "max": 664, "cpu_ms": 662.7}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "root_price", "took": 1129, "min": 1108, "max": 1146, "cpu_ms": 1145.8}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "root_avail", "took": 1235, "min": 1223, "max": 1242, "cpu_ms": 1255.1}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "root_color_price", "took": 816, "min": 810, "max": 827, "cpu_ms": 822.2}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "leaf_name", "took": 201, "min": 190, "max": 215, "cpu_ms": 203.2}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "leaf_color_price", "took": 186, "min": 184, "max": 187, "cpu_ms": 208.6}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "phrase_kurtka", "took": 285, "min": 284, "max": 302, "cpu_ms": 307.2}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "phrase_typo", "took": 7, "min": 6, "max": 8, "cpu_ms": 8.8}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "phrase_color", "took": 259, "min": 256, "max": 261, "cpu_ms": 264.1}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "three_axes", "took": 2388, "min": 2323, "max": 2424, "cpu_ms": 2387.5}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "all_p400", "took": 5880, "min": 5848, "max": 5914, "cpu_ms": 5948.6}
+{"label": "10m", "test": "single", "index": "c10", "kind": "cur", "scenario": "all_p100", "took": 5611, "min": 5542, "max": 5873, "cpu_ms": 5721.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_name", "took": 169, "min": 169, "max": 172, "cpu_ms": 565.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_price_asc", "took": 170, "min": 169, "max": 171, "cpu_ms": 569.6}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_avail", "took": 156, "min": 155, "max": 160, "cpu_ms": 617.0}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_price", "took": 525, "min": 515, "max": 537, "cpu_ms": 1796.0}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_color", "took": 187, "min": 185, "max": 191, "cpu_ms": 993.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_color_avail", "took": 172, "min": 170, "max": 173, "cpu_ms": 903.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_color_price", "took": 1037, "min": 1029, "max": 1052, "cpu_ms": 1292.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_color2_size", "took": 327, "min": 317, "max": 331, "cpu_ms": 594.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_color_size_price", "took": 152, "min": 146, "max": 183, "cpu_ms": 300.6}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "root_name", "took": 37, "min": 37, "max": 38, "cpu_ms": 166.0}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "root_price_desc", "took": 37, "min": 36, "max": 37, "cpu_ms": 170.5}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "root_color", "took": 42, "min": 41, "max": 43, "cpu_ms": 232.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "root_color2", "took": 44, "min": 44, "max": 53, "cpu_ms": 328.0}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "root_color_size", "took": 12, "min": 12, "max": 17, "cpu_ms": 105.5}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "root_color2_size", "took": 85, "min": 85, "max": 86, "cpu_ms": 157.8}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "root_price", "took": 111, "min": 108, "max": 113, "cpu_ms": 402.7}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "root_avail", "took": 35, "min": 34, "max": 35, "cpu_ms": 157.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "root_color_price", "took": 235, "min": 231, "max": 242, "cpu_ms": 358.4}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "leaf_name", "took": 9, "min": 9, "max": 9, "cpu_ms": 48.2}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "leaf_color_price", "took": 88, "min": 86, "max": 102, "cpu_ms": 106.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "phrase_kurtka", "took": 19, "min": 18, "max": 38, "cpu_ms": 116.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "phrase_typo", "took": 3, "min": 3, "max": 4, "cpu_ms": 16.2}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "phrase_color", "took": 17, "min": 16, "max": 19, "cpu_ms": 149.6}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "three_axes", "took": 0, "min": 0, "max": 0, "cpu_ms": 2.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_p400", "took": 286, "min": 283, "max": 289, "cpu_ms": 857.9}
+{"label": "10m", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_p100", "took": 168, "min": 167, "max": 174, "cpu_ms": 646.8}
+{"label": "10m-cpu8", "test": "conc", "index": "h10", "kind": "plm", "what": "mix", "n": 1, "requests": 633, "qps": 21.1, "p50": 24, "p95": 184, "p99": 293, "max": 550, "errors": 0, "rejected": 0, "cpu_ms": 181.4, "cpu_cores": 3.83, "young_gc_ms": 67, "old_gc": 0, "heap_pct": 37}
+{"label": "10m-cpu8", "test": "conc", "index": "h10", "kind": "plm", "what": "mix", "n": 8, "requests": 1263, "qps": 40.2, "p50": 111, "p95": 916, "p99": 1089, "max": 3127, "errors": 0, "rejected": 0, "cpu_ms": 192.0, "cpu_cores": 7.72, "young_gc_ms": 154, "old_gc": 0, "heap_pct": 75}
+{"label": "10m-cpu8", "test": "conc", "index": "h10", "kind": "plm", "what": "mix", "n": 100, "requests": 1319, "qps": 42.2, "p50": 2198, "p95": 3342, "p99": 4179, "max": 6264, "errors": 0, "rejected": 0, "cpu_ms": 188.2, "cpu_cores": 7.94, "young_gc_ms": 145, "old_gc": 0, "heap_pct": 68}
+{"label": "10m-cpu8", "test": "burst", "index": "h10", "kind": "plm", "n": 100, "round": 0, "ok": 100, "errors": 0, "p50": 2576, "p95": 2764, "slowest": 3545, "all_done_ms": 3552, "cpu_ms_total": 23575.705000000075, "cpu_ms": 235.8}
+{"label": "10m-cpu8", "test": "burst", "index": "h10", "kind": "plm", "n": 100, "round": 1, "ok": 100, "errors": 0, "p50": 1883, "p95": 1917, "slowest": 2344, "all_done_ms": 2349, "cpu_ms_total": 16658.12800000049, "cpu_ms": 166.6}
+{"label": "10m-cpu8", "test": "burst", "index": "h10", "kind": "plm", "n": 100, "round": 2, "ok": 94, "errors": 0, "p50": 1758, "p95": 1777, "slowest": 2241, "all_done_ms": 2245, "cpu_ms_total": 15115.430999999866, "cpu_ms": 151.2}
+{"label": "10m-cpu8", "test": "conc", "index": "h10", "kind": "pl", "what": "mix", "n": 1, "requests": 91, "qps": 3.0, "p50": 79, "p95": 2102, "p99": 3157, "max": 3157, "errors": 0, "rejected": 0, "cpu_ms": 342.7, "cpu_cores": 1.01, "young_gc_ms": 3, "old_gc": 0, "heap_pct": 80}
+{"label": "10m-cpu8", "test": "conc", "index": "h10", "kind": "pl", "what": "mix", "n": 8, "requests": 958, "qps": 29.6, "p50": 79, "p95": 1097, "p99": 2539, "max": 3492, "errors": 0, "rejected": 0, "cpu_ms": 254.9, "cpu_cores": 7.54, "young_gc_ms": 27, "old_gc": 0, "heap_pct": 49}
+{"label": "10m-cpu8", "test": "conc", "index": "h10", "kind": "pl", "what": "mix", "n": 100, "requests": 901, "qps": 26.7, "p50": 3130, "p95": 6249, "p99": 7098, "max": 10110, "errors": 0, "rejected": 0, "cpu_ms": 285.6, "cpu_cores": 7.64, "young_gc_ms": 62, "old_gc": 0, "heap_pct": 73}
+{"label": "10m-cpu8", "test": "burst", "index": "h10", "kind": "pl", "n": 100, "round": 0, "ok": 100, "errors": 0, "p50": 3455, "p95": 4838, "slowest": 6407, "all_done_ms": 6414, "cpu_ms_total": 40568.31799999904, "cpu_ms": 405.7}
+{"label": "10m-cpu8", "test": "burst", "index": "h10", "kind": "pl", "n": 100, "round": 1, "ok": 100, "errors": 0, "p50": 2291, "p95": 3187, "slowest": 4024, "all_done_ms": 4032, "cpu_ms_total": 27393.222000000067, "cpu_ms": 273.9}
+{"label": "10m-cpu8", "test": "burst", "index": "h10", "kind": "pl", "n": 100, "round": 2, "ok": 94, "errors": 0, "p50": 1926, "p95": 2845, "slowest": 3763, "all_done_ms": 3768, "cpu_ms_total": 22109.985999999568, "cpu_ms": 221.1}
+{"label": "10m-cpu8", "test": "conc", "index": "h10", "kind": "flat3", "what": "mix", "n": 1, "requests": 84, "qps": 2.5, "p50": 99, "p95": 1908, "p99": 5582, "max": 5582, "errors": 0, "rejected": 0, "cpu_ms": 400.8, "cpu_cores": 1.02, "young_gc_ms": 6, "old_gc": 0, "heap_pct": 72}
+{"label": "10m-cpu8", "test": "conc", "index": "h10", "kind": "flat3", "what": "mix", "n": 8, "requests": 814, "qps": 22.9, "p50": 106, "p95": 1520, "p99": 2264, "max": 6193, "errors": 0, "rejected": 0, "cpu_ms": 312.7, "cpu_cores": 7.15, "young_gc_ms": 40, "old_gc": 0, "heap_pct": 44}
+{"label": "10m-cpu8", "test": "conc", "index": "h10", "kind": "flat3", "what": "mix", "n": 100, "requests": 633, "qps": 18.7, "p50": 4881, "p95": 9467, "p99": 10333, "max": 19810, "errors": 0, "rejected": 0, "cpu_ms": 419.4, "cpu_cores": 7.83, "young_gc_ms": 92, "old_gc": 0, "heap_pct": 25}
+{"label": "10m-cpu8", "test": "burst", "index": "h10", "kind": "flat3", "n": 100, "round": 0, "ok": 100, "errors": 0, "p50": 5091, "p95": 5982, "slowest": 10294, "all_done_ms": 10296, "cpu_ms_total": 56681.139999999665, "cpu_ms": 566.8}
+{"label": "10m-cpu8", "test": "burst", "index": "h10", "kind": "flat3", "n": 100, "round": 1, "ok": 100, "errors": 0, "p50": 3397, "p95": 3685, "slowest": 5518, "all_done_ms": 5523, "cpu_ms_total": 32493.338999999687, "cpu_ms": 324.9}
+{"label": "10m-cpu8", "test": "burst", "index": "h10", "kind": "flat3", "n": 100, "round": 2, "ok": 94, "errors": 0, "p50": 2858, "p95": 3310, "slowest": 4367, "all_done_ms": 4370, "cpu_ms_total": 28129.125999999233, "cpu_ms": 281.3}
+{"label": "10m-cpu8", "test": "conc", "index": "c10", "kind": "cur", "what": "mix", "n": 1, "requests": 48, "qps": 1.6, "p50": 235, "p95": 3456, "p99": 6578, "max": 6578, "errors": 0, "rejected": 0, "cpu_ms": 635.4, "cpu_cores": 1.01, "young_gc_ms": 10, "old_gc": 0, "heap_pct": 43}
+{"label": "10m-cpu8", "test": "conc", "index": "c10", "kind": "cur", "what": "mix", "n": 8, "requests": 304, "qps": 8.7, "p50": 256, "p95": 6028, "p99": 6373, "max": 6593, "errors": 0, "rejected": 0, "cpu_ms": 816.4, "cpu_cores": 7.14, "young_gc_ms": 74, "old_gc": 0, "heap_pct": 39}
+{"label": "10m-cpu8", "test": "conc", "index": "c10", "kind": "cur", "what": "mix", "n": 100, "requests": 365, "qps": 7.8, "p50": 12222, "p95": 21549, "p99": 24682, "max": 24720, "errors": 0, "rejected": 0, "cpu_ms": 980.7, "cpu_cores": 7.68, "young_gc_ms": 133, "old_gc": 0, "heap_pct": 69}
+{"label": "10m-cpu8", "test": "burst", "index": "c10", "kind": "cur", "n": 100, "round": 0, "ok": 100, "errors": 0, "p50": 9593, "p95": 13416, "slowest": 15961, "all_done_ms": 15964, "cpu_ms_total": 110142.1830000002, "cpu_ms": 1101.4}
+{"label": "10m-cpu8", "test": "burst", "index": "c10", "kind": "cur", "n": 100, "round": 1, "ok": 100, "errors": 0, "p50": 8711, "p95": 10412, "slowest": 13572, "all_done_ms": 13576, "cpu_ms_total": 88474.96400000062, "cpu_ms": 884.7}
+{"label": "10m-cpu8", "test": "burst", "index": "c10", "kind": "cur", "n": 100, "round": 2, "ok": 94, "errors": 0, "p50": 7106, "p95": 9189, "slowest": 11485, "all_done_ms": 11486, "cpu_ms_total": 74821.44100000057, "cpu_ms": 748.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "plm", "class": "all", "n": 12, "cpu_ms": 582.6, "wall_p50": 173, "wall_max": 175, "share_of_mix_pct": 4.1}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "plm", "class": "all_filtered", "n": 18, "cpu_ms": 867.5, "wall_p50": 188, "wall_max": 577, "share_of_mix_pct": 6.1}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "plm", "class": "root", "n": 36, "cpu_ms": 136.9, "wall_p50": 35, "wall_max": 60, "share_of_mix_pct": 12.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "plm", "class": "root_filtered", "n": 24, "cpu_ms": 276.6, "wall_p50": 44, "wall_max": 320, "share_of_mix_pct": 8.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "plm", "class": "mid", "n": 30, "cpu_ms": 71.4, "wall_p50": 19, "wall_max": 32, "share_of_mix_pct": 10.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "plm", "class": "mid_filtered", "n": 18, "cpu_ms": 132.3, "wall_p50": 26, "wall_max": 119, "share_of_mix_pct": 6.1}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "plm", "class": "leaf", "n": 60, "cpu_ms": 42.2, "wall_p50": 11, "wall_max": 26, "share_of_mix_pct": 20.4}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "plm", "class": "leaf_filtered", "n": 36, "cpu_ms": 69.4, "wall_p50": 13, "wall_max": 48, "share_of_mix_pct": 12.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "plm", "class": "phrase", "n": 42, "cpu_ms": 161.7, "wall_p50": 29, "wall_max": 67, "share_of_mix_pct": 14.3}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "plm", "class": "phrase_filtered", "n": 12, "cpu_ms": 153.1, "wall_p50": 27, "wall_max": 68, "share_of_mix_pct": 4.1}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "plm", "class": "deep", "n": 6, "cpu_ms": 565.5, "wall_p50": 204, "wall_max": 289, "share_of_mix_pct": 2.0}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "pl", "class": "all", "n": 12, "cpu_ms": 1000.0, "wall_p50": 1002, "wall_max": 1025, "share_of_mix_pct": 4.1}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "pl", "class": "all_filtered", "n": 18, "cpu_ms": 2386.4, "wall_p50": 2303, "wall_max": 3646, "share_of_mix_pct": 6.1}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "pl", "class": "root", "n": 36, "cpu_ms": 162.0, "wall_p50": 163, "wall_max": 231, "share_of_mix_pct": 12.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "pl", "class": "root_filtered", "n": 24, "cpu_ms": 396.1, "wall_p50": 402, "wall_max": 752, "share_of_mix_pct": 8.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "pl", "class": "mid", "n": 30, "cpu_ms": 62.4, "wall_p50": 60, "wall_max": 97, "share_of_mix_pct": 10.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "pl", "class": "mid_filtered", "n": 18, "cpu_ms": 155.3, "wall_p50": 162, "wall_max": 277, "share_of_mix_pct": 6.1}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "pl", "class": "leaf", "n": 60, "cpu_ms": 36.3, "wall_p50": 35, "wall_max": 56, "share_of_mix_pct": 20.4}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "pl", "class": "leaf_filtered", "n": 36, "cpu_ms": 69.7, "wall_p50": 64, "wall_max": 174, "share_of_mix_pct": 12.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "pl", "class": "phrase", "n": 42, "cpu_ms": 90.9, "wall_p50": 45, "wall_max": 116, "share_of_mix_pct": 14.3}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "pl", "class": "phrase_filtered", "n": 12, "cpu_ms": 109.0, "wall_p50": 57, "wall_max": 192, "share_of_mix_pct": 4.1}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "pl", "class": "deep", "n": 6, "cpu_ms": 729.7, "wall_p50": 1076, "wall_max": 1198, "share_of_mix_pct": 2.0}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "flat3", "class": "all", "n": 12, "cpu_ms": 1461.2, "wall_p50": 1456, "wall_max": 1530, "share_of_mix_pct": 4.1}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "flat3", "class": "all_filtered", "n": 18, "cpu_ms": 2250.3, "wall_p50": 1954, "wall_max": 5610, "share_of_mix_pct": 6.1}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "flat3", "class": "root", "n": 36, "cpu_ms": 228.5, "wall_p50": 224, "wall_max": 325, "share_of_mix_pct": 12.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "flat3", "class": "root_filtered", "n": 24, "cpu_ms": 552.5, "wall_p50": 449, "wall_max": 1165, "share_of_mix_pct": 8.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "flat3", "class": "mid", "n": 30, "cpu_ms": 72.2, "wall_p50": 68, "wall_max": 124, "share_of_mix_pct": 10.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "flat3", "class": "mid_filtered", "n": 18, "cpu_ms": 243.2, "wall_p50": 229, "wall_max": 505, "share_of_mix_pct": 6.1}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "flat3", "class": "leaf", "n": 60, "cpu_ms": 28.7, "wall_p50": 28, "wall_max": 46, "share_of_mix_pct": 20.4}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "flat3", "class": "leaf_filtered", "n": 36, "cpu_ms": 97.3, "wall_p50": 96, "wall_max": 180, "share_of_mix_pct": 12.2}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "flat3", "class": "phrase", "n": 42, "cpu_ms": 128.9, "wall_p50": 60, "wall_max": 188, "share_of_mix_pct": 14.3}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "flat3", "class": "phrase_filtered", "n": 12, "cpu_ms": 170.0, "wall_p50": 120, "wall_max": 268, "share_of_mix_pct": 4.1}
+{"label": "10m-class", "test": "class", "index": "h10", "kind": "flat3", "class": "deep", "n": 6, "cpu_ms": 1015.5, "wall_p50": 1548, "wall_max": 1770, "share_of_mix_pct": 2.0}
+{"label": "10m-class", "test": "class", "index": "c10", "kind": "cur", "class": "all", "n": 12, "cpu_ms": 5698.6, "wall_p50": 5644, "wall_max": 5800, "share_of_mix_pct": 4.1}
+{"label": "10m-class", "test": "class", "index": "c10", "kind": "cur", "class": "all_filtered", "n": 18, "cpu_ms": 3393.0, "wall_p50": 3511, "wall_max": 5819, "share_of_mix_pct": 6.1}
+{"label": "10m-class", "test": "class", "index": "c10", "kind": "cur", "class": "root", "n": 36, "cpu_ms": 956.8, "wall_p50": 954, "wall_max": 1310, "share_of_mix_pct": 12.2}
+{"label": "10m-class", "test": "class", "index": "c10", "kind": "cur", "class": "root_filtered", "n": 24, "cpu_ms": 709.1, "wall_p50": 660, "wall_max": 1236, "share_of_mix_pct": 8.2}
+{"label": "10m-class", "test": "class", "index": "c10", "kind": "cur", "class": "mid", "n": 30, "cpu_ms": 312.7, "wall_p50": 275, "wall_max": 586, "share_of_mix_pct": 10.2}
+{"label": "10m-class", "test": "class", "index": "c10", "kind": "cur", "class": "mid_filtered", "n": 18, "cpu_ms": 305.8, "wall_p50": 294, "wall_max": 582, "share_of_mix_pct": 6.1}
+{"label": "10m-class", "test": "class", "index": "c10", "kind": "cur", "class": "leaf", "n": 60, "cpu_ms": 110.8, "wall_p50": 105, "wall_max": 223, "share_of_mix_pct": 20.4}
+{"label": "10m-class", "test": "class", "index": "c10", "kind": "cur", "class": "leaf_filtered", "n": 36, "cpu_ms": 128.3, "wall_p50": 105, "wall_max": 230, "share_of_mix_pct": 12.2}
+{"label": "10m-class", "test": "class", "index": "c10", "kind": "cur", "class": "phrase", "n": 42, "cpu_ms": 236.6, "wall_p50": 238, "wall_max": 511, "share_of_mix_pct": 14.3}
+{"label": "10m-class", "test": "class", "index": "c10", "kind": "cur", "class": "phrase_filtered", "n": 12, "cpu_ms": 189.9, "wall_p50": 228, "wall_max": 378, "share_of_mix_pct": 4.1}
+{"label": "10m-class", "test": "class", "index": "c10", "kind": "cur", "class": "deep", "n": 6, "cpu_ms": 3526.9, "wall_p50": 5702, "wall_max": 6022, "share_of_mix_pct": 2.0}
+{"label": "1m-calib", "test": "single", "index": "t_orig1", "kind": "cur", "scenario": "all_name", "took": 570, "min": 553, "max": 590, "cpu_ms": 572.7}
+{"label": "1m-calib", "test": "single", "index": "t_orig1", "kind": "cur", "scenario": "root_name", "took": 124, "min": 122, "max": 136, "cpu_ms": 127.0}
+{"label": "1m-calib", "test": "single", "index": "t_orig1", "kind": "cur", "scenario": "leaf_name", "took": 21, "min": 20, "max": 23, "cpu_ms": 22.2}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "all", "n": 12, "cpu_ms": 581.9, "wall_p50": 171, "wall_max": 178, "share_of_mix_pct": 4.1}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "all_filtered", "n": 18, "cpu_ms": 847.5, "wall_p50": 188, "wall_max": 571, "share_of_mix_pct": 6.1}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "root", "n": 36, "cpu_ms": 137.4, "wall_p50": 35, "wall_max": 56, "share_of_mix_pct": 12.2}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "root_filtered", "n": 24, "cpu_ms": 269.3, "wall_p50": 41, "wall_max": 313, "share_of_mix_pct": 8.2}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "mid", "n": 30, "cpu_ms": 68.0, "wall_p50": 21, "wall_max": 29, "share_of_mix_pct": 10.2}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "mid_filtered", "n": 18, "cpu_ms": 125.3, "wall_p50": 24, "wall_max": 111, "share_of_mix_pct": 6.1}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "leaf", "n": 60, "cpu_ms": 41.0, "wall_p50": 11, "wall_max": 18, "share_of_mix_pct": 20.4}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "leaf_filtered", "n": 36, "cpu_ms": 70.0, "wall_p50": 13, "wall_max": 46, "share_of_mix_pct": 12.2}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "phrase", "n": 42, "cpu_ms": 95.9, "wall_p50": 47, "wall_max": 126, "share_of_mix_pct": 14.3}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "phrase_filtered", "n": 12, "cpu_ms": 137.0, "wall_p50": 84, "wall_max": 262, "share_of_mix_pct": 4.1}
+{"label": "10m-class2", "test": "class", "index": "h10", "kind": "plm", "class": "deep", "n": 6, "cpu_ms": 547.3, "wall_p50": 200, "wall_max": 285, "share_of_mix_pct": 2.0}
+{"test": "cache", "index": "h10", "mix_addresses": 294, "size0_requests": 538, "distinct_size0_requests": 423, "most_shared": 25, "miss_took_cpu": [171, 565.3], "hit_took_cpu": [0, 1.9], "hit2_took_cpu": [0, 1.8], "after_write_took_cpu": [250, 934.9], "after_write_hit_took_cpu": [0, 1.8], "concurrent20_cpu_ms": 654, "concurrent20_latency_min_max": [621, 624], "request_cache_stats": {"memory_size_in_bytes": 7904, "evictions": 0, "hit_count": 156, "miss_count": 407}}
+{"label": "10m-nopar", "test": "class", "index": "h10", "kind": "plm", "class": "all", "n": 12, "cpu_ms": 753.4, "wall_p50": 621, "wall_max": 627, "share_of_mix_pct": 4.1}
+{"label": "10m-nopar", "test": "class", "index": "h10", "kind": "plm", "class": "all_filtered", "n": 18, "cpu_ms": 855.7, "wall_p50": 607, "wall_max": 1786, "share_of_mix_pct": 6.1}
+{"label": "10m-nopar", "test": "class", "index": "h10", "kind": "plm", "class": "root", "n": 36, "cpu_ms": 137.1, "wall_p50": 96, "wall_max": 131, "share_of_mix_pct": 12.2}
+{"label": "10m-nopar", "test": "class", "index": "h10", "kind": "plm", "class": "root_filtered", "n": 24, "cpu_ms": 260.5, "wall_p50": 103, "wall_max": 438, "share_of_mix_pct": 8.2}
+{"label": "10m-nopar", "test": "class", "index": "h10", "kind": "plm", "class": "mid", "n": 30, "cpu_ms": 67.6, "wall_p50": 36, "wall_max": 57, "share_of_mix_pct": 10.2}
+{"label": "10m-nopar", "test": "class", "index": "h10", "kind": "plm", "class": "mid_filtered", "n": 18, "cpu_ms": 121.3, "wall_p50": 49, "wall_max": 136, "share_of_mix_pct": 6.1}
+{"label": "10m-nopar", "test": "class", "index": "h10", "kind": "plm", "class": "leaf", "n": 60, "cpu_ms": 37.4, "wall_p50": 21, "wall_max": 33, "share_of_mix_pct": 20.4}
+{"label": "10m-nopar", "test": "class", "index": "h10", "kind": "plm", "class": "leaf_filtered", "n": 36, "cpu_ms": 67.2, "wall_p50": 26, "wall_max": 77, "share_of_mix_pct": 12.2}
+{"label": "10m-nopar", "test": "class", "index": "h10", "kind": "plm", "class": "phrase", "n": 42, "cpu_ms": 92.5, "wall_p50": 85, "wall_max": 202, "share_of_mix_pct": 14.3}
+{"label": "10m-nopar", "test": "class", "index": "h10", "kind": "plm", "class": "phrase_filtered", "n": 12, "cpu_ms": 119.9, "wall_p50": 131, "wall_max": 266, "share_of_mix_pct": 4.1}
+{"label": "10m-nopar", "test": "class", "index": "h10", "kind": "plm", "class": "deep", "n": 6, "cpu_ms": 629.1, "wall_p50": 606, "wall_max": 617, "share_of_mix_pct": 2.0}
+{"label": "10m-nopar", "test": "conc", "index": "h10", "kind": "plm", "what": "mix", "n": 1, "requests": 221, "qps": 7.4, "p50": 54, "p95": 608, "p99": 621, "max": 1832, "errors": 0, "rejected": 0, "cpu_ms": 185.2, "cpu_cores": 1.36, "young_gc_ms": 13, "old_gc": 0, "heap_pct": 70}
+{"label": "10m-nopar", "test": "conc", "index": "h10", "kind": "plm", "what": "mix", "n": 8, "requests": 1153, "qps": 36.6, "p50": 97, "p95": 993, "p99": 1120, "max": 2966, "errors": 0, "rejected": 0, "cpu_ms": 211.0, "cpu_cores": 7.71, "young_gc_ms": 77, "old_gc": 0, "heap_pct": 37}
+{"label": "10m-nopar", "test": "conc", "index": "h10", "kind": "plm", "what": "mix", "n": 100, "requests": 1125, "qps": 34.5, "p50": 2657, "p95": 4806, "p99": 5533, "max": 7131, "errors": 0, "rejected": 0, "cpu_ms": 227.0, "cpu_cores": 7.84, "young_gc_ms": 82, "old_gc": 0, "heap_pct": 66}
+{"label": "10m-nopar", "test": "burst", "index": "h10", "kind": "plm", "n": 100, "round": 0, "ok": 100, "errors": 0, "p50": 3256, "p95": 3329, "slowest": 3650, "all_done_ms": 3656, "cpu_ms_total": 27566.99199999869, "cpu_ms": 275.7}
+{"label": "10m-nopar", "test": "burst", "index": "h10", "kind": "plm", "n": 100, "round": 1, "ok": 100, "errors": 0, "p50": 2138, "p95": 2190, "slowest": 2733, "all_done_ms": 2738, "cpu_ms_total": 19066.357999999076, "cpu_ms": 190.7}
+{"label": "10m-nopar", "test": "burst", "index": "h10", "kind": "plm", "n": 100, "round": 2, "ok": 94, "errors": 0, "p50": 1967, "p95": 2137, "slowest": 2366, "all_done_ms": 2381, "cpu_ms_total": 17315.904999997467, "cpu_ms": 173.2}
+{"label": "10m-s4", "test": "class", "index": "h10s4", "kind": "plm", "class": "all", "n": 12, "cpu_ms": 710.8, "wall_p50": 89, "wall_max": 92, "share_of_mix_pct": 4.1}
+{"label": "10m-s4", "test": "class", "index": "h10s4", "kind": "plm", "class": "all_filtered", "n": 18, "cpu_ms": 1100.7, "wall_p50": 190, "wall_max": 318, "share_of_mix_pct": 6.1}
+{"label": "10m-s4", "test": "class", "index": "h10s4", "kind": "plm", "class": "root", "n": 36, "cpu_ms": 228.7, "wall_p50": 37, "wall_max": 74, "share_of_mix_pct": 12.2}
+{"label": "10m-s4", "test": "class", "index": "h10s4", "kind": "plm", "class": "root_filtered", "n": 24, "cpu_ms": 378.7, "wall_p50": 44, "wall_max": 97, "share_of_mix_pct": 8.2}
+{"label": "10m-s4", "test": "class", "index": "h10s4", "kind": "plm", "class": "mid", "n": 30, "cpu_ms": 135.7, "wall_p50": 23, "wall_max": 35, "share_of_mix_pct": 10.2}
+{"label": "10m-s4", "test": "class", "index": "h10s4", "kind": "plm", "class": "mid_filtered", "n": 18, "cpu_ms": 272.9, "wall_p50": 27, "wall_max": 133, "share_of_mix_pct": 6.1}
+{"label": "10m-s4", "test": "class", "index": "h10s4", "kind": "plm", "class": "leaf", "n": 60, "cpu_ms": 102.6, "wall_p50": 19, "wall_max": 42, "share_of_mix_pct": 20.4}
+{"label": "10m-s4", "test": "class", "index": "h10s4", "kind": "plm", "class": "leaf_filtered", "n": 36, "cpu_ms": 142.6, "wall_p50": 23, "wall_max": 59, "share_of_mix_pct": 12.2}
+{"label": "10m-s4", "test": "class", "index": "h10s4", "kind": "plm", "class": "phrase", "n": 42, "cpu_ms": 176.6, "wall_p50": 43, "wall_max": 84, "share_of_mix_pct": 14.3}
+{"label": "10m-s4", "test": "class", "index": "h10s4", "kind": "plm", "class": "phrase_filtered", "n": 12, "cpu_ms": 200.3, "wall_p50": 55, "wall_max": 87, "share_of_mix_pct": 4.1}
+{"label": "10m-s4", "test": "class", "index": "h10s4", "kind": "plm", "class": "deep", "n": 6, "cpu_ms": 1189.3, "wall_p50": 198, "wall_max": 314, "share_of_mix_pct": 2.0}
+{"label": "10m-s4", "test": "single", "index": "h10s4", "kind": "plm", "scenario": "all_name", "took": 91, "min": 72, "max": 132, "cpu_ms": 783.6}
+{"label": "10m-s4", "test": "single", "index": "h10s4", "kind": "plm", "scenario": "all_color", "took": 178, "min": 137, "max": 195, "cpu_ms": 1178.5}
+{"label": "10m-s4", "test": "single", "index": "h10s4", "kind": "plm", "scenario": "all_price", "took": 275, "min": 263, "max": 304, "cpu_ms": 2160.7}
+{"label": "10m-s4", "test": "single", "index": "h10s4", "kind": "plm", "scenario": "root_name", "took": 21, "min": 20, "max": 30, "cpu_ms": 207.1}
+{"label": "10m-s4", "test": "single", "index": "h10s4", "kind": "plm", "scenario": "root_color", "took": 42, "min": 38, "max": 44, "cpu_ms": 292.8}
+{"label": "10m-s4", "test": "single", "index": "h10s4", "kind": "plm", "scenario": "leaf_name", "took": 7, "min": 6, "max": 7, "cpu_ms": 74.6}
+{"label": "10m-s4", "test": "conc", "index": "h10s4", "kind": "plm", "what": "mix", "n": 1, "requests": 572, "qps": 19.0, "p50": 33, "p95": 181, "p99": 284, "max": 352, "errors": 0, "rejected": 0, "cpu_ms": 311.8, "cpu_cores": 5.94, "young_gc_ms": 128, "old_gc": 0, "heap_pct": 66}
+{"label": "10m-s4", "test": "conc", "index": "h10s4", "kind": "plm", "what": "mix", "n": 8, "requests": 734, "qps": 24.1, "p50": 302, "p95": 593, "p99": 778, "max": 979, "errors": 0, "rejected": 0, "cpu_ms": 331.9, "cpu_cores": 8.0, "young_gc_ms": 129, "old_gc": 0, "heap_pct": 88}
+{"label": "10m-s4", "test": "conc", "index": "h10s4", "kind": "plm", "what": "mix", "n": 100, "requests": 796, "qps": 25.5, "p50": 4003, "p95": 4374, "p99": 4984, "max": 6085, "errors": 0, "rejected": 0, "cpu_ms": 314.3, "cpu_cores": 8.0, "young_gc_ms": 171, "old_gc": 0, "heap_pct": 53}
+{"label": "10m-s4", "test": "burst", "index": "h10s4", "kind": "plm", "n": 100, "round": 0, "ok": 100, "errors": 0, "p50": 4608, "p95": 4923, "slowest": 4934, "all_done_ms": 4937, "cpu_ms_total": 39457.765000000596, "cpu_ms": 394.6}
+{"label": "10m-s4", "test": "burst", "index": "h10s4", "kind": "plm", "n": 100, "round": 1, "ok": 100, "errors": 0, "p50": 3616, "p95": 3912, "slowest": 3914, "all_done_ms": 3917, "cpu_ms_total": 31707.343000000343, "cpu_ms": 317.1}
+{"label": "10m-s4", "test": "burst", "index": "h10s4", "kind": "plm", "n": 100, "round": 2, "ok": 94, "errors": 0, "p50": 3372, "p95": 3576, "slowest": 3585, "all_done_ms": 3588, "cpu_ms_total": 28774.24200000055, "cpu_ms": 287.7}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "all", "n": 12, "cpu_ms": 598.6, "wall_p50": 200, "wall_max": 203, "share_of_mix_pct": 4.1}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "all_filtered", "n": 18, "cpu_ms": 781.0, "wall_p50": 206, "wall_max": 572, "share_of_mix_pct": 6.1}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "root", "n": 36, "cpu_ms": 122.5, "wall_p50": 30, "wall_max": 45, "share_of_mix_pct": 12.2}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "root_filtered", "n": 24, "cpu_ms": 188.9, "wall_p50": 39, "wall_max": 247, "share_of_mix_pct": 8.2}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "mid", "n": 30, "cpu_ms": 49.9, "wall_p50": 13, "wall_max": 23, "share_of_mix_pct": 10.2}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "mid_filtered", "n": 18, "cpu_ms": 82.0, "wall_p50": 16, "wall_max": 83, "share_of_mix_pct": 6.1}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "leaf", "n": 60, "cpu_ms": 19.9, "wall_p50": 6, "wall_max": 11, "share_of_mix_pct": 20.4}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "leaf_filtered", "n": 36, "cpu_ms": 40.0, "wall_p50": 8, "wall_max": 34, "share_of_mix_pct": 12.2}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "phrase", "n": 42, "cpu_ms": 77.5, "wall_p50": 32, "wall_max": 77, "share_of_mix_pct": 14.3}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "phrase_filtered", "n": 12, "cpu_ms": 69.4, "wall_p50": 38, "wall_max": 122, "share_of_mix_pct": 4.1}
+{"label": "10m-sort", "test": "class", "index": "h10sort", "kind": "plm", "class": "deep", "n": 6, "cpu_ms": 528.6, "wall_p50": 202, "wall_max": 286, "share_of_mix_pct": 2.0}
+{"label": "10m-sort", "test": "conc", "index": "h10sort", "kind": "plm", "what": "mix", "n": 8, "requests": 1614, "qps": 53.0, "p50": 85, "p95": 460, "p99": 983, "max": 2542, "errors": 0, "rejected": 0, "cpu_ms": 149.3, "cpu_cores": 7.9, "young_gc_ms": 144, "old_gc": 0, "heap_pct": 72}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_name", "took": 221, "min": 219, "max": 224, "cpu_ms": 707.5}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_price_asc", "took": 221, "min": 220, "max": 229, "cpu_ms": 694.3}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_avail", "took": 197, "min": 195, "max": 205, "cpu_ms": 726.2}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_price", "took": 466, "min": 462, "max": 520, "cpu_ms": 1619.1}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_color", "took": 236, "min": 234, "max": 240, "cpu_ms": 979.7}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_color_avail", "took": 210, "min": 209, "max": 261, "cpu_ms": 893.8}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_color_price", "took": 925, "min": 915, "max": 928, "cpu_ms": 1106.3}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_color2_size", "took": 281, "min": 279, "max": 287, "cpu_ms": 531.8}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_color_size_price", "took": 128, "min": 126, "max": 148, "cpu_ms": 210.2}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "root_name", "took": 44, "min": 44, "max": 44, "cpu_ms": 162.9}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "root_price_desc", "took": 44, "min": 44, "max": 46, "cpu_ms": 172.2}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "root_color", "took": 46, "min": 46, "max": 47, "cpu_ms": 205.0}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "root_color2", "took": 44, "min": 44, "max": 53, "cpu_ms": 271.3}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "root_color_size", "took": 15, "min": 14, "max": 20, "cpu_ms": 96.3}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "root_color2_size", "took": 59, "min": 58, "max": 68, "cpu_ms": 122.0}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "root_price", "took": 101, "min": 99, "max": 103, "cpu_ms": 353.1}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "root_avail", "took": 39, "min": 38, "max": 49, "cpu_ms": 154.4}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "root_color_price", "took": 193, "min": 188, "max": 201, "cpu_ms": 250.3}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "leaf_name", "took": 7, "min": 6, "max": 7, "cpu_ms": 35.0}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "leaf_color_price", "took": 65, "min": 65, "max": 76, "cpu_ms": 81.4}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "phrase_kurtka", "took": 24, "min": 24, "max": 30, "cpu_ms": 77.3}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "phrase_typo", "took": 4, "min": 3, "max": 6, "cpu_ms": 8.7}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "phrase_color", "took": 130, "min": 125, "max": 137, "cpu_ms": 152.4}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "three_axes", "took": 0, "min": 0, "max": 0, "cpu_ms": 2.0}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_p400", "took": 298, "min": 295, "max": 311, "cpu_ms": 985.6}
+{"label": "r10", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_p100", "took": 223, "min": 221, "max": 231, "cpu_ms": 807.0}
+{"label": "r10", "test": "class", "index": "r10", "kind": "plm", "class": "all", "n": 12, "cpu_ms": 695.1, "wall_p50": 223, "wall_max": 228, "share_of_mix_pct": 4.1}
+{"label": "r10", "test": "class", "index": "r10", "kind": "plm", "class": "all_filtered", "n": 18, "cpu_ms": 832.1, "wall_p50": 235, "wall_max": 496, "share_of_mix_pct": 6.1}
+{"label": "r10", "test": "class", "index": "r10", "kind": "plm", "class": "root", "n": 36, "cpu_ms": 136.4, "wall_p50": 35, "wall_max": 71, "share_of_mix_pct": 12.2}
+{"label": "r10", "test": "class", "index": "r10", "kind": "plm", "class": "root_filtered", "n": 24, "cpu_ms": 201.1, "wall_p50": 36, "wall_max": 236, "share_of_mix_pct": 8.2}
+{"label": "r10", "test": "class", "index": "r10", "kind": "plm", "class": "mid", "n": 30, "cpu_ms": 52.7, "wall_p50": 14, "wall_max": 24, "share_of_mix_pct": 10.2}
+{"label": "r10", "test": "class", "index": "r10", "kind": "plm", "class": "mid_filtered", "n": 18, "cpu_ms": 88.1, "wall_p50": 18, "wall_max": 83, "share_of_mix_pct": 6.1}
+{"label": "r10", "test": "class", "index": "r10", "kind": "plm", "class": "leaf", "n": 60, "cpu_ms": 21.7, "wall_p50": 6, "wall_max": 12, "share_of_mix_pct": 20.4}
+{"label": "r10", "test": "class", "index": "r10", "kind": "plm", "class": "leaf_filtered", "n": 36, "cpu_ms": 46.5, "wall_p50": 9, "wall_max": 27, "share_of_mix_pct": 12.2}
+{"label": "r10", "test": "class", "index": "r10", "kind": "plm", "class": "phrase", "n": 42, "cpu_ms": 59.9, "wall_p50": 33, "wall_max": 82, "share_of_mix_pct": 14.3}
+{"label": "r10", "test": "class", "index": "r10", "kind": "plm", "class": "phrase_filtered", "n": 12, "cpu_ms": 67.2, "wall_p50": 49, "wall_max": 131, "share_of_mix_pct": 4.1}
+{"label": "r10", "test": "class", "index": "r10", "kind": "plm", "class": "deep", "n": 6, "cpu_ms": 611.3, "wall_p50": 229, "wall_max": 304, "share_of_mix_pct": 2.0}
+{"label": "r10", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 1, "requests": 615, "qps": 20.4, "p50": 22, "p95": 226, "p99": 256, "max": 495, "errors": 0, "rejected": 0, "cpu_ms": 152.4, "cpu_cores": 3.11, "young_gc_ms": 39, "old_gc": 0, "heap_pct": 69}
+{"label": "r10", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 8, "requests": 1457, "qps": 48.3, "p50": 84, "p95": 878, "p99": 1185, "max": 2576, "errors": 0, "rejected": 0, "cpu_ms": 165.5, "cpu_cores": 7.98, "young_gc_ms": 135, "old_gc": 0, "heap_pct": 86}
+{"label": "r10", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 100, "requests": 1500, "qps": 47.4, "p50": 2045, "p95": 3120, "p99": 3916, "max": 5600, "errors": 0, "rejected": 0, "cpu_ms": 167.2, "cpu_cores": 7.92, "young_gc_ms": 143, "old_gc": 0, "heap_pct": 43}
+{"label": "r10", "test": "burst", "index": "r10", "kind": "plm", "n": 100, "round": 0, "ok": 100, "errors": 0, "p50": 2222, "p95": 2526, "slowest": 3315, "all_done_ms": 3318, "cpu_ms_total": 21417.840999998152, "cpu_ms": 214.2}
+{"label": "r10", "test": "burst", "index": "r10", "kind": "plm", "n": 100, "round": 1, "ok": 100, "errors": 0, "p50": 1632, "p95": 1679, "slowest": 2255, "all_done_ms": 2261, "cpu_ms_total": 14515.314999997616, "cpu_ms": 145.2}
+{"label": "r10", "test": "burst", "index": "r10", "kind": "plm", "n": 100, "round": 2, "ok": 94, "errors": 0, "p50": 1318, "p95": 1409, "slowest": 1850, "all_done_ms": 1855, "cpu_ms_total": 12357.566999997944, "cpu_ms": 123.6}
+{"label": "r10", "test": "open", "index": "r10", "kind": "plm", "rate": 15.0, "seconds": 60.0, "ok": 900, "errors": 0, "late_starts": 0, "p50": 32, "p95": 241, "p99": 308, "max": 561, "elapsed": 60.0, "cpu_ms": 161.3, "cpu_cores": 2.42}
+{"label": "r10", "test": "open", "index": "r10", "kind": "plm", "rate": 30.0, "seconds": 60.0, "ok": 1800, "errors": 0, "late_starts": 0, "p50": 36, "p95": 280, "p99": 450, "max": 722, "elapsed": 60.0, "cpu_ms": 160.5, "cpu_cores": 4.82}
+{"test": "cache", "index": "r10", "mix_addresses": 294, "size0_requests": 538, "distinct_size0_requests": 423, "most_shared": 25, "miss_took_cpu": [236, 715.4], "hit_took_cpu": [0, 0.8], "hit2_took_cpu": [0, 0.7], "after_write_took_cpu": [238, 724.7], "after_write_hit_took_cpu": [0, 0.4], "concurrent20_cpu_ms": 668, "concurrent20_latency_min_max": [653, 656], "request_cache_stats": {"memory_size_in_bytes": 7904, "evictions": 0, "hit_count": 150, "miss_count": 387}}
+{"test": "refresh", "index": "r10", "kind": "plm", "scenario": "all_name", "first_cpu_ms": 854, "first_wall_ms": 231, "repeat_cpu_ms": 809, "repeat_wall_ms": 226}
+{"test": "refresh", "index": "c10", "kind": "cur", "scenario": "all_name", "first_cpu_ms": 5838, "first_wall_ms": 5225, "repeat_cpu_ms": 5784, "repeat_wall_ms": 5152}
+{"label": "r10-cpu3", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 1, "requests": 419, "qps": 14.0, "p50": 29, "p95": 370, "p99": 485, "max": 798, "errors": 0, "rejected": 0, "cpu_ms": 183.8, "cpu_cores": 2.57, "young_gc_ms": 29, "old_gc": 0, "heap_pct": 46}
+{"label": "r10-cpu3", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 8, "requests": 504, "qps": 16.2, "p50": 296, "p95": 1493, "p99": 3803, "max": 3982, "errors": 0, "rejected": 0, "cpu_ms": 183.9, "cpu_cores": 2.98, "young_gc_ms": 188, "old_gc": 0, "heap_pct": 39}
+{"label": "r10-cpu3", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 100, "requests": 470, "qps": 13.6, "p50": 6947, "p95": 11873, "p99": 14737, "max": 18797, "errors": 0, "rejected": 0, "cpu_ms": 221.1, "cpu_cores": 3.0, "young_gc_ms": 106, "old_gc": 0, "heap_pct": 49}
+{"label": "r10-cpu3", "test": "burst", "index": "r10", "kind": "plm", "n": 100, "round": 0, "ok": 100, "errors": 0, "p50": 7742, "p95": 8319, "slowest": 9223, "all_done_ms": 9228, "cpu_ms_total": 26705.484000001103, "cpu_ms": 267.1}
+{"label": "r10-cpu3", "test": "burst", "index": "r10", "kind": "plm", "n": 100, "round": 1, "ok": 100, "errors": 0, "p50": 5778, "p95": 5868, "slowest": 6570, "all_done_ms": 6573, "cpu_ms_total": 19709.00700000301, "cpu_ms": 197.1}
+{"label": "r10-cpu3", "test": "burst", "index": "r10", "kind": "plm", "n": 100, "round": 2, "ok": 94, "errors": 0, "p50": 5658, "p95": 5839, "slowest": 6131, "all_done_ms": 6136, "cpu_ms_total": 18222.723999999464, "cpu_ms": 182.2}
+{"label": "r10-cpu3", "test": "open", "index": "r10", "kind": "plm", "rate": 5.0, "seconds": 60.0, "ok": 300, "errors": 0, "late_starts": 0, "p50": 34, "p95": 444, "p99": 676, "max": 1209, "elapsed": 59.8, "cpu_ms": 259.0, "cpu_cores": 1.3}
+{"label": "r10-cpu3", "test": "open", "index": "r10", "kind": "plm", "rate": 10.0, "seconds": 60.0, "ok": 600, "errors": 0, "late_starts": 0, "p50": 45, "p95": 934, "p99": 1422, "max": 1839, "elapsed": 60.3, "cpu_ms": 221.4, "cpu_cores": 2.2}
+{"label": "c10-cpu3", "test": "conc", "index": "c10", "kind": "cur", "what": "mix", "n": 8, "requests": 123, "qps": 3.4, "p50": 776, "p95": 11002, "p99": 16496, "max": 17086, "errors": 0, "rejected": 0, "cpu_ms": 861.9, "cpu_cores": 2.96, "young_gc_ms": 94, "old_gc": 0, "heap_pct": 83}
+{"label": "c10-cpu3", "test": "burst", "index": "c10", "kind": "cur", "n": 100, "round": 0, "ok": 100, "errors": 0, "p50": 33771, "p95": 38231, "slowest": 42184, "all_done_ms": 42188, "cpu_ms_total": 124823.83399999887, "cpu_ms": 1248.2}
+{"label": "c10-cpu3", "test": "burst", "index": "c10", "kind": "cur", "n": 100, "round": 1, "ok": 100, "errors": 0, "p50": 24628, "p95": 31342, "slowest": 33581, "all_done_ms": 33585, "cpu_ms_total": 99501.52600000054, "cpu_ms": 995.0}
+{"label": "c10-cpu3", "test": "burst", "index": "c10", "kind": "cur", "n": 100, "round": 2, "ok": 94, "errors": 0, "p50": 19075, "p95": 25406, "slowest": 27661, "all_done_ms": 27668, "cpu_ms_total": 82423.18100000173, "cpu_ms": 824.2}
+{"label": "r10-w50-cold", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 8, "requests": 1429, "qps": 46.6, "p50": 92, "p95": 846, "p99": 1165, "max": 2650, "errors": 0, "rejected": 0, "cpu_ms": 169.9, "cpu_cores": 7.92, "young_gc_ms": 110, "old_gc": 0, "heap_pct": 44}
+{"label": "r10-tok-static", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 8, "requests": 3211, "qps": 105.0, "p50": 42, "p95": 241, "p99": 493, "max": 2416, "errors": 0, "rejected": 0, "cpu_ms": 75.2, "cpu_cores": 7.9, "young_gc_ms": 200, "old_gc": 0, "heap_pct": 88}
+{"label": "r10-w50-tok-1s", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 8, "requests": 4470, "qps": 74.4, "p50": 58, "p95": 378, "p99": 837, "max": 2509, "errors": 0, "rejected": 0, "cpu_ms": 105.2, "cpu_cores": 7.83, "young_gc_ms": 373, "old_gc": 0, "heap_pct": 67}
+{"label": "r10-w50-facets-1s", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 8, "requests": 5730, "qps": 95.4, "p50": 43, "p95": 298, "p99": 732, "max": 2025, "errors": 0, "rejected": 0, "cpu_ms": 80.3, "cpu_cores": 7.67, "young_gc_ms": 336, "old_gc": 0, "heap_pct": 80}
+{"label": "r10-w50-tok-5s", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 8, "requests": 5984, "qps": 97.3, "p50": 46, "p95": 267, "p99": 587, "max": 2395, "errors": 0, "rejected": 0, "cpu_ms": 80.0, "cpu_cores": 7.79, "young_gc_ms": 461, "old_gc": 0, "heap_pct": 49}
+{"label": "r10-w50-facets-5s", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 8, "requests": 9200, "qps": 153.4, "p50": 27, "p95": 182, "p99": 422, "max": 2082, "errors": 0, "rejected": 0, "cpu_ms": 49.4, "cpu_cores": 7.58, "young_gc_ms": 373, "old_gc": 0, "heap_pct": 75}
+{"label": "r10-w50-tok-30s", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 8, "requests": 6350, "qps": 105.4, "p50": 42, "p95": 240, "p99": 532, "max": 2596, "errors": 0, "rejected": 0, "cpu_ms": 75.7, "cpu_cores": 7.98, "young_gc_ms": 410, "old_gc": 0, "heap_pct": 83}
+{"label": "r10-w50-facets-30s", "test": "conc", "index": "r10", "kind": "plm", "what": "mix", "n": 8, "requests": 11940, "qps": 199.0, "p50": 20, "p95": 155, "p99": 305, "max": 738, "errors": 0, "rejected": 0, "cpu_ms": 39.6, "cpu_cores": 7.88, "young_gc_ms": 349, "old_gc": 0, "heap_pct": 53}
+{"label": "c10-w50-cold", "test": "conc", "index": "c10", "kind": "cur", "what": "mix", "n": 8, "requests": 355, "qps": 10.8, "p50": 232, "p95": 5316, "p99": 5475, "max": 5626, "errors": 0, "rejected": 0, "cpu_ms": 700.1, "cpu_cores": 7.55, "young_gc_ms": 90, "old_gc": 0, "heap_pct": 43}
+{"label": "recheck", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_name", "took": 204, "min": 202, "max": 210, "cpu_ms": 788.7}
+{"label": "recheck", "test": "single", "index": "h10", "kind": "plm", "scenario": "root_name", "took": 43, "min": 43, "max": 52, "cpu_ms": 189.5}
+{"label": "recheck", "test": "single", "index": "h10", "kind": "plm", "scenario": "leaf_name", "took": 9, "min": 8, "max": 13, "cpu_ms": 52.7}
+{"label": "recheck", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_name", "took": 223, "min": 220, "max": 227, "cpu_ms": 784.3}
+{"label": "recheck", "test": "single", "index": "r10", "kind": "plm", "scenario": "root_name", "took": 43, "min": 43, "max": 50, "cpu_ms": 166.5}
+{"label": "recheck", "test": "single", "index": "r10", "kind": "plm", "scenario": "leaf_name", "took": 7, "min": 7, "max": 10, "cpu_ms": 40.4}
+{"label": "recheck", "test": "single", "index": "h10", "kind": "plm", "scenario": "all_name", "took": 203, "min": 202, "max": 211, "cpu_ms": 808.5}
+{"label": "recheck", "test": "single", "index": "h10", "kind": "plm", "scenario": "root_name", "took": 44, "min": 43, "max": 45, "cpu_ms": 184.1}
+{"label": "recheck", "test": "single", "index": "h10", "kind": "plm", "scenario": "leaf_name", "took": 9, "min": 8, "max": 13, "cpu_ms": 53.1}
+{"label": "recheck", "test": "single", "index": "r10", "kind": "plm", "scenario": "all_name", "took": 222, "min": 221, "max": 228, "cpu_ms": 782.2}
+{"label": "recheck", "test": "single", "index": "r10", "kind": "plm", "scenario": "root_name", "took": 44, "min": 43, "max": 52, "cpu_ms": 167.5}
+{"label": "recheck", "test": "single", "index": "r10", "kind": "plm", "scenario": "leaf_name", "took": 7, "min": 6, "max": 11, "cpu_ms": 41.3}
+{"label": "recheck", "test": "single", "index": "t_orig1", "kind": "cur", "scenario": "all_name", "took": 528, "min": 524, "max": 541, "cpu_ms": 535.4}
+{"label": "recheck", "test": "single", "index": "t_orig1", "kind": "cur", "scenario": "root_name", "took": 116, "min": 115, "max": 127, "cpu_ms": 119.0}
+{"label": "recheck", "test": "single", "index": "h1", "kind": "plm", "scenario": "all_name", "took": 13, "min": 13, "max": 17, "cpu_ms": 79.0}
+{"label": "recheck", "test": "single", "index": "h1", "kind": "plm", "scenario": "root_name", "took": 4, "min": 3, "max": 5, "cpu_ms": 25.1}
+{"test": "sweep", "index": "r10", "requests": 362, "cpu_ms_total": 7078, "seconds": 3.0}

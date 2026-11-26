@@ -143,8 +143,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def _load(name):
-    """A sibling skill script (ao-run) imported by path, never copied."""
-    path = os.path.join(HERE, '..', 'ao-run', name + '.py')
+    """A module of tools/ash imported by path, never copied."""
+    path = os.path.join(HERE, '..', '..', '..', 'tools', 'ash', name + '.py')
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -2659,7 +2659,7 @@ LIMITS = {'fix': 5, 'issue': 3}
 CLASSES = ('corrective', 'planned', 'product')
 ALLOWED_FILES = [re.compile(pattern) for pattern in (
     r'CLAUDE\.md', r'apps/[^/]+/CLAUDE\.md', r'\.claude/skills/[^/]+/SKILL\.md', r'\.claude/agents/[^/]+\.md',
-    r'docs/features/(?:ao-run|prepare-epic|groom|agent-tester-ux|retro)/spec\.md',
+    r'docs/features/(?:prepare-epic|groom|agent-tester-ux|retro)/spec\.md',
     r'docs/adr/agentic-software-house\.md')]
 
 

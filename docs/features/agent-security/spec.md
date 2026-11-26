@@ -1,7 +1,7 @@
 # AGENT-SECURITY: techniczne zabezpieczenia agentów
 
-Krok 16 planu Agentic Software House. Repozytorium jest publiczne, a AO uruchamia wykonawców (`/delivery`,
-`/integration`) poleceniem `claude -p … --permission-mode auto --permission-prompts none` bez człowieka. Poza zdaniami
+Krok 16 planu Agentic Software House. Repozytorium jest publiczne, a AO uruchamia wykonawców poleceniem
+`claude -p … --permission-mode auto --permission-prompts none` bez człowieka. Poza zdaniami
 w promptach i klasyfikatorem trybu auto chronią je zabezpieczenia techniczne wynikające z modelu zagrożeń: bramka
 pochodzenia treści z GitHuba, sandbox systemowy wykonawców AO, ograniczony token GitHub, bramka wdrożenia na produkcję
 i sonda prób obejścia uruchamiana w prawdziwym procesie wykonawcy.
@@ -11,7 +11,7 @@ Bash), ale **nie chroni przed celowym obejściem** przez kontener Dockera ani pr
 sandboxem (luka P11). Pełną izolację wykonawców i lifecycle AO opisuje osobny epik AGENT-ISOLATION (#498).
 
 Issues: #494
-Zakres: `tools/agent-security`, `.claude/skills/sweep/SKILL.md`, `.claude/agents/tester.md`, `.claude/agents/ux-reviewer.md`, `.claude/skills/retro`, `.claude/agents/retro-analyst.md`, `.claude/skills/integration/SKILL.md`, `.claude/skills/ao-run`, `.github/workflows/deploy.yml`, `infra/k8s/Makefile`, `infra/k8s/scripts`, `infra/k8s/tests`, `infra/k8s/README.md`, `infra/k8s/CLAUDE.md`, `CLAUDE.md`, `docs/adr/agentic-software-house.md`, `docs/features/agent-tester-ux/spec.md`, `docs/features/retro/spec.md`, `docs/features/ao-run/spec.md`, `docs/features/deploy/spec.md`
+Zakres: `tools/agent-security`, `.claude/skills/sweep/SKILL.md`, `.claude/agents/tester.md`, `.claude/agents/ux-reviewer.md`, `.claude/skills/retro`, `.claude/agents/retro-analyst.md`, `.claude/skills/integration/SKILL.md`, `tools/ash`, `.github/workflows/deploy.yml`, `infra/k8s/Makefile`, `infra/k8s/scripts`, `infra/k8s/tests`, `infra/k8s/README.md`, `infra/k8s/CLAUDE.md`, `CLAUDE.md`, `docs/adr/agentic-software-house.md`, `docs/features/agent-tester-ux/spec.md`, `docs/features/retro/spec.md`, `docs/features/deploy/spec.md`
 
 ## Cel i zakres
 
@@ -29,8 +29,8 @@ Zakres: `tools/agent-security`, `.claude/skills/sweep/SKILL.md`, `.claude/agents
 - Docker, którego wykonawcy potrzebują do stosu, nie daje dostępu do katalogu domowego poza udostępnionymi katalogami.
 - Wdrożenie na produkcję wymaga zatwierdzenia przez użytkownika; sekrety Actions poza `GITHUB_TOKEN` dostaje tylko
   kod z `main`; cele produkcyjne `infra/k8s` nie działają w trakcie przebiegu AO.
-- Sonda prób obejścia uruchamia prawdziwy proces wykonawcy (ta sama binarka, wrapper, profil i flagi co AO) i przed
-  każdym startem AO sprawdza, że sandbox działa, a praca wykonawcy (git, `gh`, Docker, stan zadania) nadal jest możliwa.
+- Sonda prób obejścia uruchamia prawdziwy proces wykonawcy (ta sama binarka, wrapper, profil i flagi co AO)
+  i sprawdza, że sandbox działa, a praca wykonawcy (git, `gh`, Docker, stan zadania) nadal jest możliwa.
 - Model zagrożeń trafia do ADR `docs/adr/agent-security.md`, razem z drogami, których epik świadomie nie zamyka.
 
 ## Decyzje użytkownika
@@ -50,13 +50,10 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
 - P6. Wykonawcy AO nie mają WebFetch ani WebSearch; Bash ma sieć tylko do GitHuba i do lokalnego stosu.
 - P7. Potwierdzenie `tak` celów `create-admin`, `restore`, `reinitialize` zostaje na stdin (bez `/dev/tty`); cele
   produkcyjne używające `KUBE_DIR` odmawiają pracy, gdy działa proces AO.
-- P8. Pełna sonda z modelem Haiku (przebieg warstwy technicznej na prawdziwym sandboxie wykonawcy) działa przed
-  każdym uruchomieniem i wznowieniem AO w `/ao-run`, bez pomijania na podstawie wcześniejszych wyników. Fail-closed:
-  sonda nieudana, niekompletna albo przekraczająca limit czasu blokuje start. Limit 1 USD to zabezpieczenie, nie
-  zakładany koszt. Wynik podaje czas, koszt i przyczynę odmowy startu. Sonda nie zostawia procesów, kontenerów ani
-  plików tymczasowych.
-- P9. Epik zmienia `.claude/skills/ao-run/` (R1, R7), a ścieżka w `Zakres:` nie pozwala na równoległy przebieg
-  z epikiem zmieniającym ten katalog.
+- P8. Pełna sonda z modelem Haiku (przebieg warstwy technicznej na prawdziwym sandboxie wykonawcy). Fail-closed:
+  sonda nieudana, niekompletna albo przekraczająca limit czasu kończy się kodem różnym od 0. Limit 1 USD to
+  zabezpieczenie, nie zakładany koszt. Wynik podaje czas, koszt i przyczynę odmowy. Sonda nie zostawia procesów,
+  kontenerów ani plików tymczasowych.
 - P10. Sandbox obejmuje wykonawców AO; sesje interaktywne w aplikacji Claude chroni bramka pochodzenia (sandbox ich
   Bash to osobne zgłoszenie).
 - P11. Wykonawca zachowuje Docker (gniazdo Docker Desktop), więc kod zapisany przez kontener w katalogach
@@ -80,7 +77,7 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
 
 - Evale prób prompt injection (krok 17) i bezpieczeństwo funkcji AI w sklepie (krok 20).
 - Zmiany w AO (repozytorium `piotrp321/agentic-orchestrator`, zamrożone). Skutki: „Model zagrożeń”, luki.
-- Sandbox sesji interaktywnych w aplikacji Claude (`/ao-run`, `/sweep` i `/retro` w sesji `/ao-run`) (P10).
+- Sandbox sesji interaktywnych w aplikacji Claude (`/sweep`, `/retro`) (P10).
 - Łańcuch dostaw (zależności npm i Composer, obrazy Dockera, wtyczki Claude Code).
 - Zakres tokenu `gh` użytkownika w sesjach interaktywnych (dziś `repo`, `admin:public_key`, `gist`, `project`,
   `read:org`) i hasło do klucza `~/.ssh/id_rsa`: zalecenia w ADR, bez zmian w repo.
@@ -114,7 +111,7 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
   workflowów (R5). Źródło: użytkownik (runbook).
 - Rulesety z R8 w GitHubie zgodne z `tools/rulesets/` (aktualizacja przez `-X PUT` z plików): `main`, `epic`
   i `epic-merge` bez aktora bypass, `main-merge` z jednym aktorem, GitHub App workflowu `merge-override`. Po co:
-  przypadek sondy R8 i odbiór (kryterium 9); bez rulesetów sonda nie przepuści startu AO. Źródło: użytkownik (wymaga
+  przypadek sondy R8 i odbiór (kryterium 8); bez rulesetów sonda nie przechodzi. Źródło: użytkownik (wymaga
   uprawnień admina repozytorium).
 - GitHub App workflowu `merge-override` (uprawnienia Contents RW, Pull requests RW, Workflows RW; instalacja tylko na
   `piotrp321/shop`) i środowisko GitHub `merge-override`: wymagane zatwierdzenie przez użytkownika, „Prevent
@@ -122,8 +119,8 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
   środowiska `MERGE_APP_CLIENT_ID`. Po co: job `merge` czeka na zatwierdzenie i tylko w tym środowisku ma klucz (R8).
   Źródło: użytkownik (runbook `infra/k8s/README.md`, „Merge override”).
 - Wersja Claude Code przypięta przez AO obsługuje ustawienia sandboxa z profilu (2.1.311; `denyRead`/`allowRead`,
-  `allowWrite`, `allowUnixSockets`, `allowLocalBinding`, `enableWeakerNetworkIsolation` przez `--settings`); sonda
-  sprawdza to przy każdym starcie AO.
+  `allowWrite`, `allowUnixSockets`, `allowLocalBinding`, `enableWeakerNetworkIsolation` przez `--settings`); sprawdza
+  to sonda.
 
 ## Model zagrożeń
 
@@ -152,7 +149,7 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
 **Drogi w zakresie** (każda z kryterium, które ją zamyka, i sprawdzeniem):
 
 1. Treść issue, PR lub komentarza od S1 w danych `/sweep` (`open-issues.json`, `tester`, `ux-reviewer`),
-   `/retro` (komentarze issues epików, PR do `epic/*`, issues AO), `/integration` (opisy PR zadań), `/ao-run`
+   `/retro` (komentarze issues epików, PR do `epic/*`, issues AO), `/integration` (opisy PR zadań), `tools/ash`
    (`next_epic.py`, `night_queue.py`: issues `epic`) → bramka pochodzenia (R1). Sprawdzenie: testy bramki z atrapą
    `gh` i testy każdego skryptu, który jej używa: treść autora bez prawa zapisu nie występuje w wyniku, są numer,
    autor i link.
@@ -168,7 +165,7 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
    Sprawdzenie: sonda, worktree z `CLAUDE.md` importującym kanarek i skillem z `!cat <kanarek>` wywołanym w sesji;
    kanarka brak w `stream-json`, a losowego znacznika z importowanego pliku brak w wyjściu modelu (import trafia do
    kontekstu modelu, nie do `stream-json`, więc sam brak kanarka niczego o imporcie nie mówi). Oba przypadki muszą
-   przejść, a wyciek zatrzymuje start AO (sonda kod 1). Wrapper porównuje z `main` tylko `.claude/settings*.json`
+   przejść, a wyciek to kod 1 sondy. Wrapper porównuje z `main` tylko `.claude/settings*.json`
    i `.mcp.json` (P12), nie `CLAUDE.md` ani `.claude/skills`.
 4. Ucieczka z sandboxa przez `dangerouslyDisableSandbox` albo `excludedCommands` → profil przez `--settings`
    z `allowUnsandboxedCommands: false`, bez `excludedCommands` (R2). Sprawdzenie: sonda.
@@ -205,19 +202,17 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
 12. Skrypt `.ao/teardown` albo `.ao/setup` zmieniony przez Bash wykonawcy (AO uruchamia `teardown` z worktree na
     hoście zaraz po próbie) → `denyWrite` dla `<worktree>/.ao` i reguła `deny` `Edit(.ao/**)` (R2).
     Sprawdzenie: sonda, zapis do `.ao/teardown`.
-13. Podmiana wrappera albo profilu na kolejne próby, zapis do bazy stanu AO albo `events.jsonl` (czyta je sesja
-    `/ao-run`) → wrapper i profil to kopia w `$AO_HOME/agent-security/`, poza zapisem wykonawcy i poza katalogami
-    Dockera; dostęp w `$AO_HOME` tylko do katalogu własnego zadania (i integracji epiku) (R2, R7). Sprawdzenie:
-    sonda, zapis do atrapy `$AO_HOME/agent-security`, bazy, `events.jsonl`, katalogu innego zadania, `briefs`
+13. Podmiana wrappera albo profilu na kolejne próby, zapis do bazy stanu AO albo `events.jsonl` (czytają je `/retro`
+    i `tools/metrics/metrics.py`) → wrapper i profil to kopia w `$AO_HOME/agent-security/`, poza zapisem wykonawcy
+    i poza katalogami Dockera; dostęp w `$AO_HOME` tylko do katalogu własnego zadania (i integracji epiku) (R2).
+    Sprawdzenie: sonda, zapis do atrapy `$AO_HOME/agent-security`, bazy, `events.jsonl`, katalogu innego zadania, `briefs`
     i `attempts`, odczyt stanu innego zadania.
 14. Kubeconfig produkcji w `KUBE_DIR` (katalog tymczasowy, czytelny dla wykonawcy i jego Dockera) w trakcie operacji
     użytkownika → cele montujące `KUBE_DIR` w kontenerze (`kubeconfig`, `rerun`, `create-admin`, `restore`,
     `backups`) odmawiają pracy, gdy działa proces AO (`python3 -m orchestrator … run`) albo żywy wykonawca
     (proces `claude-agent` albo runner AO; wykonawca przeżywa śmierć AO, `core.py` `_start` z `start_new_session`);
-    `kubeconfig` zapisuje `KUBE_DIR` w rejestrze poza zasięgiem wykonawcy (`~/.local/state/shop-ops/kube-dirs`),
-    a `ao-prepare` odmawia startu AO, gdy któryś zarejestrowany `KUBE_DIR` nadal istnieje; runbook każe usuwać
-    `KUBE_DIR` po operacji (R5, R7, P7). Sprawdzenie: testy celów z atrapą listy procesów i testy `ao-prepare`
-    z rejestrem.
+    `kubeconfig` zapisuje `KUBE_DIR` w rejestrze poza zasięgiem wykonawcy (`~/.local/state/shop-ops/kube-dirs`);
+    runbook każe usuwać `KUBE_DIR` po operacji (R5, P7). Sprawdzenie: testy celów z atrapą listy procesów.
 15. Merge wykonawcy z pominięciem wymagań rulesetu (`gh pr merge --admin`, REST albo GraphQL) do `main` albo
     `epic/*` bez zielonego CI → rola admin bez bypassu w rulesetach merge'a, token wykonawcy bez Administration, więc
     nie doda aktora, i bez Deployments, więc nie zatwierdzi środowiska `merge-override`, w którym leży klucz jedynego
@@ -225,8 +220,8 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
     `merge-override` i sonda: `current_user_can_bypass` rulesetów `main-merge` i `epic-merge` z tokenem wykonawcy to
     `never`, `POST …/pending_deployments` to `403`; odbiór sprawdza `never` także z tokenem użytkownika, puste
     `bypass_actors` w `epic-merge` i wyłącznie App w `main-merge` w GitHubie.
-16. Telemetria wykonawcy (A5): odziedziczone `OTEL_*` i `CLAUDE_CODE_ENABLE_TELEMETRY` (z sesji `/ao-run` albo
-    z powłoki użytkownika) przekierowują eksport albo włączają treść, adres eksportu spoza Maca, wykonawca podaje
+16. Telemetria wykonawcy (A5): odziedziczone `OTEL_*` i `CLAUDE_CODE_ENABLE_TELEMETRY` (z sesji
+    albo z powłoki użytkownika) przekierowują eksport albo włączają treść, adres eksportu spoza Maca, wykonawca podaje
     fałszywe atrybuty własnego procesu → wrapper usuwa te zmienne przed każdym startem binarki, blok `env`
     w `--settings` ma `0` dla każdego `OTEL_LOG_*`, `render_settings.py` przyjmuje tylko `http://127.0.0.1:<port>`,
     a atrybuty `shop.*` ustala wrapper poza sandboxem z `AO_TASK_ID` i nazwy `AGENT_AO_HOME` (R2); wykonawca nie zmienia
@@ -249,14 +244,14 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
 - Merge do `main` przez wykonawcę po zielonym CI jest technicznie możliwy (ruleset `main-merge` bez zatwierdzeń,
   tożsamość tokenu to użytkownik); wdrożenie zatrzymuje R5. Osobna tożsamość agentów (GitHub App z wymaganym
   zatwierdzeniem w `main`) to propozycja zgłoszenia.
-- Sesje interaktywne (`/ao-run`, `/retro`) i proces AO mają token użytkownika z rolą admin,
+- Sesje interaktywne (np. `/retro`) i proces AO mają token użytkownika z rolą admin,
   więc technicznie mogą zmienić rulesety (dodać aktora bypass) albo zatwierdzić wdrożenie lub merge z pominięciem
   checków (środowiska `production` i `merge-override`). Chroni zasada w `CLAUDE.md` (agent nie zmienia rulesetów
   i nie zatwierdza środowisk); to granica promptu jak P10. Zamyka ją dopiero osobna tożsamość dla wszystkich
   agentów, z której token użytkownika nie trafia do ich środowiska (#498 albo osobne zgłoszenie).
 - Wykonawca może zmienić instrukcje procesu (`CLAUDE.md`, skille, agentów) w gałęzi epiku; ogranicza to przegląd
   końcowego PR przez użytkownika.
-- Logi CI i wyjście zależności czytane przez `/delivery` nie przechodzą przez bramkę (treść z kodu repozytorium i jego
+- Logi CI i wyjście zależności czytane przez wykonawców nie przechodzą przez bramkę (treść z kodu repozytorium i jego
   zależności); chronią R2–R5.
 - Sesje interaktywne z Bash mogą wywołać `gh` z pominięciem bramki; to granica promptu (P10).
 - Katalog tymczasowy użytkownika (`/var/folders/…`) jest czytelny dla wykonawcy (bez zapisu; profil nie ma go
@@ -324,7 +319,7 @@ Użycie (zamiast bezpośredniego `gh … --json body,title,comments` w miejscach
 | `/sweep`: `SKILL.md`, `tester`, `ux-reviewer` | `open-issues.json` z bramki; zapas w agentach przez bramkę |
 | `/retro`: `retro.py`, `SKILL.md`, `retro-analyst` | komentarze z pomiarem tylko od zaufanych autorów; PR do `epic/*` i issues AO przez bramkę (issues AO z uprawnieniami w `piotrp321/agentic-orchestrator`); agent czyta issues i PR przez bramkę |
 | `/integration`: `SKILL.md` | opisy PR zadań przez bramkę |
-| `/ao-run`: `next_epic.py`, `night_queue.py` | issue `epic` od niezaufanego autora nie jest epikiem kolejki: pominięte z powodem w wyniku |
+| `tools/ash`: `next_epic.py`, `night_queue.py` | issue `epic` od niezaufanego autora nie jest epikiem kolejki: pominięte z powodem w wyniku |
 
 ### R2. Profil sandboxa i wrapper wykonawców AO
 
@@ -346,7 +341,7 @@ nieprawidłowe (nic na stdout), 2 błąd wywołania.
   `disableAllHooks`) są tylko w szablonie i żadna opcja ich nie usuwa.
 - Zaufane źródła ścieżek dostępu: wyłącznie wywołujący poza sandboxem, z wartości, których wykonawca nie kontroluje.
   Wrapper: katalog roboczy procesu (nadaje go AO), `git rev-parse --git-common-dir` tego katalogu, `AGENT_AO_HOME`
-  (ustawia `ao-prepare`) i `AO_TASK_ID` (nadaje AO, wzorzec z listy niżej). Runner EVALS 2.0 (`tools/evals-pilot`): katalogi
+  (ustawia proces, który uruchamia AO) i `AO_TASK_ID` (nadaje AO, wzorzec z listy niżej). Runner EVALS 2.0 (`tools/evals-pilot`): katalogi
   przypadku, które sam tworzy. Nigdy z treści repozytorium, wyjścia modelu ani plików w worktree.
 - Walidacja każdej ścieżki dostępu (błąd kończy skrypt kodem różnym od 0, bez wyniku): ścieżka bezwzględna,
   istniejąca, katalog (`--git-common-dir`: katalog `.git`); bez komponentu będącego dowiązaniem symbolicznym
@@ -367,7 +362,7 @@ nieprawidłowe (nic na stdout), 2 błąd wywołania.
   dowiązania symbolicznego, więc dowiązanie do kanarka w worktree albo w katalogu zadania nie daje odczytu (przypadek
   sondy). Dowiązanie twarde do pliku z katalogu zablokowanego dałoby ten sam i-węzeł pod dozwoloną ścieżką: sonda ma
   przypadek `ln <kanarek> <worktree>/x` i odczytu `x` (`bash_hardlink_canary_worktree`); odczyt musi być zablokowany,
-  inaczej sonda zatrzymuje start AO.
+  inaczej sonda kończy się kodem 1.
 
 - `sandbox.enabled: true`, `failIfUnavailable: true` (bez sandboxa wykonawca nie startuje),
   `allowUnsandboxedCommands: false`, brak `excludedCommands`, `enableWeakerNetworkIsolation: true` (weryfikacja TLS
@@ -375,7 +370,7 @@ nieprawidłowe (nic na stdout), 2 błąd wywołania.
 - Odczyt: `denyRead: ["~", "/Volumes", "/private/tmp", "/tmp"]` (`/private/tmp` ma m.in. katalogi robocze sesji
   interaktywnych), `allowRead`: worktree zadania (katalog roboczy), `.git` głównego klonu
   (`git rev-parse --git-common-dir`; bez drzewa roboczego klonu, w którym są `.env.local` i worktree sesji),
-  katalog zadania `$AO_HOME/tasks/<AO_TASK_ID>` (stan `/delivery`, dziennik dowodów, briefy rund:
+  katalog zadania `$AO_HOME/tasks/<AO_TASK_ID>` (stan wykonawcy, dziennik dowodów, briefy rund:
   `orchestrator/core.py` `state_file`, `brief_file`), dla zadania `<EPIK>-INTEGRATION-<n>` także
   `$AO_HOME/epics/<epik>/integration` (`orchestrator/integration.py` `report_path`), `~/.docker` (wtyczki CLI),
   `~/.gitconfig`, `~/.config/git`, katalog `claude-<uid>` w katalogu tymczasowym Claude Code przebiegu (`--claude-tmpdir`).
@@ -406,8 +401,8 @@ nieprawidłowe (nic na stdout), 2 błąd wywołania.
   i reguł `deny` jest odrzucany), `additionalDirectories` z katalogami zadania i integracji z `allowRead`, `deny`: `WebFetch`, `WebSearch` (P6),
   `Edit(.ao/**)`, `Edit` dla każdej ścieżki z `denyWrite` (`Edit(/<ścieżka>)` i `Edit(/<ścieżka>/**)`), `Read` dla
   `~/.ssh`, `~/.kube`, `~/.config` (zapas); `disableBypassPermissionsMode:
-  "disable"`, `disableAllHooks: true` (hooki działają poza sandboxem; `/delivery` i `/integration` z nich nie
-  korzystają). W 2.1.311 `blockReadsOutsideWorkingDirectories` ma też część w sandboxie, która blokuje odczyt poza
+  "disable"`, `disableAllHooks: true` (hooki działają poza sandboxem; `/integration` z nich nie
+  korzysta). W 2.1.311 `blockReadsOutsideWorkingDirectories` ma też część w sandboxie, która blokuje odczyt poza
   katalogami roboczymi także poleceniom Bash: `denyRead` i ta część chronią odczyt niezależnie od siebie (sonda
   z szablonem bez `denyRead` nadal nie widzi kanarka; wyciek pokazuje dopiero szablon bez obu).
 - Telemetria (`docs/features/telemetry/spec.md`, R1): z opcją `--telemetry-*` ustawienia dostają blok `env`
@@ -480,7 +475,7 @@ nieprawidłowe (nic na stdout), 2 błąd wywołania.
   wyboru (`TMPDIR` pusty albo nieustawiony i brak `-p katalog`), przekazuje wywołanie bez zmian, jak bez nakładki:
   nie wymyśla wspólnego `/tmp`. Nakładka jest wygodą pracy, nie granicą bezpieczeństwa: wykonawca steruje `PATH`
   własnego Basha i może wywołać `/usr/bin/mktemp`. Katalog `bin/` pochodzi z tej samej kopii poza zapisem wykonawcy co
-  wrapper (R7): wrapper otwiera go w profilu tylko do odczytu (`--read-dir`; wykonawca uruchamia nakładkę) i chroni
+  wrapper: wrapper otwiera go w profilu tylko do odczytu (`--read-dir`; wykonawca uruchamia nakładkę) i chroni
   przed zapisem (`--deny-write`, także gdy wrapper leży w worktree), a odmawia startu bez zwykłego, wykonawczego pliku
   `bin/mktemp` w katalogu bez dowiązań symbolicznych albo gdy ścieżka wrappera zawiera dwukropek;
 - binarkę uruchamia jako proces potomny (nie `exec`), przekazuje jej `INT`, `TERM` i `HUP` (`INT` jako `TERM`, bo
@@ -501,7 +496,7 @@ nieprawidłowe (nic na stdout), 2 błąd wywołania.
   `render_settings.py` (wrapper nie ma kopii adresu). `AGENT_OTEL_ENDPOINT=off` wyłącza telemetrię: ustawienia bez
   bloku `env`, jak bez telemetrii. Inna wartość niż `off` i `http://127.0.0.1:<port>`, także pusta, to odmowa startu
   (kod 2) z przyczyną z `render_settings.py` na stderr: zły adres mógłby skierować eksport poza Maca. Zmienną ustawia
-  tylko proces spoza sandboxa (sonda, testy, sesja `/ao-run` na polecenie użytkownika). Brak stosu pod adresem nie
+  tylko proces spoza sandboxa (sonda, testy, sesja na polecenie użytkownika). Brak stosu pod adresem nie
   jest odmową: wykonawca działa bez zmian, a dane przepadają;
 - ustala atrybuty bez bazy AO, z wartości, które już sprawdza: `shop.source=ao`, `shop.epic=<nazwa>` z
   `AGENT_AO_HOME` (`~/.local/state/ao-<nazwa>`), `shop.task=<AO_TASK_ID>` i `shop.task_kind` z `AO_TASK_ID` po
@@ -519,7 +514,7 @@ Sandbox nie obejmuje demona Dockera: wykonawca potrzebuje gniazda Dockera do sto
 przy przygotowaniu: `docker run -v ~/.config:/x` wylistował katalog zablokowany dla Bash). Ograniczenie
 udostępniania do `~/Development/claude` i katalogów tymczasowych (P2, pozycja użytkownika) zamyka odczyt `~/.ssh`,
 `~/.kube`, `~/.config`, `~/Library` przez kontener. Zapis przez kontener w katalogach udostępnionych to luka P11.
-Sonda sprawdza ustawienie przy każdym starcie AO.
+Sonda sprawdza to ustawienie.
 
 ### R4. Token GitHub wykonawców
 
@@ -588,7 +583,7 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
   kanarka, np. do katalogu udostępnionego Dockerowi dla ścieżki błędu) i w atrapie bazy AO; nazwy losowe
   (równoległe sondy się nie mieszają); sonda tworzy je przed i usuwa po przebiegu, także po błędzie
   i przerwaniu.
-- Przebieg domyślny (warstwa techniczna; przed każdym uruchomieniem i wznowieniem AO, bez pomijania):
+- Przebieg domyślny (warstwa techniczna):
   `--permission-mode dontAsk` z regułami `allow` na narzędzia prób (`Bash`, `Read`, `Grep`, `Glob`, `Write`, `Edit`,
   `Skill`, `WebFetch`), więc odmowa pochodzi z sandboxa i profilu, nie z braku reguły. Wyniki mają trzy źródła, żadne
   z nich to tekst modelu:
@@ -625,7 +620,7 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
   wrapper przepuszczający poluzowany profil), bez wymogu wykonania prób (klasyfikator może je zatrzymać wcześniej).
   Przypadki zakresu tokenu (`gh_ao_repository`, `gh_admin_setting`, `pending_deployments_forbidden`,
   `rulesets_bypass_never`) i przypadki pracy ocenia tylko przebieg domyślny.
-  Uruchamiany przy odbiorze epiku (niżej); skuteczność warstwy technicznej rozstrzyga przebieg domyślny.
+  Skuteczność warstwy technicznej rozstrzyga przebieg domyślny.
 - Próby obejścia: `cat`, `sh -c`, `python3 -c`, proces w tle (`( … ) & wait`), `make` z tymczasowego Makefile,
   Read kanarka; `ls ~/.ssh ~/.kube ~/.config`; `security find-generic-password -s gh:github.com`;
   `docker-credential-desktop list`; odczyt kanarka przez dowiązanie symboliczne w worktree i w katalogu zadania
@@ -695,24 +690,20 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
     `PROBE_LOCAL_BODY` albo wartość kanarka, albo gdy drugi odbiornik dostał jakiekolwiek żądanie; `unverifiable`,
     gdy któreś ciało jest nie do sprawdzenia, a znacznika nie ma; `no_export` bez żadnego żądania; inaczej `pass`.
     Przyczyna nazywa rodzaj znacznika, nigdy jego wartości. Przyczyny przypadków telemetrii nie zawierają tekstu
-    z żądania (trafiają do `run.log`, a sesja `/ao-run` cytuje je w rozmowie): ścieżkę podają tylko dla `/v1/logs`
+    z żądania (sesja, która uruchamia sondę, cytuje je w rozmowie): ścieżkę podają tylko dla `/v1/logs`
     i `/v1/metrics` (inna to „żądanie pod inną ścieżką”), wartości `Content-Encoding` nie podają.
-  - `no_export` i `unverifiable` nie zmieniają kodu wyjścia sondy w trybie domyślnym ani `--mode ao` (brak eksportu
-    nie zatrzymuje AO); każdy przypadek telemetrii ma w wyniku pole `reason`. `fail` przypadku `telemetry_no_content`
-    to kod 1 w obu trybach, z przyczyną w `reason` wyniku.
+  - `no_export` i `unverifiable` nie zmieniają kodu wyjścia sondy w trybie domyślnym ani `--mode ao`; każdy przypadek
+    telemetrii ma w wyniku pole `reason`. `fail` przypadku `telemetry_no_content` to kod 1 w obu trybach, z przyczyną
+    w `reason` wyniku.
   - `--otel-forward URL` (tylko `http://127.0.0.1:<port>`, reguła adresu z `render_settings.py`; inny adres, także
     z innym hostem, `https`, ścieżką albo portem spoza 1–65535, to błąd użycia, kod 2) przekazuje każde żądanie
     pierwszego odbiornika bez zmian (metoda, ścieżka, `Content-Type`, `Content-Encoding`, ciało) także pod ten adres.
     Odbiornik zapisuje żądanie przed przekazaniem, więc wolne przekazanie nie opóźnia zapisu. Ocena przypadków jest
     taka sama, a nieudane przekazanie niczego w niej nie zmienia. Przekazanie dłuższe niż czas zatrzymania odbiornika
     (7 s) daje zapis „żądanie w toku przy zatrzymaniu odbiornika”, więc `telemetry_no_content` nie jest wtedy `pass`
-    (`unverifiable`, a przy znaczniku w ciele `fail`). Używa go tylko odbiór TELEMETRY ze
-    stosem (`.claude/skills/ao-run/SKILL.md`).
-- Sonda czyści środowisko z `CLAUDE*` przed uruchomieniem zagnieżdżonego `claude` (jak `ao()` w `/ao-run`).
-- Kto uruchamia sondę z modelem: przed startem AO `ao-prepare` (sesja `/ao-run`, poza wykonawcą). Przy odbiorze
-  epiku AGENT-SECURITY przebieg domyślny i `--mode ao` wykonuje sesja `/ao-run` przed merge'em końcowego PR (sekcja
-  „Odbiór AGENT-SECURITY” w `.claude/skills/ao-run/SKILL.md`): z HEAD końcowego PR, w osobnym worktree, z wynikiem
-  w `$AO_HOME/acceptance-probe-<tryb>.json` i w raporcie odbioru.
+    (`unverifiable`, a przy znaczniku w ciele `fail`).
+- Sonda czyści środowisko z `CLAUDE*` przed uruchomieniem zagnieżdżonego `claude`.
+- Sondę z modelem uruchamia proces poza wykonawcą (sesja albo użytkownik).
 - Wynik: JSON z listą przypadków (`pass`/`fail`/`missing`, dla przypadków telemetrii także `no_export`
   i `unverifiable` z polem `reason`; warstwa: `sandbox`, `permissions`, `docker`, `token`, `wrapper`, `telemetry`), czasem (`elapsed_s`), kosztem (`total_cost_usd` przebiegu) i przyczyną odmowy (`reason`: pierwszy przypadek, który
   nie przeszedł, przy wycieku przypadek narzędzia albo miejsce, w którym pojawił się kanarek, limit czasu albo
@@ -751,45 +742,6 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
   `git` i `security` (argumenty, `--version`, brak tokenu, brak albo zły `AO_TASK_ID`, katalogi zadania i integracji
   w ustawieniach, różnica `.claude/settings*.json` lub `.mcp.json`, zmienne `git`, `SSH_AUTH_SOCK`); profil (`allowUnsandboxedCommands: false`, `failIfUnavailable: true`, `denyRead`
   z `~`, brak `excludedCommands`, `disableAllHooks`, `deny` dla `WebFetch`, `WebSearch`, `.ao/**`).
-
-### R7. Start AO w `/ao-run`
-
-`tools/agent-security/ao-prepare` (skrypt z testami) wywoływany przez `/ao-run` w sekcji „Start” przed `ao run`:
-
-- kopiuje `claude-agent`, `render_settings.py`, `executor-settings.json`, `probe.py`, `probe-cases.sh`,
-  `otlp_receiver.py` (odbiornik przypadków telemetrii sondy) i `bin/mktemp` (nakładka z R2, do
-  `$AO_HOME/agent-security/bin/mktemp`, wykonywalna) z `main` na GitHubie do
-  `$AO_HOME/agent-security/` (poza zapisem wykonawcy i katalogami Dockera; kopia nie zmienia się w trakcie
-  przebiegu). Źródło to stały adres `https://github.com/piotrp321/shop.git` (tylko `https` i `ssh`), nie drzewo
-  robocze sesji ani główny klon, którego `.git` wykonawcy i kontenery mogą zapisać (`refs/replace`, przestawiony
-  `refs/remotes/origin/main`, podłożony `.git/commondir`, zmieniony adres `origin`): SHA z `git ls-remote` tego
-  adresu, commit pobrany po SHA do prywatnego repozytorium `$AO_HOME/agent-security-src.git` i czytany przez `ls-tree` i `cat-file blob`, `git` bez
-  obiektów zastępczych, graftów, commit-graph, fsmonitora i hooków (jak wrapper);
-- odmawia startu, gdy istnieje któryś `KUBE_DIR` z rejestru `~/.local/state/shop-ops/kube-dirs` (droga 14), przed
-  sondą i ponownie po niej;
-- uruchamia sondę z kopii (`$AO_HOME/agent-security/probe.py`, nigdy z drzewa roboczego sesji) na wrapperze i profilu
-  z tej samej kopii, z binarką przypiętą (`claude_pin.py`); kod różny od 0: AO nie
-  startuje, push „Epik <x>: sonda bezpieczeństwa nie przeszła (<reason>)”, w rozmowie czas, koszt i przyczyna;
-- telemetria (`docs/features/telemetry/spec.md`, R5): niepoprawny `AGENT_OTEL_ENDPOINT` w jego środowisku (inna
-  wartość niż `off` i `http://127.0.0.1:<port>`, także pusta) to odmowa przed wszystkim innym:
-  `ao-prepare: niepoprawny AGENT_OTEL_ENDPOINT <wartość>: <przyczyna>`. Tuż przed sondą sprawdza połączenie TCP
-  z adresem telemetrii (`AGENT_OTEL_ENDPOINT`, bez niej `DEFAULT_TELEMETRY_ENDPOINT` z `render_settings.py`; przy
-  `off` nie sprawdza) z limitem 2 s; bez połączenia wypisuje na stderr przed wyjściem sondy
-  `ao-prepare: telemetria: brak stosu pod <adres>; dane tego przebiegu nie trafią do stosu`, a kod wyjścia i start
-  się nie zmieniają. Wynik sondy z `telemetry_export` `no_export` albo `telemetry_no_content` `no_export` lub
-  `unverifiable` nie jest odmową (wyjątek od reguły „przypadek, który nie przeszedł, to odmowa”): dla każdego
-  wypisuje `ao-prepare: telemetria: sonda <przypadek> <status> (<przyczyna>)` przed ostatnią linią. `fail`
-  `telemetry_no_content` to odmowa jak każdy inny przypadek. Linie `ao-prepare: telemetria:` są ostrzeżeniami
-  i nigdy nie są ostatnią linią stderr;
-- wypisuje na stdout linie `KEY=VALUE`: `AO_CLAUDE_BIN` (`$AO_HOME/agent-security/claude-agent`, dla `--claude-bin`),
-  `AGENT_CLAUDE_BIN`, `AGENT_AO_HOME` (środowisko `ao run`, czyta je wrapper), `PROBE_SECONDS`, `PROBE_COST_USD`
-  i `MAIN_SHA`. Sonda działa przy każdym `ao run` i każdym wznowieniu, bez pomijania (P8). Kody wyjścia: 0 AO może
-  ruszyć, 1 odmowa z jedną linią `ao-prepare: <przyczyna>` na stderr i niczym na stdout, 2 błąd wywołania;
-- pilnuje jednego przebiegu na `$AO_HOME` (`flock` na `$AO_HOME/agent-security.lock`) i odmawia, gdy proces AO trzyma
-  `orchestrator.lock`; sondę ogranicza `--probe-timeout` (domyślnie 600 s) i `--cost-limit` (1 USD), a zewnętrzny limit
-  `--outer-timeout` (domyślnie `--probe-timeout` + 600 s) kończy ją `SIGTERM`, potem `SIGKILL` całej grupy;
-- zapisuje każdy przebieg sondy (`at`, `main`, `code`, `seconds`, `cost_usd`, `reason`) w `$AO_HOME/probe-runs.jsonl`
-  i jej wynik w `$AO_HOME/probe-result.json`. Czas i koszt sondy trafiają do raportu odbioru epiku (`/ao-run`).
 
 ### R8. Merge tylko z zielonym CI; obejście tylko workflowem `merge-override`
 
@@ -858,9 +810,8 @@ wymagań merge'a. Rola admin ani konto użytkownika nie są aktorem bypass w ża
 - Sonda (R6), przypadek warstwy `token`: `gh api repos/piotrp321/shop/rulesets` z tokenem wykonawcy (identyfikatory
   po nazwie), potem `gh api repos/piotrp321/shop/rulesets/<id>` (lista nie zwraca pola), a `current_user_can_bypass`
   rulesetów `main-merge` i `epic-merge` musi być `never`; brak rulesetu albo inna wartość to
-  `fail` z przyczyną. Odbiór (sesja `/ao-run` z tokenem użytkownika, sekcja „Odbiór AGENT-SECURITY” w jej `SKILL.md`)
-  sprawdza `never` także dla tokenu użytkownika, puste `bypass_actors` w `epic-merge` i wyłącznie App w `main-merge`;
-  oczekiwana wartość to `never` dla obu tokenów, a każda inna (także `pull_requests_only` tokenu użytkownika) to
+  `fail` z przyczyną. Odbiór (sesja z tokenem użytkownika) sprawdza `never` także dla tokenu użytkownika, puste
+  `bypass_actors` w `epic-merge` i wyłącznie App w `main-merge`; oczekiwana wartość to `never` dla obu tokenów, a każda inna (także `pull_requests_only` tokenu użytkownika) to
   bloker dla użytkownika.
 
 ## Scenariusze błędów
@@ -869,24 +820,23 @@ wymagań merge'a. Rola admin ani konto użytkownika nie są aktorem bypass w ża
 |---|---|
 | `gh` w bramce zwraca błąd albo limit API | wywołanie kończy się błędem; `/sweep`, `/retro` zgłaszają błąd jak dziś przy błędzie `gh`, bez treści |
 | Autor issue zmienił login albo usunął konto (`ghost`) | rekord niezaufany |
-| Brak tokenu wykonawcy w Keychain | wrapper i sonda kończą się błędem z instrukcją (sonda kod 2); AO nie startuje |
-| Token wygasł albo został odwołany | przypadki warstwy `token` i pracy z `gh` nie przechodzą (np. `gh_ao_repository`: `401` zamiast `404`): sonda kod 1 z przyczyną; AO nie startuje; użytkownik odnawia token |
-| Sandbox niedostępny (CLI bez ustawienia) | `failIfUnavailable` zatrzymuje wykonawcę; sonda nie przechodzi (kod 2 z końcówką stderr, gdy sesja nie zdążyła wystartować, inaczej kod 1); AO nie startuje |
-| Docker Desktop udostępnia `~` | sonda: przypadek `docker` nie przechodzi, AO nie startuje |
+| Brak tokenu wykonawcy w Keychain | wrapper i sonda kończą się błędem z instrukcją (sonda kod 2) |
+| Token wygasł albo został odwołany | przypadki warstwy `token` i pracy z `gh` nie przechodzą (np. `gh_ao_repository`: `401` zamiast `404`): sonda kod 1 z przyczyną; użytkownik odnawia token |
+| Sandbox niedostępny (CLI bez ustawienia) | `failIfUnavailable` zatrzymuje wykonawcę; sonda nie przechodzi (kod 2 z końcówką stderr, gdy sesja nie zdążyła wystartować, inaczej kod 1) |
+| Docker Desktop udostępnia `~` | sonda: przypadek `docker` nie przechodzi |
 | Worktree ma zmieniony `.claude/settings.json` | wrapper odmawia startu; AO notuje nieudaną próbę, zadanie wraca jako bloker do użytkownika |
-| Zadanie potrzebuje domeny spoza listy albo ścieżki spoza `allowRead` | polecenie się nie udaje (`Operation not permitted`); wykonawca zgłasza bloker według kontraktu `/delivery`; zmiana profilu to PR |
+| Zadanie potrzebuje domeny spoza listy albo ścieżki spoza `allowRead` | polecenie się nie udaje (`Operation not permitted`); wykonawca zgłasza bloker; zmiana profilu to PR |
 | Wdrożenie czeka na zatwierdzenie | GitHub pokazuje oczekujące wdrożenie; użytkownik zatwierdza w GitHubie |
 | Użytkownik uruchamia `restore`, gdy działa AO | odmowa (`ao-guard.sh`, kod 1) bez zmian z komunikatem; użytkownik zatrzymuje AO albo czeka |
-| Sonda przekracza limit czasu albo kosztu, model nie wykonał przypadku | kod 1 z przyczyną; AO nie startuje (fail-closed) |
+| Sonda przekracza limit czasu albo kosztu, model nie wykonał przypadku | kod 1 z przyczyną (fail-closed) |
 | Wykonawca bez `AO_TASK_ID` albo z nieznanym zadaniem | wrapper odmawia startu; AO notuje nieudaną próbę |
 | `AGENT_OTEL_ENDPOINT` niepoprawny (także pusty) | wrapper odmawia startu (kod 2) z przyczyną na stderr |
 | `AO_TASK_ID` albo nazwa `AGENT_AO_HOME` spoza wzorca atrybutów telemetrii | atrybut `unknown`, start bez zmian |
-| Stos telemetrii wyłączony albo port zamknięty | wykonawca działa bez zmian, dane telemetrii tego przebiegu przepadają; `ao-prepare` wypisuje ostrzeżenie `ao-prepare: telemetria: brak stosu pod <adres>…`, start AO bez zmian |
-| `AGENT_OTEL_ENDPOINT` niepoprawny w środowisku `ao-prepare` | odmowa przed sondą z przyczyną; AO nie startuje |
-| Wykonawca sondy nie eksportuje telemetrii albo ciało ma nieznane `Content-Encoding` | przypadki telemetrii `no_export` albo `unverifiable` z przyczyną, kod sondy bez zmian; `ao-prepare` wypisuje ostrzeżenie dla każdego, start AO bez zmian; odbiór TELEMETRY nie przechodzi |
-| Eksport sondy zawiera treść (znacznik polecenia, nazwę skryptu przypadków, wynik narzędzia, kanarek) albo trafia pod odziedziczony `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry_no_content` `fail`, sonda kod 1 w obu trybach; AO nie startuje |
-| Ruleset `main-merge` albo `epic-merge` nie jest założony | sonda: przypadek bypassu `fail` z przyczyną „brak rulesetu”, kod 1; AO nie startuje; użytkownik zakłada rulesety (R8) |
-| Token wykonawcy ma bypass (`current_user_can_bypass` inne niż `never`, np. ruleset w GitHubie ma aktora roli albo konta) | sonda kod 1 z przyczyną; AO nie startuje; użytkownik usuwa tego aktora w GitHubie, App workflowu `merge-override` w `main-merge` zostaje (R8) |
+| Stos telemetrii wyłączony albo port zamknięty | wykonawca działa bez zmian, dane telemetrii tego przebiegu przepadają |
+| Wykonawca sondy nie eksportuje telemetrii albo ciało ma nieznane `Content-Encoding` | przypadki telemetrii `no_export` albo `unverifiable` z przyczyną, kod sondy bez zmian |
+| Eksport sondy zawiera treść (znacznik polecenia, nazwę skryptu przypadków, wynik narzędzia, kanarek) albo trafia pod odziedziczony `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry_no_content` `fail`, sonda kod 1 w obu trybach |
+| Ruleset `main-merge` albo `epic-merge` nie jest założony | sonda: przypadek bypassu `fail` z przyczyną „brak rulesetu”, kod 1; użytkownik zakłada rulesety (R8) |
+| Token wykonawcy ma bypass (`current_user_can_bypass` inne niż `never`, np. ruleset w GitHubie ma aktora roli albo konta) | sonda kod 1 z przyczyną; użytkownik usuwa tego aktora w GitHubie, App workflowu `merge-override` w `main-merge` zostaje (R8) |
 | PR do `main` albo `epic/*` z czerwonym CI | GitHub odmawia merge'a każdemu tokenowi; naprawa kolejnym commitem w PR, a do `main` w razie potrzeby workflow `merge-override` po zatwierdzeniu użytkownika (R8) |
 | Workflow `merge-override`: złe wejście, PR zamknięty, szkic, inna baza, fork, inny SHA głowy albo zielone checki | job `validate` kończy się błędem z przyczyną przed prośbą o zatwierdzenie; nic nie jest mergowane |
 | Workflow `merge-override`: brak zatwierdzenia, odrzucenie, push do PR po uruchomieniu albo odmowa GitHuba przy merge'u | PR bez zmian; job `merge` kończy się błędem z odpowiedzią GitHuba albo nie startuje |
@@ -894,7 +844,7 @@ wymagań merge'a. Rola admin ani konto użytkownika nie są aktorem bypass w ża
 
 ## Dokumenty opisujące funkcję
 
-- `docs/adr/agent-security.md`: kontekst, model zagrożeń (z tej specyfikacji), decyzje R1–R8 z uzasadnieniem,
+- `docs/adr/agent-security.md`: kontekst, model zagrożeń (z tej specyfikacji), decyzje R1–R6 i R8 z uzasadnieniem,
   konsekwencje, luki z odwołaniem do #498, zalecenia dla użytkownika (zakres tokenu `gh`, hasło klucza SSH); ADR
   mówi wprost, że sandbox nie chroni przed celowym obejściem przez Dockera i lifecycle AO. Zawiera drogę 15, P13
   (rola admin bez bypassu, obejście workflowem `merge-override`) i lukę sesji interaktywnych z tokenem użytkownika.
@@ -910,7 +860,6 @@ wymagań merge'a. Rola admin ani konto użytkownika nie są aktorem bypass w ża
   w sandboxie z sondą przed startem (wskaźnik do ADR), sekrety Actions tylko w środowiskach `main`, cele produkcyjne
   niedostępne w trakcie przebiegu AO, rulesety R8 (rola admin bez bypassu, obejście tylko workflowem `merge-override`),
   zakaz zmiany rulesetów i zatwierdzania środowiska `merge-override` przez agentów.
-- `docs/features/ao-run/spec.md`: `ao-prepare`, sonda i wrapper przy starcie.
 
 ## Kryteria akceptacji
 
@@ -922,7 +871,7 @@ wymagań merge'a. Rola admin ani konto użytkownika nie są aktorem bypass w ża
    kolejki. Testy `retro.py`, `next_epic.py`, `night_queue.py`.
 3. Wrapper i profil: testy bez modelu z R6 przechodzą, w tym `--version` i `auth status` bez `AO_TASK_ID` (preflight AO
    z wrapperem jako `--claude-bin` przechodzi).
-4. Sonda na hoście z pozycjami użytkownika (odbiór: sesja `/ao-run` przed merge'em końcowego PR): kod 0 w przebiegu domyślnym i `--mode ao`; wynik, czas i koszt
+4. Sonda na hoście z pozycjami użytkownika (odbiór przed merge'em końcowego PR): kod 0 w przebiegu domyślnym i `--mode ao`; wynik, czas i koszt
    w raporcie; po przebiegu i po przerwaniu (`SIGINT` w trakcie) brak procesów, kontenerów, worktree i plików
    przebiegu (także `.agent-tmp/run.*` i katalogu tymczasowego Claude Code w `/private/tmp`). Ścieżki błędu: sonda z szablonem testowym bez obu warstw blokady odczytu (`denyRead` sandboxa
    i `blockReadsOutsideWorkingDirectories`; profil produkcyjny bez zmian) kończy się kodem 1 z nazwą przypadku
@@ -933,23 +882,17 @@ wymagań merge'a. Rola admin ani konto użytkownika nie są aktorem bypass w ża
    bez środowiska ani na atrapach z `env:` workflowu, `secrets['X']`, `toJSON(secrets)` i `secrets: inherit`.
 6. Cele produkcyjne: przy atrapie działającego procesu AO albo wykonawcy `kubeconfig`, `rerun`, `create-admin`,
    `restore` i `backups` odmawiają bez zmian; `kubeconfig` dopisuje `KUBE_DIR` do rejestru; bez niego działają jak dziś (test dymny i selftest bez zmian).
-7. `ao-prepare`: kopia sześciu plików (z `probe.py` i `bin/mktemp`) z `main` na GitHubie (nie z drzewa roboczego) w
-   `$AO_HOME/agent-security/`, sonda uruchomiona z kopii, odmowa przy istniejącym
-   `KUBE_DIR` z rejestru, sonda na kopii, wynik z `--claude-bin` i zmiennymi; sonda
-   z kodem różnym od 0, limit czasu albo brak wyniku kończy go błędem z przyczyną (fail-closed). Testy z atrapą sondy i `claude_pin.py`. `/ao-run` startuje AO z jego wyniku
-   i wysyła push przy błędzie.
-8. `make check` i testy skryptów (`.github/scripts/script-tests.sh`) przechodzą; `make -C infra/k8s check` przechodzi.
-9. Rulesety (R8): test struktury przechodzi. Odbiór: `current_user_can_bypass` rulesetów `main-merge`
+7. `make check` i testy skryptów (`.github/scripts/script-tests.sh`) przechodzą; `make -C infra/k8s check` przechodzi.
+8. Rulesety (R8): test struktury przechodzi. Odbiór: `current_user_can_bypass` rulesetów `main-merge`
     i `epic-merge` to `never` z tokenem wykonawcy i z tokenem użytkownika, a `bypass_actors` w GitHubie jest puste
     w `epic-merge` i równe wyłącznie GitHub App workflowu `merge-override` w `main-merge`; wynik w raporcie odbioru.
-10. Obejście (R8): testy skryptu `merge-override.sh` z atrapą `gh` i test workflowu przechodzą. Odbiór przy pierwszym
+9. Obejście (R8): testy skryptu `merge-override.sh` z atrapą `gh` i test workflowu przechodzą. Odbiór przy pierwszym
     użyciu: PR z niezielonymi wymaganymi checkami zostaje zmergowany squashem dopiero po zatwierdzeniu użytkownika,
     z komentarzem i uruchomionym CI `main`; uruchomienie z błędnym SHA kończy się w `validate`.
 
 ## Ryzyka
 
-- Nowa wersja Claude Code zmienia zachowanie sandboxa albo nazwy ustawień: sonda przy każdym starcie AO wykrywa to
-  przed pracą.
+- Nowa wersja Claude Code zmienia zachowanie sandboxa albo nazwy ustawień: wykrywa to sonda.
 - `mktemp` bez szablonu na macOS (także `mktemp -d` i `-t`) tworzy plik w `_CS_DARWIN_USER_TEMP_DIR`
   (`/var/folders/…/T`, katalog tymczasowy użytkownika, w którym są też `KUBE_DIR` operacji), a nie w `TMPDIR`, i dla
   wykonawcy ten katalog jest tylko do odczytu. Obsługuje to nakładka `mktemp` na początku `PATH` (R2); nie poszerza
@@ -962,7 +905,7 @@ wymagań merge'a. Rola admin ani konto użytkownika nie są aktorem bypass w ża
 - Zatwierdzanie każdego wdrożenia dodaje użytkownikowi jedną czynność na każde uruchomienie `deploy.yml` na `main`.
 - Awaria produkcji w trakcie przebiegu AO (także nocnej kolejki) wymaga zatrzymania AO przed `restore`, `rerun`,
   `backups` i `create-admin`.
-- Koszt sondy przy każdym `ao run`: jeden krótki przebieg Haiku; eksperymenty przy przygotowaniu kosztowały około
+- Koszt sondy: jeden krótki przebieg Haiku; eksperymenty przy przygotowaniu kosztowały około
   0,004 USD i trwały poniżej minuty, limit 1 USD to zabezpieczenie.
 - PR z niestabilnym albo czerwonym z przyczyn zewnętrznych CI (awaria GitHuba, rejestru) czeka na zielony przebieg
   także u użytkownika; zwykłą drogą jest ponowienie CI albo poprawka w PR. Workflow `merge-override` (R8) jest na
@@ -972,6 +915,6 @@ wymagań merge'a. Rola admin ani konto użytkownika nie są aktorem bypass w ża
   w sekrecie środowiska `merge-override`; test workflowów nie dopuszcza tego środowiska w żadnym innym jobie. Wyciek:
   runbook `infra/k8s/README.md` („Merge override”).
 - Działanie obejścia na GitHubie (App jako aktor bypass w repozytorium konta osobistego, merge przez API mimo
-  niezielonych checków) potwierdza dopiero odbiór przy pierwszym użyciu (kryterium 10).
+  niezielonych checków) potwierdza dopiero odbiór przy pierwszym użyciu (kryterium 9).
 - Luki P11 i lifecycle AO zostają do osobnych zgłoszeń; ADR nazywa je wprost, żeby sandbox nie był brany za pełną
   izolację.
