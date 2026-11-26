@@ -18,11 +18,14 @@ use App\Catalog\Domain\Category\CategoryName;
 use App\Catalog\Domain\Category\CategorySlug;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductBrand;
 use App\Catalog\Domain\Product\ProductCategories;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
@@ -163,6 +166,9 @@ final class GetCatalogStatisticsHandlerTest extends TestCase
             ProductName::of('Product '.$id),
             new Slug('product-'.substr($id, 0, 8).'-'.substr($id, -4)),
             ShortDescription::of(''),
+            ProductBrand::of(''),
+            ProductDescription::of(''),
+            ProductParameters::create([]),
             ProductCategories::create($category->id()),
             TaxClassCode::Standard,
             $images,

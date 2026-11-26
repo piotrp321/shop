@@ -9,13 +9,19 @@ use App\Catalog\Application\Port\DemoCatalogSource;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
 use App\Catalog\Domain\Category\CategorySlug;
+use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\ImageKey;
+use App\Catalog\Domain\Product\ProductBrand;
 use App\Catalog\Domain\Product\ProductCategories;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductParameter;
+use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
+use App\Catalog\Domain\Product\Sku;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Domain\Product\VariantAxes;
@@ -25,6 +31,9 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * The demo catalog from apps/api/fixtures/catalog.yaml and the photos in apps/api/fixtures/images.
+ *
+ * Every value of a product is built with the value objects of the write (CreateProduct builds them again), so a typo is
+ * found at the load of the definition, before the catalog is reset.
  */
 final readonly class YamlDemoCatalogSource implements DemoCatalogSource
 {
@@ -39,8 +48,8 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
 
     /**
      * @throws \InvalidArgumentException when the definition is malformed, breaks a domain rule (names, slugs, tax
-     *                                   class, description, photo alt, categories,
-     *                                   variant axes and values) or a photo file is missing
+     *                                   class, descriptions, brand, parameters, photo alt, categories, variant axes
+     *                                   and values, SKU and EAN) or a photo file is missing
      */
     public function load(): DemoCatalog
     {
@@ -74,6 +83,8 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
                 ProductName::of($product->name);
                 new Slug($product->slug);
                 ShortDescription::of($product->shortDescription);
+                ProductBrand::of($product->brand);
+                ProductDescription::of($product->description);
                 TaxClassCode::from($product->taxClass);
                 ProductCategories::create(
                     CategoryId::fromString($product->mainCategoryId),
@@ -82,13 +93,28 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
                 foreach ($product->images as $position => $image) {
                     ProductImage::of($placeholderKey, $image['alt'], $position);
                 }
+                $axes = VariantAxes::fromList($product->variantAxes);
                 ProductVariants::create(
-                    VariantAxes::fromList($product->variantAxes),
+                    $axes,
                     array_map(
                         static fn (array $variant): ProductVariant => new ProductVariant(VariantId::fromString($variant['id']), VariantValues::fromList($variant['values'])),
                         $product->variants,
                     ),
                 );
+                // The write allows a parameter named like an axis; the demo catalog does not (it would say the same twice).
+                $axisKeys = array_map(mb_strtolower(...), $axes->names());
+                foreach (ProductParameters::create(array_map(
+                    static fn (array $parameter): ProductParameter => ProductParameter::of($parameter['name'], $parameter['value']),
+                    $product->parameters,
+                ))->toList() as $parameter) {
+                    if (\in_array($parameter->nameKey(), $axisKeys, true)) {
+                        throw new \InvalidArgumentException(\sprintf('The parameter "%s" is named like a variant axis.', $parameter->name()));
+                    }
+                }
+                foreach ($product->variants as $variant) {
+                    Sku::optional($variant['sku']);
+                    Ean::optional($variant['ean']);
+                }
             });
         }
     }

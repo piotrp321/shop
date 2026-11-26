@@ -11,10 +11,11 @@ namespace App\DemoData\Catalog;
 final readonly class ProductSpec
 {
     /**
-     * @param list<string>                $additionalCategoryIds
-     * @param list<string>                $axes
-     * @param non-empty-list<VariantSpec> $variants
-     * @param 'draft'|'published'         $status
+     * @param list<string>                             $additionalCategoryIds
+     * @param list<string>                             $axes
+     * @param list<array{name: string, value: string}> $parameters            in the order of presentation
+     * @param non-empty-list<VariantSpec>              $variants
+     * @param 'draft'|'published'                      $status
      */
     public function __construct(
         public int $index,
@@ -22,6 +23,9 @@ final readonly class ProductSpec
         public string $name,
         public string $slug,
         public string $shortDescription,
+        public string $brand,
+        public string $description,
+        public array $parameters,
         public string $primaryCategoryId,
         public array $additionalCategoryIds,
         public string $taxClass,

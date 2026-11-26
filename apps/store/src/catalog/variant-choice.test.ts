@@ -15,7 +15,7 @@ import {
 function twoAxes(rows: [color: string, size: string, purchasable: boolean][]): ChoiceVariant[] {
   const details = makeDetails(1, {
     variantAxes: ["Kolor", "Rozmiar"],
-    variants: rows.map(([color, size], index) => ({ variantId: variantId(1, index + 1), label: `${color}, ${size}`, values: [color, size] })),
+    variants: rows.map(([color, size], index) => ({ variantId: variantId(1, index + 1), label: `${color}, ${size}`, values: [color, size], sku: "", ean: "", gtin: "" })),
   });
   const offer = makeOffer(1, {
     variantAxes: ["Kolor", "Rozmiar"],
@@ -44,8 +44,8 @@ describe("buildChoiceVariants", () => {
     const details = makeDetails(1, {
       variantAxes: ["Kolor"],
       variants: [
-        { variantId: variantId(1, 1), label: "czarne", values: ["czarne"] },
-        { variantId: variantId(1, 2), label: "białe", values: ["białe"] },
+        { variantId: variantId(1, 1), label: "czarne", values: ["czarne"], sku: "", ean: "", gtin: "" },
+        { variantId: variantId(1, 2), label: "białe", values: ["białe"], sku: "", ean: "", gtin: "" },
       ],
     });
     const offer = makeOffer(1, { variantAxes: ["Kolor"], variants: [makeVariant(1, 1, { label: "czarne" })] });
@@ -111,8 +111,8 @@ describe("valueState", () => {
     const details = makeDetails(1, {
       variantAxes: ["A", "B", "C"],
       variants: [
-        { variantId: variantId(1, 1), label: "", values: ["a1", "b1", "c1"] },
-        { variantId: variantId(1, 2), label: "", values: ["a1", "b2", "c2"] },
+        { variantId: variantId(1, 1), label: "", values: ["a1", "b1", "c1"], sku: "", ean: "", gtin: "" },
+        { variantId: variantId(1, 2), label: "", values: ["a1", "b2", "c2"], sku: "", ean: "", gtin: "" },
       ],
     });
     const offer = makeOffer(1, { variants: [makeVariant(1, 1), makeVariant(1, 2)] });
@@ -163,8 +163,8 @@ describe("selectValue", () => {
     const details = makeDetails(1, {
       variantAxes: ["A", "B", "C"],
       variants: [
-        { variantId: variantId(1, 1), label: "", values: ["a1", "b1", "c1"] },
-        { variantId: variantId(1, 2), label: "", values: ["a2", "b2", "c1"] },
+        { variantId: variantId(1, 1), label: "", values: ["a1", "b1", "c1"], sku: "", ean: "", gtin: "" },
+        { variantId: variantId(1, 2), label: "", values: ["a2", "b2", "c1"], sku: "", ean: "", gtin: "" },
       ],
     });
     const offer = makeOffer(1, { variants: [makeVariant(1, 1), makeVariant(1, 2)] });

@@ -706,6 +706,15 @@ export interface components {
             /** @example Buty szosowe Tarvik Asfalt 200 */
             name: string;
             shortDescription: string;
+            /**
+             * @description The brand of the product; empty when it has none.
+             * @example Hallen
+             */
+            brand: string;
+            /** @description The description in paragraphs separated by an empty line, plain text (never markup); empty when the product has none. */
+            description: string;
+            /** @description The parameters of the product (name and value) in presentation order; empty when it has none. */
+            parameters: components["schemas"]["ProductParameter"][];
             /** @description The categories from the root to the main category of the product. */
             breadcrumb: components["schemas"]["BreadcrumbItem"][];
             /** @description All the images of the product in position order, the first is the main one (size `product`). */
@@ -722,6 +731,12 @@ export interface components {
             variantAxes: string[];
             /** @description The variants in position order. */
             variants: components["schemas"]["ProductDetailsVariant"][];
+        };
+        ProductParameter: {
+            /** @example Liczba osób */
+            name: string;
+            /** @example 4 */
+            value: string;
         };
         BreadcrumbItem: {
             /** Format: uuid */
@@ -750,6 +765,21 @@ export interface components {
              *     ]
              */
             values: string[];
+            /**
+             * @description The SKU the seller gave the variant (capitals), shown as the product code; empty when it has none.
+             * @example NAMIOT-HALNY-4
+             */
+            sku: string;
+            /**
+             * @description The EAN the seller gave the variant (8, 12, 13 or 14 digits); empty when it has none.
+             * @example 5901234123457
+             */
+            ean: string;
+            /**
+             * @description The EAN when it is a global trade item number, empty when it is a number of restricted circulation (the GS1 prefixes 02, 04 and 20-29 and the other numbers of section 2.1.11 of the GS1 General Specifications), which identifies an item inside a company or a region only. Structured data of the page takes the GTIN from here.
+             * @example 5901234123457
+             */
+            gtin: string;
         };
         /** @description A cart with everything the store shows, computed by the API. The number of available units is never part of it. */
         CartView: {

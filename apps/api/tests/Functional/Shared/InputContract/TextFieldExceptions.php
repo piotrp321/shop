@@ -32,6 +32,8 @@ final class TextFieldExceptions
             ['field' => 'slug', 'operations' => [...$categories, ...$products], 'reason' => $closed],
             ['field' => 'taxClass', 'operations' => $products, 'reason' => $closed],
             ['field' => 'images[].key', 'operations' => $products, 'reason' => $closed],
+            ['field' => 'variants[].sku', 'operations' => $products, 'reason' => 'a closed alphabet (A-Z, 0-9 and - _ . /) with its own trimming and capitals; T1 on the value as it came, then T2, then the format (docs/features/product-data/spec.md)'],
+            ['field' => 'variants[].ean', 'operations' => $products, 'reason' => 'a format of digits with the check digit of GS1 and its own trimming; T1 on the value as it came, then T2, then the format (docs/features/product-data/spec.md)'],
             ['field' => 'code', 'operations' => ['POST /api/v1/admin/discount-codes'], 'reason' => 'a format with its own trimming (docs/features/discount-codes/spec.md)'],
             ['field' => 'trackingNumber', 'operations' => ['POST /api/v1/admin/orders/{orderId}/status-changes', 'PUT /api/v1/admin/orders/{orderId}/tracking-number'], 'reason' => 'a format with its own trimming (docs/features/order-management/spec.md)'],
             ['field' => 'trackingUrlTemplate', 'operations' => $deliveryMethods, 'reason' => 'a format with its own trimming (docs/features/delivery/spec.md)'],

@@ -13,8 +13,11 @@ use Doctrine\DBAL\Connection;
 
 /**
  * The catalog checks of demo-data:verify: a published product has a variant, the counts of the tables are the ones of
- * the profile, and the slugs of the tail are unique and different from the slugs of fixtures/catalog.yaml. Returns the
- * violations; none means the data is consistent.
+ * the profile, the slugs of the tail are unique and different from the slugs of fixtures/catalog.yaml, and a generated
+ * product has a brand, a description and parameters (each with a name and a value) and a generated variant a SKU and
+ * an EAN (the products and variants of the seed are the seed's own and are left out: the seed writes its content itself).
+ * "Has" is a text with a visible character (`BlankText`), not only a value that is not NULL. Returns the violations; none
+ * means the data is consistent.
  */
 final readonly class CatalogVerifier
 {
@@ -38,6 +41,8 @@ final readonly class CatalogVerifier
             ...$this->counts($context, $seedSlugs),
             ...$this->slugs($context, $seedSlugs),
             ...$this->seedSlugsTakenByOthers(),
+            ...$this->generatedProductsWithoutContent($seedSlugs),
+            ...$this->generatedVariantsWithoutCodes(array_values($this->seed->products())),
         ];
     }
 
@@ -132,6 +137,109 @@ final readonly class CatalogVerifier
         sort($taken);
 
         return Listing::of('The slug of a catalog.yaml product belongs to another product', $taken);
+    }
+
+    /**
+     * One pass over the table counts what is missing; only when something is, a second query names the first products.
+     * A brand or a description is missing as NULL, as an empty text and as a text without a visible character (T3), a
+     * list of parameters as an empty one, and a parameter as an entry that is no object or whose name or value
+     * is no JSON string (a number, a boolean, an object, an array, JSON null, a missing key) or is a text of that kind.
+     *
+     * @param list<string> $seedSlugs
+     *
+     * @return list<string>
+     */
+    private function generatedProductsWithoutContent(array $seedSlugs): array
+    {
+        $visible = $this->connection->quote(BlankText::visiblePattern());
+        $checks = [
+            'no_brand' => ['A generated product has no brand', BlankText::missing('brand', $visible)],
+            'no_description' => ['A generated product has no description', BlankText::missing('description', $visible)],
+            'no_parameters' => ['A generated product has no parameters', "(parameters = '[]'::jsonb OR jsonb_typeof(parameters) <> 'array')"],
+            'blank_parameter' => ['A generated product has a parameter without a name or a value', \sprintf(
+                "(CASE WHEN jsonb_typeof(parameters) = 'array' THEN EXISTS (SELECT 1 FROM jsonb_array_elements(parameters) AS parameter(entry) WHERE jsonb_typeof(parameter.entry) IS DISTINCT FROM 'object' OR %s OR %s) ELSE false END)",
+                self::blankJsonText('parameter.entry', 'name', $visible),
+                self::blankJsonText('parameter.entry', 'value', $visible),
+            )],
+        ];
+        $counts = [];
+        foreach ($checks as $key => [, $condition]) {
+            $counts[] = \sprintf('count(*) FILTER (WHERE %s) AS %s', $condition, $key);
+        }
+        $row = $this->connection->fetchAssociative(
+            'SELECT '.implode(', ', $counts).' FROM catalog_product WHERE NOT (slug = ANY(?::text[]))',
+            [Sql::textArray($seedSlugs)],
+        );
+
+        $violations = [];
+        foreach ($checks as $key => [$what, $condition]) {
+            if (false === $row || 0 === Sql::int($row[$key])) {
+                continue;
+            }
+            /** @var list<string> $slugs */
+            $slugs = $this->connection->fetchFirstColumn(
+                'SELECT slug FROM catalog_product WHERE NOT (slug = ANY(?::text[])) AND '.$condition.' ORDER BY slug LIMIT '.(Listing::SHOWN + 1),
+                [Sql::textArray($seedSlugs)],
+            );
+            $violations = [...$violations, ...Listing::of($what, $slugs)];
+        }
+
+        return $violations;
+    }
+
+    /**
+     * The key of a JSON object holds no text: it is no JSON string (->> would read a number or a boolean as a visible text,
+     * and a missing key is SQL NULL, which a plain <> does not count, IS DISTINCT FROM does), or it is a string without a
+     * visible character.
+     */
+    private static function blankJsonText(string $object, string $key, string $quotedPattern): string
+    {
+        return \sprintf(
+            "(jsonb_typeof(%s -> '%s') IS DISTINCT FROM 'string' OR %s)",
+            $object,
+            $key,
+            BlankText::missing(\sprintf("%s ->> '%s'", $object, $key), $quotedPattern),
+        );
+    }
+
+    /**
+     * The same for the codes of the variants (NULL, an empty text or a text without a visible character is no code); the
+     * variants of the products of the seed are left out by the product id.
+     *
+     * @param list<string> $seedProductIds
+     *
+     * @return list<string>
+     */
+    private function generatedVariantsWithoutCodes(array $seedProductIds): array
+    {
+        $visible = $this->connection->quote(BlankText::visiblePattern());
+        $checks = [
+            'no_sku' => ['A generated variant has no SKU', BlankText::missing('v.sku', $visible)],
+            'no_ean' => ['A generated variant has no EAN', BlankText::missing('v.ean', $visible)],
+        ];
+        $counts = [];
+        foreach ($checks as $key => [, $condition]) {
+            $counts[] = \sprintf('count(*) FILTER (WHERE %s) AS %s', $condition, $key);
+        }
+        $row = $this->connection->fetchAssociative(
+            'SELECT '.implode(', ', $counts).' FROM catalog_product_variant v WHERE NOT (v.product_id = ANY(?::uuid[]))',
+            [Sql::textArray($seedProductIds)],
+        );
+
+        $violations = [];
+        foreach ($checks as $key => [$what, $condition]) {
+            if (false === $row || 0 === Sql::int($row[$key])) {
+                continue;
+            }
+            /** @var list<string> $slugs */
+            $slugs = $this->connection->fetchFirstColumn(
+                'SELECT DISTINCT p.slug FROM catalog_product_variant v JOIN catalog_product p ON p.id = v.product_id WHERE NOT (v.product_id = ANY(?::uuid[])) AND '.$condition.' ORDER BY p.slug LIMIT '.(Listing::SHOWN + 1),
+                [Sql::textArray($seedProductIds)],
+            );
+            $violations = [...$violations, ...Listing::of($what, $slugs)];
+        }
+
+        return $violations;
     }
 
     /**

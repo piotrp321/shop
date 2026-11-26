@@ -340,6 +340,10 @@ liczby i listy w miejscu tekstu.
 | `name` | `POST /admin/categories`, `PUT /admin/categories/{id}` | W | „Nazwa kategorii musi mieć od 1 do 100 znaków i nie może zawierać znaków sterujących.” | ten sam | „Nazwa kategorii musi być tekstem.” |
 | `name` | `POST /admin/products`, `PUT /admin/products/{id}` | W | „Podaj nazwę produktu.” | „Nazwa produktu zawiera niedozwolone znaki.” | „Podaj nazwę produktu.” |
 | `shortDescription` | te same | O, U+000A dozwolony | zapisany pusty opis | „Krótki opis zawiera niedozwolone znaki.” | „Krótki opis musi być tekstem.” |
+| `brand` | te same | O | zapisany brak marki | „Marka zawiera niedozwolone znaki.” | „Marka musi być tekstem.” |
+| `description` | te same | O, U+000A dozwolony | zapisany brak opisu | „Opis zawiera niedozwolone znaki.” | „Opis musi być tekstem.” |
+| `parameters[n].name` | te same | W | „Nazwa parametru musi mieć od 1 do 60 znaków.” | „Nazwa parametru zawiera niedozwolone znaki.” | „Nazwa parametru musi mieć od 1 do 60 znaków.” |
+| `parameters[n].value` | te same | W | „Wartość parametru musi mieć od 1 do 200 znaków.” | „Wartość parametru zawiera niedozwolone znaki.” | „Wartość parametru musi mieć od 1 do 200 znaków.” |
 | `images[n].alt` | te same | W | „Podaj tekst alternatywny zdjęcia.” | „Tekst alternatywny zawiera niedozwolone znaki.” | „Podaj tekst alternatywny zdjęcia.” |
 | `variantAxes[n]` | te same | W | „Nazwa osi musi mieć od 1 do 30 znaków.” | „Nazwa osi zawiera niedozwolone znaki.” | „Nazwa osi musi mieć od 1 do 30 znaków.” |
 | `variants[n].values[m]` | te same | W | „Wartość musi mieć od 1 do 40 znaków.” | „Wartość wariantu zawiera niedozwolone znaki.” | „Wartość musi mieć od 1 do 40 znaków.” |
@@ -430,6 +434,8 @@ w etapie. Ścieżki bez prefiksu `/api/v1`.
 | `slug` | `POST /admin/categories`, `PUT /admin/categories/{id}`, `POST /admin/products`, `PUT /admin/products/{id}` | zamknięty alfabet albo zamknięta lista wartości |
 | `taxClass` | `POST /admin/products`, `PUT /admin/products/{id}` | zamknięty alfabet albo zamknięta lista wartości |
 | `images[n].key` | `POST /admin/products`, `PUT /admin/products/{id}` | zamknięty alfabet albo zamknięta lista wartości |
+| `variants[n].sku` | `POST /admin/products`, `PUT /admin/products/{id}` | zamknięty alfabet (`A–Z0–9-_./`, litery ASCII zapisane wielkimi) z własnym przycinaniem: T1 na wartości, jak przyszła (tabulator albo U+2028 na brzegu to naruszenie formatu, nie cicho przycięty kod), potem T2, potem format; tekst bez znaku widocznego to brak kodu (`product-data`) |
+| `variants[n].ean` | `POST /admin/products`, `PUT /admin/products/{id}` | format cyfr z cyfrą kontrolną GS1 (8, 12, 13 albo 14) z własnym przycinaniem w tej samej kolejności (T1, T2, format); liczba JSON to „Kod EAN musi być tekstem.” (`product-data`) |
 | `code` (kod rabatowy) | `POST /admin/discount-codes` | format z własnym przycinaniem (`discount-codes`) |
 | `trackingNumber` | `POST /admin/orders/{orderId}/status-changes`, `PUT /admin/orders/{orderId}/tracking-number` | format z własnym przycinaniem (`order-management`) |
 | `trackingUrlTemplate` | `POST /admin/delivery-methods`, `PUT /admin/delivery-methods/{id}` | format z własnym przycinaniem (`delivery`) |
@@ -443,7 +449,8 @@ Poza strażnikiem pól tekstowych są też parametry zapytań inne niż `q` (`pa
 
 Repozytoria i handlery odczytu odtwarzają teksty z wiersza nazwanym konstruktorem `stored()`, który nie waliduje i nie
 przycina: `DoctrineOrderRepository` (`Contact::stored`, `EmailAddress::stored`, `ShippingAddress::stored`),
-`DoctrineProductRepository` (`ProductName`, `ShortDescription`, `ProductImage`, `VariantAxes`, `VariantValues`),
+`DoctrineProductRepository` (`ProductName`, `ShortDescription`, `ProductBrand`, `ProductDescription`,
+`ProductParameter`, `ProductImage`, `VariantAxes`, `VariantValues`),
 `DoctrineCategoryRepository` (`CategoryName`), `DoctrineDeliveryMethodRepository` (`DeliveryMethodName`,
 `DeliveryMethodDescription`), handlery odczytu Catalog i odczyt generatora danych demo zamówień
 (`VariantValues::stored`). Walidują i przycinają tylko konstruktory zapisu (`of()`, `fromList()`, `fromString()`,

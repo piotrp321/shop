@@ -3078,6 +3078,9 @@
                     "slug",
                     "name",
                     "shortDescription",
+                    "brand",
+                    "description",
+                    "parameters",
                     "breadcrumb",
                     "images",
                     "zoomImages",
@@ -3099,6 +3102,22 @@
                     },
                     "shortDescription": {
                         "type": "string"
+                    },
+                    "brand": {
+                        "description": "The brand of the product; empty when it has none.",
+                        "type": "string",
+                        "example": "Hallen"
+                    },
+                    "description": {
+                        "description": "The description in paragraphs separated by an empty line, plain text (never markup); empty when the product has none.",
+                        "type": "string"
+                    },
+                    "parameters": {
+                        "description": "The parameters of the product (name and value) in presentation order; empty when it has none.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductParameter"
+                        }
                     },
                     "breadcrumb": {
                         "description": "The categories from the root to the main category of the product.",
@@ -3142,6 +3161,23 @@
                 },
                 "type": "object"
             },
+            "ProductParameter": {
+                "required": [
+                    "name",
+                    "value"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "example": "Liczba os\u00f3b"
+                    },
+                    "value": {
+                        "type": "string",
+                        "example": "4"
+                    }
+                },
+                "type": "object"
+            },
             "BreadcrumbItem": {
                 "required": [
                     "id",
@@ -3169,7 +3205,10 @@
                 "required": [
                     "variantId",
                     "label",
-                    "values"
+                    "values",
+                    "sku",
+                    "ean",
+                    "gtin"
                 ],
                 "properties": {
                     "variantId": {
@@ -3191,6 +3230,21 @@
                             "czarne",
                             "42"
                         ]
+                    },
+                    "sku": {
+                        "description": "The SKU the seller gave the variant (capitals), shown as the product code; empty when it has none.",
+                        "type": "string",
+                        "example": "NAMIOT-HALNY-4"
+                    },
+                    "ean": {
+                        "description": "The EAN the seller gave the variant (8, 12, 13 or 14 digits); empty when it has none.",
+                        "type": "string",
+                        "example": "5901234123457"
+                    },
+                    "gtin": {
+                        "description": "The EAN when it is a global trade item number, empty when it is a number of restricted circulation (the GS1 prefixes 02, 04 and 20-29 and the other numbers of section 2.1.11 of the GS1 General Specifications), which identifies an item inside a company or a region only. Structured data of the page takes the GTIN from here.",
+                        "type": "string",
+                        "example": "5901234123457"
                     }
                 },
                 "type": "object"

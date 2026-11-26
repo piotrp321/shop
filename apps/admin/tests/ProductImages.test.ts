@@ -127,4 +127,17 @@ describe("ProductImages", () => {
     expect(heading?.textContent).toBe("Zdjęcia");
     expect(heading?.getAttribute("tabindex")).toBe("-1");
   });
+
+  it("makes the alt texts read-only, not disabled, without the permission: a long text can still be read", () => {
+    mountSection({ readOnly: true });
+
+    const fields = [...document.body.querySelectorAll<HTMLInputElement>("[data-testid=image-alt]")];
+    expect(fields).toHaveLength(3);
+    for (const field of fields) {
+      expect(field.readOnly).toBe(true);
+      expect(field.disabled).toBe(false);
+      field.focus();
+      expect(document.activeElement).toBe(field);
+    }
+  });
 });

@@ -65,7 +65,8 @@ final class ProductDetailsEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         self::assertStringStartsWith('application/json', (string) $this->client->getResponse()->headers->get('Content-Type'));
-        self::assertSame(['id', 'slug', 'name', 'shortDescription', 'breadcrumb', 'images', 'zoomImages', 'variantAxes', 'variants'], array_keys($body));
+        self::assertSame(['id', 'slug', 'name', 'shortDescription', 'brand', 'description', 'parameters', 'breadcrumb', 'images', 'zoomImages', 'variantAxes', 'variants'], array_keys($body));
+        self::assertSame(['', '', []], [$body['brand'], $body['description'], $body['parameters']]);
         self::assertSame(self::PRODUCT_ID, $body['id']);
         self::assertSame('buty-szosowe-asfalt', $body['slug']);
         self::assertSame('Buty szosowe Asfalt', $body['name']);
@@ -77,8 +78,8 @@ final class ProductDetailsEndpointTest extends WebTestCase
         self::assertSame(['Kolor', 'Rozmiar'], $body['variantAxes']);
         self::assertSame(
             [
-                ['variantId' => self::BLACK_42, 'label' => 'czarne, 42', 'values' => ['czarne', '42']],
-                ['variantId' => self::WHITE_43, 'label' => 'białe, 43', 'values' => ['białe', '43']],
+                ['variantId' => self::BLACK_42, 'label' => 'czarne, 42', 'values' => ['czarne', '42'], 'sku' => '', 'ean' => '', 'gtin' => ''],
+                ['variantId' => self::WHITE_43, 'label' => 'białe, 43', 'values' => ['białe', '43'], 'sku' => '', 'ean' => '', 'gtin' => ''],
             ],
             $body['variants'],
         );
@@ -110,6 +111,31 @@ final class ProductDetailsEndpointTest extends WebTestCase
         $this->assertKeysMatchSchema($body['variants'][0], 'ProductDetailsVariant');
         $this->assertKeysMatchSchema($first, 'ProductImage');
         $this->assertKeysMatchSchema($firstZoom, 'ZoomImage');
+    }
+
+    public function testTheBrandTheDescriptionAndTheParametersAreStoredAsTheProductHasThem(): void
+    {
+        $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $category = CategoryFactory::createOne();
+        new DoctrineCategoryRepository($entityManager)->save($category);
+        $product = ProductFactory::createOne([
+            'slug' => 'namiot',
+            'mainCategory' => $category,
+            'brand' => 'Hallen',
+            'description' => "Pierwszy akapit.\n\nDrugi akapit z <b>znacznikiem</b>.",
+            'parameters' => [['name' => 'Liczba osób', 'value' => '4'], ['name' => 'Waga', 'value' => '2,4 kg']],
+        ]);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
+
+        $body = $this->get('/api/v1/products/namiot');
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame('Hallen', $body['brand']);
+        self::assertSame("Pierwszy akapit.\n\nDrugi akapit z <b>znacznikiem</b>.", $body['description']);
+        self::assertSame([['name' => 'Liczba osób', 'value' => '4'], ['name' => 'Waga', 'value' => '2,4 kg']], $body['parameters']);
+        $this->assertKeysMatchSchema($body, 'ProductDetails');
+        $this->assertKeysMatchSchema($body['parameters'][0], 'ProductParameter');
     }
 
     public function testAProductWithoutImagesHasEmptyImagesAndZoomImages(): void

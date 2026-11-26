@@ -528,10 +528,10 @@ class Refusals(Case):
                 self.assertIn("not confirmed", result.stderr)
 
     def test_the_free_space_a_floor_for_a_profile_the_peak_for_medium_and_server_and_only_a_reading_for_the_seed(self):
-        # medium: max(32, 1.25 x 21) = 32 GB; server: max(32, 1.25 x 96) = 120 GB; small (on k3d): minFreeGb only.
+        # medium: max(32, 1.25 x 23) = 32 GB; server: max(32, 1.25 x 114) = 142.5 GB; small (on k3d): minFreeGb only.
         small = demo_data_cronjob("small", None, 2, 1800)
-        for profile, cron, free, refused in (("medium", None, 31.9, "32"), ("server", None, 119, "120.00"), ("small", small, 1.9, "2 GB"),
-                                             ("small", small, 3, None), ("seed", None, 1, None), ("seed", None, "a lot", "free space"),
+        for profile, cron, free, refused in (("medium", None, 31.9, "32"), ("server", None, 142, "142.50"), ("small", small, 1.9, "2 GB"),
+                                             ("server", None, 143, None), ("small", small, 3, None), ("seed", None, 1, None), ("seed", None, "a lot", "free space"),
                                              ("medium", None, "fail", "free space")):
             with self.subTest(profile=profile, free=free):
                 demo = cron or demo_data_cronjob("server" if profile == "server" else "medium")

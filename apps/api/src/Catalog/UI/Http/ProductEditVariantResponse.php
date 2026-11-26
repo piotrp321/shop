@@ -7,7 +7,7 @@ namespace App\Catalog\UI\Http;
 use App\Catalog\Application\Query\ProductEditVariant;
 use OpenApi\Attributes as OA;
 
-#[OA\Schema(description: 'A variant of a product in the edit view.', required: ['variantId', 'values'])]
+#[OA\Schema(description: 'A variant of a product in the edit view.', required: ['variantId', 'values', 'sku', 'ean'])]
 final readonly class ProductEditVariantResponse
 {
     /**
@@ -18,11 +18,15 @@ final readonly class ProductEditVariantResponse
         public string $variantId,
         #[OA\Property(description: 'One value per axis, in the order of the axes; empty for the default variant of a product without axes.', type: 'array', items: new OA\Items(type: 'string'), example: ['czarne', '42'])]
         public array $values,
+        #[OA\Property(description: 'The SKU of the variant as stored (capitals); empty when it has none.', example: 'NAMIOT-HALNY-4')]
+        public string $sku,
+        #[OA\Property(description: 'The EAN of the variant; empty when it has none.', example: '5901234123457')]
+        public string $ean,
     ) {
     }
 
     public static function of(ProductEditVariant $variant): self
     {
-        return new self($variant->variantId, $variant->values);
+        return new self($variant->variantId, $variant->values, $variant->sku, $variant->ean);
     }
 }

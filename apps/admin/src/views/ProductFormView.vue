@@ -21,16 +21,19 @@ import { useCategoryTree } from "@/composables/useCategoryTree";
 import { useUnsavedChangesGuard } from "@/composables/useUnsavedChangesGuard";
 import { canManageProducts } from "@/products/permissions";
 import ProductImages from "@/products/ProductImages.vue";
+import ProductParameters from "@/products/ProductParameters.vue";
 import ProductPriceStock from "@/products/ProductPriceStock.vue";
 import ProductVariants from "@/products/ProductVariants.vue";
 import { type ActionResult, useProductForm } from "@/products/useProductForm";
 import { useAuthStore } from "@/stores/auth";
 
 const SHORT_DESCRIPTION_LIMIT = 500;
+const DESCRIPTION_LIMIT = 5000;
+const BRAND_LIMIT = 60;
 
 // What a failed action moves the focus to: the first error mark or field marked invalid, in the order of the document;
-// a disabled field cannot take focus.
-const FIRST_ERROR = '[data-form-error], [aria-invalid="true"]:not(:disabled)';
+// a disabled field cannot take focus, and a read-only one (the locked slug) cannot be corrected, so its message is the target.
+const FIRST_ERROR = '[data-form-error], [aria-invalid="true"]:not(:disabled):not([readonly])';
 const FOCUSABLE = "input, textarea, select, button, a[href], [tabindex]";
 
 const route = useRoute();
@@ -59,6 +62,8 @@ const {
   imagesErrors,
   variantsErrors,
   axesLocked,
+  parametersErrors,
+  canAddParameter,
   errorsAt,
   errorsExactly,
   upload,
@@ -68,6 +73,10 @@ const {
   discard,
   moveImage,
   removeImage,
+  addParameter,
+  removeParameter,
+  moveParameter,
+  setParameter,
   addAxis,
   setAxis,
   removeAxis,
@@ -75,6 +84,8 @@ const {
   addVariant,
   removeVariant,
   setValue,
+  setSku,
+  setEan,
 } = useProductForm({
   productId: () => (typeof route.params.id === "string" ? route.params.id : null),
   // Only hides the actions: the API checks the permission. The roles come from /api/v1/admin/me.
@@ -148,7 +159,8 @@ const { open: leaveOpen, leave } = useUnsavedChangesGuard(() => dirty.value || u
 const { nodes: categories, error: categoriesError } = useCategoryTree();
 
 const descriptionLength = computed(() => [...data.value.shortDescription].length);
-const slugDisabled = computed(() => readOnly.value || (view.value?.slugLocked ?? false));
+const longDescriptionLength = computed(() => [...data.value.description].length);
+const slugReadOnly = computed(() => readOnly.value || (view.value?.slugLocked ?? false));
 const taxClassName = computed(() => taxClasses.value.find((taxClass) => taxClass.code === data.value.taxClass)?.name);
 const publishReasonId = useId();
 
@@ -353,7 +365,26 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
                     v-model="data.name"
                     data-testid="name"
                     maxlength="200"
-                    :disabled="readOnly"
+                    :readonly="readOnly"
+                    :aria-invalid="invalid ? 'true' : undefined"
+                    :aria-describedby="describedBy"
+                  />
+                </template>
+              </FormField>
+
+              <FormField
+                control-id="product-brand"
+                label="Marka"
+                :errors="errorsAt('brand')"
+                error-testid="error-brand"
+              >
+                <template #default="{ describedBy, invalid }">
+                  <Input
+                    id="product-brand"
+                    v-model="data.brand"
+                    data-testid="brand"
+                    :maxlength="BRAND_LIMIT"
+                    :readonly="readOnly"
                     :aria-invalid="invalid ? 'true' : undefined"
                     :aria-describedby="describedBy"
                   />
@@ -372,7 +403,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
                     v-model="data.slug"
                     data-testid="slug"
                     maxlength="200"
-                    :disabled="slugDisabled"
+                    :readonly="slugReadOnly"
                     :aria-invalid="invalid ? 'true' : undefined"
                     :aria-describedby="describedBy"
                   />
@@ -404,13 +435,36 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
                     data-testid="short-description"
                     rows="4"
                     :maxlength="SHORT_DESCRIPTION_LIMIT"
-                    :disabled="readOnly"
+                    :readonly="readOnly"
                     :aria-invalid="invalid ? 'true' : undefined"
                     :aria-describedby="describedBy"
                   />
                 </template>
                 <template #hint>
                   <span data-testid="short-description-counter">{{ descriptionLength }}/{{ SHORT_DESCRIPTION_LIMIT }}</span>
+                </template>
+              </FormField>
+
+              <FormField
+                control-id="product-long-description"
+                label="Opis"
+                :errors="errorsAt('description')"
+                error-testid="error-description"
+              >
+                <template #default="{ describedBy, invalid }">
+                  <Textarea
+                    id="product-long-description"
+                    v-model="data.description"
+                    data-testid="description"
+                    rows="10"
+                    :maxlength="DESCRIPTION_LIMIT"
+                    :readonly="readOnly"
+                    :aria-invalid="invalid ? 'true' : undefined"
+                    :aria-describedby="describedBy"
+                  />
+                </template>
+                <template #hint>
+                  <span data-testid="description-counter">{{ longDescriptionLength }}/{{ DESCRIPTION_LIMIT }}</span>
                 </template>
               </FormField>
 
@@ -451,6 +505,19 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
               </FormField>
             </FormSection>
 
+            <ProductParameters
+              :parameters="data.parameters"
+              :read-only="readOnly"
+              :can-add="canAddParameter"
+              :errors="parametersErrors"
+              :errors-at="errorsAt"
+              :errors-exactly="errorsExactly"
+              @add="addParameter"
+              @remove="removeParameter"
+              @move="moveParameter"
+              @set="setParameter"
+            />
+
             <ProductImages
               :images="data.images"
               :entries="upload.entries.value"
@@ -481,6 +548,8 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
               @add-variant="addVariant"
               @remove-variant="removeVariant"
               @set-value="setValue"
+              @set-sku="setSku"
+              @set-ean="setEan"
             />
           </fieldset>
 

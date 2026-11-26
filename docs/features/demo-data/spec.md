@@ -148,10 +148,13 @@ rozmiar części są w tym pliku wspólne dla wszystkich profili, więc profile 
 | `server` | 500 | 1 000 000 | 10 000 000 | 5 000 000 | k3d (później serwer demo) |
 | `full` | 500 | 1 000 000 | 10 000 000 | 50 000 000 | k3d |
 
-Rozmiary `medium` są zmierzone (raport `docs/reports/demo-load-medium-2026-11-19.md`): produkt z wariantami, cenami, historią cen
-i stanem zajmuje około 5,4 KB (tabele produktowe 5,42 GB na 1 mln produktów), zamówienie ze wszystkimi tabelami
+Rozmiary `medium` są zmierzone (raport `docs/reports/demo-load-medium-2026-11-19.md`) dla generatora bez pól treści produktów
+(marki, opisu, parametrów, SKU i EAN): produkt z wariantami, cenami, historią cen i stanem zajmuje około 5,4 KB (tabele
+produktowe 5,42 GB na 1 mln produktów), a pola treści i indeks SKU dodają do tabel katalogu około 1,0 KB na produkt
+z wariantami (pomiar w „Rozmiar i czas pól treści produktów”, niżej), zamówienie ze wszystkimi tabelami
 zamówieniowymi około 3,4 KB (3,44 GB na 1 mln zamówień), indeks Elasticsearcha około 1,06 GB na 1 mln produktów.
-Rozmiary `server` i `full` to ekstrapolacja liniowa z tych liczb, niezweryfikowana pomiarem:
+Rozmiary `server` i `full` to ekstrapolacja liniowa z tych liczb (bez pól treści; z nimi tabele katalogu rosną o około
+10 GB, szacunek niżej), niezweryfikowana pomiarem:
 
 | Profil | Postgres (ekstrapolacja) | Elasticsearch (ekstrapolacja) | Keycloak (ekstrapolacja) |
 |---|---|---|---|
@@ -167,7 +170,7 @@ Rzeczywiste rozmiary `server` na serwerze demo poda raport z jego przebiegu (DEM
   działach, około 120 typów produktów (osie wariantów, klasa podatkowa, przedział cen, grupa zdjęć), około 300
   fikcyjnych marek, nazwy modeli i fragmenty opisów po polsku. Nazwa jak dziś: „<typ> <marka> <model>”, slug ze
   slugify nazwy z sufiksem z globalnego indeksu produktu, więc unikalny z konstrukcji, niezależnie od części i liczby
-  procesów, i rozłączny ze slugami `catalog.yaml` (sprawdza to `verify`). Opisy z fragmentów cech typu, bez tekstu zastępczego. Około
+  procesów, i rozłączny ze slugami `catalog.yaml` (sprawdza to `verify`). Krótkie opisy z fragmentów cech typu, bez tekstu zastępczego; marka, długi opis, parametry i kody wariantów: „Treść produktów i kody wariantów”. Około
   2% produktów to szkice, co 50. produkt bez zdjęcia (jak dziś), pozostałe 1–3 zdjęcia z grupy typu.
 - **Ceny.** Przedział brutto per typ, z drabinki cen detalicznych (końcówki ,99 i ,00), warianty jednego produktu
   w tej samej cenie albo z dopłatą za rozmiar; netto i VAT według reguły Pricing (`PriceBreakdown`), stawka z klasy
@@ -252,6 +255,38 @@ Rzeczywiste rozmiary `server` na serwerze demo poda raport z jego przebiegu (DEM
   `setval`). Nie pisze `ordering_order_notification`, `payment_webhook_event`, tabel symulatora płatności,
   `catalog_category_redirect`, outboxu ani kolejek.
 
+### Treść produktów i kody wariantów (krok 1)
+
+Każdy wygenerowany produkt dostaje pola treści karty (`docs/features/product-data/spec.md`, „Dane demo” → „Generator”),
+a każdy wariant kody; wszystkie wartości są w postaci, którą zachowują reguły zapisu Catalog (`ProductBrand`,
+`ProductDescription`, `ProductParameter`, `Sku`, `Ean`), bo generator pisze przez `COPY`, poza domeną
+(`GeneratedText` i testy kontraktu w `CatalogStepsTest`, `ProductGeneratorTest`, `DictionariesTest`).
+
+- **Marka:** ta, którą generator losuje do nazwy produktu; nie ma osobnego losowania.
+- **Opis:** 2 albo 3 akapity rozdzielone pustym wierszem (`\n\n`), 300–600 znaków, inny niż krótki opis. Budowa:
+  zdania działu z `descriptions.yaml` (`sentences`, od 9 na dział, każde 80–115 znaków) i akapit „Cechy: …” z trzech cech
+  typu produktu (`features` w `product-types.yaml`) w losowej kolejności. Dwa akapity to trzy zdania i akapit cech, trzy
+  akapity to dwa zdania, akapit cech i dwa zdania; zdania są losowane bez powtórzeń. Zdania nie mają słów, które
+  musiałyby zgadzać się gramatycznie z nazwą produktu (zaimków ani czasowników i przymiotników odnoszących się do
+  produktu), bo produkt bywa liczby pojedynczej i mnogiej, każdego rodzaju. Budżet długości wynika z długości zdań i cech:
+  `DictionariesTest` liczy go dla każdego typu przy najkrótszych i najdłuższych zdaniach działu.
+- **Parametry:** 3–6 par nazwa–wartość z zestawu typu: `parameters.yaml` ma zestawy (każdy co najmniej 6 parametrów,
+  każdy parametr co najmniej 3 różne wartości), a typ w `product-types.yaml` wskazuje jeden (`parameters:`). Produkt
+  bierze losowo od 3 do 6 parametrów zestawu (w kolejności zestawu) i jedną wartość każdego. Nazwa parametru nie jest nazwą
+  osi wariantów typu (bez względu na wielkość liter): sprawdza to ładowanie słownika (błąd z nazwą typu i parametru)
+  i `DictionariesTest`.
+- **SKU** (`VariantCodes::sku`): numer produktu (indeks + 1, ten sam, którym kończy się slug) dopełniony zerami do 8
+  cyfr, `-` i numer wariantu (pozycja + 1), np. `00001235-3`. Zaczyna się cyfrą (SKU z seeda literą, więc zbiory są
+  rozłączne), ma do 40 znaków alfabetu SKU i jest unikalny z konstrukcji, bez odczytów z bazy. Wiersze jednej części
+  trafiają do sąsiednich stron indeksu unikalnego `catalog_product_variant_sku_key`, który zostaje na czas ładowania.
+- **EAN** (`VariantCodes::ean`): EAN-13 `2` + numer produktu (9 cyfr) + numer wariantu (2 cyfry) + cyfra kontrolna GS1.
+  Prefiks `2` to pula numerów obiegu ograniczonego (fikcyjny produkt nie nosi kodu prawdziwego towaru), więc sklep nie
+  pokazuje dla niego `gtin`. Numer produktu albo wariantu, który nie mieści się w kodzie, to wyjątek, nie nieważny kod.
+- **Determinizm.** Markę, opis i parametry losuje osobny strumień (`catalog-content`, ta sama część), więc nie przesuwa
+  żadnego losowania strumienia `catalog`: identyfikatory, slugi, nazwy, krótkie opisy, warianty i ceny profilu są takie
+  jak przed dodaniem pól (`GeneratedCatalogDigestTest` trzyma skróty tych kolumn profilu `small`), a nowe pola
+  nie zależą od liczby procesów (`ProcessCountDeterminismTest`: 1, 3 i 4 procesy).
+
 ### Identyfikatory, czas i determinizm
 
 - Chwila odniesienia: opcja `--anchor` (domyślnie początek bieżącej doby UTC). Wszystkie czasy generatora liczą się
@@ -306,6 +341,14 @@ Krok 6 to SQL po załadowaniu zamówień (`INSERT … SELECT` z sumami narastaj�
   albo kodów różni się od planu, albo kod nie jest zakończony;
 - liczby w tabelach różnią się od profilu, kategorie ogona są niekompletne, slug produktu z ogona nie jest unikalny
   (albo slug z `catalog.yaml` należy do innego produktu);
+- wygenerowany produkt nie ma marki, opisu albo parametrów (naruszenia „A generated product has no brand”, „… no
+  description”, „… no parameters”) albo ma parametr bez nazwy lub wartości („… has a parameter without a name or a
+  value”) albo wygenerowany wariant nie ma SKU albo EAN („A generated variant has no SKU”, „… no EAN”); każde z nich
+  wymienia pierwsze slugi produktów. Brak wartości to `NULL`, pusty tekst albo tekst bez znaku widocznego według T3
+  reguły tekstu (`BlankText`: PostgreSQL nie ma klas Unicode, więc wzorzec wylicza niewidoczne punkty kodowe, a test
+  porównuje go z `Text` dla każdego z nich), nie tylko `NULL`: odbiorca API nie odróżnia ich od siebie. Produkty
+  z `catalog.yaml` i ich warianty są pominięte (seed pisze własną treść i kody). Każde z dwóch sprawdzeń to jedno
+  przejście po tabeli (liczniki), a produkty nazywa dopiero drugie zapytanie, gdy licznik jest dodatni;
 - w którymś realmie nie ma grupy `demo-data-generated` albo jej członkowie to nie dokładnie zbiór docelowy z bieżącymi
   danymi (opcja `--no-accounts` pomija sprawdzenia kont).
 W `small` sprawdzenie ceny linii obejmuje wszystkie zamówienia, w większych profilach deterministyczną próbkę
@@ -456,8 +499,10 @@ Opis szczegółowy: `docs/features/search/spec.md`.
   się kodem 2. Każdy odczyt trafia do `space.log` w wynikach (pierwszy wiersz to odczyt sprzed startu), a na końcu
   przebiegu plik dostaje podsumowanie z najmniejszym wolnym miejscem i zużyciem względem pierwszego odczytu (szczytowe
   zużycie dysku, z którego uaktualnia się `diskPeakGb`). Próbniki pamięci i CPU (`top.log`, `node-stats.log`) działają
-  od chwili, gdy klaster jest gotowy, więc obejmują generator. Wartości `diskPeakGb`: `medium` 21 GB (zmierzone: 20,52 GB, w górę do pełnego GB), `server` 96 GB i `full` 250 GB
-  (ekstrapolacja z rozmiarów `medium`, niezweryfikowana pomiarem; rachunek w „Wyniki przebiegu `medium`”).
+  od chwili, gdy klaster jest gotowy, więc obejmują generator. Wartości `diskPeakGb`: `medium` 23 GB, `server` 114 GB i `full` 268 GB. Każda to suma szczytu przebiegu `medium`
+  z 2026-11-19 bez pól treści produktów (20,52 GB zmierzone; `server` i `full` jego ekstrapolacja, rachunek w „Wyniki
+  przebiegu `medium`”) i szacunku przyrostu od tych pól i indeksu SKU („Rozmiar i czas pól treści produktów”). Wszystkie
+  trzy są szacunkiem niezweryfikowanym przebiegiem po zmianie generatora.
 - **Uśpienie komputera.** Gdy komputer się usypia, VM Dockera staje razem z nim, a czasy i przepustowość pomiaru są
   bezwartościowe, choć nic w wynikach tego nie pokazuje. Dlatego na macOS cel przez cały przebieg blokuje uśpienie
   z bezczynności, a na zasilaniu sieciowym także systemowe (`caffeinate -ims -w <pid skryptu>`); nie chroni przed
@@ -485,7 +530,8 @@ użytkownika) opisuje raport `docs/reports/demo-load-medium-2026-11-19.md`: czas
 i indeksów, dysk, pamięć i CPU podów oraz wyniki k6. Z pomiaru wynikają:
 
 - **`diskPeakGb`.** Szczyt zużycia dysku w VM Dockera względem odczytu sprzed startu (`space.log`), zaokrąglony w górę
-  do pełnego GB: `medium` 21 GB. Zmierzono go przy obrazach z cache, więc zimna budowa dodaje warstwy obrazów.
+  do pełnego GB: `medium` 21 GB (generator bez pól treści produktów; `diskPeakGb` `medium` w `profiles.yaml` to ta liczba
+  plus szacowany przyrost od tych pól, niżej). Zmierzono go przy obrazach z cache, więc zimna budowa dodaje warstwy obrazów.
 - **Limit Joba.** Około dwukrotność czasu Joba generatora (`medium`: 1731 s), w górę do pełnej godziny: `medium` 1 h.
 - **Limit pamięci Joba** (`resources.demoData`) zostaje zapasem dla `server` i `full`, których zużycia pamięci nie
   zmierzono.
@@ -499,7 +545,9 @@ klienci i konta ×10 (oba profile), zamówienia ×5 (`server`) albo ×50 (`full`
 | tabele zamówieniowe | 3,44 GB | 17,2 GB | 171,7 GB |
 | klienci i Keycloak (×10) | 0,29 GB | 2,9 GB | 2,9 GB |
 | stały narzut (obrazy, klaster, pula zdjęć, WAL) | 10,31 GB | 10,31 GB | 10,31 GB |
-| razem (`diskPeakGb`, w górę do pełnego GB) | 20,52 GB (21) | 95,2 GB (96) | 249,7 GB (250) |
+| razem (szczyt bez pól treści produktów) | 20,52 GB | 95,2 GB | 249,7 GB |
+
+Do tej sumy dochodzi przyrost od pól treści produktów i indeksu SKU (szacunek, niżej), z którego wychodzi `diskPeakGb`.
 
 Czas generatora: kroki produktowe (produkty, zdjęcia, ceny, stany: 303 s) ×10, konta (162 s) ×10, przebudowa indeksu
 (447 s) ×10, zamówienia i sprzedaż (173 s) ×5 albo ×50, a `demo-data:verify` (596 s, przy założeniu, że połowa
@@ -510,6 +558,124 @@ indeksy B-drzewa, scalanie segmentów Elasticsearcha i weryfikacja mogą rosną�
 Założenia rachunku dysku: część ruchów magazynowych (rezerwacja, zatwierdzenie, zwolnienie) skaluje się
 z zamówieniami, nie z produktami, a rachunek skaluje wszystkie ruchy z produktami (×10): dla `full` to niedoszacowanie
 rzędu kilku GB, w granicach zapasu 1,25.
+
+### Rozmiar i czas pól treści produktów (PRODUCT-DATA, etap 1)
+
+Pomiary i szacunki do `docs/features/product-data/spec.md` („Skala i dane na serwerze”, p. 3–5): co do rozmiaru
+i czasu zmienia generator, który pisze markę, opis, parametry, SKU i EAN („Treść produktów i kody wariantów”). Różnica
+jest liczona względem generatora bez tych pól na tym samym ziarnie (`8d3b6f1e-5a27-4c90-b1e4-7f02a96c35d8`), chwili
+odniesienia `2026-11-17T00:00:00Z` i 4 procesach, na tym samym komputerze (macOS, Docker Desktop: 16 CPU, 31 GiB
+pamięci, Postgres 18.6 z ustawieniami domyślnymi: `shared_buffers` 128 MB, `max_wal_size` 1 GB) i na stosie Compose
+(nie k3d). Indeks unikalny SKU istnieje podczas ładowania. Rozmiary podaje `pg_relation_size` (sterta, TOAST i każdy
+indeks osobno) i `pg_total_relation_size` (razem), po kroku, bez `VACUUM` i `ANALYZE`; GB to 10^9 bajtów.
+
+**Pomiar 1: `small`, pełny przebieg generatora** (`make seed-scale PROFILE=small ANCHOR=2026-11-17T00:00:00Z
+PROCESSES=4`, czyli `bin/generate-demo` ze wszystkimi krokami; 2 191 produktów, w tym 191 z seeda, i 7 081 wariantów).
+Sterta zawiera martwe wersje wierszy po kroku zdjęć, który raz aktualizuje każdy wiersz produktu. Jeden przebieg przed
+i jeden po, bajty:
+
+| Relacja | Część | Bez pól treści | Z polami treści |
+|---|---|---|---|
+| `catalog_product` | sterta | 2 170 880 | 5 300 224 |
+| | TOAST (sterta, indeks) | 0, 8 192 | 0, 8 192 |
+| | indeksy (9; największy `name_trgm`) | 5 120 000 (`name_trgm` 4 046 848) | 4 456 448 (`name_trgm` 3 391 488) |
+| | razem | 7 356 416 | 9 789 440 |
+| `catalog_product_variant` | sterta | 753 664 | 892 928 |
+| | TOAST (sterta, indeks) | 0, 8 192 | 0, 8 192 |
+| | `catalog_product_variant_sku_key` (SKU) | 73 728 | 352 256 |
+| | pozostałe indeksy (`pkey`, `position_key`, `values_key`) | 1 212 416 | 1 220 608 |
+| | razem | 2 080 768 | 2 506 752 |
+
+W przeliczeniu na wiersz: tabela produktów 3 358 B → 4 468 B na produkt, tabela wariantów 294 B → 354 B na wariant;
+sterta produktów 991 B → 2 419 B na produkt. Przyrost sterty (1 428 B) jest większy niż w pomiarze 2 (779 B), bo krok
+zdjęć zostawia martwą wersję każdego wiersza: ponad przyrost wiersza dochodzi druga kopia o około 650 B na produkt.
+Opis (300–600 znaków) i parametry (3–6 par) mieszczą się w wierszu poniżej progu TOAST, więc TOAST jest pusty.
+
+**Pomiar 2: `medium`, kroki katalogu** (`bin/seed-demo`, `demo-data:categories`, potem `demo-data:products` w 4 procesach
+`--worker=i --workers=4`, tak jak woła je `bin/generate-demo`; bez zdjęć, cen i zamówień; 1 000 191 produktów, w tym
+191 z seeda, i 3 009 350 wariantów; średnia z 3 przebiegów bez pól treści i 4 z polami, rozrzut rozmiaru między
+przebiegami poniżej 0,5%), MB:
+
+| Relacja | Część | Bez pól treści | Z polami treści | Różnica |
+|---|---|---|---|---|
+| `catalog_product` | sterta | 396,3 | 1 175,4 | +779,1 |
+| | TOAST | 0 | 0 | 0 |
+| | indeksy (9) | 460,1 | 476,5 | +16,4 |
+| | razem | 856,6 | 1 652,3 | +795,7 |
+| `catalog_product_variant` | sterta | 313,0 | 387,5 | +74,5 |
+| | TOAST | 0 | 0 | 0 |
+| | `catalog_product_variant_sku_key` (SKU) | 30,2 | 167,1 | +136,9 |
+| | pozostałe indeksy (`pkey`, `position_key`, `values_key`) | 495,3 | 494,1 | −1,1 |
+| | razem | 838,6 | 1 048,9 | +210,3 |
+
+Indeks SKU bez pól treści ma wpisy `NULL` dla każdego wariantu (10 B na wariant); z polami ma 55,5 B na wariant. Jedyny
+indeks produktów, który się zmienił, to `catalog_product_name_trgm_idx` (`medium`: 125,5–125,7 MB w 3 przebiegach bez pól, 141,5–142,9 MB w 4 z polami, czyli różnica systematyczna +16,6 MB;
+w `small` odwrotnie, −0,7 MB w jednym przebiegu; indeks jest po nazwie, której nowe pola nie zmieniają, przyczyny nie badano),
+pozostałe różnią się o mniej niż 1 MB. Rachunek niżej bierze przyrost w całości, także tę różnicę.
+
+**Bajty na produkt i na wariant (pomiar 2: `medium`, kroki katalogu, bez zdjęć, cen i zamówień).** Tabela produktów:
+856 B → 1 652 B na produkt (+796 B, z tego sterta +779 B). Tabela wariantów: 279 B → 349 B na wariant (+70 B: sterta
++25 B, indeks SKU +46 B). Przyrost na produkt z jego wariantami (3,009 na produkt) to 1 006 B, czyli rząd 1 kB, który
+dawał rachunek z budżetów („Skala i dane na serwerze” w specyfikacji PRODUCT-DATA); wszystkie tabele i indeksy katalogu
+razem: 1 695 B → 2 701 B na produkt z wariantami.
+
+**Rachunek przyrostu szczytu dysku (szacunek).** `diskPeakGb` to szacunek szczytu całego stosu w trakcie generowania, nie
+rozmiar tabel po nim (tabele po kroku to część rachunku, nie szczyt). Przyrost szczytu składa się z:
+
+| Składnik | Podstawa | `medium` | `server` | `full` |
+|---|---|---|---|---|
+| tabele i indeksy produktów | +796 B × produkty (pomiar 2) | 0,80 GB | 7,96 GB | 7,96 GB |
+| tabele i indeksy wariantów, w tym indeks SKU | +70 B × warianty (3,009 na produkt; pomiar 2) | 0,21 GB | 2,10 GB | 2,10 GB |
+| druga kopia przyrostu wiersza produktu w kroku zdjęć | 779 B × produkty: `UPDATE` obrazów zostawia stary wiersz (z nowymi kolumnami) do odkurzenia | 0,78 GB | 7,79 GB | 7,79 GB |
+| WAL nowych kolumn i indeksu SKU | zapis kroku produktów 8,93 → 10,84 GB na `medium` (+1,91 GB), ale na dysku WAL trzyma `max_wal_size` (1 GB, chart go nie zmienia, kopie zapasowe to `pg_dump`, bez archiwizacji WAL), więc szczytu nie zwiększa; zawiera go stały narzut 10,31 GB | 0 | 0 | 0 |
+| **przyrost szczytu** | | **1,79 GB** | **17,85 GB** | **17,85 GB** |
+| szczyt bez pól treści | tabela „Ekstrapolacja `server` i `full`” wyżej | 20,52 GB | 95,2 GB | 249,7 GB |
+| **razem, w górę do pełnego GB (`diskPeakGb`)** | | **22,3 → 23 GB** | **113,05 → 114 GB** | **267,55 → 268 GB** |
+
+Wszystkie trzy wartości `diskPeakGb` są szacunkiem niezweryfikowanym przebiegiem po zmianie generatora: przyrost tabel
+pochodzi z pomiaru `medium` skalowanego liniowo, a druga kopia i WAL to założenia (druga kopia zakłada, że odkurzanie
+nie nadąża za krokiem zdjęć, więc jest górną granicą; w `small` zmierzono około 0,83 przyrostu wiersza). Założenie o WAL
+(przyrost 0): `max_wal_size` jest limitem miękkim, więc przy zapisie większym o 21% WAL może go chwilowo przekroczyć;
+nie mierzono, o ile; zakładamy, że ewentualny nadmiar mieści się w zapasie 1,25 strażnika miejsca. Strażnik wolnego
+miejsca (wolne ≥ 1,25 × `diskPeakGb`) wymaga więc dla `medium` 28,75 GB, dla `server` 142,5 GB, dla `full` 335 GB.
+
+**Czas kroku `demo-data:products`, `medium`, 4 procesy** (od startu pierwszego procesu do końca ostatniego, bez resetu
+i kategorii; indeks SKU obecny):
+
+| Wariant | Przebiegi (s) | Średnia |
+|---|---|---|
+| bez pól treści (5 przebiegów) | 36,97; 37,28; 39,91; 33,72; 33,91 | 36,4 s |
+| z polami treści (6 przebiegów) | 42,85; 42,93; 41,02; 41,10; 41,90; 39,59 | 41,6 s |
+| z polami treści, bez indeksu SKU (2 przebiegi, pomiar uzupełniający na lokalnej bazie, indeks usunięty i odtworzony) | 38,72; 39,54 | 39,1 s |
+
+Różnica to pomiar `medium`: około +5 s (+14%), z czego około połowa przypada na indeks SKU (+2,5 s), a reszta na
+szersze wiersze (+2,7 s). Rozrzut między przebiegami tego samego kodu wynosi około 6 s (komputer dzielił CPU i dysk
+z innymi stosami), więc różnicę trzeba czytać jako rząd wielkości, nie jako dokładną liczbę. Indeks SKU (167 MB) nie mieści
+się w `shared_buffers` (128 MB) już przy `medium`.
+
+Czas dla `server` i `full` (oba mają 10 mln produktów, kroki katalogu nie zależą od zamówień) to szacunek ×10,
+niezweryfikowany: krok produktów około 6 min bez pól treści i około 7 min z nimi na tym komputerze, a na serwerze demo,
+gdzie krok `medium` zajął około 2 min (`docs/reports/demo-scale-medium-worf-2026-11-20.md`), około 20 min i około 23 min,
+czyli przyrost około 3 min. Przy 128 MB `shared_buffers` (chart ich nie ustawia) indeks SKU `server` (około 1,7 GB)
+jest kilkanaście razy większy od pamięci podręcznej bazy, a drzewo ma o poziom więcej niż przy `medium`, więc koszt
+wpisu może rosnąć szybciej niż liniowo; kolejność SKU (numer produktu na początku) ogranicza to, bo wiersze części
+trafiają do sąsiednich stron. Odniesienie: limit Joba `server` to 24 h (`docs/features/demo-scale/spec.md`) przy prognozie 11 h
+(`docs/reports/demo-scale-medium-worf-2026-11-20.md`), więc przyrost rzędu kilku minut to około 0,5% prognozy;
+nawet kilkukrotnie większy nie zbliża Joba do limitu.
+
+**Czas sprawdzeń treści `demo-data:verify`** (dwa zapytania liczące: produkty bez marki, opisu, parametrów i z parametrem
+bez nazwy lub wartości w jednym przejściu, warianty bez SKU i EAN w drugim; brak to `NULL`, pusty tekst albo tekst bez
+znaku widocznego): na `small` (2191 produktów, 7081 wariantów, `EXPLAIN ANALYZE` po `ANALYZE`, dwa pomiary) 6,7–6,9 ms
+i 2,3 ms, z czego sprawdzenie wpisów parametrów to około 5,2 ms (bez niego produkty 1,5 ms); same sprawdzenia
+`NULL` kosztowały 0,8–0,9 ms i 0,6 ms. Na `medium` nie mierzono po tej zmianie (wymaga puli zdjęć; przed zmianą 155 ms
+i 127 ms): proporcja `small` daje około 1,2 s i 0,5 s, a dla `server` i `full` ×10 około 12 s i 5 s (szacunek);
+wobec zmierzonych 596 s całego `demo-data:verify` na `medium` to poniżej 1% czasu przebiegu `medium`.
+
+Kroki zdjęć, cen, promocji i zamówień przechodzą generator produktów i liczą teraz także opis i parametry (dane tych
+kroków bez zmian); koszt CPU tego dodatku nie był mierzony i nie wchodzi do szacunku czasu.
+
+Pomiar `server` i `full` nie został wykonany; szczyt dysku całego stosu po zmianie generatora też nie (`medium` na k3d
+powtórzy DEMO-SCALE).
 
 ## Model zagrożeń
 
@@ -634,7 +800,7 @@ Hipotezy z analizy kodu do sprawdzenia pomiarem (P2), z miejscami w kodzie:
 - Pobieranie zdjęć z Wikimedia Commons (tylko CC0 1.0 i domena publiczna) bez klucza API, przez publiczne API Commons
   z limitami zapytań i nagłówkiem `User-Agent`, potrzebne tylko do wyboru nowej puli (sekcja „Zdjęcia”).
 - (część 2) Przebieg `LOAD_DATA=medium` w zadaniu: Docker na komputerze użytkownika z co najmniej 10 CPU, 20 GiB pamięci
-  (wymagania `load`) i około 27 GB wolnego miejsca (1,25 × `diskPeakGb` `medium`, W2) w VM i na dysku komputera; przebieg `medium` z 2026-11-19
+  (wymagania `load`) i około 29 GB wolnego miejsca (1,25 × `diskPeakGb` `medium`, W2) w VM i na dysku komputera; przebieg `medium` z 2026-11-19
   miał 16 CPU, 31 GiB pamięci, w VM około 894 GB i na dysku komputera około 185 GB wolnego.
 
 ## Po epiku
@@ -643,6 +809,6 @@ Kroki sesji za zgodą użytkownika, nie zadania AO:
 1. Dane w skali na serwerze demo: `generate PROFILE=medium`, po analizie `PROFILE=server`
    (`docs/features/demo-scale/spec.md`, „Przebieg na serwerze”).
 2. Pomiar `full` (W3) na k3d jest odłożony: `make -C infra/k8s load LOAD_DATA=full` na komputerze użytkownika, raport
-   w `docs/reports/`. Cel sam odmówi startu bez zapasu miejsca (W2): przy `diskPeakGb` `full` równym 250 GB
-   (ekstrapolacja) potrzeba około 313 GB wolnego na dysku komputera, a przy przebiegu `medium` 2026-11-19 wolne było
+   w `docs/reports/`. Cel sam odmówi startu bez zapasu miejsca (W2): przy `diskPeakGb` `full` równym 268 GB
+   (szacunek) potrzeba około 335 GB wolnego na dysku komputera, a przy przebiegu `medium` 2026-11-19 wolne było
    około 185 GB, więc przed pomiarem `full` trzeba zwolnić miejsce albo wskazać inny dysk.

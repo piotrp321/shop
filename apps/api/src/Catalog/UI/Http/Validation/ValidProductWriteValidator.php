@@ -5,13 +5,19 @@ declare(strict_types=1);
 namespace App\Catalog\UI\Http\Validation;
 
 use App\Catalog\Domain\Category\CategoryId;
+use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\ImageKey;
+use App\Catalog\Domain\Product\ProductBrand;
 use App\Catalog\Domain\Product\ProductCategories;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductParameter;
+use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
+use App\Catalog\Domain\Product\Sku;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Domain\Product\VariantAxes;
@@ -46,6 +52,9 @@ final class ValidProductWriteValidator extends ConstraintValidator
         $this->name($context, $body['name'] ?? null);
         $this->slug($context, $body['slug'] ?? null);
         $this->shortDescription($context, $body['shortDescription'] ?? null);
+        $this->brand($context, $body['brand'] ?? null);
+        $this->description($context, $body['description'] ?? null);
+        $this->parameters($context, $body['parameters'] ?? null);
         $this->categories($context, $body['mainCategoryId'] ?? null, $body['additionalCategoryIds'] ?? null);
         if (!\is_string($body['taxClass'] ?? null) || null === TaxClassCode::tryFrom($body['taxClass'])) {
             self::add($context, 'taxClass', 'Wybierz klasę podatkową.');
@@ -87,6 +96,75 @@ final class ValidProductWriteValidator extends ConstraintValidator
             self::add($context, 'shortDescription', 'Krótki opis zawiera niedozwolone znaki.');
         } elseif (Text::length($description) > ShortDescription::MAX_LENGTH) {
             self::add($context, 'shortDescription', \sprintf('Krótki opis może mieć najwyżej %d znaków.', ShortDescription::MAX_LENGTH));
+        }
+    }
+
+    private function brand(ExecutionContextInterface $context, mixed $brand): void
+    {
+        if (!\is_string($brand)) {
+            self::add($context, 'brand', 'Marka musi być tekstem.');
+        } elseif (Text::hasForbiddenCharacters($brand)) {
+            self::add($context, 'brand', 'Marka zawiera niedozwolone znaki.');
+        } elseif (Text::length($brand) > ProductBrand::MAX_LENGTH) {
+            self::add($context, 'brand', \sprintf('Marka może mieć najwyżej %d znaków.', ProductBrand::MAX_LENGTH));
+        }
+    }
+
+    private function description(ExecutionContextInterface $context, mixed $description): void
+    {
+        if (!\is_string($description)) {
+            self::add($context, 'description', 'Opis musi być tekstem.');
+        } elseif (Text::hasForbiddenCharacters($description, ProductDescription::ALLOWED)) {
+            self::add($context, 'description', 'Opis zawiera niedozwolone znaki.');
+        } elseif (Text::length($description) > ProductDescription::MAX_LENGTH) {
+            self::add($context, 'description', \sprintf('Opis może mieć najwyżej %d znaków.', ProductDescription::MAX_LENGTH));
+        }
+    }
+
+    private function parameters(ExecutionContextInterface $context, mixed $parameters): void
+    {
+        if (!\is_array($parameters) || !array_is_list($parameters)) {
+            self::add($context, 'parameters', 'Parametry muszą być listą.');
+
+            return;
+        }
+        if (\count($parameters) > ProductParameters::MAX_PARAMETERS) {
+            self::add($context, 'parameters', \sprintf('Produkt może mieć najwyżej %d parametrów.', ProductParameters::MAX_PARAMETERS));
+
+            return;
+        }
+        $names = [];
+        foreach ($parameters as $index => $parameter) {
+            $path = \sprintf('parameters[%d]', $index);
+            if (!\is_array($parameter) || !\array_key_exists('name', $parameter) || !\array_key_exists('value', $parameter)) {
+                self::add($context, $path, 'Parametr musi mieć nazwę i wartość.');
+
+                continue;
+            }
+
+            $name = $parameter['name'];
+            if (\is_string($name) && Text::hasForbiddenCharacters($name)) {
+                self::add($context, $path.'.name', 'Nazwa parametru zawiera niedozwolone znaki.');
+            } else {
+                $trimmed = \is_string($name) ? Text::normalize($name) : null;
+                if (null === $trimmed || '' === $trimmed || mb_strlen($trimmed) > ProductParameter::MAX_NAME_LENGTH) {
+                    self::add($context, $path.'.name', \sprintf('Nazwa parametru musi mieć od 1 do %d znaków.', ProductParameter::MAX_NAME_LENGTH));
+                } elseif (isset($names[mb_strtolower($trimmed)])) {
+                    self::add($context, $path.'.name', 'Parametr o tej nazwie już jest na liście.');
+                } else {
+                    $names[mb_strtolower($trimmed)] = true;
+                }
+            }
+
+            $value = $parameter['value'];
+            if (\is_string($value) && Text::hasForbiddenCharacters($value)) {
+                self::add($context, $path.'.value', 'Wartość parametru zawiera niedozwolone znaki.');
+            } else {
+                $trimmed = \is_string($value) ? Text::normalize($value) : null;
+                if (null === $trimmed || '' === $trimmed || mb_strlen($trimmed) > ProductParameter::MAX_VALUE_LENGTH) {
+                    self::add($context, $path.'.value', \sprintf('Wartość parametru musi mieć od 1 do %d znaków.', ProductParameter::MAX_VALUE_LENGTH));
+                }
+            }
         }
     }
 
@@ -227,6 +305,7 @@ final class ValidProductWriteValidator extends ConstraintValidator
 
         $ids = [];
         $combinations = [];
+        $skus = [];
         foreach ($variants as $index => $variant) {
             if (!\is_array($variant) || array_is_list($variant) && [] !== $variant) {
                 self::add($context, \sprintf('variants[%d]', $index), 'Wariant jest nieprawidłowy.');
@@ -250,6 +329,55 @@ final class ValidProductWriteValidator extends ConstraintValidator
             }
 
             $this->values($context, $index, $variant['values'] ?? null, $axisCount, $combinations);
+            $this->sku($context, \sprintf('variants[%d].sku', $index), $variant['sku'] ?? null, $skus);
+            $this->ean($context, \sprintf('variants[%d].ean', $index), $variant['ean'] ?? null);
+        }
+    }
+
+    /**
+     * The SKU of a row: T1 on the value as it came, then T2, then the format (Sku does all three); a code of a row before
+     * is repeated by the later row, whatever the case it was written in. A code in the wrong format is not compared.
+     *
+     * @param array<string, true> $seen the SKUs of the rows before, in capitals
+     */
+    private function sku(ExecutionContextInterface $context, string $path, mixed $sku, array &$seen): void
+    {
+        if (!\is_string($sku)) {
+            self::add($context, $path, 'Kod SKU musi być tekstem.');
+
+            return;
+        }
+        try {
+            $code = Sku::optional($sku);
+        } catch (\InvalidArgumentException) {
+            self::add($context, $path, \sprintf('Kod SKU może mieć od 1 do %d znaków: litery A–Z, cyfry oraz znaki - _ . / i musi zaczynać się literą albo cyfrą.', Sku::MAX_LENGTH));
+
+            return;
+        }
+        if (null === $code) {
+            return;
+        }
+        if (isset($seen[$code->value()])) {
+            self::add($context, $path, 'Ten kod SKU powtarza się w produkcie.');
+        }
+        $seen[$code->value()] = true;
+    }
+
+    /**
+     * The EAN of a row: T1 on the value as it came, then T2, then the figures of a length of GS1 with the check digit (Ean
+     * does all three). A JSON number is no text. The same EAN may repeat.
+     */
+    private function ean(ExecutionContextInterface $context, string $path, mixed $ean): void
+    {
+        if (!\is_string($ean)) {
+            self::add($context, $path, 'Kod EAN musi być tekstem.');
+
+            return;
+        }
+        try {
+            Ean::optional($ean);
+        } catch (\InvalidArgumentException) {
+            self::add($context, $path, 'Podaj poprawny kod EAN: 8, 12, 13 albo 14 cyfr z cyfrą kontrolną.');
         }
     }
 

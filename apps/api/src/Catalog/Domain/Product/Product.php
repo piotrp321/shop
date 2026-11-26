@@ -20,6 +20,9 @@ final class Product
         private ProductName $name,
         private Slug $slug,
         private ShortDescription $shortDescription,
+        private ProductBrand $brand,
+        private ProductDescription $description,
+        private ProductParameters $parameters,
         private ProductCategories $categories,
         private TaxClassCode $taxClass,
         private ProductImages $images,
@@ -35,6 +38,9 @@ final class Product
         ProductName $name,
         Slug $slug,
         ShortDescription $shortDescription,
+        ProductBrand $brand,
+        ProductDescription $description,
+        ProductParameters $parameters,
         ProductCategories $categories,
         TaxClassCode $taxClass,
         ProductImages $images,
@@ -44,7 +50,7 @@ final class Product
     ): self {
         // No image rule here: the demo data publishes products without images (K2).
         $firstPublishedAt = ProductStatus::Published === $status ? $now : null;
-        $product = new self($id, $name, $slug, $shortDescription, $categories, $taxClass, $images, $variants, $status, $firstPublishedAt, 0);
+        $product = new self($id, $name, $slug, $shortDescription, $brand, $description, $parameters, $categories, $taxClass, $images, $variants, $status, $firstPublishedAt, 0);
         $product->events[] = new ProductCreated($id->toString(), $now);
 
         return $product;
@@ -58,6 +64,9 @@ final class Product
         ProductName $name,
         Slug $slug,
         ShortDescription $shortDescription,
+        ProductBrand $brand,
+        ProductDescription $description,
+        ProductParameters $parameters,
         ProductCategories $categories,
         TaxClassCode $taxClass,
         ProductImages $images,
@@ -66,7 +75,7 @@ final class Product
         ?\DateTimeImmutable $firstPublishedAt,
         int $version,
     ): self {
-        return new self($id, $name, $slug, $shortDescription, $categories, $taxClass, $images, $variants, $status, $firstPublishedAt, $version);
+        return new self($id, $name, $slug, $shortDescription, $brand, $description, $parameters, $categories, $taxClass, $images, $variants, $status, $firstPublishedAt, $version);
     }
 
     /**
@@ -86,6 +95,9 @@ final class Product
         ProductName $name,
         Slug $slug,
         ShortDescription $shortDescription,
+        ProductBrand $brand,
+        ProductDescription $description,
+        ProductParameters $parameters,
         ProductCategories $categories,
         TaxClassCode $taxClass,
         ProductImages $images,
@@ -107,6 +119,9 @@ final class Product
         $this->name = $name;
         $this->slug = $slug;
         $this->shortDescription = $shortDescription;
+        $this->brand = $brand;
+        $this->description = $description;
+        $this->parameters = $parameters;
         $this->categories = $categories;
         $this->taxClass = $taxClass;
         $this->images = $images;
@@ -177,6 +192,21 @@ final class Product
     public function shortDescription(): ShortDescription
     {
         return $this->shortDescription;
+    }
+
+    public function brand(): ProductBrand
+    {
+        return $this->brand;
+    }
+
+    public function description(): ProductDescription
+    {
+        return $this->description;
+    }
+
+    public function parameters(): ProductParameters
+    {
+        return $this->parameters;
     }
 
     public function categories(): ProductCategories

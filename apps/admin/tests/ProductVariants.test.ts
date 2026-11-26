@@ -15,8 +15,8 @@ interface Props {
 }
 
 const TWO_ROWS: VariantRow[] = [
-  { variantId: "v-1", values: ["czarne"] },
-  { variantId: "v-2", values: ["białe"] },
+  { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
+  { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
 ];
 
 let mounted: VueWrapper | undefined;
@@ -50,8 +50,8 @@ const dialogButton = (name: string) => [...(dialog()?.querySelectorAll("button")
 const pressEscape = () => (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
 const TWO_AXES_ROWS: VariantRow[] = [
-  { variantId: "v-1", values: ["czarny", "42"] },
-  { variantId: "v-2", values: ["biały", "43"] },
+  { variantId: "v-1", values: ["czarny", "42"], sku: "", ean: "" },
+  { variantId: "v-2", values: ["biały", "43"], sku: "", ean: "" },
 ];
 
 /** The form around the editor: removing a row or an axis changes the props, like `ProductFormView` does. */
@@ -77,12 +77,13 @@ function renderInForm(initial: VariantRow[] = TWO_ROWS, initialAxes: string[] = 
   return mounted;
 }
 
+const READ_ONLY = (wrapper: ReturnType<typeof render>, id: string) => wrapper.findAll(`[data-testid=${id}]`).map((node) => node.attributes("readonly") !== undefined);
 const DISABLED = (wrapper: ReturnType<typeof render>, id: string) => wrapper.findAll(`[data-testid=${id}]`).map((node) => node.attributes("disabled") !== undefined);
 
 describe("ProductVariants", () => {
   describe("axes and rows", () => {
     it("shows a field for the name of every axis and a field for every value", () => {
-      const wrapper = render({ axes: ["Kolor", "Rozmiar"], rows: [{ variantId: "v-1", values: ["czarne", "M"] }] });
+      const wrapper = render({ axes: ["Kolor", "Rozmiar"], rows: [{ variantId: "v-1", values: ["czarne", "M"], sku: "", ean: "" }] });
 
       expect(wrapper.findAll("[data-testid=axis-name]").map((node) => (node.element as HTMLInputElement).value)).toEqual(["Kolor", "Rozmiar"]);
       expect(wrapper.findAll("[data-testid=variant-value]").map((node) => (node.element as HTMLInputElement).value)).toEqual(["czarne", "M"]);
@@ -90,7 +91,7 @@ describe("ProductVariants", () => {
     });
 
     it("shows one default variant without fields for a product without axes", () => {
-      const wrapper = render({ axes: [], rows: [{ variantId: null, values: [] }] });
+      const wrapper = render({ axes: [], rows: [{ variantId: null, values: [], sku: "", ean: "" }] });
 
       expect(wrapper.findAll("[data-testid=variant-row]")).toHaveLength(1);
       expect(wrapper.get("[data-testid=variant-row]").text()).toContain("Wariant domyślny");
@@ -101,14 +102,14 @@ describe("ProductVariants", () => {
     });
 
     it("does not suggest adding an axis when the axes are locked", () => {
-      const wrapper = render({ axes: [], rows: [{ variantId: "v-1", values: [] }], axesLocked: true });
+      const wrapper = render({ axes: [], rows: [{ variantId: "v-1", values: [], sku: "", ean: "" }], axesLocked: true });
 
       expect(DISABLED(wrapper, "add-axis")).toEqual([true]);
       expect(wrapper.text()).not.toContain("Dodaj oś, aby");
     });
 
     it("labels the buttons that move an axis earlier or later", () => {
-      const wrapper = render({ axes: ["Kolor", "Rozmiar"], rows: [{ variantId: null, values: ["a", "b"] }] });
+      const wrapper = render({ axes: ["Kolor", "Rozmiar"], rows: [{ variantId: null, values: ["a", "b"], sku: "", ean: "" }] });
 
       expect(wrapper.findAll("[data-testid=axis-move-up]").map((node) => node.attributes("aria-label"))).toEqual(["Przesuń oś 1 wcześniej", "Przesuń oś 2 wcześniej"]);
       expect(wrapper.findAll("[data-testid=axis-move-down]").map((node) => node.attributes("aria-label"))).toEqual(["Przesuń oś 1 później", "Przesuń oś 2 później"]);
@@ -136,13 +137,13 @@ describe("ProductVariants", () => {
     });
 
     it("disables adding a row at 100 rows", () => {
-      const rows = Array.from({ length: 100 }, () => ({ variantId: null, values: [""] }));
+      const rows = Array.from({ length: 100 }, () => ({ variantId: null, values: [""], sku: "", ean: "" }));
 
       expect(DISABLED(render({ rows }), "add-variant")).toEqual([true]);
     });
 
     it("emits moving and removing an axis, and moves are disabled at the ends", async () => {
-      const wrapper = render({ axes: ["Kolor", "Rozmiar"], rows: [{ variantId: null, values: ["a", "b"] }] });
+      const wrapper = render({ axes: ["Kolor", "Rozmiar"], rows: [{ variantId: null, values: ["a", "b"], sku: "", ean: "" }] });
 
       expect(DISABLED(wrapper, "axis-move-up")).toEqual([true, false]);
       expect(DISABLED(wrapper, "axis-move-down")).toEqual([false, true]);
@@ -156,7 +157,7 @@ describe("ProductVariants", () => {
 
   describe("removing a row", () => {
     it("removes a new row without asking", async () => {
-      const wrapper = render({ rows: [{ variantId: "v-1", values: ["czarne"] }, { variantId: null, values: ["zielone"] }] });
+      const wrapper = render({ rows: [{ variantId: "v-1", values: ["czarne"], sku: "", ean: "" }, { variantId: null, values: ["zielone"], sku: "", ean: "" }] });
 
       await wrapper.findAll("[data-testid=variant-remove]")[1]!.trigger("click");
 
@@ -239,7 +240,7 @@ describe("ProductVariants", () => {
     });
 
     it("puts the focus on the heading „Warianty” after a new row is removed without asking, not on the next button", async () => {
-      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarne"] }, { variantId: null, values: ["zielone"] }, { variantId: null, values: ["żółte"] }]);
+      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarne"], sku: "", ean: "" }, { variantId: null, values: ["zielone"], sku: "", ean: "" }, { variantId: null, values: ["żółte"], sku: "", ean: "" }]);
       (wrapper.findAll("[data-testid=variant-remove]")[1]!.element as HTMLElement).focus();
 
       await wrapper.findAll("[data-testid=variant-remove]")[1]!.trigger("click");
@@ -252,7 +253,7 @@ describe("ProductVariants", () => {
     });
 
     it("puts the focus on the heading „Warianty” after the last new row is removed", async () => {
-      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarne"] }, { variantId: null, values: ["zielone"] }]);
+      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarne"], sku: "", ean: "" }, { variantId: null, values: ["zielone"], sku: "", ean: "" }]);
       (wrapper.findAll("[data-testid=variant-remove]")[1]!.element as HTMLElement).focus();
 
       await wrapper.findAll("[data-testid=variant-remove]")[1]!.trigger("click");
@@ -263,7 +264,7 @@ describe("ProductVariants", () => {
     });
 
     it("does not offer removing the only row", () => {
-      const wrapper = render({ rows: [{ variantId: "v-1", values: ["czarne"] }] });
+      const wrapper = render({ rows: [{ variantId: "v-1", values: ["czarne"], sku: "", ean: "" }] });
 
       expect(DISABLED(wrapper, "variant-remove")).toEqual([true]);
     });
@@ -281,7 +282,7 @@ describe("ProductVariants", () => {
       await flushPromises();
       expect(wrapper.emitted("removeAxis")).toEqual([[0]]);
 
-      const single = render({ rows: [{ variantId: "v-1", values: ["czarne"] }] });
+      const single = render({ rows: [{ variantId: "v-1", values: ["czarne"], sku: "", ean: "" }] });
       await single.get("[data-testid=axis-remove]").trigger("click");
       expect(single.emitted("removeAxis")).toEqual([[0]]);
     });
@@ -291,7 +292,7 @@ describe("ProductVariants", () => {
     const axisButtons = (wrapper: VueWrapper) => wrapper.findAll("[data-testid=axis-remove]").map((button) => button.element as HTMLElement);
 
     it("puts the focus on the heading „Warianty” after an axis is removed, not on the next button", async () => {
-      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarny", "42"] }], ["Kolor", "Rozmiar"]);
+      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarny", "42"], sku: "", ean: "" }], ["Kolor", "Rozmiar"]);
       axisButtons(wrapper)[0]!.focus();
 
       await wrapper.findAll("[data-testid=axis-remove]")[0]!.trigger("click");
@@ -302,7 +303,7 @@ describe("ProductVariants", () => {
     });
 
     it("puts the focus on the heading „Warianty” after the last axis is removed", async () => {
-      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarny", "42"] }], ["Kolor", "Rozmiar"]);
+      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarny", "42"], sku: "", ean: "" }], ["Kolor", "Rozmiar"]);
       axisButtons(wrapper)[1]!.focus();
 
       await wrapper.findAll("[data-testid=axis-remove]")[1]!.trigger("click");
@@ -312,7 +313,7 @@ describe("ProductVariants", () => {
     });
 
     it("puts the focus on the heading when the only axis is removed", async () => {
-      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarny"] }], ["Kolor"]);
+      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarny"], sku: "", ean: "" }], ["Kolor"]);
       axisButtons(wrapper)[0]!.focus();
 
       await wrapper.findAll("[data-testid=axis-remove]")[0]!.trigger("click");
@@ -347,14 +348,16 @@ describe("ProductVariants", () => {
   });
 
   describe("read-only", () => {
-    it("has no controls for editing and disables the fields", () => {
+    it("has no controls for editing and makes the fields read-only", () => {
       const wrapper = render({ readOnly: true, axesLocked: true });
 
       for (const id of ["add-axis", "add-variant", "axis-remove", "axis-move-up", "axis-move-down", "variant-remove"]) {
         expect(wrapper.find(`[data-testid=${id}]`).exists()).toBe(false);
       }
-      expect(DISABLED(wrapper, "axis-name")).toEqual([true]);
-      expect(DISABLED(wrapper, "variant-value")).toEqual([true, true]);
+      expect(READ_ONLY(wrapper, "axis-name")).toEqual([true]);
+      expect(READ_ONLY(wrapper, "variant-value")).toEqual([true, true]);
+      expect(DISABLED(wrapper, "axis-name")).toEqual([false]);
+      expect(DISABLED(wrapper, "variant-value")).toEqual([false, false]);
       expect(wrapper.find("[data-testid=variants-locked]").exists()).toBe(false);
     });
   });

@@ -8,10 +8,11 @@ use App\Catalog\Application\Query\ProductEditView;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 
-#[OA\Schema(description: 'A product as the edit form needs it, with the `version` a save is based on.', required: ['id', 'version', 'status', 'firstPublishedAt', 'name', 'slug', 'slugLocked', 'shortDescription', 'mainCategoryId', 'additionalCategoryIds', 'taxClass', 'images', 'variantAxes', 'variants', 'updatedAt'])]
+#[OA\Schema(description: 'A product as the edit form needs it, with the `version` a save is based on.', required: ['id', 'version', 'status', 'firstPublishedAt', 'name', 'slug', 'slugLocked', 'shortDescription', 'brand', 'description', 'parameters', 'mainCategoryId', 'additionalCategoryIds', 'taxClass', 'images', 'variantAxes', 'variants', 'updatedAt'])]
 final readonly class ProductEditViewResponse
 {
     /**
+     * @param list<ProductParameterResponse>   $parameters
      * @param list<string>                     $additionalCategoryIds
      * @param list<ProductEditImageResponse>   $images
      * @param list<string>                     $variantAxes
@@ -31,6 +32,12 @@ final readonly class ProductEditViewResponse
         #[OA\Property(description: 'The slug cannot change: the product was published at least once.')]
         public bool $slugLocked,
         public string $shortDescription,
+        #[OA\Property(description: 'Brand of the product; empty when it has none.', example: 'Hallen')]
+        public string $brand,
+        #[OA\Property(description: 'Description of paragraphs separated by an empty line; empty when the product has none.')]
+        public string $description,
+        #[OA\Property(description: 'In presentation order.', type: 'array', items: new OA\Items(ref: new Model(type: ProductParameterResponse::class)))]
+        public array $parameters,
         #[OA\Property(format: 'uuid')]
         public string $mainCategoryId,
         #[OA\Property(type: 'array', items: new OA\Items(type: 'string', format: 'uuid'))]
@@ -59,6 +66,9 @@ final readonly class ProductEditViewResponse
             $view->slug,
             $view->slugLocked,
             $view->shortDescription,
+            $view->brand,
+            $view->description,
+            array_map(ProductParameterResponse::of(...), $view->parameters),
             $view->mainCategoryId,
             $view->additionalCategoryIds,
             $view->taxClass,

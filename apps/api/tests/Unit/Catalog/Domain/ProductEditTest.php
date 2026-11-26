@@ -7,10 +7,14 @@ namespace App\Tests\Unit\Catalog\Domain;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Product\IdentityText;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductBrand;
 use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductChanged;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ProductNotPublishable;
+use App\Catalog\Domain\Product\ProductParameter;
+use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
@@ -61,6 +65,58 @@ final class ProductEditTest extends TestCase
         self::assertSame(StoredProducts::PRODUCT_ID, $events[0]->productId);
         self::assertSame('buty-trailowe', $events[0]->slug);
         self::assertEquals(new \DateTimeImmutable(self::NOW), $events[0]->occurredAt());
+    }
+
+    public function testEditReplacesTheBrandTheDescriptionAndTheParametersInTheirOrder(): void
+    {
+        $product = StoredProducts::product();
+
+        $this->edit($product, brand: 'Hallen', longDescription: "Pierwszy akapit.\n\nDrugi akapit.", parameters: [['name' => 'Waga', 'value' => '2,4 kg'], ['name' => 'Liczba osób', 'value' => '4']]);
+
+        self::assertSame('Hallen', $product->brand()->value());
+        self::assertSame("Pierwszy akapit.\n\nDrugi akapit.", $product->description()->value());
+        self::assertSame([['Waga', '2,4 kg'], ['Liczba osób', '4']], array_map(
+            static fn (ProductParameter $parameter): array => [$parameter->name(), $parameter->value()],
+            $product->parameters()->toList(),
+        ));
+    }
+
+    public function testEditRemovesTheContentWhenTheNewValuesAreEmpty(): void
+    {
+        $product = StoredProducts::product(brand: 'Hallen', description: 'Opis', parameters: [['name' => 'Waga', 'value' => '1 kg']]);
+
+        $this->edit($product);
+
+        self::assertSame('', $product->brand()->value());
+        self::assertSame('', $product->description()->value());
+        self::assertTrue($product->parameters()->isEmpty());
+    }
+
+    public function testAChangeOfOnlyTheBrandTheDescriptionOrTheParametersRecordsProductChangedOnce(): void
+    {
+        $changes = [
+            fn (Product $product) => $this->edit($product, brand: 'Hallen'),
+            fn (Product $product) => $this->edit($product, longDescription: 'Opis'),
+            fn (Product $product) => $this->edit($product, parameters: [['name' => 'Waga', 'value' => '1 kg']]),
+        ];
+        foreach ($changes as $change) {
+            $product = StoredProducts::published();
+
+            $change($product);
+
+            $events = $product->releaseEvents();
+            self::assertCount(1, $events);
+            self::assertInstanceOf(ProductChanged::class, $events[0]);
+        }
+    }
+
+    public function testTheBrandTheDescriptionAndTheParametersAreNotPartOfTheIdentityOfAPublishedProduct(): void
+    {
+        $product = StoredProducts::published(axes: self::AXES, variants: self::VARIANTS);
+
+        $this->edit($product, brand: 'Inna marka', longDescription: 'Nowy opis', parameters: [['name' => 'Waga', 'value' => '1 kg']], axes: self::AXES, variants: self::VARIANTS);
+
+        self::assertSame('Inna marka', $product->brand()->value());
     }
 
     public function testAnUnchangedEditStillRecordsProductChanged(): void
@@ -155,6 +211,77 @@ final class ProductEditTest extends TestCase
         self::assertSame(
             [self::BLACK_M => 'Czarne, m', self::BLACK_XL => 'czarne, XL'],
             $this->labels($product),
+        );
+    }
+
+    public function testAfterThePublicationTheCodesOfAVariantCanBeChangedAddedAndRemovedAndEachChangeIsAChangeOfTheProduct(): void
+    {
+        $product = StoredProducts::published(axes: self::AXES, variants: [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'M'], 'sku' => 'BUT-M', 'ean' => '5901234123457'],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL']],
+        ]);
+
+        $this->edit($product, axes: self::AXES, variants: [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'M'], 'sku' => 'but-m-2'],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL'], 'sku' => 'BUT-XL', 'ean' => '59012344'],
+        ]);
+
+        self::assertSame(
+            [self::BLACK_M => ['BUT-M-2', null], self::BLACK_XL => ['BUT-XL', '59012344']],
+            $this->codes($product),
+        );
+        $events = $product->releaseEvents();
+        self::assertCount(1, $events);
+        self::assertInstanceOf(ProductChanged::class, $events[0]);
+    }
+
+    public function testAfterThePublicationTheCodesStayWhenOnlyTheCaseOfTheValuesChanges(): void
+    {
+        $product = StoredProducts::published(axes: self::AXES, variants: [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'M'], 'sku' => 'BUT-M', 'ean' => '5901234123457'],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL'], 'sku' => 'BUT-XL'],
+        ]);
+
+        $this->edit($product, axes: ['kolor', 'ROZMIAR'], variants: [
+            ['id' => self::BLACK_M, 'values' => ['Czarne', 'm'], 'sku' => 'BUT-M', 'ean' => '5901234123457'],
+            ['id' => self::BLACK_XL, 'values' => [' czarne ', 'XL'], 'sku' => 'BUT-XL'],
+        ]);
+
+        self::assertSame([self::BLACK_M => ['BUT-M', '5901234123457'], self::BLACK_XL => ['BUT-XL', null]], $this->codes($product));
+    }
+
+    public function testAfterThePublicationTheCodesDoNotLetAVariantChangeItsValues(): void
+    {
+        $product = StoredProducts::published(axes: self::AXES, variants: [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'M'], 'sku' => 'BUT-M'],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL']],
+        ]);
+
+        $this->expectException(VariantIdentityLocked::class);
+
+        $this->edit($product, axes: self::AXES, variants: [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'L'], 'sku' => 'BUT-M'],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL']],
+        ]);
+    }
+
+    public function testADraftKeepsTheCodesOfTheVariantsThatStayWhenItsAxesAndValuesChange(): void
+    {
+        $product = StoredProducts::product(axes: self::AXES, variants: [
+            ['id' => self::BLACK_M, 'values' => ['czarne', 'M'], 'sku' => 'BUT-M', 'ean' => '5901234123457'],
+            ['id' => self::BLACK_XL, 'values' => ['czarne', 'XL'], 'sku' => 'BUT-XL'],
+        ]);
+
+        // One axis removed, the other renamed, a value changed, a variant added without codes.
+        $this->edit($product, axes: ['Rozmiar'], variants: [
+            ['id' => self::BLACK_XL, 'values' => ['XXL'], 'sku' => 'BUT-XL'],
+            ['id' => self::BLACK_M, 'values' => ['M'], 'sku' => 'BUT-M', 'ean' => '5901234123457'],
+            ['id' => self::NEW_VARIANT, 'values' => ['S']],
+        ]);
+
+        self::assertSame(
+            [self::BLACK_XL => ['BUT-XL', null], self::BLACK_M => ['BUT-M', '5901234123457'], self::NEW_VARIANT => [null, null]],
+            $this->codes($product),
         );
     }
 
@@ -676,16 +803,20 @@ final class ProductEditTest extends TestCase
     }
 
     /**
-     * @param list<string>                                       $imageAlts
-     * @param list<string>                                       $axes
-     * @param list<array{id: string, values: list<string>}>|null $variants  null: the variants of the product
-     * @param list<string>                                       $inUse
+     * @param list<array{name: string, value: string}>                                       $parameters
+     * @param list<string>                                                                   $imageAlts
+     * @param list<string>                                                                   $axes
+     * @param list<array{id: string, values: list<string>, sku?: string, ean?: string}>|null $variants   null: the variants of the product
+     * @param list<string>                                                                   $inUse
      */
     private function edit(
         Product $product,
         string $name = 'Buty biegowe',
         string $slug = StoredProducts::SLUG,
         string $description = '',
+        string $brand = '',
+        string $longDescription = '',
+        array $parameters = [],
         array $imageAlts = ['front'],
         TaxClassCode $taxClass = TaxClassCode::Standard,
         ?array $axes = null,
@@ -696,6 +827,9 @@ final class ProductEditTest extends TestCase
             ProductName::of($name),
             new Slug($slug),
             ShortDescription::of($description),
+            ProductBrand::of($brand),
+            ProductDescription::of($longDescription),
+            ProductParameters::create(array_map(static fn (array $parameter): ProductParameter => ProductParameter::of($parameter['name'], $parameter['value']), $parameters)),
             ProductCategories::create(CategoryId::fromString(self::OTHER_CATEGORY)),
             $taxClass,
             StoredProducts::images($imageAlts),
@@ -703,6 +837,19 @@ final class ProductEditTest extends TestCase
             array_map(VariantId::fromString(...), $inUse),
             new \DateTimeImmutable(self::NOW),
         );
+    }
+
+    /**
+     * @return array<string, array{string|null, string|null}> the SKU and the EAN of every variant by its id, in order
+     */
+    private function codes(Product $product): array
+    {
+        $codes = [];
+        foreach ($product->variants()->toList() as $variant) {
+            $codes[$variant->id()->toString()] = [$variant->sku()?->value(), $variant->ean()?->value()];
+        }
+
+        return $codes;
     }
 
     /**

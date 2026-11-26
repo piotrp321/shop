@@ -229,7 +229,7 @@ nelmio_api_doc:
                         # real responses by ProductDetailsEndpointTest.
                         ProductDetails:
                             type: object
-                            required: [id, slug, name, shortDescription, breadcrumb, images, zoomImages, variantAxes, variants]
+                            required: [id, slug, name, shortDescription, brand, description, parameters, breadcrumb, images, zoomImages, variantAxes, variants]
                             properties:
                                 id:
                                     type: string
@@ -242,6 +242,18 @@ nelmio_api_doc:
                                     example: Buty szosowe Tarvik Asfalt 200
                                 shortDescription:
                                     type: string
+                                brand:
+                                    type: string
+                                    description: The brand of the product; empty when it has none.
+                                    example: Hallen
+                                description:
+                                    type: string
+                                    description: The description in paragraphs separated by an empty line, plain text (never markup); empty when the product has none.
+                                parameters:
+                                    type: array
+                                    description: The parameters of the product (name and value) in presentation order; empty when it has none.
+                                    items:
+                                        $ref: '#/components/schemas/ProductParameter'
                                 breadcrumb:
                                     type: array
                                     description: The categories from the root to the main category of the product.
@@ -268,6 +280,16 @@ nelmio_api_doc:
                                     description: The variants in position order.
                                     items:
                                         $ref: '#/components/schemas/ProductDetailsVariant'
+                        ProductParameter:
+                            type: object
+                            required: [name, value]
+                            properties:
+                                name:
+                                    type: string
+                                    example: Liczba osób
+                                value:
+                                    type: string
+                                    example: '4'
                         BreadcrumbItem:
                             type: object
                             required: [id, name, path]
@@ -284,7 +306,7 @@ nelmio_api_doc:
                                     example: bieganie/buty
                         ProductDetailsVariant:
                             type: object
-                            required: [variantId, label, values]
+                            required: [variantId, label, values, sku, ean, gtin]
                             properties:
                                 variantId:
                                     type: string
@@ -299,6 +321,22 @@ nelmio_api_doc:
                                     items:
                                         type: string
                                     example: [czarne, '42']
+                                sku:
+                                    type: string
+                                    description: The SKU the seller gave the variant (capitals), shown as the product code; empty when it has none.
+                                    example: NAMIOT-HALNY-4
+                                ean:
+                                    type: string
+                                    description: The EAN the seller gave the variant (8, 12, 13 or 14 digits); empty when it has none.
+                                    example: '5901234123457'
+                                gtin:
+                                    type: string
+                                    description: >-
+                                        The EAN when it is a global trade item number, empty when it is a number of restricted circulation
+                                        (the GS1 prefixes 02, 04 and 20-29 and the other numbers of section 2.1.11 of the GS1 General
+                                        Specifications), which identifies an item inside a company or a region only. Structured data
+                                        of the page takes the GTIN from here.
+                                    example: '5901234123457'
                         # Response schemas of the cart (Cart\Application\View), checked against real responses by the
                         # functional tests of the cart endpoints.
                         CartView:
@@ -1623,7 +1661,8 @@ nelmio_api_doc:
                             description: >-
                                 A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people
                                 and may change): the product changed since the given version, the slug belongs to another
-                                product, the slug is locked since the first publication, the product cannot be published (a draft
+                                product, a SKU belongs to a variant of another product (found only when two writes race: before
+                                the write it is a 422 at the SKU), the slug is locked since the first publication, the product cannot be published (a draft
                                 without images) or lose its last image once published, an axis or the meaning of a variant cannot
                                 change after the first publication, or a removed variant has stock or reservations.
                             required: [type, title, status, detail]
@@ -1633,6 +1672,7 @@ nelmio_api_doc:
                                     enum:
                                         - 'tag:piotrp321.github.io,2026:shop/problems/product-modified'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/slug-taken'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/sku-taken'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/slug-locked'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/product-not-publishable'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/variant-locked'

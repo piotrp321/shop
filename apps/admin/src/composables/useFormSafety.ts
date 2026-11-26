@@ -31,6 +31,12 @@ export interface FormSafetyOptions<TView extends { version: number }, TBody> {
    * none can be built (a value cannot be sent, or it is one the server sets: „Od teraz”, an empty slug).
    */
   draftRequest: () => TBody | null;
+  /**
+   * What the staff member typed, as the form holds it: the message that the server matches ends when it changes. Defaults
+   * to the draft request; a form that compares a normalized request gives the unnormalized one, so a change the
+   * normalization hides (a space at the end of a text the API trims) still ends the message.
+   */
+  draftState?: () => unknown;
   /** The request the same function builds for an object read from the API (without the version); null when none can. */
   servedRequest: (view: TView) => TBody | null;
   /** Shows the object: replaces the draft, its base and the version, and clears the messages of the form. */
@@ -166,9 +172,11 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
   // What „Spróbuj ponownie” repeats; true when it brought the object and replaced the draft.
   let retry: (() => Promise<boolean>) | null = null;
 
+  const draftState = (): unknown => (options.draftState ?? options.draftRequest)();
+
   // A change of the draft the staff member makes after a match ends the message: the form no longer is what the server has.
   watch(
-    () => (matched.value ? JSON.stringify(options.draftRequest()) : null),
+    () => (matched.value ? JSON.stringify(draftState()) : null),
     (draft) => {
       if (draft !== null && draft !== matchedDraft) {
         matched.value = false;
@@ -457,7 +465,7 @@ export function useFormSafety<TView extends { version: number }, TBody>(options:
         options.adopt(view);
         clearNotices();
         matched.value = true;
-        matchedDraft = JSON.stringify(options.draftRequest());
+        matchedDraft = JSON.stringify(draftState());
         announce("matched");
       } else if (view.version === options.version()) {
         unknownState.value = { ...current, pending: false, kind: "missing" };

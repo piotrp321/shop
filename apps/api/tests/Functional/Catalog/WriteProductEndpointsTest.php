@@ -138,7 +138,7 @@ final class WriteProductEndpointsTest extends WebTestCase
 
     public function testAProductWithoutAxesGetsItsDefaultVariant(): void
     {
-        $view = $this->createProduct(['variantAxes' => [], 'variants' => [['variantId' => null, 'values' => []]], 'images' => []]);
+        $view = $this->createProduct(['variantAxes' => [], 'variants' => [['variantId' => null, 'values' => [], 'sku' => '', 'ean' => '']], 'images' => []]);
 
         self::assertSame([], $view['variantAxes']);
         self::assertSame([], self::list($view['variants'])[0]['values']);
@@ -154,7 +154,7 @@ final class WriteProductEndpointsTest extends WebTestCase
             'taxClass' => 'luxury',
             'images' => [['key' => 'originals/x.jpg', 'alt' => '']],
             'variantAxes' => ['Kolor', 'kolor'],
-            'variants' => [['variantId' => 'x', 'values' => ['a']], ['variantId' => null, 'values' => ['b', ' ']]],
+            'variants' => [['variantId' => 'x', 'values' => ['a'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['b', ' '], 'sku' => '', 'ean' => '']],
         ]));
 
         self::assertSame([
@@ -176,7 +176,7 @@ final class WriteProductEndpointsTest extends WebTestCase
         $key = $this->originalKey();
         $this->api('POST', self::PRODUCTS, $this->body([
             'images' => [['key' => $key, 'alt' => 'a'], ['key' => $key, 'alt' => 'b']],
-            'variants' => [['variantId' => null, 'values' => ['M']], ['variantId' => null, 'values' => [' m ']]],
+            'variants' => [['variantId' => null, 'values' => ['M'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => [' m '], 'sku' => '', 'ean' => '']],
         ]));
 
         self::assertSame([
@@ -199,7 +199,7 @@ final class WriteProductEndpointsTest extends WebTestCase
     #[DataProvider('valuesTheDomainTellsApart')]
     public function testCombinationsTheDomainTellsApartAreCreated(string $first, string $second): void
     {
-        $view = $this->createProduct(['variants' => [['variantId' => null, 'values' => [$first]], ['variantId' => null, 'values' => [$second]]]]);
+        $view = $this->createProduct(['variants' => [['variantId' => null, 'values' => [$first], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => [$second], 'sku' => '', 'ean' => '']]]);
 
         self::assertSame([[$first], [$second]], array_column(self::list($view['variants']), 'values'));
     }
@@ -207,11 +207,11 @@ final class WriteProductEndpointsTest extends WebTestCase
     #[DataProvider('valuesTheDomainTellsApart')]
     public function testCombinationsTheDomainTellsApartAreSavedByAnEdit(string $first, string $second): void
     {
-        $created = $this->createProduct(['variants' => [['variantId' => null, 'values' => [$second]]]]);
+        $created = $this->createProduct(['variants' => [['variantId' => null, 'values' => [$second], 'sku' => '', 'ean' => '']]]);
         $variants = self::list($created['variants']);
 
         $view = $this->api('PUT', self::PRODUCTS.'/'.self::string($created['id']), $this->editBody($created, [
-            'variants' => [['variantId' => $variants[0]['variantId'], 'values' => [$second]], ['variantId' => null, 'values' => [$first]]],
+            'variants' => [['variantId' => $variants[0]['variantId'], 'values' => [$second], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => [$first], 'sku' => '', 'ean' => '']],
         ]));
 
         self::assertResponseStatusCodeSame(200);
@@ -224,7 +224,7 @@ final class WriteProductEndpointsTest extends WebTestCase
         $variants = self::list($created['variants']);
 
         $this->api('PUT', self::PRODUCTS.'/'.self::string($created['id']), $this->editBody($created, [
-            'variants' => [...$variants, ['variantId' => null, 'values' => ['l']]],
+            'variants' => [...$variants, ['variantId' => null, 'values' => ['l'], 'sku' => '', 'ean' => '']],
         ]));
 
         self::assertSame([['propertyPath' => 'variants[2].values', 'title' => 'Taki wariant już istnieje.']], $this->violations());
@@ -236,7 +236,7 @@ final class WriteProductEndpointsTest extends WebTestCase
         $this->api('POST', self::PRODUCTS, []);
 
         self::assertSame(
-            ['name', 'slug', 'shortDescription', 'mainCategoryId', 'additionalCategoryIds', 'taxClass', 'images', 'variantAxes', 'variants'],
+            ['name', 'slug', 'shortDescription', 'brand', 'description', 'parameters', 'mainCategoryId', 'additionalCategoryIds', 'taxClass', 'images', 'variantAxes', 'variants'],
             array_column($this->violations(), 'propertyPath'),
         );
     }
@@ -347,7 +347,7 @@ final class WriteProductEndpointsTest extends WebTestCase
             'slug' => 'buty-trailowe',
             'taxClass' => 'energy_bar',
             'images' => [['key' => $this->originalKey('sample.png'), 'alt' => 'Nowe zdjęcie']],
-            'variants' => [['variantId' => $variants[1]['variantId'], 'values' => ['L']], ['variantId' => null, 'values' => ['XL']]],
+            'variants' => [['variantId' => $variants[1]['variantId'], 'values' => ['L'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['XL'], 'sku' => '', 'ean' => '']],
         ]));
 
         self::assertResponseStatusCodeSame(200);
@@ -423,7 +423,7 @@ final class WriteProductEndpointsTest extends WebTestCase
         $created = $this->createProduct();
         $path = self::PRODUCTS.'/'.self::string($created['id']);
 
-        $this->api('PUT', $path, $this->editBody($created, ['variants' => [['variantId' => self::UNKNOWN_ID, 'values' => ['M']], ['variantId' => null, 'values' => ['L']]]]));
+        $this->api('PUT', $path, $this->editBody($created, ['variants' => [['variantId' => self::UNKNOWN_ID, 'values' => ['M'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['L'], 'sku' => '', 'ean' => '']]]));
         self::assertSame([['propertyPath' => 'variants[0].variantId', 'title' => 'Wariant nie należy do tego produktu.']], $this->violations());
 
         $this->api('PUT', $path, $this->editBody($created, ['images' => [['key' => 'originals/'.str_repeat('1', 64).'.jpg', 'alt' => 'brak']]]));
@@ -460,15 +460,15 @@ final class WriteProductEndpointsTest extends WebTestCase
 
     public function testAPublishedProductKeepsItsVariantsInIdentity(): void
     {
-        $published = $this->publish($this->createProduct(['variantAxes' => ['Kolor'], 'variants' => [['variantId' => null, 'values' => ['czarne']]]]));
+        $published = $this->publish($this->createProduct(['variantAxes' => ['Kolor'], 'variants' => [['variantId' => null, 'values' => ['czarne'], 'sku' => '', 'ean' => '']]]));
         $path = self::PRODUCTS.'/'.self::string($published['id']);
         $id = self::list($published['variants'])[0]['variantId'];
 
-        $this->api('PUT', $path, $this->editBody($published, ['variants' => [['variantId' => $id, 'values' => ['Czarne']]]]));
+        $this->api('PUT', $path, $this->editBody($published, ['variants' => [['variantId' => $id, 'values' => ['Czarne'], 'sku' => '', 'ean' => '']]]));
         self::assertResponseStatusCodeSame(200);
         $renamed = $this->api('GET', $path);
 
-        $this->api('PUT', $path, $this->editBody($renamed, ['variants' => [['variantId' => $id, 'values' => ['białe']]]]));
+        $this->api('PUT', $path, $this->editBody($renamed, ['variants' => [['variantId' => $id, 'values' => ['białe'], 'sku' => '', 'ean' => '']]]));
         $this->assertProblem(409, 'variant-locked');
 
         $this->api('PUT', $path, $this->editBody($renamed, ['variantAxes' => ['Odcień']]));

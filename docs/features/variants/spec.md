@@ -17,8 +17,9 @@ Issues: #89
 - Sklep: kafelek produktu na liście pokazuje cenę „od” i dostępność produktu liczone z wariantów możliwych do kupienia,
   pozwala wybrać wariant i dodać go do koszyka; koszyk pokazuje wariant linii.
 - Panel: listy cen i stanów mają wiersz na wariant; zmiana ceny, przyjęcie, korekta i historie dotyczą wariantu.
-- Dane demo: produkt = marka × model szablonu, a wartości osi wariantów (kolory, smaki, oprawy, porcje, rozmiary tam,
-  gdzie towar je ma) wyznacza szablon. Ceny i stany demo per wariant.
+- Dane demo: produkt = marka × model szablonu (marka z nazwy jest też polem marki produktu), a wartości osi wariantów
+  (kolory, smaki, oprawy, porcje, rozmiary tam, gdzie towar je ma) wyznacza szablon. Ceny i stany demo per wariant;
+  opis, parametry i kody wariantów: `docs/features/product-data/spec.md`, „Dane demo”.
 - Migracje zachowują istniejące dane: każdy produkt istniejący w bazie ma wariant domyślny o identyfikatorze równym
   identyfikatorowi produktu, więc ceny, historia cen, stany, rezerwacje i koszyki zapisane przed migracjami
   pozostają ważne. Migracje i dane demo to dwie osobne operacje (sekcja „Migracja a dane demo”).
@@ -29,7 +30,7 @@ Poza zakresem:
 - ekrany panelu do dodawania i edycji produktów i wariantów (CATALOG-ADMIN #95, `docs/features/catalog-admin/spec.md`);
 - wyszukiwanie i filtry po wartościach wariantów (SEARCH #94); indeks Elasticsearch zawiera warianty z wartościami
   osi, cenami i dostępnością (`docs/features/search/spec.md`);
-- zdjęcia per wariant i galeria, kody SKU i EAN, cena „od” w Varnishu i ISR.
+- zdjęcia per wariant i galeria, cena „od” w Varnishu i ISR (kody SKU i EAN wariantu: `docs/features/product-data/spec.md`).
 
 ## Decyzje użytkownika
 
@@ -199,9 +200,13 @@ w Cart; indeks Elasticsearch ich nie zawiera). Listy panelu stronicują po produ
 
 - Szablon ma `variantAxes` (0–2 nazwy) i listy wartości osi (`axisValues`, w kolejności osi); warianty to iloczyn
   wartości w kolejności pliku (pierwsza oś zmienia się najwolniej). Produkt = marka × model; nazwa i slug bez koloru
-  (np. „Buty szosowe Tarvik Asfalt 200”). Dane demo to 191 produktów i 1012 wariantów, najwyżej 21 wariantów na produkt.
+  (np. „Buty szosowe Tarvik Asfalt 200”); marka z nazwy jest zapisana także w polu marki produktu. Dane demo to 191
+  produktów i 1012 wariantów, najwyżej 21 wariantów na produkt.
 - Identyfikatory: produkt UUID v5 `product:<slug>`, wariant UUID v5 `variant:<key>`. Expander odrzuca powtórzony
   `key` (np. etykiety „1,5” i „1.5”) tak jak powtórzony slug.
+- Opcjonalna treść karty: `description` (akapity typu) i `parameters` szablonu oraz `parameters` modelu (parametr
+  o tej samej nazwie zastępuje parametr typu) i `fullDescription` modelu (własny opis w całości). SKU i EAN wariantów
+  liczy expander z marki, modelu, wartości i klucza wariantu; reguły: `docs/features/product-data/spec.md`, „Dane demo”.
 - Osie demo:
 
 | Typ | Osie | Wartości |

@@ -11,11 +11,14 @@ use App\Catalog\Application\Port\ProductImageStorageUnavailable;
 use App\Catalog\Application\Port\VariantStockFacts;
 use App\Catalog\Domain\Category\CategoryRepository;
 use App\Catalog\Domain\Product\DuplicateVariantValues;
+use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\ImageNotFound;
 use App\Catalog\Domain\Product\InvalidProductVariants;
 use App\Catalog\Domain\Product\InvalidVariantAxes;
 use App\Catalog\Domain\Product\InvalidVariantValues;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductBrand;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductModifiedConcurrently;
 use App\Catalog\Domain\Product\ProductName;
@@ -25,6 +28,9 @@ use App\Catalog\Domain\Product\ProductRepository;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
+use App\Catalog\Domain\Product\Sku;
+use App\Catalog\Domain\Product\SkuRepeated;
+use App\Catalog\Domain\Product\SkuUsedByAnotherProduct;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\SlugLocked;
 use App\Catalog\Domain\Product\SlugRequired;
@@ -68,6 +74,8 @@ final readonly class EditProductHandler
      * @throws SlugAlreadyTaken
      * @throws UnknownVariant                                                                        when a row names a variant of another product or none
      * @throws InvalidVariantAxes|InvalidVariantValues|InvalidProductVariants|DuplicateVariantValues
+     * @throws SkuRepeated                                                                           at the later of two rows with the same SKU
+     * @throws SkuUsedByAnotherProduct                                                               at the row whose SKU a variant of another product has
      * @throws ProductNotPublishable                                                                 when the last image of a published product is removed
      * @throws VariantIdentityLocked
      * @throws VariantInUse
@@ -84,6 +92,7 @@ final readonly class EditProductHandler
         $slug = '' === $command->slug && $product->isSlugLocked() ? $product->slug() : ProductInput::slug($command->slug, $command->name);
         $categories = $this->input->categories($command->mainCategoryId, $command->additionalCategoryIds);
         $variants = $this->variants($product, $command);
+        ProductInput::refuseSkusOfOtherProducts($this->products, $product->id(), $variants);
         $images = $this->input->images($command->images);
 
         $now = $this->clock->now();
@@ -91,6 +100,9 @@ final readonly class EditProductHandler
             ProductName::of($command->name),
             $slug,
             ShortDescription::of($command->shortDescription),
+            ProductBrand::of($command->brand),
+            ProductDescription::of($command->description),
+            ProductInput::parameters($command->parameters),
             $categories,
             TaxClassCode::from($command->taxClass),
             $images,
@@ -104,7 +116,8 @@ final readonly class EditProductHandler
     }
 
     /**
-     * A row with an id of the product keeps it, a row without one gets a new UUID v7.
+     * A row with an id of the product keeps it, a row without one gets a new UUID v7. The codes are the row's own: a row that
+     * carries none leaves the variant without them.
      *
      * @throws UnknownVariant
      */
@@ -125,7 +138,7 @@ final readonly class EditProductHandler
                     throw new UnknownVariant($index);
                 }
             }
-            $variants[] = new ProductVariant($id, VariantValues::fromList($row['values']));
+            $variants[] = new ProductVariant($id, VariantValues::fromList($row['values']), Sku::optional($row['sku']), Ean::optional($row['ean']));
         }
 
         return ProductVariants::create(VariantAxes::fromList($command->variantAxes), $variants);

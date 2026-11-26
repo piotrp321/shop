@@ -18,6 +18,8 @@ final readonly class VariantSpec
         public int $position,
         public array $values,
         public string $valuesKey,
+        public string $sku,
+        public string $ean,
     ) {
     }
 }

@@ -480,7 +480,17 @@ zostają w formularzu.”
   (wariant utworzony na serwerze): wiersz usunięty i dodany od nowa z tą samą wartością zostaje przy starym
   identyfikatorze na serwerze, który nie wykonał zapisu, więc nie jest zgodny. Nie ma zgodności, gdy ze szkicu nie da się zbudować żądania, gdy szkic zawiera
   wartość nadawaną przez serwer (początek „Od teraz”, pusty slug) albo gdy nieznany wynik dotyczy publikacji lub
-  wycofania, a status w odpowiedzi nie jest docelowy. Każda inna różnica, także przycięte spacje, to brak zgodności.
+  wycofania, a status w odpowiedzi nie jest docelowy. Każda inna różnica, także przycięte spacje, to brak zgodności,
+  z jednym wyjątkiem: nowe pola produktu (marka, opis, parametry i kody wariantów SKU i EAN) są porównywane po
+  normalizacji API, bo API je przycina, a zapis, który serwer wykonał, ma je bez brzegów. Szkic przechodzi wtedy przez kopię reguły tekstu T1–T3
+  (`docs/features/api-input-contract/spec.md`, „Etap 2: reguła tekstu”) w kolejności API: znak niedozwolony (T1) w polu
+  daje szkic, który nie jest zgodny z żadnym stanem serwera, potem znikają znaki brzegów (T2), a tekst bez znaku
+  widocznego (T3) to brak wartości; SKU po tych trzech krokach ma jeszcze litery ASCII zamienione na wielkie, bo API
+  zapisuje je wielkimi (EAN: bez dalszych zmian). Wiersz wariantu bez identyfikatora jest dopasowany po wartościach i
+  porównany razem z kodami. Normalizacja służy tylko porównaniu: nie zmienia pól formularza, wysyłanego żądania
+  (to, co wpisał pracownik, idzie do API bez przycinania) ani wykrywania niezapisanych zmian, a zgodność kopii z API
+  sprawdza test E2E na prawdziwym API (`e2e/tests/catalog-admin.spec.ts`). Istniejące pola (nazwa, krótki opis, teksty
+  zdjęć, osie i wartości wariantów) zostają przy ścisłym porównaniu.
   Porównywany jest szkic z chwili odpowiedzi odczytu, nie treść wysłanego zapisu: zmiana wpisana po odblokowaniu,
   której serwer nie ma, daje brak zgodności.
 - Zgodne: formularz przyjmuje obiekt z odpowiedzi (wersja, status, stan bazowy), komunikat nieznanego wyniku znika,
@@ -500,7 +510,9 @@ ponownie.
 **Nowy obiekt.** „Odblokuj formularz” (albo koniec żądania błędem sieci lub 5xx) zostawia szkic w odblokowanych polach
 z komunikatem „Nie wiemy, czy <obiekt> został utworzony. Wcześniejszy zapis może się jeszcze wykonać. Sprawdź listę
 przed ponownym zapisem.” i linkiem do listy (nowa karta). Gdy kolejny zapis dostanie 409 pola unikalnego albo
-`promotion-overlap`, komunikat dodaje „Możliwe, że utworzył go Twój wcześniejszy zapis.”.
+`promotion-overlap`, komunikat dodaje „Możliwe, że utworzył go Twój wcześniejszy zapis.”. Dochodzi zajęty kod SKU
+wariantu: 422 przy `variants[i].sku` z komunikatem „Kod SKU jest już używany przez inny produkt.” i 409 `sku-taken`
+(komunikat sekcji wariantów) dostają to samo zdanie, bo kod należy już do produktu z pierwszego żądania.
 
 **„Odrzuć” szkic** (przycisk paska zapisu) przywraca stan bazowy i usuwa tylko to, co po odrzuceniu przestaje być prawdą;
 wiedza o serwerze zostaje.

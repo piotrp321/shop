@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\DemoData;
 
+use App\Catalog\Domain\Product\ProductParameter;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\VariantAxes;
@@ -181,9 +182,77 @@ final class DictionariesTest extends TestCase
         }
     }
 
+    public function testTheParametersOfEveryTypeAreValidForTheCatalogEnoughToDrawAndNeverAnAxisOfTheType(): void
+    {
+        foreach (self::dictionaries()->types() as $type) {
+            $axes = array_map(static fn ($axis): string => mb_strtolower($axis->name), $type->axes);
+            $names = [];
+
+            // Up to six are drawn, so a set has at least six.
+            self::assertGreaterThanOrEqual(6, \count($type->parameters), $type->name);
+            foreach ($type->parameters as $parameter) {
+                self::assertNotContains(mb_strtolower($parameter->name), $axes, $type->name.': the parameter "'.$parameter->name.'" is an axis of the variants');
+                self::assertNotContains(mb_strtolower($parameter->name), $names, $type->name.': "'.$parameter->name.'" repeats');
+                $names[] = mb_strtolower($parameter->name);
+                GeneratedText::assertInTheFormOfTheRule($parameter->name, 'parameter of '.$type->name);
+                self::assertGreaterThanOrEqual(3, \count($parameter->values), $type->name.': '.$parameter->name);
+                self::assertSame($parameter->values, array_values(array_unique($parameter->values)), $type->name.': '.$parameter->name);
+                foreach ($parameter->values as $value) {
+                    GeneratedText::assertInTheFormOfTheRule($value, 'value of '.$parameter->name.' of '.$type->name);
+                    // The rule of the catalog keeps the pair as it is.
+                    $built = ProductParameter::of($parameter->name, $value);
+                    self::assertSame([$parameter->name, $value], [$built->name(), $built->value()], $type->name);
+                }
+            }
+        }
+    }
+
+    public function testTheSentencesOfTheDescriptionsAreInTheFormOfTheRuleAndNeedNoAgreementWithTheName(): void
+    {
+        $dictionaries = self::dictionaries();
+
+        foreach ($dictionaries->departmentSlugs() as $department) {
+            $sentences = $dictionaries->sentences($department);
+            self::assertGreaterThanOrEqual(8, \count($sentences), $department);
+            self::assertSame($sentences, array_values(array_unique($sentences)), $department);
+            GeneratedText::assertAllInTheFormOfTheRule($sentences, 'sentence of '.$department);
+            foreach ($sentences as $sentence) {
+                self::assertStringEndsWith('.', $sentence, $department);
+                // No word that points back at the product (it may be singular or plural, of any gender).
+                self::assertDoesNotMatchRegularExpression('/(?<![\p{L}])(ten|ta|to|te|ci|tym|tego|tej|tych|jego|jej|ich|go|ją|je)(?![\p{L}])/iu', $sentence, $department.': '.$sentence);
+            }
+        }
+    }
+
+    /**
+     * A description is two paragraphs (three sentences, then the features) or three (two sentences, the features, two
+     * sentences), the paragraphs joined by an empty line: the sentences come from the pool of the department, the
+     * features paragraph is "Cechy: " and all features of the type. Whatever the draw, the length is 300 to 600.
+     */
+    public function testEveryTypeFitsTheDescriptionBudgetWhateverSentencesAreDrawn(): void
+    {
+        $dictionaries = self::dictionaries();
+
+        foreach ($dictionaries->types() as $type) {
+            $lengths = array_map(static fn (string $sentence): int => mb_strlen($sentence), $dictionaries->sentences($type->department()));
+            $features = $type->features;
+            $last = array_pop($features);
+            $featuresParagraph = mb_strlen('Cechy: '.([] === $features ? '' : implode(', ', $features).' i ').$last.'.');
+
+            // Sentences of a paragraph are joined by a space, the paragraphs by two line feeds.
+            $two = [3 * min($lengths) + 2 + 2 + $featuresParagraph, 3 * max($lengths) + 2 + 2 + $featuresParagraph];
+            $three = [4 * min($lengths) + 2 + 4 + $featuresParagraph, 4 * max($lengths) + 2 + 4 + $featuresParagraph];
+
+            self::assertGreaterThanOrEqual(300, $two[0], $type->name.': two paragraphs, the shortest');
+            self::assertLessThanOrEqual(600, $two[1], $type->name.': two paragraphs, the longest');
+            self::assertGreaterThanOrEqual(300, $three[0], $type->name.': three paragraphs, the shortest');
+            self::assertLessThanOrEqual(600, $three[1], $type->name.': three paragraphs, the longest');
+        }
+    }
+
     public function testNoDictionaryHoldsPlaceholderText(): void
     {
-        foreach (['categories', 'product-types', 'brands', 'models', 'descriptions'] as $file) {
+        foreach (['categories', 'product-types', 'parameters', 'brands', 'models', 'descriptions'] as $file) {
             $contents = (string) file_get_contents(self::directory().'/'.$file.'.yaml');
             self::assertDoesNotMatchRegularExpression('/lorem|ipsum|dolor sit|placeholder|TODO/i', $contents, $file);
         }

@@ -32,14 +32,17 @@ function product(overrides: Partial<ProductEditView> = {}): ProductEditView {
     slug: "buty-biegowe",
     slugLocked: false,
     shortDescription: "Lekkie buty.",
+    brand: "",
+    description: "",
+    parameters: [],
     mainCategoryId: "c-main",
     additionalCategoryIds: [],
     taxClass: "standard",
     images: [],
     variantAxes: ["Kolor"],
     variants: [
-      { variantId: "v-1", values: ["czarne"] },
-      { variantId: "v-2", values: ["białe"] },
+      { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
+      { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
     ],
     updatedAt: "2026-11-01T12:30:00+00:00",
     ...overrides,
@@ -183,7 +186,7 @@ describe("the card „Ceny i stany” of the product form", () => {
     mounted = await mountForm("/products/new");
     expect(card()).toBeNull();
     expect(mocks.get).not.toHaveBeenCalledWith(PRICES, expect.anything());
-    mocks.post.mockResolvedValue({ data: product({ variantAxes: [], variants: [{ variantId: "v-1", values: [] }] }), response: { status: 201 } });
+    mocks.post.mockResolvedValue({ data: product({ variantAxes: [], variants: [{ variantId: "v-1", values: [], sku: "", ean: "" }] }), response: { status: 201 } });
     serve({ prices: [priceItem({ variants: [{ variantId: "v-1", label: "", price: null }] })], stocks: [] });
 
     await mounted.wrapper.get("[data-testid=name]").setValue("Buty biegowe");

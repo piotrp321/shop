@@ -27,17 +27,17 @@ final class ClosedTextFieldListTest extends KernelTestCase
 
         $described = ClosedTextFieldList::describedFields($documents);
         self::assertCount(7, array_filter($described, static fn (string $field): bool => str_contains($field, ', query q')));
-        self::assertCount(49, array_filter($described, static fn (string $field): bool => !str_contains($field, ', query q')));
+        self::assertCount(61, array_filter($described, static fn (string $field): bool => !str_contains($field, ', query q')));
         self::assertContains('POST /api/v1/orders, email', $described, 'a format outside the closed list is a text');
         self::assertNotContains('POST /api/v1/admin/discount-codes, startsAt', $described, 'date-time is outside the guard');
         self::assertNotContains('POST /api/v1/admin/orders/{orderId}/status-changes, transition', $described, 'an enum is outside the guard');
         self::assertNotContains('POST /api/v1/admin/products, mainCategoryId', $described, 'uuid is outside the guard');
 
         self::assertSame([], ClosedTextFieldList::violations($documents, TextRows::all(), TextFieldExceptions::all()));
-        // Each described text is covered once by a row or an exception: 40 rows of fields plus 16 excepted ones.
-        self::assertCount(40, array_unique(ClosedTextFieldList::coveredFields(TextRows::all())));
-        self::assertCount(16, ClosedTextFieldList::excepted(TextFieldExceptions::all()));
-        self::assertCount(56, $described);
+        // Each described text is covered once by a row or an exception: 48 rows of fields plus 20 excepted ones.
+        self::assertCount(48, array_unique(ClosedTextFieldList::coveredFields(TextRows::all())));
+        self::assertCount(20, ClosedTextFieldList::excepted(TextFieldExceptions::all()));
+        self::assertCount(68, $described);
     }
 
     public function testTheExceptionsAreTheTextsOutsideTheRuleOfTheSpec(): void
@@ -45,7 +45,7 @@ final class ClosedTextFieldListTest extends KernelTestCase
         $exceptions = TextFieldExceptions::all();
 
         self::assertSame(
-            ['slug', 'taxClass', 'images[].key', 'code', 'trackingNumber', 'trackingUrlTemplate', 'discountCode', '.*'],
+            ['slug', 'taxClass', 'images[].key', 'variants[].sku', 'variants[].ean', 'code', 'trackingNumber', 'trackingUrlTemplate', 'discountCode', '.*'],
             array_column($exceptions, 'field'),
         );
         foreach ($exceptions as $exception) {

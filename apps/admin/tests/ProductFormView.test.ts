@@ -40,14 +40,17 @@ function view(overrides: Partial<ProductEditView> = {}): ProductEditView {
     slug: "buty-biegowe",
     slugLocked: false,
     shortDescription: "Lekkie buty.",
+    brand: "Hallen",
+    description: "Pierwszy akapit.\n\nDrugi akapit.",
+    parameters: [{ name: "Waga", value: "2,4 kg" }],
     mainCategoryId: "c-main",
     additionalCategoryIds: ["c-extra"],
     taxClass: "standard",
     images: [image("originals/a.jpg", "Przód"), image("originals/b.jpg", "Bok")],
     variantAxes: ["Kolor"],
     variants: [
-      { variantId: "v-1", values: ["czarne"] },
-      { variantId: "v-2", values: ["białe"] },
+      { variantId: "v-1", values: ["czarne"], sku: "", ean: "" },
+      { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
     ],
     updatedAt: "2026-11-01T12:30:00+00:00",
     ...overrides,
@@ -159,11 +162,11 @@ describe("ProductFormView", () => {
       expect(mounted.wrapper.get("[data-testid=slug-hint]").text()).toBe("pusty: wyliczony z nazwy");
     });
 
-    it("disables the slug of a product that was published and says why", async () => {
+    it("makes the slug of a product that was published read-only and says why", async () => {
       serve(view({ slugLocked: true, status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }));
       mounted = await mountForm("/products/p-1");
 
-      expect(mounted.wrapper.get("[data-testid=slug]").attributes("disabled")).toBeDefined();
+      expect((mounted.wrapper.get("[data-testid=slug]").element as HTMLInputElement).readOnly).toBe(true);
       expect(mounted.wrapper.get("[data-testid=slug-locked-note]").text()).toContain("publikacji");
     });
 
@@ -270,13 +273,13 @@ describe("ProductFormView", () => {
     it("creates a new product with the default variant and moves to its page", async () => {
       mounted = await mountForm("/products/new");
       expect(mounted.wrapper.get("h1").text()).toBe("Nowy produkt");
-      mocks.post.mockResolvedValue({ data: view({ id: "p-9", variantAxes: [], variants: [{ variantId: "v-9", values: [] }] }), response: { status: 201 } });
+      mocks.post.mockResolvedValue({ data: view({ id: "p-9", variantAxes: [], variants: [{ variantId: "v-9", values: [], sku: "", ean: "" }] }), response: { status: 201 } });
 
       await mounted.wrapper.get("[data-testid=name]").setValue("Buty biegowe");
       await mounted.wrapper.get("[data-testid=save]").trigger("click");
       await flushPromises();
 
-      expect(mocks.post).toHaveBeenCalledWith(PRODUCTS, expect.objectContaining({ body: expect.objectContaining({ name: "Buty biegowe", variants: [{ variantId: null, values: [] }] }) }));
+      expect(mocks.post).toHaveBeenCalledWith(PRODUCTS, expect.objectContaining({ body: expect.objectContaining({ name: "Buty biegowe", variants: [{ variantId: null, values: [], sku: "", ean: "" }] }) }));
       expect(mounted.router.currentRoute.value.name).toBe("product");
       expect(mounted.router.currentRoute.value.params.id).toBe("p-9");
       expect(successToast).toHaveBeenCalledWith("Produkt zapisany. Ustaw cenę, inaczej produkt będzie w sklepie niedostępny.");
@@ -561,7 +564,7 @@ describe("ProductFormView", () => {
 
     it("moves to the heading of the page after a product was created, once the route moved to its page", async () => {
       await edited("/products/new", "Buty biegowe");
-      mocks.post.mockResolvedValue({ data: view({ id: "p-9", variantAxes: [], variants: [{ variantId: "v-9", values: [] }] }), response: { status: 201 } });
+      mocks.post.mockResolvedValue({ data: view({ id: "p-9", variantAxes: [], variants: [{ variantId: "v-9", values: [], sku: "", ean: "" }] }), response: { status: 201 } });
 
       await click("save");
 
@@ -613,19 +616,204 @@ describe("ProductFormView", () => {
     });
   });
 
+  describe("the brand, the description and the parameters", () => {
+    const heading2 = (text: string) => heading("h2", text);
+
+    it("shows the brand after the name and the description after the short description, each with its label", async () => {
+      mounted = await mountForm("/products/p-1");
+      const { wrapper } = mounted;
+
+      expect((wrapper.get("[data-testid=brand]").element as HTMLInputElement).value).toBe("Hallen");
+      expect((wrapper.get("[data-testid=description]").element as HTMLTextAreaElement).value).toBe("Pierwszy akapit.\n\nDrugi akapit.");
+      expect((document.getElementById("product-brand") as HTMLInputElement).labels?.[0]?.textContent?.trim()).toBe("Marka");
+      expect((document.getElementById("product-long-description") as HTMLTextAreaElement).labels?.[0]?.textContent?.trim()).toBe("Opis");
+      const order = [...wrapper.element.querySelectorAll("[data-testid=name], [data-testid=brand], [data-testid=short-description], [data-testid=description]")].map((element) => element.getAttribute("data-testid"));
+      expect(order).toEqual(["name", "brand", "short-description", "description"]);
+      expect(wrapper.get("[data-testid=brand]").attributes("maxlength")).toBe("60");
+      expect(wrapper.get("[data-testid=description]").attributes("maxlength")).toBe("5000");
+    });
+
+    it("counts the characters of the description against 5000", async () => {
+      mounted = await mountForm("/products/p-1");
+
+      expect(mounted.wrapper.get("[data-testid=description-counter]").text()).toBe("31/5000");
+      await mounted.wrapper.get("[data-testid=description]").setValue("Ąę😀");
+      expect(mounted.wrapper.get("[data-testid=description-counter]").text()).toBe("3/5000");
+    });
+
+    it("shows the section „Parametry” with a row for every parameter", async () => {
+      mounted = await mountForm("/products/p-1");
+
+      expect(heading2("Parametry")).toBeDefined();
+      expect((mounted.wrapper.get("[data-testid=parameter-name]").element as HTMLInputElement).value).toBe("Waga");
+      expect((mounted.wrapper.get("[data-testid=parameter-value]").element as HTMLInputElement).value).toBe("2,4 kg");
+    });
+
+    it("shows no parameters and empty fields for a product that has none", async () => {
+      serve(view({ brand: "", description: "", parameters: [] }));
+      mounted = await mountForm("/products/p-1");
+
+      expect((mounted.wrapper.get("[data-testid=brand]").element as HTMLInputElement).value).toBe("");
+      expect(mounted.wrapper.findAll("[data-testid=parameter-row]")).toHaveLength(0);
+      expect(mounted.wrapper.get("[data-testid=description-counter]").text()).toBe("0/5000");
+    });
+
+    it("sends what was typed, with its edges and its characters, and the parameters in their order", async () => {
+      mounted = await mountForm("/products/p-1");
+      mocks.put.mockResolvedValue(problem(422, { violations: [] }));
+
+      await mounted.wrapper.get("[data-testid=brand]").setValue("  Nowa marka\t");
+      await mounted.wrapper.get("[data-testid=description]").setValue("\u00A0Pierwszy.\n\nDrugi.\u3000");
+      await mounted.wrapper.get("[data-testid=add-parameter]").trigger("click");
+      await flushPromises();
+      await mounted.wrapper.findAll("[data-testid=parameter-name]")[1]!.setValue(" Kolor ");
+      await mounted.wrapper.findAll("[data-testid=parameter-value]")[1]!.setValue("zielony\u200B");
+      await mounted.wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+
+      const body = mocks.put.mock.calls[0]![1].body;
+      expect(body.brand).toBe("  Nowa marka\t");
+      // A textarea gives its line breaks as U+000A whatever was pasted, so U+000D cannot be sent from this field.
+      expect(body.description).toBe("\u00A0Pierwszy.\n\nDrugi.\u3000");
+      expect(body.parameters).toEqual([
+        { name: "Waga", value: "2,4 kg" },
+        { name: " Kolor ", value: "zielony\u200B" },
+      ]);
+    });
+
+    it("puts the messages of the API at the brand, the description and the parameters, and marks the fields invalid", async () => {
+      mounted = await mountForm("/products/p-1");
+      mocks.put.mockResolvedValue(
+        problem(422, {
+          violations: [
+            { propertyPath: "brand", title: "Marka zawiera niedozwolone znaki." },
+            { propertyPath: "description", title: "Opis może mieć najwyżej 5000 znaków." },
+            { propertyPath: "parameters[0].name", title: "Nazwa parametru zawiera niedozwolone znaki." },
+            { propertyPath: "parameters[0].value", title: "Wartość parametru musi mieć od 1 do 200 znaków." },
+            { propertyPath: "parameters", title: "Produkt może mieć najwyżej 30 parametrów." },
+          ],
+        }),
+      );
+
+      await mounted.wrapper.get("[data-testid=brand]").setValue("Inna");
+      await mounted.wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+
+      const { wrapper } = mounted;
+      expect(wrapper.get("[data-testid=error-brand]").text()).toBe("Marka zawiera niedozwolone znaki.");
+      expect(wrapper.get("[data-testid=brand]").attributes("aria-invalid")).toBe("true");
+      expect(wrapper.get("[data-testid=brand]").attributes("aria-describedby")).toContain(wrapper.get("[data-testid=error-brand]").attributes("id"));
+      expect(wrapper.get("[data-testid=error-description]").text()).toBe("Opis może mieć najwyżej 5000 znaków.");
+      expect(wrapper.get("[data-testid=description]").attributes("aria-invalid")).toBe("true");
+      expect(wrapper.get("[data-testid=parameter-name]").attributes("aria-invalid")).toBe("true");
+      expect(wrapper.get("[data-testid=parameter-value]").attributes("aria-invalid")).toBe("true");
+      expect(wrapper.findAll("[data-testid=parameter-error]").map((element) => element.text())).toEqual([
+        "Nazwa parametru zawiera niedozwolone znaki.",
+        "Wartość parametru musi mieć od 1 do 200 znaków.",
+      ]);
+      expect(wrapper.get("[data-testid=parameters-error]").text()).toBe("Produkt może mieć najwyżej 30 parametrów.");
+      // The first message in the document takes the focus.
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=brand]").element);
+      expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
+    });
+
+    it("adds a parameter from the keyboard and puts the focus on the name of the new row", async () => {
+      mounted = await mountForm("/products/p-1");
+
+      mounted.wrapper.get<HTMLButtonElement>("[data-testid=add-parameter]").element.click();
+      await flushPromises();
+
+      const names = mounted.wrapper.findAll<HTMLInputElement>("[data-testid=parameter-name]");
+      expect(names).toHaveLength(2);
+      expect(document.activeElement).toBe(names[1]!.element);
+      expect(mounted.wrapper.find("[data-testid=save]").exists()).toBe(true);
+    });
+
+    it("removes a parameter and moves the focus to the next row, or to „Dodaj parametr” after the last one", async () => {
+      serve(view({ parameters: [{ name: "Waga", value: "1 kg" }, { name: "Kolor", value: "x" }] }));
+      mounted = await mountForm("/products/p-1");
+      const { wrapper } = mounted;
+
+      wrapper.findAll<HTMLButtonElement>("[data-testid=parameter-remove]")[0]!.element.click();
+      await flushPromises();
+      expect(document.activeElement).toBe(wrapper.findAll<HTMLInputElement>("[data-testid=parameter-name]")[0]!.element);
+      expect((document.activeElement as HTMLInputElement).value).toBe("Kolor");
+
+      wrapper.findAll<HTMLButtonElement>("[data-testid=parameter-remove]")[0]!.element.click();
+      await flushPromises();
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=add-parameter]").element);
+    });
+
+    it("is read-only without the permission: the fields are read-only and the buttons are not there", async () => {
+      mounted = await mountForm("/products/p-1", ["support"]);
+      const { wrapper } = mounted;
+
+      for (const testid of ["brand", "description", "parameter-name"]) {
+        expect((wrapper.get(`[data-testid=${testid}]`).element as HTMLInputElement).readOnly).toBe(true);
+      }
+      expect(wrapper.find("[data-testid=add-parameter]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=parameter-remove]").exists()).toBe(false);
+    });
+  });
+
   describe("without the permission to manage products", () => {
     it.each([["support"], ["warehouse"]] as const)("shows %s a read-only form without actions", async (role) => {
       mounted = await mountForm("/products/p-1", [role]);
       const { wrapper } = mounted;
 
       expect((wrapper.get("[data-testid=name]").element as HTMLInputElement).value).toBe("Buty biegowe");
-      for (const field of ["name", "slug", "short-description", "image-alt"]) {
-        expect(wrapper.get(`[data-testid=${field}]`).attributes("disabled")).toBeDefined();
-      }
       for (const control of ["save", "publish", "unpublish", "add-images", "image-input", "image-up", "image-down", "image-remove"]) {
         expect(wrapper.find(`[data-testid=${control}]`).exists()).toBe(false);
       }
       expect(wrapper.find("[data-testid=read-only-note]").exists()).toBe(true);
+    });
+
+    // A disabled text field cannot be focused, selected or scrolled, so a value wider than the field (a long parameter, a long
+    // SKU) could not be read at all: the read-only form has read-only fields, which the keyboard and a screen reader reach.
+    it.each([["support"], ["warehouse"]] as const)("makes every text field read-only, not disabled, for %s", async (role) => {
+      mounted = await mountForm("/products/p-1", [role]);
+      const { wrapper } = mounted;
+      const texts = [
+        "name", "brand", "slug", "short-description", "description", "parameter-name", "parameter-value",
+        "image-alt", "axis-name", "variant-value", "variant-sku", "variant-ean",
+      ];
+
+      for (const testid of texts) {
+        const nodes = wrapper.findAll<HTMLInputElement | HTMLTextAreaElement>(`[data-testid=${testid}]`);
+        expect(nodes.length, `a field ${testid}`).toBeGreaterThan(0);
+        for (const node of nodes) {
+          const element = node.element;
+          expect(element.readOnly, `${testid} is read-only`).toBe(true);
+          expect(element.disabled, `${testid} is not disabled`).toBe(false);
+          expect(element.matches(":disabled"), `${testid} is not disabled by a fieldset`).toBe(false);
+          element.focus();
+          expect(document.activeElement, `${testid} takes the focus`).toBe(element);
+        }
+      }
+    });
+
+    it("keeps the values of the read-only fields in the form: they are read as they were sent", async () => {
+      mounted = await mountForm("/products/p-1", ["support"]);
+      const { wrapper } = mounted;
+
+      expect((wrapper.get("[data-testid=parameter-value]").element as HTMLInputElement).value).toBe("2,4 kg");
+      expect((wrapper.get("[data-testid=short-description]").element as HTMLTextAreaElement).value).toBe("Lekkie buty.");
+      expect((wrapper.get("[data-testid=image-alt]").element as HTMLInputElement).value).toBe("Przód");
+      expect(mocks.put).not.toHaveBeenCalled();
+    });
+
+    it("keeps the fields of an editor editable, and the slug of a published product read-only", async () => {
+      serve(view({ slugLocked: true, status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }));
+      mounted = await mountForm("/products/p-1");
+      const { wrapper } = mounted;
+
+      for (const testid of ["name", "brand", "short-description", "description", "parameter-name", "parameter-value", "image-alt", "variant-value"]) {
+        const element = wrapper.get(`[data-testid=${testid}]`).element as HTMLInputElement;
+        expect(element.readOnly, `${testid} is editable`).toBe(false);
+        expect(element.disabled, `${testid} is on`).toBe(false);
+      }
+      expect((wrapper.get("[data-testid=slug]").element as HTMLInputElement).readOnly).toBe(true);
+      expect((wrapper.get("[data-testid=slug]").element as HTMLInputElement).disabled).toBe(false);
     });
   });
 
@@ -640,10 +828,10 @@ describe("ProductFormView", () => {
       expect(mounted.wrapper.text()).not.toContain("Wróć do listy");
     });
 
-    it("has the cards „Dane produktu”, „Zdjęcia”, „Warianty”, „Ceny i stany”, „Status” and „Organizacja”", async () => {
+    it("has the cards „Dane produktu”, „Parametry”, „Zdjęcia”, „Warianty”, „Ceny i stany”, „Status” and „Organizacja”", async () => {
       mounted = await mountForm("/products/p-1");
 
-      expect([...document.body.querySelectorAll("h2")].map((node) => node.textContent?.trim())).toEqual(["Status", "Organizacja", "Dane produktu", "Zdjęcia", "Warianty", "Ceny i stany"]);
+      expect([...document.body.querySelectorAll("h2")].map((node) => node.textContent?.trim())).toEqual(["Status", "Organizacja", "Dane produktu", "Parametry", "Zdjęcia", "Warianty", "Ceny i stany"]);
       expect(heading("h2", "Status")?.getAttribute("tabindex")).toBe("-1");
     });
 
@@ -1086,9 +1274,9 @@ describe("ProductFormView", () => {
       expect(mocks.put.mock.calls[0]![1].body).toMatchObject({
         variantAxes: ["Barwa"],
         variants: [
-          { variantId: "v-1", values: ["Czarne"] },
-          { variantId: "v-2", values: ["białe"] },
-          { variantId: null, values: ["zielone"] },
+          { variantId: "v-1", values: ["Czarne"], sku: "", ean: "" },
+          { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
+          { variantId: null, values: ["zielone"], sku: "", ean: "" },
         ],
       });
     });
@@ -1140,7 +1328,7 @@ describe("ProductFormView", () => {
       expect(wrapper.find("[data-testid=add-axis]").exists()).toBe(false);
       expect(wrapper.find("[data-testid=add-variant]").exists()).toBe(false);
       expect(wrapper.find("[data-testid=variant-remove]").exists()).toBe(false);
-      expect(wrapper.get("[data-testid=variant-value]").attributes("disabled")).toBeDefined();
+      expect((wrapper.get("[data-testid=variant-value]").element as HTMLInputElement).readOnly).toBe(true);
     });
 
     it("shows the default variant of a product without axes", async () => {
@@ -1149,7 +1337,102 @@ describe("ProductFormView", () => {
       const rows = mounted.wrapper.findAll("[data-testid=variant-row]");
       expect(rows).toHaveLength(1);
       expect(rows[0]!.text()).toBe("Wariant domyślny");
-      expect(rows[0]!.find("input").exists()).toBe(false);
+      // No value to type, but the codes of the one variant: its SKU and its EAN.
+      expect(rows[0]!.find("[data-testid=variant-value]").exists()).toBe(false);
+      expect(rows[0]!.findAll("input").map((input) => input.attributes("data-testid"))).toEqual(["variant-sku", "variant-ean"]);
+    });
+
+    describe("the SKU and the EAN", () => {
+      const withCodes = () =>
+        view({
+          variants: [
+            { variantId: "v-1", values: ["czarne"], sku: "BUT-C", ean: "5901234123457" },
+            { variantId: "v-2", values: ["białe"], sku: "", ean: "" },
+          ],
+        });
+      const inputOf = (wrapper: Awaited<ReturnType<typeof mountForm>>["wrapper"], id: string, row: number) => wrapper.findAll(`[data-testid=${id}]`)[row]!;
+
+      it("shows the codes of the variants in their columns", async () => {
+        serve(withCodes());
+        mounted = await mountForm("/products/p-1");
+
+        expect(mounted.wrapper.findAll("[data-testid=variant-sku]").map((node) => (node.element as HTMLInputElement).value)).toEqual(["BUT-C", ""]);
+        expect(mounted.wrapper.findAll("[data-testid=variant-ean]").map((node) => (node.element as HTMLInputElement).value)).toEqual(["5901234123457", ""]);
+      });
+
+      it("shows the SKU in capitals as it is typed and sends it as typed in the draft", async () => {
+        serve(withCodes());
+        mounted = await mountForm("/products/p-1");
+        mocks.put.mockResolvedValue({ data: withCodes(), response: { status: 200 } });
+
+        await inputOf(mounted.wrapper, "variant-sku", 1).setValue("nowy-1/ż");
+        await flushPromises();
+
+        expect((inputOf(mounted.wrapper, "variant-sku", 1).element as HTMLInputElement).value).toBe("NOWY-1/ż");
+        await mounted.wrapper.get("[data-testid=save]").trigger("click");
+        await flushPromises();
+        expect(mocks.put.mock.calls[0]![1].body.variants[1]).toEqual({ variantId: "v-2", values: ["białe"], sku: "NOWY-1/ż", ean: "" });
+      });
+
+      it("puts a violation at the SKU of its row and moves the focus to that field", async () => {
+        serve(withCodes());
+        mounted = await mountForm("/products/p-1");
+        mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "variants[1].sku", title: "Ten kod SKU powtarza się w produkcie." }] }));
+
+        await inputOf(mounted.wrapper, "variant-sku", 1).setValue("but-c");
+        await mounted.wrapper.get("[data-testid=save]").trigger("click");
+        await flushPromises();
+
+        const rows = mounted.wrapper.findAll("[data-testid=variant-row]");
+        expect(rows[1]!.get("[data-testid=sku-error]").text()).toBe("Ten kod SKU powtarza się w produkcie.");
+        expect(rows[0]!.find("[data-testid=sku-error]").exists()).toBe(false);
+        expect(inputOf(mounted.wrapper, "variant-sku", 1).attributes("aria-invalid")).toBe("true");
+        expect(document.activeElement).toBe(inputOf(mounted.wrapper, "variant-sku", 1).element);
+      });
+
+      it("shows a 409 sku-taken as the message of the section of the variants", async () => {
+        serve(withCodes());
+        mounted = await mountForm("/products/p-1");
+        mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}sku-taken`, detail: "x" }));
+
+        await inputOf(mounted.wrapper, "variant-sku", 0).setValue("zajety");
+        await mounted.wrapper.get("[data-testid=save]").trigger("click");
+        await flushPromises();
+
+        expect(mounted.wrapper.get("[data-testid=variants-error]").text()).toBe("Kod SKU jest już używany przez inny produkt.");
+        expect((inputOf(mounted.wrapper, "variant-sku", 0).element as HTMLInputElement).value).toBe("ZAJETY");
+      });
+
+      it("adds to a taken SKU, after a creation whose result was not known, that the earlier save may have created the product", async () => {
+        mounted = await mountForm("/products/new");
+        await mounted.wrapper.get("[data-testid=name]").setValue("Nowy");
+        await inputOf(mounted.wrapper, "variant-sku", 0).setValue("moj-kod");
+        mocks.post.mockRejectedValueOnce(new TypeError("network down"));
+        await mounted.wrapper.get("[data-testid=save]").trigger("click");
+        await flushPromises();
+        mocks.post.mockResolvedValue(problem(409, { type: `${PREFIX}sku-taken`, detail: "x" }));
+
+        await mounted.wrapper.get("[data-testid=save]").trigger("click");
+        await flushPromises();
+
+        expect(mounted.wrapper.get("[data-testid=variants-error]").text()).toBe("Kod SKU jest już używany przez inny produkt. Możliwe, że utworzył go Twój wcześniejszy zapis.");
+      });
+
+      it("locks the codes while a save runs", async () => {
+        serve(withCodes());
+        mounted = await mountForm("/products/p-1");
+        let answer!: (value: unknown) => void;
+        mocks.put.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+
+        await inputOf(mounted.wrapper, "variant-sku", 0).setValue("inny");
+        await mounted.wrapper.get("[data-testid=save]").trigger("click");
+        await flushPromises();
+
+        expect(mounted.wrapper.findAll("[data-testid=variant-sku], [data-testid=variant-ean]").every((node) => node.element.matches(":disabled"))).toBe(true);
+        answer({ data: withCodes(), response: { status: 200 } });
+        await flushPromises();
+        expect(mounted.wrapper.findAll("[data-testid=variant-sku]").every((node) => !node.element.matches(":disabled"))).toBe(true);
+      });
     });
 
     it("shows the conflict about variants at the section", async () => {
@@ -1172,6 +1455,8 @@ describe("ProductFormView", () => {
       "name",
       "slug",
       "short-description",
+      "brand",
+      "description",
       "tax-class",
       "image-alt",
       "image-up",
@@ -1185,8 +1470,16 @@ describe("ProductFormView", () => {
       "axis-remove",
       "add-axis",
       "variant-value",
+      "variant-sku",
+      "variant-ean",
       "variant-remove",
       "add-variant",
+      "parameter-name",
+      "parameter-value",
+      "parameter-up",
+      "parameter-down",
+      "parameter-remove",
+      "add-parameter",
     ];
 
     beforeEach(() => {
@@ -1220,7 +1513,7 @@ describe("ProductFormView", () => {
       return elements.every((element) => element.element.matches(":disabled"));
     }
     // The only axis of the product is the first and the last: its buttons that move it are off whatever the state of the form.
-    const BY_POSITION = ["axis-move-up", "axis-move-down"];
+    const BY_POSITION = ["axis-move-up", "axis-move-down", "parameter-up", "parameter-down"];
     const states = (wrapper: Wrapper, unlocked = false) =>
       Object.fromEntries(CONTROLS.filter((testid) => !unlocked || !BY_POSITION.includes(testid)).map((testid) => [testid, off(wrapper, testid)]));
     const all = (value: boolean) => Object.fromEntries(CONTROLS.filter((testid) => value || !BY_POSITION.includes(testid)).map((testid) => [testid, value]));

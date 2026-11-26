@@ -17,9 +17,10 @@ final readonly class ProductType
     public string $key;
 
     /**
-     * @param list<TypeAxis> $axes
-     * @param list<string>   $features
-     * @param positive-int   $weight
+     * @param list<TypeAxis>                $axes
+     * @param list<string>                  $features
+     * @param non-empty-list<TypeParameter> $parameters
+     * @param positive-int                  $weight
      */
     public function __construct(
         public string $name,
@@ -32,6 +33,7 @@ final readonly class ProductType
         public string $photoGroup,
         public int $weight,
         public array $features,
+        public array $parameters,
     ) {
         $this->key = Slug::slugify($name);
     }

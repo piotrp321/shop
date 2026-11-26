@@ -25,7 +25,19 @@ function lastDayOfPromotion(endsAt: string): string {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-/** Structured data of the product (schema.org `Product`): an `Offer` for each variant that has a price (the price the API gives, the effective one; in a promotion with `priceValidUntil`). */
+/**
+ * The `sku` and the `gtin` of the variant as the API gave them, each only when not empty. The `gtin` is the field of the
+ * API (empty for an EAN of restricted circulation), never the EAN: the store does not judge a code.
+ */
+function codesOf(details: ProductDetails, variantId: string): { sku?: string; gtin?: string } {
+  const variant = details.variants.find((candidate) => candidate.variantId === variantId);
+  return {
+    ...(variant === undefined || variant.sku === "" ? {} : { sku: variant.sku }),
+    ...(variant === undefined || variant.gtin === "" ? {} : { gtin: variant.gtin }),
+  };
+}
+
+/** Structured data of the product (schema.org `Product`): an `Offer` for each variant that has a price (the price the API gives, the effective one; in a promotion with `priceValidUntil`; `sku` and `gtin` of the variant), and the `brand` of a product that has one. */
 export function buildProductJsonLd(details: ProductDetails, offer: ProductOffer, storeUrl: string) {
   const url = productUrl(details.slug, storeUrl);
   const images = details.images.flatMap((image) => {
@@ -36,6 +48,7 @@ export function buildProductJsonLd(details: ProductDetails, offer: ProductOffer,
     "@context": "https://schema.org",
     "@type": "Product",
     name: details.name,
+    ...(details.brand === "" ? {} : { brand: { "@type": "Brand", name: details.brand } }),
     ...(details.shortDescription === "" ? {} : { description: details.shortDescription }),
     ...(images.length === 0 ? {} : { image: images }),
     url,
@@ -46,6 +59,7 @@ export function buildProductJsonLd(details: ProductDetails, offer: ProductOffer,
             {
               "@type": "Offer",
               ...(variant.label === "" ? {} : { name: variant.label }),
+              ...codesOf(details, variant.variantId),
               // Grosze from the API written as zloty with a dot; the amount itself is not computed here.
               price: (variant.gross / 100).toFixed(2),
               priceCurrency: offer.currency,

@@ -748,8 +748,8 @@ czeka na L9. `open` zmienia serwer (otwiera sklep), więc też wymaga zgody, kt�
    Job nie jest aktywny poza Jobami CronJobów `rate-limit-check`, `queue-check` i `order-expiry` (co 5 minut, najwyżej
    60, 120 i 600 s; `generate` i `open` je pomijają, bo generator nie zapisuje niczego, co zmieniają).
 4. **agent** – wolne miejsce: `medium` wymaga co najmniej 32 GB (`demoData.minFreeGb`; 1,25 × `diskPeakGb` `medium`, czyli
-   26,25 GB, jest mniejsze), `server` co najmniej 120 GB (1,25 × `diskPeakGb` 96 GB; to szacunek z ekstrapolacji, nie
-   pomiar). Odczytem miejsca jest kubelet; `generate` sam odmawia bez zapasu. Strażnik w Jobie zatrzymuje generator, gdy
+   28,75 GB, jest mniejsze), `server` co najmniej 142,5 GB (1,25 × `diskPeakGb` 114 GB; to szacunek, nie pomiar:
+   `docs/features/demo-data/spec.md`, „Rozmiar i czas pól treści produktów”). Odczytem miejsca jest kubelet; `generate` sam odmawia bez zapasu. Strażnik w Jobie zatrzymuje generator, gdy
    wolne miejsce spadnie poniżej 32 GB.
 5. **agent** – adresy sondy: `generate` i `open` pytają z komputera operatora o `https://api.worf.pl/` i
    `https://worf.pl/` przez Cloudflare (502, 503 i 504 to „zamknięty”, kod poniżej 500 „otwarty”, każdy inny kod i brak
