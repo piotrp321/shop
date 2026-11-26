@@ -96,6 +96,6 @@ final class AccountsVerifyTest extends KernelTestCase
         $tester = $this->step('demo-data:verify', $this->accountOptions() + ['--keycloak-url' => 'http://127.0.0.1:9']);
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
-        self::assertStringContainsString('Keycloak at http://127.0.0.1:9 does not answer', $tester->getDisplay());
+        self::assertStringContainsString('Keycloak at http://127.0.0.1:9 does not answer', (string) preg_replace('/\s+/', ' ', $tester->getDisplay()));
     }
 }

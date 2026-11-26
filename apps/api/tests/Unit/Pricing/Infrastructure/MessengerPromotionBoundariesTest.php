@@ -88,8 +88,8 @@ final class MessengerPromotionBoundariesTest extends TestCase
         ($this->plan)(self::plan('2026-11-11T00:00:00Z', '2026-11-21T00:00:00Z'));
 
         self::assertSame([
-            [PromotionBoundaryReached::class, self::ID, '2026-11-11T00:00:00+00:00', self::secondsFromNow('2026-11-11T00:00:00Z') * 1000],
-            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::secondsFromNow('2026-11-21T00:00:00Z') * 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-11T00:00:00+00:00', self::millisecondsFromNow('2026-11-11T00:00:00Z')],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::millisecondsFromNow('2026-11-21T00:00:00Z')],
         ], $this->sent());
     }
 
@@ -98,8 +98,8 @@ final class MessengerPromotionBoundariesTest extends TestCase
         ($this->plan)(self::plan(null, '2026-11-21T00:00:00Z'));
 
         self::assertSame([
-            [PromotionBoundaryReached::class, self::ID, '2026-11-10T12:00:01+00:00', 1000],
-            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::secondsFromNow('2026-11-21T00:00:00Z') * 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-10T12:00:01+00:00', 600],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::millisecondsFromNow('2026-11-21T00:00:00Z')],
         ], $this->sent());
     }
 
@@ -109,7 +109,7 @@ final class MessengerPromotionBoundariesTest extends TestCase
 
         self::assertSame('2026-11-10T12:00:01+00:00', $this->promotions->find(PromotionId::fromString(self::ID))?->period()->startsAt()->format(\DATE_ATOM), 'the seeded promotion starts at the start of now');
         self::assertSame([
-            [PromotionBoundaryReached::class, self::ID, '2026-12-10T12:00:00+00:00', self::secondsFromNow('2026-12-10T12:00:00Z') * 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-12-10T12:00:00+00:00', self::millisecondsFromNow('2026-12-10T12:00:00Z')],
         ], $this->sent(), 'the start of the seed needs no event: make seed purges the store afterwards');
     }
 
@@ -120,7 +120,7 @@ final class MessengerPromotionBoundariesTest extends TestCase
         new MessengerPromotionBoundaries($this->bus)->promotionSaved($promotion, null, new \DateTimeImmutable(self::NOW), announceStart: false);
 
         self::assertSame([
-            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::secondsFromNow('2026-11-21T00:00:00Z') * 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::millisecondsFromNow('2026-11-21T00:00:00Z')],
         ], $this->sent());
     }
 
@@ -130,7 +130,7 @@ final class MessengerPromotionBoundariesTest extends TestCase
 
         ($this->revise)(self::revise(endsAt: '2026-11-10T12:00:00Z'));
 
-        self::assertSame([[PromotionBoundaryReached::class, self::ID, '2026-11-10T12:00:01+00:00', 1000]], $this->sent());
+        self::assertSame([[PromotionBoundaryReached::class, self::ID, '2026-11-10T12:00:01+00:00', 600]], $this->sent());
     }
 
     public function testMovingTheEndOfAnActivePromotionSendsItsNewEndAndARefreshOfItsProductsAtOnce(): void
@@ -140,7 +140,7 @@ final class MessengerPromotionBoundariesTest extends TestCase
         ($this->revise)(self::revise(endsAt: '2026-11-25T00:00:00Z'));
 
         self::assertSame([
-            [PromotionBoundaryReached::class, self::ID, '2026-11-25T00:00:00+00:00', self::secondsFromNow('2026-11-25T00:00:00Z') * 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-25T00:00:00+00:00', self::millisecondsFromNow('2026-11-25T00:00:00Z')],
             [RefreshPromotionProducts::class, self::ID, null, null],
         ], $this->sent());
         self::assertSame([], $this->catalog->asked, 'the write does not ask Catalog for the products');
@@ -153,7 +153,7 @@ final class MessengerPromotionBoundariesTest extends TestCase
         ($this->revise)(self::revise(endsAt: '2026-11-15T00:00:00Z'));
 
         self::assertSame([
-            [PromotionBoundaryReached::class, self::ID, '2026-11-15T00:00:00+00:00', self::secondsFromNow('2026-11-15T00:00:00Z') * 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-15T00:00:00+00:00', self::millisecondsFromNow('2026-11-15T00:00:00Z')],
             [RefreshPromotionProducts::class, self::ID, null, null],
         ], $this->sent());
     }
@@ -165,7 +165,7 @@ final class MessengerPromotionBoundariesTest extends TestCase
         ($this->revise)(self::revise(name: 'Nowa nazwa'));
 
         self::assertSame([
-            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::secondsFromNow('2026-11-21T00:00:00Z') * 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::millisecondsFromNow('2026-11-21T00:00:00Z')],
         ], $this->sent());
     }
 
@@ -176,8 +176,8 @@ final class MessengerPromotionBoundariesTest extends TestCase
         ($this->revise)(self::revise(name: 'Nowa nazwa', startsAt: '2026-11-11T00:00:00Z'));
 
         self::assertSame([
-            [PromotionBoundaryReached::class, self::ID, '2026-11-11T00:00:00+00:00', self::secondsFromNow('2026-11-11T00:00:00Z') * 1000],
-            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::secondsFromNow('2026-11-21T00:00:00Z') * 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-11T00:00:00+00:00', self::millisecondsFromNow('2026-11-11T00:00:00Z')],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::millisecondsFromNow('2026-11-21T00:00:00Z')],
         ], $this->sent());
     }
 
@@ -188,8 +188,8 @@ final class MessengerPromotionBoundariesTest extends TestCase
         ($this->revise)(self::revise(startsAt: '2026-11-12T00:00:00Z'));
 
         self::assertSame([
-            [PromotionBoundaryReached::class, self::ID, '2026-11-12T00:00:00+00:00', self::secondsFromNow('2026-11-12T00:00:00Z') * 1000],
-            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::secondsFromNow('2026-11-21T00:00:00Z') * 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-12T00:00:00+00:00', self::millisecondsFromNow('2026-11-12T00:00:00Z')],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::millisecondsFromNow('2026-11-21T00:00:00Z')],
         ], $this->sent());
     }
 
@@ -200,8 +200,8 @@ final class MessengerPromotionBoundariesTest extends TestCase
         ($this->revise)(self::revise(startsAt: null));
 
         self::assertSame([
-            [PromotionBoundaryReached::class, self::ID, '2026-11-10T12:00:01+00:00', 1000],
-            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::secondsFromNow('2026-11-21T00:00:00Z') * 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-10T12:00:01+00:00', 600],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::millisecondsFromNow('2026-11-21T00:00:00Z')],
         ], $this->sent());
     }
 
@@ -222,7 +222,7 @@ final class MessengerPromotionBoundariesTest extends TestCase
             new \DateTimeImmutable('2026-11-10T12:00:02Z'),
         );
 
-        self::assertSame([[PromotionBoundaryReached::class, self::ID, '2026-11-10T12:00:01+00:00', 2000]], $this->sent());
+        self::assertSame([[PromotionBoundaryReached::class, self::ID, '2026-11-10T12:00:01+00:00', 1600]], $this->sent());
     }
 
     /**
@@ -245,9 +245,9 @@ final class MessengerPromotionBoundariesTest extends TestCase
         }, $this->bus->envelopes);
     }
 
-    private static function secondsFromNow(string $moment): int
+    private static function millisecondsFromNow(string $moment): int
     {
-        return new \DateTimeImmutable($moment)->getTimestamp() - new \DateTimeImmutable(self::NOW)->getTimestamp();
+        return (int) new \DateTimeImmutable($moment)->format('Uv') - (int) new \DateTimeImmutable(self::NOW)->format('Uv');
     }
 
     private function storeActive(): void
