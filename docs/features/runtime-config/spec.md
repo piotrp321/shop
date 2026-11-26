@@ -8,7 +8,7 @@ uzasadnienie liczbowe albo regułę z dokumentacji technologii; reszta zostaje d
 Podstawa: audyt `docs/reports/performance-audit-2026-11-25.md` (P4, P5, P14 i „Średnie i niskie”), raporty obszarów
 `performance-audit-2026-11-25/findings/infra.md` i `postgres.md`, raport generowania `medium` na worf.pl
 `docs/reports/demo-scale-medium-worf-2026-11-20.md`, pomiar #928 `docs/reports/search-shards-worf-2026-11-25.md`,
-raport etapu A PERF-2 `docs/reports/perf-2-search-model-2026-11-25.md`. Twierdzenia o kodzie dotyczą `main`
+raport etapu A PERF-2 `docs/reports/perf-2-search-model-2026-11-25.md` (wartości Elasticsearcha mierzy etap B, [PERF-2B]). Twierdzenia o kodzie dotyczą `main`
 `9d061e73`. Oznaczenia: **[PERF-0]** decyzja wymaga wyniku linii bazowej, **[server]** wymaga danych z generowania
 profilu `server` na worf.pl, **[PERF-2B]** wymaga pomiaru Elasticsearcha z kryterium 2 etapu B PERF-2 (model R,
 1 shard).
@@ -184,7 +184,8 @@ i przy logowaniach lokalnie), rezerwa superużytkownika 3. Razem ok. 50 z 100 pr
 | `bootstrap.memory_lock` | – | bez zmiany (węzeł bez swapu) | – |
 
 PERF-1 nie mierzy Elasticsearcha osobno: stertę, pamięć poza stertą, gorące dane i odczyty z dysku bierze z pomiaru
-etapu B PERF-2 na worf.pl. Dopóki go nie ma, sterta i limit zostają bez zmian. Elasticsearch zaleca stertę najwyżej
+etapu B PERF-2 na worf.pl. Dopóki go nie ma, sterta i limit zostają bez zmian, a zadanie 4 nie jest
+zamknięte. Elasticsearch zaleca stertę najwyżej
 połowę pamięci i resztę dla cache systemu plików; przy limicie kontenera ta reszta musi być w limicie (Z1).
 
 ### API (FrankenPHP)
@@ -255,7 +256,11 @@ Każdy klucz ma TTL, ale żaden nie jest cache: usunięcie dowolnego łamie gwar
   CONTEXT i linie kontynuacji wielowierszowego DETAIL (zakleszczenie: `Process N: <zapytanie>`) oraz STATEMENT.
 - PERF-1 dodaje takie wpisy (`log_lock_waits`, przerwania `statement_timeout`), więc usuwa je u źródła:
   `log_error_verbosity = terse` i `log_min_error_statement = panic`; `log_parameter_max_length_on_error` zostaje 0
-  (domyślne). Maskowanie Alloy zostaje drugą warstwą bez zmian.
+  (domyślne). Maskowanie Alloy zostaje drugą warstwą.
+- `terse` zostawia główny komunikat, a błędy danych (SQLSTATE klasy 22, np.
+  `invalid input syntax for type uuid: "…"`, `invalid input value for enum`, `value "…" is out of range`) niosą w nim
+  wartość wejścia. Alloy maskuje w liniach Postgresa literał w cudzysłowie po dwukropku i po `value`; nazwy ograniczeń
+  i kolumn zostają.
 - `pg_stat_statements` trzyma tekst znormalizowany (stałe jako `$n`); `track_utility = off` wyłącza polecenia użytkowe.
   Widok czyta tylko rola z `pg_read_all_stats` (eksporter, superużytkownik); tekst zapytań nie trafia do metryk.
 - Eksportery Alloy (D7): `prometheus.exporter.postgres` bez kolektora `stat_statements` i bez tekstu zapytań, DSN
@@ -292,7 +297,7 @@ Jeśli nie, wariant B albo decyzja właściciela (program, zasada 7).
 | eksmisja przez kubelet | udokumentowane: `working_set` z aktywnym cache liczy się jako zajęty; pod najbardziej ponad requestem idzie pierwszy | wariant A: cache zawsze w limitach mieszczących się w węźle; wariant B tylko z rezerwami kubeleta; W14 na `server` bez eksmisji |
 | W15 a cache plików | `working_set` obejmuje aktywny cache, więc pełny cache (cel Z1) wygląda jak przekroczenie | **D4** |
 | Redis pełny | odrzucone zapisy: limity API otwarte, logowania 503 | `maxmemory` z zapasem, `noeviction`, alert `RateLimitsOff` |
-| dane osobowe w logach | DETAIL, CONTEXT i STATEMENT Postgresa | `terse`, `log_min_error_statement = panic`, maskowanie Alloy |
+| dane osobowe w logach | DETAIL, CONTEXT i STATEMENT Postgresa, wartość w głównym komunikacie błędu danych | `terse`, `log_min_error_statement = panic`, maskowanie Alloy |
 | blokady | zabity proces w transakcji zamówienia trzyma `FOR UPDATE` | `idle_in_transaction_session_timeout`; `log_lock_waits` |
 | przeciążenie bazy | wolne zapytanie panelu trzyma wątek API i backend | `statement_timeout` dla API; 503 zamiast 500 |
 | `too many clients` | pula Keycloaka do 100 przy `max_connections` 100 | `KC_DB_POOL_MAX_SIZE`, budżet połączeń |
@@ -332,12 +337,12 @@ Jeśli nie, wariant B albo decyzja właściciela (program, zasada 7).
 
 | ID | Decyzja | Rekomendacja | Wymaga |
 |---|---|---|---|
-| D1 | Reguła węzła dla Z1: wariant A (suma limitów + system + rezerwa ≤ pamięć węzła, cache tylko w limitach Postgresa i Elasticsearcha) albo wariant B (nadprzydział o cache z rezerwami kubeleta) | A; B tylko, gdy pomiar na `server` pokaże za mało cache | [PERF-0] [server] |
-| D2 | Podział pamięci cache między Postgres i Elasticsearch | według zmierzonych gorących danych: indeksy sklepu (z PERF-7) i odsetek trafień Postgresa, rozmiar indeksu i doc values modelu R | [server] [PERF-2B] |
-| D3 | Sterta Elasticsearcha | najmniejsza spełniająca kryterium z tabeli | [PERF-2B] |
-| D4 | Pamięć w W15 mierzona osobno: pamięć nieodzyskiwalna kontenera ≤ request; cache plików bez progu. Kontrole zostają: 0 OOM, eksmisji i restartów, minimum dostępnej pamięci węzła ≥ rezerwa, PSI pamięci `full` nie wyżej niż w linii bazowej, iowait ≤ 5% | przyjąć; zmienia się tylko miara pamięci w W15, wymagania wydajnościowe W1–W14 zostają; gdy nie da się ich spełnić w budżecie, decyzja właściciela (program, zasada 7) | zmiana definicji wymagania (program, zasada 10) |
-| D5 | Redis: `noeviction` z `maxmemory`, RDB z limitem poda ≥ 2 × `maxmemory` + narzut | przyjąć; alternatywa bez RDB usuwa ryzyko copy-on-write, ale restart wylogowuje wszystkich i zeruje limity | [PERF-0] (rozmiar) |
-| D6 | Dysk, jeśli zmierzony szczyt reindeksu `server` (z `pg_wal` ponad `max_wal_size`) przekroczy 80%: mniejszy `max_wal_size`, reindeks bez równoległego generatora, albo usunięcie starego indeksu tuż po zamianie aliasu (PERF-6) | według zmierzonego szczytu | [server] |
+| D1 | Reguła węzła dla Z1: wariant A (suma limitów + system + rezerwa ≤ pamięć węzła, cache tylko w limitach Postgresa i Elasticsearcha) albo wariant B (nadprzydział o cache z rezerwami kubeleta) | przyjęty wariant A (2026-11-26); B tylko, gdy pomiar na `server` pokaże za mało cache, za osobną decyzją | [PERF-0] [server] |
+| D2 | Podział pamięci cache między Postgres i Elasticsearch | otwarta: według zmierzonych gorących danych: indeksy sklepu (z PERF-7) i odsetek trafień Postgresa, rozmiar indeksu i doc values modelu R | [server] [PERF-2B] |
+| D3 | Sterta Elasticsearcha | otwarta: najmniejsza spełniająca kryterium z tabeli | [PERF-2B] |
+| D4 | Pamięć w W15 mierzona osobno: pamięć nieodzyskiwalna kontenera ≤ request; cache plików bez progu. Kontrole zostają: 0 OOM, eksmisji i restartów, minimum dostępnej pamięci węzła ≥ rezerwa, PSI pamięci `full` nie wyżej niż w linii bazowej, iowait ≤ 5% | przyjęta 2026-11-26; zmienia się tylko miara pamięci w W15, wymagania wydajnościowe W1–W14 zostają; gdy nie da się ich spełnić w budżecie, decyzja właściciela (program, zasada 7) | zmiana definicji wymagania (program, zasada 10) |
+| D5 | Redis: `noeviction` z `maxmemory`, RDB z limitem poda ≥ 2 × `maxmemory` + narzut | przyjęta 2026-11-26 (wartość `maxmemory` po pomiarze); alternatywa bez RDB usuwa ryzyko copy-on-write, ale restart wylogowuje wszystkich i zeruje limity | [PERF-0] (rozmiar) |
+| D6 | Dysk, jeśli zmierzony szczyt reindeksu `server` (z `pg_wal` ponad `max_wal_size`) przekroczy 80%: mniejszy `max_wal_size`, reindeks bez równoległego generatora, albo usunięcie starego indeksu tuż po zamianie aliasu (PERF-6) | otwarta: według zmierzonego szczytu | [server] |
 | D7 | Metryki Postgresa i Elasticsearcha na serwerze komponentami Alloy, jeśli nie dodał ich PERF-0 | przyjęta 2026-11-26 | – |
 
 ## Kryteria akceptacji
@@ -354,7 +359,8 @@ Jeśli nie, wariant B albo decyzja właściciela (program, zasada 7).
    Redisa są jawne w chartcie i compose; budżet połączeń w ADR. Redis przy `maxmemory` nie usuwa kluczy, a API i sklep
    zachowują się jak w sekcji „Redis” (test).
 5. Na compose naruszenie unikalności, zakleszczenie, czekanie na blokadę i przerwane zapytanie nie zostawiają w logu
-   Postgresa wartości ani tekstu zapytania; seria eksporterów nie ma etykiety z tekstem zapytania (test).
+   Postgresa wartości ani tekstu zapytania; wartość wejścia z głównego komunikatu błędu danych (klasa 22) nie przechodzi
+   przez Alloy; seria eksporterów nie ma etykiety z tekstem zapytania (test).
 6. Na `server` na worf.pl, po wdrożeniu za zgodą: W15 w definicji z D4 przy obciążeniu nominalnym i szczyt dysku
    w budżecie; W14 tam za osobną zgodą bez OOM, eksmisji i restartów. Bez zgody te kryteria są w raporcie jako
    niepotwierdzone; pomiar na `medium` ich nie zamyka.
