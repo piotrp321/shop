@@ -63,13 +63,17 @@ def fail(message):
     sys.exit(2)
 
 
-def api_json(api, path):
+def api_json(api, path, required=True):
     request = urllib.request.Request(api + path, headers={"User-Agent": UA, "Accept": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
             return json.load(response)
     except (urllib.error.URLError, TimeoutError, ValueError) as error:
-        fail(f"GET {api}{path} failed: {error}")
+        if required:
+            fail(f"GET {api}{path} failed: {error}")
+        # A sampled listing that fails is a finding, not a reason to lose the whole list of addresses.
+        print(f"baseline: skipped, GET {api}{path} failed: {error}", file=sys.stderr)
+        return None
 
 
 def nodes_of(tree, depth=1):
@@ -93,7 +97,9 @@ def build_urls(args):
     leaves = [n for n in nodes if n["leaf"]]
     phrases, options, price = set(), set(), None
     for node in rng.sample(nodes, min(10, len(nodes))):
-        listing = api_json(args.api, f"/api/v1/products?category={node['id']}&perPage=48")
+        listing = api_json(args.api, f"/api/v1/products?category={node['id']}&perPage=48", required=False)
+        if listing is None:
+            continue
         for item in listing.get("items", []):
             phrases.update(words_of(item["name"]))
         for axis in listing.get("facets", {}).get("options") or []:
