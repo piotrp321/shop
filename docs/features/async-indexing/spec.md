@@ -42,7 +42,7 @@ Zakres: `apps/api` (Catalog, cienka warstwa w Shared), `infra/docker-compose.yml
 - Przyczyna tempa 391 dokumentów/s nie jest ustalona. Hipotezy: odczyt produktów (`page`), doliczanie ofert
   (`ProductOfferFacts::of`, wywołanie przez `query.bus`), zapis do Elasticsearcha (4 shardy, heap 2 GiB), pamięć
   Postgresa (2 GiB, ustawienia domyślne). Równoległość pomoże tylko w tej części, która się skaluje na dodatkowe procesy
-  (zob. „Pomiar”); specyfikacja nie obiecuje żadnego tempa.
+  (zob. „Skala” i kryterium 12); specyfikacja nie obiecuje żadnego tempa.
 
 ## Decyzje (zaakceptowane z warunkami)
 
