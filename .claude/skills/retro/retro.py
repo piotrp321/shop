@@ -2909,6 +2909,7 @@ class Validation:
 
     def check_applied(self, item, known):
         n, key = item['n'], item['key']
+        own = []
         for row in self.applied:
             shared = [i for i in known if i in (row.get('incidents') or [])]
             if row.get('key') != key:
@@ -2916,6 +2917,11 @@ class Validation:
                     self.add(n, 'applied', 'item %s: incident %s belongs to the fix %r applied in PR %s'
                              % (n, shared[0], row.get('key'), row.get('pr')))
                 continue
+            own.append(row)
+        if own:
+            # A key fixed more than once is judged against its latest fix; an unknown merge time counts as
+            # the latest, so no incident is new against it.
+            row = max(own, key=lambda r: (r.get('merged_at') is None, r.get('merged_at') or 0))
             moment = row.get('merged_at')
             fresh = [i for i in known if i not in (row.get('incidents') or []) and moment is not None
                      and (self.epic_of(i).get('created_at') or 0) > moment]
