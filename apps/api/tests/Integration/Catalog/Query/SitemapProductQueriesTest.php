@@ -203,6 +203,21 @@ final class SitemapProductQueriesTest extends KernelTestCase
         self::assertSame(array_map(static fn (int $n): string => 'product-'.$n, range(1, 19)), $slugs);
     }
 
+    public function testAKeyMadeByHandThatReadsPastTheRowLimitDoesNotMakeTheNextChunkListCutAgain(): void
+    {
+        $this->createProducts(19);
+        $counter = self::getContainer()->get(StatementCounter::class);
+        self::assertInstanceOf(StatementCounter::class, $counter);
+        $this->chunkKeys();
+
+        // The whole range is 19 rows, past the test limit of 10, but it is not a chunk of the cut.
+        self::assertCount(10, $this->items(SitemapChunkKey::between(null, null))->items);
+
+        $before = $counter->count();
+        self::assertCount(7, $this->chunkKeys());
+        self::assertSame(0, $counter->count() - $before);
+    }
+
     public function testTheBoundariesAreNotReadAgainWithinTheirTimeToLive(): void
     {
         $this->createProducts(7);
