@@ -1,3 +1,0 @@
--- category big-late + common phrase, page 1, sort -updatedAt
--- cost variable: products in the subtree = 22829 (scales with products)
-SELECT DISTINCT ON (updated_at, id) id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c65841c4-e5f5-58f5-9451-5e985cfec063' AND p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT product_id FROM catalog_product_category WHERE category_id = ANY('{c65841c4-e5f5-58f5-9451-5e985cfec063}'::uuid[])) AND p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26)) u ORDER BY updated_at DESC, id DESC LIMIT 26;

@@ -1,0 +1,10 @@
+# PERF-7-1 review fixes (round 1): the cases of load/test/panel.sh that need no docker
+# RED: the report of the commit before the fix (load/panel_report.py at 1ecb2073), the three report cases (the case of the mix has no old counterpart: the parameter missing_ok did not exist)
+FAIL P4 names the 409 as a failure: exit 0 (wanted 0), wanted 'with run 1 shop carts: 3 failed (5xx/net 0, 409 3' in: P4 (difference of the medians within the spread without the panel) met  Load of Po
+FAIL P4 with failures is not met: exit 0 (wanted 0), wanted 'in the shop and in the panel mix, in both variants) not met:' in: P4 (difference of the medians within the spread without the panel) met  L
+FAIL W7 with a dropped request is not met: exit 0 (wanted 0), wanted 'the generator did not send in time: [7]' in: fast                                   100          10 (10–10)          30 (30–30
+# GREEN: the fixed report, the same cases, and the case of the mix (a 404 of one product is skipped, a 500 ends the draw)
+ok   mix: a 404 of one product is skipped, a 500 ends the draw (exit 2)
+ok   P4 names the 409 as a failure (exit 0)
+ok   P4 with failures is not met (exit 0)
+ok   W7 with a dropped request is not met (exit 0)

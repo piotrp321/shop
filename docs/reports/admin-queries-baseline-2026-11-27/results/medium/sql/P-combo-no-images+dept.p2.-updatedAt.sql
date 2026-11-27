@@ -1,3 +1,0 @@
--- without images in the biggest department, page 2, sort -updatedAt
--- cost variable: hits = 4172 (scales with products)
-SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND p.images = '[]'::jsonb AND (p.updated_at, p.id) < (CAST('2026-11-07 06:38:18+00' AS timestamptz), CAST('d86b63ab-e4d1-5c67-b747-3a6ba799118f' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;

@@ -1,6 +1,0 @@
-1795793294
-pg active - 1
-pg idle Client 2
-ct perf7-postgres-1 61.94% 205.5MiB / 31.29GiB
-ct perf7-api-1 0.41% 217.5MiB / 31.29GiB
-ct perf7-elasticsearch-1 1.08% 2.546GiB / 31.29GiB

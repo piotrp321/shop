@@ -1,3 +1,0 @@
--- big late leaf + a phrase rare in it, page 1, sort -updatedAt
--- cost variable: hits = 0 (scales with products)
-SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%bagażnik%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;

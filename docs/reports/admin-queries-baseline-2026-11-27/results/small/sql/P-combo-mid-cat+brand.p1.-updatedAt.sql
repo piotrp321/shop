@@ -1,3 +1,0 @@
--- middle category + brand, page 1, sort -updatedAt
--- cost variable: hits = 9 (scales with products)
-SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;

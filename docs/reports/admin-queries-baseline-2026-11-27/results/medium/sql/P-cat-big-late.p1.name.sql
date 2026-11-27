@@ -1,3 +1,0 @@
--- category big-late (a big leaf whose first page ends at 11% of the names; 22829 products), page 1, sort name
--- cost variable: products in the subtree = 22829 (scales with products)
-SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%'))) ORDER BY p.name ASC, p.id ASC LIMIT 26;

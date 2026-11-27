@@ -28,15 +28,16 @@ Dowody (zapytania, plany, mieszanka, surowe wyniki k6, skrypty, polecenia): kata
 - **W7 na `medium`: niespełnione.** Mieszanka 5 żądań/s: p50 43 ms, **p95 2,29 s**, p99 4,1 s, maksimum 5,8 s; siedem klas przekracza 2 s (małe i średnie kategorie, frazy skorelowane z sortem
   i bez trygramu, kombinacje). Na `small` W7 jest spełnione (p95 76 ms, maks. 407 ms).
 - **P4 na `medium`: kryterium z specyfikacji niespełnione**, choć wpływ bezwzględny jest mały: z panelem zimne listingi sklepu +13 ms p50, +21 ms p95, +41 ms p99, koszyki +13/+18/+21 ms; Postgres
-  jedzie wtedy na ok. 10,5 rdzenia. Zero błędów i opuszczonych żądań.
-- **H1 potwierdzona częściowo** (mechanizm inny niż w hipotezie), **H2 potwierdzona** (zapytanie biegnie w Postgresie ≥ 7 s po przerwaniu żądania przez klienta).
-- **Koszt zapisu nowych indeksów** (prototypy na kopii `medium`, WAL na zapis): K1 +15 KB na zapis produktu (+40%), F2 +14 KB (+38%), Z1 +24 KB na cykl zamówienia (+42%) i +9 KB na zapis klienta (+45%).
+  jedzie wtedy na ok. 10,5 rdzenia. Bez 5xx i bez opuszczonych żądań, ale **nie bez niepowodzeń**: 409 w kroku zmiany ilości koszyka (4/15/25 w trzech przebiegach bez panelu, 9/26/38 z panelem) i 2 odpowiedzi 400
+  w mieszance panelu na przebieg z panelem; warunek „brak niepowodzeń” nie jest spełniony w żadnym wariancie (sekcja 6).
+- **H1 potwierdzona częściowo** (mechanizm inny niż w hipotezie), **H2 potwierdzona** (jedno zapytanie biegło w Postgresie 8,1 s, ponad 7 s po przerwaniu żądania przez klienta po 1 s; w kontroli bez przerwania 2,95 s, różnicy nie wyjaśniłem).
+- **Koszt zapisu nowych indeksów** (prototypy na kopii `medium`, WAL na zapis; miarą są KB, procenty są względne do syntetycznego zapisu jednego wiersza i nie przenoszą się na ruch produkcyjny): K1 +15 KB na zapis produktu (+40%), F2 +14 KB (+38%), Z1 +24 KB na cykl zamówienia (+42%) i +9 KB na zapis klienta (+45%).
 - **Wybór wariantów (według reguły „od najprostszego, stop na pierwszym spełniającym P2 i P8”; P2 według ekstrapolacji „w pamięci”, SZACUNEK):**
   - **K1** (K0 odpada: dział 4,1–10,8 s w pamięci na `server`): wszystkie przypadki kategorii mieszczą się w 2000 ms (maks. 1,89 s dla działu, zapas 5–12%), strona i licznik małej kategorii z 3,5 s do 7 ms na `medium`; nie mieszczą się tylko 4 przypadki działu z rzadkim filtrem (R2).
   - **F1 dla fraz z trygramem + F2 dla fraz bez trygramu** (F1 sam nie pomaga fragmentom bez trygramu: 14,4 s w pamięci na `server` → F2 15 ms); nie mieści się jedna klasa: fraza częsta i skorelowana z sortem (`rowerowa`, 601 tys. trafień na `server`: 2,83 s w pamięci, R1).
-  - **Z0** mieści się w P2 w pamięci (zamówienia `#!#`/`---` 1,2–1,5 s na `server`, klienci 0,22 s), więc według reguły Z1 nie jest potrzebny; Z1 zmierzony i gotowy (koszt zapisu +42% na cykl zamówienia).
+  - **Z0** mieści się w P2 w pamięci (zamówienia `#!#`/`---` 1,2–1,5 s na `server`, klienci 0,22 s), więc według reguły Z1 nie jest potrzebny; **pod obciążeniem mieszanki klasa `orders_punct` ma jednak p95 630 ms i maks. 825 ms na `medium`** (skalowane ×5: ok. 3,2 s i 4,1 s, SZACUNEK górny), więc Z0 nie jest potwierdzone dla W7 pod obciążeniem (pytanie 10.3.3). Z1 zmierzony i gotowy (+24 KB WAL na cykl zamówienia).
   - **M1** (granice mapy strony keysetem): 93 ms na `medium`, na `server` ok. 0,9–1,1 s w bazie i ok. 1,1–1,6 s z 1001 zapytaniami przez sieć (SZACUNEK), czyli w budżecie 2000 ms; M2 nie daje zysku.
-- **Przypadki bez wariantu spełniającego P2** (SZACUNEK „w pamięci”): fraza częsta skorelowana z sortem (R1), dział + rzadki filtr (R2: 4 przypadki), oraz wszystko, co rośnie liniowo, gdy węzeł czyta z dysku (założenie, nie dowód).
+- **Przypadki bez wariantu spełniającego P2** (SZACUNEK „w pamięci”): fraza częsta skorelowana z sortem (R1) i 4 przypadki działu z dodatkowym filtrem (R2); sekcja 10.2 podaje dla nich przyczynę z planu i rozwiązania (dłuższy spacer index-only, częściowe indeksy po kategorii, kolumna kategorii głównej w członkostwach), bez wyjątków W7. Zastrzeżenie: wszystko, co rośnie liniowo, jest „z dysku” tylko założeniem.
 - **Pytania do właściciela: sekcja 10.**
 
 ## 2. Środowisko i metoda
@@ -85,7 +86,7 @@ PostgreSQL 18.6 w obrazie z compose, bez nadpisań (konfiguracja jak na gałęzi
 ## 3. Macierz przypadków przed zmianą: `small` i `medium`
 
 Pełne tabele (czas, bufory, wiersze, zmienna kosztu, `small` i `medium`; 258 wierszy): `results/medium/tables/matrix-small-medium.md`, z ekstrapolacją `results/medium/tables/matrix-extrapolation.md`;
-plany `EXPLAIN (ANALYZE, BUFFERS)` w `results/{small,medium}/explain/`, zapytania w `results/{small,medium}/sql/`. Wybrane przypadki (po jednym z każdej klasy; „server” = SZACUNEK):
+zapytania w `cases.json` (pole `sql`) każdego zbioru, plany `EXPLAIN (ANALYZE, BUFFERS)` tylko cytowanych przypadków w `results/medium/explain/` i `results/medium/variants/*/explain/` (pozostałe odtwarza `matrix.py run` z `cases.json`, sekcja 11). Wybrane przypadki (po jednym z każdej klasy; „server” = SZACUNEK):
 
 | przypadek | zmienna kosztu (medium → server) | bufory small / medium / server | rows scanned medium | czas small mediana ms | czas medium pierwszy / mediana / maks. ms | server w pamięci ms | server z dysku ms |
 |---|---|---|---|---|---|---|---|
@@ -182,7 +183,7 @@ Zmienna kosztu: produkty (całość) × udział; wartość raportu: 10,6% × 10 
 ### 4.2 H2: przerwanie żądania przez klienta nie zatrzymuje zapytania w Postgresie
 
 **Potwierdzona.** `h2.py`: żądanie `GET /api/v1/admin/products?category=<mała kategoria>&sort=name`, klient (curl `--max-time 1`) przerywa po 1,0 s; w `pg_stat_activity` backend 89350
-wykonuje `SELECT … FROM catalog_product` (`state = active`) do t = 8,1 s, czyli ponad 7 s po przerwaniu (prawdopodobnie strona, a po niej zapytanie licznika). Kontrola bez przerwania: to samo zapytanie 2,95 s, HTTP 200 po 3,29 s.
+wykonuje `SELECT … FROM catalog_product` (`state = active`) do t = 8,1 s, czyli ponad 7 s po przerwaniu; `h2.txt` pokazuje jedno zapytanie (jeden `query_start`, nie sumę strony i licznika), które działało 8,1 s. Kontrola bez przerwania: to samo zapytanie 2,95 s, HTTP 200 po 3,29 s. Różnicy 8,1 s wobec 2,95 s nie wyjaśniłem (przypuszczenie, niesprawdzone: chłodne strony po wcześniejszych zapytaniach); wniosek o H2 nie zależy od niej: zapytanie nie zostało przerwane po 1 s.
 Przerwanie po stronie przeglądarki (zadanie PERF-7-6) zmniejszy liczbę żądań w toku i wyścigi widoku, ale nie koszt w bazie; ten ogranicza wybór wariantów (P2) i `statement_timeout` z PERF-1. Dowód: `results/medium/h2/h2.txt`.
 
 ### 4.3 Fragmenty bez trygramu (plan zapytania)
@@ -214,11 +215,11 @@ kombinacje z filtrami, Ceny, Stany, zamówienia, klienci, kody rabatowe, dashboa
 | zbiór | żądań/przebieg | p50 ms | p95 ms | p99 ms | maks. ms | błędy 5xx | 4xx |
 |---|---|---|---|---|---|---|---|
 | `small` | 1601 | 22 (20,1–28,6) | 76 (54–109) | 117 (73–181) | 407 (111–473) | 0 | 0 |
-| `medium` | 1600 | 43 (27–78) | **2288 (2058–3081)** | 4146 (3161–5251) | **5812 (3922–6849)** | 0 | 4 (błąd generatora: fraza 1-znakowa, poprawiony) |
+| `medium` | 1600 | 43 (27–78) | **2288 (2058–3081)** | 4146 (3161–5251) | **5812 (3922–6849)** | 0 | 4–5 na przebieg (`q=z` w `mix.json`, odpowiedź 400: fraza ma co najmniej 2 znaki; generator poprawiony, ale `mix.json` zostaje bez zmian, żeby mieszanka przed i po była ta sama) |
 
 `medium`, klasy powyżej maksimum 2000 ms (mediana maksimów trzech przebiegów): `products_category_small` 5812, `products_phrase_type` 5424, `products_phrase_brand` 3440, `products_combo` 3420, `products_phrase_twochar` 3287, `products_phrase_punct` 3201,
 `products_category_medium` 2117. Klasy zamówień, klientów, kodów rabatowych, dashboardu, drzewa kategorii, stanów, cen i domyślnych list: p95 poniżej ok. 150 ms (`orders_punct`: p95 630 ms, maks. 825 ms). Rozrzut: p50 i p95 rosną w kolejnych przebiegach
-(27→43→78 ms, 2,06→2,29→3,08 s); 3. przebieg kończył się razem z obciążeniem spoza `perf7` (sekcja 2.4), wniosek (p95 i maksimum poza W7, dominują klasy znane z macierzy) jest odporny na ten szum. Wyniki: `results/{small,medium}/w7/`.
+(27→43→78 ms, 2,06→2,29→3,08 s); 3. przebieg kończył się razem z obciążeniem spoza `perf7` (sekcja 2.4), wniosek (p95 i maksimum poza W7, dominują klasy znane z macierzy) jest odporny na ten szum. Wyniki: `results/{small,medium}/w7/` (`panel.json`, liczniki PostgreSQL, `report.txt`).
 
 **W7 na `medium`: niespełnione. Przyczyna: ta sama co w macierzy (kategoria mała i średnia, fraza skorelowana z sortem i bez trygramu).** Wynik na `server` nie jest zmierzony (R5).
 
@@ -237,14 +238,23 @@ po niezliczanej rozgrzewce 60 s. Wyniki (mediana i rozrzut przebiegów bez panel
 | koszyki p95 | 18,8 ms (0,3) | 37,0 ms | +18,2 ms | nie |
 | koszyki p99 | 20,9 ms (0,3) | 41,8 ms | +20,9 ms | nie |
 | zadane tempo | utrzymane (0 opuszczonych) | utrzymane | | tak |
-| błędy sklepu (5xx, 4xx, opuszczone) | 0 | 0 | | tak |
+| 5xx, błędy sieci, opuszczone żądania (sklep) | 0 | 0 | | tak |
+| 409 w zmianie ilości koszyka (`PUT …/items/{variantId}` z ilością 2) | 4 / 15 / 25 | 9 / 26 / 38 | | **nie: niepowodzenia w obu wariantach** |
+| 400 w mieszance panelu (`q=z`, fraza krótsza niż 2 znaki) | 0 | 2 / 2 / 2 | | nie |
+
+**Źródło 409 (z kodu i zapisanych odpowiedzi).** Wszystkie 409 pochodzą z klasy `shop_cart_change` (`panel.json`: 4/15/25 bez panelu, 9/26/38 z panelem, na 901 zmian w przebiegu; w pozostałych klasach sklepu 0).
+Kontrakt `PUT /api/v1/guest-carts/{cartId}/items/{variantId}` (`GuestCartController::changeItem`): 409 przy zwiększeniu ilości „powyżej dostępnych jednostek” albo wariantu bez ceny lub stanu; scenariusz zwiększa ilość z 1 do 2, więc 409 dostaje koszyk
+z wariantem, który ma mniej niż 2 dostępne jednostki. Koszyk niczego nie rezerwuje, więc liczba 409 nie wynika z zajmowania stanu przez przebiegi. **HIPOTEZA (nie sprawdzona bez pomiaru):** liczba zależy od losowego zbioru 60 produktów, który `discover()` wybiera w każdym
+przebiegu (udział wariantów z jedną jednostką); w kolejności przebiegów (4, 9, 15, 26, 25, 38) widać wzrost, więc nie wykluczam też spadku dostępności wariantów w trakcie sesji (np. zamówienia z workera). Zapisałem stan stanów wariantów tylko w zakresie `panel.json`, więc tego nie rozstrzygam.
+Nie jest to zachowanie sklepu pod panelem (jest w przebiegach bez panelu), tylko własność scenariusza; do zadania 7 (powtórzenie P4 po zmianach, ta sama mieszanka i ten sam scenariusz) zostaje: wybrać warianty ze stanem co najmniej 2 albo zmieniać ilość na 1 (zmiana ilości w dół
+zawsze się udaje), żeby kryterium „brak niepowodzeń” mogło być spełnione; zmiana scenariusza po pomiarze „przed” wymaga powtórzenia pomiaru „przed”.
 
 Zasoby PostgreSQL na przebieg: bez panelu 1,0–1,2 aktywnej sesji, CPU Postgresa ok. 15%, 6 mln trafień buforów, 30–38 tys. odczytów, 0,24–0,31 GB odczytu, `temp_bytes` 0; z panelem 10,5 aktywnej sesji (maks. 14), CPU Postgresa 1036–1057%
-(≈ 10 rdzeni), 113 mln trafień i 363 mln odczytów buforów (2,9 TB z cache systemu), `temp_bytes` 0; WAL bez zmiany (2,2–2,4 MB wobec 2,7–3,6 MB). Różnicę powodują 8 wątków najcięższych zapytań panelu (klasy z macierzy powyżej 2 s).
+(≈ 10 rdzeni), 113 mln trafień i 363 mln odczytów buforów (2,9 TB z cache systemu), `temp_bytes` 0; WAL bez zmiany (2,2–2,4 MB wobec 2,7–3,6 MB). Różnicę przypisuję 8 wątkom najcięższych zapytań panelu (klasy z macierzy powyżej 2 s): **HIPOTEZA**; nie rozdzielałem wkładu mieszanki 5/s, 8 wątków i zimnych granic mapy strony, a specyfikacja wymaga wskazania zapytania, które różnicę powoduje. Wskaże je pomiar w PERF-7-7 (przebiegi z każdą składową osobno).
 W15 (CPU węzła do 70%): lokalnie nie oceniam (host 16 rdzeni, współdzielony).
 
-**P4 na `medium`: kryterium z specyfikacji niespełnione we wszystkich sześciu miarach (różnica ponad rozrzut, który bez panelu jest bardzo mały), wpływ bezwzględny kilkanaście milisekund.** Pierwsza próba P4 (odrzucona: odnowienie tokenu odmówione w 6. przebiegu,
-za mało adresów, brak rozgrzewki) jest w `results/medium/p4/attempt1/`. Wynik na `server` niezmierzony; zależy od PERF-2B (zastrzeżenie 5).
+**P4 na `medium`: kryterium z specyfikacji niespełnione: różnica median ponad rozrzut we wszystkich sześciu miarach (rozrzut bez panelu bardzo mały), wpływ bezwzględny kilkanaście milisekund, oraz niepowodzenia (409, 400) w obu wariantach.** Pierwsza próba P4 (odrzucona: odnowienie tokenu odmówione w 6. przebiegu,
+za mało adresów, brak rozgrzewki) ma w `results/medium/p4/attempt1/` tylko raport (surowe przebiegi usunięto z dowodów). Wynik na `server` niezmierzony; zależy od PERF-2B (zastrzeżenie 5).
 
 ## 7. Mapa strony: stan obecny (M0)
 
@@ -272,7 +282,7 @@ WAL na zapis (bajty na zapis, mediana z dwóch przebiegów; „zimny” = pierws
 | cykl zamówienia (złożenie, płatność, wysyłka, dostawa; zimny) | 35,4 KB + 23,8 KB | 38,3 KB + 22,8 KB | 36,9 KB + 23,3 KB | 42,0 KB + 42,2 KB |
 | zapis klienta (zimny) | 14,0 KB + 6,4 KB | 14,9 KB + 6,3 KB | 14,9 KB + 7,7 KB | 16,8 KB + 13,0 KB |
 
-Efekt wariantu (zimny, razem z flush): **K1 +15 KB na zapis produktu (+40%)**: dwa indeksy z losowym liściem na każdą nie-HOT aktualizację; **F2 +14 KB (+38%)** przez flush listy oczekujących GIN; **Z1 +24 KB na cykl zamówienia (+42%) i +9 KB na zapis klienta (+45%)**.
+Procenty poniżej są względne do **syntetycznego zapisu jednego wiersza** po `CHECKPOINT` (zimne strony, bez równoległości, bez pełnego zapisu produktu z wariantami i zdjęciami) i nie przenoszą się na ruch produkcyjny; miarą główną są przyrosty w KB. Efekt wariantu (zimny, razem z flush): **K1 +15 KB na zapis produktu (+40%)**: dwa indeksy z losowym liściem na każdą nie-HOT aktualizację; **F2 +14 KB (+38%)** przez flush listy oczekujących GIN; **Z1 +24 KB na cykl zamówienia (+42%) i +9 KB na zapis klienta (+45%)**.
 Zapisy „gorące” (strony już w WAL od checkpointu): różnice małe (produkt 5,6–6,1 KB). Czas na zapis jest zaszumiony obciążeniem hosta (0,2–5 ms); wiarygodny jest WAL. Licznik obrazów stron (`pg_stat_wal.wal_fpi`) nie odświeża się w pętli, więc obrazy
 wynikają z różnicy zimny/gorący. Surowe wyniki: `results/medium/write-cost/`, tabela: `results/medium/tables/write-cost.md`. Pomiary W6, W11 i W20 z nowymi indeksami: zadanie 7 (po wdrożeniu).
 
@@ -289,7 +299,7 @@ planów). Równoważność wyników z obecnym SQL (`scripts/equiv.py`, te same w
   kosztuje 411 ms (str. 1 `name`), 1085 ms (str. 1 `-updatedAt`) i 411 ms (str. 2) na `medium` wobec 0,2 / 17 / 0,2 ms dziś: 4,1 s, 10,8 s i 4,1 s w pamięci na `server`. P2 niespełnione (8 przypadków powyżej 2000 ms: 4 strony działu, 3 kombinacje działu z filtrem i licznik „głównie dodatkowa + marka” 2,1 s); kategorie średnie i duże 0,5–0,9 s (w pamięci mieszczą się). K0 odrzucony.
 - **K1** = K0 + btree `(primary_category_id, name, id)` i `(primary_category_id, updated_at, id)`: jedna uporządkowana gałąź z `LIMIT` na kategorię poddrzewa i jedna gałąź produktów będących w poddrzewie wyłącznie przez kategorię dodatkową
   (członkostwa poddrzewa złączone z produktami, bez tych, których kategoria główna jest w poddrzewie, jako zbiór `MATERIALIZED`; jawne złączenie jest konieczne: plan z `IN (…)` wraca do przejścia po `(name, id)` i czyta tabelę).
-  Dwie wcześniejsze postacie K1 (dodatkowa gałąź jako `IN`: do 1,1 s na `medium`; z dedupem `DISTINCT ON` bez odfiltrowania głównych: dział 176–200 ms) są w `variants/K1-first-form`, `K1-second-form`.
+  Dwie wcześniejsze postacie K1 (dodatkowa gałąź jako `IN`: do 1,1 s na `medium`; z dedupem `DISTINCT ON` bez odfiltrowania głównych: dział 176–200 ms) mają w `variants/K1-first-form`, `K1-second-form` tylko tabelę `compare.md`.
 
 Porównanie (mediana `medium` ms → `server` w pamięci ms, SZACUNEK; **NIE** = powyżej 2000 ms):
 
@@ -322,12 +332,12 @@ Porównanie (mediana `medium` ms → `server` w pamięci ms, SZACUNEK; **NIE** =
 - K1 mieści wszystkie przypadki kategorii w 2000 ms w pamięci. Najwyższe: dział (str. 1 `name` 1,76 s, str. 2 1,86 s, `-updatedAt` 1,76/1,89 s): koszt liniowy w członkostwach dodatkowych poddrzewa (ok. 40 tys. wierszy `catalog_product_category` na `medium`, ok. 400 tys. na `server`:
   168 tys. buforów na `medium`, 1,69 mln na `server`); zapas 5–12% od limitu. Kategorie małe, średnie, duże i „głównie dodatkowe”: 7–11 ms na `medium`, 0,07–0,11 s na `server`; liczniki 1,6–9 ms.
 - Przypadki z dodatkowym filtrem obok kategorii (`results/medium/tables/k1-combinations.md`): kategoria + fraza `pro`, + szkice, + bez zdjęć: 7–25 ms na `medium` (`server`: 0,07–0,25 s) dla małych, średnich, dużych i „głównie dodatkowych”.
-  **Cztery przypadki działu z rzadkim filtrem nie mieszczą się** (R2, zasada 5: rzadkie przecięcie nie ma drogi ograniczonej w żadnym wariancie): dział + marka `str. 1 name` 2,04 s, dział + szkice `str. 1 name` 12,6 s i `-updatedAt` 7,1 s, dział + bez zdjęć licznik 2,17 s
+  **Cztery przypadki działu z dodatkowym filtrem nie mieszczą się** (R2; przyczyny z planów w sekcji 10.2: koszt gałęzi kategorii dodatkowych i brak częściowych indeksów po kategorii, nie samo „rzadkie przecięcie”): dział + marka `str. 1 name` 2,04 s, dział + szkice `str. 1 name` 12,6 s i `-updatedAt` 7,1 s, dział + bez zdjęć licznik 2,17 s
   (na `medium` 204, 1264, 710 i 217 ms).
 - **Koszt zapisu K1 (P8, sekcja 8):** dwa indeksy 93 + 56 MB (`server` ok. 1,5 GB, SZACUNEK), zbudowane w 3 s i 1 s na `medium`; zapis produktu +13,3 KB WAL (+59%), z flush +15 KB (+40%) przy zimnych stronach (każda aktualizacja zmienia `updated_at`,
   więc jest nie-HOT i dopisuje wpis do obu nowych indeksów w losowym liściu). `catalog_product` zapisują edycje produktu i generator (cena i stan idą do innych tabel), więc częstość tych zapisów jest niska; wpływ na W20 (generator z dwoma dodatkowymi indeksami przy 10 mln)
   zmierzy zadanie 3.
-- **K2 i K3 nie były prototypowane** (K1 mieści P2 dla kategorii; K2/K3 nie leczą też R2 według zasady 5), więc przegląd miejsc zapisu `git grep` nie jest potrzebny. Kopia kluczy sortowania (K2/K3) usunęłaby koszt członkostw dodatkowych działu (zapas 5–12% → ok. ms),
+- **K2 i K3 nie były prototypowane** (K1 mieści P2 dla kategorii bez filtra; dla R2 są tańsze rozwiązania, sekcja 10.2), więc przegląd miejsc zapisu `git grep` nie jest potrzebny. Kopia kluczy sortowania (K2/K3) usunęłaby koszt członkostw dodatkowych działu (zapas 5–12% → ok. ms),
   za cenę zmiany mapowania asocjacji i utrzymania kopii w każdym miejscu zapisu (CRITICAL); rekomenduję ją tylko, jeśli pomiar na `server` pokaże dział powyżej 2000 ms.
 
 ### 9.2 Fraza: F1 → F2
@@ -365,7 +375,7 @@ Porównanie (mediana `medium` ms → `server` w pamięci ms, SZACUNEK; **NIE** =
 | obszar | wariant | najgorszy przypadek obszaru spełniający / niespełniający 2000 ms | koszt zapisu (P8, zimny, z flush) | rozmiar (`server`) | status |
 |---|---|---|---|---|---|
 | kategoria | K0 | dział str. 1 `-updatedAt` 10,8 s (NIE) | brak | brak | odrzucony |
-| kategoria | **K1** | dział 1,89 s (zapas 5%); dział + rzadki filtr 2,0–12,6 s (NIE, R2) | +15 KB (+40%) na zapis produktu | ok. 1,5 GB | **rekomendowany** |
+| kategoria | **K1** | dział 1,89 s (zapas 5%); dział + filtr 2,0–12,6 s (NIE, R2: sekcja 10.2) | +15 KB (+40%) na zapis produktu | ok. 1,5 GB | **rekomendowany** |
 | fraza | F1 | `rowerowa` 2,83 s (NIE, R1); bez trygramu 14,4 s (NIE) | brak | brak | niewystarczający sam |
 | fraza | **F1 + F2** | `rowerowa` 2,83 s (NIE, R1); reszta ≤ 1,3 s | +14 KB (+38% zapisu bez nowych indeksów) na zapis produktu (F2) | ok. 0,64 GB (F2) | **rekomendowany** |
 | zamówienia, klienci | **Z0** | zamówienia `#!#` 1,5 s | brak | brak | **wybór wg reguły** |
@@ -380,32 +390,73 @@ Porównanie (mediana `medium` ms → `server` w pamięci ms, SZACUNEK; **NIE** =
 
 1. **Kategoria: K1.** Najprostszy wariant, który mieści przypadki kategorii w P2 (K0 rozbija dział: 4–11 s). Zmiana ogranicza się do zapytania i dwóch indeksów (dwie migracje `CONCURRENTLY`), bez zmiany modelu i miejsc zapisu. Koszt: 150 MB na `medium`, ok. 1,5 GB na `server`, +15 KB WAL na zapis produktu.
 2. **Fraza: F1 dla fraz z trygramem, F2 dla fraz bez trygramu.** F1 sam nie pomaga fragmentom bez trygramu (to dokładnie ta klasa, dla której F2 istnieje w specyfikacji). Koszt F2: 0,64 GB i +15 KB WAL na zapis produktu.
-3. **Zamówienia i klienci: Z0** (zgodnie z regułą specyfikacji: Z0 spełnia P2 w pamięci i nie narusza P4 wg obecnej mieszanki: te klasy są w mieszance W7 i w wątkach najcięższych P4, a ich wpływ jest mały wobec filtra kategorii i fraz produktów); Z1 gotowy.
+3. **Zamówienia i klienci: Z0** według reguły specyfikacji (Z0 spełnia P2 w pamięci w pomiarze izolowanym macierzy; SZACUNEK). Wpływ Z0 na P4 jest **niepotwierdzony**: P4 jest niespełnione, a udziału klas `orders_punct` i `customers_punct` w obciążeniu nie mierzyłem osobno. Pod obciążeniem mieszanki klasa `orders_punct` ma na `medium` p95 630 ms i maks. 825 ms (pytanie 10.3.3). Z1 gotowy.
 4. **Mapa strony: M1.** Mieści budżet 2000 ms w pamięci (SZACUNEK 1,1–1,6 s), gwarancje G1–G3 bez zmian, w transakcji `REPEATABLE READ`.
 5. **Front (PERF-7-6):** H2 potwierdzona: anulowanie żądania nie zatrzyma zapytania w Postgresie; jedyną ochroną kosztu jest `statement_timeout` z PERF-1.
 
-### 10.2 Przypadki, których żaden prototypowany wariant nie spełnia (SZACUNEK „w pamięci”)
+### 10.2 Przypadki bez wariantu spełniającego P2: przyczyna z planu, rozwiązania, rozstrzygające sprawdzenie
 
-| przypadek | wartość | zmienna kosztu | R |
-|---|---|---|---|
-| fraza częsta i skorelowana z sortem `name` (`rowerowa`: 60 168 trafień na `medium`, 601 577 na `server`) | 2,83 s (F1); licznik 0,30 s | trafienia | R1 |
-| dział + marka `str. 1 name` | 2,04 s | kategorie poddrzewa × rozmiar kategorii przy rzadkim filtrze | R2 |
-| dział + szkice `str. 1 name` / `-updatedAt` | 12,6 s / 7,1 s | jw. | R2 |
-| dział + bez zdjęć, licznik | 2,17 s | jw. | R2 |
+Właściciel nie akceptuje wyjątków W7, więc przypadki z tabeli nie zostają wyjątkami: dla każdej klasy podaję przyczynę z zapisanych planów (`results/medium/variants/F1/explain/`, `…/K1/explain/`), możliwe rozwiązania z pełną funkcjonalnością, koszt zapisu i ryzyko,
+oraz tanie sprawdzenie na `shop_proto`, które rozstrzyga (faza B poprawek). Liczby `server` to SZACUNEK „w pamięci”; analiza korzysta wyłącznie z zapisanych planów i pomiarów.
 
-K2/K3 nie leczą dwóch ostatnich klas (zasada 5: rzadkie przecięcie liniowe w każdym wariancie). Dla „dział + szkice”: szkice mają częściowy btree `(name, id) WHERE status = 'draft'` (2,3 MB), który obsługuje szkice bez kategorii w 0,1 ms; kombinację z kategorią można by obsłużyć gałęzią „najpierw szkice, potem filtr kategorii”
-(do rozważenia w zadaniu 2/3, gdy właściciel zatwierdzi wyjątek).
+| przypadek | wartość `server` (SZACUNEK) | co jest liniowe i w czym |
+|---|---|---|
+| R1: fraza częsta skorelowana z sortem `name` (`rowerowa`: 60 168 → 601 577 trafień) | 2,83 s (F1); licznik 0,30 s | odczyt sterty kandydatów GIN: ok. strona na trafienie |
+| R2a: dział + fraza częsta (`%pro%`), `str. 1 name` | 2,04 s | odczyt produktu po PK dla każdego członkostwa dodatkowego działu (41 770 → ok. 418 tys.) |
+| R2b: dział + szkice, `str. 1 name` / `-updatedAt` | 12,6 s / 7,1 s | wszystkie szkice (20 108 → ok. 201 tys.) przeglądane przez każdą z 26 gałęzi kategorii |
+| R2c: dział + bez zdjęć, licznik | 2,17 s | wiersze działu z indeksu kategorii (214 744 wpisów → ok. 2,1 mln) filtrowane bitmapą z indeksem bez zdjęć |
+
+**R1. Fraza częsta skorelowana z sortem.**
+- *Przyczyna z planu* (`F1.brand-common.p1.name.gin.out`): Bitmap Heap Scan czyta 52 880 stron sterty dla 60 168 kandydatów (53 559 odczytów), żeby tylko posortować ich nazwy (top-N heapsort 26 z 60 168): 297 ms na `medium`, liniowo w trafieniach (strona sterty na trafienie).
+  Spacer F1 z budżetem B = 20 000 wierszy nie znajduje 26 trafień, bo w kolejności `name` pierwsze 26 trafień leży dalej: obecne zapytanie czyta 229 152 wiersze `(name, id)` (ok. 23% nazw), zanim je znajdzie (870 ms, bo każdy wiersz oznacza odczyt sterty na filtr).
+- *Rozwiązania:*
+  1. **Dłuższy spacer index-only** (nazwa jest w indeksie, więc bez odczytu sterty): spacer F1 kosztuje 14 ms za 20 000 wierszy (ok. 0,7 µs na wiersz), więc dojście do 26. trafienia (229 tys. wierszy) to ok. 0,16 s na `medium` i ok. 1,6 s na `server` przy zachowaniu rozkładu (SZACUNEK z kosztu na wiersz, niezmierzony).
+     Zapis: bez zmian. Ryzyko: koszt zależy od miejsca 26. trafienia w kolejności nazw (rozkład, nie wolumen), a nie od liczby trafień; trzeba wybierać drogę: budżet rosnący geometrycznie (20 tys., 200 tys., 2 mln wierszy; koszt ≤ ok. 2× ostatniego kroku) i przejście na kandydatów, gdy licznik GIN pokazuje mało trafień.
+  2. Tańszego sortu kandydatów nie ma bez nowej struktury (GIN nie zwraca nazwy); struktury wymagające nowego rozszerzenia (np. trygramy w GiST z kluczem sortowania) nie były badane.
+- *Tanie sprawdzenie (faza B):* jeden `EXPLAIN (ANALYZE, BUFFERS)` spaceru index-only bez budżetu do 26. trafienia dla `rowerowa`, `snowboardowe` i czterech innych fraz częstych o różnym skosie (czas, bufory, miejsce 26. trafienia w kolejności). Zależność od wolumenu czytamy z udziału tego miejsca w nazwach: dane demo mają ten rozkład niezależny od wolumenu, prawdziwy katalog może go nie mieć (to pomiar do powtórzenia na `server`).
+
+**R2a. Dział + fraza częsta (2,04 s).**
+- *Przyczyna z planu* (`K1.department.cat+brand.p1.name.out`): gałęzie kategorii głównych kończą w mniej niż 1 ms (fraza częsta, 26 trafień blisko początku indeksu); cały koszt (168 tys. z 169 tys. buforów) to CTE `additional`: 41 770 członkostw działu, dla każdego odczyt produktu po kluczu głównym
+  (`Nested Loop`, 41 770 przeszukań), żeby odrzucić te, których kategoria główna jest w poddrzewie (wynik: 0 wierszy). To ten sam koszt, który daje dział bez filtra 1,76–1,89 s, liniowy w członkostwach dodatkowych poddrzewa. Przypadek nie jest „rzadkim przecięciem”.
+- *Rozwiązania:*
+  1. **Kolumna `primary_category_id` w `catalog_product_category`** (kopia kategorii głównej produktu) i indeks pokrywający `(category_id) INCLUDE (product_id, primary_category_id)`: odrzucenie członkostw, których kategoria główna jest w poddrzewie, bez odczytu produktu (index-only, ok. 42 tys. wpisów).
+     Zapis: tylko przy zmianie kategorii głównej albo dodatkowych produktu (rzadko), nie przy każdym zapisie produktu. Ryzyko: spójność kopii w każdym miejscu zapisu (repozytorium z ORM `ManyToMany`, generator `COPY`, `ProductPhotos`, migracje), więc zmiana mapowania na zapis ręczny: to „K2 lite” (jedna kolumna, bez kopii kluczy sortowania),
+     z wymaganiami spójności z sekcji „Warianty” specyfikacji (test zgodności, `git grep` miejsc zapisu).
+  2. Zostawić K1 bez zmian: dział bez filtra mieści się (1,76–1,89 s), z frazą częstą 2,04 s jest na granicy (2% ponad limit); wynik na `server` rozstrzyga.
+- *Tanie sprawdzenie (faza B):* na `shop_proto` tabela próbna z 200 192 członkostw i kolumną `primary_category_id` oraz indeks pokrywający, `EXPLAIN (ANALYZE, BUFFERS)` odrzucenia dla działu (czas i bufory; kilka sekund). Rozstrzyga, czy rozwiązanie 1 daje ok. dziesiątki ms zamiast 116–180 ms.
+- *Czego nie zmierzyłem:* działu z frazą **rzadką** (rzadkie przecięcie, zasada 5: koszt to mniejsza z dwóch wielkości, wiersze działu odczytane przez gałęzie albo kandydaci frazy). Dołączam do fazy B (dział + fraza rzadka i średnia).
+
+**R2b. Dział + szkice (12,6 s i 7,1 s).**
+- *Przyczyna z planu* (`K1.department.cat+drafts.p1.name.out`): 26 gałęzi kategorii czyta globalny częściowy indeks szkiców `(name, id) WHERE status = 'draft'` (nie po kategorii) i filtruje kategorię; każda gałąź przechodzi wszystkie szkice (20 108 na `medium`): 502 tys. buforów. Liniowe w (kategorie poddrzewa × szkice).
+- *Rozwiązania:*
+  1. **Częściowe btree po kategorii** `(primary_category_id, name, id) WHERE status = 'draft'` i `(primary_category_id, updated_at, id) WHERE status = 'draft'`: gałąź czyta tylko szkice swojej kategorii (≤ 26). Rozmiar: tylko szkice (ok. 2% produktów; istniejące częściowe indeksy szkiców mają 2,3 MB i 1,2 MB, więc ok. 3 MB na `medium`, ok. 30 MB na `server`).
+     Zapis: wpis tylko dla produktu-szkicu i przy zmianie statusu (produkt opublikowany nie dopisuje nic do tych indeksów, więc koszt dla zapisu opublikowanego produktu zero). Ryzyko niskie: predykat `p.status = 'draft'` jest już literałem w kodzie (tak działają dzisiejsze częściowe indeksy).
+  2. Gałąź „najpierw szkice” (osobne zapytanie po 20 tys. szkicach, potem filtr kategorii): bez indeksów, ale koszt liniowy w liczbie szkiców (201 tys. na `server`, ok. 0,5 s); gorsze od 1.
+- *Tanie sprawdzenie (faza B):* utworzyć dwa częściowe indeksy na `shop_proto` (20 108 wierszy, poniżej sekundy) i `EXPLAIN` dla działu + szkice, małej kategorii + szkice (oba sorty, strona i licznik).
+
+**R2c. Dział + bez zdjęć, licznik (2,17 s).**
+- *Przyczyna z planu* (`K1.department.cat+noimages.count.out`): `BitmapAnd` indeksu kategorii (214 744 wpisy działu) i częściowego `catalog_product_without_images_idx` (20 003), z 11 005 stronami „lossy” (60 720 wierszy do ponownego sprawdzenia): 182–217 ms na `medium`, liniowo w wierszach działu odczytanych z indeksu kategorii.
+- *Rozwiązanie:* **częściowe btree po kategorii z tym samym predykatem co istniejący indeks** `(primary_category_id, name, id) WHERE images = '[]'::jsonb` (kod ma stałą `WITHOUT_IMAGES`); licznik i strona czytają tylko produkty bez zdjęć kategorii. Rozmiar i zapis jak szkice (ok. 2% produktów, wpis tylko dla produktu bez zdjęć).
+  Ryzyko: predykat musi być tekstowo identyczny z zapytaniem (dziś jest). Dla kombinacji szkice + bez zdjęć (przecięcie dwóch częściowych) planista wybierze jeden z nich; do sprawdzenia w tej samej fazie.
+- *Tanie sprawdzenie (faza B):* jak R2b, indeks bez zdjęć po kategorii i `EXPLAIN` licznika działu.
+
+**Marka w R2.** Przypadek „dział + marka” w macierzy to fraza częsta (`%pro%`), czyli R2a (koszt gałęzi dodatkowych), nie przecięcie z rzadką frazą. Dla frazy rzadkiej w dziale ograniczeniem byłoby złożone indeksowanie kategorii razem z trygramami (rozszerzenie `btree_gin`, GIN na `(primary_category_id, name gin_trgm_ops)`):
+rozmiar rzędu indeksu trygramów (248 MB na `medium`, ok. 2,5 GB na `server`), koszt zapisu jak przy F2 (+14 KB WAL, flush listy oczekujących) przy każdym zapisie produktu i nowe rozszerzenie (zależność); nie rekomenduję bez pomiaru przypadku „dział + fraza rzadka”.
 
 ### 10.3 Pytania do właściciela
 
 1. **Zatwierdzenie wariantów K (K1), F (F1 + F2), Z (Z0, z Z1 w odwodzie) i M (M1)** z kosztami z sekcji 8–9: nowe indeksy ok. 1,5 GB (K1) + 0,64 GB (F2) na `server` (SZACUNEK; zadania 2–3 zmierzą rozmiar po generatorze), +15 KB WAL na zapis produktu (K1) i +14 KB (F2), brak zmiany zapisu zamówień przy Z0.
    Czy P8 jest akceptowalne? (Zapisy `catalog_product` robią tylko edycje produktu i generator; wpływ na W20 zmierzy zadanie 3.)
-2. **Wyjątek W7 z liczbami** dla przypadków bez wariantu: fraza częsta skorelowana z sortem (`rowerowa`: 2,83 s w pamięci, SZACUNEK) oraz dział + rzadki filtr (2,0–12,6 s): zaakceptować jako wyjątek (klasy rzadkie w pracy panelu, ograniczone `statement_timeout`), czy dalsza praca (K2/K3 nie pomagają)?
-3. **Z0 czy Z1:** Z0 mieści P2 w pamięci (zamówienia `#!#`/`---` 1,2–1,5 s na `server`, zapas 22–40%); Z1 usuwa ten koszt, ale dodaje +42% WAL na cykl zamówienia (gorąca ścieżka W6/W11). Czy zostajemy przy Z0 do pomiaru na `server`?
+2. **Rozwiązania dla R1 i R2 zamiast wyjątków W7 (sekcja 10.2):** czy zatwierdzić do zadań 2–3: dłuższy spacer index-only z budżetem rosnącym (R1), trzy częściowe indeksy po kategorii (szkice dla `name` i `updated_at`, bez zdjęć; ok. 3 MB na `medium`, zapis tylko dla szkiców i produktów bez zdjęć)
+   i, zależnie od pomiaru fazy B, kolumnę `primary_category_id` w `catalog_product_category` (R2a)? Każde z rozwiązań zostaje do potwierdzenia pomiarem fazy B (tanie `EXPLAIN` na `shop_proto`) i na `server`.
+3. **Z0 czy Z1:** Z0 mieści P2 w pamięci w pomiarze izolowanym (zamówienia `#!#`/`---` 1,2–1,5 s na `server`, zapas 22–40%), ale **pod obciążeniem mieszanki klasa `orders_punct` miała na `medium` p95 630 ms i maks. 825 ms (mediana trzech przebiegów W7, ok. 1% żądań mieszanki)**; ta sama metoda
+   skalowania (zamówienia ×5, liniowo) daje na `server` p95 ok. 3,2 s i maks. ok. 4,1 s (SZACUNEK górny: w pomiarze pod obciążeniem jest kolejkowanie, nie sam skan). Z0 nie jest więc potwierdzone dla W7 pod obciążeniem, a wpływ na P4 niezmierzony. Z1 usuwa ten koszt (0,1 ms), ale dodaje +24 KB WAL na cykl zamówienia
+   (+42% względem syntetycznego zapisu, ścieżka W6/W11). Czy zostajemy przy Z0 do pomiaru na `server`, czy wybieramy Z1 od razu?
 4. **Budżet zimnego obliczenia granic mapy strony:** propozycja 2000 ms; M1 szacunkowo 1,1–1,6 s. Zatwierdzić 2000 ms?
 5. **Pomiar na `server` (R5):** P1, P2, P4 i czas z P5 uznajemy za spełnione wyłącznie według pomiaru na `server`. Czy zgoda na pomiar na worf.pl (tylko GET dla W7; P4 z koszykami to zapisy) po wdrożeniu, czy lokalny profil `server`? Dla oceny ograniczenia dyskiem
    przydałby się też pomiar przepustowości odczytu dysku worf.pl pod zapytaniami panelu (dziś zmierzony tylko dla generowania zamówień: 180–209 MB/s, iowait 0,19); bez niego „z dysku” zostaje założeniem.
-6. **P4 przed zmianą nie spełnione** (sekcja 6: +13–41 ms na listingach i koszykach przy 8 wątkach najcięższych zapytań); po zmianach wynik zmierzy zadanie 7. Czy kryterium „różnica median ≤ rozrzut bez panelu” zostaje w tej postaci, skoro rozrzut bez panelu wynosi 0,3–5 ms?
+6. **P4 przed zmianą nie spełnione** (sekcja 6: +13–41 ms na listingach i koszykach z panelem oraz niepowodzenia 409/400 w obu wariantach); po zmianach wynik zmierzy zadanie 7 tym samym scenariuszem. Czy kryterium „różnica median ≤ rozrzut bez panelu” zostaje w tej postaci, skoro rozrzut bez panelu wynosi 0,3–5 ms?
+   Czy zmieniamy krok zmiany ilości koszyka (409, patrz sekcja 6), co wymaga powtórzenia pomiaru „przed”?
 
 ### 10.4 Zastrzeżenia do rekomendacji
 
@@ -445,14 +496,26 @@ sh $D/scripts/write-cost-run.sh $D/results/medium/write-cost
 Testy narzędzi: `make load-panel-check` (ścieżki błędu: zły tryb, brak stosu, brak Keycloaka, brak tokenu, API niedostępne, brak i zła mieszanka w k6, raport; 12 przypadków OK) oraz na żywym stosie
 (`results/medium/error-paths.txt`): złe hasło, brak pliku mieszanki, zły tryb, P4 bez adresów sklepu, zatrzymane API; każdy kończy się kodem 2 z komunikatem.
 
+### Co zawiera katalog dowodów i co odtwarzają skrypty
+
+Katalog `docs/reports/admin-queries-baseline-2026-11-27/` został odchudzony (ok. 2,7 MB), bez utraty liczb raportu:
+- `results/{small,medium}/cases.json`: przypadki z zapytaniami (pole `sql`) i zmienną kosztu; `results.json`: czasy i bufory przebiegów (pierwszy i ostatni przebieg w całości, środkowe tylko czas; z tego liczą wszystkie tabele: `extrapolate.py`, `matrix.py table`, `compare.py`, `f_table.py`).
+  Wyjście `extrapolate.py` i `matrix.py table` jest po odchudzeniu identyczne bajt w bajt.
+- `results/medium/variants/{K0,K1,F1,F2,Z1}/`: `cases.json`, `results.json`, `compare.md` / `f-table.md`, plany wybranych przypadków; `K1-first-form`, `K1-second-form` tylko `compare.md`. `equiv.txt` (wynik `equiv.py` na `medium`) w katalogu każdego rekomendowanego wariantu.
+- Plany `EXPLAIN (ANALYZE, BUFFERS)` zostały tylko dla przypadków cytowanych w raporcie i tabelach (`results/medium/explain/`, `variants/*/explain/`). Pozostałe odtwarza `matrix.py run --db <baza> --cases <cases.json> --out <katalog> [--only <fragment id>]`
+  (plan tekstowy ostatniego przebiegu w `explain/<id>.out`) na bazie z danymi profilu; pojedyncze zapytania można też uruchomić z pola `sql`. Pliki `sql/` z osobnymi zapytaniami zostały usunięte (duplikaty `cases.json`).
+- Dane `small` odtwarza `make seed-scale PROFILE=small`, `medium` `PROFILE=medium` (deterministyczne UUID; losowanie przypadków `matrix.py gen` nie ma ziarna, więc nowe losowanie da inne konkretne kategorie i frazy tych samych klas; `cases.json` zachowuje wylosowane).
+- Mieszanka W7/P4: `results/medium/mix.json` (zachowana, `make load-panel PANEL_MIX=<plik>`); adresy sklepu w P4 odtwarza `python3 -I load/baseline.py urls http://localhost:28102 http://localhost:28100 <plik> --listings 17000 --products 50 --seed 11`
+  (ostateczny P4; wcześniejszy plik 4000 adresów, użyty tylko do kalibracji, usunięty). Surowe przebiegi k6: `panel.json`, liczniki PostgreSQL i `report.txt` w `results/*/w7/` i `results/medium/p4/`; próbki co 5 s tylko dla ostatecznego P4. `token.json` nie jest w dowodach.
+
 ## 12. Odstępstwa od planu
 
 - M2 zmierzony dla porównania, choć M1 wystarczał (reguła: bardziej złożonych nie prototypujemy); wynik nie wpływa na wybór.
-- Postać K1: pierwsza (dodatkowa gałąź jako `IN`) i druga (złączenie bez odfiltrowania głównych) czytały za dużo; trzecia (finalna) w `variants/K1`, poprzednie w `K1-first-form`, `K1-second-form`.
+- Postać K1: pierwsza (dodatkowa gałąź jako `IN`) i druga (złączenie bez odfiltrowania głównych) czytały za dużo; trzecia (finalna) w `variants/K1`, poprzednie w `K1-first-form`, `K1-second-form` (tylko `compare.md`).
 - Baza prototypów `shop_proto` miała zapisy z pomiaru kosztu zapisu (3000 aktualizacji produktów, 500 nowych zamówień, 1000 aktualizacji klientów w każdym stanie), więc kursory stron 2 dla `-updatedAt` w obecnym SQL (rysowane na `shop`) różniły się od prototypu; `equiv.py` podstawia kursor prototypu do obecnego SQL.
 - TDD nie dotyczy (zadanie pomiarowe, bez zmian kodu aplikacji); narzędzia w `load/` testowane na ścieżkach błędu (`make load-panel-check`, sekcja 11).
 - Brak w mojej sesji narzędzia komunikacji z sesją prowadzącą: komunikaty „start/koniec okna” nie zostały wysłane przeze mnie; okna zostały uzgodnione z mojej strony wyłącznie przez raporty pośrednie.
 - Przypadki macierzy dla `small` i `medium` są losowane z danych każdego profilu (te same klasy); „duży liść z typem na końcu alfabetu” nie istnieje w danych demo (20% członkostw dodatkowych), więc H1 rozstrzygnięta na liściach o największym miejscu 26. członka.
 - API lokalnie w `APP_ENV=prod` i z `CLIENT_IP_HEADER` (lokalne nadpisanie compose poza repo), generator `medium` uruchomiony z `APP_ENV=dev`.
-- P4 dopisany trzeci przebieg „z panelem” osobnym uruchomieniem (zabrakło adresów); pierwsza próba P4 zachowana jako `attempt1`.
+- P4 dopisany trzeci przebieg „z panelem” osobnym uruchomieniem (zabrakło adresów); pierwsza próba P4: w dowodach tylko `p4/attempt1/report.txt`; przebieg „bez panelu” z uruchomienia dodatkowego jest odrzucony i usunięty.
 - Wynik na `server` (P1, P2, P4, czas z P5) niezmierzony (R5): decyzje o wariantach zapadają według `medium` i ekstrapolacji (SZACUNEK).

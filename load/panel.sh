@@ -120,6 +120,8 @@ run_k6() {
   k6_run "$network" "$dir" panel.js -e STORE_URL=http://store:3000 -e API_URL=http://api -e KEYCLOAK_URL=http://keycloak:8080 \
     -e PANEL_MIX=/out/mix.json -e PANEL_TOKEN=/out/token.json -e PANEL_RATE="$run_rate" -e PANEL_SECONDS="$seconds" "$@" > "$dir/k6.txt" 2>&1 || code=$?
   touch "$dir.stop"
+  # The token is a credential of the administrator (short-lived, but not for the results): it stays out of them.
+  rm -f "$dir/token.json"
   snapshot > "$dir/pg-after.json" || true
   wait "$sampler" ${purger:+"$purger"} 2> /dev/null || true
   mv "$dir.samples" "$dir/samples.txt" 2> /dev/null || true

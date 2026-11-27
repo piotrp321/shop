@@ -3,6 +3,10 @@
 
   panel_report.py DIR w7|p4
 
+A failed request is any answer that is not a success of the scenario: 5xx and network errors, 409, 429 and every other 4xx (a conflict or a limit
+answered to the load is a failure of that request, whoever causes it); the requests the generator did not send in time (`dropped`) are failures too.
+Both are part of the verdict of w7 and p4, so a run with failures is never reported as met.
+
 w7: the figures of the mix (the p50, p95, p99 and the maximum of the whole mix and of every class) of DIR/w7-run*/panel.json, the
 median of the runs and the lowest and the highest run, with the verdict against W7 (p50 100 ms, p95 500 ms, maximum 2000 ms).
 p4: the shop listings and carts (DIR/p4-without-run*, DIR/p4-with-run*): per run the p50, p95, p99, the share of the requests that
@@ -34,6 +38,15 @@ def load(path):
         fail(f"cannot read {path}: {error}")
 
 
+def failures(f):
+    """The failed requests of a figure: 5xx and network errors, 409, 429 and any other 4xx."""
+    return round(f["server_error_rate"] * f["requests"]) + f["conflicts_409"] + f["rate_limited_429"] + f["other_4xx"]
+
+
+def breakdown(f):
+    return f"5xx/net {round(f['server_error_rate'] * f['requests'])}, 409 {f['conflicts_409']}, 429 {f['rate_limited_429']}, other 4xx {f['other_4xx']}"
+
+
 def runs(directory, prefix):
     files = sorted(glob.glob(os.path.join(directory, f"{prefix}-run*", "panel.json")))
     return [(os.path.dirname(f), load(f)) for f in files]
@@ -56,27 +69,29 @@ def w7(directory):
     if not found:
         fail(f"no w7 runs in {directory}")
     lines = [f"W7: {len(found)} runs, rate {found[0][1]['panel_rate']}/s for {found[0][1]['seconds']} s, the median (lowest–highest)"]
-    lines.append(f"{'class':32}{'requests':>10}{'p50 ms':>20}{'p95 ms':>20}{'p99 ms':>20}{'max ms':>20}{'5xx':>8}{'4xx':>6}")
+    lines.append(f"{'class':32}{'requests':>10}{'p50 ms':>20}{'p95 ms':>20}{'p99 ms':>20}{'max ms':>20}{'failed':>8}")
     rows = [("MIX (all)", [r["panel"] for _, r in found])]
     names = sorted({name for _, r in found for name in r["classes"]})
     for name in names:
         rows.append((name, [r["classes"][name] for _, r in found if name in r["classes"]]))
     verdict = []
     for name, figures in rows:
-        errors = statistics.median(f["server_error_rate"] * f["requests"] for f in figures)
-        other = statistics.median(f["other_4xx"] for f in figures)
+        errors = statistics.median(failures(f) for f in figures)
         lines.append(
             f"{name:32}{int(statistics.median(f['requests'] for f in figures)):>10}{cell([f['p50_ms'] for f in figures]):>20}"
-            f"{cell([f['p95_ms'] for f in figures]):>20}{cell([f['p99_ms'] for f in figures]):>20}{cell([f['max_ms'] for f in figures]):>20}{errors:>8.0f}{other:>6.0f}"
+            f"{cell([f['p95_ms'] for f in figures]):>20}{cell([f['p99_ms'] for f in figures]):>20}{cell([f['max_ms'] for f in figures]):>20}{errors:>8.0f}"
         )
         median = {key: statistics.median(f[key] for f in figures if f[key] is not None) for key in W7}
         # The mix is judged by W7 as a whole (P1); a class is judged by its maximum (P2) and by its errors.
         limits = W7 if name.startswith("MIX") else {"max_ms": W7["max_ms"]}
         over = [f"{key} {median[key]:g} > {limit}" for key, limit in limits.items() if median[key] > limit]
-        if over or errors or other:
-            verdict.append(f"  {name}: " + ", ".join(over + ([f"{errors:.0f} errors"] if errors else []) + ([f"{other:.0f} other 4xx"] if other else [])))
+        if over or errors:
+            verdict.append(f"  {name}: " + ", ".join(over + ([f"{errors:.0f} failed requests ({breakdown(max(figures, key=failures))} in the worst run)"] if errors else [])))
+    dropped = [r["dropped"]["panel"] for _, r in found]
+    if any(dropped):
+        verdict.append(f"  the generator did not send in time: {dropped} requests per run (the rate was not kept)")
     lines.append("")
-    lines.append("W7 (the mix: p50 100 ms, p95 500 ms, maximum 2000 ms; every class: maximum 2000 ms; no error) " + ("met" if not verdict else "not met by:"))
+    lines.append("W7 (the mix: p50 100 ms, p95 500 ms, maximum 2000 ms; every class: maximum 2000 ms; no failed request: 5xx, 409, 429, other 4xx; none dropped) " + ("met" if not verdict else "not met by:"))
     lines.extend(verdict)
     return lines
 
@@ -128,7 +143,7 @@ def p4(directory):
                 f = result[key]
                 if f is None:
                     continue
-                failed = round(f["server_error_rate"] * f["requests"]) + f["other_4xx"]
+                failed = failures(f)
                 lines.append(f"{label + ' ' + scenario + ' run ' + str(index):34}{f['requests']:>9}{failed:>8}{result['dropped'][key]:>9}{f['p50_ms']:>9}{f['p95_ms']:>9}{f['p99_ms']:>9}{f['max_ms']:>9}")
             medians[(label, key)] = {m: [r[key][m] for _, r in group if r[key] and r[key][m] is not None] for m in ("p50_ms", "p95_ms", "p99_ms")}
     lines.append("")
@@ -147,6 +162,18 @@ def p4(directory):
             if abs(difference) > noise:
                 verdict.append(f"{scenario} {metric}")
     lines.append("P4 (difference of the medians within the spread without the panel) " + ("met" if not verdict else "not met: " + ", ".join(verdict)))
+    # The failures and the dropped requests of every run, with the answers they are made of; both variants must have none.
+    problems = []
+    for label, group in (("without", without), ("with", with_panel)):
+        for index, (_, result) in enumerate(group, 1):
+            for scenario, key in (("shop listings", "shop_listing"), ("shop carts", "shop_cart"), ("panel mix", "panel")):
+                f = result[key]
+                if f is None or (key == "panel" and label == "without"):
+                    continue
+                if failures(f) or result["dropped"][key]:
+                    problems.append(f"{label} run {index} {scenario}: {failures(f)} failed ({breakdown(f)}), {result['dropped'][key]} dropped")
+    lines.append("P4 (no failed request (5xx, 409, 429, other 4xx) and no dropped request in the shop and in the panel mix, in both variants) " + ("met" if not problems else "not met:"))
+    lines.extend(f"  {problem}" for problem in problems)
     lines.append("")
     lines.append("Load of PostgreSQL and of the containers per run (counters over the run; sessions and CPU sampled every 5 s)")
     for label, group in (("without", without), ("with", with_panel)):
@@ -168,7 +195,7 @@ def shop(directory):
             f = result[key]
             if f is None:
                 continue
-            failed = round(f["server_error_rate"] * f["requests"]) + f["other_4xx"]
+            failed = failures(f)
             lines.append(f"{label + ' run ' + str(index):28}{f['requests']:>9}{failed:>8}{result['dropped'][key]:>9}{f['p50_ms']:>9}{f['p95_ms']:>9}{f['p99_ms']:>9}{f['max_ms']:>9}")
     return lines
 

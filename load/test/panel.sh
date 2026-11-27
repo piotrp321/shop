@@ -60,6 +60,41 @@ done
 expect "report names the class above the maximum" 0 "slow: max_ms 2502 > 2000" -- python3 -I "$load/panel_report.py" "$work" w7
 expect "report gives the spread of the runs" 0 "42 (41–43)" -- python3 -I "$load/panel_report.py" "$work" w7
 
+# A product that vanished between the sitemap and its read (404) is skipped by the draw of the mix; any other failure ends it (exit 2).
+expect "mix: a 404 of one product is skipped, a 500 ends the draw" 2 "answered 500" -- python3 -I -c "
+import sys, threading, http.server
+sys.path.insert(0, '$load')
+import panel_mix
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(404 if self.path == '/gone' else 500)
+        self.end_headers()
+    def log_message(self, *args):
+        pass
+server = http.server.HTTPServer(('127.0.0.1', 0), Handler)
+threading.Thread(target=server.serve_forever, daemon=True).start()
+api = panel_mix.Api('http://127.0.0.1:%d' % server.server_port, {'access_token': 'a', 'refresh_token': 'r', 'token_url': 'x'})
+assert api.get('/gone', admin=False, missing_ok=True) is None
+api.get('/broken', admin=False, missing_ok=True)"
+
+# The report of P4 on results written by hand: the shop answers 409 to some carts of the run with the panel (and nothing else is wrong): the run has
+# failed requests, so P4 is not met, and the 409 is named; a dropped request of the panel mix is a failure of W7 too.
+mkdir -p "$work/p4/p4-without-run1" "$work/p4/p4-with-run1" "$work/w7dropped/w7-run1"
+python3 -I -c "
+import json
+def fig(requests=100, **extra):
+    base = {'requests': requests, 'requests_per_second': 5, 'p50_ms': 10.0, 'p90_ms': 20, 'p95_ms': 30.0, 'p99_ms': 40.0, 'max_ms': 50.0, 'server_error_rate': 0, 'conflicts_409': 0, 'rate_limited_429': 0, 'other_4xx': 0}
+    base.update(extra)
+    return base
+def result(carts, dropped=0):
+    return {'panel_rate': 5, 'seconds': 60, 'shop_listing_rate': 15, 'shop_cart_rate': 5, 'panel': fig(), 'shop_listing': fig(), 'shop_cart': carts, 'dropped': {'panel': dropped, 'shop_listing': 0, 'shop_cart': 0}, 'classes': {'fast': fig()}}
+json.dump(result(fig()), open('$work/p4/p4-without-run1/panel.json', 'w'))
+json.dump(result(fig(conflicts_409=3)), open('$work/p4/p4-with-run1/panel.json', 'w'))
+json.dump(result(fig(), dropped=7), open('$work/w7dropped/w7-run1/panel.json', 'w'))"
+expect "P4 names the 409 as a failure" 0 "with run 1 shop carts: 3 failed (5xx/net 0, 409 3" -- python3 -I "$load/panel_report.py" "$work/p4" p4
+expect "P4 with failures is not met" 0 "in the shop and in the panel mix, in both variants) not met:" -- python3 -I "$load/panel_report.py" "$work/p4" p4
+expect "W7 with a dropped request is not met" 0 "the generator did not send in time: [7]" -- python3 -I "$load/panel_report.py" "$work/w7dropped" w7
+
 # k6: the script stops before the first request when its input is missing or broken.
 if command -v docker > /dev/null 2>&1; then
   printf '{}' > "$work/empty.json"

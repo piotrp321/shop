@@ -1,3 +1,0 @@
--- category big-early (15199 products), count
--- cost variable: products in the subtree = 15199 (scales with products)
-SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) LIMIT 10001) bounded;

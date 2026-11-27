@@ -1,3 +1,0 @@
--- category small (4-20 products; 20 products), count of the first page
--- cost variable: products in the subtree = 20 (scales with products)
-SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%'))) LIMIT 10001) bounded;

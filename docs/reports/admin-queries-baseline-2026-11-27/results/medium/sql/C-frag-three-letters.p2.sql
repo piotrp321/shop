@@ -1,3 +1,0 @@
--- customers, fragment three-letters 'ann', page 2
--- cost variable: hits = 5121 (scales with customers)
-SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ann') || '%' OR lower(c.full_name) LIKE '%' || lower('ann') || '%') AND c.last_order_at <= CAST('2026-11-26 17:53:28+00' AS timestamptz) AND (c.last_order_at < CAST('2026-11-26 17:53:28+00' AS timestamptz) OR c.customer_id > '4c811fc3-b796-54f5-850e-d4a0c92c920c') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26;

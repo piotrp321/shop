@@ -109,7 +109,8 @@ class Api:
         self.token = {**self.token, **fresh}
         self.expires = time.time() + fresh.get("expires_in", 300)
 
-    def get(self, path, admin=True, timeout=120):
+    def get(self, path, admin=True, timeout=120, missing_ok=False):
+        """The JSON of a GET; a 404 is None when `missing_ok` (a product that vanished since the sitemap was read), any other failure ends the run."""
         headers = {"Accept": "application/json", "User-Agent": "perf-7-panel-mix"}
         if admin:
             if time.time() > self.expires - 30:
@@ -121,6 +122,8 @@ class Api:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 return json.load(response)
         except urllib.error.HTTPError as error:
+            if missing_ok and error.code == 404:
+                return None
             fail(f"GET {path} answered {error.code}")
         except (urllib.error.URLError, TimeoutError, ValueError) as error:
             fail(f"GET {self.base}{path} failed: {error}")
@@ -157,11 +160,9 @@ def sample_names(api, rng, products):
         details = None
         for _ in range(3):
             slug = rng.choice(items)["slug"]
-            try:
-                details = api.get("/api/v1/products/" + urllib.parse.quote(slug), admin=False)
+            details = api.get("/api/v1/products/" + urllib.parse.quote(slug), admin=False, missing_ok=True)
+            if details is not None:
                 break
-            except SystemExit:
-                raise
         if details:
             names.append(details["name"])
     return names

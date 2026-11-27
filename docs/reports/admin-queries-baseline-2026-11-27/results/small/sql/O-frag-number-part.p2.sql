@@ -1,3 +1,0 @@
--- orders, fragment number-part '102', page 2
--- cost variable: hits = 1017 (scales with orders)
-SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('102') || '%' AND (o.placed_at, o.id) < (CAST('2025-12-11 09:49:17+00' AS timestamptz), CAST('019b0cd0-9d48-7605-9943-47478263f4ab' AS uuid)) ORDER BY o.placed_at DESC, o.id DESC LIMIT 26;

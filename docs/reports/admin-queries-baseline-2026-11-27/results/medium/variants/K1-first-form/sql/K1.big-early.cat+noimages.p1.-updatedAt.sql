@@ -1,3 +1,0 @@
--- category big-early + without images, page 1, sort -updatedAt
--- cost variable: products in the subtree = 15199 (scales with products)
-SELECT DISTINCT ON (updated_at, id) id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT product_id FROM catalog_product_category WHERE category_id = ANY('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[])) AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26)) u ORDER BY updated_at DESC, id DESC LIMIT 26;

@@ -1,3 +1,0 @@
--- category big-late (22829 products), page 1, sort -updatedAt
--- cost variable: products in the subtree = 22829 (scales with products)
-SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;

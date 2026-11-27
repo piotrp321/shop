@@ -1,3 +1,0 @@
--- drafts in the biggest department, page 2, sort -updatedAt
--- cost variable: hits = 4116 (scales with products)
-SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND p.status = 'draft' AND (p.updated_at, p.id) < (CAST('2026-11-24 02:38:44+00' AS timestamptz), CAST('a4328cb4-2a8a-5b13-a058-a14a15b43031' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
