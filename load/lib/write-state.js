@@ -130,4 +130,31 @@ export function chooseSample(candidates, settings, rnd) {
   };
 }
 
-export function runVerdict(counts) {}
+// Whether a run is a measurement at the rate with a consistent index, and why not. A write not sent at the rate, one without an
+// answer or with a 5xx (docs/features/performance-program/plan.md, "Co liczymy") and a change not seen within the freshness timeout
+// (it is missing from the percentiles of W16) make the run no measurement, as a refused write, a mismatch, an error of the run and a
+// consistency check that did not finish do. The thresholds of writes.js fail the run (exit 99) on the same counts. counts:
+// finished, dropped, unanswered, freshnessTimeouts, refused, mismatches, runErrors; a missing count fails the run.
+export function runVerdict(counts) {
+  const rules = [
+    ['dropped', (n) => `${n} writes were not sent at the rate (in flight up to the limit or no free variant): no measurement at the rate`],
+    ['unanswered', (n) => `${n} writes without an answer or with a 5xx: no measurement at the rate`],
+    ['freshnessTimeouts', (n) => `${n} changes not seen within the freshness timeout: the percentiles of the freshness leave them out`],
+    ['refused', (n) => `${n} writes refused (4xx)`],
+    ['mismatches', (n) => `${n} variants mismatch the index`],
+    ['runErrors', (n) => `${n} errors of the run`],
+  ];
+  const reasons = [];
+  if (counts.finished !== true) {
+    reasons.push('the consistency check did not finish (interrupted or cut off by maxDuration)');
+  }
+  for (const [name, reason] of rules) {
+    const n = counts[name];
+    if (typeof n !== 'number') {
+      reasons.push(`the count ${name} is missing`);
+    } else if (n > 0) {
+      reasons.push(reason(n));
+    }
+  }
+  return { passed: reasons.length === 0, reasons };
+}
