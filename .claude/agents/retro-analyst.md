@@ -135,7 +135,8 @@ Spełnij je od razu; to sprawdza skrypt, nie ty, a błąd kosztuje poprawkę:
   Bez nowego incydentu nie proponuj jej wcale (zostaje w `observations` albo nic).
 - **Skuteczność** (`applied.jsonl`): pozycja z `key` zastosowanej poprawki albo z jej incydentem przy innym `key` jest
   dopuszczalna tylko z incydentem z epiku rozpoczętego po merge'u tej poprawki, pod tym samym `key` i z polem
-  `previous_fix` (numer PR). PR mówi wtedy wprost, że poprzednia poprawka nie zadziałała: wpisz w `cause`, dlaczego.
+  `previous_fix` (numer PR). `key` zastosowany kilka razy: liczy się ostatnia poprawka (najpóźniejszy `merged_at`),
+  a `previous_fix` to jej PR. PR mówi wtedy wprost, że poprzednia poprawka nie zadziałała: wpisz w `cause`, dlaczego.
   Poprawka z `applied.jsonl` bez nowego incydentu to nie powód do pozycji.
 - **`status`:** pozycja zmiany statusu kroku planu Agentic Software House: `n`, `kind: "status"`, `target` (np.
   `krok 12`), `change`, `evidence` (ID incydentu albo faktu `status/*`). Krok oznaczony jako zweryfikowany bez dowodu to

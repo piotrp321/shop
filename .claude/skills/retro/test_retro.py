@@ -3826,6 +3826,14 @@ class ValidateTest(RegistersCase):
         self.assertError(proposals_of(fix(key='app', previous_fix=8)), 'applied', '7')
         self.assertError(proposals_of(fix(key='app', previous_fix='7')), 'applied', 'previous_fix')
 
+    def test_a_key_fixed_twice_is_checked_against_its_latest_fix(self):
+        self.input['registers']['applied'].append({'key': 'app', 'incidents': ['e2/finding/ccc'], 'pr': 9,
+                                                   'merged_at': 2200})   # e3 started at 2500
+        self.assertValid(proposals_of(fix(key='app', evidence=[F2, F3], previous_fix=9)))
+        self.assertError(proposals_of(fix(key='app', evidence=[F2, F3], previous_fix=7)), 'applied', '9')
+        self.input['registers']['applied'][1]['merged_at'] = 2600   # e3 started before the latest fix
+        self.assertError(proposals_of(fix(key='app', evidence=[F2, F3], previous_fix=9)), 'applied', 'started after')
+
     def test_an_incident_of_an_applied_fix_under_another_key_is_an_error(self):
         self.assertError(proposals_of(fix(key='other', evidence=['e1/finding/bbb', F3])), 'applied', 'app')
 

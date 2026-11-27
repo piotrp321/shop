@@ -370,7 +370,9 @@ błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do plan
   `previously_rejected` (data i powód);
 - **skuteczność:** pozycja z `key` z `applied.jsonl` albo z incydentem zapisanym tam przy innym `key` jest
   dopuszczalna tylko z incydentem z epiku rozpoczętego po merge'u tej poprawki, pod tym samym `key` i z polem
-  `previous_fix` (PR); PR mówi wtedy wprost, że poprzednia poprawka nie zadziałała;
+  `previous_fix` (PR); `key` zastosowany kilka razy sprawdza się wobec ostatniej poprawki (najpóźniejszy merge:
+  incydent z epiku rozpoczętego po nim, `previous_fix` to jej PR); PR mówi wtedy wprost, że poprzednia poprawka nie
+  zadziałała;
 - **przeniesione:** pozycja z `carried.jsonl` wraca bez nowego incydentu, ale przechodzi walidację na bieżących
   danych jak nowa;
 - pozycja `status` (zmiana statusu kroku planu) ma `target` i `evidence`: ID incydentu albo faktu `status/*`;
@@ -516,7 +518,7 @@ Klucze i ID w przykładzie są ilustracją.
      wystarcza, `corrective` na incydencie bez działania człowieka to błąd, brak klasy to błąd, `planned` się nie
      liczy, `product` liczy się do dwóch), pola obowiązkowe, niedozwolony plik, nieznany incydent, limity, `key`
      z otwartego PR bez `updates`, odrzucenie bez nowego incydentu i z nowym, incydent odrzucony pod innym `key`,
-     `previous_fix`, `carried` bez nowego incydentu, `existing_issue` spoza danych, `status` bez dowodu i bez
+     `previous_fix` (także `key` zastosowany dwa razy), `carried` bez nowego incydentu, `existing_issue` spoza danych, `status` bez dowodu i bez
      planu; pozycja na dwóch incydentach `optimization` z różnych epików przechodzi, na jednym nie;
    - `sync`: PR zmergowany (z cofniętym commitem i bez), PR zamknięty bez merge'u → `carried.jsonl`, nie
      `rejected.jsonl`;
