@@ -247,12 +247,19 @@ po niezliczanej rozgrzewce 60 s. Wyniki (mediana i rozrzut przebiegów bez panel
 | 409 w zmianie ilości koszyka (`PUT …/items/{variantId}` z ilością 2) | 4 / 15 / 25 | 9 / 26 / 38 | | **nie: niepowodzenia w obu wariantach** |
 | 400 w mieszance panelu (`q=z`, fraza krótsza niż 2 znaki): osobno, nie wchodzi do werdyktu P4 | 0 | 2 / 2 / 2 | | (W7 je liczy) |
 
-**Źródło 409 (z kodu i zapisanych odpowiedzi).** Wszystkie 409 pochodzą z klasy `shop_cart_change` (`panel.json`: 4/15/25 bez panelu, 9/26/38 z panelem, na 901 zmian w przebiegu; w pozostałych klasach sklepu 0).
-Kontrakt `PUT /api/v1/guest-carts/{cartId}/items/{variantId}` (`GuestCartController::changeItem`): 409 przy zwiększeniu ilości „powyżej dostępnych jednostek” albo wariantu bez ceny lub stanu; scenariusz zwiększa ilość z 1 do 2, więc 409 dostaje koszyk
-z wariantem, który ma mniej niż 2 dostępne jednostki. Koszyk niczego nie rezerwuje, więc liczba 409 nie wynika z zajmowania stanu przez przebiegi. **HIPOTEZA (nie sprawdzona bez pomiaru):** liczba zależy od losowego zbioru 60 produktów, który `discover()` wybiera w każdym
-przebiegu (udział wariantów z jedną jednostką); w kolejności przebiegów (4, 9, 15, 26, 25, 38) widać wzrost, więc nie wykluczam też spadku dostępności wariantów w trakcie sesji (np. zamówienia z workera). Zapisałem stan stanów wariantów tylko w zakresie `panel.json`, więc tego nie rozstrzygam.
-Nie jest to zachowanie sklepu pod panelem (jest w przebiegach bez panelu), tylko własność scenariusza; do zadania 7 (powtórzenie P4 po zmianach, ta sama mieszanka i ten sam scenariusz) zostaje: wybrać warianty ze stanem co najmniej 2 albo zmieniać ilość na 1 (zmiana ilości w dół
-zawsze się udaje), żeby kryterium „brak niepowodzeń” mogło być spełnione; zmiana scenariusza po pomiarze „przed” wymaga powtórzenia pomiaru „przed”.
+**Źródło 409: potwierdzone pomiarem** (`scripts/confirm-409.py`, `results/medium/p4/confirm-409.txt`, 18:35 UTC). Wszystkie 409 pochodzą z klasy `shop_cart_change` (4/15/25 bez panelu, 9/26/38 z panelem, na 901 zmian w przebiegu). Kontrakt `PUT /api/v1/guest-carts/{cartId}/items/{variantId}`
+(`GuestCartController::changeItem`) daje 409 przy zwiększeniu ilości ponad dostępne jednostki; scenariusz podnosi ilość z 1 do 2. Odtworzenie: 164 kupowalne warianty 60 losowych produktów (jak `discover()`), dla każdego nowy koszyk, dodanie 1 sztuki i zmiana na 2, z dostępnymi jednostkami z `GET /api/v1/admin/stock`
+(publiczne API ich nie podaje; koszyk niczego nie rezerwuje):
+
+| dostępne jednostki | warianty | zmiana na 2: 200 | zmiana na 2: 409 | inne | dodanie 1 sztuki ≠ 200 |
+|---|---|---|---|---|---|
+| 1 | 5 | 0 | **5** | 0 | 0 |
+| 2 | 2 | 2 | 0 | 0 | 0 |
+| 3 i więcej | 157 | 157 | 0 | 0 | 0 |
+
+Komunikat odpowiedzi: „Nie mamy tylu sztuk tego produktu.” Wariant z jedną jednostką stanowi 3% kupowalnych wariantów (5 z 164), co zgadza się z 0,4–4,2% zmian z 409 w przebiegach, a liczba zależy od losowego zbioru 60 produktów, który `discover()` wybiera w każdym przebiegu (wcześniejsza hipoteza o spadku dostępności w trakcie sesji nie jest potrzebna).
+Nie jest to zachowanie sklepu pod panelem (409 są w przebiegach bez panelu), tylko własność scenariusza. **Poprawka scenariusza** (zatwierdzona przez właściciela): `load/panel.js` w `setup()` czyta dostępne jednostki z listy zapasów administratora i zmienia ilość tylko dla wariantów z co najmniej 2 jednostkami (kontrakt koszyka bez zmian;
+`load/lib/stock.js`, test `load/test/cart-variants.js` w `make load-panel-check`). Krótki przebieg kontrolny scenariusza koszyka po poprawce (30 s, 5 koszyków/s): 604 żądania, 0 niepowodzeń (wcześniej do 25 409 na 901 zmian). **Pomiar P4 „przed” zostaje powtórzony z poprawionym scenariuszem w osobnym oknie**; pomiar z 409 powyżej pozostaje pierwszym.
 
 Zasoby PostgreSQL na przebieg: bez panelu 1,0–1,2 aktywnej sesji, CPU Postgresa ok. 15%, 6 mln trafień buforów, 30–38 tys. odczytów, 0,24–0,31 GB odczytu, `temp_bytes` 0; z panelem 10,5 aktywnej sesji (maks. 14), CPU Postgresa 1036–1057%
 (≈ 10 rdzeni), 113 mln trafień i 363 mln odczytów buforów (2,9 TB z cache systemu), `temp_bytes` 0; WAL bez zmiany (2,2–2,4 MB wobec 2,7–3,6 MB). Różnicę przypisuję 8 wątkom najcięższych zapytań panelu (klasy z macierzy powyżej 2 s): **HIPOTEZA**; nie rozdzielałem wkładu mieszanki 5/s, 8 wątków i zimnych granic mapy strony, a specyfikacja wymaga wskazania zapytania, które różnicę powoduje. Wskaże je pomiar w PERF-7-7 (przebiegi z każdą składową osobno).
@@ -491,7 +498,7 @@ rozmiar rzędu indeksu trygramów (248 MB na `medium`, ok. 2,5 GB na `server`), 
 5. **Pomiar na `server` (R5):** P1, P2, P4 i czas z P5 uznajemy za spełnione wyłącznie według pomiaru na `server`. Czy zgoda na pomiar na worf.pl (tylko GET dla W7; P4 z koszykami to zapisy) po wdrożeniu, czy lokalny profil `server`? Dla oceny ograniczenia dyskiem
    przydałby się też pomiar przepustowości odczytu dysku worf.pl pod zapytaniami panelu (dziś zmierzony tylko dla generowania zamówień: 180–209 MB/s, iowait 0,19); bez niego „z dysku” zostaje założeniem.
 6. **P4 przed zmianą nie spełnione** (sekcja 6: +13–41 ms na listingach i koszykach z panelem oraz niepowodzenia 409/400 w obu wariantach); po zmianach wynik zmierzy zadanie 7 tym samym scenariuszem. Czy kryterium „różnica median ≤ rozrzut bez panelu” zostaje w tej postaci, skoro rozrzut bez panelu wynosi 0,3–5 ms?
-   Czy zmieniamy krok zmiany ilości koszyka (409, patrz sekcja 6), co wymaga powtórzenia pomiaru „przed”?
+   Krok zmiany ilości koszyka (409) jest poprawiony za zgodą właściciela po potwierdzeniu przyczyny (sekcja 6); P4 „przed” zostaje powtórzony w osobnym oknie.
 
 ### 10.4 Zastrzeżenia do rekomendacji
 
@@ -517,6 +524,10 @@ python3 -I $D/scripts/h2.py --api http://localhost:28102 --token-file <token.jso
 make load-panel                                                    # W7: 3 przebiegi
 python3 -I load/baseline.py urls http://localhost:28102 http://localhost:28100 <plik> --listings 17000 --seed 11
 make load-panel PANEL_MODE=p4 SHOP_URLS_FILE=<plik> SHOP_LISTING_RATE=15 SHOP_CART_RATE=5 PANEL_SECONDS=180
+# P4 „przed” z poprawionym scenariuszem koszyka (powtórzenie; ta sama mieszanka, 258 żądań; nowe adresy listingów, żeby żaden nie był w request cache Elasticsearcha po pierwszym P4):
+python3 -I load/baseline.py urls http://localhost:28102 http://localhost:28100 <plik2> --listings 17000 --products 50 --seed 12
+PANEL_OUT=<katalog> PANEL_MIX=$D/results/medium/mix.json SHOP_URLS_FILE=<plik2> PANEL_RUNS=3 PANEL_SECONDS=180 SHOP_LISTING_RATE=15 SHOP_CART_RATE=5 PANEL_WORST_VUS=8 BOUNDARIES_EVERY=30 make load-panel PANEL_MODE=p4
+# czas: rozgrzewka 60 s + 60 s przerwy + 3 x (180 s bez panelu + 60 s + 180 s z panelem + 60 s) = 26 min, z logowaniem i setup() (odczyt zapasów 60 produktów) ok. 27-28 min; raport i `panel_report.py` po przebiegu
 # warianty na kopii bazy (części 2b)
 python3 -I $D/scripts/variants.py gen --db shop_proto --base $D/results/medium/cases.json --variant K1 --out $D/results/medium/variants/K1   # K0 K1 F1 F2 Z1
 python3 -I $D/scripts/matrix.py run --db shop_proto --cases $D/results/medium/variants/K1/cases.json --out $D/results/medium/variants/K1 --repeats 10

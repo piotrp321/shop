@@ -128,7 +128,9 @@ make load-panel PANEL_MODE=p4 SHOP_URLS_FILE=<plik>   # P4: 3 przebiegi bez pane
   niepowodzeniu przebiegu.
 - **Koszyki sklepu w P4** idą przez API (`/api/v1/guest-carts`), które limituje tworzenie koszyków po adresie klienta. Bez
   `CLIENT_IP_HEADER=CF-Connecting-IP` w kontenerze `api` (w klastrze za Cloudflare jest ustawiony, w compose nie) wszystkie
-  żądania k6 mają jeden adres i dostają 429. Lokalnie ustaw tę zmienną nadpisaniem compose poza repo.
+  żądania k6 mają jeden adres i dostają 429. Lokalnie ustaw tę zmienną nadpisaniem compose poza repo. Krok zmiany ilości (z 1 na 2) dostaje 409 dla wariantu
+  z jedną dostępną jednostką, której publiczne API nie podaje, więc `setup()` czyta jednostki z listy zapasów administratora (`/api/v1/admin/stock?productId=`) i zmienia ilość tylko dla wariantów
+  z co najmniej 2 jednostkami.
 - **Ograniczenia:** czasy zależą od trybu API (pomiar na `APP_ENV=prod`, w trybie `dev` dochodzi ok. 0,4 s na żądanie), od pamięci
   Postgresa i od obciążenia maszyny; lokalny pomiar jest porównaniem przed i po, nie wynikiem serwera. Pomiar na worf.pl wymaga
   zgody właściciela i tylko żądań GET (mieszanka panelu jest tylko do odczytu; sklep w P4 zakłada koszyki, więc to zapisy).
