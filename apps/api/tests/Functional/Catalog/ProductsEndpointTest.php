@@ -18,6 +18,7 @@ use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductSearch;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductDocumentFactory;
+use App\Tests\Integration\Catalog\Search\RecordingSearchHttpClient;
 use App\Tests\Integration\Catalog\Search\UsesTemporarySearchAlias;
 use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\SwitchableProductSearch;
@@ -721,6 +722,35 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(500);
         self::assertArrayNotHasKey('detail', $problem);
         self::assertStringNotContainsString('alias', (string) $this->client->getResponse()->getContent());
+    }
+
+    /**
+     * @return iterable<string, array{int, string, int}>
+     */
+    public static function failedPartsOfTheSearch(): iterable
+    {
+        yield 'facets rejected' => [429, 'es_rejected_execution_exception', 503];
+        yield 'facets refused' => [400, 'search_phase_execution_exception', 500];
+    }
+
+    /**
+     * One part of the multi search of the listing fails (the facets of the listing without conditions): the whole
+     * listing fails, never a page with some facets missing.
+     */
+    #[DataProvider('failedPartsOfTheSearch')]
+    public function testAFailedPartOfTheSearchFailsTheWholeListing(int $status, string $type, int $expected): void
+    {
+        $this->index(...$this->shoes());
+        $http = new RecordingSearchHttpClient(self::clientFactory()->httpClient(2.0), ['request' => 1, 'part' => 1, 'status' => $status, 'type' => $type]);
+        $this->searchService()->use(new ElasticsearchProductSearch(self::clientFactory()->createWith($http), $this->alias()));
+
+        $problem = $this->get('/api/v1/products');
+
+        self::assertResponseStatusCodeSame($expected);
+        self::assertArrayNotHasKey('facets', $problem);
+        self::assertArrayNotHasKey('detail', $problem);
+        self::assertStringNotContainsString('injected', (string) $this->client->getResponse()->getContent());
+        $this->assertNotStored();
     }
 
     public function testWrongMethodReturns405Problem(): void

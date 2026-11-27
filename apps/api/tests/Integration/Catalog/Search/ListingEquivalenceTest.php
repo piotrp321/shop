@@ -8,6 +8,7 @@ use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductSearch;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -53,15 +54,29 @@ final class ListingEquivalenceTest extends TestCase
         self::assertSame([['d33', 1], ['d99', 0]], \array_slice($values, 30));
     }
 
-    public function testTheListingEqualsTheModelOfTheSpecForEveryCriterion(): void
+    /**
+     * The size of terms of the search: the default, and 1, so that every group of facets with more than one token takes
+     * the way of the overflow (spec search, "Fasety").
+     *
+     * @return iterable<string, array{int|null}>
+     */
+    public static function termsSizes(): iterable
+    {
+        yield 'every token in one search' => [null];
+        yield 'every group overflowing' => [1];
+    }
+
+    #[DataProvider('termsSizes')]
+    public function testTheListingEqualsTheModelOfTheSpecForEveryCriterion(?int $termsSize): void
     {
         $documents = EdgeCaseCatalog::products();
         $this->index($documents);
 
-        $this->assertEveryCriterionEqualsTheOracle($documents);
+        $this->assertEveryCriterionEqualsTheOracle($documents, $termsSize);
     }
 
-    public function testTheListingEqualsTheModelOfTheSpecAfterChangesOfExistingProducts(): void
+    #[DataProvider('termsSizes')]
+    public function testTheListingEqualsTheModelOfTheSpecAfterChangesOfExistingProducts(?int $termsSize): void
     {
         $this->index(EdgeCaseCatalog::products());
         $changed = EdgeCaseCatalog::changed();
@@ -71,16 +86,20 @@ final class ListingEquivalenceTest extends TestCase
         foreach ([...EdgeCaseCatalog::products(), ...$changed] as $document) {
             $byId[$document->id] = $document;
         }
-        $this->assertEveryCriterionEqualsTheOracle(array_values($byId));
+        $this->assertEveryCriterionEqualsTheOracle(array_values($byId), $termsSize);
     }
 
     /**
      * @param list<ProductDocument> $documents the documents in the index
+     * @param int|null              $termsSize the size of terms of the search, its default without one
      */
-    private function assertEveryCriterionEqualsTheOracle(array $documents): void
+    private function assertEveryCriterionEqualsTheOracle(array $documents, ?int $termsSize): void
     {
         $oracle = new ListingOracle($documents, EdgeCaseCatalog::matchesPhrase(...));
-        $search = new ElasticsearchProductSearch(self::clientFactory()->create(10.0), $this->alias());
+        $client = self::clientFactory()->create(10.0);
+        $search = null === $termsSize
+            ? new ElasticsearchProductSearch($client, $this->alias())
+            : new ElasticsearchProductSearch($client, $this->alias(), termsSize: $termsSize);
 
         $criteria = EdgeCaseCatalog::criteria();
         $differences = [];
