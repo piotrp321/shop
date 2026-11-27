@@ -72,9 +72,11 @@ obniżane do limitu; wynik trzyma pula `cache.sitemap` (jak `cache.oidc` w `conf
 w testach `cache.adapter.array`) z TTL 1 h przez dekorator portu `SitemapProductSource` w Infrastructure
 (`CachingSitemapProductSource`, `CacheInterface::get`, z ochroną przed równoczesnym przeliczaniem), więc skan wykonuje
 się najwyżej raz na godzinę na instancję API. `make seed` nie czyści puli: nieaktualne granice dają poprawne porcje (otwarte końce), najwyżej
-o nierównych rozmiarach do wygaśnięcia. Porcja, która od cięcia urosła ponad limit wierszy (odczyt obcina ją i zapisuje
-ostrzeżenie), usuwa wpis granic z puli, więc następne pobranie listy porcji tnie od nowa (odpowiedź z granicami trzyma też
-Varnish do godziny). Zapytanie porcji to zakres klucza głównego z limitem.
+o nierównych rozmiarach do wygaśnięcia. Porcja zapisanego cięcia (jej `f` i `t` to kolejne wpisy zapisanych granic albo otwarte końce), która od cięcia urosła
+ponad limit wierszy (odczyt obcina ją i zapisuje ostrzeżenie), usuwa wpis granic z puli, więc następne pobranie listy
+porcji tnie od nowa (odpowiedź z granicami trzyma też Varnish do godziny). Tylko taka porcja unieważnia granice: klucz
+zrobiony ręcznie albo wydany przez starsze cięcie ich nie usuwa, a odczyt porcji nigdy nie liczy granic, więc skan
+dalej wykonuje się najwyżej raz na godzinę na instancję. Zapytanie porcji to zakres klucza głównego z limitem.
 
 Dostęp: oba endpointy bez tokena, reguła `PUBLIC_ACCESS` (`GET`, `HEAD`) dla `^/api/v1/sitemap/(product-chunks|products)$`
 w `access_control` (`config/packages/security.yaml`), przed regułą `ROLE_CUSTOMER`; niepoprawny token daje 401 jak

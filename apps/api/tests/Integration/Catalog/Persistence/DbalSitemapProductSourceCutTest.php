@@ -172,15 +172,17 @@ final class DbalSitemapProductSourceCutTest extends KernelTestCase
 
     public function testACutInsideATransactionOfTheCallerThatHasNoSnapshotStillReadsOneConsistentState(): void
     {
-        // READ COMMITTED gives every statement its own snapshot, so the cut is made of one statement (no statement
-        // for the data to change between).
+        // READ COMMITTED gives every statement its own snapshot, so the cut is made of one statement: no statement of
+        // the keyset runs, and the hooks that would change the data between them never get their turn.
         $this->insert(10, 20, 30, 40, 50, 60, 70, 80, 90, 100);
+        $this->changeTheDataDuringTheCut();
         $this->cutting->beginTransaction();
 
         try {
             $boundaries = $this->source(10)->boundaries(3);
 
             self::assertSame([self::id(40), self::id(70), self::id(100)], $boundaries);
+            self::assertSame([], $this->hooksThatRan, 'The cut has to be one statement.');
             self::assertTrue($this->cutting->isTransactionActive(), 'The transaction of the caller stays open.');
         } finally {
             $this->cutting->rollBack();
