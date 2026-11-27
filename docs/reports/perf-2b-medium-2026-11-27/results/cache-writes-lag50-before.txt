@@ -1,17 +1,17 @@
-== 2026-11-27T21:09:24Z writes-lag50-before
+== 2026-11-27T21:27:21Z writes-lag50-before
 == _nodes/stats/indices/request_cache
-{"_nodes":{"total":1,"successful":1,"failed":0},"cluster_name":"docker-cluster","nodes":{"SZ21YHc-SVmH8Z8zzA1BuA":{"timestamp":1795813764279,"name":"863c22d93792","transport_address":"172.24.0.3:9300","host":"172.24.0.3","ip":"172.24.0.3:9300","roles":["data","data_cold","data_content","data_frozen","data_hot","data_warm","ingest","master","ml","remote_cluster_client","transform"],"attributes":{"ml.allocated_processors":"16","ml.machine_memory":"33597603840","transform.config_version":"10.0.0","xpack.installed":"true","ml.config_version":"12.0.0","ml.max_jvm_size":"2147483648","ml.allocated_processors_double":"16.0"},"indices":{"request_cache":{"memory_size_in_bytes":344072,"evictions":0,"hit_count":7512,"miss_count":1593}}}}}
+{"_nodes":{"total":1,"successful":1,"failed":0},"cluster_name":"docker-cluster","nodes":{"SZ21YHc-SVmH8Z8zzA1BuA":{"timestamp":1795814842055,"name":"bbeb9d400a4a","transport_address":"172.24.0.5:9300","host":"172.24.0.5","ip":"172.24.0.5:9300","roles":["data","data_cold","data_content","data_frozen","data_hot","data_warm","ingest","master","ml","remote_cluster_client","transform"],"attributes":{"ml.allocated_processors":"16","ml.allocated_processors_double":"16.0","ml.max_jvm_size":"2147483648","ml.config_version":"12.0.0","xpack.installed":"true","transform.config_version":"10.0.0","ml.machine_memory":"33597603840"},"indices":{"request_cache":{"memory_size_in_bytes":311440,"evictions":0,"hit_count":9467,"miss_count":1520}}}}}
 == products/_stats/request_cache,query_cache
-{"_shards":{"total":1,"successful":1,"failed":0},"_all":{"primaries":{"query_cache":{"memory_size_in_bytes":53253544,"total_count":238154,"hit_count":103228,"miss_count":134926,"cache_size":3834,"cache_count":3834,"evictions":0},"request_cache":{"memory_size_in_bytes":344072,"evictions":0,"hit_count":7512,"miss_count":1593}},"total":{"query_cache":{"memory_size_in_bytes":53253544,"total_count":238154,"hit_count":103228,"miss_count":134926,"cache_size":3834,"cache_count":3834,"evictions":0},"request_cache":{"memory_size_in_bytes":344072,"evictions":0,"hit_count":7512,"miss_count":1593}}},"indices":{"products_20261127205507738_d50761":{"uuid":"8wi3JGK7SnC4LqU9khHPcQ","health":"green","status":"open","primaries":{"query_cache":{"memory_size_in_bytes":53253544,"total_count":238154,"hit_count":103228,"miss_count":134926,"cache_size":3834,"cache_count":3834,"evictions":0},"request_cache":{"memory_size_in_bytes":344072,"evictions":0,"hit_count":7512,"miss_count":1593}},"total":{"query_cache":{"memory_size_in_bytes":53253544,"total_count":238154,"hit_count":103228,"miss_count":134926,"cache_size":3834,"cache_count":3834,"evictions":0},"request_cache":{"memory_size_in_bytes":344072,"evictions":0,"hit_count":7512,"miss_count":1593}}}}}
+{"_shards":{"total":1,"successful":1,"failed":0},"_all":{"primaries":{"query_cache":{"memory_size_in_bytes":40842400,"total_count":164042,"hit_count":73030,"miss_count":91012,"cache_size":3009,"cache_count":3009,"evictions":0},"request_cache":{"memory_size_in_bytes":311440,"evictions":0,"hit_count":9467,"miss_count":1520}},"total":{"query_cache":{"memory_size_in_bytes":40842400,"total_count":164042,"hit_count":73030,"miss_count":91012,"cache_size":3009,"cache_count":3009,"evictions":0},"request_cache":{"memory_size_in_bytes":311440,"evictions":0,"hit_count":9467,"miss_count":1520}}},"indices":{"products_20261127205507738_d50761":{"uuid":"8wi3JGK7SnC4LqU9khHPcQ","health":"green","status":"open","primaries":{"query_cache":{"memory_size_in_bytes":40842400,"total_count":164042,"hit_count":73030,"miss_count":91012,"cache_size":3009,"cache_count":3009,"evictions":0},"request_cache":{"memory_size_in_bytes":311440,"evictions":0,"hit_count":9467,"miss_count":1520}},"total":{"query_cache":{"memory_size_in_bytes":40842400,"total_count":164042,"hit_count":73030,"miss_count":91012,"cache_size":3009,"cache_count":3009,"evictions":0},"request_cache":{"memory_size_in_bytes":311440,"evictions":0,"hit_count":9467,"miss_count":1520}}}}}
 == memory of the Elasticsearch container (cgroup v2: file = page cache, anon = heap and other)
-memory.current 4487118848
+memory.current 3899990016
 memory.max max
-anon 3356819456
-file 1097310208
-file_mapped 439443456
-inactive_file 348065792
-active_file 749244416
+anon 2924920832
+file 955437056
+file_mapped 330559488
+inactive_file 855883776
+active_file 99553280
 == docker stats
-perf2b-8-api-1 cpu 4.76% mem 354.2MiB / 31.29GiB
-perf2b-8-elasticsearch-1 cpu 1.76% mem 3.846GiB / 31.29GiB
-perf2b-8-postgres-1 cpu 0.14% mem 202.4MiB / 31.29GiB
+perf2b-8-api-1 cpu 0.00% mem 313.9MiB / 31.29GiB
+perf2b-8-elasticsearch-1 cpu 0.30% mem 2.83GiB / 31.29GiB
+perf2b-8-postgres-1 cpu 0.09% mem 182.1MiB / 31.29GiB

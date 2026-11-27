@@ -17,15 +17,16 @@ i próbę narzędzi pomiaru zapisów. Czasy lokalne pochodzą z API w trybie dev
 | Odpowiedzi `GET /api/v1/products` przed i po etapie B, ten sam stan danych, 1 shard | **0 różnic w 300 listingach** (liczba trafień, fasety z liczbami, zakres cen, pierwsza strona) |
 | Przejście ze starego indeksu (M7) | `setup` na indeksie starej definicji ostrzega i kończy się kodem 0; `catalog:reindex` przepina alias |
 | Rozmiar indeksu | dokumenty Lucene 8 891 973 → 4 009 541; 1 058 MB → 984 MB (1 000 191 produktów) |
-| Przebieg zapisów `clean12` (12/s, 320 s) | kod 0, werdykt „pomiar przy zadanym tempie, indeks zgodny”, 0 niezgodności, 0 wiadomości w `failed` |
-| Przebieg zapisów `lag50` (50/s, 320 s) | kod 99 (oczekiwany: API dev nie przyjmuje 50/s), 0 niezgodności, 0 w `failed`, kolejka pusta |
+| Przebieg zapisów `clean12` (12/s, 320 s), wersja z dowodem tempa (sekcja 4a) | kod 0, werdykt „pomiar przy zadanym tempie, indeks zgodny”, wszystkie 320 okien 1 s w paśmie 10–14 (12 w każdym), 0 niezgodności, 0 wiadomości w `failed` |
+| Przebieg zapisów `lag50` (50/s, 320 s), wersja z dowodem tempa (sekcja 4a) | kod 99 (oczekiwany: API dev nie przyjmuje 50/s), `send_lag` p99,9 2 ms, max 4 ms, 0 niezgodności, 0 w `failed`, kolejka pusta |
 | Lokalne `single` przed i po | wstępnie: mediana 100 → 77 ms, p95 645 → 124 ms (sekcja 5) |
 
 ## 2. Rewizje, dane, środowisko
 
 - **Przed:** `98ac711b69a41dc85d0a19c230f990c69b83a7f4` (`main`, ostatni stan sprzed epiku; osobny worktree).
 - **Po:** `d14bff34`, czyli gałąź zadania z mergem `origin/feat/perf-2b` `378d1f48` (zawiera zmergowane PERF-2B-1…7) i skryptami tego
-  katalogu; kod aplikacji jest kodem epiku. Rewizje: `results/revisions.txt`.
+  katalogu; kod aplikacji jest kodem epiku. Przebiegi zapisów z sekcji 4a: rewizja `9d763656` (merge `origin/feat/perf-2b` z PERF-2B-2b do worktree zadania); kod
+  aplikacji niezmieniony względem `378d1f48`. Rewizje: `results/revisions.txt`.
 - **Dane:** kopia `medium` (wolumeny `perf2b-8_postgres-data`, `perf2b-8_garage-*`) z `main` `98ac711b`: 1 000 191 produktów,
   3 009 350 wariantów, 1 000 000 zamówień. Stan danych sprawdzony sumami kontrolnymi wszystkich 33 tabel (liczba wierszy i suma
   hashy wierszy, `dbsums.sql`): pięć odczytów (przed 1–3, po 1–2) jest identycznych, więc oba indeksy powstały z tych samych danych.
@@ -67,7 +68,9 @@ Przebieg: stos „przed” → `catalog:reindex` → odpowiedzi API dla 300 list
 
   Lucene na produkt: 8,89 → 4,01.
 
-## 4. Zapisy (kryterium 3, część lokalna)
+## 4. Zapisy, pierwsza wersja scenariusza (bez dowodu tempa)
+
+**Te dwa przebiegi poszły na wersji `load/writes.js` bez poprawki PERF-2B-2b** (okna 1 s, histogram `send_lag`, p99,9, próg przestoju); nie dowodzą utrzymania tempa. Obowiązują przebiegi z sekcji 4a, a poniższe zostają jako dowód, że scenariusz i zgodność indeksu działały już wcześniej (surowe wyniki: `results/writes-v1/`).
 
 Stos „po” w całości (`make up`: Varnish, store, workery), `load/writes.sh` z tokenem z `load/admin-token.py`, API wprost
 (bez Varnisha), próba wariantów z cenami w opublikowanych produktach. Wyniki: `results/writes/<przebieg>/writes.json` i `output.log`.
@@ -93,7 +96,7 @@ Stos „po” w całości (`make up`: Varnish, store, workery), `load/writes.sh`
   a czasy odpowiedzi rosną do 45 s: API w dev jest tu nasycone. Werdykt „brak pomiaru” jest oczekiwany; ocenia się rozkład opóźnienia
   generatora (`send_lag` p99 2 ms, max 5 ms przy tolerancji 1000 ms), czyli generator nadąża. Świeżość z `lag50` (p95 66 s, 22 próbki
   zmian ceny) wynika z zaległości kolejki przy nasyconym API dev i nie jest wynikiem W16 (cel: p95 10 s, p99 60 s przy 50/s na worf.pl).
-- **Ograniczenia tej wersji narzędzia:** `writes.json` na gałęzi epiku nie ma histogramu `send_lag`, p99,9 ani okien 1-sekundowych
+- **Ograniczenia tej wersji narzędzia (usunięte w 4a):** `writes.json` przed PERF-2B-2b nie ma histogramu `send_lag`, p99,9 ani okien 1-sekundowych
   (pola `send_lag_histogram`, `windows` nie istnieją w `load/writes.js` tej rewizji); podaję p50/p95/p99/max. Zmierzone tempo
   to `per_second` (średnia fazy zapisów).
 - **Stan request cache Elasticsearcha** (`_nodes/stats/indices/request_cache`, liczniki węzła, `results/cache-*.txt`):
@@ -117,6 +120,57 @@ Stos „po” w całości (`make up`: Varnish, store, workery), `load/writes.sh`
   więc mieści się w cache plików, przy czym w `clean12` zaczynał z jego częścią.
   Co poprzedziło przebieg: `clean12` poprzedził start całego stosu, 300 odpowiedzi „po” i `singles after`; `lag50` poprzedził
   `clean12` na tym samym indeksie.
+
+## 4a. Zapisy, wersja z dowodem tempa (PERF-2B-2b), kryterium 3, część lokalna
+
+Rewizja: `d14bff34` + merge `origin/feat/perf-2b` `9d763656` (zawiera PERF-2B-2b), ten sam indeks i dane po przebiegach z sekcji 4, ten
+sam stos co w sekcji 4 po `down` i ponownym `make up` (workery, Varnish, store). Dane po zapisach z sekcji 4 różnią się od kopii.
+`setup` nie ostrzegał: indeks jest w bieżącej definicji, przebudowa nie była potrzebna. Wyniki: `results/writes/<przebieg>/`.
+
+| | `clean12` | `lag50` |
+|---|---:|---:|
+| ustawienia | 12/s, 320 s, próba 60 wariantów | 50/s, 320 s, próba 40 wariantów, tylko przyjęcia, do 2000 w locie |
+| kod wyjścia (oczekiwany) | 0 (0) | 99 (99) |
+| werdykt | pomiar przy zadanym tempie, indeks zgodny | brak pomiaru: 692 zapisów nie wysłano w tempie, 78 okien 1 s poza pasmem, 247 zapisów bez odpowiedzi |
+| `rate.windows` (320 okien 1 s) | pasmo 10–14: min 12, p5 12, p50 12, p95 12, max 12; poniżej 0, powyżej 0 | pasmo 45–55: min 37, p5 40, p50 50, p95 50, max 50; **poniżej 78**, powyżej 0 |
+| średnia wysłanych na sekundę | 12 | 47,8 |
+| `catch_up` (zapisy nadrabiane po przestoju) | 0 zapisów, max w oknie 0 | 0 zapisów, max w oknie 0 |
+| `send_lag` p50 / p95 / p99 / p99,9 / max | 1 / 2 / 3 / 5 / 10 ms | 1 / 1 / 2 / 2 / 4 ms |
+| `send_lag_histogram` (le_1 / le_5 / le_20 / le_100 / le_1000 / gt_1000) | 2808 / 1028 / 4 / 0 / 0 / 0 | 15 033 / 275 / 0 / 0 / 0 / 0 |
+| `late` / `dropped` / `unanswered` / `refused` | 0 / 0 / 0 / 0 | 0 / 692 / 247 / 0 |
+| próg przestoju generatora | 100 ms | 100 ms |
+| czas odpowiedzi zapisu p50 / p99 / max | przyjęcie 167 / 250 / 349 ms; cena 175 / 259 / 347 ms | przyjęcie 30,5 s / 60,0 s / 60,0 s; cena 7,9 / 46,3 / 47,6 s |
+| świeżość ceny p50 / p95 / p99 / p99,9 / max (próbek) | 4,8 / 7,6 / 8,2 / 8,2 / 8,2 s (193) | 10,8 / 49,5 / 53,2 / 54,0 / 54,1 s (15); 1 zmiana poza limitem świeżości, percentyle nieważne |
+| zgodność indeksu z bazą | 0 niezgodności (0 cen, 0 dostępności), zgodny po 5,6 s | 0 niezgodności (0 cen, 0 dostępności), zgodny po 22,0 s |
+| `messenger:failed:show` przed, po przebiegu, po wyczekaniu na kolejkę | 0, 0 | 0, 0, 0 (kolejka RabbitMQ pusta 1 s po końcu kontroli; na końcu 0) |
+
+- **`clean12` dowodzi tempa:** każde z 320 okien 1 s zawiera dokładnie 12 zapisów, bez nadrabiania, a opóźnienie generatora ma ogon do
+  10 ms (p99,9 5 ms) przy progu błędu 1000 ms.
+- **`lag50` nie dowodzi tempa i tak miało być** (oczekiwany kod 99): API w trybie dev nie nadąża przy 50 zapisach na sekundę.
+  Zapisy czekają do limitu 60 s żądania (przyjęcie p99 60 s), 247 kończy się przekroczeniem czasu (wszystkie 248 ostrzeżeń w logu to
+  „request timeout”, żadnego innego błędu), więc po osiągnięciu 2000 w locie generator pomija zapisy (692) i część okien spada do 37–40
+  zapisów. Generator sam nadąża (p99,9 `send_lag` 2 ms, max 4 ms, 0 nadrabianych), czyli opóźnienie wysyłki nie jest źródłem
+  braku tempa; to nasycone API. Wynik oceniany po rozkładzie `send_lag`, nie po werdykcie.
+- **Zgodność mimo zapisów bez odpowiedzi:** 0 niezgodności, 0 wariantów sprawdzanych wobec kilku stanów, w tym po 247 przekroczeniach
+  czasu (przyjęcia zostawiają wariant dostępnym, więc każdy możliwy stan jest zgodny z indeksem). `failed` 0.
+- **Wcześniejsza wersja `lag50` (sekcja 4):** 40 pominiętych, 0 bez odpowiedzi. Różnica między przebiegami (40 → 692 pominiętych,
+  0 → 247 bez odpowiedzi) wynika z innego stanu: tu start ES był zimny, a przebieg wszedł po `clean12` na bazie z wcześniejszymi
+  zapisami; przyczyny nie badałem, API dev jest na granicy nasycenia przy tym tempie, więc wynik jest wrażliwy na stan.
+- **Świeżość `clean12`:** p50 4,8 s, p99 8,2 s, mieści się w W16 (p95 10 s, p99 60 s) przy `refresh_interval` 5 s, ale przy 12/s, a nie 50/s.
+  Świeżość `lag50` (p95 49,5 s) jest przy nasyconym API i 15 próbkach, nie wynik W16.
+- **Stan request cache** (`results/cache-writes-*.txt`; liczniki węzła):
+
+  | moment | trafienia | chybienia | rozmiar |
+  |---|---:|---:|---:|
+  | przed `clean12` | 0 | 0 | 0 |
+  | po `clean12` | 9467 | 1520 | 311 440 B |
+  | po `lag50` | 10 947 | 1958 | 174 736 B |
+
+  Przed `clean12` Elasticsearch był świeżo uruchomiony (po `down` i `make up`), więc liczniki i cache były puste, a pierwsze listingi
+  trafiały w zimny cache.
+- **Stan cache plików systemu** (`file` z `memory.stat` kontenera ES, bez limitu pamięci, anon ok. 2,7–2,9 GiB): przed `clean12`
+  **8,6 MiB** (zimny start kontenera; indeks 938 MiB nie był w pamięci), po `clean12` 911 MiB, przed `lag50` 911 MiB, po `lag50` 915 MiB.
+  Co poprzedziło `clean12`: `down` stosu, `make up` i pierwsze zapytania zapisu próby (`discover`); co `lag50`: `clean12` na tym samym indeksie.
 
 ## 5. Lokalne porównanie `single` przed i po (WSTĘPNE, NIE wynik akceptacyjny)
 
