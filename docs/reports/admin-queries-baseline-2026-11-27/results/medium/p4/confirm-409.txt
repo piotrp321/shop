@@ -1,0 +1,7 @@
+164 purchasable variants of 60 products; the change of the quantity 1 -> 2 by the available units:
+| available units | variants | change 200 | change 409 | other | add 1 not 200 |
+|---|---|---|---|---|---|
+| 1 | 5 | 0 | 5 | 0 | 0 |
+| 2 | 2 | 2 | 0 | 0 | 0 |
+| 3+ | 157 | 157 | 0 | 0 | 0 |
+a 409: Nie mamy tylu sztuk tego produktu.

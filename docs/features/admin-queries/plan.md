@@ -72,7 +72,7 @@ nakładają się na ciężkie pomiary PERF-2; każdy pomiar na worf.pl tylko za 
       "acceptance_criteria": [
         "Kryterium 1 specyfikacji dla fraz: równoważność z obecnym SQL (wiersze, kolejność, kursory, liczniki), także dla fraz z polskimi znakami, wielkością liter, `%`, `_` i `\\`, fraz bez trygramu z trafieniami i frazy częstej skorelowanej z sortem na kolejnych stronach.",
         "Kryterium 2 dla zmienionych dróg: testy planów na ok. 100 tys. wierszy, w tym fraza skupiona na końcu alfabetu, fraza gęsta, fraza częsta skorelowana z sortem (rosnący budżet) i 2-znakowa rzadka; asercje według zmiennej klasy (budżet, liczba trafień), nie stałego kosztu.",
-        "Kandydaci z GIN bigramów są nadzbiorem wyniku `ILIKE` na korpusie z polskimi znakami i wielkimi literami; kryterium 8 (WAL i czas zapisu produktu przed i po) w raporcie zadania.",
+        "Kandydaci z GIN bigramów są nadzbiorem wyniku `ILIKE` na korpusie z polskimi znakami i wielkimi literami; kryterium 8 (WAL i czas zapisu produktu przed i po) mierzy zbiorczo zadanie 7, zadanie podaje polecenie. Sterowanie planistą tylko według D10, z testami zachowania kodu produkcyjnego (wyjątek, transakcja wywołującego) i uzasadnieniem w komentarzu.",
         "Ekrany Ceny, Stany i wybór wariantów promocji: istniejące testy przechodzą bez zmian.",
         "`make -C apps/api check` i `make -C apps/api test` przechodzą."
       ],
@@ -122,7 +122,7 @@ nakładają się na ciężkie pomiary PERF-2; każdy pomiar na worf.pl tylko za 
       "scope": "`DbalSitemapProductSource::boundaries` według M1 (D5; budżet zimnego obliczenia granic 2000 ms), granice keysetem w jednej transakcji `REPEATABLE READ` tylko do odczytu, sprawdzenie każdej porcji w chwili cięcia (G2), unieważnienie wpisu granic w `cache.sitemap` po przepełnieniu porcji przy odczycie (G3), `LIMIT` porcji bez zmian (G1). Przy M2 migracja `SET STATISTICS` dla `catalog_product.id` i aktualizacja decyzji D1 w `docs/features/seo/spec.md`; opis w OpenAPI (`product-chunks`), eksport specyfikacji i klientów TS, jeśli opis mówi o dokładnej liczbie produktów porcji.",
       "acceptance_criteria": [
         "Kryterium 6 specyfikacji: porcja do `row_limit` także przy statystykach celowo błędnych (np. po masowym wstawieniu bez `ANALYZE`) i bez statystyk; cięcie z kilku zapytań w jednej transakcji `REPEATABLE READ`, test z równoległymi wstawieniami i usunięciami w trakcie cięcia; każdy produkt w dokładnie jednej porcji, pierwsza bez początku i ostatnia bez końca; przepełnienie po cięciu unieważnia granice, a następna mapa jest pełna.",
-        "Czas zimnego obliczenia granic na `medium` przed i po w raporcie zadania.",
+        "Czas zimnego obliczenia granic na `medium` przed i po: zadanie podaje polecenie, pomiar zbiorczo w zadaniu 7.",
         "`make -C apps/api check`, `make -C apps/api test` i `make -C apps/store check` przechodzą."
       ],
       "risk": "STANDARD",

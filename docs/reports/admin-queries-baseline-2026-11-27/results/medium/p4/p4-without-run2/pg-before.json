@@ -1,1 +1,1 @@
-{"at" : "2026-11-27T15:41:15.02338+00:00", "blks_read" : 1342372814, "blks_hit" : 1187053655, "temp_bytes" : 1505194154, "xact_commit" : 649688, "tup_returned" : 3778332413, "wal_bytes" : 58112021807, "io_read_bytes" : 10933025947648, "io_reads" : 1013186958}
+{"at" : "2026-11-27T19:45:44.788653+00:00", "blks_read" : 2454114781, "blks_hit" : 1603067505, "temp_bytes" : 1505194154, "xact_commit" : 993262, "tup_returned" : 6047255884, "wal_bytes" : 59027368918, "io_read_bytes" : 21850456743936, "io_reads" : 2053154366}

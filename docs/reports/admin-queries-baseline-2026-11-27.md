@@ -27,8 +27,9 @@ Dowody (zapytania, plany, mieszanka, surowe wyniki k6, skrypty, polecenia): kata
   z frazą, granice mapy strony. Zamówienia i klienci mieszczą się w 2000 ms „w pamięci” w każdym przypadku macierzy.
 - **W7 na `medium`: niespełnione.** Mieszanka 5 żądań/s: p50 43 ms, **p95 2,29 s**, p99 4,1 s, maksimum 5,8 s; siedem klas przekracza 2 s (małe i średnie kategorie, frazy skorelowane z sortem
   i bez trygramu, kombinacje). Na `small` W7 jest spełnione (p95 76 ms, maks. 407 ms).
-- **P4 na `medium`: kryterium z specyfikacji niespełnione**, choć wpływ bezwzględny jest mały: z panelem zimne listingi sklepu +13 ms p50, +21 ms p95, +41 ms p99, koszyki +13/+18/+21 ms; Postgres
-  jedzie wtedy na ok. 10,5 rdzenia. Bez 5xx i bez opuszczonych żądań, ale **nie bez niepowodzeń**: 409 w kroku zmiany ilości koszyka (4/15/25 w trzech przebiegach bez panelu, 9/26/38 z panelem) w sklepie; werdykt P4 „brak niepowodzeń sklepu” nie jest spełniony w żadnym wariancie (sekcja 6). Niepowodzenia samej mieszanki panelu (2 odpowiedzi 400 na przebieg, `q=z`) są raportowane osobno i nie wchodzą do werdyktu P4.
+- **P4 „przed” na `medium` (powtórzony 19:34–20:08 UTC na poprawionym scenariuszu koszyka): niespełnione.** Sklep bez niepowodzeń w obu wariantach (0 błędów 5xx, 409, 429, 4xx i opuszczonych żądań), ale z panelem zimne listingi sklepu mają +12,4 ms p50 i +25,9 ms p95, koszyki +12,3 / +17,6 / +20,6 ms (p50/p95/p99); p99 listingów +65,7 ms mieści się w szumie (rozrzut bez panelu 379 ms).
+  Według dotychczasowego kryterium (różnica ≤ rozrzut bez panelu) i według **D7** (największa z: 2 × rozrzut, 10% mediany bez panelu, 5 ms dla p50, 10 ms dla p95 i p99) niespełnionych jest te same pięć miar (listingi p50 i p95, koszyki p50, p95 i p99); Postgres z panelem pracuje na ok. 10 rdzeniach (wcześniej ~15% jednego).
+  Pierwszy P4 (z 409 w koszykach z powodu scenariusza, sekcja 6) jest odrzucony i zachowany w `results/medium/p4/rejected-409/`.
 - **H1 potwierdzona częściowo** (mechanizm inny niż w hipotezie), **H2 potwierdzona** (jedno zapytanie biegło w Postgresie 8,1 s, ponad 7 s po przerwaniu żądania przez klienta po 1 s; w kontroli bez przerwania 2,95 s, różnicy nie wyjaśniłem).
 - **Koszt zapisu nowych indeksów** (prototypy na kopii `medium`, WAL na zapis; miarą są KB, procenty są względne do syntetycznego zapisu jednego wiersza i nie przenoszą się na ruch produkcyjny): K1 +15 KB na zapis produktu (+40%), F2 +14 KB (+38%), Z1 +24 KB na cykl zamówienia (+42%) i +9 KB na zapis klienta (+45%).
 - **Wybór wariantów (według reguły „od najprostszego, stop na pierwszym spełniającym P2 i P8”; P2 według ekstrapolacji „w pamięci”, SZACUNEK):**
@@ -230,36 +231,48 @@ kombinacje z filtrami, Ceny, Stany, zamówienia, klienci, kody rabatowe, dashboa
 
 ## 6. P4: wpływ panelu na sklep (przed zmianą)
 
-Scenariusz: sklep przez API: 15 zimnych listingów/s (nominał W1: połowa 30/s z W9; adresy z `baseline.py urls`, każdy raz; na `medium` lokalnie utrzymane bez błędów: p95 236 ms w kalibracji) i 5 koszyków/s (tworzenie, dodanie, odczyt, zmiana: W5, 20 żądań/s); wariant
-„z panelem” dodaje mieszankę W7 5/s, 8 wątków najcięższych klas (kategoria mała, fraza skorelowana, 2 znaki, interpunkcja, interpunkcja w zamówieniach i klientach, kombinacje) i zimne obliczenie granic mapy strony co 30 s. 3 przebiegi po 180 s każdego wariantu, na przemian,
-po niezliczanej rozgrzewce 60 s. Wyniki (mediana i rozrzut przebiegów bez panelu; `results/medium/p4/report.txt`):
+Scenariusz: sklep przez API: 15 zimnych listingów/s (nominał W1: połowa 30/s z W9; adresy z `baseline.py urls --seed 12`, każdy raz; na `medium` lokalnie utrzymane bez błędów: p95 236 ms w kalibracji) i 5 koszyków/s (tworzenie, dodanie, odczyt, zmiana ilości z 1 na 2 dla wariantów z co najmniej 2 dostępnymi jednostkami: W5, 20 żądań/s); wariant
+„z panelem” dodaje mieszankę W7 5/s (258 żądań), 8 wątków najcięższych klas (kategoria mała, fraza skorelowana, 2 znaki, interpunkcja, interpunkcja w zamówieniach i klientach, kombinacje) i zimne obliczenie granic mapy strony co 30 s. 3 przebiegi po 180 s każdego wariantu, na przemian,
+po niezliczanej rozgrzewce 60 s. Trzeci przebieg „z panelem” poszedł osobnym uruchomieniem na końcu listy adresów (adresy się skończyły; przebieg „bez panelu” tego uruchomienia odrzucony). Okno 19:34–20:08 UTC; obciążenie spoza `perf7` (`results/medium/p4/host-load.txt`): `epics-exporter` 12–14% przez całe okno,
+`async-idx-m1-api` 5,5%, `async-idx-m1-rabbitmq` 40% i 60% o 19:44:56 i 19:46:50 (przerwa i początek przebiegu „bez panelu” 2; wynik tego przebiegu nie odbiega od pozostałych), po przebiegach 17% (19:59).
 
-| miara | bez panelu (rozrzut) | z panelem | różnica | kryterium (różnica ≤ rozrzut bez panelu) |
-|---|---|---|---|---|
-| listingi p50 | 25,4 ms (0,4) | 38,6 ms | +13,2 ms | nie |
-| listingi p95 | 133,6 ms (4,7) | 154,2 ms | +20,6 ms | nie |
-| listingi p99 | 567,9 ms (1,9) | 609,1 ms | +41,2 ms | nie |
-| koszyki p50 | 14,3 ms (0,3) | 27,0 ms | +12,7 ms | nie |
-| koszyki p95 | 18,8 ms (0,3) | 37,0 ms | +18,2 ms | nie |
-| koszyki p99 | 20,9 ms (0,3) | 41,8 ms | +20,9 ms | nie |
-| zadane tempo | utrzymane (0 opuszczonych) | utrzymane | | tak |
-| 5xx, błędy sieci, opuszczone żądania (sklep) | 0 | 0 | | tak |
-| 409 w zmianie ilości koszyka (`PUT …/items/{variantId}` z ilością 2) | 4 / 15 / 25 | 9 / 26 / 38 | | **nie: niepowodzenia w obu wariantach** |
-| 400 w mieszance panelu (`q=z`, fraza krótsza niż 2 znaki): osobno, nie wchodzi do werdyktu P4 | 0 | 2 / 2 / 2 | | (W7 je liczy) |
+Wyniki (mediana i rozrzut przebiegów bez panelu; `results/medium/p4/report.txt`). Kryterium dotychczasowe: różnica ≤ rozrzut; **D7** (spec na gałęzi epiku, `49067904`): różnica ≤ największa z 2 × rozrzut, 10% mediany bez panelu, 5 ms (p50) albo 10 ms (p95, p99):
 
-**Źródło 409 (z kodu i zapisanych odpowiedzi).** Wszystkie 409 pochodzą z klasy `shop_cart_change` (`panel.json`: 4/15/25 bez panelu, 9/26/38 z panelem, na 901 zmian w przebiegu; w pozostałych klasach sklepu 0).
-Kontrakt `PUT /api/v1/guest-carts/{cartId}/items/{variantId}` (`GuestCartController::changeItem`): 409 przy zwiększeniu ilości „powyżej dostępnych jednostek” albo wariantu bez ceny lub stanu; scenariusz zwiększa ilość z 1 do 2, więc 409 dostaje koszyk
-z wariantem, który ma mniej niż 2 dostępne jednostki. Koszyk niczego nie rezerwuje, więc liczba 409 nie wynika z zajmowania stanu przez przebiegi. **HIPOTEZA (nie sprawdzona bez pomiaru):** liczba zależy od losowego zbioru 60 produktów, który `discover()` wybiera w każdym
-przebiegu (udział wariantów z jedną jednostką); w kolejności przebiegów (4, 9, 15, 26, 25, 38) widać wzrost, więc nie wykluczam też spadku dostępności wariantów w trakcie sesji (np. zamówienia z workera). Zapisałem stan stanów wariantów tylko w zakresie `panel.json`, więc tego nie rozstrzygam.
-Nie jest to zachowanie sklepu pod panelem (jest w przebiegach bez panelu), tylko własność scenariusza; do zadania 7 (powtórzenie P4 po zmianach, ta sama mieszanka i ten sam scenariusz) zostaje: wybrać warianty ze stanem co najmniej 2 albo zmieniać ilość na 1 (zmiana ilości w dół
-zawsze się udaje), żeby kryterium „brak niepowodzeń” mogło być spełnione; zmiana scenariusza po pomiarze „przed” wymaga powtórzenia pomiaru „przed”.
+| miara | bez panelu (rozrzut) | z panelem | różnica | ≤ rozrzut | granica D7 | D7 |
+|---|---|---|---|---|---|---|
+| listingi p50 | 24,1 ms (0,1) | 36,5 ms | +12,4 ms | nie | 5,0 ms | nie |
+| listingi p95 | 127,5 ms (3,4) | 153,4 ms | +25,9 ms | nie | 12,8 ms | nie |
+| listingi p99 | 562,7 ms (379,4) | 628,4 ms | +65,7 ms | tak | 758,8 ms | tak |
+| koszyki p50 | 13,9 ms (0,1) | 26,2 ms | +12,3 ms | nie | 5,0 ms | nie |
+| koszyki p95 | 18,6 ms (0,3) | 36,2 ms | +17,6 ms | nie | 10,0 ms | nie |
+| koszyki p99 | 20,1 ms (1,1) | 40,7 ms | +20,6 ms | nie | 10,0 ms | nie |
+| zadane tempo | utrzymane (0 opuszczonych) | utrzymane | | tak | | tak |
+| niepowodzenia sklepu (5xx, błędy sieci, 409, 429, inne 4xx) | 0 | 0 | | tak | | tak |
+| niepowodzenia mieszanki panelu (raportowane osobno) | | 0 | | | | |
 
-Zasoby PostgreSQL na przebieg: bez panelu 1,0–1,2 aktywnej sesji, CPU Postgresa ok. 15%, 6 mln trafień buforów, 30–38 tys. odczytów, 0,24–0,31 GB odczytu, `temp_bytes` 0; z panelem 10,5 aktywnej sesji (maks. 14), CPU Postgresa 1036–1057%
-(≈ 10 rdzeni), 113 mln trafień i 363 mln odczytów buforów (2,9 TB z cache systemu), `temp_bytes` 0; WAL bez zmiany (2,2–2,4 MB wobec 2,7–3,6 MB). Różnicę przypisuję 8 wątkom najcięższych zapytań panelu (klasy z macierzy powyżej 2 s): **HIPOTEZA**; nie rozdzielałem wkładu mieszanki 5/s, 8 wątków i zimnych granic mapy strony, a specyfikacja wymaga wskazania zapytania, które różnicę powoduje. Wskaże je pomiar w PERF-7-7 (przebiegi z każdą składową osobno).
+Rozrzut p99 listingów (379 ms) bierze się z jednego przebiegu bez panelu (p99 186 ms wobec 563–566 ms w pozostałych), więc p99 listingów mieści się w szumie niezależnie od kryterium; reszta pięciu miar nie mieści się w żadnym z nich.
+Zasoby PostgreSQL na przebieg: bez panelu 1,0 aktywnej sesji, CPU Postgresa 14–16%, 6 mln trafień buforów, 30–38 tys. odczytów, `temp_bytes` 0; z panelem 10,4–11,3 aktywnej sesji (maks. 14–21), CPU Postgresa 989–1009% (≈ 10 rdzeni), 117–139 mln trafień i 379–385 mln odczytów buforów (ok. 3,0 TB z cache systemu), `temp_bytes` 0.
+Różnicę przypisuję 8 wątkom najcięższych zapytań panelu (klasy z macierzy powyżej 2 s): **HIPOTEZA**; nie rozdzielałem wkładu mieszanki 5/s, 8 wątków i zimnych granic mapy strony, a specyfikacja wymaga wskazania zapytania, które różnicę powoduje. Wskaże je pomiar w PERF-7-7 (przebiegi z każdą składową osobno).
 W15 (CPU węzła do 70%): lokalnie nie oceniam (host 16 rdzeni, współdzielony).
 
-**P4 na `medium`: kryterium z specyfikacji niespełnione: różnica median ponad rozrzut we wszystkich sześciu miarach (rozrzut bez panelu bardzo mały), wpływ bezwzględny kilkanaście milisekund, oraz niepowodzenia sklepu (409 w zmianie ilości koszyka) w obu wariantach.** Narzędzie liczy dla P4 niepowodzenia tylko po stronie sklepu (spec: „błędy sklepu”); niepowodzenia mieszanki panelu wypisuje osobno (W7 je liczy). Pierwsza próba P4 (odrzucona: odnowienie tokenu odmówione w 6. przebiegu,
-za mało adresów, brak rozgrzewki) ma w `results/medium/p4/attempt1/` tylko raport (surowe przebiegi usunięto z dowodów). Wynik na `server` niezmierzony; zależy od PERF-2B (zastrzeżenie 5).
+**P4 „przed” na `medium`: niespełnione według obu kryteriów (pięć z sześciu miar), przy zerowych niepowodzeniach sklepu; wpływ bezwzględny kilkanaście milisekund.** Wynik na `server` niezmierzony; kryterium „p95 i p99 w normie W1 i W5” zależy od PERF-2B (zastrzeżenie 5).
+
+**Pierwszy P4 „przed” (odrzucony): 409 w koszykach.** Pomiar sprzed poprawki scenariusza (`results/medium/p4/rejected-409/`: te same miary, 25,4/133,6/567,9 ms bez panelu i +13/+21/+41 ms z panelem na listingach) miał w sklepie 409 w kroku zmiany ilości (4/15/25 bez panelu, 9/26/38 z panelem),
+więc warunek „brak niepowodzeń sklepu” nie był w nim spełniony w żadnym wariancie; odrzucony z tego powodu. Pierwsza próba P4 (odrzucona wcześniej: odnowienie tokenu odmówione w 6. przebiegu, za mało adresów) ma w `results/medium/p4/attempt1/` tylko raport.
+
+**Źródło 409: potwierdzone pomiarem** (`scripts/confirm-409.py`, `results/medium/p4/confirm-409.txt`, 18:35 UTC). Wszystkie 409 pochodzą z klasy `shop_cart_change` (4/15/25 bez panelu, 9/26/38 z panelem, na 901 zmian w przebiegu). Kontrakt `PUT /api/v1/guest-carts/{cartId}/items/{variantId}`
+(`GuestCartController::changeItem`) daje 409 przy zwiększeniu ilości ponad dostępne jednostki; scenariusz podnosi ilość z 1 do 2. Odtworzenie: 164 kupowalne warianty 60 losowych produktów (jak `discover()`), dla każdego nowy koszyk, dodanie 1 sztuki i zmiana na 2, z dostępnymi jednostkami z `GET /api/v1/admin/stock`
+(publiczne API ich nie podaje; koszyk niczego nie rezerwuje):
+
+| dostępne jednostki | warianty | zmiana na 2: 200 | zmiana na 2: 409 | inne | dodanie 1 sztuki ≠ 200 |
+|---|---|---|---|---|---|
+| 1 | 5 | 0 | **5** | 0 | 0 |
+| 2 | 2 | 2 | 0 | 0 | 0 |
+| 3 i więcej | 157 | 157 | 0 | 0 | 0 |
+
+Komunikat odpowiedzi: „Nie mamy tylu sztuk tego produktu.” Wariant z jedną jednostką stanowi 3% kupowalnych wariantów (5 z 164), co zgadza się z 0,4–4,2% zmian z 409 w przebiegach, a liczba zależy od losowego zbioru 60 produktów, który `discover()` wybiera w każdym przebiegu (wcześniejsza hipoteza o spadku dostępności w trakcie sesji nie jest potrzebna).
+Nie jest to zachowanie sklepu pod panelem (409 są w przebiegach bez panelu), tylko własność scenariusza. **Poprawka scenariusza** (zatwierdzona przez właściciela): `load/panel.js` w `setup()` czyta dostępne jednostki z listy zapasów administratora i zmienia ilość tylko dla wariantów z co najmniej 2 jednostkami (kontrakt koszyka bez zmian;
+`load/lib/stock.js`, test `load/test/cart-variants.js` w `make load-panel-check`). Krótki przebieg kontrolny scenariusza koszyka po poprawce (30 s, 5 koszyków/s): 604 żądania, 0 niepowodzeń (wcześniej do 25 409 na 901 zmian). **Pomiar P4 „przed” został powtórzony z poprawionym scenariuszem (tabela wyżej); pierwszy pomiar (z 409) jest odrzucony.**
 
 ## 7. Mapa strony: stan obecny (M0)
 
@@ -490,8 +503,8 @@ rozmiar rzędu indeksu trygramów (248 MB na `medium`, ok. 2,5 GB na `server`), 
 4. **Budżet zimnego obliczenia granic mapy strony:** propozycja 2000 ms; M1 szacunkowo 1,1–1,6 s. Zatwierdzić 2000 ms?
 5. **Pomiar na `server` (R5):** P1, P2, P4 i czas z P5 uznajemy za spełnione wyłącznie według pomiaru na `server`. Czy zgoda na pomiar na worf.pl (tylko GET dla W7; P4 z koszykami to zapisy) po wdrożeniu, czy lokalny profil `server`? Dla oceny ograniczenia dyskiem
    przydałby się też pomiar przepustowości odczytu dysku worf.pl pod zapytaniami panelu (dziś zmierzony tylko dla generowania zamówień: 180–209 MB/s, iowait 0,19); bez niego „z dysku” zostaje założeniem.
-6. **P4 przed zmianą nie spełnione** (sekcja 6: +13–41 ms na listingach i koszykach z panelem oraz niepowodzenia 409/400 w obu wariantach); po zmianach wynik zmierzy zadanie 7 tym samym scenariuszem. Czy kryterium „różnica median ≤ rozrzut bez panelu” zostaje w tej postaci, skoro rozrzut bez panelu wynosi 0,3–5 ms?
-   Czy zmieniamy krok zmiany ilości koszyka (409, patrz sekcja 6), co wymaga powtórzenia pomiaru „przed”?
+6. **P4 „przed” nie spełnione** (sekcja 6: +12–26 ms na listingach i +12–21 ms na koszykach z panelem przy zerowych niepowodzeniach sklepu; niespełnione według rozrzutu i według D7); po zmianach wynik zmierzy zadanie 7 tym samym scenariuszem. Kryterium D7 jest już w specyfikacji na gałęzi epiku.
+   Krok zmiany ilości koszyka (409) jest poprawiony za zgodą właściciela po potwierdzeniu przyczyny (sekcja 6), a P4 „przed” powtórzony.
 
 ### 10.4 Zastrzeżenia do rekomendacji
 
@@ -517,6 +530,10 @@ python3 -I $D/scripts/h2.py --api http://localhost:28102 --token-file <token.jso
 make load-panel                                                    # W7: 3 przebiegi
 python3 -I load/baseline.py urls http://localhost:28102 http://localhost:28100 <plik> --listings 17000 --seed 11
 make load-panel PANEL_MODE=p4 SHOP_URLS_FILE=<plik> SHOP_LISTING_RATE=15 SHOP_CART_RATE=5 PANEL_SECONDS=180
+# P4 „przed” z poprawionym scenariuszem koszyka (wykonany 19:34–20:08 UTC; ta sama mieszanka, 258 żądań; nowe adresy listingów, żeby żaden nie był w request cache Elasticsearcha po pierwszym P4; trzeci przebieg „z panelem” osobnym uruchomieniem na końcu listy: PANEL_RUNS=1 PANEL_WARMUP_SECONDS=0 SHOP_URL_OFFSET=11600, bo adresy się skończyły):
+python3 -I load/baseline.py urls http://localhost:28102 http://localhost:28100 <plik2> --listings 17000 --products 50 --seed 12
+PANEL_OUT=<katalog> PANEL_MIX=$D/results/medium/mix.json SHOP_URLS_FILE=<plik2> PANEL_RUNS=3 PANEL_SECONDS=180 SHOP_LISTING_RATE=15 SHOP_CART_RATE=5 PANEL_WORST_VUS=8 BOUNDARIES_EVERY=30 make load-panel PANEL_MODE=p4
+# czas przebiegu: rozgrzewka 60 s + 60 s przerwy + 3 x (180 s bez panelu + 60 s + 180 s z panelem + 60 s) = 26 min (rzeczywiście 25 min do końca drugiego przebiegu „z panelem” + 8 min uruchomienia dodatkowego)
 # warianty na kopii bazy (części 2b)
 python3 -I $D/scripts/variants.py gen --db shop_proto --base $D/results/medium/cases.json --variant K1 --out $D/results/medium/variants/K1   # K0 K1 F1 F2 Z1
 python3 -I $D/scripts/matrix.py run --db shop_proto --cases $D/results/medium/variants/K1/cases.json --out $D/results/medium/variants/K1 --repeats 10
@@ -554,5 +571,5 @@ Katalog `docs/reports/admin-queries-baseline-2026-11-27/` został odchudzony (ok
 - Brak w mojej sesji narzędzia komunikacji z sesją prowadzącą: komunikaty „start/koniec okna” nie zostały wysłane przeze mnie; okna zostały uzgodnione z mojej strony wyłącznie przez raporty pośrednie.
 - Przypadki macierzy dla `small` i `medium` są losowane z danych każdego profilu (te same klasy); „duży liść z typem na końcu alfabetu” nie istnieje w danych demo (20% członkostw dodatkowych), więc H1 rozstrzygnięta na liściach o największym miejscu 26. członka.
 - API lokalnie w `APP_ENV=prod` i z `CLIENT_IP_HEADER` (lokalne nadpisanie compose poza repo), generator `medium` uruchomiony z `APP_ENV=dev`.
-- P4 dopisany trzeci przebieg „z panelem” osobnym uruchomieniem (zabrakło adresów); pierwsza próba P4: w dowodach tylko `p4/attempt1/report.txt`; przebieg „bez panelu” z uruchomienia dodatkowego jest odrzucony i usunięty.
+- P4 „przed” zmierzony dwa razy: pierwszy (z 409 w koszykach z powodu scenariusza) odrzucony i zachowany w `p4/rejected-409/`; drugi na poprawionym scenariuszu jest wynikiem „przed”. W obu trzeci przebieg „z panelem” dopisany osobnym uruchomieniem (zabrakło adresów); pierwsza próba P4: w dowodach tylko `p4/attempt1/report.txt`; przebieg „bez panelu” z uruchomienia dodatkowego jest odrzucony i usunięty.
 - Wynik na `server` (P1, P2, P4, czas z P5) niezmierzony (R5): decyzje o wariantach zapadają według `medium` i ekstrapolacji (SZACUNEK).
