@@ -9,6 +9,8 @@ addresses of a mix of load/baseline.py and compares two saved sets.
   compare.py digest ANSWERS.jsonl OUT.json                      a compact digest (total, facet sizes, hash of the whole answer)
   compare.py diff BEFORE.jsonl AFTER.jsonl [--out RESULT.json]  per address: status, total, pageCount, facets (categories,
                                                                 options, price, availableCount) and the items of the page
+  compare.py singles BEFORE.jsonl AFTER.jsonl                   the times of two runs of baseline.py --mode single side by side
+                                                                (p50, p95, max of the total time per label and kind; LOCAL, preliminary)
   compare.py selftest                                           the diff on synthetic answers: must see every kind of difference
 
 fetch exit codes: 0 every answer is 200, 1 some answer is not (all are written). diff: 0 no differences, 1 differences (listed,
@@ -192,6 +194,28 @@ def diff(args):
     return 1 if rows or not_ok else 0
 
 
+def singles(args):
+    def load(file_name):
+        groups = {}
+        for sample in read_answers(file_name):
+            if sample.get("ok"):
+                groups.setdefault((sample["label"], sample["kind"]), []).append(sample["total"])
+                groups.setdefault((sample["label"], "ALL"), []).append(sample["total"])
+        return groups
+
+    def quantile(values, share):
+        values = sorted(values)
+        return values[min(len(values) - 1, int(share * len(values)))]
+
+    before, after = load(args.before), load(args.after)
+    print("label\tkind\tn\tp50 before\tp50 after\tp95 before\tp95 after\tmax before\tmax after")
+    for key in sorted(set(before) & set(after), key=lambda k: (k[0], k[1] == "ALL", k[1])):
+        b, a = before[key], after[key]
+        print(f"{key[0]}\t{key[1]}\t{len(b)}/{len(a)}\t" + "\t".join(
+            f"{x:.3f}" for x in (quantile(b, .5), quantile(a, .5), quantile(b, .95), quantile(a, .95), max(b), max(a))))
+    return 0
+
+
 def synthetic(total=10, items=("a", "b"), categories=(("c1", 5), ("c2", 5)), values=(("S", 4), ("M", 6)), price=(100, 900), available=7):
     return {"path": "/api/v1/products", "status": 200, "body": {
         "items": [{"id": i, "name": i} for i in items], "page": 1, "perPage": 24, "total": total, "pageCount": 1,
@@ -244,6 +268,10 @@ def main():
     d.add_argument("after")
     d.add_argument("--out")
     d.set_defaults(run=diff)
+    s = sub.add_parser("singles")
+    s.add_argument("before")
+    s.add_argument("after")
+    s.set_defaults(run=singles)
     sub.add_parser("selftest").set_defaults(run=selftest)
     args = parser.parse_args()
     sys.exit(args.run(args))

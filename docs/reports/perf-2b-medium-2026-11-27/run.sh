@@ -279,6 +279,19 @@ writes_run() {
   jq -c '{finished, verdict, late: .changes.late, dropped: .changes.dropped, unanswered: .changes.unanswered, send_lag: .changes.send_lag, percentiles_valid: .freshness.percentiles_valid, mismatches: .consistency.mismatches}' "$out/writes.json" || true
 }
 
+# Waits (up to 15 minutes) until no queue of RabbitMQ holds a message, then writes the time to results/queue-LABEL.txt.
+cmd_drain() {
+  label="$1"
+  started="$(date +%s)"
+  while :; do
+    messages="$(dc after exec -T rabbitmq rabbitmqctl list_queues -q name messages 2>/dev/null | awk '{s += $2} END {print s + 0}')"
+    [ "$messages" -eq 0 ] && break
+    [ $(( $(date +%s) - started )) -lt 900 ] || { echo "queues not empty after 900 s: $messages messages" | tee "$res/queue-$label.txt"; return 1; }
+    sleep 5
+  done
+  echo "queues empty $(( $(date +%s) - started )) s after the end of the run" | tee "$res/queue-$label.txt"
+}
+
 cmd_writes() {
   need_window
   case "$1" in
@@ -352,6 +365,7 @@ case "$command" in
   writes) cmd_writes "${1:?clean12|lag50}" ;;
   cachestats) cmd_cachestats "${1:?label}" ;;
   failed) cmd_failed "${1:?label}" ;;
+  drain) need_window; cmd_drain "${1:?label}" ;;
   phase-before) need_window; cmd_phase_before ;;
   phase-after) need_window; cmd_phase_after ;;
   phase-writes) need_window; cmd_phase_writes ;;

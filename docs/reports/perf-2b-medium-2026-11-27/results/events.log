@@ -28,3 +28,10 @@
 2026-11-27T20:59:42Z diff: exit 0
 2026-11-27T20:59:53Z singles after: baseline.py run --mode single (API addresses of the listings, request cache cleared)
 2026-11-27T21:00:55Z singles after: exit 0 (LOCAL, preliminary; report in results/singles-after-report.txt)
+2026-11-27T21:01:35Z writes-up: the realm of Keycloak imported for the ports of this stack, make up
+2026-11-27T21:02:38Z writes-up: ready
+2026-11-27T21:02:54Z writes clean12: start (WRITE_RATE=12 WRITE_SECONDS=320 WRITE_SAMPLE=60 WRITE_UNSTOCKED_SHARE=0 WRITE_PRICE_PROBES=3)
+2026-11-27T21:09:16Z writes clean12: exit 0 (expected 0)
+2026-11-27T21:09:26Z writes lag50: start (WRITE_RATE=50 WRITE_SECONDS=320 WRITE_SAMPLE=40 WRITE_UNSTOCKED_SHARE=0 WRITE_PRICE_PROBES=2 WRITE_PRICE_SHARE=0 WRITE_MAX_IN_FLIGHT=2000 CHECK_TIMEOUT_SECONDS=180)
+2026-11-27T21:16:19Z writes lag50: exit 99 (expected 99)
+2026-11-27T21:18:35Z down (volumes kept)
