@@ -53,11 +53,11 @@ Poza zakresem:
 | A3 | Kategoria dostaje slug w domenie Catalog (`CategorySlug`, unikalny wśród rodzeństwa); ścieżkę slugów liczy odczyt drzewa, bez kolumny w bazie. Nazwa osi wariantu nie może zawierać `:` (reguła `VariantAxes`, potrzebna formatowi filtra). |
 | M1 | Model R: warunki i fasety liczone z pól produktu (tokeny), `nested` jednego poziomu tylko tam, gdzie cena musi należeć do tego samego wariantu co opcja. Równoważność z warunkiem „ten sam wariant” (S2) wynika z dwóch reguł domeny: wariant ma najwyżej 2 osie (`VariantAxes::MAX_AXES`), a krotki opcji wariantów jednego produktu są unikalne (`ProductVariants`, `DuplicateVariantValues`). Budowa dokumentu odrzuca produkt, który ich nie spełnia (`SearchIndexError`), zamiast liczyć go błędnie. |
 | M2 | Listing to jedno żądanie `_msearch`: wyniki strony oraz grupy agregacji pogrupowane według zestawu warunków (każda grupa `size: 0` z warunkami w `query`), zakres cen bez warunków opcji dwoma wyszukiwaniami „top 1”. Listing z frazą liczy dopasowanie tekstu raz (jedno żądanie). Błąd którejkolwiek części `_msearch` to błąd całej odpowiedzi (jak dziś: 503 albo 500), nigdy częściowe fasety. Odpowiedź `GET /api/v1/products` i sklep bez zmian. |
-| M3 | Indeks ma 1 shard (`SEARCH_SHARDS` = 1 we wszystkich profilach) i sortowanie indeksu po `sort_path` (ścieżka głównej kategorii), więc produkty jednej kategorii leżą obok siebie. |
+| M3 | Indeks ma zawsze 1 shard: niezmiennik, nie ustawienie (stała `ProductIndexDefinition::SHARDS`, bez wartości chartu i bez zmiennej, a `SEARCH_SHARDS` inne niż 1 w środowisku kontenera API jest odrzucane; uzasadnienie i warunki zmiany w „Ryzyka i ograniczenia”). Indeks jest posortowany po `sort_path` (ścieżka głównej kategorii), więc produkty jednej kategorii leżą obok siebie. |
 | M4 | `refresh_interval` z parametru `SEARCH_REFRESH_INTERVAL` (domyślnie `1s`; w `prod` `5s` warunkowo, do potwierdzenia pomiarem W16 razem z PERF-6). Ustawienie dynamiczne: `catalog:search-index:setup` nadaje je istniejącemu indeksowi, bez przebudowy. Nie wchodzi do skrótu definicji. |
 | M5 | Przebudowa nie gubi zapisów (W19a): na czas przebudowy nowy indeks ma drugi alias `<alias>-rebuild`, a każdy pojedynczy zapis idzie jednym `_bulk` do obu aliasów z wersją `external_gte`. |
 | M6 | Fasety korzystają z natywnego request cache Elasticsearcha (żądania `size: 0`, unieważniane przy odświeżeniu); bez cache aplikacyjnego i bez materializowanych liczników faset (decyzja o licznikach po PERF-0). |
-| M7 | Zmiana definicji indeksu nie blokuje wdrożenia: `catalog:search-index:setup` przy innym `definition_hash` wypisuje ostrzeżenie z instrukcją `catalog:reindex` i kończy się powodzeniem. Pozostałe odmowy `setup` bez zmian, w tym przy zajętej blokadzie przebudowy. Na etapie demo przejście na nową definicję to okno serwisowe: wdrożenie, potem przebudowa; do jej końca listing nie działa poprawnie. Bez zgodności starej i nowej wersji i bez mechanizmu migracji. |
+| M7 | Zmiana definicji indeksu nie blokuje wdrożenia: `catalog:search-index:setup` przy innym `definition_hash` albo indeksie aliasu z więcej niż jednym shardem wypisuje ostrzeżenie z instrukcją `catalog:reindex` i kończy się powodzeniem. Pozostałe odmowy `setup` bez zmian, w tym przy zajętej blokadzie przebudowy. Na etapie demo przejście na nową definicję to okno serwisowe: wdrożenie, potem przebudowa; do jej końca listing nie działa poprawnie. Bez zgodności starej i nowej wersji i bez mechanizmu migracji. |
 | M8 | Wymagania W8 i W9 bez zmian. Etap B nie buduje materializowanych faset; gdy pomiar na worf.pl pokaże, że model ich nie spełnia, etap kończy się raportem z wariantami i decyzją właściciela. |
 
 ## Przepływ danych
@@ -329,7 +329,7 @@ sortowania, więc trafiają do natywnego request cache (M6); listing bez frazy l
 | `price` z warunkami osi | `nested` (cena i opcja w tym samym wariancie), `min` i `max` z `variants.gross` |
 
 - `terms` po polach tokenów i po `variants.axes` i `variants.options` zwracają wszystkie kubełki, gdy jest ich do
-  10 000 (jeden shard, więc liczby są dokładne). Limity 10 osi i 30 wartości stosuje API przy budowie odpowiedzi,
+  10 000 (`size` 10 000 daje każdemu shardowi `shard_size` większy od liczby tokenów, więc liczby są dokładne). Limity 10 osi i 30 wartości stosuje API przy budowie odpowiedzi,
   z tą samą kolejnością: liczba produktów malejąco, potem nazwa.
 - Grupa z większą liczbą różnych tokenów (`sum_other_doc_count` > 0) nie kończy się błędem ani uciętymi fasetami.
   API liczy ją dokładnie dalszymi wyszukiwaniami z warunkami tej grupy, tymi samymi regułami co model sprzed etapu B
@@ -478,13 +478,19 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   dla „kurtki” i „kurtka” (`ProductIndexDefinitionTest`).
 - `make seed`: `catalog:seed-demo`, `pricing:seed-demo`, `ordering:seed-demo`, `inventory:seed-demo`,
   `catalog:reindex`, `storefront:cache:purge-all`.
-- Liczba shardów nowego indeksu to zmienna `SEARCH_SHARDS` (parametr `app.search.shards`): w compose z `.env` worktree
-  (bez niej 1), w chartcie z `elasticsearch.shards` (1 we wszystkich profilach, M3). Dostają ją wszystkie kontenery
-  z kodem API. Indeks, który istnieje, zachowuje swoją liczbę shardów (hash definicji jej nie obejmuje, więc `setup` go
-  nie odrzuca); nową dostaje dopiero indeks z następnej przebudowy. Wartość mniejsza od 1 kończy budowę definicji
-  błędem z nazwą zmiennej, pustą i nieliczbową odrzuca kontener, a schemat chartu przyjmuje tylko liczbę całkowitą od
-  1 do 1024. Jeden shard: shardy na jednym węźle kosztowały w etapie A 1,6–1,75 razy więcej CPU, a czas pojedynczego
-  zapytania skraca równoległe przeszukiwanie segmentów (domyślne w ES 9, zostaje włączone).
+- Liczba shardów nie jest konfiguracją (M3): każdy nowy indeks ma jeden, z stałej `ProductIndexDefinition::SHARDS`. Compose
+  i chart nie mają zmiennej ani wartości na shardy (schemat chartu odrzuca `elasticsearch.shards`). Kontener z kodem API, który nadal ma `SEARCH_SHARDS` (z compose, `.env`,
+  chartu albo ustawione ręcznie) w wartości innej niż `1` (2, 0, ujemna, tekst, ze spacją albo zerem na początku), odmawia
+  zbudowania definicji indeksu błędem z nazwą zmiennej i powodem (jeden shard wymagany przez dokładne fasety, zmienna jest
+  zbędna); zmienna nieustawiona, pusta albo równa `1` jest dopuszczona. Odmowa jest w `ProductIndexDefinition`, więc działa
+  w każdym kontenerze, który buduje definicję (API, workery, komendy `setup` i `catalog:reindex`), niezależnie od źródła wartości.
+  Indeks, który istnieje, zachowuje swoją liczbę shardów (hash definicji jej nie obejmuje). `catalog:search-index:setup` nie
+  zmienia ani nie przepina aliasu na inny indeks, ale indeks aliasu z więcej niż jednym shardem (np. 4 shardy na worf.pl
+  przed przebudową) zgłasza tak samo jak indeks innej definicji: ostrzeżenie z instrukcją `catalog:reindex` i powodzenie
+  komendy, więc nie blokuje wdrożenia (M7). Nowy indeks z przebudowy ma zawsze jeden shard, więc przebudowa jest jedyną
+  drogą, którą alias przechodzi na indeks o innej liczbie shardów, i zawsze na jeden; `make -C infra/k8s reindex` uznaje
+  przebieg za udany tylko przy nowym indeksie o jednym shardzie. Równoległe przeszukiwanie segmentów jednego shardu
+  (domyślne w ES 9) zostaje włączone.
 - `SEARCH_REFRESH_INTERVAL` (parametr `app.search.refresh_interval`, M4): w compose z `.env` worktree (bez niej `1s`),
   w chartcie z `elasticsearch.refreshInterval` (domyślnie `1s`, w `prod` `5s` z komentarzem o warunkowej decyzji
   i PERF-6). Zmiana wartości działa po wdrożeniu (`setup` w Jobie `migrate`), bez przebudowy. Dozwolony format to
@@ -500,11 +506,11 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 - Przebudowa indeksu na klastrze: `make -C infra/k8s reindex KUBE_DIR=<katalog>`, tylko po zgodzie użytkownika
   w rozmowie, która nazywa operację i host. Cel odmawia bez zmian, gdy w przestrzeni nazw działa Job (poza Jobami
   CronJobów `rate-limit-check`, `queue-check` i `order-expiry`), gdy blokadę `demo-data-lock` trzyma `generate` albo
-  `open`, albo gdy nie da się odczytać indeksu aliasu `products`; wypisuje bieżący indeks i liczbę shardów nowego
+  `open`, albo gdy nie da się odczytać indeksu aliasu `products`; wypisuje bieżący indeks (z jego shardami) i jeden shard nowego
   i pyta o słowo `tak`. Po nim bierze blokadę `demo-data-lock` na czas przebiegu (`generate` i `open` wtedy
   odmawiają), sprawdza Joby jeszcze raz (Job, który wystartował w czasie oczekiwania na odpowiedź, to odmowa), tworzy
   Job z zawieszonego CronJoba `reindex` (`catalog:reindex` z obrazem, środowiskiem i sekretami wdrożonej rewizji),
-  czeka na niego i sprawdza, że alias wskazuje nowy indeks o liczbie shardów z `SEARCH_SHARDS`. Sklep działa w trakcie
+  czeka na niego i sprawdza, że alias wskazuje nowy indeks o jednym shardzie. Sklep działa w trakcie
   na starym indeksie; nieudany przebieg zostawia alias bez zmian. Wdrożenie rozpoczęte w trakcie przebudowy kończy
   się nieudanym Jobem `migrate` (`catalog:search-index:setup` odmawia przy zajętej blokadzie przebudowy), który po
   końcu przebudowy ponawia `rerun`. Zmiany zapisane w trakcie przebudowy trafiają do nowego indeksu („Zapisy
@@ -721,7 +727,7 @@ Kryteria pomiarowe są w planie programu (PERF-2, „Kryteria etapu B”); tu na
 2. Epik: model R (M1–M6), W19a, testy z kryteriów 10–12, scenariusz zapisów w `load/`; w tym samym PR
    `docs/features/walking-skeleton/spec.md` („Ograniczenia tej przebudowy” bez punktu o zapisach w trakcie
    przebudowy), `infra/k8s/README.md` (okno serwisowe zmiany definicji, wycofanie, przebudowa pod ruchem dozwolona),
-   wartości chartu (`elasticsearch.shards` 1 w `prod`, `elasticsearch.refreshInterval`), `load/README.md` i „Status”
+   wartości chartu (`elasticsearch.refreshInterval`; shardy nie są wartością), `load/README.md` i „Status”
    w `docs/features/performance-program/plan.md`.
 3. Po merge'u, każdy krok za zgodą właściciela: wdrożenie i przebudowa na worf.pl (okno serwisowe), pomiary
    z kryterium 13, raport w `docs/reports/`. Pomiar akceptacyjny czeka na profil `server` (10 mln) i pamięć z PERF-1
@@ -756,9 +762,17 @@ Kryteria pomiarowe są w planie programu (PERF-2, „Kryteria etapu B”); tu na
   filtr `published` (bez niego pokazałoby szkice; pilnują tego testy listy i faset).
 - Wersja dokumentu z zegara: przy kilku workerach na różnych hostach przesunięcie zegarów może przepuścić starszy
   odczyt; skutek naprawia następna zmiana albo przebudowa.
-- Fasety są dokładne, bo indeks ma jeden shard (M3): przy kilku shardach `terms` zwracałby z każdego shardu tylko
-  `shard_size` kubełków, a kolejność „Trafność” zależałaby od statystyk słów każdego shardu. Przejście worf.pl
-  z 4 shardów na 1 może więc zmienić kolejność wyników frazy; liczby trafień i fasety się nie zmieniają.
+- Indeks ma jeden shard (M3) i jest to niezmiennik, który pilnuje kod (stała w definicji), nie konfiguracja. Pierwszy przebieg
+  faset (`terms` z `size` 10 000) jest dokładny także przy kilku shardach, dopóki różnych tokenów jest mniej niż 10 000
+  (każdy shard oddaje wszystkie kubełki). Dokładność tracą ścieżka przepełnienia, której `terms` o rozmiarze 10 i 30 oddają
+  z każdego shardu tylko `shard_size` kubełków (przybliżenie liczb i wyboru osi i wartości), oraz kolejność „Trafność”,
+  która zależy od statystyk słów każdego shardu. Do tego shardy na jednym węźle kosztowały w etapie A 1,6–1,75 razy
+  więcej CPU niż jeden. Przejście worf.pl z 4 shardów na 1 może więc zmienić kolejność wyników frazy; liczby trafień
+  i fasety się nie zmieniają.
+- Powrót do wielu shardów to nowa decyzja właściciela, nie zmiana wartości. Jej warunki: więcej niż jeden węzeł
+  Elasticsearch i zmierzona potrzeba równoległości ponad równoległe przeszukiwanie segmentów jednego shardu; wtedy
+  trzeba też zapewnić dokładne fasety w ścieżce przepełnienia (`shard_size` nie mniejszy od liczby tokenów w tej ścieżce
+  albo inne dokładne liczenie), porównać ranking „Trafność” z jednym shardem i wykonać nowy pomiar (kryteria 10 i 13).
 - Produkt ma najwyżej 100 wariantów, czyli do 100 obiektów zagnieżdżonych, daleko od limitu
   `index.mapping.nested_objects.limit` (10 000).
 - Obraz Elasticsearch budowany lokalnie pobiera wtyczkę z sieci przy pierwszym buildzie.

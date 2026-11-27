@@ -61,7 +61,7 @@ final readonly class SetupSearchIndexCommand
 
         if (null !== $result->outdatedIndex) {
             $io->warning(\sprintf(
-                'The index "%s" was built from another index definition and is left as it is. Search results are wrong until you run catalog:reindex to rebuild it with the current one.',
+                'The index "%s" was built from another index definition or has more than one shard, and is left as it is. Search results are wrong until you run catalog:reindex to rebuild it with the current one.',
                 $result->outdatedIndex,
             ));
         }

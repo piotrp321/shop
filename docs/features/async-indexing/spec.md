@@ -152,7 +152,7 @@ IndexDocuments {
 
 - Zmienna środowiskowa `SEARCH_INDEX_BATCH_SIZE` (parametr `app.search.indexing_batch_size`, domyślnie 500, jak dzisiejszy
   `app.search.batch_size`), dostępna dla wszystkich kontenerów z kodem API (compose, chart). Wartość spoza `1..5000` kończy
-  start komendy błędem z nazwą zmiennej (jak `SEARCH_SHARDS`).
+  start komendy błędem z nazwą zmiennej (jak `SEARCH_REFRESH_INTERVAL`).
 - Opcja `--batch-size` komendy nadpisuje domyślną dla jednego przebiegu i jest zapisana w przebiegu; zmiana zmiennej
   w trakcie przebiegu go nie zmienia.
 - To liczba elementów jednej **wiadomości**; jedna wiadomość to jeden bulk do Elasticsearcha. Podział na mniejsze bulki

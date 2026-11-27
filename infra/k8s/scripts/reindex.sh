@@ -1,24 +1,25 @@
 #!/bin/sh
 # The rebuild of the search index on the cluster: `make -C infra/k8s reindex KUBE_DIR=<directory>` (docs/features/search/spec.md,
 # "Infrastruktura"). The Job comes from the suspended CronJob reindex of the deployed chart, so catalog:reindex runs with the image, the
-# environment (SEARCH_SHARDS: the shards of the new index) and the secrets of the deployed revision. The shop stays open: the command
-# builds a new index, checks it and only then moves the alias products, and a run that failed leaves the alias where it was. A change
+# environment and the secrets of the deployed revision (the new index has one primary shard, set in the code of the API). The shop
+# stays open: the command builds a new index, checks it and only then moves the alias products, and a run that failed leaves the alias where it was. A change
 # of a product, a price or a stock level written while the index is built reaches the new index too, through the alias products-rebuild
 # (docs/features/search/spec.md, "Zapisy w trakcie przebudowy"). A deployment started while the Job runs fails at its Job migrate (catalog:search-index:setup refuses
 # while a rebuild holds the lock of the index): it is run again after the rebuild (make rerun).
 # Steps:
-#   1. checks without changes: the CronJob reindex is there and says the shards of a new index; nobody holds the lock demo-data-lock
+#   1. checks without changes: the CronJob reindex is there; nobody holds the lock demo-data-lock
 #      (make generate and make open: scripts/shop-closed.sh); no Job of the namespace is active, except one of the CronJobs
 #      rate-limit-check, queue-check and order-expiry (short checks that run every five minutes and do not touch the index; active_jobs
 #      of scripts/shop-closed.sh); the index of the alias products can
 #      be read from Elasticsearch;
-#   2. says which index the alias is on, how many shards the new one gets, and goes on only after `tak`;
+#   2. says which index the alias is on (its shards, which may be several in an index built before the model with one), that the new
+#      one gets one shard, and goes on only after `tak`;
 #   3. takes the lock demo-data-lock and holds it to its end (the trap releases it; a KILL leaves it), so that make generate and make
 #      open refuse without changes while the index is rebuilt, and reads the Jobs again: one that started while the script waited for
 #      the answer is a refusal; then the Job reindex-<UTC time> from the CronJob, waited for until it completes or fails (at most its
 #      activeDeadlineSeconds);
-#   4. the end of the log of the Job; after a Job that completed the index of the alias is read again: a new index with the shards
-#      of the CronJob is the success, anything else a failure.
+#   4. the end of the log of the Job; after a Job that completed the index of the alias is read again: a new index with one
+#      primary shard is the success, anything else a failure.
 #
 # Usage: reindex.sh (make -C infra/k8s reindex), the answer on the standard input.
 # Environment: KUBE_DIR (required: the directory with the kubeconfig `config` of the cluster; no default, so that no index is rebuilt
@@ -97,14 +98,10 @@ trap on_signal HUP INT TERM
 # ---------------------------------------------------------------------------------------------------------------
 # 1. Checks, without changes
 # ---------------------------------------------------------------------------------------------------------------
-manifest="$(kubectl -n "$namespace" get cronjob "$cronjob" -o json)" ||
-  refuse "cannot read the CronJob $cronjob of the namespace $namespace (the deployed revision has it since the chart with elasticsearch.shards; is the cluster reachable?)"
-shards="$(printf '%s' "$manifest" | py_json '"".join(e.get("value", "") for c in d["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"]
-    for e in c.get("env") or [] if e["name"] == "SEARCH_SHARDS")')" ||
-  refuse "cannot read SEARCH_SHARDS of the CronJob $cronjob"
-case "$shards" in
-  "" | *[!0-9]* | 0*) refuse "the CronJob $cronjob has no number of shards in SEARCH_SHARDS (got '$shards')" ;;
-esac
+kubectl -n "$namespace" get cronjob "$cronjob" -o json > /dev/null ||
+  refuse "cannot read the CronJob $cronjob of the namespace $namespace (is the cluster reachable?)"
+# The primary shards of every index (ProductIndexDefinition::SHARDS): the facets of the search model are exact only on one shard.
+shards=1
 
 lock_read || refuse "cannot read the lock $lock_name"
 [ -z "$lock_held_token" ] || refuse "the lock $lock_name is held by $lock_holder: make generate, make open and make reindex run one at a time; $(lock_message)"
@@ -178,7 +175,7 @@ if [ "$after_index" = "$before_index" ]; then
   exit 1
 fi
 if [ "$after_shards" != "$shards" ]; then
-  echo "reindex: FAILED: the new index $after_index has $after_shards primary shard(s), not the $shards of SEARCH_SHARDS" >&2
+  echo "reindex: FAILED: the new index $after_index has $after_shards primary shard(s), not the $shards of the index definition" >&2
   exit 1
 fi
 echo "reindex: done: the alias $alias_name is on the index $after_index: $after_shards primary shard(s), $after_documents Lucene documents (before: $before_index, $before_shards primary shard(s), $before_documents Lucene documents)"

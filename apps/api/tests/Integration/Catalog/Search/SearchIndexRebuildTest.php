@@ -99,6 +99,28 @@ final class SearchIndexRebuildTest extends KernelTestCase
         self::assertStringContainsString($current, $tester->getDisplay());
     }
 
+    public function testARebuildReplacesAnIndexWithSeveralShardsWithAnIndexOfOneShard(): void
+    {
+        $this->createProducts(2);
+        $old = $this->maintenance->activeIndex();
+        $body = new ProductIndexDefinition(0)->body();
+        $body['settings']['number_of_shards'] = 4;
+        $several = $this->alias.'_20260101000000000_aaaaaa';
+        $this->client()->indices()->create(['index' => $several, 'body' => $body]);
+        $this->client()->indices()->updateAliases(['body' => ['actions' => [
+            ['remove' => ['index' => $old, 'alias' => $this->alias]],
+            ['add' => ['index' => $several, 'alias' => $this->alias]],
+        ]]]);
+        self::assertSame($several, $this->maintenance->activeIndex());
+
+        $tester = $this->reindexCommand();
+        self::assertSame(Command::SUCCESS, $tester->execute([]), $tester->getDisplay());
+
+        $current = $this->maintenance->activeIndex();
+        self::assertNotSame($several, $current);
+        self::assertSame('1', $this->numberOfShards($current));
+    }
+
     public function testTheRebuiltDocumentsCarryTheOfferFacts(): void
     {
         $this->createProducts(2);
@@ -178,7 +200,7 @@ final class SearchIndexRebuildTest extends KernelTestCase
         $factory = $this->clientFactory();
         // The alias switch is executed, its response is lost and the cluster stays unreachable afterwards.
         $http = ResponseDroppingHttpClient::aliasSwitches($factory->httpClient(2.0), dropEverythingAfter: true);
-        $tester = $this->reindexCommandOver(new ElasticsearchSearchIndexMaintenance($factory->createWith($http), $factory->create(30.0), new ProductIndexDefinition(1, 0), $this->alias));
+        $tester = $this->reindexCommandOver(new ElasticsearchSearchIndexMaintenance($factory->createWith($http), $factory->create(30.0), new ProductIndexDefinition(0), $this->alias));
 
         self::assertSame(2, $tester->execute([]));
 
@@ -427,7 +449,7 @@ final class SearchIndexRebuildTest extends KernelTestCase
         return $this->reindexCommandOver(new ElasticsearchSearchIndexMaintenance(
             $factory->create(2.0),
             $factory->createWith($bulkTransport),
-            new ProductIndexDefinition(1, 0),
+            new ProductIndexDefinition(0),
             $this->alias,
             static function (int $milliseconds): void {
             },
@@ -446,6 +468,16 @@ final class SearchIndexRebuildTest extends KernelTestCase
         $application->addCommand(new ReindexCommand(new ProductSearchIndexRebuilder($source, $maintenance, $lock, new ProductDocumentBuilder(), new QueryBusProductOfferFacts($queryBus), new SystemClock()), 500));
 
         return new CommandTester($application->find('catalog:reindex'));
+    }
+
+    private function numberOfShards(string $index): mixed
+    {
+        $response = $this->client()->indices()->getSettings(['index' => $index, 'name' => 'index.number_of_shards']);
+        \assert($response instanceof Elasticsearch);
+        $settings = $response->asArray();
+        \assert(\is_array($settings[$index]) && \is_array($settings[$index]['settings']) && \is_array($settings[$index]['settings']['index']));
+
+        return $settings[$index]['settings']['index']['number_of_shards'] ?? null;
     }
 
     /**

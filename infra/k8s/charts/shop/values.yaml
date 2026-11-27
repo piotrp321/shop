@@ -219,9 +219,8 @@ storage:
 
 elasticsearch:
   javaOpts: -Xms1g -Xmx1g
-  # The primary shards of a new product index (SEARCH_SHARDS of the API, the workers and the Jobs; docs/features/search/spec.md,
-  # "Infrastruktura"). One shard is searched by one thread. A change reaches the cluster with the next index: make -C infra/k8s reindex.
-  shards: 1
+  # There is no value for the primary shards: a product index has exactly one, set in the code of the API (ProductIndexDefinition),
+  # because the facets of the search model are exact only on one shard (docs/features/search/spec.md, M3 and "Infrastruktura").
   # The refresh interval of the product index (SEARCH_REFRESH_INTERVAL of the API: a whole number with ms or s). A change reaches
   # the index of the cluster with the next deployment (catalog:search-index:setup of the Job migrate), without a rebuild.
   refreshInterval: 1s
