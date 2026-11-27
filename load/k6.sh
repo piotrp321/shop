@@ -1,6 +1,7 @@
 #!/bin/sh
-# Sourced by the scripts that run the k6 scripts of this directory (load/smoke.sh and infra/k8s/scripts/load.sh): the one
-# place that pins the k6 image, and the way it runs. k6 runs in a container (nothing is installed on the host).
+# Sourced by the scripts that run the k6 scripts of this directory (load/smoke.sh, load/writes.sh, load/test/*.sh and
+# infra/k8s/scripts/load.sh): the one place that pins the k6 image, and the way it runs. k6 runs in a container (nothing is
+# installed on the host).
 #
 # Update: docker buildx imagetools inspect grafana/k6:<tag>, the tag and the digest of the index of the images.
 

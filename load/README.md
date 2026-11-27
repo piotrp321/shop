@@ -133,8 +133,22 @@ przebieg idzie przez jego publiczne adresy. Wiersze niezgodności są tylko w wy
 | `WRITES_OUT` | brak | katalog wyniku `writes.json` |
 | `API_HOST`, `KEYCLOAK_HOST`, `WRITES_NETWORK` | brak, `bridge` | nagłówek `Host` (adres inny niż domena usługi) i sieć Dockera przy `API_URL` |
 
-Kody wyjścia: 0 – przebieg i kontrola zgodności przeszły; 99 – niezgodność indeksu, odrzucony zapis (4xx) albo błąd przebiegu
-(zapytanie poza oknem, odpowiedź z cache, token, którego nie da się odnowić); 107 – przebieg nie ruszył (brak albo odrzucony
+Wynikiem pomiaru jest tylko przebieg z kodem 0: zapisy wysłane w zadanym tempie, każdy z odpowiedzią, każda zmiana próbek
+świeżości zobaczona w limicie czasu i kontrola zgodności ukończona bez niezgodności. Werdykt z przyczynami jest w wierszu
+`verdict:` wyjścia i w `verdict` pliku `writes.json` (`passed`, `reasons`). Przebieg, który nie jest pomiarem, kończy się kodem
+99, nawet gdy kontrola zgodności przeszła:
+
+- zapis pominięty w tempie (`changes.dropped`: limit `WRITE_MAX_IN_FLIGHT` albo brak wolnego wariantu `bulk`, gdy zmiany cen
+  czekają na odpowiedź; wtedy zwiększ `WRITE_SAMPLE` albo limit);
+- zapis bez odpowiedzi w `WRITE_TIMEOUT_SECONDS` albo z 5xx (`changes.unanswered`); kontrola zgodności i tak sprawdza takie
+  warianty względem każdego możliwego stanu;
+- zmiana próbki świeżości niewidoczna w `FRESHNESS_TIMEOUT_SECONDS` (`freshness.timeouts`): nie ma jej w percentylach, więc
+  `freshness.percentiles_valid` jest `false`, a p95 i p99 nie są wynikiem W16;
+- kontrola zgodności nieukończona (`finished: false`), także ucięta przez `maxDuration` scenariusza.
+
+Kody wyjścia: 0 – pomiar w zadanym tempie z kontrolą zgodności bez niezgodności; 99 – przebieg nie jest takim pomiarem
+(przyczyny wyżej), niezgodność indeksu, odrzucony zapis (4xx) albo błąd przebiegu (zapytanie poza oknem, odpowiedź z cache,
+token, którego nie da się odnowić); 107 – przebieg nie ruszył (brak albo odrzucony
 token, token pracownika bez roli `admin`, API albo Keycloak nie odpowiada, pusta albo za mała próba, zła wartość ustawienia);
 105 – przerwany; 2 – środowisko (brak Dockera, `ADMIN_REFRESH_TOKEN`, stosu albo katalogu `WRITES_OUT`). Każdy przypadek
 podaje przyczynę.
@@ -147,7 +161,9 @@ z losowych porcji mapy strony (jeden wariant na produkt), bez dostępnego stanu 
 (`level=out_of_stock`). Wariant wchodzi do próby, gdy panel zna wersję jego ceny, indeks pokazuje go jak oferta (zapytanie
 wariantu przy cenie początkowej znajduje produkt wtedy i tylko wtedy, gdy wariant jest możliwy do kupienia) i zapytanie
 przy każdej cenie, którą może dostać, ma `total` poniżej okna 10 000. Pominięte warianty są policzone według przyczyny
-(`left_out`). Części próby:
+(`left_out`). Kandydat pominięty, bo indeks różnił się na początku od oferty, daje ostrzeżenie `WARNING` w setupie
+i w podsumowaniu: indeks może mieć zaległość albo niezgodność z bazą (W13), np. po przerwanym przebiegu; sprawdź wtedy kolejkę
+i `failed`. Części próby:
 
 - `unstocked` (udział `WRITE_UNSTOCKED_SHARE`): każdy dostaje jedno przyjęcie (1 szt.), rozłożone równo w czasie przebiegu;
   to próbka świeżości dostępności. Brak takich wariantów przy udziale większym od 0 albo mniej niż potrzeba kończy przebieg
@@ -174,7 +190,8 @@ Po ostatniej odpowiedzi zapisu kontrola liczy oczekiwany stan każdego wariantu 
 zapisana albo początkowa, dostępność początkowa albo „tak” po przyjęciu) i powtarza zapytania wariantów, aż każde zgadza się
 z oczekiwanym stanem, najdłużej `CHECK_TIMEOUT_SECONDS`. Zapis bez odpowiedzi (brak odpowiedzi w czasie albo 5xx) mógł się
 zapisać albo nie: wariant jest sprawdzany względem każdego stanu, który mógł zostawić, i nie dostaje dalszych zapisów;
-ich liczba to `consistency.uncertain_variants`. Odrzucony zapis (4xx) niczego nie zmienił, ale jest błędem przebiegu.
+ich liczba to `consistency.uncertain_variants`; sam taki zapis sprawia jednak, że przebieg nie jest pomiarem (kod 99, wyżej).
+Odrzucony zapis (4xx) niczego nie zmienił, ale jest błędem przebiegu.
 Każda niezgodność po limicie to wiersz `consistency: mismatch of variant …: expected …, the index shows …` (wariant, stan
 oczekiwany i to, przy których cenach ±1 gr indeks pokazuje wariant) i błąd przebiegu; `consistency.seconds_to_consistent` to
 czas do zgodności. Kontrola zakłada, że w trakcie przebiegu nikt poza scenariuszem nie zmienia wariantów próby i nie zaczyna się promocja, która je obejmuje (zamówienie

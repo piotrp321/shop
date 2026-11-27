@@ -11,9 +11,10 @@
 # for that run. The other settings (WRITE_*, FRESHNESS_*, CHECK_*, API_HOST, KEYCLOAK_HOST: the header of load/writes.js) are
 # passed on when set. WRITES_OUT, an existing directory, gets the result writes.json (also of an interrupted run).
 #
-# Exit code: that of k6 (0 the run and the consistency check passed; 99 a mismatch, a refused write or an error of the run; 107 the
-# run could not start: token, API, Keycloak, empty sample, settings; 105 interrupted), or 2 when the environment is not fit (no
-# Docker, no token, the stack not running, WRITES_OUT not a directory).
+# Exit code: that of k6 (0 a measurement at the rate whose consistency check passed; 99 no such measurement: a write dropped from
+# the rate, unanswered or with a 5xx, a freshness timeout, a refused write, a mismatch, an error of the run or a check that did not
+# finish, the reasons in the line `verdict:`; 107 the run could not start: token, API, Keycloak, empty sample, settings; 105
+# interrupted), or 2 when the environment is not fit (no Docker, no token, the stack not running, WRITES_OUT not a directory).
 set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"

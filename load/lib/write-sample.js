@@ -10,6 +10,8 @@ import { RESULT_WINDOW, allowedPrices, chooseSample, ineligibility } from './wri
 
 const OFFERS_AT_ONCE = 48;
 const STOCK_PAGE = 100;
+// The reason of a candidate whose index differs from its offer at the start: maybe a mismatch left by a previous run (W13).
+export const INDEX_DIFFERS = 'the index differs from the offer at the start';
 
 function shuffled(list) {
   const rest = [...list];
@@ -131,7 +133,7 @@ function verify(candidate, session, skipped) {
     throw new Error(`setup: ${atStart.error}`);
   }
   if (atStart.total >= RESULT_WINDOW || atStart.found !== candidate.purchasable) {
-    count(skipped, atStart.total >= RESULT_WINDOW ? 'the query is beyond the window' : 'the index differs from the offer at the start');
+    count(skipped, atStart.total >= RESULT_WINDOW ? 'the query is beyond the window' : INDEX_DIFFERS);
     return null;
   }
   // Only a purchasable variant gets other prices.
@@ -179,5 +181,10 @@ export function discoverSample(session, settings) {
     stocked: verified(fromSitemap.stocked, stockedWanted, session, skipped),
     unstocked: verified(unstocked, unstockedWanted, session, skipped),
   };
+  if (skipped[INDEX_DIFFERS] > 0) {
+    console.warn(
+      `setup: WARNING ${skipped[INDEX_DIFFERS]} candidates left out because the index differs from the offer at the start: the index may lag or be inconsistent with the database (W13), e.g. after an interrupted run; check the queue and \`failed\` (load/README.md)`,
+    );
+  }
   return { ...chooseSample(candidates, settings, Math.random), skipped };
 }

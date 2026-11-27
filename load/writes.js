@@ -25,16 +25,28 @@
 //   WRITES_RESULT                     the file of the result (JSON), e.g. /out/writes.json
 //   API_URL, API_HOST, KEYCLOAK_URL, KEYCLOAK_HOST, ADMIN_REFRESH_TOKEN   lib/admin.js
 //
-// Exit code (k6): 0 the run and the check passed; 99 a mismatch of the index, a refused write or an error of the run (a variant
-// query beyond the window or answered by a cache, a token that cannot be renewed); 107 the run could not start (no or a refused
-// token, the API or Keycloak not answering, an empty sample, settings out of range); 105 interrupted. Every case says why.
+// Exit code (k6): 0 a measurement at the rate whose check passed; 99 no such measurement (lib/write-state.js, runVerdict: a write
+// not sent at the rate, without an answer or with a 5xx, a change not seen within the freshness timeout, a refused write, a mismatch
+// of the index, an error of the run such as a variant query beyond the window or through a cache or a token that cannot be renewed,
+// a consistency check that did not finish); 107 the run could not start (no or a refused token, the API or Keycloak not answering,
+// an empty sample, settings out of range); 105 interrupted. Every case says why, and the result has the verdict with its reasons.
 import http from 'k6/http';
 import { Counter, Gauge, Trend } from 'k6/metrics';
 import { PanelSession, apiParams, apiUrl, getJson } from './lib/admin.js';
 import { number, text } from './lib/env.js';
 import { find } from './lib/variant-query.js';
-import { discoverSample } from './lib/write-sample.js';
-import { afterPriceChange, afterReceipt, allowedPrices, expectedStates, matchesIndex, nextPrice, startRecord, writeOutcome } from './lib/write-state.js';
+import { INDEX_DIFFERS, discoverSample } from './lib/write-sample.js';
+import {
+  afterPriceChange,
+  afterReceipt,
+  allowedPrices,
+  expectedStates,
+  matchesIndex,
+  nextPrice,
+  runVerdict,
+  startRecord,
+  writeOutcome,
+} from './lib/write-state.js';
 
 function share(name, fallback) {
   const value = number(name, fallback);
@@ -85,10 +97,16 @@ export const options = {
   setupTimeout: '10m',
   userAgent: 'shop-load-k6',
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max', 'count'],
+  // The counts of runVerdict (lib/write-state.js): any of them fails the run. run_finished is 0 from the start of the iteration and 1
+  // only after the consistency check, so a check cut off by maxDuration fails too.
   thresholds: {
+    writes_dropped: ['count==0'],
+    writes_unanswered: ['count==0'],
+    freshness_timeouts: ['count==0'],
     writes_refused: ['count==0'],
     consistency_mismatches: ['count==0'],
     run_errors: ['count==0'],
+    run_finished: ['value==1'],
     // Reported apart (no limit).
     'changes_made{action:price}': [],
     'changes_made{action:receipt}': [],
@@ -437,6 +455,8 @@ class Run {
 }
 
 export default async function (data) {
+  // 0 until the check is done (threshold run_finished: a run cut off by maxDuration fails).
+  finished.add(0);
   await new Run(data).go();
 }
 
@@ -484,6 +504,8 @@ export function handleSummary(summary) {
       price: trendOf(summary, 'freshness_price'),
       availability: trendOf(summary, 'freshness_availability'),
       timeouts: { price: countOf(summary, 'freshness_timeouts{kind:price}'), availability: countOf(summary, 'freshness_timeouts{kind:availability}') },
+      // A change not seen within FRESHNESS_TIMEOUT_SECONDS is not in the percentiles, so with a timeout they are no result of W16.
+      percentiles_valid: countOf(summary, 'freshness_timeouts') === 0,
     },
     consistency: {
       mismatches: countOf(summary, 'consistency_mismatches'),
@@ -498,9 +520,23 @@ export function handleSummary(summary) {
   const c = result.changes;
   const f = result.freshness;
   const k = result.consistency;
+  // The same counts as the thresholds of the options: the verdict says why a run that fails is no measurement.
+  result.verdict = runVerdict({
+    finished: result.finished,
+    dropped: c.dropped,
+    unanswered: c.unanswered,
+    freshnessTimeouts: f.timeouts.price + f.timeouts.availability,
+    refused: c.refused,
+    mismatches: k.mismatches,
+    runErrors: k.run_errors,
+  });
+  const indexDiffered = (data.skipped || {})[INDEX_DIFFERS] || 0;
   const text =
     `\nWrites: ${result.finished ? 'finished' : 'NOT finished (interrupted or stopped before the end of the check)'}\n` +
+    `verdict: ${result.verdict.passed ? 'a measurement at the rate, the index consistent' : `NO MEASUREMENT: ${result.verdict.reasons.join('; ')}`}\n` +
+    (indexDiffered > 0 ? `WARNING: ${indexDiffered} candidates left out because the index differed from the offer at the start (W13; a previous run?)\n` : '') +
     `sample ${result.sample.size} variants; changes made ${c.made} (${c.prices} prices, ${c.receipts} receipts, ${c.per_second}/s), sent ${c.sent}, refused ${c.refused}, unanswered ${c.unanswered}, dropped ${c.dropped}\n` +
+    `freshness${f.percentiles_valid ? '' : ' (NOT a result of W16: changes not seen within the timeout are left out)'}:\n` +
     `freshness of the price: ${f.price.count} samples, p50 ${f.price.p50_ms} ms, p95 ${f.price.p95_ms} ms, p99 ${f.price.p99_ms} ms, max ${f.price.max_ms} ms, timeouts ${f.timeouts.price}\n` +
     `freshness of the availability: ${f.availability.count} samples, p50 ${f.availability.p50_ms} ms, p95 ${f.availability.p95_ms} ms, max ${f.availability.max_ms} ms, timeouts ${f.timeouts.availability}\n` +
     `consistency: ${k.mismatches} mismatches (${k.price} price, ${k.availability} availability), ${k.uncertain_variants} variants checked against several states, consistent after ${k.seconds_to_consistent} s, run errors ${k.run_errors}\n` +
