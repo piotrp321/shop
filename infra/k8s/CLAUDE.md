@@ -66,7 +66,9 @@ serwera” i „Smoke test i check”).
   jest przy celu. Testy i pomiary bez serwera: `check`, `selftest`, `smoke`, `monitoring-smoke` (poza `check` i CI)
   i `load LOAD_OUT=<katalog poza repo>`. `measure` mierzy ścieżkę katalogu wdrożonego sklepu z Joba w klastrze (GET,
   `load/baseline.py`; sklep może zostać zamknięty): agent uruchamia go tylko po zgodzie w rozmowie, która nazywa operację
-  i host; niczego nie zmienia w danych, konfiguracji ani limitach, a Job i ConfigMap usuwa po sobie.
+  i host; niczego nie zmienia w danych, konfiguracji ani limitach, a Job i ConfigMap usuwa po sobie. Etap `k6` przyjmuje tylko
+  scenariusze odczytu (`home`, `category`, `product`, `search`; walidacja przed utworzeniem czegokolwiek), wynik jest
+  kompletny dopiero z markerem `##DONE` i bez `##FAILED`, a `run-parameters.txt` zapisuje rewizję, skróty narzędzi, obrazy, zmienne i seed.
 - `load` z `LOAD_DATA` innym niż `seed` (`medium`, `server`, `full`) agent uruchamia tylko po zgodzie użytkownika
   w rozmowie: generator działa godzinami, dane zajmują dziesiątki do setek GB dysku, a cel czyta dane dostępu do prywatnego
   bucketu puli zdjęć z pliku użytkownika (`DEMO_PHOTOS_ENV_FILE`), którego agent nie czyta ani nie wypisuje. Do klastra
