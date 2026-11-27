@@ -109,6 +109,22 @@ json.dump(result(fig(other_4xx=2)), open('$work/p4panel/p4-with-run1/panel.json'
 expect "P4 is not failed by the failures of the panel alone" 0 "no dropped request, in both variants) met" -- python3 -I "$load/panel_report.py" "$work/p4panel" p4
 expect "P4 lists the failures of the panel apart" 0 "with run 1 panel mix: 2 failed" -- python3 -I "$load/panel_report.py" "$work/p4panel" p4
 
+# D7 of the spec: a difference above the spread of the runs without the panel, but within 5 ms (p50) or 10 ms (p95, p99), is within the noise; a larger one is not.
+mkdir -p "$work/d7small/p4-without-run1" "$work/d7small/p4-with-run1" "$work/d7large/p4-without-run1" "$work/d7large/p4-with-run1"
+python3 -I -c "
+import json
+def fig(p50, p95, p99):
+    return {'requests': 100, 'requests_per_second': 5, 'p50_ms': p50, 'p90_ms': 20, 'p95_ms': p95, 'p99_ms': p99, 'max_ms': 50.0, 'server_error_rate': 0, 'conflicts_409': 0, 'rate_limited_429': 0, 'other_4xx': 0}
+def result(p50, p95, p99):
+    return {'panel_rate': 5, 'seconds': 60, 'shop_listing_rate': 15, 'shop_cart_rate': 5, 'panel': fig(1, 1, 1), 'shop_listing': fig(p50, p95, p99), 'shop_cart': fig(p50, p95, p99), 'dropped': {'panel': 0, 'shop_listing': 0, 'shop_cart': 0}, 'classes': {'fast': fig(1, 1, 1)}}
+json.dump(result(10.0, 30.0, 60.0), open('$work/d7small/p4-without-run1/panel.json', 'w'))
+json.dump(result(14.0, 38.0, 68.0), open('$work/d7small/p4-with-run1/panel.json', 'w'))
+json.dump(result(10.0, 30.0, 60.0), open('$work/d7large/p4-without-run1/panel.json', 'w'))
+json.dump(result(14.0, 45.0, 68.0), open('$work/d7large/p4-with-run1/panel.json', 'w'))"
+expect "P4 D7: +4 ms p50 and +8 ms p95 and p99 are within the noise" 0 "10% of the median, 5 ms for p50 and 10 ms for p95 and p99) met" -- python3 -I "$load/panel_report.py" "$work/d7small" p4
+expect "P4 the spread alone calls the same differences too large" 0 "(difference of the medians within the spread without the panel) not met" -- python3 -I "$load/panel_report.py" "$work/d7small" p4
+expect "P4 D7: +15 ms p95 is not within the noise" 0 "not met: shop listings p95_ms, shop carts p95_ms" -- python3 -I "$load/panel_report.py" "$work/d7large" p4
+
 # k6: the script stops before the first request when its input is missing or broken.
 if command -v docker > /dev/null 2>&1; then
   printf '{}' > "$work/empty.json"

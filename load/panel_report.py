@@ -149,6 +149,7 @@ def p4(directory):
     lines.append("")
     lines.append("The median of the runs; the spread without the panel is the highest minus the lowest run (the criterion: the difference of the medians is not above it)")
     verdict = []
+    verdict_d7 = []
     for scenario, key in (("shop listings", "shop_listing"), ("shop carts", "shop_cart")):
         for metric in ("p50_ms", "p95_ms", "p99_ms"):
             a, b = medians.get(("without", key), {}).get(metric), medians.get(("with", key), {}).get(metric)
@@ -158,10 +159,17 @@ def p4(directory):
             med_b = statistics.median(b)
             noise = high - low
             difference = med_b - med_a
-            lines.append(f"  {scenario:14}{metric:8} without {med_a:g} ms (spread {noise:g}), with {med_b:g} ms, difference {difference:+g} ms: " + ("within the spread" if abs(difference) <= noise else "ABOVE the spread"))
+            # D7 of the spec: the difference is within the largest of twice the spread without the panel, 10% of the median without it, and 5 ms (p50) or 10 ms (p95, p99).
+            limit = max(2 * noise, 0.10 * med_a, 5.0 if metric == "p50_ms" else 10.0)
+            lines.append(f"  {scenario:14}{metric:8} without {med_a:g} ms (spread {noise:g}), with {med_b:g} ms, difference {difference:+g} ms: "
+                         + ("within the spread" if abs(difference) <= noise else "ABOVE the spread")
+                         + f"; D7 limit {limit:.1f} ms: " + ("within" if abs(difference) <= limit else "ABOVE"))
             if abs(difference) > noise:
                 verdict.append(f"{scenario} {metric}")
+            if abs(difference) > limit:
+                verdict_d7.append(f"{scenario} {metric}")
     lines.append("P4 (difference of the medians within the spread without the panel) " + ("met" if not verdict else "not met: " + ", ".join(verdict)))
+    lines.append("P4 (D7: difference within the largest of 2 x the spread, 10% of the median, 5 ms for p50 and 10 ms for p95 and p99) " + ("met" if not verdict_d7 else "not met: " + ", ".join(verdict_d7)))
     # The failures and the dropped requests of the SHOP in every run, with the answers they are made of: P4 asks that the shop has none in both variants
     # (spec: "błędy sklepu"). The failures of the panel mix are not a cost to the shop: they are listed apart and do not decide P4 (W7 counts them).
     problems = []
