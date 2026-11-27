@@ -174,9 +174,9 @@ final class DbalSitemapProductSourceCutTest extends KernelTestCase
 
     public function testACutInsideATransactionOfTheCallerThatHasNoSnapshotStillReadsOneConsistentState(): void
     {
-        // READ COMMITTED gives every statement its own snapshot, so the cut is made of one statement.
+        // READ COMMITTED gives every statement its own snapshot, so the cut is made of one statement (no statement
+        // for the data to change between).
         $this->insert(10, 20, 30, 40, 50, 60, 70, 80, 90, 100);
-        $this->changeTheDataDuringTheCut();
         $this->cutting->beginTransaction();
 
         try {

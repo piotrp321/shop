@@ -206,6 +206,7 @@ services:
     App\Catalog\Infrastructure\Persistence\Doctrine\CachingSitemapProductSource:
         arguments:
             $inner: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalSitemapProductSource'
+            $chunkSize: '%app.sitemap.chunk_size%'
 
     # The logs of a token that cannot be verified (an error each, from the caller's input) go to the `security` channel,
     # which neither the Sentry handler nor the `fingers_crossed` buffer of `prod` takes (config/packages/monolog.yaml;
