@@ -88,7 +88,6 @@ final class ProductSearchFacetsTest extends TestCase
         self::assertSame(2, $first->total);
         self::assertSame([
             ['Kolor', [['czarne', 2], ['biały', 1]]],
-            ['Materiał', [['skóra', 1], ['tkanina', 1]]],
             ['Rozmiar', [['42', 2], ['43', 1]]],
         ], $this->shape($first->facets));
 
@@ -97,25 +96,23 @@ final class ProductSearchFacetsTest extends TestCase
         self::assertSame(1, $second->total);
         self::assertSame([
             ['Kolor', [['czarne', 1]]],
-            ['Materiał', [['tkanina', 1]]],
             ['Rozmiar', [['42', 1]]],
         ], $this->shape($second->facets));
         self::assertSame(1, $second->facets->availableCount);
         self::assertSame([9000, 10000], [$second->facets->price?->min, $second->facets->price?->max]);
     }
 
-    public function testThreeSelectedAxesCountFreeAndSelectedAxesOnOneVariant(): void
+    public function testTwoSelectedAxesWithSeveralValuesCountFreeAndSelectedValuesOnOneVariant(): void
     {
         $this->index(self::shoes());
 
-        $result = $this->search(new ProductSearchCriteria(1, 24, options: ['Kolor' => ['czarne', 'biały'], 'Rozmiar' => ['42'], 'Materiał' => ['skóra']]));
+        $result = $this->search(new ProductSearchCriteria(1, 24, options: ['Kolor' => ['czarne', 'biały'], 'Rozmiar' => ['42']]));
 
-        // Variants with 42 and skóra: P1 czarne, P3 biały.
-        self::assertSame(2, $result->total);
+        // Variants with 42 in black or white: P1 czarne, P2 czarne, P3 biały.
+        self::assertSame(3, $result->total);
         self::assertSame([
-            ['Kolor', [['biały', 1], ['czarne', 1]]],
-            ['Materiał', [['skóra', 2], ['tkanina', 1]]],
-            ['Rozmiar', [['42', 2], ['43', 1]]],
+            ['Kolor', [['czarne', 2], ['biały', 1]]],
+            ['Rozmiar', [['42', 3], ['43', 2]]],
         ], $this->shape($result->facets));
     }
 
@@ -194,9 +191,9 @@ final class ProductSearchFacetsTest extends TestCase
     }
 
     /**
-     * Product 1: black 42 leather 100 zł buyable; white 43 fabric 120 zł buyable.
-     * Product 2: black 43 leather 150 zł not buyable; black 42 fabric 90 zł buyable.
-     * Product 3: white 42 leather 200 zł buyable. Product 4: green 44 fabric without a price.
+     * Product 1: black 42 100 zł buyable; white 43 120 zł buyable.
+     * Product 2: black 43 150 zł not buyable; black 42 90 zł buyable.
+     * Product 3: white 42 200 zł buyable. Product 4: green 44 without a price.
      *
      * @return list<ProductDocument>
      */
@@ -204,15 +201,15 @@ final class ProductSearchFacetsTest extends TestCase
     {
         return [
             FacetFixtures::product('p1', [
-                FacetFixtures::variant(['Kolor' => 'czarne', 'Rozmiar' => '42', 'Materiał' => 'skóra'], 10000, true),
-                FacetFixtures::variant(['Kolor' => 'biały', 'Rozmiar' => '43', 'Materiał' => 'tkanina'], 12000, true),
+                FacetFixtures::variant(['Kolor' => 'czarne', 'Rozmiar' => '42'], 10000, true),
+                FacetFixtures::variant(['Kolor' => 'biały', 'Rozmiar' => '43'], 12000, true),
             ]),
             FacetFixtures::product('p2', [
-                FacetFixtures::variant(['Kolor' => 'czarne', 'Rozmiar' => '43', 'Materiał' => 'skóra'], 15000, false),
-                FacetFixtures::variant(['Kolor' => 'czarne', 'Rozmiar' => '42', 'Materiał' => 'tkanina'], 9000, true),
+                FacetFixtures::variant(['Kolor' => 'czarne', 'Rozmiar' => '43'], 15000, false),
+                FacetFixtures::variant(['Kolor' => 'czarne', 'Rozmiar' => '42'], 9000, true),
             ]),
-            FacetFixtures::product('p3', [FacetFixtures::variant(['Kolor' => 'biały', 'Rozmiar' => '42', 'Materiał' => 'skóra'], 20000, true)]),
-            FacetFixtures::product('p4', [FacetFixtures::variant(['Kolor' => 'zielone', 'Rozmiar' => '44', 'Materiał' => 'tkanina'], null, false)]),
+            FacetFixtures::product('p3', [FacetFixtures::variant(['Kolor' => 'biały', 'Rozmiar' => '42'], 20000, true)]),
+            FacetFixtures::product('p4', [FacetFixtures::variant(['Kolor' => 'zielone', 'Rozmiar' => '44'], null, false)]),
         ];
     }
 

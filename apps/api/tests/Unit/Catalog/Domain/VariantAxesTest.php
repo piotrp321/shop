@@ -64,8 +64,6 @@ final class VariantAxesTest extends TestCase
     public function testAThirdAxisIsRejectedWhateverTheNamesAre(): void
     {
         // The search model counts a variant with at most two options (spec search, M1).
-        self::assertSame(2, VariantAxes::MAX_AXES);
-
         foreach ([['A', 'B', 'C'], ['Kolor', 'Rozmiar', 'Materiał'], ['a', 'b', 'c', 'd']] as $names) {
             try {
                 VariantAxes::fromList($names);

@@ -413,8 +413,11 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   główna pierwsza), `category_ancestor_ids` (keyword, suma kategorii produktu i wszystkich ich przodków, bez
   powtórzeń), `main_image` (obiekt z `enabled: false`: `key`, `alt`), `variants` (`nested`, obiekt na wariant
   w kolejności Catalog: `gross` long, brak przy braku ceny; `purchasable` boolean;
-  `options` keyword, pary `<oś>` U+001F `<wartość>` dokładnie jak w Catalog; `pairs` nested w wariancie, obiekt
-  `{axis, value}` (keyword) na parę; wariant domyślny bez osi ma puste `options` i `pairs`), `from_gross` (long, cena „od”; brak, gdy produkt nie ma wariantu możliwego do kupienia), `sort_path` (keyword bez
+  `options` keyword, pary `<oś>` U+001F `<wartość>` dokładnie jak w Catalog; `axes` keyword, osie wariantu; `pairs` nested w wariancie, obiekt
+  `{axis, value}` (keyword) na parę; wariant domyślny bez osi ma puste `options`, `axes` i `pairs`), pola produktu z tokenami faset
+  (`facets`, `buy_facets`, `pair_any`, `pair_buy`: keyword; składnia i reguły w `docs/features/search/spec.md`, „Dokument”;
+  budowa dokumentu odrzuca produkt łamiący reguły modelu), `purchasable` (boolean), `buy_prices` (long bez `doc_values`: różne ceny wariantów
+  możliwych do kupienia) i `max_gross` (long, najwyższa taka cena; brak bez takiego wariantu), `from_gross` (long, cena „od”; brak, gdy produkt nie ma wariantu możliwego do kupienia), `sort_path` (keyword bez
   indeksu: identyfikatory ścieżki głównej kategorii od korzenia połączone `/`, klucz sortowania indeksu).
   `nested` sprawia, że warunki na osie, cenę i dostępność dotyczą jednego wariantu. `gross`, `purchasable`
   i `from_gross` pochodzą z oferty Cart (port `ProductOfferFacts`, opis w `docs/features/search/spec.md`).

@@ -80,12 +80,18 @@ final readonly class ProductIndexDefinition
     }
 
     /**
-     * The _source of a document.
+     * The _source of a document. The fields derived from the variants (the axes of a variant, the tokens, the prices to
+     * filter by) are written here and never read back by {@see document()}.
      *
      * @return array<string, mixed>
+     *
+     * @throws SearchIndexError when the product breaks a rule of the facet model ({@see ProductFacetTokens::of()})
      */
     public static function source(ProductDocument $document): array
     {
+        // Refuses a product the facet model cannot count correctly, before anything is written.
+        $tokens = ProductFacetTokens::of($document);
+
         return [
             'id' => $document->id,
             'version' => $document->version,
@@ -98,14 +104,23 @@ final readonly class ProductIndexDefinition
             'category_ancestor_ids' => $document->categoryAncestorIds,
             'main_image' => $document->mainImage,
             'category_names' => $document->categoryNames,
-            'variants' => array_map(static fn (VariantDocument $variant): array => [
+            'variants' => array_map(static fn (VariantDocument $variant, array $axes): array => [
                 // No price: no field, so a price range never matches the variant.
                 ...(null === $variant->gross ? [] : ['gross' => $variant->gross]),
                 'purchasable' => $variant->purchasable,
                 'options' => $variant->options,
+                'axes' => $axes,
                 // The same pairs as objects, for the facets: they list the axes and values without knowing the names.
                 'pairs' => array_map(self::pair(...), $variant->options),
-            ], $document->variants),
+            ], $document->variants, $tokens->variantAxes),
+            'facets' => $tokens->facets,
+            'buy_facets' => $tokens->buyFacets,
+            'pair_any' => $tokens->pairAny,
+            'pair_buy' => $tokens->pairBuy,
+            'purchasable' => $tokens->purchasable,
+            'buy_prices' => $tokens->buyPrices,
+            // No purchasable variant, no field.
+            ...(null === $tokens->maxGross ? [] : ['max_gross' => $tokens->maxGross]),
             ...(null === $document->fromGross ? [] : ['from_gross' => $document->fromGross]),
             'status' => $document->status->value,
         ];
@@ -263,11 +278,25 @@ final readonly class ProductIndexDefinition
                         'purchasable' => ['type' => 'boolean'],
                         // "<axis>" U+001F "<value>", as in Catalog (case kept); the variant conditions match here.
                         'options' => $keyword,
+                        // The axes of the variant, for the facet of an axis with several values of one axis.
+                        'axes' => $keyword,
                         // The same pairs as {axis, value}, nested in the variant (not in the product): the facets
                         // count axes, then values, per variant that meets the conditions.
                         'pairs' => ['type' => 'nested', 'properties' => ['axis' => $keyword, 'value' => $keyword]],
                     ],
                 ],
+                // The tokens of the product for conditions and facets in one pass (see ProductFacetTokens): `facets` of
+                // all variants, `buy_facets` of the purchasable ones; `pair_*` pair the options of one variant.
+                'facets' => $keyword,
+                'buy_facets' => $keyword,
+                'pair_any' => $keyword,
+                'pair_buy' => $keyword,
+                // Some variant can be bought.
+                'purchasable' => ['type' => 'boolean'],
+                // The distinct prices of the purchasable variants; only a range filter reads them.
+                'buy_prices' => ['type' => 'long', 'doc_values' => false],
+                // The highest price of the purchasable variants; absent without one.
+                'max_gross' => ['type' => 'long'],
                 // The lowest price of the purchasable variants; absent without one.
                 'from_gross' => ['type' => 'long'],
                 // `published` or `draft`: every query of the store matches `published` only, a draft stays as a

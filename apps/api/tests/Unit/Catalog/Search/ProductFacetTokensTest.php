@@ -26,8 +26,6 @@ final class ProductFacetTokensTest extends TestCase
     public function testTheSeparatorsAreTheOnesTheRuleOfTextsForbids(): void
     {
         // A name or a value cannot contain them, so a token is read without ambiguity.
-        self::assertSame("\u{1E}", ProductFacetTokens::PAIR_SEPARATOR);
-        self::assertSame("\u{1F}", VariantDocument::OPTION_SEPARATOR);
         self::assertTrue(Text::hasForbiddenCharacters('a'.ProductFacetTokens::PAIR_SEPARATOR.'b'));
         self::assertTrue(Text::hasForbiddenCharacters('a'.VariantDocument::OPTION_SEPARATOR.'b'));
     }

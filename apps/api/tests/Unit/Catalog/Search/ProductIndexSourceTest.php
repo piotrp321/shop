@@ -32,8 +32,8 @@ final class ProductIndexSourceTest extends TestCase
         self::assertEqualsCanonicalizing([
             '#p', '#c', '@Kolor', '@Rozmiar', 'Kolor'.self::US.'Białe', 'Rozmiar'.self::US.'43',
         ], $source['buy_facets']);
-        self::assertCount(8, $source['pair_any']);
-        self::assertCount(4, $source['pair_buy']);
+        self::assertCount(8, self::list($source, 'pair_any'));
+        self::assertCount(4, self::list($source, 'pair_buy'));
         self::assertTrue($source['purchasable']);
         self::assertSame([19_900], $source['buy_prices']);
         self::assertSame(19_900, $source['max_gross']);
@@ -62,7 +62,7 @@ final class ProductIndexSourceTest extends TestCase
         self::assertSame([], $source['buy_prices']);
         self::assertSame([], $source['buy_facets']);
         self::assertSame([], $source['pair_buy']);
-        self::assertNotContains('$', $source['facets']);
+        self::assertNotContains('$', self::list($source, 'facets'));
     }
 
     public function testADraftHasTheTokensOfItsVariantsAndNoPrices(): void
@@ -70,7 +70,7 @@ final class ProductIndexSourceTest extends TestCase
         $source = ProductIndexDefinition::source(self::document([new VariantDocument(null, false, ['Kolor'.self::US.'czarne'])], fromGross: null, status: ProductStatus::Draft));
 
         self::assertSame('draft', $source['status']);
-        self::assertContains('@Kolor', $source['facets']);
+        self::assertContains('@Kolor', self::list($source, 'facets'));
         self::assertFalse($source['purchasable']);
         self::assertSame([], $source['buy_prices']);
         self::assertArrayNotHasKey('max_gross', $source);
@@ -201,5 +201,18 @@ final class ProductIndexSourceTest extends TestCase
         }
 
         return $data;
+    }
+
+    /**
+     * @param array<string, mixed> $source
+     *
+     * @return array<mixed>
+     */
+    private static function list(array $source, string $field): array
+    {
+        $value = $source[$field] ?? null;
+        \assert(\is_array($value));
+
+        return $value;
     }
 }
