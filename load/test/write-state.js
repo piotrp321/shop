@@ -13,6 +13,9 @@ import {
   matchesIndex,
   nextPrice,
   runVerdict,
+  sendTolerance,
+  isLate,
+  tokenAction,
   startRecord,
   writeOutcome,
 } from '../lib/write-state.js';
@@ -155,7 +158,7 @@ function sampling() {
 }
 
 function verdicts() {
-  const clean = { finished: true, dropped: 0, unanswered: 0, freshnessTimeouts: 0, refused: 0, mismatches: 0, runErrors: 0 };
+  const clean = { finished: true, dropped: 0, unanswered: 0, freshnessTimeouts: 0, refused: 0, mismatches: 0, runErrors: 0, late: 0 };
   const failsWith = (counts, fragment) => {
     const verdict = runVerdict({ ...clean, ...counts });
     return verdict.passed === false && verdict.reasons.length === 1 && verdict.reasons[0].includes(fragment);
@@ -163,6 +166,7 @@ function verdicts() {
   verify({
     'a finished run without a failure passes': () => same(runVerdict(clean), { passed: true, reasons: [] }),
     'a write not sent at the rate fails the run (it is no measurement at the rate)': () => failsWith({ dropped: 1 }, 'not sent at the rate'),
+    'a write sent later than the tolerance fails the run (not sent at the rate)': () => failsWith({ late: 2 }, 'later than'),
     'a write without an answer or with a 5xx fails the run': () => failsWith({ unanswered: 2 }, 'without an answer'),
     'a change not seen within the freshness timeout fails the run (the percentiles leave it out)': () =>
       failsWith({ freshnessTimeouts: 1 }, 'not seen within'),
@@ -171,8 +175,24 @@ function verdicts() {
     'an error of the run fails it': () => failsWith({ runErrors: 1 }, 'error'),
     'a consistency check that did not finish fails the run': () => failsWith({ finished: false }, 'did not finish'),
     'the reasons give the numbers': () => runVerdict({ ...clean, dropped: 4 }).reasons[0].includes('4'),
-    'every failure is a reason of its own': () => runVerdict({ ...clean, finished: false, dropped: 1, unanswered: 1, freshnessTimeouts: 1 }).reasons.length === 4,
+    'every failure is a reason of its own': () => runVerdict({ ...clean, finished: false, dropped: 1, late: 1, unanswered: 1, freshnessTimeouts: 1 }).reasons.length === 5,
     'a missing count fails the run': () => runVerdict({ finished: true }).passed === false,
+  });
+}
+
+function timing() {
+  const now = 1_000_000;
+  verify({
+    'the tolerance of a send is one interval of the rate': () => sendTolerance(50, undefined) === 20 && sendTolerance(2, undefined) === 500,
+    'a tolerance given in the settings replaces it': () => sendTolerance(50, 100) === 100,
+    'a write sent on time is not late': () => isLate(now, now, 20) === false,
+    'a write sent up to the tolerance after its time is not late': () => isLate(now, now + 20, 20) === false,
+    'a write sent later than the tolerance is late': () => isLate(now, now + 21, 20) === true,
+    'a token valid for longer than the renewal window is used as it is': () => tokenAction(now + 120_000, now) === 'use',
+    'a token in the renewal window is used and renewed in the background (no write waits for Keycloak)': () =>
+      tokenAction(now + 59_000, now) === 'use_and_renew' && tokenAction(now + 11_000, now) === 'use_and_renew',
+    'a token about to expire is renewed before the request': () => tokenAction(now + 10_000, now) === 'wait' && tokenAction(now + 1_000, now) === 'wait',
+    'an expired token or none is renewed before the request': () => tokenAction(now - 1, now) === 'wait' && tokenAction(null, now) === 'wait',
   });
 }
 
@@ -184,4 +204,5 @@ export default function () {
   eligibility();
   sampling();
   verdicts();
+  timing();
 }

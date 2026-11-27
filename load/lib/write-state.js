@@ -158,3 +158,9 @@ export function runVerdict(counts) {
   }
   return { passed: reasons.length === 0, reasons };
 }
+
+export function sendTolerance(rate, overrideMs) {}
+
+export function isLate(dueMs, sentMs, toleranceMs) {}
+
+export function tokenAction(expiresAt, now) {}
