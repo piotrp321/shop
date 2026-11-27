@@ -58,10 +58,11 @@ final class DbalSitemapProductSourceTest extends KernelTestCase
             return $rows;
         });
 
-        $items = $this->source($logger, $spy)->publishedInRange(SitemapChunkKey::between(null, null));
+        $read = $this->source($logger, $spy)->publishedInRange(SitemapChunkKey::between(null, null));
 
         self::assertSame(self::LIMIT + 1, $rowsRead);
-        self::assertSame(['product-1', 'product-3'], array_column($this->rows($items), 'slug'));
+        self::assertSame(['product-1', 'product-3'], array_column($this->rows($read->products), 'slug'));
+        self::assertTrue($read->overflowed);
         self::assertCount(1, $logger->records);
         self::assertSame('warning', $logger->records[0][0]);
     }
@@ -71,9 +72,10 @@ final class DbalSitemapProductSourceTest extends KernelTestCase
         $this->createProducts(self::LIMIT, [1]);
         $logger = new SpyLogger();
 
-        $items = $this->source($logger, $this->connection)->publishedInRange(SitemapChunkKey::between(null, null));
+        $read = $this->source($logger, $this->connection)->publishedInRange(SitemapChunkKey::between(null, null));
 
-        self::assertCount(self::LIMIT - 1, $items);
+        self::assertCount(self::LIMIT - 1, $read->products);
+        self::assertFalse($read->overflowed);
         self::assertSame([], $logger->records);
     }
 
@@ -82,9 +84,10 @@ final class DbalSitemapProductSourceTest extends KernelTestCase
         $this->createProducts(self::LIMIT + 3, range(1, self::LIMIT + 3));
         $logger = new SpyLogger();
 
-        $items = $this->source($logger, $this->connection)->publishedInRange(SitemapChunkKey::between(null, null));
+        $read = $this->source($logger, $this->connection)->publishedInRange(SitemapChunkKey::between(null, null));
 
-        self::assertSame([], $items);
+        self::assertSame([], $read->products);
+        self::assertTrue($read->overflowed);
         self::assertCount(1, $logger->records);
         self::assertSame('warning', $logger->records[0][0]);
     }
@@ -93,9 +96,10 @@ final class DbalSitemapProductSourceTest extends KernelTestCase
     {
         $this->createProducts(6, []);
 
-        $items = $this->source(new SpyLogger(), $this->connection)->publishedInRange(SitemapChunkKey::between(self::id(2), self::id(5)));
+        $read = $this->source(new SpyLogger(), $this->connection)->publishedInRange(SitemapChunkKey::between(self::id(2), self::id(5)));
 
-        self::assertSame(['product-2', 'product-3', 'product-4'], array_column($this->rows($items), 'slug'));
+        self::assertSame(['product-2', 'product-3', 'product-4'], array_column($this->rows($read->products), 'slug'));
+        self::assertFalse($read->overflowed);
     }
 
     public function testTheBoundariesAreTheIdsAfterEveryChunkSizeOfAllProductsDraftsIncluded(): void

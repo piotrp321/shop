@@ -179,6 +179,30 @@ final class SitemapProductQueriesTest extends KernelTestCase
         );
     }
 
+    public function testAChunkThatOutgrewTheRowLimitAfterTheCutMakesTheNextChunkListCutAgainWithoutGaps(): void
+    {
+        $this->createProducts(7);
+        self::assertCount(3, $this->chunkKeys());
+        // 12 products arrive in the last chunk (open end): 13 products, the test limit is 10.
+        for ($number = 8; $number <= 19; ++$number) {
+            $this->createProduct($number);
+        }
+        // The cut is kept until a chunk is read past the limit.
+        $keys = $this->chunkKeys();
+        self::assertCount(3, $keys);
+
+        self::assertCount(10, $this->items($keys[2])->items);
+
+        self::assertCount(7, $this->chunkKeys());
+        $slugs = [];
+        foreach ($this->chunkKeys() as $key) {
+            foreach ($this->items($key)->items as $item) {
+                $slugs[] = $item->slug;
+            }
+        }
+        self::assertSame(array_map(static fn (int $n): string => 'product-'.$n, range(1, 19)), $slugs);
+    }
+
     public function testTheBoundariesAreNotReadAgainWithinTheirTimeToLive(): void
     {
         $this->createProducts(7);
