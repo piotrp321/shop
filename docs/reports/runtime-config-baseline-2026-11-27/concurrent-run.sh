@@ -1,5 +1,6 @@
 #!/bin/sh
-# Usage, from the repository root on the perf1 stack (report, section 4): sh docs/reports/runtime-config-baseline-2026-11-27/concurrent-run.sh <output directory>
+# Usage, from the repository root on the perf1 stack (report, sections 4 and 8): sh docs/reports/runtime-config-baseline-2026-11-27/concurrent-run.sh <output directory> [pg]
+# pg: only steps 0-2 (the Postgres part: W3 and the reindex with the mix), for a run with another Postgres configuration.
 # Block 3 of the PERF-1 task 1 measurement: everything at once on perf1 (prod limits, API 2g, Postgres default).
 set -u
 O="$1"; mkdir -p "$O"
@@ -35,6 +36,7 @@ wait $REINDEX; echo "reindex exit=$?" >> "$O/phases.txt"; stamp "reindex end"
 wait $MIX; echo "mix exit=$?" >> "$O/phases.txt"; stamp "concurrent end"
 snap concurrent
 python3 load/baseline.py report "$O/mix.jsonl" > "$O/mix.report.txt" 2>&1
+if [ "${2:-}" = pg ]; then kill $SAMPLER; stamp "done"; exit 0; fi
 
 # 3. API: 16 parallel heaviest requests (16 different sitemap chunks), memory of the API sampled every second.
 stamp "api16 start"

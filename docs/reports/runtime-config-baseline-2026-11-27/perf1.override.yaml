@@ -11,8 +11,9 @@ x-api-prod: &api-prod
   build: !reset null
   volumes: !reset []
 services:
-  # The variables give the configurations of the verifier runs (report, section 3); unset, they are the defaults of prod
-  # (limit 2Gi, shared_buffers 128MB) and auto_explain logs nothing (-1).
+  # The variables give the configurations of the verifier runs (report, sections 3 and 8); unset, they are the defaults
+  # of prod (limit 2Gi, shared_buffers 128MB, the other settings below at the defaults of Postgres) and auto_explain logs
+  # nothing (-1).
   postgres:
     mem_limit: ${PERF1_PG_MEMORY:-2g}
     command:
@@ -25,6 +26,18 @@ services:
       - track_io_timing=on
       - -c
       - shared_buffers=${PERF1_PG_SHARED_BUFFERS:-128MB}
+      - -c
+      - effective_cache_size=${PERF1_PG_EFFECTIVE_CACHE_SIZE:-4GB}
+      - -c
+      - maintenance_work_mem=${PERF1_PG_MAINTENANCE_WORK_MEM:-64MB}
+      - -c
+      - autovacuum_work_mem=${PERF1_PG_AUTOVACUUM_WORK_MEM:--1}
+      - -c
+      - max_wal_size=${PERF1_PG_MAX_WAL_SIZE:-1GB}
+      - -c
+      - checkpoint_timeout=${PERF1_PG_CHECKPOINT_TIMEOUT:-5min}
+      - -c
+      - wal_compression=${PERF1_PG_WAL_COMPRESSION:-off}
       - -c
       - auto_explain.log_min_duration=${PERF1_AUTO_EXPLAIN_MS:--1}
       - -c

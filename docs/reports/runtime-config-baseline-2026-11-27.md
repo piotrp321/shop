@@ -452,3 +452,50 @@ Na Postgres i Elasticsearch zostaje więc 17,7 − 9,9 = **ok. 7,8 GiB** limitó
 ## 7. Zgłoszenie: zapytania weryfikatora
 
 Konstrukcja zapytań weryfikatora jest poza PERF-1. Zgłoszenie z dowodami z sekcji 3: #980.
+
+## 8. Wariant startowy: Postgres 3,75 GiB, `shared_buffers` 1 GiB [medium]
+
+Blok C (2026-11-27, 23:01–23:15 UTC), na życzenie właściciela po przyjęciu ustawień z sekcji 5.3 jako konfiguracji
+startowej. Wynik dla 6 GiB z sekcji 3 nie potwierdza konfiguracji docelowej.
+
+Konfiguracja i procedura:
+
+- **Postgres:** limit 3840 MiB (`memory.max` 4026531840). Ustawienia: `shared_buffers` 1 GB, `effective_cache_size`
+  3 GB, `maintenance_work_mem` 256 MB, `autovacuum_work_mem` 128 MB, `max_wal_size` 8 GB, `checkpoint_timeout`
+  15 min, `wal_compression` lz4. `jit` i `work_mem` mają wartości domyślne, co potwierdza `SHOW`. Wartości ustawiają
+  zmienne `PERF1_PG_*` nadpisania. Reszta stosu jak w sekcji 4: zasoby `prod`, API 2 GiB.
+- **Kolejność:**
+  1. świeży start stosu i zrzucenie cache maszyny Dockera;
+  2. `concurrent-run.sh <katalog> pg`: kroki 0–2 bloku 3, czyli W3 i reindeks z mieszanką, z tymi samymi adresami
+     (ziarno 20261128, 1600 adresów);
+  3. `verify-run.sh` zimny, z restartem Postgresa i zrzuceniem cache;
+  4. `verify-run.sh` ciepły.
+- **Sąsiedzi:** pozostałe stosy hosta były bezczynne. W migawkach `docker stats` przed blokiem, w trakcie i po nim
+  żaden kontener nie przekroczył 4% CPU. Powtórki nie były potrzebne.
+
+| Miara | A: 2 GiB, `shared_buffers` 128 MB (sekcje 3–4) | C: 3,75 GiB, `shared_buffers` 1 GiB |
+|---|---|---|
+| weryfikator zimny / ciepły | 280 s / 515–536 s | 99 s / 108 s |
+| weryfikator: bloki odczytane, trafienia | 22,2 mln, 71,8% | 6,3 mln, 92,0% |
+| W3: trafienia bufora `shop` | 99,68% | 99,73% |
+| W3: p95 API i sklepu, produkt zimny | – | 10 ms / 36 ms |
+| reindeks z mieszanką: czas | 7 min 3 s | 3 min 36 s |
+| reindeks z mieszanką: trafienia bufora `shop`, bloki odczytane | 81,87%, 9,39 mln | 95,28%, 2,41 mln |
+| indeksy główne cen i stanów w reindeksie: trafienia | 74,7% | 99,8% |
+| mieszanka: błędy, p95 klas API | 0 | 0; 26–169 ms |
+| checkpointy wymuszone / czasowe (reindeks z mieszanką) | 0 / 2 | 0 / 0 |
+
+Wnioski:
+
+- **Potwierdzone na `medium`:**
+  - Wariant startowy skraca weryfikator 2,8–5 razy, a reindeks z ruchem dwukrotnie.
+  - Indeksy cen i stanów, które reindeks czyta losowo, mieszczą się w buforach.
+  - Do 6 GiB z `shared_buffers` 1536 MB (62–63 s, sekcja 3) brakuje weryfikatorowi 36–45 s.
+  - Ciepły przebieg nie jest już wolniejszy od zimnego (A: 536 s wobec 280 s).
+- **Hipoteza:** na `server` baza ma 63 GB, a gorące indeksy sklepu ok. 9,5 GB, więc 1 GiB buforów i 3 GiB cache pokryją
+  mniejszą część gorących danych niż na `medium` (baza 10 GB). Efekt na `server` pokażą odsetek trafień i iowait
+  z eksportera (zadanie 5) po wdrożeniu za zgodą właściciela.
+- **Weryfikator:** czas na `server` nadal wyznacza głównie konstrukcja zapytań (#980, sekcja 3.2), nie pamięć.
+
+Dane surowe: `verifier-runs.tsv` (wiersze C-cold, C-warm). Liczniki `pg_stat_*` bloku pochodzą z tych samych zapytań co
+w `concurrent-run.sh` i `verify-run.sh`.
