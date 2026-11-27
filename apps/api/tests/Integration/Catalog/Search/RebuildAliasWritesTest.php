@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Catalog\Search;
 
 use App\Catalog\Application\Port\SearchIndexRebuildLock;
 use App\Catalog\Application\Search\ActivationResult;
+use App\Catalog\Application\Search\IndexOutcome;
 use App\Catalog\Application\Search\ProductDocumentBuilder;
 use App\Catalog\Application\Search\ProductIndexing;
 use App\Catalog\Application\Search\ProductSearchIndexRebuilder;
@@ -102,6 +103,35 @@ final class RebuildAliasWritesTest extends TestCase
         self::assertSame(ActivationResult::Activated, $report->outcome, (string) $report->failure);
         self::assertSame([1, 1, 2], $http->forwardedItems);
         self::assertSame('Changed before the retry', $this->activeName(self::IDS[0]));
+    }
+
+    /**
+     * Two single writes read their products before the rebuild creates its index (and its rebuild alias) and send
+     * their _bulk while it fills the index: one before the batch of its product, one after it. The batch read the same
+     * committed state, so the new index holds it whatever the order of the two writes.
+     */
+    public function testWritesReadBeforeTheRebuildIndexExistsAndSentDuringTheFillLeaveTheNewestStateInTheNewIndex(): void
+    {
+        $this->clock->advance('+1 second');
+        $this->names[self::IDS[0]] = 'Changed before the rebuild, written before its batch';
+        $this->names[self::IDS[1]] = 'Changed before the rebuild, written after its batch';
+        $version = ProductIndexing::version($this->clock->now());
+        $documents = array_map(fn (string $id) => new ProductDocumentBuilder()->build($this->snapshot($id), null, $version), [self::IDS[0], self::IDS[1]]);
+        $indexer = new ElasticsearchProductIndexer(self::clientFactory()->create(2.0), $this->alias());
+        $outcomes = [];
+        $http = $this->bulks([]);
+        $http->onBulk = static function (int $bulk) use ($indexer, $documents, &$outcomes): void {
+            if (1 === $bulk || 2 === $bulk) {
+                $outcomes[] = $indexer->index($documents[$bulk - 1]);
+            }
+        };
+
+        $report = $this->rebuilder($http)->rebuild(2);
+
+        self::assertSame(ActivationResult::Activated, $report->outcome, (string) $report->failure);
+        self::assertSame([IndexOutcome::Indexed, IndexOutcome::Indexed], $outcomes);
+        self::assertSame('Changed before the rebuild, written before its batch', $this->activeName(self::IDS[0]));
+        self::assertSame('Changed before the rebuild, written after its batch', $this->activeName(self::IDS[1]));
     }
 
     public function testAProductCreatedDuringTheRebuildAboveTheCursorIsInTheNewIndex(): void
