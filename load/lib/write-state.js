@@ -130,14 +130,15 @@ export function chooseSample(candidates, settings, rnd) {
   };
 }
 
-// Whether a run is a measurement at the rate with a consistent index, and why not. A write not sent at the rate, one without an
+// Whether a run is a measurement at the rate with a consistent index, and why not. A write not sent at the rate or sent late, one without an
 // answer or with a 5xx (docs/features/performance-program/plan.md, "Co liczymy") and a change not seen within the freshness timeout
 // (it is missing from the percentiles of W16) make the run no measurement, as a refused write, a mismatch, an error of the run and a
 // consistency check that did not finish do. The thresholds of writes.js fail the run (exit 99) on the same counts. counts:
-// finished, dropped, unanswered, freshnessTimeouts, refused, mismatches, runErrors; a missing count fails the run.
+// finished, dropped, late, unanswered, freshnessTimeouts, refused, mismatches, runErrors; a missing count fails the run.
 export function runVerdict(counts) {
   const rules = [
     ['dropped', (n) => `${n} writes were not sent at the rate (in flight up to the limit or no free variant): no measurement at the rate`],
+    ['late', (n) => `${n} writes of the open model sent later than the tolerance after their time (lib/write-state.js, sendTolerance): no measurement at the rate`],
     ['unanswered', (n) => `${n} writes without an answer or with a 5xx: no measurement at the rate`],
     ['freshnessTimeouts', (n) => `${n} changes not seen within the freshness timeout: the percentiles of the freshness leave them out`],
     ['refused', (n) => `${n} writes refused (4xx)`],
@@ -159,8 +160,27 @@ export function runVerdict(counts) {
   return { passed: reasons.length === 0, reasons };
 }
 
-export function sendTolerance(rate, overrideMs) {}
+// How late a write of the open model may leave the generator: one interval of the rate (1000 / rate ms) unless the settings give
+// another. Later than that, the next write is due before this one is sent, so the generator did not keep the rate: such a write
+// counts like one not sent at the rate (docs/features/performance-program/plan.md, "Co liczymy").
+export function sendTolerance(rate, overrideMs) {
+  return overrideMs === undefined ? 1000 / rate : overrideMs;
+}
 
-export function isLate(dueMs, sentMs, toleranceMs) {}
+export function isLate(dueMs, sentMs, toleranceMs) {
+  return sentMs - dueMs > toleranceMs;
+}
 
-export function tokenAction(expiresAt, now) {}
+// The access token is renewed in the background this long before it expires, while the writes go on with it.
+export const RENEW_BEFORE_MS = 60 * 1000;
+// A token valid for less than this is renewed before the request: it might expire on the way.
+export const VALID_MARGIN_MS = 10 * 1000;
+
+// What a request does with the access token that expires at expiresAt (ms; null without one): use it, use it and renew it in the
+// background, or wait for the renewal.
+export function tokenAction(expiresAt, now) {
+  if (expiresAt === null || expiresAt - now <= VALID_MARGIN_MS) {
+    return 'wait';
+  }
+  return expiresAt - now < RENEW_BEFORE_MS ? 'use_and_renew' : 'use';
+}
