@@ -93,7 +93,7 @@ a spełnienie wymagań rozstrzyga pomiar na `server`, nie klasa.
 
 **Akceptacja tylko na `server`.** P1, P2, P4 i czas z P5 uznajemy za spełnione wyłącznie na podstawie pomiaru na
 skali `server` (10 mln produktów, 1 mln klientów, 5 mln zamówień): na worf.pl za osobną zgodą właściciela albo
-lokalnie na profilu `server`, jeśli pozwalają zasoby. `small` i `medium` służą do wyboru wariantu i porównań przed
+lokalnie na wspólnym profilu `server` programu PERF (D9). `small` i `medium` służą do wyboru wariantu i porównań przed
 i po; ich wynik nie jest akceptacją. Bez pomiaru na `server` raport oznacza te wymagania jako niepotwierdzone, a plan
 programu nie pokazuje PERF-7 jako spełnionego.
 
@@ -126,12 +126,16 @@ Wybór idzie do właściciela przed falą 2 (plan, bramka po zadaniu 1).
 | Wariant | Zmiana | Koszt odczytu | Koszt zapisu i spójność |
 |---|---|---|---|
 | K0 | przepisanie warunku `IN … OR EXISTS` na dwie gałęzie (kategoria główna przez `catalog_product_primary_category_id_idx`, dodatkowe przez `catalog_product_category`) połączone `UNION`, sort i `LIMIT` | liniowy w liczbie produktów poddrzewa (wszystkie czytane i sortowane); niezależny od pozycji typu w alfabecie i od rozmiaru katalogu | bez zmian schematu |
-| K1 | K0 + btree `(primary_category_id, name, id)` i `(primary_category_id, updated_at, id)`; gałąź kategorii głównej osobno dla każdej kategorii poddrzewa z `ORDER BY … LIMIT` (scalenie przez `Merge Append`) | kategoria główna: kategorie poddrzewa × strona przy gęstych pozostałych filtrach (zasada 1); kategorie dodatkowe: liniowy w liczbie członkostw dodatkowych poddrzewa | dwa indeksy na `catalog_product`; zapis produktu zmienia `updated_at`, który jest indeksowany, więc każda aktualizacja jest już nie-HOT i dopisze wpis do obu nowych indeksów (WAL, P8); spójność zapewnia PostgreSQL |
+| K1 | K0 + btree `(primary_category_id, name, id)` i `(primary_category_id, updated_at, id)`; gałąź kategorii głównej osobno dla każdej kategorii poddrzewa z `ORDER BY … LIMIT` (scalenie przez `Merge Append`) | kategoria główna: kategorie poddrzewa × strona przy gęstych pozostałych filtrach (zasada 1); kategorie dodatkowe: liniowy w liczbie członkostw dodatkowych poddrzewa; gałąź dodatkowa usuwa duplikaty produktu z kilkoma kategoriami dodatkowymi w poddrzewie (`DISTINCT`) i pomija produkty, których kategoria główna jest w poddrzewie | dwa indeksy na `catalog_product`; zapis produktu zmienia `updated_at`, który jest indeksowany, więc każda aktualizacja jest już nie-HOT i dopisze wpis do obu nowych indeksów (WAL, P8); spójność zapewnia PostgreSQL |
 | K2 | K1 + kopia kluczy sortowania i filtrów (`name`, `updated_at`, `status`, znacznik zdjęć) w `catalog_product_category` z indeksami `(category_id, klucz, product_id)` | także kategorie dodatkowe: kategorie poddrzewa × strona przy gęstych filtrach | każdy zapis produktu aktualizuje jego wiersze członkostw (do 10, bo zmienia się `updated_at`): więcej wierszy, wpisów indeksów i WAL na zapis; zmiana mapowania asocjacji agregatu (dziś `ManyToMany` Doctrine); wymagania spójności niżej |
 | K3 | osobna tabela członkostwa `(category_id, product_id)` z kluczami sortowania i filtrami, także dla kategorii głównej, zamiast indeksów K1 | jak K2 | jak K2, bez zmiany mapowania asocjacji, ale z nową tabelą do utrzymania; wymagania spójności niżej |
 
 We wszystkich wariantach przypadek „duży dział + rzadki filtr” (fraza rzadka w dziale, bez zdjęć w dziale) ma koszt
-liniowy (zasada 5); zadanie 1 mierzy go osobno.
+liniowy (zasada 5); zadanie 1 mierzy go osobno. Przy K1 (decyzje D5, D6): dział + szkice i dział + bez zdjęć
+obsługują częściowe btree po kategorii `(primary_category_id, name, id)` i `(primary_category_id, updated_at, id)`
+z predykatem szkicu albo braku zdjęć (wpis tylko dla takich produktów); dział + fraza średnia: zadanie 3 zaczyna od
+testu planu kandydatów frazy z GIN zawężonych do poddrzewa (wybór drogi po porównaniu rozmiaru poddrzewa z liczbą
+trafień); jeśli nie spełnia P2, decyzja właściciela z liczbami.
 
 Wymagania spójności dla K2 i K3 (gdyby pomiar je wybrał): kopia jest zapisywana w tej samej transakcji co wiersz
 produktu i po jego aktualizacji, więc blokada wiersza produktu porządkuje równoległe zapisy tego samego produktu;
@@ -150,11 +154,13 @@ zmienia w tym czasie PERF-2).
 |---|---|---|---|
 | F0 | dziś: planista wybiera GIN trygramów albo przejście indeksu sortowania z filtrem | błędny wybór przy korelacji z sortem i przy frazie bez trygramu (stan obecny) | – |
 | F1 | najpierw przejście indeksu sortowania z budżetem B wierszy (zasada 1); gdy strona się nie zapełni, kandydaci z GIN trygramów, sort, `LIMIT` | fraza gęsta w prefiksie porządku: najwyżej B; w przeciwnym razie B + listy pozycji frazy + sprawdzenie i sort kandydatów: liniowy w liczbie trafień („termos” przy 10 mln ok. 129 tys. [SZACUNEK]) | bez nowych indeksów |
-| F2 | F1 + GIN bigramów na wyrażeniu `catalog_name_bigrams(name)` dla fraz, z których pg_trgm nie wyciąga trygramu (2 znaki, sama interpunkcja); `name ILIKE` zostaje warunkiem dokładnym | rzadka fraza 2-znakowa: listy pozycji jej bigramów; częsta: budżet B z F1 | nowy GIN: wpis przy każdej nie-HOT aktualizacji produktu (czyli każdym zapisie), rozmiar ok. 2 GB przy 10 mln [SZACUNEK, jak trygramy: 214 MB na 1 mln] |
+| F2 | F1 + GIN bigramów na wyrażeniu `catalog_name_bigrams(name)` dla fraz bez trygramu zawężającego wyszukiwanie (2 znaki, sama interpunkcja; regułę wyboru drogi ustala test planu, bo dla części takich wzorców pg_trgm wyciąga trygram nieselektywny); `name ILIKE` zostaje warunkiem dokładnym | rzadka fraza 2-znakowa: listy pozycji jej bigramów; częsta: budżet B z F1 | nowy GIN: wpis przy każdej nie-HOT aktualizacji produktu (czyli każdym zapisie), rozmiar ok. 2 GB przy 10 mln [SZACUNEK, jak trygramy: 214 MB na 1 mln] |
 
 Licznik pierwszej strony liczy ta sama droga co strona (zasada 4), więc jego koszt jest kosztem tej drogi do
 10 001 trafień; zadanie 1 mierzy go osobno, bo na `medium` licznik bywał droższy od strony (#10–#12). Fraza
-1-znakowa zostaje niedozwolona, jak dziś. F2 tylko wtedy, gdy F1 nie spełnia P2 dla fraz bez trygramu.
+1-znakowa zostaje niedozwolona, jak dziś. F2 tylko wtedy, gdy F1 nie spełnia P2 dla fraz bez trygramu. Budżet B
+przejścia indeksu sortowania rośnie geometrycznie, zanim droga przejdzie na kandydatów z GIN, gdy licznik GIN pokazuje
+wiele trafień (fraza częsta skorelowana z sortem); koszt zależy od miejsca 26. trafienia w porządku, nie od wolumenu.
 
 Szkice mają częściowy btree w porządku sortowania (koszt ograniczony konstrukcją). Bez zdjęć ma dziś częściowy
 indeks `(id)`, bez porządku sortowania; zadanie 1 sprawdza, czy wystarcza (filtr rzadki: kandydaci, sort), zanim
@@ -233,9 +239,9 @@ przebiegi każdego wariantu.
 
 | Miara | Kryterium |
 |---|---|
-| p50, p95, p99 W1 i W5 | różnica median przebiegów z panelem i bez nie większa niż rozrzut przebiegów bez panelu; p95 i p99 w normie W1 i W5 |
+| p50, p95, p99 W1 i W5 | różnica median przebiegów z panelem i bez nie większa niż największa z wartości: dwukrotny rozrzut przebiegów bez panelu, 10% mediany bez panelu, 5 ms dla p50 i 10 ms dla p95 i p99 (decyzja D7); p95 i p99 w normie W1 i W5 |
 | przepustowość sklepu | zadane tempo utrzymane w obu wariantach (żądania niewysłane w tempie są niepowodzeniem, jak w metodologii) |
-| błędy sklepu | 0 niepowodzeń (5xx, przerwane, zdegradowane, niewysłane) w obu wariantach |
+| błędy sklepu | 0 niepowodzeń sklepu (5xx, 409, 429, inne 4xx, przerwane, zdegradowane, niewysłane) w obu wariantach; scenariusz koszyka nie żąda ilości ponad dostępny stan; błędy mieszanki panelu raport podaje osobno (liczy je W7) |
 | zasoby PostgreSQL | raport podaje dla obu wariantów: CPU bazy, odczyty z dysku i trafienia w `shared_buffers` (`pg_stat_database`, `pg_stat_io`), `temp_bytes`, połączenia aktywne i oczekujące na blokady (`pg_stat_activity`), WAL; różnicę ponad rozrzut wyjaśnia zapytanie, które ją powoduje; W15 spełnione |
 
 Operacje masowe panelu (zmiana kategorii z reindeksem, masowe zmiany cen) należą do PERF-6; ich wpływ mierzą W11
@@ -251,9 +257,13 @@ Podjęte przez właściciela:
 | D2 | Semantyka wyszukiwania zamówień i klientów bez zmian; wariant według kosztu (Z0, Z1). |
 | D3 | Histogram dopuszczalny wyłącznie jako optymalizacja; gwarancje G1–G3 obowiązują w każdym wariancie. |
 | D4 | Tempo mieszanki panelu do W7: 5 żądań na sekundę. |
+| D5 | Warianty po zadaniu 1: K1 z usuwaniem duplikatów gałęzi dodatkowej, F1 + F2, Z0 (Z1, jeśli Z0 nie spełni P2 albo P4 na profilu `server`), M1 z budżetem zimnego obliczenia granic 2000 ms. |
+| D6 | Bez wyjątków od W7 i bez ograniczania funkcjonalności, dokładności wyszukiwania, sortowania, paginacji ani liczników. Fraza częsta skorelowana z sortem: rosnący budżet przejścia (zadanie 2); dział + szkice i dział + bez zdjęć: częściowe btree po kategorii (zadanie 3); dział + fraza średnia: test kandydatów zawężonych do poddrzewa (zadanie 3). Kopia kategorii głównej w `catalog_product_category` (dział + fraza częsta) odroczona do pomiaru na `server`. |
+| D7 | Kryterium P4 z progiem szumu: największa z wartości 2 × rozrzut bez panelu, 10% mediany bez panelu, 5 ms (p50) albo 10 ms (p95, p99). |
+| D8 | Koszt zapisu (P8) zaakceptowany warunkowo: zadanie 7 mierzy wpływ nowych indeksów na W20, przepustowość zapisów produktów i zasoby (rozmiar, pamięć, WAL, odczyty dysku). |
+| D9 | Akceptacja na jednym wspólnym lokalnym profilu `server` dla wszystkich sesji programu PERF (bez osobnych zestawów 10 mln produktów); worf.pl tylko za osobną zgodą. |
 
-Po zadaniu 1 właściciel zatwierdza wybrane warianty K, F, Z i M z liczbami albo decyduje o przypadkach, których
-żaden wariant nie spełnia (wyjątek W7 z liczbami albo dalsza praca).
+Przypadki, których żaden wariant nie spełnia, wracają do właściciela z liczbami (decyzja D6: bez wyjątków W7).
 
 ## Wymagane przed startem
 
@@ -261,16 +271,16 @@ Po zadaniu 1 właściciel zatwierdza wybrane warianty K, F, Z i M z liczbami alb
 - `statement_timeout` i obsługę przerwanego zapytania ustawia PERF-1; PERF-7 ich nie zmienia. Jeśli PERF-1 nie jest
   jeszcze na `main`, pomiary PERF-7 przed i po idą na tej samej konfiguracji Postgresa.
 - Lokalne pomiary PERF-7 nie nakładają się na ciężkie pomiary PERF-2.
-- Środowisko `server` do akceptacji: worf.pl za zgodą właściciela albo lokalny profil `server`.
+- Środowisko `server` do akceptacji: jeden wspólny lokalny profil `server` programu PERF (D9); worf.pl tylko za osobną zgodą właściciela.
 
 ## Ryzyka
 
 | ID | Ryzyko | Sprawdzenie | Gdy się potwierdzi |
 |---|---|---|---|
-| R1 | Fraza częsta i skorelowana z sortem („termos” przy 10 mln: ok. 129 tys. trafień [SZACUNEK]) ma koszt liniowy w trafieniach; na `medium` zbiór 12,9 tys. trwał 117 ms (ALT4), liniowo ok. 1,2 s przy 10 mln | przypadek w macierzy na `server` | decyzja właściciela z liczbami: wyjątek W7 dla tej klasy albo dalsza praca |
-| R2 | Rzadkie przecięcie filtrów (zasada 5) ma koszt liniowy w każdym wariancie | przypadki kombinacji w macierzy na `server` | jak R1 |
+| R1 | Fraza częsta i skorelowana z sortem („termos” przy 10 mln: ok. 129 tys. trafień [SZACUNEK]) ma koszt liniowy w trafieniach; na `medium` zbiór 12,9 tys. trwał 117 ms (ALT4), liniowo ok. 1,2 s przy 10 mln | przypadek w macierzy na `server` | dalsza praca (D6: bez wyjątków W7); rosnący budżet przejścia w zadaniu 2 |
+| R2 | Rzadkie przecięcie filtrów (zasada 5) ma koszt liniowy w każdym wariancie | przypadki kombinacji w macierzy na `server` | dalsza praca (D6); częściowe btree po kategorii i test kandydatów zawężonych do poddrzewa w zadaniu 3, inaczej decyzja właściciela z liczbami |
 | R3 | Licznik pierwszej strony przez GIN dla frazy częstej czyta całe listy pozycji (zasada 2) | licznik mierzony osobno w macierzy | licznik tą drogą, której koszt jest niższy w pomiarze; bez zmiany limitu 10 000 |
-| R4 | Koszt zapisu nowych indeksów (K1, F2, Z1) i rozmiar (ok. 2 GB na indeks GIN przy 10 mln [SZACUNEK]) wobec W6, W11, W20 i pamięci węzła | P8, rozmiary po `generate` | rezygnacja z wariantu albo decyzja właściciela z liczbami; pamięć w PERF-1 |
+| R4 | Koszt zapisu nowych indeksów (K1, F2, Z1) i rozmiar (ok. 2 GB na indeks GIN przy 10 mln [SZACUNEK]) wobec W6, W11, W20 i pamięci węzła | P8, rozmiary po `generate`, W20 i przepustowość zapisu produktów w zadaniu 7 (D8) | rezygnacja z wariantu albo decyzja właściciela z liczbami; pamięć w PERF-1 |
 | R5 | Brak środowiska `server` do pomiaru akceptacyjnego | przed zadaniem 7 | wymagania wydajnościowe zostają niepotwierdzone, PERF-7 nie jest oznaczony jako spełniony |
 
 ## Poza zakresem
