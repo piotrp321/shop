@@ -228,14 +228,15 @@ sh docs/reports/runtime-config-baseline-2026-11-27/verify-run.sh <katalog> warm
 | Przebieg | czas | bloki z dysku albo cache systemu (`blks_read`) | trafienia bufora | czas odczytu | ponowne wczytania stron cgroupy (`workingset_refault_file`) |
 |---|---|---|---|---|---|
 | A zimny | 280 s | 22,17 mln | 71,8% | 194 s | 8,9 mln |
-| A ciepły | 515 s (powtórzony: 536 s) | 22,17 mln | 71,8% | 410 s | 25–28 mln |
+| A ciepły | 536 s, powtórzony 515 s | 22,17 mln | 71,8% | 410 s | 25–28 mln |
 | B1 zimny | 80 s | 22,17 mln | 72,1% | 34 s | 0,26 mln |
 | B1 ciepły | 74 s | 22,17 mln | 71,8% | 28 s | 1,1 mln |
 | B2 zimny | 63 s | 4,05 mln | 94,9% | 14 s | 0,19 mln |
 | B2 ciepły | 62 s | 4,11 mln | 94,8% | 13 s | 1,7 mln |
 
 Wszystkie przebiegi kończą się „the generated data is consistent”. W generowaniu (sekcja 2) ten sam weryfikator przy A
-trwał 16,9 min: wtedy host był współdzielony z testami innych sesji (uzgodnione, bo generowania nie mierzyliśmy czasem).
+trwał 16,9 min. **Hipoteza:** wtedy host był współdzielony z testami innych sesji (uzgodnione, bo generowania nie
+mierzyliśmy czasem); obciążenia hosta w tym czasie nie zapisano.
 
 - **Potwierdzone:** cztery zapytania dają 87% (zimny) i 96% (ciepły) czasu weryfikatora przy A (pełne plany: [`verifier-plans-a-cold.txt`](runtime-config-baseline-2026-11-27/verifier-plans-a-cold.txt), wyniki przebiegów: [`verifier-runs.tsv`](runtime-config-baseline-2026-11-27/verifier-runs.tsv)):
 
