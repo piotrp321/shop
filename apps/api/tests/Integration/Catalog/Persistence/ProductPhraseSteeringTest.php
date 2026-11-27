@@ -164,16 +164,13 @@ final class ProductPhraseSteeringTest extends KernelTestCase
         }
     }
 
-    public function testTheCandidatesAreNotReadWhenTheWalkReachedTheEndOfTheOrder(): void
+    public function testThePageIsTheSameWhateverTheBudgetIsAndWhetherTheWalkReachedTheEndOfTheOrder(): void
     {
-        // Three products: a walk of 4 rows reaches the end (the probe reads 3 < 4), a walk of 3 rows may not have.
-        foreach ([[4, 0], [3, 1], [1, 1]] as [$budget, $expectedCandidates]) {
-            $this->recording->forget();
-
+        // Three products: a walk of 4 rows or more reaches the end of the order, a walk of 1 row does not.
+        foreach ([1, 3, 4, 100] as $budget) {
             $page = $this->source($budget)->page('beta', null, null, null, ProductSort::Name, 26);
 
             self::assertSame(['Beta'], $this->names($page), 'budget '.$budget);
-            self::assertCount($expectedCandidates, $this->candidateQueries(), 'budget '.$budget);
         }
     }
 

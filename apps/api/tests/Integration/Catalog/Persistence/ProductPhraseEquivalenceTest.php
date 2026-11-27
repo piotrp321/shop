@@ -67,7 +67,7 @@ final class ProductPhraseEquivalenceTest extends KernelTestCase
     public function testPagesAndCountsAreTheSameWhenEveryWayOfThePhraseIsTaken(string $term): void
     {
         // 1 row to 13 rows: every step of the budget is a short one on about 70 products; 100 rows: the walk reaches the end of the order
-        // (also on the pages after a cursor, which return fewer rows than the budget), so the candidates are left out.
+        // (also on the pages after a cursor, which return fewer rows than the budget).
         foreach ([1, 2, 3, 5, 7, 13, 100] as $budget) {
             $source = new DbalBackofficeProductSource($this->connection, new BoundedCounter($this->connection), phraseBudget: $budget);
 

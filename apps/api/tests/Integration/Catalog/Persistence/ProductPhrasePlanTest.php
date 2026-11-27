@@ -99,8 +99,7 @@ final class ProductPhrasePlanTest extends KernelTestCase
 
             self::assertNotSame([], $page, $term);
             $read = $this->rowsRead();
-            // The walk and the probe that tells whether it reached the end of the order (the index only), then the candidates.
-            $bound = 'budget' === $variable ? self::DEFAULT_BUDGET + self::SLACK : 2 * self::DEFAULT_BUDGET + 3 * $hits + self::SLACK;
+            $bound = 'budget' === $variable ? self::DEFAULT_BUDGET + self::SLACK : self::DEFAULT_BUDGET + 3 * $hits + self::SLACK;
             self::assertLessThanOrEqual($bound, $read, \sprintf("page of '%s' by %s read %d rows of %d (class bound %d)\n%s", $term, $sort->value, $read, self::PRODUCTS, $bound, $this->plans()));
         }
     }
@@ -180,7 +179,7 @@ final class ProductPhrasePlanTest extends KernelTestCase
             // (48 000) or walking the whole next budget (20 000) is more than that.
             $position = ProductSort::Name === $sort ? 3_100 : 100;
             $read = $this->rowsRead();
-            $bound = 2 * $budget + 3 * (intdiv($budget, 2) + 1) + $position + self::SLACK;
+            $bound = $budget + 3 * (intdiv($budget, 2) + 1) + $position + self::SLACK;
             self::assertLessThanOrEqual($bound, $read, \sprintf("page by %s read %d rows (class bound %d)\n%s", $sort->value, $read, $bound, $this->plans()));
             if (ProductSort::UpdatedAtDescending === $sort) {
                 self::assertLessThanOrEqual($budget + self::SLACK, $read, 'the first walk fills the page');

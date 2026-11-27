@@ -20,11 +20,10 @@ use Doctrine\DBAL\Connection;
  *  1. the walk: the first B(i) rows of the index of the sort (after the cursor) are checked for the phrase, in the order
  *     of the sort, and the walk stops at the page. It reads at most B(i) rows from the index, whatever the table size,
  *     and finds the page when the hits are dense in the prefix of the order (a phrase in many names);
- *  2. when the page is not full and the walk did not reach the end of the order (it read B(i) rows: a probe of the
- *     index tells, with no phrase to check), the candidates: the names that the GIN index of the route gives for the
- *     phrase (the trigrams, or for a phrase without a word of three characters the bigrams), sorted, cut at
- *     C(i) = B(i) / 2 rows. When they are fewer than that, they are all the hits and the page is their start: the cost is
- *     linear in the hits. Otherwise the hits are many, and the step i + 1 walks ten times as far.
+ *  2. when the page is not full, the candidates: the names that the GIN index of the route gives for the phrase (the
+ *     trigrams, or for a phrase without a word of three characters the bigrams), sorted, cut at C(i) = B(i) / 2 rows.
+ *     When they are fewer than that, they are all the hits and the page is their start: the cost is linear in the hits.
+ *     Otherwise the hits are many, and the step i + 1 walks ten times as far.
  * So the work is about the smaller of the position of the page in the order of the sort (a frequent phrase whose hits
  * are scattered, or start early in the order) and the number of the hits (a rare phrase, or one that lies at the end of
  * the order), up to a factor that does not depend on the size of the table. It ends because a walk longer than the table
@@ -99,10 +98,6 @@ final readonly class PhraseSearch
             if (\count($products) >= $limit) {
                 return $products;
             }
-            // A walk that read all that is left of the order has found all the hits.
-            if ($this->readAllThatIsLeft($keyset['w0'] ?? null, $sort, $budget)) {
-                return $products;
-            }
 
             [$products, $capped] = $this->candidates($route, $term, $conditions, $values, $keyset['p'][0] ?? null, $sort, $limit, max(1, intdiv($budget, 2)));
             if (!$capped) {
@@ -164,26 +159,6 @@ final readonly class PhraseSearch
             ." ORDER BY w.{$column} {$direction}, w.id {$direction} LIMIT {$limit}";
 
         return self::products($this->connection->fetchAllAssociative($sql, $values));
-    }
-
-    /**
-     * Whether the rows of the order after the cursor are fewer than the budget, that is whether a walk of the budget reached
-     * the end of it. Only the index is read (no phrase to check, no table), as far as the walk was.
-     *
-     * @param array{string, array{after_value: string, after_id: string}}|null $keyset the condition on `w0` and its values
-     */
-    private function readAllThatIsLeft(?array $keyset, ProductSort $sort, int $budget): bool
-    {
-        $column = $sort->byUpdatedAt() ? 'updated_at' : 'name';
-        $direction = $sort->isDescending() ? 'DESC' : 'ASC';
-        $read = $this->connection->fetchOne(
-            'SELECT count(*) FROM (SELECT 1 FROM catalog_product w0'.(null === $keyset ? '' : ' WHERE '.$keyset[0])
-            ." ORDER BY w0.{$column} {$direction}, w0.id {$direction} LIMIT {$budget}) e",
-            null === $keyset ? [] : $keyset[1],
-        );
-        \assert(\is_int($read));
-
-        return $read < $budget;
     }
 
     /**
