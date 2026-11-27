@@ -4,7 +4,7 @@ import { defineComponent } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { SEARCH_DEBOUNCE_MS, useDiscountCodeList } from "@/discount-codes/useDiscountCodeList";
-import type { WithOptionalTotal } from "./listPage";
+import { requestSignal, type WithOptionalTotal } from "./listPage";
 
 type CodeList = WithOptionalTotal<components["schemas"]["DiscountCodeListResponse"]>;
 type Code = components["schemas"]["DiscountCodeResponse"];
@@ -483,5 +483,33 @@ describe("useDiscountCodeList", () => {
 
       expect(mocks.get).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("useDiscountCodeList request abort", () => {
+  let wrapper: { unmount: () => void } | undefined;
+
+  beforeEach(() => {
+    mocks.get.mockReset();
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = undefined;
+  });
+
+  it("gives the request an abort signal and aborts it when the list is gone", async () => {
+    mocks.get.mockImplementation(() => new Promise(() => {}));
+    const mounted = await mountList();
+    wrapper = mounted.wrapper;
+    await flushPromises();
+
+    const signal = requestSignal(mocks.get, CODES);
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal!.aborted).toBe(false);
+
+    wrapper.unmount();
+    wrapper = undefined;
+    expect(signal!.aborted).toBe(true);
   });
 });

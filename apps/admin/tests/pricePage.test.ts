@@ -34,6 +34,15 @@ describe("fetchPricePage", () => {
     expect(queryOfCall()).toEqual({ q: "hantle", category: "c-1", perPage: 25, after: "cursor" });
   });
 
+  it("hands the abort signal of the request to the client", async () => {
+    mocks.get.mockResolvedValue({ data: { items: [], next: null }, response: { status: 200 } });
+    const controller = new AbortController();
+
+    await fetchPricePage({ query: { q: null, category: null, perPage: 10 }, after: null, signal: controller.signal });
+
+    expect(mocks.get).toHaveBeenCalledWith(PRICES, { params: { query: { perPage: 10 } }, signal: controller.signal });
+  });
+
   it("returns the products and the cursor of the next page", async () => {
     const items = [item("A", [{ variantId: "v", label: "", price }])];
     mocks.get.mockResolvedValue({ data: { items, next: "c1" }, response: { status: 200 } });

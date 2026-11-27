@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "@/api/schema";
 import PromotionVariantPicker from "@/promotions/PromotionVariantPicker.vue";
+import { requestSignal } from "./listPage";
 
 type PriceListItem = components["schemas"]["PriceListItemResponse"];
 
@@ -124,5 +125,24 @@ describe("PromotionVariantPicker focus", () => {
 
     expect(wrapper.find("[data-testid=picker-error]").exists()).toBe(true);
     expect(document.activeElement).toBe(button("picker-retry"));
+  });
+});
+
+describe("PromotionVariantPicker request abort", () => {
+  beforeEach(() => {
+    mocks.get.mockReset();
+  });
+
+  it("gives the request an abort signal and aborts it when the picker is gone", async () => {
+    mocks.get.mockImplementation(() => new Promise(() => {}));
+    const wrapper = mount(PromotionVariantPicker, { props: { chosen: [] } });
+    await flushPromises();
+
+    const signal = requestSignal(mocks.get, "/api/v1/admin/prices");
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal!.aborted).toBe(false);
+
+    wrapper.unmount();
+    expect(signal!.aborted).toBe(true);
   });
 });

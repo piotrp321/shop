@@ -5,7 +5,7 @@ import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import type { components } from "@/api/schema";
 import type { CategoryTreeNode } from "@/composables/useCategoryTree";
 import { SEARCH_DEBOUNCE_MS, useProductList } from "@/products/useProductList";
-import type { WithOptionalTotal } from "./listPage";
+import { requestSignal, type WithOptionalTotal } from "./listPage";
 
 type ProductList = WithOptionalTotal<components["schemas"]["ProductListResponse"]>;
 type ProductListItem = components["schemas"]["ProductListItemResponse"];
@@ -622,5 +622,33 @@ describe("useProductList", () => {
     list.selectStatus("draft");
     await settle();
     expect(list.total.value).toEqual({ value: 5, capped: false });
+  });
+});
+
+describe("useProductList request abort", () => {
+  let wrapper: { unmount: () => void } | undefined;
+
+  beforeEach(() => {
+    mocks.get.mockReset();
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = undefined;
+  });
+
+  it("gives the request an abort signal and aborts it when the list is gone", async () => {
+    mocks.get.mockImplementation(() => new Promise(() => {}));
+    const mounted = await mountList();
+    wrapper = mounted.wrapper;
+    await flushPromises();
+
+    const signal = requestSignal(mocks.get, PRODUCTS);
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal!.aborted).toBe(false);
+
+    wrapper.unmount();
+    wrapper = undefined;
+    expect(signal!.aborted).toBe(true);
   });
 });

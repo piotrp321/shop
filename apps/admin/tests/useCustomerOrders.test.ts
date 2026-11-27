@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, ref } from "vue";
 import type { components } from "@/api/schema";
 import { useCustomerOrders } from "@/customers/useCustomerOrders";
-import type { WithOptionalTotal } from "./listPage";
+import { requestSignal, type WithOptionalTotal } from "./listPage";
 
 type OrderList = WithOptionalTotal<components["schemas"]["BackofficeOrderList"]>;
 type OrderListItem = components["schemas"]["BackofficeOrderListItem"];
@@ -117,5 +117,33 @@ describe("useCustomerOrders", () => {
     await flushPromises();
 
     expect(mounted.orders.error.value).toBe("Nie udało się pobrać zamówień klienta. Sprawdź połączenie z API.");
+  });
+});
+
+describe("useCustomerOrders request abort", () => {
+  let wrapper: { unmount: () => void } | undefined;
+
+  beforeEach(() => {
+    mocks.get.mockReset();
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = undefined;
+  });
+
+  it("gives the request an abort signal and aborts it when the list is gone", async () => {
+    mocks.get.mockImplementation(() => new Promise(() => {}));
+    const mounted = mountOrders();
+    wrapper = mounted.wrapper;
+    await flushPromises();
+
+    const signal = requestSignal(mocks.get, ORDERS);
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal!.aborted).toBe(false);
+
+    wrapper.unmount();
+    wrapper = undefined;
+    expect(signal!.aborted).toBe(true);
   });
 });

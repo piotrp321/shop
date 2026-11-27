@@ -4,7 +4,7 @@ import { defineComponent } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { EMPTY_MESSAGE, usePromotionList } from "@/promotions/usePromotionList";
-import type { WithOptionalTotal } from "./listPage";
+import { requestSignal, type WithOptionalTotal } from "./listPage";
 
 type PromotionList = WithOptionalTotal<components["schemas"]["PromotionListResponse"]>;
 type PromotionListItem = components["schemas"]["PromotionListItemResponse"];
@@ -357,5 +357,33 @@ describe("usePromotionList", () => {
 
       expect(mocks.get).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("usePromotionList request abort", () => {
+  let wrapper: { unmount: () => void } | undefined;
+
+  beforeEach(() => {
+    mocks.get.mockReset();
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = undefined;
+  });
+
+  it("gives the request an abort signal and aborts it when the list is gone", async () => {
+    mocks.get.mockImplementation(() => new Promise(() => {}));
+    const mounted = await mountList();
+    wrapper = mounted.wrapper;
+    await flushPromises();
+
+    const signal = requestSignal(mocks.get, PROMOTIONS);
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal!.aborted).toBe(false);
+
+    wrapper.unmount();
+    wrapper = undefined;
+    expect(signal!.aborted).toBe(true);
   });
 });
