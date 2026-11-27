@@ -348,7 +348,9 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   komunikat mówi, na którym indeksie jest alias (nieudany Job zostawia go na starym), log Joba jest w wyjściu celu i w Grafana Cloud; po usunięciu przyczyny uruchom cel ponownie (nie `rerun`). Liczba
   dokumentów w wyjściu celu to dokumenty Lucene (razem z zagnieżdżonymi wariantami), więcej niż produktów w logu Joba.
   Przebudowa pod normalnym ruchem jest dozwolona: zmiana produktu, ceny albo stanu zapisana w trakcie budowy trafia też do
-  nowego indeksu (alias `products-rebuild`, `docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”). Powrót do
+  nowego indeksu (alias `products-rebuild`, `docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”). Produkt
+  utworzony w panelu w jej trakcie (identyfikator poniżej kursora odczytu albo po odczycie ostatniej paczki) kończy ją
+  jednak błędem weryfikacji liczby dokumentów: alias zostaje na starym indeksie i przebudowę trzeba ponowić (#979). Powrót do
   poprzedniej liczby shardów: zmiana `elasticsearch.shards`, wdrożenie i ponowna przebudowa.
 - **Zmiana definicji indeksu wyszukiwarki** (okno serwisowe, **zgoda użytkownika** na każdy krok): wdrożenie wersji z nową
   definicją (`catalog:search-index:setup` w Jobie `migrate` ostrzega o indeksie starej definicji i wdrożenie przechodzi),

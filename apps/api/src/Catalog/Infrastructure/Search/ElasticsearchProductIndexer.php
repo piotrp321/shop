@@ -23,7 +23,8 @@ use Elastic\Elasticsearch\Client;
  *
  * The item of the alias has the outcome. The item of the rebuild alias is skipped when that alias does not exist (404
  * index_not_found_exception: no rebuild runs) or the new index holds a newer version (409); any other failure of it
- * fails the write like a failure of the item of the alias, so the message is retried and both items are written again.
+ * fails the write like a failure of the item of the alias: a transient one is retried (repeating both items is
+ * harmless, by the version), a permanent one sends the message to failed.
  */
 final readonly class ElasticsearchProductIndexer implements ProductIndexer
 {

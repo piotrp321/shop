@@ -507,8 +507,8 @@ To świadome ograniczenia szkieletu, a nie docelowe rozwiązanie dla katalogu rz
 - Brak checkpointów i wznowienia: przerwana przebudowa zaczyna się od początku. Indeks osierocony po awarii
   procesu zostaje i jest wypisywany przez `setup`; do kolejnej przebudowy ma alias przebudowy, więc zapisy pojedyncze
   trafiają też do niego (bez szkody).
-- Produkt utworzony w trakcie przebudowy z identyfikatorem mniejszym niż kursor odczytu paczek trafia do nowego indeksu
-  tylko przez alias przebudowy, więc indeks ma więcej dokumentów, niż zapisały paczki: weryfikacja (krok 5) kończy
+- Produkt utworzony w trakcie przebudowy z identyfikatorem mniejszym niż kursor odczytu paczek, albo po odczycie
+  ostatniej paczki, a przed liczeniem dokumentów w weryfikacji, trafia do nowego indeksu tylko przez alias przebudowy, więc indeks ma więcej dokumentów, niż zapisały paczki: weryfikacja (krok 5) kończy
   przebudowę błędem, alias zostaje na starym indeksie, a przebudowę się ponawia (pełna obsługa: #979).
 - Brak równoległego zasilania przez wielu consumerów, okresu retencji starego indeksu i rollbacku.
 

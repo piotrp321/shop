@@ -93,7 +93,8 @@ serwera” i „Smoke test i check”).
     czego zgoda nie zastępuje), `open` (otwiera zamknięty sklep po sprawdzeniu danych, więc też zmienia serwer; zgoda
     nazywa operację, host i profil danych, które sklep dostaje; `generate` woła go sam) i `reindex` (przebudowuje indeks
     wyszukiwarki przy otwartym sklepie i przepina na niego alias; zmiany zapisane w trakcie budowy trafiają też do nowego
-    indeksu, więc przebudowa pod ruchem jest dozwolona; w trakcie przebudowy nie uruchamia się
+    indeksu, więc przebudowa pod ruchem jest dozwolona, ale produkt utworzony w panelu w jej trakcie kończy ją błędem
+    (alias bez zmian, ponowienie; #979); w trakcie przebudowy nie uruchamia się
     wdrożenia, bo jego Job `migrate` kończy się błędem; zgoda nazywa operację i host).
   - Agent uruchamia sam: `status`, `failed` (wiadomości transportu `failed` w podzie `worker-commands`) i `backups` (tylko odczyt), `kubeconfig` oraz `rerun` Joba wersji, czyli Joba
     z `charts/shop/templates/jobs.yaml` o nazwie `<job>-<hash>` (`garage-init`, `migrate`, `keycloak-config`,
