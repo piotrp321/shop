@@ -61,6 +61,41 @@ final class VariantAxesTest extends TestCase
         yield 'colon inside the second name' => [['Kolor', 'Roz:miar']];
     }
 
+    public function testAThirdAxisIsRejectedWhateverTheNamesAre(): void
+    {
+        // The search model counts a variant with at most two options (spec search, M1).
+        self::assertSame(2, VariantAxes::MAX_AXES);
+
+        foreach ([['A', 'B', 'C'], ['Kolor', 'Rozmiar', 'Materiał'], ['a', 'b', 'c', 'd']] as $names) {
+            try {
+                VariantAxes::fromList($names);
+                self::fail('Expected InvalidVariantAxes.');
+            } catch (InvalidVariantAxes $e) {
+                self::assertSame('A product has at most 2 variant axes.', $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function namesWithASeparatorOfTheSearchIndex(): iterable
+    {
+        yield 'the pair separator U+001E inside' => ["Ko\u{1E}lor"];
+        yield 'the option separator U+001F inside' => ["Ko\u{1F}lor"];
+        yield 'the pair separator at the end' => ["Kolor\u{1E}"];
+        yield 'the option separator at the end' => ["Kolor\u{1F}"];
+        yield 'the option separator at the start' => ["\u{1F}Kolor"];
+    }
+
+    #[DataProvider('namesWithASeparatorOfTheSearchIndex')]
+    public function testASeparatorOfTheSearchIndexInANameIsRejected(string $name): void
+    {
+        $this->expectExceptionObject(InvalidVariantAxes::nameWithForbiddenCharacters());
+
+        VariantAxes::fromList(['Rozmiar', $name]);
+    }
+
     public function testColonInANameIsRejectedWithItsOwnMessage(): void
     {
         $this->expectException(InvalidVariantAxes::class);
