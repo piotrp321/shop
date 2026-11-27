@@ -221,8 +221,8 @@ nie zostały obiekty `perf-measure`, a reguła `shop-closed` działa. Wyniki w k
 - `repeat-1/`, `repeat-2/`, `repeat-3/`: trzy powtórzenia całego zestawu (§10; `*.txt` = raporty, `top.log` = zasoby co 15 s,
   `measure.log`), `raw-repeats.tgz` = próbki JSONL;
 - Odtwarzalność: przebiegi 1–3 tego raportu powstały przed dodaniem `run-parameters.txt`; seedów i list adresów
-  (`*.urls.json`) nie zapisano osobno, adresy każdego żądania są w próbkach JSONL (pole `path`), a rewizja narzędzia to commit PR
-  mechanizmu z tego dnia. Kolejne przebiegi `make measure` zapisują `run-parameters.txt` (rewizja, skróty plików, obrazy,
+  (`*.urls.json`) nie zapisano osobno, adresy każdego żądania są w próbkach JSONL (pole `path`), a rewizja narzędzia to ac98a6c3 (stan plików użytych w przebiegach,
+  zmieniony później w PR mechanizmu). Kolejne przebiegi `make measure` zapisują `run-parameters.txt` (rewizja, skróty plików, obrazy,
   zmienne, seed), `<etap>.urls.json` i `<etap>.jsonl.meta.json`.
 - `diagnostics/`: skrypty i notatki analizy Elasticsearcha i Grafany (§11–§12);
 - `generator/samples.log`, `raw-samples.tgz` (przebiegi 1 i 2).
