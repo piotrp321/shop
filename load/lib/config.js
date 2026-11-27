@@ -1,31 +1,8 @@
-// The settings of a run, read from the environment of the k6 container (the runners in load/k6.sh and
-// infra/k8s/scripts/load.sh pass them with `-e`). A missing or malformed required setting stops the run before it starts.
+// The settings of the scripts that drive the store, read from the environment of the k6 container (lib/env.js). A missing
+// or malformed required setting stops the run before it starts.
+import { number, text } from './env.js';
 
-export function text(name, fallback) {
-  const value = __ENV[name];
-  if (value === undefined || value === '') {
-    if (fallback === undefined) {
-      throw new Error(`${name} is required`);
-    }
-    return fallback;
-  }
-  return value;
-}
-
-export function number(name, fallback) {
-  const raw = __ENV[name];
-  if (raw === undefined || raw === '') {
-    if (fallback === undefined) {
-      throw new Error(`${name} is required`);
-    }
-    return fallback;
-  }
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${name} must be a non-negative number, got '${raw}'`);
-  }
-  return value;
-}
+export { number, text };
 
 const trimmed = (url) => url.replace(/\/+$/, '');
 
