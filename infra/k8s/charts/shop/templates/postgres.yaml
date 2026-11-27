@@ -1,4 +1,17 @@
+{{- /*
+Postgres. The settings that do not depend on the memory are in infra/postgres/postgresql.conf (the ConfigMap postgres-config, the same
+file compose mounts); the two that do come from the values of the environment (postgres.*) as -c arguments. The pod template carries the
+checksum of the file, so a change of the file restarts the pod. /dev/shm is an emptyDir in memory: the 64 MB of a container end a parallel
+query with `could not resize shared memory segment`; what the queries use counts against the memory limit of the pod.
+*/ -}}
 {{- define "shop.postgres.container" -}}
+args:
+  - -c
+  - config_file=/etc/postgresql/postgresql.conf
+  - -c
+  - shared_buffers={{ .Values.postgres.sharedBuffers }}
+  - -c
+  - effective_cache_size={{ .Values.postgres.effectiveCacheSize }}
 ports:
   - name: postgres
     containerPort: 5432
@@ -9,6 +22,12 @@ volumeMounts:
   - name: init
     mountPath: /docker-entrypoint-initdb.d
     readOnly: true
+  - name: config
+    mountPath: /etc/postgresql/postgresql.conf
+    subPath: postgresql.conf
+    readOnly: true
+  - name: shm
+    mountPath: /dev/shm
 readinessProbe:
   exec:
     command: ["pg_isready", "-h", "localhost", "-U", "postgres"]
@@ -22,10 +41,18 @@ readinessProbe:
   configMap:
     name: postgres-init
     defaultMode: 0755
+- name: config
+  configMap:
+    name: postgres-config
+- name: shm
+  emptyDir:
+    medium: Memory
+    sizeLimit: 1Gi
 {{- end }}
 {{ include "shop.service" (dict "root" . "name" "postgres" "ports" (list (dict "name" "postgres" "port" 5432))) }}
 ---
 {{ include "shop.statefulset" (dict "root" . "name" "postgres" "wave" "-1" "image" .Values.images.postgres
+  "podAnnotations" (dict "checksum/postgres-config" (.Files.Get "files/postgresql.conf" | sha256sum))
   "claims" (list (dict "name" "data" "size" .Values.storage.postgres))
   "container" (include "shop.postgres.container" .)
   "volumes" (include "shop.postgres.volumes" .)) }}

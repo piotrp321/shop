@@ -14,7 +14,8 @@ class SecretsTest(unittest.TestCase):
         keys = init_env_keys()
         self.assertIn("POSTGRES_PASSWORD", keys)
         self.assertIn("PAYMENT_DEMO_CARD_WEBHOOK_SECRET", keys)
-        self.assertGreaterEqual(len(keys), 19)
+        self.assertIn("EXPORTER_DB_PASSWORD", keys)
+        self.assertGreaterEqual(len(keys), 20)
 
     def test_prod_does_not_render_the_secret_but_every_workload_reads_the_same_one(self):
         self.assertEqual([], of_kind("prod", "Secret"))

@@ -31,6 +31,7 @@
     "storage",
     "reindex",
     "elasticsearch",
+    "postgres",
     "keycloak",
     "resources"
   ],
@@ -359,7 +360,8 @@
               "PAYMENT_DEMO_TRANSFER_API_KEY",
               "PAYMENT_DEMO_TRANSFER_WEBHOOK_SECRET",
               "PAYMENT_DEMO_CARD_API_KEY",
-              "PAYMENT_DEMO_CARD_WEBHOOK_SECRET"
+              "PAYMENT_DEMO_CARD_WEBHOOK_SECRET",
+              "EXPORTER_DB_PASSWORD"
             ],
             "additionalProperties": {
               "type": "string",
@@ -717,6 +719,26 @@
           "minimum": 1,
           "maximum": 1024,
           "description": "The primary shards of a new product index (SEARCH_SHARDS); Elasticsearch allows at most 1024."
+        }
+      }
+    },
+    "postgres": {
+      "type": "object",
+      "required": [
+        "sharedBuffers",
+        "effectiveCacheSize"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sharedBuffers": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*(kB|MB|GB|TB)$",
+          "description": "shared_buffers of Postgres (-c of the command): 25% of the memory limit of the pod."
+        },
+        "effectiveCacheSize": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*(kB|MB|GB|TB)$",
+          "description": "effective_cache_size of Postgres (-c of the command): shared_buffers plus the file cache the limit leaves."
         }
       }
     },

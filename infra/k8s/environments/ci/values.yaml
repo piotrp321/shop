@@ -46,6 +46,7 @@ secrets:
     PAYMENT_DEMO_TRANSFER_WEBHOOK_SECRET: smoke-transfer-webhook-secret
     PAYMENT_DEMO_CARD_API_KEY: smoke-card-api-key
     PAYMENT_DEMO_CARD_WEBHOOK_SECRET: smoke-card-webhook-secret
+    EXPORTER_DB_PASSWORD: smoke-exporter-db-password
 
 # The backup into the restic repository in the bucket `restic` of a Garage of its own, which smoke.sh starts in the namespace
 # smoke-backup (not the Garage of the shop, so that a restore that empties the shop never empties the backups). The key is a
@@ -79,6 +80,12 @@ jobs:
 
 elasticsearch:
   javaOpts: -Xms512m -Xmx512m
+
+# The pod of Postgres has no limit here (only the request of 128Mi), on a runner with 16 GB for the whole cluster and a few MB of data:
+# the default shared_buffers, and effective_cache_size of 512MB (a share of the runner, not the 4 GB default of Postgres).
+postgres:
+  sharedBuffers: 128MB
+  effectiveCacheSize: 512MB
 
 keycloak:
   javaHeap: -Xms128m -Xmx512m
