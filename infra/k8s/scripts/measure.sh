@@ -17,7 +17,11 @@
 #   MEASURE_OUT (required)    an existing directory outside the repository for the results
 #   MEASURE_RATES="2 5 10 20 40"   requests per second of the open steps of the product pages (an address is used once)
 #   MEASURE_LISTING_RATES="1 2 4 8 16"   the same for the listings of the kinds leaf and leaf_filter
-#   MEASURE_STAGES="single open burst"   the stages to run (a subset, e.g. "open" for the rise of the rate alone)
+#   MEASURE_STAGES="single open burst"   the stages to run (a subset, e.g. "open" for the rise of the rate alone); the stage k6 is not
+#                             in the default: it runs the ramp of load/saturate.js (k6, in its own Job) on the read mixes of MEASURE_K6_RUNS
+#   MEASURE_K6_RUNS="read:home:10,category:20,product:35,search:25 product:product:100"   name:MIX of each ramp (no cart, no checkout:
+#                             the stage writes nothing), MEASURE_K6_STEPS=8 MEASURE_K6_START=10 MEASURE_K6_RATE_STEP=10 MEASURE_K6_STEP_SECONDS=30
+#                             (iterations per second of the first step, the rise per step), MEASURE_K6_MAX_VUS=300, the CPU of the pod 2
 #   MEASURE_STEP_SECONDS=60   the length of an open step
 #   MEASURE_BURST=100         the addresses of a burst (W8)
 #   MEASURE_LISTINGS=300 MEASURE_PRODUCTS=150   the size of the list of the single stage
@@ -48,13 +52,19 @@ namespace="${KUBE_NAMESPACE:-shop}"
 rates="${MEASURE_RATES:-2 5 10 20 40}"
 listing_rates="${MEASURE_LISTING_RATES:-1 2 4 8 16}"
 stages="${MEASURE_STAGES:-single open burst}"
+k6_runs="${MEASURE_K6_RUNS:-read:home:10,category:20,product:35,search:25 product:product:100}"
+k6_steps="${MEASURE_K6_STEPS:-8}"
+k6_start="${MEASURE_K6_START:-10}"
+k6_rate_step="${MEASURE_K6_RATE_STEP:-10}"
+k6_step_seconds="${MEASURE_K6_STEP_SECONDS:-30}"
+k6_max_vus="${MEASURE_K6_MAX_VUS:-300}"
 has() { case " $stages " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 step="${MEASURE_STEP_SECONDS:-60}"
 burst="${MEASURE_BURST:-100}"
 listings="${MEASURE_LISTINGS:-300}"
 products="${MEASURE_PRODUCTS:-150}"
 timeout="${MEASURE_TIMEOUT:-7200}"
-for n in $step $burst $listings $products $timeout; do
+for n in $step $burst $listings $products $timeout $k6_steps $k6_start $k6_rate_step $k6_step_seconds $k6_max_vus; do
   case "$n" in "" | *[!0-9]* | 0*) echo "measure: not a positive number: $n" >&2; exit 2 ;; esac
 done
 for r in $rates $listing_rates; do
@@ -88,8 +98,8 @@ cleanup() {
   status=$?
   trap '' HUP INT TERM
   trap - EXIT
-  kc delete job "$job" --ignore-not-found --wait=false > /dev/null 2>&1 < /dev/null || true
-  kc delete configmap "$config" --ignore-not-found > /dev/null 2>&1 < /dev/null || true
+  kc delete job "$job" "$job-k6" --ignore-not-found --wait=false > /dev/null 2>&1 < /dev/null || true
+  kc delete configmap "$config" "$config-k6" --ignore-not-found > /dev/null 2>&1 < /dev/null || true
   exit "$status"
 }
 trap cleanup EXIT
@@ -132,13 +142,40 @@ script="$MEASURE_OUT/measure-job.sh"
   fi
 } > "$script"
 
-{
-  printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: %s\ndata:\n  baseline.py: |\n' "$config"
-  sed 's/^/    /' "$repo/load/baseline.py"
-  printf '  run.sh: |\n'
-  sed 's/^/    /' "$script"
-} | kc apply -f - > /dev/null
-kc apply -f - > /dev/null <<EOF
+# wait_job <job> <log name>: waits for the Job, sampling the load of the node and pods every 15 s, and saves its log.
+wait_job() {
+  waited=0
+  while :; do
+    state="$(kc get job "$1" -o jsonpath='{.status.succeeded}/{.status.failed}' 2> /dev/null < /dev/null || echo "?/?")"
+    case "$state" in
+      1/*) break ;;
+      */1 | */2) echo "measure: the Job $1 failed (its log: $MEASURE_OUT/$2.log)" >&2; break ;;
+    esac
+    [ "$waited" -lt "$timeout" ] || { echo "measure: timeout after $timeout s" >&2; break; }
+    # The load of the node and of the pods, the Job of the measurement included (it takes part of the resources of the server).
+    { date -u +%H:%M:%S; kc top pod --no-headers; kc top node --no-headers; } >> "$MEASURE_OUT/top.log" 2> /dev/null < /dev/null || true
+    sleep 15
+    waited=$((waited + 15))
+  done
+  kc logs "job/$1" > "$MEASURE_OUT/$2.log" 2>&1 < /dev/null || true
+  awk -v out="$MEASURE_OUT" '
+    /^##BEGIN / { stage = $2; ext = "txt"; next }
+    /^##JSONL /  { ext = "jsonl"; next }
+    /^##END /    { stage = ""; next }
+    stage != ""  { print > (out "/" stage "." ext) }
+  ' "$MEASURE_OUT/$2.log"
+  grep -q '^##END ' "$MEASURE_OUT/$2.log" || { echo "measure: the Job $1 did not reach the end (log: $MEASURE_OUT/$2.log)" >&2; failed_job=1; }
+}
+failed_job=0
+
+if has single || has open || has burst; then
+  {
+    printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: %s\ndata:\n  baseline.py: |\n' "$config"
+    sed 's/^/    /' "$repo/load/baseline.py"
+    printf '  run.sh: |\n'
+    sed 's/^/    /' "$script"
+  } | kc apply -f - > /dev/null
+  kc apply -f - > /dev/null <<EOF
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -165,28 +202,65 @@ spec:
         - name: m
           configMap: {name: $config}
 EOF
-echo "measure: Job $job started at $(date -u +%H:%M:%S) UTC"
+  echo "measure: Job $job started at $(date -u +%H:%M:%S) UTC"
+  wait_job "$job" measure
+fi
 
-waited=0
-while :; do
-  state="$(kc get job "$job" -o jsonpath='{.status.succeeded}/{.status.failed}' 2> /dev/null < /dev/null || echo "?/?")"
-  case "$state" in
-    1/*) break ;;
-    */1 | */2) echo "measure: the Job failed (its log: $MEASURE_OUT/measure.log)" >&2; break ;;
-  esac
-  [ "$waited" -lt "$timeout" ] || { echo "measure: timeout after $timeout s" >&2; break; }
-  # The load of the node and of the pods, the Job of the measurement included (it takes part of the resources of the server).
-  { date -u +%H:%M:%S; kc top pod --no-headers; kc top node --no-headers; } >> "$MEASURE_OUT/top.log" 2> /dev/null < /dev/null || true
-  sleep 15
-  waited=$((waited + 15))
-done
+if has k6; then
+  # shellcheck disable=SC2016 # the pattern is for sed, not for the shell
+  k6_image="$(sed -n 's/^K6_IMAGE="${K6_IMAGE:-\(.*\)}"$/\1/p' "$repo/load/k6.sh")"
+  [ -n "$k6_image" ] || { echo "measure: no K6_IMAGE in load/k6.sh" >&2; exit 1; }
+  k6_script="$MEASURE_OUT/measure-k6-job.sh"
+  {
+    echo 'mkdir -p /tmp/l && cd /tmp/l && tar xzf /m/load.tgz && cd load'
+    for run in $k6_runs; do
+      name="${run%%:*}"
+      mix="${run#*:}"
+      echo "echo '##BEGIN k6-$name'"
+      echo "rm -f /out/ramp.json /out/steady-rate"
+      echo "MIX='$mix' RAMP_START_RATE=$k6_start RAMP_RATE_STEP=$k6_rate_step RAMP_STEPS=$k6_steps RAMP_STEP_SECONDS=$k6_step_seconds RAMP_VUS=50 RAMP_MAX_VUS=$k6_max_vus \\"
+      echo "  STORE_URL=http://store:3000 API_URL=http://varnish k6 run --quiet saturate.js 2>&1 | tail -n 60"
+      echo "echo '##JSONL k6-$name'; cat /out/ramp.json 2>&1; echo; echo \"k6 exit: done\"; echo '##END k6-$name'"
+    done
+  } > "$k6_script"
+  {
+    printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: %s-k6\ndata:\n  run.sh: |\n' "$config"
+    sed 's/^/    /' "$k6_script"
+    printf 'binaryData:\n  load.tgz: %s\n' "$(tar czf - -C "$repo" load/lib load/saturate.js | base64 | tr -d '\n')"
+  } | kc apply -f - > /dev/null
+  kc apply -f - > /dev/null <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: $job-k6
+  labels: {app.kubernetes.io/name: perf-measure}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: $timeout
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: perf-measure}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: $k6_image
+          command: [sh, /m/run.sh]
+          resources:
+            requests: {cpu: 500m, memory: 512Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          volumeMounts:
+            - {name: m, mountPath: /m}
+            - {name: out, mountPath: /out}
+      volumes:
+        - name: m
+          configMap: {name: $config-k6}
+        - name: out
+          emptyDir: {}
+EOF
+  echo "measure: Job $job-k6 started at $(date -u +%H:%M:%S) UTC"
+  wait_job "$job-k6" measure-k6
+fi
 
-kc logs "job/$job" > "$MEASURE_OUT/measure.log" 2>&1 < /dev/null || true
-awk -v out="$MEASURE_OUT" '
-  /^##BEGIN / { stage = $2; ext = "txt"; next }
-  /^##JSONL /  { ext = "jsonl"; next }
-  /^##END /    { stage = ""; next }
-  stage != ""  { print > (out "/" stage "." ext) }
-' "$MEASURE_OUT/measure.log"
-grep -q '^##END ' "$MEASURE_OUT/measure.log" || { echo "measure: the Job did not reach the end (log: $MEASURE_OUT/measure.log)" >&2; exit 1; }
+[ "$failed_job" = 0 ] || exit 1
 echo "measure: done; results in $MEASURE_OUT"
