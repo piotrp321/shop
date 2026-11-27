@@ -455,8 +455,11 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
     w module, pole `null` według votera);
   - liczba produktów nigdy nie jest `count(*)`: to szacunek `pg_class.reltuples`, więc po masowym wstawieniu produktów
     trzeba `ANALYZE catalog_product`.
-- Wyszukiwanie produktów po nazwie w panelu używa rozszerzenia PostgreSQL `pg_trgm` (indeks GIN tworzony migracją).
-  Rozszerzenie musi być dostępne w bazie, każda baza przechodzi przez migracje.
+- Wyszukiwanie produktów po nazwie w panelu używa rozszerzenia PostgreSQL `pg_trgm` (indeks GIN tworzony migracją)
+  i, dla frazy bez słowa z 3 znaków (`qx`, `#!#`, `a.b`), indeksu GIN bigramów na `catalog_name_bigrams(name)`
+  (funkcja IMMUTABLE z migracji; jej treść nie zmienia się po zbudowaniu indeksu). Drogę do wierszy wybiera
+  `PhraseSearch` według pracy, nie według szacunku planisty: przejście indeksu sortowania z rosnącym budżetem, potem
+  kandydaci z GIN. Rozszerzenie musi być dostępne w bazie, każda baza przechodzi przez migracje.
 - Profilowanie: SPX (php-spx) jest tylko w obrazie deweloperskim (target `dev` w Dockerfile), nigdy w obrazie produkcyjnym.
   Przy problemie z wydajnością najpierw zmierz w SPX, potem optymalizuj.
 - Obraz Docker (`apps/api/Dockerfile`): etap `prod` bez Composera, gita, SPX, pakietów dev i entrypointu instalującego
