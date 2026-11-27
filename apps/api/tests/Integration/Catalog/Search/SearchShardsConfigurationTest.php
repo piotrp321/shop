@@ -48,6 +48,14 @@ final class SearchShardsConfigurationTest extends KernelTestCase
         self::assertSame(1, $this->shardsOfTheNewIndex());
     }
 
+    public function testAnEmptyVariableCountsAsNotSet(): void
+    {
+        // The default processor of the container (env(default::SEARCH_SHARDS)) treats an empty value like a missing one.
+        $_SERVER[self::VARIABLE] = '';
+
+        self::assertSame(1, $this->shardsOfTheNewIndex());
+    }
+
     #[DataProvider('valuesOtherThanOne')]
     public function testAnyOtherValueOfTheVariableIsRefusedWithItsName(string $value): void
     {
@@ -69,7 +77,6 @@ final class SearchShardsConfigurationTest extends KernelTestCase
         yield 'zero' => ['0'];
         yield 'negative' => ['-1'];
         yield 'not a number' => ['many'];
-        yield 'empty' => [''];
         yield 'one with a leading zero' => ['01'];
         yield 'one with a space' => [' 1'];
         yield 'one with a newline' => ["1\n"];

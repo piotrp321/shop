@@ -160,6 +160,8 @@ services:
         arguments:
             $replicas: '%app.search.replicas%'
             $refreshInterval: '%app.search.refresh_interval%'
+            # The variable no longer exists: a container that still sets it to a value other than 1 refuses the definition.
+            $searchShards: '%env(default::SEARCH_SHARDS)%'
 
     App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance:
         arguments:

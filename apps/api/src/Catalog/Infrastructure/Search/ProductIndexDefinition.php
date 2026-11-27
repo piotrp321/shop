@@ -34,11 +34,17 @@ final readonly class ProductIndexDefinition
     private const string REFRESH_INTERVAL_FORMAT = '/\A[1-9][0-9]*(?:ms|s)\z/';
 
     /**
-     * @param int    $replicas        the replicas of every shard
-     * @param string $refreshInterval the refresh interval of the index once it is filled, from SEARCH_REFRESH_INTERVAL
+     * @param int         $replicas        the replicas of every shard
+     * @param string      $refreshInterval the refresh interval of the index once it is filled, from SEARCH_REFRESH_INTERVAL
+     * @param string|null $searchShards    SEARCH_SHARDS of the environment, only to refuse it: the variable is gone, the index has one
+     *                                     shard whatever it says, so a container that still sets it to another value is a mistake
      */
-    public function __construct(private int $replicas, private string $refreshInterval = '1s')
+    public function __construct(private int $replicas, private string $refreshInterval = '1s', ?string $searchShards = null)
     {
+        // Compared as text, not as a number: "many", "" and " 1" must not pass. The container hands the variable over as it is.
+        if (null !== $searchShards && (string) self::SHARDS !== $searchShards) {
+            throw new \InvalidArgumentException(\sprintf('SEARCH_SHARDS must be unset or 1, got %s: the product index has exactly one shard, because the facets of the search model are exact only on one, and the variable is unneeded (remove it from the environment, compose and the chart).', json_encode($searchShards, \JSON_INVALID_UTF8_SUBSTITUTE | \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR)));
+        }
         if ($replicas < 0) {
             throw new \InvalidArgumentException(\sprintf('The number of replicas of the search index must not be negative, got %d.', $replicas));
         }

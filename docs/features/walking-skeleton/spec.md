@@ -395,7 +395,7 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
 - Aplikacja czyta i zapisuje przez alias (`products` w dev, `test_products` w testach, z parametru). Alias wskazuje
   dokładnie jeden fizyczny indeks `<alias>_<UTC rrrrmmddggmmssmmm>_<6 znaków hex>`, więc kolejne przebudowy nie
   kolidują nazwami.
-- `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Indeks ma jeden shard (stała w kodzie, bez zmiennej;
+- `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Indeks ma jeden shard (stała w kodzie; `SEARCH_SHARDS` inne niż 1 jest odrzucane;
   `docs/features/search/spec.md`, M3 i „Infrastruktura”), repliki z parametru (0), `refresh_interval`
   ze zmiennej `SEARCH_REFRESH_INTERVAL` (bez niej `1s`; liczba z jednostką `ms` albo `s`). Indeks jest posortowany po
   polu `sort_path` (rosnąco), więc produkty jednej kategorii leżą obok siebie. W `_meta.definition_hash` indeksu

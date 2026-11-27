@@ -53,7 +53,7 @@ Poza zakresem:
 | A3 | Kategoria dostaje slug w domenie Catalog (`CategorySlug`, unikalny wśród rodzeństwa); ścieżkę slugów liczy odczyt drzewa, bez kolumny w bazie. Nazwa osi wariantu nie może zawierać `:` (reguła `VariantAxes`, potrzebna formatowi filtra). |
 | M1 | Model R: warunki i fasety liczone z pól produktu (tokeny), `nested` jednego poziomu tylko tam, gdzie cena musi należeć do tego samego wariantu co opcja. Równoważność z warunkiem „ten sam wariant” (S2) wynika z dwóch reguł domeny: wariant ma najwyżej 2 osie (`VariantAxes::MAX_AXES`), a krotki opcji wariantów jednego produktu są unikalne (`ProductVariants`, `DuplicateVariantValues`). Budowa dokumentu odrzuca produkt, który ich nie spełnia (`SearchIndexError`), zamiast liczyć go błędnie. |
 | M2 | Listing to jedno żądanie `_msearch`: wyniki strony oraz grupy agregacji pogrupowane według zestawu warunków (każda grupa `size: 0` z warunkami w `query`), zakres cen bez warunków opcji dwoma wyszukiwaniami „top 1”. Listing z frazą liczy dopasowanie tekstu raz (jedno żądanie). Błąd którejkolwiek części `_msearch` to błąd całej odpowiedzi (jak dziś: 503 albo 500), nigdy częściowe fasety. Odpowiedź `GET /api/v1/products` i sklep bez zmian. |
-| M3 | Indeks ma zawsze 1 shard: niezmiennik, nie ustawienie (stała `ProductIndexDefinition::SHARDS`, bez zmiennej środowiska i bez wartości chartu; uzasadnienie i warunki zmiany w „Ryzyka i ograniczenia”). Indeks jest posortowany po `sort_path` (ścieżka głównej kategorii), więc produkty jednej kategorii leżą obok siebie. |
+| M3 | Indeks ma zawsze 1 shard: niezmiennik, nie ustawienie (stała `ProductIndexDefinition::SHARDS`, bez wartości chartu i bez zmiennej, a `SEARCH_SHARDS` inne niż 1 w środowisku kontenera API jest odrzucane; uzasadnienie i warunki zmiany w „Ryzyka i ograniczenia”). Indeks jest posortowany po `sort_path` (ścieżka głównej kategorii), więc produkty jednej kategorii leżą obok siebie. |
 | M4 | `refresh_interval` z parametru `SEARCH_REFRESH_INTERVAL` (domyślnie `1s`; w `prod` `5s` warunkowo, do potwierdzenia pomiarem W16 razem z PERF-6). Ustawienie dynamiczne: `catalog:search-index:setup` nadaje je istniejącemu indeksowi, bez przebudowy. Nie wchodzi do skrótu definicji. |
 | M5 | Przebudowa nie gubi zapisów (W19a): na czas przebudowy nowy indeks ma drugi alias `<alias>-rebuild`, a każdy pojedynczy zapis idzie jednym `_bulk` do obu aliasów z wersją `external_gte`. |
 | M6 | Fasety korzystają z natywnego request cache Elasticsearcha (żądania `size: 0`, unieważniane przy odświeżeniu); bez cache aplikacyjnego i bez materializowanych liczników faset (decyzja o licznikach po PERF-0). |
@@ -479,8 +479,11 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 - `make seed`: `catalog:seed-demo`, `pricing:seed-demo`, `ordering:seed-demo`, `inventory:seed-demo`,
   `catalog:reindex`, `storefront:cache:purge-all`.
 - Liczba shardów nie jest konfiguracją (M3): każdy nowy indeks ma jeden, z stałej `ProductIndexDefinition::SHARDS`. Compose
-  i chart nie mają zmiennej ani wartości na shardy (schemat chartu odrzuca `elasticsearch.shards`), a `SEARCH_SHARDS`
-  ustawione w środowisku nic nie zmienia, więc żadne ustawienie z compose, `.env` ani chartu nie obejdzie niezmiennika.
+  i chart nie mają zmiennej ani wartości na shardy (schemat chartu odrzuca `elasticsearch.shards`). Kontener z kodem API, który nadal ma `SEARCH_SHARDS` (z compose, `.env`,
+  chartu albo ustawione ręcznie) w wartości innej niż `1` (2, 0, ujemna, tekst, ze spacją albo zerem na początku), odmawia
+  zbudowania definicji indeksu błędem z nazwą zmiennej i powodem (jeden shard wymagany przez dokładne fasety, zmienna jest
+  zbędna); zmienna nieustawiona, pusta albo równa `1` jest dopuszczona. Odmowa jest w `ProductIndexDefinition`, więc działa
+  w każdym kontenerze, który buduje definicję (API, workery, komendy `setup` i `catalog:reindex`), niezależnie od źródła wartości.
   Indeks, który istnieje, zachowuje swoją liczbę shardów (hash definicji jej nie obejmuje). `catalog:search-index:setup` nie
   zmienia ani nie przepina aliasu na inny indeks, ale indeks aliasu z więcej niż jednym shardem (np. 4 shardy na worf.pl
   przed przebudową) zgłasza tak samo jak indeks innej definicji: ostrzeżenie z instrukcją `catalog:reindex` i powodzenie
