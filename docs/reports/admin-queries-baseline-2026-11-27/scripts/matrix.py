@@ -424,7 +424,7 @@ def draw(db, out):
         after = cursor_after(db, page1, "customer-lastorder")
         if after:
             cases.add(f"C-frag-{label}.p2", "customers", f"customers, fragment {label} '{fragment}', page 2", customer_page(conditions, "-lastOrderAt", after), "hits", value, "customers")
-        cases.add(f"C-frag-{label}.p1.name", "customers", f"customers, fragment {label} '{fragment}', page 1, sort name", customer_page(conditions, "name"), "hits", value, "customers")
+        # A search combines only with the sort by the last order (the API answers 400 otherwise), so no sort `name` here.
         cases.add(f"C-frag-{label}.count", "customers", f"customers, fragment {label} '{fragment}', count", bounded_count("ordering_customer c", conditions), "hits", value, "customers")
 
     # ---- others

@@ -13,6 +13,7 @@
 //   SHOP_LISTING_RATE (0)        cold listings of the shop per second (the addresses of baseline.py urls in SHOP_URLS)
 //   SHOP_CART_RATE (0)           carts of the shop per second: create, add, read, change (W5)
 //   SHOP_URLS                    the file of baseline.py urls, with SHOP_LISTING_RATE
+//   SHOP_URL_OFFSET (0)          where in that file the run starts (a later run must not repeat the addresses of an earlier one: they would be warm)
 //   PANEL_VUS (50), PANEL_MAX_VUS (400)   the virtual users of the open scenarios
 import http from 'k6/http';
 import exec from 'k6/execution';
@@ -33,9 +34,10 @@ const worstVus = number('PANEL_WORST_VUS', 0);
 const boundariesEvery = number('BOUNDARIES_EVERY', 0);
 const listingRate = number('SHOP_LISTING_RATE', 0);
 const cartRate = number('SHOP_CART_RATE', 0);
+const offset = number('SHOP_URL_OFFSET', 0);
 const shopUrls = listingRate > 0 ? new SharedArray('shop', () => JSON.parse(open(text('SHOP_URLS'))).entries.filter((e) => e.target === 'api' && e.kind !== 'product').map((e) => e.path)) : [];
-if (listingRate > 0 && shopUrls.length < Math.ceil(listingRate * seconds)) {
-  throw new Error(`SHOP_URLS has ${shopUrls.length} listings, the run needs ${Math.ceil(listingRate * seconds)} different ones (one per request, so that they are cold); generate more with baseline.py urls --listings`);
+if (listingRate > 0 && shopUrls.length < offset + Math.ceil(listingRate * seconds)) {
+  throw new Error(`SHOP_URLS has ${shopUrls.length} listings, the run needs ${offset + Math.ceil(listingRate * seconds)} different ones (one per request, so that they are cold); generate more with baseline.py urls --listings`);
 }
 
 if (typeof mix.classes !== 'object' || mix.classes === null || Object.keys(mix.classes).length === 0 || typeof mix.weights !== 'object') {
@@ -152,7 +154,7 @@ function shopGet(cls, path, ip) {
 }
 
 export function shopListing() {
-  shopGet('shop_listing', shopUrls[exec.scenario.iterationInTest % shopUrls.length], nextIp(22));
+  shopGet('shop_listing', shopUrls[(offset + exec.scenario.iterationInTest) % shopUrls.length], nextIp(22));
 }
 
 function shopSend(method, cls, path, body, ip) {

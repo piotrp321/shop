@@ -1948,15 +1948,6 @@
    "scale": "customers"
   },
   {
-   "id": "C-frag-common-surname.p1.name",
-   "group": "customers",
-   "title": "customers, fragment common-surname 'nowak', page 1, sort name",
-   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('nowak') || '%' OR lower(c.full_name) LIKE '%' || lower('nowak') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
-   "variable": "hits",
-   "value": 14,
-   "scale": "customers"
-  },
-  {
    "id": "C-frag-common-surname.count",
    "group": "customers",
    "title": "customers, fragment common-surname 'nowak', count",
@@ -1970,15 +1961,6 @@
    "group": "customers",
    "title": "customers, fragment rare-surname 'piechocki', page 1",
    "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('piechocki') || '%' OR lower(c.full_name) LIKE '%' || lower('piechocki') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
-   "variable": "hits",
-   "value": 2,
-   "scale": "customers"
-  },
-  {
-   "id": "C-frag-rare-surname.p1.name",
-   "group": "customers",
-   "title": "customers, fragment rare-surname 'piechocki', page 1, sort name",
-   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('piechocki') || '%' OR lower(c.full_name) LIKE '%' || lower('piechocki') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
    "variable": "hits",
    "value": 2,
    "scale": "customers"
@@ -2011,15 +1993,6 @@
    "scale": "customers"
   },
   {
-   "id": "C-frag-domain.p1.name",
-   "group": "customers",
-   "title": "customers, fragment domain 'example', page 1, sort name",
-   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('example') || '%' OR lower(c.full_name) LIKE '%' || lower('example') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
-   "variable": "hits",
-   "value": 873,
-   "scale": "customers"
-  },
-  {
    "id": "C-frag-domain.count",
    "group": "customers",
    "title": "customers, fragment domain 'example', count",
@@ -2047,15 +2020,6 @@
    "scale": "customers"
   },
   {
-   "id": "C-frag-three-letters.p1.name",
-   "group": "customers",
-   "title": "customers, fragment three-letters 'ann', page 1, sort name",
-   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ann') || '%' OR lower(c.full_name) LIKE '%' || lower('ann') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
-   "variable": "hits",
-   "value": 46,
-   "scale": "customers"
-  },
-  {
    "id": "C-frag-three-letters.count",
    "group": "customers",
    "title": "customers, fragment three-letters 'ann', count",
@@ -2069,15 +2033,6 @@
    "group": "customers",
    "title": "customers, fragment none 'qqzzxx', page 1",
    "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('qqzzxx') || '%' OR lower(c.full_name) LIKE '%' || lower('qqzzxx') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
-   "variable": "hits",
-   "value": 0,
-   "scale": "customers"
-  },
-  {
-   "id": "C-frag-none.p1.name",
-   "group": "customers",
-   "title": "customers, fragment none 'qqzzxx', page 1, sort name",
-   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('qqzzxx') || '%' OR lower(c.full_name) LIKE '%' || lower('qqzzxx') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
    "variable": "hits",
    "value": 0,
    "scale": "customers"
@@ -2101,15 +2056,6 @@
    "scale": "customers"
   },
   {
-   "id": "C-frag-punct-1.p1.name",
-   "group": "customers",
-   "title": "customers, fragment punct-1 '#!#', page 1, sort name",
-   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('#!#') || '%' OR lower(c.full_name) LIKE '%' || lower('#!#') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
-   "variable": "hits",
-   "value": 0,
-   "scale": "customers"
-  },
-  {
    "id": "C-frag-punct-1.count",
    "group": "customers",
    "title": "customers, fragment punct-1 '#!#', count",
@@ -2123,15 +2069,6 @@
    "group": "customers",
    "title": "customers, fragment punct-2 '---', page 1",
    "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('---') || '%' OR lower(c.full_name) LIKE '%' || lower('---') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
-   "variable": "hits",
-   "value": 0,
-   "scale": "customers"
-  },
-  {
-   "id": "C-frag-punct-2.p1.name",
-   "group": "customers",
-   "title": "customers, fragment punct-2 '---', page 1, sort name",
-   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('---') || '%' OR lower(c.full_name) LIKE '%' || lower('---') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
    "variable": "hits",
    "value": 0,
    "scale": "customers"
@@ -2164,15 +2101,6 @@
    "scale": "customers"
   },
   {
-   "id": "C-frag-punct-3.p1.name",
-   "group": "customers",
-   "title": "customers, fragment punct-3 'a.b', page 1, sort name",
-   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('a.b') || '%' OR lower(c.full_name) LIKE '%' || lower('a.b') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
-   "variable": "hits",
-   "value": 35,
-   "scale": "customers"
-  },
-  {
    "id": "C-frag-punct-3.count",
    "group": "customers",
    "title": "customers, fragment punct-3 'a.b', count",
@@ -2186,15 +2114,6 @@
    "group": "customers",
    "title": "customers, fragment punct-4 'ab-cd', page 1",
    "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ab-cd') || '%' OR lower(c.full_name) LIKE '%' || lower('ab-cd') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
-   "variable": "hits",
-   "value": 0,
-   "scale": "customers"
-  },
-  {
-   "id": "C-frag-punct-4.p1.name",
-   "group": "customers",
-   "title": "customers, fragment punct-4 'ab-cd', page 1, sort name",
-   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ab-cd') || '%' OR lower(c.full_name) LIKE '%' || lower('ab-cd') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
    "variable": "hits",
    "value": 0,
    "scale": "customers"
@@ -2218,15 +2137,6 @@
    "scale": "customers"
   },
   {
-   "id": "C-frag-polish.p1.name",
-   "group": "customers",
-   "title": "customers, fragment polish 'ąęś', page 1, sort name",
-   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ąęś') || '%' OR lower(c.full_name) LIKE '%' || lower('ąęś') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
-   "variable": "hits",
-   "value": 0,
-   "scale": "customers"
-  },
-  {
    "id": "C-frag-polish.count",
    "group": "customers",
    "title": "customers, fragment polish 'ąęś', count",
@@ -2240,15 +2150,6 @@
    "group": "customers",
    "title": "customers, fragment full-email 'jan.piechocki.637@example.net', page 1",
    "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('jan.piechocki.637@example.net') || '%' OR lower(c.full_name) LIKE '%' || lower('jan.piechocki.637@example.net') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
-   "variable": "hits",
-   "value": 1,
-   "scale": "customers"
-  },
-  {
-   "id": "C-frag-full-email.p1.name",
-   "group": "customers",
-   "title": "customers, fragment full-email 'jan.piechocki.637@example.net', page 1, sort name",
-   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('jan.piechocki.637@example.net') || '%' OR lower(c.full_name) LIKE '%' || lower('jan.piechocki.637@example.net') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
    "variable": "hits",
    "value": 1,
    "scale": "customers"

@@ -139,8 +139,13 @@ case "$mode" in
     cart="${SHOP_CART_RATE:-5}"
     worst="${PANEL_WORST_VUS:-8}"
     every="${BOUNDARIES_EVERY:-30}"
-    shop="-e SHOP_URLS=/out/shop-urls.json -e SHOP_LISTING_RATE=$listing -e SHOP_CART_RATE=$cart"
+    shop_base="-e SHOP_URLS=/out/shop-urls.json -e SHOP_LISTING_RATE=$listing -e SHOP_CART_RATE=$cart"
+    # Every run starts further in the list (the addresses of an earlier run would be warm), as many as a run uses.
+    per_run="$(python3 -c "import math; print(math.ceil($listing * $seconds))")"
+    sent=0
     while [ "$n" -le "$runs" ]; do
+      shop="$shop_base -e SHOP_URL_OFFSET=$sent"
+      sent=$((sent + per_run))
       echo "load-panel: p4 run $n of $runs without the panel (shop: $listing listings/s, $cart carts/s, $seconds s)"
       boundaries=0
       # shellcheck disable=SC2086
@@ -151,6 +156,8 @@ case "$mode" in
       boundaries="$every"
       run_rate="$rate"
       # shellcheck disable=SC2086
+      shop="$shop_base -e SHOP_URL_OFFSET=$sent"
+      sent=$((sent + per_run))
       run_k6 "$out/p4-with-run$n" $shop -e PANEL_WORST_VUS="$worst" -e BOUNDARIES_EVERY="$every" > /dev/null || status=$?
       [ "$n" -ge "$runs" ] || sleep "$pause"
       n=$((n + 1))

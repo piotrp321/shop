@@ -355,7 +355,7 @@ def build(api, rng, products, deep_pages):
             add("customers_deep", "/api/v1/admin/customers?" + q(sort=sort, perPage=100, after=cursor))
     for customer in rng.sample(customers, min(8, len(customers))):
         add("customers_fragment", "/api/v1/admin/customers?" + q(q=customer["fullName"].split()[-1].lower().ljust(3, "x")))
-        add("customers_fragment", "/api/v1/admin/customers?" + q(q=customer["email"].split("@")[0][:6].ljust(3, "x"), sort="name"))
+        add("customers_fragment", "/api/v1/admin/customers?" + q(q=customer["email"].split("@")[0][:6].ljust(3, "x")))
     for fragment in ("example", "ann", "qqzzxx"):
         add("customers_fragment", "/api/v1/admin/customers?" + q(q=fragment))
     for fragment in PUNCTUATION:
