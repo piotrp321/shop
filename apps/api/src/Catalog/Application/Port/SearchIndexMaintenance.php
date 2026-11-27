@@ -17,7 +17,8 @@ use App\Catalog\Application\Search\SetupResult;
 interface SearchIndexMaintenance
 {
     /**
-     * Creates the alias and its first index when neither exists; otherwise checks them and changes nothing. An index
+     * Creates the alias and its first index when neither exists; otherwise checks them and changes only the
+     * refresh interval of the active index, which it sets to the configured one when it differs. An index
      * built from another definition is not an error: the result names it, so that the caller can tell to rebuild it.
      *
      * @return SetupResult the orphaned indexes of this alias (never deleted here) and the outdated active index
@@ -68,7 +69,7 @@ interface SearchIndexMaintenance
     public function write(string $index, array $documents): BulkResult;
 
     /**
-     * Restores the default refresh interval of the index, refreshes it and checks that it exists, has healthy shards,
+     * Sets the configured refresh interval of the index, refreshes it and checks that it exists, has healthy shards,
      * the current definition and the expected number of documents.
      *
      * @throws SearchIndexError  when any check fails

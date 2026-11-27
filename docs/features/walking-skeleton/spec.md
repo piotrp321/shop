@@ -447,11 +447,14 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   liczenia, pojedynczych zapisów i operacji na aliasach; 30 s dla bulka, tworzenia indeksu i odświeżania.
 
 **`catalog:search-index:setup`**
-- Gdy nie ma aliasu ani indeksu o jego nazwie: tworzy indeks fizyczny i alias. Wywołany drugi raz nie robi nic.
+- Gdy nie ma aliasu ani indeksu o jego nazwie: tworzy indeks fizyczny i alias. Wywołany drugi raz nie tworzy
+  niczego nowego: na indeksie, na który wskazuje alias, ustawia tylko `refresh_interval` z `SEARCH_REFRESH_INTERVAL`,
+  gdy jest inny.
 - Kończy się błędem (kod 1, komunikat z instrukcją) i niczego nie zmienia, gdy: istnieje zwykły indeks o nazwie
   aliasu, alias wskazuje inną liczbę indeksów niż jeden albo trwa przebudowa albo inny `setup` (blokada przebudowy).
 - Gdy `definition_hash` indeksu, na który wskazuje alias, różni się od definicji, wypisuje ostrzeżenie z nazwą indeksu
-  i instrukcją `catalog:reindex`, niczego nie zmienia i kończy się kodem 0, żeby wdrożenie nowej definicji nie
+  i instrukcją `catalog:reindex`, poza `refresh_interval` niczego nie zmienia (interwał ustawia także na takim indeksie)
+  i kończy się kodem 0, żeby wdrożenie nowej definicji nie
   zatrzymało się na `setup`. Do przebudowy indeks ma starą definicję (`docs/features/search/spec.md`, „Infrastruktura”).
 - Wypisuje ostrzeżenie z listą indeksów `<alias>_*`, na które nie wskazuje alias. Nie usuwa ich.
 - `--recreate` usuwa alias i wszystkie indeksy `<alias>_*`, potem tworzy je od nowa. Przy `APP_ENV=prod` odmawia
