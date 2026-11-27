@@ -397,7 +397,7 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   kolidują nazwami.
 - `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Shardy pochodzą ze zmiennej `SEARCH_SHARDS`
   (bez niej 1; `docs/features/search/spec.md`, „Infrastruktura”), repliki z parametru (0). W `_meta.definition_hash` indeksu zapisany jest hash definicji (mapping i analiza, bez
-  shardów i replik), z którym porównujemy indeks przy `setup` i przed przepięciem.
+  shardów i replik), z którym porównujemy indeks przy `setup` (ostrzeżenie) i przed przepięciem (odmowa).
 - Analiza: `polish_text` (tokenizer standardowy, `lowercase`, `polish_stem` z wtyczki `analysis-stempel`,
   `asciifolding`: „kurtki” i „kurtka” dają ten sam token) i `folded_text` (tokenizer standardowy, `lowercase`,
   `asciifolding`, bez stemmera: „Śpiwór” daje „spiwor”).
@@ -443,8 +443,10 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
 **`catalog:search-index:setup`**
 - Gdy nie ma aliasu ani indeksu o jego nazwie: tworzy indeks fizyczny i alias. Wywołany drugi raz nie robi nic.
 - Kończy się błędem (kod 1, komunikat z instrukcją) i niczego nie zmienia, gdy: istnieje zwykły indeks o nazwie
-  aliasu, alias wskazuje inną liczbę indeksów niż jeden albo `definition_hash` indeksu różni się od definicji
-  (instrukcja: `catalog:reindex`).
+  aliasu, alias wskazuje inną liczbę indeksów niż jeden albo trwa przebudowa albo inny `setup` (blokada przebudowy).
+- Gdy `definition_hash` indeksu, na który wskazuje alias, różni się od definicji, wypisuje ostrzeżenie z nazwą indeksu
+  i instrukcją `catalog:reindex`, niczego nie zmienia i kończy się kodem 0, żeby wdrożenie nowej definicji nie
+  zatrzymało się na `setup`. Do przebudowy indeks ma starą definicję (`docs/features/search/spec.md`, „Infrastruktura”).
 - Wypisuje ostrzeżenie z listą indeksów `<alias>_*`, na które nie wskazuje alias. Nie usuwa ich.
 - `--recreate` usuwa alias i wszystkie indeksy `<alias>_*`, potem tworzy je od nowa. Przy `APP_ENV=prod` odmawia
   (kod 1). Używa go `init-test`, bo indeks testowy jest jednorazowy.
