@@ -14,7 +14,7 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
-#[AsCommand(name: 'catalog:search-index:setup', description: 'Creates the product search alias and index if missing and checks their state.')]
+#[AsCommand(name: 'catalog:search-index:setup', description: 'Creates the product search alias and index if missing and checks their state (warns about an index built from another definition).')]
 final readonly class SetupSearchIndexCommand
 {
     public function __construct(
@@ -50,7 +50,7 @@ final readonly class SetupSearchIndexCommand
                 return Command::SUCCESS;
             }
 
-            $orphans = $this->maintenance->setup();
+            $result = $this->maintenance->setup();
         } catch (SearchIndexError|SearchUnavailable $e) {
             $io->error($e->getMessage());
 
@@ -59,10 +59,16 @@ final readonly class SetupSearchIndexCommand
             $this->lock->release();
         }
 
-        if ([] !== $orphans) {
+        if (null !== $result->outdatedIndex) {
+            $io->warning(\sprintf(
+                'The index "%s" was built from another index definition and is left as it is. Search results are wrong until you run catalog:reindex to rebuild it with the current one.',
+                $result->outdatedIndex,
+            ));
+        }
+        if ([] !== $result->orphans) {
             $io->warning(\sprintf(
                 "Indexes the alias does not point to (left in place; delete them when no longer needed):\n%s",
-                implode("\n", $orphans),
+                implode("\n", $result->orphans),
             ));
         }
         $io->success('The search index is set up.');

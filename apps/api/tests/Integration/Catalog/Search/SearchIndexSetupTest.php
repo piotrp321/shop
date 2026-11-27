@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Catalog\Search;
 
 use App\Catalog\Application\Search\SearchIndexError;
+use App\Catalog\Application\Search\SetupResult;
 use App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock;
 use App\Catalog\Infrastructure\Search\ProductIndexDefinition;
 use App\Catalog\UI\Console\SetupSearchIndexCommand;
@@ -23,14 +24,14 @@ final class SearchIndexSetupTest extends KernelTestCase
 
     public function testSetupCreatesTheAliasAndOneIndexThenChangesNothing(): void
     {
-        self::assertSame([], $this->maintenance()->setup());
+        self::assertEquals(new SetupResult(), $this->maintenance()->setup());
 
         $targets = $this->aliasTargets();
         self::assertCount(1, $targets);
         self::assertMatchesRegularExpression('/^'.preg_quote($this->alias(), '/').'_\d{17}_[0-9a-f]{6}$/', $targets[0]);
         self::assertSame(new ProductIndexDefinition(1, 0)->hash(), $this->definitionHash($targets[0]));
 
-        self::assertSame([], $this->maintenance()->setup());
+        self::assertEquals(new SetupResult(), $this->maintenance()->setup());
 
         self::assertSame($targets, $this->aliasTargets());
         self::assertSame($targets, $this->aliasIndexes());
@@ -65,8 +66,10 @@ final class SearchIndexSetupTest extends KernelTestCase
         [$index] = $this->aliasTargets();
         $this->markAsBuiltFromAnotherDefinition($index);
 
-        $this->maintenance()->setup();
+        $result = $this->maintenance()->setup();
 
+        self::assertSame($index, $result->outdatedIndex);
+        self::assertSame([], $result->orphans);
         self::assertSame([$index], $this->aliasTargets());
         self::assertSame([$index], $this->aliasIndexes());
         self::assertSame('another', $this->definitionHash($index));
@@ -82,7 +85,7 @@ final class SearchIndexSetupTest extends KernelTestCase
         $this->maintenance()->setup();
         $orphan = $this->maintenance()->createIndex();
 
-        self::assertSame([$orphan], $this->maintenance()->setup());
+        self::assertSame([$orphan], $this->maintenance()->setup()->orphans);
 
         self::assertTrue($this->indexExists($orphan));
         self::assertNotContains($orphan, $this->aliasTargets());
