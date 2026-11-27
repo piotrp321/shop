@@ -131,6 +131,7 @@ przebieg idzie przez jego publiczne adresy. Wiersze niezgodności są tylko w wy
 | `WRITE_MAX_IN_FLIGHT` | 100 | zapisy modelu otwartego czekające naraz na odpowiedź; zapis ponad limit jest pomijany i liczony (`dropped`) |
 | `WRITE_TIMEOUT_SECONDS` | 60 | zapis bez odpowiedzi przez ten czas jest „bez odpowiedzi” |
 | `WRITE_SEND_TOLERANCE_MS` | 1000 | próg błędu generatora: zapis modelu otwartego wysłany później niż tyle po zaplanowanej chwili jest spóźniony |
+| `WRITE_STALL_TOLERANCE_MS` | 100 | przestój pętli modelu otwartego, który nie narusza tempa (pasmo okien i zapisy nadrabiane, „Tempo”) |
 | `WRITE_DISCOVER_PRODUCTS` | 3 × `WRITE_SAMPLE`, co najmniej 60 | ile produktów czytać z każdego źródła przy wyborze próby |
 | `FRESHNESS_POLL_MS` | 250 | odstęp zapytań wariantu próbki świeżości (rozdzielczość pomiaru) |
 | `FRESHNESS_TIMEOUT_SECONDS` | 120 | zmiana niewidoczna tak długo kończy swoją próbkę (`timeouts`) |
@@ -146,8 +147,8 @@ Wynikiem pomiaru jest tylko przebieg z kodem 0: zapisy wysłane w zadanym tempie
 
 - zapis pominięty w tempie (`changes.dropped`: limit `WRITE_MAX_IN_FLIGHT` albo brak wolnego wariantu `bulk`, gdy zmiany cen
   czekają na odpowiedź; wtedy zwiększ `WRITE_SAMPLE` albo limit);
-- tempo nieutrzymane (niżej, „Tempo”): okno 1 s z liczbą wysłanych zapisów poza pasmem zadanego tempa albo seria więcej niż
-  jednego zapisu nadrabianego w jednym oknie;
+- tempo nieutrzymane (niżej, „Tempo”): okno 1 s z liczbą wysłanych zapisów poza pasmem zadanego tempa albo choć jeden zapis
+  nadrabiany;
 - zapis wysłany później niż próg błędu generatora (`changes.late`, `WRITE_SEND_TOLERANCE_MS`, domyślnie 1000 ms bez względu
   na tempo). Próg wykrywa generator, który przestał działać (zaległość narasta wtedy bez ograniczenia i szybko go przekracza;
   drgania pętli zdarzeń i planisty są o rzędy mniejsze od sekundy). Nie jest dowodem utrzymania tempa: tym są okna 1 s
@@ -156,7 +157,8 @@ Wynikiem pomiaru jest tylko przebieg z kodem 0: zapisy wysłane w zadanym tempie
   warianty względem każdego możliwego stanu;
 - zmiana próbki świeżości niewidoczna w `FRESHNESS_TIMEOUT_SECONDS` (`freshness.timeouts`): nie ma jej w percentylach, więc
   `freshness.percentiles_valid` jest `false`, a p95 i p99 nie są wynikiem W16;
-- kontrola zgodności nieukończona (`finished: false`), także ucięta przez `maxDuration` scenariusza.
+- kontrola zgodności nieukończona (`finished: false`), także ucięta przez `maxDuration` scenariusza; taki przebieg nie ma też
+  dowodu tempa (liczby okien powstają na końcu zapisów), więc werdykt podaje jedną przyczynę zamiast reguł tempa.
 
 Kody wyjścia: 0 – pomiar w zadanym tempie z kontrolą zgodności bez niezgodności; 99 – przebieg nie jest takim pomiarem
 (przyczyny wyżej), niezgodność indeksu, odrzucony zapis (4xx) albo błąd przebiegu (zapytanie poza oknem, odpowiedź z cache,
@@ -197,16 +199,20 @@ Model otwarty planuje zapis i na chwilę `start + i / WRITE_RATE` bez względu n
   okna poniżej i powyżej pasma `band`) i średnie tempo wysyłania całego przebiegu (`mean_sent_per_second`);
 - opóźnienie wysłania każdego zapisu względem zaplanowanej chwili (`changes.send_lag`: p50, p95, p99, p99,9, max)
   z histogramem w kubełkach ≤1, ≤5, ≤20, ≤100, ≤1000 i >1000 ms (`changes.send_lag_histogram`);
-- zapisy nadrabiane (`catch_up`): wysłane później niż jeden odstęp tempa (`1000 / WRITE_RATE` ms) po swojej chwili. Spóźniona
-  pętla modelu otwartego nie pomija zaległych zapisów, tylko wysyła je jeden po drugim bez czekania, czyli serią; wynik podaje
-  ich liczbę i największą serię w jednym oknie 1 s.
+- zapisy nadrabiane (`catch_up`): wysłane później niż próg przestoju `WRITE_STALL_TOLERANCE_MS` (domyślnie 100 ms, w wyniku
+  `changes.stall_tolerance_ms`) i więcej niż jeden odstęp tempa po swojej chwili. Spóźniona pętla modelu otwartego nie pomija
+  zaległych zapisów, tylko wysyła je jeden po drugim bez czekania, czyli serią; wynik podaje ich liczbę i największą serię
+  w jednym oknie 1 s.
 
-Reguła: tempo jest utrzymane, gdy każde pełne okno 1 s ma od `floor(WRITE_RATE) - 1` do `ceil(WRITE_RATE) + 1` wysłanych
-zapisów i żadne okno nie ma więcej niż jednego zapisu nadrabianego. Zaplanowane chwile dają w pełnym oknie `floor` albo
-`ceil` tempa zapisów, a drganie zegara może przesunąć jeden zapis przez granicę okna albo opóźnić go o ponad odstęp; większe
-odchylenie to dziura (zapisy pominięte albo wstrzymane) albo seria (wstrzymane zapisy wysłane naraz), czyli przyjścia niezgodne
-z modelem otwartym (`docs/features/performance-program/plan.md`, „Co liczymy”). Przebieg z tempem nieutrzymanym kończy się
-kodem 99 z przyczyną w `verdict`.
+Reguła: tempo jest utrzymane, gdy nie ma ani jednego zapisu nadrabianego i każde pełne okno 1 s ma od `floor(WRITE_RATE) − k`
+do `ceil(WRITE_RATE) + k` wysłanych zapisów, gdzie `k = max(1, ceil(WRITE_RATE × próg przestoju / 1 s))` (przy 100 ms:
+`max(1, ceil(WRITE_RATE × 0,1))`; pasmo jest w wyniku jako `band`). Zaplanowane chwile dają w pełnym oknie `floor` albo `ceil`
+tempa zapisów, a przestój pętli do progu może przenieść przez granicę okna najwyżej `k` zapisów. Próg przestoju jest stały,
+niezależny od tempa: 100 ms jest pomijalne wobec mierzonych wielkości (czasy listingu w setkach milisekund, świeżość
+w sekundach) i nie zmienia liczby zapisów w oknach, a większy przestój to seria nadrabiania. Odchylenie ponad to oznacza dziurę
+(zapisy pominięte albo wstrzymane) albo serię (wstrzymane zapisy wysłane naraz), czyli przyjścia niezgodne z modelem otwartym
+(`docs/features/performance-program/plan.md`, „Co liczymy”). Przebieg z tempem nieutrzymanym kończy się kodem 99 z przyczyną
+w `verdict`. Próg błędu generatora 1000 ms (`WRITE_SEND_TOLERANCE_MS`) zostaje osobno.
 
 Token dostępu jest odnawiany w tle w ostatniej minucie ważności, więc zapisy nie czekają na Keycloak, dopóki token jest ważny.
 Liczba odnowień jest w `changes.token_renewals` (`background`, `blocking`: żądanie czekało) i w podsumowaniu, a nieudane

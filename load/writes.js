@@ -22,16 +22,18 @@
 //   CHECK_TIMEOUT_SECONDS (120)        how long the consistency check may wait for the index to show the expected states
 //   CHECK_POLL_SECONDS (2)             the pause between two rounds of the check
 //   WRITE_TIMEOUT_SECONDS (60)         a write without an answer this long is unanswered (it may have been saved or not)
-//   WRITE_SEND_TOLERANCE_MS (1000)     a write of the open model sent later than this after its time is late
+//   WRITE_SEND_TOLERANCE_MS (1000)     the error threshold of the generator: a write of the open model later than this is late
+//   WRITE_STALL_TOLERANCE_MS (100)     the stall of the open model that keeps the rate (lib/write-state.js, stallTolerance)
 //   WRITES_RESULT                     the file of the result (JSON), e.g. /out/writes.json
 //   API_URL, API_HOST, KEYCLOAK_URL, KEYCLOAK_HOST, ADMIN_REFRESH_TOKEN   lib/admin.js
 //
 // Exit code (k6): 0 a measurement at the rate whose check passed; 99 no such measurement (lib/write-state.js, runVerdict: a write
-// not sent at the rate (dropped, later than the error threshold of the generator, a window of 1 s off the rate by more than one
-// write, a series of catch-up writes in a window), without an answer or with a 5xx, a change not seen within the freshness timeout, a refused write, a mismatch
-// of the index, an error of the run such as a variant query beyond the window or through a cache or a token that cannot be renewed,
-// a consistency check that did not finish); 107 the run could not start (no or a refused token, the API or Keycloak not answering,
-// an empty sample, settings out of range); 105 interrupted. Every case says why, and the result has the verdict with its reasons.
+// not sent at the rate: dropped, later than the error threshold of the generator, a window of 1 s outside the band of the rate or
+// a catch-up write later than the stall tolerance; without an answer or with a 5xx; a change not seen within the freshness timeout;
+// a refused write; a mismatch of the index; an error of the run such as a variant query beyond the window or through a cache or a
+// token that cannot be renewed; a consistency check that did not finish); 107 the run could not start (no or a refused token, the
+// API or Keycloak not answering, an empty sample, settings out of range); 105 interrupted. Every case says why, and the result has
+// the verdict with its reasons.
 import http from 'k6/http';
 import { Counter, Gauge, Trend } from 'k6/metrics';
 import { PanelSession, apiParams, apiUrl, getJson } from './lib/admin.js';
@@ -52,6 +54,7 @@ import {
   nextPrice,
   runVerdict,
   sendTolerance,
+  stallTolerance,
   windowStats,
   startRecord,
   writeOutcome,
@@ -82,6 +85,8 @@ const settings = {
 const toleranceSetting = text('WRITE_SEND_TOLERANCE_MS', '');
 settings.sendToleranceMs = settings.rate > 0 ? sendTolerance(toleranceSetting === '' ? undefined : number('WRITE_SEND_TOLERANCE_MS')) : null;
 const tolerance = settings.sendToleranceMs;
+const stallSetting = text('WRITE_STALL_TOLERANCE_MS', '');
+settings.stallToleranceMs = stallTolerance(stallSetting === '' ? undefined : number('WRITE_STALL_TOLERANCE_MS'));
 settings.discoverProducts = Math.floor(number('WRITE_DISCOVER_PRODUCTS', Math.max(60, 3 * settings.size)));
 const resultFile = text('WRITES_RESULT', '');
 
@@ -132,7 +137,7 @@ export const options = {
     writes_dropped: ['count==0'],
     writes_late: ['count==0'],
     rate_windows_outside: ['value==0'],
-    catch_up_max_in_window: ['value<=1'],
+    catch_up_writes: ['value==0'],
     writes_unanswered: ['count==0'],
     freshness_timeouts: ['count==0'],
     writes_refused: ['count==0'],
@@ -254,7 +259,7 @@ class Run {
     const second = Math.floor((now - this.start) / 1000);
     this.sentPerWindow[second] = (this.sentPerWindow[second] || 0) + 1;
     this.openSent += 1;
-    if (isCatchUp(due, now, settings.rate)) {
+    if (isCatchUp(due, now, settings.rate, settings.stallToleranceMs)) {
       this.catchUpsPerWindow[second] = (this.catchUpsPerWindow[second] || 0) + 1;
     }
   }
@@ -262,7 +267,7 @@ class Run {
   // The proof of the rate: the full windows of 1 s of WRITE_SECONDS (a write held back past the end is a catch-up of its window).
   rateFigures() {
     const full = Array.from({ length: Math.floor(settings.seconds) }, (_, i) => this.sentPerWindow[i] || 0);
-    const stats = settings.rate > 0 ? windowStats(full, settings.rate) : windowStats([], 1);
+    const stats = settings.rate > 0 ? windowStats(full, settings.rate, settings.stallToleranceMs) : windowStats([], 1, settings.stallToleranceMs);
     const catchUp = catchUpStats(Array.from({ length: this.catchUpsPerWindow.length }, (_, i) => this.catchUpsPerWindow[i] || 0));
     rateWindows.add(stats.windows);
     for (const [gauge, value] of [[rateWindowMin, stats.min], [rateWindowP5, stats.p5], [rateWindowP50, stats.p50], [rateWindowP95, stats.p95], [rateWindowMax, stats.max]]) {
@@ -587,13 +592,14 @@ export function handleSummary(summary) {
       late: countOf(summary, 'writes_late'),
       send_lag: trendOf(summary, 'send_lag'),
       send_tolerance_ms: settings.sendToleranceMs,
+      stall_tolerance_ms: settings.stallToleranceMs,
       // The proof of the rate of the open model (load/README.md, "Tempo"); null when the writes did not end (interrupted).
       rate: {
         planned_per_second: settings.rate,
         mean_sent_per_second: gauge(summary, 'rate_mean'),
         windows: {
           count: gauge(summary, 'rate_windows'),
-          band: settings.rate > 0 ? rateBand(settings.rate) : null,
+          band: settings.rate > 0 ? rateBand(settings.rate, settings.stallToleranceMs) : null,
           min: gauge(summary, 'rate_window_min'),
           p5: gauge(summary, 'rate_window_p5'),
           p50: gauge(summary, 'rate_window_p50'),
@@ -635,7 +641,7 @@ export function handleSummary(summary) {
     dropped: c.dropped,
     late: c.late,
     windowsOutside: gauge(summary, 'rate_windows_outside'),
-    maxCatchUpInWindow: gauge(summary, 'catch_up_max_in_window'),
+    catchUpWrites: gauge(summary, 'catch_up_writes'),
     unanswered: c.unanswered,
     freshnessTimeouts: f.timeouts.price + f.timeouts.availability,
     refused: c.refused,
@@ -648,7 +654,7 @@ export function handleSummary(summary) {
     `verdict: ${result.verdict.passed ? 'a measurement at the rate, the index consistent' : `NO MEASUREMENT: ${result.verdict.reasons.join('; ')}`}\n` +
     (indexDiffered > 0 ? `WARNING: ${indexDiffered} candidates left out because the index differed from the offer at the start (W13; a previous run?)\n` : '') +
     `sample ${result.sample.size} variants; changes made ${c.made} (${c.prices} prices, ${c.receipts} receipts, ${c.per_second}/s), sent ${c.sent}, refused ${c.refused}, unanswered ${c.unanswered}, dropped ${c.dropped}, late ${c.late}\n` +
-    `rate: planned ${c.rate.planned_per_second}/s, sent ${c.rate.mean_sent_per_second === null ? null : c.rate.mean_sent_per_second.toFixed(2)}/s on average; writes in the ${c.rate.windows.count} windows of 1 s: min ${c.rate.windows.min}, p5 ${c.rate.windows.p5}, p50 ${c.rate.windows.p50}, p95 ${c.rate.windows.p95}, max ${c.rate.windows.max}, ${c.rate.windows.below} below and ${c.rate.windows.above} above the band ${c.rate.windows.band ? `${c.rate.windows.band.low}-${c.rate.windows.band.high}` : '-'}; catch-up writes ${c.rate.catch_up.writes}, at most ${c.rate.catch_up.max_in_window} in a window\n` +
+    `rate: planned ${c.rate.planned_per_second}/s, sent ${c.rate.mean_sent_per_second === null ? null : c.rate.mean_sent_per_second.toFixed(2)}/s on average; writes in the ${c.rate.windows.count} windows of 1 s: min ${c.rate.windows.min}, p5 ${c.rate.windows.p5}, p50 ${c.rate.windows.p50}, p95 ${c.rate.windows.p95}, max ${c.rate.windows.max}, ${c.rate.windows.below} below and ${c.rate.windows.above} above the band ${c.rate.windows.band ? `${c.rate.windows.band.low}-${c.rate.windows.band.high}` : '-'}; catch-up writes (later than the stall tolerance of ${c.stall_tolerance_ms} ms) ${c.rate.catch_up.writes}, at most ${c.rate.catch_up.max_in_window} in a window\n` +
     `send lag of the open model: p50 ${c.send_lag.p50_ms} ms, p95 ${c.send_lag.p95_ms} ms, p99 ${c.send_lag.p99_ms} ms, p99.9 ${c.send_lag.p99_9_ms} ms, max ${c.send_lag.max_ms} ms (error threshold of the generator ${c.send_tolerance_ms} ms); buckets ${LAG_BUCKET_NAMES.map((bucket) => `${bucket} ${c.send_lag_histogram[bucket]}`).join(', ')}\n` +
     `token renewals ${c.token_renewals.background} in the background, ${c.token_renewals.blocking} waited for\n` +
     `freshness${f.percentiles_valid ? '' : ' (NOT a result of W16: changes not seen within the timeout are left out)'}:\n` +
