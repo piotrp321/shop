@@ -91,7 +91,7 @@ final class ProductIndexSourceTest extends TestCase
 
     public function testEveryFieldOfTheSourceIsMapped(): void
     {
-        $mapping = new ProductIndexDefinition(1, 0)->body()['mappings'];
+        $mapping = new ProductIndexDefinition(0)->body()['mappings'];
         $properties = self::at($mapping, 'properties');
         $variantProperties = self::at($mapping, 'properties', 'variants', 'properties');
         $source = ProductIndexDefinition::source(self::document());
@@ -104,7 +104,7 @@ final class ProductIndexSourceTest extends TestCase
 
     public function testTheFacetFieldsAreMappedAsInTheSpec(): void
     {
-        $mapping = new ProductIndexDefinition(1, 0)->body()['mappings'];
+        $mapping = new ProductIndexDefinition(0)->body()['mappings'];
 
         foreach (['facets', 'buy_facets', 'pair_any', 'pair_buy'] as $field) {
             self::assertSame(['type' => 'keyword'], self::at($mapping, 'properties', $field), $field);
@@ -128,7 +128,7 @@ final class ProductIndexSourceTest extends TestCase
         $analysis = new \ReflectionMethod(ProductIndexDefinition::class, 'analysis')->invoke(null);
         $sorting = new \ReflectionMethod(ProductIndexDefinition::class, 'sorting')->invoke(null);
 
-        self::assertNotSame(hash('sha256', json_encode([$analysis, $withoutThem, $sorting], \JSON_THROW_ON_ERROR)), new ProductIndexDefinition(1, 0)->hash());
+        self::assertNotSame(hash('sha256', json_encode([$analysis, $withoutThem, $sorting], \JSON_THROW_ON_ERROR)), new ProductIndexDefinition(0)->hash());
     }
 
     /**

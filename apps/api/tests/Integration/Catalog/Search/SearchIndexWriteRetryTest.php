@@ -143,7 +143,7 @@ final class SearchIndexWriteRetryTest extends TestCase
 
     public function testAnIndexCreatedForARebuildIsFilledWithoutRefreshingAndGetsTheIntervalOfTheDefinitionOnVerify(): void
     {
-        $maintenance = $this->maintenance(definition: new ProductIndexDefinition(1, 0, '5s'));
+        $maintenance = $this->maintenance(definition: new ProductIndexDefinition(0, '5s'));
         $index = $maintenance->createIndex();
         $maintenance->write($index, self::documents(2));
 

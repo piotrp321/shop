@@ -212,7 +212,7 @@ final class SearchIndexMaintenanceTest extends TestCase
     {
         // Healthy means every primary shard is assigned (yellow or green). A replica cannot be assigned on this
         // single node, so this index stays yellow; a red index needs a lost primary, which a test cannot cause.
-        $definition = new ProductIndexDefinition(1, 1);
+        $definition = new ProductIndexDefinition(1);
         $new = $this->maintenance(definition: $definition)->createIndex();
 
         $this->maintenance(definition: $definition)->verify($new, 0);

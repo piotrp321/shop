@@ -50,7 +50,7 @@ trait UsesTemporarySearchAlias
         return new ElasticsearchSearchIndexMaintenance(
             null === $httpClient ? $factory->create(2.0) : $factory->createWith($httpClient),
             null === $longHttpClient ? $factory->create(30.0) : $factory->createWith($longHttpClient),
-            $definition ?? new ProductIndexDefinition(1, 0),
+            $definition ?? new ProductIndexDefinition(0),
             $this->alias(),
             $sleeper,
         );
