@@ -421,6 +421,34 @@ install() {
   fi
 }
 
+# The configuration of Postgres (docs/features/runtime-config/spec.md, kryterium 1): SHOW of every setting of infra/postgres/postgresql.conf and
+# of the two memory settings of the profile ci gives the value of the file, pg_stat_statements answers (the Job migrate created it in a
+# database that exists), the role exporter has pg_monitor only, and /dev/shm of the pod has the 1Gi of the chart.
+check_postgres_config() {
+  conf="$TOOLS_REPO/infra/postgres/postgresql.conf"
+  ci_values="$TOOLS_REPO/infra/k8s/environments/ci/values.yaml"
+  expected="$(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' -e "s/'//g" -e 's/[[:space:]]*=[[:space:]]*/=/' -e 's/[[:space:]]*$//' "$conf")"
+  [ -n "$expected" ] || { echo "smoke: no settings read from $conf" >&2; return 1; }
+  buffers="$(sed -n 's/^  sharedBuffers: //p' "$ci_values")"
+  cache="$(sed -n 's/^  effectiveCacheSize: //p' "$ci_values")"
+  [ -n "$buffers" ] && [ -n "$cache" ] || { echo "smoke: the memory settings of Postgres are not in $ci_values" >&2; return 1; }
+  for pair in $expected "shared_buffers=$buffers" "effective_cache_size=$cache"; do
+    setting="${pair%%=*}" want="${pair#*=}"
+    have="$(kc exec statefulset/postgres -- psql -U postgres -tAc "SHOW $setting" | tr -d '[:space:]')"
+    [ "$have" = "$want" ] || { echo "smoke: SHOW $setting is '$have' in the cluster, the file says '$want'" >&2; return 1; }
+  done
+  echo "ok: SHOW gives the value of postgresql.conf for every setting and the memory settings of the profile ci"
+  kc exec statefulset/postgres -- psql -U postgres -tAc "SELECT count(*) FROM pg_stat_statements" > /dev/null ||
+    { echo "smoke: pg_stat_statements does not answer" >&2; return 1; }
+  echo "ok: pg_stat_statements answers"
+  roles="$(kc exec statefulset/postgres -- psql -U postgres -tAc "SELECT string_agg(g.rolname, ',' ORDER BY g.rolname) FROM pg_auth_members m JOIN pg_roles g ON g.oid = m.roleid JOIN pg_roles r ON r.oid = m.member WHERE r.rolname = 'exporter'" | tr -d '[:space:]')"
+  [ "$roles" = pg_monitor ] || { echo "smoke: the role exporter is a member of '$roles', not of pg_monitor only" >&2; return 1; }
+  echo "ok: the role exporter has pg_monitor only"
+  shm="$(kc exec statefulset/postgres -- df -k /dev/shm | awk 'NR == 2 { print $2 }')"
+  [ "${shm:-0}" -ge 1000000 ] || { echo "smoke: /dev/shm of the pod has ${shm:-0} kB, not 1Gi" >&2; return 1; }
+  echo "ok: /dev/shm of the pod has $((shm / 1024)) MB"
+}
+
 # The pods run the images of the registry by the digests of the images values file (the point of SMOKE_VALUES).
 check_registry_images() {
   image_ids="$(kc get pods -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.imageID}{"\n"}{end}{end}')"
@@ -1362,6 +1390,9 @@ else
 
   log "checks of the installation"
   checks basic
+
+  log "the configuration of Postgres"
+  check_postgres_config
 
   log "rate-limit-check"
   check_rate_limit_check
