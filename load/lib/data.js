@@ -140,7 +140,7 @@ export function discover() {
       variantCount += offer.variants.length;
       for (const variant of offer.variants) {
         if (variant.purchasable) {
-          variants.push({ variantId: variant.variantId, slug: slugOf[offer.productId] });
+          variants.push({ variantId: variant.variantId, productId: offer.productId, slug: slugOf[offer.productId] });
         }
       }
     }

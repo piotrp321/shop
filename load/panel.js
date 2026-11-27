@@ -23,6 +23,7 @@ import { number, text, apiUrl } from './lib/config.js';
 import { discover, pick } from './lib/data.js';
 import { baseOptions, nextIp } from './lib/http.js';
 import { record } from './lib/metrics.js';
+import { availableOf, variantsWithUnits } from './lib/stock.js';
 import { figures, reportOn, table } from './lib/summary.js';
 
 const mix = JSON.parse(open(text('PANEL_MIX')));
@@ -123,9 +124,29 @@ function panelGet(cls, path) {
   return res;
 }
 
+// The step of the cart that raises the quantity from 1 to 2 gets 409 from the API for a variant that has fewer than 2 units available (the cart answers
+// `Nie mamy tylu sztuk tego produktu.`; measured: 5 of 5 variants with 1 unit, none of 159 with 2 or more), so the scenario takes only the variants with at least
+// 2 available units, read from the admin stock list of their products (the public API never tells the units). The 409 of the earlier measurement were that.
 export function setup() {
   // The shop side needs the variants that can be bought; the panel does not (and a run without a shop reads nothing).
-  return cartRate > 0 ? discover() : null;
+  if (cartRate <= 0) {
+    return null;
+  }
+  const data = discover();
+  const available = {};
+  for (const productId of [...new Set(data.variants.map((variant) => variant.productId))]) {
+    const res = http.get(`${apiUrl}/api/v1/admin/stock?productId=${productId}`, { headers: { Authorization: `Bearer ${bearer()}`, Accept: 'application/json' }, tags: { name: 'setup' }, timeout: '60s' });
+    if (res.status !== 200) {
+      exec.test.abort(`the stock of the product ${productId} could not be read (status ${res.status}); the cart scenario needs the available units of the variants`);
+    }
+    Object.assign(available, availableOf(res.json()));
+  }
+  data.variants = variantsWithUnits(data.variants, available, 2);
+  if (data.variants.length === 0) {
+    exec.test.abort('no purchasable variant has 2 or more units available: the cart scenario cannot raise a quantity');
+  }
+  console.log(`setup: ${data.variants.length} variants with at least 2 available units for the cart scenario`);
+  return data;
 }
 
 export function panelRequest() {
@@ -169,7 +190,7 @@ function shopSend(method, cls, path, body, ip) {
   return res;
 }
 
-// W5: a cart is made, a variant added, the cart read and the quantity changed.
+// W5: a cart is made, a variant (one with at least 2 available units, see setup) added, the cart read and the quantity changed.
 export function shopCart(data) {
   const ip = nextIp(23);
   const created = shopSend('POST', 'shop_cart_create', '/api/v1/guest-carts', null, ip);

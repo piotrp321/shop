@@ -115,6 +115,7 @@ if command -v docker > /dev/null 2>&1; then
   k6_failure() { k6_run bridge "$work" panel.js -e STORE_URL=http://127.0.0.1:9 -e API_URL=http://127.0.0.1:9 -e KEYCLOAK_URL=http://127.0.0.1:9 "$@"; }
   expect "k6: mix file missing" 107 "/out/none.json" -- k6_failure -e PANEL_MIX=/out/none.json -e PANEL_TOKEN=/out/token.json
   expect "k6: mix without classes" 107 "no classes of requests" -- k6_failure -e PANEL_MIX=/out/empty.json -e PANEL_TOKEN=/out/token.json
+  expect "k6: the cart scenario raises only variants with at least 2 available units" 0 "cart variants: checked" -- k6_run bridge "" test/cart-variants.js -e STORE_URL=http://127.0.0.1:9 -e API_URL=http://127.0.0.1:9
 else
   echo "skip k6 cases: docker is not installed"
 fi
