@@ -108,7 +108,8 @@ final class DbalSitemapProductSourceTest extends KernelTestCase
 
         self::assertSame([self::id(4), self::id(7)], $this->source(new SpyLogger(), $this->connection)->boundaries(3));
         self::assertSame([self::id(3), self::id(5), self::id(7)], $this->source(new SpyLogger(), $this->connection)->boundaries(2));
-        self::assertSame([], $this->source(new SpyLogger(), $this->connection)->boundaries(7));
+        // A chunk size above the row limit is lowered to it (DbalSitemapProductSourceCutTest), so this chunk size needs a higher limit.
+        self::assertSame([], new DbalSitemapProductSource($this->connection, 10, new SpyLogger())->boundaries(7));
         self::assertSame([self::id(2), self::id(3), self::id(4), self::id(5), self::id(6), self::id(7)], $this->source(new SpyLogger(), $this->connection)->boundaries(1));
     }
 
