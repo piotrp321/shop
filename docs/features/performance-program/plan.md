@@ -14,7 +14,7 @@ i specyfikacjach funkcji.
 | Nowe epiki funkcjonalne | wstrzymane do zakończenia programu |
 | Profil `server` na worf.pl | generuje go osobna sesja; jej wynik jest linią bazową (PERF-0) |
 | PERF-2 etap A | zakończony: raport [`perf-2-search-model-2026-11-25.md`](../../reports/perf-2-search-model-2026-11-25.md); właściciel zaakceptował model R 2026-11-26 (decyzje w opisie PERF-2) |
-| PERF-2 etap B | nie rozpoczęty; gotowy do przekazania nowej sesji (start: opis PERF-2, „Start etapu B”) |
+| PERF-2 etap B | zaimplementowany (model R, przebudowa spełniająca W19a, `refresh_interval` jako ustawienie, scenariusz zapisów, cele pomiaru), zgodność odpowiedzi z modelem sprzed etapu zweryfikowana lokalnie na `medium` (0 różnic w 300 listingach, raport [`perf-2b-medium-2026-11-27.md`](../../reports/perf-2b-medium-2026-11-27.md)); czeka na pomiar na worf.pl (kryteria 1–3 i 5 etapu B), który wymaga zgody właściciela |
 | PERF-0 | w toku: W1–W20 zaakceptowane jako cel, zestaw benchmarków `load/baseline.py`; lokalny B5 na `medium` przyjęty jako częściowa linia bazowa; pomiar na `server` po zakończeniu generowania i otwarciu sklepu przez właściciela |
 | PERF-7 | specyfikacja i plan w `docs/features/admin-queries/` zaakceptowane; start po PERF-0 i zatwierdzeniu W1–W20; warianty wybiera zadanie 1, zatwierdza właściciel |
 | PERF-1 | specyfikacja i plan w `docs/features/runtime-config/` zaakceptowane 2026-11-26; start po PERF-0 w osobnej sesji |

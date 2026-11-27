@@ -1,0 +1,17 @@
+== 2026-11-27T21:00:53Z singles-after-after
+== _nodes/stats/indices/request_cache
+{"_nodes":{"total":1,"successful":1,"failed":0},"cluster_name":"docker-cluster","nodes":{"SZ21YHc-SVmH8Z8zzA1BuA":{"timestamp":1795813253201,"name":"863c22d93792","transport_address":"172.24.0.3:9300","host":"172.24.0.3","ip":"172.24.0.3:9300","roles":["data","data_cold","data_content","data_frozen","data_hot","data_warm","ingest","master","ml","remote_cluster_client","transform"],"attributes":{"ml.allocated_processors":"16","ml.machine_memory":"33597603840","transform.config_version":"10.0.0","xpack.installed":"true","ml.config_version":"12.0.0","ml.max_jvm_size":"2147483648","ml.allocated_processors_double":"16.0"},"indices":{"request_cache":{"memory_size_in_bytes":236120,"evictions":0,"hit_count":443,"miss_count":261}}}}}
+== products/_stats/request_cache,query_cache
+{"_shards":{"total":1,"successful":1,"failed":0},"_all":{"primaries":{"query_cache":{"memory_size_in_bytes":10679896,"total_count":59282,"hit_count":7982,"miss_count":51300,"cache_size":859,"cache_count":859,"evictions":0},"request_cache":{"memory_size_in_bytes":236120,"evictions":0,"hit_count":443,"miss_count":261}},"total":{"query_cache":{"memory_size_in_bytes":10679896,"total_count":59282,"hit_count":7982,"miss_count":51300,"cache_size":859,"cache_count":859,"evictions":0},"request_cache":{"memory_size_in_bytes":236120,"evictions":0,"hit_count":443,"miss_count":261}}},"indices":{"products_20261127205507738_d50761":{"uuid":"8wi3JGK7SnC4LqU9khHPcQ","health":"green","status":"open","primaries":{"query_cache":{"memory_size_in_bytes":10679896,"total_count":59282,"hit_count":7982,"miss_count":51300,"cache_size":859,"cache_count":859,"evictions":0},"request_cache":{"memory_size_in_bytes":236120,"evictions":0,"hit_count":443,"miss_count":261}},"total":{"query_cache":{"memory_size_in_bytes":10679896,"total_count":59282,"hit_count":7982,"miss_count":51300,"cache_size":859,"cache_count":859,"evictions":0},"request_cache":{"memory_size_in_bytes":236120,"evictions":0,"hit_count":443,"miss_count":261}}}}}
+== memory of the Elasticsearch container (cgroup v2: file = page cache, anon = heap and other)
+memory.current 4314091520
+memory.max max
+anon 3076034560
+file 1190723584
+file_mapped 283353088
+inactive_file 980848640
+active_file 209874944
+== docker stats
+perf2b-8-api-1 cpu 0.00% mem 273.2MiB / 31.29GiB
+perf2b-8-elasticsearch-1 cpu 0.52% mem 3.098GiB / 31.29GiB
+perf2b-8-postgres-1 cpu 1.00% mem 182.8MiB / 31.29GiB

@@ -1,0 +1,37 @@
+2026-11-27T20:24:13Z prepare: .env (project perf2b-8, ports 41800-41806, 1 shard, refresh 5s) and .env.local in both checkouts
+2026-11-27T20:24:16Z up before (98ac711b)
+2026-11-27T20:24:36Z up before: ready (setup output in /var/folders/5z/mmc4635s5sn7wjx6m7h57zl00000gn/T//PERF-2B-8/setup-before.log)
+2026-11-27T20:24:39Z dbsums before-1
+2026-11-27T20:24:52Z reindex before: start
+2026-11-27T20:26:02Z reindex before: exit 255 in 70 s (log /var/folders/5z/mmc4635s5sn7wjx6m7h57zl00000gn/T//PERF-2B-8/reindex-before.log)
+2026-11-27T20:26:20Z reindex before: start
+2026-11-27T20:27:22Z reindex before: exit 255 in 62 s (log /var/folders/5z/mmc4635s5sn7wjx6m7h57zl00000gn/T//PERF-2B-8/reindex-before.log)
+2026-11-27T20:27:39Z reindex before: start
+2026-11-27T20:31:52Z reindex before: exit 0 in 253 s (log /var/folders/5z/mmc4635s5sn7wjx6m7h57zl00000gn/T//PERF-2B-8/reindex-before.log)
+2026-11-27T20:31:59Z urls: mix saved, seed 20261127
+2026-11-27T20:32:20Z fetch before: answers in /var/folders/5z/mmc4635s5sn7wjx6m7h57zl00000gn/T//PERF-2B-8/answers-before.jsonl
+2026-11-27T20:32:25Z dbsums before-2
+2026-11-27T20:49:36Z singles after: baseline.py run --mode single (API addresses of the listings, request cache cleared)
+2026-11-27T20:51:46Z singles after: exit 0 (LOCAL, preliminary; report in results/singles-after-report.txt)
+2026-11-27T20:52:00Z NOTE: the two lines "singles after" above (20:49:36 and 20:51:46) are the run of `singles before` (a variable shared by the functions of run.sh named it wrongly, fixed). It started at 20:49:36 by the clock of the host, before the CISZA of the coordinator (20:51), so it is kept in results/singles-before-early-20-49/ and repeated after the CISZA.
+2026-11-27T20:52:12Z singles before: baseline.py run --mode single (API addresses of the listings, request cache cleared)
+2026-11-27T20:54:22Z singles before: exit 0 (LOCAL, preliminary; report in results/singles-before-report.txt)
+2026-11-27T20:54:25Z dbsums before-3
+2026-11-27T20:54:38Z down (volumes kept)
+2026-11-27T20:54:38Z up after (d14bff34)
+2026-11-27T20:54:55Z up after: ready (setup output in /var/folders/5z/mmc4635s5sn7wjx6m7h57zl00000gn/T//PERF-2B-8/setup-after.log)
+2026-11-27T20:54:58Z dbsums after-1
+2026-11-27T20:55:07Z reindex after: start
+2026-11-27T20:59:13Z reindex after: exit 0 in 246 s (log /var/folders/5z/mmc4635s5sn7wjx6m7h57zl00000gn/T//PERF-2B-8/reindex-after.log)
+2026-11-27T20:59:19Z dbsums after-2
+2026-11-27T20:59:42Z fetch after: answers in /var/folders/5z/mmc4635s5sn7wjx6m7h57zl00000gn/T//PERF-2B-8/answers-after.jsonl
+2026-11-27T20:59:42Z diff: exit 0
+2026-11-27T20:59:53Z singles after: baseline.py run --mode single (API addresses of the listings, request cache cleared)
+2026-11-27T21:00:55Z singles after: exit 0 (LOCAL, preliminary; report in results/singles-after-report.txt)
+2026-11-27T21:01:35Z writes-up: the realm of Keycloak imported for the ports of this stack, make up
+2026-11-27T21:02:38Z writes-up: ready
+2026-11-27T21:02:54Z writes clean12: start (WRITE_RATE=12 WRITE_SECONDS=320 WRITE_SAMPLE=60 WRITE_UNSTOCKED_SHARE=0 WRITE_PRICE_PROBES=3)
+2026-11-27T21:09:16Z writes clean12: exit 0 (expected 0)
+2026-11-27T21:09:26Z writes lag50: start (WRITE_RATE=50 WRITE_SECONDS=320 WRITE_SAMPLE=40 WRITE_UNSTOCKED_SHARE=0 WRITE_PRICE_PROBES=2 WRITE_PRICE_SHARE=0 WRITE_MAX_IN_FLIGHT=2000 CHECK_TIMEOUT_SECONDS=180)
+2026-11-27T21:16:19Z writes lag50: exit 99 (expected 99)
+2026-11-27T21:18:35Z down (volumes kept)
