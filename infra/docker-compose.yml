@@ -256,9 +256,6 @@ services:
       RABBITMQ_VHOST: /
       # Elasticsearch has security disabled locally; the URL carries no credentials.
       ELASTICSEARCH_URL: http://elasticsearch:9200
-      # The primary shards of a product index that setup and catalog:reindex create (SEARCH_SHARDS of .env, 1 without it);
-      # an index that exists keeps its own number until the next catalog:reindex.
-      SEARCH_SHARDS: ${SEARCH_SHARDS:-1}
       # The refresh interval of the product index (a whole number with ms or s; SEARCH_REFRESH_INTERVAL of .env, 1s without
       # it): catalog:search-index:setup sets it on the index that exists, a rebuild sets it once the new index is filled.
       SEARCH_REFRESH_INTERVAL: ${SEARCH_REFRESH_INTERVAL:-1s}

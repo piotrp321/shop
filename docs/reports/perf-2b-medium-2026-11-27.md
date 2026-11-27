@@ -155,7 +155,7 @@ sam stos co w sekcji 4 po `down` i ponownym `make up` (workery, Varnish, store).
   czasu (przyjęcia zostawiają wariant dostępnym, więc każdy możliwy stan jest zgodny z indeksem). `failed` 0.
 - **Wcześniejsza wersja `lag50` (sekcja 4):** 40 pominiętych, 0 bez odpowiedzi. Różnica między przebiegami (40 → 692 pominiętych,
   0 → 247 bez odpowiedzi) wynika z innego stanu: tu start ES był zimny, a przebieg wszedł po `clean12` na bazie z wcześniejszymi
-  zapisami; przyczyny nie badałem, API dev jest na granicy nasycenia przy tym tempie, więc wynik jest wrażliwy na stan.
+  zapisami; przyczyny nie badałem, API dev jest na granicy nasycenia przy tym tempie, więc wynik jest wrażliwy na stan. W czasie powtórzonych przebiegów na tym samym hoście działał też stos i testy przeglądu adwersaryjnego epiku (`perf2b-qa`), więc host był równolegle obciążony; czasy i przepustowość z sekcji 4a nie są wynikiem pomiaru.
 - **Świeżość `clean12`:** p50 4,8 s, p99 8,2 s, mieści się w W16 (p95 10 s, p99 60 s) przy `refresh_interval` 5 s, ale przy 12/s, a nie 50/s.
   Świeżość `lag50` (p95 49,5 s) jest przy nasyconym API i 15 próbkach, nie wynik W16.
 - **Stan request cache** (`results/cache-writes-*.txt`; liczniki węzła):

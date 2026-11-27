@@ -162,7 +162,7 @@ measure:
 # Only after the consent of the user in the conversation that names the operation and the host. Refuses without changes when a Job of
 # the namespace is active (not one of the CronJobs rate-limit-check, queue-check and order-expiry), make generate or make open holds
 # the lock demo-data-lock, or the index of the alias products cannot be read;
-# says which index the alias is on and how many shards the new one gets (SEARCH_SHARDS of the deployed revision: elasticsearch.shards)
+# says which index the alias is on (and its shards) and that the new one gets one shard (ProductIndexDefinition::SHARDS)
 # and asks for the word tak; then takes the lock (make generate and make open refuse meanwhile), reads the Jobs again, runs a Job of the
 # suspended CronJob reindex (catalog:reindex) and checks the index the alias is on after it. The shop stays open; a change written
 # during the build may be missing from the new index until the next change of that product, and no deployment may start until the Job

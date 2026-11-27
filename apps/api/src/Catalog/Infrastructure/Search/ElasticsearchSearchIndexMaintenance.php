@@ -80,11 +80,13 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
             throw new SearchIndexError(\sprintf('The alias "%s" points to %d indexes (%s); it must point to exactly one. Remove the alias from all but one of them with the _aliases API.', $this->alias, \count($targets), implode(', ', $targets)));
         }
 
-        $this->applyRefreshInterval($targets[0]);
+        $shards = $this->applyRefreshInterval($targets[0]);
 
+        // An index of several shards is as outdated as one of another definition: the facets of the search model are exact
+        // only on one shard. It stays behind the alias; only catalog:reindex replaces it, with an index of one shard.
         return new SetupResult(
             $this->orphans($targets),
-            $this->hasCurrentDefinition($targets[0]) ? null : $targets[0],
+            ProductIndexDefinition::SHARDS === $shards && $this->hasCurrentDefinition($targets[0]) ? null : $targets[0],
         );
     }
 
@@ -337,17 +339,23 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
 
     /**
      * The refresh interval is a dynamic setting, so an index that exists gets the one of the configuration without a rebuild.
+     *
+     * @return int|null the primary shards of the index (read with the interval), null when Elasticsearch did not say
      */
-    private function applyRefreshInterval(string $index): void
+    private function applyRefreshInterval(string $index): ?int
     {
         $settings = $this->request('read refresh interval', fn () => $this->client->indices()->getSettings([
             'index' => $index,
-            'name' => 'index.refresh_interval',
+            'name' => 'index.refresh_interval,index.number_of_shards',
         ]))->asArray();
 
         if (self::at($settings, $index, 'settings', 'index', 'refresh_interval') !== $this->definition->refreshInterval()) {
             $this->setRefreshInterval($index);
         }
+
+        $shards = self::at($settings, $index, 'settings', 'index', 'number_of_shards');
+
+        return \is_string($shards) && ctype_digit($shards) ? (int) $shards : null;
     }
 
     /**

@@ -335,9 +335,10 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   nowego snapshotu włącza automatyczną synchronizację `root` (z `prune` i `selfHeal`, jak w
   `argocd/root.yaml`): `root` przywraca z gita automatyczną synchronizację `shop`, która wdraża nowy snapshot.
 - **Przebudowa indeksu wyszukiwarki** – **zgoda użytkownika** (nazywa operację i host): `make -C infra/k8s reindex
-  KUBE_DIR=<katalog z kubeconfigiem>`. Potrzebna po zmianie `elasticsearch.shards` (istniejący indeks zachowuje swoją
-  liczbę shardów) i gdy indeks rozjechał się z bazą. Zmiana `elasticsearch.refreshInterval` przebudowy nie wymaga:
-  stosuje ją `catalog:search-index:setup` w Jobie `migrate` wdrożenia. Cel wypisuje indeks aliasu `products` i liczbę shardów nowego,
+  KUBE_DIR=<katalog z kubeconfigiem>`. Potrzebna po zmianie definicji indeksu, gdy aktywny indeks ma
+  więcej niż jeden shard (np. zbudowany przed modelem z jednym shardem; `setup` w Jobie `migrate` ostrzega o nim) i gdy indeks
+  rozjechał się z bazą. Nowy indeks zawsze ma jeden shard (stała w kodzie API, bez wartości w chartcie). Zmiana `elasticsearch.refreshInterval` przebudowy nie wymaga:
+  stosuje ją `catalog:search-index:setup` w Jobie `migrate` wdrożenia. Cel wypisuje indeks aliasu `products` (z jego shardami) i jeden shard nowego,
   pyta o `tak`, uruchamia Job `reindex-<czas UTC>` z zawieszonego CronJoba `reindex` i sprawdza indeks po nim.
   Sklep działa w trakcie na starym indeksie; milion produktów to na serwerze ok. 17 minut. Cel trzyma do końca blokadę
   `demo-data-lock`, więc `generate` i `open` w tym czasie odmawiają. **Nie wdrażaj nowej wersji w trakcie przebudowy**:
@@ -350,8 +351,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   Przebudowa pod normalnym ruchem jest dozwolona: zmiana produktu, ceny albo stanu zapisana w trakcie budowy trafia też do
   nowego indeksu (alias `products-rebuild`, `docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”). Produkt
   utworzony w panelu w jej trakcie (identyfikator poniżej kursora odczytu albo po odczycie ostatniej paczki) kończy ją
-  jednak błędem weryfikacji liczby dokumentów: alias zostaje na starym indeksie i przebudowę trzeba ponowić (#979). Powrót do
-  poprzedniej liczby shardów: zmiana `elasticsearch.shards`, wdrożenie i ponowna przebudowa.
+  jednak błędem weryfikacji liczby dokumentów: alias zostaje na starym indeksie i przebudowę trzeba ponowić (#979).
 - **Zmiana definicji indeksu wyszukiwarki** (okno serwisowe, **zgoda użytkownika** na każdy krok): wdrożenie wersji z nową
   definicją (`catalog:search-index:setup` w Jobie `migrate` ostrzega o indeksie starej definicji i wdrożenie przechodzi),
   potem przebudowa jak wyżej. Do przepięcia aliasu listing nie pokazuje poprawnych wyników ani faset, a zapisy

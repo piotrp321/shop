@@ -11,13 +11,20 @@ use App\Catalog\Domain\Product\ProductStatus;
 
 /**
  * Settings and mapping of a physical product index. The hash of the definition (mapping, analysis and the sorting of
- * the index, without shards, replicas and the refresh interval) is stored in the index's _meta.definition_hash, so an
+ * the index, without replicas and the refresh interval) is stored in the index's _meta.definition_hash, so an
  * index built from another definition is detected at setup and before switching the alias. The sorting is a static
  * setting of an index, so changing it takes a rebuild; the refresh interval is dynamic, setup applies it to the index
  * that exists.
  */
 final readonly class ProductIndexDefinition
 {
+    /**
+     * The primary shards of every index, set here and nowhere else: the facets of the search model are exact only on one
+     * shard (the overflow path counts with terms of a size, the ranking depends on the statistics of a shard), and several
+     * shards on one node cost more CPU (docs/features/search/spec.md, M3).
+     */
+    public const int SHARDS = 1;
+
     private const string SORT_NORMALIZER = 'sort_normalizer';
     private const string POLISH_TEXT = 'polish_text';
     private const string FOLDED_TEXT = 'folded_text';
@@ -27,16 +34,16 @@ final readonly class ProductIndexDefinition
     private const string REFRESH_INTERVAL_FORMAT = '/\A[1-9][0-9]*(?:ms|s)\z/';
 
     /**
-     * @param int    $shards          the primary shards of a new index, from SEARCH_SHARDS; an index that exists keeps its own
-     * @param int    $replicas        the replicas of every shard
-     * @param string $refreshInterval the refresh interval of the index once it is filled, from SEARCH_REFRESH_INTERVAL
+     * @param int         $replicas        the replicas of every shard
+     * @param string      $refreshInterval the refresh interval of the index once it is filled, from SEARCH_REFRESH_INTERVAL
+     * @param string|null $searchShards    SEARCH_SHARDS of the environment, only to refuse it: the variable is gone, the index has one
+     *                                     shard whatever it says, so a container that still sets it to another value is a mistake
      */
-    public function __construct(private int $shards, private int $replicas, private string $refreshInterval = '1s')
+    public function __construct(private int $replicas, private string $refreshInterval = '1s', ?string $searchShards = null)
     {
-        if ($shards < 1) {
-            // The container refuses an empty or non-numeric SEARCH_SHARDS itself; 0 and less would reach Elasticsearch,
-            // whose refusal does not name the variable.
-            throw new \InvalidArgumentException(\sprintf('SEARCH_SHARDS must be a whole number of at least 1, got %d.', $shards));
+        // Compared as text, not as a number: "many", "" and " 1" must not pass. The container hands the variable over as it is.
+        if (null !== $searchShards && (string) self::SHARDS !== $searchShards) {
+            throw new \InvalidArgumentException(\sprintf('SEARCH_SHARDS must be unset or 1, got %s: the product index has exactly one shard, because the facets of the search model are exact only on one, and the variable is unneeded (remove it from the environment, compose and the chart).', json_encode($searchShards, \JSON_INVALID_UTF8_SUBSTITUTE | \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR)));
         }
         if ($replicas < 0) {
             throw new \InvalidArgumentException(\sprintf('The number of replicas of the search index must not be negative, got %d.', $replicas));
@@ -69,7 +76,7 @@ final readonly class ProductIndexDefinition
     {
         return [
             'settings' => [
-                'number_of_shards' => $this->shards,
+                'number_of_shards' => self::SHARDS,
                 'number_of_replicas' => $this->replicas,
                 'refresh_interval' => $this->refreshInterval,
                 'analysis' => self::analysis(),

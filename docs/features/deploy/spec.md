@@ -234,8 +234,8 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   klastra bez sekretów (sprawdzenie ścieżek sklepu po generowaniu danych przez `generate`).
 - CronJob `reindex` (każdy profil): zawieszony, obraz, środowisko i sekrety API, Job uruchamia `catalog:reindex` (limit
   czasu `reindex.activeDeadlineSeconds`). Jego Joby tworzy wyłącznie `make -C infra/k8s reindex` po zgodzie
-  użytkownika. Liczbę shardów nowego indeksu daje `elasticsearch.shards` (`SEARCH_SHARDS` kontenerów z kodem API;
-  1 we wszystkich profilach), a interwał odświeżania indeksu `elasticsearch.refreshInterval`
+  użytkownika. Indeks ma zawsze jeden shard (stała w kodzie API; chart nie ma wartości ani zmiennej na shardy, schemat
+  odrzuca `elasticsearch.shards`, a kontener API z `SEARCH_SHARDS` innym niż 1 odmawia zbudowania definicji indeksu), a interwał odświeżania indeksu `elasticsearch.refreshInterval`
   (`SEARCH_REFRESH_INTERVAL`; `prod` `5s`, pozostałe profile `1s`; zmianę stosuje `setup` w Jobie `migrate`, bez
   przebudowy). Opis: `docs/features/search/spec.md`, „Infrastruktura”.
 - `rabbitmq-init` (vhost testów) nie istnieje.
