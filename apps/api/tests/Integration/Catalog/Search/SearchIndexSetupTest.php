@@ -59,15 +59,16 @@ final class SearchIndexSetupTest extends KernelTestCase
         self::assertSame($before, $this->aliasTargets());
     }
 
-    public function testIndexFromAnotherDefinitionFailsWithTheReindexInstruction(): void
+    public function testIndexFromAnotherDefinitionIsLeftAloneWithoutFailing(): void
     {
         $this->maintenance()->setup();
         [$index] = $this->aliasTargets();
-        self::esClient()->indices()->putMapping(['index' => $index, 'body' => ['_meta' => ['definition_hash' => 'another']]]);
+        $this->markAsBuiltFromAnotherDefinition($index);
 
-        $this->assertSetupFails('catalog:reindex');
+        $this->maintenance()->setup();
 
         self::assertSame([$index], $this->aliasTargets());
+        self::assertSame([$index], $this->aliasIndexes());
         self::assertSame('another', $this->definitionHash($index));
     }
 
@@ -113,6 +114,77 @@ final class SearchIndexSetupTest extends KernelTestCase
         self::assertSame(Command::SUCCESS, $tester->execute([]));
 
         self::assertStringContainsString($orphan, $tester->getDisplay());
+    }
+
+    public function testCommandWarnsWithTheReindexInstructionAboutAnIndexFromAnotherDefinitionAndSucceeds(): void
+    {
+        $tester = $this->commandTester();
+        self::assertSame(Command::SUCCESS, $tester->execute([]));
+        [$index] = $this->aliasTargets();
+        $this->markAsBuiltFromAnotherDefinition($index);
+
+        self::assertSame(Command::SUCCESS, $tester->execute([]));
+
+        $display = $tester->getDisplay();
+        self::assertStringContainsString($index, $display);
+        self::assertStringContainsString('catalog:reindex', $display);
+        self::assertStringContainsString('WARNING', $display);
+        self::assertSame([$index], $this->aliasTargets());
+        self::assertSame('another', $this->definitionHash($index));
+    }
+
+    public function testCommandReportsOrphansAndAnIndexFromAnotherDefinitionTogether(): void
+    {
+        $tester = $this->commandTester();
+        self::assertSame(Command::SUCCESS, $tester->execute([]));
+        [$index] = $this->aliasTargets();
+        $this->markAsBuiltFromAnotherDefinition($index);
+        $orphan = $this->maintenance()->createIndex();
+
+        self::assertSame(Command::SUCCESS, $tester->execute([]));
+
+        $display = $tester->getDisplay();
+        self::assertStringContainsString($orphan, $display);
+        self::assertStringContainsString('catalog:reindex', $display);
+    }
+
+    public function testCommandStaysSilentAboutTheDefinitionWhenItIsCurrent(): void
+    {
+        $tester = $this->commandTester();
+
+        self::assertSame(Command::SUCCESS, $tester->execute([]));
+        self::assertSame(Command::SUCCESS, $tester->execute([]));
+
+        self::assertStringNotContainsString('catalog:reindex', $tester->getDisplay());
+    }
+
+    public function testCommandStillFailsOnAPlainIndexAndOnTwoIndexesBehindTheAlias(): void
+    {
+        $tester = $this->commandTester();
+        self::assertSame(Command::SUCCESS, $tester->execute([]));
+        $second = $this->maintenance()->createIndex();
+        self::esClient()->indices()->putAlias(['index' => $second, 'name' => $this->alias()]);
+
+        self::assertSame(Command::FAILURE, $tester->execute([]));
+
+        self::assertStringContainsString('2 indexes', $tester->getDisplay());
+    }
+
+    public function testCommandRefusesToWarnWhileTheRebuildLockIsHeldEvenForAnIndexFromAnotherDefinition(): void
+    {
+        $this->maintenance()->setup();
+        [$index] = $this->aliasTargets();
+        $this->markAsBuiltFromAnotherDefinition($index);
+        $holder = $this->independentConnection();
+        self::assertTrue($this->lock($holder)->tryAcquire());
+
+        try {
+            $tester = $this->commandTester();
+            self::assertSame(Command::FAILURE, $tester->execute([]));
+            self::assertStringContainsString('rebuild or setup', $tester->getDisplay());
+        } finally {
+            $holder->close();
+        }
     }
 
     public function testCommandFailsWithCodeOneAndTheInstruction(): void
@@ -169,6 +241,11 @@ final class SearchIndexSetupTest extends KernelTestCase
         } catch (SearchIndexError $e) {
             self::assertStringContainsString($messagePart, $e->getMessage());
         }
+    }
+
+    private function markAsBuiltFromAnotherDefinition(string $index): void
+    {
+        self::esClient()->indices()->putMapping(['index' => $index, 'body' => ['_meta' => ['definition_hash' => 'another']]]);
     }
 
     private function commandTester(string $environment = 'test'): CommandTester
