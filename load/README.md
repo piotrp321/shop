@@ -118,10 +118,17 @@ make load-panel PANEL_MODE=p4 SHOP_URLS_FILE=<plik>   # P4: 3 przebiegi bez pane
   jest czyszczony w tym czasie). Przy każdym przebiegu zapisywane są liczniki PostgreSQL przed i po (odczyty z dysku i trafienia
   w bufory, bajty tymczasowe, WAL) oraz próbki co 5 s (aktywne sesje, CPU kontenerów). Kryterium: różnica median z panelem i bez
   nie większa niż rozrzut przebiegów bez panelu.
+- **Tryb `shop`:** sam sklep (bez panelu) w tempie P4, `PANEL_RUNS` przebiegów: do dobrania tempa, które stos utrzymuje przed P4,
+  i jako linia bazowa sklepu. P4 zaczyna od rozgrzewki sklepu (`PANEL_WARMUP_SECONDS`, domyślnie 60 s, niezliczana), bo pierwszy
+  przebieg po innym obciążeniu bywa kilka razy wolniejszy; każdy przebieg loguje się od nowa (sesja pierwszego logowania nie
+  przetrwa sześciu przebiegów). Adresy listingów są zużywane bez powtórzeń (`SHOP_URL_OFFSET` przesuwa początek).
 - **Wyniki:** `PANEL_OUT` (domyślnie nowy katalog w `$TMPDIR`): `mix.json`, `token.json` (krótkotrwały, nie commitować),
   `w7-runN/` albo `p4-with(out)-runN/` z `panel.json`, `k6.txt`, `pg-before.json`, `pg-after.json`, `samples.txt`, oraz
   `report.txt`. Kod wyjścia: 0 gotowe; 2 złe ustawienia (brak stosu, tokenu, pliku mieszanki, zły tryb); kod k6 (99, 108) przy
   niepowodzeniu przebiegu.
+- **Koszyki sklepu w P4** idą przez API (`/api/v1/guest-carts`), które limituje tworzenie koszyków po adresie klienta. Bez
+  `CLIENT_IP_HEADER=CF-Connecting-IP` w kontenerze `api` (w klastrze za Cloudflare jest ustawiony, w compose nie) wszystkie
+  żądania k6 mają jeden adres i dostają 429. Lokalnie ustaw tę zmienną nadpisaniem compose poza repo.
 - **Ograniczenia:** czasy zależą od trybu API (pomiar na `APP_ENV=prod`, w trybie `dev` dochodzi ok. 0,4 s na żądanie), od pamięci
   Postgresa i od obciążenia maszyny; lokalny pomiar jest porównaniem przed i po, nie wynikiem serwera. Pomiar na worf.pl wymaga
   zgody właściciela i tylko żądań GET (mieszanka panelu jest tylko do odczytu; sklep w P4 zakłada koszyki, więc to zapisy).

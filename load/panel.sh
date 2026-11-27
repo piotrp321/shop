@@ -8,6 +8,8 @@
 #
 #   sh load/panel.sh w7   the mix at PANEL_RATE requests per second (default 5, approved by the owner,
 #                         spec decision D4) for PANEL_SECONDS (default 300), PANEL_RUNS times
+#   sh load/panel.sh shop the shop alone (the "without the panel" side of p4: SHOP_LISTING_RATE and SHOP_CART_RATE), PANEL_RUNS runs: to find
+#                         the rates the stack holds before p4, and as a baseline of the shop
 #   sh load/panel.sh p4   the shop (SHOP_LISTING_RATE cold listings and SHOP_CART_RATE carts per second) without the panel and with
 #                         it (the mix at PANEL_RATE, PANEL_WORST_VUS threads of the heaviest classes, default 8, and the boundaries
 #                         of the sitemap cut cold every BOUNDARIES_EVERY seconds, default 30), PANEL_RUNS runs of each, alternating;
@@ -27,7 +29,11 @@ here="$(cd "$(dirname "$0")" && pwd)"
 fail() { echo "load-panel: $1" >&2; exit 2; }
 
 mode="${1:-w7}"
-case "$mode" in w7 | p4) ;; *) fail "the mode is w7 or p4, got '$mode'" ;; esac
+case "$mode" in w7 | p4 | shop) ;; *) fail "the mode is w7, p4 or shop, got '$mode'" ;; esac
+# P4 needs the addresses of the shop: checked before the long steps (the login and the draw of the mix).
+if [ "$mode" != w7 ]; then
+  [ -n "${SHOP_URLS_FILE:-}" ] && [ -r "$SHOP_URLS_FILE" ] || fail "$mode needs SHOP_URLS_FILE: the file of 'python3 load/baseline.py urls <api> <store> FILE --listings N' (N at least the listings of a run)"
+fi
 command -v docker > /dev/null 2>&1 || fail "docker is not installed"
 command -v python3 > /dev/null 2>&1 || fail "python3 is not installed"
 
@@ -95,6 +101,9 @@ run_k6() {
   dir="$1"
   shift
   mkdir -p "$dir"
+  # A new login for every run: the session of the first one does not last through the six runs of p4 (Keycloak refused the renewal in the
+  # last one), and a run that cannot renew its token measures nothing.
+  python3 -I "$here/panel_token.py" --keycloak "$keycloak_host" --admin-url "$admin_url" > "$out/token.json" || fail "no token of the administrator for $dir (see above)"
   cp "$out/mix.json" "$out/token.json" "$dir/"
   [ -z "${SHOP_URLS_FILE:-}" ] || cp "$SHOP_URLS_FILE" "$dir/shop-urls.json"
   rm -f "$dir.stop"
@@ -133,8 +142,22 @@ case "$mode" in
       n=$((n + 1))
     done
     ;;
+  shop)
+    boundaries=0
+    run_rate=0
+    listing="${SHOP_LISTING_RATE:-2}"
+    cart="${SHOP_CART_RATE:-5}"
+    per_run="$(python3 -c "import math; print(math.ceil($listing * $seconds))")"
+    sent="${SHOP_URL_OFFSET:-0}"
+    while [ "$n" -le "$runs" ]; do
+      echo "load-panel: shop run $n of $runs ($listing listings/s, $cart carts/s, $seconds s)"
+      run_k6 "$out/shop-run$n" -e SHOP_URLS=/out/shop-urls.json -e SHOP_LISTING_RATE="$listing" -e SHOP_CART_RATE="$cart" -e SHOP_URL_OFFSET="$sent" > /dev/null || status=$?
+      sent=$((sent + per_run))
+      [ "$n" -ge "$runs" ] || sleep "$pause"
+      n=$((n + 1))
+    done
+    ;;
   p4)
-    [ -n "${SHOP_URLS_FILE:-}" ] && [ -r "$SHOP_URLS_FILE" ] || fail "p4 needs SHOP_URLS_FILE: the file of 'python3 load/baseline.py urls <api> <store> FILE --listings N' (N at least the listings of a run)"
     listing="${SHOP_LISTING_RATE:-2}"
     cart="${SHOP_CART_RATE:-5}"
     worst="${PANEL_WORST_VUS:-8}"
@@ -142,7 +165,22 @@ case "$mode" in
     shop_base="-e SHOP_URLS=/out/shop-urls.json -e SHOP_LISTING_RATE=$listing -e SHOP_CART_RATE=$cart"
     # Every run starts further in the list (the addresses of an earlier run would be warm), as many as a run uses.
     per_run="$(python3 -c "import math; print(math.ceil($listing * $seconds))")"
-    sent=0
+    sent="${SHOP_URL_OFFSET:-0}"
+    # A first run of the shop alone that is not counted: the engines are cold after the earlier load (the first run of three was
+    # 3 to 4 times slower than the others).
+    warmup="${PANEL_WARMUP_SECONDS:-60}"
+    if [ "$warmup" -gt 0 ]; then
+      echo "load-panel: p4 warm-up of the shop ($warmup s, not counted)"
+      run_rate=0
+      boundaries=0
+      saved_seconds="$seconds"
+      seconds="$warmup"
+      # shellcheck disable=SC2086
+      run_k6 "$out/p4-warmup" -e SHOP_URLS=/out/shop-urls.json -e SHOP_LISTING_RATE="$listing" -e SHOP_CART_RATE="$cart" -e SHOP_URL_OFFSET="$sent" > /dev/null || true
+      seconds="$saved_seconds"
+      sent=$((sent + $(python3 -c "import math; print(math.ceil($listing * $warmup))")))
+      sleep "$pause"
+    fi
     while [ "$n" -le "$runs" ]; do
       shop="$shop_base -e SHOP_URL_OFFSET=$sent"
       sent=$((sent + per_run))

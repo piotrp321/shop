@@ -38,7 +38,7 @@ sys.path.insert(0, '$load')
 import panel_token
 print(panel_token.totp('12345678901234567890', 59))"
 
-expect "wrong mode" 2 "the mode is w7 or p4" -- sh "$load/panel.sh" nonsense
+expect "wrong mode" 2 "the mode is w7, p4 or shop" -- sh "$load/panel.sh" nonsense
 expect "no stack" 2 "the API of the stack is not running" -- env COMPOSE_PROJECT_NAME=load-panel-check-no-such-stack sh "$load/panel.sh" w7
 expect "no Keycloak" 2 "is unreachable" -- python3 -I "$load/panel_token.py" --keycloak http://127.0.0.1:9 --admin-url http://127.0.0.1:9
 expect "token file missing" 2 "cannot read the token" -- python3 -I "$load/panel_mix.py" --api http://127.0.0.1:9 --token-file "$work/none.json" --out "$work/mix.json"

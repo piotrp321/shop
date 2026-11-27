@@ -237,6 +237,8 @@ def build(api, rng, products, deep_pages):
     types, brands, models = phrase_pools(names)
     notes["names_sampled"] = len(names)
     notes["pools"] = {"types": len(types), "brands": len(brands), "models": len(models)}
+    # A phrase of the panel is at least 2 characters; a 1-character word of a name would be a 400. Words of 3 or more are phrases of use.
+    types, brands = [w for w in types if len(w) >= 3], [w for w in brands if len(w) >= 3]
     rng.shuffle(types), rng.shuffle(brands), rng.shuffle(models)
     for word in types[:12]:
         add("products_phrase_type", f"{products_path}?" + q(q=word, sort=rng.choice(["name", "-updatedAt"])))

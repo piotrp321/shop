@@ -157,10 +157,26 @@ def p4(directory):
     return lines
 
 
+def shop(directory):
+    found = runs(directory, "shop")
+    if not found:
+        fail(f"no shop runs in {directory}")
+    lines = [f"shop alone: {len(found)} runs, {found[0][1]['shop_listing_rate']} listings/s and {found[0][1]['shop_cart_rate']} carts/s for {found[0][1]['seconds']} s"]
+    lines.append(f"{'':28}{'requests':>9}{'failed':>8}{'dropped':>9}{'p50 ms':>9}{'p95 ms':>9}{'p99 ms':>9}{'max ms':>9}")
+    for index, (_, result) in enumerate(found, 1):
+        for label, key in (("listings", "shop_listing"), ("carts", "shop_cart")):
+            f = result[key]
+            if f is None:
+                continue
+            failed = round(f["server_error_rate"] * f["requests"]) + f["other_4xx"]
+            lines.append(f"{label + ' run ' + str(index):28}{f['requests']:>9}{failed:>8}{result['dropped'][key]:>9}{f['p50_ms']:>9}{f['p95_ms']:>9}{f['p99_ms']:>9}{f['max_ms']:>9}")
+    return lines
+
+
 def main():
-    if len(sys.argv) != 3 or sys.argv[2] not in ("w7", "p4"):
-        fail("usage: panel_report.py DIR w7|p4")
-    print("\n".join(w7(sys.argv[1]) if sys.argv[2] == "w7" else p4(sys.argv[1])))
+    if len(sys.argv) != 3 or sys.argv[2] not in ("w7", "p4", "shop"):
+        fail("usage: panel_report.py DIR w7|p4|shop")
+    print("\n".join({"w7": w7, "p4": p4, "shop": shop}[sys.argv[2]](sys.argv[1])))
 
 
 if __name__ == "__main__":

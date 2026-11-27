@@ -1,0 +1,15 @@
+time="2026-11-27T15:15:34Z" level=info msg="setup: 60 products from 3 chunks of the sitemap, 156 purchasable variants, 114 options, 3 price windows" source=console
+
+W7 / P4 run
+                      requests  req/s    p50 ms   p95 ms   p99 ms   5xx/net  409    429
+panel (mix)           0         0        0        0        0        0%       0      0
+shop listings         2701      15.01    36.6     184.7    783.6    0%       0      0
+shop carts            3600      20       21.4     28.5     32.2     0%       18     0
+
+by class
+                      requests  req/s    p50 ms   p95 ms   p99 ms   5xx/net  409    429
+shop_listing          2701      15.01    36.6     184.7    783.6    0%       0      0
+shop_cart_create      900       5        21.8     25.8     28.2     0%       0      0
+shop_cart_add         900       5        22.1     27       31.3     0%       0      0
+shop_cart_get         900       5        15.7     19.2     23.9     0%       0      0
+shop_cart_change      900       5        24.6     31       33.9     0%       18     0

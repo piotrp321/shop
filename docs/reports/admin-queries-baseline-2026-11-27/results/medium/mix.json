@@ -1,0 +1,409 @@
+{
+ "schema": 1,
+ "api": "http://localhost:28102",
+ "seed": 7,
+ "generated_at": "2026-11-27T14:39:32Z",
+ "seconds": 180.9,
+ "api_calls": 784,
+ "weights": {
+  "products_default": 8,
+  "products_deep": 4,
+  "products_phrase_none": 2,
+  "products_phrase_rare": 4,
+  "products_phrase_type": 4,
+  "products_phrase_brand": 3,
+  "products_phrase_common": 3,
+  "products_phrase_twochar": 3,
+  "products_phrase_punct": 1,
+  "products_phrase_polish": 2,
+  "products_category_small": 4,
+  "products_category_medium": 4,
+  "products_category_big": 3,
+  "products_category_department": 2,
+  "products_combo": 6,
+  "products_drafts": 2,
+  "products_no_images": 2,
+  "prices": 4,
+  "stock": 4,
+  "orders_default": 6,
+  "orders_status": 3,
+  "orders_deep": 2,
+  "orders_fragment": 4,
+  "orders_punct": 1,
+  "orders_number_email": 2,
+  "orders_range": 2,
+  "orders_refunds": 1,
+  "customers_default": 3,
+  "customers_deep": 1,
+  "customers_fragment": 3,
+  "customers_punct": 1,
+  "discount_codes": 2,
+  "promotions": 1,
+  "dashboard": 3,
+  "categories_counts": 1
+ },
+ "worst": [
+  "products_category_small",
+  "products_phrase_type",
+  "products_phrase_twochar",
+  "products_phrase_punct",
+  "orders_punct",
+  "customers_punct",
+  "products_combo"
+ ],
+ "notes": {
+  "names_sampled": 120,
+  "pools": {
+   "types": 57,
+   "brands": 50,
+   "models": 178
+  },
+  "phrase_classes": {
+   "none": 0,
+   "rare": 0,
+   "medium": 22,
+   "common": 18
+  },
+  "category_classes": {
+   "empty": 0,
+   "small": 36,
+   "medium": 31,
+   "big": 106,
+   "department": 7
+  },
+  "empty_classes": [
+   "products_category_empty"
+  ]
+ },
+ "classes": {
+  "products_default": [
+   "/api/v1/admin/products?sort=name",
+   "/api/v1/admin/products?sort=name&perPage=100",
+   "/api/v1/admin/products?sort=-name",
+   "/api/v1/admin/products?sort=-name&perPage=100",
+   "/api/v1/admin/products?sort=-updatedAt",
+   "/api/v1/admin/products?sort=-updatedAt&perPage=100",
+   "/api/v1/admin/products?sort=updatedAt",
+   "/api/v1/admin/products?sort=updatedAt&perPage=100"
+  ],
+  "products_deep": [
+   "/api/v1/admin/products?sort=name&perPage=100&after=eyJzIjoibmFtZSIsInYiOiJBdGxhcyBzemxha8OzdyBLb3JpZGVrIFNwcmludCAyMDAiLCJpIjoiZmFkMWRiMTItYjNhOS01M2NkLTk0N2ItZWZlMjdkMjZlZDMzIn0",
+   "/api/v1/admin/products?sort=name&perPage=100&after=eyJzIjoibmFtZSIsInYiOiJBdGxhcyBzemxha8OzdyBWZWxrb25payBTa2HFgmEgMzAwIiwiaSI6IjhlOWZiNzY1LTg3MGMtNWRkYS04MjIyLTIyMjlhNzU1YzMxMCJ9",
+   "/api/v1/admin/products?sort=-updatedAt&perPage=100&after=eyJzIjoiLXVwZGF0ZWRBdCIsInYiOiIyMDI2LTExLTEwVDA5OjM4OjUwLjAwMDAwMCswMDowMCIsImkiOiIxNDQ4MDJmMS1mZDhmLTU2YTUtOGU2Zi00ZmFlZWMxOTY2Y2YifQ",
+   "/api/v1/admin/products?sort=-updatedAt&perPage=100&after=eyJzIjoiLXVwZGF0ZWRBdCIsInYiOiIyMDI2LTExLTA4VDA2OjEwOjAyLjAwMDAwMCswMDowMCIsImkiOiIxYmVlNWE1ZC01ZjQyLTVhM2ItOWFlNS00NDQ1Y2VhMDZjYmEifQ"
+  ],
+  "products_phrase_none": [
+   "/api/v1/admin/products?q=zzqqxx",
+   "/api/v1/admin/products?q=qqzzxx",
+   "/api/v1/admin/products?q=nie+ma+takiego"
+  ],
+  "products_phrase_rare": [
+   "/api/v1/admin/products?q=havadek&sort=-updatedAt",
+   "/api/v1/admin/products?q=pelvaven&sort=updatedAt",
+   "/api/v1/admin/products?q=corromon&sort=-name",
+   "/api/v1/admin/products?q=nivnesen&sort=name",
+   "/api/v1/admin/products?q=cornezor&sort=name",
+   "/api/v1/admin/products?q=norrolen&sort=updatedAt",
+   "/api/v1/admin/products?q=vorvalen&sort=-updatedAt",
+   "/api/v1/admin/products?q=kelrolen&sort=-name",
+   "/api/v1/admin/products?q=nivirok&sort=-updatedAt",
+   "/api/v1/admin/products?q=corvifen&sort=name"
+  ],
+  "products_phrase_type": [
+   "/api/v1/admin/products?q=bie%C5%BCnia&sort=-updatedAt",
+   "/api/v1/admin/products?q=shaker&sort=name",
+   "/api/v1/admin/products?q=torba&sort=name",
+   "/api/v1/admin/products?q=p%C5%82etwy&sort=name",
+   "/api/v1/admin/products?q=czapka&sort=name",
+   "/api/v1/admin/products?q=czepek&sort=-updatedAt",
+   "/api/v1/admin/products?q=ta%C5%9Bma&sort=name",
+   "/api/v1/admin/products?q=termos&sort=-updatedAt",
+   "/api/v1/admin/products?q=kijki&sort=name",
+   "/api/v1/admin/products?q=mena%C5%BCka&sort=-updatedAt",
+   "/api/v1/admin/products?q=rower&sort=-updatedAt",
+   "/api/v1/admin/products?q=gogle&sort=-updatedAt"
+  ],
+  "products_phrase_brand": [
+   "/api/v1/admin/products?q=boravin&sort=-updatedAt",
+   "/api/v1/admin/products?q=na&sort=name",
+   "/api/v1/admin/products?q=olimpijska&sort=name",
+   "/api/v1/admin/products?q=pi%C5%82karski&sort=-updatedAt",
+   "/api/v1/admin/products?q=termoaktywna&sort=name",
+   "/api/v1/admin/products?q=sportowa&sort=name",
+   "/api/v1/admin/products?q=regeneracyjna&sort=-updatedAt",
+   "/api/v1/admin/products?q=treningowa&sort=-updatedAt",
+   "/api/v1/admin/products?q=p%C5%82ywackie&sort=name",
+   "/api/v1/admin/products?q=p%C5%82ywacki&sort=name",
+   "/api/v1/admin/products?q=z&sort=name",
+   "/api/v1/admin/products?q=lorrola&sort=name"
+  ],
+  "products_phrase_common": [
+   "/api/v1/admin/products?q=wydra&sort=updatedAt",
+   "/api/v1/admin/products?q=knieja&sort=-name",
+   "/api/v1/admin/products?q=mewa&sort=-name",
+   "/api/v1/admin/products?q=oddech&sort=-updatedAt",
+   "/api/v1/admin/products?q=ster&sort=updatedAt",
+   "/api/v1/admin/products?q=kamie%C5%84&sort=name",
+   "/api/v1/admin/products?q=czapla&sort=-updatedAt",
+   "/api/v1/admin/products?q=halny&sort=-updatedAt",
+   "/api/v1/admin/products?q=jar&sort=-updatedAt",
+   "/api/v1/admin/products?q=pustu%C5%82ka&sort=-updatedAt",
+   "/api/v1/admin/products?q=pro",
+   "/api/v1/admin/products?q=ka",
+   "/api/v1/admin/products?q=ra",
+   "/api/v1/admin/products?q=ter"
+  ],
+  "products_phrase_twochar": [
+   "/api/v1/admin/products?q=qx&sort=name",
+   "/api/v1/admin/products?q=zx&sort=name",
+   "/api/v1/admin/products?q=xq&sort=-updatedAt",
+   "/api/v1/admin/products?q=jj&sort=name",
+   "/api/v1/admin/products?q=ka&sort=-updatedAt",
+   "/api/v1/admin/products?q=ra&sort=name",
+   "/api/v1/admin/products?q=er&sort=name"
+  ],
+  "products_phrase_punct": [
+   "/api/v1/admin/products?q=%23%21%23",
+   "/api/v1/admin/products?q=---",
+   "/api/v1/admin/products?q=a.b",
+   "/api/v1/admin/products?q=ab-cd",
+   "/api/v1/admin/products?q=%23%21%23",
+   "/api/v1/admin/products?q=%28%2A%29"
+  ],
+  "products_phrase_polish": [
+   "/api/v1/admin/products?q=%C5%BCuraw",
+   "/api/v1/admin/products?q=%C5%BBURAW",
+   "/api/v1/admin/products?q=%C5%81%C3%B3d%C5%BA",
+   "/api/v1/admin/products?q=%C4%85%C4%99%C5%9B",
+   "/api/v1/admin/products?q=%C4%84%C4%98%C5%9A",
+   "/api/v1/admin/products?q=za%C5%BC%C3%B3%C5%82%C4%87"
+  ],
+  "products_category_small": [
+   "/api/v1/admin/products?category=abb7bc3b-fe32-5236-9404-fc941e8fea53&sort=-name",
+   "/api/v1/admin/products?category=50cd3ab9-6263-5441-9d77-cef1c8794964&sort=-updatedAt",
+   "/api/v1/admin/products?category=70134891-dc80-5215-9109-23f8f80ad40a&sort=-name",
+   "/api/v1/admin/products?category=5b0bb826-c5c6-5c66-8dae-dbe98eb45416&sort=name",
+   "/api/v1/admin/products?category=1c5a1382-e614-5308-a662-49614547d08d&sort=updatedAt",
+   "/api/v1/admin/products?category=d2a8f52e-6be4-54e2-afa2-b6537de3abe3&sort=-name",
+   "/api/v1/admin/products?category=c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca&sort=name",
+   "/api/v1/admin/products?category=eb2174f3-d536-50f3-8832-51736f2da26d&sort=-name",
+   "/api/v1/admin/products?category=bc18f6f0-fcc5-5e7f-bd57-08945163c1ee&sort=name",
+   "/api/v1/admin/products?category=24f060dc-a340-56d7-9601-378eb1ef0b3f&sort=name",
+   "/api/v1/admin/products?category=8114f947-c901-5ec4-a342-8680b736d727&sort=name",
+   "/api/v1/admin/products?category=65c200e9-5634-5413-a515-0f94e28bef34&sort=-name"
+  ],
+  "products_category_medium": [
+   "/api/v1/admin/products?category=72ce749c-5110-5ce8-b243-4919a8319937&sort=-name",
+   "/api/v1/admin/products?category=989656d1-06af-59c6-a505-1f6f6c7b83b8&sort=-name",
+   "/api/v1/admin/products?category=9c0322b5-2a7c-57cd-9dc6-17a5142e9f46&sort=-name",
+   "/api/v1/admin/products?category=593c1e74-88fa-5baa-b380-c1e14517c9fd&sort=updatedAt",
+   "/api/v1/admin/products?category=8732b1af-0cf9-5c92-8388-043c6a2a6a95&sort=updatedAt",
+   "/api/v1/admin/products?category=12feeac5-837f-5d48-98fd-621b45298787&sort=updatedAt",
+   "/api/v1/admin/products?category=f4e75bdd-1644-5d47-ba9b-9cbbac702ee5&sort=name",
+   "/api/v1/admin/products?category=67a7eaa7-4725-5233-be8d-133e240c37b9&sort=updatedAt",
+   "/api/v1/admin/products?category=0b2f5958-b932-5345-a821-6e520b7ea133&sort=-updatedAt",
+   "/api/v1/admin/products?category=f663f97c-e400-58b4-b8f7-d6a979f89073&sort=name",
+   "/api/v1/admin/products?category=6d0c1925-ed98-59f9-a489-a7f2d40666bb&sort=-name",
+   "/api/v1/admin/products?category=c57c017b-d6f7-5990-82bf-635533003629&sort=name"
+  ],
+  "products_category_big": [
+   "/api/v1/admin/products?category=5d3cb91c-885c-58e3-b4ad-12b8a5e446cc&sort=-name",
+   "/api/v1/admin/products?category=0bed0d4e-ca39-559b-94b7-d44506c0ac99&sort=-updatedAt",
+   "/api/v1/admin/products?category=fc35f69d-dfd2-5ef1-a0bb-a71183c657c3&sort=updatedAt",
+   "/api/v1/admin/products?category=2b93dc6f-4c3b-53d0-b20b-9be5f7980537&sort=-updatedAt",
+   "/api/v1/admin/products?category=817c0300-9678-5875-9eca-9206c0edf96e&sort=-name",
+   "/api/v1/admin/products?category=9c9cc83c-63e5-5d6f-a933-c135928c19db&sort=-updatedAt",
+   "/api/v1/admin/products?category=04e1dc67-674c-52bf-b27d-5bcc115be6b2&sort=updatedAt",
+   "/api/v1/admin/products?category=f0babb15-50fb-58dd-a99f-fb8ef70f98d8&sort=name",
+   "/api/v1/admin/products?category=b0578d96-4088-5ff6-abe9-2196dc67e2f8&sort=updatedAt",
+   "/api/v1/admin/products?category=ea0de14f-769d-5b4c-9701-512e48a07103&sort=-name",
+   "/api/v1/admin/products?category=8ee0f92c-a366-5df3-a805-ddabaf51a683&sort=name",
+   "/api/v1/admin/products?category=a9edcf8a-8f67-598f-8e19-9680587be9a1&sort=name"
+  ],
+  "products_category_department": [
+   "/api/v1/admin/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&sort=updatedAt",
+   "/api/v1/admin/products?category=6f62a979-6012-5f5a-a39b-13948746e108&sort=name",
+   "/api/v1/admin/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&sort=-name",
+   "/api/v1/admin/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&sort=-name",
+   "/api/v1/admin/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&sort=updatedAt",
+   "/api/v1/admin/products?category=8c10569a-2f29-539a-b2ec-ae97f68410a7&sort=updatedAt",
+   "/api/v1/admin/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&sort=-updatedAt"
+  ],
+  "products_combo": [
+   "/api/v1/admin/products?sort=-updatedAt&images=none&q=kallafen",
+   "/api/v1/admin/products?sort=name&images=none&q=siatkarskie",
+   "/api/v1/admin/products?sort=-updatedAt&images=none&q=palriren",
+   "/api/v1/admin/products?sort=name&category=ba4b38e4-d326-51ce-8bb1-91ac791e3cc5&q=pokrowiec",
+   "/api/v1/admin/products?sort=-updatedAt&category=b1586e7f-5815-587a-9e06-bac239eaeb62&q=str%C3%B3j",
+   "/api/v1/admin/products?sort=-updatedAt&category=d8c6ffaf-4a83-5331-b52c-1e58d84bbdba&q=pro",
+   "/api/v1/admin/products?sort=-updatedAt&images=none&q=r%C4%99czna",
+   "/api/v1/admin/products?sort=name&images=none&category=4662120e-64b1-574a-97a3-da28807d0bf3",
+   "/api/v1/admin/products?sort=name&category=65c200e9-5634-5413-a515-0f94e28bef34&status=draft",
+   "/api/v1/admin/products?sort=name&images=none&q=treningowy",
+   "/api/v1/admin/products?sort=-updatedAt&images=none&q=snowboardowa",
+   "/api/v1/admin/products?sort=name&images=none&q=rowerowa"
+  ],
+  "products_drafts": [
+   "/api/v1/admin/products?status=draft&sort=name",
+   "/api/v1/admin/products?status=published&sort=name",
+   "/api/v1/admin/products?status=draft&sort=-updatedAt",
+   "/api/v1/admin/products?status=published&sort=-updatedAt"
+  ],
+  "products_no_images": [
+   "/api/v1/admin/products?images=none&sort=name",
+   "/api/v1/admin/products?images=none&sort=-updatedAt"
+  ],
+  "prices": [
+   "/api/v1/admin/prices?sort=name",
+   "/api/v1/admin/prices?sort=-updatedAt"
+  ],
+  "stock": [
+   "/api/v1/admin/stock?sort=name",
+   "/api/v1/admin/stock?sort=-updatedAt",
+   "/api/v1/admin/stock?level=out_of_stock",
+   "/api/v1/admin/stock?level=low_stock"
+  ],
+  "orders_default": [
+   "/api/v1/admin/orders?sort=-placedAt",
+   "/api/v1/admin/orders?sort=placedAt",
+   "/api/v1/admin/orders?sort=-total",
+   "/api/v1/admin/orders?sort=total"
+  ],
+  "orders_status": [
+   "/api/v1/admin/orders?status=cancelled",
+   "/api/v1/admin/orders?status=cancelled&sort=-total",
+   "/api/v1/admin/orders?status=delivered",
+   "/api/v1/admin/orders?status=delivered&sort=-total",
+   "/api/v1/admin/orders?status=paid",
+   "/api/v1/admin/orders?status=paid&sort=-total",
+   "/api/v1/admin/orders?status=returned",
+   "/api/v1/admin/orders?status=returned&sort=-total",
+   "/api/v1/admin/orders?status=shipped",
+   "/api/v1/admin/orders?status=shipped&sort=-total"
+  ],
+  "orders_deep": [
+   "/api/v1/admin/orders?sort=-placedAt&perPage=100&after=eyJzIjoiLXBsYWNlZEF0IiwidiI6IjIwMjYtMTEtMjVUMjI6MDg6MzcuMDAwMDAwKzAwOjAwIiwiaSI6IjAxYTIxNGMwLWVhODgtNzMyZS05NzM1LWFjY2E2OWRjNTEyMiJ9",
+   "/api/v1/admin/orders?sort=-placedAt&perPage=100&after=eyJzIjoiLXBsYWNlZEF0IiwidiI6IjIwMjYtMTEtMjRUMjE6MzU6NDcuMDAwMDAwKzAwOjAwIiwiaSI6IjAxYTIwZjdjLTdmMzgtNzcxNC04ZTNhLWEzOTI2Mzk2MTE0NCJ9",
+   "/api/v1/admin/orders?sort=-total&perPage=100&after=eyJzIjoiLXRvdGFsIiwidiI6NjU5OTk3LCJpIjoiMDE4YzgyYmQtNmIwOC03Mjc3LWEzODItMDg1MGEzMmEzN2JlIn0",
+   "/api/v1/admin/orders?sort=-total&perPage=100&after=eyJzIjoiLXRvdGFsIiwidiI6NTE3OTk3LCJpIjoiMDE5MzJjYWEtNjVlOC03YmQ4LTkyNDEtNDgwYzY0ZWE4NzAwIn0"
+  ],
+  "orders_fragment": [
+   "/api/v1/admin/orders?q=w%C3%B3jcicka",
+   "/api/v1/admin/orders?q=w%C3%B3jc&status=delivered",
+   "/api/v1/admin/orders?q=brzozowski",
+   "/api/v1/admin/orders?q=brzo&status=delivered",
+   "/api/v1/admin/orders?q=pi%C4%99ta",
+   "/api/v1/admin/orders?q=pi%C4%99t&status=delivered",
+   "/api/v1/admin/orders?q=sok%C3%B3%C5%82",
+   "/api/v1/admin/orders?q=sok%C3%B3&status=delivered",
+   "/api/v1/admin/orders?q=adamowicz",
+   "/api/v1/admin/orders?q=adam&status=delivered",
+   "/api/v1/admin/orders?q=cygan",
+   "/api/v1/admin/orders?q=cyga&status=delivered",
+   "/api/v1/admin/orders?q=d%C4%85bkowski",
+   "/api/v1/admin/orders?q=d%C4%85bk&status=delivered",
+   "/api/v1/admin/orders?q=tokarczyk",
+   "/api/v1/admin/orders?q=toka&status=delivered",
+   "/api/v1/admin/orders?q=example",
+   "/api/v1/admin/orders?q=ann",
+   "/api/v1/admin/orders?q=kowal",
+   "/api/v1/admin/orders?q=%C4%85%C4%99%C5%9B",
+   "/api/v1/admin/orders?q=qqzzxx"
+  ],
+  "orders_punct": [
+   "/api/v1/admin/orders?q=%23%21%23",
+   "/api/v1/admin/orders?q=%23%21%23&status=delivered",
+   "/api/v1/admin/orders?q=---",
+   "/api/v1/admin/orders?q=---&status=delivered",
+   "/api/v1/admin/orders?q=a.b",
+   "/api/v1/admin/orders?q=a.b&status=delivered",
+   "/api/v1/admin/orders?q=ab-cd",
+   "/api/v1/admin/orders?q=ab-cd&status=delivered"
+  ],
+  "orders_number_email": [
+   "/api/v1/admin/orders?q=R-1099930",
+   "/api/v1/admin/orders?q=barbara.bienkowska.538%40example.org",
+   "/api/v1/admin/orders?q=R-1099969",
+   "/api/v1/admin/orders?q=hanna.lipiec.g1099969%40example.net",
+   "/api/v1/admin/orders?q=R-1099997",
+   "/api/v1/admin/orders?q=halina.fratczak.66329%40example.com",
+   "/api/v1/admin/orders?q=R-1099948",
+   "/api/v1/admin/orders?q=regina.andrzejczak.28635%40example.net",
+   "/api/v1/admin/orders?q=R-1099910",
+   "/api/v1/admin/orders?q=grzegorz.mankowski.g1099910%40example.com",
+   "/api/v1/admin/orders?q=R-1099917",
+   "/api/v1/admin/orders?q=dorota.wojcicka.4909%40example.net",
+   "/api/v1/admin/orders?q=R-1099961",
+   "/api/v1/admin/orders?q=halina.janicka.53669%40example.net",
+   "/api/v1/admin/orders?q=R-1099993",
+   "/api/v1/admin/orders?q=bartlomiej.ciesielski.38755%40example.org"
+  ],
+  "orders_range": [
+   "/api/v1/admin/orders?placedFrom=2026-11-26&placedTo=2026-11-26",
+   "/api/v1/admin/orders?placedFrom=2026-11-26&status=delivered",
+   "/api/v1/admin/orders?placedFrom=2020-01-01&placedTo=2020-01-02",
+   "/api/v1/admin/orders?placedFrom=2024-03-01&placedTo=2024-03-02&q=example"
+  ],
+  "orders_refunds": [
+   "/api/v1/admin/orders?refund=pending",
+   "/api/v1/admin/orders?refund=overdue"
+  ],
+  "customers_default": [
+   "/api/v1/admin/customers?sort=-lastOrderAt",
+   "/api/v1/admin/customers?sort=name",
+   "/api/v1/admin/customers?sort=-orderCount",
+   "/api/v1/admin/customers?sort=-paidGross"
+  ],
+  "customers_deep": [
+   "/api/v1/admin/customers?sort=-lastOrderAt&perPage=100&after=eyJzIjoiLWxhc3RPcmRlckF0IiwidiI6IjIwMjYtMTEtMjNUMDY6NDI6NDIuMDAwMDAwKzAwOjAwIiwiaSI6IjEzNjQwY2YzLTM5N2UtNTMxNi04Mzk5LTZkZmY2MGIyODg0NyJ9",
+   "/api/v1/admin/customers?sort=name&perPage=100&after=eyJzIjoibmFtZSIsInYiOiJhbGVrc2FuZHJhIGRvYnJvd29sc2thIiwiaSI6IjYwYzExNzE3LWViMjAtNWQzYi05OTJiLWExYWVhMDMyMjU3ZSJ9"
+  ],
+  "customers_fragment": [
+   "/api/v1/admin/customers?q=cichocki",
+   "/api/v1/admin/customers?q=mikola",
+   "/api/v1/admin/customers?q=cie%C5%9Blik",
+   "/api/v1/admin/customers?q=anna.c",
+   "/api/v1/admin/customers?q=borowska",
+   "/api/v1/admin/customers?q=irena.",
+   "/api/v1/admin/customers?q=ferenc",
+   "/api/v1/admin/customers?q=maciej",
+   "/api/v1/admin/customers?q=nowicki",
+   "/api/v1/admin/customers?q=jerzy.",
+   "/api/v1/admin/customers?q=czerwi%C5%84ska",
+   "/api/v1/admin/customers?q=martyn",
+   "/api/v1/admin/customers?q=%C5%82awniczak",
+   "/api/v1/admin/customers?q=janina",
+   "/api/v1/admin/customers?q=g%C3%B3rka",
+   "/api/v1/admin/customers?q=zbigni",
+   "/api/v1/admin/customers?q=example",
+   "/api/v1/admin/customers?q=ann",
+   "/api/v1/admin/customers?q=qqzzxx"
+  ],
+  "customers_punct": [
+   "/api/v1/admin/customers?q=%23%21%23",
+   "/api/v1/admin/customers?q=---",
+   "/api/v1/admin/customers?q=a.b",
+   "/api/v1/admin/customers?q=ab-cd"
+  ],
+  "discount_codes": [
+   "/api/v1/admin/discount-codes?status=active",
+   "/api/v1/admin/discount-codes?status=expired",
+   "/api/v1/admin/discount-codes?status=planned",
+   "/api/v1/admin/discount-codes?status=disabled",
+   "/api/v1/admin/discount-codes",
+   "/api/v1/admin/discount-codes?q=WITAJ"
+  ],
+  "promotions": [
+   "/api/v1/admin/promotions?status=active",
+   "/api/v1/admin/promotions?status=planned",
+   "/api/v1/admin/promotions?status=ended"
+  ],
+  "dashboard": [
+   "/api/v1/admin/dashboard",
+   "/api/v1/admin/orders?perPage=5"
+  ],
+  "categories_counts": [
+   "/api/v1/admin/categories?withCounts=true"
+  ]
+ }
+}

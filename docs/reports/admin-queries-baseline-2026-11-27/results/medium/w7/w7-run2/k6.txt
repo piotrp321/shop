@@ -1,0 +1,42 @@
+
+W7 / P4 run
+                      requests  req/s    p50 ms   p95 ms   p99 ms   5xx/net  409    429
+panel (mix)           1601      5.34     42.7     2287.5   4146.2   0%       0      0
+
+by class
+                      requests  req/s    p50 ms   p95 ms   p99 ms   5xx/net  409    429
+products_default      104       0.35     24.5     77.7     103.5    0%       0      0
+products_deep         71        0.24     26.1     90.3     113.3    0%       0      0
+products_phrase_none  29        0.1      22.5     66.6     127.7    0%       0      0
+products_phrase_rare  47        0.16     65.9     161.2    199.5    0%       0      0
+products_phrase_type  66        0.22     84.8     3075.5   4673.8   0%       0      0
+products_phrase_brand 46        0.15     120.5    3136.8   3384.4   0%       0      0
+products_phrase_common53        0.18     84       272.7    323      0%       0      0
+products_phrase_twochar46        0.15     1478.1   3137.3   3264.3   0%       0      0
+products_phrase_punct 22        0.07     1551.2   3111.8   3183.7   0%       0      0
+products_phrase_polish34        0.11     19.4     186.3    193.7    0%       0      0
+products_category_small56        0.19     2954.2   5654.5   5778.8   0%       0      0
+products_category_medium59        0.2      716.7    1736.1   1912.9   0%       0      0
+products_category_big 40        0.13     598.4    1305.9   1644.3   0%       0      0
+products_category_department37        0.12     289.6    745.3    913.9    0%       0      0
+products_combo        93        0.31     116      2182.8   3415     0%       0      0
+products_drafts       25        0.08     28.5     115.7    118      0%       0      0
+products_no_images    32        0.11     38.9     106.9    137.2    0%       0      0
+prices                47        0.16     25.9     127.3    136.9    0%       0      0
+stock                 73        0.24     24.4     104.2    138.2    0%       0      0
+orders_default        80        0.27     21.1     98.3     137.9    0%       0      0
+orders_status         50        0.17     21.9     98.1     160.2    0%       0      0
+orders_deep           27        0.09     21       89       130.2    0%       0      0
+orders_fragment       64        0.21     36.9     141      162.4    0%       0      0
+orders_punct          12        0.04     203.7    630.3    637.8    0%       0      0
+orders_number_email   29        0.1      19.2     84       91.7     0%       0      0
+orders_range          32        0.11     21.2     88.9     140.3    0%       0      0
+orders_refunds        17        0.06     20.6     81.1     98.6     0%       0      0
+customers_default     47        0.16     20       69       94.9     0%       0      0
+customers_deep        16        0.05     23.6     83.4     108.9    0%       0      0
+customers_fragment    41        0.14     33.6     123.6    142.6    0%       0      0
+customers_punct       11        0.04     45.9     134.8    139.6    0%       0      0
+discount_codes        21        0.07     18.4     30.4     100.8    0%       0      0
+promotions            17        0.06     19.7     98.1     126.9    0%       0      0
+dashboard             44        0.15     30.5     72.3     96.3     0%       0      0
+categories_counts     13        0.04     37.2     116.9    146.9    0%       0      0

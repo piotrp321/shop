@@ -1,0 +1,31 @@
+P4: 3 runs without and 3 with the panel; shop 15 listings/s and 5 carts/s
+                                   requests  failed  dropped   p50 ms   p95 ms   p99 ms   max ms
+without shop listings run 1            2701      10        0    111.5    517.1    997.5   2847.7
+without shop listings run 2            2701       0        0     36.6    184.7    783.6    977.6
+without shop listings run 3            2701       2        0       27    149.7    789.7   3211.9
+without shop carts run 1               3604       0        0     52.1    240.7    372.6    982.3
+without shop carts run 2               3600       0        0     21.4     28.5     32.2     41.7
+without shop carts run 3               3600       0        0       15     23.3    190.4   2504.1
+with shop listings run 1               2701       0        0    100.3      373   1330.5   1909.5
+with shop listings run 2               2701       0        0     97.3    363.9   1316.9   1660.4
+with shop listings run 3                  0       0        0        0        0        0        0
+with shop carts run 1                  3604       0        0     67.8    125.9    172.3    500.2
+with shop carts run 2                  3604       0        0     65.8    109.9    136.1    219.5
+with shop carts run 3                     0       0        0        0        0        0        0
+
+The median of the runs; the spread without the panel is the highest minus the lowest run (the criterion: the difference of the medians is not above it)
+  shop listings p50_ms   without 36.6 ms (spread 84.5), with 97.3 ms, difference +60.7 ms: within the spread
+  shop listings p95_ms   without 184.7 ms (spread 367.4), with 363.9 ms, difference +179.2 ms: within the spread
+  shop listings p99_ms   without 789.7 ms (spread 213.9), with 1316.9 ms, difference +527.2 ms: ABOVE the spread
+  shop carts    p50_ms   without 21.4 ms (spread 37.1), with 65.8 ms, difference +44.4 ms: ABOVE the spread
+  shop carts    p95_ms   without 28.5 ms (spread 217.4), with 109.9 ms, difference +81.4 ms: within the spread
+  shop carts    p99_ms   without 190.4 ms (spread 340.4), with 136.1 ms, difference -54.3 ms: within the spread
+P4 (difference of the medians within the spread without the panel) not met: shop listings p99_ms, shop carts p50_ms
+
+Load of PostgreSQL and of the containers per run (counters over the run; sessions and CPU sampled every 5 s)
+  without run 1: {"active_sessions_avg": 1.42, "active_sessions_max": 3, "blks_hit": 6040974, "blks_read": 29648, "cpu_percent_avg": {"api": 91.8, "elasticsearch": 111.7, "postgres": 42.9}, "io_read_bytes": 243122176, "io_reads": 28215, "temp_bytes": 0, "wal_bytes": 2192526, "xact_commit": 28330}
+  without run 2: {"active_sessions_avg": 1.16, "active_sessions_max": 2, "blks_hit": 6870612, "blks_read": 37339, "cpu_percent_avg": {"api": 46.8, "elasticsearch": 61.4, "postgres": 22.2}, "io_read_bytes": 305266688, "io_reads": 35850, "temp_bytes": 0, "wal_bytes": 1969824, "xact_commit": 28271}
+  without run 3: {"active_sessions_avg": 1.12, "active_sessions_max": 4, "blks_hit": 6874149, "blks_read": 37411, "cpu_percent_avg": {"api": 40.1, "elasticsearch": 48.4, "postgres": 15.3}, "io_read_bytes": 305979392, "io_reads": 35921, "temp_bytes": 0, "wal_bytes": 2577935, "xact_commit": 28368}
+  with run 1: {"active_sessions_avg": 15.88, "active_sessions_max": 22, "blks_hit": 56730766, "blks_read": 162771296, "cpu_percent_avg": {"api": 109.4, "elasticsearch": 97.9, "postgres": 838.0}, "io_read_bytes": 1318316998656, "io_reads": 129768861, "temp_bytes": 0, "wal_bytes": 2390078, "xact_commit": 34746}
+  with run 2: {"active_sessions_avg": 14.25, "active_sessions_max": 22, "blks_hit": 70371854, "blks_read": 176918373, "cpu_percent_avg": {"api": 105.7, "elasticsearch": 90.1, "postgres": 904.3}, "io_read_bytes": 1431265452032, "io_reads": 139481281, "temp_bytes": 0, "wal_bytes": 1829107, "xact_commit": 35360}
+  with run 3: {"active_sessions_avg": 1, "active_sessions_max": 1, "blks_hit": 918880, "blks_read": 36678, "cpu_percent_avg": {"api": 0.4, "elasticsearch": 1.1, "postgres": 61.9}, "io_read_bytes": 300466176, "io_reads": 35216, "temp_bytes": 0, "wal_bytes": 20954, "xact_commit": 361}

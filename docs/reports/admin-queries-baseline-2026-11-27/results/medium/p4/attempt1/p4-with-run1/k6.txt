@@ -1,0 +1,52 @@
+time="2026-11-27T15:11:01Z" level=info msg="setup: 60 products from 3 chunks of the sitemap, 169 purchasable variants, 63 options, 3 price windows" source=console
+
+W7 / P4 run
+                      requests  req/s    p50 ms   p95 ms   p99 ms   5xx/net  409    429
+panel (mix)           951       5.28     111.1    7917.9   14342.8  0%       0      0
+worst threads         430       2.39     879.7    12681.4  14541.6  0%       0      0
+shop listings         2701      15.01    100.3    373      1330.5   0%       0      0
+shop carts            3604      20.02    67.8     125.9    172.3    0%       29     0
+
+by class
+                      requests  req/s    p50 ms   p95 ms   p99 ms   5xx/net  409    429
+products_default      77        0.43     85       132.2    145.9    0%       0      0
+products_deep         32        0.18     95.9     133.2    141.3    0%       0      0
+products_phrase_none  16        0.09     62       88.1     97.1     0%       0      0
+products_phrase_rare  29        0.16     253.3    354.4    459.4    0%       0      0
+products_phrase_type  80        0.44     388.2    12172.9  14322.1  0%       0      0
+products_phrase_brand 21        0.12     353.6    11566.8  12509.2  0%       0      0
+products_phrase_common28        0.16     377.6    1090.4   1164.3   0%       0      0
+products_phrase_twochar91        0.51     3934.3   7623     9691     0%       0      0
+products_phrase_punct 66        0.37     4554.8   6914.4   7259.1   0%       0      0
+products_phrase_polish14        0.08     107.9    502.1    612.4    0%       0      0
+products_category_small108       0.6      11219.5  16192.4  16946.3  0%       0      0
+products_category_medium42        0.23     3920.7   6450.6   7563.6   0%       0      0
+products_category_big 21        0.12     3339.6   5376.6   7280.8   0%       0      0
+products_category_department12        0.07     1236.1   2589.4   2788.6   0%       0      0
+products_combo        122       0.68     335.3    8261.6   9218.4   0%       0      0
+products_drafts       25        0.14     96       233.2    1276.2   0%       0      0
+products_no_images    21        0.12     145.7    264.7    316.2    0%       0      0
+prices                33        0.18     88.2     144.1    182.5    0%       0      0
+stock                 38        0.21     93.4     163.8    199.2    0%       0      0
+orders_default        48        0.27     74.2     130.7    174.1    0%       0      0
+orders_status         27        0.15     77.1     177.8    276.1    0%       0      0
+orders_deep           15        0.08     75.3     183.6    200.7    0%       0      0
+orders_fragment       37        0.21     143      369.4    402.9    0%       0      0
+orders_punct          76        0.42     957.1    1591.4   1767.6   0%       0      0
+orders_number_email   15        0.08     88.8     105.3    109.2    0%       0      0
+orders_range          16        0.09     70.8     109.2    154.6    0%       0      0
+orders_refunds        11        0.06     92.1     199.5    242      0%       0      0
+customers_default     30        0.17     86.5     159.3    180.1    0%       0      0
+customers_deep        13        0.07     75.4     117.9    125.6    0%       0      0
+customers_fragment    32        0.18     101.3    200.4    222.8    0%       0      0
+customers_punct       70        0.39     116.2    216.1    325.4    0%       0      0
+discount_codes        19        0.11     68.5     141      172.4    0%       0      0
+promotions            10        0.06     74.7     100.5    104.1    0%       0      0
+dashboard             23        0.13     102.9    212.5    259.7    0%       0      0
+categories_counts     5         0.03     128.7    202.3    213.8    0%       0      0
+shop_listing          2701      15.01    100.3    373      1330.5   0%       0      0
+shop_cart_create      901       5.01     57.5     102.8    148.8    0%       0      0
+shop_cart_add         901       5.01     78.8     137.3    193.6    0%       0      0
+shop_cart_get         901       5.01     56.7     102.5    162.5    0%       0      0
+shop_cart_change      901       5.01     77.7     136.1    195.6    0%       29     0
+boundaries            7         0.04     822.3    1214.9   1229.2   0%       0      0
