@@ -1,0 +1,18 @@
+-- phrase two-common 'er', count of the first page
+-- hits = 258773
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%er%' LIMIT 10001) bounded;
+
+Aggregate  (cost=2847.68..2847.69 rows=1 width=8) (actual time=20.350..20.356 rows=1.00 loops=1)
+  Buffers: shared hit=26671
+  ->  Limit  (cost=0.42..2722.66 rows=10001 width=4) (actual time=0.048..19.965 rows=10001.00 loops=1)
+        Buffers: shared hit=26671
+        ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..74283.69 rows=272903 width=4) (actual time=0.047..19.417 rows=10001.00 loops=1)
+              Filter: ((name)::text ~~* '%er%'::text)
+              Rows Removed by Filter: 21448
+              Heap Fetches: 0
+              Index Searches: 1
+              Buffers: shared hit=26671
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.733 ms
+Execution Time: 20.387 ms

@@ -1,0 +1,21 @@
+-- orders, fragment common-surname 'kaczmarek', count
+-- hits = 5368
+SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('kaczmarek') || '%' LIMIT 10001) bounded;
+
+Aggregate  (cost=26152.42..26152.43 rows=1 width=8) (actual time=14.062..14.066 rows=1.00 loops=1)
+  Buffers: shared hit=5321
+  ->  Limit  (cost=254.97..26027.41 rows=10001 width=4) (actual time=3.347..13.848 rows=5368.00 loops=1)
+        Buffers: shared hit=5321
+        ->  Bitmap Heap Scan on ordering_order o  (cost=254.97..26287.69 rows=10102 width=4) (actual time=3.346..13.567 rows=5368.00 loops=1)
+              Recheck Cond: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%kaczmarek%'::text)
+              Rows Removed by Index Recheck: 21
+              Heap Blocks: exact=5157
+              Buffers: shared hit=5321
+              ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..252.45 rows=10102 width=0) (actual time=2.840..2.840 rows=5389.00 loops=1)
+                    Index Cond: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%kaczmarek%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=164
+Planning:
+  Buffers: shared hit=283
+Planning Time: 0.792 ms
+Execution Time: 14.147 ms

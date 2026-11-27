@@ -1,0 +1,18 @@
+-- phrase brand-common 'rowerowa', count of the first page
+-- hits = 60168
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%rowerowa%' LIMIT 10001) bounded;
+
+Aggregate  (cost=8292.12..8292.13 rows=1 width=8) (actual time=208.723..208.729 rows=1.00 loops=1)
+  Buffers: shared hit=265014
+  ->  Limit  (cost=0.42..8167.11 rows=10001 width=4) (actual time=152.485..208.331 rows=10001.00 loops=1)
+        Buffers: shared hit=265014
+        ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..74283.69 rows=90968 width=4) (actual time=152.483..207.802 rows=10001.00 loops=1)
+              Filter: ((name)::text ~~* '%rowerowa%'::text)
+              Rows Removed by Filter: 302674
+              Heap Fetches: 4
+              Index Searches: 1
+              Buffers: shared hit=265014
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.827 ms
+Execution Time: 208.758 ms

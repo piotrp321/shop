@@ -1,0 +1,15 @@
+-- phrase type-early 'bagażnik', page 1, sort -updatedAt
+-- hits = 8625
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%bagażnik%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=0.42..2183.88 rows=26 width=71) (actual time=0.260..3.724 rows=26.00 loops=1)
+  Buffers: shared hit=3270
+  ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..848862.09 rows=10108 width=71) (actual time=0.259..3.718 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%bagażnik%'::text)
+        Rows Removed by Filter: 3248
+        Index Searches: 1
+        Buffers: shared hit=3270
+Planning:
+  Buffers: shared hit=278
+Planning Time: 0.830 ms
+Execution Time: 3.739 ms

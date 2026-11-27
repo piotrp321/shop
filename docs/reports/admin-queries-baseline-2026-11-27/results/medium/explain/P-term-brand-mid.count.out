@@ -1,0 +1,21 @@
+-- phrase brand-mid 'treningowe', count of the first page
+-- hits = 17200
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%treningowe%' LIMIT 10001) bounded;
+
+Aggregate  (cost=32603.78..32603.79 rows=1 width=8) (actual time=39.668..39.674 rows=1.00 loops=1)
+  Buffers: shared hit=13584
+  ->  Limit  (cost=790.21..32478.77 rows=10001 width=4) (actual time=19.568..39.290 rows=10001.00 loops=1)
+        Buffers: shared hit=13584
+        ->  Bitmap Heap Scan on catalog_product p  (cost=790.21..64842.23 rows=20215 width=4) (actual time=19.567..38.763 rows=10001.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%treningowe%'::text)
+              Rows Removed by Index Recheck: 2538
+              Heap Blocks: exact=11975
+              Buffers: shared hit=13584
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..785.16 rows=20215 width=0) (actual time=17.278..17.278 rows=21554.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%treningowe%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=1608
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.806 ms
+Execution Time: 39.853 ms

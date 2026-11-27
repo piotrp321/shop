@@ -1,0 +1,15 @@
+-- phrase very-common-b 'ka', page 1, sort -updatedAt
+-- hits = 459399
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ka%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=0.42..45.92 rows=26 width=71) (actual time=0.018..0.061 rows=26.00 loops=1)
+  Buffers: shared hit=31
+  ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..848862.09 rows=485161 width=71) (actual time=0.017..0.057 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%ka%'::text)
+        Rows Removed by Filter: 6
+        Index Searches: 1
+        Buffers: shared hit=31
+Planning:
+  Buffers: shared hit=278
+Planning Time: 0.805 ms
+Execution Time: 0.075 ms

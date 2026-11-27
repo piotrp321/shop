@@ -1,0 +1,26 @@
+-- customers, fragment full-email 'klaudia.domagala.3985@example.net', count
+-- hits = 1
+SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('klaudia.domagala.3985@example.net') || '%' OR lower(c.full_name) LIKE '%' || lower('klaudia.domagala.3985@example.net') || '%') LIMIT 10001) bounded;
+
+Aggregate  (cost=792.03..792.04 rows=1 width=8) (actual time=3.148..3.152 rows=1.00 loops=1)
+  Buffers: shared hit=493
+  ->  Limit  (cost=715.86..791.78 rows=20 width=4) (actual time=3.146..3.147 rows=1.00 loops=1)
+        Buffers: shared hit=493
+        ->  Bitmap Heap Scan on ordering_customer c  (cost=715.86..791.78 rows=20 width=4) (actual time=3.145..3.146 rows=1.00 loops=1)
+              Recheck Cond: ((lower((email)::text) ~~ '%klaudia.domagala.3985@example.net%'::text) OR (lower((full_name)::text) ~~ '%klaudia.domagala.3985@example.net%'::text))
+              Heap Blocks: exact=1
+              Buffers: shared hit=493
+              ->  BitmapOr  (cost=715.86..715.86 rows=20 width=0) (actual time=3.134..3.135 rows=0.00 loops=1)
+                    Buffers: shared hit=492
+                    ->  Bitmap Index Scan on ordering_customer_email_trgm_idx  (cost=0.00..425.86 rows=10 width=0) (actual time=2.919..2.919 rows=1.00 loops=1)
+                          Index Cond: (lower((email)::text) ~~ '%klaudia.domagala.3985@example.net%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=420
+                    ->  Bitmap Index Scan on ordering_customer_name_trgm_idx  (cost=0.00..289.99 rows=10 width=0) (actual time=0.215..0.215 rows=0.00 loops=1)
+                          Index Cond: (lower((full_name)::text) ~~ '%klaudia.domagala.3985@example.net%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=72
+Planning:
+  Buffers: shared hit=204
+Planning Time: 0.757 ms
+Execution Time: 3.217 ms

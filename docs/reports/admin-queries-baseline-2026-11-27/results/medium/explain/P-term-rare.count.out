@@ -1,0 +1,20 @@
+-- phrase rare 'ravotar', count of the first page
+-- hits = 2980
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ravotar%' LIMIT 10001) bounded;
+
+Aggregate  (cost=824.75..824.76 rows=1 width=8) (actual time=6.848..6.852 rows=1.00 loops=1)
+  Buffers: shared hit=3222
+  ->  Limit  (cost=427.56..823.50 rows=100 width=4) (actual time=1.865..6.735 rows=2980.00 loops=1)
+        Buffers: shared hit=3222
+        ->  Bitmap Heap Scan on catalog_product p  (cost=427.56..823.50 rows=100 width=4) (actual time=1.864..6.580 rows=2980.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ravotar%'::text)
+              Heap Blocks: exact=2960
+              Buffers: shared hit=3222
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..427.54 rows=100 width=0) (actual time=1.561..1.561 rows=2980.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ravotar%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=262
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.733 ms
+Execution Time: 6.927 ms

@@ -1,0 +1,24 @@
+-- phrase rare 'ravotar', page 2, sort name
+-- hits = 2980
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ravotar%' AND (p.name, p.id) > ('Bielizna termoaktywna Ravotar Czapla 500 Pro', CAST('1297dc6e-a780-5777-a2b5-4f4a508c96b4' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=826.73..826.80 rows=26 width=71) (actual time=7.811..7.819 rows=26.00 loops=1)
+  Buffers: shared hit=3228
+  ->  Sort  (cost=826.73..826.97 rows=96 width=71) (actual time=7.810..7.811 rows=26.00 loops=1)
+        Sort Key: name, id
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=3228
+        ->  Bitmap Heap Scan on catalog_product p  (cost=427.56..824.00 rows=96 width=71) (actual time=1.858..7.094 rows=2955.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ravotar%'::text)
+              Filter: (ROW((name)::text, id) > ROW('Bielizna termoaktywna Ravotar Czapla 500 Pro'::text, '1297dc6e-a780-5777-a2b5-4f4a508c96b4'::uuid))
+              Rows Removed by Filter: 25
+              Heap Blocks: exact=2960
+              Buffers: shared hit=3222
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..427.54 rows=100 width=0) (actual time=1.580..1.580 rows=2980.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ravotar%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=262
+Planning:
+  Buffers: shared hit=276
+Planning Time: 0.839 ms
+Execution Time: 7.902 ms

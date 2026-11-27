@@ -1,0 +1,22 @@
+-- phrase type-late 'zupa', page 1, sort name
+-- hits = 8584
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zupa%' ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=573.43..573.49 rows=26 width=71) (actual time=19.851..19.860 rows=26.00 loops=1)
+  Buffers: shared hit=8447
+  ->  Sort  (cost=573.43..573.68 rows=100 width=71) (actual time=19.850..19.852 rows=26.00 loops=1)
+        Sort Key: name, id
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=8447
+        ->  Bitmap Heap Scan on catalog_product p  (cost=174.64..570.58 rows=100 width=71) (actual time=2.395..16.947 rows=8584.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+              Heap Blocks: exact=8409
+              Buffers: shared hit=8441
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..174.62 rows=100 width=0) (actual time=1.499..1.499 rows=8584.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%zupa%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=32
+Planning:
+  Buffers: shared hit=277
+Planning Time: 0.805 ms
+Execution Time: 19.971 ms

@@ -1,0 +1,19 @@
+-- phrase punct-4 'ab-cd', count of the first page
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ab-cd%' LIMIT 10001) bounded;
+
+Aggregate  (cost=654.76..654.77 rows=1 width=8) (actual time=0.021..0.024 rows=1.00 loops=1)
+  Buffers: shared hit=12
+  ->  Limit  (cost=257.57..653.51 rows=100 width=4) (actual time=0.020..0.020 rows=0.00 loops=1)
+        Buffers: shared hit=12
+        ->  Bitmap Heap Scan on catalog_product p  (cost=257.57..653.51 rows=100 width=4) (actual time=0.019..0.019 rows=0.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ab-cd%'::text)
+              Buffers: shared hit=12
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..257.55 rows=100 width=0) (actual time=0.017..0.017 rows=0.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ab-cd%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=12
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.772 ms
+Execution Time: 0.076 ms

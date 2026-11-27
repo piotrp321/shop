@@ -1,0 +1,16 @@
+-- without images, page 2, sort name
+-- hits = 20003
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.images = '[]'::jsonb AND (p.name, p.id) > ('Atlas szlaków Fenmizor Step 800', CAST('e44e6bb6-3fdb-5dc7-bf44-3bde60e0ee15' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..1715.96 rows=26 width=71) (actual time=0.077..1.596 rows=26.00 loops=1)
+  Buffers: shared hit=1076
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1351317.28 rows=20480 width=71) (actual time=0.076..1.590 rows=26.00 loops=1)
+        Index Cond: (ROW((name)::text, id) > ROW('Atlas szlaków Fenmizor Step 800'::text, 'e44e6bb6-3fdb-5dc7-bf44-3bde60e0ee15'::uuid))
+        Filter: (images = '[]'::jsonb)
+        Rows Removed by Filter: 1033
+        Index Searches: 1
+        Buffers: shared hit=1076
+Planning:
+  Buffers: shared hit=275
+Planning Time: 0.497 ms
+Execution Time: 1.614 ms

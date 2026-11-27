@@ -1,0 +1,16 @@
+-- phrase two-common 'er', page 2, sort name
+-- hits = 258773
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%er%' AND (p.name, p.id) > ('Atlas szlaków Calvavon Trawers 300', CAST('ddb83a47-370d-5308-b65c-6c7f5ec4826b' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..129.17 rows=26 width=71) (actual time=0.031..0.639 rows=26.00 loops=1)
+  Buffers: shared hit=332
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1351317.28 rows=272903 width=71) (actual time=0.030..0.634 rows=26.00 loops=1)
+        Index Cond: (ROW((name)::text, id) > ROW('Atlas szlaków Calvavon Trawers 300'::text, 'ddb83a47-370d-5308-b65c-6c7f5ec4826b'::uuid))
+        Filter: ((name)::text ~~* '%er%'::text)
+        Rows Removed by Filter: 299
+        Index Searches: 1
+        Buffers: shared hit=332
+Planning:
+  Buffers: shared hit=280
+Planning Time: 0.851 ms
+Execution Time: 0.663 ms

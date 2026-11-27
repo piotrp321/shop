@@ -1,0 +1,16 @@
+-- dashboard, products without images (limit 1000)
+-- bound = 1001
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.images = '[]'::jsonb LIMIT 1001) bounded;
+
+Aggregate  (cost=982.80..982.81 rows=1 width=8) (actual time=0.482..0.485 rows=1.00 loops=1)
+  Buffers: shared hit=1069
+  ->  Limit  (cost=0.41..970.29 rows=1001 width=4) (actual time=0.009..0.445 rows=1001.00 loops=1)
+        Buffers: shared hit=1069
+        ->  Index Only Scan using catalog_product_without_images_idx on catalog_product p  (cost=0.41..19843.61 rows=20480 width=4) (actual time=0.008..0.385 rows=1001.00 loops=1)
+              Heap Fetches: 0
+              Index Searches: 1
+              Buffers: shared hit=1069
+Planning:
+  Buffers: shared hit=229
+Planning Time: 0.452 ms
+Execution Time: 0.505 ms

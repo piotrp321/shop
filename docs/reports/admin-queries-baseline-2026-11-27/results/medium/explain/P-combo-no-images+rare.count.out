@@ -1,0 +1,22 @@
+-- without images + rare phrase, count of the first page
+-- hits = 46
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ravotar%' AND p.images = '[]'::jsonb LIMIT 10001) bounded;
+
+Aggregate  (cost=823.75..823.76 rows=1 width=8) (actual time=7.242..7.246 rows=1.00 loops=1)
+  Buffers: shared hit=3222
+  ->  Limit  (cost=427.54..823.72 rows=2 width=4) (actual time=1.874..7.237 rows=46.00 loops=1)
+        Buffers: shared hit=3222
+        ->  Bitmap Heap Scan on catalog_product p  (cost=427.54..823.72 rows=2 width=4) (actual time=1.873..7.232 rows=46.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ravotar%'::text)
+              Filter: (images = '[]'::jsonb)
+              Rows Removed by Filter: 2934
+              Heap Blocks: exact=2960
+              Buffers: shared hit=3222
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..427.54 rows=100 width=0) (actual time=1.600..1.600 rows=2980.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ravotar%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=262
+Planning:
+  Buffers: shared hit=246
+Planning Time: 0.781 ms
+Execution Time: 7.320 ms

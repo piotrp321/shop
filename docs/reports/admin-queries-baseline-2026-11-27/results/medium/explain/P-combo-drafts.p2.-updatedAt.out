@@ -1,0 +1,14 @@
+-- drafts, page 2, sort -updatedAt
+-- hits = 20108
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'draft' AND (p.updated_at, p.id) < (CAST('2026-11-26 11:01:54+00' AS timestamptz), CAST('27a6a021-936a-50a8-b100-96025ef74158' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=0.29..55.90 rows=26 width=71) (actual time=0.014..0.071 rows=26.00 loops=1)
+  Buffers: shared hit=29
+  ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p  (cost=0.29..44069.81 rows=20605 width=71) (actual time=0.013..0.067 rows=26.00 loops=1)
+        Index Cond: (ROW(updated_at, id) < ROW('2026-11-26 11:01:54+00'::timestamp with time zone, '27a6a021-936a-50a8-b100-96025ef74158'::uuid))
+        Index Searches: 1
+        Buffers: shared hit=29
+Planning:
+  Buffers: shared hit=272
+Planning Time: 0.448 ms
+Execution Time: 0.090 ms

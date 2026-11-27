@@ -1,0 +1,18 @@
+-- without images + brand, page 1, sort name
+-- hits = 1239
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%rowerowa%' AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..18869.51 rows=26 width=71) (actual time=973.284..978.939 rows=26.00 loops=1)
+  Buffers: shared hit=17069 read=216972 written=1
+  I/O Timings: shared read=703.776 write=0.063
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1351317.30 rows=1862 width=71) (actual time=973.282..978.920 rows=26.00 loops=1)
+        Filter: (((name)::text ~~* '%rowerowa%'::text) AND (images = '[]'::jsonb))
+        Rows Removed by Filter: 230828
+        Index Searches: 1
+        Buffers: shared hit=17069 read=216972 written=1
+        I/O Timings: shared read=703.776 write=0.063
+Planning:
+  Buffers: shared hit=224 read=60
+  I/O Timings: shared read=0.264
+Planning Time: 1.073 ms
+Execution Time: 978.962 ms

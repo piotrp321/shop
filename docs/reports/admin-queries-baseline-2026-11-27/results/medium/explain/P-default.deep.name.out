@@ -1,0 +1,14 @@
+-- all products, a page in the middle of the names
+-- page = 25
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.name, p.id) > ('Licznik rowerowy Wolakos Połonina 450 Lite', CAST('f413dd19-6a3e-571a-968f-08e522d99835' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..60.61 rows=26 width=71) (actual time=0.043..0.086 rows=26.00 loops=1)
+  Buffers: shared hit=29
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1158244.05 rows=500322 width=71) (actual time=0.042..0.082 rows=26.00 loops=1)
+        Index Cond: (ROW((name)::text, id) > ROW('Licznik rowerowy Wolakos Połonina 450 Lite'::text, 'f413dd19-6a3e-571a-968f-08e522d99835'::uuid))
+        Index Searches: 1
+        Buffers: shared hit=29
+Planning:
+  Buffers: shared hit=264
+Planning Time: 0.458 ms
+Execution Time: 0.105 ms

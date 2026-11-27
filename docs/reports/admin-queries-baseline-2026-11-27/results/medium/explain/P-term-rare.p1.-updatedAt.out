@@ -1,0 +1,22 @@
+-- phrase rare 'ravotar', page 1, sort -updatedAt
+-- hits = 2980
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ravotar%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=826.35..826.41 rows=26 width=71) (actual time=6.778..6.783 rows=26.00 loops=1)
+  Buffers: shared hit=3228
+  ->  Sort  (cost=826.35..826.60 rows=100 width=71) (actual time=6.777..6.778 rows=26.00 loops=1)
+        Sort Key: updated_at DESC, id DESC
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=3228
+        ->  Bitmap Heap Scan on catalog_product p  (cost=427.56..823.50 rows=100 width=71) (actual time=1.777..6.445 rows=2980.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ravotar%'::text)
+              Heap Blocks: exact=2960
+              Buffers: shared hit=3222
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..427.54 rows=100 width=0) (actual time=1.501..1.501 rows=2980.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ravotar%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=262
+Planning:
+  Buffers: shared hit=278
+Planning Time: 0.768 ms
+Execution Time: 6.843 ms

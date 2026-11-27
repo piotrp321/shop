@@ -1,0 +1,25 @@
+-- without images + brand, count of the first page
+-- hits = 1239
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%rowerowa%' AND p.images = '[]'::jsonb LIMIT 10001) bounded;
+
+Aggregate  (cost=27571.78..27571.79 rows=1 width=8) (actual time=34.951..34.956 rows=1.00 loops=1)
+  Buffers: shared hit=7260
+  ->  Limit  (cost=20517.87..27548.50 rows=1862 width=4) (actual time=32.428..34.900 rows=1239.00 loops=1)
+        Buffers: shared hit=7260
+        ->  Bitmap Heap Scan on catalog_product p  (cost=20517.87..27548.50 rows=1862 width=4) (actual time=32.427..34.823 rows=1239.00 loops=1)
+              Recheck Cond: (((name)::text ~~* '%rowerowa%'::text) AND (images = '[]'::jsonb))
+              Heap Blocks: exact=1239
+              Buffers: shared hit=7260
+              ->  BitmapAnd  (cost=20517.87..20517.87 rows=1862 width=0) (actual time=32.249..32.250 rows=0.00 loops=1)
+                    Buffers: shared hit=6021
+                    ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..881.88 rows=90968 width=0) (actual time=23.352..23.352 rows=60168.00 loops=1)
+                          Index Cond: ((name)::text ~~* '%rowerowa%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=1252
+                    ->  Bitmap Index Scan on catalog_product_without_images_idx  (cost=0.00..19634.81 rows=20480 width=0) (actual time=7.116..7.116 rows=20003.00 loops=1)
+                          Index Searches: 1
+                          Buffers: shared hit=4769
+Planning:
+  Buffers: shared hit=246
+Planning Time: 0.799 ms
+Execution Time: 35.197 ms

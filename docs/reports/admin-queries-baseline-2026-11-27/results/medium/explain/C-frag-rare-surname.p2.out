@@ -1,0 +1,30 @@
+-- customers, fragment rare-surname 'domagała', page 2
+-- hits = 115
+SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('domagała') || '%' OR lower(c.full_name) LIKE '%' || lower('domagała') || '%') AND c.last_order_at <= CAST('2026-10-21 16:51:54+00' AS timestamptz) AND (c.last_order_at < CAST('2026-10-21 16:51:54+00' AS timestamptz) OR c.customer_id > 'e9aa2ac7-a826-5710-a0ab-cf2329357866') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26;
+
+Limit  (cost=218.52..218.55 rows=11 width=139) (actual time=0.513..0.518 rows=26.00 loops=1)
+  Buffers: shared hit=152
+  ->  Sort  (cost=218.52..218.55 rows=11 width=139) (actual time=0.512..0.513 rows=26.00 loops=1)
+        Sort Key: last_order_at DESC, customer_id
+        Sort Method: top-N heapsort  Memory: 36kB
+        Buffers: shared hit=152
+        ->  Bitmap Heap Scan on ordering_customer c  (cost=142.23..218.33 rows=11 width=139) (actual time=0.190..0.471 rows=90.00 loops=1)
+              Recheck Cond: ((lower((email)::text) ~~ '%domagała%'::text) OR (lower((full_name)::text) ~~ '%domagała%'::text))
+              Filter: ((last_order_at <= '2026-10-21 16:51:54+00'::timestamp with time zone) AND ((last_order_at < '2026-10-21 16:51:54+00'::timestamp with time zone) OR ((customer_id)::text > 'e9aa2ac7-a826-5710-a0ab-cf2329357866'::text)))
+              Rows Removed by Filter: 25
+              Heap Blocks: exact=112
+              Buffers: shared hit=146
+              ->  BitmapOr  (cost=142.23..142.23 rows=20 width=0) (actual time=0.169..0.169 rows=0.00 loops=1)
+                    Buffers: shared hit=34
+                    ->  Bitmap Index Scan on ordering_customer_email_trgm_idx  (cost=0.00..85.92 rows=10 width=0) (actual time=0.069..0.069 rows=0.00 loops=1)
+                          Index Cond: (lower((email)::text) ~~ '%domagała%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=20
+                    ->  Bitmap Index Scan on ordering_customer_name_trgm_idx  (cost=0.00..56.30 rows=10 width=0) (actual time=0.099..0.099 rows=115.00 loops=1)
+                          Index Cond: (lower((full_name)::text) ~~ '%domagała%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=14
+Planning:
+  Buffers: shared hit=297
+Planning Time: 0.838 ms
+Execution Time: 0.576 ms

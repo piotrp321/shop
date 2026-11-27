@@ -1,0 +1,19 @@
+-- published only, count of the first page
+-- hits = 980083
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.status = 'published' LIMIT 10001) bounded;
+
+Aggregate  (cost=3504.26..3504.27 rows=1 width=8) (actual time=4.582..4.589 rows=1.00 loops=1)
+  Buffers: shared hit=7 read=1883
+  I/O Timings: shared read=0.271
+  ->  Limit  (cost=0.00..3379.25 rows=10001 width=4) (actual time=0.016..4.205 rows=10001.00 loops=1)
+        Buffers: shared hit=7 read=1883
+        I/O Timings: shared read=0.271
+        ->  Seq Scan on catalog_product p  (cost=0.00..331144.05 rows=980031 width=4) (actual time=0.015..3.668 rows=10001.00 loops=1)
+              Filter: ((status)::text = 'published'::text)
+              Rows Removed by Filter: 196
+              Buffers: shared hit=7 read=1883
+              I/O Timings: shared read=0.271
+Planning:
+  Buffers: shared hit=203
+Planning Time: 0.386 ms
+Execution Time: 4.695 ms

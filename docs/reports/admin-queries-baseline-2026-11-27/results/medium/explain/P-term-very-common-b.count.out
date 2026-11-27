@@ -1,0 +1,18 @@
+-- phrase very-common-b 'ka', count of the first page
+-- hits = 459399
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ka%' LIMIT 10001) bounded;
+
+Aggregate  (cost=1656.70..1656.71 rows=1 width=8) (actual time=46.195..46.201 rows=1.00 loops=1)
+  Buffers: shared hit=62175
+  ->  Limit  (cost=0.42..1531.68 rows=10001 width=4) (actual time=0.054..45.814 rows=10001.00 loops=1)
+        Buffers: shared hit=62175
+        ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..74283.69 rows=485161 width=4) (actual time=0.053..45.291 rows=10001.00 loops=1)
+              Filter: ((name)::text ~~* '%ka%'::text)
+              Rows Removed by Filter: 63287
+              Heap Fetches: 0
+              Index Searches: 1
+              Buffers: shared hit=62175
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.744 ms
+Execution Time: 46.227 ms

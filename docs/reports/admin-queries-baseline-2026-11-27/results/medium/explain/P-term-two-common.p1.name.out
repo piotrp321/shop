@@ -1,0 +1,15 @@
+-- phrase two-common 'er', page 1, sort name
+-- hits = 258773
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%er%' ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..128.93 rows=26 width=71) (actual time=0.061..0.618 rows=26.00 loops=1)
+  Buffers: shared hit=418
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348815.69 rows=272903 width=71) (actual time=0.060..0.613 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%er%'::text)
+        Rows Removed by Filter: 384
+        Index Searches: 1
+        Buffers: shared hit=418
+Planning:
+  Buffers: shared hit=277
+Planning Time: 0.746 ms
+Execution Time: 0.637 ms

@@ -1,0 +1,14 @@
+-- all products, page 2, sort name
+-- page = 25
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.name, p.id) > ('Atlas szlaków Alitar Jastrząb 100', CAST('eadda1d7-d96d-569e-83b9-ce65403f3b6d' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..35.47 rows=26 width=71) (actual time=0.023..0.058 rows=26.00 loops=1)
+  Buffers: shared hit=29
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348815.67 rows=1000643 width=71) (actual time=0.022..0.053 rows=26.00 loops=1)
+        Index Cond: (ROW((name)::text, id) > ROW('Atlas szlaków Alitar Jastrząb 100'::text, 'eadda1d7-d96d-569e-83b9-ce65403f3b6d'::uuid))
+        Index Searches: 1
+        Buffers: shared hit=29
+Planning:
+  Buffers: shared hit=268
+Planning Time: 0.452 ms
+Execution Time: 0.076 ms

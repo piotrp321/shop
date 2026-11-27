@@ -1,0 +1,13 @@
+-- all products, page 1, sort name
+-- page = 25
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..35.41 rows=26 width=71) (actual time=0.008..0.054 rows=26.00 loops=1)
+  Buffers: shared hit=29
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1346314.08 rows=1000644 width=71) (actual time=0.007..0.049 rows=26.00 loops=1)
+        Index Searches: 1
+        Buffers: shared hit=29
+Planning:
+  Buffers: shared hit=263
+Planning Time: 0.439 ms
+Execution Time: 0.068 ms

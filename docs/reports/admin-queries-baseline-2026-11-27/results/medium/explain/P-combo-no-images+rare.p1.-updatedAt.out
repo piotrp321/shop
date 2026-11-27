@@ -1,0 +1,24 @@
+-- without images + rare phrase, page 1, sort -updatedAt
+-- hits = 46
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ravotar%' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=823.73..823.74 rows=2 width=71) (actual time=7.155..7.161 rows=26.00 loops=1)
+  Buffers: shared hit=3228
+  ->  Sort  (cost=823.73..823.74 rows=2 width=71) (actual time=7.154..7.156 rows=26.00 loops=1)
+        Sort Key: updated_at DESC, id DESC
+        Sort Method: quicksort  Memory: 31kB
+        Buffers: shared hit=3228
+        ->  Bitmap Heap Scan on catalog_product p  (cost=427.54..823.72 rows=2 width=71) (actual time=1.840..7.128 rows=46.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ravotar%'::text)
+              Filter: (images = '[]'::jsonb)
+              Rows Removed by Filter: 2934
+              Heap Blocks: exact=2960
+              Buffers: shared hit=3222
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..427.54 rows=100 width=0) (actual time=1.564..1.564 rows=2980.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ravotar%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=262
+Planning:
+  Buffers: shared hit=285
+Planning Time: 0.809 ms
+Execution Time: 7.230 ms

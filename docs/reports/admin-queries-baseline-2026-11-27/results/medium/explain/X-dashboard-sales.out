@@ -1,0 +1,18 @@
+-- dashboard, sales of 60 days
+-- hourly rows of 60 days = 0
+SELECT CAST(COALESCE(SUM(order_count), 0) AS bigint), CAST(COALESCE(SUM(gross), 0) AS bigint) FROM ordering_sales_hour WHERE hour_start >= now() - interval '60 days' AND hour_start < now();
+
+Aggregate  (cost=3879.45..3879.47 rows=1 width=16) (actual time=2.706..2.709 rows=1.00 loops=1)
+  Buffers: shared hit=246
+  ->  Bitmap Heap Scan on ordering_sales_hour  (cost=631.88..3778.26 rows=20239 width=12) (actual time=0.425..1.778 rows=19343.00 loops=1)
+        Recheck Cond: ((hour_start >= (now() - '60 days'::interval)) AND (hour_start < now()))
+        Heap Blocks: exact=156
+        Buffers: shared hit=246
+        ->  Bitmap Index Scan on ordering_sales_hour_pkey  (cost=0.00..626.82 rows=20239 width=0) (actual time=0.403..0.403 rows=19343.00 loops=1)
+              Index Cond: ((hour_start >= (now() - '60 days'::interval)) AND (hour_start < now()))
+              Index Searches: 1
+              Buffers: shared hit=90
+Planning:
+  Buffers: shared hit=109
+Planning Time: 0.274 ms
+Execution Time: 2.743 ms

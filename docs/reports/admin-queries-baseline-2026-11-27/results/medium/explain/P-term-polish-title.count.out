@@ -1,0 +1,20 @@
+-- phrase polish-title 'Skała', count of the first page
+-- hits = 10067
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%Skała%' LIMIT 10001) bounded;
+
+Aggregate  (cost=654.76..654.77 rows=1 width=8) (actual time=20.437..20.443 rows=1.00 loops=1)
+  Buffers: shared hit=9962
+  ->  Limit  (cost=257.57..653.51 rows=100 width=4) (actual time=3.446..20.052 rows=10001.00 loops=1)
+        Buffers: shared hit=9962
+        ->  Bitmap Heap Scan on catalog_product p  (cost=257.57..653.51 rows=100 width=4) (actual time=3.445..19.523 rows=10001.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%Skała%'::text)
+              Heap Blocks: exact=9765
+              Buffers: shared hit=9962
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..257.55 rows=100 width=0) (actual time=2.415..2.415 rows=10067.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%Skała%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=196
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.805 ms
+Execution Time: 20.582 ms

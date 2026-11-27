@@ -1,0 +1,15 @@
+-- published only, page 1, sort name
+-- hits = 980083
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'published' ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..36.21 rows=26 width=71) (actual time=0.022..0.068 rows=26.00 loops=1)
+  Buffers: shared hit=30
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348815.69 rows=980031 width=71) (actual time=0.021..0.064 rows=26.00 loops=1)
+        Filter: ((status)::text = 'published'::text)
+        Rows Removed by Filter: 1
+        Index Searches: 1
+        Buffers: shared hit=30
+Planning:
+  Buffers: shared hit=265
+Planning Time: 0.476 ms
+Execution Time: 0.080 ms

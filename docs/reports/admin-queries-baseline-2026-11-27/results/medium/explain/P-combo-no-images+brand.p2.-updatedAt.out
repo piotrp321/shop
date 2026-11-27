@@ -1,0 +1,16 @@
+-- without images + brand, page 2, sort -updatedAt
+-- hits = 1239
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%rowerowa%' AND p.images = '[]'::jsonb AND (p.updated_at, p.id) < (CAST('2026-10-17 12:14:17+00' AS timestamptz), CAST('a7a7329d-82d8-5db9-a4af-c1fb64584e74' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=0.42..12138.34 rows=26 width=71) (actual time=1.995..26.426 rows=26.00 loops=1)
+  Buffers: shared hit=23446
+  ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..848720.78 rows=1818 width=71) (actual time=1.994..26.417 rows=26.00 loops=1)
+        Index Cond: (ROW(updated_at, id) < ROW('2026-10-17 12:14:17+00'::timestamp with time zone, 'a7a7329d-82d8-5db9-a4af-c1fb64584e74'::uuid))
+        Filter: (((name)::text ~~* '%rowerowa%'::text) AND (images = '[]'::jsonb))
+        Rows Removed by Filter: 23293
+        Index Searches: 1
+        Buffers: shared hit=23446
+Planning:
+  Buffers: shared hit=284
+Planning Time: 0.792 ms
+Execution Time: 26.452 ms

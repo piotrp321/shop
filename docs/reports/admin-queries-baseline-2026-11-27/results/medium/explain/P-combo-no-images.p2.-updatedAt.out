@@ -1,0 +1,16 @@
+-- without images, page 2, sort -updatedAt
+-- hits = 20003
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.images = '[]'::jsonb AND (p.updated_at, p.id) < (CAST('2026-11-11 07:07:54+00' AS timestamptz), CAST('aa5d3c6f-5002-5878-a4ee-1da603708c59' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=0.42..1086.21 rows=26 width=71) (actual time=0.091..0.997 rows=26.00 loops=1)
+  Buffers: shared hit=1125
+  ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..850047.34 rows=20355 width=71) (actual time=0.090..0.991 rows=26.00 loops=1)
+        Index Cond: (ROW(updated_at, id) < ROW('2026-11-11 07:07:54+00'::timestamp with time zone, 'aa5d3c6f-5002-5878-a4ee-1da603708c59'::uuid))
+        Filter: (images = '[]'::jsonb)
+        Rows Removed by Filter: 1091
+        Index Searches: 1
+        Buffers: shared hit=1125
+Planning:
+  Buffers: shared hit=276
+Planning Time: 0.471 ms
+Execution Time: 1.019 ms

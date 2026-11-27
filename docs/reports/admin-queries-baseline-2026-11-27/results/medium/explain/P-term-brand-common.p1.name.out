@@ -1,0 +1,18 @@
+-- phrase brand-common 'rowerowa', page 1, sort name
+-- hits = 60168
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%rowerowa%' ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..385.94 rows=26 width=71) (actual time=1030.841..1030.956 rows=26.00 loops=1)
+  Buffers: shared hit=16937 read=215381 written=2
+  I/O Timings: shared read=753.602 write=0.079
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348815.69 rows=90968 width=71) (actual time=1030.839..1030.936 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%rowerowa%'::text)
+        Rows Removed by Filter: 229126
+        Index Searches: 1
+        Buffers: shared hit=16937 read=215381 written=2
+        I/O Timings: shared read=753.602 write=0.079
+Planning:
+  Buffers: shared hit=220 read=57
+  I/O Timings: shared read=0.255
+Planning Time: 1.109 ms
+Execution Time: 1030.979 ms

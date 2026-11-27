@@ -1,0 +1,15 @@
+-- without images, page 1, sort name
+-- hits = 20003
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..1712.79 rows=26 width=71) (actual time=0.033..1.221 rows=26.00 loops=1)
+  Buffers: shared hit=1087
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348815.69 rows=20480 width=71) (actual time=0.032..1.215 rows=26.00 loops=1)
+        Filter: (images = '[]'::jsonb)
+        Rows Removed by Filter: 1045
+        Index Searches: 1
+        Buffers: shared hit=1087
+Planning:
+  Buffers: shared hit=272
+Planning Time: 0.432 ms
+Execution Time: 1.237 ms

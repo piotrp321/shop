@@ -1,0 +1,15 @@
+-- phrase type-late 'zupa', page 2, sort name
+-- hits = 8584
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zupa%' AND (p.name, p.id) > ('Zupa liofilizowana Alitar Delta 200 Lite', CAST('d8745d78-d66e-5cb9-bfd2-dad5332b46fc' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..8.44 rows=1 width=71) (actual time=0.028..0.188 rows=26.00 loops=1)
+  Buffers: shared hit=30
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..8.44 rows=1 width=71) (actual time=0.027..0.183 rows=26.00 loops=1)
+        Index Cond: (ROW((name)::text, id) > ROW('Zupa liofilizowana Alitar Delta 200 Lite'::text, 'd8745d78-d66e-5cb9-bfd2-dad5332b46fc'::uuid))
+        Filter: ((name)::text ~~* '%zupa%'::text)
+        Index Searches: 1
+        Buffers: shared hit=30
+Planning:
+  Buffers: shared hit=280
+Planning Time: 0.760 ms
+Execution Time: 0.210 ms

@@ -1,0 +1,23 @@
+-- orders, fragment three-letters 'ann', page 2
+-- hits = 52044
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('ann') || '%' AND (o.placed_at, o.id) < (CAST('2026-11-26 18:23:23+00' AS timestamptz), CAST('01a21919-1178-7d17-a4ed-457d4f3aaf76' AS uuid)) ORDER BY o.placed_at DESC, o.id DESC LIMIT 26;
+
+Limit  (cost=0.42..322.07 rows=26 width=136) (actual time=0.047..0.537 rows=26.00 loops=1)
+  Buffers: shared hit=142
+  ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..624619.44 rows=50491 width=136) (actual time=0.047..0.530 rows=26.00 loops=1)
+        Index Cond: (ROW(placed_at, id) < ROW('2026-11-26 18:23:23+00'::timestamp with time zone, '01a21919-1178-7d17-a4ed-457d4f3aaf76'::uuid))
+        Filter: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%ann%'::text)
+        Rows Removed by Filter: 439
+        Index Searches: 1
+        Buffers: shared hit=142
+        SubPlan 1
+          ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.004..0.004 rows=1.00 loops=26)
+                Buffers: shared hit=107
+                ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.003..0.003 rows=2.19 loops=26)
+                      Index Cond: (order_id = o.id)
+                      Index Searches: 26
+                      Buffers: shared hit=107
+Planning:
+  Buffers: shared hit=443
+Planning Time: 0.992 ms
+Execution Time: 0.577 ms

@@ -1,0 +1,16 @@
+-- orders, count without filter
+-- page = 10000
+SELECT count(*) FROM (SELECT 1 FROM ordering_order o LIMIT 10001) bounded;
+
+Aggregate  (cost=488.77..488.78 rows=1 width=8) (actual time=1.689..1.692 rows=1.00 loops=1)
+  Buffers: shared hit=2685
+  ->  Limit  (cost=0.42..363.76 rows=10001 width=4) (actual time=0.023..1.340 rows=10001.00 loops=1)
+        Buffers: shared hit=2685
+        ->  Index Only Scan using ordering_order_lower_email_idx on ordering_order o  (cost=0.42..36333.86 rows=1000096 width=4) (actual time=0.022..0.840 rows=10001.00 loops=1)
+              Heap Fetches: 0
+              Index Searches: 1
+              Buffers: shared hit=2685
+Planning:
+  Buffers: shared hit=312
+Planning Time: 0.514 ms
+Execution Time: 1.705 ms

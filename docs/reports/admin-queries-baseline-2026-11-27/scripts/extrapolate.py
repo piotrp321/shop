@@ -4,15 +4,16 @@
   extrapolate.py --medium DIR [--small DIR] [--format md|json] [--ids PREFIX]
 
 The measure that does not depend on the machine is the buffers (shared hit + read) and the rows scanned of a case. A case grows with a
-variable named in its `scale` (products, orders, customers) or does not (`const`: a page, a bound). When the small results are given, the
-label is checked against the data: a case whose buffers grew by less than a quarter of the growth of its variable between small and
-medium is taken as not growing. The buffers and rows of `server` are those of medium times the growth of the variable from medium to
+variable named in its `scale` (products, orders, customers) or does not (`const`: a page, a bound); inside a family `effective_scale`
+decides by the plan and the density of the hits whether a walk stops early (bounded) or reads the whole region (grows). The buffers and rows of `server` are those of medium times the growth of the variable from medium to
 `server` (10 000 191 products, 5 000 000 orders, 880 082 customers with an order: the volume that exists on worf.pl).
 
 Two estimates of the time on `server`, both assumptions written here:
   in memory  the median repeated time of medium times the growth of the buffers (the cost per buffer of medium: all data in the memory
              of the host; a lower bound of the time on a node whose memory is smaller than the data);
-  from disk  the time in memory plus every buffer of `server` read from the disk at the cost of one page: a case whose plan is a
+  from disk  the time in memory plus every page that medium read beyond the shared buffers (the `read` blocks of the last run: 128 MB of
+             shared buffers hold little of a table of gigabytes, and the node of worf.pl has the same default and 2 GiB of memory in all, so
+             the pages that do not come from the shared buffers come from the disk) times the growth, each at the cost of one page: a case whose plan is a
              sequential scan reads at SEQ_MB_S (200 MB/s, one stream), any other plan at RANDOM_IOPS (2000 random reads of a page per
              second, no read-ahead credit). The worf.pl node (OVH VPS, Postgres limited to 2 GiB, database of 63 GB) has not been measured
              for its disk; the numbers are the assumptions of the report, to be replaced by a measured throughput.
@@ -59,21 +60,41 @@ def estimate(medium_entry, growth, label_scale):
     f = figures(medium_entry)
     factor = growth if label_scale else 1.0
     buffers = f["buffers"] * factor
+    # The pages that do not come from the shared buffers: those medium read, grown; and, for a case that grows, every page beyond the 16 384
+    # that 128 MB of shared buffers can hold (a structure that fitted in medium need not fit in `server`).
+    pages = f["read"] * factor
+    if factor > 1.0:
+        pages = max(pages, buffers - 16384)
     memory_ms = f["median"] * factor
     page_ms = (PAGE_KB / 1024.0) / SEQ_MB_S * 1000.0 if sequential(f["plan"]) else 1000.0 / RANDOM_IOPS
-    return {"factor": factor, "buffers": buffers, "rows": f["rows"] * factor, "memory_ms": memory_ms, "disk_ms": memory_ms + buffers * page_ms, "page_ms": page_ms}
+    return {"factor": factor, "buffers": buffers, "rows": f["rows"] * factor, "memory_ms": memory_ms, "disk_ms": memory_ms + pages * page_ms, "pages_read": pages, "page_ms": page_ms}
 
 
-def effective_scale(case, small_entry, medium_entry, small_totals, medium_totals):
-    scale = case["scale"]
+def effective_scale(case_id, entry, medium_totals):
+    """The variable the cost grows with, or None when the cost does not grow with the size of the data.
+
+    The label of the case names the variable of its family (products, orders, customers) or `const` (a page, a bound). Within a family a
+    walk of an index in the order of the sort stops after the rows it needs (26 for a page, 10 001 for a count): when it finds them, the
+    cost is bounded by the density of the hits in that order, which the growth of the data keeps, unless the hits are skewed to the later
+    part of the order (the rows read are then several times the uniform expectation k / density * N, and grow with N). A walk that does
+    not find them (fewer hits than needed) and a plan that builds a bitmap from an index read the whole region, which grows with N.
+    """
+    scale = entry["scale"]
     if scale == "const" or scale not in SERVER:
         return None
-    if small_entry and small_entry["runs"]:
-        growth_small_medium = medium_totals[scale] / small_totals[scale]
-        observed = figures(medium_entry)["buffers"] / max(1, figures(small_entry)["buffers"])
-        if observed < 0.25 * growth_small_medium:
-            return None
-    return scale
+    last = entry["runs"][-1]
+    plan = " ".join(last["plan"])
+    if "Bitmap Index Scan" in plan or "Seq Scan" in plan:
+        return scale
+    hits = entry["value"]
+    if not isinstance(hits, (int, float)) or hits <= 0:
+        return scale
+    needed = 10001 if case_id.endswith(".count") else 26
+    filled = hits >= needed if case_id.endswith(".count") else last["returned"] >= needed
+    if not filled:
+        return scale
+    expected = needed / hits * medium_totals[scale]
+    return None if last["rows_scanned"] <= 3 * expected + 1000 else scale
 
 
 def rows_of(medium, small):
@@ -84,7 +105,7 @@ def rows_of(medium, small):
         if not entry["runs"]:
             continue
         small_entry = small["cases"].get(case_id) if small else None
-        scale = effective_scale(entry, small_entry, entry, small_totals, medium_totals) if small else (entry["scale"] if entry["scale"] in SERVER else None)
+        scale = effective_scale(case_id, entry, medium_totals)
         growth = SERVER[scale] / medium_totals[scale] if scale else 1.0
         e = estimate(entry, growth, scale is not None)
         f = figures(entry)

@@ -1,0 +1,15 @@
+-- customers, fragment domain 'example', count
+-- hits = 98570
+SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('example') || '%' OR lower(c.full_name) LIKE '%' || lower('example') || '%') LIMIT 10001) bounded;
+
+Aggregate  (cost=690.15..690.16 rows=1 width=8) (actual time=5.783..5.786 rows=1.00 loops=1)
+  Buffers: shared hit=373
+  ->  Limit  (cost=0.00..565.13 rows=10001 width=4) (actual time=0.016..5.216 rows=10001.00 loops=1)
+        Buffers: shared hit=373
+        ->  Seq Scan on ordering_customer c  (cost=0.00..5569.40 rows=98560 width=4) (actual time=0.015..4.698 rows=10001.00 loops=1)
+              Filter: ((lower((email)::text) ~~ '%example%'::text) OR (lower((full_name)::text) ~~ '%example%'::text))
+              Buffers: shared hit=373
+Planning:
+  Buffers: shared hit=204
+Planning Time: 0.732 ms
+Execution Time: 5.808 ms

@@ -1,0 +1,24 @@
+-- phrase rare 'ravotar', page 2, sort -updatedAt
+-- hits = 2980
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ravotar%' AND (p.updated_at, p.id) < (CAST('2026-11-04 01:18:27+00' AS timestamptz), CAST('bcd13b01-2ad6-52a8-a40c-7fefce7555f3' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=826.82..826.88 rows=26 width=71) (actual time=6.967..6.972 rows=26.00 loops=1)
+  Buffers: shared hit=3228
+  ->  Sort  (cost=826.82..827.07 rows=99 width=71) (actual time=6.966..6.967 rows=26.00 loops=1)
+        Sort Key: updated_at DESC, id DESC
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=3228
+        ->  Bitmap Heap Scan on catalog_product p  (cost=427.56..824.00 rows=99 width=71) (actual time=1.858..6.631 rows=2955.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ravotar%'::text)
+              Filter: (ROW(updated_at, id) < ROW('2026-11-04 01:18:27+00'::timestamp with time zone, 'bcd13b01-2ad6-52a8-a40c-7fefce7555f3'::uuid))
+              Rows Removed by Filter: 25
+              Heap Blocks: exact=2960
+              Buffers: shared hit=3222
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..427.54 rows=100 width=0) (actual time=1.569..1.570 rows=2980.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ravotar%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=262
+Planning:
+  Buffers: shared hit=281
+Planning Time: 0.822 ms
+Execution Time: 7.054 ms

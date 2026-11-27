@@ -1,0 +1,17 @@
+-- dashboard, out of stock (limit 1000)
+-- bound = 1001
+SELECT count(*) FROM (SELECT 1 FROM inventory_stock_item WHERE physical - reserved = 0 AND product_id IS NOT NULL LIMIT 1001) bounded;
+
+Aggregate  (cost=50.67..50.68 rows=1 width=8) (actual time=0.174..0.176 rows=1.00 loops=1)
+  Buffers: shared hit=9
+  ->  Limit  (cost=0.42..38.16 rows=1001 width=4) (actual time=0.019..0.137 rows=1001.00 loops=1)
+        Buffers: shared hit=9
+        ->  Index Only Scan using inventory_stock_item_out_of_stock_idx on inventory_stock_item  (cost=0.42..567.74 rows=15047 width=4) (actual time=0.018..0.086 rows=1001.00 loops=1)
+              Index Cond: (product_id IS NOT NULL)
+              Heap Fetches: 0
+              Index Searches: 1
+              Buffers: shared hit=9
+Planning:
+  Buffers: shared hit=115
+Planning Time: 0.304 ms
+Execution Time: 0.196 ms
