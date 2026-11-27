@@ -116,8 +116,8 @@ make load-panel PANEL_MODE=p4 SHOP_URLS_FILE=<plik>   # P4: 3 przebiegi bez pane
   (utworzenie, dodanie, odczyt, zmiana ilości: W5). Przebieg „z panelem” dodaje mieszankę, `PANEL_WORST_VUS` (8) wątków
   najcięższych klas bez przerwy i zimne obliczenie granic mapy strony co `BOUNDARIES_EVERY` (30) sekund (cache `cache.sitemap`
   jest czyszczony w tym czasie). Przy każdym przebiegu zapisywane są liczniki PostgreSQL przed i po (odczyty z dysku i trafienia
-  w bufory, bajty tymczasowe, WAL) oraz próbki co 5 s (aktywne sesje, CPU kontenerów). Kryterium: różnica median z panelem i bez
-  nie większa niż rozrzut przebiegów bez panelu.
+  w bufory, bajty tymczasowe, WAL) oraz próbki co 5 s (aktywne sesje, CPU kontenerów). Raport podaje dwa kryteria: różnica median z panelem i bez nie większa niż rozrzut przebiegów bez panelu oraz D7 (specyfikacja `docs/features/admin-queries/spec.md`: największa z 2 × rozrzut, 10% mediany bez panelu, 5 ms dla p50, 10 ms dla p95 i p99);
+  werdykt dotyczy niepowodzeń i opuszczonych żądań sklepu, a niepowodzenia samej mieszanki panelu wypisuje osobno.
 - **Tryb `shop`:** sam sklep (bez panelu) w tempie P4, `PANEL_RUNS` przebiegów: do dobrania tempa, które stos utrzymuje przed P4,
   i jako linia bazowa sklepu. P4 zaczyna od rozgrzewki sklepu (`PANEL_WARMUP_SECONDS`, domyślnie 60 s, niezliczana), bo pierwszy
   przebieg po innym obciążeniu bywa kilka razy wolniejszy; każdy przebieg loguje się od nowa (sesja pierwszego logowania nie
