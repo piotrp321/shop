@@ -30,9 +30,9 @@ use App\Catalog\Domain\Product\VariantAxes;
 final readonly class ProductFacetTokens
 {
     public const string PAIR_SEPARATOR = "\u{1E}";
+    public const string PURCHASABLE = '$';
     private const string CATEGORY = '#';
     private const string AXIS = '@';
-    private const string PURCHASABLE = '$';
 
     /**
      * @param list<string>       $facets      every token of the product, `$` when a variant can be bought
@@ -62,7 +62,7 @@ final readonly class ProductFacetTokens
     {
         $facets = $buyFacets = [];
         foreach ($document->categoryAncestorIds as $categoryId) {
-            $facets[] = $buyFacets[] = self::CATEGORY.$categoryId;
+            $facets[] = $buyFacets[] = self::categoryToken($categoryId);
         }
 
         $pairAny = $pairBuy = $prices = $variantAxes = [];
@@ -70,22 +70,23 @@ final readonly class ProductFacetTokens
         $purchasable = false;
         foreach ($document->variants as $variant) {
             $options = self::options($document, $variant);
-            $tuple = implode(self::PAIR_SEPARATOR, $variant->options);
+            $optionTokens = array_map(static fn (array $option): string => self::optionToken($option['axis'], $option['value']), $options);
+            $tuple = implode(self::PAIR_SEPARATOR, $optionTokens);
             if (isset($tuples[$tuple])) {
                 throw self::refusal($document, 'two variants have the same options');
             }
             $tuples[$tuple] = true;
 
             $axes = array_column($options, 'axis');
-            $tokens = [...array_map(static fn (string $axis): string => self::AXIS.$axis, $axes), ...$variant->options];
+            $tokens = [...array_map(self::axisToken(...), $axes), ...$optionTokens];
             $variantAxes[] = $axes;
             array_push($facets, ...$tokens);
 
             $pairs = [];
             if (2 === \count($options)) {
                 foreach ([[0, 1], [1, 0]] as [$first, $second]) {
-                    $pairs[] = $variant->options[$first].self::PAIR_SEPARATOR.$variant->options[$second];
-                    $pairs[] = $variant->options[$first].self::PAIR_SEPARATOR.self::AXIS.$options[$second]['axis'];
+                    $pairs[] = self::pairToken($optionTokens[$first], $optionTokens[$second]);
+                    $pairs[] = self::pairAxisToken($optionTokens[$first], $options[$second]['axis']);
                 }
             }
             array_push($pairAny, ...$pairs);
@@ -120,6 +121,46 @@ final readonly class ProductFacetTokens
     }
 
     /**
+     * `#<id>`: a category of the product or one of its ancestors.
+     */
+    public static function categoryToken(string $id): string
+    {
+        return self::CATEGORY.$id;
+    }
+
+    /**
+     * `@<axis>`: an axis of a variant.
+     */
+    public static function axisToken(string $axis): string
+    {
+        return self::AXIS.$axis;
+    }
+
+    /**
+     * `<axis>` U+001F `<value>`: an option of a variant.
+     */
+    public static function optionToken(string $axis, string $value): string
+    {
+        return $axis.VariantDocument::OPTION_SEPARATOR.$value;
+    }
+
+    /**
+     * `x` U+001E `y` for two option tokens of one variant, in the order of the arguments.
+     */
+    public static function pairToken(string $first, string $second): string
+    {
+        return $first.self::PAIR_SEPARATOR.$second;
+    }
+
+    /**
+     * `x` U+001E `@<axis>`: an option of a variant with the axis of its other option.
+     */
+    public static function pairAxisToken(string $option, string $axis): string
+    {
+        return self::pairToken($option, self::axisToken($axis));
+    }
+
+    /**
      * The characters of a text that are no letter and no digit, each escaped with a backslash, so the text is a literal
      * in a regular expression of Lucene (the `include` of a `terms` aggregation) and matches only itself. Every other
      * character is special there or may become so, among them `#` and `@`.
@@ -142,7 +183,7 @@ final readonly class ProductFacetTokens
      */
     public static function optionsOfAxisPattern(string $axis): string
     {
-        return self::escapeForRegexp($axis.VariantDocument::OPTION_SEPARATOR).'.*';
+        return self::escapeForRegexp(self::optionToken($axis, '')).'.*';
     }
 
     /**
@@ -151,7 +192,7 @@ final readonly class ProductFacetTokens
      */
     public static function pairPartnersPattern(string $axis, string $value): string
     {
-        return self::escapeForRegexp($axis.VariantDocument::OPTION_SEPARATOR.$value.self::PAIR_SEPARATOR).'.*';
+        return self::escapeForRegexp(self::pairToken(self::optionToken($axis, $value), '')).'.*';
     }
 
     /**

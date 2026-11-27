@@ -132,9 +132,10 @@ final class FacetFixtures
     }
 
     /**
-     * A skewed random set: 10 axes with 45 values each (common values first), products with 3-5 axes and 1-6 variants
-     * of 1-2 axis values (a variant has two options at most, the options of the variants of a product are different), a
-     * price on 90% of the variants, 60% of the priced ones buyable.
+     * A skewed random set: 10 axes with 45 values each (common values first), products with 3-5 axes (all have Kolor and
+     * Rozmiar) and 1-6 variants of 1-2 axis values (6 in 10 with Kolor and Rozmiar; a variant has two options at most, the
+     * options of the variants of a product are different), a price on 90% of the variants, 60% of the priced ones
+     * buyable.
      *
      * @return list<ProductDocument>
      */
@@ -146,16 +147,22 @@ final class FacetFixtures
 
         $products = [];
         for ($p = 0; $p < $count; ++$p) {
-            $own = $axes;
-            shuffle($own);
-            $own = \array_slice($own, 0, mt_rand(3, 5));
+            // Every product has Kolor and Rozmiar, so conditions on two axes (with a price and availability) have matches.
+            $others = \array_slice($axes, 2);
+            shuffle($others);
+            $own = ['Kolor', 'Rozmiar', ...\array_slice($others, 0, mt_rand(1, 3))];
             $variants = [];
             $tuples = [];
             for ($v = mt_rand(1, 6); $v > 0; --$v) {
-                $chosen = $own;
-                shuffle($chosen);
+                if (mt_rand(1, 10) <= 6) {
+                    $chosen = ['Kolor', 'Rozmiar'];
+                } else {
+                    $chosen = $own;
+                    shuffle($chosen);
+                    $chosen = \array_slice($chosen, 0, mt_rand(1, 2));
+                }
                 $options = [];
-                foreach (\array_slice($chosen, 0, mt_rand(1, 2)) as $axis) {
+                foreach ($chosen as $axis) {
                     $options[$axis] = $value($axis);
                 }
                 if (isset($tuples[json_encode($options, \JSON_THROW_ON_ERROR)])) {

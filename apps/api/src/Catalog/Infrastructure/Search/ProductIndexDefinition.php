@@ -278,8 +278,9 @@ final readonly class ProductIndexDefinition
                         'purchasable' => ['type' => 'boolean'],
                         // "<axis>" U+001F "<value>", as in Catalog (case kept); the variant conditions match here.
                         'options' => $keyword,
-                        // The axes of the variant, for the facet of an axis with several values of one axis.
-                        'axes' => $keyword,
+                        // The axes of the variant, for the facet of an axis with several values of one axis: read only by a
+                        // terms aggregation on its doc values, never searched.
+                        'axes' => ['type' => 'keyword', 'index' => false],
                         // The same pairs as {axis, value}, nested in the variant (not in the product): the facets
                         // count axes, then values, per variant that meets the conditions.
                         'pairs' => ['type' => 'nested', 'properties' => ['axis' => $keyword, 'value' => $keyword]],
