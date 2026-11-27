@@ -9,12 +9,14 @@ use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 
 /**
- * A PSR-18 decorator that records every request and passes it on.
+ * A PSR-18 decorator that records every request, runs a hook before it and passes it on.
  */
 final class RecordingHttpClient implements ClientInterface
 {
     /** @var list<RequestInterface> */
     public array $requests = [];
+    /** @var (\Closure(RequestInterface): void)|null runs before every request is passed on */
+    public ?\Closure $before = null;
 
     public function __construct(private readonly ClientInterface $inner)
     {
@@ -23,6 +25,9 @@ final class RecordingHttpClient implements ClientInterface
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
         $this->requests[] = $request;
+        if (null !== $this->before) {
+            ($this->before)($request);
+        }
 
         return $this->inner->sendRequest($request);
     }

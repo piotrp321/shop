@@ -509,7 +509,7 @@ To świadome ograniczenia szkieletu, a nie docelowe rozwiązanie dla katalogu rz
   trafiają też do niego (bez szkody).
 - Produkt utworzony w trakcie przebudowy z identyfikatorem mniejszym niż kursor odczytu paczek trafia do nowego indeksu
   tylko przez alias przebudowy, więc indeks ma więcej dokumentów, niż zapisały paczki: weryfikacja (krok 5) kończy
-  przebudowę błędem, alias zostaje na starym indeksie, a przebudowę się ponawia.
+  przebudowę błędem, alias zostaje na starym indeksie, a przebudowę się ponawia (pełna obsługa: #979).
 - Brak równoległego zasilania przez wielu consumerów, okresu retencji starego indeksu i rollbacku.
 
 Port odczytu paczkami (`page(afterId, limit)`), zapis paczki do wskazanego indeksu z wynikiem każdej pozycji

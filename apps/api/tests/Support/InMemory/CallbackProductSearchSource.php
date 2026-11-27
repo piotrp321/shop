@@ -8,10 +8,10 @@ use App\Catalog\Application\Port\ProductSearchSource;
 use App\Catalog\Application\Search\ProductSearchSnapshot;
 
 /**
- * A fixed set of products whose current state a callback reads at every call, so a test (or another process, through
- * files) can change a product between the reads of a rebuild and of a single write.
+ * A set of products whose current state a callback reads at every call, so a test (or another process, through
+ * files) can change a product between the reads of a rebuild and of a single write; a test can also create one.
  */
-final readonly class CallbackProductSearchSource implements ProductSearchSource
+final class CallbackProductSearchSource implements ProductSearchSource
 {
     /** @var list<string> sorted */
     private array $ids;
@@ -20,8 +20,20 @@ final readonly class CallbackProductSearchSource implements ProductSearchSource
      * @param list<string>                            $ids  lowercase UUIDs
      * @param \Closure(string): ProductSearchSnapshot $read the current state of the product with this id
      */
-    public function __construct(array $ids, private \Closure $read)
+    public function __construct(array $ids, private readonly \Closure $read)
     {
+        sort($ids);
+        $this->ids = $ids;
+    }
+
+    /**
+     * Creates a product: later reads see it.
+     *
+     * @param string $id a lowercase UUID
+     */
+    public function add(string $id): void
+    {
+        $ids = [...$this->ids, $id];
         sort($ids);
         $this->ids = $ids;
     }
