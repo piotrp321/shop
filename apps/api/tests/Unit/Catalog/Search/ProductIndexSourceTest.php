@@ -109,7 +109,8 @@ final class ProductIndexSourceTest extends TestCase
         self::assertSame(['type' => 'boolean'], self::at($mapping, 'properties', 'purchasable'));
         self::assertSame(['type' => 'long', 'doc_values' => false], self::at($mapping, 'properties', 'buy_prices'));
         self::assertSame(['type' => 'long'], self::at($mapping, 'properties', 'max_gross'));
-        self::assertSame(['type' => 'keyword'], self::at($mapping, 'properties', 'variants', 'properties', 'axes'));
+        // Read only by the terms aggregation on its doc values, never searched.
+        self::assertSame(['type' => 'keyword', 'index' => false], self::at($mapping, 'properties', 'variants', 'properties', 'axes'));
     }
 
     public function testTheFacetFieldsAreInTheDefinitionHash(): void

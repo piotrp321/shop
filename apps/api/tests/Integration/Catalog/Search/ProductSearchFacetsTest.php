@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Catalog\Search;
 
 use App\Catalog\Application\Search\OptionFacet;
+use App\Catalog\Application\Search\OptionValue;
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\SearchFacets;
@@ -144,6 +145,8 @@ final class ProductSearchFacetsTest extends TestCase
         yield 'none' => [new ProductSearchCriteria(1, 24)];
         yield 'one axis, two values' => [new ProductSearchCriteria(1, 24, options: ['Kolor' => ['Kolor 01', 'Kolor 02']])];
         yield 'two axes' => [new ProductSearchCriteria(1, 24, options: ['Kolor' => ['Kolor 01'], 'Rozmiar' => ['Rozmiar 01', 'Rozmiar 02', 'Rozmiar 40']])];
+        yield 'two axes, price, available' => [self::twoAxesPriceAvailable()];
+        // A variant has two options at most, so no variant has three selected axes: nothing matches.
         yield 'three axes, price, available' => [new ProductSearchCriteria(1, 24, availableOnly: true, priceMin: 8000, priceMax: 20000, options: ['Kolor' => ['Kolor 01', 'Kolor 02'], 'Rozmiar' => ['Rozmiar 01'], 'Materiał' => ['Materiał 01', 'Materiał 03']])];
         yield 'available' => [new ProductSearchCriteria(1, 24, availableOnly: true)];
         yield 'price from' => [new ProductSearchCriteria(1, 24, priceMin: 15000)];
@@ -166,6 +169,43 @@ final class ProductSearchFacetsTest extends TestCase
         self::assertSame($expected['available'], $result->facets->availableCount);
         self::assertSame($expected['price'], null === $result->facets->price ? null : [$result->facets->price->min, $result->facets->price->max]);
         self::assertSame($expected['options'], $this->shape($result->facets));
+    }
+
+    public function testSeveralSelectedAxesWithPriceAndAvailabilityHaveResultsOnTheGeneratedSet(): void
+    {
+        $documents = FacetFixtures::random();
+        $this->index($documents);
+        $criteria = self::twoAxesPriceAvailable();
+
+        $result = $this->search($criteria);
+
+        // The set must keep products that match, or the comparison with the brute force model proves nothing here.
+        self::assertGreaterThan(5, $result->total);
+        self::assertGreaterThan(0, $result->facets->availableCount);
+        self::assertNotNull($result->facets->price);
+        $selected = array_filter($result->facets->options, static fn (OptionFacet $facet): bool => \in_array($facet->axis, ['Kolor', 'Rozmiar'], true));
+        self::assertCount(2, $selected);
+        foreach ($selected as $facet) {
+            self::assertNotSame([], array_filter($facet->values, static fn (OptionValue $value): bool => $value->count > 0), $facet->axis);
+        }
+        self::assertSame(FacetFixtures::expected($documents, $criteria)['options'], $this->shape($result->facets));
+    }
+
+    public function testThreeSelectedAxesMatchNothingBecauseAVariantHasTwoOptionsAtMost(): void
+    {
+        $documents = FacetFixtures::random();
+        $this->index($documents);
+        $criteria = new ProductSearchCriteria(1, 24, options: ['Kolor' => ['Kolor 01'], 'Rozmiar' => ['Rozmiar 01'], 'Materiał' => ['Materiał 01']]);
+
+        $result = $this->search($criteria);
+
+        self::assertSame(0, $result->total);
+        self::assertSame(FacetFixtures::expected($documents, $criteria)['options'], $this->shape($result->facets));
+    }
+
+    private static function twoAxesPriceAvailable(): ProductSearchCriteria
+    {
+        return new ProductSearchCriteria(1, 24, availableOnly: true, priceMin: 8000, priceMax: 20000, options: ['Kolor' => ['Kolor 01', 'Kolor 02'], 'Rozmiar' => ['Rozmiar 01']]);
     }
 
     public function testEveryValueCountEqualsTheTotalAfterAddingTheValue(): void

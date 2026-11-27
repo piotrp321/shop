@@ -30,6 +30,63 @@ final class ProductFacetTokensTest extends TestCase
         self::assertTrue(Text::hasForbiddenCharacters('a'.VariantDocument::OPTION_SEPARATOR.'b'));
     }
 
+    public function testTheBuildersGiveTheSyntaxOfTheSpec(): void
+    {
+        self::assertSame('#0198a1f0', ProductFacetTokens::categoryToken('0198a1f0'));
+        self::assertSame('@Kolor', ProductFacetTokens::axisToken('Kolor'));
+        self::assertSame('Kolor'.self::US.'czarne', ProductFacetTokens::optionToken('Kolor', 'czarne'));
+        $black = ProductFacetTokens::optionToken('Kolor', 'czarne');
+        $size = ProductFacetTokens::optionToken('Rozmiar', '42');
+        self::assertSame($black.self::RS.$size, ProductFacetTokens::pairToken($black, $size));
+        self::assertSame($black.self::RS.'@Rozmiar', ProductFacetTokens::pairAxisToken($black, 'Rozmiar'));
+        // The builders add nothing to the text: syntax characters of a name stay as they are.
+        self::assertSame('@#@$', ProductFacetTokens::axisToken('#@$'));
+        self::assertSame('#@'.self::US.'$.*', ProductFacetTokens::optionToken('#@', '$.*'));
+    }
+
+    public function testTheDocumentIsMadeOfTheTokensTheBuildersGive(): void
+    {
+        $tokens = ProductFacetTokens::of(self::document([
+            self::variant(18_900, false, ['Kolor' => 'czarne', 'Rozmiar' => '42']),
+            self::variant(19_900, true, ['Kolor' => 'Białe', 'Rozmiar' => '43']),
+        ]));
+
+        $black = ProductFacetTokens::optionToken('Kolor', 'czarne');
+        $size42 = ProductFacetTokens::optionToken('Rozmiar', '42');
+        $white = ProductFacetTokens::optionToken('Kolor', 'Białe');
+        $size43 = ProductFacetTokens::optionToken('Rozmiar', '43');
+        $buy = [
+            ProductFacetTokens::categoryToken('p'), ProductFacetTokens::categoryToken('c'),
+            ProductFacetTokens::axisToken('Kolor'), ProductFacetTokens::axisToken('Rozmiar'), $white, $size43,
+        ];
+        self::assertEqualsCanonicalizing($buy, $tokens->buyFacets);
+        self::assertEqualsCanonicalizing([...$buy, $black, $size42, ProductFacetTokens::PURCHASABLE], $tokens->facets);
+
+        $pairs = static fn (string $x, string $y, string $axisOfX, string $axisOfY): array => [
+            ProductFacetTokens::pairToken($x, $y), ProductFacetTokens::pairToken($y, $x),
+            ProductFacetTokens::pairAxisToken($x, $axisOfY), ProductFacetTokens::pairAxisToken($y, $axisOfX),
+        ];
+        self::assertEqualsCanonicalizing($pairs($white, $size43, 'Kolor', 'Rozmiar'), $tokens->pairBuy);
+        self::assertEqualsCanonicalizing([...$pairs($white, $size43, 'Kolor', 'Rozmiar'), ...$pairs($black, $size42, 'Kolor', 'Rozmiar')], $tokens->pairAny);
+    }
+
+    public function testThePatternsSelectTheTokensOfTheBuilders(): void
+    {
+        $option = ProductFacetTokens::optionToken('Wymiar (cm)', '50.*');
+        $partner = ProductFacetTokens::optionToken('Kolor', 'czarne');
+
+        $options = '/\A'.ProductFacetTokens::optionsOfAxisPattern('Wymiar (cm)').'\z/su';
+        self::assertSame(1, preg_match($options, $option));
+        self::assertSame(0, preg_match($options, ProductFacetTokens::axisToken('Wymiar (cm)')));
+        self::assertSame(0, preg_match($options, ProductFacetTokens::categoryToken('Wymiar (cm)')));
+
+        $pairs = '/\A'.ProductFacetTokens::pairPartnersPattern('Wymiar (cm)', '50.*').'\z/su';
+        self::assertSame(1, preg_match($pairs, ProductFacetTokens::pairToken($option, $partner)));
+        self::assertSame(1, preg_match($pairs, ProductFacetTokens::pairAxisToken($option, 'Kolor')));
+        self::assertSame(0, preg_match($pairs, ProductFacetTokens::pairToken($partner, $option)));
+        self::assertSame(0, preg_match($pairs, $option));
+    }
+
     public function testAProductWithTwoAxesHasTheTokensOfTheSpec(): void
     {
         $tokens = ProductFacetTokens::of(self::document([
