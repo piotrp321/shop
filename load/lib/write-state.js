@@ -162,9 +162,8 @@ export function runVerdict(counts) {
 
 // How late a write of the open model may leave the generator: DEFAULT_SEND_TOLERANCE_MS whatever the rate, unless the settings give
 // another. A generator that does not keep the rate falls behind without bound and soon passes it, while the jitter of the event loop
-// and the scheduler is orders of magnitude smaller (measured locally: p99 2 ms, max 20 ms at 50/s over 320 s); a delay up to a
-// second changes neither the rate within the windows of a measurement nor the freshness (W16 counts from the answer of the write).
-// A later write counts like one not sent at the rate (docs/features/performance-program/plan.md, "Co liczymy").
+// and the scheduler is orders of magnitude smaller than a second; a delay up to a second changes neither the rate within the windows
+// of a measurement nor the freshness (W16 counts from the answer of the write). A later write counts like one not sent at the rate (docs/features/performance-program/plan.md, "Co liczymy").
 export const DEFAULT_SEND_TOLERANCE_MS = 1000;
 
 export function sendTolerance(overrideMs) {

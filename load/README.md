@@ -101,8 +101,10 @@ odświeżania sesji panelu wygasa po 15 min bez użycia i najpóźniej po 8 h; w
 
 ### Uruchomienie
 
-Przebieg na lokalnym stosie sprawdza działanie scenariusza, ale nie jest pomiarem: API działa tam w trybie dev (lokalnie przyjęło
-ok. 22 zmian/s przy p50 odpowiedzi 3,6 s), więc jego tempo, czasy i świeżość nie są wynikiem W14 ani W16.
+Przebieg na stosie compose (`infra/docker-compose.yml`, `make up`) sprawdza działanie scenariusza, ale jego tempo, czasy
+i świeżość nie są wynikiem W14 ani W16: API działa tam w trybie `dev`. Pomiar wymagań z zapisami biegnie według planu programu
+(`docs/features/performance-program/plan.md`, PERF-0): lokalnie na danych `server` albo `medium`, a na worf.pl tylko za
+osobną zgodą właściciela; wyniki trafiają do `docs/reports/`.
 
 ```sh
 # lokalnie: stos compose tego checkoutu (make up, make seed), k6 w jego sieci, http://api (bez Varnisha) i http://keycloak:8080
@@ -147,7 +149,7 @@ Wynikiem pomiaru jest tylko przebieg z kodem 0: zapisy wysłane w zadanym tempie
 - zapis wysłany za późno (`changes.late`): opóźnienie wysłania względem zaplanowanej chwili (`changes.send_lag`, p50–max)
   większe niż tolerancja `WRITE_SEND_TOLERANCE_MS`, domyślnie 1000 ms bez względu na tempo. Generator, który nie utrzymuje
   tempa (np. zajęta pętla zdarzeń jedynego użytkownika wirtualnego), narasta zaległość bez ograniczenia i szybko przekracza
-  tę wartość, a drgania pętli i planisty są o rzędy mniejsze (lokalnie p99 2 ms, max 20 ms przy 50/s przez 320 s); opóźnienie
+  tę wartość, a drgania pętli zdarzeń i planisty są o rzędy mniejsze od sekundy; opóźnienie
   do sekundy nie zmienia tempa w oknach pomiaru i nie wpływa na świeżość (W16 liczy się od odpowiedzi zapisu). Token dostępu
   jest odnawiany w tle w ostatniej minucie ważności, więc zapisy nie czekają na Keycloak, dopóki token jest ważny; liczba
   odnowień jest w `changes.token_renewals` (`background`, `blocking`: żądanie czekało) i w wierszu `send lag`, a nieudane
