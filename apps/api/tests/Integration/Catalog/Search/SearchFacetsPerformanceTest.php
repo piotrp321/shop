@@ -13,7 +13,8 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * A measurement, not a check: the `took` of the facet aggregations on a generated catalog and the size of the index.
+ * A measurement, not a check: the `took` of the multi search of a listing (the page and the facet searches) on a
+ * generated catalog and the size of the index.
  * Skipped unless SEARCH_PERF=1, so the usual test run does not pay for it:
  *
  *   docker compose exec -e SEARCH_PERF=1 api vendor/bin/phpunit --filter SearchFacetsPerformanceTest
@@ -63,8 +64,14 @@ final class SearchFacetsPerformanceTest extends TestCase
         ];
         foreach ($criteria as $label => $one) {
             $took = [];
+            // The first multi search of the listing, every search without the request cache.
+            $body = [];
+            foreach ((new ProductSearchQuery($one))->searches(0, 24) as $search) {
+                $body[] = ['request_cache' => false];
+                $body[] = $search;
+            }
             for ($i = 0; $i < self::REPEATS; ++$i) {
-                $response = $client->search(['index' => $this->alias(), 'request_cache' => false, 'body' => ProductSearchQuery::body($one, 0, 24)]);
+                $response = $client->msearch(['index' => $this->alias(), 'body' => $body]);
                 \assert($response instanceof Elasticsearch);
                 $ms = $response->asArray()['took'];
                 \assert(\is_int($ms));

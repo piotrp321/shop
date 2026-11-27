@@ -110,8 +110,6 @@ final readonly class ProductIndexDefinition
                 'purchasable' => $variant->purchasable,
                 'options' => $variant->options,
                 'axes' => $axes,
-                // The same pairs as objects, for the facets: they list the axes and values without knowing the names.
-                'pairs' => array_map(self::pair(...), $variant->options),
             ], $document->variants, $tokens->variantAxes),
             'facets' => $tokens->facets,
             'buy_facets' => $tokens->buyFacets,
@@ -182,21 +180,6 @@ final readonly class ProductIndexDefinition
         }
 
         return new VariantDocument($gross, $variant['purchasable'], $variant['options']);
-    }
-
-    /**
-     * @return array{axis: string, value: string}
-     *
-     * @throws SearchIndexError when the option has no axis separator
-     */
-    private static function pair(string $option): array
-    {
-        $parts = explode(VariantDocument::OPTION_SEPARATOR, $option, 2);
-        if (2 !== \count($parts)) {
-            throw new SearchIndexError('An option of a variant has no axis separator.');
-        }
-
-        return ['axis' => $parts[0], 'value' => $parts[1]];
     }
 
     /**
@@ -281,9 +264,6 @@ final readonly class ProductIndexDefinition
                         // The axes of the variant, for the facet of an axis with several values of one axis: read only by a
                         // terms aggregation on its doc values, never searched.
                         'axes' => ['type' => 'keyword', 'index' => false],
-                        // The same pairs as {axis, value}, nested in the variant (not in the product): the facets
-                        // count axes, then values, per variant that meets the conditions.
-                        'pairs' => ['type' => 'nested', 'properties' => ['axis' => $keyword, 'value' => $keyword]],
                     ],
                 ],
                 // The tokens of the product for conditions and facets in one pass (see ProductFacetTokens): `facets` of

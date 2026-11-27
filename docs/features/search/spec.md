@@ -298,8 +298,10 @@ jak `productId` w `/api/v1/product-offers`) wysyła bez zmian:
   - trzy i więcej osi: brak wyników (wariant ma najwyżej 2 osie);
   - cena: `range` na `buy_prices`; razem z osią dodatkowo zapytanie `nested` na `variants` (opcje, `purchasable`
     i `gross` w zakresie w jednym wariancie), zawężone już warunkami na polach produktu.
-- Warunek wariantu jest w `query` żądania wyników (bez agregacji w tym żądaniu); każda grupa faset ma własny zestaw
-  warunków w swoim `query` (M2), więc `post_filter` nie jest potrzebny.
+- Listing bez frazy: warunek wariantu jest w `query` żądania wyników (bez agregacji w tym żądaniu); każda grupa faset
+  ma własny zestaw warunków w swoim `query` (M2), więc `post_filter` nie jest potrzebny. Listing z frazą to jedno
+  wyszukiwanie w `_msearch` (tekst dopasowany raz): warunek wariantu wyników w `post_filter`, każda grupa faset jako
+  agregacja `filter` ze swoim zestawem warunków.
 - Produkt bez wariantu możliwego do kupienia (`from_gross` brak) jest w wynikach bez `priceMin`, `priceMax`
   i `available`; którykolwiek z nich go wyklucza. Nie wchodzi do `facets.price`.
 - Sortowanie: `relevance` → `_score`, potem `name.sort`, `id`; `name` → `name.sort`, `id`; `price_asc`/`price_desc` →
@@ -739,6 +741,9 @@ Kryteria pomiarowe są w planie programu (PERF-2, „Kryteria etapu B”); tu na
   `_msearch`, czyli wolniej. Dane `server` mają ok. 400 tokenów (180 kategorii, 21 osi, 208 wartości).
 - Fasety w request cache są ważne do odświeżenia indeksu; przy ciągłych zapisach żyją tyle co `refresh_interval`
   (M4, warunkowo 5 s).
+- Części jednego `_msearch` (i kolejne `_msearch` przepełnienia) mogą zobaczyć różne odświeżenia indeksu, więc przy
+  ciągłych zapisach liczby faset mogą chwilowo różnić się od `total` o produkty zmienione w jednym odświeżeniu (do
+  TTL Varnisha); wspólnego punktu w czasie dla wszystkich części nie ma, bo dodałby koszt każdemu listingowi.
 - Wartości osi są wolnym tekstem: różne formy („czarne”, „czarna”) i różna wielkość liter tworzą osobne wartości fasety.
 - Cena „od” na kafelku i sortowanie po cenie dotyczą całego produktu, a filtr i podpowiedzi ceny wariantów
   spełniających filtry: przy „Cena 100–150 zł” kafelek może pokazać „od 90 zł” (tańszy wariant poza filtrem osi).

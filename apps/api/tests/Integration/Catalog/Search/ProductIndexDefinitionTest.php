@@ -90,9 +90,9 @@ final class ProductIndexDefinitionTest extends TestCase
         self::assertSame(['Odzież', 'Kurtki'], $source['category_names']);
         self::assertSame(19_900, $source['from_gross']);
         self::assertSame([
-            ['gross' => 18_900, 'purchasable' => false, 'options' => ["Kolor\u{1F}czarne", "Rozmiar\u{1F}42"], 'axes' => ['Kolor', 'Rozmiar'], 'pairs' => [['axis' => 'Kolor', 'value' => 'czarne'], ['axis' => 'Rozmiar', 'value' => '42']]],
-            ['gross' => 19_900, 'purchasable' => true, 'options' => ["Kolor\u{1F}Białe", "Rozmiar\u{1F}43"], 'axes' => ['Kolor', 'Rozmiar'], 'pairs' => [['axis' => 'Kolor', 'value' => 'Białe'], ['axis' => 'Rozmiar', 'value' => '43']]],
-            ['purchasable' => false, 'options' => ["Kolor\u{1F}zielone", "Rozmiar\u{1F}44"], 'axes' => ['Kolor', 'Rozmiar'], 'pairs' => [['axis' => 'Kolor', 'value' => 'zielone'], ['axis' => 'Rozmiar', 'value' => '44']]],
+            ['gross' => 18_900, 'purchasable' => false, 'options' => ["Kolor\u{1F}czarne", "Rozmiar\u{1F}42"], 'axes' => ['Kolor', 'Rozmiar']],
+            ['gross' => 19_900, 'purchasable' => true, 'options' => ["Kolor\u{1F}Białe", "Rozmiar\u{1F}43"], 'axes' => ['Kolor', 'Rozmiar']],
+            ['purchasable' => false, 'options' => ["Kolor\u{1F}zielone", "Rozmiar\u{1F}44"], 'axes' => ['Kolor', 'Rozmiar']],
         ], $source['variants']);
         self::assertEquals($document, ProductIndexDefinition::document($source));
     }
@@ -141,7 +141,7 @@ final class ProductIndexDefinitionTest extends TestCase
         $source = $stored['_source'];
         self::assertIsArray($source);
         self::assertArrayNotHasKey('from_gross', $source);
-        self::assertSame([['purchasable' => false, 'options' => [], 'axes' => [], 'pairs' => []]], $source['variants']);
+        self::assertSame([['purchasable' => false, 'options' => [], 'axes' => []]], $source['variants']);
         self::assertArrayNotHasKey('max_gross', $source);
         self::assertFalse($source['purchasable']);
         self::assertSame([], $source['buy_prices']);
@@ -166,25 +166,6 @@ final class ProductIndexDefinitionTest extends TestCase
         ]));
         // Options keep the case of Catalog.
         self::assertSame(0, $this->countVariants([['term' => ['variants.options' => "Kolor\u{1F}białe"]]]));
-    }
-
-    public function testPairsOfAVariantAreMatchedTogetherNotAcrossVariants(): void
-    {
-        $this->maintenance()->setup();
-        $this->indexer()->index(self::document());
-        self::esClient()->indices()->refresh(['index' => $this->alias()]);
-
-        $pair = static fn (string $axis, string $value): array => ['nested' => ['path' => 'variants.pairs', 'query' => ['bool' => ['filter' => [
-            ['term' => ['variants.pairs.axis' => $axis]],
-            ['term' => ['variants.pairs.value' => $value]],
-        ]]]]];
-
-        // Kolor czarne and Rozmiar 42 are one variant; Kolor czarne and Rozmiar 43 are two.
-        self::assertSame(1, $this->countVariants([$pair('Kolor', 'czarne'), ['term' => ['variants.options' => "Rozmiar\u{1F}42"]]]));
-        self::assertSame(0, $this->countVariants([$pair('Kolor', 'czarne'), ['term' => ['variants.options' => "Rozmiar\u{1F}43"]]]));
-        // The pair is a value of its own: the axis name is not a value and the case is kept.
-        self::assertSame(0, $this->countVariants([$pair('Kolor', 'Rozmiar')]));
-        self::assertSame(0, $this->countVariants([$pair('Kolor', 'białe')]));
     }
 
     public function testTheFacetTokensAreStoredAndFoundByTermsAndRanges(): void
