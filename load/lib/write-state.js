@@ -129,3 +129,5 @@ export function chooseSample(candidates, settings, rnd) {
     unstocked: shuffled(candidates.unstocked, rnd).slice(0, unstockedWanted),
   };
 }
+
+export function runVerdict(counts) {}

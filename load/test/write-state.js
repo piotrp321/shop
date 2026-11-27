@@ -1,6 +1,7 @@
 // The test of the state of the writes scenario (load/lib/write-state.js; make load-logic, load/test/write-state.sh): the prices a
 // change may set, the states a variant may have after confirmed, refused and unanswered writes, the comparison with the index,
-// the choice of the sample and the variants that cannot be in it. No network; any failed check fails the run (exit 99).
+// the choice of the sample, the variants that cannot be in it and the verdict of a run. No network; any failed check fails the run
+// (exit 99).
 import { check } from 'k6';
 import {
   afterPriceChange,
@@ -11,6 +12,7 @@ import {
   ineligibility,
   matchesIndex,
   nextPrice,
+  runVerdict,
   startRecord,
   writeOutcome,
 } from '../lib/write-state.js';
@@ -152,6 +154,28 @@ function sampling() {
   });
 }
 
+function verdicts() {
+  const clean = { finished: true, dropped: 0, unanswered: 0, freshnessTimeouts: 0, refused: 0, mismatches: 0, runErrors: 0 };
+  const failsWith = (counts, fragment) => {
+    const verdict = runVerdict({ ...clean, ...counts });
+    return verdict.passed === false && verdict.reasons.length === 1 && verdict.reasons[0].includes(fragment);
+  };
+  verify({
+    'a finished run without a failure passes': () => same(runVerdict(clean), { passed: true, reasons: [] }),
+    'a write not sent at the rate fails the run (it is no measurement at the rate)': () => failsWith({ dropped: 1 }, 'not sent at the rate'),
+    'a write without an answer or with a 5xx fails the run': () => failsWith({ unanswered: 2 }, 'without an answer'),
+    'a change not seen within the freshness timeout fails the run (the percentiles leave it out)': () =>
+      failsWith({ freshnessTimeouts: 1 }, 'not seen within'),
+    'a refused write fails the run': () => failsWith({ refused: 1 }, 'refused'),
+    'a mismatch of the index fails the run': () => failsWith({ mismatches: 3 }, 'mismatch'),
+    'an error of the run fails it': () => failsWith({ runErrors: 1 }, 'error'),
+    'a consistency check that did not finish fails the run': () => failsWith({ finished: false }, 'did not finish'),
+    'the reasons give the numbers': () => runVerdict({ ...clean, dropped: 4 }).reasons[0].includes('4'),
+    'every failure is a reason of its own': () => runVerdict({ ...clean, finished: false, dropped: 1, unanswered: 1, freshnessTimeouts: 1 }).reasons.length === 4,
+    'a missing count fails the run': () => runVerdict({ finished: true }).passed === false,
+  });
+}
+
 export default function () {
   prices();
   outcomes();
@@ -159,4 +183,5 @@ export default function () {
   comparison();
   eligibility();
   sampling();
+  verdicts();
 }
