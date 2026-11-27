@@ -130,7 +130,7 @@ przebieg idzie przez jego publiczne adresy. Wiersze niezgodności są tylko w wy
 | `WRITE_PRICE_SHARE` | 0.5 | udział zmian cen wśród zapisów modelu otwartego |
 | `WRITE_MAX_IN_FLIGHT` | 100 | zapisy modelu otwartego czekające naraz na odpowiedź; zapis ponad limit jest pomijany i liczony (`dropped`) |
 | `WRITE_TIMEOUT_SECONDS` | 60 | zapis bez odpowiedzi przez ten czas jest „bez odpowiedzi” |
-| `WRITE_SEND_TOLERANCE_MS` | 1000 | zapis modelu otwartego wysłany później niż tyle po zaplanowanej chwili jest spóźniony |
+| `WRITE_SEND_TOLERANCE_MS` | 1000 | próg błędu generatora: zapis modelu otwartego wysłany później niż tyle po zaplanowanej chwili jest spóźniony |
 | `WRITE_DISCOVER_PRODUCTS` | 3 × `WRITE_SAMPLE`, co najmniej 60 | ile produktów czytać z każdego źródła przy wyborze próby |
 | `FRESHNESS_POLL_MS` | 250 | odstęp zapytań wariantu próbki świeżości (rozdzielczość pomiaru) |
 | `FRESHNESS_TIMEOUT_SECONDS` | 120 | zmiana niewidoczna tak długo kończy swoją próbkę (`timeouts`) |
@@ -139,21 +139,19 @@ przebieg idzie przez jego publiczne adresy. Wiersze niezgodności są tylko w wy
 | `WRITES_OUT` | brak | katalog wyniku `writes.json` |
 | `API_HOST`, `KEYCLOAK_HOST`, `WRITES_NETWORK` | brak, `bridge` | nagłówek `Host` (adres inny niż domena usługi) i sieć Dockera przy `API_URL` |
 
-Wynikiem pomiaru jest tylko przebieg z kodem 0: zapisy wysłane w zadanym tempie, każdy z odpowiedzią, każda zmiana próbek
+Wynikiem pomiaru jest tylko przebieg z kodem 0: zapisy wysłane w zadanym tempie (okna 1 s, niżej „Tempo”), każdy z odpowiedzią, każda zmiana próbek
 świeżości zobaczona w limicie czasu i kontrola zgodności ukończona bez niezgodności. Werdykt z przyczynami jest w wierszu
 `verdict:` wyjścia i w `verdict` pliku `writes.json` (`passed`, `reasons`). Przebieg, który nie jest pomiarem, kończy się kodem
 99, nawet gdy kontrola zgodności przeszła:
 
 - zapis pominięty w tempie (`changes.dropped`: limit `WRITE_MAX_IN_FLIGHT` albo brak wolnego wariantu `bulk`, gdy zmiany cen
   czekają na odpowiedź; wtedy zwiększ `WRITE_SAMPLE` albo limit);
-- zapis wysłany za późno (`changes.late`): opóźnienie wysłania względem zaplanowanej chwili (`changes.send_lag`, p50–max)
-  większe niż tolerancja `WRITE_SEND_TOLERANCE_MS`, domyślnie 1000 ms bez względu na tempo. Generator, który nie utrzymuje
-  tempa (np. zajęta pętla zdarzeń jedynego użytkownika wirtualnego), narasta zaległość bez ograniczenia i szybko przekracza
-  tę wartość, a drgania pętli zdarzeń i planisty są o rzędy mniejsze od sekundy; opóźnienie
-  do sekundy nie zmienia tempa w oknach pomiaru i nie wpływa na świeżość (W16 liczy się od odpowiedzi zapisu). Token dostępu
-  jest odnawiany w tle w ostatniej minucie ważności, więc zapisy nie czekają na Keycloak, dopóki token jest ważny; liczba
-  odnowień jest w `changes.token_renewals` (`background`, `blocking`: żądanie czekało) i w wierszu `send lag`, a nieudane
-  odnowienie w tle daje ostrzeżenie z przyczyną przy pierwszej próbie serii;
+- tempo nieutrzymane (niżej, „Tempo”): okno 1 s z liczbą wysłanych zapisów poza pasmem zadanego tempa albo seria więcej niż
+  jednego zapisu nadrabianego w jednym oknie;
+- zapis wysłany później niż próg błędu generatora (`changes.late`, `WRITE_SEND_TOLERANCE_MS`, domyślnie 1000 ms bez względu
+  na tempo). Próg wykrywa generator, który przestał działać (zaległość narasta wtedy bez ograniczenia i szybko go przekracza;
+  drgania pętli zdarzeń i planisty są o rzędy mniejsze od sekundy). Nie jest dowodem utrzymania tempa: tym są okna 1 s
+  i rozkład opóźnień;
 - zapis bez odpowiedzi w `WRITE_TIMEOUT_SECONDS` albo z 5xx (`changes.unanswered`); kontrola zgodności i tak sprawdza takie
   warianty względem każdego możliwego stanu;
 - zmiana próbki świeżości niewidoczna w `FRESHNESS_TIMEOUT_SECONDS` (`freshness.timeouts`): nie ma jej w percentylach, więc
@@ -189,6 +187,30 @@ i `failed`. Części próby:
 
 Zmiana ceny wybiera inną z cen początkowa ±1 gr (nigdy poniżej 1 gr), tylko u wariantów możliwych do kupienia na początku.
 Scenariusz nigdy nie odbiera dostępności ani nie dotyka rezerwacji.
+
+### Tempo
+
+Model otwarty planuje zapis i na chwilę `start + i / WRITE_RATE` bez względu na odpowiedzi. Dowodem tempa w wyniku
+(`changes.rate`) są:
+
+- liczba zapisów faktycznie wysłanych w każdym pełnym oknie 1 s od startu (`windows`: liczba okien, min, p5, p50, p95, max,
+  okna poniżej i powyżej pasma `band`) i średnie tempo wysyłania całego przebiegu (`mean_sent_per_second`);
+- opóźnienie wysłania każdego zapisu względem zaplanowanej chwili (`changes.send_lag`: p50, p95, p99, p99,9, max)
+  z histogramem w kubełkach ≤1, ≤5, ≤20, ≤100, ≤1000 i >1000 ms (`changes.send_lag_histogram`);
+- zapisy nadrabiane (`catch_up`): wysłane później niż jeden odstęp tempa (`1000 / WRITE_RATE` ms) po swojej chwili. Spóźniona
+  pętla modelu otwartego nie pomija zaległych zapisów, tylko wysyła je jeden po drugim bez czekania, czyli serią; wynik podaje
+  ich liczbę i największą serię w jednym oknie 1 s.
+
+Reguła: tempo jest utrzymane, gdy każde pełne okno 1 s ma od `floor(WRITE_RATE) - 1` do `ceil(WRITE_RATE) + 1` wysłanych
+zapisów i żadne okno nie ma więcej niż jednego zapisu nadrabianego. Zaplanowane chwile dają w pełnym oknie `floor` albo
+`ceil` tempa zapisów, a drganie zegara może przesunąć jeden zapis przez granicę okna albo opóźnić go o ponad odstęp; większe
+odchylenie to dziura (zapisy pominięte albo wstrzymane) albo seria (wstrzymane zapisy wysłane naraz), czyli przyjścia niezgodne
+z modelem otwartym (`docs/features/performance-program/plan.md`, „Co liczymy”). Przebieg z tempem nieutrzymanym kończy się
+kodem 99 z przyczyną w `verdict`.
+
+Token dostępu jest odnawiany w tle w ostatniej minucie ważności, więc zapisy nie czekają na Keycloak, dopóki token jest ważny.
+Liczba odnowień jest w `changes.token_renewals` (`background`, `blocking`: żądanie czekało) i w podsumowaniu, a nieudane
+odnowienie w tle daje ostrzeżenie z przyczyną przy pierwszej próbie serii.
 
 ### Zapytanie wariantu i świeżość
 
