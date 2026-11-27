@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Catalog\Persistence;
 
 use App\Catalog\Application\Query\ProductSort;
+use App\Catalog\Infrastructure\Persistence\Doctrine\BackofficeProductList\PhraseSearch;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DbalBackofficeProductSource;
 use App\Shared\Infrastructure\Persistence\BoundedCounter;
 use App\Tests\Support\RecordingConnection;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -56,7 +60,7 @@ final class ProductPhrasePlanTest extends KernelTestCase
                            WHEN n % 2500 = 17 THEN 'zestaw ab-cd'
                            WHEN n % 1000 = 3 THEN 'ŁÓDŹ kajak'
                            WHEN n % 5 = 0 THEN 'gęsty wzór'
-                           WHEN n > 60000 AND n % 2 = 1 THEN 'korelowany wzór'
+                           WHEN n > 3000 AND n % 2 = 1 THEN 'korelowany wzór'
                            ELSE 'zwykły' END,
                        '', 'standard', '[{"key": "originals/a.jpg", "alt": "a"}]'::jsonb, gen_random_uuid(), 1, '[]'::jsonb, 'published',
                        timestamptz '2026-01-01 00:00:00+00' + n * interval '1 minute'
@@ -167,12 +171,13 @@ final class ProductPhrasePlanTest extends KernelTestCase
             $page = $source->page('korelowany', null, null, null, $sort, self::PAGE);
 
             self::assertCount(self::PAGE, $page);
-            // Hits are odd n above 60 000: by name the 26th one is at n of about 60 050, by the last change (descending) at the end.
-            $position = ProductSort::Name === $sort ? 60_100 : 100;
+            // Hits are odd n above 3 000 (about 48 000 of them): by name the 26th one is at n of about 3 050, by the last change
+            // (descending) at the end of the table. The way is the walk of the budget 2 000 (no hit), the candidates cut off at
+            // their cap, and the walk of the next budget that streams to the position of the page; reading all the candidates
+            // (48 000) or walking the whole next budget (20 000) is more than that.
+            $position = ProductSort::Name === $sort ? 3_100 : 100;
             $read = $this->rowsRead();
-            // The walks of the steps before the one that fills the page (budgets 2 000 and 20 000 and 200 000 are capped by the
-            // position), the candidates cut off at their cap of each step, and the last walk up to the position.
-            $bound = $budget + 3 * (intdiv($budget, 2) + 1) + 20_000 + 3 * (10_000 + 1) + $position + self::SLACK;
+            $bound = $budget + 3 * (intdiv($budget, 2) + 1) + $position + self::SLACK;
             self::assertLessThanOrEqual($bound, $read, \sprintf("page by %s read %d rows (class bound %d)\n%s", $sort->value, $read, $bound, $this->plans()));
             if (ProductSort::UpdatedAtDescending === $sort) {
                 self::assertLessThanOrEqual($budget + self::SLACK, $read, 'the first walk fills the page');
@@ -214,40 +219,75 @@ final class ProductPhrasePlanTest extends KernelTestCase
     }
 
     /**
-     * @param array<string, mixed> $node
+     * @param array<mixed> $node
      */
     private static function rowsReadBy(array $node): float
     {
         $read = 0.0;
-        $relation = $node['Relation Name'] ?? null;
         $type = \is_string($node['Node Type'] ?? null) ? $node['Node Type'] : '';
-        if ('catalog_product' === $relation && str_contains($type, 'Scan') && !str_contains($type, 'Bitmap Index')) {
-            $perLoop = (float) ($node['Actual Rows'] ?? 0) + (float) ($node['Rows Removed by Filter'] ?? 0) + (float) ($node['Rows Removed by Index Recheck'] ?? 0);
-            $read += $perLoop * (float) ($node['Actual Loops'] ?? 1);
+        if ('catalog_product' === ($node['Relation Name'] ?? null) && str_contains($type, 'Scan') && !str_contains($type, 'Bitmap Index')) {
+            $perLoop = self::number($node['Actual Rows'] ?? 0) + self::number($node['Rows Removed by Filter'] ?? 0) + self::number($node['Rows Removed by Index Recheck'] ?? 0);
+            $read += $perLoop * self::number($node['Actual Loops'] ?? 1);
         }
-        foreach ($node['Plans'] ?? [] as $child) {
-            \assert(\is_array($child));
-            $read += self::rowsReadBy($child);
+        $children = $node['Plans'] ?? [];
+        if (\is_array($children)) {
+            foreach ($children as $child) {
+                if (\is_array($child)) {
+                    $read += self::rowsReadBy($child);
+                }
+            }
         }
 
         return $read;
     }
 
+    private static function number(mixed $value): float
+    {
+        return \is_int($value) || \is_float($value) ? (float) $value : 0.0;
+    }
+
     /**
-     * @return list<array<string, mixed>> the plan trees (EXPLAIN ANALYZE) of the recorded statements
+     * @return list<array<mixed>> the plan trees (EXPLAIN ANALYZE) of the recorded statements
      */
     private function analyzedPlans(): array
     {
         $plans = [];
         foreach ($this->recording->queries as [$sql, $params, $types]) {
-            $json = $this->connection->executeQuery('EXPLAIN (ANALYZE, FORMAT JSON) '.$sql, $params, $types)->fetchOne();
+            $json = $this->explained('EXPLAIN (ANALYZE, FORMAT JSON) ', $sql, $params, $types)[0];
             \assert(\is_string($json));
             $decoded = json_decode($json, true, 512, \JSON_THROW_ON_ERROR);
-            \assert(\is_array($decoded) && isset($decoded[0]['Plan']) && \is_array($decoded[0]['Plan']));
+            \assert(\is_array($decoded) && \is_array($decoded[0] ?? null) && \is_array($decoded[0]['Plan'] ?? null));
             $plans[] = $decoded[0]['Plan'];
         }
 
         return $plans;
+    }
+
+    /**
+     * The plan of a recorded statement, planned under the settings the source reads it with: the candidates are read with
+     * only bitmap scans allowed (PhraseSearch::BITMAP_SCANS_ONLY), the other statements as they are.
+     *
+     * @param array<int<0, max>|string, mixed>                                        $params
+     * @param array<int<0, max>|string, ArrayParameterType|ParameterType|Type|string> $types
+     *
+     * @return list<mixed> the first column of the rows of the plan
+     */
+    private function explained(string $explain, string $sql, array $params, array $types): array
+    {
+        $steered = str_starts_with($sql, 'WITH m AS MATERIALIZED');
+        if ($steered) {
+            $this->connection->beginTransaction();
+            foreach (PhraseSearch::BITMAP_SCANS_ONLY as $setting) {
+                $this->connection->executeStatement($setting);
+            }
+        }
+        try {
+            return $this->connection->executeQuery($explain.$sql, $params, $types)->fetchFirstColumn();
+        } finally {
+            if ($steered) {
+                $this->connection->rollBack();
+            }
+        }
     }
 
     /**
@@ -257,7 +297,7 @@ final class ProductPhrasePlanTest extends KernelTestCase
     {
         $text = [];
         foreach ($this->recording->queries as [$sql, $params, $types]) {
-            $lines = $this->connection->executeQuery('EXPLAIN (ANALYZE) '.$sql, $params, $types)->fetchFirstColumn();
+            $lines = $this->explained('EXPLAIN (ANALYZE) ', $sql, $params, $types);
             $text[] = $sql."\n".implode("\n", array_map(static fn (mixed $line): string => \is_string($line) ? $line : '', $lines));
         }
 

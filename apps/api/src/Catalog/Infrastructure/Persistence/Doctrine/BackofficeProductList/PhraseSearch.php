@@ -38,6 +38,13 @@ final readonly class PhraseSearch
     /** Rows of the index of the sort that the first walk reads; the pace of the candidates (their cap is half of it) is the one of the cost per row measured in PERF-7-1 (about 0,7 µs a row of a walk, 5 µs a candidate). */
     public const int FIRST_BUDGET = 20_000;
     private const int GROWTH = 10;
+    /**
+     * The settings (SET LOCAL, in a transaction that is rolled back) under which the candidates are read: only bitmap scans, so
+     * the GIN index is the way to them. The candidates are read lazily up to a cap, and a sequential scan or a walk of an
+     * index that the planner prefers for a phrase it takes for a dense one (it does not know where the hits lie in the heap)
+     * reads the table up to the cap-th hit, which is the table whole for hits that lie at its end.
+     */
+    public const array BITMAP_SCANS_ONLY = ['SET LOCAL enable_seqscan = off', 'SET LOCAL enable_indexscan = off', 'SET LOCAL enable_indexonlyscan = off'];
 
     public function __construct(private Connection $connection, private int $firstBudget = self::FIRST_BUDGET)
     {
@@ -100,10 +107,10 @@ final readonly class PhraseSearch
         }
 
         $where = $this->candidateConditions($route, $conditions, null);
-        $candidates = $this->connection->fetchOne(
+        $candidates = $this->bitmapScansOnly(fn (): mixed => $this->connection->fetchOne(
             'WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE '.$where.') SELECT count(*) FROM (SELECT * FROM m LIMIT '.($limit + 1).') bounded',
             $values + ('' === $route->candidateCondition() ? [] : ['term' => $term]),
-        );
+        ));
         \assert(\is_int($candidates));
 
         return BoundedCount::ofRowsRead($candidates, $limit);
@@ -145,8 +152,10 @@ final readonly class PhraseSearch
         $sql = 'WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE '.$this->candidateConditions($route, $conditions, $keyset).') '
             .'SELECT c.id, c.name, c.tax_class, c.updated_at, count(*) OVER () AS candidates FROM (SELECT * FROM m LIMIT '.($cap + 1).') c'
             ." ORDER BY c.{$column} {$direction}, c.id {$direction} LIMIT {$limit}";
-        $rows = $this->connection->fetchAllAssociative($sql, $values + ('' === $route->candidateCondition() ? [] : ['term' => $term]));
+        $rows = $this->bitmapScansOnly(fn (): mixed => $this->connection->fetchAllAssociative($sql, $values + ('' === $route->candidateCondition() ? [] : ['term' => $term])));
+        \assert(\is_array($rows));
 
+        /** @var list<array<string, mixed>> $rows */
         $found = [] === $rows ? 0 : $rows[0]['candidates'];
         \assert(\is_int($found));
 
@@ -154,11 +163,31 @@ final readonly class PhraseSearch
     }
 
     /**
+     * Runs a read under BITMAP_SCANS_ONLY. The transaction is a savepoint when there is one already, and it is rolled back
+     * either way (nothing is written), which also takes the settings back.
+     */
+    private function bitmapScansOnly(callable $read): mixed
+    {
+        $this->connection->beginTransaction();
+        try {
+            foreach (self::BITMAP_SCANS_ONLY as $setting) {
+                $this->connection->executeStatement($setting);
+            }
+
+            return $read();
+        } finally {
+            $this->connection->rollBack();
+        }
+    }
+
+    /**
      * @param list<string> $conditions
      */
     private function candidateConditions(PhraseRoute $route, array $conditions, ?string $keyset): string
     {
-        $where = ['p.name ILIKE :pattern', ...$conditions];
+        // For the bigrams the exact condition is on an expression the trigram index does not match: the planner would take that
+        // index for it (it may look selective by the estimate), but for such a phrase it returns a large part of the table.
+        $where = [PhraseRoute::Bigrams === $route ? "(p.name || '') ILIKE :pattern" : 'p.name ILIKE :pattern', ...$conditions];
         if ('' !== $route->candidateCondition()) {
             array_unshift($where, $route->candidateCondition());
         }
