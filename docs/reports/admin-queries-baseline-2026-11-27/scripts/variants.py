@@ -59,7 +59,7 @@ def k1_page(ids, extras, sort, after):
     """K1: one ordered branch per category of the subtree (the index of the category and the sort, LIMIT) and one branch of the products that
     are in the subtree only through an additional category: the memberships of the subtree joined to their products, without those whose main
     category is in the subtree (the branches of the main categories already have them, so the branches are disjoint and need no removal of
-    duplicates), as a MATERIALIZED set (linear in those products, few: 8 for a department, ~2 000 for a category of additional members; a plan
+    duplicates; a product with several additional categories in the subtree is one row of the set), as a MATERIALIZED set (linear in those products, few: 8 for a department, ~2 000 for a category of additional members; a plan
     that walks the index of the names with a semi-join filter, which the planner prefers for the LIMIT, reads the table, as the present
     statement does), ordered with LIMIT; the branches merged by the sort."""
     column, direction = sort_parts(sort)
@@ -70,16 +70,18 @@ def k1_page(ids, extras, sort, after):
     plain = "updated_at" if sort == "-updatedAt" else "name"
     branches.append(f"(SELECT id, name, tax_class, updated_at FROM additional ORDER BY {plain} {direction}, id {direction} LIMIT {PAGE + 1})")
     key = "updated_at DESC, id DESC" if sort == "-updatedAt" else "name, id"
+    # A product with two or more additional categories in the subtree (the domain allows ten) must appear once: the joined memberships are reduced
+    # by DISTINCT (a semi-join `p.id IN (...)` gave the same rows twice as slowly: 350-380 ms for the department instead of 176 ms).
     cte = (
-        f"WITH additional AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id "
+        f"WITH additional AS MATERIALIZED (SELECT DISTINCT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id "
         f"WHERE pc.category_id = ANY({uuid_array(ids)}) AND NOT (p.primary_category_id = ANY({uuid_array(ids)})){where_extra}) "
     )
     page = cte + "SELECT id, name, tax_class, updated_at FROM (" + " UNION ALL ".join(branches) + f") u ORDER BY {key} LIMIT {PAGE + 1}"
     extra = "".join(f" AND {condition}" for condition in extras)
     count = (
         f"SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.primary_category_id = ANY({uuid_array(ids)}){extra} UNION ALL "
-        f"SELECT 1 FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY({uuid_array(ids)}) "
-        f"AND NOT (p.primary_category_id = ANY({uuid_array(ids)})){extra} LIMIT {matrix.BOUND + 1}) bounded"
+        f"SELECT 1 FROM (SELECT DISTINCT p.id FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY({uuid_array(ids)}) "
+        f"AND NOT (p.primary_category_id = ANY({uuid_array(ids)})){extra}) a LIMIT {matrix.BOUND + 1}) bounded"
     )
     return page, count
 

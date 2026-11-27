@@ -1,0 +1,39 @@
+Timing is on.
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+SELECT 200194
+CREATE INDEX
+VACUUM
+ANALYZE
+sizes|1936 kB|1168 kB|1928 kB|1160 kB|13 MB
+SELECT 34
+R2a: the additional-only products of the department from the probe table (index only)
+HashAggregate  (cost=5437.83..5938.31 rows=50048 width=16) (actual rows=9.00 loops=1)
+  Group Key: pc_probe.product_id
+  Batches: 1  Memory Usage: 1057kB
+  Buffers: shared hit=1920, local hit=2
+  ->  Hash Join  (cost=70.75..5312.71 rows=50048 width=16) (actual rows=10.00 loops=1)
+        Hash Cond: (pc_probe.category_id = dept.id)
+        Buffers: shared hit=1920, local hit=2
+        ->  Seq Scan on pc_probe  (cost=33.12..4455.55 rows=100097 width=32) (actual rows=158432.00 loops=1)
+              Filter: (NOT (ANY (primary_category_id = (hashed SubPlan 1).col1)))
+              Rows Removed by Filter: 41762
+              Buffers: shared hit=1920, local hit=1
+              SubPlan 1
+                ->  Seq Scan on dept dept_1  (cost=0.00..28.50 rows=1850 width=16) (actual rows=34.00 loops=1)
+                      Buffers: local hit=1
+        ->  Hash  (cost=35.12..35.12 rows=200 width=16) (actual rows=34.00 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 10kB
+              Buffers: local hit=1
+              ->  HashAggregate  (cost=33.12..35.12 rows=200 width=16) (actual rows=34.00 loops=1)
+                    Group Key: dept.id
+                    Batches: 1  Memory Usage: 32kB
+                    Buffers: local hit=1
+                    ->  Seq Scan on dept  (cost=0.00..28.50 rows=1850 width=16) (actual rows=34.00 loops=1)
+                          Buffers: local hit=1
+Planning:
+  Buffers: shared hit=18 read=1
+Planning Time: 0.117 ms
+Execution Time: 16.960 ms

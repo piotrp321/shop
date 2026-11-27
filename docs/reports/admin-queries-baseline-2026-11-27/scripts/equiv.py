@@ -41,6 +41,7 @@ def main():
     parser.add_argument("--db", required=True)
     parser.add_argument("--base", required=True)
     parser.add_argument("--variant", required=True)
+    parser.add_argument("--only", default="", help="only the cases whose id contains this text")
     args = parser.parse_args()
     base = {c["id"]: c for c in json.load(open(args.base, encoding="utf-8"))["cases"]}
     variant = json.load(open(args.variant, encoding="utf-8"))["cases"]
@@ -50,6 +51,8 @@ def main():
     chosen = {c["label"]: c["id"] for c in totals.get("chosen_categories", [])}
     extras_of = {"cat+brand": dict(term="pro"), "cat+drafts": dict(status="draft"), "cat+noimages": dict(no_images=True)}
     for case in variant:
+        if args.only and args.only not in case["id"]:
+            continue
         parts_ = case["id"].split(".")
         if len(parts_) >= 4 and parts_[2] in extras_of and parts_[1] in chosen:
             # The combinations of a category with another filter: the present statement is built here from the same filters.

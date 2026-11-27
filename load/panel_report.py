@@ -87,7 +87,7 @@ def w7(directory):
         over = [f"{key} {median[key]:g} > {limit}" for key, limit in limits.items() if median[key] > limit]
         if over or errors:
             verdict.append(f"  {name}: " + ", ".join(over + ([f"{errors:.0f} failed requests ({breakdown(max(figures, key=failures))} in the worst run)"] if errors else [])))
-    dropped = [r["dropped"]["panel"] for _, r in found]
+    dropped = [r.get("dropped", {}).get("panel", 0) for _, r in found]
     if any(dropped):
         verdict.append(f"  the generator did not send in time: {dropped} requests per run (the rate was not kept)")
     lines.append("")

@@ -33,11 +33,11 @@ Dowody (zapytania, plany, mieszanka, surowe wyniki k6, skrypty, polecenia): kata
 - **H1 potwierdzona częściowo** (mechanizm inny niż w hipotezie), **H2 potwierdzona** (jedno zapytanie biegło w Postgresie 8,1 s, ponad 7 s po przerwaniu żądania przez klienta po 1 s; w kontroli bez przerwania 2,95 s, różnicy nie wyjaśniłem).
 - **Koszt zapisu nowych indeksów** (prototypy na kopii `medium`, WAL na zapis; miarą są KB, procenty są względne do syntetycznego zapisu jednego wiersza i nie przenoszą się na ruch produkcyjny): K1 +15 KB na zapis produktu (+40%), F2 +14 KB (+38%), Z1 +24 KB na cykl zamówienia (+42%) i +9 KB na zapis klienta (+45%).
 - **Wybór wariantów (według reguły „od najprostszego, stop na pierwszym spełniającym P2 i P8”; P2 według ekstrapolacji „w pamięci”, SZACUNEK):**
-  - **K1** (K0 odpada: dział 4,1–10,8 s w pamięci na `server`): wszystkie przypadki kategorii mieszczą się w 2000 ms (maks. 1,89 s dla działu, zapas 5–12%), strona i licznik małej kategorii z 3,5 s do 7 ms na `medium`; nie mieszczą się tylko 4 przypadki działu z rzadkim filtrem (R2).
+  - **K1** (K0 odpada: dział 4,1–10,8 s w pamięci na `server`): wszystkie przypadki kategorii bez filtra mieszczą się w 2000 ms (maks. 1,88 s dla działu, zapas 6–15%), strona i licznik małej kategorii z 3,5 s do 7 ms na `medium`; z deduplikacją produktu z kilkoma kategoriami dodatkowymi (I2, sprawdzoną na syntetycznym produkcie, 82 pary bez różnic); poza P2 zostają dział + szkice `-updatedAt` (10,7 s) i dział + fraza średnia (4,0–9,0 s), dla których sekcja 10.2 ma zmierzone rozwiązania.
   - **F1 dla fraz z trygramem + F2 dla fraz bez trygramu** (F1 sam nie pomaga fragmentom bez trygramu: 14,4 s w pamięci na `server` → F2 15 ms); nie mieści się jedna klasa: fraza częsta i skorelowana z sortem (`rowerowa`, 601 tys. trafień na `server`: 2,83 s w pamięci, R1).
   - **Z0** mieści się w P2 w pamięci (zamówienia `#!#`/`---` 1,2–1,5 s na `server`, klienci 0,22 s), więc według reguły Z1 nie jest potrzebny; **pod obciążeniem mieszanki klasa `orders_punct` ma jednak p95 630 ms i maks. 825 ms na `medium`** (skalowane ×5: ok. 3,2 s i 4,1 s, SZACUNEK górny), więc Z0 nie jest potwierdzone dla W7 pod obciążeniem (pytanie 10.3.3). Z1 zmierzony i gotowy (+24 KB WAL na cykl zamówienia).
   - **M1** (granice mapy strony keysetem): 93 ms na `medium`, na `server` ok. 0,9–1,1 s w bazie i ok. 1,1–1,6 s z 1001 zapytaniami przez sieć (SZACUNEK), czyli w budżecie 2000 ms; M2 nie daje zysku.
-- **Przypadki bez wariantu spełniającego P2** (SZACUNEK „w pamięci”): fraza częsta skorelowana z sortem (R1) i 4 przypadki działu z dodatkowym filtrem (R2); sekcja 10.2 podaje dla nich przyczynę z planu i rozwiązania (dłuższy spacer index-only, częściowe indeksy po kategorii, kolumna kategorii głównej w członkostwach), bez wyjątków W7. Zastrzeżenie: wszystko, co rośnie liniowo, jest „z dysku” tylko założeniem.
+- **Przypadki bez wariantu spełniającego P2** (SZACUNEK „w pamięci”): fraza częsta skorelowana z sortem (R1) i przypadki działu z dodatkowym filtrem (R2); sekcja 10.2 podaje dla nich przyczynę z planu i rozwiązania **zmierzone na `shop_proto`** (spacer index-only do 26. trafienia: 0,9–1,6 s na `server`; częściowe indeksy po kategorii: dział + szkice 1095 → 110 ms, bez zdjęć licznik 181 → 11 ms; kolumna kategorii głównej w członkostwach: 17 ms zamiast 115 ms), bez wyjątków W7. Zastrzeżenie: wszystko, co rośnie liniowo, jest „z dysku” tylko założeniem.
 - **Pytania do właściciela: sekcja 10.**
 
 ## 2. Środowisko i metoda
@@ -159,7 +159,7 @@ Obserwacje (pomiar, `medium`):
 - Filtr kategorii: pierwsza strona sortu `name` kosztuje tyle, ile spacer po `(name, id)` aż do 26. członka kategorii (głównego albo dodatkowego), więc rośnie z miejscem tego członka w kolejności nazw (H1 niżej); małej kategorii (15 produktów) nie
   da się obsłużyć spacerem (plan czyta całą tabelę: 1,01 mln buforów, 3,1 s). **Licznik pierwszej strony kategorii jest osobnym kosztem:** Seq Scan `catalog_product` do 10 001 trafień, 360–517 ms dla małej, średniej, dużej i „głównie dodatkowej” kategorii (310–320 tys. buforów),
   więc strona i licznik razem dają 3,5 s dla małej kategorii.
-- Frazy: z trygramem i mało trafień: GIN, 8–19 ms (`zupa`, `bagażnik`, polskie znaki, wielkość liter działają); fraza średnia i skorelowana z sortem (`snowboardowe`, 17 200 trafień): 2,4 s i 608 tys. buforów; bez trygramu: patrz sekcja 4.3.
+- Frazy: z trygramem i mało trafień: GIN, 8–19 ms (`zupa`, `bagażnik`, polskie znaki, wielkość liter działają); fraza średnia i skorelowana z sortem (`treningowe`, 17 200 trafień): 2,4 s i 608 tys. buforów; bez trygramu: patrz sekcja 4.3.
 - Kombinacje: mała kategoria + fraza częsta w katalogu (`pro`, 0 trafień w kategorii) 4,1 s (jak sama kategoria, bo fraza nie zawęża spaceru); średnia kategoria + marka 3,7 s; szkice i „bez zdjęć” bez kategorii: ms (indeksy częściowe); bez zdjęć + marka 0,95 s;
   bez zdjęć + dział (licznik) 131 ms. Kombinacje szkice + mała kategoria 100 ms (szkice są rzadkie, częściowy indeks).
 
@@ -204,7 +204,7 @@ Na `medium` (pomiar; „server w pamięci” = SZACUNEK liniowy w tabeli):
 | klienci | `#!#`, `---` | nie | Seq Scan `ordering_customer` (98 571 wierszy) | 25 ms / 25 ms | 98 571 | 0,22 s |
 | klienci | `a.b`, `ab-cd`, `ąęś`, `kowal` | tak | GIN trgm (`name`/`email`) | 0,1–1,3 ms / 11 ms | ≤ trafień | 0,1 s |
 
-Wniosek: klasa „bez trygramu” to **fragmenty z samej interpunkcji (`#!#`, `---`) w zamówieniach, klientach i produktach oraz dla produktów `a.b` i frazy 2-znakowe rzadkie** (frazy 2-znakowe częste przechodzą spacerem po indeksie).
+Kryterium klasy to wyciąganie trygramu z wzorca `LIKE`, nie `show_trgm` ani selektywność (sekcja 9.2, I3). Wniosek: klasa „bez trygramu” to **fragmenty z samej interpunkcji (`#!#`, `---`) w zamówieniach, klientach i produktach oraz dla produktów `a.b` i frazy 2-znakowe rzadkie** (frazy 2-znakowe częste przechodzą spacerem po indeksie).
 Zamówienia i klienci są w niej tańsze niż produkty (czytają tabelę podsumowań albo 1 mln zamówień).
 
 ## 5. W7: panel pod obciążeniem (przed zmianą)
@@ -300,55 +300,75 @@ planów). Równoważność wyników z obecnym SQL (`scripts/equiv.py`, te same w
 - **K1** = K0 + btree `(primary_category_id, name, id)` i `(primary_category_id, updated_at, id)`: jedna uporządkowana gałąź z `LIMIT` na kategorię poddrzewa i jedna gałąź produktów będących w poddrzewie wyłącznie przez kategorię dodatkową
   (członkostwa poddrzewa złączone z produktami, bez tych, których kategoria główna jest w poddrzewie, jako zbiór `MATERIALIZED`; jawne złączenie jest konieczne: plan z `IN (…)` wraca do przejścia po `(name, id)` i czyta tabelę).
   Dwie wcześniejsze postacie K1 (dodatkowa gałąź jako `IN`: do 1,1 s na `medium`; z dedupem `DISTINCT ON` bez odfiltrowania głównych: dział 176–200 ms) mają w `variants/K1-first-form`, `K1-second-form` tylko tabelę `compare.md`.
+  **Deduplikacja (I2).** Domena pozwala na do 10 kategorii dodatkowych produktu (`ProductCategories::MAX_ADDITIONAL`), więc produkt może mieć kilka członkostw w jednym poddrzewie; w danych demo żaden nie ma dwóch w jednym poddrzewie, więc wcześniejsze wyniki tego nie pokazywały. Syntetyczny produkt (`scripts/synthetic-two-additional.sql`: nazwa pierwsza w kolejności, `updated_at` z przyszłości, kategoria główna poza działem,
+  dwie kategorie dodatkowe w dziale) dał **RED**: dotychczasowy K1 zwracał go dwa razy na górze strony działu (`equiv.py --only department`: 2 różnice w 14 parach) i liczył podwójnie (licznik bez limitu: 206 850 obecne, **206 851** stara formuła K1; `results/medium/variants/K1/exact-count.txt`).
+  Poprawka: zbiór `additional` jest `SELECT DISTINCT` (jeden wiersz na produkt), licznik analogicznie; **GREEN: 82 pary bez różnic z syntetycznym produktem w bazie** (`variants/K1/equiv.txt`), licznik bez limitu 206 850. Wariant z półzłączeniem `IN (…)` dawał te same wiersze, ale 2× wolniej (350–380 ms dla działu), więc odrzucony. Koszt `DISTINCT` jest w pomiarach niżej (dział 169–189 ms, jak przed poprawką).
+  Ograniczenie: dane demo nie mają produktów z kilkoma kategoriami dodatkowymi w jednym poddrzewie, więc koszt tego przypadku (jeden syntetyczny produkt) jest niezmierzony w skali; deduplikacja działa na zbiorze liniowym w członkostwach poddrzewa, jak sam zbiór.
 
 Porównanie (mediana `medium` ms → `server` w pamięci ms, SZACUNEK; **NIE** = powyżej 2000 ms):
 
 | kategoria | przypadek | obecne: medium ms → server w pamięci ms | K0 | K1 |
 |---|---|---|---|---|
-| mała (15) | str. 1 `name` | 3067.9 → 30674 **NIE** | 0.3 → 3 | 6.7 → 67 |
+| mała (15) | str. 1 `name` | 3067.9 → 30674 **NIE** | 0.3 → 3 | 6.9 → 69 |
 | mała (15) | str. 1 `-updatedAt` | 894.4 → 8942 **NIE** | 0.3 → 3 | 6.9 → 69 |
 | mała (15) | licznik | 435.4 → 4354 **NIE** | 0.2 → 2 | 6.8 → 68 |
-| średnia (10 585) | str. 1 `name` | 286.2 → 2862 **NIE** | 50.7 → 507 | 8.4 → 84 |
-| średnia (10 585) | str. 1 `-updatedAt` | 4.6 → 46 | 48.6 → 486 | 8.2 → 82 |
-| średnia (10 585) | str. 2 `name` | 6.1 → 61 | 49.9 → 498 | 8.2 → 82 |
-| średnia (10 585) | licznik | 504.5 → 5044 **NIE** | 18.5 → 185 | 7.6 → 76 |
-| duża wczesna (15 199) | str. 1 `name` | 0.2 → 2 | 64.4 → 643 | 9.8 → 98 |
-| duża wczesna (15 199) | str. 1 `-updatedAt` | 4.0 → 40 | 64.6 → 646 | 9.5 → 95 |
+| średnia (10 585) | str. 1 `name` | 286.2 → 2862 **NIE** | 50.7 → 507 | 8.3 → 83 |
+| średnia (10 585) | str. 1 `-updatedAt` | 4.6 → 46 | 48.6 → 486 | 8.3 → 83 |
+| średnia (10 585) | str. 2 `name` | 6.1 → 61 | 49.9 → 498 | 8.3 → 83 |
+| średnia (10 585) | licznik | 504.5 → 5044 **NIE** | 18.5 → 185 | 9.1 → 91 |
+| duża wczesna (15 199) | str. 1 `name` | 0.2 → 2 | 64.4 → 643 | 10.1 → 101 |
+| duża wczesna (15 199) | str. 1 `-updatedAt` | 4.0 → 40 | 64.6 → 646 | 9.4 → 94 |
 | duża wczesna (15 199) | str. 2 `name` | 0.2 → 2 | 67.6 → 676 | 9.6 → 96 |
-| duża wczesna (15 199) | licznik | 360.7 → 3606 **NIE** | 17.7 → 177 | 1.6 → 16 |
-| duża późna (22 829) | str. 1 `name` | 356.3 → 3562 **NIE** | 93.6 → 936 | 10.9 → 109 |
-| duża późna (22 829) | str. 1 `-updatedAt` | 3.0 → 30 | 89.1 → 891 | 11.0 → 110 |
-| duża późna (22 829) | str. 2 `name` | 3.7 → 37 | 92.0 → 920 | 10.5 → 105 |
-| duża późna (22 829) | licznik | 211.7 → 2117 **NIE** | 18.5 → 185 | 1.9 → 19 |
-| dział (206 849) | str. 1 `name` | 0.2 → 2 | 411.0 → 4109 **NIE** | 176.3 → 1763 |
-| dział (206 849) | str. 1 `-updatedAt` | 17.1 → 171 | 1084.7 → 10845 **NIE** | 176.2 → 1762 |
-| dział (206 849) | str. 2 `name` | 0.2 → 2 | 410.5 → 4104 **NIE** | 186.3 → 1863 |
-| dział (206 849) | licznik | 66.5 → 664 | 62.6 → 626 | 1.6 → 16 |
-| głównie dodatkowa (6 689) | str. 1 `name` | 5.7 → 57 | 16.5 → 164 | 9.2 → 92 |
-| głównie dodatkowa (6 689) | str. 1 `-updatedAt` | 5.9 → 59 | 14.9 → 149 | 9.2 → 92 |
+| duża wczesna (15 199) | licznik | 360.7 → 3606 **NIE** | 17.7 → 177 | 1.4 → 14 |
+| duża późna (22 829) | str. 1 `name` | 356.3 → 3562 **NIE** | 93.6 → 936 | 10.2 → 102 |
+| duża późna (22 829) | str. 1 `-updatedAt` | 3.0 → 30 | 89.1 → 891 | 10.0 → 100 |
+| duża późna (22 829) | str. 2 `name` | 3.7 → 37 | 92.0 → 920 | 10.4 → 104 |
+| duża późna (22 829) | licznik | 211.7 → 2117 **NIE** | 18.5 → 185 | 1.6 → 16 |
+| dział (206 849) | str. 1 `name` | 0.2 → 2 | 411.0 → 4109 **NIE** | 169.3 → 1692 |
+| dział (206 849) | str. 1 `-updatedAt` | 17.1 → 171 | 1084.7 → 10845 **NIE** | 169.8 → 1698 |
+| dział (206 849) | str. 2 `name` | 0.2 → 2 | 410.5 → 4104 **NIE** | 178.6 → 1786 |
+| dział (206 849) | licznik | 66.5 → 664 | 62.6 → 626 | 2.0 → 20 |
+| głównie dodatkowa (6 689) | str. 1 `name` | 5.7 → 57 | 16.5 → 164 | 9.8 → 98 |
+| głównie dodatkowa (6 689) | str. 1 `-updatedAt` | 5.9 → 59 | 14.9 → 149 | 9.8 → 98 |
 | głównie dodatkowa (6 689) | str. 2 `name` | 4.8 → 48 | 15.2 → 152 | 9.6 → 96 |
-| głównie dodatkowa (6 689) | licznik | 517.3 → 5172 **NIE** | 12.3 → 123 | 9.2 → 92 |
+| głównie dodatkowa (6 689) | licznik | 517.3 → 5172 **NIE** | 12.3 → 123 | 9.7 → 97 |
 
-- K1 mieści wszystkie przypadki kategorii w 2000 ms w pamięci. Najwyższe: dział (str. 1 `name` 1,76 s, str. 2 1,86 s, `-updatedAt` 1,76/1,89 s): koszt liniowy w członkostwach dodatkowych poddrzewa (ok. 40 tys. wierszy `catalog_product_category` na `medium`, ok. 400 tys. na `server`:
-  168 tys. buforów na `medium`, 1,69 mln na `server`); zapas 5–12% od limitu. Kategorie małe, średnie, duże i „głównie dodatkowe”: 7–11 ms na `medium`, 0,07–0,11 s na `server`; liczniki 1,6–9 ms.
+- K1 mieści wszystkie przypadki kategorii w 2000 ms w pamięci. Najwyższe: dział (str. 1 `name` 1,69 s, str. 2 1,79 s, `-updatedAt` 1,70/1,88 s): koszt liniowy w członkostwach dodatkowych poddrzewa (ok. 40 tys. wierszy `catalog_product_category` na `medium`, ok. 400 tys. na `server`:
+  168 tys. buforów na `medium`, 1,69 mln na `server`); zapas 6–15% od limitu. Kategorie małe, średnie, duże i „głównie dodatkowe”: 7–11 ms na `medium`, 0,07–0,11 s na `server`; liczniki 1,6–9 ms.
 - Przypadki z dodatkowym filtrem obok kategorii (`results/medium/tables/k1-combinations.md`): kategoria + fraza `pro`, + szkice, + bez zdjęć: 7–25 ms na `medium` (`server`: 0,07–0,25 s) dla małych, średnich, dużych i „głównie dodatkowych”.
-  **Cztery przypadki działu z dodatkowym filtrem nie mieszczą się** (R2; przyczyny z planów w sekcji 10.2: koszt gałęzi kategorii dodatkowych i brak częściowych indeksów po kategorii, nie samo „rzadkie przecięcie”): dział + marka `str. 1 name` 2,04 s, dział + szkice `str. 1 name` 12,6 s i `-updatedAt` 7,1 s, dział + bez zdjęć licznik 2,17 s
-  (na `medium` 204, 1264, 710 i 217 ms).
+  **Dział z dodatkowym filtrem:** po poprawce K1 mieści się dział + marka (`%pro%`) 1,92 s, dział + bez zdjęć (strona 1,67 s i 0,62 s, licznik 1,69 s), dział + szkice licznik 1,10 s i `name` 1,44 s; **nie mieści się dział + szkice `-updatedAt`: 10,7 s** (703–1211 ms na `medium`, 350 tys. buforów).
+  Te same przypadki w poprzednich przebiegach K1 miały inne wyniki (dział + szkice `name`: 12,6 s, w następnym przebiegu 1,4 s; dział + marka 2,04 s i 1,92 s): plan zależy od statystyk po `ANALYZE`, a przypadki są na granicy, więc wynik „mieści się” dla działu z filtrem jest niepewny, zob. 10.2 (częściowe indeksy po kategorii usuwają zmienność).
+  Przyczyny z planów i **zmierzone rozwiązania: sekcja 10.2**.
 - **Koszt zapisu K1 (P8, sekcja 8):** dwa indeksy 93 + 56 MB (`server` ok. 1,5 GB, SZACUNEK), zbudowane w 3 s i 1 s na `medium`; zapis produktu +13,3 KB WAL (+59%), z flush +15 KB (+40%) przy zimnych stronach (każda aktualizacja zmienia `updated_at`,
   więc jest nie-HOT i dopisuje wpis do obu nowych indeksów w losowym liściu). `catalog_product` zapisują edycje produktu i generator (cena i stan idą do innych tabel), więc częstość tych zapisów jest niska; wpływ na W20 (generator z dwoma dodatkowymi indeksami przy 10 mln)
   zmierzy zadanie 3.
-- **K2 i K3 nie były prototypowane** (K1 mieści P2 dla kategorii bez filtra; dla R2 są tańsze rozwiązania, sekcja 10.2), więc przegląd miejsc zapisu `git grep` nie jest potrzebny. Kopia kluczy sortowania (K2/K3) usunęłaby koszt członkostw dodatkowych działu (zapas 5–12% → ok. ms),
+- **K2 i K3 nie były prototypowane** (K1 mieści P2 dla kategorii bez filtra; dla R2 są zmierzone tańsze rozwiązania, sekcja 10.2), więc przegląd miejsc zapisu `git grep` nie jest potrzebny. Kopia kluczy sortowania (K2/K3) usunęłaby koszt członkostw dodatkowych działu (zapas 5–12% → ok. ms),
   za cenę zmiany mapowania asocjacji i utrzymania kopii w każdym miejscu zapisu (CRITICAL); rekomenduję ją tylko, jeśli pomiar na `server` pokaże dział powyżej 2000 ms.
 
 ### 9.2 Fraza: F1 → F2
 
 - **F1** (spacer po indeksie sortowania z budżetem B = 20 000 wierszy, potem kandydaci z GIN trygramów i sort): spacer kosztuje 14–40 ms (stały, nie rośnie z danymi) i wypełnia stronę, gdy trafienia są gęste w prefiksie porządku; inaczej dochodzą kandydaci (liniowo w trafieniach).
-  Poprawia frazy skorelowane z sortem: `snowboardowe` (17 200 trafień) 2423 → 140 ms na `medium` (24,2 s → 1,26 s na `server` w pamięci); `zupa` 187 → 214 ms (bez zmiany); `źródło` i polskie znaki 15–25 ms; wszystkie frazy częste 22–47 ms.
+  Poprawia frazy skorelowane z sortem: `treningowe` (17 200 trafień) 2423 → 140 ms na `medium` (24,2 s → 1,26 s na `server` w pamięci); `zupa` 187 → 214 ms (bez zmiany); `źródło` i polskie znaki 15–25 ms; wszystkie frazy częste 22–47 ms.
   **Nie pomaga fragmentom bez trygramu** (`#!#`, `---`, `a.b`, 2 znaki rzadkie): spacer niczego nie znajduje, kandydaci przechodzą ten sam GIN (1,43–1,49 s na `medium`, 14,4–14,9 s na `server`).
   **Nie mieści frazy częstej i skorelowanej z sortem:** `rowerowa` (60 168 trafień, 601 tys. na `server`) sort `name` 297 ms na `medium`, 2,83 s w pamięci na `server` (R1; licznik 295 ms).
 - **F2** (F1 + GIN bigramów `perf_bigrams(name)` dla fraz, z których pg_trgm nie wyciąga trygramu): kandydaci dla `#!#`, `---`, `a.b`, `qx`, `zx` 0,0–0,1 ms (wobec 650–1490 ms), liczniki 0,0 ms (wobec 240–670 ms): **każdy przypadek bez trygramu 14–25 ms na `medium` i `server`**.
   Fraza z trygramem zostaje przy F1 (bigramy dają dla niej gorsze listy: `rowerowa` 2,2 s), więc do wdrożenia: F1 dla frazy z trygramem, F2 dla frazy, z której pg_trgm trygramu nie wyciąga (kryterium wyboru drogi do ustalenia w zadaniu 2).
 - Wynik kombinacji F1+F2 (SZACUNEK „w pamięci”; wszystkie przypadki macierzy fraz poza jednym ≤ 1,3 s): w 2000 ms mieszczą się wszystkie fragmenty bez trygramu i frazy z trygramem poza `rowerowa/name` (2,83 s, R1).
+- **F2 dla fraz bez trygramu, ale z trafieniami (I3, `scripts/i3.py`, `variants/I3/`).** Nazwy demo nie mają interpunkcji i 2-znakowych fraz rzadkich, więc przypadki z trafieniami są syntetyczne (znaczniki dopisane do losowych nazw na `shop_proto`, zdjęte po pomiarze; rozmieszczone losowo, nie w prefiksie kolejności):
+  `#!#` 250 trafień, `a.b` 12 000, `qx` 250, a z danych `gg` 12 828 i `ze` 155 298 (mediana `medium` ms: obecne p1 `name` / F1 / F2; server w pamięci w nawiasie, SZACUNEK):
+
+  | fraza (trafień) | obecne | F1 | F2 |
+  |---|---|---|---|
+  | `#!#` rzadka (250) | 1453 (14,5 s) | 1464 (14,6 s) | **16 (0,16 s)**, licznik 1,7 |
+  | `qx` rzadka (250) | 1457 (14,6 s) | 1478 (14,8 s) | **15 (0,15 s)**, licznik 1,1 |
+  | `gg` średnia (12 828) | 2001 (20,0 s) | 1490 (14,9 s) | **32 (0,32 s)**, licznik 14,8 |
+  | `a.b` średnia (12 000) | 4,2 (spacer znajduje strony) | 16,5 | 16,5 |
+  | `ze` częsta (155 298) | 1,1 | 19 | 19, licznik 140 (obecny 31) |
+
+  **F2 nadal mieści P2 dla fraz bez trygramu, także z trafieniami.** Wynik jest zgodny z kosztem liniowym w trafieniach (kandydaci bigramów: ok. 0,13 ms na 100 trafień poza spacerem); fraza 2-znakowa średnia skorelowana z sortem o setkach tysięcy trafień na `server` byłaby klasy R1 (kandydaci), nie zmierzona.
+  **Kryterium wyboru drogi F2 to brak trygramu wyciąganego z wzorca `LIKE '%…%'` przez pg_trgm, nie selektywność.** `show_trgm` jest złym wskaźnikiem: dla `#!#` zwraca `{}`, ale dla `a.b`, `qx`, `gg` i `ze` zwraca trygramy z dopełnieniem krawędzi słowa (np. `{"  q"," qx","qx "}`), które
+  w `%qx%` nie zawężają; plan pokazuje, że GIN zwraca wtedy 31–40% tabeli (`qx`: 400 265 wpisów z 1 000 191, `a.b`: 311 167). Wzorzec bez pełnego trygramu wewnątrz (frazy do 2 znaków, fragmenty z samej interpunkcji, krótkie człony oddzielone interpunkcją) idzie więc drogą F2. Implementacja musi liczyć trygramy wzorca tak jak pg_trgm
+  dla `LIKE` (słowa z liter i cyfr dłuższe niż 2 znaki), albo wybierać po oszacowaniu planisty; to zadanie 2 (test planu na frazach `#!#`, `a.b`, `qx`).
 - **Koszt F2 (P8):** indeks 64 MB (`server` ok. 0,64 GB, SZACUNEK; spec szacował ok. 2 GB; obecny GIN trygramów 248 MB) zbudowany w 37 s; zapis produktu +0,8 KB WAL zimno plus flush listy oczekujących GIN (+13 KB), razem **+14 KB (+38% zapisu bez nowych indeksów, +27% zapisu z K1)**; czasy zapisu zaszumione obciążeniem hosta.
 
 ### 9.3 Zamówienia i klienci: Z0 → Z1
@@ -375,9 +395,9 @@ Porównanie (mediana `medium` ms → `server` w pamięci ms, SZACUNEK; **NIE** =
 | obszar | wariant | najgorszy przypadek obszaru spełniający / niespełniający 2000 ms | koszt zapisu (P8, zimny, z flush) | rozmiar (`server`) | status |
 |---|---|---|---|---|---|
 | kategoria | K0 | dział str. 1 `-updatedAt` 10,8 s (NIE) | brak | brak | odrzucony |
-| kategoria | **K1** | dział 1,89 s (zapas 5%); dział + filtr 2,0–12,6 s (NIE, R2: sekcja 10.2) | +15 KB (+40%) na zapis produktu | ok. 1,5 GB | **rekomendowany** |
+| kategoria | **K1** (z deduplikacją) | dział 1,88 s (zapas 6%); dział + szkice `-updatedAt` 10,7 s i dział + fraza średnia 4,0–9,0 s (NIE, R2: sekcja 10.2) | +15 KB (+40%) na zapis produktu | ok. 1,5 GB | **rekomendowany** |
 | fraza | F1 | `rowerowa` 2,83 s (NIE, R1); bez trygramu 14,4 s (NIE) | brak | brak | niewystarczający sam |
-| fraza | **F1 + F2** | `rowerowa` 2,83 s (NIE, R1); reszta ≤ 1,3 s | +14 KB (+38% zapisu bez nowych indeksów) na zapis produktu (F2) | ok. 0,64 GB (F2) | **rekomendowany** |
+| fraza | **F1 + F2** | `rowerowa` 2,83 s (NIE, R1; spacer index-only 1,6 s, 10.2); reszta ≤ 1,3 s; fraza bez trygramu z trafieniami 0,15–0,32 s (I3) | +14 KB (+38% zapisu bez nowych indeksów) na zapis produktu (F2) | ok. 0,64 GB (F2) | **rekomendowany** |
 | zamówienia, klienci | **Z0** | zamówienia `#!#` 1,5 s | brak | brak | **wybór wg reguły** |
 | zamówienia, klienci | Z1 | wszystko ≤ 0,0 ms dla `#!#`/`---` | +24 KB (+42%) na cykl zamówienia, +9 KB (+45%) na klienta | ok. 0,33 GB + 83 MB | gotowy, niewybrany |
 | mapa strony | M0 | 2,25 s (NIE) | brak | brak | stan obecny |
@@ -413,7 +433,9 @@ oraz tanie sprawdzenie na `shop_proto`, które rozstrzyga (faza B poprawek). Lic
   1. **Dłuższy spacer index-only** (nazwa jest w indeksie, więc bez odczytu sterty): spacer F1 kosztuje 14 ms za 20 000 wierszy (ok. 0,7 µs na wiersz), więc dojście do 26. trafienia (229 tys. wierszy) to ok. 0,16 s na `medium` i ok. 1,6 s na `server` przy zachowaniu rozkładu (SZACUNEK z kosztu na wiersz, niezmierzony).
      Zapis: bez zmian. Ryzyko: koszt zależy od miejsca 26. trafienia w kolejności nazw (rozkład, nie wolumen), a nie od liczby trafień; trzeba wybierać drogę: budżet rosnący geometrycznie (20 tys., 200 tys., 2 mln wierszy; koszt ≤ ok. 2× ostatniego kroku) i przejście na kandydatów, gdy licznik GIN pokazuje mało trafień.
   2. Tańszego sortu kandydatów nie ma bez nowej struktury (GIN nie zwraca nazwy); struktury wymagające nowego rozszerzenia (np. trygramy w GiST z kluczem sortowania) nie były badane.
-- *Tanie sprawdzenie (faza B):* jeden `EXPLAIN (ANALYZE, BUFFERS)` spaceru index-only bez budżetu do 26. trafienia dla `rowerowa`, `snowboardowe` i czterech innych fraz częstych o różnym skosie (czas, bufory, miejsce 26. trafienia w kolejności). Zależność od wolumenu czytamy z udziału tego miejsca w nazwach: dane demo mają ten rozkład niezależny od wolumenu, prawdziwy katalog może go nie mieć (to pomiar do powtórzenia na `server`).
+- *Wynik sprawdzenia (faza B; `scripts/r-checks.py`, `variants/R/r-compare.md`):* spacer index-only bez budżetu do 26. trafienia: `rowerowa` (60 168 trafień) 159 ms i 202 726 buforów, `pływacki` (25 720) 137 ms, `snowboardowe` (12 952) 92 ms, `zupa` 21 ms, `źródło` 2,5 ms, `bagażnik` 3 ms;
+  koszt ok. 0,7 µs na wiersz. **Na `server` (rozkład zachowany): 1,6 s, 1,4 s i 0,9 s w pamięci (SZACUNEK; zapas 20–55%)**, czyli rozwiązanie 1 mieści R1 w P2, wobec 2,83 s kandydatów. Zależność od wolumenu: udział miejsca 26. trafienia w nazwach (23% dla `rowerowa`);
+  w danych demo jest niezależny od wolumenu, w prawdziwym katalogu może go nie być (powtórzyć na `server`). Wybór drogi: liczba trafień z licznika GIN (do 10 001) i budżet geometryczny; przy małej liczbie trafień kandydaci (7–21 ms).
 
 **R2a. Dział + fraza częsta (2,04 s).**
 - *Przyczyna z planu* (`K1.department.cat+brand.p1.name.out`): gałęzie kategorii głównych kończą w mniej niż 1 ms (fraza częsta, 26 trafień blisko początku indeksu); cały koszt (168 tys. z 169 tys. buforów) to CTE `additional`: 41 770 członkostw działu, dla każdego odczyt produktu po kluczu głównym
@@ -423,8 +445,10 @@ oraz tanie sprawdzenie na `shop_proto`, które rozstrzyga (faza B poprawek). Lic
      Zapis: tylko przy zmianie kategorii głównej albo dodatkowych produktu (rzadko), nie przy każdym zapisie produktu. Ryzyko: spójność kopii w każdym miejscu zapisu (repozytorium z ORM `ManyToMany`, generator `COPY`, `ProductPhotos`, migracje), więc zmiana mapowania na zapis ręczny: to „K2 lite” (jedna kolumna, bez kopii kluczy sortowania),
      z wymaganiami spójności z sekcji „Warianty” specyfikacji (test zgodności, `git grep` miejsc zapisu).
   2. Zostawić K1 bez zmian: dział bez filtra mieści się (1,76–1,89 s), z frazą częstą 2,04 s jest na granicy (2% ponad limit); wynik na `server` rozstrzyga.
-- *Tanie sprawdzenie (faza B):* na `shop_proto` tabela próbna z 200 192 członkostw i kolumną `primary_category_id` oraz indeks pokrywający, `EXPLAIN (ANALYZE, BUFFERS)` odrzucenia dla działu (czas i bufory; kilka sekund). Rozstrzyga, czy rozwiązanie 1 daje ok. dziesiątki ms zamiast 116–180 ms.
-- *Czego nie zmierzyłem:* działu z frazą **rzadką** (rzadkie przecięcie, zasada 5: koszt to mniejsza z dwóch wielkości, wiersze działu odczytane przez gałęzie albo kandydaci frazy). Dołączam do fazy B (dział + fraza rzadka i średnia).
+- *Wynik sprawdzenia (faza B):* tabela próbna `pc_probe` (200 194 członkostw z kolumną `primary_category_id`) z indeksem pokrywającym (13 MB): odrzucenie członkostw działu (9 produktów wyłącznie przez kategorie dodatkowe) **17 ms i 1 920 buforów wobec 115–120 ms i 137 073 buforów** złączenia z produktami (planista wybrał Seq Scan próbnej tabeli; z indeksem byłoby jeszcze mniej). Na `server` ok. 0,17 s zamiast 1,2 s: rozwiązanie 1 usuwa koszt gałęzi dodatkowych; zapis i ryzyko spójności jak w opisie powyżej.
+- *Dział z frazą rzadką i średnią (zmierzone w fazie B, K1; przed i po częściowych indeksach bez zmian):* **fraza rzadka** (`ravotar`, 2 980 trafień w katalogu) 119 ms i 30 825 buforów (1,2 s na `server`), licznik 17 ms: mieści się; **fraza średnia** (`snowboardowe`, 12 952 trafień) `name` 395–404 ms i 46,8 tys. buforów (4,0 s), **`-updatedAt` 896–902 ms i 223 tys. buforów (9,0 s)**, licznik 74–78 ms: **nie mieści się (R2d)**.
+  Plan: gałęzie kategorii przechodzą indeks `(primary_category_id, updated_at, id)` z filtrem frazy przez cały dział (206 tys. wierszy), bo trafienia są skupione dalej w tym porządku; koszt liniowy w wierszach działu (zasada 5: mniejsza z dwóch wielkości, działu albo kandydatów frazy, tu 13 tys. trafień ≈ 223 tys. buforów działu, więc obie są duże).
+  Rozwiązanie spoza prototypów (niezmierzone): kandydaci frazy z GIN trygramów zawężeni do kategorii (bitmapa AND, koszt liniowy w trafieniach frazy: ok. 0,15 s na 13 tys. trafień jak w F1, 2 s na server) zamiast gałęzi po kategorii, wybór po porównaniu rozmiaru działu z liczbą trafień (licznik GIN); bez nowego indeksu; do rozważenia w zadaniu 3 z testem planu.
 
 **R2b. Dział + szkice (12,6 s i 7,1 s).**
 - *Przyczyna z planu* (`K1.department.cat+drafts.p1.name.out`): 26 gałęzi kategorii czyta globalny częściowy indeks szkiców `(name, id) WHERE status = 'draft'` (nie po kategorii) i filtruje kategorię; każda gałąź przechodzi wszystkie szkice (20 108 na `medium`): 502 tys. buforów. Liniowe w (kategorie poddrzewa × szkice).
@@ -432,13 +456,13 @@ oraz tanie sprawdzenie na `shop_proto`, które rozstrzyga (faza B poprawek). Lic
   1. **Częściowe btree po kategorii** `(primary_category_id, name, id) WHERE status = 'draft'` i `(primary_category_id, updated_at, id) WHERE status = 'draft'`: gałąź czyta tylko szkice swojej kategorii (≤ 26). Rozmiar: tylko szkice (ok. 2% produktów; istniejące częściowe indeksy szkiców mają 2,3 MB i 1,2 MB, więc ok. 3 MB na `medium`, ok. 30 MB na `server`).
      Zapis: wpis tylko dla produktu-szkicu i przy zmianie statusu (produkt opublikowany nie dopisuje nic do tych indeksów, więc koszt dla zapisu opublikowanego produktu zero). Ryzyko niskie: predykat `p.status = 'draft'` jest już literałem w kodzie (tak działają dzisiejsze częściowe indeksy).
   2. Gałąź „najpierw szkice” (osobne zapytanie po 20 tys. szkicach, potem filtr kategorii): bez indeksów, ale koszt liniowy w liczbie szkiców (201 tys. na `server`, ok. 0,5 s); gorsze od 1.
-- *Tanie sprawdzenie (faza B):* utworzyć dwa częściowe indeksy na `shop_proto` (20 108 wierszy, poniżej sekundy) i `EXPLAIN` dla działu + szkice, małej kategorii + szkice (oba sorty, strona i licznik).
+- *Wynik sprawdzenia (faza B):* cztery częściowe indeksy po kategorii (szkice: 1,9 + 1,2 MB, bez zdjęć: 1,9 + 1,2 MB) zbudowane na `shop_proto` w poniżej sekundy. **Dział + szkice `-updatedAt` 1095 → 110 ms (350 379 → 21 936 buforów), `name` 160 → 109 ms, licznik 108 → 13 ms; mała kategoria + szkice 9,4 → 6,4 ms.** Na `server` ok. 1,1 s dla najgorszego przypadku (liniowo w gałęziach działu, 22 tys. buforów na `medium`).
 
 **R2c. Dział + bez zdjęć, licznik (2,17 s).**
 - *Przyczyna z planu* (`K1.department.cat+noimages.count.out`): `BitmapAnd` indeksu kategorii (214 744 wpisy działu) i częściowego `catalog_product_without_images_idx` (20 003), z 11 005 stronami „lossy” (60 720 wierszy do ponownego sprawdzenia): 182–217 ms na `medium`, liniowo w wierszach działu odczytanych z indeksu kategorii.
 - *Rozwiązanie:* **częściowe btree po kategorii z tym samym predykatem co istniejący indeks** `(primary_category_id, name, id) WHERE images = '[]'::jsonb` (kod ma stałą `WITHOUT_IMAGES`); licznik i strona czytają tylko produkty bez zdjęć kategorii. Rozmiar i zapis jak szkice (ok. 2% produktów, wpis tylko dla produktu bez zdjęć).
   Ryzyko: predykat musi być tekstowo identyczny z zapytaniem (dziś jest). Dla kombinacji szkice + bez zdjęć (przecięcie dwóch częściowych) planista wybierze jeden z nich; do sprawdzenia w tej samej fazie.
-- *Tanie sprawdzenie (faza B):* jak R2b, indeks bez zdjęć po kategorii i `EXPLAIN` licznika działu.
+- *Wynik sprawdzenia (faza B):* dział + bez zdjęć licznik **181 → 11 ms** (43 877 → 6 167 buforów), `name` 176 → 42 ms, `-updatedAt` 67 → 42 ms; dział + szkice + bez zdjęć 65–74 → 10–12 ms (planista użył częściowego indeksu bez zdjęć i filtru szkiców).
 
 **Marka w R2.** Przypadek „dział + marka” w macierzy to fraza częsta (`%pro%`), czyli R2a (koszt gałęzi dodatkowych), nie przecięcie z rzadką frazą. Dla frazy rzadkiej w dziale ograniczeniem byłoby złożone indeksowanie kategorii razem z trygramami (rozszerzenie `btree_gin`, GIN na `(primary_category_id, name gin_trgm_ops)`):
 rozmiar rzędu indeksu trygramów (248 MB na `medium`, ok. 2,5 GB na `server`), koszt zapisu jak przy F2 (+14 KB WAL, flush listy oczekujących) przy każdym zapisie produktu i nowe rozszerzenie (zależność); nie rekomenduję bez pomiaru przypadku „dział + fraza rzadka”.
@@ -447,8 +471,8 @@ rozmiar rzędu indeksu trygramów (248 MB na `medium`, ok. 2,5 GB na `server`), 
 
 1. **Zatwierdzenie wariantów K (K1), F (F1 + F2), Z (Z0, z Z1 w odwodzie) i M (M1)** z kosztami z sekcji 8–9: nowe indeksy ok. 1,5 GB (K1) + 0,64 GB (F2) na `server` (SZACUNEK; zadania 2–3 zmierzą rozmiar po generatorze), +15 KB WAL na zapis produktu (K1) i +14 KB (F2), brak zmiany zapisu zamówień przy Z0.
    Czy P8 jest akceptowalne? (Zapisy `catalog_product` robią tylko edycje produktu i generator; wpływ na W20 zmierzy zadanie 3.)
-2. **Rozwiązania dla R1 i R2 zamiast wyjątków W7 (sekcja 10.2):** czy zatwierdzić do zadań 2–3: dłuższy spacer index-only z budżetem rosnącym (R1), trzy częściowe indeksy po kategorii (szkice dla `name` i `updated_at`, bez zdjęć; ok. 3 MB na `medium`, zapis tylko dla szkiców i produktów bez zdjęć)
-   i, zależnie od pomiaru fazy B, kolumnę `primary_category_id` w `catalog_product_category` (R2a)? Każde z rozwiązań zostaje do potwierdzenia pomiarem fazy B (tanie `EXPLAIN` na `shop_proto`) i na `server`.
+2. **Rozwiązania dla R1 i R2 zamiast wyjątków W7 (sekcja 10.2), zmierzone na `shop_proto` w fazie B:** czy zatwierdzić do zadań 2–3: dłuższy spacer index-only z budżetem rosnącym (R1: 0,9–1,6 s na `server`), cztery częściowe indeksy po kategorii (szkice i bez zdjęć, każdy dla `name` i `updated_at`; razem 6,2 MB na `medium`, ok. 60 MB na `server`; zapis tylko dla szkiców i produktów bez zdjęć)
+   oraz kolumnę `primary_category_id` w `catalog_product_category` (R2a: 17 ms zamiast 115 ms; „K2 lite”, ryzyko spójności kopii)? Dział + fraza średnia (R2d: 4,0–9,0 s) wymaga jeszcze decyzji: kandydaci GIN zawężeni do kategorii (niezmierzone) czy inne rozwiązanie. Wszystko zostaje do potwierdzenia na `server`.
 3. **Z0 czy Z1:** Z0 mieści P2 w pamięci w pomiarze izolowanym (zamówienia `#!#`/`---` 1,2–1,5 s na `server`, zapas 22–40%), ale **pod obciążeniem mieszanki klasa `orders_punct` miała na `medium` p95 630 ms i maks. 825 ms (mediana trzech przebiegów W7, ok. 1% żądań mieszanki)**; ta sama metoda
    skalowania (zamówienia ×5, liniowo) daje na `server` p95 ok. 3,2 s i maks. ok. 4,1 s (SZACUNEK górny: w pomiarze pod obciążeniem jest kolejkowanie, nie sam skan). Z0 nie jest więc potwierdzone dla W7 pod obciążeniem, a wpływ na P4 niezmierzony. Z1 usuwa ten koszt (0,1 ms), ale dodaje +24 KB WAL na cykl zamówienia
    (+42% względem syntetycznego zapisu, ścieżka W6/W11). Czy zostajemy przy Z0 do pomiaru na `server`, czy wybieramy Z1 od razu?
@@ -460,7 +484,7 @@ rozmiar rzędu indeksu trygramów (248 MB na `medium`, ok. 2,5 GB na `server`), 
 
 ### 10.4 Zastrzeżenia do rekomendacji
 
-- Wszystkie liczby `server` są SZACUNKIEM z `medium`; wybór wariantu opiera się na ekstrapolacji „w pamięci” (zapas dla K1 na dziale 5–12%, dla Z0 22–40%, dla M1 20–45%), więc **ostatecznie rozstrzyga pomiar na `server`** (zastrzeżenie 1). Ekstrapolacja „z dysku” jest założeniem (ograniczenie IO zmierzono na worf.pl tylko dla
+- Wszystkie liczby `server` są SZACUNKIEM z `medium`; wybór wariantu opiera się na ekstrapolacji „w pamięci” (zapas dla K1 na dziale 6–15%, dla Z0 22–40%, dla M1 20–45%), więc **ostatecznie rozstrzyga pomiar na `server`** (zastrzeżenie 1). Ekstrapolacja „z dysku” jest założeniem (ograniczenie IO zmierzono na worf.pl tylko dla
   generowania zamówień) i nie służy jako dowód spełnienia ani niespełnienia W7: według niej niemal wszystkie plany liniowe zostałyby przekroczone, także te po zmianie.
 - Pomiar P7 (równoważność) wykonany na prototypach SQL; test równoważności i testy planów w CI to zadania 2–5.
 - K1 i F2 dodają losowe wpisy do indeksów przy każdym zapisie produktu; wpływ na W11 (zapisy panelu równolegle z zamówieniami), W18 (przeniesienie działu: reindeks poddrzewa) i W20 (generator) zmierzą zadania 3 i 7.
@@ -501,7 +525,7 @@ Testy narzędzi: `make load-panel-check` (ścieżki błędu: zły tryb, brak sto
 Katalog `docs/reports/admin-queries-baseline-2026-11-27/` został odchudzony (ok. 2,7 MB), bez utraty liczb raportu:
 - `results/{small,medium}/cases.json`: przypadki z zapytaniami (pole `sql`) i zmienną kosztu; `results.json`: czasy i bufory przebiegów (pierwszy i ostatni przebieg w całości, środkowe tylko czas; z tego liczą wszystkie tabele: `extrapolate.py`, `matrix.py table`, `compare.py`, `f_table.py`).
   Wyjście `extrapolate.py` i `matrix.py table` jest po odchudzeniu identyczne bajt w bajt.
-- `results/medium/variants/{K0,K1,F1,F2,Z1}/`: `cases.json`, `results.json`, `compare.md` / `f-table.md`, plany wybranych przypadków; `K1-first-form`, `K1-second-form` tylko `compare.md`. `equiv.txt` (wynik `equiv.py` na `medium`) w katalogu każdego rekomendowanego wariantu.
+- `results/medium/variants/{K0,K1,F1,F2,Z1}/` (K1 z deduplikacją, `exact-count.txt`), `I3/` (frazy bez trygramu z trafieniami) i `R/` (sprawdzenia R1/R2: `before`, `after`, `r-compare.md`, `r-checks-sql.txt`): `cases.json`, `results.json`, `compare.md` / `f-table.md`, plany wybranych przypadków; `K1-first-form`, `K1-second-form` tylko `compare.md`. `equiv.txt` (wynik `equiv.py` na `medium`) w katalogu każdego rekomendowanego wariantu.
 - Plany `EXPLAIN (ANALYZE, BUFFERS)` zostały tylko dla przypadków cytowanych w raporcie i tabelach (`results/medium/explain/`, `variants/*/explain/`). Pozostałe odtwarza `matrix.py run --db <baza> --cases <cases.json> --out <katalog> [--only <fragment id>]`
   (plan tekstowy ostatniego przebiegu w `explain/<id>.out`) na bazie z danymi profilu; pojedyncze zapytania można też uruchomić z pola `sql`. Pliki `sql/` z osobnymi zapytaniami zostały usunięte (duplikaty `cases.json`).
 - Dane `small` odtwarza `make seed-scale PROFILE=small`, `medium` `PROFILE=medium` (deterministyczne UUID; losowanie przypadków `matrix.py gen` nie ma ziarna, więc nowe losowanie da inne konkretne kategorie i frazy tych samych klas; `cases.json` zachowuje wylosowane).
@@ -510,6 +534,8 @@ Katalog `docs/reports/admin-queries-baseline-2026-11-27/` został odchudzony (ok
 
 ## 12. Odstępstwa od planu
 
+- Faza B poprawek (17:43–18:05 UTC, host wolny): pomiary tylko na `shop_proto`. Syntetyczny produkt z dwiema kategoriami dodatkowymi, znaczniki `#!#`/`a.b`/`qx` w nazwach, cztery częściowe indeksy i tabela `pc_probe` zostały zdjęte po sprawdzeniu (liczba produktów 1 000 191, brak indeksów `proto_r2%`).
+  K1 przeszedł dwie poprawki zapytania w fazie B (półzłączenie `IN` dawało te same wiersze 2× wolniej; ostatecznie `SELECT DISTINCT`), a jego tabela i `equiv.txt` zostały zmierzone od nowa.
 - M2 zmierzony dla porównania, choć M1 wystarczał (reguła: bardziej złożonych nie prototypujemy); wynik nie wpływa na wybór.
 - Postać K1: pierwsza (dodatkowa gałąź jako `IN`) i druga (złączenie bez odfiltrowania głównych) czytały za dużo; trzecia (finalna) w `variants/K1`, poprzednie w `K1-first-form`, `K1-second-form` (tylko `compare.md`).
 - Baza prototypów `shop_proto` miała zapisy z pomiaru kosztu zapisu (3000 aktualizacji produktów, 500 nowych zamówień, 1000 aktualizacji klientów w każdym stanie), więc kursory stron 2 dla `-updatedAt` w obecnym SQL (rysowane na `shop`) różniły się od prototypu; `equiv.py` podstawia kursor prototypu do obecnego SQL.
