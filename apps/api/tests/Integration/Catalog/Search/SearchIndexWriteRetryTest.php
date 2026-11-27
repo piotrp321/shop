@@ -181,6 +181,6 @@ final class SearchIndexWriteRetryTest extends TestCase
 
     private static function document(string $id, int $version): ProductDocument
     {
-        return new ProductDocument($id, $version, 'Name', 'slug-'.$id, '', 'c', ['c'], ['c'], null, [], [], null, ProductStatus::Published);
+        return new ProductDocument($id, $version, 'Name', 'slug-'.$id, '', 'c', 'c', ['c'], ['c'], null, [], [], null, ProductStatus::Published);
     }
 }

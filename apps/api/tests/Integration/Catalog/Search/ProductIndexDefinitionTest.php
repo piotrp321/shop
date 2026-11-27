@@ -50,13 +50,13 @@ final class ProductIndexDefinitionTest extends TestCase
 
         $settings = self::esClient()->indices()->getSettings(['index' => $index]);
         \assert($settings instanceof Elasticsearch);
-        self::assertSame('1', $settings[$index]['settings']['index']['number_of_shards']);
-        self::assertSame(['sort_path'], $settings[$index]['settings']['index']['sort']['field']);
-        self::assertSame(['asc'], $settings[$index]['settings']['index']['sort']['order']);
+        self::assertSame('1', self::at($settings->asArray(), $index, 'settings', 'index', 'number_of_shards'));
+        self::assertSame('sort_path', self::at($settings->asArray(), $index, 'settings', 'index', 'sort', 'field'));
+        self::assertSame('asc', self::at($settings->asArray(), $index, 'settings', 'index', 'sort', 'order'));
 
         $mapping = self::esClient()->indices()->getMapping(['index' => $index]);
         \assert($mapping instanceof Elasticsearch);
-        self::assertSame(['type' => 'keyword', 'index' => false], $mapping[$index]['mappings']['properties']['sort_path']);
+        self::assertSame(['type' => 'keyword', 'index' => false], self::at($mapping->asArray(), $index, 'mappings', 'properties', 'sort_path'));
     }
 
     public function testThePathOfTheMainCategoryIsStoredAsTheSortKeyAndReadBack(): void
@@ -69,8 +69,10 @@ final class ProductIndexDefinitionTest extends TestCase
 
         $stored = self::esClient()->get(['index' => $this->alias(), 'id' => self::ID]);
         \assert($stored instanceof Elasticsearch);
-        self::assertSame('p/c', $stored['_source']['sort_path']);
-        self::assertEquals($document, ProductIndexDefinition::document($stored['_source']));
+        $source = $stored['_source'];
+        \assert(\is_array($source));
+        self::assertSame('p/c', $source['sort_path']);
+        self::assertEquals($document, ProductIndexDefinition::document($source));
     }
 
     public function testADocumentWithVariantsIsStoredAndReadBack(): void
@@ -179,6 +181,21 @@ final class ProductIndexDefinitionTest extends TestCase
         // The pair is a value of its own: the axis name is not a value and the case is kept.
         self::assertSame(0, $this->countVariants([$pair('Kolor', 'Rozmiar')]));
         self::assertSame(0, $this->countVariants([$pair('Kolor', 'białe')]));
+    }
+
+    /**
+     * The value at the nested keys of a decoded response, null when any level is missing.
+     */
+    private static function at(mixed $data, string ...$keys): mixed
+    {
+        foreach ($keys as $key) {
+            if (!\is_array($data) || !\array_key_exists($key, $data)) {
+                return null;
+            }
+            $data = $data[$key];
+        }
+
+        return $data;
     }
 
     /**

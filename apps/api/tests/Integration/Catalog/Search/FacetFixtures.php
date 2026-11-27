@@ -47,6 +47,7 @@ final class FacetFixtures
             'produkt-'.$id,
             'Opis',
             'c',
+            'c',
             ['c'],
             ['c'],
             null,

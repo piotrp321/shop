@@ -25,7 +25,8 @@ use Psr\Log\NullLogger;
  * requests answered with 429, 502, 503 or 504 or lost to a timeout) up to {@see WRITE_ATTEMPTS} times in all, waiting
  * twice as long after each failed attempt. The writes keep version_type external_gte, so repeating a document that
  * a timed-out request already indexed is harmless. An index created for a rebuild is filled with the refresh
- * disabled; {@see verify()} restores the default refresh interval.
+ * disabled; {@see verify()} sets the refresh interval of the configuration. {@see setup()} sets it on the index of the alias
+ * when that one has another.
  */
 final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexMaintenance
 {
@@ -64,6 +65,8 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
         if (1 !== \count($targets)) {
             throw new SearchIndexError(\sprintf('The alias "%s" points to %d indexes (%s); it must point to exactly one. Remove the alias from all but one of them with the _aliases API.', $this->alias, \count($targets), implode(', ', $targets)));
         }
+
+        $this->applyRefreshInterval($targets[0]);
 
         return new SetupResult(
             $this->orphans($targets),
@@ -193,8 +196,9 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
             throw new SearchIndexError(\sprintf('The index "%s" does not exist.', $index));
         }
 
-        // An index created for a rebuild was filled without refreshes; null puts the default interval back.
-        $this->request('restore refresh interval', fn () => $this->longRequestClient->indices()->putSettings(['index' => $index, 'body' => ['index' => ['refresh_interval' => null]]]));
+        // An index created for a rebuild was filled without refreshes; the interval of the configuration is set before the
+        // explicit refresh, so what the first listing reads is what the rebuild wrote.
+        $this->setRefreshInterval($index);
         $this->request('refresh index', fn () => $this->longRequestClient->indices()->refresh(['index' => $index]));
 
         // Healthy: every primary shard assigned (yellow or green). A timed-out wait answers 408.
@@ -284,13 +288,36 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
             // The index and its alias appear together, in one request.
             $body['aliases'] = [$this->alias => new \stdClass()];
         } else {
-            // A rebuild fills the index in one go; verify() restores the default interval.
+            // A rebuild fills the index in one go; verify() sets the interval of the configuration.
             $body['settings']['refresh_interval'] = '-1';
         }
 
         $this->request('create index', fn () => $this->longRequestClient->indices()->create(['index' => $index, 'body' => $body]));
 
         return $index;
+    }
+
+    private function setRefreshInterval(string $index): void
+    {
+        $this->request('set refresh interval', fn () => $this->longRequestClient->indices()->putSettings([
+            'index' => $index,
+            'body' => ['index' => ['refresh_interval' => $this->definition->refreshInterval()]],
+        ]));
+    }
+
+    /**
+     * The refresh interval is a dynamic setting, so an index that exists gets the one of the configuration without a rebuild.
+     */
+    private function applyRefreshInterval(string $index): void
+    {
+        $settings = $this->request('read refresh interval', fn () => $this->client->indices()->getSettings([
+            'index' => $index,
+            'name' => 'index.refresh_interval',
+        ]))->asArray();
+
+        if (self::at($settings, $index, 'settings', 'index', 'refresh_interval') !== $this->definition->refreshInterval()) {
+            $this->setRefreshInterval($index);
+        }
     }
 
     /**

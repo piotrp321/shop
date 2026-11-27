@@ -28,7 +28,9 @@ final class ProductIndexSettingsTest extends TestCase
 
         self::assertSame('sort_path', $body['settings']['sort.field']);
         self::assertSame('asc', $body['settings']['sort.order']);
-        self::assertSame(['type' => 'keyword', 'index' => false], $body['mappings']['properties']['sort_path']);
+        $properties = $body['mappings']['properties'];
+        \assert(\is_array($properties));
+        self::assertSame(['type' => 'keyword', 'index' => false], $properties['sort_path']);
     }
 
     public function testTheBodyCarriesTheRefreshIntervalOfTheConfiguration(): void

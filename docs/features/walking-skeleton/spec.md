@@ -396,8 +396,13 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   dokładnie jeden fizyczny indeks `<alias>_<UTC rrrrmmddggmmssmmm>_<6 znaków hex>`, więc kolejne przebudowy nie
   kolidują nazwami.
 - `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Shardy pochodzą ze zmiennej `SEARCH_SHARDS`
-  (bez niej 1; `docs/features/search/spec.md`, „Infrastruktura”), repliki z parametru (0). W `_meta.definition_hash` indeksu zapisany jest hash definicji (mapping i analiza, bez
-  shardów i replik), z którym porównujemy indeks przy `setup` (ostrzeżenie) i przed przepięciem (odmowa).
+  (bez niej 1; `docs/features/search/spec.md`, „Infrastruktura”), repliki z parametru (0), `refresh_interval`
+  ze zmiennej `SEARCH_REFRESH_INTERVAL` (bez niej `1s`; liczba z jednostką `ms` albo `s`). Indeks jest posortowany po
+  polu `sort_path` (rosnąco), więc produkty jednej kategorii leżą obok siebie. W `_meta.definition_hash` indeksu
+  zapisany jest hash definicji (mapping, analiza i sortowanie, bez shardów, replik i interwału odświeżania), z którym
+  porównujemy indeks przy `setup` (ostrzeżenie) i przed przepięciem (odmowa). Sortowanie jest ustawieniem statycznym
+  (zmiana wymaga przebudowy), interwał dynamicznym: `setup` ustawia go na indeksie aliasu, gdy jest inny, a przebudowa
+  wypełnia nowy indeks z `refresh_interval` `-1` i ustawia interwał z konfiguracji przed jawnym `refresh`.
 - Analiza: `polish_text` (tokenizer standardowy, `lowercase`, `polish_stem` z wtyczki `analysis-stempel`,
   `asciifolding`: „kurtki” i „kurtka” dają ten sam token) i `folded_text` (tokenizer standardowy, `lowercase`,
   `asciifolding`, bez stemmera: „Śpiwór” daje „spiwor”).
@@ -409,7 +414,8 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   powtórzeń), `main_image` (obiekt z `enabled: false`: `key`, `alt`), `variants` (`nested`, obiekt na wariant
   w kolejności Catalog: `gross` long, brak przy braku ceny; `purchasable` boolean;
   `options` keyword, pary `<oś>` U+001F `<wartość>` dokładnie jak w Catalog; `pairs` nested w wariancie, obiekt
-  `{axis, value}` (keyword) na parę; wariant domyślny bez osi ma puste `options` i `pairs`), `from_gross` (long, cena „od”; brak, gdy produkt nie ma wariantu możliwego do kupienia).
+  `{axis, value}` (keyword) na parę; wariant domyślny bez osi ma puste `options` i `pairs`), `from_gross` (long, cena „od”; brak, gdy produkt nie ma wariantu możliwego do kupienia), `sort_path` (keyword bez
+  indeksu: identyfikatory ścieżki głównej kategorii od korzenia połączone `/`, klucz sortowania indeksu).
   `nested` sprawia, że warunki na osie, cenę i dostępność dotyczą jednego wariantu. `gross`, `purchasable`
   i `from_gross` pochodzą z oferty Cart (port `ProductOfferFacts`, opis w `docs/features/search/spec.md`).
 
