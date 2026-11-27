@@ -38,9 +38,7 @@ final class DbalSitemapProductSourceCutTest extends KernelTestCase
         /** @var array{driver: 'pdo_pgsql', host: string, dbname: string, user: string, password: string} $params */
         $params = $kernelConnection->getParams();
         $this->control = DriverManager::getConnection($params, new DbalConfiguration());
-        $cutting = DriverManager::getConnection(['wrapperClass' => HookedConnection::class] + $params, new DbalConfiguration());
-        self::assertInstanceOf(HookedConnection::class, $cutting);
-        $this->cutting = $cutting;
+        $this->cutting = DriverManager::getConnection(['wrapperClass' => HookedConnection::class] + $params, new DbalConfiguration());
 
         self::assertSame(0, $this->control->fetchOne('SELECT count(*) FROM catalog_product'), 'The test needs a catalogue without committed products.');
         $this->category = Uuid::v7()->toRfc4122();
@@ -231,7 +229,7 @@ final class DbalSitemapProductSourceCutTest extends KernelTestCase
     private function assertEveryIdInOneChunkOfAtMost(array $ids, array $keys, int $limit): void
     {
         self::assertNull($keys[0]->from, 'The first chunk has no start.');
-        self::assertNull($keys[array_key_last($keys)]->to, 'The last chunk has no end.');
+        self::assertNull($keys[\count($keys) - 1]->to, 'The last chunk has no end.');
         $perChunk = array_fill(0, \count($keys), 0);
         foreach ($ids as $id) {
             $containing = [];
