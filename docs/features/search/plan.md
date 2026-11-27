@@ -14,7 +14,7 @@ worf.pl uzgadnia sesja prowadząca z sesją PERF-0. Plan jest dokumentem roboczy
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | PERF-2B-1, PERF-2B-2, PERF-2B-3 | |
+| 1 | PERF-2B-1, PERF-2B-2, PERF-2B-3 | w toku |
 | 2 | PERF-2B-4 | |
 | 3 | PERF-2B-5, PERF-2B-6 | |
 | 4 | PERF-2B-7 | |
