@@ -101,7 +101,7 @@ describe("CustomerDetailView", () => {
     wrapper = await mountView();
 
     expect(mocks.get).toHaveBeenCalledWith("/api/v1/admin/customers/{customerId}", { params: { path: { customerId: "c-1" } } });
-    expect(mocks.get).toHaveBeenCalledWith("/api/v1/admin/orders", { params: { query: { customerId: "c-1" } } });
+    expect(mocks.get).toHaveBeenCalledWith("/api/v1/admin/orders", { params: { query: { customerId: "c-1" } }, signal: expect.any(AbortSignal) });
   });
 
   it("puts the side column before the main one in the source, so that Tab starts there", async () => {
@@ -174,7 +174,7 @@ describe("CustomerDetailView", () => {
     await wrapper.get("[data-testid=next-page]").trigger("click");
     await flushPromises();
 
-    expect(mocks.get).toHaveBeenLastCalledWith("/api/v1/admin/orders", { params: { query: { customerId: "c-1", after: "n1" } } });
+    expect(mocks.get).toHaveBeenLastCalledWith("/api/v1/admin/orders", { params: { query: { customerId: "c-1", after: "n1" } }, signal: expect.any(AbortSignal) });
   });
 
   it("says that the customer has no orders", async () => {

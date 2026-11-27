@@ -98,7 +98,7 @@ describe("useProductList", () => {
   it("loads the first page of the product list on mount", async () => {
     const list = await start({ "": { items: [item("Bidon")], next: null } });
 
-    expect(mocks.get).toHaveBeenCalledWith(PRODUCTS, { params: { query: {} } });
+    expect(mocks.get).toHaveBeenCalledWith(PRODUCTS, { params: { query: {} }, signal: expect.any(AbortSignal) });
     expect(list.items.value.map((product) => product.name)).toEqual(["Bidon"]);
     expect(list.loaded.value).toBe(true);
     expect(list.hasNext.value).toBe(false);

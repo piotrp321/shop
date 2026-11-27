@@ -25,7 +25,7 @@ export function useCustomerOrders(customerId: MaybeRefOrGetter<string>) {
   const perPage = ref(DEFAULT_PER_PAGE);
   const query = computed(() => ({ customerId: toValue(customerId), perPage: perPage.value }));
 
-  async function fetchPage({ query: current, after }: PageRequest<{ customerId: string; perPage: number }>): Promise<PageResult<CustomerOrderItem>> {
+  async function fetchPage({ query: current, after, signal }: PageRequest<{ customerId: string; perPage: number }>): Promise<PageResult<CustomerOrderItem>> {
     const apiQuery: { customerId: string; perPage?: number; after?: string } = { customerId: current.customerId };
     if (current.perPage !== DEFAULT_PER_PAGE) {
       apiQuery.perPage = current.perPage;
@@ -34,7 +34,7 @@ export function useCustomerOrders(customerId: MaybeRefOrGetter<string>) {
       apiQuery.after = after;
     }
     try {
-      const result = await getApiClient().GET("/api/v1/admin/orders", { params: { query: apiQuery } });
+      const result = await getApiClient().GET("/api/v1/admin/orders", { params: { query: apiQuery }, signal });
       if (result.data) {
         return { items: result.data.items, next: result.data.nextCursor, total: result.data.total };
       }

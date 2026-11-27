@@ -95,7 +95,7 @@ describe("usePriceList", () => {
   it("asks for 10 products on the first page and shows a row per variant under its product", async () => {
     const list = await start({ "": { items: [item("Buty", [variant("v-40", "40"), variant("v-41", "41", null)]), item("Hantle")], next: null } });
 
-    expect(mocks.get).toHaveBeenCalledWith(PRICES, { params: { query: { perPage: 10 } } });
+    expect(mocks.get).toHaveBeenCalledWith(PRICES, { params: { query: { perPage: 10 } }, signal: expect.any(AbortSignal) });
     expect(list.items.value.map((product) => product.name)).toEqual(["Buty", "Hantle"]);
     expect(list.rows.value.map((row) => [row.name, row.variantId, row.first])).toEqual([
       ["Buty", "v-40", true],

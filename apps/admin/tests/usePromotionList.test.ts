@@ -91,7 +91,7 @@ describe("usePromotionList", () => {
   it("loads the first page without a filter, a page size or a cursor", async () => {
     const list = await mounted({ "": page(["A", "B"], "c1") });
 
-    expect(mocks.get).toHaveBeenCalledWith(PROMOTIONS, { params: { query: {} } });
+    expect(mocks.get).toHaveBeenCalledWith(PROMOTIONS, { params: { query: {} }, signal: expect.any(AbortSignal) });
     expect(list.items.value.map((item) => item.name)).toEqual(["A", "B"]);
     expect(list.loaded.value).toBe(true);
     expect(list.hasNext.value).toBe(true);

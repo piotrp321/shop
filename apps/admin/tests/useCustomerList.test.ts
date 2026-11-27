@@ -80,7 +80,7 @@ describe("useCustomerList", () => {
   it("loads the first page without parameters and keeps the total of the first page while paging", async () => {
     const { list } = await start({ "": page(["c1", "c2"], "n1", { value: 42, capped: false }), n1: page(["c3"]) });
 
-    expect(mocks.get).toHaveBeenCalledWith(CUSTOMERS, { params: { query: {} } });
+    expect(mocks.get).toHaveBeenCalledWith(CUSTOMERS, { params: { query: {} }, signal: expect.any(AbortSignal) });
     expect(list.items.value.map((item) => item.customerId)).toEqual(["c1", "c2"]);
     expect(list.total.value).toEqual({ value: 42, capped: false });
     expect(list.sort.value).toBe("-lastOrderAt");

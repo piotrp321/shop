@@ -112,7 +112,7 @@ describe("useStockList", () => {
   it("asks for 10 products on the first page", async () => {
     const list = await start({ "": { items: [item("Bidon")], next: null } });
 
-    expect(mocks.get).toHaveBeenCalledWith(STOCK, { params: { query: { perPage: 10 } } });
+    expect(mocks.get).toHaveBeenCalledWith(STOCK, { params: { query: { perPage: 10 } }, signal: expect.any(AbortSignal) });
     expect(list.items.value.map((row) => row.name)).toEqual(["Bidon"]);
     expect(list.loaded.value).toBe(true);
     expect(list.hasNext.value).toBe(false);

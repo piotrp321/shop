@@ -93,7 +93,7 @@ export function useCustomerList() {
     CUSTOMER_SORTS.map((option) => (url.query.value.q !== null && option.value !== DEFAULT_CUSTOMER_SORT ? { ...option, disabledReason: SEARCH_SORT_MESSAGE } : option)),
   );
 
-  async function fetchPage({ query, after }: PageRequest<typeof url.query.value>): Promise<PageResult<CustomerListItem>> {
+  async function fetchPage({ query, after, signal }: PageRequest<typeof url.query.value>): Promise<PageResult<CustomerListItem>> {
     const apiQuery: CustomerQuery = {};
     if (query.q !== null) {
       apiQuery.q = query.q;
@@ -109,7 +109,7 @@ export function useCustomerList() {
       apiQuery.after = after;
     }
     try {
-      const result = await getApiClient().GET("/api/v1/admin/customers", { params: { query: apiQuery } });
+      const result = await getApiClient().GET("/api/v1/admin/customers", { params: { query: apiQuery }, signal });
       if (result.data) {
         return { items: result.data.items, next: result.data.nextCursor, total: result.data.total };
       }

@@ -97,7 +97,7 @@ describe("useOrderList", () => {
   it("loads the first page of all orders without filters", async () => {
     const list = await start({ "": page(["R-100002", "R-100001"], "c1") });
 
-    expect(mocks.get).toHaveBeenCalledWith(ORDERS, { params: { query: {} } });
+    expect(mocks.get).toHaveBeenCalledWith(ORDERS, { params: { query: {} }, signal: expect.any(AbortSignal) });
     expect(list.items.value.map((item) => item.number)).toEqual(["R-100002", "R-100001"]);
     expect(list.loaded.value).toBe(true);
     expect(list.error.value).toBeNull();

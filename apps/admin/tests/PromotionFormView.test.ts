@@ -1399,7 +1399,7 @@ describe("PromotionFormView", () => {
     it("lists the products of the price list with a row per variant, 25 products per page", async () => {
       const wrapper = await openPicker();
 
-      expect(mocks.get).toHaveBeenCalledWith(PRICES, { params: { query: { perPage: 25 } } });
+      expect(mocks.get).toHaveBeenCalledWith(PRICES, { params: { query: { perPage: 25 } }, signal: expect.any(AbortSignal) });
       expect(pickerRows(wrapper).map((row) => row.text())).toEqual([
         expect.stringContaining("Namiot Tarvik"),
         expect.stringContaining("Czerwony"),
@@ -1583,7 +1583,7 @@ describe("PromotionFormView", () => {
       await vi.advanceTimersByTimeAsync(NAME_SEARCH_DEBOUNCE_MS);
       await flushPromises();
 
-      expect(mocks.get).toHaveBeenLastCalledWith(PRICES, { params: { query: { q: "śpi", perPage: 25 } } });
+      expect(mocks.get).toHaveBeenLastCalledWith(PRICES, { params: { query: { q: "śpi", perPage: 25 } }, signal: expect.any(AbortSignal) });
       expect(wrapper.get("[data-testid=picker]").text()).not.toContain("Wpisz co najmniej");
     });
 

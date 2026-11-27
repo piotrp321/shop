@@ -59,7 +59,7 @@ describe("useCustomerOrders", () => {
     wrapper = mounted.wrapper;
     await flushPromises();
 
-    expect(mocks.get).toHaveBeenCalledWith(ORDERS, { params: { query: { customerId: "c-1" } } });
+    expect(mocks.get).toHaveBeenCalledWith(ORDERS, { params: { query: { customerId: "c-1" } }, signal: expect.any(AbortSignal) });
     expect(mounted.orders.items.value.map((item) => item.number)).toEqual(["R-2", "R-1"]);
     expect(mounted.orders.total.value).toEqual({ value: 12, capped: false });
 

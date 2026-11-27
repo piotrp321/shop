@@ -272,7 +272,12 @@ zamówienia): `DataTable` (na komponencie
 - `useCursorPager(fetchPage, query)`: jedyna implementacja stronicowania po kursorach standardu (stos kursorów, `latest`
   dla spóźnionych odpowiedzi, `retry`, `goNext`, `goPrevious`, powrót na pierwszą stronę przy zmianie zapytania),
   z `perPage`, czyszczeniem wierszy po błędzie, zakresem „Pokazano X–Y” i licznikiem `total` pierwszej strony (do zmiany zapytania). Używają jej composables wszystkich sześciu list
-  i wybór wariantów promocji. Każde zachowanie standardu jest testowane raz.
+  (oraz klientów, zamówień klienta i wyboru wariantów promocji). Każde zachowanie standardu jest testowane raz.
+  Każde żądanie ma własny `AbortController`: nowe zapytanie, zmiana strony, ponowienie, odświeżenie i odmontowanie widoku
+  przerywają żądanie w toku (`PageRequest.signal`, który każde `fetchPage` przekazuje klientowi `openapi-fetch`), więc
+  przeglądarka porzuca nieaktualne żądania. Przerwane żądanie nie zmienia stanu (wiersze, kursory, `total`, `loading`)
+  i nie pokazuje błędu, także w regionie `aria-live`; odpowiedź żądania już zakończonego nie jest przerywana.
+  Opóźnienie wyszukiwania (300 ms) zostaje.
 - `useNameSearch({ initial, apply })`: jedno miejsce reguł wyszukiwania po nazwie: fraza po przycięciu ma od 2 do 100
   znaków (punkty kodowe), po 300 ms przerwy w pisaniu trafia do `apply` (pusta, także same spacje, to `null`: brak filtra),
   a za krótka albo za długa nie jest stosowana i dostaje podpowiedź (`hint`). Zwraca pole (`search`), `tooShort`, `hint`,
