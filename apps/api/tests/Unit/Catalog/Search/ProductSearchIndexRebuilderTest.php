@@ -184,9 +184,6 @@ final class ProductSearchIndexRebuilderTest extends TestCase
         yield 'bulk request fails' => [static function (FakeSearchIndexMaintenance $m): void {
             $m->writeFailure = new SearchUnavailable('Elasticsearch is unavailable.');
         }];
-        yield 'bulk item stale' => [static function (FakeSearchIndexMaintenance $m): void {
-            $m->writeResult = new BulkResult(indexed: ['a', 'b'], stale: ['c']);
-        }];
         yield 'bulk item transient failure' => [static function (FakeSearchIndexMaintenance $m): void {
             $m->writeResult = new BulkResult(indexed: ['a', 'b'], transientFailures: ['c' => 'es_rejected_execution_exception']);
         }];
@@ -214,6 +211,19 @@ final class ProductSearchIndexRebuilderTest extends TestCase
         self::assertSame([], $this->maintenance->activations);
         self::assertSame(['products_new'], $this->maintenance->deleted);
         $this->assertLockReleased();
+    }
+
+    public function testAStaleItemIsCorrectAndTheRebuildGoesOn(): void
+    {
+        // A single write through the rebuild alias was newer than the batch (409).
+        $this->maintenance->writeResult = new BulkResult(indexed: ['a', 'b'], stale: ['c']);
+
+        $report = $this->rebuilder()->rebuild(3);
+
+        self::assertSame(ActivationResult::Activated, $report->outcome);
+        self::assertSame(7, $report->documents);
+        self::assertSame([['products_new', 7]], $this->maintenance->verified);
+        self::assertSame(['products_old'], $this->maintenance->deleted);
     }
 
     public function testNotActivatedDeletesTheNewIndex(): void

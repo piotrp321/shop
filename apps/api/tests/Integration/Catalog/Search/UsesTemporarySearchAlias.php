@@ -61,8 +61,24 @@ trait UsesTemporarySearchAlias
      */
     protected function aliasTargets(): array
     {
+        return $this->targetsOf($this->alias());
+    }
+
+    /**
+     * @return list<string> the indexes the rebuild alias (<alias>-rebuild) points to, sorted
+     */
+    protected function rebuildAliasTargets(): array
+    {
+        return $this->targetsOf($this->alias().'-rebuild');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function targetsOf(string $alias): array
+    {
         $client = self::esClient();
-        $response = ElasticsearchErrorClassifier::request('read alias', fn () => $client->indices()->getAlias(['name' => $this->alias()]), [404]);
+        $response = ElasticsearchErrorClassifier::request('read alias', fn () => $client->indices()->getAlias(['name' => $alias]), [404]);
         if (404 === $response->getStatusCode()) {
             return [];
         }
