@@ -10,8 +10,9 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * A product index always has one primary shard (spec: docs/features/search/spec.md, M3 and "Infrastruktura"): the exact
- * facets of the search model and the ranking need it. No variable of the environment changes it, whatever the value
- * and whichever of compose, .env or the chart brings it.
+ * facets of the search model and the ranking need it. The variable SEARCH_SHARDS no longer exists, so a container that
+ * still has it with a value other than 1 (compose, .env, the chart or a hand-set variable) refuses to build the index
+ * definition, with the name of the variable.
  */
 final class SearchShardsConfigurationTest extends KernelTestCase
 {
@@ -40,26 +41,38 @@ final class SearchShardsConfigurationTest extends KernelTestCase
         self::assertSame(1, $this->shardsOfTheNewIndex());
     }
 
-    #[DataProvider('valuesOfTheVariable')]
-    public function testNoValueOfTheVariableChangesTheShardsOfTheNewIndex(string $value): void
+    public function testTheVariableSetToOneIsAccepted(): void
+    {
+        $_SERVER[self::VARIABLE] = '1';
+
+        self::assertSame(1, $this->shardsOfTheNewIndex());
+    }
+
+    #[DataProvider('valuesOtherThanOne')]
+    public function testAnyOtherValueOfTheVariableIsRefusedWithItsName(string $value): void
     {
         $_SERVER[self::VARIABLE] = $value;
 
-        self::assertSame(1, $this->shardsOfTheNewIndex());
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage(self::VARIABLE);
+
+        $this->shardsOfTheNewIndex();
     }
 
     /**
      * @return iterable<string, array{string}>
      */
-    public static function valuesOfTheVariable(): iterable
+    public static function valuesOtherThanOne(): iterable
     {
         yield 'two' => ['2'];
         yield 'four' => ['4'];
-        yield 'one' => ['1'];
         yield 'zero' => ['0'];
         yield 'negative' => ['-1'];
-        yield 'empty' => [''];
         yield 'not a number' => ['many'];
+        yield 'empty' => [''];
+        yield 'one with a leading zero' => ['01'];
+        yield 'one with a space' => [' 1'];
+        yield 'one with a newline' => ["1\n"];
     }
 
     private function shardsOfTheNewIndex(): mixed

@@ -86,6 +86,36 @@ final class ProductIndexSettingsTest extends TestCase
         yield 'unicode digit' => ["\u{0665}s"];
     }
 
+    public function testTheVariableOfTheEnvironmentThatIsNotSetOrIsOneIsAccepted(): void
+    {
+        self::assertSame(1, new ProductIndexDefinition(0, '1s', null)->body()['settings']['number_of_shards']);
+        self::assertSame(1, new ProductIndexDefinition(0, '1s', '1')->body()['settings']['number_of_shards']);
+    }
+
+    #[DataProvider('shardsOfTheEnvironmentOtherThanOne')]
+    public function testAnyOtherValueOfSearchShardsIsRefusedWithTheNameOfTheVariableAndTheReason(string $value): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/SEARCH_SHARDS.*one shard.*unneeded/s');
+
+        new ProductIndexDefinition(0, '1s', $value);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function shardsOfTheEnvironmentOtherThanOne(): iterable
+    {
+        yield 'two' => ['2'];
+        yield 'zero' => ['0'];
+        yield 'negative' => ['-1'];
+        yield 'not a number' => ['many'];
+        yield 'empty' => [''];
+        yield 'leading zero' => ['01'];
+        yield 'space' => [' 1'];
+        yield 'trailing newline' => ["1\n"];
+    }
+
     public function testNegativeReplicasAreRefused(): void
     {
         $this->expectException(\InvalidArgumentException::class);
