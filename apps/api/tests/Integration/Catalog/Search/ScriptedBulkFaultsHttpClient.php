@@ -18,22 +18,28 @@ use Psr\Http\Message\ResponseInterface;
  * A script entry is one of:
  * - 'unavailable': the whole request is answered with 503 and never reaches Elasticsearch;
  * - 'timeout': a network error, the request never reaches Elasticsearch;
- * - ['transient' => positions, 'permanent' => positions]: the items at these positions of the request are answered
- *   with 429 (es_rejected_execution_exception) or 400 (mapper_parsing_exception) and are not sent to Elasticsearch,
- *   the other items are.
+ * - ['transient' => positions, 'permanent' => positions, 'gone' => [position => index]]: the items at these positions
+ *   of the request are answered with 429 (es_rejected_execution_exception), 400 (mapper_parsing_exception) or 404
+ *   (index_not_found_exception of the given concrete index: what Elasticsearch answers for an item whose alias it
+ *   resolved to an index that was deleted before the item reached its shard) and are not sent to Elasticsearch, the
+ *   other items are.
  */
 final class ScriptedBulkFaultsHttpClient implements ClientInterface
 {
     /** @var list<int> the number of items sent to Elasticsearch by every bulk request */
     public array $forwardedItems = [];
     public int $bulkRequests = 0;
+    /** @var list<list<string>> the _index of every item of every bulk request, in order */
+    public array $bulkTargets = [];
     /** @var (\Closure(int): void)|null runs before every bulk request is handled, with its number (from 1) */
     public ?\Closure $onBulk = null;
+    /** @var (\Closure(int): void)|null runs after the items of a bulk request with faults reached Elasticsearch, before the answer */
+    public ?\Closure $afterForward = null;
 
     /**
-     * @param list<'unavailable'|'timeout'|array{transient?: list<int>, permanent?: list<int>}> $script
+     * @param list<'unavailable'|'timeout'|array{transient?: list<int>, permanent?: list<int>, gone?: array<int, string>}> $script the faults still to come; a test may add more
      */
-    public function __construct(private readonly ClientInterface $inner, private array $script)
+    public function __construct(private readonly ClientInterface $inner, public array $script)
     {
     }
 
@@ -46,6 +52,7 @@ final class ScriptedBulkFaultsHttpClient implements ClientInterface
         $body = (string) $request->getBody();
         $request->getBody()->rewind();
         ++$this->bulkRequests;
+        $this->bulkTargets[] = self::targets($body);
         if (null !== $this->onBulk) {
             ($this->onBulk)($this->bulkRequests);
         }
@@ -60,7 +67,7 @@ final class ScriptedBulkFaultsHttpClient implements ClientInterface
     }
 
     /**
-     * @param array{transient?: list<int>, permanent?: list<int>} $fault
+     * @param array{transient?: list<int>, permanent?: list<int>, gone?: array<int, string>} $fault
      */
     private function withItemFaults(RequestInterface $request, string $body, array $fault): ResponseInterface
     {
@@ -69,9 +76,12 @@ final class ScriptedBulkFaultsHttpClient implements ClientInterface
         $forwarded = [];
         $faults = [];
         foreach ($pairs as $position => $pair) {
+            $gone = $fault['gone'][$position] ?? null;
             $status = match (true) {
-                \in_array($position, $fault['transient'] ?? [], true) => [429, 'es_rejected_execution_exception'],
-                \in_array($position, $fault['permanent'] ?? [], true) => [400, 'mapper_parsing_exception'],
+                \in_array($position, $fault['transient'] ?? [], true) => [429, ['type' => 'es_rejected_execution_exception', 'reason' => 'injected fault']],
+                \in_array($position, $fault['permanent'] ?? [], true) => [400, ['type' => 'mapper_parsing_exception', 'reason' => 'injected fault']],
+                // The shape of IndexNotFoundException(Index) of TransportReplicationAction in Elasticsearch 9.4.0.
+                null !== $gone => [404, ['type' => 'index_not_found_exception', 'reason' => \sprintf('no such index [%s]', $gone), 'index_uuid' => 'injected', 'index' => $gone]],
                 default => null,
             };
             if (null === $status) {
@@ -83,7 +93,7 @@ final class ScriptedBulkFaultsHttpClient implements ClientInterface
                     '_index' => $action['index']['_index'],
                     '_id' => $action['index']['_id'],
                     'status' => $status[0],
-                    'error' => ['type' => $status[1], 'reason' => 'injected fault'],
+                    'error' => $status[1],
                 ]];
             }
         }
@@ -95,6 +105,9 @@ final class ScriptedBulkFaultsHttpClient implements ClientInterface
             \assert(\is_array($decoded) && \is_array($decoded['items']));
             $answers = $decoded['items'];
         }
+        if (null !== $this->afterForward) {
+            ($this->afterForward)($this->bulkRequests);
+        }
 
         $items = [];
         foreach (array_keys($pairs) as $position) {
@@ -102,6 +115,22 @@ final class ScriptedBulkFaultsHttpClient implements ClientInterface
         }
 
         return $this->json(200, ['took' => 1, 'errors' => true, 'items' => $items]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function targets(string $body): array
+    {
+        $targets = [];
+        $lines = array_values(array_filter(explode("\n", $body), static fn (string $line): bool => '' !== $line));
+        foreach (array_chunk($lines, 2) as $pair) {
+            $action = json_decode($pair[0], true, 8, \JSON_THROW_ON_ERROR);
+            \assert(\is_array($action) && \is_array($action['index']) && \is_string($action['index']['_index']));
+            $targets[] = $action['index']['_index'];
+        }
+
+        return $targets;
     }
 
     private function forward(RequestInterface $request, int $items, ?string $body = null): ResponseInterface

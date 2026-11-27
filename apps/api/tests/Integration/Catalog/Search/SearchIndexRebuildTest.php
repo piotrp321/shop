@@ -17,6 +17,7 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock;
 use App\Catalog\Infrastructure\Search\ElasticsearchClientFactory;
+use App\Catalog\Infrastructure\Search\ElasticsearchErrorClassifier;
 use App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance;
 use App\Catalog\Infrastructure\Search\ProductIndexDefinition;
 use App\Catalog\Infrastructure\SystemClock;
@@ -114,7 +115,7 @@ final class SearchIndexRebuildTest extends KernelTestCase
 
         $source = $this->indexedSource($product->id()->toString());
         self::assertSame(12_900, $source['from_gross']);
-        self::assertSame([['gross' => 12_900, 'purchasable' => true, 'options' => [], 'pairs' => []]], $source['variants']);
+        self::assertSame([['gross' => 12_900, 'purchasable' => true, 'options' => [], 'axes' => [], 'pairs' => []]], $source['variants']);
     }
 
     public function testTheRebuildIndexesDraftsAsDraftDocuments(): void
@@ -229,12 +230,16 @@ final class SearchIndexRebuildTest extends KernelTestCase
         self::assertSame($indexesBefore, $this->aliasIndexes());
     }
 
-    public function testARebuildWithAPermanentItemErrorDiscardsTheNewIndexAndKeepsTheAlias(): void
+    public function testARebuildWithAPermanentItemErrorDiscardsTheNewIndexWithTheRebuildAliasAndKeepsTheAlias(): void
     {
         $this->createProducts(4);
         $previous = $this->maintenance->activeIndex();
         $indexesBefore = $this->aliasIndexes();
         $http = $this->faultyBulks([['permanent' => [2]]]);
+        $rebuildTargets = [];
+        $http->onBulk = function () use (&$rebuildTargets): void {
+            $rebuildTargets[] = $this->rebuildAliasTargets();
+        };
 
         $tester = $this->reindexCommandWith($http);
         self::assertSame(Command::FAILURE, $tester->execute([]));
@@ -242,6 +247,34 @@ final class SearchIndexRebuildTest extends KernelTestCase
         self::assertSame(1, $http->bulkRequests);
         self::assertSame($previous, $this->maintenance->activeIndex());
         self::assertSame($indexesBefore, $this->aliasIndexes());
+        // While filling, the rebuild alias was on the new index; it went with the index.
+        self::assertCount(1, $rebuildTargets[0]);
+        self::assertNotContains($previous, $rebuildTargets[0]);
+        self::assertSame([], $this->rebuildAliasTargets());
+    }
+
+    public function testARebuildFirstTakesTheRebuildAliasOffAnIndexLeftByACrashedRebuild(): void
+    {
+        $ids = $this->createProducts(4);
+        $previous = $this->maintenance->activeIndex();
+        // A rebuild that crashed after creating its index: the index keeps the rebuild alias.
+        $orphan = $this->maintenance->createIndex();
+        $http = $this->faultyBulks([]);
+        $rebuildTargets = [];
+        $http->onBulk = function () use (&$rebuildTargets): void {
+            $rebuildTargets[] = $this->rebuildAliasTargets();
+        };
+
+        $tester = $this->reindexCommandWith($http);
+        self::assertSame(Command::SUCCESS, $tester->execute([]), $tester->getDisplay());
+
+        $current = $this->maintenance->activeIndex();
+        self::assertNotSame($previous, $current);
+        self::assertSame([[$current]], $rebuildTargets);
+        self::assertNotSame($orphan, $current);
+        self::assertTrue($this->indexExists($orphan), 'The orphaned index was deleted.');
+        self::assertSame([], $this->rebuildAliasTargets(), 'The switch did not take the rebuild alias off.');
+        self::assertSame($ids, array_keys($this->indexedVersions()));
     }
 
     public function testInvalidBatchSizeExitsWithOne(): void
@@ -346,6 +379,22 @@ final class SearchIndexRebuildTest extends KernelTestCase
         sort($names);
 
         return $names;
+    }
+
+    /**
+     * @return list<string> the indexes the rebuild alias (<alias>-rebuild) points to, sorted
+     */
+    private function rebuildAliasTargets(): array
+    {
+        $client = $this->client();
+        $response = ElasticsearchErrorClassifier::request('read alias', fn () => $client->indices()->getAlias(['name' => $this->alias.'-rebuild']), [404]);
+        if (404 === $response->getStatusCode()) {
+            return [];
+        }
+        $targets = array_map(strval(...), array_keys($response->asArray()));
+        sort($targets);
+
+        return $targets;
     }
 
     private function indexExists(string $index): bool

@@ -10,6 +10,7 @@ use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\VariantDocument;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
+use App\Catalog\Infrastructure\Search\ProductFacetTokens;
 use App\Catalog\Infrastructure\Search\ProductIndexDefinition;
 use Elastic\Elasticsearch\Response\Elasticsearch;
 use PHPUnit\Framework\TestCase;
@@ -89,9 +90,9 @@ final class ProductIndexDefinitionTest extends TestCase
         self::assertSame(['Odzież', 'Kurtki'], $source['category_names']);
         self::assertSame(19_900, $source['from_gross']);
         self::assertSame([
-            ['gross' => 18_900, 'purchasable' => false, 'options' => ["Kolor\u{1F}czarne", "Rozmiar\u{1F}42"], 'pairs' => [['axis' => 'Kolor', 'value' => 'czarne'], ['axis' => 'Rozmiar', 'value' => '42']]],
-            ['gross' => 19_900, 'purchasable' => true, 'options' => ["Kolor\u{1F}Białe", "Rozmiar\u{1F}43"], 'pairs' => [['axis' => 'Kolor', 'value' => 'Białe'], ['axis' => 'Rozmiar', 'value' => '43']]],
-            ['purchasable' => false, 'options' => ["Kolor\u{1F}zielone", "Rozmiar\u{1F}44"], 'pairs' => [['axis' => 'Kolor', 'value' => 'zielone'], ['axis' => 'Rozmiar', 'value' => '44']]],
+            ['gross' => 18_900, 'purchasable' => false, 'options' => ["Kolor\u{1F}czarne", "Rozmiar\u{1F}42"], 'axes' => ['Kolor', 'Rozmiar'], 'pairs' => [['axis' => 'Kolor', 'value' => 'czarne'], ['axis' => 'Rozmiar', 'value' => '42']]],
+            ['gross' => 19_900, 'purchasable' => true, 'options' => ["Kolor\u{1F}Białe", "Rozmiar\u{1F}43"], 'axes' => ['Kolor', 'Rozmiar'], 'pairs' => [['axis' => 'Kolor', 'value' => 'Białe'], ['axis' => 'Rozmiar', 'value' => '43']]],
+            ['purchasable' => false, 'options' => ["Kolor\u{1F}zielone", "Rozmiar\u{1F}44"], 'axes' => ['Kolor', 'Rozmiar'], 'pairs' => [['axis' => 'Kolor', 'value' => 'zielone'], ['axis' => 'Rozmiar', 'value' => '44']]],
         ], $source['variants']);
         self::assertEquals($document, ProductIndexDefinition::document($source));
     }
@@ -140,7 +141,10 @@ final class ProductIndexDefinitionTest extends TestCase
         $source = $stored['_source'];
         self::assertIsArray($source);
         self::assertArrayNotHasKey('from_gross', $source);
-        self::assertSame([['purchasable' => false, 'options' => [], 'pairs' => []]], $source['variants']);
+        self::assertSame([['purchasable' => false, 'options' => [], 'axes' => [], 'pairs' => []]], $source['variants']);
+        self::assertArrayNotHasKey('max_gross', $source);
+        self::assertFalse($source['purchasable']);
+        self::assertSame([], $source['buy_prices']);
         self::assertEquals($document, ProductIndexDefinition::document($source));
     }
 
@@ -181,6 +185,89 @@ final class ProductIndexDefinitionTest extends TestCase
         // The pair is a value of its own: the axis name is not a value and the case is kept.
         self::assertSame(0, $this->countVariants([$pair('Kolor', 'Rozmiar')]));
         self::assertSame(0, $this->countVariants([$pair('Kolor', 'białe')]));
+    }
+
+    public function testTheFacetTokensAreStoredAndFoundByTermsAndRanges(): void
+    {
+        $this->maintenance()->setup();
+        $this->indexer()->index(self::document());
+        self::esClient()->indices()->refresh(['index' => $this->alias()]);
+
+        $source = self::esClient()->get(['index' => $this->alias(), 'id' => self::ID]);
+        \assert($source instanceof Elasticsearch);
+        self::assertTrue(self::at($source->asArray(), '_source', 'purchasable'));
+        self::assertSame([19_900], self::at($source->asArray(), '_source', 'buy_prices'));
+        self::assertSame(19_900, self::at($source->asArray(), '_source', 'max_gross'));
+
+        // The token of an option holds the separator U+001F, the one of a pair U+001E; both are found as they are.
+        self::assertSame(1, $this->countMatching(['term' => ['facets' => "Kolor\u{1F}czarne"]]));
+        self::assertSame(1, $this->countMatching(['term' => ['facets' => '@Rozmiar']]));
+        self::assertSame(1, $this->countMatching(['term' => ['facets' => '#p']]));
+        self::assertSame(1, $this->countMatching(['term' => ['facets' => '$']]));
+        self::assertSame(0, $this->countMatching(['term' => ['facets' => "Kolor\u{1F}biale"]]));
+        // Only the purchasable variant feeds the buy fields.
+        self::assertSame(0, $this->countMatching(['term' => ['buy_facets' => "Kolor\u{1F}czarne"]]));
+        self::assertSame(1, $this->countMatching(['term' => ['buy_facets' => "Kolor\u{1F}Białe"]]));
+        self::assertSame(0, $this->countMatching(['term' => ['buy_facets' => '$']]));
+        self::assertSame(1, $this->countMatching(['term' => ['pair_buy' => "Kolor\u{1F}Białe\u{1E}Rozmiar\u{1F}43"]]));
+        self::assertSame(0, $this->countMatching(['term' => ['pair_buy' => "Kolor\u{1F}czarne\u{1E}Rozmiar\u{1F}42"]]));
+        self::assertSame(1, $this->countMatching(['term' => ['pair_any' => "Kolor\u{1F}czarne\u{1E}Rozmiar\u{1F}42"]]));
+        // The same two options of two different variants are not a pair.
+        self::assertSame(0, $this->countMatching(['term' => ['pair_any' => "Kolor\u{1F}czarne\u{1E}Rozmiar\u{1F}43"]]));
+        self::assertSame(1, $this->countMatching(['term' => ['purchasable' => true]]));
+        self::assertSame(1, $this->countMatching(['range' => ['buy_prices' => ['gte' => 19_000, 'lte' => 20_000]]]));
+        self::assertSame(0, $this->countMatching(['range' => ['buy_prices' => ['gte' => 18_000, 'lte' => 19_000]]]));
+        self::assertSame(1, $this->countMatching(['term' => ['max_gross' => 19_900]]));
+    }
+
+    public function testThePatternsOfTheTokensMatchOnlyWhatTheyShouldAmongNamesWithSyntaxCharacters(): void
+    {
+        $this->maintenance()->setup();
+        $this->indexer()->index(self::document(variants: [
+            new VariantDocument(100, true, ["Kolor\u{1F}czarne", "Wymiar (cm)\u{1F}50.*"]),
+            new VariantDocument(200, true, ["Kolor\u{1F}czarne", "Wymiar (cm)\u{1F}500"]),
+            new VariantDocument(300, false, ["Kolor ramy\u{1F}złoty"]),
+            new VariantDocument(400, true, ["#Kolor\u{1F}\$x"]),
+        ]));
+        self::esClient()->indices()->refresh(['index' => $this->alias()]);
+
+        // An axis is not matched by another axis that starts with its name, nor by a dot or a bracket standing for
+        // characters.
+        self::assertEqualsCanonicalizing(["Kolor\u{1F}czarne"], $this->buckets('facets', ProductFacetTokens::optionsOfAxisPattern('Kolor')));
+        self::assertEqualsCanonicalizing(["Kolor ramy\u{1F}złoty"], $this->buckets('facets', ProductFacetTokens::optionsOfAxisPattern('Kolor ramy')));
+        self::assertEqualsCanonicalizing(["Wymiar (cm)\u{1F}50.*", "Wymiar (cm)\u{1F}500"], $this->buckets('facets', ProductFacetTokens::optionsOfAxisPattern('Wymiar (cm)')));
+        self::assertSame([], $this->buckets('facets', ProductFacetTokens::optionsOfAxisPattern('Wymiar .cm.')));
+        self::assertSame([], $this->buckets('facets', ProductFacetTokens::optionsOfAxisPattern('.*')));
+        self::assertEqualsCanonicalizing(["#Kolor\u{1F}\$x"], $this->buckets('facets', ProductFacetTokens::optionsOfAxisPattern('#Kolor')));
+        self::assertSame([], $this->buckets('facets', ProductFacetTokens::optionsOfAxisPattern('Kolo')));
+
+        // The partners of one option on pair_any: only the tokens that begin with that option and the separator.
+        self::assertEqualsCanonicalizing(
+            ["Kolor\u{1F}czarne\u{1E}Wymiar (cm)\u{1F}50.*", "Kolor\u{1F}czarne\u{1E}Wymiar (cm)\u{1F}500", "Kolor\u{1F}czarne\u{1E}@Wymiar (cm)"],
+            $this->buckets('pair_any', ProductFacetTokens::pairPartnersPattern('Kolor', 'czarne')),
+        );
+        self::assertEqualsCanonicalizing(
+            ["Wymiar (cm)\u{1F}50.*\u{1E}Kolor\u{1F}czarne", "Wymiar (cm)\u{1F}50.*\u{1E}@Kolor"],
+            $this->buckets('pair_any', ProductFacetTokens::pairPartnersPattern('Wymiar (cm)', '50.*')),
+        );
+        self::assertSame([], $this->buckets('pair_any', ProductFacetTokens::pairPartnersPattern('Wymiar (cm)', '50.')));
+    }
+
+    public function testAProductBreakingARuleOfTheModelIsRefusedAndNothingIsWritten(): void
+    {
+        $this->maintenance()->setup();
+        $document = self::document(variants: [
+            new VariantDocument(100, true, ["Kolor\u{1F}czarne"]),
+            new VariantDocument(200, true, ["Kolor\u{1F}czarne"]),
+        ]);
+
+        try {
+            $this->indexer()->index($document);
+            self::fail('Expected SearchIndexError.');
+        } catch (SearchIndexError $e) {
+            self::assertStringContainsString(self::ID, $e->getMessage());
+        }
+        self::assertSame(0, $this->countAll());
     }
 
     /**
@@ -224,6 +311,44 @@ final class ProductIndexDefinitionTest extends TestCase
         \assert(\is_int($count));
 
         return $count;
+    }
+
+    /**
+     * @param array<string, mixed> $query
+     */
+    private function countMatching(array $query): int
+    {
+        $response = self::esClient()->count(['index' => $this->alias(), 'body' => ['query' => $query]]);
+        \assert($response instanceof Elasticsearch);
+        $count = $response['count'];
+        \assert(\is_int($count));
+
+        return $count;
+    }
+
+    private function countAll(): int
+    {
+        self::esClient()->indices()->refresh(['index' => $this->alias()]);
+
+        return $this->countMatching(['match_all' => new \stdClass()]);
+    }
+
+    /**
+     * The terms of a field that match the regular expression, across all documents.
+     *
+     * @return list<string>
+     */
+    private function buckets(string $field, string $include): array
+    {
+        $response = self::esClient()->search(['index' => $this->alias(), 'body' => [
+            'size' => 0,
+            'aggs' => ['tokens' => ['terms' => ['field' => $field, 'include' => $include, 'size' => 100]]],
+        ]]);
+        \assert($response instanceof Elasticsearch);
+        $buckets = self::at($response->asArray(), 'aggregations', 'tokens', 'buckets');
+        \assert(\is_array($buckets));
+
+        return array_values(array_map(static fn (mixed $bucket): string => \is_array($bucket) && \is_string($bucket['key'] ?? null) ? $bucket['key'] : '', $buckets));
     }
 
     private function indexer(): ElasticsearchProductIndexer

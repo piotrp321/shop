@@ -7,6 +7,7 @@ namespace App\Tests\Unit\Catalog\Domain;
 use App\Catalog\Domain\Product\DuplicateVariantValues;
 use App\Catalog\Domain\Product\Ean;
 use App\Catalog\Domain\Product\InvalidProductVariants;
+use App\Catalog\Domain\Product\InvalidVariantValues;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\Sku;
@@ -144,6 +145,30 @@ final class ProductVariantsTest extends TestCase
     {
         $this->assertDuplicate(['Kolor'], [self::variant(1, ['Żółty']), self::variant(2, ['żółty'])]);
         $this->assertDuplicate(['Kolor'], [self::variant(1, ['ŚWIT']), self::variant(2, ['świt'])]);
+    }
+
+    public function testRepeatedCombinationOfTwoAxesWithAnotherCaseIsRejected(): void
+    {
+        // The search model needs the tuples of options of one product to be different (spec search, M1).
+        $this->assertDuplicate(['Kolor', 'Rozmiar'], [self::variant(1, ['czarny', 'XL']), self::variant(2, ['Czarny', 'xl'])]);
+        $this->assertDuplicate(['Kolor', 'Rozmiar'], [self::variant(1, ['Żółty', 'M']), self::variant(2, ['ŻÓŁTY', 'm'])]);
+        $this->assertDuplicate(['Kolor', 'Rozmiar'], [
+            self::variant(1, ['czarny', '42']),
+            self::variant(2, ['biały', '42']),
+            self::variant(3, ['CZARNY', '42']),
+        ]);
+    }
+
+    public function testASeparatorOfTheSearchIndexInAValueIsRejected(): void
+    {
+        foreach (["cza\u{1E}rne", "cza\u{1F}rne", "czarne\u{1F}", "\u{1E}czarne"] as $value) {
+            try {
+                VariantValues::fromList(['Rozmiar', $value]);
+                self::fail('Expected InvalidVariantValues.');
+            } catch (InvalidVariantValues $e) {
+                self::assertContains(InvalidInput::class, class_implements($e));
+            }
+        }
     }
 
     public function testCombinationsDifferingInOneValueAreAccepted(): void
