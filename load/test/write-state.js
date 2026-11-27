@@ -183,8 +183,10 @@ function verdicts() {
 function timing() {
   const now = 1_000_000;
   verify({
-    'the tolerance of a send is one interval of the rate': () => sendTolerance(50, undefined) === 20 && sendTolerance(2, undefined) === 500,
-    'a tolerance given in the settings replaces it': () => sendTolerance(50, 100) === 100,
+    'the tolerance of a send is 1000 ms whatever the rate': () => sendTolerance(undefined) === 1000,
+    'a tolerance given in the settings replaces it': () => sendTolerance(100) === 100,
+    'the jitter of the timer is not late (max 20 ms at 50/s over 320 s, measured)': () => isLate(now, now + 20, sendTolerance(undefined)) === false,
+    'a backlog of more than a second is late': () => isLate(now, now + 1001, sendTolerance(undefined)) === true,
     'a write sent on time is not late': () => isLate(now, now, 20) === false,
     'a write sent up to the tolerance after its time is not late': () => isLate(now, now + 20, 20) === false,
     'a write sent later than the tolerance is late': () => isLate(now, now + 21, 20) === true,
