@@ -1,0 +1,22 @@
+-- phrase punct-2 '---', count of the first page
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%---%' LIMIT 10001) bounded;
+
+Aggregate  (cost=67998.58..67998.59 rows=1 width=8) (actual time=238.564..241.554 rows=1.00 loops=1)
+  Buffers: shared hit=847332
+  ->  Limit  (cost=1000.42..67997.33 rows=100 width=4) (actual time=238.562..241.551 rows=0.00 loops=1)
+        Buffers: shared hit=847332
+        ->  Gather  (cost=1000.42..67997.33 rows=100 width=4) (actual time=238.561..241.549 rows=0.00 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=847332
+              ->  Parallel Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..66987.33 rows=42 width=4) (actual time=237.053..237.053 rows=0.00 loops=3)
+                    Filter: ((name)::text ~~* '%---%'::text)
+                    Rows Removed by Filter: 333397
+                    Heap Fetches: 12
+                    Index Searches: 1
+                    Buffers: shared hit=847332
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.802 ms
+Execution Time: 241.588 ms

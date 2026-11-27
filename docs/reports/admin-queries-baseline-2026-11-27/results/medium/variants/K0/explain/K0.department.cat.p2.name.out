@@ -1,0 +1,65 @@
+-- category department (206849 products), page 2, sort name
+-- products in the subtree = 206849
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) AND (p.name, p.id) > ('Atlas szlaków Alitar Jastrząb 100', CAST('eadda1d7-d96d-569e-83b9-ce65403f3b6d' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=52076.15..266217.36 rows=26 width=71) (actual time=398.859..657.455 rows=26.00 loops=1)
+  Buffers: shared hit=65865, temp read=40329 written=4355
+  I/O Timings: temp read=25.004 write=8.472
+  ->  Gather Merge  (cost=52076.15..1911344777.99 rows=232060 width=71) (actual time=393.190..651.782 rows=26.00 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=65865, temp read=40329 written=4355
+        I/O Timings: temp read=25.004 write=8.472
+        ->  Nested Loop  (cost=51076.12..1911316992.49 rows=96692 width=71) (actual time=115.204..378.014 rows=26.00 loops=3)
+              Join Filter: (p.id = catalog_product.id)
+              Rows Removed by Join Filter: 4296260
+              Buffers: shared hit=65865, temp read=40329 written=4355
+              I/O Timings: temp read=25.004 write=8.472
+              ->  Parallel Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1342850.73 rows=413859 width=71) (actual time=3.850..3.920 rows=26.00 loops=3)
+                    Index Cond: (ROW((name)::text, id) > ROW('Atlas szlaków Alitar Jastrząb 100'::text, 'eadda1d7-d96d-569e-83b9-ce65403f3b6d'::uuid))
+                    Index Searches: 1
+                    Buffers: shared hit=84
+              ->  Materialize  (cost=51075.70..57956.81 rows=232060 width=16) (actual time=2.942..9.524 rows=165241.77 loops=78)
+                    Storage: Disk  Maximum Storage: 5224kB
+                    Buffers: shared hit=65781, temp read=40329 written=4355
+                    I/O Timings: temp read=25.004 write=8.472
+                    ->  HashAggregate  (cost=51075.70..55662.51 rows=232060 width=16) (actual time=76.451..95.546 rows=205388.33 loops=3)
+                          Group Key: catalog_product.id
+                          Planned Partitions: 4  Batches: 5  Memory Usage: 8249kB  Disk Usage: 3768kB
+                          Buffers: shared hit=65781, temp read=1341 written=2391
+                          I/O Timings: temp read=1.462 write=3.875
+                          Worker 0:  Batches: 5  Memory Usage: 8249kB  Disk Usage: 3768kB
+                          Worker 1:  Batches: 5  Memory Usage: 8249kB  Disk Usage: 3768kB
+                          ->  Append  (cost=0.42..36789.50 rows=232060 width=16) (actual time=0.062..47.759 rows=248611.00 loops=3)
+                                Buffers: shared hit=65781
+                                ->  Nested Loop  (cost=0.42..31607.72 rows=193134 width=16) (actual time=0.062..22.633 rows=206841.00 loops=3)
+                                      Buffers: shared hit=61344
+                                      ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.043..0.065 rows=34.00 loops=3)
+                                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                                            Rows Removed by Filter: 146
+                                            Buffers: shared hit=55
+                                      ->  Index Only Scan using proto_k1_updated on catalog_product  (cost=0.42..809.17 rows=9370 width=32) (actual time=0.003..0.402 rows=6083.56 loops=102)
+                                            Index Cond: (primary_category_id = c.id)
+                                            Heap Fetches: 11874
+                                            Index Searches: 102
+                                            Buffers: shared hit=61289
+                                ->  Hash Join  (cost=7.69..4021.48 rows=38926 width=16) (actual time=0.043..15.927 rows=41770.00 loops=3)
+                                      Hash Cond: (catalog_product_category.category_id = c_1.id)
+                                      Buffers: shared hit=4437
+                                      ->  Seq Scan on catalog_product_category  (cost=0.00..3475.92 rows=200192 width=32) (actual time=0.010..5.431 rows=200192.00 loops=3)
+                                            Buffers: shared hit=4422
+                                      ->  Hash  (cost=7.25..7.25 rows=35 width=16) (actual time=0.025..0.025 rows=34.00 loops=3)
+                                            Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                                            Buffers: shared hit=15
+                                            ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.011..0.019 rows=34.00 loops=3)
+                                                  Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                                                  Rows Removed by Filter: 146
+                                                  Buffers: shared hit=15
+Planning:
+  Buffers: shared hit=688
+Planning Time: 0.983 ms
+JIT:
+  Functions: 106
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 1.788 ms (Deform 0.686 ms), Inlining 0.000 ms, Optimization 1.079 ms, Emission 18.226 ms, Total 21.093 ms
+Execution Time: 668.447 ms

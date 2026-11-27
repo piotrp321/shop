@@ -1,0 +1,18 @@
+-- phrase brand-mid 'treningowe', page 1, sort name
+-- hits = 17200
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%treningowe%' ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..1735.24 rows=26 width=71) (actual time=2344.473..2344.617 rows=26.00 loops=1)
+  Buffers: shared hit=44647 read=563143 written=2
+  I/O Timings: shared read=1638.434 write=0.042
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348815.69 rows=20215 width=71) (actual time=2344.470..2344.591 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%treningowe%'::text)
+        Rows Removed by Filter: 599487
+        Index Searches: 1
+        Buffers: shared hit=44647 read=563143 written=2
+        I/O Timings: shared read=1638.434 write=0.042
+Planning:
+  Buffers: shared hit=220 read=57
+  I/O Timings: shared read=0.240
+Planning Time: 1.031 ms
+Execution Time: 2344.642 ms

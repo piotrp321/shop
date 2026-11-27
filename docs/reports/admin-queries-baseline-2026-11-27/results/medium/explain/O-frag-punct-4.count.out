@@ -1,0 +1,19 @@
+-- orders, fragment punct-4 'ab-cd', count
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('ab-cd') || '%' LIMIT 10001) bounded;
+
+Aggregate  (cost=479.93..479.94 rows=1 width=8) (actual time=0.057..0.060 rows=1.00 loops=1)
+  Buffers: shared hit=13
+  ->  Limit  (cost=88.84..478.68 rows=100 width=4) (actual time=0.056..0.056 rows=0.00 loops=1)
+        Buffers: shared hit=13
+        ->  Bitmap Heap Scan on ordering_order o  (cost=88.84..478.68 rows=100 width=4) (actual time=0.055..0.055 rows=0.00 loops=1)
+              Recheck Cond: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%ab-cd%'::text)
+              Buffers: shared hit=13
+              ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..88.81 rows=100 width=0) (actual time=0.051..0.051 rows=0.00 loops=1)
+                    Index Cond: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%ab-cd%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=13
+Planning:
+  Buffers: shared hit=283
+Planning Time: 0.813 ms
+Execution Time: 0.113 ms

@@ -1,0 +1,24 @@
+-- customers, fragment punct-2 '---', page 1
+-- hits = 0
+SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('---') || '%' OR lower(c.full_name) LIKE '%' || lower('---') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26;
+
+Limit  (cost=5419.58..5421.79 rows=19 width=139) (actual time=22.551..24.157 rows=0.00 loops=1)
+  Buffers: shared hit=3690
+  ->  Gather Merge  (cost=5419.58..5421.79 rows=19 width=139) (actual time=22.550..24.156 rows=0.00 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=3690
+        ->  Sort  (cost=4419.56..4419.58 rows=8 width=139) (actual time=21.065..21.065 rows=0.00 loops=3)
+              Sort Key: last_order_at DESC, customer_id
+              Sort Method: quicksort  Memory: 25kB
+              Buffers: shared hit=3690
+              Worker 0:  Sort Method: quicksort  Memory: 25kB
+              Worker 1:  Sort Method: quicksort  Memory: 25kB
+              ->  Parallel Seq Scan on ordering_customer c  (cost=0.00..4419.44 rows=8 width=139) (actual time=21.030..21.030 rows=0.00 loops=3)
+                    Filter: ((lower((email)::text) ~~ '%---%'::text) OR (lower((full_name)::text) ~~ '%---%'::text))
+                    Rows Removed by Filter: 32857
+                    Buffers: shared hit=3598
+Planning:
+  Buffers: shared hit=275
+Planning Time: 0.803 ms
+Execution Time: 24.187 ms

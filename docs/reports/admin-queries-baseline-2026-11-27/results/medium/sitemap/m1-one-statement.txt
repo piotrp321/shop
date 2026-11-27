@@ -1,0 +1,18 @@
+Limit  (cost=18133.75..18133.80 rows=1 width=16) (actual rows=1.00 loops=1)
+  Buffers: shared hit=344972
+  InitPlan 1
+    ->  Limit  (cost=17666.51..17666.56 rows=1 width=16) (actual rows=1.00 loops=1)
+          Buffers: shared hit=336499
+          ->  Index Only Scan using catalog_product_pkey on catalog_product catalog_product_1  (cost=0.42..44194.08 rows=1000644 width=16) (actual rows=400001.00 loops=1)
+                Heap Fetches: 4
+                Index Searches: 1
+                Buffers: shared hit=336499
+  ->  Index Only Scan using catalog_product_pkey on catalog_product  (cost=0.42..15569.51 rows=333548 width=16) (actual rows=10001.00 loops=1)
+        Index Cond: (id >= (InitPlan 1).col1)
+        Heap Fetches: 0
+        Index Searches: 1
+        Buffers: shared hit=344972
+Planning:
+  Buffers: shared hit=269
+Planning Time: 0.512 ms
+Execution Time: 41.467 ms

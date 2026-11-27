@@ -1,0 +1,20 @@
+-- orders, fragment punct-2 '---', count by the bigrams
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name)) @> perf_bigrams(lower('---')) AND lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('---') || '%' LIMIT 10001) bounded;
+
+Aggregate  (cost=5221.90..5221.91 rows=1 width=8) (actual time=0.021..0.021 rows=1.00 loops=1)
+  Buffers: shared hit=3
+  ->  Limit  (cost=60.87..5221.89 rows=1 width=4) (actual time=0.020..0.020 rows=0.00 loops=1)
+        Buffers: shared hit=3
+        ->  Bitmap Heap Scan on ordering_order o  (cost=60.87..5221.89 rows=1 width=4) (actual time=0.019..0.020 rows=0.00 loops=1)
+              Recheck Cond: (perf_bigrams(lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text))) @> '{--}'::text[])
+              Filter: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%---%'::text)
+              Buffers: shared hit=3
+              ->  Bitmap Index Scan on proto_z1_orders  (cost=0.00..60.87 rows=1363 width=0) (actual time=0.016..0.017 rows=0.00 loops=1)
+                    Index Cond: (perf_bigrams(lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text))) @> '{--}'::text[])
+                    Index Searches: 1
+                    Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=525
+Planning Time: 1.115 ms
+Execution Time: 0.034 ms

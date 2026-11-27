@@ -1,0 +1,19 @@
+# wrong password
+panel_token: the login of admin was refused (status 200); a wrong user or password, or the account is locked
+load-panel: no token of the administrator (see above)
+exit=2
+# missing mix file
+load-panel: the mix file /nonexistent/mix.json does not exist or cannot be read
+exit=2
+# wrong mode
+load-panel: the mode is w7 or p4, got 'nonsense'
+exit=2
+# p4 without the file of the shop addresses
+panel_mix: 259 requests in 35 classes written to /var/folders/5z/mmc4635s5sn7wjx6m7h57zl00000gn/T//PERF-7-1/ep3/mix.json (784 API calls, 180.9 s)
+load-panel: p4 needs SHOP_URLS_FILE: the file of 'python3 load/baseline.py urls <api> <store> FILE --listings N' (N at least the listings of a run)
+exit=2
+# API stopped
+load-panel: the API of the stack is not running (make up and make seed-scale first)
+exit=2
+# API started again in prod (exit 0)
+# after the fix of panel.sh: p4 without SHOP_URLS_FILE stops at once (exit 2), before the login and the 181 s draw of the mix

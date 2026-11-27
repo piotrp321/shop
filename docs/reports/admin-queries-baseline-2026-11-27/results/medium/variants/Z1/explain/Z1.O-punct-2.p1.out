@@ -1,0 +1,29 @@
+-- orders, fragment punct-2 '---', page 1 by the bigrams
+-- hits = 0
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name)) @> perf_bigrams(lower('---')) AND lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('---') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26;
+
+Limit  (cost=5221.90..5230.41 rows=1 width=136) (actual time=0.037..0.037 rows=0.00 loops=1)
+  Buffers: shared hit=9
+  ->  Result  (cost=5221.90..5230.41 rows=1 width=136) (actual time=0.036..0.036 rows=0.00 loops=1)
+        Buffers: shared hit=9
+        ->  Sort  (cost=5221.90..5221.90 rows=1 width=128) (actual time=0.036..0.036 rows=0.00 loops=1)
+              Sort Key: o.placed_at DESC, o.id DESC
+              Sort Method: quicksort  Memory: 25kB
+              Buffers: shared hit=9
+              ->  Bitmap Heap Scan on ordering_order o  (cost=60.87..5221.89 rows=1 width=128) (actual time=0.018..0.019 rows=0.00 loops=1)
+                    Recheck Cond: (perf_bigrams(lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text))) @> '{--}'::text[])
+                    Filter: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%---%'::text)
+                    Buffers: shared hit=3
+                    ->  Bitmap Index Scan on proto_z1_orders  (cost=0.00..60.87 rows=1363 width=0) (actual time=0.015..0.015 rows=0.00 loops=1)
+                          Index Cond: (perf_bigrams(lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text))) @> '{--}'::text[])
+                          Index Searches: 1
+                          Buffers: shared hit=3
+        SubPlan 1
+          ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                      Index Cond: (order_id = o.id)
+                      Index Searches: 0
+Planning:
+  Buffers: shared hit=662
+Planning Time: 1.294 ms
+Execution Time: 0.062 ms

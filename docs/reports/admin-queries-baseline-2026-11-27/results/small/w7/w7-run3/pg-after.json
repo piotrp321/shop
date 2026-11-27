@@ -1,0 +1,1 @@
+{"at" : "2026-11-27T12:56:24.993461+00:00", "blks_read" : 774, "blks_hit" : 26307097, "temp_bytes" : 0, "xact_commit" : 129393, "tup_returned" : 49173906, "wal_bytes" : 144982602, "io_read_bytes" : 21127168, "io_reads" : 1669}

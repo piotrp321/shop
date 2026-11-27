@@ -1,0 +1,27 @@
+-- customers, fragment punct-3 'a.b', count
+-- hits = 3440
+SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('a.b') || '%' OR lower(c.full_name) LIKE '%' || lower('a.b') || '%') LIMIT 10001) bounded;
+
+Aggregate  (cost=3949.16..3949.17 rows=1 width=8) (actual time=11.132..11.136 rows=1.00 loops=1)
+  Buffers: shared hit=2318
+  ->  Limit  (cost=55.96..3899.26 rows=3992 width=4) (actual time=1.373..10.999 rows=3440.00 loops=1)
+        Buffers: shared hit=2318
+        ->  Bitmap Heap Scan on ordering_customer c  (cost=55.96..3899.26 rows=3992 width=4) (actual time=1.372..10.813 rows=3440.00 loops=1)
+              Recheck Cond: ((lower((email)::text) ~~ '%a.b%'::text) OR (lower((full_name)::text) ~~ '%a.b%'::text))
+              Rows Removed by Index Recheck: 7165
+              Heap Blocks: exact=2305
+              Buffers: shared hit=2318
+              ->  BitmapOr  (cost=55.96..55.96 rows=3992 width=0) (actual time=1.145..1.146 rows=0.00 loops=1)
+                    Buffers: shared hit=13
+                    ->  Bitmap Index Scan on ordering_customer_email_trgm_idx  (cost=0.00..41.10 rows=3983 width=0) (actual time=0.714..0.714 rows=10605.00 loops=1)
+                          Index Cond: (lower((email)::text) ~~ '%a.b%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=7
+                    ->  Bitmap Index Scan on ordering_customer_name_trgm_idx  (cost=0.00..12.86 rows=10 width=0) (actual time=0.431..0.431 rows=10605.00 loops=1)
+                          Index Cond: (lower((full_name)::text) ~~ '%a.b%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=6
+Planning:
+  Buffers: shared hit=204
+Planning Time: 0.734 ms
+Execution Time: 11.216 ms

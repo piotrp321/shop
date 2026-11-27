@@ -1,0 +1,389 @@
+-- category department + common phrase, page 1, sort name
+-- products in the subtree = 206849
+WITH additional AS MATERIALIZED (SELECT DISTINCT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[]) AND NOT (p.primary_category_id = ANY('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[])) AND p.name ILIKE '%pro%') SELECT id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'd7c098d0-4bae-595e-a1e1-e4a923448956' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '1a27b41d-f17e-5928-b73d-e9953916221a' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '22cf1459-445c-5f09-9c57-cffac2a03b1b' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c46367b5-ebd9-5214-83cf-f336dac3fedb' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '1eca62e7-3a2e-526f-b689-4d43a343b30d' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '0e811f7e-c801-572b-a28d-ceea69c2c019' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '2e961065-6d3a-50e2-abaf-a6936a768cc6' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '8732b1af-0cf9-5c92-8388-043c6a2a6a95' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c57c017b-d6f7-5990-82bf-635533003629' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '266c5e49-3e83-5a60-98d2-e2e142d46edb' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '70134891-dc80-5215-9109-23f8f80ad40a' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '50cd3ab9-6263-5441-9d77-cef1c8794964' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'd2a8f52e-6be4-54e2-afa2-b6537de3abe3' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '830597e3-c1d9-53b5-ac6c-9d8b19076ffd' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'dad8249a-d4d2-5f77-a4ed-c20fad01e574' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '8114f947-c901-5ec4-a342-8680b736d727' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'b1586e7f-5815-587a-9e06-bac239eaeb62' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'a58050fa-627a-5c6f-aa94-3f392baa4385' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'ab5e7d61-6ce9-5e20-9732-15b515592c9c' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'e77ca681-5575-588c-be72-a87e86dd1f73' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'b046c3bb-67cf-575e-85de-475b0a4231db' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '4b68d4ca-f126-562f-a142-65edd596cc0c' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '4c351e8e-ff75-5a37-81ef-cae675c8eea8' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '73706765-ed3e-58bf-86d9-b66cd3fa71c0' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'eb2174f3-d536-50f3-8832-51736f2da26d' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'f6f867f6-b41b-5131-9b4d-8a30fbea6c2b' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '3a031e2a-97e1-5099-b9f5-b34bf28d36e0' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '4744a6a8-69df-52c4-8142-b3d5c2024a00' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'dc12d069-67b5-5cfc-9734-cfbb916735d3' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'fd305193-a5ad-5aac-932f-fc408a98d4c7' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT id, name, tax_class, updated_at FROM additional ORDER BY name ASC, id ASC LIMIT 26)) u ORDER BY name, id LIMIT 26;
+
+Limit  (cost=128787.14..129564.95 rows=26 width=84) (actual time=169.214..173.684 rows=26.00 loops=1)
+  Buffers: shared hit=120381 read=49039 written=2
+  I/O Timings: shared read=157.191 write=0.057
+  CTE additional
+    ->  Unique  (cost=1021.22..128463.14 rows=6276 width=71) (actual time=101.583..105.038 rows=0.00 loops=1)
+          Buffers: shared hit=120239 read=48527 written=2
+          I/O Timings: shared read=155.338 write=0.057
+          ->  Incremental Sort  (cost=1021.22..128400.38 rows=6276 width=71) (actual time=101.582..105.037 rows=0.00 loops=1)
+                Sort Key: p_34.id, p_34.name, p_34.tax_class, p_34.updated_at
+                Presorted Key: p_34.id
+                Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 25kB  Peak Memory: 25kB
+                Buffers: shared hit=120239 read=48527 written=2
+                I/O Timings: shared read=155.338 write=0.057
+                ->  Gather Merge  (cost=1000.95..128117.96 rows=6276 width=71) (actual time=101.566..105.020 rows=0.00 loops=1)
+                      Workers Planned: 2
+                      Workers Launched: 2
+                      Buffers: shared hit=120236 read=48527 written=2
+                      I/O Timings: shared read=155.338 write=0.057
+                      ->  Nested Loop  (cost=0.93..126393.53 rows=2615 width=71) (actual time=91.713..91.713 rows=0.00 loops=3)
+                            Buffers: shared hit=120236 read=48527 written=2
+                            I/O Timings: shared read=155.338 write=0.057
+                            ->  Parallel Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..8047.53 rows=25367 width=16) (actual time=0.095..7.862 rows=13924.00 loops=3)
+                                  Index Cond: (category_id = ANY ('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[]))
+                                  Heap Fetches: 24
+                                  Index Searches: 1
+                                  Buffers: shared hit=107 read=1566
+                                  I/O Timings: shared read=4.930
+                            ->  Index Scan using catalog_product_pkey on catalog_product p_34  (cost=0.51..4.67 rows=1 width=71) (actual time=0.006..0.006 rows=0.00 loops=41772)
+                                  Index Cond: (id = pc.product_id)
+                                  Filter: (((name)::text ~~* '%pro%'::text) AND (primary_category_id <> ALL ('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[])))
+                                  Rows Removed by Filter: 1
+                                  Index Searches: 41772
+                                  Buffers: shared hit=120129 read=46961 written=2
+                                  I/O Timings: shared read=150.408 write=0.057
+  ->  Merge Append  (cost=324.00..27547.44 rows=910 width=84) (actual time=103.533..104.545 rows=26.00 loops=1)
+        Sort Key: p.name, p.id
+        Buffers: shared hit=46385 read=19195 written=1
+        I/O Timings: shared read=60.604 write=0.035
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.060..0.061 rows=0.00 loops=1)
+              Buffers: shared read=4
+              I/O Timings: shared read=0.029
+              ->  Index Scan using proto_k1_name on catalog_product p  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.049..0.050 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'd7c098d0-4bae-595e-a1e1-e4a923448956'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Index Searches: 1
+                    Buffers: shared read=4
+                    I/O Timings: shared read=0.029
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.022..0.022 rows=0.00 loops=1)
+              Buffers: shared hit=1 read=3
+              I/O Timings: shared read=0.013
+              ->  Index Scan using proto_k1_name on catalog_product p_1  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.019..0.019 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '1a27b41d-f17e-5928-b73d-e9953916221a'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=1 read=3
+                    I/O Timings: shared read=0.013
+        ->  Limit  (cost=0.55..795.27 rows=26 width=71) (actual time=0.134..0.134 rows=1.00 loops=1)
+              Buffers: shared hit=3 read=18
+              I/O Timings: shared read=0.085
+              ->  Index Scan using proto_k1_name on catalog_product p_2  (cost=0.55..34357.01 rows=1124 width=71) (actual time=0.132..0.132 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '22cf1459-445c-5f09-9c57-cffac2a03b1b'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 16
+                    Index Searches: 1
+                    Buffers: shared hit=3 read=18
+                    I/O Timings: shared read=0.085
+        ->  Limit  (cost=0.55..785.12 rows=26 width=71) (actual time=0.073..0.074 rows=1.00 loops=1)
+              Buffers: shared hit=3 read=11
+              I/O Timings: shared read=0.048
+              ->  Index Scan using proto_k1_name on catalog_product p_3  (cost=0.55..67684.84 rows=2243 width=71) (actual time=0.072..0.072 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = 'c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 9
+                    Index Searches: 1
+                    Buffers: shared hit=3 read=11
+                    I/O Timings: shared read=0.048
+        ->  Limit  (cost=0.55..790.29 rows=26 width=71) (actual time=0.065..0.065 rows=1.00 loops=1)
+              Buffers: shared hit=3 read=9
+              I/O Timings: shared read=0.041
+              ->  Index Scan using proto_k1_name on catalog_product p_4  (cost=0.55..51060.59 rows=1681 width=71) (actual time=0.064..0.064 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = 'c46367b5-ebd9-5214-83cf-f336dac3fedb'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 6
+                    Index Searches: 1
+                    Buffers: shared hit=3 read=9
+                    I/O Timings: shared read=0.041
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.004..0.004 rows=0.00 loops=1)
+              Buffers: shared hit=4
+              ->  Index Scan using proto_k1_name on catalog_product p_5  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.002..0.002 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '1eca62e7-3a2e-526f-b689-4d43a343b30d'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=4
+        ->  Limit  (cost=0.55..801.04 rows=26 width=71) (actual time=0.124..0.125 rows=1.00 loops=1)
+              Buffers: shared hit=6 read=16
+              I/O Timings: shared read=0.069
+              ->  Index Scan using proto_k1_name on catalog_product p_6  (cost=0.55..17272.68 rows=561 width=71) (actual time=0.123..0.123 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '0e811f7e-c801-572b-a28d-ceea69c2c019'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 17
+                    Index Searches: 1
+                    Buffers: shared hit=6 read=16
+                    I/O Timings: shared read=0.069
+        ->  Limit  (cost=0.55..789.94 rows=26 width=71) (actual time=0.117..0.117 rows=1.00 loops=1)
+              Buffers: shared hit=3 read=15
+              I/O Timings: shared read=0.079
+              ->  Index Scan using proto_k1_name on catalog_product p_7  (cost=0.55..52343.03 rows=1724 width=71) (actual time=0.115..0.115 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '2e961065-6d3a-50e2-abaf-a6936a768cc6'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 12
+                    Index Searches: 1
+                    Buffers: shared hit=3 read=15
+                    I/O Timings: shared read=0.079
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.042..0.042 rows=1.00 loops=1)
+              Buffers: shared hit=4 read=4
+              I/O Timings: shared read=0.018
+              ->  Index Scan using proto_k1_name on catalog_product p_8  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.040..0.040 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '8732b1af-0cf9-5c92-8388-043c6a2a6a95'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 3
+                    Index Searches: 1
+                    Buffers: shared hit=4 read=4
+                    I/O Timings: shared read=0.018
+        ->  Limit  (cost=0.55..801.05 rows=26 width=71) (actual time=0.031..0.032 rows=1.00 loops=1)
+              Buffers: shared hit=3 read=4
+              I/O Timings: shared read=0.017
+              ->  Index Scan using proto_k1_name on catalog_product p_9  (cost=0.55..17457.59 rows=567 width=71) (actual time=0.030..0.030 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = 'c57c017b-d6f7-5990-82bf-635533003629'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 2
+                    Index Searches: 1
+                    Buffers: shared hit=3 read=4
+                    I/O Timings: shared read=0.017
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.029..0.029 rows=0.00 loops=1)
+              Buffers: shared hit=4 read=4
+              I/O Timings: shared read=0.015
+              ->  Index Scan using proto_k1_name on catalog_product p_10  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.028..0.028 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '266c5e49-3e83-5a60-98d2-e2e142d46edb'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 10
+                    Index Searches: 1
+                    Buffers: shared hit=4 read=4
+                    I/O Timings: shared read=0.015
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.013..0.014 rows=0.00 loops=1)
+              Buffers: shared hit=2 read=2
+              I/O Timings: shared read=0.009
+              ->  Index Scan using proto_k1_name on catalog_product p_11  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.012..0.012 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '70134891-dc80-5215-9109-23f8f80ad40a'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=2 read=2
+                    I/O Timings: shared read=0.009
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.026..0.027 rows=0.00 loops=1)
+              Buffers: shared hit=3 read=4
+              I/O Timings: shared read=0.015
+              ->  Index Scan using proto_k1_name on catalog_product p_12  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.024..0.025 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '50cd3ab9-6263-5441-9d77-cef1c8794964'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 6
+                    Index Searches: 1
+                    Buffers: shared hit=3 read=4
+                    I/O Timings: shared read=0.015
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.004..0.004 rows=0.00 loops=1)
+              Buffers: shared hit=4
+              ->  Index Scan using proto_k1_name on catalog_product p_13  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.002..0.002 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'd2a8f52e-6be4-54e2-afa2-b6537de3abe3'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=4
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.022..0.022 rows=0.00 loops=1)
+              Buffers: shared hit=2 read=3
+              I/O Timings: shared read=0.012
+              ->  Index Scan using proto_k1_name on catalog_product p_14  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.020..0.020 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '830597e3-c1d9-53b5-ac6c-9d8b19076ffd'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 4
+                    Index Searches: 1
+                    Buffers: shared hit=2 read=3
+                    I/O Timings: shared read=0.012
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.018..0.019 rows=0.00 loops=1)
+              Buffers: shared hit=5 read=2
+              I/O Timings: shared read=0.009
+              ->  Index Scan using proto_k1_name on catalog_product p_15  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.017..0.017 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'dad8249a-d4d2-5f77-a4ed-c20fad01e574'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 6
+                    Index Searches: 1
+                    Buffers: shared hit=5 read=2
+                    I/O Timings: shared read=0.009
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.012..0.013 rows=0.00 loops=1)
+              Buffers: shared hit=2 read=2
+              I/O Timings: shared read=0.008
+              ->  Index Scan using proto_k1_name on catalog_product p_16  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.011..0.011 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '8114f947-c901-5ec4-a342-8680b736d727'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=2 read=2
+                    I/O Timings: shared read=0.008
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.029..0.030 rows=0.00 loops=1)
+              Buffers: shared hit=3 read=4
+              I/O Timings: shared read=0.015
+              ->  Index Scan using proto_k1_name on catalog_product p_17  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.028..0.028 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'b1586e7f-5815-587a-9e06-bac239eaeb62'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 8
+                    Index Searches: 1
+                    Buffers: shared hit=3 read=4
+                    I/O Timings: shared read=0.015
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.023..0.023 rows=0.00 loops=1)
+              Buffers: shared hit=5 read=3
+              I/O Timings: shared read=0.011
+              ->  Index Scan using proto_k1_name on catalog_product p_18  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.021..0.021 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 8
+                    Index Searches: 1
+                    Buffers: shared hit=5 read=3
+                    I/O Timings: shared read=0.011
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.012..0.013 rows=0.00 loops=1)
+              Buffers: shared hit=2 read=2
+              I/O Timings: shared read=0.008
+              ->  Index Scan using proto_k1_name on catalog_product p_19  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.011..0.011 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'a58050fa-627a-5c6f-aa94-3f392baa4385'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=2 read=2
+                    I/O Timings: shared read=0.008
+        ->  Limit  (cost=0.55..790.10 rows=26 width=71) (actual time=0.068..1.051 rows=26.00 loops=1)
+              Buffers: shared hit=29 read=253
+              I/O Timings: shared read=0.736
+              ->  Index Scan using proto_k1_name on catalog_product p_20  (cost=0.55..51442.50 rows=1694 width=71) (actual time=0.066..1.046 rows=26.00 loops=1)
+                    Index Cond: (primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 249
+                    Index Searches: 1
+                    Buffers: shared hit=29 read=253
+                    I/O Timings: shared read=0.736
+        ->  Limit  (cost=0.55..790.10 rows=26 width=71) (actual time=0.053..0.053 rows=1.00 loops=1)
+              Buffers: shared hit=4 read=6
+              I/O Timings: shared read=0.026
+              ->  Index Scan using proto_k1_name on catalog_product p_21  (cost=0.55..51715.88 rows=1703 width=71) (actual time=0.051..0.051 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = 'ab5e7d61-6ce9-5e20-9732-15b515592c9c'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 5
+                    Index Searches: 1
+                    Buffers: shared hit=4 read=6
+                    I/O Timings: shared read=0.026
+        ->  Limit  (cost=0.55..795.45 rows=26 width=71) (actual time=0.128..0.128 rows=1.00 loops=1)
+              Buffers: shared hit=5 read=19
+              I/O Timings: shared read=0.081
+              ->  Index Scan using proto_k1_name on catalog_product p_22  (cost=0.55..33814.31 rows=1106 width=71) (actual time=0.126..0.126 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = 'e77ca681-5575-588c-be72-a87e86dd1f73'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 19
+                    Index Searches: 1
+                    Buffers: shared hit=5 read=19
+                    I/O Timings: shared read=0.081
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.013..0.013 rows=0.00 loops=1)
+              Buffers: shared hit=2 read=2
+              I/O Timings: shared read=0.009
+              ->  Index Scan using proto_k1_name on catalog_product p_23  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.011..0.012 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'b046c3bb-67cf-575e-85de-475b0a4231db'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=2 read=2
+                    I/O Timings: shared read=0.009
+        ->  Limit  (cost=0.55..779.79 rows=26 width=71) (actual time=0.104..0.104 rows=1.00 loops=1)
+              Buffers: shared hit=5 read=16
+              I/O Timings: shared read=0.067
+              ->  Index Scan using proto_k1_name on catalog_product p_24  (cost=0.55..85986.90 rows=2869 width=71) (actual time=0.102..0.102 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '4b68d4ca-f126-562f-a142-65edd596cc0c'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 16
+                    Index Searches: 1
+                    Buffers: shared hit=5 read=16
+                    I/O Timings: shared read=0.067
+        ->  Limit  (cost=0.55..800.26 rows=26 width=71) (actual time=0.205..0.206 rows=1.00 loops=1)
+              Buffers: shared hit=6 read=32
+              I/O Timings: shared read=0.130
+              ->  Index Scan using proto_k1_name on catalog_product p_25  (cost=0.55..17594.26 rows=572 width=71) (actual time=0.204..0.204 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '4c351e8e-ff75-5a37-81ef-cae675c8eea8'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 32
+                    Index Searches: 1
+                    Buffers: shared hit=6 read=32
+                    I/O Timings: shared read=0.130
+        ->  Limit  (cost=0.55..795.70 rows=26 width=71) (actual time=0.068..0.068 rows=1.00 loops=1)
+              Buffers: shared hit=4 read=10
+              I/O Timings: shared read=0.041
+              ->  Index Scan using proto_k1_name on catalog_product p_26  (cost=0.55..33641.47 rows=1100 width=71) (actual time=0.067..0.067 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '73706765-ed3e-58bf-86d9-b66cd3fa71c0'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 9
+                    Index Searches: 1
+                    Buffers: shared hit=4 read=10
+                    I/O Timings: shared read=0.041
+        ->  Limit  (cost=0.55..795.61 rows=26 width=71) (actual time=0.019..0.019 rows=1.00 loops=1)
+              Buffers: shared hit=3 read=2
+              I/O Timings: shared read=0.008
+              ->  Index Scan using proto_k1_name on catalog_product p_27  (cost=0.55..35044.44 rows=1146 width=71) (actual time=0.017..0.017 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=3 read=2
+                    I/O Timings: shared read=0.008
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.033..0.034 rows=0.00 loops=1)
+              Buffers: shared hit=5 read=4
+              I/O Timings: shared read=0.016
+              ->  Index Scan using proto_k1_name on catalog_product p_28  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.032..0.032 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'eb2174f3-d536-50f3-8832-51736f2da26d'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 8
+                    Index Searches: 1
+                    Buffers: shared hit=5 read=4
+                    I/O Timings: shared read=0.016
+        ->  Limit  (cost=0.55..809.38 rows=26 width=71) (actual time=0.012..0.012 rows=0.00 loops=1)
+              Buffers: shared hit=2 read=2
+              I/O Timings: shared read=0.008
+              ->  Index Scan using proto_k1_name on catalog_product p_29  (cost=0.55..2987.00 rows=96 width=71) (actual time=0.010..0.010 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'f6f867f6-b41b-5131-9b4d-8a30fbea6c2b'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=2 read=2
+                    I/O Timings: shared read=0.008
+        ->  Limit  (cost=0.55..790.43 rows=26 width=71) (actual time=0.082..0.082 rows=1.00 loops=1)
+              Buffers: shared hit=3 read=14
+              I/O Timings: shared read=0.055
+              ->  Index Scan using proto_k1_name on catalog_product p_30  (cost=0.55..50188.18 rows=1652 width=71) (actual time=0.080..0.080 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '3a031e2a-97e1-5099-b9f5-b34bf28d36e0'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 11
+                    Index Searches: 1
+                    Buffers: shared hit=3 read=14
+                    I/O Timings: shared read=0.055
+        ->  Limit  (cost=0.55..779.93 rows=26 width=71) (actual time=0.078..0.078 rows=1.00 loops=1)
+              Buffers: shared hit=4 read=12
+              I/O Timings: shared read=0.048
+              ->  Index Scan using proto_k1_name on catalog_product p_31  (cost=0.55..85162.62 rows=2841 width=71) (actual time=0.076..0.076 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '4744a6a8-69df-52c4-8142-b3d5c2024a00'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 11
+                    Index Searches: 1
+                    Buffers: shared hit=4 read=12
+                    I/O Timings: shared read=0.048
+        ->  Limit  (cost=0.55..789.80 rows=26 width=71) (actual time=0.032..0.032 rows=1.00 loops=1)
+              Buffers: shared hit=3 read=4
+              I/O Timings: shared read=0.017
+              ->  Index Scan using proto_k1_name on catalog_product p_32  (cost=0.55..52455.62 rows=1728 width=71) (actual time=0.030..0.030 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = 'dc12d069-67b5-5cfc-9734-cfbb916735d3'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 2
+                    Index Searches: 1
+                    Buffers: shared hit=3 read=4
+                    I/O Timings: shared read=0.017
+        ->  Limit  (cost=0.55..784.86 rows=26 width=71) (actual time=0.160..0.161 rows=1.00 loops=1)
+              Buffers: shared hit=5 read=26
+              I/O Timings: shared read=0.106
+              ->  Index Scan using proto_k1_name on catalog_product p_33  (cost=0.55..69200.58 rows=2294 width=71) (actual time=0.159..0.159 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = 'fd305193-a5ad-5aac-932f-fc408a98d4c7'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 26
+                    Index Searches: 1
+                    Buffers: shared hit=5 read=26
+                    I/O Timings: shared read=0.106
+        ->  Limit  (cost=304.40..304.46 rows=26 width=524) (actual time=101.593..101.593 rows=0.00 loops=1)
+              Buffers: shared hit=46243 read=18683 written=1
+              I/O Timings: shared read=58.752 write=0.035
+              ->  Sort  (cost=304.40..320.09 rows=6276 width=524) (actual time=101.591..101.591 rows=0.00 loops=1)
+                    Sort Key: additional.name, additional.id
+                    Sort Method: quicksort  Memory: 25kB
+                    Buffers: shared hit=46243 read=18683 written=1
+                    I/O Timings: shared read=58.752 write=0.035
+                    ->  CTE Scan on additional  (cost=0.00..125.52 rows=6276 width=524) (actual time=101.585..101.585 rows=0.00 loops=1)
+                          Storage: Memory  Maximum Storage: 17kB
+                          Buffers: shared hit=46243 read=18683 written=1
+                          I/O Timings: shared read=58.752 write=0.035
+Planning:
+  Buffers: shared hit=495 read=112
+  I/O Timings: shared read=0.464
+Planning Time: 5.185 ms
+JIT:
+  Functions: 268
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 7.748 ms (Deform 4.754 ms), Inlining 0.000 ms, Optimization 3.582 ms, Emission 70.153 ms, Total 81.482 ms
+Execution Time: 192.541 ms

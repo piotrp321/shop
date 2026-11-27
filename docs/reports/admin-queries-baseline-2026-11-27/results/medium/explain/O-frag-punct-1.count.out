@@ -1,0 +1,24 @@
+-- orders, fragment punct-1 '#!#', count
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('#!#') || '%' LIMIT 10001) bounded;
+
+Aggregate  (cost=67598.92..67598.93 rows=1 width=8) (actual time=242.446..246.229 rows=1.00 loops=1)
+  Buffers: shared hit=15882 read=40288 written=1
+  I/O Timings: shared read=1.897 write=0.018
+  ->  Limit  (cost=1000.00..67597.67 rows=100 width=4) (actual time=242.443..246.226 rows=0.00 loops=1)
+        Buffers: shared hit=15882 read=40288 written=1
+        I/O Timings: shared read=1.897 write=0.018
+        ->  Gather  (cost=1000.00..67597.67 rows=100 width=4) (actual time=242.442..246.224 rows=0.00 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=15882 read=40288 written=1
+              I/O Timings: shared read=1.897 write=0.018
+              ->  Parallel Seq Scan on ordering_order o  (cost=0.00..66587.67 rows=42 width=4) (actual time=240.782..240.783 rows=0.00 loops=3)
+                    Filter: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%#!#%'::text)
+                    Rows Removed by Filter: 333333
+                    Buffers: shared hit=15882 read=40288 written=1
+                    I/O Timings: shared read=1.897 write=0.018
+Planning:
+  Buffers: shared hit=283
+Planning Time: 0.756 ms
+Execution Time: 246.264 ms

@@ -1,0 +1,26 @@
+-- phrase punct-3 'a.b', sort name: the candidates from the bigrams
+-- hits = 0
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('a.b') AND p.name ILIKE '%a.b%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26;
+
+Limit  (cost=153.41..153.41 rows=1 width=524) (actual time=0.035..0.035 rows=0.00 loops=1)
+  Buffers: shared hit=8
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=149.11..153.38 rows=1 width=71) (actual time=0.022..0.022 rows=0.00 loops=1)
+          Recheck Cond: (perf_bigrams((name)::text) @> '{a.,.b}'::text[])
+          Filter: ((name)::text ~~* '%a.b%'::text)
+          Buffers: shared hit=5
+          ->  Bitmap Index Scan on proto_f2_name_bigrams  (cost=0.00..149.11 rows=1 width=0) (actual time=0.015..0.015 rows=0.00 loops=1)
+                Index Cond: (perf_bigrams((name)::text) @> '{a.,.b}'::text[])
+                Index Searches: 1
+                Buffers: shared hit=5
+  ->  Sort  (cost=0.03..0.04 rows=1 width=524) (actual time=0.034..0.034 rows=0.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=8
+        ->  CTE Scan on m  (cost=0.00..0.02 rows=1 width=524) (actual time=0.022..0.022 rows=0.00 loops=1)
+              Storage: Memory  Maximum Storage: 17kB
+              Buffers: shared hit=5
+Planning:
+  Buffers: shared hit=514
+Planning Time: 1.315 ms
+Execution Time: 0.051 ms

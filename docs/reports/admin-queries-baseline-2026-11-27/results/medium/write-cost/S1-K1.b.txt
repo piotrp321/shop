@@ -1,0 +1,15 @@
+SELECT 1000
+SELECT 250
+SELECT 1000
+CHECKPOINT
+NOTICE:  S1-K1.b product cold writes=1000 wal_bytes_per_write=36215.0 fpi_per_write=0.000 ms_per_write=3.076 flush_bytes_per_write=18635.6 checkpoints_during=0
+NOTICE:  S1-K1.b product hot writes=1000 wal_bytes_per_write=5249.8 fpi_per_write=0.000 ms_per_write=4.030 flush_bytes_per_write=296.2 checkpoints_during=0
+DO
+CHECKPOINT
+NOTICE:  S1-K1.b order-cycle cold cycles=250 wal_bytes_per_cycle=39644.4 fpi_per_cycle=0.488 ms_per_cycle=25.728 flush_bytes_per_write=22584.9 checkpoints_during=0
+DO
+NOTICE:  S1-K1.b order-cycle hot cycles=250 wal_bytes_per_cycle=26437.0 fpi_per_cycle=0.000 ms_per_cycle=13.097 flush_bytes_per_write=0.0 checkpoints_during=0
+CHECKPOINT
+NOTICE:  S1-K1.b customer cold writes=1000 wal_bytes_per_write=14793.4 fpi_per_write=0.000 ms_per_write=1.938 flush_bytes_per_write=6718.3 checkpoints_during=0
+DO
+NOTICE:  S1-K1.b customer hot writes=1000 wal_bytes_per_write=7624.2 fpi_per_write=0.000 ms_per_write=2.267 flush_bytes_per_write=0.0 checkpoints_during=0

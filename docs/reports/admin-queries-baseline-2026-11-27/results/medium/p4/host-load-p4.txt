@@ -1,0 +1,2 @@
+15:30:00 before P4:  high CPU: perf2b-4-keycloak-1 7.90%; perf2b-4-postgres-1 5.27%; 
+15:54:23 after P4:  high CPU: async-idx-m1-rabbitmq-1 88.72%; 

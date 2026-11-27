@@ -1,0 +1,83 @@
+same  K1.small.cat.p1.name vs P-cat-small.p1.name
+same  K1.small.cat.p1.-updatedAt vs P-cat-small.p1.-updatedAt
+same  K1.small.cat.count vs P-cat-small.count
+same  K1.small.cat+brand.p1.name vs the present statement of the combination
+same  K1.small.cat+brand.p1.-updatedAt vs the present statement of the combination
+same  K1.small.cat+brand.count vs the present statement of the combination
+same  K1.small.cat+drafts.p1.name vs the present statement of the combination
+same  K1.small.cat+drafts.p1.-updatedAt vs the present statement of the combination
+same  K1.small.cat+drafts.count vs the present statement of the combination
+same  K1.small.cat+noimages.p1.name vs the present statement of the combination
+same  K1.small.cat+noimages.p1.-updatedAt vs the present statement of the combination
+same  K1.small.cat+noimages.count vs the present statement of the combination
+same  K1.mid.cat.p1.name vs P-cat-mid.p1.name
+same  K1.mid.cat.p2.name vs P-cat-mid.p2.name
+same  K1.mid.cat.p1.-updatedAt vs P-cat-mid.p1.-updatedAt
+same  K1.mid.cat.p2.-updatedAt vs P-cat-mid.p2.-updatedAt
+same  K1.mid.cat.count vs P-cat-mid.count
+same  K1.mid.cat+brand.p1.name vs the present statement of the combination
+same  K1.mid.cat+brand.p1.-updatedAt vs the present statement of the combination
+same  K1.mid.cat+brand.count vs the present statement of the combination
+same  K1.mid.cat+drafts.p1.name vs the present statement of the combination
+same  K1.mid.cat+drafts.p1.-updatedAt vs the present statement of the combination
+same  K1.mid.cat+drafts.count vs the present statement of the combination
+same  K1.mid.cat+noimages.p1.name vs the present statement of the combination
+same  K1.mid.cat+noimages.p1.-updatedAt vs the present statement of the combination
+same  K1.mid.cat+noimages.count vs the present statement of the combination
+same  K1.big-early.cat.p1.name vs P-cat-big-early.p1.name
+same  K1.big-early.cat.p2.name vs P-cat-big-early.p2.name
+same  K1.big-early.cat.p1.-updatedAt vs P-cat-big-early.p1.-updatedAt
+same  K1.big-early.cat.p2.-updatedAt vs P-cat-big-early.p2.-updatedAt
+same  K1.big-early.cat.count vs P-cat-big-early.count
+same  K1.big-early.cat+brand.p1.name vs the present statement of the combination
+same  K1.big-early.cat+brand.p1.-updatedAt vs the present statement of the combination
+same  K1.big-early.cat+brand.count vs the present statement of the combination
+same  K1.big-early.cat+drafts.p1.name vs the present statement of the combination
+same  K1.big-early.cat+drafts.p1.-updatedAt vs the present statement of the combination
+same  K1.big-early.cat+drafts.count vs the present statement of the combination
+same  K1.big-early.cat+noimages.p1.name vs the present statement of the combination
+same  K1.big-early.cat+noimages.p1.-updatedAt vs the present statement of the combination
+same  K1.big-early.cat+noimages.count vs the present statement of the combination
+same  K1.big-late.cat.p1.name vs P-cat-big-late.p1.name
+same  K1.big-late.cat.p2.name vs P-cat-big-late.p2.name
+same  K1.big-late.cat.p1.-updatedAt vs P-cat-big-late.p1.-updatedAt
+same  K1.big-late.cat.p2.-updatedAt vs P-cat-big-late.p2.-updatedAt
+same  K1.big-late.cat.count vs P-cat-big-late.count
+same  K1.big-late.cat+brand.p1.name vs the present statement of the combination
+same  K1.big-late.cat+brand.p1.-updatedAt vs the present statement of the combination
+same  K1.big-late.cat+brand.count vs the present statement of the combination
+same  K1.big-late.cat+drafts.p1.name vs the present statement of the combination
+same  K1.big-late.cat+drafts.p1.-updatedAt vs the present statement of the combination
+same  K1.big-late.cat+drafts.count vs the present statement of the combination
+same  K1.big-late.cat+noimages.p1.name vs the present statement of the combination
+same  K1.big-late.cat+noimages.p1.-updatedAt vs the present statement of the combination
+same  K1.big-late.cat+noimages.count vs the present statement of the combination
+same  K1.department.cat.p1.name vs P-cat-department.p1.name
+same  K1.department.cat.p2.name vs P-cat-department.p2.name
+same  K1.department.cat.p1.-updatedAt vs P-cat-department.p1.-updatedAt
+same  K1.department.cat.p2.-updatedAt vs P-cat-department.p2.-updatedAt
+same  K1.department.cat.count vs P-cat-department.count
+same  K1.department.cat+brand.p1.name vs the present statement of the combination
+same  K1.department.cat+brand.p1.-updatedAt vs the present statement of the combination
+same  K1.department.cat+brand.count vs the present statement of the combination
+same  K1.department.cat+drafts.p1.name vs the present statement of the combination
+same  K1.department.cat+drafts.p1.-updatedAt vs the present statement of the combination
+same  K1.department.cat+drafts.count vs the present statement of the combination
+same  K1.department.cat+noimages.p1.name vs the present statement of the combination
+same  K1.department.cat+noimages.p1.-updatedAt vs the present statement of the combination
+same  K1.department.cat+noimages.count vs the present statement of the combination
+same  K1.mostly-additional.cat.p1.name vs P-cat-mostly-additional.p1.name
+same  K1.mostly-additional.cat.p2.name vs P-cat-mostly-additional.p2.name
+same  K1.mostly-additional.cat.p1.-updatedAt vs P-cat-mostly-additional.p1.-updatedAt
+same  K1.mostly-additional.cat.p2.-updatedAt vs P-cat-mostly-additional.p2.-updatedAt
+same  K1.mostly-additional.cat.count vs P-cat-mostly-additional.count
+same  K1.mostly-additional.cat+brand.p1.name vs the present statement of the combination
+same  K1.mostly-additional.cat+brand.p1.-updatedAt vs the present statement of the combination
+same  K1.mostly-additional.cat+brand.count vs the present statement of the combination
+same  K1.mostly-additional.cat+drafts.p1.name vs the present statement of the combination
+same  K1.mostly-additional.cat+drafts.p1.-updatedAt vs the present statement of the combination
+same  K1.mostly-additional.cat+drafts.count vs the present statement of the combination
+same  K1.mostly-additional.cat+noimages.p1.name vs the present statement of the combination
+same  K1.mostly-additional.cat+noimages.p1.-updatedAt vs the present statement of the combination
+same  K1.mostly-additional.cat+noimages.count vs the present statement of the combination
+equiv: 82 pairs checked, 0 differ

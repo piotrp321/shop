@@ -1,0 +1,24 @@
+-- sitemap boundaries, row_number() over the whole key (M0, the present query)
+-- products = 1000191
+SELECT id FROM (SELECT id, row_number() OVER (ORDER BY id) AS position FROM catalog_product) numbered WHERE position > 1 AND (position - 1) % 10000 = 0 ORDER BY position;
+
+Sort  (cost=79305.90..79310.07 rows=1668 width=24) (actual time=307.554..307.564 rows=100.00 loops=1)
+  Sort Key: numbered."position"
+  Sort Method: quicksort  Memory: 28kB
+  Buffers: shared hit=840453
+  ->  Subquery Scan on numbered  (cost=0.48..79216.62 rows=1668 width=24) (actual time=2.995..307.484 rows=100.00 loops=1)
+        Filter: ((numbered."position" > 1) AND (((numbered."position" - 1) % '10000'::bigint) = 0))
+        Rows Removed by Filter: 1000091
+        Buffers: shared hit=840450
+        ->  WindowAgg  (cost=0.48..59203.74 rows=1000644 width=24) (actual time=0.026..262.283 rows=1000191.00 loops=1)
+              Window: w1 AS (ORDER BY catalog_product.id ROWS UNBOUNDED PRECEDING)
+              Storage: Memory  Maximum Storage: 17kB
+              Buffers: shared hit=840450
+              ->  Index Only Scan using catalog_product_pkey on catalog_product  (cost=0.42..44194.08 rows=1000644 width=16) (actual time=0.021..120.913 rows=1000191.00 loops=1)
+                    Heap Fetches: 12
+                    Index Searches: 1
+                    Buffers: shared hit=840450
+Planning:
+  Buffers: shared hit=286
+Planning Time: 0.521 ms
+Execution Time: 307.606 ms

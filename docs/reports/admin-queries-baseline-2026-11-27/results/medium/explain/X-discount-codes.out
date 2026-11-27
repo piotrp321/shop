@@ -1,0 +1,22 @@
+-- discount codes, list with the active uses per row (A4)
+-- active uses of the codes = 70210
+SELECT c.id, (SELECT count(*) FROM pricing_discount_code_usage u WHERE u.code_id = c.id AND u.released_at IS NULL) AS active_uses FROM pricing_discount_code c ORDER BY c.created_at DESC, c.id LIMIT 26;
+
+Limit  (cost=0.14..2266.97 rows=17 width=32) (actual time=0.024..5.727 rows=17.00 loops=1)
+  Buffers: shared hit=122
+  ->  Index Only Scan using pricing_discount_code_created_at_id_idx on pricing_discount_code c  (cost=0.14..2266.97 rows=17 width=32) (actual time=0.023..5.723 rows=17.00 loops=1)
+        Heap Fetches: 17
+        Index Searches: 1
+        Buffers: shared hit=122
+        SubPlan 1
+          ->  Aggregate  (cost=132.61..132.62 rows=1 width=8) (actual time=0.335..0.335 rows=1.00 loops=17)
+                Buffers: shared hit=120
+                ->  Index Only Scan using pricing_discount_code_usage_active_idx on pricing_discount_code_usage u  (cost=0.29..120.07 rows=5016 width=0) (actual time=0.003..0.191 rows=4130.00 loops=17)
+                      Index Cond: (code_id = c.id)
+                      Heap Fetches: 0
+                      Index Searches: 17
+                      Buffers: shared hit=120
+Planning:
+  Buffers: shared hit=192
+Planning Time: 0.356 ms
+Execution Time: 5.757 ms

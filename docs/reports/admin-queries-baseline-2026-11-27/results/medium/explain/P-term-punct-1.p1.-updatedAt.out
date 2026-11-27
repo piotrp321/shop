@@ -1,0 +1,32 @@
+-- phrase punct-1 '#!#', page 1, sort -updatedAt
+-- hits = 0
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%#!#%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=142147.75..142147.82 rows=26 width=71) (actual time=1445.633..1445.641 rows=0.00 loops=1)
+  Buffers: shared hit=8 read=217210
+  I/O Timings: shared read=101.859
+  ->  Sort  (cost=142147.75..142148.00 rows=100 width=71) (actual time=1442.583..1442.584 rows=0.00 loops=1)
+        Sort Key: updated_at DESC, id DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=8 read=217210
+        I/O Timings: shared read=101.859
+        ->  Bitmap Heap Scan on catalog_product p  (cost=141748.97..142144.90 rows=100 width=71) (actual time=1442.547..1442.548 rows=0.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%#!#%'::text)
+              Rows Removed by Index Recheck: 1000191
+              Heap Blocks: exact=53100 lossy=132819
+              Buffers: shared hit=2 read=217210
+              I/O Timings: shared read=101.859
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..141748.94 rows=100 width=0) (actual time=656.677..656.677 rows=400265.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%#!#%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=2 read=31291
+                    I/O Timings: shared read=96.055
+Planning:
+  Buffers: shared hit=219 read=59
+  I/O Timings: shared read=0.260
+Planning Time: 1.014 ms
+JIT:
+  Functions: 5
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.189 ms (Deform 0.105 ms), Inlining 0.000 ms, Optimization 0.210 ms, Emission 2.857 ms, Total 3.257 ms
+Execution Time: 1457.549 ms

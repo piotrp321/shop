@@ -1,0 +1,91 @@
+skip  F1.none.p1.name.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.none.p1.name.gin vs P-term-none.p1.name
+skip  F1.none.p1.-updatedAt.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.none.p1.-updatedAt.gin vs P-term-none.p1.-updatedAt
+same  F1.none.count vs P-term-none.count
+skip  F1.rare.p1.name.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.rare.p1.name.gin vs P-term-rare.p1.name
+same  F1.rare.p1.-updatedAt.walk (a full page of the walk) vs P-term-rare.p1.-updatedAt
+same  F1.rare.p1.-updatedAt.gin vs P-term-rare.p1.-updatedAt
+same  F1.rare.count vs P-term-rare.count
+same  F1.very-common-a.p1.name.walk (a full page of the walk) vs P-term-very-common-a.p1.name
+same  F1.very-common-a.p1.name.gin vs P-term-very-common-a.p1.name
+same  F1.very-common-a.p1.-updatedAt.walk (a full page of the walk) vs P-term-very-common-a.p1.-updatedAt
+same  F1.very-common-a.p1.-updatedAt.gin vs P-term-very-common-a.p1.-updatedAt
+same  F1.very-common-a.count vs P-term-very-common-a.count
+same  F1.very-common-b.p1.name.walk (a full page of the walk) vs P-term-very-common-b.p1.name
+same  F1.very-common-b.p1.name.gin vs P-term-very-common-b.p1.name
+same  F1.very-common-b.p1.-updatedAt.walk (a full page of the walk) vs P-term-very-common-b.p1.-updatedAt
+same  F1.very-common-b.p1.-updatedAt.gin vs P-term-very-common-b.p1.-updatedAt
+same  F1.very-common-b.count vs P-term-very-common-b.count
+skip  F1.two-rare.p1.name.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.two-rare.p1.name.gin vs P-term-two-rare.p1.name
+skip  F1.two-rare.p1.-updatedAt.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.two-rare.p1.-updatedAt.gin vs P-term-two-rare.p1.-updatedAt
+same  F1.two-rare.count vs P-term-two-rare.count
+skip  F1.two-other.p1.name.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.two-other.p1.name.gin vs P-term-two-other.p1.name
+skip  F1.two-other.p1.-updatedAt.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.two-other.p1.-updatedAt.gin vs P-term-two-other.p1.-updatedAt
+same  F1.two-other.count vs P-term-two-other.count
+same  F1.two-common.p1.name.walk (a full page of the walk) vs P-term-two-common.p1.name
+same  F1.two-common.p1.name.gin vs P-term-two-common.p1.name
+same  F1.two-common.p1.-updatedAt.walk (a full page of the walk) vs P-term-two-common.p1.-updatedAt
+same  F1.two-common.p1.-updatedAt.gin vs P-term-two-common.p1.-updatedAt
+same  F1.two-common.count vs P-term-two-common.count
+skip  F1.punct-1.p1.name.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.punct-1.p1.name.gin vs P-term-punct-1.p1.name
+skip  F1.punct-1.p1.-updatedAt.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.punct-1.p1.-updatedAt.gin vs P-term-punct-1.p1.-updatedAt
+same  F1.punct-1.count vs P-term-punct-1.count
+skip  F1.punct-2.p1.name.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.punct-2.p1.name.gin vs P-term-punct-2.p1.name
+skip  F1.punct-2.p1.-updatedAt.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.punct-2.p1.-updatedAt.gin vs P-term-punct-2.p1.-updatedAt
+same  F1.punct-2.count vs P-term-punct-2.count
+skip  F1.punct-3.p1.name.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.punct-3.p1.name.gin vs P-term-punct-3.p1.name
+skip  F1.punct-3.p1.-updatedAt.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.punct-3.p1.-updatedAt.gin vs P-term-punct-3.p1.-updatedAt
+same  F1.punct-3.count vs P-term-punct-3.count
+skip  F1.punct-4.p1.name.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.punct-4.p1.name.gin vs P-term-punct-4.p1.name
+skip  F1.punct-4.p1.-updatedAt.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.punct-4.p1.-updatedAt.gin vs P-term-punct-4.p1.-updatedAt
+same  F1.punct-4.count vs P-term-punct-4.count
+same  F1.type-early.p1.name.walk (a full page of the walk) vs P-term-type-early.p1.name
+same  F1.type-early.p1.name.gin vs P-term-type-early.p1.name
+same  F1.type-early.p1.-updatedAt.walk (a full page of the walk) vs P-term-type-early.p1.-updatedAt
+same  F1.type-early.p1.-updatedAt.gin vs P-term-type-early.p1.-updatedAt
+same  F1.type-early.count vs P-term-type-early.count
+skip  F1.type-late.p1.name.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.type-late.p1.name.gin vs P-term-type-late.p1.name
+same  F1.type-late.p1.-updatedAt.walk (a full page of the walk) vs P-term-type-late.p1.-updatedAt
+same  F1.type-late.p1.-updatedAt.gin vs P-term-type-late.p1.-updatedAt
+same  F1.type-late.count vs P-term-type-late.count
+skip  F1.brand-common.p1.name.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.brand-common.p1.name.gin vs P-term-brand-common.p1.name
+same  F1.brand-common.p1.-updatedAt.walk (a full page of the walk) vs P-term-brand-common.p1.-updatedAt
+same  F1.brand-common.p1.-updatedAt.gin vs P-term-brand-common.p1.-updatedAt
+same  F1.brand-common.count vs P-term-brand-common.count
+skip  F1.brand-mid.p1.name.walk: the walk does not fill the page (0 rows), the candidates take over
+same  F1.brand-mid.p1.name.gin vs P-term-brand-mid.p1.name
+same  F1.brand-mid.p1.-updatedAt.walk (a full page of the walk) vs P-term-brand-mid.p1.-updatedAt
+same  F1.brand-mid.p1.-updatedAt.gin vs P-term-brand-mid.p1.-updatedAt
+same  F1.brand-mid.count vs P-term-brand-mid.count
+same  F1.polish-lower.p1.name.walk (a full page of the walk) vs P-term-polish-lower.p1.name
+same  F1.polish-lower.p1.name.gin vs P-term-polish-lower.p1.name
+same  F1.polish-lower.p1.-updatedAt.walk (a full page of the walk) vs P-term-polish-lower.p1.-updatedAt
+same  F1.polish-lower.p1.-updatedAt.gin vs P-term-polish-lower.p1.-updatedAt
+same  F1.polish-lower.count vs P-term-polish-lower.count
+same  F1.polish-upper.p1.name.walk (a full page of the walk) vs P-term-polish-upper.p1.name
+same  F1.polish-upper.p1.name.gin vs P-term-polish-upper.p1.name
+same  F1.polish-upper.p1.-updatedAt.walk (a full page of the walk) vs P-term-polish-upper.p1.-updatedAt
+same  F1.polish-upper.p1.-updatedAt.gin vs P-term-polish-upper.p1.-updatedAt
+same  F1.polish-upper.count vs P-term-polish-upper.count
+same  F1.polish-title.p1.name.walk (a full page of the walk) vs P-term-polish-title.p1.name
+same  F1.polish-title.p1.name.gin vs P-term-polish-title.p1.name
+same  F1.polish-title.p1.-updatedAt.walk (a full page of the walk) vs P-term-polish-title.p1.-updatedAt
+same  F1.polish-title.p1.-updatedAt.gin vs P-term-polish-title.p1.-updatedAt
+same  F1.polish-title.count vs P-term-polish-title.count
+equiv: 72 pairs checked, 0 differ

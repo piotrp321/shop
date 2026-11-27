@@ -1,0 +1,27 @@
+-- category tree with counts
+-- categories x bound 1001 = 180
+SELECT c.id, (SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.primary_category_id = c.id UNION ALL SELECT 1 FROM catalog_product_category pc WHERE pc.category_id = c.id LIMIT 1001) t) AS products FROM catalog_category c;
+
+Seq Scan on catalog_category c  (cost=0.00..7806.66 rows=180 width=24) (actual time=0.031..21.825 rows=180.00 loops=1)
+  Buffers: shared hit=2159
+  SubPlan 1
+    ->  Aggregate  (cost=43.32..43.33 rows=1 width=8) (actual time=0.121..0.121 rows=1.00 loops=180)
+          Buffers: shared hit=2154
+          ->  Limit  (cost=0.42..30.81 rows=1001 width=4) (actual time=0.003..0.100 rows=585.12 loops=180)
+                Buffers: shared hit=2154
+                ->  Append  (cost=0.42..341.64 rows=11241 width=4) (actual time=0.002..0.069 rows=585.12 loops=180)
+                      Buffers: shared hit=2154
+                      ->  Index Only Scan using catalog_product_primary_category_id_idx on catalog_product p  (cost=0.42..240.08 rows=9352 width=4) (actual time=0.002..0.038 rows=584.98 loops=180)
+                            Index Cond: (primary_category_id = c.id)
+                            Heap Fetches: 0
+                            Index Searches: 180
+                            Buffers: shared hit=2003
+                      ->  Index Only Scan using idx_8bebef2612469de2 on catalog_product_category pc  (cost=0.29..45.35 rows=1889 width=4) (actual time=0.001..0.001 rows=0.35 loops=75)
+                            Index Cond: (category_id = c.id)
+                            Heap Fetches: 0
+                            Index Searches: 75
+                            Buffers: shared hit=151
+Planning:
+  Buffers: shared hit=357
+Planning Time: 0.606 ms
+Execution Time: 21.875 ms
