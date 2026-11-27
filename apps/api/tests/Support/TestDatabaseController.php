@@ -38,6 +38,9 @@ final readonly class TestDatabaseController
     {
         $this->connection->executeQuery('SELECT pg_sleep(?)', [$seconds]);
 
-        return new JsonResponse(['statement_timeout_ms' => (int) $this->connection->fetchOne("SELECT setting FROM pg_settings WHERE name = 'statement_timeout'")]);
+        $milliseconds = $this->connection->fetchOne("SELECT setting FROM pg_settings WHERE name = 'statement_timeout'");
+        \assert(\is_string($milliseconds));
+
+        return new JsonResponse(['statement_timeout_ms' => (int) $milliseconds]);
     }
 }

@@ -97,6 +97,7 @@ final class DatabaseTimeoutHttpTest extends WebTestCase
         $body = json_decode((string) $client->getResponse()->getContent(), true, flags: \JSON_THROW_ON_ERROR);
         \assert(\is_array($body));
 
+        /** @var array<string, mixed> $body */
         return $body;
     }
 }

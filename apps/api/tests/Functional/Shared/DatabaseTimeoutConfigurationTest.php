@@ -10,6 +10,7 @@ use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\Console\Event\ConsoleCommandEvent;
 use Symfony\Component\Console\Event\ConsoleTerminateEvent;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -38,7 +39,7 @@ final class DatabaseTimeoutConfigurationTest extends KernelTestCase
         self::assertEquals(new Timeouts(0, 0, 0), $timeouts->current(), 'a command of the console');
         $timeouts->startRequest('catalog_product_list');
         self::assertEquals(new Timeouts(3, 60, 0), $timeouts->current(), 'an HTTP request');
-        $timeouts->startRequest('catalog_backoffice_product_list');
+        $timeouts->startRequest('catalog_backoffice_products');
         self::assertEquals(new Timeouts(90, 60, 0), $timeouts->current(), 'an endpoint with the exception');
         $timeouts->endRequest();
         $timeouts->useBase(DatabaseTimeouts::WORKER);
@@ -65,8 +66,7 @@ final class DatabaseTimeoutConfigurationTest extends KernelTestCase
 
     public function testACommandOfTheConsoleSeesNoLimit(): void
     {
-        self::bootKernel();
-        $application = new Application(self::$kernel);
+        $application = new Application(self::bootKernel());
         $application->setAutoExit(false);
         $tester = new ApplicationTester($application);
 
@@ -82,11 +82,11 @@ final class DatabaseTimeoutConfigurationTest extends KernelTestCase
         $connection = self::getContainer()->get('doctrine.dbal.default_connection');
         \assert($connection instanceof Connection);
 
-        $dispatcher->dispatch(new ConsoleCommandEvent(new Command('doctrine:migrations:migrate'), new ArrayInput([]), new NullOutput()));
+        $dispatcher->dispatch(new ConsoleCommandEvent(new Command('doctrine:migrations:migrate'), new ArrayInput([]), new NullOutput()), ConsoleEvents::COMMAND);
 
         self::assertSame('5000', $connection->fetchOne("SELECT setting FROM pg_settings WHERE name = 'lock_timeout'"));
         self::assertSame('0', $connection->fetchOne("SELECT setting FROM pg_settings WHERE name = 'statement_timeout'"));
-        $dispatcher->dispatch(new ConsoleTerminateEvent(new Command('doctrine:migrations:migrate'), new ArrayInput([]), new NullOutput(), 0));
+        $dispatcher->dispatch(new ConsoleTerminateEvent(new Command('doctrine:migrations:migrate'), new ArrayInput([]), new NullOutput(), 0), ConsoleEvents::TERMINATE);
         self::assertSame('0', $connection->fetchOne("SELECT setting FROM pg_settings WHERE name = 'lock_timeout'"));
     }
 

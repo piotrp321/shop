@@ -1588,7 +1588,16 @@
                         }
                     },
                     "503": {
-                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without detail).",
+                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without detail). A query of the database ran longer than its time limit (90 s) and was cancelled: problem details with a Polish `detail`; `Retry-After` tells the seconds to wait.",
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before the next attempt (only with a cancelled query).",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 1
+                                }
+                            }
+                        },
                         "content": {
                             "application/problem+json": {
                                 "schema": {

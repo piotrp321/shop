@@ -168,10 +168,14 @@ final class DatabaseTimeoutsConnectionTest extends KernelTestCase
      */
     private function limits(Connection $connection): array
     {
-        $row = $connection->fetchNumeric("SELECT (SELECT setting FROM pg_settings WHERE name = 'statement_timeout'), (SELECT setting FROM pg_settings WHERE name = 'idle_in_transaction_session_timeout'), (SELECT setting FROM pg_settings WHERE name = 'lock_timeout')");
-        \assert(\is_array($row));
+        $limits = [];
+        foreach (['statement_timeout', 'idle_in_transaction_session_timeout', 'lock_timeout'] as $name) {
+            $setting = $connection->fetchOne('SELECT setting FROM pg_settings WHERE name = ?', [$name]);
+            \assert(\is_string($setting));
+            $limits[] = $setting;
+        }
 
-        return array_map(strval(...), array_values($row));
+        return $limits;
     }
 
     private function lockIsHeld(): bool
