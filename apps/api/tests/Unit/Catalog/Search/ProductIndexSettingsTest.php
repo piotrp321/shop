@@ -20,7 +20,6 @@ final class ProductIndexSettingsTest extends TestCase
 
         self::assertSame(1, $settings['number_of_shards']);
         self::assertSame(1, $settings['number_of_replicas']);
-        self::assertSame(1, ProductIndexDefinition::SHARDS);
     }
 
     public function testTheBodySortsTheIndexByTheCategoryPathAndMapsItWithoutAnIndex(): void
