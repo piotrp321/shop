@@ -109,13 +109,13 @@ final class ParallelSearchWriter
     public function pause(): void
     {
         touch($this->file('pause'));
-        $this->await(fn (): bool => is_file($this->file('paused')), 'the pause');
+        $this->await(fn (): bool => $this->exists($this->file('paused')), 'the pause');
     }
 
     public function resume(): void
     {
         unlink($this->file('pause'));
-        $this->await(fn (): bool => !is_file($this->file('paused')), 'the end of the pause');
+        $this->await(fn (): bool => !$this->exists($this->file('paused')), 'the end of the pause');
     }
 
     /**
@@ -137,7 +137,7 @@ final class ParallelSearchWriter
                 pcntl_waitpid($this->pid, $status);
             }
             $this->pid = null;
-            $content = is_file($this->file('outcome')) ? file_get_contents($this->file('outcome')) : false;
+            $content = $this->exists($this->file('outcome')) ? file_get_contents($this->file('outcome')) : false;
             if (\is_string($content) && '' !== $content) {
                 /** @var array{writes: int, retries: int, failures: list<string>} $outcome */
                 $outcome = json_decode($content, true, 8, \JSON_THROW_ON_ERROR);
@@ -171,10 +171,10 @@ final class ParallelSearchWriter
                 new ProductDocumentBuilder(),
                 new SystemClock(),
             );
-            for ($change = 0; [] === $failures && !is_file($this->file('stop')); ++$change) {
-                if (is_file($this->file('pause'))) {
+            for ($change = 0; [] === $failures && !$this->exists($this->file('stop')); ++$change) {
+                if ($this->exists($this->file('pause'))) {
                     touch($this->file('paused'));
-                    while (is_file($this->file('pause')) && !is_file($this->file('stop'))) {
+                    while ($this->exists($this->file('pause')) && !$this->exists($this->file('stop'))) {
                         usleep(1_000);
                     }
                     unlink($this->file('paused'));
@@ -215,7 +215,7 @@ final class ParallelSearchWriter
         while (!$done()) {
             if (null !== $this->pid && 0 !== pcntl_waitpid($this->pid, $status, \WNOHANG)) {
                 $this->pid = null;
-                $content = is_file($this->file('outcome')) ? file_get_contents($this->file('outcome')) : false;
+                $content = $this->exists($this->file('outcome')) ? file_get_contents($this->file('outcome')) : false;
                 throw new \RuntimeException(\sprintf('The writer ended while waiting for %s: %s', $what, \is_string($content) ? $content : 'no outcome'));
             }
             if (microtime(true) > $deadline) {
@@ -223,6 +223,16 @@ final class ParallelSearchWriter
             }
             usleep(1_000);
         }
+    }
+
+    /**
+     * The stat cache of PHP would keep answering for a file that the other process created or deleted.
+     */
+    private function exists(string $file): bool
+    {
+        clearstatcache(true, $file);
+
+        return is_file($file);
     }
 
     private function stateFile(string $id): string

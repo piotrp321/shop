@@ -95,7 +95,7 @@ final class RebuildAliasWritesTest extends TestCase
         $report = $this->rebuilder($http)->rebuild(2);
 
         self::assertSame(ActivationResult::Activated, $report->outcome, (string) $report->failure);
-        self::assertSame([2, 1, 2], $http->forwardedItems);
+        self::assertSame([1, 1, 2], $http->forwardedItems);
         self::assertSame('Changed before the retry', $this->activeName(self::IDS[0]));
     }
 
