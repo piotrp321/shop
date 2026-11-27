@@ -1,0 +1,3 @@
+-- category department (the biggest department; 206849 products), page 2, sort name
+-- cost variable: products in the subtree = 206849 (scales with products)
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND (p.name, p.id) > ('Atlas szlaków Alitar Jastrząb 100', CAST('eadda1d7-d96d-569e-83b9-ce65403f3b6d' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;

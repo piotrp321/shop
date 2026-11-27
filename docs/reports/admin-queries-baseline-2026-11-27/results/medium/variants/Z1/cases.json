@@ -1,0 +1,549 @@
+{
+ "db": "shop_proto",
+ "totals": {
+  "products": 1000191,
+  "orders": 1000000,
+  "customers": 98570,
+  "categories": 180,
+  "chosen_categories": [
+   {
+    "label": "small",
+    "id": "d947db5c-6f5f-5457-94f2-4b487d81a22e",
+    "name": "Piłka nożna",
+    "products": 15,
+    "leaf": true,
+    "additional_only": 0,
+    "root": false,
+    "why": "4-20 products"
+   },
+   {
+    "label": "mid",
+    "id": "c2a92470-bddd-5c3a-9b84-ed06bfd4caad",
+    "name": "Rolki do masażu",
+    "products": 10585,
+    "leaf": true,
+    "additional_only": 1884,
+    "root": false,
+    "why": "a middle category (1-5 thousand products on medium)"
+   },
+   {
+    "label": "big-early",
+    "id": "22652b43-0274-5fd4-b1b8-76cd4469ead0",
+    "name": "Atlasy i mapy szczegółowe",
+    "products": 15199,
+    "leaf": true,
+    "additional_only": 2275,
+    "root": false,
+    "first_name": "Atlas szlaków Alitar Jastrząb 400",
+    "alphabet": 2.4995225911850835e-05,
+    "why": "a big leaf whose first page ends at 0% of the names"
+   },
+   {
+    "label": "big-late",
+    "id": "c65841c4-e5f5-58f5-9451-5e985cfec063",
+    "name": "Stroje pływackie",
+    "products": 22829,
+    "leaf": true,
+    "additional_only": 1360,
+    "root": false,
+    "first_name": "Buty neoprenowe Corrovar Wydra 300",
+    "alphabet": 0.10597875805721108,
+    "why": "a big leaf whose first page ends at 11% of the names"
+   },
+   {
+    "label": "department",
+    "id": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+    "name": "Turystyka",
+    "products": 206849,
+    "leaf": false,
+    "additional_only": 8,
+    "root": true,
+    "why": "the biggest department"
+   },
+   {
+    "label": "mostly-additional",
+    "id": "c57c017b-d6f7-5990-82bf-635533003629",
+    "name": "Lornetki",
+    "products": 6689,
+    "leaf": true,
+    "additional_only": 2424,
+    "root": false,
+    "why": "2424 of 6689 products only through an additional category"
+   }
+  ],
+  "phrases": [
+   {
+    "label": "none",
+    "term": "zzqqxx"
+   },
+   {
+    "label": "rare",
+    "term": "ravotar"
+   },
+   {
+    "label": "very-common-a",
+    "term": "pro"
+   },
+   {
+    "label": "very-common-b",
+    "term": "ka"
+   },
+   {
+    "label": "two-rare",
+    "term": "qx"
+   },
+   {
+    "label": "two-other",
+    "term": "zx"
+   },
+   {
+    "label": "two-common",
+    "term": "er"
+   },
+   {
+    "label": "punct-1",
+    "term": "#!#"
+   },
+   {
+    "label": "punct-2",
+    "term": "---"
+   },
+   {
+    "label": "punct-3",
+    "term": "a.b"
+   },
+   {
+    "label": "punct-4",
+    "term": "ab-cd"
+   },
+   {
+    "label": "type-early",
+    "term": "bagażnik"
+   },
+   {
+    "label": "type-late",
+    "term": "zupa"
+   },
+   {
+    "label": "brand-common",
+    "term": "rowerowa"
+   },
+   {
+    "label": "brand-mid",
+    "term": "treningowe"
+   },
+   {
+    "label": "polish-lower",
+    "term": "skała"
+   },
+   {
+    "label": "polish-upper",
+    "term": "SKAŁA"
+   },
+   {
+    "label": "polish-title",
+    "term": "Skała"
+   }
+  ],
+  "variant": "Z1",
+  "budget": 20000
+ },
+ "cases": [
+  {
+   "id": "Z1.O-common-surname.p1",
+   "group": "orders",
+   "title": "orders, fragment common-surname 'kaczmarek', page 1 by the bigrams",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('kaczmarek')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('kaczmarek') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 5368,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-common-surname.count",
+   "group": "orders",
+   "title": "orders, fragment common-surname 'kaczmarek', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('kaczmarek')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('kaczmarek') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 5368,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-rare-surname.p1",
+   "group": "orders",
+   "title": "orders, fragment rare-surname 'kopczyński', page 1 by the bigrams",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('kopczyński')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('kopczyński') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 301,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-rare-surname.count",
+   "group": "orders",
+   "title": "orders, fragment rare-surname 'kopczyński', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('kopczyński')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('kopczyński') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 301,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-domain.p1",
+   "group": "orders",
+   "title": "orders, fragment domain 'example', page 1 by the bigrams",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('example')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('example') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 1000000,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-domain.count",
+   "group": "orders",
+   "title": "orders, fragment domain 'example', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('example')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('example') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 1000000,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-three-letters.p1",
+   "group": "orders",
+   "title": "orders, fragment three-letters 'ann', page 1 by the bigrams",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('ann')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ann') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 52044,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-three-letters.count",
+   "group": "orders",
+   "title": "orders, fragment three-letters 'ann', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('ann')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ann') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 52044,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-none.p1",
+   "group": "orders",
+   "title": "orders, fragment none 'qqzzxx', page 1 by the bigrams",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('qqzzxx')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('qqzzxx') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-none.count",
+   "group": "orders",
+   "title": "orders, fragment none 'qqzzxx', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('qqzzxx')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('qqzzxx') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-punct-1.p1",
+   "group": "orders",
+   "title": "orders, fragment punct-1 '#!#', page 1 by the bigrams",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('#!#')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('#!#') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-punct-1.count",
+   "group": "orders",
+   "title": "orders, fragment punct-1 '#!#', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('#!#')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('#!#') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-punct-2.p1",
+   "group": "orders",
+   "title": "orders, fragment punct-2 '---', page 1 by the bigrams",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('---')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('---') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-punct-2.count",
+   "group": "orders",
+   "title": "orders, fragment punct-2 '---', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('---')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('---') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-punct-3.p1",
+   "group": "orders",
+   "title": "orders, fragment punct-3 'a.b', page 1 by the bigrams",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('a.b')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('a.b') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 36835,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-punct-3.count",
+   "group": "orders",
+   "title": "orders, fragment punct-3 'a.b', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('a.b')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('a.b') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 36835,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-punct-4.p1",
+   "group": "orders",
+   "title": "orders, fragment punct-4 'ab-cd', page 1 by the bigrams",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('ab-cd')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ab-cd') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-punct-4.count",
+   "group": "orders",
+   "title": "orders, fragment punct-4 'ab-cd', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('ab-cd')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ab-cd') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-polish.p1",
+   "group": "orders",
+   "title": "orders, fragment polish 'ąęś', page 1 by the bigrams",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('ąęś')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ąęś') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-polish.count",
+   "group": "orders",
+   "title": "orders, fragment polish 'ąęś', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('ąęś')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ąęś') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-number-part.p1",
+   "group": "orders",
+   "title": "orders, fragment number-part '909', page 1 by the bigrams",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('909')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('909') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 5394,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.O-number-part.count",
+   "group": "orders",
+   "title": "orders, fragment number-part '909', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name)) @> perf_bigrams(lower('909')) AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('909') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 5394,
+   "scale": "orders"
+  },
+  {
+   "id": "Z1.C-common-surname.p1",
+   "group": "customers",
+   "title": "customers, fragment common-surname 'mazurek', page 1 by the bigrams",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('mazurek')) AND lower(c.email) LIKE '%' || lower('mazurek') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('mazurek')) AND lower(c.full_name) LIKE '%' || lower('mazurek') || '%')) ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 234,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-common-surname.count",
+   "group": "customers",
+   "title": "customers, fragment common-surname 'mazurek', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('mazurek')) AND lower(c.email) LIKE '%' || lower('mazurek') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('mazurek')) AND lower(c.full_name) LIKE '%' || lower('mazurek') || '%')) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 234,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-rare-surname.p1",
+   "group": "customers",
+   "title": "customers, fragment rare-surname 'domagała', page 1 by the bigrams",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('domagała')) AND lower(c.email) LIKE '%' || lower('domagała') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('domagała')) AND lower(c.full_name) LIKE '%' || lower('domagała') || '%')) ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 115,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-rare-surname.count",
+   "group": "customers",
+   "title": "customers, fragment rare-surname 'domagała', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('domagała')) AND lower(c.email) LIKE '%' || lower('domagała') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('domagała')) AND lower(c.full_name) LIKE '%' || lower('domagała') || '%')) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 115,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-domain.p1",
+   "group": "customers",
+   "title": "customers, fragment domain 'example', page 1 by the bigrams",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('example')) AND lower(c.email) LIKE '%' || lower('example') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('example')) AND lower(c.full_name) LIKE '%' || lower('example') || '%')) ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 98570,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-domain.count",
+   "group": "customers",
+   "title": "customers, fragment domain 'example', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('example')) AND lower(c.email) LIKE '%' || lower('example') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('example')) AND lower(c.full_name) LIKE '%' || lower('example') || '%')) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 98570,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-three-letters.p1",
+   "group": "customers",
+   "title": "customers, fragment three-letters 'ann', page 1 by the bigrams",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('ann')) AND lower(c.email) LIKE '%' || lower('ann') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('ann')) AND lower(c.full_name) LIKE '%' || lower('ann') || '%')) ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 5121,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-three-letters.count",
+   "group": "customers",
+   "title": "customers, fragment three-letters 'ann', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('ann')) AND lower(c.email) LIKE '%' || lower('ann') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('ann')) AND lower(c.full_name) LIKE '%' || lower('ann') || '%')) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 5121,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-none.p1",
+   "group": "customers",
+   "title": "customers, fragment none 'qqzzxx', page 1 by the bigrams",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('qqzzxx')) AND lower(c.email) LIKE '%' || lower('qqzzxx') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('qqzzxx')) AND lower(c.full_name) LIKE '%' || lower('qqzzxx') || '%')) ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-none.count",
+   "group": "customers",
+   "title": "customers, fragment none 'qqzzxx', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('qqzzxx')) AND lower(c.email) LIKE '%' || lower('qqzzxx') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('qqzzxx')) AND lower(c.full_name) LIKE '%' || lower('qqzzxx') || '%')) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-punct-1.p1",
+   "group": "customers",
+   "title": "customers, fragment punct-1 '#!#', page 1 by the bigrams",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('#!#')) AND lower(c.email) LIKE '%' || lower('#!#') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('#!#')) AND lower(c.full_name) LIKE '%' || lower('#!#') || '%')) ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-punct-1.count",
+   "group": "customers",
+   "title": "customers, fragment punct-1 '#!#', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('#!#')) AND lower(c.email) LIKE '%' || lower('#!#') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('#!#')) AND lower(c.full_name) LIKE '%' || lower('#!#') || '%')) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-punct-2.p1",
+   "group": "customers",
+   "title": "customers, fragment punct-2 '---', page 1 by the bigrams",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('---')) AND lower(c.email) LIKE '%' || lower('---') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('---')) AND lower(c.full_name) LIKE '%' || lower('---') || '%')) ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-punct-2.count",
+   "group": "customers",
+   "title": "customers, fragment punct-2 '---', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('---')) AND lower(c.email) LIKE '%' || lower('---') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('---')) AND lower(c.full_name) LIKE '%' || lower('---') || '%')) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-punct-3.p1",
+   "group": "customers",
+   "title": "customers, fragment punct-3 'a.b', page 1 by the bigrams",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('a.b')) AND lower(c.email) LIKE '%' || lower('a.b') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('a.b')) AND lower(c.full_name) LIKE '%' || lower('a.b') || '%')) ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 3440,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-punct-3.count",
+   "group": "customers",
+   "title": "customers, fragment punct-3 'a.b', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('a.b')) AND lower(c.email) LIKE '%' || lower('a.b') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('a.b')) AND lower(c.full_name) LIKE '%' || lower('a.b') || '%')) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 3440,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-punct-4.p1",
+   "group": "customers",
+   "title": "customers, fragment punct-4 'ab-cd', page 1 by the bigrams",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('ab-cd')) AND lower(c.email) LIKE '%' || lower('ab-cd') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('ab-cd')) AND lower(c.full_name) LIKE '%' || lower('ab-cd') || '%')) ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-punct-4.count",
+   "group": "customers",
+   "title": "customers, fragment punct-4 'ab-cd', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('ab-cd')) AND lower(c.email) LIKE '%' || lower('ab-cd') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('ab-cd')) AND lower(c.full_name) LIKE '%' || lower('ab-cd') || '%')) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-polish.p1",
+   "group": "customers",
+   "title": "customers, fragment polish 'ąęś', page 1 by the bigrams",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('ąęś')) AND lower(c.email) LIKE '%' || lower('ąęś') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('ąęś')) AND lower(c.full_name) LIKE '%' || lower('ąęś') || '%')) ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-polish.count",
+   "group": "customers",
+   "title": "customers, fragment polish 'ąęś', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('ąęś')) AND lower(c.email) LIKE '%' || lower('ąęś') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('ąęś')) AND lower(c.full_name) LIKE '%' || lower('ąęś') || '%')) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-full-email.p1",
+   "group": "customers",
+   "title": "customers, fragment full-email 'klaudia.domagala.3985@example.net', page 1 by the bigrams",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('klaudia.domagala.3985@example.net')) AND lower(c.email) LIKE '%' || lower('klaudia.domagala.3985@example.net') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('klaudia.domagala.3985@example.net')) AND lower(c.full_name) LIKE '%' || lower('klaudia.domagala.3985@example.net') || '%')) ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 1,
+   "scale": "customers"
+  },
+  {
+   "id": "Z1.C-full-email.count",
+   "group": "customers",
+   "title": "customers, fragment full-email 'klaudia.domagala.3985@example.net', count by the bigrams",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('klaudia.domagala.3985@example.net')) AND lower(c.email) LIKE '%' || lower('klaudia.domagala.3985@example.net') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('klaudia.domagala.3985@example.net')) AND lower(c.full_name) LIKE '%' || lower('klaudia.domagala.3985@example.net') || '%')) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 1,
+   "scale": "customers"
+  }
+ ]
+}

@@ -1,0 +1,3 @@
+-- category mostly-additional (2424 of 6689 products only through an additional category; 6689 products), count of the first page
+-- cost variable: products in the subtree = 6689 (scales with products)
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%'))) LIMIT 10001) bounded;

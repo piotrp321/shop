@@ -1,0 +1,3 @@
+-- category department (the biggest department; 206849 products), page 2, sort -updatedAt
+-- cost variable: products in the subtree = 206849 (scales with products)
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND (p.updated_at, p.id) < (CAST('2026-11-27 12:59:11+00' AS timestamptz), CAST('7f5487d6-ef59-512b-a74c-a6a671eec8b9' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;

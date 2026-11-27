@@ -243,16 +243,20 @@ def draw(db, out):
     mid = mid or leaves[len(leaves) // 3 : len(leaves) // 3 + 1]
     if mid:
         pick("mid", mid[len(mid) // 2], "a middle category (1-5 thousand products on medium)")
-    big = [c for c in leaves if c["products"] >= max(500, totals["products"] // 100)] or leaves[:3]
+    big = [c for c in leaves if c["products"] >= max(500, totals["products"] // 500)][:40] or leaves[:3]
     if big:
-        # The place of the first name of the subtree in the order of all the names, as the share of the products that sort before it.
+        # Where the walk of the index of the names finds the page: the place in the order of all the names of the 26th member of the
+        # subtree (its main and its additional members), as the share of the products that sort before it. The cost of the present
+        # statement for the first page grows with it.
         for category in big:
-            category["first_name"] = rows(db, f"SELECT min(p.name) FROM catalog_product p WHERE {CATEGORY.format(prefix=lit(like_escape(category['path']) + '%'))}")[0][0]
+            clause = CATEGORY.format(prefix=lit(like_escape(category["path"]) + "%"))
+            row = rows(db, f"SELECT p.name FROM catalog_product p WHERE {clause} ORDER BY p.name, p.id OFFSET {PAGE} LIMIT 1")
+            category["first_name"] = row[0][0] if row else ""
             before = int(rows(db, f"SELECT count(*) FROM catalog_product WHERE name < {lit(category['first_name'])}")[0][0])
             category["alphabet"] = before / totals["products"]
         ordered = sorted(big, key=lambda c: c["alphabet"])
-        pick("big-early", ordered[0], f"a big leaf whose names start at {ordered[0]['alphabet']:.0%} of the alphabet")
-        pick("big-late", ordered[-1], f"a big leaf whose names start at {ordered[-1]['alphabet']:.0%} of the alphabet")
+        pick("big-early", ordered[0], f"a big leaf whose first page ends at {ordered[0]['alphabet']:.0%} of the names")
+        pick("big-late", ordered[-1], f"a big leaf whose first page ends at {ordered[-1]['alphabet']:.0%} of the names")
     roots = sorted((c for c in categories if c["root"]), key=lambda c: -c["products"])
     if roots:
         pick("department", roots[0], "the biggest department")
@@ -308,7 +312,7 @@ def draw(db, out):
             rank = int(rows(db, f"SELECT count(*) FROM catalog_product WHERE name < {lit(first)}")[0][0]) / totals["products"]
             typed.append((rank, word, h))
     typed.sort()
-    brand_hits = sorted(((hits(word), word) for word in list(brands)[:25]), reverse=True)
+    brand_hits = sorted(((hits(word), word) for word in list(brands)[:25] if len(word) >= 4 and word.isalpha()), reverse=True)
     rare = [(h, w) for h, w in ((hits(word), word) for word in list(models)[:60]) if 1 <= h <= 20]
     rare.sort(reverse=True)
     polish = [w for w in list(models) + list(brands) if re.search(r"[ąćęłńóśźż]", w)][:1]

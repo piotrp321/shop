@@ -169,13 +169,13 @@ def main():
         for group, table, alias, build_page, expression_fn in (
             ("orders", "ordering_order o", "o", matrix.order_page, lambda f: z1_order(f, None)),
         ):
-            for item in [c for c in base["cases"] if c["id"].startswith("O-frag-") and c["id"].endswith(".p1")]:
+            for item in [c for c in base["cases"] if c["id"].startswith("O-frag-") and c["id"].endswith(".p1") and "'" in c["title"]]:
                 label = item["id"][len("O-frag-"):-len(".p1")]
                 fragment = item["title"].split("'")[1]
                 conditions = expression_fn(fragment)
                 add(f"O-{label}.p1", "orders", f"orders, fragment {label} '{fragment}', page 1 by the bigrams", matrix.order_page(conditions, "-placedAt"), "hits", item["value"], "orders")
                 add(f"O-{label}.count", "orders", f"orders, fragment {label} '{fragment}', count by the bigrams", matrix.bounded_count("ordering_order o", conditions), "hits", item["value"], "orders")
-        for item in [c for c in base["cases"] if c["id"].startswith("C-frag-") and c["id"].endswith(".p1")]:
+        for item in [c for c in base["cases"] if c["id"].startswith("C-frag-") and c["id"].endswith(".p1") and "'" in c["title"]]:
             label = item["id"][len("C-frag-"):-len(".p1")]
             fragment = item["title"].split("'")[1]
             email = z1_conditions(fragment, "lower(c.email)")

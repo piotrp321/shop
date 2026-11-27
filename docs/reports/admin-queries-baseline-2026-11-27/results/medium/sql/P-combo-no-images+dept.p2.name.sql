@@ -1,0 +1,3 @@
+-- without images in the biggest department, page 2, sort name
+-- cost variable: hits = 4172 (scales with products)
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND p.images = '[]'::jsonb AND (p.name, p.id) > ('Atlas szlaków Fenmizor Step 800', CAST('e44e6bb6-3fdb-5dc7-bf44-3bde60e0ee15' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;

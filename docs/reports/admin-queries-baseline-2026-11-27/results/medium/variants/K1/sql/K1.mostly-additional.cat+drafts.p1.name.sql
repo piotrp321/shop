@@ -1,0 +1,3 @@
+-- category mostly-additional + drafts, page 1, sort name
+-- cost variable: products in the subtree = 6689 (scales with products)
+SELECT DISTINCT ON (name, id) id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c57c017b-d6f7-5990-82bf-635533003629' AND p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT product_id FROM catalog_product_category WHERE category_id = ANY('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[])) AND p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26)) u ORDER BY name, id LIMIT 26;

@@ -1,0 +1,3 @@
+-- orders, fragment common-surname 'kaczmarek', page 2
+-- cost variable: hits = 5368 (scales with orders)
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('kaczmarek') || '%' AND (o.placed_at, o.id) < (CAST('2026-11-24 02:13:06+00' AS timestamptz), CAST('01a20b54-0750-72f7-9e3e-ff41e9f35e21' AS uuid)) ORDER BY o.placed_at DESC, o.id DESC LIMIT 26;

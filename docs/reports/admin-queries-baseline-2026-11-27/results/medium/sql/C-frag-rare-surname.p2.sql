@@ -1,0 +1,3 @@
+-- customers, fragment rare-surname 'domagała', page 2
+-- cost variable: hits = 115 (scales with customers)
+SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('domagała') || '%' OR lower(c.full_name) LIKE '%' || lower('domagała') || '%') AND c.last_order_at <= CAST('2026-10-21 16:51:54+00' AS timestamptz) AND (c.last_order_at < CAST('2026-10-21 16:51:54+00' AS timestamptz) OR c.customer_id > 'e9aa2ac7-a826-5710-a0ab-cf2329357866') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26;

@@ -1,0 +1,3 @@
+-- category mid + common phrase, page 1, sort -updatedAt
+-- cost variable: products in the subtree = 10585 (scales with products)
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) AND p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;

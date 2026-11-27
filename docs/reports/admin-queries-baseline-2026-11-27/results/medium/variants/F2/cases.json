@@ -1,0 +1,963 @@
+{
+ "db": "shop_proto",
+ "totals": {
+  "products": 1000191,
+  "orders": 1000000,
+  "customers": 98570,
+  "categories": 180,
+  "chosen_categories": [
+   {
+    "label": "small",
+    "id": "d947db5c-6f5f-5457-94f2-4b487d81a22e",
+    "name": "Piłka nożna",
+    "products": 15,
+    "leaf": true,
+    "additional_only": 0,
+    "root": false,
+    "why": "4-20 products"
+   },
+   {
+    "label": "mid",
+    "id": "c2a92470-bddd-5c3a-9b84-ed06bfd4caad",
+    "name": "Rolki do masażu",
+    "products": 10585,
+    "leaf": true,
+    "additional_only": 1884,
+    "root": false,
+    "why": "a middle category (1-5 thousand products on medium)"
+   },
+   {
+    "label": "big-early",
+    "id": "22652b43-0274-5fd4-b1b8-76cd4469ead0",
+    "name": "Atlasy i mapy szczegółowe",
+    "products": 15199,
+    "leaf": true,
+    "additional_only": 2275,
+    "root": false,
+    "first_name": "Atlas szlaków Alitar Jastrząb 400",
+    "alphabet": 2.4995225911850835e-05,
+    "why": "a big leaf whose first page ends at 0% of the names"
+   },
+   {
+    "label": "big-late",
+    "id": "c65841c4-e5f5-58f5-9451-5e985cfec063",
+    "name": "Stroje pływackie",
+    "products": 22829,
+    "leaf": true,
+    "additional_only": 1360,
+    "root": false,
+    "first_name": "Buty neoprenowe Corrovar Wydra 300",
+    "alphabet": 0.10597875805721108,
+    "why": "a big leaf whose first page ends at 11% of the names"
+   },
+   {
+    "label": "department",
+    "id": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+    "name": "Turystyka",
+    "products": 206849,
+    "leaf": false,
+    "additional_only": 8,
+    "root": true,
+    "why": "the biggest department"
+   },
+   {
+    "label": "mostly-additional",
+    "id": "c57c017b-d6f7-5990-82bf-635533003629",
+    "name": "Lornetki",
+    "products": 6689,
+    "leaf": true,
+    "additional_only": 2424,
+    "root": false,
+    "why": "2424 of 6689 products only through an additional category"
+   }
+  ],
+  "phrases": [
+   {
+    "label": "none",
+    "term": "zzqqxx"
+   },
+   {
+    "label": "rare",
+    "term": "ravotar"
+   },
+   {
+    "label": "very-common-a",
+    "term": "pro"
+   },
+   {
+    "label": "very-common-b",
+    "term": "ka"
+   },
+   {
+    "label": "two-rare",
+    "term": "qx"
+   },
+   {
+    "label": "two-other",
+    "term": "zx"
+   },
+   {
+    "label": "two-common",
+    "term": "er"
+   },
+   {
+    "label": "punct-1",
+    "term": "#!#"
+   },
+   {
+    "label": "punct-2",
+    "term": "---"
+   },
+   {
+    "label": "punct-3",
+    "term": "a.b"
+   },
+   {
+    "label": "punct-4",
+    "term": "ab-cd"
+   },
+   {
+    "label": "type-early",
+    "term": "bagażnik"
+   },
+   {
+    "label": "type-late",
+    "term": "zupa"
+   },
+   {
+    "label": "brand-common",
+    "term": "rowerowa"
+   },
+   {
+    "label": "brand-mid",
+    "term": "treningowe"
+   },
+   {
+    "label": "polish-lower",
+    "term": "skała"
+   },
+   {
+    "label": "polish-upper",
+    "term": "SKAŁA"
+   },
+   {
+    "label": "polish-title",
+    "term": "Skała"
+   }
+  ],
+  "variant": "F2",
+  "budget": 20000
+ },
+ "cases": [
+  {
+   "id": "F2.none.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase none 'zzqqxx', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%zzqqxx%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.none.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase none 'zzqqxx', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('zzqqxx') AND p.name ILIKE '%zzqqxx%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.none.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase none 'zzqqxx', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%zzqqxx%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.none.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase none 'zzqqxx', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('zzqqxx') AND p.name ILIKE '%zzqqxx%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.none.count",
+   "group": "phrase",
+   "title": "phrase none 'zzqqxx', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('zzqqxx') AND p.name ILIKE '%zzqqxx%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.rare.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase rare 'ravotar', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%ravotar%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.rare.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase rare 'ravotar', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('ravotar') AND p.name ILIKE '%ravotar%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 2980,
+   "scale": "products"
+  },
+  {
+   "id": "F2.rare.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase rare 'ravotar', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%ravotar%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.rare.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase rare 'ravotar', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('ravotar') AND p.name ILIKE '%ravotar%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 2980,
+   "scale": "products"
+  },
+  {
+   "id": "F2.rare.count",
+   "group": "phrase",
+   "title": "phrase rare 'ravotar', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('ravotar') AND p.name ILIKE '%ravotar%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 2980,
+   "scale": "products"
+  },
+  {
+   "id": "F2.very-common-a.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase very-common-a 'pro', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%pro%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.very-common-a.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase very-common-a 'pro', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('pro') AND p.name ILIKE '%pro%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 119269,
+   "scale": "products"
+  },
+  {
+   "id": "F2.very-common-a.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase very-common-a 'pro', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%pro%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.very-common-a.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase very-common-a 'pro', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('pro') AND p.name ILIKE '%pro%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 119269,
+   "scale": "products"
+  },
+  {
+   "id": "F2.very-common-a.count",
+   "group": "phrase",
+   "title": "phrase very-common-a 'pro', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('pro') AND p.name ILIKE '%pro%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 119269,
+   "scale": "products"
+  },
+  {
+   "id": "F2.very-common-b.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase very-common-b 'ka', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%ka%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.very-common-b.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase very-common-b 'ka', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('ka') AND p.name ILIKE '%ka%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 459399,
+   "scale": "products"
+  },
+  {
+   "id": "F2.very-common-b.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase very-common-b 'ka', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%ka%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.very-common-b.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase very-common-b 'ka', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('ka') AND p.name ILIKE '%ka%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 459399,
+   "scale": "products"
+  },
+  {
+   "id": "F2.very-common-b.count",
+   "group": "phrase",
+   "title": "phrase very-common-b 'ka', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('ka') AND p.name ILIKE '%ka%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 459399,
+   "scale": "products"
+  },
+  {
+   "id": "F2.two-rare.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase two-rare 'qx', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%qx%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.two-rare.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase two-rare 'qx', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('qx') AND p.name ILIKE '%qx%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.two-rare.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase two-rare 'qx', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%qx%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.two-rare.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase two-rare 'qx', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('qx') AND p.name ILIKE '%qx%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.two-rare.count",
+   "group": "phrase",
+   "title": "phrase two-rare 'qx', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('qx') AND p.name ILIKE '%qx%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.two-other.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase two-other 'zx', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%zx%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.two-other.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase two-other 'zx', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('zx') AND p.name ILIKE '%zx%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.two-other.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase two-other 'zx', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%zx%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.two-other.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase two-other 'zx', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('zx') AND p.name ILIKE '%zx%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.two-other.count",
+   "group": "phrase",
+   "title": "phrase two-other 'zx', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('zx') AND p.name ILIKE '%zx%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.two-common.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase two-common 'er', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%er%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.two-common.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase two-common 'er', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('er') AND p.name ILIKE '%er%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 258773,
+   "scale": "products"
+  },
+  {
+   "id": "F2.two-common.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase two-common 'er', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%er%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.two-common.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase two-common 'er', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('er') AND p.name ILIKE '%er%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 258773,
+   "scale": "products"
+  },
+  {
+   "id": "F2.two-common.count",
+   "group": "phrase",
+   "title": "phrase two-common 'er', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('er') AND p.name ILIKE '%er%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 258773,
+   "scale": "products"
+  },
+  {
+   "id": "F2.punct-1.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase punct-1 '#!#', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%#!#%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.punct-1.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase punct-1 '#!#', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('#!#') AND p.name ILIKE '%#!#%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.punct-1.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase punct-1 '#!#', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%#!#%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.punct-1.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase punct-1 '#!#', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('#!#') AND p.name ILIKE '%#!#%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.punct-1.count",
+   "group": "phrase",
+   "title": "phrase punct-1 '#!#', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('#!#') AND p.name ILIKE '%#!#%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.punct-2.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase punct-2 '---', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%---%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.punct-2.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase punct-2 '---', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('---') AND p.name ILIKE '%---%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.punct-2.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase punct-2 '---', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%---%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.punct-2.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase punct-2 '---', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('---') AND p.name ILIKE '%---%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.punct-2.count",
+   "group": "phrase",
+   "title": "phrase punct-2 '---', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('---') AND p.name ILIKE '%---%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.punct-3.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase punct-3 'a.b', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%a.b%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.punct-3.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase punct-3 'a.b', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('a.b') AND p.name ILIKE '%a.b%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.punct-3.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase punct-3 'a.b', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%a.b%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.punct-3.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase punct-3 'a.b', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('a.b') AND p.name ILIKE '%a.b%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.punct-3.count",
+   "group": "phrase",
+   "title": "phrase punct-3 'a.b', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('a.b') AND p.name ILIKE '%a.b%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.punct-4.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase punct-4 'ab-cd', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%ab-cd%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.punct-4.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase punct-4 'ab-cd', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('ab-cd') AND p.name ILIKE '%ab-cd%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.punct-4.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase punct-4 'ab-cd', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%ab-cd%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.punct-4.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase punct-4 'ab-cd', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('ab-cd') AND p.name ILIKE '%ab-cd%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.punct-4.count",
+   "group": "phrase",
+   "title": "phrase punct-4 'ab-cd', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('ab-cd') AND p.name ILIKE '%ab-cd%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "F2.type-early.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase type-early 'bagażnik', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%bagażnik%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.type-early.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase type-early 'bagażnik', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('bagażnik') AND p.name ILIKE '%bagażnik%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 8625,
+   "scale": "products"
+  },
+  {
+   "id": "F2.type-early.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase type-early 'bagażnik', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%bagażnik%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.type-early.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase type-early 'bagażnik', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('bagażnik') AND p.name ILIKE '%bagażnik%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 8625,
+   "scale": "products"
+  },
+  {
+   "id": "F2.type-early.count",
+   "group": "phrase",
+   "title": "phrase type-early 'bagażnik', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('bagażnik') AND p.name ILIKE '%bagażnik%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 8625,
+   "scale": "products"
+  },
+  {
+   "id": "F2.type-late.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase type-late 'zupa', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%zupa%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.type-late.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase type-late 'zupa', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('zupa') AND p.name ILIKE '%zupa%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 8584,
+   "scale": "products"
+  },
+  {
+   "id": "F2.type-late.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase type-late 'zupa', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%zupa%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.type-late.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase type-late 'zupa', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('zupa') AND p.name ILIKE '%zupa%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 8584,
+   "scale": "products"
+  },
+  {
+   "id": "F2.type-late.count",
+   "group": "phrase",
+   "title": "phrase type-late 'zupa', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('zupa') AND p.name ILIKE '%zupa%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 8584,
+   "scale": "products"
+  },
+  {
+   "id": "F2.brand-common.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase brand-common 'rowerowa', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%rowerowa%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.brand-common.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase brand-common 'rowerowa', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('rowerowa') AND p.name ILIKE '%rowerowa%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 60168,
+   "scale": "products"
+  },
+  {
+   "id": "F2.brand-common.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase brand-common 'rowerowa', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%rowerowa%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.brand-common.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase brand-common 'rowerowa', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('rowerowa') AND p.name ILIKE '%rowerowa%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 60168,
+   "scale": "products"
+  },
+  {
+   "id": "F2.brand-common.count",
+   "group": "phrase",
+   "title": "phrase brand-common 'rowerowa', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('rowerowa') AND p.name ILIKE '%rowerowa%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 60168,
+   "scale": "products"
+  },
+  {
+   "id": "F2.brand-mid.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase brand-mid 'treningowe', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%treningowe%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.brand-mid.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase brand-mid 'treningowe', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('treningowe') AND p.name ILIKE '%treningowe%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 17200,
+   "scale": "products"
+  },
+  {
+   "id": "F2.brand-mid.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase brand-mid 'treningowe', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%treningowe%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.brand-mid.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase brand-mid 'treningowe', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('treningowe') AND p.name ILIKE '%treningowe%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 17200,
+   "scale": "products"
+  },
+  {
+   "id": "F2.brand-mid.count",
+   "group": "phrase",
+   "title": "phrase brand-mid 'treningowe', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('treningowe') AND p.name ILIKE '%treningowe%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 17200,
+   "scale": "products"
+  },
+  {
+   "id": "F2.polish-lower.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase polish-lower 'skała', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%skała%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.polish-lower.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase polish-lower 'skała', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('skała') AND p.name ILIKE '%skała%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 10067,
+   "scale": "products"
+  },
+  {
+   "id": "F2.polish-lower.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase polish-lower 'skała', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%skała%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.polish-lower.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase polish-lower 'skała', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('skała') AND p.name ILIKE '%skała%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 10067,
+   "scale": "products"
+  },
+  {
+   "id": "F2.polish-lower.count",
+   "group": "phrase",
+   "title": "phrase polish-lower 'skała', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('skała') AND p.name ILIKE '%skała%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 10067,
+   "scale": "products"
+  },
+  {
+   "id": "F2.polish-upper.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase polish-upper 'SKAŁA', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%SKAŁA%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.polish-upper.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase polish-upper 'SKAŁA', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('SKAŁA') AND p.name ILIKE '%SKAŁA%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 10067,
+   "scale": "products"
+  },
+  {
+   "id": "F2.polish-upper.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase polish-upper 'SKAŁA', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%SKAŁA%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.polish-upper.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase polish-upper 'SKAŁA', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('SKAŁA') AND p.name ILIKE '%SKAŁA%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 10067,
+   "scale": "products"
+  },
+  {
+   "id": "F2.polish-upper.count",
+   "group": "phrase",
+   "title": "phrase polish-upper 'SKAŁA', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('SKAŁA') AND p.name ILIKE '%SKAŁA%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 10067,
+   "scale": "products"
+  },
+  {
+   "id": "F2.polish-title.p1.name.walk",
+   "group": "phrase",
+   "title": "phrase polish-title 'Skała', sort name: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%Skała%') ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.polish-title.p1.name.gin",
+   "group": "phrase",
+   "title": "phrase polish-title 'Skała', sort name: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('Skała') AND p.name ILIKE '%Skała%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 10067,
+   "scale": "products"
+  },
+  {
+   "id": "F2.polish-title.p1.-updatedAt.walk",
+   "group": "phrase",
+   "title": "phrase polish-title 'Skała', sort -updatedAt: the walk of 20000 rows",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%Skała%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "budget",
+   "value": 20000,
+   "scale": "const"
+  },
+  {
+   "id": "F2.polish-title.p1.-updatedAt.gin",
+   "group": "phrase",
+   "title": "phrase polish-title 'Skała', sort -updatedAt: the candidates from the bigrams",
+   "sql": "WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('Skała') AND p.name ILIKE '%Skała%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 10067,
+   "scale": "products"
+  },
+  {
+   "id": "F2.polish-title.count",
+   "group": "phrase",
+   "title": "phrase polish-title 'Skała', count by the candidates",
+   "sql": "WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('Skała') AND p.name ILIKE '%Skała%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 10067,
+   "scale": "products"
+  }
+ ]
+}

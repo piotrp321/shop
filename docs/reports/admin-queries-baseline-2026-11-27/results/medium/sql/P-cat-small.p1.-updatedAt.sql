@@ -1,0 +1,3 @@
+-- category small (4-20 products; 15 products), page 1, sort -updatedAt
+-- cost variable: products in the subtree = 15 (scales with products)
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;

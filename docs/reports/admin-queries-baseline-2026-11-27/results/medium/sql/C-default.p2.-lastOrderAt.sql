@@ -1,0 +1,3 @@
+-- customers, no filter, sort -lastOrderAt, page 2
+-- cost variable: page = 25 (scales with const)
+SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE c.last_order_at <= CAST('2026-11-26 22:25:40+00' AS timestamptz) AND (c.last_order_at < CAST('2026-11-26 22:25:40+00' AS timestamptz) OR c.customer_id > 'bf7d7069-af1c-53e0-a63a-4cc6ff444d77') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26;

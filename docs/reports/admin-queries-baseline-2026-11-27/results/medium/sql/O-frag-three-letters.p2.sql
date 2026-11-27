@@ -1,0 +1,3 @@
+-- orders, fragment three-letters 'ann', page 2
+-- cost variable: hits = 52044 (scales with orders)
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('ann') || '%' AND (o.placed_at, o.id) < (CAST('2026-11-26 18:23:23+00' AS timestamptz), CAST('01a21919-1178-7d17-a4ed-457d4f3aaf76' AS uuid)) ORDER BY o.placed_at DESC, o.id DESC LIMIT 26;
