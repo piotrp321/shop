@@ -237,7 +237,7 @@ sh docs/reports/runtime-config-baseline-2026-11-27/verify-run.sh <katalog> warm
 Wszystkie przebiegi kończą się „the generated data is consistent”. W generowaniu (sekcja 2) ten sam weryfikator przy A
 trwał 16,9 min: wtedy host był współdzielony z testami innych sesji (uzgodnione, bo generowania nie mierzyliśmy czasem).
 
-- **Potwierdzone:** cztery zapytania dają 87% (zimny) i 96% (ciepły) czasu weryfikatora przy A (pełne plany w logu `auto_explain`):
+- **Potwierdzone:** cztery zapytania dają 87% (zimny) i 96% (ciepły) czasu weryfikatora przy A (pełne plany: [`verifier-plans-a-cold.txt`](runtime-config-baseline-2026-11-27/verifier-plans-a-cold.txt), wyniki przebiegów: [`verifier-runs.tsv`](runtime-config-baseline-2026-11-27/verifier-runs.tsv)):
 
   | Zapytanie (plik) | co sprawdza | A zimny | bloki odczytane | pętle |
   |---|---|---|---|---|
@@ -251,7 +251,7 @@ trwał 16,9 min: wtedy host był współdzielony z testami innych sesji (uzgodni
   wyszukiwanie w indeksie drugiej tabeli. Plan jest tani, gdy naruszeń jest dużo (koniec po 11 wierszach), a przy
   poprawnych danych wynik ma 0 wierszy, więc pętla przechodzi wszystkie wiersze: 22 mln odczytów bloków na bazę 10 GB.
 - **Potwierdzone:** te same wyniki (0 wierszy) innym planem, w konfiguracji A po zimnym starcie, z `enable_nestloop = off`
-  (hash anti join, każda tabela czytana raz sekwencyjnie): produkty bez wariantów 0,57 s zamiast 14 s (ciepły 80 s),
+  (hash anti join, każda tabela czytana raz sekwencyjnie; [`verifier-plans-alternative.txt`](runtime-config-baseline-2026-11-27/verifier-plans-alternative.txt)): produkty bez wariantów 0,57 s zamiast 14 s (ciepły 80 s),
   warianty bez historii 0,74 s zamiast 66 s (ciepły 152 s). Dla dwóch zapytań „ostatni wpis” (`LATERAL … LIMIT 1`)
   zapis z `DISTINCT ON` nie pomógł (142 s i 126 s): potrzebny jest inny zapis, którego tu nie szukano.
 - **Potwierdzone:** przy A różnica między przebiegiem zimnym i ciepłym bierze się z cache plików cgroupy Postgresa
@@ -291,6 +291,8 @@ Konfiguracja `prod` (Postgres 2 GiB i 128 MB, API 2 GiB), 2026-11-27 19:15–19:
 5. 16 równoległych zimnych przetworzeń imgproxy (16 różnych oryginałów, największy rozmiar `webp` strony produktu),
    pamięć imgproxy co 1 s.
 6. `varnishstat`, `INFO` Redisa, `pg_test_timing`.
+
+Cały przebieg: [`concurrent-run.sh`](runtime-config-baseline-2026-11-27/concurrent-run.sh) (lista adresów 1600, jak w powtórzonej fazie 3); plany alternatywne z sekcji 3: [`verifier-alternative-plans.sql`](runtime-config-baseline-2026-11-27/verifier-alternative-plans.sql).
 
 ```sh
 python3 load/baseline.py urls http://localhost:<API_PORT> http://localhost:<STORE_PORT> urls.json --listings 400 --products 400 --seed 20261128

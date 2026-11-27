@@ -1,0 +1,220 @@
+Time: 1.911 ms
+                                                                      QUERY PLAN                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=389670.26..389671.54 rows=11 width=44) (actual rows=0.00 loops=1)
+   Buffers: shared hit=16 read=330158, temp read=22314 written=22460
+   I/O Timings: shared read=586.157, temp read=38.809 write=80.353
+   ->  Gather Merge  (cost=389670.26..449547.31 rows=514114 width=44) (actual rows=0.00 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=16 read=330158, temp read=22314 written=22460
+         I/O Timings: shared read=586.157, temp read=38.809 write=80.353
+         ->  Sort  (cost=388670.24..389205.77 rows=214214 width=44) (actual rows=0.00 loops=3)
+               Sort Key: p.slug
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=16 read=330158, temp read=22314 written=22460
+               I/O Timings: shared read=586.157, temp read=38.809 write=80.353
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Parallel Hash Right Anti Join  (cost=297510.40..383893.88 rows=214214 width=44) (actual rows=0.00 loops=3)
+                     Hash Cond: (v.product_id = p.id)
+                     Buffers: shared read=330158, temp read=22314 written=22460
+                     I/O Timings: shared read=586.157, temp read=38.809 write=80.353
+                     ->  Parallel Seq Scan on catalog_product_variant v  (cost=0.00..59849.90 rows=1253790 width=16) (actual rows=1003116.67 loops=3)
+                           Buffers: shared read=47312
+                           I/O Timings: shared read=59.465
+                     ->  Parallel Hash  (cost=288036.71..288036.71 rows=407575 width=60) (actual rows=326694.33 loops=3)
+                           Buckets: 131072  Batches: 16  Memory Usage: 6848kB
+                           Buffers: shared read=282846, temp written=9136
+                           I/O Timings: shared read=526.692, temp write=30.467
+                           ->  Parallel Seq Scan on catalog_product p  (cost=0.00..288036.71 rows=407575 width=60) (actual rows=326694.33 loops=3)
+                                 Filter: ((status)::text = 'published'::text)
+                                 Rows Removed by Filter: 6703
+                                 Buffers: shared read=282846
+                                 I/O Timings: shared read=526.692
+ Planning:
+   Buffers: shared hit=420 read=45
+   I/O Timings: shared read=4.197
+ Planning Time: 5.490 ms
+ JIT:
+   Functions: 37
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+ Execution Time: 565.376 ms
+(39 rows)
+
+Time: 574.803 ms
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=552924.68..552926.00 rows=11 width=44) (actual rows=0.00 loops=1)
+   Buffers: shared hit=4711 read=386748, temp read=45100 written=45452
+   I/O Timings: shared read=471.065, temp read=61.223 write=151.794
+   ->  Unique  (cost=552924.68..662871.83 rows=916164 width=44) (actual rows=0.00 loops=1)
+         Buffers: shared hit=4711 read=386748, temp read=45100 written=45452
+         I/O Timings: shared read=471.065, temp read=61.223 write=151.794
+         ->  Gather Merge  (cost=552924.68..660581.42 rows=916164 width=44) (actual rows=0.00 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               Buffers: shared hit=4711 read=386748, temp read=45100 written=45452
+               I/O Timings: shared read=471.065, temp read=61.223 write=151.794
+               ->  Unique  (cost=551924.66..553833.33 rows=381735 width=44) (actual rows=0.00 loops=3)
+                     Buffers: shared hit=4711 read=386748, temp read=45100 written=45452
+                     I/O Timings: shared read=471.065, temp read=61.223 write=151.794
+                     ->  Sort  (cost=551924.66..552879.00 rows=381735 width=44) (actual rows=0.00 loops=3)
+                           Sort Key: p.slug
+                           Sort Method: quicksort  Memory: 25kB
+                           Buffers: shared hit=4711 read=386748, temp read=45100 written=45452
+                           I/O Timings: shared read=471.065, temp read=61.223 write=151.794
+                           Worker 0:  Sort Method: quicksort  Memory: 25kB
+                           Worker 1:  Sort Method: quicksort  Memory: 25kB
+                           ->  Parallel Hash Join  (cost=402558.03..504787.60 rows=381735 width=44) (actual rows=0.00 loops=3)
+                                 Hash Cond: (v.product_id = p.id)
+                                 Buffers: shared hit=4695 read=386748, temp read=45100 written=45452
+                                 I/O Timings: shared read=471.065, temp read=61.223 write=151.794
+                                 ->  Parallel Hash Anti Join  (cost=105907.75..198946.26 rows=381735 width=16) (actual rows=0.00 loops=3)
+                                       Hash Cond: (v.id = t.variant_id)
+                                       Buffers: shared hit=282 read=108315, temp read=35856 written=36148
+                                       I/O Timings: shared read=159.345, temp read=52.127 write=120.239
+                                       ->  Parallel Seq Scan on catalog_product_variant v  (cost=0.00..59849.90 rows=1253790 width=32) (actual rows=1003116.67 loops=3)
+                                             Buffers: shared hit=282 read=47030
+                                             I/O Timings: shared read=80.604
+                                       ->  Parallel Hash  (cost=77580.89..77580.89 rows=1629589 width=16) (actual rows=1303685.00 loops=3)
+                                             Buckets: 262144  Batches: 32  Memory Usage: 7840kB
+                                             Buffers: shared read=61285, temp written=16848
+                                             I/O Timings: shared read=78.741, temp write=57.254
+                                             ->  Parallel Seq Scan on pricing_price_history t  (cost=0.00..77580.89 rows=1629589 width=16) (actual rows=1303685.00 loops=3)
+                                                   Buffers: shared read=61285
+                                                   I/O Timings: shared read=78.741
+                                 ->  Parallel Hash  (cost=286998.57..286998.57 rows=415257 width=60) (actual rows=333397.00 loops=3)
+                                       Buckets: 131072  Batches: 16  Memory Usage: 6944kB
+                                       Buffers: shared hit=4413 read=278433, temp written=9304
+                                       I/O Timings: shared read=311.720, temp write=31.556
+                                       ->  Parallel Seq Scan on catalog_product p  (cost=0.00..286998.57 rows=415257 width=60) (actual rows=333397.00 loops=3)
+                                             Buffers: shared hit=4413 read=278433
+                                             I/O Timings: shared read=311.720
+ Planning:
+   Buffers: shared hit=68 read=18
+   I/O Timings: shared read=0.947
+ Planning Time: 1.411 ms
+ JIT:
+   Functions: 56
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+ Execution Time: 735.480 ms
+(54 rows)
+
+Time: 737.436 ms
+                                                                                              QUERY PLAN                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1.12..6.38 rows=11 width=16) (actual rows=0.00 loops=1)
+   Buffers: shared hit=1387781 read=4657152
+   I/O Timings: shared read=131029.798
+   ->  Merge Join  (cost=1.12..803352.28 rows=1680495 width=16) (actual rows=0.00 loops=1)
+         Merge Cond: (inventory_stock_movement.variant_id = s.variant_id)
+         Join Filter: ((inventory_stock_movement.physical_after IS DISTINCT FROM s.physical) OR (inventory_stock_movement.reserved_after IS DISTINCT FROM s.reserved))
+         Rows Removed by Join Filter: 2784711
+         Buffers: shared hit=1387781 read=4657152
+         I/O Timings: shared read=131029.798
+         ->  Unique  (cost=0.69..518530.84 rows=1680520 width=48) (actual rows=2784711.00 loops=1)
+               Buffers: shared hit=606663 read=2413639
+               I/O Timings: shared read=73552.344
+               ->  Incremental Sort  (cost=0.69..510367.33 rows=3265406 width=48) (actual rows=3264727.00 loops=1)
+                     Sort Key: inventory_stock_movement.variant_id, inventory_stock_movement.occurred_at DESC, inventory_stock_movement.id DESC
+                     Presorted Key: inventory_stock_movement.variant_id, inventory_stock_movement.occurred_at
+                     Full-sort Groups: 102023  Sort Method: quicksort  Average Memory: 27kB  Peak Memory: 27kB
+                     Buffers: shared hit=606663 read=2413639
+                     I/O Timings: shared read=73552.344
+                     ->  Index Scan using inventory_stock_movement_variant_occurred_at_idx on inventory_stock_movement  (cost=0.43..418895.07 rows=3265406 width=48) (actual rows=3264727.00 loops=1)
+                           Index Searches: 1
+                           Buffers: shared hit=606657 read=2413639
+                           I/O Timings: shared read=73552.344
+         ->  Index Scan using inventory_stock_item_pkey on inventory_stock_item s  (cost=0.43..231083.78 rows=3009344 width=24) (actual rows=3009350.00 loops=1)
+               Index Searches: 1
+               Buffers: shared hit=781118 read=2243513
+               I/O Timings: shared read=57477.454
+ Planning:
+   Buffers: shared hit=122 read=11
+   I/O Timings: shared read=0.631
+ Planning Time: 0.977 ms
+ Execution Time: 142006.458 ms
+(31 rows)
+
+Time: 142008.462 ms (02:22.008)
+                                                                                                                                                                                                                            
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=70088.85..236427.12 rows=11 width=44) (actual rows=0.00 loops=1)
+   Buffers: shared hit=6990455 read=3251638, temp read=8148 written=8171
+   I/O Timings: shared read=117323.378, temp read=61.605 write=19.836
+   ->  Unique  (cost=70088.85..158318269.50 rows=10465 width=44) (actual rows=0.00 loops=1)
+         Buffers: shared hit=6990455 read=3251638, temp read=8148 written=8171
+         I/O Timings: shared read=117323.378, temp read=61.605 write=19.836
+         ->  Nested Loop  (cost=70088.85..158318243.34 rows=10465 width=44) (actual rows=0.00 loops=1)
+               Join Filter: (v.product_id = p.id)
+               Buffers: shared hit=6990455 read=3251638, temp read=8148 written=8171
+               I/O Timings: shared read=117323.378, temp read=61.605 write=19.836
+               ->  Index Scan using catalog_product_slug_key on catalog_product p  (cost=0.42..1198342.33 rows=996617 width=60) (actual rows=1000191.00 loops=1)
+                     Index Searches: 1
+                     Buffers: shared hit=74104 read=938840
+                     I/O Timings: shared read=16014.278
+               ->  Materialize  (cost=70088.42..675973.59 rows=10465 width=16) (actual rows=0.00 loops=1000191)
+                     Storage: Memory  Maximum Storage: 17kB
+                     Buffers: shared hit=6916351 read=2312798, temp read=8148 written=8171
+                     I/O Timings: shared read=101309.100, temp read=61.605 write=19.836
+                     ->  Gather  (cost=70088.42..675921.27 rows=10465 width=16) (actual rows=0.00 loops=1)
+                           Workers Planned: 2
+                           Workers Launched: 2
+                           Buffers: shared hit=6916351 read=2312798, temp read=8148 written=8171
+                           I/O Timings: shared read=101309.100, temp read=61.605 write=19.836
+                           ->  Nested Loop  (cost=69088.42..673874.77 rows=4360 width=16) (actual rows=0.00 loops=3)
+                                 Join Filter: (pr.variant_id = v.id)
+                                 Buffers: shared hit=6916351 read=2312798, temp read=8148 written=8171
+                                 I/O Timings: shared read=101309.100, temp read=61.605 write=19.836
+                                 ->  Merge Join  (cost=69087.99..671346.16 rows=4360 width=32) (actual rows=0.00 loops=3)
+                                       Merge Cond: (pr.variant_id = pricing_price_history.variant_id)
+                                       Join Filter: ((pricing_price_history.gross_amount IS DISTINCT FROM pr.gross_amount) OR (pricing_price_history.net_amount IS DISTINCT FROM pr.net_amount) OR (pricing_price_history.va
+                                       Rows Removed by Join Filter: 334581
+                                       Buffers: shared hit=6916351 read=2312798, temp read=8148 written=8171
+                                       I/O Timings: shared read=101309.100, temp read=61.605 write=19.836
+                                       ->  Sort  (cost=69087.34..69103.02 rows=6270 width=53) (actual rows=334581.33 loops=3)
+                                             Sort Key: pr.variant_id
+                                             Sort Method: external merge  Disk: 24608kB
+                                             Buffers: shared hit=7 read=34211, temp read=8148 written=8171
+                                             I/O Timings: shared read=11.425, temp read=61.605 write=19.836
+                                             Worker 0:  Sort Method: external merge  Disk: 20384kB
+                                             Worker 1:  Sort Method: external merge  Disk: 20192kB
+                                             ->  Parallel Seq Scan on pricing_variant_price pr  (cost=0.00..68691.88 rows=6270 width=53) (actual rows=334581.33 loops=3)
+                                                   Filter: ((abs((hashtext((variant_id)::text))::bigint) % '3'::bigint) = 0)
+                                                   Rows Removed by Filter: 668535
+                                                   Buffers: shared read=34210
+                                                   I/O Timings: shared read=11.419
+                                       ->  Materialize  (cost=0.65..596875.21 rows=2092932 width=53) (actual rows=3009336.00 loops=3)
+                                             Storage: Memory  Maximum Storage: 17kB
+                                             Buffers: shared hit=6916344 read=2278587
+                                             I/O Timings: shared read=101297.674
+                                             ->  Unique  (cost=0.65..570713.56 rows=2092932 width=1183) (actual rows=3009336.00 loops=3)
+                                                   Buffers: shared hit=6916344 read=2278587
+                                                   I/O Timings: shared read=101297.674
+                                                   ->  Incremental Sort  (cost=0.65..560936.03 rows=3911013 width=1183) (actual rows=3911038.00 loops=3)
+                                                         Sort Key: pricing_price_history.variant_id, pricing_price_history.changed_at DESC, pricing_price_history.id DESC
+                                                         Presorted Key: pricing_price_history.variant_id, pricing_price_history.changed_at
+                                                         Full-sort Groups: 122221  Sort Method: quicksort  Average Memory: 28kB  Peak Memory: 28kB
+                                                         Buffers: shared hit=6916344 read=2278587
+                                                         I/O Timings: shared read=101297.674
+                                                         Worker 0:  Full-sort Groups: 122221  Sort Method: quicksort  Average Memory: 28kB  Peak Memory: 28kB
+                                                         Worker 1:  Full-sort Groups: 122220  Sort Method: quicksort  Average Memory: 28kB  Peak Memory: 28kB
+                                                         ->  Index Scan using pricing_price_history_variant_changed_at_idx on pricing_price_history  (cost=0.43..448573.28 rows=3911013 width=1183) (actual rows=3911050.33 
+                                                               Index Searches: 3
+                                                               Buffers: shared hit=6916261 read=2278580
+                                                               I/O Timings: shared read=101297.352
+                                 ->  Index Scan using catalog_product_variant_pkey on catalog_product_variant v  (cost=0.43..0.57 rows=1 width=32) (never executed)
+                                       Index Cond: (id = pricing_price_history.variant_id)
+                                       Index Searches: 0
+ Planning:
+   Buffers: shared hit=65 read=49
+   I/O Timings: shared read=2.240
+ Planning Time: 2.950 ms
+ JIT:
+   Functions: 79
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+ Execution Time: 126112.423 ms
+(75 rows)
+
+Time: 126118.091 ms (02:06.118)
