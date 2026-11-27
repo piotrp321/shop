@@ -118,6 +118,29 @@ final class SearchIndexWriteRetryTest extends TestCase
         self::assertSame([], $this->sleeps);
     }
 
+    public function testAStaleItemIsReportedAndTheTransientOnesOfTheSameRequestAreStillRetried(): void
+    {
+        // A single write through the rebuild alias was newer than the batch: that item is correct as it is (409).
+        $http = $this->faults([[], ['transient' => [2]]]);
+        $maintenance = $this->maintenanceWith($http);
+        $index = $maintenance->createIndex();
+        $maintenance->write($index, [self::document('0198a1f0-0000-7000-8000-000000000001', 5)]);
+
+        $result = $maintenance->write($index, [
+            self::document('0198a1f0-0000-7000-8000-000000000001', 3),
+            self::document('0198a1f0-0000-7000-8000-000000000002', 3),
+            self::document('0198a1f0-0000-7000-8000-000000000003', 3),
+        ]);
+
+        self::assertSame(['0198a1f0-0000-7000-8000-000000000001'], $result->stale);
+        self::assertSame(['0198a1f0-0000-7000-8000-000000000002', '0198a1f0-0000-7000-8000-000000000003'], $result->indexed);
+        self::assertSame([], $result->transientFailures);
+        self::assertSame([], $result->permanentFailures);
+        self::assertSame(3, $http->bulkRequests);
+        self::assertSame([1, 2, 1], $http->forwardedItems);
+        self::assertSame([1000], $this->sleeps);
+    }
+
     public function testAnIndexCreatedForARebuildIsFilledWithoutRefreshingAndGetsTheIntervalOfTheDefinitionOnVerify(): void
     {
         $maintenance = $this->maintenance(definition: new ProductIndexDefinition(1, 0, '5s'));

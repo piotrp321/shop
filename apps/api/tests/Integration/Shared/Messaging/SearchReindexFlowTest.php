@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Shared\Messaging;
 use App\Catalog\Application\Command\CreateCategory;
 use App\Catalog\Application\Command\CreateProduct;
 use App\Catalog\Application\Command\PublishProduct;
+use App\Catalog\Application\Search\ActivationResult;
 use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\SearchResult;
 use App\Catalog\Domain\Product\ProductStatus;
@@ -23,12 +24,15 @@ use App\Shared\Infrastructure\Http\Cache\HttpStorefrontCache;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
+use App\Tests\Integration\Catalog\Search\ScriptedBulkFaultsHttpClient;
 use App\Tests\Integration\Catalog\Search\UsesTemporarySearchAlias;
 use App\Tests\Integration\Inventory\StockFixture;
 use App\Tests\Support\InMemory\SpyStorefrontCache;
 use App\Tests\Support\OriginalImages;
 use Doctrine\ORM\EntityManagerInterface;
 use Elastic\Elasticsearch\Response\Elasticsearch;
+use Monolog\Handler\TestHandler;
+use Monolog\Logger;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -45,14 +49,18 @@ final class SearchReindexFlowTest extends MessagingKernelTestCase
     use Factories;
     use UsesTemporarySearchAlias;
 
+    /** The transport of the single writes: passes everything on until a test scripts a fault. */
+    private ScriptedBulkFaultsHttpClient $bulks;
+
     protected function setUp(): void
     {
         parent::setUp();
         OriginalImages::exist(self::getContainer(), 'originals/'.str_repeat('a', 64).'.jpg');
         $this->maintenance()->setup();
+        $this->bulks = new ScriptedBulkFaultsHttpClient(self::clientFactory()->httpClient(2.0), []);
         self::getContainer()->set(
             ElasticsearchProductIndexer::class,
-            new ElasticsearchProductIndexer(self::clientFactory()->create(2.0), $this->alias()),
+            new ElasticsearchProductIndexer(self::clientFactory()->createWith($this->bulks), $this->alias()),
         );
         self::getContainer()->set(HttpStorefrontCache::class, new SpyStorefrontCache());
     }
@@ -122,6 +130,39 @@ final class SearchReindexFlowTest extends MessagingKernelTestCase
         self::assertSame(0, $this->rows('failed'));
     }
 
+    /**
+     * A price change handled while a rebuild switches the alias: the aliases of its _bulk are resolved before the
+     * switch, and the previous index is deleted before the item of the alias reaches it (404). The item of the rebuild
+     * alias wrote the new index; the message is retried, writes again through the alias and never goes to `failed`.
+     */
+    public function testAWriteToAnIndexDeletedByTheAliasSwitchIsRetriedAndNotFailed(): void
+    {
+        $logs = $this->messengerLogs();
+        [$productId, $variantId] = $this->catalogProduct();
+        VariantPriceRecordFactory::store($this->entityManager(), ['variantId' => $variantId, 'gross' => 5_900]);
+        StockFixture::stock($this->connection(), 3, variantId: $variantId);
+        $previous = $this->maintenance()->activeIndex();
+        $new = $this->maintenance()->createIndex();
+        $http = $this->bulks;
+        $http->script = [['gone' => [1 => $previous]]];
+        $http->afterForward = function () use ($new, $previous): void {
+            self::assertSame(ActivationResult::Activated, $this->maintenance()->activate($new, $previous));
+            $this->maintenance()->deleteIndex($previous);
+        };
+
+        $this->publisher()->publish(new VariantPriceChanged($variantId, PriceChangeSource::Staff, new \DateTimeImmutable()));
+        $this->consumeOutboxAndEvents(2);
+        $this->awaitEventsInQueue(1, 5.0);
+        $this->consume('events');
+
+        self::assertSame(1, $this->countRetries($logs));
+        self::assertSame(2, $http->bulkRequests);
+        self::assertSame([$new], $this->aliasTargets());
+        self::assertSame(5_900, $this->stored($productId)['from_gross']);
+        self::assertSame(0, $this->rows('failed'));
+        self::assertSame(0, $this->eventsInQueue());
+    }
+
     public function testSeedEventsAndUnknownVariantsAreAckedWithoutReindexing(): void
     {
         [, $variantId] = $this->catalogProduct();
@@ -169,6 +210,28 @@ final class SearchReindexFlowTest extends MessagingKernelTestCase
         self::assertIsArray($source);
 
         return $source;
+    }
+
+    private function messengerLogs(): TestHandler
+    {
+        $logger = self::getContainer()->get('monolog.logger.messenger');
+        self::assertInstanceOf(Logger::class, $logger);
+        $logs = new TestHandler();
+        $logger->pushHandler($logs);
+
+        return $logs;
+    }
+
+    private function countRetries(TestHandler $logs): int
+    {
+        $count = 0;
+        foreach ($logs->getRecords() as $record) {
+            if (str_contains($record->message, 'Sending for retry')) {
+                ++$count;
+            }
+        }
+
+        return $count;
     }
 
     private function found(): SearchResult

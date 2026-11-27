@@ -2,10 +2,9 @@
 # The rebuild of the search index on the cluster: `make -C infra/k8s reindex KUBE_DIR=<directory>` (docs/features/search/spec.md,
 # "Infrastruktura"). The Job comes from the suspended CronJob reindex of the deployed chart, so catalog:reindex runs with the image, the
 # environment (SEARCH_SHARDS: the shards of the new index) and the secrets of the deployed revision. The shop stays open: the command
-# builds a new index, checks it and only then moves the alias products, and a run that failed leaves the alias where it was. It is not
-# an online rebuild (docs/features/walking-skeleton/spec.md, "Ograniczenia tej przebudowy"): a change of a product, a price or a stock
-# level written while the index is built goes to the previous index and may be missing from the new one until the next change of
-# that product or the next rebuild. A deployment started while the Job runs fails at its Job migrate (catalog:search-index:setup refuses
+# builds a new index, checks it and only then moves the alias products, and a run that failed leaves the alias where it was. A change
+# of a product, a price or a stock level written while the index is built reaches the new index too, through the alias products-rebuild
+# (docs/features/search/spec.md, "Zapisy w trakcie przebudowy"). A deployment started while the Job runs fails at its Job migrate (catalog:search-index:setup refuses
 # while a rebuild holds the lock of the index): it is run again after the rebuild (make rerun).
 # Steps:
 #   1. checks without changes: the CronJob reindex is there and says the shards of a new index; nobody holds the lock demo-data-lock

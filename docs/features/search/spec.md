@@ -189,23 +189,27 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
   `external_gte`): najpierw do `<alias>-rebuild`, potem do `<alias>`. Pozycja do `<alias>` ma dzisiejsze znaczenie (zapisany,
   przestarzały, błąd przejściowy albo trwały). Pozycja do `<alias>-rebuild`: 404 `index_not_found_exception` (aliasu
   nie ma, bo nie trwa przebudowa) i 409 (w nowym indeksie jest nowsza wersja) są pomijane; każdy inny błąd tej pozycji
-  kończy zapis błędem przejściowym albo trwałym jak pozycja główna, więc wiadomość jest ponawiana, a powtórzenie obu
-  pozycji jest nieszkodliwe (wersja). Zachowanie `_bulk` z `require_alias` w pozycji i brakującym aliasem (404 tylko tej
+  kończy zapis błędem przejściowym albo trwałym jak pozycja główna: przejściowy ponawia wiadomość (powtórzenie obu
+  pozycji jest nieszkodliwe dzięki wersji), trwały kieruje ją od razu do `failed`. Zachowanie `_bulk` z `require_alias` w pozycji i brakującym aliasem (404 tylko tej
   pozycji, bez tworzenia indeksu) sprawdzone na Elasticsearch 9.4.0.
 - Dlaczego nic nie ginie: alias powstaje przed odczytem pierwszej paczki, a `ProductIndexing` czyta bazę przed
   zapisem. Zmiana zatwierdzona, zanim alias powstał, jest w odczycie przebudowy; zmiana zatwierdzona później wywołuje
   reindeksację (zdarzenie po zatwierdzeniu), której zapis trafia do obu indeksów. Kolejność zapisu paczki i zapisu
   pojedynczego rozstrzyga wersja (jak w „Zapis i kolejność”), więc nowszy odczyt wygrywa w obu indeksach.
 - Zapis pojedynczy w chwili przepięcia aliasu. Przepięcie (`_aliases`) jest atomowe, a `_bulk` rozwiązuje aliasy
-  pozycji przed zapisem na shardach. Zapis jest bezpieczny, gdy pozycje rozwiązuje się w jednym stanie klastra albo
-  w kolejności żądania; który z tych przypadków zachodzi w Elasticsearch 9.4.0, PERF-2B-5 potwierdza w kodzie
-  Elasticsearcha i wpisuje tu źródło. Gdy żaden nie zachodzi, zadanie zatrzymuje się z pytaniem do właściciela.
-  Przypadki:
+  wszystkich pozycji w jednym stanie klastra, przed zapisem na shardach. Źródło (Elasticsearch 9.4.0, tag `v9.4.0`):
+  `server/src/main/java/org/elasticsearch/action/bulk/BulkOperation.java`, `doRun()` (l. 189–196) pobiera stan klastra
+  raz i przekazuje go do `groupRequestsByShards` (l. 293–322), które z jednego `ProjectMetadata` sprawdza
+  `require_alias` (l. 316, 766–776) i rozwiązuje alias każdej pozycji; ponowienie przy blokadzie klastra (l. 723–764)
+  przelicza całe żądanie od nowa. Pozycja z `require_alias` nigdy nie tworzy indeksu (`TransportBulkAction.java`,
+  l. 323–330). Indeks usunięty po rozwiązaniu aliasu daje 404 `index_not_found_exception` z nazwą tego indeksu
+  (`TransportReplicationAction.java`, l. 900–924), a brak aliasu z `require_alias` ten sam typ z nazwą aliasu, więc
+  pozycja główna odróżnia błąd przejściowy od trwałego po nazwie w błędzie. Oba aliasy są więc zawsze rozwiązane
+  w tym samym stanie, a kolejność pozycji w żądaniu nie ma wpływu na rozwiązanie aliasów (pozycja przebudowy jest
+  pierwsza, ale poprawność od tego nie zależy). Przypadki:
   - Oba aliasy rozwiązane przed przepięciem: dokument trafia do nowego indeksu po jego nazwie, a do starego tylko
     przez pozycję główną.
   - Oba po przepięciu: pozycja przebudowy dostaje 404 i jest pominięta, a główna trafia do nowego indeksu.
-  - Pozycja przebudowy przed przepięciem, główna po nim: obie trafiają do nowego indeksu, a rozstrzyga wersja.
-  - Odwrotnej kolejności wyklucza kolejność pozycji w żądaniu.
 
   Przebudowa usuwa stary indeks po przepięciu. Pozycja główna rozwiązana do starego indeksu, który zniknął przed
   zapisem (`index_not_found_exception`), jest więc błędem przejściowym: wiadomość jest ponawiana i zapisuje aktualny
@@ -502,7 +506,9 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   na starym indeksie; nieudany przebieg zostawia alias bez zmian. Wdrożenie rozpoczęte w trakcie przebudowy kończy
   się nieudanym Jobem `migrate` (`catalog:search-index:setup` odmawia przy zajętej blokadzie przebudowy), który po
   końcu przebudowy ponawia `rerun`. Zmiany zapisane w trakcie przebudowy trafiają do nowego indeksu („Zapisy
-  w trakcie przebudowy”), więc przebudowa pod normalnym ruchem jest dopuszczalna. Nieudaną przebudowę ponawia się
+  w trakcie przebudowy”), więc przebudowa pod normalnym ruchem jest dopuszczalna. Produkt utworzony w jej trakcie
+  z identyfikatorem poniżej kursora odczytu paczek albo po odczycie ostatniej paczki kończy ją jednak błędem
+  weryfikacji liczby dokumentów (alias bez zmian, ponowienie; #979). Nieudaną przebudowę ponawia się
   kolejnym uruchomieniem celu (zaczyna od początku, alias do tego czasu na starym indeksie).
 - Zmiana definicji indeksu na klastrze (M7) to okno serwisowe, za zgodą użytkownika na każdy krok: wdrożenie
   (`setup` w Jobie `migrate` ostrzega o nieaktualnym indeksie i wdrożenie przechodzi), potem
@@ -533,7 +539,7 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 | Więcej różnych tokenów w listingu niż rozmiar `terms` | dalsze wyszukiwania liczą grupę dokładnie, z regułami osi i wartości wybranych; nigdy ucięte fasety ani błąd |
 | Indeks starej definicji po wdrożeniu (M7) | `setup` ostrzega; do przebudowy listing niepoprawny, zapisy reindeksacji w `failed` |
 | Produkt łamiący regułę modelu (ponad 2 opcje w wariancie, powtórzona krotka, U+001E/U+001F w osi albo wartości) | `SearchIndexError` z identyfikatorem produktu: przebudowa kończy się błędem, wiadomość reindeksacji w `failed` |
-| Zapis do aliasu przebudowy nieudany przejściowo albo trwale | zapis kończy się błędem, wiadomość ponawiana, po wyczerpaniu prób w `failed` |
+| Zapis do aliasu przebudowy nieudany | przejściowo: wiadomość ponawiana, po wyczerpaniu prób w `failed`; trwale: wiadomość od razu w `failed` (jak błąd trwały pozycji głównej) |
 
 ## Kryteria akceptacji
 

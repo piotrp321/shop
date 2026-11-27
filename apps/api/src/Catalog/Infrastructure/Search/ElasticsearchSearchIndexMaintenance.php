@@ -27,12 +27,18 @@ use Psr\Log\NullLogger;
  * a timed-out request already indexed is harmless. An index created for a rebuild is filled with the refresh
  * disabled; {@see verify()} sets the refresh interval of the configuration. {@see setup()} sets it on the index of the alias
  * when that one has another.
+ *
+ * While a rebuild fills its index, that index has the rebuild alias (<alias>-rebuild), through which the single writes
+ * of {@see ElasticsearchProductIndexer} reach it; at most one index has it. {@see createIndex()} takes it off every other
+ * index (one left by a rebuild that crashed) before it creates the new index with it, {@see activate()} takes it off in the
+ * request that switches the alias, and deleting the index removes it with the index.
  */
 final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexMaintenance
 {
     private const string ALIAS_SWITCH_MASTER_TIMEOUT = '1s';
     private const string ALIAS_SWITCH_ACK_TIMEOUT = '1s';
     private const int WRITE_ATTEMPTS = 5;
+    private const string REBUILD_ALIAS_SUFFIX = '-rebuild';
 
     /**
      * @param (\Closure(int): void)|null $sleeper          waits the given number of milliseconds between the attempts of a
@@ -50,6 +56,14 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
     ) {
     }
 
+    /**
+     * The alias of the index a rebuild fills, for the single writes made while it runs.
+     */
+    public static function rebuildAliasOf(string $alias): string
+    {
+        return $alias.self::REBUILD_ALIAS_SUFFIX;
+    }
+
     public function setup(): SetupResult
     {
         $targets = $this->aliasTargets();
@@ -59,7 +73,7 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
                 throw new SearchIndexError(\sprintf('A plain index named "%s" exists where the alias should be. It is not managed by the application: delete it, then run catalog:search-index:setup again.', $this->alias));
             }
 
-            return new SetupResult($this->orphans([$this->create(withAlias: true)]));
+            return new SetupResult($this->orphans([$this->create(forRebuild: false)]));
         }
 
         if (1 !== \count($targets)) {
@@ -89,7 +103,7 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
             $this->request('delete indexes', fn () => $this->longRequestClient->indices()->delete(['index' => implode(',', $indexes)]));
         }
 
-        $this->create(withAlias: true);
+        $this->create(forRebuild: false);
     }
 
     public function activeIndex(): string
@@ -104,7 +118,15 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
 
     public function createIndex(): string
     {
-        return $this->create(withAlias: false);
+        $rebuildAlias = self::rebuildAliasOf($this->alias);
+        $orphaned = $this->targetsOf($rebuildAlias);
+        if ([] !== $orphaned) {
+            $this->request('remove rebuild alias', fn () => $this->client->indices()->updateAliases(['body' => [
+                'actions' => [['remove' => ['indices' => $orphaned, 'alias' => $rebuildAlias]]],
+            ]]));
+        }
+
+        return $this->create(forRebuild: true);
     }
 
     public function write(string $index, array $documents): BulkResult
@@ -127,8 +149,9 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
             $stale = [...$stale, ...$result->stale];
             $permanent += $result->permanentFailures;
             $transient = $result->transientFailures;
-            // A rebuild ends on the first stale or permanent item, so retrying the rest would only delay the error.
-            if ([] === $transient || [] !== $stale || [] !== $permanent) {
+            // A rebuild ends on the first permanent item, so retrying the rest would only delay the error. A stale item
+            // is correct: a single write through the rebuild alias was newer.
+            if ([] === $transient || [] !== $permanent) {
                 break;
             }
             if ($attempt >= self::WRITE_ATTEMPTS) {
@@ -242,6 +265,8 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
                 'body' => ['actions' => [
                     ['remove' => ['index' => $expectedCurrent, 'alias' => $this->alias, 'must_exist' => true]],
                     ['add' => ['index' => $index, 'alias' => $this->alias]],
+                    // Without must_exist: a missing rebuild alias does not stop the switch.
+                    ['remove' => ['index' => $index, 'alias' => self::rebuildAliasOf($this->alias)]],
                 ]],
             ]));
         } catch (SearchUnavailable|SearchIndexError) {
@@ -275,7 +300,11 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
         $this->request('delete index', fn () => $this->longRequestClient->indices()->delete(['index' => $index]));
     }
 
-    private function create(bool $withAlias): string
+    /**
+     * @param bool $forRebuild true: the index of a rebuild, with the rebuild alias and the refresh disabled;
+     *                         false: the index of the alias
+     */
+    private function create(bool $forRebuild): string
     {
         $index = \sprintf(
             '%s_%s_%s',
@@ -284,12 +313,13 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
             bin2hex(random_bytes(3)),
         );
         $body = $this->definition->body();
-        if ($withAlias) {
-            // The index and its alias appear together, in one request.
-            $body['aliases'] = [$this->alias => new \stdClass()];
-        } else {
+        // The index and its alias appear together, in one request.
+        if ($forRebuild) {
+            $body['aliases'] = [self::rebuildAliasOf($this->alias) => new \stdClass()];
             // A rebuild fills the index in one go; verify() sets the interval of the configuration.
             $body['settings']['refresh_interval'] = '-1';
+        } else {
+            $body['aliases'] = [$this->alias => new \stdClass()];
         }
 
         $this->request('create index', fn () => $this->longRequestClient->indices()->create(['index' => $index, 'body' => $body]));
@@ -325,7 +355,15 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
      */
     private function aliasTargets(): array
     {
-        $response = $this->request('read alias', fn () => $this->client->indices()->getAlias(['name' => $this->alias]), [404]);
+        return $this->targetsOf($this->alias);
+    }
+
+    /**
+     * @return list<string> the indexes the alias points to, sorted; empty when there is no such alias
+     */
+    private function targetsOf(string $alias): array
+    {
+        $response = $this->request('read alias', fn () => $this->client->indices()->getAlias(['name' => $alias]), [404]);
         if (404 === $response->getStatusCode()) {
             return [];
         }

@@ -346,9 +346,18 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   aktywny Job w przestrzeni nazw (poczekaj na koniec; Joby CronJobów `rate-limit-check`, `queue-check` i `order-expiry` nie
   są powodem odmowy), blokada `demo-data-lock` innego przebiegu albo nieczytelny indeks. Porażka (kod 1, „FAILED”):
   komunikat mówi, na którym indeksie jest alias (nieudany Job zostawia go na starym), log Joba jest w wyjściu celu i w Grafana Cloud; po usunięciu przyczyny uruchom cel ponownie (nie `rerun`). Liczba
-  dokumentów w wyjściu celu to dokumenty Lucene (razem z zagnieżdżonymi wariantami), więcej niż produktów w logu Joba. Zmiana produktu, ceny albo stanu zapisana w trakcie budowy może nie trafić do nowego indeksu
-  do następnej zmiany tego produktu, więc przebudowę uruchamiaj poza godzinami zmian w panelu. Powrót do poprzedniej
-  liczby shardów: zmiana `elasticsearch.shards`, wdrożenie i ponowna przebudowa.
+  dokumentów w wyjściu celu to dokumenty Lucene (razem z zagnieżdżonymi wariantami), więcej niż produktów w logu Joba.
+  Przebudowa pod normalnym ruchem jest dozwolona: zmiana produktu, ceny albo stanu zapisana w trakcie budowy trafia też do
+  nowego indeksu (alias `products-rebuild`, `docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”). Produkt
+  utworzony w panelu w jej trakcie (identyfikator poniżej kursora odczytu albo po odczycie ostatniej paczki) kończy ją
+  jednak błędem weryfikacji liczby dokumentów: alias zostaje na starym indeksie i przebudowę trzeba ponowić (#979). Powrót do
+  poprzedniej liczby shardów: zmiana `elasticsearch.shards`, wdrożenie i ponowna przebudowa.
+- **Zmiana definicji indeksu wyszukiwarki** (okno serwisowe, **zgoda użytkownika** na każdy krok): wdrożenie wersji z nową
+  definicją (`catalog:search-index:setup` w Jobie `migrate` ostrzega o indeksie starej definicji i wdrożenie przechodzi),
+  potem przebudowa jak wyżej. Do przepięcia aliasu listing nie pokazuje poprawnych wyników ani faset, a zapisy
+  reindeksacji do starego indeksu są odrzucane i trafiają do `failed` (do nowego trafiają przez alias przebudowy); po
+  przebudowie `make -C infra/k8s failed-retry` i `make -C infra/k8s smoke`. Wycofanie: revert zmiany na `main`, wdrożenie
+  i ponowna przebudowa (ta sama procedura w drugą stronę).
 - **Argo CD i inne narzędzia** (bez publicznego adresu): `ssh -L 8080:localhost:8080 <user>@<adres> 'sudo k3s kubectl -n argocd
   port-forward svc/argocd-server 8080:80'`, hasło w sekrecie `argocd-initial-admin-secret` (**użytkownik**).
 - **Utrata klucza Sealed Secrets**: bez kopii (2.4) sekretów z repo nie da się odszyfrować. Nowy certyfikat: usuń
