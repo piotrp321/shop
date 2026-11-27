@@ -22,15 +22,18 @@
 //   CHECK_TIMEOUT_SECONDS (120)        how long the consistency check may wait for the index to show the expected states
 //   CHECK_POLL_SECONDS (2)             the pause between two rounds of the check
 //   WRITE_TIMEOUT_SECONDS (60)         a write without an answer this long is unanswered (it may have been saved or not)
-//   WRITE_SEND_TOLERANCE_MS (1000)     a write of the open model sent later than this after its time is late
+//   WRITE_SEND_TOLERANCE_MS (1000)     the error threshold of the generator: a write of the open model later than this is late
+//   WRITE_STALL_TOLERANCE_MS (100)     the stall of the open model that keeps the rate (lib/write-state.js, stallTolerance)
 //   WRITES_RESULT                     the file of the result (JSON), e.g. /out/writes.json
 //   API_URL, API_HOST, KEYCLOAK_URL, KEYCLOAK_HOST, ADMIN_REFRESH_TOKEN   lib/admin.js
 //
 // Exit code (k6): 0 a measurement at the rate whose check passed; 99 no such measurement (lib/write-state.js, runVerdict: a write
-// not sent at the rate, without an answer or with a 5xx, a change not seen within the freshness timeout, a refused write, a mismatch
-// of the index, an error of the run such as a variant query beyond the window or through a cache or a token that cannot be renewed,
-// a consistency check that did not finish); 107 the run could not start (no or a refused token, the API or Keycloak not answering,
-// an empty sample, settings out of range); 105 interrupted. Every case says why, and the result has the verdict with its reasons.
+// not sent at the rate: dropped, later than the error threshold of the generator, a window of 1 s outside the band of the rate or
+// a catch-up write later than the stall tolerance; without an answer or with a 5xx; a change not seen within the freshness timeout;
+// a refused write; a mismatch of the index; an error of the run such as a variant query beyond the window or through a cache or a
+// token that cannot be renewed; a consistency check that did not finish); 107 the run could not start (no or a refused token, the
+// API or Keycloak not answering, an empty sample, settings out of range); 105 interrupted. Every case says why, and the result has
+// the verdict with its reasons.
 import http from 'k6/http';
 import { Counter, Gauge, Trend } from 'k6/metrics';
 import { PanelSession, apiParams, apiUrl, getJson } from './lib/admin.js';
@@ -43,10 +46,16 @@ import {
   allowedPrices,
   expectedStates,
   matchesIndex,
+  catchUpStats,
+  isCatchUp,
   isLate,
+  lagBucket,
+  rateBand,
   nextPrice,
   runVerdict,
   sendTolerance,
+  stallTolerance,
+  windowStats,
   startRecord,
   writeOutcome,
 } from './lib/write-state.js';
@@ -76,6 +85,8 @@ const settings = {
 const toleranceSetting = text('WRITE_SEND_TOLERANCE_MS', '');
 settings.sendToleranceMs = settings.rate > 0 ? sendTolerance(toleranceSetting === '' ? undefined : number('WRITE_SEND_TOLERANCE_MS')) : null;
 const tolerance = settings.sendToleranceMs;
+const stallSetting = text('WRITE_STALL_TOLERANCE_MS', '');
+settings.stallToleranceMs = stallTolerance(stallSetting === '' ? undefined : number('WRITE_STALL_TOLERANCE_MS'));
 settings.discoverProducts = Math.floor(number('WRITE_DISCOVER_PRODUCTS', Math.max(60, 3 * settings.size)));
 const resultFile = text('WRITES_RESULT', '');
 
@@ -86,6 +97,21 @@ const unanswered = new Counter('writes_unanswered');
 const dropped = new Counter('writes_dropped');
 const late = new Counter('writes_late');
 const sendLag = new Trend('send_lag', true);
+const lagBuckets = new Counter('send_lag_bucket');
+// The proof of the rate, set at the end of the writes (lib/write-state.js, windowStats and catchUpStats).
+const rateWindows = new Gauge('rate_windows');
+const rateWindowMin = new Gauge('rate_window_min');
+const rateWindowP5 = new Gauge('rate_window_p5');
+const rateWindowP50 = new Gauge('rate_window_p50');
+const rateWindowP95 = new Gauge('rate_window_p95');
+const rateWindowMax = new Gauge('rate_window_max');
+const rateWindowsBelow = new Gauge('rate_windows_below');
+const rateWindowsAbove = new Gauge('rate_windows_above');
+const rateWindowsOutside = new Gauge('rate_windows_outside');
+const rateMean = new Gauge('rate_mean');
+const catchUpWrites = new Gauge('catch_up_writes');
+const catchUpMax = new Gauge('catch_up_max_in_window');
+const LAG_BUCKET_NAMES = ['le_1', 'le_5', 'le_20', 'le_100', 'le_1000', 'gt_1000'];
 const freshnessPrice = new Trend('freshness_price', true);
 const freshnessAvailability = new Trend('freshness_availability', true);
 const freshnessTimeouts = new Counter('freshness_timeouts');
@@ -104,12 +130,14 @@ export const options = {
   scenarios: { writes: { executor: 'per-vu-iterations', vus: 1, iterations: 1, maxDuration: `${maxSeconds}s` } },
   setupTimeout: '10m',
   userAgent: 'shop-load-k6',
-  summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max', 'count'],
+  summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'p(99.9)', 'max', 'count'],
   // The counts of runVerdict (lib/write-state.js): any of them fails the run. run_finished is 0 from the start of the iteration and 1
   // only after the consistency check, so a check cut off by maxDuration fails too.
   thresholds: {
     writes_dropped: ['count==0'],
     writes_late: ['count==0'],
+    rate_windows_outside: ['value==0'],
+    catch_up_writes: ['value==0'],
     writes_unanswered: ['count==0'],
     freshness_timeouts: ['count==0'],
     writes_refused: ['count==0'],
@@ -128,6 +156,7 @@ export const options = {
     'http_req_duration{name:variant_query}': [],
     'token_renewals{kind:background}': [],
     'token_renewals{kind:blocking}': [],
+    ...Object.fromEntries(LAG_BUCKET_NAMES.map((bucket) => [`send_lag_bucket{bucket:${bucket}}`, []])),
   },
 };
 
@@ -174,6 +203,11 @@ class Run {
     this.refusals = 0;
     this.stopped = null;
     this.endAt = 0;
+    this.start = 0;
+    // The writes of the open model sent and caught up in every window of 1 s from the start, and all of them.
+    this.sentPerWindow = [];
+    this.catchUpsPerWindow = [];
+    this.openSent = 0;
   }
 
   stop(reason) {
@@ -218,9 +252,35 @@ class Run {
     }
     const now = Date.now();
     sendLag.add(now - due);
+    lagBuckets.add(1, { bucket: lagBucket(now - due) });
     if (isLate(due, now, tolerance)) {
       late.add(1);
     }
+    const second = Math.floor((now - this.start) / 1000);
+    this.sentPerWindow[second] = (this.sentPerWindow[second] || 0) + 1;
+    this.openSent += 1;
+    if (isCatchUp(due, now, settings.rate, settings.stallToleranceMs)) {
+      this.catchUpsPerWindow[second] = (this.catchUpsPerWindow[second] || 0) + 1;
+    }
+  }
+
+  // The proof of the rate: the full windows of 1 s of WRITE_SECONDS (a write held back past the end is a catch-up of its window).
+  rateFigures() {
+    const full = Array.from({ length: Math.floor(settings.seconds) }, (_, i) => this.sentPerWindow[i] || 0);
+    const stats = settings.rate > 0 ? windowStats(full, settings.rate, settings.stallToleranceMs) : windowStats([], 1, settings.stallToleranceMs);
+    const catchUp = catchUpStats(Array.from({ length: this.catchUpsPerWindow.length }, (_, i) => this.catchUpsPerWindow[i] || 0));
+    rateWindows.add(stats.windows);
+    for (const [gauge, value] of [[rateWindowMin, stats.min], [rateWindowP5, stats.p5], [rateWindowP50, stats.p50], [rateWindowP95, stats.p95], [rateWindowMax, stats.max]]) {
+      if (value !== null) {
+        gauge.add(value);
+      }
+    }
+    rateWindowsBelow.add(stats.below);
+    rateWindowsAbove.add(stats.above);
+    rateWindowsOutside.add(stats.below + stats.above);
+    rateMean.add(settings.seconds > 0 ? this.openSent / settings.seconds : 0);
+    catchUpWrites.add(catchUp.writes);
+    catchUpMax.add(catchUp.maxInWindow);
   }
 
   // The variant is busy from the call on (before any await), so no second price change of it starts before this one has its answer.
@@ -470,11 +530,13 @@ class Run {
       return;
     }
     const start = Date.now();
+    this.start = start;
     this.endAt = start + settings.seconds * 1000;
     const probes = this.data.variants.filter((variant) => variant.part === 'price_probe');
     await Promise.all([this.openModel(start), this.availabilityProbes(start), ...probes.map((variant) => this.priceProbe(variant))]);
     // From the first write to the last answer (of a write or of a freshness query).
     writeSeconds.add((Date.now() - start) / 1000);
+    this.rateFigures();
     await this.check();
     finished.add(1);
   }
@@ -492,8 +554,11 @@ const round = (value) => (value === undefined || value === null ? null : Math.ro
 
 function trendOf(summary, name) {
   const v = values(summary, name);
-  return { count: v.count || 0, p50_ms: round(v.med), p95_ms: round(v['p(95)']), p99_ms: round(v['p(99)']), max_ms: round(v.max) };
+  return { count: v.count || 0, p50_ms: round(v.med), p95_ms: round(v['p(95)']), p99_ms: round(v['p(99)']), p99_9_ms: round(v['p(99.9)']), max_ms: round(v.max) };
 }
+
+// The value of a gauge, null when it was never set.
+const gauge = (summary, name) => (values(summary, name).value === undefined ? null : values(summary, name).value);
 
 // The result, also of an interrupted run: the sample (from setup) and the changes made so far.
 export function handleSummary(summary) {
@@ -527,6 +592,25 @@ export function handleSummary(summary) {
       late: countOf(summary, 'writes_late'),
       send_lag: trendOf(summary, 'send_lag'),
       send_tolerance_ms: settings.sendToleranceMs,
+      stall_tolerance_ms: settings.stallToleranceMs,
+      // The proof of the rate of the open model (load/README.md, "Tempo"); null when the writes did not end (interrupted).
+      rate: {
+        planned_per_second: settings.rate,
+        mean_sent_per_second: gauge(summary, 'rate_mean'),
+        windows: {
+          count: gauge(summary, 'rate_windows'),
+          band: settings.rate > 0 ? rateBand(settings.rate, settings.stallToleranceMs) : null,
+          min: gauge(summary, 'rate_window_min'),
+          p5: gauge(summary, 'rate_window_p5'),
+          p50: gauge(summary, 'rate_window_p50'),
+          p95: gauge(summary, 'rate_window_p95'),
+          max: gauge(summary, 'rate_window_max'),
+          below: gauge(summary, 'rate_windows_below'),
+          above: gauge(summary, 'rate_windows_above'),
+        },
+        catch_up: { writes: gauge(summary, 'catch_up_writes'), max_in_window: gauge(summary, 'catch_up_max_in_window') },
+      },
+      send_lag_histogram: Object.fromEntries(LAG_BUCKET_NAMES.map((bucket) => [bucket, countOf(summary, `send_lag_bucket{bucket:${bucket}}`)])),
       // Renewals of the access token during the run (a run longer than the life of a token, 300 s, has at least one).
       token_renewals: { background: countOf(summary, 'token_renewals{kind:background}'), blocking: countOf(summary, 'token_renewals{kind:blocking}') },
       duration: { price_change: trendOf(summary, 'http_req_duration{name:price_change}'), receipt: trendOf(summary, 'http_req_duration{name:receipt}') },
@@ -556,6 +640,8 @@ export function handleSummary(summary) {
     finished: result.finished,
     dropped: c.dropped,
     late: c.late,
+    windowsOutside: gauge(summary, 'rate_windows_outside'),
+    catchUpWrites: gauge(summary, 'catch_up_writes'),
     unanswered: c.unanswered,
     freshnessTimeouts: f.timeouts.price + f.timeouts.availability,
     refused: c.refused,
@@ -568,7 +654,9 @@ export function handleSummary(summary) {
     `verdict: ${result.verdict.passed ? 'a measurement at the rate, the index consistent' : `NO MEASUREMENT: ${result.verdict.reasons.join('; ')}`}\n` +
     (indexDiffered > 0 ? `WARNING: ${indexDiffered} candidates left out because the index differed from the offer at the start (W13; a previous run?)\n` : '') +
     `sample ${result.sample.size} variants; changes made ${c.made} (${c.prices} prices, ${c.receipts} receipts, ${c.per_second}/s), sent ${c.sent}, refused ${c.refused}, unanswered ${c.unanswered}, dropped ${c.dropped}, late ${c.late}\n` +
-    `send lag of the open model: p50 ${c.send_lag.p50_ms} ms, p95 ${c.send_lag.p95_ms} ms, p99 ${c.send_lag.p99_ms} ms, max ${c.send_lag.max_ms} ms (tolerance ${c.send_tolerance_ms} ms); token renewals ${c.token_renewals.background} in the background, ${c.token_renewals.blocking} waited for\n` +
+    `rate: planned ${c.rate.planned_per_second}/s, sent ${c.rate.mean_sent_per_second === null ? null : c.rate.mean_sent_per_second.toFixed(2)}/s on average; writes in the ${c.rate.windows.count} windows of 1 s: min ${c.rate.windows.min}, p5 ${c.rate.windows.p5}, p50 ${c.rate.windows.p50}, p95 ${c.rate.windows.p95}, max ${c.rate.windows.max}, ${c.rate.windows.below} below and ${c.rate.windows.above} above the band ${c.rate.windows.band ? `${c.rate.windows.band.low}-${c.rate.windows.band.high}` : '-'}; catch-up writes (later than the stall tolerance of ${c.stall_tolerance_ms} ms) ${c.rate.catch_up.writes}, at most ${c.rate.catch_up.max_in_window} in a window\n` +
+    `send lag of the open model: p50 ${c.send_lag.p50_ms} ms, p95 ${c.send_lag.p95_ms} ms, p99 ${c.send_lag.p99_ms} ms, p99.9 ${c.send_lag.p99_9_ms} ms, max ${c.send_lag.max_ms} ms (error threshold of the generator ${c.send_tolerance_ms} ms); buckets ${LAG_BUCKET_NAMES.map((bucket) => `${bucket} ${c.send_lag_histogram[bucket]}`).join(', ')}\n` +
+    `token renewals ${c.token_renewals.background} in the background, ${c.token_renewals.blocking} waited for\n` +
     `freshness${f.percentiles_valid ? '' : ' (NOT a result of W16: changes not seen within the timeout are left out)'}:\n` +
     `freshness of the price: ${f.price.count} samples, p50 ${f.price.p50_ms} ms, p95 ${f.price.p95_ms} ms, p99 ${f.price.p99_ms} ms, max ${f.price.max_ms} ms, timeouts ${f.timeouts.price}\n` +
     `freshness of the availability: ${f.availability.count} samples, p50 ${f.availability.p50_ms} ms, p95 ${f.availability.p95_ms} ms, max ${f.availability.max_ms} ms, timeouts ${f.timeouts.availability}\n` +
