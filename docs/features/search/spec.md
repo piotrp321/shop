@@ -332,7 +332,7 @@ sortowania, więc trafiają do natywnego request cache (M6); listing bez frazy l
   10 000 (`size` 10 000 daje każdemu shardowi `shard_size` większy od liczby tokenów, więc liczby są dokładne). Limity 10 osi i 30 wartości stosuje API przy budowie odpowiedzi,
   z tą samą kolejnością: liczba produktów malejąco, potem nazwa.
 - Grupa z większą liczbą różnych tokenów (`sum_other_doc_count` > 0) nie kończy się błędem ani uciętymi fasetami.
-  API liczy ją dokładnie dalszymi wyszukiwaniami z warunkami tej grupy, tymi samymi regułami co model sprzed etapu B
+  API liczy ją dokładnie dalszymi wyszukiwaniami z warunkami tej grupy, tymi samymi regułami co pierwszy przebieg
   (`ProductSearchQuery`: 10 osi, 30 wartości, bez limitu różnych wartości) i znaczeniem liczb niżej:
   - osie bez wyboru: `terms` po tokenach osi (`@`, w `pair_*` z prefiksem pary `x␞@`) o rozmiarze 10, z `exclude`
     osi wybranych, więc oś wybrana nie zajmuje miejsca osi bez wyboru;
@@ -525,9 +525,7 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   jest trwale odrzucany, więc wiadomości reindeksacji z tego czasu trafiają do `failed`; do nowego indeksu trafiają przez
   alias przebudowy. Po przebudowie: `make -C infra/k8s failed-retry`, kontrola `smoke`. Stara i nowa wersja nie są ze
   sobą zgodne i nie muszą być. Wycofanie: revert zmiany na `main`, wdrożenie i znów `reindex` (ta sama procedura
-  w drugą stronę). Działa, bo wersja, do której się wraca, też ostrzega zamiast odmawiać: zachowanie `setup` z M7
-  trafia na `main` i na worf.pl osobną, wcześniejszą zmianą niż model. Synchronizacja poprzedniego snapshotu
-  `deploy-images` sprzed M7 zatrzymałaby się na Jobie `migrate`. Kroki są w runbooku.
+  w drugą stronę). Działa, bo `setup` każdej wersji od M7 ostrzega zamiast odmawiać. Kroki są w runbooku.
 
 ## Scenariusze błędów
 
@@ -567,10 +565,10 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
    i kanoniczny bez parametrów; `/szukaj` zawsze `noindex, follow`, bez kanonicznego; `/c/` ma JSON-LD `BreadcrumbList`.
 8. Catalog nie zależy od Pricing, Inventory ani Cart (Deptrac).
 9. Obraz Elasticsearch ma wtyczkę `analysis-stempel` (`elasticsearch-plugin list` w kontenerze).
-10. Model R daje te same wyniki co model sprzed PERF-2 B (liczba trafień, fasety z liczbami, zakres cen, pierwsza
-    strona) w teście z wyrocznią w PHP (`Testy`) na ręcznie zbudowanym katalogu przypadków brzegowych modelu wariantów
-    oraz w porównaniu odpowiedzi `GET /api/v1/products` przed i po zmianie na lokalnym stosie `medium` dla mieszanki
-    adresów PERF-0 (ten sam stan danych, 0 różnic; kolejność „Trafność” porównywana przy tej samej liczbie shardów).
+10. Wynik listingu (liczba trafień, fasety z liczbami, zakres cen, pierwsza strona) równa się wyroczni w PHP liczonej
+    wprost z S2 (`Testy`) na ręcznie zbudowanym katalogu przypadków brzegowych modelu wariantów; zgodność z poprzednim
+    modelem zapytań potwierdza porównanie odpowiedzi `GET /api/v1/products` na `medium` dla mieszanki adresów PERF-0
+    (0 różnic, `docs/reports/perf-2b-medium-2026-11-27.md`).
     Także przy przepełnieniu `terms` (ścieżka przepełnienia faset), bez błędu i bez ucięcia.
 11. Zapis wykonany w trakcie przebudowy jest w nowym indeksie po przepięciu aliasu (W19a), także gdy paczka
     przebudowy dostaje pozycję przestarzałą albo przejściowo odrzuconą i gdy przepięcie z usunięciem starego indeksu
@@ -719,19 +717,6 @@ Kryteria pomiarowe są w planie programu (PERF-2, „Kryteria etapu B”); tu na
   cache plików systemu (pierwszy przebieg po starcie Elasticsearcha albo po przebudowie indeksu). Cache plików nie
   jest opróżniany żadnym narzędziem; jego stan raport podaje z tego, co poprzedziło przebieg, a wynik bez znanego stanu
   oznacza jako taki. Wyniki obu stanów nie są łączone w jedną wartość.
-
-## Kolejność zmian i dokumentacja (PERF-2 etap B)
-
-1. M7 (`setup` ostrzega przy innym skrócie definicji) osobnym PR do `main`, wdrożony na worf.pl przed modelem
-   (warunek wycofania, „Infrastruktura”); razem z nim `docs/features/walking-skeleton/spec.md` (opis `setup`).
-2. Epik: model R (M1–M6), W19a, testy z kryteriów 10–12, scenariusz zapisów w `load/`; w tym samym PR
-   `docs/features/walking-skeleton/spec.md` („Ograniczenia tej przebudowy” bez punktu o zapisach w trakcie
-   przebudowy), `infra/k8s/README.md` (okno serwisowe zmiany definicji, wycofanie, przebudowa pod ruchem dozwolona),
-   wartości chartu (`elasticsearch.refreshInterval`; shardy nie są wartością), `load/README.md` i „Status”
-   w `docs/features/performance-program/plan.md`.
-3. Po merge'u, każdy krok za zgodą właściciela: wdrożenie i przebudowa na worf.pl (okno serwisowe), pomiary
-   z kryterium 13, raport w `docs/reports/`. Pomiar akceptacyjny czeka na profil `server` (10 mln) i pamięć z PERF-1
-   na worf.pl; pomiary lokalne i każdy pomiar na worf.pl są uzgadniane z sesją PERF-0.
 
 ## Ryzyka i ograniczenia
 

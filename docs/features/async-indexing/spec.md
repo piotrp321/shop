@@ -40,7 +40,7 @@ Zakres: `apps/api` (Catalog, cienka warstwa w Shared), `infra/docker-compose.yml
   powstaje dopiero po poprzedniej), więc nie daje równoległości; nowa funkcja potrzebuje wachlarza (fan-out), a nie
   łańcucha.
 - Przyczyna tempa 391 dokumentów/s nie jest ustalona. Hipotezy: odczyt produktów (`page`), doliczanie ofert
-  (`ProductOfferFacts::of`, wywołanie przez `query.bus`), zapis do Elasticsearcha (4 shardy, heap 2 GiB), pamięć
+  (`ProductOfferFacts::of`, wywołanie przez `query.bus`), zapis do Elasticsearcha (w pomiarze bazowym: 4 shardy, heap 2 GiB), pamięć
   Postgresa (2 GiB, ustawienia domyślne). Równoległość pomoże tylko w tej części, która się skaluje na dodatkowe procesy
   (zob. „Skala” i kryterium 12); specyfikacja nie obiecuje żadnego tempa.
 
@@ -343,7 +343,7 @@ kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokum
 - Przy paczce 500: 20 000 wiadomości, 20 000 wierszy paczek i 20 000 krótkich aktualizacji jednego wiersza przebiegu
   (w skali godzin, nie sekund); producent czyta 10 mln identyfikatorów po kursorze (same klucze, pamięć zależy od rozmiaru
   paczki). Rejestr nie ma zapytań rosnących z liczbą paczek.
-- Równoległość zależy od liczby replik i od wąskiego gardła. Zapis do ES (4 shardy, heap 2 GiB), odczyt z Postgresa
+- Równoległość zależy od liczby replik i od wąskiego gardła. Zapis do ES (w pomiarze bazowym: 4 shardy, heap 2 GiB), odczyt z Postgresa
   (2 GiB) i doliczanie ofert mogą się nasycić; to hipotezy do zmierzenia, nie fakty. Specyfikacja nie twierdzi, że wymagania
   wydajnościowe są spełnione, dopóki nie potwierdzą tego pomiary.
 - Rozmiar paczki dobiera się pomiarem: za mała zwiększa narzut, za duża wydłuża paczkę, pamięć handlera i koszt ponowienia.
