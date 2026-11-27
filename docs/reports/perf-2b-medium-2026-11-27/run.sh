@@ -104,7 +104,7 @@ SEARCH_SHARDS=1
 SEARCH_REFRESH_INTERVAL=$refresh
 COMPOSE_FILE=compose.yaml:$here/es.override.yaml
 ENV
-    git -C "$dir" check-ignore -q .env .env.local || fail "$dir: .env or .env.local is not ignored by git"
+    { git -C "$dir" check-ignore -q .env && git -C "$dir" check-ignore -q .env.local; } || fail "$dir: .env or .env.local is not ignored by git"
   done
   log "prepare: .env (project $project, ports $port_base-$((port_base + 6)), 1 shard, refresh $refresh) and .env.local in both checkouts"
   cmd_revisions
@@ -162,7 +162,9 @@ cmd_reindex() {
   log "reindex $rev: start"
   started="$(date +%s)"
   code=0
-  console "$rev" catalog:reindex -vv > "$work/reindex-$rev.log" 2>&1 || code=$?
+  # APP_ENV=dev of the local stack: the rebuild exhausts the 256 MB of memory_limit near 267 000 products (twice, on main 98ac711b, with
+  # and without -vv), so PHP gets 3 GB for this one command (the same for both revisions; the production workers run APP_ENV=prod).
+  dc "$rev" exec -T api php -d memory_limit=3G bin/console catalog:reindex > "$work/reindex-$rev.log" 2>&1 || code=$?
   seconds=$(( $(date +%s) - started ))
   tail -5 "$work/reindex-$rev.log"
   {
