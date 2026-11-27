@@ -21,15 +21,16 @@ The median of the runs; the spread without the panel is the highest minus the lo
   shop carts    p95_ms   without 18.8 ms (spread 0.3), with 37 ms, difference +18.2 ms: ABOVE the spread
   shop carts    p99_ms   without 20.9 ms (spread 0.3), with 41.8 ms, difference +20.9 ms: ABOVE the spread
 P4 (difference of the medians within the spread without the panel) not met: shop listings p50_ms, shop listings p95_ms, shop listings p99_ms, shop carts p50_ms, shop carts p95_ms, shop carts p99_ms
-P4 (no failed request (5xx, 409, 429, other 4xx) and no dropped request in the shop and in the panel mix, in both variants) not met:
+P4 (the shop has no failed request, 5xx or 409 or 429 or other 4xx, and no dropped request, in both variants) not met:
   without run 1 shop carts: 4 failed (5xx/net 0, 409 4, 429 0, other 4xx 0), 0 dropped
   without run 2 shop carts: 15 failed (5xx/net 0, 409 15, 429 0, other 4xx 0), 0 dropped
   without run 3 shop carts: 25 failed (5xx/net 0, 409 25, 429 0, other 4xx 0), 0 dropped
   with run 1 shop carts: 9 failed (5xx/net 0, 409 9, 429 0, other 4xx 0), 0 dropped
-  with run 1 panel mix: 2 failed (5xx/net 0, 409 0, 429 0, other 4xx 2), 0 dropped
   with run 2 shop carts: 26 failed (5xx/net 0, 409 26, 429 0, other 4xx 0), 0 dropped
-  with run 2 panel mix: 2 failed (5xx/net 0, 409 0, 429 0, other 4xx 2), 0 dropped
   with run 3 shop carts: 38 failed (5xx/net 0, 409 38, 429 0, other 4xx 0), 0 dropped
+The panel mix had failed requests (reported for W7, not part of the verdict of P4):
+  with run 1 panel mix: 2 failed (5xx/net 0, 409 0, 429 0, other 4xx 2), 0 dropped
+  with run 2 panel mix: 2 failed (5xx/net 0, 409 0, 429 0, other 4xx 2), 0 dropped
   with run 3 panel mix: 2 failed (5xx/net 0, 409 0, 429 0, other 4xx 2), 0 dropped
 
 Load of PostgreSQL and of the containers per run (counters over the run; sessions and CPU sampled every 5 s)

@@ -73,7 +73,8 @@
   },
   "empty_classes": [
    "products_category_empty"
-  ]
+  ],
+  "edited": "1 request removed by hand after the measurement 'before' (q=z, a phrase of 1 character: the API answers 400; a defect of the generator, fixed in panel_mix.py): ['/api/v1/admin/products?q=z&sort=name']"
  },
  "classes": {
   "products_default": [
@@ -134,7 +135,6 @@
    "/api/v1/admin/products?q=treningowa&sort=-updatedAt",
    "/api/v1/admin/products?q=p%C5%82ywackie&sort=name",
    "/api/v1/admin/products?q=p%C5%82ywacki&sort=name",
-   "/api/v1/admin/products?q=z&sort=name",
    "/api/v1/admin/products?q=lorrola&sort=name"
   ],
   "products_phrase_common": [

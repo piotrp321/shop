@@ -8,8 +8,10 @@
                                     F2 (the bigram candidates); run them with `matrix.py run --cases DIR/cases.json`
   i3.py table --results DIR         the table: median ms on medium, buffers, hits, the estimate for `server` in memory
 
-The class of a phrase decides the path of F2, so `show_trgm` of the phrase is part of the output of `pick`: a phrase from which pg_trgm extracts a trigram
-goes by the trigram index of F1; one without a trigram goes by the bigrams of F2.
+The rule that sends a phrase to the bigrams of F2 is not decided here: `show_trgm` of the phrase is printed only as a datum (it lists trigrams with the padding of the
+edges of a word, which `LIKE '%...%'` does not use), and the plan shows what pg_trgm really extracts from the pattern (`%a.b%` gives a non-selective trigram: the GIN
+index returns about 31% of the table; `#!#` gives none). The rule (a fragment without a word longer than 2 characters, or the estimate of the planner) is settled by a plan
+test in PERF-7-2; the rule "no word longer than 2 characters" is wrong for `ab-cd`, which has a selective trigram.
 """
 import argparse
 import json

@@ -1,0 +1,9 @@
+# I2, RED: the statements of K1 before the deduplication (the memberships joined to the products), run with the synthetic product of
+# scripts/synthetic-two-additional.sql in shop_proto (a product with two additional categories in the subtree of the department).
+# `equiv.py --only department` (14 pairs); the two differing pairs as printed (the ids are cut by the output; the synthetic product 01a21e1b-... is twice at the top):
+DIFF  K1.department.cat.p1.name vs P-cat-department.p1.name: ['01a21e1b-21ad-7c27-a0b3-d2d4dc45e9cb', 'b31d8f56-5431-58b8-9249-d89e85e95ec5', / ['01a21e1b-21ad-7c27-a0b3-d2d4dc45e9cb', '01a21e1b-21ad-7c27-a0b3-d2d4dc45e9cb',
+DIFF  K1.department.cat.p1.-updatedAt vs P-cat-department.p1.-updatedAt: ['01a21e1b-21ad-7c27-a0b3-d2d4dc45e9cb', '770af930-71ea-551e-8119-f140312b9854', / ['01a21e1b-21ad-7c27-a0b3-d2d4dc45e9cb', '01a21e1b-21ad-7c27-a0b3-d2d4dc45e9cb',
+equiv: 14 pairs checked, 2 differ
+# The counts of the pairs of the department are capped at 10 001 by BoundedCounter (equiv.py compares the bounded counts), so a double count is invisible there;
+# k1-exact-count.sql counts without the bound: the present statement 206 850, the old join formula 206 851. exact-count.txt measures the join formula and the
+# semi-join formula; the final DISTINCT formula is checked by the 82 pairs of equiv.txt, not by an exact count.

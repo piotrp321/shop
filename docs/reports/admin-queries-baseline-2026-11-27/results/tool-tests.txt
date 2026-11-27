@@ -8,3 +8,10 @@ ok   mix: a 404 of one product is skipped, a 500 ends the draw (exit 2)
 ok   P4 names the 409 as a failure (exit 0)
 ok   P4 with failures is not met (exit 0)
 ok   W7 with a dropped request is not met (exit 0)
+
+# Round 2 of the review: the failures of the panel mix alone do not fail P4 (they are listed apart; W7 still counts them).
+# RED: the report of the previous commit (the failures of the mix decided P4):
+FAIL P4 is not failed by the failures of the panel alone: exit 0 (wanted 0), wanted "no dropped request, in both variants) met" in: with run 1 panel mix: 2 failed
+# GREEN: the fixed report:
+ok   P4 is not failed by the failures of the panel alone (exit 0)
+ok   P4 lists the failures of the panel apart (exit 0)

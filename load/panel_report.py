@@ -5,12 +5,12 @@
 
 A failed request is any answer that is not a success of the scenario: 5xx and network errors, 409, 429 and every other 4xx (a conflict or a limit
 answered to the load is a failure of that request, whoever causes it); the requests the generator did not send in time (`dropped`) are failures too.
-Both are part of the verdict of w7 and p4, so a run with failures is never reported as met.
+Both are part of the verdict of w7 (the mix of the panel) and of p4 (the shop only: the failures of the panel mix are listed apart and do not decide p4), so a run with failures is never reported as met.
 
 w7: the figures of the mix (the p50, p95, p99 and the maximum of the whole mix and of every class) of DIR/w7-run*/panel.json, the
 median of the runs and the lowest and the highest run, with the verdict against W7 (p50 100 ms, p95 500 ms, maximum 2000 ms).
-p4: the shop listings and carts (DIR/p4-without-run*, DIR/p4-with-run*): per run the p50, p95, p99, the share of the requests that
-failed and the requests dropped, the median of the runs with and without the panel, the spread of the runs without it (the
+p4: the shop listings and carts (DIR/p4-without-run*, DIR/p4-with-run*): per run the p50, p95, p99, the failed requests and the requests dropped
+(the failures of the shop decide P4; those of the panel mix are listed apart), the median of the runs with and without the panel, the spread of the runs without it (the
 criterion: the difference of the medians must not exceed the spread without the panel), and the load of PostgreSQL of every run
 (the difference of the counters before and after, the sessions and the containers sampled every 5 seconds).
 
@@ -162,18 +162,26 @@ def p4(directory):
             if abs(difference) > noise:
                 verdict.append(f"{scenario} {metric}")
     lines.append("P4 (difference of the medians within the spread without the panel) " + ("met" if not verdict else "not met: " + ", ".join(verdict)))
-    # The failures and the dropped requests of every run, with the answers they are made of; both variants must have none.
+    # The failures and the dropped requests of the SHOP in every run, with the answers they are made of: P4 asks that the shop has none in both variants
+    # (spec: "błędy sklepu"). The failures of the panel mix are not a cost to the shop: they are listed apart and do not decide P4 (W7 counts them).
     problems = []
+    panel_problems = []
     for label, group in (("without", without), ("with", with_panel)):
         for index, (_, result) in enumerate(group, 1):
-            for scenario, key in (("shop listings", "shop_listing"), ("shop carts", "shop_cart"), ("panel mix", "panel")):
+            for scenario, key in (("shop listings", "shop_listing"), ("shop carts", "shop_cart")):
                 f = result[key]
-                if f is None or (key == "panel" and label == "without"):
+                if f is None:
                     continue
                 if failures(f) or result["dropped"][key]:
                     problems.append(f"{label} run {index} {scenario}: {failures(f)} failed ({breakdown(f)}), {result['dropped'][key]} dropped")
-    lines.append("P4 (no failed request (5xx, 409, 429, other 4xx) and no dropped request in the shop and in the panel mix, in both variants) " + ("met" if not problems else "not met:"))
+            f = result["panel"]
+            if label == "with" and (failures(f) or result["dropped"]["panel"]):
+                panel_problems.append(f"with run {index} panel mix: {failures(f)} failed ({breakdown(f)}), {result['dropped']['panel']} dropped")
+    lines.append("P4 (the shop has no failed request, 5xx or 409 or 429 or other 4xx, and no dropped request, in both variants) " + ("met" if not problems else "not met:"))
     lines.extend(f"  {problem}" for problem in problems)
+    if panel_problems:
+        lines.append("The panel mix had failed requests (reported for W7, not part of the verdict of P4):")
+        lines.extend(f"  {problem}" for problem in panel_problems)
     lines.append("")
     lines.append("Load of PostgreSQL and of the containers per run (counters over the run; sessions and CPU sampled every 5 s)")
     for label, group in (("without", without), ("with", with_panel)):
