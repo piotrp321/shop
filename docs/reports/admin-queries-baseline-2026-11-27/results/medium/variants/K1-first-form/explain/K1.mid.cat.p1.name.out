@@ -1,0 +1,44 @@
+-- category mid (10585 products), page 1, sort name
+-- products in the subtree = 10585
+SELECT DISTINCT ON (name, id) id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c2a92470-bddd-5c3a-9b84-ed06bfd4caad' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT product_id FROM catalog_product_category WHERE category_id = ANY('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[])) ORDER BY p.name ASC, p.id ASC LIMIT 26)) u ORDER BY name, id LIMIT 26;
+
+Limit  (cost=1.28..13982.82 rows=26 width=71) (actual time=1894.716..1898.292 rows=26.00 loops=1)
+  Buffers: shared hit=320824 read=761804 written=2
+  I/O Timings: shared read=1470.269 write=0.039
+  ->  Unique  (cost=1.28..27964.37 rows=52 width=71) (actual time=1894.715..1898.286 rows=26.00 loops=1)
+        Buffers: shared hit=320824 read=761804 written=2
+        I/O Timings: shared read=1470.269 write=0.039
+        ->  Merge Append  (cost=1.28..27964.11 rows=52 width=71) (actual time=1894.714..1898.274 rows=26.00 loops=1)
+              Sort Key: p.name, p.id
+              Buffers: shared hit=320824 read=761804 written=2
+              I/O Timings: shared read=1470.269 write=0.039
+              ->  Limit  (cost=0.42..4487.85 rows=26 width=71) (actual time=1626.701..1626.701 rows=1.00 loops=1)
+                    Buffers: shared hit=53039 read=676989 written=2
+                    I/O Timings: shared read=1317.906 write=0.039
+                    ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348644.78 rows=7814 width=71) (actual time=1626.700..1626.700 rows=1.00 loops=1)
+                          Filter: (primary_category_id = 'c2a92470-bddd-5c3a-9b84-ed06bfd4caad'::uuid)
+                          Rows Removed by Filter: 719926
+                          Index Searches: 1
+                          Buffers: shared hit=53039 read=676989 written=2
+                          I/O Timings: shared read=1317.906 write=0.039
+              ->  Limit  (cost=0.84..23475.73 rows=26 width=71) (actual time=268.001..271.556 rows=26.00 loops=1)
+                    Buffers: shared hit=267785 read=84815
+                    I/O Timings: shared read=152.363
+                    ->  Nested Loop Semi Join  (cost=0.84..1789509.16 rows=1982 width=71) (actual time=268.000..271.554 rows=26.00 loops=1)
+                          Buffers: shared hit=267785 read=84815
+                          I/O Timings: shared read=152.363
+                          ->  Index Scan using catalog_product_name_id_idx on catalog_product p_1  (cost=0.42..1346161.62 rows=993263 width=71) (actual time=0.027..182.327 rows=87839.00 loops=1)
+                                Index Searches: 1
+                                Buffers: shared hit=5841 read=83241
+                                I/O Timings: shared read=149.872
+                          ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category  (cost=0.42..0.45 rows=1 width=16) (actual time=0.001..0.001 rows=0.00 loops=87839)
+                                Index Cond: ((product_id = p_1.id) AND (category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[])))
+                                Heap Fetches: 0
+                                Index Searches: 87839
+                                Buffers: shared hit=261944 read=1574
+                                I/O Timings: shared read=2.491
+Planning:
+  Buffers: shared hit=438 read=114
+  I/O Timings: shared read=0.396
+Planning Time: 1.137 ms
+Execution Time: 1898.348 ms

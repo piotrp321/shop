@@ -1,0 +1,50 @@
+-- category mostly-additional (6689 products), page 2, sort name
+-- products in the subtree = 6689
+WITH additional AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[]) AND NOT (p.primary_category_id = ANY('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[])) AND (p.name, p.id) > ('Atlas szlaków Melvivin Kopa 300', CAST('4b91d6e2-7079-57e9-b445-422ed2f5028c' AS uuid))) SELECT id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c57c017b-d6f7-5990-82bf-635533003629' AND (p.name, p.id) > ('Atlas szlaków Melvivin Kopa 300', CAST('4b91d6e2-7079-57e9-b445-422ed2f5028c' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT id, name, tax_class, updated_at FROM additional ORDER BY name ASC, id ASC LIMIT 26)) u ORDER BY name, id LIMIT 26;
+
+Limit  (cost=13078.13..13130.89 rows=26 width=298) (actual time=8.061..10.242 rows=26.00 loops=1)
+  Buffers: shared hit=10935
+  CTE additional
+    ->  Gather  (cost=1029.63..12972.32 rows=2170 width=71) (actual time=0.707..9.440 rows=2399.00 loops=1)
+          Workers Planned: 1
+          Workers Launched: 1
+          Buffers: shared hit=10930
+          ->  Nested Loop  (cost=29.63..11755.32 rows=1276 width=71) (actual time=0.278..6.212 rows=1199.50 loops=2)
+                Buffers: shared hit=10930
+                ->  Parallel Bitmap Heap Scan on catalog_product_category pc  (cost=29.21..1589.73 rows=1284 width=16) (actual time=0.260..1.158 rows=1212.00 loops=2)
+                      Recheck Cond: (category_id = ANY ('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[]))
+                      Heap Blocks: exact=688
+                      Buffers: shared hit=1233
+                      Worker 0:  Heap Blocks: exact=522
+                      ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..28.66 rows=2182 width=0) (actual time=0.359..0.360 rows=2424.00 loops=1)
+                            Index Cond: (category_id = ANY ('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[]))
+                            Index Searches: 1
+                            Buffers: shared hit=3
+                ->  Index Scan using catalog_product_pkey on catalog_product p_1  (cost=0.42..7.92 rows=1 width=71) (actual time=0.004..0.004 rows=0.99 loops=2424)
+                      Index Cond: (id = pc.product_id)
+                      Filter: ((primary_category_id <> ALL ('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[])) AND (ROW((name)::text, id) > ROW('Atlas szlaków Melvivin Kopa 300'::text, '4b91d6e2-7079-57e9-b445-422ed2f5028c'::uuid)))
+                      Rows Removed by Filter: 0
+                      Index Searches: 2424
+                      Buffers: shared hit=9697
+  ->  Merge Append  (cost=105.81..211.32 rows=52 width=298) (actual time=8.060..8.066 rows=26.00 loops=1)
+        Sort Key: p.name, p.id
+        Buffers: shared hit=10935
+        ->  Limit  (cost=0.55..105.47 rows=26 width=71) (actual time=0.010..0.010 rows=1.00 loops=1)
+              Buffers: shared hit=5
+              ->  Index Scan using proto_k1_name on catalog_product p  (cost=0.55..21243.46 rows=5264 width=71) (actual time=0.009..0.010 rows=1.00 loops=1)
+                    Index Cond: ((primary_category_id = 'c57c017b-d6f7-5990-82bf-635533003629'::uuid) AND (ROW((name)::text, id) > ROW('Atlas szlaków Melvivin Kopa 300'::text, '4b91d6e2-7079-57e9-b445-422ed2f5028c'::uuid)))
+                    Index Searches: 1
+                    Buffers: shared hit=5
+        ->  Limit  (cost=105.25..105.31 rows=26 width=524) (actual time=8.048..8.051 rows=26.00 loops=1)
+              Buffers: shared hit=10930
+              ->  Sort  (cost=105.25..110.67 rows=2170 width=524) (actual time=8.048..8.049 rows=26.00 loops=1)
+                    Sort Key: additional.name, additional.id
+                    Sort Method: top-N heapsort  Memory: 30kB
+                    Buffers: shared hit=10930
+                    ->  CTE Scan on additional  (cost=0.00..43.40 rows=2170 width=524) (actual time=0.708..7.675 rows=2399.00 loops=1)
+                          Storage: Memory  Maximum Storage: 269kB
+                          Buffers: shared hit=10930
+Planning:
+  Buffers: shared hit=562
+Planning Time: 1.017 ms
+Execution Time: 10.347 ms

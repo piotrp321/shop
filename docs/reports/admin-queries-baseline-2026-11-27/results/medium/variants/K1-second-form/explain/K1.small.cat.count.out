@@ -1,0 +1,33 @@
+-- category small (15 products), count
+-- products in the subtree = 15
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.primary_category_id = ANY('{d947db5c-6f5f-5457-94f2-4b487d81a22e}'::uuid[]) UNION ALL SELECT 1 FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{d947db5c-6f5f-5457-94f2-4b487d81a22e}'::uuid[]) AND NOT (p.primary_category_id = ANY('{d947db5c-6f5f-5457-94f2-4b487d81a22e}'::uuid[])) LIMIT 10001) bounded;
+
+Aggregate  (cost=10165.97..10165.98 rows=1 width=8) (actual time=5.714..7.458 rows=1.00 loops=1)
+  Buffers: shared hit=1478
+  ->  Limit  (cost=0.42..10099.63 rows=5307 width=4) (actual time=0.019..7.453 rows=15.00 loops=1)
+        Buffers: shared hit=1478
+        ->  Append  (cost=0.42..10099.63 rows=5307 width=4) (actual time=0.018..7.450 rows=15.00 loops=1)
+              Buffers: shared hit=1478
+              ->  Index Only Scan using catalog_product_primary_category_id_idx on catalog_product p  (cost=0.42..380.21 rows=4105 width=4) (actual time=0.018..0.019 rows=15.00 loops=1)
+                    Index Cond: (primary_category_id = ANY ('{d947db5c-6f5f-5457-94f2-4b487d81a22e}'::uuid[]))
+                    Heap Fetches: 0
+                    Index Searches: 1
+                    Buffers: shared hit=4
+              ->  Gather  (cost=1000.42..9692.89 rows=1202 width=4) (actual time=5.686..7.428 rows=0.00 loops=1)
+                    Workers Planned: 1
+                    Workers Launched: 1
+                    Buffers: shared hit=1474
+                    ->  Nested Loop  (cost=0.42..8572.69 rows=707 width=4) (actual time=4.299..4.300 rows=0.00 loops=2)
+                          Buffers: shared hit=1474
+                          ->  Parallel Seq Scan on catalog_product_category pc  (cost=0.00..2798.80 rows=710 width=16) (actual time=4.299..4.299 rows=0.00 loops=2)
+                                Filter: (category_id = ANY ('{d947db5c-6f5f-5457-94f2-4b487d81a22e}'::uuid[]))
+                                Rows Removed by Filter: 100096
+                                Buffers: shared hit=1474
+                          ->  Index Scan using catalog_product_pkey on catalog_product p_1  (cost=0.42..8.13 rows=1 width=16) (never executed)
+                                Index Cond: (id = pc.product_id)
+                                Filter: (primary_category_id <> ALL ('{d947db5c-6f5f-5457-94f2-4b487d81a22e}'::uuid[]))
+                                Index Searches: 0
+Planning:
+  Buffers: shared hit=662
+Planning Time: 1.177 ms
+Execution Time: 7.505 ms

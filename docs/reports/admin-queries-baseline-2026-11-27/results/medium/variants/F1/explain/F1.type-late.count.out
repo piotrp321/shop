@@ -1,0 +1,24 @@
+-- phrase type-late 'zupa', count by the candidates
+-- hits = 8584
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%zupa%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded;
+
+Aggregate  (cost=569.86..569.87 rows=1 width=8) (actual time=18.127..18.134 rows=1.00 loops=1)
+  Buffers: shared hit=8541
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=174.64..566.64 rows=99 width=4) (actual time=2.420..16.133 rows=8584.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+          Heap Blocks: exact=8509
+          Buffers: shared hit=8541
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..174.61 rows=99 width=0) (actual time=1.494..1.495 rows=8952.00 loops=1)
+                Index Cond: ((name)::text ~~* '%zupa%'::text)
+                Index Searches: 1
+                Buffers: shared hit=32
+  ->  Limit  (cost=0.00..1.98 rows=99 width=4) (actual time=2.422..17.800 rows=8584.00 loops=1)
+        Buffers: shared hit=8541
+        ->  CTE Scan on m  (cost=0.00..1.98 rows=99 width=4) (actual time=2.421..17.344 rows=8584.00 loops=1)
+              Storage: Memory  Maximum Storage: 397kB
+              Buffers: shared hit=8541
+Planning:
+  Buffers: shared hit=443
+Planning Time: 1.156 ms
+Execution Time: 18.264 ms

@@ -1,0 +1,25 @@
+-- phrase type-early 'bagażnik', count by the candidates
+-- hits = 8625
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('bagażnik') AND p.name ILIKE '%bagażnik%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded;
+
+Aggregate  (cost=522.04..522.05 rows=1 width=8) (actual time=25.392..25.394 rows=1.00 loops=1)
+  Buffers: shared hit=8777
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=517.74..522.01 rows=1 width=4) (actual time=8.611..23.332 rows=8625.00 loops=1)
+          Recheck Cond: (perf_bigrams((name)::text) @> '{ag,aż,ba,ga,ik,ni,żn}'::text[])
+          Filter: ((name)::text ~~* '%bagażnik%'::text)
+          Heap Blocks: exact=8461
+          Buffers: shared hit=8777
+          ->  Bitmap Index Scan on proto_f2_name_bigrams  (cost=0.00..517.74 rows=1 width=0) (actual time=7.725..7.725 rows=8709.00 loops=1)
+                Index Cond: (perf_bigrams((name)::text) @> '{ag,aż,ba,ga,ik,ni,żn}'::text[])
+                Index Searches: 1
+                Buffers: shared hit=316
+  ->  Limit  (cost=0.00..0.02 rows=1 width=4) (actual time=8.614..25.059 rows=8625.00 loops=1)
+        Buffers: shared hit=8777
+        ->  CTE Scan on m  (cost=0.00..0.02 rows=1 width=4) (actual time=8.613..24.560 rows=8625.00 loops=1)
+              Storage: Memory  Maximum Storage: 398kB
+              Buffers: shared hit=8777
+Planning:
+  Buffers: shared hit=522
+Planning Time: 1.219 ms
+Execution Time: 25.510 ms

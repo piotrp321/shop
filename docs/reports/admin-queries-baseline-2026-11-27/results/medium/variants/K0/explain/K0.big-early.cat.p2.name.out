@@ -1,0 +1,66 @@
+-- category big-early (15199 products), page 2, sort name
+-- products in the subtree = 15199
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) AND (p.name, p.id) > ('Atlas szlaków Alitar Jastrząb 100', CAST('eadda1d7-d96d-569e-83b9-ce65403f3b6d' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=91478.49..91478.55 rows=26 width=71) (actual time=72.451..72.460 rows=26.00 loops=1)
+  Buffers: shared hit=44153 read=19134 written=2
+  I/O Timings: shared read=36.565 write=0.019
+  ->  Sort  (cost=91478.49..91511.64 rows=13260 width=71) (actual time=72.451..72.454 rows=26.00 loops=1)
+        Sort Key: p.name, p.id
+        Sort Method: top-N heapsort  Memory: 30kB
+        Buffers: shared hit=44153 read=19134 written=2
+        I/O Timings: shared read=36.565 write=0.019
+        ->  Nested Loop  (cost=5290.52..91100.55 rows=13260 width=71) (actual time=7.056..70.470 rows=15174.00 loops=1)
+              Buffers: shared hit=44147 read=19134 written=2
+              I/O Timings: shared read=36.565 write=0.019
+              ->  HashAggregate  (cost=5290.10..5422.70 rows=13260 width=16) (actual time=7.032..8.510 rows=15199.00 loops=1)
+                    Group Key: catalog_product.id
+                    Batches: 1  Memory Usage: 1049kB
+                    Buffers: shared hit=1120 read=1365
+                    I/O Timings: shared read=0.863
+                    ->  Append  (cost=0.42..5256.95 rows=13260 width=16) (actual time=0.135..5.411 rows=15199.00 loops=1)
+                          Buffers: shared hit=1120 read=1365
+                          I/O Timings: shared read=0.863
+                          ->  Nested Loop  (cost=0.42..2275.35 rows=11036 width=16) (actual time=0.134..2.279 rows=12924.00 loops=1)
+                                Buffers: shared hit=1114 read=220
+                                I/O Timings: shared read=0.694
+                                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=2 width=16) (actual time=0.113..0.121 rows=1.00 loops=1)
+                                      Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%'::text)
+                                      Rows Removed by Filter: 179
+                                      Buffers: shared hit=2 read=3
+                                      I/O Timings: shared read=0.071
+                                ->  Index Only Scan using proto_k1_updated on catalog_product  (cost=0.42..1040.35 rows=9370 width=32) (actual time=0.020..1.659 rows=12924.00 loops=1)
+                                      Index Cond: (primary_category_id = c.id)
+                                      Heap Fetches: 245
+                                      Index Searches: 1
+                                      Buffers: shared hit=1112 read=217
+                                      I/O Timings: shared read=0.623
+                          ->  Nested Loop  (cost=26.93..2915.30 rows=2224 width=16) (actual time=0.245..2.588 rows=2275.00 loops=1)
+                                Buffers: shared hit=6 read=1145
+                                I/O Timings: shared read=0.169
+                                ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=2 width=16) (actual time=0.006..0.012 rows=1.00 loops=1)
+                                      Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%'::text)
+                                      Rows Removed by Filter: 179
+                                      Buffers: shared hit=5
+                                ->  Bitmap Heap Scan on catalog_product_category  (cost=26.93..1435.13 rows=1889 width=32) (actual time=0.238..2.419 rows=2275.00 loops=1)
+                                      Recheck Cond: (category_id = c_1.id)
+                                      Heap Blocks: exact=1143
+                                      Buffers: shared hit=1 read=1145
+                                      I/O Timings: shared read=0.169
+                                      ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..26.46 rows=1889 width=0) (actual time=0.114..0.114 rows=2275.00 loops=1)
+                                            Index Cond: (category_id = c_1.id)
+                                            Index Searches: 1
+                                            Buffers: shared hit=1 read=2
+                                            I/O Timings: shared read=0.007
+              ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..6.46 rows=1 width=71) (actual time=0.004..0.004 rows=1.00 loops=15199)
+                    Index Cond: (id = catalog_product.id)
+                    Filter: (ROW((name)::text, id) > ROW('Atlas szlaków Alitar Jastrząb 100'::text, 'eadda1d7-d96d-569e-83b9-ce65403f3b6d'::uuid))
+                    Rows Removed by Filter: 0
+                    Index Searches: 15199
+                    Buffers: shared hit=43027 read=17769 written=2
+                    I/O Timings: shared read=35.702 write=0.019
+Planning:
+  Buffers: shared hit=600 read=88
+  I/O Timings: shared read=0.321
+Planning Time: 1.257 ms
+Execution Time: 72.649 ms

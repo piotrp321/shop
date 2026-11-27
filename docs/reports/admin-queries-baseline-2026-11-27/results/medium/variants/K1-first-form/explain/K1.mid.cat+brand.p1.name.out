@@ -1,0 +1,49 @@
+-- category mid + common phrase, page 1, sort name
+-- products in the subtree = 10585
+SELECT DISTINCT ON (name, id) id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c2a92470-bddd-5c3a-9b84-ed06bfd4caad' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT product_id FROM catalog_product_category WHERE category_id = ANY('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[])) AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26)) u ORDER BY name, id LIMIT 26;
+
+Limit  (cost=17373.48..17697.19 rows=26 width=71) (actual time=8.612..8.627 rows=26.00 loops=1)
+  Buffers: shared hit=8617
+  ->  Unique  (cost=17373.48..18020.90 rows=52 width=71) (actual time=8.611..8.620 rows=26.00 loops=1)
+        Buffers: shared hit=8617
+        ->  Merge Append  (cost=17373.48..18020.64 rows=52 width=71) (actual time=8.610..8.616 rows=26.00 loops=1)
+              Sort Key: p.name, p.id
+              Buffers: shared hit=8617
+              ->  Limit  (cost=0.55..647.13 rows=26 width=71) (actual time=0.020..0.021 rows=1.00 loops=1)
+                    Buffers: shared hit=9
+                    ->  Index Scan using proto_k1_name on catalog_product p  (cost=0.55..31409.33 rows=1263 width=71) (actual time=0.020..0.020 rows=1.00 loops=1)
+                          Index Cond: (primary_category_id = 'c2a92470-bddd-5c3a-9b84-ed06bfd4caad'::uuid)
+                          Filter: ((name)::text ~~* '%pro%'::text)
+                          Rows Removed by Filter: 4
+                          Index Searches: 1
+                          Buffers: shared hit=9
+              ->  Limit  (cost=17372.92..17372.99 rows=26 width=71) (actual time=8.588..8.591 rows=26.00 loops=1)
+                    Buffers: shared hit=8608
+                    ->  Sort  (cost=17372.92..17373.72 rows=320 width=71) (actual time=8.588..8.589 rows=26.00 loops=1)
+                          Sort Key: p_1.name, p_1.id
+                          Sort Method: top-N heapsort  Memory: 30kB
+                          Buffers: shared hit=8608
+                          ->  Nested Loop  (cost=1607.80..17363.80 rows=320 width=71) (actual time=2.179..8.480 rows=184.00 loops=1)
+                                Buffers: shared hit=8608
+                                ->  HashAggregate  (cost=1607.37..1627.19 rows=1982 width=16) (actual time=2.125..2.283 rows=1884.00 loops=1)
+                                      Group Key: catalog_product_category.product_id
+                                      Batches: 1  Memory Usage: 153kB
+                                      Buffers: shared hit=1072
+                                      ->  Bitmap Heap Scan on catalog_product_category  (cost=27.66..1602.42 rows=1982 width=16) (actual time=0.167..1.927 rows=1884.00 loops=1)
+                                            Recheck Cond: (category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]))
+                                            Heap Blocks: exact=1069
+                                            Buffers: shared hit=1072
+                                            ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..27.16 rows=1982 width=0) (actual time=0.106..0.106 rows=1884.00 loops=1)
+                                                  Index Cond: (category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]))
+                                                  Index Searches: 1
+                                                  Buffers: shared hit=3
+                                ->  Index Scan using catalog_product_pkey on catalog_product p_1  (cost=0.42..7.95 rows=1 width=71) (actual time=0.003..0.003 rows=0.10 loops=1884)
+                                      Index Cond: (id = catalog_product_category.product_id)
+                                      Filter: ((name)::text ~~* '%pro%'::text)
+                                      Rows Removed by Filter: 1
+                                      Index Searches: 1884
+                                      Buffers: shared hit=7536
+Planning:
+  Buffers: shared hit=562
+Planning Time: 1.346 ms
+Execution Time: 8.714 ms

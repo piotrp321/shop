@@ -1,0 +1,383 @@
+-- category department + without images, page 1, sort -updatedAt
+-- products in the subtree = 206849
+WITH additional AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[]) AND NOT (p.primary_category_id = ANY('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[])) AND p.images = '[]'::jsonb) SELECT id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'd7c098d0-4bae-595e-a1e1-e4a923448956' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '1a27b41d-f17e-5928-b73d-e9953916221a' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '22cf1459-445c-5f09-9c57-cffac2a03b1b' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c46367b5-ebd9-5214-83cf-f336dac3fedb' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '1eca62e7-3a2e-526f-b689-4d43a343b30d' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '0e811f7e-c801-572b-a28d-ceea69c2c019' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '2e961065-6d3a-50e2-abaf-a6936a768cc6' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '8732b1af-0cf9-5c92-8388-043c6a2a6a95' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c57c017b-d6f7-5990-82bf-635533003629' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '266c5e49-3e83-5a60-98d2-e2e142d46edb' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '70134891-dc80-5215-9109-23f8f80ad40a' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '50cd3ab9-6263-5441-9d77-cef1c8794964' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'd2a8f52e-6be4-54e2-afa2-b6537de3abe3' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '830597e3-c1d9-53b5-ac6c-9d8b19076ffd' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'dad8249a-d4d2-5f77-a4ed-c20fad01e574' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '8114f947-c901-5ec4-a342-8680b736d727' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'b1586e7f-5815-587a-9e06-bac239eaeb62' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'a58050fa-627a-5c6f-aa94-3f392baa4385' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'ab5e7d61-6ce9-5e20-9732-15b515592c9c' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'e77ca681-5575-588c-be72-a87e86dd1f73' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'b046c3bb-67cf-575e-85de-475b0a4231db' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '4b68d4ca-f126-562f-a142-65edd596cc0c' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '4c351e8e-ff75-5a37-81ef-cae675c8eea8' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '73706765-ed3e-58bf-86d9-b66cd3fa71c0' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'eb2174f3-d536-50f3-8832-51736f2da26d' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'f6f867f6-b41b-5131-9b4d-8a30fbea6c2b' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '3a031e2a-97e1-5099-b9f5-b34bf28d36e0' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '4744a6a8-69df-52c4-8142-b3d5c2024a00' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'dc12d069-67b5-5cfc-9734-cfbb916735d3' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'fd305193-a5ad-5aac-932f-fc408a98d4c7' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT id, name, tax_class, updated_at FROM additional ORDER BY updated_at DESC, id DESC LIMIT 26)) u ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=91771.33..96388.73 rows=26 width=84) (actual time=93.281..95.790 rows=26.00 loops=1)
+  Buffers: shared hit=766 read=27438 written=3
+  I/O Timings: shared read=25.165 write=0.063
+  CTE additional
+    ->  Hash Join  (cost=23511.14..91709.13 rows=966 width=71) (actual time=89.549..89.553 rows=0.00 loops=1)
+          Hash Cond: (p_34.id = pc.product_id)
+          Buffers: shared hit=86 read=26147 written=3
+          I/O Timings: shared read=21.127 write=0.063
+          ->  Bitmap Heap Scan on catalog_product p_34  (cost=19644.87..87774.10 rows=15761 width=71) (actual time=25.425..73.515 rows=15831.00 loops=1)
+                Recheck Cond: (images = '[]'::jsonb)
+                Filter: (primary_category_id <> ALL ('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[]))
+                Rows Removed by Filter: 4172
+                Heap Blocks: exact=19902
+                Buffers: shared hit=60 read=24611 written=3
+                I/O Timings: shared read=20.672 write=0.063
+                ->  Bitmap Index Scan on catalog_product_without_images_idx  (cost=0.00..19640.84 rows=21686 width=0) (actual time=23.173..23.173 rows=20003.00 loops=1)
+                      Index Searches: 1
+                      Buffers: shared read=4769
+                      I/O Timings: shared read=18.497
+          ->  Hash  (cost=3105.26..3105.26 rows=60881 width=16) (actual time=10.341..10.343 rows=41770.00 loops=1)
+                Buckets: 65536  Batches: 1  Memory Usage: 2470kB
+                Buffers: shared hit=26 read=1536
+                I/O Timings: shared read=0.455
+                ->  Bitmap Heap Scan on catalog_product_category pc  (cost=718.04..3105.26 rows=60881 width=16) (actual time=1.435..6.588 rows=41770.00 loops=1)
+                      Recheck Cond: (category_id = ANY ('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[]))
+                      Heap Blocks: exact=1474
+                      Buffers: shared hit=26 read=1536
+                      I/O Timings: shared read=0.455
+                      ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..702.73 rows=60881 width=0) (actual time=1.230..1.230 rows=41770.00 loops=1)
+                            Index Cond: (category_id = ANY ('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[]))
+                            Index Searches: 26
+                            Buffers: shared hit=26 read=62
+                            I/O Timings: shared read=0.219
+  ->  Merge Append  (cost=62.20..161671.17 rows=910 width=84) (actual time=93.280..95.776 rows=26.00 loops=1)
+        Sort Key: p.updated_at DESC, p.id DESC
+        Buffers: shared hit=766 read=27438 written=3
+        I/O Timings: shared read=25.165 write=0.063
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.017..0.017 rows=0.00 loops=1)
+              Buffers: shared hit=1 read=2
+              I/O Timings: shared read=0.009
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.017..0.017 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'd7c098d0-4bae-595e-a1e1-e4a923448956'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Index Searches: 1
+                    Buffers: shared hit=1 read=2
+                    I/O Timings: shared read=0.009
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.012..0.012 rows=0.00 loops=1)
+              Buffers: shared hit=2 read=1
+              I/O Timings: shared read=0.004
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_1  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.012..0.012 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '1a27b41d-f17e-5928-b73d-e9953916221a'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Index Searches: 1
+                    Buffers: shared hit=2 read=1
+                    I/O Timings: shared read=0.004
+        ->  Limit  (cost=0.42..4760.91 rows=26 width=71) (actual time=0.101..0.184 rows=3.00 loops=1)
+              Buffers: shared hit=24 read=33
+              I/O Timings: shared read=0.101
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_2  (cost=0.42..32957.61 rows=180 width=71) (actual time=0.101..0.183 rows=3.00 loops=1)
+                    Index Cond: (primary_category_id = '22cf1459-445c-5f09-9c57-cffac2a03b1b'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 51
+                    Index Searches: 1
+                    Buffers: shared hit=24 read=33
+                    I/O Timings: shared read=0.101
+        ->  Limit  (cost=0.42..4689.73 rows=26 width=71) (actual time=0.522..0.522 rows=1.00 loops=1)
+              Buffers: shared hit=36 read=87
+              I/O Timings: shared read=0.324
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_3  (cost=0.42..69798.88 rows=387 width=71) (actual time=0.521..0.521 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = 'c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 119
+                    Index Searches: 1
+                    Buffers: shared hit=36 read=87
+                    I/O Timings: shared read=0.324
+        ->  Limit  (cost=0.42..4740.37 rows=26 width=71) (actual time=0.270..0.270 rows=1.00 loops=1)
+              Buffers: shared hit=36 read=39
+              I/O Timings: shared read=0.144
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_4  (cost=0.42..48675.98 rows=267 width=71) (actual time=0.269..0.270 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = 'c46367b5-ebd9-5214-83cf-f336dac3fedb'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 70
+                    Index Searches: 1
+                    Buffers: shared hit=36 read=39
+                    I/O Timings: shared read=0.144
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.004..0.005 rows=0.00 loops=1)
+              Buffers: shared hit=3
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_5  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.004..0.004 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '1eca62e7-3a2e-526f-b689-4d43a343b30d'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Index Searches: 1
+                    Buffers: shared hit=3
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.037..0.123 rows=2.00 loops=1)
+              Buffers: shared hit=15 read=26
+              I/O Timings: shared read=0.073
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_6  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.037..0.122 rows=2.00 loops=1)
+                    Index Cond: (primary_category_id = '0e811f7e-c801-572b-a28d-ceea69c2c019'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 36
+                    Index Searches: 1
+                    Buffers: shared hit=15 read=26
+                    I/O Timings: shared read=0.073
+        ->  Limit  (cost=0.42..4729.52 rows=26 width=71) (actual time=0.258..0.258 rows=1.00 loops=1)
+              Buffers: shared hit=31 read=43
+              I/O Timings: shared read=0.165
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_7  (cost=0.42..49837.81 rows=274 width=71) (actual time=0.257..0.258 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '2e961065-6d3a-50e2-abaf-a6936a768cc6'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 72
+                    Index Searches: 1
+                    Buffers: shared hit=31 read=43
+                    I/O Timings: shared read=0.165
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.533..0.533 rows=1.00 loops=1)
+              Buffers: shared hit=37 read=95
+              I/O Timings: shared read=0.363
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_8  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.532..0.532 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '8732b1af-0cf9-5c92-8388-043c6a2a6a95'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 128
+                    Index Searches: 1
+                    Buffers: shared hit=37 read=95
+                    I/O Timings: shared read=0.363
+        ->  Limit  (cost=0.42..4780.56 rows=26 width=71) (actual time=0.089..0.267 rows=2.00 loops=1)
+              Buffers: shared hit=16 read=64
+              I/O Timings: shared read=0.193
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_9  (cost=0.42..21143.34 rows=115 width=71) (actual time=0.088..0.266 rows=2.00 loops=1)
+                    Index Cond: (primary_category_id = 'c57c017b-d6f7-5990-82bf-635533003629'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 75
+                    Index Searches: 1
+                    Buffers: shared hit=16 read=64
+                    I/O Timings: shared read=0.193
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.023..0.024 rows=0.00 loops=1)
+              Buffers: shared hit=4 read=3
+              I/O Timings: shared read=0.011
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_10  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.023..0.023 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '266c5e49-3e83-5a60-98d2-e2e142d46edb'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 10
+                    Index Searches: 1
+                    Buffers: shared hit=4 read=3
+                    I/O Timings: shared read=0.011
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.012..0.013 rows=0.00 loops=1)
+              Buffers: shared hit=1 read=2
+              I/O Timings: shared read=0.007
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_11  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.012..0.012 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '70134891-dc80-5215-9109-23f8f80ad40a'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Index Searches: 1
+                    Buffers: shared hit=1 read=2
+                    I/O Timings: shared read=0.007
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.017..0.017 rows=0.00 loops=1)
+              Buffers: shared hit=4 read=2
+              I/O Timings: shared read=0.007
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_12  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.016..0.017 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '50cd3ab9-6263-5441-9d77-cef1c8794964'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 6
+                    Index Searches: 1
+                    Buffers: shared hit=4 read=2
+                    I/O Timings: shared read=0.007
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.004..0.005 rows=0.00 loops=1)
+              Buffers: shared hit=3
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_13  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.004..0.004 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'd2a8f52e-6be4-54e2-afa2-b6537de3abe3'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Index Searches: 1
+                    Buffers: shared hit=3
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.015..0.016 rows=0.00 loops=1)
+              Buffers: shared hit=2 read=2
+              I/O Timings: shared read=0.007
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_14  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.015..0.016 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '830597e3-c1d9-53b5-ac6c-9d8b19076ffd'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 4
+                    Index Searches: 1
+                    Buffers: shared hit=2 read=2
+                    I/O Timings: shared read=0.007
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.015..0.015 rows=0.00 loops=1)
+              Buffers: shared hit=3 read=2
+              I/O Timings: shared read=0.008
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_15  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.014..0.015 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'dad8249a-d4d2-5f77-a4ed-c20fad01e574'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 6
+                    Index Searches: 1
+                    Buffers: shared hit=3 read=2
+                    I/O Timings: shared read=0.008
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.012..0.012 rows=0.00 loops=1)
+              Buffers: shared hit=1 read=2
+              I/O Timings: shared read=0.007
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_16  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.012..0.012 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = '8114f947-c901-5ec4-a342-8680b736d727'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Index Searches: 1
+                    Buffers: shared hit=1 read=2
+                    I/O Timings: shared read=0.007
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.022..0.022 rows=0.00 loops=1)
+              Buffers: shared hit=3 read=3
+              I/O Timings: shared read=0.012
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_17  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.022..0.022 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'b1586e7f-5815-587a-9e06-bac239eaeb62'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 8
+                    Index Searches: 1
+                    Buffers: shared hit=3 read=3
+                    I/O Timings: shared read=0.012
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.019..0.019 rows=0.00 loops=1)
+              Buffers: shared hit=4 read=3
+              I/O Timings: shared read=0.011
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_18  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.019..0.019 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 8
+                    Index Searches: 1
+                    Buffers: shared hit=4 read=3
+                    I/O Timings: shared read=0.011
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.013..0.017 rows=0.00 loops=1)
+              Buffers: shared hit=1 read=2
+              I/O Timings: shared read=0.008
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_19  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.012..0.013 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'a58050fa-627a-5c6f-aa94-3f392baa4385'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Index Searches: 1
+                    Buffers: shared hit=1 read=2
+                    I/O Timings: shared read=0.008
+        ->  Limit  (cost=0.42..4728.26 rows=26 width=71) (actual time=0.584..0.584 rows=1.00 loops=1)
+              Buffers: shared hit=53 read=111
+              I/O Timings: shared read=0.402
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_20  (cost=0.42..51642.88 rows=284 width=71) (actual time=0.583..0.584 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 160
+                    Index Searches: 1
+                    Buffers: shared hit=53 read=111
+                    I/O Timings: shared read=0.402
+        ->  Limit  (cost=0.42..4718.95 rows=26 width=71) (actual time=0.071..0.214 rows=6.00 loops=1)
+              Buffers: shared hit=36 read=51
+              I/O Timings: shared read=0.142
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_21  (cost=0.42..51904.17 rows=286 width=71) (actual time=0.070..0.214 rows=6.00 loops=1)
+                    Index Cond: (primary_category_id = 'ab5e7d61-6ce9-5e20-9732-15b515592c9c'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 78
+                    Index Searches: 1
+                    Buffers: shared hit=36 read=51
+                    I/O Timings: shared read=0.142
+        ->  Limit  (cost=0.42..4757.01 rows=26 width=71) (actual time=0.119..0.518 rows=3.00 loops=1)
+              Buffers: shared hit=52 read=138
+              I/O Timings: shared read=0.360
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_22  (cost=0.42..37138.35 rows=203 width=71) (actual time=0.119..0.517 rows=3.00 loops=1)
+                    Index Cond: (primary_category_id = 'e77ca681-5575-588c-be72-a87e86dd1f73'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 183
+                    Index Searches: 1
+                    Buffers: shared hit=52 read=138
+                    I/O Timings: shared read=0.360
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.007..0.008 rows=0.00 loops=1)
+              Buffers: shared hit=3
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_23  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.007..0.007 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'b046c3bb-67cf-575e-85de-475b0a4231db'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Index Searches: 1
+                    Buffers: shared hit=3
+        ->  Limit  (cost=0.42..4668.25 rows=26 width=71) (actual time=0.090..0.590 rows=5.00 loops=1)
+              Buffers: shared hit=58 read=149
+              I/O Timings: shared read=0.404
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_24  (cost=0.42..84200.77 rows=469 width=71) (actual time=0.090..0.590 rows=5.00 loops=1)
+                    Index Cond: (primary_category_id = '4b68d4ca-f126-562f-a142-65edd596cc0c'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 197
+                    Index Searches: 1
+                    Buffers: shared hit=58 read=149
+                    I/O Timings: shared read=0.404
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.170..0.170 rows=1.00 loops=1)
+              Buffers: shared hit=26 read=32
+              I/O Timings: shared read=0.100
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_25  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.169..0.170 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = '4c351e8e-ff75-5a37-81ef-cae675c8eea8'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 54
+                    Index Searches: 1
+                    Buffers: shared hit=26 read=32
+                    I/O Timings: shared read=0.100
+        ->  Limit  (cost=0.42..4763.48 rows=26 width=71) (actual time=0.055..0.230 rows=3.00 loops=1)
+              Buffers: shared hit=37 read=58
+              I/O Timings: shared read=0.152
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_26  (cost=0.42..37005.68 rows=202 width=71) (actual time=0.055..0.229 rows=3.00 loops=1)
+                    Index Cond: (primary_category_id = '73706765-ed3e-58bf-86d9-b66cd3fa71c0'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 88
+                    Index Searches: 1
+                    Buffers: shared hit=37 read=58
+                    I/O Timings: shared read=0.152
+        ->  Limit  (cost=0.42..4772.71 rows=26 width=71) (actual time=0.031..0.223 rows=4.00 loops=1)
+              Buffers: shared hit=28 read=53
+              I/O Timings: shared read=0.158
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_27  (cost=0.42..33222.90 rows=181 width=71) (actual time=0.031..0.222 rows=4.00 loops=1)
+                    Index Cond: (primary_category_id = '93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 74
+                    Index Searches: 1
+                    Buffers: shared hit=28 read=53
+                    I/O Timings: shared read=0.158
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.015..0.039 rows=1.00 loops=1)
+              Buffers: shared hit=2 read=4
+              I/O Timings: shared read=0.017
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_28  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.015..0.038 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = 'eb2174f3-d536-50f3-8832-51736f2da26d'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 7
+                    Index Searches: 1
+                    Buffers: shared hit=2 read=4
+                    I/O Timings: shared read=0.017
+        ->  Limit  (cost=0.42..4771.79 rows=26 width=71) (actual time=0.013..0.013 rows=0.00 loops=1)
+              Buffers: shared hit=1 read=2
+              I/O Timings: shared read=0.007
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_29  (cost=0.42..16516.67 rows=90 width=71) (actual time=0.012..0.013 rows=0.00 loops=1)
+                    Index Cond: (primary_category_id = 'f6f867f6-b41b-5131-9b4d-8a30fbea6c2b'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Index Searches: 1
+                    Buffers: shared hit=1 read=2
+                    I/O Timings: shared read=0.007
+        ->  Limit  (cost=0.42..4726.98 rows=26 width=71) (actual time=0.066..0.418 rows=2.00 loops=1)
+              Buffers: shared hit=41 read=112
+              I/O Timings: shared read=0.303
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_30  (cost=0.42..50356.41 rows=277 width=71) (actual time=0.066..0.418 rows=2.00 loops=1)
+                    Index Cond: (primary_category_id = '3a031e2a-97e1-5099-b9f5-b34bf28d36e0'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 147
+                    Index Searches: 1
+                    Buffers: shared hit=41 read=112
+                    I/O Timings: shared read=0.303
+        ->  Limit  (cost=0.42..4674.09 rows=26 width=71) (actual time=0.248..0.315 rows=2.00 loops=1)
+              Buffers: shared hit=50 read=63
+              I/O Timings: shared read=0.204
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_31  (cost=0.42..78913.54 rows=439 width=71) (actual time=0.248..0.314 rows=2.00 loops=1)
+                    Index Cond: (primary_category_id = '4744a6a8-69df-52c4-8142-b3d5c2024a00'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 107
+                    Index Searches: 1
+                    Buffers: shared hit=50 read=63
+                    I/O Timings: shared read=0.204
+        ->  Limit  (cost=0.42..4720.66 rows=26 width=71) (actual time=0.235..0.235 rows=1.00 loops=1)
+              Buffers: shared hit=30 read=42
+              I/O Timings: shared read=0.157
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_32  (cost=0.42..52286.11 rows=288 width=71) (actual time=0.235..0.235 rows=1.00 loops=1)
+                    Index Cond: (primary_category_id = 'dc12d069-67b5-5cfc-9734-cfbb916735d3'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 67
+                    Index Searches: 1
+                    Buffers: shared hit=30 read=42
+                    I/O Timings: shared read=0.157
+        ->  Limit  (cost=0.42..4700.07 rows=26 width=71) (actual time=0.015..0.275 rows=3.00 loops=1)
+              Buffers: shared hit=36 read=65
+              I/O Timings: shared read=0.178
+              ->  Index Scan Backward using proto_k1_updated on catalog_product p_33  (cost=0.42..66879.98 rows=370 width=71) (actual time=0.015..0.274 rows=3.00 loops=1)
+                    Index Cond: (primary_category_id = 'fd305193-a5ad-5aac-932f-fc408a98d4c7'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 94
+                    Index Searches: 1
+                    Buffers: shared hit=36 read=65
+                    I/O Timings: shared read=0.178
+        ->  Limit  (cost=46.85..46.92 rows=26 width=524) (actual time=89.561..89.562 rows=0.00 loops=1)
+              Buffers: shared hit=86 read=26147 written=3
+              I/O Timings: shared read=21.127 write=0.063
+              ->  Sort  (cost=46.85..49.27 rows=966 width=524) (actual time=89.561..89.561 rows=0.00 loops=1)
+                    Sort Key: additional.updated_at DESC, additional.id DESC
+                    Sort Method: quicksort  Memory: 25kB
+                    Buffers: shared hit=86 read=26147 written=3
+                    I/O Timings: shared read=21.127 write=0.063
+                    ->  CTE Scan on additional  (cost=0.00..19.32 rows=966 width=524) (actual time=89.550..89.551 rows=0.00 loops=1)
+                          Storage: Memory  Maximum Storage: 17kB
+                          Buffers: shared hit=86 read=26147 written=3
+                          I/O Timings: shared read=21.127 write=0.063
+Planning:
+  Buffers: shared hit=503 read=89
+  I/O Timings: shared read=0.384
+Planning Time: 2.824 ms
+Execution Time: 96.332 ms

@@ -1,0 +1,27 @@
+-- customers, fragment full-email 'klaudia.domagala.3985@example.net', count by the bigrams
+-- hits = 1
+SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('klaudia.domagala.3985@example.net')) AND lower(c.email) LIKE '%' || lower('klaudia.domagala.3985@example.net') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('klaudia.domagala.3985@example.net')) AND lower(c.full_name) LIKE '%' || lower('klaudia.domagala.3985@example.net') || '%')) LIMIT 10001) bounded;
+
+Aggregate  (cost=759.04..759.05 rows=1 width=8) (actual time=4.628..4.628 rows=1.00 loops=1)
+  Buffers: shared hit=615
+  ->  Limit  (cost=715.31..759.03 rows=1 width=4) (actual time=4.626..4.627 rows=1.00 loops=1)
+        Buffers: shared hit=615
+        ->  Bitmap Heap Scan on ordering_customer c  (cost=715.31..759.03 rows=1 width=4) (actual time=4.626..4.626 rows=1.00 loops=1)
+              Recheck Cond: ((perf_bigrams(lower((email)::text)) @> '{.3,39,5@,85,98,a.,ag,al,am,au,.d,di,do,@e,e.,et,ex,ga,ia,kl,la,le,ma,mp,.n,ne,om,pl,ud,xa}'::text[]) OR (lower((full_name)::text) ~~ '%klaudia.domagala.3985@example.net%'::text))
+              Filter: (((perf_bigrams(lower((email)::text)) @> '{.3,39,5@,85,98,a.,ag,al,am,au,.d,di,do,@e,e.,et,ex,ga,ia,kl,la,le,ma,mp,.n,ne,om,pl,ud,xa}'::text[]) AND (lower((email)::text) ~~ '%klaudia.domagala.3985@example.net%'::text)) OR ((perf_bigrams(lower((full_name)::text)) @> '{.3,39,5@,85,98,a.,ag,al,am,au,.d,di,do,@e,e.,et,ex,ga,ia,kl,la,le,ma,mp,.n,ne,om,pl,ud,xa}'::text[]) AND (lower((full_name)::text) ~~ '%klaudia.domagala.3985@example.net%'::text)))
+              Heap Blocks: exact=1
+              Buffers: shared hit=615
+              ->  BitmapOr  (cost=715.31..715.31 rows=10 width=0) (actual time=4.563..4.563 rows=0.00 loops=1)
+                    Buffers: shared hit=614
+                    ->  Bitmap Index Scan on proto_z1_customer_email  (cost=0.00..421.20 rows=1 width=0) (actual time=4.346..4.346 rows=1.00 loops=1)
+                          Index Cond: (perf_bigrams(lower((email)::text)) @> '{.3,39,5@,85,98,a.,ag,al,am,au,.d,di,do,@e,e.,et,ex,ga,ia,kl,la,le,ma,mp,.n,ne,om,pl,ud,xa}'::text[])
+                          Index Searches: 1
+                          Buffers: shared hit=541
+                    ->  Bitmap Index Scan on ordering_customer_name_trgm_idx  (cost=0.00..294.11 rows=10 width=0) (actual time=0.216..0.216 rows=0.00 loops=1)
+                          Index Cond: (lower((full_name)::text) ~~ '%klaudia.domagala.3985@example.net%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=73
+Planning:
+  Buffers: shared hit=467
+Planning Time: 1.295 ms
+Execution Time: 4.685 ms

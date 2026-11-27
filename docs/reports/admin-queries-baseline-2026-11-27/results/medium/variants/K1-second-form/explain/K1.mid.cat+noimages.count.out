@@ -1,0 +1,46 @@
+-- category mid + without images, count
+-- products in the subtree = 10585
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.primary_category_id = ANY('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]) AND p.images = '[]'::jsonb UNION ALL SELECT 1 FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]) AND NOT (p.primary_category_id = ANY('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[])) AND p.images = '[]'::jsonb LIMIT 10001) bounded;
+
+Aggregate  (cost=32087.19..32087.20 rows=1 width=8) (actual time=11.427..13.477 rows=1.00 loops=1)
+  Buffers: shared hit=11754
+  ->  Limit  (cost=1028.07..32084.51 rows=214 width=4) (actual time=0.982..13.463 rows=199.00 loops=1)
+        Buffers: shared hit=11754
+        ->  Gather  (cost=1028.07..32084.51 rows=214 width=4) (actual time=0.981..13.450 rows=199.00 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=11754
+              ->  Parallel Append  (cost=28.07..31063.11 rows=90 width=4) (actual time=3.241..5.236 rows=66.33 loops=3)
+                    Buffers: shared hit=11754
+                    ->  Bitmap Heap Scan on catalog_product p  (cost=19764.21..20438.68 rows=171 width=4) (actual time=8.764..8.973 rows=166.00 loops=1)
+                          Recheck Cond: ((primary_category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[])) AND (images = '[]'::jsonb))
+                          Buffers: shared hit=4976
+                          ->  BitmapAnd  (cost=19764.21..19764.21 rows=171 width=0) (actual time=8.678..8.678 rows=0.00 loops=1)
+                                Buffers: shared hit=4790
+                                ->  Bitmap Index Scan on catalog_product_primary_category_id_idx  (cost=0.00..123.03 rows=7814 width=0) (actual time=1.081..1.081 rows=8956.00 loops=1)
+                                      Index Cond: (primary_category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]))
+                                      Index Searches: 1
+                                      Buffers: shared hit=20
+                                ->  Bitmap Index Scan on catalog_product_without_images_idx  (cost=0.00..19640.84 rows=21686 width=0) (actual time=7.199..7.199 rows=20003.00 loops=1)
+                                      Index Searches: 1
+                                      Buffers: shared hit=4770
+                    ->  Nested Loop  (cost=28.07..10623.99 rows=25 width=4) (actual time=0.479..3.357 rows=16.50 loops=2)
+                          Buffers: shared hit=6778
+                          ->  Parallel Bitmap Heap Scan on catalog_product_category pc  (cost=27.66..1593.24 rows=1166 width=16) (actual time=0.263..1.122 rows=942.00 loops=2)
+                                Recheck Cond: (category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]))
+                                Heap Blocks: exact=707
+                                Buffers: shared hit=1092
+                                Worker 1:  Heap Blocks: exact=362
+                                ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..27.16 rows=1982 width=0) (actual time=0.362..0.362 rows=1884.00 loops=1)
+                                      Index Cond: (category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]))
+                                      Index Searches: 1
+                                      Buffers: shared hit=3
+                          ->  Index Scan using catalog_product_without_images_idx on catalog_product p_1  (cost=0.41..7.75 rows=1 width=16) (actual time=0.002..0.002 rows=0.02 loops=1884)
+                                Index Cond: (id = pc.product_id)
+                                Filter: (primary_category_id <> ALL ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]))
+                                Index Searches: 1884
+                                Buffers: shared hit=5686
+Planning:
+  Buffers: shared hit=669
+Planning Time: 1.199 ms
+Execution Time: 13.537 ms

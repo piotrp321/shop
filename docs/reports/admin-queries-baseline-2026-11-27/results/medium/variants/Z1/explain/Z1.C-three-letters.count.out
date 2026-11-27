@@ -1,0 +1,38 @@
+-- customers, fragment three-letters 'ann', count by the bigrams
+-- hits = 5121
+SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('ann')) AND lower(c.email) LIKE '%' || lower('ann') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('ann')) AND lower(c.full_name) LIKE '%' || lower('ann') || '%')) LIMIT 10001) bounded;
+
+Aggregate  (cost=841.33..841.34 rows=1 width=8) (actual time=129.118..129.120 rows=1.00 loops=1)
+  Buffers: shared hit=2118
+  ->  Limit  (cost=177.79..839.16 rows=174 width=4) (actual time=2.987..128.780 rows=5121.00 loops=1)
+        Buffers: shared hit=2118
+        ->  Bitmap Heap Scan on ordering_customer c  (cost=177.79..839.16 rows=174 width=4) (actual time=2.986..128.460 rows=5121.00 loops=1)
+              Recheck Cond: (((perf_bigrams(lower((email)::text)) @> '{an,nn}'::text[]) AND (lower((email)::text) ~~ '%ann%'::text)) OR ((perf_bigrams(lower((full_name)::text)) @> '{an,nn}'::text[]) AND (lower((full_name)::text) ~~ '%ann%'::text)))
+              Heap Blocks: exact=2070
+              Buffers: shared hit=2118
+              ->  BitmapOr  (cost=177.79..177.79 rows=174 width=0) (actual time=2.634..2.636 rows=0.00 loops=1)
+                    Buffers: shared hit=48
+                    ->  BitmapAnd  (cost=92.55..92.55 rows=88 width=0) (actual time=1.308..1.309 rows=0.00 loops=1)
+                          Buffers: shared hit=25
+                          ->  Bitmap Index Scan on proto_z1_customer_email  (cost=0.00..37.03 rows=1459 width=0) (actual time=0.728..0.728 rows=5323.00 loops=1)
+                                Index Cond: (perf_bigrams(lower((email)::text)) @> '{an,nn}'::text[])
+                                Index Searches: 1
+                                Buffers: shared hit=18
+                          ->  Bitmap Index Scan on ordering_customer_email_trgm_idx  (cost=0.00..55.18 rows=5974 width=0) (actual time=0.521..0.521 rows=6039.00 loops=1)
+                                Index Cond: (lower((email)::text) ~~ '%ann%'::text)
+                                Index Searches: 1
+                                Buffers: shared hit=7
+                    ->  BitmapAnd  (cost=85.00..85.00 rows=86 width=0) (actual time=1.241..1.242 rows=0.00 loops=1)
+                          Buffers: shared hit=23
+                          ->  Bitmap Index Scan on proto_z1_customer_name  (cost=0.00..32.35 rows=1349 width=0) (actual time=0.749..0.749 rows=5323.00 loops=1)
+                                Index Cond: (perf_bigrams(lower((full_name)::text)) @> '{an,nn}'::text[])
+                                Index Searches: 1
+                                Buffers: shared hit=17
+                          ->  Bitmap Index Scan on ordering_customer_name_trgm_idx  (cost=0.00..52.31 rows=6250 width=0) (actual time=0.433..0.433 rows=6039.00 loops=1)
+                                Index Cond: (lower((full_name)::text) ~~ '%ann%'::text)
+                                Index Searches: 1
+                                Buffers: shared hit=6
+Planning:
+  Buffers: shared hit=467
+Planning Time: 1.357 ms
+Execution Time: 129.200 ms

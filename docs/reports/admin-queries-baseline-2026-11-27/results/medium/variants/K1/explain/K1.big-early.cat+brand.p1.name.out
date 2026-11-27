@@ -1,0 +1,52 @@
+-- category big-early + common phrase, page 1, sort name
+-- products in the subtree = 15199
+WITH additional AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]) AND NOT (p.primary_category_id = ANY('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[])) AND p.name ILIKE '%pro%') SELECT id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT id, name, tax_class, updated_at FROM additional ORDER BY name ASC, id ASC LIMIT 26)) u ORDER BY name, id LIMIT 26;
+
+Limit  (cost=12594.29..12915.35 rows=26 width=298) (actual time=7.960..10.241 rows=26.00 loops=1)
+  Buffers: shared hit=10549
+  CTE additional
+    ->  Gather  (cost=1029.27..12577.19 rows=341 width=71) (actual time=0.809..9.593 rows=202.00 loops=1)
+          Workers Planned: 1
+          Workers Launched: 1
+          Buffers: shared hit=10267
+          ->  Nested Loop  (cost=29.27..11543.09 rows=201 width=71) (actual time=0.432..6.305 rows=101.00 loops=2)
+                Buffers: shared hit=10267
+                ->  Parallel Bitmap Heap Scan on catalog_product_category pc  (cost=28.84..1591.13 rows=1256 width=16) (actual time=0.254..1.333 rows=1137.50 loops=2)
+                      Recheck Cond: (category_id = ANY ('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]))
+                      Heap Blocks: exact=690
+                      Buffers: shared hit=1166
+                      Worker 0:  Heap Blocks: exact=453
+                      ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..28.31 rows=2135 width=0) (actual time=0.346..0.347 rows=2275.00 loops=1)
+                            Index Cond: (category_id = ANY ('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]))
+                            Index Searches: 1
+                            Buffers: shared hit=3
+                ->  Index Scan using catalog_product_pkey on catalog_product p_1  (cost=0.42..7.92 rows=1 width=71) (actual time=0.004..0.004 rows=0.09 loops=2275)
+                      Index Cond: (id = pc.product_id)
+                      Filter: ((primary_category_id <> ALL ('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[])) AND ((name)::text ~~* '%pro%'::text))
+                      Rows Removed by Filter: 1
+                      Index Searches: 2275
+                      Buffers: shared hit=9101
+  ->  Merge Append  (cost=17.10..659.22 rows=52 width=298) (actual time=7.959..8.401 rows=26.00 loops=1)
+        Sort Key: p.name, p.id
+        Buffers: shared hit=10549
+        ->  Limit  (cost=0.55..642.09 rows=26 width=71) (actual time=0.036..0.475 rows=26.00 loops=1)
+              Buffers: shared hit=282
+              ->  Index Scan using proto_k1_name on catalog_product p  (cost=0.55..51891.01 rows=2103 width=71) (actual time=0.036..0.473 rows=26.00 loops=1)
+                    Index Cond: (primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0'::uuid)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 249
+                    Index Searches: 1
+                    Buffers: shared hit=282
+        ->  Limit  (cost=16.54..16.60 rows=26 width=524) (actual time=7.921..7.921 rows=1.00 loops=1)
+              Buffers: shared hit=10267
+              ->  Sort  (cost=16.54..17.39 rows=341 width=524) (actual time=7.920..7.920 rows=1.00 loops=1)
+                    Sort Key: additional.name, additional.id
+                    Sort Method: top-N heapsort  Memory: 30kB
+                    Buffers: shared hit=10267
+                    ->  CTE Scan on additional  (cost=0.00..6.82 rows=341 width=524) (actual time=0.810..7.804 rows=202.00 loops=1)
+                          Storage: Memory  Maximum Storage: 37kB
+                          Buffers: shared hit=10267
+Planning:
+  Buffers: shared hit=571
+Planning Time: 1.559 ms
+Execution Time: 10.301 ms

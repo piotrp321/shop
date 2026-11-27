@@ -1,0 +1,35 @@
+-- phrase punct-4 'ab-cd', sort name: the walk of 20000 rows
+-- budget = 20000
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY name ASC, id ASC LIMIT 20000) w WHERE w.name ILIKE '%ab-cd%') ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=2133.64..2133.64 rows=2 width=71) (actual time=16.820..16.824 rows=0.00 loops=1)
+  Buffers: shared hit=17411
+  ->  Sort  (cost=2133.64..2133.64 rows=2 width=71) (actual time=16.819..16.820 rows=0.00 loops=1)
+        Sort Key: p.name, p.id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=17411
+        ->  Nested Loop  (cost=2117.16..2133.63 rows=2 width=71) (actual time=16.802..16.803 rows=0.00 loops=1)
+              Buffers: shared hit=17405
+              ->  Unique  (cost=2116.73..2116.74 rows=2 width=16) (actual time=16.801..16.802 rows=0.00 loops=1)
+                    Buffers: shared hit=17405
+                    ->  Sort  (cost=2116.73..2116.74 rows=2 width=16) (actual time=16.801..16.802 rows=0.00 loops=1)
+                          Sort Key: w.id
+                          Sort Method: quicksort  Memory: 25kB
+                          Buffers: shared hit=17405
+                          ->  Subquery Scan on w  (cost=0.42..2116.72 rows=2 width=16) (actual time=16.794..16.794 rows=0.00 loops=1)
+                                Filter: ((w.name)::text ~~* '%ab-cd%'::text)
+                                Rows Removed by Filter: 20000
+                                Buffers: shared hit=17405
+                                ->  Limit  (cost=0.42..1866.72 rows=20000 width=62) (actual time=0.020..5.155 rows=20000.00 loops=1)
+                                      Buffers: shared hit=17405
+                                      ->  Index Only Scan using catalog_product_name_id_idx on catalog_product  (cost=0.42..92686.68 rows=993263 width=62) (actual time=0.020..4.115 rows=20000.00 loops=1)
+                                            Heap Fetches: 394
+                                            Index Searches: 1
+                                            Buffers: shared hit=17405
+              ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..8.44 rows=1 width=71) (never executed)
+                    Index Cond: (id = w.id)
+                    Index Searches: 0
+Planning:
+  Buffers: shared hit=489
+Planning Time: 1.195 ms
+Execution Time: 16.861 ms

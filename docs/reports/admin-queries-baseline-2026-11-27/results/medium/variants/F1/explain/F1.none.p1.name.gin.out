@@ -1,0 +1,25 @@
+-- phrase none 'zzqqxx', sort name: the candidates from the trigrams
+-- hits = 0
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zzqqxx%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26;
+
+Limit  (cost=741.43..741.50 rows=26 width=524) (actual time=0.041..0.043 rows=0.00 loops=1)
+  Buffers: shared hit=19
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=344.63..736.63 rows=99 width=71) (actual time=0.018..0.018 rows=0.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%zzqqxx%'::text)
+          Buffers: shared hit=13
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..344.60 rows=99 width=0) (actual time=0.014..0.014 rows=0.00 loops=1)
+                Index Cond: ((name)::text ~~* '%zzqqxx%'::text)
+                Index Searches: 1
+                Buffers: shared hit=13
+  ->  Sort  (cost=4.80..5.05 rows=99 width=524) (actual time=0.040..0.040 rows=0.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=19
+        ->  CTE Scan on m  (cost=0.00..1.98 rows=99 width=524) (actual time=0.019..0.019 rows=0.00 loops=1)
+              Storage: Memory  Maximum Storage: 17kB
+              Buffers: shared hit=13
+Planning:
+  Buffers: shared hit=453
+Planning Time: 1.114 ms
+Execution Time: 0.099 ms

@@ -1,0 +1,26 @@
+-- phrase type-late 'zupa', sort -updatedAt: the candidates from the trigrams
+-- hits = 8584
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zupa%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=571.44..571.51 rows=26 width=524) (actual time=18.423..18.431 rows=26.00 loops=1)
+  Buffers: shared hit=8547
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=174.64..566.64 rows=99 width=71) (actual time=2.333..16.081 rows=8584.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+          Heap Blocks: exact=8509
+          Buffers: shared hit=8541
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..174.61 rows=99 width=0) (actual time=1.456..1.456 rows=8952.00 loops=1)
+                Index Cond: ((name)::text ~~* '%zupa%'::text)
+                Index Searches: 1
+                Buffers: shared hit=32
+  ->  Sort  (cost=4.80..5.05 rows=99 width=524) (actual time=18.422..18.423 rows=26.00 loops=1)
+        Sort Key: m.updated_at DESC, m.id DESC
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=8547
+        ->  CTE Scan on m  (cost=0.00..1.98 rows=99 width=524) (actual time=2.335..17.861 rows=8584.00 loops=1)
+              Storage: Memory  Maximum Storage: 1035kB
+              Buffers: shared hit=8541
+Planning:
+  Buffers: shared hit=467
+Planning Time: 1.053 ms
+Execution Time: 18.576 ms

@@ -1,0 +1,33 @@
+-- phrase punct-3 'a.b', sort -updatedAt: the candidates from the trigrams
+-- hits = 0
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%a.b%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=484.38..484.45 rows=26 width=524) (actual time=646.256..646.267 rows=0.00 loops=1)
+  Buffers: shared hit=7 read=159001 written=1
+  I/O Timings: shared read=5.596 write=0.032
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=87.58..479.58 rows=99 width=71) (actual time=646.229..646.230 rows=0.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%a.b%'::text)
+          Rows Removed by Index Recheck: 656340
+          Heap Blocks: exact=59386 lossy=99427
+          Buffers: shared hit=1 read=159001 written=1
+          I/O Timings: shared read=5.596 write=0.032
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..87.55 rows=99 width=0) (actual time=31.495..31.495 rows=323541.00 loops=1)
+                Index Cond: ((name)::text ~~* '%a.b%'::text)
+                Index Searches: 1
+                Buffers: shared hit=1 read=188
+                I/O Timings: shared read=0.854
+  ->  Sort  (cost=4.80..5.05 rows=99 width=524) (actual time=646.254..646.255 rows=0.00 loops=1)
+        Sort Key: m.updated_at DESC, m.id DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=7 read=159001 written=1
+        I/O Timings: shared read=5.596 write=0.032
+        ->  CTE Scan on m  (cost=0.00..1.98 rows=99 width=524) (actual time=646.230..646.230 rows=0.00 loops=1)
+              Storage: Memory  Maximum Storage: 17kB
+              Buffers: shared hit=1 read=159001 written=1
+              I/O Timings: shared read=5.596 write=0.032
+Planning:
+  Buffers: shared hit=373 read=94
+  I/O Timings: shared read=0.466
+Planning Time: 1.693 ms
+Execution Time: 646.514 ms

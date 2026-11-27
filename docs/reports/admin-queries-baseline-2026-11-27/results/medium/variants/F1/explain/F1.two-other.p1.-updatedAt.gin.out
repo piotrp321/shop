@@ -1,0 +1,37 @@
+-- phrase two-other 'zx', sort -updatedAt: the candidates from the trigrams
+-- hits = 0
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zx%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=142266.26..142266.32 rows=26 width=524) (actual time=1539.112..1539.119 rows=0.00 loops=1)
+  Buffers: shared hit=8 read=218736
+  I/O Timings: shared read=99.132
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=141869.45..142261.45 rows=99 width=71) (actual time=1535.805..1535.806 rows=0.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%zx%'::text)
+          Rows Removed by Index Recheck: 1000191
+          Heap Blocks: exact=54620 lossy=132823
+          Buffers: shared hit=2 read=218736
+          I/O Timings: shared read=99.132
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..141869.43 rows=99 width=0) (actual time=700.799..700.800 rows=417666.00 loops=1)
+                Index Cond: ((name)::text ~~* '%zx%'::text)
+                Index Searches: 1
+                Buffers: shared hit=2 read=31293
+                I/O Timings: shared read=94.238
+  ->  Sort  (cost=4.80..5.05 rows=99 width=524) (actual time=1535.842..1535.843 rows=0.00 loops=1)
+        Sort Key: m.updated_at DESC, m.id DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=8 read=218736
+        I/O Timings: shared read=99.132
+        ->  CTE Scan on m  (cost=0.00..1.98 rows=99 width=524) (actual time=1535.807..1535.807 rows=0.00 loops=1)
+              Storage: Memory  Maximum Storage: 17kB
+              Buffers: shared hit=2 read=218736
+              I/O Timings: shared read=99.132
+Planning:
+  Buffers: shared hit=373 read=94
+  I/O Timings: shared read=0.423
+Planning Time: 1.458 ms
+JIT:
+  Functions: 5
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.197 ms (Deform 0.107 ms), Inlining 0.000 ms, Optimization 0.222 ms, Emission 3.069 ms, Total 3.488 ms
+Execution Time: 1550.927 ms

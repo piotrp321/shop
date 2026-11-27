@@ -1,0 +1,20 @@
+-- orders, fragment none 'qqzzxx', count by the bigrams
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name)) @> perf_bigrams(lower('qqzzxx')) AND lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('qqzzxx') || '%' LIMIT 10001) bounded;
+
+Aggregate  (cost=270.44..270.45 rows=1 width=8) (actual time=0.024..0.025 rows=1.00 loops=1)
+  Buffers: shared hit=11
+  ->  Limit  (cost=266.14..270.43 rows=1 width=4) (actual time=0.024..0.024 rows=0.00 loops=1)
+        Buffers: shared hit=11
+        ->  Bitmap Heap Scan on ordering_order o  (cost=266.14..270.43 rows=1 width=4) (actual time=0.023..0.023 rows=0.00 loops=1)
+              Recheck Cond: (perf_bigrams(lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text))) @> '{qq,qz,xx,zx,zz}'::text[])
+              Filter: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%qqzzxx%'::text)
+              Buffers: shared hit=11
+              ->  Bitmap Index Scan on proto_z1_orders  (cost=0.00..266.14 rows=1 width=0) (actual time=0.019..0.020 rows=0.00 loops=1)
+                    Index Cond: (perf_bigrams(lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text))) @> '{qq,qz,xx,zx,zz}'::text[])
+                    Index Searches: 1
+                    Buffers: shared hit=11
+Planning:
+  Buffers: shared hit=525
+Planning Time: 1.275 ms
+Execution Time: 0.056 ms

@@ -1,0 +1,28 @@
+-- customers, fragment common-surname 'mazurek', count by the bigrams
+-- hits = 234
+SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('mazurek')) AND lower(c.email) LIKE '%' || lower('mazurek') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('mazurek')) AND lower(c.full_name) LIKE '%' || lower('mazurek') || '%')) LIMIT 10001) bounded;
+
+Aggregate  (cost=158.17..158.18 rows=1 width=8) (actual time=8.190..8.191 rows=1.00 loops=1)
+  Buffers: shared hit=302
+  ->  Limit  (cost=153.63..158.16 rows=1 width=4) (actual time=1.220..8.175 rows=234.00 loops=1)
+        Buffers: shared hit=302
+        ->  Bitmap Heap Scan on ordering_customer c  (cost=153.63..158.16 rows=1 width=4) (actual time=1.219..8.160 rows=234.00 loops=1)
+              Recheck Cond: ((perf_bigrams(lower((email)::text)) @> '{az,ek,ma,re,ur,zu}'::text[]) OR (perf_bigrams(lower((full_name)::text)) @> '{az,ek,ma,re,ur,zu}'::text[]))
+              Filter: (((perf_bigrams(lower((email)::text)) @> '{az,ek,ma,re,ur,zu}'::text[]) AND (lower((email)::text) ~~ '%mazurek%'::text)) OR ((perf_bigrams(lower((full_name)::text)) @> '{az,ek,ma,re,ur,zu}'::text[]) AND (lower((full_name)::text) ~~ '%mazurek%'::text)))
+              Rows Removed by Filter: 6
+              Heap Blocks: exact=226
+              Buffers: shared hit=302
+              ->  BitmapOr  (cost=153.63..153.63 rows=1 width=0) (actual time=1.143..1.143 rows=0.00 loops=1)
+                    Buffers: shared hit=76
+                    ->  Bitmap Index Scan on proto_z1_customer_email  (cost=0.00..85.07 rows=1 width=0) (actual time=0.665..0.665 rows=246.00 loops=1)
+                          Index Cond: (perf_bigrams(lower((email)::text)) @> '{az,ek,ma,re,ur,zu}'::text[])
+                          Index Searches: 1
+                          Buffers: shared hit=38
+                    ->  Bitmap Index Scan on proto_z1_customer_name  (cost=0.00..68.57 rows=1 width=0) (actual time=0.478..0.478 rows=246.00 loops=1)
+                          Index Cond: (perf_bigrams(lower((full_name)::text)) @> '{az,ek,ma,re,ur,zu}'::text[])
+                          Index Searches: 1
+                          Buffers: shared hit=38
+Planning:
+  Buffers: shared hit=467
+Planning Time: 1.324 ms
+Execution Time: 8.213 ms

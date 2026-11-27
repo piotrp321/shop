@@ -1,0 +1,24 @@
+-- phrase punct-4 'ab-cd', count by the candidates
+-- hits = 0
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('ab-cd') AND p.name ILIKE '%ab-cd%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded;
+
+Aggregate  (cost=298.38..298.39 rows=1 width=8) (actual time=0.027..0.027 rows=1.00 loops=1)
+  Buffers: shared hit=9
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=294.09..298.35 rows=1 width=4) (actual time=0.025..0.025 rows=0.00 loops=1)
+          Recheck Cond: (perf_bigrams((name)::text) @> '{ab,b-,-c,cd}'::text[])
+          Filter: ((name)::text ~~* '%ab-cd%'::text)
+          Buffers: shared hit=9
+          ->  Bitmap Index Scan on proto_f2_name_bigrams  (cost=0.00..294.09 rows=1 width=0) (actual time=0.022..0.022 rows=0.00 loops=1)
+                Index Cond: (perf_bigrams((name)::text) @> '{ab,b-,-c,cd}'::text[])
+                Index Searches: 1
+                Buffers: shared hit=9
+  ->  Limit  (cost=0.00..0.02 rows=1 width=4) (actual time=0.026..0.026 rows=0.00 loops=1)
+        Buffers: shared hit=9
+        ->  CTE Scan on m  (cost=0.00..0.02 rows=1 width=4) (actual time=0.025..0.025 rows=0.00 loops=1)
+              Storage: Memory  Maximum Storage: 17kB
+              Buffers: shared hit=9
+Planning:
+  Buffers: shared hit=522
+Planning Time: 1.244 ms
+Execution Time: 0.047 ms

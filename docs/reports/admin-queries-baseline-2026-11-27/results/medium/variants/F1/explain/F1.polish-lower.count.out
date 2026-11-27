@@ -1,0 +1,24 @@
+-- phrase polish-lower 'skała', count by the candidates
+-- hits = 10067
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%skała%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded;
+
+Aggregate  (cost=35054.49..35054.50 rows=1 width=8) (actual time=22.285..22.290 rows=1.00 loops=1)
+  Buffers: shared hit=10048
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=309.72..34729.45 rows=10033 width=4) (actual time=3.559..19.931 rows=10001.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%skała%'::text)
+          Heap Blocks: exact=9851
+          Buffers: shared hit=10048
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..307.21 rows=10033 width=0) (actual time=2.495..2.495 rows=10467.00 loops=1)
+                Index Cond: ((name)::text ~~* '%skała%'::text)
+                Index Searches: 1
+                Buffers: shared hit=196
+  ->  Limit  (cost=0.00..200.02 rows=10001 width=4) (actual time=3.562..21.887 rows=10001.00 loops=1)
+        Buffers: shared hit=10048
+        ->  CTE Scan on m  (cost=0.00..200.66 rows=10033 width=4) (actual time=3.561..21.367 rows=10001.00 loops=1)
+              Storage: Memory  Maximum Storage: 441kB
+              Buffers: shared hit=10048
+Planning:
+  Buffers: shared hit=443
+Planning Time: 1.083 ms
+Execution Time: 22.408 ms

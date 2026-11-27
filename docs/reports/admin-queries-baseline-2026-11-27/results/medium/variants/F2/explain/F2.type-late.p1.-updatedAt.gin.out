@@ -1,0 +1,27 @@
+-- phrase type-late 'zupa', sort -updatedAt: the candidates from the bigrams
+-- hits = 8584
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('zupa') AND p.name ILIKE '%zupa%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=363.59..363.59 rows=1 width=524) (actual time=20.633..20.638 rows=26.00 loops=1)
+  Buffers: shared hit=8521
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=223.82..363.56 rows=1 width=71) (actual time=3.419..18.121 rows=8584.00 loops=1)
+          Recheck Cond: (perf_bigrams((name)::text) @> '{pa,up,zu}'::text[])
+          Filter: ((name)::text ~~* '%zupa%'::text)
+          Heap Blocks: exact=8429
+          Buffers: shared hit=8515
+          ->  Bitmap Index Scan on proto_f2_name_bigrams  (cost=0.00..223.82 rows=33 width=0) (actual time=2.474..2.474 rows=8644.00 loops=1)
+                Index Cond: (perf_bigrams((name)::text) @> '{pa,up,zu}'::text[])
+                Index Searches: 1
+                Buffers: shared hit=86
+  ->  Sort  (cost=0.03..0.04 rows=1 width=524) (actual time=20.632..20.634 rows=26.00 loops=1)
+        Sort Key: m.updated_at DESC, m.id DESC
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=8521
+        ->  CTE Scan on m  (cost=0.00..0.02 rows=1 width=524) (actual time=3.422..20.045 rows=8584.00 loops=1)
+              Storage: Memory  Maximum Storage: 1035kB
+              Buffers: shared hit=8515
+Planning:
+  Buffers: shared hit=544
+Planning Time: 1.266 ms
+Execution Time: 20.791 ms

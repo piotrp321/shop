@@ -1,0 +1,22 @@
+-- phrase brand-common 'rowerowa', count by the candidates
+-- hits = 60168
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%rowerowa%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded;
+
+Aggregate  (cost=86481.74..86481.75 rows=1 width=8) (actual time=292.894..292.901 rows=1.00 loops=1)
+  Buffers: shared hit=370729
+  CTE m
+    ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..86156.71 rows=70231 width=4) (actual time=39.517..290.622 rows=10001.00 loops=1)
+          Filter: ((name)::text ~~* '%rowerowa%'::text)
+          Rows Removed by Filter: 417996
+          Heap Fetches: 8298
+          Index Searches: 1
+          Buffers: shared hit=370729
+  ->  Limit  (cost=0.00..200.02 rows=10001 width=4) (actual time=39.522..292.501 rows=10001.00 loops=1)
+        Buffers: shared hit=370729
+        ->  CTE Scan on m  (cost=0.00..1404.62 rows=70231 width=4) (actual time=39.521..291.971 rows=10001.00 loops=1)
+              Storage: Memory  Maximum Storage: 441kB
+              Buffers: shared hit=370729
+Planning:
+  Buffers: shared hit=443
+Planning Time: 1.106 ms
+Execution Time: 292.982 ms

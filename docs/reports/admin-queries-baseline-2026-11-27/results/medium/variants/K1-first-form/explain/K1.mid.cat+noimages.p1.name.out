@@ -1,0 +1,47 @@
+-- category mid + without images, page 1, sort name
+-- products in the subtree = 10585
+SELECT DISTINCT ON (name, id) id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c2a92470-bddd-5c3a-9b84-ed06bfd4caad' AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT product_id FROM catalog_product_category WHERE category_id = ANY('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[])) AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26)) u ORDER BY name, id LIMIT 26;
+
+Limit  (cost=16952.77..19341.00 rows=26 width=71) (actual time=4.358..4.459 rows=26.00 loops=1)
+  Buffers: shared hit=6970
+  ->  Unique  (cost=16952.77..21729.22 rows=52 width=71) (actual time=4.357..4.455 rows=26.00 loops=1)
+        Buffers: shared hit=6970
+        ->  Merge Append  (cost=16952.77..21728.96 rows=52 width=71) (actual time=4.357..4.451 rows=26.00 loops=1)
+              Sort Key: p.name, p.id
+              Buffers: shared hit=6970
+              ->  Limit  (cost=0.55..4776.15 rows=26 width=71) (actual time=0.134..0.223 rows=4.00 loops=1)
+                    Buffers: shared hit=213
+                    ->  Index Scan using proto_k1_name on catalog_product p  (cost=0.55..31409.33 rows=171 width=71) (actual time=0.133..0.223 rows=4.00 loops=1)
+                          Index Cond: (primary_category_id = 'c2a92470-bddd-5c3a-9b84-ed06bfd4caad'::uuid)
+                          Filter: (images = '[]'::jsonb)
+                          Rows Removed by Filter: 203
+                          Index Searches: 1
+                          Buffers: shared hit=213
+              ->  Limit  (cost=16952.21..16952.28 rows=26 width=71) (actual time=4.222..4.224 rows=23.00 loops=1)
+                    Buffers: shared hit=6757
+                    ->  Sort  (cost=16952.21..16952.32 rows=43 width=71) (actual time=4.222..4.223 rows=23.00 loops=1)
+                          Sort Key: p_1.name, p_1.id
+                          Sort Method: quicksort  Memory: 29kB
+                          Buffers: shared hit=6757
+                          ->  Nested Loop  (cost=1607.79..16951.05 rows=43 width=71) (actual time=1.901..4.184 rows=33.00 loops=1)
+                                Buffers: shared hit=6757
+                                ->  HashAggregate  (cost=1607.37..1627.19 rows=1982 width=16) (actual time=1.841..1.952 rows=1884.00 loops=1)
+                                      Group Key: catalog_product_category.product_id
+                                      Batches: 1  Memory Usage: 153kB
+                                      Buffers: shared hit=1072
+                                      ->  Bitmap Heap Scan on catalog_product_category  (cost=27.66..1602.42 rows=1982 width=16) (actual time=0.156..1.674 rows=1884.00 loops=1)
+                                            Recheck Cond: (category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]))
+                                            Heap Blocks: exact=1069
+                                            Buffers: shared hit=1072
+                                            ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..27.16 rows=1982 width=0) (actual time=0.097..0.097 rows=1884.00 loops=1)
+                                                  Index Cond: (category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]))
+                                                  Index Searches: 1
+                                                  Buffers: shared hit=3
+                                ->  Index Scan using catalog_product_without_images_idx on catalog_product p_1  (cost=0.41..7.74 rows=1 width=71) (actual time=0.001..0.001 rows=0.02 loops=1884)
+                                      Index Cond: (id = catalog_product_category.product_id)
+                                      Index Searches: 1884
+                                      Buffers: shared hit=5685
+Planning:
+  Buffers: shared hit=559
+Planning Time: 0.720 ms
+Execution Time: 4.531 ms

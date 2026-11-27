@@ -1,0 +1,26 @@
+-- phrase polish-upper 'SKAŁA', sort -updatedAt: the candidates from the trigrams
+-- hits = 10067
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%SKAŁA%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=35216.08..35216.14 rows=26 width=524) (actual time=21.929..21.937 rows=26.00 loops=1)
+  Buffers: shared hit=10119
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=309.72..34729.45 rows=10033 width=71) (actual time=3.395..19.352 rows=10067.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%SKAŁA%'::text)
+          Heap Blocks: exact=9917
+          Buffers: shared hit=10113
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..307.21 rows=10033 width=0) (actual time=2.354..2.354 rows=10467.00 loops=1)
+                Index Cond: ((name)::text ~~* '%SKAŁA%'::text)
+                Index Searches: 1
+                Buffers: shared hit=196
+  ->  Sort  (cost=486.62..511.71 rows=10033 width=524) (actual time=21.928..21.929 rows=26.00 loops=1)
+        Sort Key: m.updated_at DESC, m.id DESC
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=10119
+        ->  CTE Scan on m  (cost=0.00..200.66 rows=10033 width=524) (actual time=3.397..21.304 rows=10067.00 loops=1)
+              Storage: Memory  Maximum Storage: 1105kB
+              Buffers: shared hit=10113
+Planning:
+  Buffers: shared hit=467
+Planning Time: 1.053 ms
+Execution Time: 22.088 ms

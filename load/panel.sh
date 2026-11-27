@@ -188,6 +188,7 @@ case "$mode" in
       boundaries=0
       # shellcheck disable=SC2086
       run_rate=0
+      # shellcheck disable=SC2086 # the options of k6 are separate words
       run_k6 "$out/p4-without-run$n" $shop > /dev/null || status=$?
       sleep "$pause"
       echo "load-panel: p4 run $n of $runs with the panel (mix $rate/s, $worst worst-case threads, boundaries every $every s)"
@@ -196,6 +197,7 @@ case "$mode" in
       # shellcheck disable=SC2086
       shop="$shop_base -e SHOP_URL_OFFSET=$sent"
       sent=$((sent + per_run))
+      # shellcheck disable=SC2086
       run_k6 "$out/p4-with-run$n" $shop -e PANEL_WORST_VUS="$worst" -e BOUNDARIES_EVERY="$every" > /dev/null || status=$?
       [ "$n" -ge "$runs" ] || sleep "$pause"
       n=$((n + 1))

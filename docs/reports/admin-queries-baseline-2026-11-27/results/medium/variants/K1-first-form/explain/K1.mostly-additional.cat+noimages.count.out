@@ -1,0 +1,44 @@
+-- category mostly-additional + without images, count
+-- products in the subtree = 6689
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.primary_category_id = ANY('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[]) AND p.images = '[]'::jsonb UNION ALL SELECT 1 FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[]) AND NOT (p.primary_category_id = ANY('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[])) AND p.images = '[]'::jsonb LIMIT 10001) bounded;
+
+Aggregate  (cost=31505.06..31505.07 rows=1 width=8) (actual time=9.023..10.449 rows=1.00 loops=1)
+  Buffers: shared hit=12820
+  ->  Limit  (cost=83.93..31503.04 rows=162 width=4) (actual time=0.716..10.438 rows=143.00 loops=1)
+        Buffers: shared hit=12820
+        ->  Append  (cost=83.93..31503.04 rows=162 width=4) (actual time=0.716..10.430 rows=143.00 loops=1)
+              Buffers: shared hit=12820
+              ->  Bitmap Heap Scan on catalog_product p  (cost=83.93..19035.36 rows=115 width=4) (actual time=0.715..5.319 rows=94.00 loops=1)
+                    Recheck Cond: (primary_category_id = ANY ('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[]))
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 4171
+                    Heap Blocks: exact=4255
+                    Buffers: shared hit=4265
+                    ->  Bitmap Index Scan on catalog_product_primary_category_id_idx  (cost=0.00..83.91 rows=5264 width=0) (actual time=0.376..0.376 rows=4398.00 loops=1)
+                          Index Cond: (primary_category_id = ANY ('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[]))
+                          Index Searches: 1
+                          Buffers: shared hit=10
+              ->  Gather  (cost=1029.62..12466.87 rows=47 width=4) (actual time=0.665..5.102 rows=49.00 loops=1)
+                    Workers Planned: 1
+                    Workers Launched: 1
+                    Buffers: shared hit=8555
+                    ->  Nested Loop  (cost=29.62..11462.17 rows=28 width=4) (actual time=0.372..2.585 rows=24.50 loops=2)
+                          Buffers: shared hit=8555
+                          ->  Parallel Bitmap Heap Scan on catalog_product_category pc  (cost=29.21..1589.73 rows=1284 width=16) (actual time=0.191..0.885 rows=1212.00 loops=2)
+                                Recheck Cond: (category_id = ANY ('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[]))
+                                Heap Blocks: exact=903
+                                Buffers: shared hit=1233
+                                Worker 0:  Heap Blocks: exact=307
+                                ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..28.66 rows=2182 width=0) (actual time=0.249..0.249 rows=2424.00 loops=1)
+                                      Index Cond: (category_id = ANY ('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[]))
+                                      Index Searches: 1
+                                      Buffers: shared hit=3
+                          ->  Index Scan using catalog_product_without_images_idx on catalog_product p_1  (cost=0.41..7.69 rows=1 width=16) (actual time=0.001..0.001 rows=0.02 loops=2424)
+                                Index Cond: (id = pc.product_id)
+                                Filter: (primary_category_id <> ALL ('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[]))
+                                Index Searches: 2424
+                                Buffers: shared hit=7322
+Planning:
+  Buffers: shared hit=669
+Planning Time: 0.713 ms
+Execution Time: 10.510 ms

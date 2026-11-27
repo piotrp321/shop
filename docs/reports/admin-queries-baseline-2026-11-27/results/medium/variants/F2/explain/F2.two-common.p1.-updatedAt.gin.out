@@ -1,0 +1,52 @@
+-- phrase two-common 'er', sort -updatedAt: the candidates from the bigrams
+-- hits = 258773
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('er') AND p.name ILIKE '%er%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=397198.70..397198.77 rows=26 width=524) (actual time=7067.575..7071.237 rows=26.00 loops=1)
+  Buffers: shared hit=638 read=178097, temp written=2690
+  I/O Timings: shared read=106.910, temp write=16.436
+  CTE m
+    ->  Gather  (cost=146065.09..393481.40 rows=76642 width=71) (actual time=731.588..6990.410 rows=258773.00 loops=1)
+          Workers Planned: 2
+          Workers Launched: 2
+          Buffers: shared hit=632 read=178097
+          I/O Timings: shared read=106.910
+          ->  Parallel Bitmap Heap Scan on catalog_product p  (cost=145065.09..384817.20 rows=31934 width=71) (actual time=725.852..7011.434 rows=86257.67 loops=3)
+                Recheck Cond: ((perf_bigrams((name)::text) @> '{er}'::text[]) AND ((name)::text ~~* '%er%'::text))
+                Rows Removed by Index Recheck: 122675
+                Heap Blocks: exact=15390 lossy=32724
+                Buffers: shared hit=632 read=178097
+                I/O Timings: shared read=106.910
+                Worker 0:  Heap Blocks: exact=15949 lossy=33347
+                Worker 1:  Heap Blocks: exact=15898 lossy=33404
+                ->  BitmapAnd  (cost=145065.09..145065.09 rows=76642 width=0) (actual time=724.468..724.469 rows=0.00 loops=1)
+                      Buffers: shared hit=3 read=31350
+                      I/O Timings: shared read=93.513
+                      ->  Bitmap Index Scan on proto_f2_name_bigrams  (cost=0.00..1652.64 rows=252918 width=0) (actual time=32.504..32.504 rows=260835.00 loops=1)
+                            Index Cond: (perf_bigrams((name)::text) @> '{er}'::text[])
+                            Index Searches: 1
+                            Buffers: shared hit=1 read=57
+                            I/O Timings: shared read=0.244
+                      ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..143373.87 rows=300989 width=0) (actual time=688.222..688.222 rows=417666.00 loops=1)
+                            Index Cond: ((name)::text ~~* '%er%'::text)
+                            Index Searches: 1
+                            Buffers: shared hit=2 read=31293
+                            I/O Timings: shared read=93.270
+  ->  Sort  (cost=3717.31..3908.91 rows=76642 width=524) (actual time=7064.368..7064.369 rows=26.00 loops=1)
+        Sort Key: m.updated_at DESC, m.id DESC
+        Sort Method: top-N heapsort  Memory: 32kB
+        Buffers: shared hit=638 read=178097, temp written=2690
+        I/O Timings: shared read=106.910, temp write=16.436
+        ->  CTE Scan on m  (cost=0.00..1532.84 rows=76642 width=524) (actual time=731.590..7046.385 rows=258773.00 loops=1)
+              Storage: Disk  Maximum Storage: 21520kB
+              Buffers: shared hit=632 read=178097, temp written=2690
+              I/O Timings: shared read=106.910, temp write=16.436
+Planning:
+  Buffers: shared hit=451 read=93
+  I/O Timings: shared read=0.399
+Planning Time: 1.549 ms
+JIT:
+  Functions: 13
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.582 ms (Deform 0.297 ms), Inlining 0.000 ms, Optimization 0.679 ms, Emission 11.958 ms, Total 13.218 ms
+Execution Time: 7085.635 ms

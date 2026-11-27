@@ -56,15 +56,25 @@ def k0_page(prefix, extras, sort, after):
 
 
 def k1_page(ids, extras, sort, after):
+    """K1: one ordered branch per category of the subtree (the index of the category and the sort, LIMIT) and one branch of the products that
+    are in the subtree only through an additional category: the memberships of the subtree joined to their products, without those whose main
+    category is in the subtree (the branches of the main categories already have them, so the branches are disjoint and need no removal of
+    duplicates), as a MATERIALIZED set (linear in those products, few: 8 for a department, ~2 000 for a category of additional members; a plan
+    that walks the index of the names with a semi-join filter, which the planner prefers for the LIMIT, reads the table, as the present
+    statement does), ordered with LIMIT; the branches merged by the sort."""
     column, direction = sort_parts(sort)
     where_extra = "".join(f" AND {condition}" for condition in extras + cursor_condition(sort, after))
     order = f"ORDER BY {column} {direction}, p.id {direction} LIMIT {PAGE + 1}"
     select = "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p"
     branches = [f"({select} WHERE p.primary_category_id = '{category_id}'{where_extra} {order})" for category_id in ids]
-    branches.append(f"({select} WHERE p.id IN (SELECT product_id FROM catalog_product_category WHERE category_id = ANY({uuid_array(ids)})){where_extra} {order})")
+    plain = "updated_at" if sort == "-updatedAt" else "name"
+    branches.append(f"(SELECT id, name, tax_class, updated_at FROM additional ORDER BY {plain} {direction}, id {direction} LIMIT {PAGE + 1})")
     key = "updated_at DESC, id DESC" if sort == "-updatedAt" else "name, id"
-    distinct = "updated_at, id" if sort == "-updatedAt" else "name, id"
-    page = f"SELECT DISTINCT ON ({distinct}) id, name, tax_class, updated_at FROM (" + " UNION ALL ".join(branches) + f") u ORDER BY {key} LIMIT {PAGE + 1}"
+    cte = (
+        f"WITH additional AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id "
+        f"WHERE pc.category_id = ANY({uuid_array(ids)}) AND NOT (p.primary_category_id = ANY({uuid_array(ids)})){where_extra}) "
+    )
+    page = cte + "SELECT id, name, tax_class, updated_at FROM (" + " UNION ALL ".join(branches) + f") u ORDER BY {key} LIMIT {PAGE + 1}"
     extra = "".join(f" AND {condition}" for condition in extras)
     count = (
         f"SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.primary_category_id = ANY({uuid_array(ids)}){extra} UNION ALL "

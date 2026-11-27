@@ -1,0 +1,46 @@
+-- category mostly-additional (6689 products), page 2, sort name
+-- products in the subtree = 6689
+SELECT DISTINCT ON (name, id) id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c57c017b-d6f7-5990-82bf-635533003629' AND (p.name, p.id) > ('Atlas szlaków Melvivin Kopa 300', CAST('4b91d6e2-7079-57e9-b445-422ed2f5028c' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT product_id FROM catalog_product_category WHERE category_id = ANY('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[])) AND (p.name, p.id) > ('Atlas szlaków Melvivin Kopa 300', CAST('4b91d6e2-7079-57e9-b445-422ed2f5028c' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26)) u ORDER BY name, id LIMIT 26;
+
+Limit  (cost=1.28..14014.82 rows=26 width=71) (actual time=1132.003..1140.018 rows=26.00 loops=1)
+  Buffers: shared hit=42978 read=469766 written=63
+  I/O Timings: shared read=911.764 write=0.412
+  ->  Unique  (cost=1.28..28028.37 rows=52 width=71) (actual time=1132.002..1140.008 rows=26.00 loops=1)
+        Buffers: shared hit=42978 read=469766 written=63
+        I/O Timings: shared read=911.764 write=0.412
+        ->  Merge Append  (cost=1.28..28028.11 rows=52 width=71) (actual time=1132.001..1140.001 rows=26.00 loops=1)
+              Sort Key: p.name, p.id
+              Buffers: shared hit=42978 read=469766 written=63
+              I/O Timings: shared read=911.764 write=0.412
+              ->  Limit  (cost=0.42..6673.93 rows=26 width=71) (actual time=1131.847..1131.847 rows=1.00 loops=1)
+                    Buffers: shared hit=38442 read=466973 written=63
+                    I/O Timings: shared read=906.588 write=0.412
+                    ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1351127.91 rows=5264 width=71) (actual time=1131.846..1131.846 rows=1.00 loops=1)
+                          Index Cond: (ROW((name)::text, id) > ROW('Atlas szlaków Melvivin Kopa 300'::text, '4b91d6e2-7079-57e9-b445-422ed2f5028c'::uuid))
+                          Filter: (primary_category_id = 'c57c017b-d6f7-5990-82bf-635533003629'::uuid)
+                          Rows Removed by Filter: 498496
+                          Index Searches: 1
+                          Buffers: shared hit=38442 read=466973 written=63
+                          I/O Timings: shared read=906.588 write=0.412
+              ->  Limit  (cost=0.84..21353.65 rows=26 width=71) (actual time=0.152..8.143 rows=26.00 loops=1)
+                    Buffers: shared hit=4536 read=2793
+                    I/O Timings: shared read=5.177
+                    ->  Nested Loop Semi Join  (cost=0.84..1791993.86 rows=2182 width=71) (actual time=0.151..8.140 rows=26.00 loops=1)
+                          Buffers: shared hit=4536 read=2793
+                          I/O Timings: shared read=5.177
+                          ->  Index Scan using catalog_product_name_id_idx on catalog_product p_1  (cost=0.42..1348644.76 rows=993262 width=71) (actual time=0.055..4.575 rows=1825.00 loops=1)
+                                Index Cond: (ROW((name)::text, id) > ROW('Atlas szlaków Melvivin Kopa 300'::text, '4b91d6e2-7079-57e9-b445-422ed2f5028c'::uuid))
+                                Index Searches: 1
+                                Buffers: shared hit=109 read=1744
+                                I/O Timings: shared read=3.489
+                          ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category  (cost=0.42..0.45 rows=1 width=16) (actual time=0.002..0.002 rows=0.01 loops=1825)
+                                Index Cond: ((product_id = p_1.id) AND (category_id = ANY ('{c57c017b-d6f7-5990-82bf-635533003629}'::uuid[])))
+                                Heap Fetches: 0
+                                Index Searches: 1825
+                                Buffers: shared hit=4427 read=1049
+                                I/O Timings: shared read=1.688
+Planning:
+  Buffers: shared hit=453 read=103
+  I/O Timings: shared read=0.373
+Planning Time: 1.138 ms
+Execution Time: 1140.071 ms

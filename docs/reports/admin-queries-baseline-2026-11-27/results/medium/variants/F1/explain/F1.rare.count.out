@@ -1,0 +1,24 @@
+-- phrase rare 'ravotar', count by the candidates
+-- hits = 2980
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ravotar%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded;
+
+Aggregate  (cost=822.78..822.79 rows=1 width=8) (actual time=8.093..8.097 rows=1.00 loops=1)
+  Buffers: shared hit=3235
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=427.56..819.56 rows=99 width=4) (actual time=1.964..7.438 rows=2980.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%ravotar%'::text)
+          Heap Blocks: exact=2973
+          Buffers: shared hit=3235
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..427.53 rows=99 width=0) (actual time=1.682..1.682 rows=3092.00 loops=1)
+                Index Cond: ((name)::text ~~* '%ravotar%'::text)
+                Index Searches: 1
+                Buffers: shared hit=262
+  ->  Limit  (cost=0.00..1.98 rows=99 width=4) (actual time=1.967..7.976 rows=2980.00 loops=1)
+        Buffers: shared hit=3235
+        ->  CTE Scan on m  (cost=0.00..1.98 rows=99 width=4) (actual time=1.966..7.824 rows=2980.00 loops=1)
+              Storage: Memory  Maximum Storage: 126kB
+              Buffers: shared hit=3235
+Planning:
+  Buffers: shared hit=443
+Planning Time: 1.108 ms
+Execution Time: 8.181 ms

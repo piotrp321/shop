@@ -1,0 +1,24 @@
+-- phrase punct-1 '#!#', count by the candidates
+-- hits = 0
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('#!#') AND p.name ILIKE '%#!#%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded;
+
+Aggregate  (cost=153.41..153.42 rows=1 width=8) (actual time=0.024..0.024 rows=1.00 loops=1)
+  Buffers: shared hit=5
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=149.11..153.38 rows=1 width=4) (actual time=0.022..0.022 rows=0.00 loops=1)
+          Recheck Cond: (perf_bigrams((name)::text) @> '{!#,#!}'::text[])
+          Filter: ((name)::text ~~* '%#!#%'::text)
+          Buffers: shared hit=5
+          ->  Bitmap Index Scan on proto_f2_name_bigrams  (cost=0.00..149.11 rows=1 width=0) (actual time=0.018..0.019 rows=0.00 loops=1)
+                Index Cond: (perf_bigrams((name)::text) @> '{!#,#!}'::text[])
+                Index Searches: 1
+                Buffers: shared hit=5
+  ->  Limit  (cost=0.00..0.02 rows=1 width=4) (actual time=0.023..0.023 rows=0.00 loops=1)
+        Buffers: shared hit=5
+        ->  CTE Scan on m  (cost=0.00..0.02 rows=1 width=4) (actual time=0.023..0.023 rows=0.00 loops=1)
+              Storage: Memory  Maximum Storage: 17kB
+              Buffers: shared hit=5
+Planning:
+  Buffers: shared hit=522
+Planning Time: 1.339 ms
+Execution Time: 0.046 ms

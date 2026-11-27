@@ -1,0 +1,20 @@
+-- orders, fragment punct-1 '#!#', count by the bigrams
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE perf_bigrams(lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name)) @> perf_bigrams(lower('#!#')) AND lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('#!#') || '%' LIMIT 10001) bounded;
+
+Aggregate  (cost=116.67..116.68 rows=1 width=8) (actual time=0.023..0.023 rows=1.00 loops=1)
+  Buffers: shared hit=5
+  ->  Limit  (cost=108.11..116.66 rows=1 width=4) (actual time=0.022..0.022 rows=0.00 loops=1)
+        Buffers: shared hit=5
+        ->  Bitmap Heap Scan on ordering_order o  (cost=108.11..116.66 rows=1 width=4) (actual time=0.022..0.022 rows=0.00 loops=1)
+              Recheck Cond: (perf_bigrams(lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text))) @> '{!#,#!}'::text[])
+              Filter: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%#!#%'::text)
+              Buffers: shared hit=5
+              ->  Bitmap Index Scan on proto_z1_orders  (cost=0.00..108.11 rows=2 width=0) (actual time=0.018..0.018 rows=0.00 loops=1)
+                    Index Cond: (perf_bigrams(lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text))) @> '{!#,#!}'::text[])
+                    Index Searches: 1
+                    Buffers: shared hit=5
+Planning:
+  Buffers: shared hit=525
+Planning Time: 1.202 ms
+Execution Time: 0.047 ms

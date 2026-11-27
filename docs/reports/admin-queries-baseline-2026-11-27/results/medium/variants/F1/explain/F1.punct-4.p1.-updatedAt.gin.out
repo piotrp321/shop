@@ -1,0 +1,25 @@
+-- phrase punct-4 'ab-cd', sort -updatedAt: the candidates from the trigrams
+-- hits = 0
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ab-cd%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=654.37..654.44 rows=26 width=524) (actual time=0.055..0.058 rows=0.00 loops=1)
+  Buffers: shared hit=18
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=257.57..649.57 rows=99 width=71) (actual time=0.036..0.036 rows=0.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%ab-cd%'::text)
+          Buffers: shared hit=12
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..257.54 rows=99 width=0) (actual time=0.033..0.033 rows=0.00 loops=1)
+                Index Cond: ((name)::text ~~* '%ab-cd%'::text)
+                Index Searches: 1
+                Buffers: shared hit=12
+  ->  Sort  (cost=4.80..5.05 rows=99 width=524) (actual time=0.054..0.055 rows=0.00 loops=1)
+        Sort Key: m.updated_at DESC, m.id DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=18
+        ->  CTE Scan on m  (cost=0.00..1.98 rows=99 width=524) (actual time=0.037..0.037 rows=0.00 loops=1)
+              Storage: Memory  Maximum Storage: 17kB
+              Buffers: shared hit=12
+Planning:
+  Buffers: shared hit=467
+Planning Time: 1.132 ms
+Execution Time: 0.110 ms

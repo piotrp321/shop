@@ -1,0 +1,66 @@
+-- category big-late (22829 products), page 2, sort name
+-- products in the subtree = 22829
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND (p.name, p.id) > ('Buty neoprenowe Corrovar Trawers 350 Plus', CAST('20a7b18f-6140-58a5-9ae6-aa762444c6ca' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=50517.83..50517.89 rows=26 width=71) (actual time=94.967..94.975 rows=26.00 loops=1)
+  Buffers: shared hit=66847 read=27694 written=9
+  I/O Timings: shared read=49.121 write=0.091
+  ->  Sort  (cost=50517.83..50532.58 rows=5901 width=71) (actual time=94.966..94.969 rows=26.00 loops=1)
+        Sort Key: p.name, p.id
+        Sort Method: top-N heapsort  Memory: 30kB
+        Buffers: shared hit=66847 read=27694 written=9
+        I/O Timings: shared read=49.121 write=0.091
+        ->  Nested Loop  (cost=2832.84..50349.64 rows=5901 width=71) (actual time=8.977..92.682 rows=22804.00 loops=1)
+              Buffers: shared hit=66841 read=27694 written=9
+              I/O Timings: shared read=49.121 write=0.091
+              ->  HashAggregate  (cost=2832.41..2898.71 rows=6630 width=16) (actual time=8.963..11.192 rows=22829.00 loops=1)
+                    Group Key: catalog_product.id
+                    Batches: 1  Memory Usage: 1305kB
+                    Buffers: shared hit=1945 read=1274 written=1
+                    I/O Timings: shared read=1.124 write=0.012
+                    ->  Append  (cost=0.42..2815.84 rows=6630 width=16) (actual time=0.140..6.586 rows=22829.00 loops=1)
+                          Buffers: shared hit=1945 read=1274 written=1
+                          I/O Timings: shared read=1.124 write=0.012
+                          ->  Nested Loop  (cost=0.42..1153.28 rows=5518 width=16) (actual time=0.139..3.510 rows=21469.00 loops=1)
+                                Buffers: shared hit=1939 read=357 written=1
+                                I/O Timings: shared read=0.946 write=0.012
+                                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=1 width=16) (actual time=0.127..0.130 rows=1.00 loops=1)
+                                      Filter: (path ~~ '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%'::text)
+                                      Rows Removed by Filter: 179
+                                      Buffers: shared hit=2 read=3
+                                      I/O Timings: shared read=0.089
+                                ->  Index Only Scan using proto_k1_updated on catalog_product  (cost=0.42..1052.33 rows=9370 width=32) (actual time=0.011..2.553 rows=21469.00 loops=1)
+                                      Index Cond: (primary_category_id = c.id)
+                                      Heap Fetches: 415
+                                      Index Searches: 1
+                                      Buffers: shared hit=1937 read=354 written=1
+                                      I/O Timings: shared read=0.857 write=0.012
+                          ->  Nested Loop  (cost=26.93..1629.41 rows=1112 width=16) (actual time=0.181..2.275 rows=1360.00 loops=1)
+                                Buffers: shared hit=6 read=917
+                                I/O Timings: shared read=0.178
+                                ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=1 width=16) (actual time=0.007..0.010 rows=1.00 loops=1)
+                                      Filter: (path ~~ '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%'::text)
+                                      Rows Removed by Filter: 179
+                                      Buffers: shared hit=5
+                                ->  Bitmap Heap Scan on catalog_product_category  (cost=26.93..1603.27 rows=1889 width=32) (actual time=0.174..2.161 rows=1360.00 loops=1)
+                                      Recheck Cond: (category_id = c_1.id)
+                                      Heap Blocks: exact=915
+                                      Buffers: shared hit=1 read=917
+                                      I/O Timings: shared read=0.178
+                                      ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..26.46 rows=1889 width=0) (actual time=0.072..0.072 rows=1360.00 loops=1)
+                                            Index Cond: (category_id = c_1.id)
+                                            Index Searches: 1
+                                            Buffers: shared hit=1 read=2
+                                            I/O Timings: shared read=0.007
+              ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..7.16 rows=1 width=71) (actual time=0.003..0.003 rows=1.00 loops=22829)
+                    Index Cond: (id = catalog_product.id)
+                    Filter: (ROW((name)::text, id) > ROW('Buty neoprenowe Corrovar Trawers 350 Plus'::text, '20a7b18f-6140-58a5-9ae6-aa762444c6ca'::uuid))
+                    Rows Removed by Filter: 0
+                    Index Searches: 22829
+                    Buffers: shared hit=64896 read=26420 written=8
+                    I/O Timings: shared read=47.997 write=0.079
+Planning:
+  Buffers: shared hit=594 read=90
+  I/O Timings: shared read=0.272
+Planning Time: 1.165 ms
+Execution Time: 95.137 ms

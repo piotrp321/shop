@@ -1,0 +1,52 @@
+-- category small + common phrase, page 1, sort -updatedAt
+-- products in the subtree = 15
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) AND p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=91128.48..91128.54 rows=26 width=71) (actual time=0.151..0.154 rows=0.00 loops=1)
+  Buffers: shared hit=82
+  ->  Sort  (cost=91128.48..91133.84 rows=2143 width=71) (actual time=0.151..0.151 rows=0.00 loops=1)
+        Sort Key: p.updated_at DESC, p.id DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=82
+        ->  Nested Loop  (cost=5290.52..91067.40 rows=2143 width=71) (actual time=0.139..0.140 rows=0.00 loops=1)
+              Buffers: shared hit=76
+              ->  HashAggregate  (cost=5290.10..5422.70 rows=13260 width=16) (actual time=0.045..0.081 rows=15.00 loops=1)
+                    Group Key: catalog_product.id
+                    Batches: 1  Memory Usage: 289kB
+                    Buffers: shared hit=16
+                    ->  Append  (cost=0.42..5256.95 rows=13260 width=16) (actual time=0.016..0.041 rows=15.00 loops=1)
+                          Buffers: shared hit=16
+                          ->  Nested Loop  (cost=0.42..2275.35 rows=11036 width=16) (actual time=0.016..0.026 rows=15.00 loops=1)
+                                Buffers: shared hit=9
+                                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=2 width=16) (actual time=0.008..0.017 rows=1.00 loops=1)
+                                      Filter: (path ~~ '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%'::text)
+                                      Rows Removed by Filter: 179
+                                      Buffers: shared hit=5
+                                ->  Index Only Scan using proto_k1_updated on catalog_product  (cost=0.42..1040.35 rows=9370 width=32) (actual time=0.007..0.008 rows=15.00 loops=1)
+                                      Index Cond: (primary_category_id = c.id)
+                                      Heap Fetches: 0
+                                      Index Searches: 1
+                                      Buffers: shared hit=4
+                          ->  Nested Loop  (cost=26.93..2915.30 rows=2224 width=16) (actual time=0.013..0.014 rows=0.00 loops=1)
+                                Buffers: shared hit=7
+                                ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=2 width=16) (actual time=0.003..0.008 rows=1.00 loops=1)
+                                      Filter: (path ~~ '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%'::text)
+                                      Rows Removed by Filter: 179
+                                      Buffers: shared hit=5
+                                ->  Bitmap Heap Scan on catalog_product_category  (cost=26.93..1435.13 rows=1889 width=32) (actual time=0.005..0.006 rows=0.00 loops=1)
+                                      Recheck Cond: (category_id = c_1.id)
+                                      Buffers: shared hit=2
+                                      ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..26.46 rows=1889 width=0) (actual time=0.002..0.002 rows=0.00 loops=1)
+                                            Index Cond: (category_id = c_1.id)
+                                            Index Searches: 1
+                                            Buffers: shared hit=2
+              ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..6.46 rows=1 width=71) (actual time=0.004..0.004 rows=0.00 loops=15)
+                    Index Cond: (id = catalog_product.id)
+                    Filter: ((name)::text ~~* '%pro%'::text)
+                    Rows Removed by Filter: 1
+                    Index Searches: 15
+                    Buffers: shared hit=60
+Planning:
+  Buffers: shared hit=724
+Planning Time: 1.301 ms
+Execution Time: 0.288 ms

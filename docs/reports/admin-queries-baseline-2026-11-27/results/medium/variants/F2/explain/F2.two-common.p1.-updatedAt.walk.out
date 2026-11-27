@@ -1,0 +1,33 @@
+-- phrase two-common 'er', sort -updatedAt: the walk of 20000 rows
+-- budget = 20000
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%er%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=61276.21..61276.28 rows=26 width=71) (actual time=39.993..40.005 rows=26.00 loops=1)
+  Buffers: shared hit=40306
+  ->  Sort  (cost=61276.21..61291.37 rows=6061 width=71) (actual time=39.992..39.994 rows=26.00 loops=1)
+        Sort Key: p.updated_at DESC, p.id DESC
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=40306
+        ->  Nested Loop  (cost=17466.04..61103.46 rows=6061 width=71) (actual time=26.735..39.438 rows=5058.00 loops=1)
+              Buffers: shared hit=40300
+              ->  HashAggregate  (cost=17465.62..17526.23 rows=6061 width=16) (actual time=26.713..27.221 rows=5058.00 loops=1)
+                    Group Key: w.id
+                    Batches: 1  Memory Usage: 409kB
+                    Buffers: shared hit=20068
+                    ->  Subquery Scan on w  (cost=0.42..17450.46 rows=6061 width=16) (actual time=0.017..25.779 rows=5058.00 loops=1)
+                          Filter: ((w.name)::text ~~* '%er%'::text)
+                          Rows Removed by Filter: 14942
+                          Buffers: shared hit=20068
+                          ->  Limit  (cost=0.42..17200.46 rows=20000 width=62) (actual time=0.006..13.736 rows=20000.00 loops=1)
+                                Buffers: shared hit=20068
+                                ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product  (cost=0.42..854208.49 rows=993263 width=62) (actual time=0.006..12.710 rows=20000.00 loops=1)
+                                      Index Searches: 1
+                                      Buffers: shared hit=20068
+              ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..7.23 rows=1 width=71) (actual time=0.002..0.002 rows=1.00 loops=5058)
+                    Index Cond: (id = w.id)
+                    Index Searches: 5058
+                    Buffers: shared hit=20232
+Planning:
+  Buffers: shared hit=524
+Planning Time: 0.925 ms
+Execution Time: 40.123 ms

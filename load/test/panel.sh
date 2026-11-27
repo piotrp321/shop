@@ -9,6 +9,7 @@ set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 load="$(cd "$here/.." && pwd)"
 # k6.sh takes the directory of the scripts from its caller: that is load/, not load/test/.
+# shellcheck disable=SC2034 # read by k6.sh
 LOAD_DIR="$load"
 # shellcheck source=../k6.sh
 . "$load/k6.sh"

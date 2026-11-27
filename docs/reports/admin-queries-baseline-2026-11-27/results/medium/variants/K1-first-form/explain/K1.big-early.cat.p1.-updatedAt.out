@@ -1,0 +1,33 @@
+-- category big-early (15199 products), page 1, sort -updatedAt
+-- products in the subtree = 15199
+SELECT DISTINCT ON (updated_at, id) id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT product_id FROM catalog_product_category WHERE category_id = ANY('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[])) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26)) u ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=1.28..7954.05 rows=26 width=71) (actual time=1.820..4.044 rows=26.00 loops=1)
+  Buffers: shared hit=4864
+  ->  Unique  (cost=1.28..15906.81 rows=52 width=71) (actual time=1.819..4.039 rows=26.00 loops=1)
+        Buffers: shared hit=4864
+        ->  Merge Append  (cost=1.28..15906.55 rows=52 width=71) (actual time=1.819..4.034 rows=26.00 loops=1)
+              Sort Key: p.updated_at DESC, p.id DESC
+              Buffers: shared hit=4864
+              ->  Limit  (cost=0.42..103.55 rows=26 width=71) (actual time=0.013..0.024 rows=21.00 loops=1)
+                    Buffers: shared hit=24
+                    ->  Index Scan Backward using proto_k1_updated on catalog_product p  (cost=0.42..51610.35 rows=13012 width=71) (actual time=0.012..0.023 rows=21.00 loops=1)
+                          Index Cond: (primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0'::uuid)
+                          Index Searches: 1
+                          Buffers: shared hit=24
+              ->  Limit  (cost=0.84..15802.47 rows=26 width=71) (actual time=1.806..4.008 rows=6.00 loops=1)
+                    Buffers: shared hit=4840
+                    ->  Nested Loop Semi Join  (cost=0.84..1297557.56 rows=2135 width=71) (actual time=1.806..4.007 rows=6.00 loops=1)
+                          Buffers: shared hit=4840
+                          ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p_1  (cost=0.42..854208.49 rows=993263 width=71) (actual time=0.007..1.249 rows=1213.00 loops=1)
+                                Index Searches: 1
+                                Buffers: shared hit=1200
+                          ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category  (cost=0.42..0.45 rows=1 width=16) (actual time=0.002..0.002 rows=0.00 loops=1213)
+                                Index Cond: ((product_id = p_1.id) AND (category_id = ANY ('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[])))
+                                Heap Fetches: 0
+                                Index Searches: 1213
+                                Buffers: shared hit=3640
+Planning:
+  Buffers: shared hit=601
+Planning Time: 0.791 ms
+Execution Time: 4.094 ms

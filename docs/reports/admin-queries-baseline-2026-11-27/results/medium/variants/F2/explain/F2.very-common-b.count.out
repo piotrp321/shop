@@ -1,0 +1,30 @@
+-- phrase very-common-b 'ka', count by the candidates
+-- hits = 459399
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('ka') AND p.name ILIKE '%ka%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded;
+
+Aggregate  (cost=206800.04..206800.05 rows=1 width=8) (actual time=126.115..129.316 rows=1.00 loops=1)
+  Buffers: shared hit=58493
+  CTE m
+    ->  Gather  (cost=1000.55..206475.01 rows=220613 width=4) (actual time=0.398..124.280 rows=10001.00 loops=1)
+          Workers Planned: 2
+          Workers Launched: 2
+          Buffers: shared hit=58493
+          ->  Parallel Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..183413.71 rows=91922 width=4) (actual time=1.809..112.301 rows=3561.33 loops=3)
+                Filter: (((name)::text ~~* '%ka%'::text) AND (perf_bigrams((name)::text) @> '{ka}'::text[]))
+                Rows Removed by Filter: 18569
+                Heap Fetches: 1292
+                Index Searches: 1
+                Buffers: shared hit=58493
+  ->  Limit  (cost=0.00..200.02 rows=10001 width=4) (actual time=2.994..125.635 rows=10001.00 loops=1)
+        Buffers: shared hit=20846
+        ->  CTE Scan on m  (cost=0.00..4412.26 rows=220613 width=4) (actual time=0.401..122.468 rows=10001.00 loops=1)
+              Storage: Memory  Maximum Storage: 441kB
+              Buffers: shared hit=20846
+Planning:
+  Buffers: shared hit=522
+Planning Time: 1.150 ms
+JIT:
+  Functions: 11
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.342 ms (Deform 0.000 ms), Inlining 0.000 ms, Optimization 0.362 ms, Emission 5.950 ms, Total 6.654 ms
+Execution Time: 140.807 ms

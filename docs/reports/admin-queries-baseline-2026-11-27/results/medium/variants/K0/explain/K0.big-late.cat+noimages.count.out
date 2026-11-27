@@ -1,0 +1,50 @@
+-- category big-late + without images, count
+-- products in the subtree = 22829
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND p.images = '[]'::jsonb LIMIT 10001) bounded;
+
+Aggregate  (cost=21987.42..21987.43 rows=1 width=8) (actual time=23.568..23.572 rows=1.00 loops=1)
+  Buffers: shared hit=72111
+  ->  Limit  (cost=2832.82..21985.61 rows=145 width=4) (actual time=6.350..23.537 rows=476.00 loops=1)
+        Buffers: shared hit=72111
+        ->  Nested Loop  (cost=2832.82..21985.61 rows=145 width=4) (actual time=6.350..23.513 rows=476.00 loops=1)
+              Buffers: shared hit=72111
+              ->  HashAggregate  (cost=2832.41..2898.71 rows=6630 width=16) (actual time=6.339..7.565 rows=22829.00 loops=1)
+                    Group Key: catalog_product.id
+                    Batches: 1  Memory Usage: 1305kB
+                    Buffers: shared hit=3219
+                    ->  Append  (cost=0.42..2815.84 rows=6630 width=16) (actual time=0.022..4.050 rows=22829.00 loops=1)
+                          Buffers: shared hit=3219
+                          ->  Nested Loop  (cost=0.42..1153.28 rows=5518 width=16) (actual time=0.022..2.298 rows=21469.00 loops=1)
+                                Buffers: shared hit=2296
+                                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=1 width=16) (actual time=0.014..0.016 rows=1.00 loops=1)
+                                      Filter: (path ~~ '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%'::text)
+                                      Rows Removed by Filter: 179
+                                      Buffers: shared hit=5
+                                ->  Index Only Scan using proto_k1_updated on catalog_product  (cost=0.42..1052.33 rows=9370 width=32) (actual time=0.007..1.458 rows=21469.00 loops=1)
+                                      Index Cond: (primary_category_id = c.id)
+                                      Heap Fetches: 415
+                                      Index Searches: 1
+                                      Buffers: shared hit=2291
+                          ->  Nested Loop  (cost=26.93..1629.41 rows=1112 width=16) (actual time=0.153..0.920 rows=1360.00 loops=1)
+                                Buffers: shared hit=923
+                                ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=1 width=16) (actual time=0.009..0.011 rows=1.00 loops=1)
+                                      Filter: (path ~~ '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%'::text)
+                                      Rows Removed by Filter: 179
+                                      Buffers: shared hit=5
+                                ->  Bitmap Heap Scan on catalog_product_category  (cost=26.93..1603.27 rows=1889 width=32) (actual time=0.143..0.846 rows=1360.00 loops=1)
+                                      Recheck Cond: (category_id = c_1.id)
+                                      Heap Blocks: exact=915
+                                      Buffers: shared hit=918
+                                      ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..26.46 rows=1889 width=0) (actual time=0.088..0.088 rows=1360.00 loops=1)
+                                            Index Cond: (category_id = c_1.id)
+                                            Index Searches: 1
+                                            Buffers: shared hit=3
+              ->  Index Only Scan using catalog_product_without_images_idx on catalog_product p  (cost=0.41..2.88 rows=1 width=16) (actual time=0.001..0.001 rows=0.02 loops=22829)
+                    Index Cond: (id = catalog_product.id)
+                    Heap Fetches: 8
+                    Index Searches: 22829
+                    Buffers: shared hit=68892
+Planning:
+  Buffers: shared hit=715
+Planning Time: 0.901 ms
+Execution Time: 23.706 ms

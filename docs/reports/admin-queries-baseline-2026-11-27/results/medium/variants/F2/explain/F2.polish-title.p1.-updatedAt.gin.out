@@ -1,0 +1,27 @@
+-- phrase polish-title 'Skała', sort -updatedAt: the candidates from the bigrams
+-- hits = 10067
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('Skała') AND p.name ILIKE '%Skała%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=556.26..556.26 rows=1 width=524) (actual time=25.329..25.333 rows=26.00 loops=1)
+  Buffers: shared hit=10156
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=294.39..556.23 rows=1 width=71) (actual time=7.491..22.760 rows=10067.00 loops=1)
+          Recheck Cond: (perf_bigrams((name)::text) @> '{ał,ka,ła,sk}'::text[])
+          Filter: ((name)::text ~~* '%Skała%'::text)
+          Heap Blocks: exact=9853
+          Buffers: shared hit=10150
+          ->  Bitmap Index Scan on proto_f2_name_bigrams  (cost=0.00..294.39 rows=62 width=0) (actual time=6.455..6.455 rows=10153.00 loops=1)
+                Index Cond: (perf_bigrams((name)::text) @> '{ał,ka,ła,sk}'::text[])
+                Index Searches: 1
+                Buffers: shared hit=297
+  ->  Sort  (cost=0.03..0.04 rows=1 width=524) (actual time=25.328..25.330 rows=26.00 loops=1)
+        Sort Key: m.updated_at DESC, m.id DESC
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=10156
+        ->  CTE Scan on m  (cost=0.00..0.02 rows=1 width=524) (actual time=7.492..24.725 rows=10067.00 loops=1)
+              Storage: Memory  Maximum Storage: 1105kB
+              Buffers: shared hit=10150
+Planning:
+  Buffers: shared hit=544
+Planning Time: 1.160 ms
+Execution Time: 25.458 ms

@@ -1,0 +1,54 @@
+-- category big-early + common phrase, page 1, sort -updatedAt
+-- products in the subtree = 15199
+WITH additional AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]) AND p.name ILIKE '%pro%') SELECT DISTINCT ON (updated_at, id) id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0' AND p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT id, name, tax_class, updated_at FROM additional ORDER BY updated_at DESC, id DESC LIMIT 26)) u ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=12593.18..12912.84 rows=26 width=298) (actual time=7.487..9.574 rows=26.00 loops=1)
+  Buffers: shared hit=10440
+  CTE additional
+    ->  Gather  (cost=1029.27..12576.02 rows=345 width=71) (actual time=0.841..9.232 rows=202.00 loops=1)
+          Workers Planned: 1
+          Workers Launched: 1
+          Buffers: shared hit=10267
+          ->  Nested Loop  (cost=29.27..11541.52 rows=203 width=71) (actual time=0.381..6.189 rows=101.00 loops=2)
+                Buffers: shared hit=10267
+                ->  Parallel Bitmap Heap Scan on catalog_product_category pc  (cost=28.84..1591.13 rows=1256 width=16) (actual time=0.280..1.357 rows=1137.50 loops=2)
+                      Recheck Cond: (category_id = ANY ('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]))
+                      Heap Blocks: exact=660
+                      Buffers: shared hit=1166
+                      Worker 0:  Heap Blocks: exact=483
+                      ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..28.31 rows=2135 width=0) (actual time=0.403..0.404 rows=2275.00 loops=1)
+                            Index Cond: (category_id = ANY ('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]))
+                            Index Searches: 1
+                            Buffers: shared hit=3
+                ->  Index Scan using catalog_product_pkey on catalog_product p_1  (cost=0.42..7.92 rows=1 width=71) (actual time=0.004..0.004 rows=0.09 loops=2275)
+                      Index Cond: (id = pc.product_id)
+                      Filter: ((name)::text ~~* '%pro%'::text)
+                      Rows Removed by Filter: 1
+                      Index Searches: 2275
+                      Buffers: shared hit=9101
+  ->  Unique  (cost=17.17..656.48 rows=52 width=298) (actual time=7.486..7.723 rows=26.00 loops=1)
+        Buffers: shared hit=10440
+        ->  Merge Append  (cost=17.17..656.22 rows=52 width=298) (actual time=7.485..7.717 rows=26.00 loops=1)
+              Sort Key: p.updated_at DESC, p.id DESC
+              Buffers: shared hit=10440
+              ->  Limit  (cost=0.42..638.90 rows=26 width=71) (actual time=0.020..0.248 rows=23.00 loops=1)
+                    Buffers: shared hit=173
+                    ->  Index Scan Backward using proto_k1_updated on catalog_product p  (cost=0.42..51642.88 rows=2103 width=71) (actual time=0.020..0.246 rows=23.00 loops=1)
+                          Index Cond: (primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0'::uuid)
+                          Filter: ((name)::text ~~* '%pro%'::text)
+                          Rows Removed by Filter: 147
+                          Index Searches: 1
+                          Buffers: shared hit=173
+              ->  Limit  (cost=16.73..16.80 rows=26 width=524) (actual time=7.464..7.465 rows=4.00 loops=1)
+                    Buffers: shared hit=10267
+                    ->  Sort  (cost=16.73..17.60 rows=345 width=524) (actual time=7.463..7.464 rows=4.00 loops=1)
+                          Sort Key: additional.updated_at DESC, additional.id DESC
+                          Sort Method: top-N heapsort  Memory: 32kB
+                          Buffers: shared hit=10267
+                          ->  CTE Scan on additional  (cost=0.00..6.90 rows=345 width=524) (actual time=0.842..7.432 rows=202.00 loops=1)
+                                Storage: Memory  Maximum Storage: 37kB
+                                Buffers: shared hit=10267
+Planning:
+  Buffers: shared hit=580
+Planning Time: 1.469 ms
+Execution Time: 9.640 ms

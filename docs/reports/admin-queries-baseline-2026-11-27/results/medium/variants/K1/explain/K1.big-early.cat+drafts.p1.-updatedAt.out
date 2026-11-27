@@ -1,0 +1,63 @@
+-- category big-early + drafts, page 1, sort -updatedAt
+-- products in the subtree = 15199
+WITH additional AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]) AND NOT (p.primary_category_id = ANY('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[])) AND p.status = 'draft') SELECT id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT id, name, tax_class, updated_at FROM additional ORDER BY updated_at DESC, id DESC LIMIT 26)) u ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=14578.24..14578.56 rows=26 width=298) (actual time=12.976..15.403 rows=26.00 loops=1)
+  Buffers: shared hit=10699
+  CTE additional
+    ->  Gather  (cost=1029.27..12547.59 rows=45 width=71) (actual time=0.900..10.394 rows=41.00 loops=1)
+          Workers Planned: 1
+          Workers Launched: 1
+          Buffers: shared hit=10267
+          ->  Nested Loop  (cost=29.27..11543.09 rows=26 width=71) (actual time=0.374..6.493 rows=20.50 loops=2)
+                Buffers: shared hit=10267
+                ->  Parallel Bitmap Heap Scan on catalog_product_category pc  (cost=28.84..1591.13 rows=1256 width=16) (actual time=0.242..1.466 rows=1137.50 loops=2)
+                      Recheck Cond: (category_id = ANY ('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]))
+                      Heap Blocks: exact=670
+                      Buffers: shared hit=1166
+                      Worker 0:  Heap Blocks: exact=473
+                      ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..28.31 rows=2135 width=0) (actual time=0.311..0.311 rows=2275.00 loops=1)
+                            Index Cond: (category_id = ANY ('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]))
+                            Index Searches: 1
+                            Buffers: shared hit=3
+                ->  Index Scan using catalog_product_pkey on catalog_product p_1  (cost=0.42..7.92 rows=1 width=71) (actual time=0.004..0.004 rows=0.02 loops=2275)
+                      Index Cond: (id = pc.product_id)
+                      Filter: ((primary_category_id <> ALL ('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[])) AND ((status)::text = 'draft'::text))
+                      Rows Removed by Filter: 1
+                      Index Searches: 2275
+                      Buffers: shared hit=9101
+  ->  Merge Append  (cost=2030.65..2031.30 rows=52 width=298) (actual time=12.975..12.982 rows=26.00 loops=1)
+        Sort Key: p.updated_at DESC, p.id DESC
+        Buffers: shared hit=10699
+        ->  Limit  (cost=2028.51..2028.57 rows=26 width=71) (actual time=4.958..4.961 rows=21.00 loops=1)
+              Buffers: shared hit=432
+              ->  Sort  (cost=2028.51..2029.20 rows=279 width=71) (actual time=4.957..4.960 rows=21.00 loops=1)
+                    Sort Key: p.updated_at DESC, p.id DESC
+                    Sort Method: top-N heapsort  Memory: 30kB
+                    Buffers: shared hit=432
+                    ->  Bitmap Heap Scan on catalog_product p  (cost=925.14..2020.55 rows=279 width=71) (actual time=4.516..4.924 rows=251.00 loops=1)
+                          Recheck Cond: ((primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0'::uuid) AND ((status)::text = 'draft'::text))
+                          Heap Blocks: exact=251
+                          Buffers: shared hit=432
+                          ->  BitmapAnd  (cost=925.14..925.14 rows=279 width=0) (actual time=4.466..4.467 rows=0.00 loops=1)
+                                Buffers: shared hit=181
+                                ->  Bitmap Index Scan on catalog_product_primary_category_id_idx  (cost=0.00..206.02 rows=13012 width=0) (actual time=1.359..1.359 rows=13294.00 loops=1)
+                                      Index Cond: (primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0'::uuid)
+                                      Index Searches: 1
+                                      Buffers: shared hit=29
+                                ->  Bitmap Index Scan on catalog_product_draft_updated_at_id_idx  (cost=0.00..718.73 rows=21289 width=0) (actual time=2.536..2.536 rows=20108.00 loops=1)
+                                      Index Searches: 1
+                                      Buffers: shared hit=152
+        ->  Limit  (cost=2.14..2.20 rows=26 width=524) (actual time=8.015..8.016 rows=6.00 loops=1)
+              Buffers: shared hit=10267
+              ->  Sort  (cost=2.14..2.25 rows=45 width=524) (actual time=8.014..8.014 rows=6.00 loops=1)
+                    Sort Key: additional.updated_at DESC, additional.id DESC
+                    Sort Method: quicksort  Memory: 30kB
+                    Buffers: shared hit=10267
+                    ->  CTE Scan on additional  (cost=0.00..0.90 rows=45 width=524) (actual time=0.902..7.999 rows=41.00 loops=1)
+                          Storage: Memory  Maximum Storage: 20kB
+                          Buffers: shared hit=10267
+Planning:
+  Buffers: shared hit=573
+Planning Time: 1.064 ms
+Execution Time: 15.538 ms

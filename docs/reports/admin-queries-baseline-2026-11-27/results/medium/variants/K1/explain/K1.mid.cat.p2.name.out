@@ -1,0 +1,50 @@
+-- category mid (10585 products), page 2, sort name
+-- products in the subtree = 10585
+WITH additional AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]) AND NOT (p.primary_category_id = ANY('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[])) AND (p.name, p.id) > ('Buty na bieżnię Elkos Pustułka 900', CAST('e28cb68a-b4c3-5c37-8c2f-72ad52c2d90e' AS uuid))) SELECT id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c2a92470-bddd-5c3a-9b84-ed06bfd4caad' AND (p.name, p.id) > ('Buty na bieżnię Elkos Pustułka 900', CAST('e28cb68a-b4c3-5c37-8c2f-72ad52c2d90e' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT id, name, tax_class, updated_at FROM additional ORDER BY name ASC, id ASC LIMIT 26)) u ORDER BY name, id LIMIT 26;
+
+Limit  (cost=12138.89..12191.49 rows=26 width=298) (actual time=6.371..8.295 rows=26.00 loops=1)
+  Buffers: shared hit=8634
+  CTE additional
+    ->  Gather  (cost=1028.08..12051.56 rows=1789 width=71) (actual time=0.686..7.590 rows=1859.00 loops=1)
+          Workers Planned: 1
+          Workers Launched: 1
+          Buffers: shared hit=8629
+          ->  Nested Loop  (cost=28.08..10872.66 rows=1052 width=71) (actual time=0.266..4.674 rows=929.50 loops=2)
+                Buffers: shared hit=8629
+                ->  Parallel Bitmap Heap Scan on catalog_product_category pc  (cost=27.66..1593.24 rows=1166 width=16) (actual time=0.250..1.228 rows=942.00 loops=2)
+                      Recheck Cond: (category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]))
+                      Heap Blocks: exact=609
+                      Buffers: shared hit=1092
+                      Worker 0:  Heap Blocks: exact=460
+                      ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..27.16 rows=1982 width=0) (actual time=0.340..0.340 rows=1884.00 loops=1)
+                            Index Cond: (category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]))
+                            Index Searches: 1
+                            Buffers: shared hit=3
+                ->  Index Scan using catalog_product_pkey on catalog_product p_1  (cost=0.42..7.96 rows=1 width=71) (actual time=0.003..0.003 rows=0.99 loops=1884)
+                      Index Cond: (id = pc.product_id)
+                      Filter: ((primary_category_id <> ALL ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[])) AND (ROW((name)::text, id) > ROW('Buty na bieżnię Elkos Pustułka 900'::text, 'e28cb68a-b4c3-5c37-8c2f-72ad52c2d90e'::uuid)))
+                      Rows Removed by Filter: 0
+                      Index Searches: 1884
+                      Buffers: shared hit=7537
+  ->  Merge Append  (cost=87.33..192.54 rows=52 width=298) (actual time=6.369..6.375 rows=26.00 loops=1)
+        Sort Key: p.name, p.id
+        Buffers: shared hit=8634
+        ->  Limit  (cost=0.55..105.18 rows=26 width=71) (actual time=0.016..0.016 rows=1.00 loops=1)
+              Buffers: shared hit=5
+              ->  Index Scan using proto_k1_name on catalog_product p  (cost=0.55..28611.56 rows=7110 width=71) (actual time=0.016..0.016 rows=1.00 loops=1)
+                    Index Cond: ((primary_category_id = 'c2a92470-bddd-5c3a-9b84-ed06bfd4caad'::uuid) AND (ROW((name)::text, id) > ROW('Buty na bieżnię Elkos Pustułka 900'::text, 'e28cb68a-b4c3-5c37-8c2f-72ad52c2d90e'::uuid)))
+                    Index Searches: 1
+                    Buffers: shared hit=5
+        ->  Limit  (cost=86.77..86.84 rows=26 width=524) (actual time=6.352..6.355 rows=26.00 loops=1)
+              Buffers: shared hit=8629
+              ->  Sort  (cost=86.77..91.24 rows=1789 width=524) (actual time=6.352..6.353 rows=26.00 loops=1)
+                    Sort Key: additional.name, additional.id
+                    Sort Method: top-N heapsort  Memory: 30kB
+                    Buffers: shared hit=8629
+                    ->  CTE Scan on additional  (cost=0.00..35.78 rows=1789 width=524) (actual time=0.688..5.992 rows=1859.00 loops=1)
+                          Storage: Memory  Maximum Storage: 195kB
+                          Buffers: shared hit=8629
+Planning:
+  Buffers: shared hit=554
+Planning Time: 1.045 ms
+Execution Time: 8.368 ms

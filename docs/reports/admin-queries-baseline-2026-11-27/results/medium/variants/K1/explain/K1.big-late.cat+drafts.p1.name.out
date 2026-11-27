@@ -1,0 +1,46 @@
+-- category big-late + drafts, page 1, sort name
+-- products in the subtree = 22829
+WITH additional AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{c65841c4-e5f5-58f5-9451-5e985cfec063}'::uuid[]) AND NOT (p.primary_category_id = ANY('{c65841c4-e5f5-58f5-9451-5e985cfec063}'::uuid[])) AND p.status = 'draft') SELECT id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c65841c4-e5f5-58f5-9451-5e985cfec063' AND p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT id, name, tax_class, updated_at FROM additional ORDER BY name ASC, id ASC LIMIT 26)) u ORDER BY name, id LIMIT 26;
+
+Limit  (cost=9578.46..11991.70 rows=26 width=293) (actual time=14.019..15.913 rows=26.00 loops=1)
+  Buffers: shared hit=13245
+  CTE additional
+    ->  Gather  (cost=1000.42..9576.96 rows=25 width=71) (actual time=0.493..9.139 rows=31.00 loops=1)
+          Workers Planned: 1
+          Workers Launched: 1
+          Buffers: shared hit=6915
+          ->  Nested Loop  (cost=0.42..8574.46 rows=15 width=71) (actual time=0.577..5.991 rows=15.50 loops=2)
+                Buffers: shared hit=6915
+                ->  Parallel Seq Scan on catalog_product_category pc  (cost=0.00..2798.80 rows=710 width=16) (actual time=0.014..3.886 rows=680.00 loops=2)
+                      Filter: (category_id = ANY ('{c65841c4-e5f5-58f5-9451-5e985cfec063}'::uuid[]))
+                      Rows Removed by Filter: 99416
+                      Buffers: shared hit=1474
+                ->  Index Scan using catalog_product_pkey on catalog_product p_1  (cost=0.42..8.13 rows=1 width=71) (actual time=0.003..0.003 rows=0.02 loops=1360)
+                      Index Cond: (id = pc.product_id)
+                      Filter: ((primary_category_id <> ALL ('{c65841c4-e5f5-58f5-9451-5e985cfec063}'::uuid[])) AND ((status)::text = 'draft'::text))
+                      Rows Removed by Filter: 1
+                      Index Searches: 1360
+                      Buffers: shared hit=5441
+  ->  Merge Append  (cost=1.50..4735.16 rows=51 width=293) (actual time=14.018..14.043 rows=26.00 loops=1)
+        Sort Key: p.name, p.id
+        Buffers: shared hit=13245
+        ->  Limit  (cost=0.41..4733.50 rows=26 width=71) (actual time=6.684..6.703 rows=14.00 loops=1)
+              Buffers: shared hit=6330
+              ->  Index Scan using catalog_product_draft_name_id_idx on catalog_product p  (cost=0.41..83921.67 rows=461 width=71) (actual time=6.683..6.701 rows=14.00 loops=1)
+                    Filter: (primary_category_id = 'c65841c4-e5f5-58f5-9451-5e985cfec063'::uuid)
+                    Rows Removed by Filter: 6225
+                    Index Searches: 1
+                    Buffers: shared hit=6330
+        ->  Limit  (cost=1.08..1.14 rows=25 width=524) (actual time=7.333..7.335 rows=13.00 loops=1)
+              Buffers: shared hit=6915
+              ->  Sort  (cost=1.08..1.14 rows=25 width=524) (actual time=7.333..7.333 rows=13.00 loops=1)
+                    Sort Key: additional.name, additional.id
+                    Sort Method: quicksort  Memory: 29kB
+                    Buffers: shared hit=6915
+                    ->  CTE Scan on additional  (cost=0.00..0.50 rows=25 width=524) (actual time=0.496..7.285 rows=31.00 loops=1)
+                          Storage: Memory  Maximum Storage: 20kB
+                          Buffers: shared hit=6915
+Planning:
+  Buffers: shared hit=555
+Planning Time: 1.068 ms
+Execution Time: 15.976 ms

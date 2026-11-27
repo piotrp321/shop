@@ -1,0 +1,41 @@
+-- phrase very-common-a 'pro', sort -updatedAt: the candidates from the bigrams
+-- hits = 119269
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('pro') AND p.name ILIKE '%pro%') SELECT * FROM m ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=42753.82..42753.88 rows=26 width=524) (actual time=11035.550..11035.555 rows=26.00 loops=1)
+  Buffers: shared hit=78 read=91475, temp written=1292
+  I/O Timings: shared read=7.859, temp write=7.355
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=1554.26..42213.51 rows=11140 width=71) (actual time=46.850..10981.810 rows=119269.00 loops=1)
+          Recheck Cond: ((perf_bigrams((name)::text) @> '{pr,ro}'::text[]) AND ((name)::text ~~* '%pro%'::text))
+          Rows Removed by Index Recheck: 252750
+          Heap Blocks: exact=31215 lossy=60047
+          Buffers: shared hit=72 read=91475
+          I/O Timings: shared read=7.859
+          ->  BitmapAnd  (cost=1554.26..1554.26 rows=11140 width=0) (actual time=42.492..42.492 rows=0.00 loops=1)
+                Buffers: shared hit=72 read=213
+                I/O Timings: shared read=0.895
+                ->  Bitmap Index Scan on proto_f2_name_bigrams  (cost=0.00..493.74 rows=68928 width=0) (actual time=24.850..24.850 rows=139168.00 loops=1)
+                      Index Cond: (perf_bigrams((name)::text) @> '{pr,ro}'::text[])
+                      Index Searches: 1
+                      Buffers: shared hit=71 read=121
+                      I/O Timings: shared read=0.454
+                ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..1054.69 rows=160527 width=0) (actual time=13.780..13.780 rows=123909.00 loops=1)
+                      Index Cond: ((name)::text ~~* '%pro%'::text)
+                      Index Searches: 1
+                      Buffers: shared hit=1 read=92
+                      I/O Timings: shared read=0.440
+  ->  Sort  (cost=540.31..568.16 rows=11140 width=524) (actual time=11035.549..11035.551 rows=26.00 loops=1)
+        Sort Key: m.updated_at DESC, m.id DESC
+        Sort Method: top-N heapsort  Memory: 30kB
+        Buffers: shared hit=78 read=91475, temp written=1292
+        I/O Timings: shared read=7.859, temp write=7.355
+        ->  CTE Scan on m  (cost=0.00..222.80 rows=11140 width=524) (actual time=46.851..11024.221 rows=119269.00 loops=1)
+              Storage: Disk  Maximum Storage: 10336kB
+              Buffers: shared hit=72 read=91475, temp written=1292
+              I/O Timings: shared read=7.859, temp write=7.355
+Planning:
+  Buffers: shared hit=451 read=93
+  I/O Timings: shared read=0.414
+Planning Time: 1.614 ms
+Execution Time: 11037.295 ms

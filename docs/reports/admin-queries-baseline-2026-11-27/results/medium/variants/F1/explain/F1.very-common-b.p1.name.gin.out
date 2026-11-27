@@ -1,0 +1,30 @@
+-- phrase very-common-b 'ka', sort name: the candidates from the trigrams
+-- hits = 459399
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ka%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26;
+
+Limit  (cost=354409.57..354409.64 rows=26 width=524) (actual time=1062.636..1062.644 rows=26.00 loops=1)
+  Buffers: shared hit=13715 read=304927, temp written=4820
+  I/O Timings: shared read=9.394, temp write=16.188
+  CTE m
+    ->  Seq Scan on catalog_product p  (cost=0.00..331051.79 rows=481582 width=71) (actual time=0.211..914.564 rows=459399.00 loops=1)
+          Filter: ((name)::text ~~* '%ka%'::text)
+          Rows Removed by Filter: 540792
+          Buffers: shared hit=13709 read=304927
+          I/O Timings: shared read=9.394
+  ->  Sort  (cost=23357.79..24561.74 rows=481582 width=524) (actual time=1059.567..1059.568 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=13715 read=304927, temp written=4820
+        I/O Timings: shared read=9.394, temp write=16.188
+        ->  CTE Scan on m  (cost=0.00..9631.64 rows=481582 width=524) (actual time=0.214..1020.975 rows=459399.00 loops=1)
+              Storage: Disk  Maximum Storage: 38560kB
+              Buffers: shared hit=13709 read=304927, temp written=4820
+              I/O Timings: shared read=9.394, temp write=16.188
+Planning:
+  Buffers: shared hit=453
+Planning Time: 1.028 ms
+JIT:
+  Functions: 5
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.470 ms (Deform 0.103 ms), Inlining 0.000 ms, Optimization 0.223 ms, Emission 2.852 ms, Total 3.545 ms
+Execution Time: 1078.713 ms

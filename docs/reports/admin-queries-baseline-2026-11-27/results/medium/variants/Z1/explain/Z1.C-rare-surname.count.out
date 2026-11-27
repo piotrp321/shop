@@ -1,0 +1,27 @@
+-- customers, fragment rare-surname 'domagała', count by the bigrams
+-- hits = 115
+SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('domagała')) AND lower(c.email) LIKE '%' || lower('domagała') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('domagała')) AND lower(c.full_name) LIKE '%' || lower('domagała') || '%')) LIMIT 10001) bounded;
+
+Aggregate  (cost=183.78..183.79 rows=1 width=8) (actual time=6.028..6.029 rows=1.00 loops=1)
+  Buffers: shared hit=172
+  ->  Limit  (cost=179.24..183.77 rows=1 width=4) (actual time=1.069..6.020 rows=115.00 loops=1)
+        Buffers: shared hit=172
+        ->  Bitmap Heap Scan on ordering_customer c  (cost=179.24..183.77 rows=1 width=4) (actual time=1.068..6.011 rows=115.00 loops=1)
+              Recheck Cond: ((perf_bigrams(lower((email)::text)) @> '{ag,ał,do,ga,ła,ma,om}'::text[]) OR (perf_bigrams(lower((full_name)::text)) @> '{ag,ał,do,ga,ła,ma,om}'::text[]))
+              Filter: (((perf_bigrams(lower((email)::text)) @> '{ag,ał,do,ga,ła,ma,om}'::text[]) AND (lower((email)::text) ~~ '%domagała%'::text)) OR ((perf_bigrams(lower((full_name)::text)) @> '{ag,ał,do,ga,ła,ma,om}'::text[]) AND (lower((full_name)::text) ~~ '%domagała%'::text)))
+              Heap Blocks: exact=112
+              Buffers: shared hit=172
+              ->  BitmapOr  (cost=179.24..179.24 rows=1 width=0) (actual time=0.968..0.968 rows=0.00 loops=1)
+                    Buffers: shared hit=60
+                    ->  Bitmap Index Scan on proto_z1_customer_email  (cost=0.00..97.87 rows=1 width=0) (actual time=0.140..0.140 rows=0.00 loops=1)
+                          Index Cond: (perf_bigrams(lower((email)::text)) @> '{ag,ał,do,ga,ła,ma,om}'::text[])
+                          Index Searches: 1
+                          Buffers: shared hit=22
+                    ->  Bitmap Index Scan on proto_z1_customer_name  (cost=0.00..81.37 rows=1 width=0) (actual time=0.828..0.828 rows=123.00 loops=1)
+                          Index Cond: (perf_bigrams(lower((full_name)::text)) @> '{ag,ał,do,ga,ła,ma,om}'::text[])
+                          Index Searches: 1
+                          Buffers: shared hit=38
+Planning:
+  Buffers: shared hit=467
+Planning Time: 1.228 ms
+Execution Time: 6.051 ms

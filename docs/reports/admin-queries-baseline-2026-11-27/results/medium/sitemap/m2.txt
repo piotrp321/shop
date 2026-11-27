@@ -1,0 +1,6 @@
+== target 100
+ANALYZE ms: 2094
+NOTICE:  M2: 101 bounds (10015 rows each), 101 candidates, 102 chunks, 0 over the limit, largest 11326, smallest 8, verification 225 ms
+== target 1000
+ANALYZE ms: 26784
+NOTICE:  M2: 1001 bounds (1001 rows each), 101 candidates, 102 chunks, 0 over the limit, largest 10340, smallest 0, verification 127 ms

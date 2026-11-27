@@ -1,0 +1,36 @@
+-- phrase brand-common 'rowerowa', sort name: the candidates from the trigrams
+-- hits = 60168
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%rowerowa%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26;
+
+Limit  (cost=173559.48..173559.55 rows=26 width=524) (actual time=303.307..303.320 rows=26.00 loops=1)
+  Buffers: shared hit=578 read=53559 written=2, temp written=622
+  I/O Timings: shared read=6.855 write=0.046, temp write=1.922
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=795.75..170153.12 rows=70231 width=71) (actual time=38.725..273.755 rows=60168.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%rowerowa%'::text)
+          Heap Blocks: exact=52880
+          Buffers: shared hit=572 read=53559 written=2
+          I/O Timings: shared read=6.855 write=0.046
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..778.19 rows=70231 width=0) (actual time=31.012..31.012 rows=62606.00 loops=1)
+                Index Cond: ((name)::text ~~* '%rowerowa%'::text)
+                Index Searches: 1
+                Buffers: shared hit=572 read=679
+                I/O Timings: shared read=2.665
+  ->  Sort  (cost=3406.36..3581.94 rows=70231 width=524) (actual time=299.662..299.663 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=578 read=53559 written=2, temp written=622
+        I/O Timings: shared read=6.855 write=0.046, temp write=1.922
+        ->  CTE Scan on m  (cost=0.00..1404.62 rows=70231 width=524) (actual time=38.729..290.644 rows=60168.00 loops=1)
+              Storage: Disk  Maximum Storage: 4976kB
+              Buffers: shared hit=572 read=53559 written=2, temp written=622
+              I/O Timings: shared read=6.855 write=0.046, temp write=1.922
+Planning:
+  Buffers: shared hit=360 read=93
+  I/O Timings: shared read=0.458
+Planning Time: 1.640 ms
+JIT:
+  Functions: 5
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.224 ms (Deform 0.122 ms), Inlining 0.000 ms, Optimization 0.245 ms, Emission 3.410 ms, Total 3.879 ms
+Execution Time: 317.447 ms

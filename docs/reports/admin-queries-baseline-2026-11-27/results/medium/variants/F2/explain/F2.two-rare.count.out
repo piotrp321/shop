@@ -1,0 +1,24 @@
+-- phrase two-rare 'qx', count by the candidates
+-- hits = 0
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('qx') AND p.name ILIKE '%qx%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded;
+
+Aggregate  (cost=4938.26..4938.27 rows=1 width=8) (actual time=0.017..0.017 rows=1.00 loops=1)
+  Buffers: shared hit=3
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=80.51..4938.22 rows=1 width=4) (actual time=0.015..0.015 rows=0.00 loops=1)
+          Recheck Cond: (perf_bigrams((name)::text) @> '{qx}'::text[])
+          Filter: ((name)::text ~~* '%qx%'::text)
+          Buffers: shared hit=3
+          ->  Bitmap Index Scan on proto_f2_name_bigrams  (cost=0.00..80.51 rows=1192 width=0) (actual time=0.012..0.012 rows=0.00 loops=1)
+                Index Cond: (perf_bigrams((name)::text) @> '{qx}'::text[])
+                Index Searches: 1
+                Buffers: shared hit=3
+  ->  Limit  (cost=0.00..0.02 rows=1 width=4) (actual time=0.016..0.016 rows=0.00 loops=1)
+        Buffers: shared hit=3
+        ->  CTE Scan on m  (cost=0.00..0.02 rows=1 width=4) (actual time=0.016..0.016 rows=0.00 loops=1)
+              Storage: Memory  Maximum Storage: 17kB
+              Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=522
+Planning Time: 1.195 ms
+Execution Time: 0.035 ms

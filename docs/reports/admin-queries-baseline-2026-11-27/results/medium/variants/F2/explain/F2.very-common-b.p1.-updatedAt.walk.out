@@ -1,0 +1,33 @@
+-- phrase very-common-b 'ka', sort -updatedAt: the walk of 20000 rows
+-- budget = 20000
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT w.id FROM (SELECT id, name, updated_at FROM catalog_product ORDER BY updated_at DESC, id DESC LIMIT 20000) w WHERE w.name ILIKE '%ka%') ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=83054.44..83054.50 rows=26 width=71) (actual time=48.349..48.363 rows=26.00 loops=1)
+  Buffers: shared hit=57258
+  ->  Sort  (cost=83054.44..83078.68 rows=9697 width=71) (actual time=48.348..48.351 rows=26.00 loops=1)
+        Sort Key: p.updated_at DESC, p.id DESC
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=57258
+        ->  Nested Loop  (cost=17475.13..82778.05 rows=9697 width=71) (actual time=27.412..47.399 rows=9296.00 loops=1)
+              Buffers: shared hit=57252
+              ->  HashAggregate  (cost=17474.71..17571.68 rows=9697 width=16) (actual time=27.399..28.381 rows=9296.00 loops=1)
+                    Group Key: w.id
+                    Batches: 1  Memory Usage: 793kB
+                    Buffers: shared hit=20068
+                    ->  Subquery Scan on w  (cost=0.42..17450.46 rows=9697 width=16) (actual time=0.014..25.722 rows=9296.00 loops=1)
+                          Filter: ((w.name)::text ~~* '%ka%'::text)
+                          Rows Removed by Filter: 10704
+                          Buffers: shared hit=20068
+                          ->  Limit  (cost=0.42..17200.46 rows=20000 width=62) (actual time=0.011..14.205 rows=20000.00 loops=1)
+                                Buffers: shared hit=20068
+                                ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product  (cost=0.42..854208.49 rows=993263 width=62) (actual time=0.011..13.169 rows=20000.00 loops=1)
+                                      Index Searches: 1
+                                      Buffers: shared hit=20068
+              ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..6.79 rows=1 width=71) (actual time=0.002..0.002 rows=1.00 loops=9296)
+                    Index Cond: (id = w.id)
+                    Index Searches: 9296
+                    Buffers: shared hit=37184
+Planning:
+  Buffers: shared hit=524
+Planning Time: 0.957 ms
+Execution Time: 48.566 ms

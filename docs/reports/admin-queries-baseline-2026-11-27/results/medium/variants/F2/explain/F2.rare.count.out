@@ -1,0 +1,26 @@
+-- phrase rare 'ravotar', count by the candidates
+-- hits = 2980
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('ravotar') AND p.name ILIKE '%ravotar%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded;
+
+Aggregate  (cost=494.24..494.25 rows=1 width=8) (actual time=19.828..19.828 rows=1.00 loops=1)
+  Buffers: shared hit=3445
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=443.25..494.21 rows=1 width=4) (actual time=14.354..19.181 rows=2980.00 loops=1)
+          Recheck Cond: (perf_bigrams((name)::text) @> '{ar,av,ot,ra,ta,vo}'::text[])
+          Filter: ((name)::text ~~* '%ravotar%'::text)
+          Rows Removed by Filter: 13
+          Heap Blocks: exact=2977
+          Buffers: shared hit=3445
+          ->  Bitmap Index Scan on proto_f2_name_bigrams  (cost=0.00..443.25 rows=12 width=0) (actual time=14.084..14.084 rows=3019.00 loops=1)
+                Index Cond: (perf_bigrams((name)::text) @> '{ar,av,ot,ra,ta,vo}'::text[])
+                Index Searches: 1
+                Buffers: shared hit=468
+  ->  Limit  (cost=0.00..0.02 rows=1 width=4) (actual time=14.357..19.711 rows=2980.00 loops=1)
+        Buffers: shared hit=3445
+        ->  CTE Scan on m  (cost=0.00..0.02 rows=1 width=4) (actual time=14.356..19.556 rows=2980.00 loops=1)
+              Storage: Memory  Maximum Storage: 126kB
+              Buffers: shared hit=3445
+Planning:
+  Buffers: shared hit=522
+Planning Time: 1.326 ms
+Execution Time: 19.864 ms

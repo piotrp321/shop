@@ -1,0 +1,26 @@
+-- phrase type-early 'bagażnik', sort name: the candidates from the trigrams
+-- hits = 8625
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%bagażnik%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26;
+
+Limit  (cost=35473.12..35473.19 rows=26 width=524) (actual time=24.445..24.455 rows=26.00 loops=1)
+  Buffers: shared hit=8718
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=566.77..34986.50 rows=10033 width=71) (actual time=3.777..20.235 rows=8625.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%bagażnik%'::text)
+          Heap Blocks: exact=8508
+          Buffers: shared hit=8712
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..564.26 rows=10033 width=0) (actual time=2.856..2.857 rows=8981.00 loops=1)
+                Index Cond: ((name)::text ~~* '%bagażnik%'::text)
+                Index Searches: 1
+                Buffers: shared hit=204
+  ->  Sort  (cost=486.62..511.71 rows=10033 width=524) (actual time=24.443..24.444 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=8718
+        ->  CTE Scan on m  (cost=0.00..200.66 rows=10033 width=524) (actual time=3.779..21.938 rows=8625.00 loops=1)
+              Storage: Memory  Maximum Storage: 965kB
+              Buffers: shared hit=8712
+Planning:
+  Buffers: shared hit=453
+Planning Time: 1.144 ms
+Execution Time: 24.611 ms

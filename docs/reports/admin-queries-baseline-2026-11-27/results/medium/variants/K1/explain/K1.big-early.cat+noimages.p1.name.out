@@ -1,0 +1,51 @@
+-- category big-early + without images, page 1, sort name
+-- products in the subtree = 15199
+WITH additional AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]) AND NOT (p.primary_category_id = ANY('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[])) AND p.images = '[]'::jsonb) SELECT id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0' AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT id, name, tax_class, updated_at FROM additional ORDER BY name ASC, id ASC LIMIT 26)) u ORDER BY name, id LIMIT 26;
+
+Limit  (cost=12270.40..14645.96 rows=26 width=298) (actual time=5.196..7.353 rows=26.00 loops=1)
+  Buffers: shared hit=9130
+  CTE additional
+    ->  Gather  (cost=1029.25..12267.65 rows=46 width=71) (actual time=0.955..6.090 rows=51.00 loops=1)
+          Workers Planned: 1
+          Workers Launched: 1
+          Buffers: shared hit=8043
+          ->  Nested Loop  (cost=29.25..11263.05 rows=27 width=71) (actual time=0.601..3.864 rows=25.50 loops=2)
+                Buffers: shared hit=8043
+                ->  Parallel Bitmap Heap Scan on catalog_product_category pc  (cost=28.84..1591.13 rows=1256 width=16) (actual time=0.246..1.058 rows=1137.50 loops=2)
+                      Recheck Cond: (category_id = ANY ('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]))
+                      Heap Blocks: exact=691
+                      Buffers: shared hit=1166
+                      Worker 0:  Heap Blocks: exact=452
+                      ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..28.31 rows=2135 width=0) (actual time=0.338..0.338 rows=2275.00 loops=1)
+                            Index Cond: (category_id = ANY ('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]))
+                            Index Searches: 1
+                            Buffers: shared hit=3
+                ->  Index Scan using catalog_product_without_images_idx on catalog_product p_1  (cost=0.41..7.70 rows=1 width=71) (actual time=0.002..0.002 rows=0.02 loops=2275)
+                      Index Cond: (id = pc.product_id)
+                      Filter: (primary_category_id <> ALL ('{22652b43-0274-5fd4-b1b8-76cd4469ead0}'::uuid[]))
+                      Index Searches: 2275
+                      Buffers: shared hit=6877
+  ->  Merge Append  (cost=2.75..4753.87 rows=52 width=298) (actual time=5.195..6.328 rows=26.00 loops=1)
+        Sort Key: p.name, p.id
+        Buffers: shared hit=9130
+        ->  Limit  (cost=0.55..4751.08 rows=26 width=71) (actual time=0.041..1.170 rows=26.00 loops=1)
+              Buffers: shared hit=1087
+              ->  Index Scan using proto_k1_name on catalog_product p  (cost=0.55..51891.01 rows=284 width=71) (actual time=0.041..1.168 rows=26.00 loops=1)
+                    Index Cond: (primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0'::uuid)
+                    Filter: (images = '[]'::jsonb)
+                    Rows Removed by Filter: 1045
+                    Index Searches: 1
+                    Buffers: shared hit=1087
+        ->  Limit  (cost=2.19..2.26 rows=26 width=524) (actual time=5.152..5.153 rows=1.00 loops=1)
+              Buffers: shared hit=8043
+              ->  Sort  (cost=2.19..2.31 rows=46 width=524) (actual time=5.152..5.152 rows=1.00 loops=1)
+                    Sort Key: additional.name, additional.id
+                    Sort Method: quicksort  Memory: 31kB
+                    Buffers: shared hit=8043
+                    ->  CTE Scan on additional  (cost=0.00..0.92 rows=46 width=524) (actual time=0.957..5.082 rows=51.00 loops=1)
+                          Storage: Memory  Maximum Storage: 22kB
+                          Buffers: shared hit=8043
+Planning:
+  Buffers: shared hit=568
+Planning Time: 1.076 ms
+Execution Time: 7.416 ms

@@ -1,0 +1,32 @@
+-- phrase punct-2 '---', count by the candidates
+-- hits = 0
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%---%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded;
+
+Aggregate  (cost=79927.28..79927.29 rows=1 width=8) (actual time=248.123..252.472 rows=1.00 loops=1)
+  Buffers: shared hit=852993 read=12776
+  I/O Timings: shared read=32.923
+  CTE m
+    ->  Gather  (cost=1000.55..79924.06 rows=99 width=4) (actual time=248.118..252.466 rows=0.00 loops=1)
+          Workers Planned: 2
+          Workers Launched: 2
+          Buffers: shared hit=852993 read=12776
+          I/O Timings: shared read=32.923
+          ->  Parallel Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..78914.16 rows=41 width=4) (actual time=246.277..246.277 rows=0.00 loops=3)
+                Filter: ((name)::text ~~* '%---%'::text)
+                Rows Removed by Filter: 333397
+                Heap Fetches: 19306
+                Index Searches: 1
+                Buffers: shared hit=852993 read=12776
+                I/O Timings: shared read=32.923
+  ->  Limit  (cost=0.00..1.98 rows=99 width=4) (actual time=248.120..248.121 rows=0.00 loops=1)
+        Buffers: shared hit=852993 read=12776
+        I/O Timings: shared read=32.923
+        ->  CTE Scan on m  (cost=0.00..1.98 rows=99 width=4) (actual time=248.119..248.119 rows=0.00 loops=1)
+              Storage: Memory  Maximum Storage: 17kB
+              Buffers: shared hit=852993 read=12776
+              I/O Timings: shared read=32.923
+Planning:
+  Buffers: shared hit=373 read=70
+  I/O Timings: shared read=0.328
+Planning Time: 1.353 ms
+Execution Time: 252.524 ms

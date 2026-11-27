@@ -1,0 +1,54 @@
+-- category mid + common phrase, page 1, sort name
+-- products in the subtree = 10585
+WITH additional AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]) AND p.name ILIKE '%pro%') SELECT DISTINCT ON (name, id) id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c2a92470-bddd-5c3a-9b84-ed06bfd4caad' AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26) UNION ALL (SELECT id, name, tax_class, updated_at FROM additional ORDER BY name ASC, id ASC LIMIT 26)) u ORDER BY name, id LIMIT 26;
+
+Limit  (cost=11916.37..12240.08 rows=26 width=298) (actual time=6.764..8.509 rows=26.00 loops=1)
+  Buffers: shared hit=8638
+  CTE additional
+    ->  Gather  (cost=1028.08..11900.28 rows=320 width=71) (actual time=0.823..8.288 rows=184.00 loops=1)
+          Workers Planned: 1
+          Workers Launched: 1
+          Buffers: shared hit=8629
+          ->  Nested Loop  (cost=28.08..10868.28 rows=188 width=71) (actual time=0.365..5.311 rows=92.00 loops=2)
+                Buffers: shared hit=8629
+                ->  Parallel Bitmap Heap Scan on catalog_product_category pc  (cost=27.66..1593.24 rows=1166 width=16) (actual time=0.252..1.317 rows=942.00 loops=2)
+                      Recheck Cond: (category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]))
+                      Heap Blocks: exact=650
+                      Buffers: shared hit=1092
+                      Worker 0:  Heap Blocks: exact=419
+                      ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..27.16 rows=1982 width=0) (actual time=0.352..0.352 rows=1884.00 loops=1)
+                            Index Cond: (category_id = ANY ('{c2a92470-bddd-5c3a-9b84-ed06bfd4caad}'::uuid[]))
+                            Index Searches: 1
+                            Buffers: shared hit=3
+                ->  Index Scan using catalog_product_pkey on catalog_product p_1  (cost=0.42..7.95 rows=1 width=71) (actual time=0.004..0.004 rows=0.10 loops=1884)
+                      Index Cond: (id = pc.product_id)
+                      Filter: ((name)::text ~~* '%pro%'::text)
+                      Rows Removed by Filter: 1
+                      Index Searches: 1884
+                      Buffers: shared hit=7537
+  ->  Unique  (cost=16.08..663.50 rows=52 width=298) (actual time=6.763..6.772 rows=26.00 loops=1)
+        Buffers: shared hit=8638
+        ->  Merge Append  (cost=16.08..663.24 rows=52 width=298) (actual time=6.762..6.768 rows=26.00 loops=1)
+              Sort Key: p.name, p.id
+              Buffers: shared hit=8638
+              ->  Limit  (cost=0.55..647.13 rows=26 width=71) (actual time=0.029..0.029 rows=1.00 loops=1)
+                    Buffers: shared hit=9
+                    ->  Index Scan using proto_k1_name on catalog_product p  (cost=0.55..31409.33 rows=1263 width=71) (actual time=0.029..0.029 rows=1.00 loops=1)
+                          Index Cond: (primary_category_id = 'c2a92470-bddd-5c3a-9b84-ed06bfd4caad'::uuid)
+                          Filter: ((name)::text ~~* '%pro%'::text)
+                          Rows Removed by Filter: 4
+                          Index Searches: 1
+                          Buffers: shared hit=9
+              ->  Limit  (cost=15.52..15.59 rows=26 width=524) (actual time=6.732..6.735 rows=26.00 loops=1)
+                    Buffers: shared hit=8629
+                    ->  Sort  (cost=15.52..16.32 rows=320 width=524) (actual time=6.732..6.733 rows=26.00 loops=1)
+                          Sort Key: additional.name, additional.id
+                          Sort Method: top-N heapsort  Memory: 31kB
+                          Buffers: shared hit=8629
+                          ->  CTE Scan on additional  (cost=0.00..6.40 rows=320 width=524) (actual time=0.825..6.600 rows=184.00 loops=1)
+                                Storage: Memory  Maximum Storage: 35kB
+                                Buffers: shared hit=8629
+Planning:
+  Buffers: shared hit=565
+Planning Time: 1.488 ms
+Execution Time: 8.577 ms

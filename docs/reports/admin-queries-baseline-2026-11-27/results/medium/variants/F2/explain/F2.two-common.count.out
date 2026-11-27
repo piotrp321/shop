@@ -1,0 +1,30 @@
+-- phrase two-common 'er', count by the candidates
+-- hits = 258773
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE perf_bigrams(p.name) @> perf_bigrams('er') AND p.name ILIKE '%er%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded;
+
+Aggregate  (cost=192402.94..192402.95 rows=1 width=8) (actual time=134.425..138.111 rows=1.00 loops=1)
+  Buffers: shared hit=55982
+  CTE m
+    ->  Gather  (cost=1000.55..192077.91 rows=76642 width=4) (actual time=0.514..132.660 rows=10001.00 loops=1)
+          Workers Planned: 2
+          Workers Launched: 2
+          Buffers: shared hit=55982
+          ->  Parallel Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..183413.71 rows=31934 width=4) (actual time=1.757..120.640 rows=3612.00 loops=3)
+                Filter: (((name)::text ~~* '%er%'::text) AND (perf_bigrams((name)::text) @> '{er}'::text[]))
+                Rows Removed by Filter: 17573
+                Heap Fetches: 1222
+                Index Searches: 1
+                Buffers: shared hit=55982
+  ->  Limit  (cost=0.00..200.02 rows=10001 width=4) (actual time=3.285..133.919 rows=10001.00 loops=1)
+        Buffers: shared hit=19332
+        ->  CTE Scan on m  (cost=0.00..1532.84 rows=76642 width=4) (actual time=0.516..130.546 rows=10001.00 loops=1)
+              Storage: Memory  Maximum Storage: 441kB
+              Buffers: shared hit=19332
+Planning:
+  Buffers: shared hit=522
+Planning Time: 1.268 ms
+JIT:
+  Functions: 11
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.329 ms (Deform 0.000 ms), Inlining 0.000 ms, Optimization 0.335 ms, Emission 6.091 ms, Total 6.756 ms
+Execution Time: 149.392 ms
