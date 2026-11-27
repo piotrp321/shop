@@ -15,6 +15,10 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
   (`test/cookies.sh`). Sklep za ingressem z TLS (klaster) ustawia ciasteczka z `Secure`, a k6 woła go po `http://store:3000`, gdzie
   takich ciasteczek nie odsyła; gdy `STORE_URL` jest `http:`, a `STORE_ORIGIN` `https:`, klient odsyła je mimo to, jak przeglądarka.
   CI uruchamia ten cel po testach E2E.
+- `make load-panel` – W7 panelu (program wydajności, PERF-7): mieszanka żądań panelu administracyjnego w tempie jego użytkowników,
+  na działającym stosie z danymi profilu (`make seed-scale`); `make load-panel PANEL_MODE=p4 SHOP_URLS_FILE=…` – P4 (wpływ
+  panelu na sklep). Opis: „Panel (W7 i P4)” niżej. `make load-panel-check` – testy narzędzi na ścieżkach błędu, bez stosu
+  (należy do `make test`).
 - `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` – pomiar (`infra/k8s/scripts/load.sh`): rozgrzanie (`warmup.js`),
   przebieg rosnący do nasycenia (`saturate.js`), przebieg stały (`steady.js`), na danych z seeda albo z generatora
   (`LOAD_DATA=seed|medium|server|full`). Opis, kody wyjścia i ustawienia są w nagłówku skryptu i w `CLAUDE.md`.
@@ -28,6 +32,11 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
 | `saturate.js` | tempo iteracji rośnie schodkami (`RAMP_*`) aż p95 odpowiedzi schodka przekroczy 2 s albo błędy 5xx i sieci 1%; wynik: `ramp.json` i `steady-rate` (70% przepustowości) |
 | `steady.js` | stałe tempo odczytu i koszyka (`STEADY_RATE`) oraz checkout o stałej, ograniczonej równoległości (`CHECKOUT_VUS`); wynik: `steady.json` |
 | `baseline.py` | pomiar zimnej i ciepłej ścieżki katalogu samymi GET (program wydajności, PERF-0: W1–W4, W8), także na worf.pl: mieszanka adresów z danych, tryby pojedynczy, otwarty (stałe tempo) i skok; czasy klienta, szacunek sieci, nagłówki cache, kontrakt odpowiedzi; dowodem zimnej ścieżki są tylko wiersze raportu `cache=miss` (chybienie warstwy własnego celu). Python i curl na hoście; użycie i kody wyjścia w nagłówku |
+| `panel.sh` | `make load-panel`: jedno polecenie dla W7 i P4: token administratora, mieszanka z danych, k6, trzy przebiegi, raport |
+| `panel.js` | scenariusz k6 panelu (mieszanka w modelu otwartym, wątki najgorszych przypadków, odczyt granic mapy strony, ruch sklepu dla P4) |
+| `panel_token.py` | token administratora bez przeglądarki (kod autoryzacyjny z PKCE, hasło i TOTP konta demo), z tokenem odświeżania |
+| `panel_mix.py` | mieszanka żądań panelu z danych przez API (klasy: listy, strony głębokie, frazy według częstości, kategorie według rozmiaru, kombinacje, zamówienia, klienci, kody, dashboard) |
+| `panel_report.py` | mediana przebiegów i rozrzut, werdykt względem W7, różnica z panelem i bez dla P4, obciążenie PostgreSQL |
 | `lib/` | konfiguracja z `ENV`, dane z publicznego API (`setup()`), przepływy, metryki, podsumowania |
 
 ## Scenariusze i dane
@@ -78,3 +87,41 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
   benchmarkiem checkoutu, ani przepustowością systemu.
 - Ramp kończy się na nasyceniu przez próg `abortOnFail` danego schodka (po połowie jego długości, najwyżej po 10 s), więc
   kod wyjścia k6 po takim przebiegu to 99 i `load.sh` uznaje go za normalny koniec.
+
+## Panel (W7 i P4)
+
+Wymaganie W7 (`docs/features/performance-program/plan.md`): listy, wyszukiwanie i filtry panelu mają p50 100 ms, p95 500 ms
+i maksimum 2000 ms przy pracy użytkowników panelu; P4 (`docs/features/admin-queries/spec.md`, „Wpływ na sklep”): praca panelu nie
+pogarsza sklepu. Pomiary biegną po HTTP przez API (`/api/v1/admin/...`), czas to czas klienta k6 w sieci stosu, więc bliski czasowi
+serwera.
+
+```sh
+make load-panel                                  # W7: 3 przebiegi mieszanki po 300 s, 5 żądań/s
+make load-panel PANEL_MODE=p4 SHOP_URLS_FILE=<plik>   # P4: 3 przebiegi bez panelu i 3 z panelem, na przemian
+```
+
+- **Token:** `panel_token.py` loguje się jak panel i testy E2E (przepływ kodu z PKCE, klient `admin` realmu `backoffice`, hasło
+  i kod TOTP konta `admin` z danych demo; inne konto: `PANEL_USER`, `PANEL_PASSWORD`, `PANEL_TOTP_SECRET`). Token dostępu żyje
+  5 minut, więc k6 odnawia go tokenem odświeżania (każdy wirtualny użytkownik osobno); odmowa Keycloaka kończy przebieg (kod 108).
+- **Mieszanka:** `panel_mix.py` czyta dane przez API (nazwy produktów z losowych porcji mapy strony, liczby trafień fraz
+  i kategorii z pierwszej strony list, kursory stron głębokich z `next`) i zapisuje plik `mix.json` w katalogu wyników razem
+  z klasami żądań, wagami i sposobem losowania. `PANEL_MIX=<plik>` używa gotowej mieszanki, więc ta sama jest przed zmianą
+  i po niej. Klasy fraz i kategorii wynikają z liczby trafień (brak, rzadka do 20, średnia, częsta ponad limit 10 000, 2 znaki,
+  sama interpunkcja, polskie znaki; kategoria pusta, mała do 20, średnia, duża, dział).
+- **W7:** żądania mieszanki w stałym tempie (`PANEL_RATE`, domyślnie 5/s; propozycja ze specyfikacji, niezatwierdzona przez
+  właściciela) przez `PANEL_SECONDS` (300). Raport: p50, p95, p99 i maksimum całości i każdej klasy (mediana trzech przebiegów
+  i najniższy–najwyższy), błędy, werdykt względem W7.
+- **P4:** w tle sklep (API): `SHOP_LISTING_RATE` zimnych listingów na sekundę (adresy z `python3 load/baseline.py urls <api>
+  <sklep> PLIK --listings N`, każdy raz; N co najmniej `SHOP_LISTING_RATE × PANEL_SECONDS`) i `SHOP_CART_RATE` koszyków na sekundę
+  (utworzenie, dodanie, odczyt, zmiana ilości: W5). Przebieg „z panelem” dodaje mieszankę, `PANEL_WORST_VUS` (8) wątków
+  najcięższych klas bez przerwy i zimne obliczenie granic mapy strony co `BOUNDARIES_EVERY` (30) sekund (cache `cache.sitemap`
+  jest czyszczony w tym czasie). Przy każdym przebiegu zapisywane są liczniki PostgreSQL przed i po (odczyty z dysku i trafienia
+  w bufory, bajty tymczasowe, WAL) oraz próbki co 5 s (aktywne sesje, CPU kontenerów). Kryterium: różnica median z panelem i bez
+  nie większa niż rozrzut przebiegów bez panelu.
+- **Wyniki:** `PANEL_OUT` (domyślnie nowy katalog w `$TMPDIR`): `mix.json`, `token.json` (krótkotrwały, nie commitować),
+  `w7-runN/` albo `p4-with(out)-runN/` z `panel.json`, `k6.txt`, `pg-before.json`, `pg-after.json`, `samples.txt`, oraz
+  `report.txt`. Kod wyjścia: 0 gotowe; 2 złe ustawienia (brak stosu, tokenu, pliku mieszanki, zły tryb); kod k6 (99, 108) przy
+  niepowodzeniu przebiegu.
+- **Ograniczenia:** czasy zależą od trybu API (pomiar na `APP_ENV=prod`, w trybie `dev` dochodzi ok. 0,4 s na żądanie), od pamięci
+  Postgresa i od obciążenia maszyny; lokalny pomiar jest porównaniem przed i po, nie wynikiem serwera. Pomiar na worf.pl wymaga
+  zgody właściciela i tylko żądań GET (mieszanka panelu jest tylko do odczytu; sklep w P4 zakłada koszyki, więc to zapisy).
