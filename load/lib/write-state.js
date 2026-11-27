@@ -249,3 +249,5 @@ export function isCatchUp(dueMs, sentMs, rate) {
 export function catchUpStats(perWindow) {
   return { writes: perWindow.reduce((sum, n) => sum + n, 0), maxInWindow: perWindow.reduce((max, n) => Math.max(max, n), 0) };
 }
+
+export function stallTolerance(overrideMs) {}
