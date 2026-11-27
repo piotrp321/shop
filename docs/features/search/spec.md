@@ -741,6 +741,9 @@ Kryteria pomiarowe są w planie programu (PERF-2, „Kryteria etapu B”); tu na
   `_msearch`, czyli wolniej. Dane `server` mają ok. 400 tokenów (180 kategorii, 21 osi, 208 wartości).
 - Fasety w request cache są ważne do odświeżenia indeksu; przy ciągłych zapisach żyją tyle co `refresh_interval`
   (M4, warunkowo 5 s).
+- Części jednego `_msearch` (i kolejne `_msearch` przepełnienia) mogą zobaczyć różne odświeżenia indeksu, więc przy
+  ciągłych zapisach liczby faset mogą chwilowo różnić się od `total` o produkty zmienione w jednym odświeżeniu (do
+  TTL Varnisha); wspólnego punktu w czasie dla wszystkich części nie ma, bo dodałby koszt każdemu listingowi.
 - Wartości osi są wolnym tekstem: różne formy („czarne”, „czarna”) i różna wielkość liter tworzą osobne wartości fasety.
 - Cena „od” na kafelku i sortowanie po cenie dotyczą całego produktu, a filtr i podpowiedzi ceny wariantów
   spełniających filtry: przy „Cena 100–150 zł” kafelek może pokazać „od 90 zł” (tańszy wariant poza filtrem osi).

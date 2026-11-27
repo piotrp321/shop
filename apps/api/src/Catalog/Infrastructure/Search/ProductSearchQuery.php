@@ -97,7 +97,7 @@ final readonly class ProductSearchQuery
                     'aggs' => ['min' => ['min' => ['field' => 'from_gross']], 'max' => ['max' => ['field' => 'max_gross']]],
                 ];
             }
-            // Three axes or more: nothing to count.
+            // No "aggs" without any: three axes or more leave no group and no price range to count.
             $search = ['query' => $this->query([]), ...$page, ...self::aggs($aggregations)];
             if ([] !== $all) {
                 $search['post_filter'] = ['bool' => ['filter' => $all]];
