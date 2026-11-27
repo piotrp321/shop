@@ -133,7 +133,8 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
 - `options`, `axes` i tokeny: te same pary oś–wartość, dokładnie jak w Catalog (bez zmiany wielkości liter); osie
   i wartości nie mają identyfikatorów, więc indeks używa ich nazw. Wariant domyślny (produkt bez osi) ma puste
   `options` i `axes`, a produkt bez osi nie ma tokenów `@` ani opcji. Pola pochodne (`axes`, tokeny, `purchasable`,
-  `buy_prices`, `max_gross`, `sort_path`) są zapisywane przy zapisie dokumentu, nie są czytane z powrotem.
+  `buy_prices`, `max_gross`) są zapisywane przy zapisie dokumentu, nie są czytane z powrotem. `sort_path` nie wynika
+  z innych pól, więc `ProductDocument` go nosi (`mainCategoryPath`) i odczyt go zwraca.
 - `gross`, `purchasable` i `from_gross` pochodzą z portu `ProductOfferFacts` (A1). Reguła „możliwy do kupienia”
   (`VariantOffer::isPurchasable`: cena istnieje i `available > 0`) i cena „od” (`ProductOfferSummary`) są tylko w Cart,
   więc indeks liczy je tak samo jak kafelek.

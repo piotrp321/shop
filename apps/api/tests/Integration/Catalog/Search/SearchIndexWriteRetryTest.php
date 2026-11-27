@@ -8,6 +8,7 @@ use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance;
+use App\Catalog\Infrastructure\Search\ProductIndexDefinition;
 use Elastic\Elasticsearch\Response\Elasticsearch;
 use PHPUnit\Framework\TestCase;
 
@@ -117,9 +118,9 @@ final class SearchIndexWriteRetryTest extends TestCase
         self::assertSame([], $this->sleeps);
     }
 
-    public function testAnIndexCreatedForARebuildIsFilledWithoutRefreshingAndRefreshesAgainOnVerify(): void
+    public function testAnIndexCreatedForARebuildIsFilledWithoutRefreshingAndGetsTheIntervalOfTheDefinitionOnVerify(): void
     {
-        $maintenance = $this->maintenance();
+        $maintenance = $this->maintenance(definition: new ProductIndexDefinition(1, 0, '5s'));
         $index = $maintenance->createIndex();
         $maintenance->write($index, self::documents(2));
 
@@ -127,12 +128,12 @@ final class SearchIndexWriteRetryTest extends TestCase
 
         $maintenance->verify($index, 2);
 
-        self::assertNull($this->refreshInterval($index), 'The default refresh interval was not restored.');
+        self::assertSame('5s', $this->refreshInterval($index), 'The refresh interval of the configuration was not set.');
     }
 
-    public function testTheIndexOfSetupKeepsTheDefaultRefreshInterval(): void
+    public function testTheIndexOfSetupHasTheRefreshIntervalOfTheDefinition(): void
     {
-        self::assertNull($this->refreshInterval($this->maintenance()->activeIndex()));
+        self::assertSame('1s', $this->refreshInterval($this->maintenance()->activeIndex()));
     }
 
     /**
@@ -180,6 +181,6 @@ final class SearchIndexWriteRetryTest extends TestCase
 
     private static function document(string $id, int $version): ProductDocument
     {
-        return new ProductDocument($id, $version, 'Name', 'slug-'.$id, '', 'c', ['c'], ['c'], null, [], [], null, ProductStatus::Published);
+        return new ProductDocument($id, $version, 'Name', 'slug-'.$id, '', 'c', 'c', ['c'], ['c'], null, [], [], null, ProductStatus::Published);
     }
 }

@@ -132,6 +132,6 @@ final class ProductIndexerTest extends TestCase
 
     private static function document(string $id, int $version, string $name = 'Name', ?string $slug = null): ProductDocument
     {
-        return new ProductDocument($id, $version, $name, $slug ?? 'slug-'.$id, '', 'c', ['c'], ['c'], ['key' => 'originals/x.jpg', 'alt' => 'Alt'], [], [], null, ProductStatus::Published);
+        return new ProductDocument($id, $version, $name, $slug ?? 'slug-'.$id, '', 'c', 'c', ['c'], ['c'], ['key' => 'originals/x.jpg', 'alt' => 'Alt'], [], [], null, ProductStatus::Published);
     }
 }

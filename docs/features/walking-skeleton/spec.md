@@ -396,8 +396,13 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   dokładnie jeden fizyczny indeks `<alias>_<UTC rrrrmmddggmmssmmm>_<6 znaków hex>`, więc kolejne przebudowy nie
   kolidują nazwami.
 - `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Shardy pochodzą ze zmiennej `SEARCH_SHARDS`
-  (bez niej 1; `docs/features/search/spec.md`, „Infrastruktura”), repliki z parametru (0). W `_meta.definition_hash` indeksu zapisany jest hash definicji (mapping i analiza, bez
-  shardów i replik), z którym porównujemy indeks przy `setup` (ostrzeżenie) i przed przepięciem (odmowa).
+  (bez niej 1; `docs/features/search/spec.md`, „Infrastruktura”), repliki z parametru (0), `refresh_interval`
+  ze zmiennej `SEARCH_REFRESH_INTERVAL` (bez niej `1s`; liczba z jednostką `ms` albo `s`). Indeks jest posortowany po
+  polu `sort_path` (rosnąco), więc produkty jednej kategorii leżą obok siebie. W `_meta.definition_hash` indeksu
+  zapisany jest hash definicji (mapping, analiza i sortowanie, bez shardów, replik i interwału odświeżania), z którym
+  porównujemy indeks przy `setup` (ostrzeżenie) i przed przepięciem (odmowa). Sortowanie jest ustawieniem statycznym
+  (zmiana wymaga przebudowy), interwał dynamicznym: `setup` ustawia go na indeksie aliasu, gdy jest inny, a przebudowa
+  wypełnia nowy indeks z `refresh_interval` `-1` i ustawia interwał z konfiguracji przed jawnym `refresh`.
 - Analiza: `polish_text` (tokenizer standardowy, `lowercase`, `polish_stem` z wtyczki `analysis-stempel`,
   `asciifolding`: „kurtki” i „kurtka” dają ten sam token) i `folded_text` (tokenizer standardowy, `lowercase`,
   `asciifolding`, bez stemmera: „Śpiwór” daje „spiwor”).
@@ -409,7 +414,8 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   powtórzeń), `main_image` (obiekt z `enabled: false`: `key`, `alt`), `variants` (`nested`, obiekt na wariant
   w kolejności Catalog: `gross` long, brak przy braku ceny; `purchasable` boolean;
   `options` keyword, pary `<oś>` U+001F `<wartość>` dokładnie jak w Catalog; `pairs` nested w wariancie, obiekt
-  `{axis, value}` (keyword) na parę; wariant domyślny bez osi ma puste `options` i `pairs`), `from_gross` (long, cena „od”; brak, gdy produkt nie ma wariantu możliwego do kupienia).
+  `{axis, value}` (keyword) na parę; wariant domyślny bez osi ma puste `options` i `pairs`), `from_gross` (long, cena „od”; brak, gdy produkt nie ma wariantu możliwego do kupienia), `sort_path` (keyword bez
+  indeksu: identyfikatory ścieżki głównej kategorii od korzenia połączone `/`, klucz sortowania indeksu).
   `nested` sprawia, że warunki na osie, cenę i dostępność dotyczą jednego wariantu. `gross`, `purchasable`
   i `from_gross` pochodzą z oferty Cart (port `ProductOfferFacts`, opis w `docs/features/search/spec.md`).
 
@@ -441,11 +447,14 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   liczenia, pojedynczych zapisów i operacji na aliasach; 30 s dla bulka, tworzenia indeksu i odświeżania.
 
 **`catalog:search-index:setup`**
-- Gdy nie ma aliasu ani indeksu o jego nazwie: tworzy indeks fizyczny i alias. Wywołany drugi raz nie robi nic.
+- Gdy nie ma aliasu ani indeksu o jego nazwie: tworzy indeks fizyczny i alias. Wywołany drugi raz nie tworzy
+  niczego nowego: na indeksie, na który wskazuje alias, ustawia tylko `refresh_interval` z `SEARCH_REFRESH_INTERVAL`,
+  gdy jest inny.
 - Kończy się błędem (kod 1, komunikat z instrukcją) i niczego nie zmienia, gdy: istnieje zwykły indeks o nazwie
   aliasu, alias wskazuje inną liczbę indeksów niż jeden albo trwa przebudowa albo inny `setup` (blokada przebudowy).
 - Gdy `definition_hash` indeksu, na który wskazuje alias, różni się od definicji, wypisuje ostrzeżenie z nazwą indeksu
-  i instrukcją `catalog:reindex`, niczego nie zmienia i kończy się kodem 0, żeby wdrożenie nowej definicji nie
+  i instrukcją `catalog:reindex`, poza `refresh_interval` niczego nie zmienia (interwał ustawia także na takim indeksie)
+  i kończy się kodem 0, żeby wdrożenie nowej definicji nie
   zatrzymało się na `setup`. Do przebudowy indeks ma starą definicję (`docs/features/search/spec.md`, „Infrastruktura”).
 - Wypisuje ostrzeżenie z listą indeksów `<alias>_*`, na które nie wskazuje alias. Nie usuwa ich.
 - `--recreate` usuwa alias i wszystkie indeksy `<alias>_*`, potem tworzy je od nowa. Przy `APP_ENV=prod` odmawia

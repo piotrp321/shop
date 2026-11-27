@@ -167,6 +167,15 @@ do_schema() {
       --set elasticsearch.shards=1025
     expect_failure "search index values without the shards" "missing property 'shards'" -f environments/ci/values.yaml \
       --set image.tag=$rev --set elasticsearch.shards=null
+    # The refresh interval of the search index: a whole number with ms or s, which the API would refuse only at its start.
+    for interval in "" 5 -1 1m 1.5s 0s 1S often; do
+      expect_failure "refresh interval of the search index '$interval'" "/elasticsearch/refreshInterval" -f environments/ci/values.yaml \
+        --set image.tag=$rev --set-string "elasticsearch.refreshInterval=$interval"
+    done
+    expect_failure "refresh interval of the search index that is a number" "/elasticsearch/refreshInterval" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set elasticsearch.refreshInterval=5
+    expect_failure "search index values without the refresh interval" "missing property 'refreshInterval'" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set elasticsearch.refreshInterval=null
     expect_failure "a time limit of the rebuild that is not a number" "/reindex/activeDeadlineSeconds" -f environments/ci/values.yaml \
       --set image.tag=$rev --set-string reindex.activeDeadlineSeconds=1h
     expect_failure "a value of reindex that does not exist" "'schedule' not allowed" -f environments/ci/values.yaml --set image.tag=$rev \

@@ -10,21 +10,28 @@ use App\Catalog\Application\Search\VariantDocument;
 use App\Catalog\Domain\Product\ProductStatus;
 
 /**
- * Settings and mapping of a physical product index. The hash of the definition (mapping and analysis, without
- * shards and replicas) is stored in the index's _meta.definition_hash, so an index built from another definition
- * is detected at setup and before switching the alias.
+ * Settings and mapping of a physical product index. The hash of the definition (mapping, analysis and the sorting of
+ * the index, without shards, replicas and the refresh interval) is stored in the index's _meta.definition_hash, so an
+ * index built from another definition is detected at setup and before switching the alias. The sorting is a static
+ * setting of an index, so changing it takes a rebuild; the refresh interval is dynamic, setup applies it to the index
+ * that exists.
  */
 final readonly class ProductIndexDefinition
 {
     private const string SORT_NORMALIZER = 'sort_normalizer';
     private const string POLISH_TEXT = 'polish_text';
     private const string FOLDED_TEXT = 'folded_text';
+    // Documents of one category lie next to each other in the segments (spec M3).
+    private const string SORT_FIELD = 'sort_path';
+    // A whole number with ms or s; \z, not $, which also matches before a final newline.
+    private const string REFRESH_INTERVAL_FORMAT = '/\A[1-9][0-9]*(?:ms|s)\z/';
 
     /**
-     * @param int $shards   the primary shards of a new index, from SEARCH_SHARDS; an index that exists keeps its own
-     * @param int $replicas the replicas of every shard
+     * @param int    $shards          the primary shards of a new index, from SEARCH_SHARDS; an index that exists keeps its own
+     * @param int    $replicas        the replicas of every shard
+     * @param string $refreshInterval the refresh interval of the index once it is filled, from SEARCH_REFRESH_INTERVAL
      */
-    public function __construct(private int $shards, private int $replicas)
+    public function __construct(private int $shards, private int $replicas, private string $refreshInterval = '1s')
     {
         if ($shards < 1) {
             // The container refuses an empty or non-numeric SEARCH_SHARDS itself; 0 and less would reach Elasticsearch,
@@ -34,11 +41,23 @@ final readonly class ProductIndexDefinition
         if ($replicas < 0) {
             throw new \InvalidArgumentException(\sprintf('The number of replicas of the search index must not be negative, got %d.', $replicas));
         }
+        // The container passes the variable as it is, so the format is checked here, when the definition is built.
+        if (1 !== preg_match(self::REFRESH_INTERVAL_FORMAT, $refreshInterval)) {
+            throw new \InvalidArgumentException(\sprintf('SEARCH_REFRESH_INTERVAL must be a whole number of at least 1 with the unit ms or s (for example 1s or 500ms), got %s.', json_encode($refreshInterval, \JSON_INVALID_UTF8_SUBSTITUTE | \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR)));
+        }
     }
 
     public function hash(): string
     {
-        return hash('sha256', json_encode([self::analysis(), self::mappings()], \JSON_THROW_ON_ERROR));
+        return hash('sha256', json_encode([self::analysis(), self::mappings(), self::sorting()], \JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * The refresh interval of an index that is filled and in use.
+     */
+    public function refreshInterval(): string
+    {
+        return $this->refreshInterval;
     }
 
     /**
@@ -52,7 +71,9 @@ final readonly class ProductIndexDefinition
             'settings' => [
                 'number_of_shards' => $this->shards,
                 'number_of_replicas' => $this->replicas,
+                'refresh_interval' => $this->refreshInterval,
                 'analysis' => self::analysis(),
+                ...self::sorting(),
             ],
             'mappings' => ['_meta' => ['definition_hash' => $this->hash()], ...self::mappings()],
         ];
@@ -72,6 +93,7 @@ final readonly class ProductIndexDefinition
             'slug' => $document->slug,
             'short_description' => $document->shortDescription,
             'main_category_id' => $document->mainCategoryId,
+            self::SORT_FIELD => $document->mainCategoryPath,
             'category_ids' => $document->categoryIds,
             'category_ancestor_ids' => $document->categoryAncestorIds,
             'main_image' => $document->mainImage,
@@ -100,6 +122,7 @@ final readonly class ProductIndexDefinition
             || !\is_string($source['id'] ?? null) || !\is_int($source['version'] ?? null)
             || !\is_string($source['name'] ?? null) || !\is_string($source['slug'] ?? null)
             || !\is_string($source['short_description'] ?? null) || !\is_string($source['main_category_id'] ?? null)
+            || !\is_string($source[self::SORT_FIELD] ?? null)
             || !self::isStringList($source['category_ids'] ?? null) || !self::isStringList($source['category_ancestor_ids'] ?? null)
             || !self::isStringList($source['category_names'] ?? null) || !\is_array($source['variants'] ?? null)
             || !array_is_list($source['variants']) || !(null === $fromGross || \is_int($fromGross))
@@ -119,6 +142,7 @@ final readonly class ProductIndexDefinition
             $source['slug'],
             $source['short_description'],
             $source['main_category_id'],
+            $source[self::SORT_FIELD],
             $source['category_ids'],
             $source['category_ancestor_ids'],
             $mainImage,
@@ -169,6 +193,16 @@ final readonly class ProductIndexDefinition
     }
 
     /**
+     * The sorting of the index: a static setting, so part of the definition hash.
+     *
+     * @return array{'sort.field': string, 'sort.order': string}
+     */
+    private static function sorting(): array
+    {
+        return ['sort.field' => self::SORT_FIELD, 'sort.order' => 'asc'];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private static function analysis(): array
@@ -209,6 +243,9 @@ final readonly class ProductIndexDefinition
                 'slug' => $keyword,
                 'short_description' => ['type' => 'text', 'analyzer' => self::POLISH_TEXT, 'fields' => $folded],
                 'main_category_id' => $keyword,
+                // The ids of the main category's path from the root joined with "/": the sort key of the index, never
+                // searched.
+                self::SORT_FIELD => ['type' => 'keyword', 'index' => false],
                 // All categories of the product, the main one first.
                 'category_ids' => $keyword,
                 // The product's categories and all their ancestors; the category filter matches here.

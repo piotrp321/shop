@@ -336,7 +336,8 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   `argocd/root.yaml`): `root` przywraca z gita automatyczną synchronizację `shop`, która wdraża nowy snapshot.
 - **Przebudowa indeksu wyszukiwarki** – **zgoda użytkownika** (nazywa operację i host): `make -C infra/k8s reindex
   KUBE_DIR=<katalog z kubeconfigiem>`. Potrzebna po zmianie `elasticsearch.shards` (istniejący indeks zachowuje swoją
-  liczbę shardów) i gdy indeks rozjechał się z bazą. Cel wypisuje indeks aliasu `products` i liczbę shardów nowego,
+  liczbę shardów) i gdy indeks rozjechał się z bazą. Zmiana `elasticsearch.refreshInterval` przebudowy nie wymaga:
+  stosuje ją `catalog:search-index:setup` w Jobie `migrate` wdrożenia. Cel wypisuje indeks aliasu `products` i liczbę shardów nowego,
   pyta o `tak`, uruchamia Job `reindex-<czas UTC>` z zawieszonego CronJoba `reindex` i sprawdza indeks po nim.
   Sklep działa w trakcie na starym indeksie; milion produktów to na serwerze ok. 17 minut. Cel trzyma do końca blokadę
   `demo-data-lock`, więc `generate` i `open` w tym czasie odmawiają. **Nie wdrażaj nowej wersji w trakcie przebudowy**:
