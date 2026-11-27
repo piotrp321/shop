@@ -261,6 +261,7 @@ Podjęte przez właściciela:
 | D6 | Bez wyjątków od W7 i bez ograniczania funkcjonalności, dokładności wyszukiwania, sortowania, paginacji ani liczników. Fraza częsta skorelowana z sortem: rosnący budżet przejścia (zadanie 2); dział + szkice i dział + bez zdjęć: częściowe btree po kategorii (zadanie 3); dział + fraza średnia: test kandydatów zawężonych do poddrzewa (zadanie 3). Kopia kategorii głównej w `catalog_product_category` (dział + fraza częsta) odroczona do pomiaru na `server`. |
 | D7 | Kryterium P4 z progiem szumu: największa z wartości 2 × rozrzut bez panelu, 10% mediany bez panelu, 5 ms (p50) albo 10 ms (p95, p99). |
 | D8 | Koszt zapisu (P8) zaakceptowany warunkowo: zadanie 7 mierzy wpływ nowych indeksów na W20, przepustowość zapisów produktów i zasoby (rozmiar, pamięć, WAL, odczyty dysku). |
+| D10 | Wyjątek planisty, zaakceptowany warunkowo: tylko dwa zapytania kandydatów frazy (strona i licznik) czytają GIN wyłącznie skanami bitmapowymi (`enable_seqscan`, `enable_indexscan`, `enable_indexonlyscan` wyłączone lokalnie w transakcji albo savepoincie zakończonym wycofaniem). Powód: CTE kandydatów jest planowane bez wiedzy o limicie kandydatów, a przy fałszywym szacunku gęstości frazy pełny skan czyta tabelę do końca; inne postaci zapytania i wybór drogi po szacunku zależą od tego samego błędnego szacunku. Warunki: ustawienia nie wpływają na inne zapytania ani transakcje (także po wyjątku i w transakcji wywołującego), najmniej dodatkowych podróży do bazy, testy sprawdzają zachowanie kodu produkcyjnego; bez zmiany globalnej konfiguracji planisty i limitów czasu. Ostateczna akceptacja: W7 i P4 na profilu `server`. |
 | D9 | Akceptacja na jednym wspólnym lokalnym profilu `server` dla wszystkich sesji programu PERF (bez osobnych zestawów 10 mln produktów); worf.pl tylko za osobną zgodą. |
 
 Przypadki, których żaden wariant nie spełnia, wracają do właściciela z liczbami (decyzja D6: bez wyjątków W7).
@@ -297,7 +298,8 @@ Przypadki, których żaden wariant nie spełnia, wracają do właściciela z lic
    danych testowych z kategoriami dodatkowymi, polskimi znakami i powtarzającymi się nazwami; dla zamówień i klientów
    także fragmenty `#!#`, `---`, `a.b`, `ab-cd`, `ąęś`, numer `R-…` i pełny e-mail, a fragment 2-znakowy dalej daje
    400 jak dziś.
-2. Testy planów w CI na ok. 100 tys. wierszy generowanych w teście, bez sterowania planistą: dla każdej zmienionej
+2. Testy planów w CI na ok. 100 tys. wierszy generowanych w teście, bez sterowania planistą poza wyjątkiem D10 (test
+   odtwarza ustawienia, które kod produkcyjny faktycznie wysłał, nie własne): dla każdej zmienionej
    drogi asercja, że liczba przeczytanych wierszy jest ograniczona zmienną jej klasy (strona, budżet B, liczba
    trafień, rozmiar kategorii), a nie rozmiarem tabeli tam, gdzie zmienna jest mniejsza.
 3. P3: tabela buforów i wierszy macierzy na `small`, `medium` i `server` w raporcie, ze zmienną kosztu każdego
