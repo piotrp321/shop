@@ -153,16 +153,37 @@ final class DbalSitemapProductSourceCutTest extends KernelTestCase
         self::assertSame('read committed', $this->cutting->fetchOne('SHOW transaction_isolation'));
     }
 
-    public function testACutInsideATransactionOfTheCallerJoinsItAndLeavesItOpen(): void
+    public function testACutInsideARepeatableReadTransactionOfTheCallerJoinsItAndKeepsTheSnapshot(): void
     {
-        $this->insert(1, 2, 3, 4, 5, 6, 7);
+        $this->insert(10, 20, 30, 40, 50, 60, 70, 80, 90, 100);
+        $this->changeTheDataDuringTheCut();
+        $this->cutting->beginTransaction();
+
+        try {
+            $this->cutting->executeStatement('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+
+            $boundaries = $this->source(10)->boundaries(3);
+
+            self::assertSame([self::id(40), self::id(70), self::id(100)], $boundaries);
+            self::assertSame([1, 2, 3], $this->hooksThatRan);
+            self::assertTrue($this->cutting->isTransactionActive(), 'The transaction of the caller stays open.');
+        } finally {
+            $this->cutting->rollBack();
+        }
+    }
+
+    public function testACutInsideATransactionOfTheCallerThatHasNoSnapshotStillReadsOneConsistentState(): void
+    {
+        // READ COMMITTED gives every statement its own snapshot, so the cut is made of one statement.
+        $this->insert(10, 20, 30, 40, 50, 60, 70, 80, 90, 100);
+        $this->changeTheDataDuringTheCut();
         $this->cutting->beginTransaction();
 
         try {
             $boundaries = $this->source(10)->boundaries(3);
 
-            self::assertSame([self::id(4), self::id(7)], $boundaries);
-            self::assertTrue($this->cutting->isTransactionActive());
+            self::assertSame([self::id(40), self::id(70), self::id(100)], $boundaries);
+            self::assertTrue($this->cutting->isTransactionActive(), 'The transaction of the caller stays open.');
         } finally {
             $this->cutting->rollBack();
         }
