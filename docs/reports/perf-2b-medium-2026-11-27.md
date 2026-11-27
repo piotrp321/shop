@@ -199,11 +199,10 @@ Pełna tabela: `results/singles-comparison.txt` (próbki: `singles-{before,after
 
 ## 6. Uwagi
 
-- **`catalog:reindex` w trybie dev nie przechodzi `medium` bez podniesienia `memory_limit`.** Na `main` `98ac711b` polecenie kończy się
-  `OutOfMemoryError` (256 MB) przy ok. 267 tys. produktów, także bez `-vv`; zużycie pamięci rośnie z liczbą przetworzonych
-  dokumentów w `APP_ENV=dev`. Zapuszczałem je z `php -d memory_limit=3G` dla obu rewizji; nieudane próby zostawiły osierocone indeksy
-  `products_*`, usunięte ręcznie z lokalnego Elasticsearcha. To nie dowodzi problemu na worf.pl (`APP_ENV=prod`, własne limity),
-  ale lokalny przebieg `medium` w dev wymaga tego obejścia.
+- **`catalog:reindex` w trybie dev wyczerpuje pamięć na `medium`; przyczyna: zbieranie danych debugowania (`kernel.debug`), nie kod
+  przebudowy i nie sam `APP_ENV=dev`** (sekcja 8). Pierwsze przebiegi wyników poszły z `php -d memory_limit=3G`; po zbadaniu
+  `run.sh` używa `bin/console catalog:reindex --no-debug` bez podnoszenia limitu. Nieudane próby zostawiły osierocone indeksy
+  `products_*`, usunięte ręcznie z lokalnego Elasticsearcha. Wyniki sekcji 3–5 nie zależą od trybu (zapytania i dokumenty są te same).
 - Heap Elasticsearcha 2 GiB i `refresh_interval` 5 s to ustawienia tego pomiaru; wartości docelowe wynikają z PERF-1 i PERF-6.
 - Dane po przebiegach zapisów różnią się od kopii (receipts i ceny próby); porównanie odpowiedzi odbyło się przed zapisami.
 - Pomiar na worf.pl (W1, W8, W9 przy 10 mln, `refresh_interval` 5 s, zapisy 50/s) nie był wykonywany i wymaga osobnej zgody
@@ -217,7 +216,7 @@ Wszystko z katalogu worktree, `PERF2B8_WINDOW=start` (skrypt odmawia startu kont
 sh docs/reports/perf-2b-medium-2026-11-27/run.sh prepare                      # .env, .env.local, worktree rewizji „przed”
 sh docs/reports/perf-2b-medium-2026-11-27/run.sh up before                    # stos bez workerów
 sh docs/reports/perf-2b-medium-2026-11-27/run.sh dbsums before-1
-sh docs/reports/perf-2b-medium-2026-11-27/run.sh reindex before
+sh docs/reports/perf-2b-medium-2026-11-27/run.sh reindex before                  # catalog:reindex --no-debug
 sh docs/reports/perf-2b-medium-2026-11-27/run.sh urls                         # miks, raz
 sh docs/reports/perf-2b-medium-2026-11-27/run.sh fetch before
 sh docs/reports/perf-2b-medium-2026-11-27/run.sh singles before
@@ -237,3 +236,99 @@ python3 -I docs/reports/perf-2b-medium-2026-11-27/compare.py singles results/sin
 ```
 
 Kolejność z dziennika: `results/events.log`.
+
+## 8. Pamięć `catalog:reindex` w trybie dev (OOM przy ok. 250 tys. produktów)
+
+Pytanie właściciela: skąd wyczerpanie `memory_limit` 256 MB w `catalog:reindex` w stosie dev, bez podnoszenia limitu jako
+rozwiązania i bez przypisywania przyczyny trybowi dev bez dowodu. Skrypty: `probe-reindex.php` (sonda; czytana z pliku w kontenerze
+API, nic nie dodaje do `/app`), `run.sh probe`, wyniki `results/probe/*.jsonl` (jedna linia na paczkę 500 produktów: dokumenty,
+`memory_get_usage()`, szczyt, co 10. paczkę pamięć po `gc_collect_cycles()` i liczniki kolektorów).
+
+### Kod: co mogłoby trzymać pamięć
+
+Przeczytane na rewizji `9d763656` (worktree zadania; kod przebudowy jest ten sam co w `d14bff34`):
+
+- `ProductSearchIndexRebuilder::fill()` (`apps/api/src/Catalog/Application/Search/`): w pętli przechowuje tylko `$written` (liczba),
+  `$afterId` i zmienne paczki (`$page`, `$facts`, wynik `write()`), nadpisywane w każdym obrocie; log postępu dostaje trzy skalary.
+- `DbalProductSearchSource::page()` czyta przez DBAL (`executeQuery()->fetchAllAssociative()` jednej paczki), bez EntityManagera, więc
+  nie ma co czyścić przez `clear()`. `QueryBusProductOfferFacts::of()` zwraca tablicę paczki.
+- Klient Elasticsearcha to `HttpClient::create()` w `ElasticsearchClientFactory`, nie usługa `http_client` frameworka, więc nie jest
+  owinięty w `TraceableHttpClient`; odpowiedzi HTTP nie są zbierane.
+- Monolog w dev: handler `stderr` typu `stream`, bez bufora (bufor `fingers_crossed` jest tylko w `when@prod`, a kanał
+  `search_rebuild` jest z niego wyłączony).
+- Tryb debugowania (`kernel.debug`) dodaje kolektory, które trzymają dane do końca procesu: **(1)** DoctrineBundle:
+  `profiling` domyślnie `%kernel.debug%` (`doctrine-bundle/src/DependencyInjection/Configuration.php:179`, rejestracja w
+  `DoctrineExtension.php:543`), middleware zapisuje każde zapytanie w `Symfony\Bridge\Doctrine\Middleware\Debug\DebugDataHolder::addQuery()`:
+  SQL, parametry, typy, czas (tablica `$data`, bez limitu, czyszczona tylko przez `reset()`); **(2)** `debug.stopwatch`
+  (`FrameworkExtension.php:1226`, usługa trybu debugowania): `StopwatchEvent::stop()` dopisuje okres do `$periods`
+  (`StopwatchEvent.php:94`), a `TraceableMiddleware` Messengera startuje i zatrzymuje go w każdej magistrali przy każdej
+  wiadomości (`TraceableMiddleware.php:61/71/79`). Przebudowa wysyła na każdą paczkę kilka wiadomości zapytań (`ListProductVariants`,
+  `GetCurrentPrices`, `GetStockLevels`, `GetProductOffers`) i ok. 45 zapytań SQL, część z listami identyfikatorów produktów w parametrach.
+
+### Pomiar: pamięć na paczkę w każdym trybie
+
+Stos `perf2b-8`, rewizja `9d763656`, dane `medium`, `php -d memory_limit=256M` (jak w obrazie), `catalog:reindex` do 300 tys.
+dokumentów (potem sonda przerywa, nowy indeks jest usuwany), tryb prod do końca (1 000 191 dokumentów). Host był w tym czasie
+obciążony innymi sesjami (load average 21–27), co wydłuża czas, nie zmienia pamięci.
+
+| tryb | pamięć po paczce 100 / 200 / 300 / 450 / 600 (MiB) | wzrost na paczkę | wynik |
+|---|---|---:|---|
+| dev, `APP_DEBUG=1` (domyślny w dev) | 102,9 / 140,6 / 177,2 / 233,5 / n.d. | 0,372 MiB (781 B/produkt) | wyczerpuje 256 MB po ok. 250 tys. produktów |
+| dev, `APP_DEBUG=0` (jak `--no-debug`) | 63,9 / 63,9 / 63,9 / 64,0 / 64,1 | 0,000 | 300 tys. bez wzrostu, szczyt 79,6 MiB |
+| prod (obraz `--target prod`, `APP_ENV=prod`, `APP_DEBUG=0`) | 62,1 przy paczce 100, 62,0–62,2 do paczki 2000 | 0,000 | cała przebudowa, 2001 paczek, kod 0, szczyt 79,2 MiB |
+
+`gc_collect_cycles()` zwracał 0 w każdym wywołaniu i nie zmieniał pamięci: to żywe referencje, nie śmieci czekające na kolektor.
+
+Które z dwóch kolektorów (dev, `APP_DEBUG=1`, ta sama sonda, po każdej paczce `reset()` jednego z nich):
+
+| wariant | wzrost na paczkę | pamięć po 600 paczkach |
+|---|---:|---:|
+| bez resetu | 0,372 MiB | (OOM po ok. 500 paczkach) |
+| `DebugDataHolder::reset()` po każdej paczce (zostaje Stopwatch) | 0,060 MiB (126 B/produkt) | 101,5 MiB |
+| `Stopwatch::reset()` po każdej paczce (zostaje DBAL) | 0,312 MiB (655 B/produkt) | 218,5 MiB |
+| `--no-debug` | 0,000 | 64,1 MiB |
+
+W paczce 450 (225 tys. produktów): 20 251 zapytań w `DebugDataHolder` (SQL 5,2 MB, parametry po serializacji do JSON 82 MB), 218 264
+okresów Stopwatch w 24 zdarzeniach (485 na paczkę). 0,060 + 0,312 = 0,372 MiB: dwa kolektory tłumaczą cały wzrost, ok. 84% to
+zapytania DBAL, 16% Stopwatch.
+
+### Wniosek
+
+- **Przyczyna jest w kolektorach `kernel.debug` (DBAL `DebugDataHolder` i `Stopwatch`), nie w kodzie przebudowy ani w samym `APP_ENV=dev`:**
+  dev bez debugowania i prod mają płaską pamięć (62–64 MiB, szczyt 79 MiB) przy tym samym kodzie i danych. W obrazie produkcyjnym
+  (lokalnie, `APP_ENV=prod`) przebudowa 1 mln produktów mieści się w 256 MB z zapasem; limity pamięci na worf.pl nie były tu mierzone.
+- **Poprawka w naszym kodzie nie jest potrzebna.** Zalecenie dla długich poleceń konsoli w dev: `bin/console catalog:reindex --no-debug`
+  (zweryfikowane: `bin/console about --no-debug` pokazuje `Environment dev`, `Debug false`; sonda z `APP_DEBUG=0` jest płaska).
+  Sam `doctrine.dbal.profiling: false` w `when@dev` usunąłby ok. 84% wzrostu, ale Stopwatch zostaje (0,06 MiB na paczkę): na profilu
+  `server` (10 mln produktów, 20 000 paczek) to ok. 1,2 GB, więc nie wystarcza; `--no-debug` jest jedynym ustawieniem, które to zamyka.
+  Wartość `memory_limit` nie była podnoszona w sondzie ani w pomiarach z `--no-debug`.
+- Do zgłoszenia (nie zaimplementowane w tym zadaniu): dopisać zalecenie `--no-debug` dla `catalog:reindex` (i innych długich poleceń
+  w dev: `app:backfill`, `*:seed-demo` na dużych profilach) do dokumentacji lokalnej pracy `apps/api`. `make seed` (profil demo,
+  kilka tysięcy produktów) nie dochodzi do progu.
+- Odchylenie procesowe: raz uruchomiłem `php -l` na hoście (sprawdzenie składni sondy), wbrew zasadzie „PHP tylko w Dockerze”;
+  nic nie zmieniło, ale pomiary i sondy działały wyłącznie w kontenerze API.
+
+## 9. Przygotowany przebieg `lag50` w trybie prod (NIE uruchomiony)
+
+Do uruchomienia w osobnym oknie hosta (po ok. 01:00 UTC wg ustaleń). API i oba workery na obrazie produkcyjnym zbudowanym
+z rewizji worktree (`perf2b-8-api:prod`, zbudowany; `build-prod` buduje go ponownie), reszta stosu jak w sekcji 4a, ten sam indeks
+i dane. Zweryfikowane próbą: `prod-up` startuje stos (`api`, `worker`, `worker-commands` mają `APP_ENV=prod`, `APP_DEBUG=0`,
+bez `phpunit`), 20-sekundowy przebieg `writes.sh` przy 5/s kończy się kodem 0 z zgodnym indeksem, `failed` 0. Sam `lag50` nie był
+uruchamiany w prod.
+
+```sh
+export PERF2B8_WINDOW=start
+R=docs/reports/perf-2b-medium-2026-11-27/run.sh
+sh $R build-prod                       # tylko gdy rewizja się zmieniła: docker build --target prod -t perf2b-8-api:prod apps/api
+sh $R down                             # bez -v
+MODE=prod sh $R prod-up                # make up z prod.override.yaml, sprawdza APP_ENV api i obu workerów (results/prod-env.txt)
+MODE=prod sh $R writes lag50           # results/writes-prod/lag50/, cache-writes-lag50-prod-*.txt, failed-lag50-prod-*.txt
+MODE=prod sh $R drain lag50-prod       # odczekanie na opróżnienie kolejek RabbitMQ
+MODE=prod sh $R failed final-prod      # messenger:failed:show po przebiegu
+sh $R down
+```
+
+Do porównania z sekcją 4a (to samo `lag50`: 50/s, 320 s, próba 40, tylko przyjęcia): okna 1 s i pasmo 45–55, `catch_up`,
+histogram i p99,9 `send_lag`, `unanswered` i `dropped`, świeżość, zgodność, `failed`, request cache i cache plików. Różnica obu
+przebiegów to tryb kontenerów API i workerów (prod zamiast dev z kolektorami debugowania), nie dane ani indeks.
+

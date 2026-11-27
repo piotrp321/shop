@@ -1,7 +1,16 @@
-CONTAINER                  REPOSITORY                  TAG                 PLATFORM            IMAGE ID            SIZE                CREATED
-perf2b-8-api-1             perf2b-8-api                latest              linux/arm64         d6daeada9862        990MB               3 days ago
-perf2b-8-elasticsearch-1   perf2b-8-elasticsearch      latest              linux/arm64         838989e7077d        1.9GB               2 weeks ago
-perf2b-8-keycloak-1        quay.io/keycloak/keycloak   26.8.2              linux/arm64         7e66a96e4739        750MB               8 days ago
-perf2b-8-postgres-1        postgres                    18.6                linux/arm64/v8      bd5dfa494a5a        666MB               3 weeks ago
-perf2b-8-rabbitmq-1        rabbitmq                    4.4.0-management    linux/arm64/v8      af6f50d38098        451MB               4 weeks ago
-perf2b-8-redis-1           redis                       8.10.3              linux/arm64/v8      f245f4c83b84        232MB               3 weeks ago
+CONTAINER                    REPOSITORY                  TAG                 PLATFORM            IMAGE ID            SIZE                CREATED
+perf2b-8-admin-1             perf2b-8-admin              latest              linux/arm64         01269476e686        757MB               9 days ago
+perf2b-8-api-1               perf2b-8-api                latest              linux/arm64         bf65e05d9230        990MB               3 days ago
+perf2b-8-elasticsearch-1     perf2b-8-elasticsearch      latest              linux/arm64         fbe9f402bd9f        1.9GB               2 weeks ago
+perf2b-8-garage-1            dxflrs/garage               v2.4.0              linux/arm64         715d176efc35        93.7MB              2 months ago
+perf2b-8-garage-init-1       perf2b-8-garage-init        latest              linux/arm64         36141e076f29        104MB               53 minutes ago
+perf2b-8-imgproxy-1          darthsim/imgproxy           v3.31.1             linux/arm64         2b7a56dbf9c8        324MB               8 months ago
+perf2b-8-keycloak-1          quay.io/keycloak/keycloak   26.8.2              linux/arm64         7e66a96e4739        750MB               8 days ago
+perf2b-8-mailpit-1           axllent/mailpit             v1.27.11            linux/arm64         e22dce5b36f9        49.1MB              12 months ago
+perf2b-8-postgres-1          postgres                    18.6                linux/arm64/v8      bd5dfa494a5a        666MB               3 weeks ago
+perf2b-8-rabbitmq-1          rabbitmq                    4.4.0-management    linux/arm64/v8      af6f50d38098        451MB               4 weeks ago
+perf2b-8-redis-1             redis                       8.10.3              linux/arm64/v8      f245f4c83b84        232MB               3 weeks ago
+perf2b-8-store-1             perf2b-8-store              latest              linux/arm64         8b6cee9fb7fb        1.53GB              9 days ago
+perf2b-8-varnish-1           varnish                     9.1.0               linux/arm64/v8      f97e894d90bc        505MB               3 weeks ago
+perf2b-8-worker-1            perf2b-8-api                prod                linux/arm64         f470792083a6        1.07GB              51 minutes ago
+perf2b-8-worker-commands-1   perf2b-8-api                prod                linux/arm64         f470792083a6        1.07GB              51 minutes ago

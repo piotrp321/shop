@@ -30,6 +30,10 @@
 #   writes clean12|lag50   one run of the writes scenario (load/writes.sh) with the state of the caches before and after it
 #   cachestats LABEL    results/cache-LABEL.txt: request cache of Elasticsearch, the memory (file cache) of its container
 #   failed LABEL        results/failed-LABEL.txt: messenger:failed:show --stats and the list
+#   build-prod          docker build --target prod of apps/api into the image perf2b-8-api:prod (the revision of this worktree)
+#   prod-up             with MODE=prod: make up with the api and the workers on that image (prod.override.yaml)
+#   probe LABEL ENV DEBUG LIMIT [holder|stopwatch]   memory per batch of catalog:reindex (probe-reindex.php), results/probe/LABEL.jsonl
+#   MODE=prod           the writes (clean12, lag50) go to results/writes-prod, labels with the suffix -prod
 #   phase-before        prepare, up before, dbsums, reindex, urls, fetch, singles, dbsums, down
 #   phase-after         up after, dbsums, reindex, dbsums, fetch, diff, singles; the stack stays up
 #   phase-writes        writes-up, clean12, lag50, failed
@@ -50,6 +54,18 @@ refresh="${SEARCH_REFRESH_INTERVAL:-5s}"
 work="${WORK:-${TMPDIR:-/tmp}/PERF-2B-8}"
 res="$here/results"
 mkdir -p "$work" "$res"
+# MODE=prod: the api and both workers run the production image perf2b-8-api:prod (prod.override.yaml); the results of the writes
+# go to results/writes-prod, the labels of the cache and failed files get the suffix -prod.
+mode="${MODE:-dev}"
+suffix=""
+if [ "$mode" = prod ]; then
+  suffix="-prod"
+  # Absolute paths: make -C apps/api runs docker compose from another directory.
+  export COMPOSE_FILE="$after_dir/compose.yaml:$here/es.override.yaml:$here/prod.override.yaml"
+elif [ "$mode" != dev ]; then
+  echo "run.sh: MODE is dev or prod, not '$mode'" >&2
+  exit 1
+fi
 mix_seed=20261127
 kinds=home,home_deep,department,department_deep,leaf,leaf_filter,phrase,phrase_deep,phrase_filter
 
@@ -162,9 +178,10 @@ cmd_reindex() {
   log "reindex $rev: start"
   started="$(date +%s)"
   code=0
-  # APP_ENV=dev of the local stack: the rebuild exhausts the 256 MB of memory_limit near 267 000 products (twice, on main 98ac711b, with
-  # and without -vv), so PHP gets 3 GB for this one command (the same for both revisions; the production workers run APP_ENV=prod).
-  dc "$rev" exec -T api php -d memory_limit=3G bin/console catalog:reindex > "$work/reindex-$rev.log" 2>&1 || code=$?
+  # With kernel.debug (APP_DEBUG=1, the default of APP_ENV=dev) the rebuild keeps every SQL statement with its parameters (Doctrine
+  # DebugDataHolder) and every period of the Stopwatch, about 0.4 MiB per batch, and exhausts the 256 MB of memory_limit near 250 000
+  # products (report perf-2b-medium-2026-11-27.md, section 6). --no-debug keeps the memory flat; no limit is raised.
+  dc "$rev" exec -T api bin/console catalog:reindex --no-debug > "$work/reindex-$rev.log" 2>&1 || code=$?
   seconds=$(( $(date +%s) - started ))
   tail -5 "$work/reindex-$rev.log"
   {
@@ -259,21 +276,62 @@ cmd_writes_up() {
   log "writes-up: ready"
 }
 
+cmd_build_prod() {
+  need_window
+  log "build-prod: docker build --target prod of apps/api at $(git -C "$after_dir" rev-parse --short HEAD)"
+  docker build --target prod -t perf2b-8-api:prod "$after_dir/apps/api" > "$work/build-prod.log" 2>&1 || { tail -20 "$work/build-prod.log"; fail "docker build failed"; }
+  log "build-prod: perf2b-8-api:prod built"
+}
+
+# The whole stack with the api and the workers on the production image (MODE=prod): make up recreates them, the OIDC key cache of
+# the API is cleared, APP_ENV of every one of them is checked. The realm of Keycloak stays as writes-up imported it.
+cmd_prod_up() {
+  need_window
+  [ "$mode" = prod ] || fail "prod-up needs MODE=prod"
+  docker image inspect perf2b-8-api:prod > /dev/null 2>&1 || fail "no image perf2b-8-api:prod (build-prod first)"
+  cd "$after_dir"
+  log "prod-up: make up with the production image"
+  make up > "$work/make-up-prod.log" 2>&1 || { tail -30 "$work/make-up-prod.log"; fail "make up failed ($work/make-up-prod.log)"; }
+  console after cache:pool:clear cache.oidc > /dev/null
+  for service in api worker worker-commands; do
+    printf '%s: %s\n' "$service" "$(dc after exec -T "$service" sh -c 'echo "APP_ENV=$APP_ENV APP_DEBUG=$APP_DEBUG $(test -d /app/vendor/phpunit && echo has-phpunit || echo no-phpunit)"')"
+  done | tee "$res/prod-env.txt"
+  dc after ps > "$res/ps-writes-prod.txt"
+  log "prod-up: ready"
+}
+
+# probe LABEL ENV DEBUG LIMIT [holder|stopwatch]: probe-reindex.php in the api container (memory_limit 256M as in the image),
+# one line per batch to results/probe/LABEL.jsonl; a limit above 0 ends the rebuild at that number of documents, 0 runs it to the end
+# (the alias moves to the new index). The stack must be up (up after, or MODE=prod prod-up).
+cmd_probe() {
+  need_window
+  label="$1"; env_name="$2"; debug="$3"; limit="$4"; reset="${5:-}"
+  mkdir -p "$res/probe"
+  dc after cp "$here/probe-reindex.php" api:/tmp/probe-reindex.php > /dev/null 2>&1 || fail "cannot copy the probe to the api container"
+  log "probe $label: APP_ENV=$env_name APP_DEBUG=$debug limit $limit reset '$reset' (mode $mode)"
+  code=0
+  dc after exec -T -e "APP_ENV=$env_name" -e "APP_DEBUG=$debug" -e "PROBE_LABEL=$label" -e "PROBE_LIMIT=$limit" -e "PROBE_RESET=$reset" \
+    -e "PROBE_OUT=/tmp/probe-$label.jsonl" api php -d memory_limit=256M /tmp/probe-reindex.php > "$work/probe-$label.out" 2>&1 || code=$?
+  dc after exec -T api cat "/tmp/probe-$label.jsonl" > "$res/probe/$label.jsonl" || true
+  grep -v '^{"message"' "$work/probe-$label.out" | tail -6 | cut -c1-300
+  log "probe $label: exit $code, $(wc -l < "$res/probe/$label.jsonl" | tr -d ' ') batches (log $work/probe-$label.out)"
+}
+
 # writes <name> <expected exit> [VAR=value...]: the settings of $TMPDIR/PERF-2B-2/runs.sh (the run of the task PERF-2B-2)
 writes_run() {
   name="$1"; expected="$2"; shift 2
-  out="$res/writes/$name"
+  out="$res/writes$suffix/$name"
   mkdir -p "$out"
   cd "$after_dir"
-  cmd_failed "$name-before"
-  cmd_cachestats "writes-$name-before"
+  cmd_failed "$name$suffix-before"
+  cmd_cachestats "writes-$name$suffix-before"
   log "writes $name: start ($*)"
   code=0
   # The refresh token goes through the environment of a subshell, never through a command line (load/README.md, "Token").
   ( ADMIN_REFRESH_TOKEN="$(python3 load/admin-token.py)"; export ADMIN_REFRESH_TOKEN
     env WRITES_OUT="$out" "$@" sh load/writes.sh ) > "$out/output.log" 2>&1 || code=$?
-  cmd_cachestats "writes-$name-after"
-  cmd_failed "$name-after"
+  cmd_cachestats "writes-$name$suffix-after"
+  cmd_failed "$name$suffix-after"
   log "writes $name: exit $code (expected $expected)"
   grep -E "^verdict:|^Writes:|^send lag|mismatch of variant|consistency: [0-9]+ mismatches" "$out/output.log" | cut -c1-300 || true
   jq -c '{finished, verdict, late: .changes.late, dropped: .changes.dropped, unanswered: .changes.unanswered, send_lag: .changes.send_lag, percentiles_valid: .freshness.percentiles_valid, mismatches: .consistency.mismatches}' "$out/writes.json" || true
@@ -299,13 +357,13 @@ cmd_writes() {
     # passed, every window in the band 10-14, 0 catch-up writes, token_renewals.background >= 1, blocking 0, failed 0.
     clean12)
       writes_run clean12 0 WRITE_RATE=12 WRITE_SECONDS=320 WRITE_SAMPLE=60 WRITE_UNSTOCKED_SHARE=0 WRITE_PRICE_PROBES=3
-      jq -c '{rate: .changes.rate, send_lag: .changes.send_lag, histogram: .changes.send_lag_histogram, renewals: .changes.token_renewals, stall: .changes.stall_tolerance_ms}' "$res/writes/clean12/writes.json" || true ;;
+      jq -c '{rate: .changes.rate, send_lag: .changes.send_lag, histogram: .changes.send_lag_histogram, renewals: .changes.token_renewals, stall: .changes.stall_tolerance_ms}' "$res/writes$suffix/clean12/writes.json" || true ;;
     # lag50: the distribution of the lag of the generator under load, 50/s over 320 s, judged by send_lag_histogram and send_lag
     # p99.9/max (and the windows), not by the verdict: the dev API takes fewer than 50/s, so unanswered writes and exit 99 are expected.
     lag50)
       writes_run lag50 99 WRITE_RATE=50 WRITE_SECONDS=320 WRITE_SAMPLE=40 WRITE_UNSTOCKED_SHARE=0 WRITE_PRICE_PROBES=2 \
         WRITE_PRICE_SHARE=0 WRITE_MAX_IN_FLIGHT=2000 CHECK_TIMEOUT_SECONDS=180
-      jq -c '{rate: .changes.rate, send_lag: .changes.send_lag, histogram: .changes.send_lag_histogram, renewals: .changes.token_renewals, unanswered: .changes.unanswered}' "$res/writes/lag50/writes.json" || true ;;
+      jq -c '{rate: .changes.rate, send_lag: .changes.send_lag, histogram: .changes.send_lag_histogram, renewals: .changes.token_renewals, unanswered: .changes.unanswered}' "$res/writes$suffix/lag50/writes.json" || true ;;
     *) fail "writes: clean12 or lag50" ;;
   esac
 }
@@ -365,6 +423,9 @@ case "$command" in
   writes) cmd_writes "${1:?clean12|lag50}" ;;
   cachestats) cmd_cachestats "${1:?label}" ;;
   failed) cmd_failed "${1:?label}" ;;
+  build-prod) cmd_build_prod ;;
+  prod-up) cmd_prod_up ;;
+  probe) cmd_probe "${1:?label}" "${2:?env}" "${3:?debug}" "${4:?limit}" "${5:-}" ;;
   drain) need_window; cmd_drain "${1:?label}" ;;
   phase-before) need_window; cmd_phase_before ;;
   phase-after) need_window; cmd_phase_after ;;
