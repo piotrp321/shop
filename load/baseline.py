@@ -63,13 +63,17 @@ def fail(message):
     sys.exit(2)
 
 
-def api_json(api, path):
+def api_json(api, path, required=True):
     request = urllib.request.Request(api + path, headers={"User-Agent": UA, "Accept": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
             return json.load(response)
     except (urllib.error.URLError, TimeoutError, ValueError) as error:
-        fail(f"GET {api}{path} failed: {error}")
+        if required:
+            fail(f"GET {api}{path} failed: {error}")
+        # A sampled listing that fails is a finding, not a reason to lose the whole list of addresses.
+        print(f"baseline: skipped, GET {api}{path} failed: {error}", file=sys.stderr)
+        return None
 
 
 def nodes_of(tree, depth=1):
@@ -93,7 +97,9 @@ def build_urls(args):
     leaves = [n for n in nodes if n["leaf"]]
     phrases, options, price = set(), set(), None
     for node in rng.sample(nodes, min(10, len(nodes))):
-        listing = api_json(args.api, f"/api/v1/products?category={node['id']}&perPage=48")
+        listing = api_json(args.api, f"/api/v1/products?category={node['id']}&perPage=48", required=False)
+        if listing is None:
+            continue
         for item in listing.get("items", []):
             phrases.update(words_of(item["name"]))
         for axis in listing.get("facets", {}).get("options") or []:
@@ -240,6 +246,8 @@ def run(args):
         fail("no addresses of the given kinds and target")
     base = {"api": urls["api"], "store": urls["store"]}
     lock, samples = threading.Lock(), []
+    meta = {"mode": args.mode, "started": now(), "planned": None, "sent": 0, "aborted": None, "rate": args.rate, "duration": args.duration}
+    clock = time.monotonic()
 
     def record(sample):
         with lock:
@@ -249,6 +257,7 @@ def run(args):
 
     with open(args.out, "a") as out:
         if args.mode == "single":
+            meta["planned"] = 2 * len(entries)
             for entry in entries:
                 record(fetch(base[entry["target"]], entry, "cold"))
                 record(fetch(base[entry["target"]], entry, "warm"))
@@ -256,6 +265,7 @@ def run(args):
             if not args.rate or not args.duration:
                 fail("open needs --rate and --duration")
             count = int(args.rate * args.duration)
+            meta["planned"] = count
             if count > len(entries):
                 fail(f"open needs {count} unused addresses, the list has {len(entries)}; run urls with more --listings")
             threads, start = [], time.monotonic() + 1
@@ -267,13 +277,18 @@ def run(args):
                     done_count = len(samples)
                 if done_count >= 20 and failed > 0.2 * done_count:
                     print(f"baseline: stopped after {i} of {count} requests: {failed} of {done_count} finished ones failed (more than 20%)", file=sys.stderr)
+                    meta["aborted"] = f"stopped after {i} of {count} requests: {failed} of {done_count} finished ones failed (more than 20%)"
                     break
                 thread = threading.Thread(target=lambda e=entry, a=at: record(fetch(base[e["target"]], e, f"open-{args.rate}", a)))
                 thread.start()
                 threads.append(thread)
+                meta["sent"] = len(threads)
+                meta.setdefault("first_send", time.monotonic())
+                meta["last_send"] = time.monotonic()
             for thread in threads:
                 thread.join()
         else:
+            meta["planned"] = (args.n or 0) * args.rounds
             if not args.n or args.n * args.rounds > len(entries):
                 fail(f"burst needs --n and {args.n} x {args.rounds} unused addresses, the list has {len(entries)}")
             for round_no in range(args.rounds):
@@ -292,8 +307,28 @@ def run(args):
                 if round_no + 1 < args.rounds:
                     time.sleep(args.pause)
     failures = sum(1 for s in samples if not s["ok"])
+    meta["finished"] = len(samples)
+    if args.mode != "open":
+        meta["sent"] = len(samples)
+    meta["failures"] = failures
+    meta["by_status"] = {}
+    for s in samples:
+        key = str(s["status"]) if s.get("status") else f"error:{s.get('error', 'unknown')[:40]}"
+        meta["by_status"][key] = meta["by_status"].get(key, 0) + 1
+    meta["late_over_100ms"] = sum(1 for s in samples if s.get("late", 0) > 0.1)
+    meta["wall_seconds"] = round(time.monotonic() - clock, 1)
+    if meta.get("first_send") is not None and meta["sent"] > 1 and meta["last_send"] > meta["first_send"]:
+        meta["achieved_send_rate"] = round((meta["sent"] - 1) / (meta["last_send"] - meta["first_send"]), 2)
+    meta.pop("first_send", None)
+    meta.pop("last_send", None)
+    if meta["planned"] is not None and meta["sent"] < meta["planned"] and not meta["aborted"]:
+        meta["aborted"] = f"sent {meta['sent']} of {meta['planned']} planned requests"
+    with open(args.out + ".meta.json", "w") as file:
+        json.dump(meta, file)
     print(f"{len(samples)} samples, {failures} failures, written to {args.out}")
-    sys.exit(1 if failures else 0)
+    if meta["aborted"]:
+        print(f"baseline: ABORTED: {meta['aborted']}")
+    sys.exit(1 if failures or meta["aborted"] else 0)
 
 
 def pct(values, p):
@@ -322,6 +357,17 @@ def report(args):
     except (OSError, ValueError, KeyError) as error:
         fail(f"cannot read {args.samples}: {error}")
     # One row per cache state of a non-warm label: only cache=miss is evidence of the cold path; hit and unconfirmed are not.
+    try:
+        with open(args.samples + ".meta.json") as file:
+            meta = json.load(file)
+        print(f"run: mode={meta['mode']} planned={meta['planned']} sent={meta['sent']} finished={meta['finished']} failures={meta['failures']} "
+              f"late_over_100ms={meta['late_over_100ms']} wall_s={meta['wall_seconds']}"
+              + (f" target_rate={meta['rate']} achieved_send_rate={meta.get('achieved_send_rate')}" if meta.get("rate") else "")
+              + f" by_status={meta['by_status']}")
+        if meta["aborted"]:
+            print(f"run: ABORTED: {meta['aborted']}")
+    except (OSError, ValueError, KeyError):
+        print("run: no .meta.json next to the samples (an older run)")
     print("label\ttarget\tkind\tcache\tn\tfull\tp50\tp95\tp99\tmax\tserver_est_p50\tserver_est_p95\trtt_p50\tstatuses")
     for (label, target, kind, cache), rows in sorted(groups.items()):
         full = [s for s in rows if s["ok"]]

@@ -9,6 +9,7 @@ use App\Catalog\Application\Search\BulkResult;
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
+use App\Catalog\Application\Search\SetupResult;
 
 /**
  * Physical indexes behind the search alias. Callers hold the {@see SearchIndexRebuildLock}.
@@ -16,15 +17,15 @@ use App\Catalog\Application\Search\SearchUnavailable;
 interface SearchIndexMaintenance
 {
     /**
-     * Creates the alias and its first index when neither exists; otherwise checks them and changes nothing.
+     * Creates the alias and its first index when neither exists; otherwise checks them and changes nothing. An index
+     * built from another definition is not an error: the result names it, so that the caller can tell to rebuild it.
      *
-     * @return list<string> orphaned indexes of this alias (the alias does not point to them); never deleted here
+     * @return SetupResult the orphaned indexes of this alias (never deleted here) and the outdated active index
      *
-     * @throws SearchIndexError  when a plain index has the alias name, the alias points to other than one index,
-     *                           or the index was built from another definition
+     * @throws SearchIndexError  when a plain index has the alias name or the alias points to other than one index
      * @throws SearchUnavailable
      */
-    public function setup(): array;
+    public function setup(): SetupResult;
 
     /**
      * Deletes the alias and all its indexes, then creates them again. For disposable (test) indexes only.

@@ -1,0 +1,49 @@
+900 addresses: {'product': 300, 'phrase_deep': 78, 'department': 14, 'phrase': 36, 'phrase_filter': 94, 'leaf': 80, 'leaf_filter': 98, 'home_deep': 96, 'department_deep': 102, 'home': 2}
+1800 samples, 374 failures, written to single.jsonl
+label	target	kind	cache	n	full	p50	p95	p99	max	server_est_p50	server_est_p95	rtt_p50	statuses
+cold	api	department	miss	7	7	1.863	2.019	2.019	2.019	1.86	2.017	0.0	{200: 7}
+cold	api	department_deep	hit	3	3	0.003	0.003	0.003	0.003	0.0	0.0	0.0	{200: 3}
+cold	api	department_deep	miss	48	26	1.842	2.027	2.035	2.035	1.839	2.025	0.0	{503: 22, 200: 26}
+cold	api	home	miss	1	0	None	None	None	None	None	None	0.0	{503: 1}
+cold	api	home_deep	miss	48	0	None	None	None	None	None	None	0.0	{503: 48}
+cold	api	leaf	hit	1	1	0.004	0.004	0.004	0.004	0.0	0.0	0.0	{200: 1}
+cold	api	leaf	miss	39	39	1.016	1.205	1.233	1.233	1.013	1.202	0.0	{200: 39}
+cold	api	leaf_filter	hit	3	3	0.003	0.01	0.01	0.01	0.0	0.004	0.0	{200: 3}
+cold	api	leaf_filter	miss	46	46	1.055	1.222	1.239	1.239	1.051	1.22	0.0	{200: 46}
+cold	api	phrase	miss	18	10	1.23	2.027	2.027	2.027	1.227	2.024	0.0	{200: 10, 503: 8}
+cold	api	phrase_deep	hit	1	1	0.003	0.003	0.003	0.003	0.0	0.0	0.0	{200: 1}
+cold	api	phrase_deep	miss	38	24	1.135	1.966	2.025	2.025	1.132	1.962	0.0	{503: 14, 200: 24}
+cold	api	phrase_filter	hit	5	5	0.003	0.004	0.004	0.004	0.0	0.0	0.0	{200: 5}
+cold	api	phrase_filter	miss	42	31	1.202	1.942	1.994	1.994	1.199	1.939	0.0	{200: 31, 503: 11}
+cold	api	product	hit	79	79	0.003	0.004	0.004	0.005	0.0	0.0	0.0	{200: 79}
+cold	api	product	miss	71	71	0.032	0.042	0.043	0.054	0.029	0.037	0.0	{200: 71}
+cold	store	department	unconfirmed	7	7	1.877	2.124	2.124	2.124	1.869	2.113	0.0	{200: 7}
+cold	store	department_deep	unconfirmed	51	32	2.064	2.184	2.206	2.206	2.055	2.173	0.0	{500: 19, 200: 32}
+cold	store	home	unconfirmed	1	0	None	None	None	None	None	None	0.0	{500: 1}
+cold	store	home_deep	unconfirmed	48	0	None	None	None	None	None	None	0.0	{500: 48}
+cold	store	leaf	unconfirmed	40	40	1.125	1.345	1.356	1.356	1.117	1.335	0.0	{200: 40}
+cold	store	leaf_filter	unconfirmed	49	49	1.129	1.384	1.448	1.448	1.12	1.376	0.0	{200: 49}
+cold	store	phrase	unconfirmed	18	12	1.824	2.158	2.164	2.164	1.814	2.148	0.0	{500: 6, 200: 12}
+cold	store	phrase_deep	unconfirmed	39	25	1.2	2.157	2.174	2.174	1.194	2.149	0.0	{500: 14, 200: 25}
+cold	store	phrase_filter	unconfirmed	47	39	1.223	2.11	2.182	2.182	1.216	2.102	0.0	{200: 39, 500: 8}
+cold	store	product	miss	150	150	0.099	0.134	0.138	0.144	0.097	0.13	0.0	{200: 150}
+warm	api	department	any	7	7	0.003	0.004	0.004	0.004	0.0	0.0	0.0	{200: 7}
+warm	api	department_deep	any	51	36	0.003	2.02	2.034	2.034	0.0	2.017	0.0	{503: 15, 200: 36}
+warm	api	home	any	1	0	None	None	None	None	None	None	0.0	{503: 1}
+warm	api	home_deep	any	48	0	None	None	None	None	None	None	0.0	{503: 48}
+warm	api	leaf	any	40	40	0.003	0.005	0.007	0.007	0.0	0.0	0.0	{200: 40}
+warm	api	leaf_filter	any	49	49	0.003	0.004	0.006	0.006	0.0	0.0	0.0	{200: 49}
+warm	api	phrase	any	18	10	0.003	0.003	0.003	0.003	0.0	0.0	0.0	{200: 10, 503: 8}
+warm	api	phrase_deep	any	39	26	0.003	0.004	2.045	2.045	0.0	0.001	0.0	{503: 13, 200: 26}
+warm	api	phrase_filter	any	47	37	0.003	0.004	2.007	2.007	0.0	0.001	0.0	{200: 37, 503: 10}
+warm	api	product	any	150	150	0.003	0.004	0.006	0.007	0.0	0.0	0.0	{200: 150}
+warm	store	department	any	7	7	0.051	0.075	0.075	0.075	0.042	0.066	0.0	{200: 7}
+warm	store	department_deep	any	51	41	0.053	2.148	2.191	2.191	0.044	2.14	0.0	{500: 10, 200: 41}
+warm	store	home	any	1	0	None	None	None	None	None	None	0.0	{500: 1}
+warm	store	home_deep	any	48	0	None	None	None	None	None	None	0.0	{500: 48}
+warm	store	leaf	any	40	40	0.048	0.073	0.085	0.085	0.039	0.057	0.0	{200: 40}
+warm	store	leaf_filter	any	49	49	0.046	0.069	0.094	0.094	0.037	0.059	0.0	{200: 49}
+warm	store	phrase	any	18	13	0.047	0.065	0.078	0.078	0.038	0.056	0.0	{500: 5, 200: 13}
+warm	store	phrase_deep	any	39	30	0.043	0.068	2.145	2.145	0.033	0.054	0.0	{500: 9, 200: 30}
+warm	store	phrase_filter	any	47	41	0.042	0.065	2.078	2.078	0.033	0.058	0.0	{200: 41, 500: 6}
+warm	store	product	any	150	150	0.011	0.017	0.021	0.022	0.008	0.012	0.0	{200: 150}

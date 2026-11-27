@@ -9,6 +9,7 @@ use App\Catalog\Application\Search\ActivationResult;
 use App\Catalog\Application\Search\BulkResult;
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchIndexError;
+use App\Catalog\Application\Search\SetupResult;
 
 /**
  * Records every call; each step can be told to fail.
@@ -40,11 +41,11 @@ final class FakeSearchIndexMaintenance implements SearchIndexMaintenance
     ) {
     }
 
-    public function setup(): array
+    public function setup(): SetupResult
     {
         $this->calls[] = 'setup';
 
-        return [];
+        return new SetupResult();
     }
 
     public function recreate(): void
