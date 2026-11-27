@@ -134,11 +134,13 @@ export function chooseSample(candidates, settings, rnd) {
 // answer or with a 5xx (docs/features/performance-program/plan.md, "Co liczymy") and a change not seen within the freshness timeout
 // (it is missing from the percentiles of W16) make the run no measurement, as a refused write, a mismatch, an error of the run and a
 // consistency check that did not finish do. The thresholds of writes.js fail the run (exit 99) on the same counts. counts:
-// finished, dropped, late, unanswered, freshnessTimeouts, refused, mismatches, runErrors; a missing count fails the run.
+// finished, dropped, late, windowsOutside, maxCatchUpInWindow, unanswered, freshnessTimeouts, refused, mismatches, runErrors; a missing
+// count fails the run.
 export function runVerdict(counts) {
   const rules = [
     ['dropped', (n) => `${n} writes were not sent at the rate (in flight up to the limit or no free variant): no measurement at the rate`],
     ['late', (n) => `${n} writes of the open model sent later than the tolerance after their time (lib/write-state.js, sendTolerance): no measurement at the rate`],
+    ['windowsOutside', (n) => `${n} windows of 1 s with a number of writes sent more than one write off the rate (a hole or a burst): the rate was not kept`],
     ['unanswered', (n) => `${n} writes without an answer or with a 5xx: no measurement at the rate`],
     ['freshnessTimeouts', (n) => `${n} changes not seen within the freshness timeout: the percentiles of the freshness leave them out`],
     ['refused', (n) => `${n} writes refused (4xx)`],
@@ -146,6 +148,12 @@ export function runVerdict(counts) {
     ['runErrors', (n) => `${n} errors of the run`],
   ];
   const reasons = [];
+  // One write caught up in a window is the jitter of that write (the tolerance of the band); a series is a held-back schedule.
+  if (typeof counts.maxCatchUpInWindow !== 'number') {
+    reasons.push('the count maxCatchUpInWindow is missing');
+  } else if (counts.maxCatchUpInWindow > 1) {
+    reasons.push(`a series of ${counts.maxCatchUpInWindow} catch-up writes (sent more than one interval late) in one window of 1 s: the rate was not kept`);
+  }
   if (counts.finished !== true) {
     reasons.push('the consistency check did not finish (interrupted or cut off by maxDuration)');
   }
@@ -188,12 +196,56 @@ export function tokenAction(expiresAt, now) {
   return expiresAt - now < RENEW_BEFORE_MS ? 'use_and_renew' : 'use';
 }
 
-export function lagBucket(lagMs) {}
+// The proof of the rate (load/README.md, "Tempo"): the writes of the open model actually sent in every window of 1 s from the
+// start, and the lag of every send behind its planned time. The open model plans write i at start + i / rate (docs/features/
+// performance-program/plan.md, "Co liczymy": the arrivals do not depend on the answers), so a full window holds floor(rate) or
+// ceil(rate) of them; the jitter of the timer can move one write across the edge of a window. A window outside that by more than
+// one write is a hole (writes dropped or held back) or a burst (held-back writes sent at once), and the rate was not kept.
 
-export function rateBand(rate) {}
+// The upper edges of the buckets of the lag (ms), closed at the top; above the last one: gt_1000.
+const LAG_BUCKETS = [1, 5, 20, 100, 1000];
 
-export function windowStats(counts, rate) {}
+export function lagBucket(lagMs) {
+  const edge = LAG_BUCKETS.find((top) => lagMs <= top);
+  return edge === undefined ? `gt_${LAG_BUCKETS[LAG_BUCKETS.length - 1]}` : `le_${edge}`;
+}
 
-export function isCatchUp(dueMs, sentMs, rate) {}
+// The counts of a full window of 1 s that keep the rate: the whole counts of the schedule, one write either side.
+export function rateBand(rate) {
+  return { low: Math.floor(rate) - 1, high: Math.ceil(rate) + 1 };
+}
 
-export function catchUpStats(perWindow) {}
+// Nearest rank: the value with at least p% of the sorted list at or below it.
+function percentile(sorted, p) {
+  return sorted[Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)];
+}
+
+// The distribution of the writes sent in the full windows of 1 s (counts, in order) and how many are below and above the band.
+export function windowStats(counts, rate) {
+  if (counts.length === 0) {
+    return { windows: 0, min: null, p5: null, p50: null, p95: null, max: null, below: 0, above: 0 };
+  }
+  const sorted = [...counts].sort((a, b) => a - b);
+  const band = rateBand(rate);
+  return {
+    windows: counts.length,
+    min: sorted[0],
+    p5: percentile(sorted, 5),
+    p50: percentile(sorted, 50),
+    p95: percentile(sorted, 95),
+    max: sorted[sorted.length - 1],
+    below: counts.filter((n) => n < band.low).length,
+    above: counts.filter((n) => n > band.high).length,
+  };
+}
+
+// A write sent more than one interval of the rate after its planned time left after the next one was due: the loop of the open
+// model catches up a held-back schedule by sending the writes that are due at once (writes.js, openModel).
+export function isCatchUp(dueMs, sentMs, rate) {
+  return sentMs - dueMs > 1000 / rate;
+}
+
+// The catch-up writes in all and the largest series of them in one window of 1 s (catch-up writes per window, in order).
+export function catchUpStats(perWindow) {
+  return { writes: perWindow.reduce((sum, n) => sum + n, 0), maxInWindow: perWindow.reduce((max, n) => Math.max(max, n), 0) };
+}
