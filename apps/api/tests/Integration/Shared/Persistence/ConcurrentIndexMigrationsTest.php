@@ -85,7 +85,7 @@ final class ConcurrentIndexMigrationsTest extends KernelTestCase
             self::PRODUCT_BIGRAMS,
             'catalog_product',
             ['catalog_product_name_bigrams_idx' => 'USING gin (catalog_name_bigrams(name))'],
-            ['catalog_product_name_bigrams_idx' => 'USING gin (catalog_name_bigrams(name))'],
+            ['catalog_product_name_bigrams_idx' => 'USING gin (catalog_name_bigrams((name)::text))'],
         ];
         yield 'the customer indexes of the search by fragment' => [
             self::CUSTOMER_SEARCH,
