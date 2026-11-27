@@ -134,28 +134,28 @@ export function chooseSample(candidates, settings, rnd) {
 // answer or with a 5xx (docs/features/performance-program/plan.md, "Co liczymy") and a change not seen within the freshness timeout
 // (it is missing from the percentiles of W16) make the run no measurement, as a refused write, a mismatch, an error of the run and a
 // consistency check that did not finish do. The thresholds of writes.js fail the run (exit 99) on the same counts. counts:
-// finished, dropped, late, windowsOutside, maxCatchUpInWindow, unanswered, freshnessTimeouts, refused, mismatches, runErrors; a missing
-// count fails the run.
+// finished, dropped, late, windowsOutside, catchUpWrites, unanswered, freshnessTimeouts, refused, mismatches, runErrors; a missing
+// count fails the run. A run that did not finish has no proof of the rate (the figures of the windows are set at the end of the
+// writes): one reason says so, and the rules of the rate are not applied.
 export function runVerdict(counts) {
   const rules = [
     ['dropped', (n) => `${n} writes were not sent at the rate (in flight up to the limit or no free variant): no measurement at the rate`],
     ['late', (n) => `${n} writes of the open model sent later than the tolerance after their time (lib/write-state.js, sendTolerance): no measurement at the rate`],
-    ['windowsOutside', (n) => `${n} windows of 1 s with a number of writes sent more than one write off the rate (a hole or a burst): the rate was not kept`],
     ['unanswered', (n) => `${n} writes without an answer or with a 5xx: no measurement at the rate`],
     ['freshnessTimeouts', (n) => `${n} changes not seen within the freshness timeout: the percentiles of the freshness leave them out`],
     ['refused', (n) => `${n} writes refused (4xx)`],
     ['mismatches', (n) => `${n} variants mismatch the index`],
     ['runErrors', (n) => `${n} errors of the run`],
   ];
+  const rateRules = [
+    ['windowsOutside', (n) => `${n} windows of 1 s with a number of writes sent outside the band of the rate (a hole or a burst): the rate was not kept`],
+    ['catchUpWrites', (n) => `${n} catch-up writes (sent later than the stall tolerance after their time, in a series): the rate was not kept`],
+  ];
   const reasons = [];
-  // One write caught up in a window is the jitter of that write (the tolerance of the band); a series is a held-back schedule.
-  if (typeof counts.maxCatchUpInWindow !== 'number') {
-    reasons.push('the count maxCatchUpInWindow is missing');
-  } else if (counts.maxCatchUpInWindow > 1) {
-    reasons.push(`a series of ${counts.maxCatchUpInWindow} catch-up writes (sent more than one interval late) in one window of 1 s: the rate was not kept`);
-  }
   if (counts.finished !== true) {
-    reasons.push('the consistency check did not finish (interrupted or cut off by maxDuration)');
+    reasons.push('no proof of the rate and no consistency check: the run did not finish (interrupted or cut off by maxDuration)');
+  } else {
+    rules.splice(2, 0, ...rateRules);
   }
   for (const [name, reason] of rules) {
     const n = counts[name];
@@ -168,10 +168,11 @@ export function runVerdict(counts) {
   return { passed: reasons.length === 0, reasons };
 }
 
-// How late a write of the open model may leave the generator: DEFAULT_SEND_TOLERANCE_MS whatever the rate, unless the settings give
-// another. A generator that does not keep the rate falls behind without bound and soon passes it, while the jitter of the event loop
-// and the scheduler is orders of magnitude smaller than a second; a delay up to a second changes neither the rate within the windows
-// of a measurement nor the freshness (W16 counts from the answer of the write). A later write counts like one not sent at the rate (docs/features/performance-program/plan.md, "Co liczymy").
+// The error threshold of the generator: a write of the open model later than DEFAULT_SEND_TOLERANCE_MS after its time, whatever the
+// rate, unless the settings give another. A generator that stopped falls behind without bound and soon passes it, while the jitter of
+// the event loop and the scheduler is orders of magnitude smaller than a second. It is no proof of the rate (that is the windows of
+// 1 s and the catch-up writes below); a later write counts like one not sent at the rate (docs/features/performance-program/plan.md,
+// "Co liczymy").
 export const DEFAULT_SEND_TOLERANCE_MS = 1000;
 
 export function sendTolerance(overrideMs) {
@@ -199,8 +200,9 @@ export function tokenAction(expiresAt, now) {
 // The proof of the rate (load/README.md, "Tempo"): the writes of the open model actually sent in every window of 1 s from the
 // start, and the lag of every send behind its planned time. The open model plans write i at start + i / rate (docs/features/
 // performance-program/plan.md, "Co liczymy": the arrivals do not depend on the answers), so a full window holds floor(rate) or
-// ceil(rate) of them; the jitter of the timer can move one write across the edge of a window. A window outside that by more than
-// one write is a hole (writes dropped or held back) or a burst (held-back writes sent at once), and the rate was not kept.
+// ceil(rate) of them; a stall of the loop up to the stall tolerance can move a few across the edge of a window (rateBand). A window
+// outside the band is a hole (writes dropped or held back) or a burst (held-back writes sent at once), and a write later than the
+// stall tolerance is a catch-up: either way the rate was not kept.
 
 // The upper edges of the buckets of the lag (ms), closed at the top; above the last one: gt_1000.
 const LAG_BUCKETS = [1, 5, 20, 100, 1000];
@@ -210,9 +212,20 @@ export function lagBucket(lagMs) {
   return edge === undefined ? `gt_${LAG_BUCKETS[LAG_BUCKETS.length - 1]}` : `le_${edge}`;
 }
 
-// The counts of a full window of 1 s that keep the rate: the whole counts of the schedule, one write either side.
-export function rateBand(rate) {
-  return { low: Math.floor(rate) - 1, high: Math.ceil(rate) + 1 };
+// The stall of the loop of the open model that keeps the rate: DEFAULT_STALL_TOLERANCE_MS whatever the rate, unless the settings give
+// another (WRITE_STALL_TOLERANCE_MS). It is negligible beside what is measured (the listing in hundreds of ms, the freshness in
+// seconds) and leaves the number of writes in a window of 1 s within the band; a longer stall is a catch-up series.
+export const DEFAULT_STALL_TOLERANCE_MS = 100;
+
+export function stallTolerance(overrideMs) {
+  return overrideMs === undefined ? DEFAULT_STALL_TOLERANCE_MS : overrideMs;
+}
+
+// The counts of a full window of 1 s that keep the rate: the whole counts of the schedule, and k writes either side, the most a stall
+// of the tolerance can move across the edge of a window (at least one, the jitter of one write).
+export function rateBand(rate, stallMs) {
+  const k = Math.max(1, Math.ceil((rate * stallMs) / 1000));
+  return { low: Math.floor(rate) - k, high: Math.ceil(rate) + k };
 }
 
 // Nearest rank: the value with at least p% of the sorted list at or below it.
@@ -221,12 +234,12 @@ function percentile(sorted, p) {
 }
 
 // The distribution of the writes sent in the full windows of 1 s (counts, in order) and how many are below and above the band.
-export function windowStats(counts, rate) {
+export function windowStats(counts, rate, stallMs) {
   if (counts.length === 0) {
     return { windows: 0, min: null, p5: null, p50: null, p95: null, max: null, below: 0, above: 0 };
   }
   const sorted = [...counts].sort((a, b) => a - b);
-  const band = rateBand(rate);
+  const band = rateBand(rate, stallMs);
   return {
     windows: counts.length,
     min: sorted[0],
@@ -239,15 +252,14 @@ export function windowStats(counts, rate) {
   };
 }
 
-// A write sent more than one interval of the rate after its planned time left after the next one was due: the loop of the open
-// model catches up a held-back schedule by sending the writes that are due at once (writes.js, openModel).
-export function isCatchUp(dueMs, sentMs, rate) {
-  return sentMs - dueMs > 1000 / rate;
+// A catch-up write: sent later than the stall tolerance, and more than one interval of the rate, after its planned time. The loop of
+// the open model catches up a held-back schedule by sending the writes that are due at once (writes.js, openModel), so such a write
+// is part of a series.
+export function isCatchUp(dueMs, sentMs, rate, stallMs) {
+  return sentMs - dueMs > Math.max(1000 / rate, stallMs);
 }
 
 // The catch-up writes in all and the largest series of them in one window of 1 s (catch-up writes per window, in order).
 export function catchUpStats(perWindow) {
   return { writes: perWindow.reduce((sum, n) => sum + n, 0), maxInWindow: perWindow.reduce((max, n) => Math.max(max, n), 0) };
 }
-
-export function stallTolerance(overrideMs) {}
