@@ -75,9 +75,70 @@ final class SearchIndexSetupTest extends KernelTestCase
         self::assertSame('another', $this->definitionHash($index));
     }
 
-    public function testDefinitionHashIgnoresShardsAndReplicas(): void
+    public function testDefinitionHashIgnoresShardsReplicasAndTheRefreshInterval(): void
     {
-        self::assertSame(new ProductIndexDefinition(1, 0)->hash(), new ProductIndexDefinition(3, 2)->hash());
+        self::assertSame(new ProductIndexDefinition(1, 0)->hash(), new ProductIndexDefinition(3, 2, '5s')->hash());
+    }
+
+    public function testSetupCreatesTheIndexWithTheRefreshIntervalOfTheDefinition(): void
+    {
+        $this->maintenance(definition: new ProductIndexDefinition(1, 0, '5s'))->setup();
+
+        self::assertSame('5s', $this->refreshInterval($this->aliasTargets()[0]));
+    }
+
+    public function testSetupSetsTheRefreshIntervalOfTheDefinitionOnAnExistingIndexWithoutRebuildingIt(): void
+    {
+        $this->maintenance()->setup();
+        [$index] = $this->aliasTargets();
+        self::assertSame('1s', $this->refreshInterval($index));
+        self::esClient()->index(['index' => $this->alias(), 'id' => 'x', 'body' => $this->document('x'), 'refresh' => 'true']);
+
+        $result = $this->maintenance(definition: new ProductIndexDefinition(1, 0, '5s'))->setup();
+
+        self::assertEquals(new SetupResult(), $result);
+        self::assertSame([$index], $this->aliasTargets());
+        self::assertSame([$index], $this->aliasIndexes());
+        self::assertSame('5s', $this->refreshInterval($index));
+        self::assertSame(1, $this->documentCount($index));
+
+        $this->maintenance(definition: new ProductIndexDefinition(1, 0, '500ms'))->setup();
+
+        self::assertSame('500ms', $this->refreshInterval($index));
+    }
+
+    public function testSetupSetsTheRefreshIntervalOnAnIndexWithoutAnExplicitOneToo(): void
+    {
+        $this->maintenance()->setup();
+        [$index] = $this->aliasTargets();
+        self::esClient()->indices()->putSettings(['index' => $index, 'body' => ['index' => ['refresh_interval' => null]]]);
+        self::assertNull($this->refreshInterval($index));
+
+        $this->maintenance()->setup();
+
+        self::assertSame('1s', $this->refreshInterval($index));
+    }
+
+    public function testSetupSetsTheRefreshIntervalOnAnIndexFromAnotherDefinitionToo(): void
+    {
+        $this->maintenance()->setup();
+        [$index] = $this->aliasTargets();
+        $this->markAsBuiltFromAnotherDefinition($index);
+
+        $result = $this->maintenance(definition: new ProductIndexDefinition(1, 0, '5s'))->setup();
+
+        self::assertSame($index, $result->outdatedIndex);
+        self::assertSame('5s', $this->refreshInterval($index));
+    }
+
+    public function testSetupLeavesTheIndexOfARebuildInProgressWithItsDisabledRefresh(): void
+    {
+        $this->maintenance()->setup();
+        $rebuilt = $this->maintenance()->createIndex();
+
+        $this->maintenance(definition: new ProductIndexDefinition(1, 0, '5s'))->setup();
+
+        self::assertSame('-1', $this->refreshInterval($rebuilt));
     }
 
     public function testOrphanedIndexIsReportedNotDeleted(): void
@@ -291,6 +352,18 @@ final class SearchIndexSetupTest extends KernelTestCase
         \assert(\is_array($mapping) && \is_array($mapping['mappings']) && \is_array($mapping['mappings']['_meta']));
 
         return $mapping['mappings']['_meta']['definition_hash'] ?? null;
+    }
+
+    private function refreshInterval(string $index): ?string
+    {
+        $response = self::esClient()->indices()->getSettings(['index' => $index]);
+        \assert($response instanceof Elasticsearch);
+        $settings = $response->asArray();
+        \assert(\is_array($settings[$index]) && \is_array($settings[$index]['settings']) && \is_array($settings[$index]['settings']['index']));
+        $value = $settings[$index]['settings']['index']['refresh_interval'] ?? null;
+        \assert(null === $value || \is_string($value));
+
+        return $value;
     }
 
     private function documentCount(string $index): int

@@ -1,18 +1,22 @@
-"""The shards of the search index and the CronJob `reindex` in the render (docs/features/search/spec.md, "Infrastruktura").
+"""The shards and the refresh interval of the search index and the CronJob `reindex` in the render (docs/features/search/spec.md,
+"Infrastruktura").
 
-elasticsearch.shards of the values is SEARCH_SHARDS of every container that runs the code of the API (the helper shop.apiEnv), so
-the Deployment, the workers, the Jobs and the CronJobs create a new product index with the same number of primary shards. The CronJob
+elasticsearch.shards of the values is SEARCH_SHARDS and elasticsearch.refreshInterval is SEARCH_REFRESH_INTERVAL of every container
+that runs the code of the API (the helper shop.apiEnv), so the Deployment, the workers, the Jobs and the CronJobs create a new
+product index with the same number of primary shards and set the same refresh interval. The CronJob
 `reindex` is suspended in every profile: make -C infra/k8s reindex creates its Jobs, which run catalog:reindex with the image, the
 environment and the secrets of the deployed revision.
 
-The cases: prod, prod-domain, ci, ci-images-file, load and ci-shards (ci with elasticsearch.shards=3)."""
+The cases: prod, prod-domain, ci, ci-images-file, load and ci-shards (ci with elasticsearch.shards=3 and
+elasticsearch.refreshInterval=500ms)."""
 
 import unittest
 
 from support import DIGEST, by_logical, containers, env_of, of_kind, pod_spec, wave
 
 CASES = ("prod", "prod-domain", "ci", "ci-images-file", "load", "ci-shards")
-SHARDS = {"prod": "4", "prod-domain": "4", "ci": "1", "ci-images-file": "1", "load": "1", "ci-shards": "3"}
+SHARDS = {"prod": "1", "prod-domain": "1", "ci": "1", "ci-images-file": "1", "load": "1", "ci-shards": "3"}
+REFRESH_INTERVALS = {"prod": "5s", "prod-domain": "5s", "ci": "1s", "ci-images-file": "1s", "load": "1s", "ci-shards": "500ms"}
 
 
 def cronjob(case):
@@ -45,9 +49,22 @@ class ShardsOfTheIndexTest(unittest.TestCase):
             for name, one in found:
                 self.assertEqual(SHARDS[case], env_of(one).get("SEARCH_SHARDS"), f"{case}: {name}/{one['name']}")
 
-    def test_the_server_builds_an_index_of_four_shards_and_the_other_profiles_of_one(self):
-        self.assertEqual("4", env_of(container("prod"))["SEARCH_SHARDS"])
+    def test_every_profile_builds_an_index_of_one_shard(self):
+        self.assertEqual("1", env_of(container("prod"))["SEARCH_SHARDS"])
         self.assertEqual("1", env_of(container("ci"))["SEARCH_SHARDS"])
+
+
+class RefreshIntervalOfTheIndexTest(unittest.TestCase):
+    def test_every_container_of_the_api_gets_the_refresh_interval_of_the_values(self):
+        for case in CASES:
+            for name, one in api_containers(case):
+                self.assertEqual(
+                    REFRESH_INTERVALS[case], env_of(one).get("SEARCH_REFRESH_INTERVAL"), f"{case}: {name}/{one['name']}"
+                )
+
+    def test_the_server_refreshes_every_five_seconds_and_the_other_profiles_every_second(self):
+        self.assertEqual("5s", env_of(container("prod"))["SEARCH_REFRESH_INTERVAL"])
+        self.assertEqual("1s", env_of(container("ci"))["SEARCH_REFRESH_INTERVAL"])
 
 
 class ReindexCronJobTest(unittest.TestCase):

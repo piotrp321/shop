@@ -43,6 +43,36 @@ final class ProductIndexDefinitionTest extends TestCase
         }
     }
 
+    public function testANewIndexHasOneShardIsSortedByTheCategoryPathAndDoesNotIndexIt(): void
+    {
+        $this->maintenance()->setup();
+        $index = $this->maintenance()->activeIndex();
+
+        $settings = self::esClient()->indices()->getSettings(['index' => $index]);
+        \assert($settings instanceof Elasticsearch);
+        self::assertSame('1', $settings[$index]['settings']['index']['number_of_shards']);
+        self::assertSame(['sort_path'], $settings[$index]['settings']['index']['sort']['field']);
+        self::assertSame(['asc'], $settings[$index]['settings']['index']['sort']['order']);
+
+        $mapping = self::esClient()->indices()->getMapping(['index' => $index]);
+        \assert($mapping instanceof Elasticsearch);
+        self::assertSame(['type' => 'keyword', 'index' => false], $mapping[$index]['mappings']['properties']['sort_path']);
+    }
+
+    public function testThePathOfTheMainCategoryIsStoredAsTheSortKeyAndReadBack(): void
+    {
+        $this->maintenance()->setup();
+        $document = self::document();
+
+        self::assertSame('p/c', ProductIndexDefinition::source($document)['sort_path']);
+        $this->indexer()->index($document);
+
+        $stored = self::esClient()->get(['index' => $this->alias(), 'id' => self::ID]);
+        \assert($stored instanceof Elasticsearch);
+        self::assertSame('p/c', $stored['_source']['sort_path']);
+        self::assertEquals($document, ProductIndexDefinition::document($stored['_source']));
+    }
+
     public function testADocumentWithVariantsIsStoredAndReadBack(): void
     {
         $this->maintenance()->setup();
@@ -190,22 +220,23 @@ final class ProductIndexDefinitionTest extends TestCase
     private static function document(?int $fromGross = 19_900, ?array $variants = null, ProductStatus $status = ProductStatus::Published): ProductDocument
     {
         return new ProductDocument(
-            self::ID,
-            1_762_400_000_123_456,
-            'Kurtka puchowa',
-            'kurtka-puchowa',
-            'Ciepła kurtka na zimę',
-            'c',
-            ['c'],
-            ['p', 'c'],
-            null,
-            ['Odzież', 'Kurtki'],
-            $variants ?? [
+            id: self::ID,
+            version: 1_762_400_000_123_456,
+            name: 'Kurtka puchowa',
+            slug: 'kurtka-puchowa',
+            shortDescription: 'Ciepła kurtka na zimę',
+            mainCategoryId: 'c',
+            mainCategoryPath: 'p/c',
+            categoryIds: ['c'],
+            categoryAncestorIds: ['p', 'c'],
+            mainImage: null,
+            categoryNames: ['Odzież', 'Kurtki'],
+            variants: $variants ?? [
                 new VariantDocument(18_900, false, ["Kolor\u{1F}czarne", "Rozmiar\u{1F}42"]),
                 new VariantDocument(19_900, true, ["Kolor\u{1F}Białe", "Rozmiar\u{1F}43"]),
                 new VariantDocument(null, false, ["Kolor\u{1F}zielone", "Rozmiar\u{1F}44"]),
             ],
-            $fromGross,
+            fromGross: $fromGross,
             status: $status,
         );
     }

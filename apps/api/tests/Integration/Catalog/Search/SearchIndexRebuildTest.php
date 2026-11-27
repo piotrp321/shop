@@ -210,7 +210,7 @@ final class SearchIndexRebuildTest extends KernelTestCase
         self::assertSame(array_fill(0, $http->bulkRequests, '-1'), $refreshIntervals);
         self::assertGreaterThan(3, $http->bulkRequests);
         self::assertSame($ids, array_keys($this->indexedVersions()));
-        self::assertNull($this->refreshInterval($this->maintenance->activeIndex()), 'The default refresh interval was not restored.');
+        self::assertSame('1s', $this->refreshInterval($this->maintenance->activeIndex()), 'The refresh interval of the configuration was not set.');
         self::assertFalse($this->indexExists($previous));
     }
 
