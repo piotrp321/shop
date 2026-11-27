@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore generate open reindex backups seal-secrets bootstrap kubeconfig status failed failed-retry failed-remove reinitialize cloudflare-ips
+.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore generate open reindex backups seal-secrets bootstrap kubeconfig status failed failed-retry failed-remove search-cache-clear reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render; git does not ignore the certificate of Sealed Secrets). The render also covers the application monitoring: the chart
@@ -215,6 +215,16 @@ failed-retry:
 # make -C infra/k8s failed-remove HOST=<user>@<address> ID=<id>. Needs the consent of the user.
 failed-remove:
 	@sh scripts/failed-remove.sh "$$HOST" "$$ID"
+
+# Empties the request cache of the product index in Elasticsearch over SSH (docs/features/search/spec.md, "Weryfikacja wydajności
+# (PERF-2 etap B)", "Zimny request cache"): make -C infra/k8s search-cache-clear HOST=<user>@<address>. Only POST /products/_cache/clear?request=true
+# against the alias products, read from the pod elasticsearch: no data, no other cache, no other index; the next searches fill the cache
+# again. It is part of a measurement on the server: needs the consent of the user (no tak: nothing is lost). Exit 0 emptied; 1 the server
+# or Elasticsearch cannot be reached, the alias is missing or not on exactly one index, Elasticsearch answered with an error or a failed
+# shard (the message says which; the one change is the clear call, so before it nothing was changed); 2 no HOST or a HOST that is not
+# <user>@<address>.
+search-cache-clear:
+	@sh scripts/search-cache-clear.sh "$$HOST"
 
 # Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak. Refuses with exit 1 before the
 # question while the shop is closed (the NetworkPolicy shop-closed of make generate; make generate PROFILE=seed goes back to the seed).

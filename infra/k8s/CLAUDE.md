@@ -82,7 +82,9 @@ serwera” i „Smoke test i check”).
   Skrypty `reinitialize`, `restore`, `create-admin`, `generate`, `reindex` i `failed-remove` pytają o słowo `tak`: agent podaje je dopiero po tej
   zgodzie.
   - Tylko po zgodzie: `failed-retry` (ponawia wiadomości z transportu `failed`; ID zachowanej po błędzie wiadomości się
-    zmienia, bez gwarancji „dokładnie raz”), `failed-remove` (usuwa wiadomość z `failed` bez możliwości cofnięcia; nigdy
+    zmienia, bez gwarancji „dokładnie raz”), `search-cache-clear` (opróżnia request cache indeksu produktów w Elasticsearchu, tylko
+    `POST /products/_cache/clear?request=true`, bez zmiany danych; to część pomiaru na serwerze, który wymaga zgody; bez `tak`;
+    zgoda nazywa operację i host), `failed-remove` (usuwa wiadomość z `failed` bez możliwości cofnięcia; nigdy
     webhooka płatności), `reinitialize` (kasuje produkty, ceny, promocje, stany i zamówienia, bez możliwości cofnięcia),
     `restore` (zastępuje bazy, zdjęcia, sesje i kolejki stanem ze snapshotu; `PRE_RESTORE=skip` wymaga osobnej zgody),
     `create-admin` (zakłada konto administratora i wysyła e-mail), `bootstrap` (zmienia serwer: pakiety, firewall,
@@ -113,7 +115,7 @@ serwera” i „Smoke test i check”).
   woła je `smoke.sh` (test dymny działa też w trakcie przebiegu AO). `kubeconfig`
   dopisuje bezwzględną ścieżkę `KUBE_DIR` do rejestru `~/.local/state/shop-ops/kube-dirs`.
 - Serwer obsługują cele po SSH (`HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `bootstrap`, `kubeconfig`, `status` i `failed` (tylko
-  odczyt), `failed-retry` i `failed-remove` (tylko po zgodzie, `HOST` i `ID`/`MAX` z linii poleceń) i `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`, nie przy
+  odczyt), `failed-retry` i `failed-remove` (tylko po zgodzie, `HOST` i `ID`/`MAX` z linii poleceń), `search-cache-clear` (tylko po zgodzie, `HOST`) i `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`, nie przy
   zamkniętym sklepie), a z klastrem łączą się też `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex`;
   `seal-secrets` i `cloudflare-ips` zmieniają pliki w repo.
   Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki runbooka `infra/k8s/README.md` oznaczone „zgoda

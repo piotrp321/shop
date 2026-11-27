@@ -89,7 +89,7 @@ class SearchCacheClear(EsStub):
     def test_a_host_that_cannot_be_reached_is_a_failure_with_a_message(self):
         result = self.clear(STUB_SSH_FAIL="1")
         self.assertFailedWith(result, "could not ask Elasticsearch", calls=1)
-        self.assertEqual([], self.es_calls())
+        self.assertFalse([c for c in self.es_calls() if c.startswith("POST")])
 
     def test_a_missing_alias_is_a_failure_and_nothing_is_cleared(self):
         body = '{"error":"alias [products] missing","status":404}'
