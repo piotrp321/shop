@@ -750,7 +750,13 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertArrayNotHasKey('facets', $problem);
         self::assertArrayNotHasKey('detail', $problem);
         self::assertStringNotContainsString('injected', (string) $this->client->getResponse()->getContent());
-        $this->assertNotStored();
+        if (503 === $expected) {
+            $this->assertNotStored();
+        } else {
+            // A 500 is never public and carries no cache tags (no-store is the rule of 400, 401 and 503 only).
+            self::assertStringNotContainsString('public', (string) $this->client->getResponse()->headers->get('Cache-Control'));
+            self::assertFalse($this->client->getResponse()->headers->has('xkey'));
+        }
     }
 
     public function testWrongMethodReturns405Problem(): void

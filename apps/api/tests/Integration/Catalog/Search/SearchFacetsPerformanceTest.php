@@ -6,20 +6,20 @@ namespace App\Tests\Integration\Catalog\Search;
 
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\ProductSearchCriteria;
-use App\Catalog\Domain\Product\VariantAxes;
 use App\Catalog\Infrastructure\Search\ProductSearchQuery;
 use Elastic\Elasticsearch\Response\Elasticsearch;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * A measurement, not a check: the `took` of the facet aggregations on a generated catalog and the size of the index.
+ * A measurement, not a check: the `took` of the multi search of a listing (the page and the facet searches) on a
+ * generated catalog and the size of the index.
  * Skipped unless SEARCH_PERF=1, so the usual test run does not pay for it:
  *
  *   docker compose exec -e SEARCH_PERF=1 api vendor/bin/phpunit --filter SearchFacetsPerformanceTest
  *
- * SEARCH_PERF_PRODUCTS (default 5000) and SEARCH_PERF_AXES (axes per product, 1 or 2, default 2, the limit of Catalog)
- * tune the set. The numbers go to the standard error output; they say nothing about the target scale.
+ * SEARCH_PERF_PRODUCTS (default 5000) and SEARCH_PERF_AXES (axes per product, default 2, the limit of Catalog) tune the
+ * set. The numbers go to the standard error output; they say nothing about the target scale.
  */
 #[Group('performance')]
 final class SearchFacetsPerformanceTest extends TestCase
@@ -35,9 +35,6 @@ final class SearchFacetsPerformanceTest extends TestCase
         }
         $products = (int) (getenv('SEARCH_PERF_PRODUCTS') ?: 5000);
         $axesPerProduct = (int) (getenv('SEARCH_PERF_AXES') ?: 2);
-        if ($axesPerProduct < 1 || $axesPerProduct > VariantAxes::MAX_AXES) {
-            throw new \InvalidArgumentException(\sprintf('SEARCH_PERF_AXES must be between 1 and %d (a product has %d axes at most), got %d.', VariantAxes::MAX_AXES, VariantAxes::MAX_AXES, $axesPerProduct));
-        }
         $this->maintenance()->setup();
         $client = self::esClient();
 
@@ -63,8 +60,14 @@ final class SearchFacetsPerformanceTest extends TestCase
         ];
         foreach ($criteria as $label => $one) {
             $took = [];
+            // The first multi search of the listing, every search without the request cache.
+            $body = [];
+            foreach ((new ProductSearchQuery($one))->searches(0, 24) as $search) {
+                $body[] = ['request_cache' => false];
+                $body[] = $search;
+            }
             for ($i = 0; $i < self::REPEATS; ++$i) {
-                $response = $client->search(['index' => $this->alias(), 'request_cache' => false, 'body' => ProductSearchQuery::body($one, 0, 24)]);
+                $response = $client->msearch(['index' => $this->alias(), 'body' => $body]);
                 \assert($response instanceof Elasticsearch);
                 $ms = $response->asArray()['took'];
                 \assert(\is_int($ms));
@@ -77,9 +80,8 @@ final class SearchFacetsPerformanceTest extends TestCase
     }
 
     /**
-     * Ten axes with 45 values each (skewed); a product has $axesPerProduct of them and up to 6 variants, each with a
-     * value of every axis of the product. A variant that repeats the options of another one of the product is left out
-     * (the options of the variants of a product are different).
+     * Ten axes with 45 values each (skewed); a product has $axesPerProduct of them and up to 4-6 variants, each with a
+     * value of every axis of the product, no two with the same values.
      *
      * @return list<ProductDocument>
      */
@@ -100,10 +102,12 @@ final class SearchFacetsPerformanceTest extends TestCase
                 foreach ($own as $axis) {
                     $options[$axis] = $value($axis);
                 }
-                if (isset($tuples[json_encode($options, \JSON_THROW_ON_ERROR)])) {
+                // No two variants of a product have the same values (a rule of the domain the index stands on).
+                $tuple = json_encode($options, \JSON_THROW_ON_ERROR);
+                if (isset($tuples[$tuple])) {
                     continue;
                 }
-                $tuples[json_encode($options, \JSON_THROW_ON_ERROR)] = true;
+                $tuples[$tuple] = true;
                 $priced = mt_rand(1, 10) > 1;
                 $variants[] = FacetFixtures::variant($options, $priced ? mt_rand(50, 300) * 100 : null, $priced && mt_rand(1, 10) <= 6);
             }
