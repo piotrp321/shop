@@ -17,8 +17,8 @@ serwerze wyłącznie za osobną zgodą właściciela.
 |---|---|---|
 | – | linia bazowa | właściciel 2026-11-27: zadanie 1 startuje na częściowej linii bazowej, czyli raporcie PR #972 (`server-profile-baseline-worf-2026-11-26.md`) bez czekania na jego merge; brakuje W5–W7, trzech powtórzeń, k6, zasobów usług z Grafany (uzupełnia je raport zadania 1, sekcja 1), odsetka trafień bufora, `pg_stat_checkpointer` i szczytu `pg_wal` na `server` (brak metryk: zadanie 5 i #976) |
 | – | kolejność | właściciel 2026-11-27: PERF-2B (#974) merguje pierwszy, PERF-1 robi rebase zadań 2 i 4; na worf.pl: model R i przebudowa → odczyt modelu R i W8 przy obecnych limitach → D2/D3 i wdrożenie → pomiar akceptacyjny PERF-2B; każdy krok na worf.pl za osobną zgodą |
-| 1 | RUNTIME-CONFIG-1 | w toku: dane `server` z Grafany i Lokiego w raporcie (PR #975); pomiar lokalny na `medium` wygenerowanym od nowa (stos `perf1`, dane zachowane do kolejnych pomiarów) w oknie uzgodnionym z PERF-2B i PERF-7 |
-| – | wartości oraz decyzje D2, D3, D6 | |
+| 1 | RUNTIME-CONFIG-1 | pomiar zrobiony 2026-11-27: raport `runtime-config-baseline-2026-11-27.md` (PR #975), dane `server` z Grafany i Lokiego, `medium` na stosie `perf1` (dane zachowane, stos zatrzymany; kopia dla PERF-2B w `perf2b-8`); weryfikator: #980 |
+| – | wartości oraz decyzje D2, D3, D6 | propozycje w raporcie zadania 1, sekcja 5; czekają na decyzję właściciela, D2 i D3 także na pomiar PERF-2B na worf.pl |
 | 2 | RUNTIME-CONFIG-2, RUNTIME-CONFIG-3 | |
 | 3 | RUNTIME-CONFIG-4, RUNTIME-CONFIG-5 | |
 | 4 | RUNTIME-CONFIG-6 | |
