@@ -35,3 +35,14 @@
 2026-11-27T21:09:26Z writes lag50: start (WRITE_RATE=50 WRITE_SECONDS=320 WRITE_SAMPLE=40 WRITE_UNSTOCKED_SHARE=0 WRITE_PRICE_PROBES=2 WRITE_PRICE_SHARE=0 WRITE_MAX_IN_FLIGHT=2000 CHECK_TIMEOUT_SECONDS=180)
 2026-11-27T21:16:19Z writes lag50: exit 99 (expected 99)
 2026-11-27T21:18:35Z down (volumes kept)
+2026-11-27T21:19:41Z writes-up: the realm of Keycloak imported for the ports of this stack, make up
+2026-11-27T21:19:45Z up after (9d763656)
+2026-11-27T21:20:01Z up after: ready (setup output in /var/folders/5z/mmc4635s5sn7wjx6m7h57zl00000gn/T//PERF-2B-8/setup-after.log)
+2026-11-27T21:20:01Z writes-up: the realm of Keycloak imported for the ports of this stack, make up
+2026-11-27T21:20:20Z writes-up: ready
+2026-11-27T21:20:20Z dbsums after-3
+2026-11-27T21:20:38Z writes clean12: start (WRITE_RATE=12 WRITE_SECONDS=320 WRITE_SAMPLE=60 WRITE_UNSTOCKED_SHARE=0 WRITE_PRICE_PROBES=3)
+2026-11-27T21:27:15Z writes clean12: exit 0 (expected 0)
+2026-11-27T21:27:23Z writes lag50: start (WRITE_RATE=50 WRITE_SECONDS=320 WRITE_SAMPLE=40 WRITE_UNSTOCKED_SHARE=0 WRITE_PRICE_PROBES=2 WRITE_PRICE_SHARE=0 WRITE_MAX_IN_FLIGHT=2000 CHECK_TIMEOUT_SECONDS=180)
+2026-11-27T21:35:17Z writes lag50: exit 99 (expected 99)
+2026-11-27T21:36:17Z down (volumes kept)

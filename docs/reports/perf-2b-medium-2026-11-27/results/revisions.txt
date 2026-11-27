@@ -1,7 +1,4 @@
 before: 98ac711b69a41dc85d0a19c230f990c69b83a7f4 (main, the data of the copy)
-after: d14bff3447e0e09a07c575196798a55f789c1c12 on task/PERF-2B-8
-origin/feat/perf-2b: 378d1f48b817e1c242ad6734a58cdfb096b3c5b3
+after: 9d763656f163683d4b2446073e057afc288f1fd5 on task/PERF-2B-8
+origin/feat/perf-2b: 9d763656f163683d4b2446073e057afc288f1fd5
 merge-base of after and 98ac711b: 98ac711b69a41dc85d0a19c230f990c69b83a7f4
-load/baseline.py: c680cbc8e5912cb16c0c274af246eb723d23b7b5 (the same tool for both revisions)
-mix seed: 20261127
-refresh_interval of the stack: 5s; shards: 1
