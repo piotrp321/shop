@@ -11,16 +11,28 @@ x-api-prod: &api-prod
   build: !reset null
   volumes: !reset []
 services:
+  # The variables give the configurations of the verifier runs (report, section 3); unset, they are the defaults of prod
+  # (limit 2Gi, shared_buffers 128MB) and auto_explain logs nothing (-1).
   postgres:
-    mem_limit: 2g
+    mem_limit: ${PERF1_PG_MEMORY:-2g}
     command:
       - postgres
       - -c
-      - shared_preload_libraries=pg_stat_statements
+      - shared_preload_libraries=pg_stat_statements,auto_explain
       - -c
       - pg_stat_statements.track_utility=off
       - -c
       - track_io_timing=on
+      - -c
+      - shared_buffers=${PERF1_PG_SHARED_BUFFERS:-128MB}
+      - -c
+      - auto_explain.log_min_duration=${PERF1_AUTO_EXPLAIN_MS:--1}
+      - -c
+      - auto_explain.log_analyze=on
+      - -c
+      - auto_explain.log_buffers=on
+      - -c
+      - auto_explain.log_timing=off
   redis:
     mem_limit: 512m
   elasticsearch:
