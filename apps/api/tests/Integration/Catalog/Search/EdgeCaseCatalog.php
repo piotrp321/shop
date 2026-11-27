@@ -51,6 +51,8 @@ final class EdgeCaseCatalog
     public const string ZNAK = "#@\$ \u{241F}";
     public const string ROK = '2024';
     public const string MATERIAL = 'Materiał';
+    // An axis named like an axis token: its options must never be read as axes.
+    public const string SKALA = '@Skala';
     // Axes of the overflow: the hub of every other axis, the axis with more than 30 values and a few others.
     public const string HUB = 'O03';
     public const string DLUGOSC = 'Długość';
@@ -197,6 +199,8 @@ final class EdgeCaseCatalog
             [[self::ROK => ['42'], self::KOLOR => ['czarny']], [null, null], false, null],
             [[self::MATERIAL => ['skóra', 'len']], [null, null], false, self::KUCHNIA],
             [[self::MATERIAL => ['skóra'], self::KOLOR => ['czarny']], [10000, 15000], true, null],
+            [[self::SKALA => ['1:50']], [null, null], false, null],
+            [[self::SKALA => ['1:50', '1:100'], self::ROZMIAR => ['42']], [null, null], false, self::DOM],
             [['Nieznana' => ['x']], [null, null], false, null],
             [['Nieznana' => ['x'], self::KOLOR => ['biały']], [null, 13000], false, null],
             [[self::KOLOR => ['czarny'], self::ROZMIAR => ['42'], self::KOLOR_RAMY => ['czarny'], self::WYMIAR => ['50.*']], [null, null], false, null],
@@ -340,6 +344,8 @@ final class EdgeCaseCatalog
             self::product('k19', 'Czapka', [self::DOM], true, [$k, $r], [[['biały', 'L'], 3500, true], [['zielony', 'L'], 3600, true], [['czarny', 'L'], 10000, true]]),
             // A number as the name of an axis, a Polish letter in an axis.
             self::product('k20', 'Rok', [self::DOM], false, [self::ROK], [[['42'], 3000, true]]),
+            // An axis that begins with "@" and values with a colon.
+            self::product('k23', 'Mapa', [self::DOM], true, [self::SKALA, $r], [[['1:50', '42'], 2200, true], [['1:100', '43'], 2300, false]]),
             self::product('k21', 'Torba', [self::KUCHNIA], false, [self::MATERIAL, $k], [[['skóra', 'czarny'], 12500, true], [['len', 'czarny'], 8000, false]]),
             // A draft: in the index, never in a listing (its offer is empty, so no price).
             self::product('k15', 'Szkic', [self::TURYSTYKA], true, [$k, $r], [[['czarny', '42'], null, false], [['biały', '43'], null, false]], ProductStatus::Draft),
