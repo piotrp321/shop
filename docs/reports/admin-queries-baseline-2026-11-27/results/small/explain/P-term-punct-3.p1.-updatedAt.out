@@ -1,0 +1,23 @@
+-- phrase punct-3 'a.b', page 1, sort -updatedAt
+-- hits = 0
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%a.b%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=16.83..16.84 rows=1 width=70) (actual time=1.422..1.429 rows=0.00 loops=1)
+  Buffers: shared hit=332
+  ->  Sort  (cost=16.83..16.84 rows=1 width=70) (actual time=1.421..1.421 rows=0.00 loops=1)
+        Sort Key: updated_at DESC, id DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=332
+        ->  Bitmap Heap Scan on catalog_product p  (cost=12.81..16.82 rows=1 width=70) (actual time=1.393..1.394 rows=0.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%a.b%'::text)
+              Rows Removed by Index Recheck: 657
+              Heap Blocks: exact=323
+              Buffers: shared hit=326
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..12.81 rows=1 width=0) (actual time=0.097..0.097 rows=657.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%a.b%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=278
+Planning Time: 1.372 ms
+Execution Time: 1.531 ms

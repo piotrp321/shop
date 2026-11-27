@@ -1,0 +1,14 @@
+-- customers, count without filter
+-- page = 10000
+SELECT count(*) FROM (SELECT 1 FROM ordering_customer c LIMIT 10001) bounded;
+
+Aggregate  (cost=51.64..51.65 rows=1 width=8) (actual time=0.164..0.166 rows=1.00 loops=1)
+  Buffers: shared hit=32
+  ->  Limit  (cost=0.00..40.73 rows=873 width=4) (actual time=0.018..0.141 rows=873.00 loops=1)
+        Buffers: shared hit=32
+        ->  Seq Scan on ordering_customer c  (cost=0.00..40.73 rows=873 width=4) (actual time=0.018..0.108 rows=873.00 loops=1)
+              Buffers: shared hit=32
+Planning:
+  Buffers: shared hit=213
+Planning Time: 0.284 ms
+Execution Time: 0.182 ms

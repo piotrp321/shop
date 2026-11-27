@@ -1,0 +1,16 @@
+-- customers, fragment none 'qqzzxx', count
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('qqzzxx') || '%' OR lower(c.full_name) LIKE '%' || lower('qqzzxx') || '%') LIMIT 10001) bounded;
+
+Aggregate  (cost=49.47..49.48 rows=1 width=8) (actual time=0.433..0.435 rows=1.00 loops=1)
+  Buffers: shared hit=32
+  ->  Limit  (cost=0.00..49.46 rows=1 width=4) (actual time=0.432..0.432 rows=0.00 loops=1)
+        Buffers: shared hit=32
+        ->  Seq Scan on ordering_customer c  (cost=0.00..49.46 rows=1 width=4) (actual time=0.431..0.431 rows=0.00 loops=1)
+              Filter: ((lower((email)::text) ~~ '%qqzzxx%'::text) OR (lower((full_name)::text) ~~ '%qqzzxx%'::text))
+              Rows Removed by Filter: 873
+              Buffers: shared hit=32
+Planning:
+  Buffers: shared hit=202
+Planning Time: 0.538 ms
+Execution Time: 0.450 ms

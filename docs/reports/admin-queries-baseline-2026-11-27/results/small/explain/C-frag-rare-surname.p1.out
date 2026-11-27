@@ -1,0 +1,18 @@
+-- customers, fragment rare-surname 'piechocki', page 1
+-- hits = 2
+SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('piechocki') || '%' OR lower(c.full_name) LIKE '%' || lower('piechocki') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26;
+
+Limit  (cost=49.63..49.65 rows=9 width=137) (actual time=0.461..0.463 rows=2.00 loops=1)
+  Buffers: shared hit=38
+  ->  Sort  (cost=49.63..49.65 rows=9 width=137) (actual time=0.460..0.460 rows=2.00 loops=1)
+        Sort Key: last_order_at DESC, customer_id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=38
+        ->  Seq Scan on ordering_customer c  (cost=0.00..49.48 rows=9 width=137) (actual time=0.207..0.446 rows=2.00 loops=1)
+              Filter: ((lower((email)::text) ~~ '%piechocki%'::text) OR (lower((full_name)::text) ~~ '%piechocki%'::text))
+              Rows Removed by Filter: 871
+              Buffers: shared hit=32
+Planning:
+  Buffers: shared hit=270
+Planning Time: 0.558 ms
+Execution Time: 0.474 ms

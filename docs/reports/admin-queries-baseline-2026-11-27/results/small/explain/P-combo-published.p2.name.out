@@ -1,0 +1,15 @@
+-- published only, page 2, sort name
+-- hits = 2145
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'published' AND (p.name, p.id) > ('Baton proteinowy Calavik Kocioł 800 Pro', CAST('0bf438a6-84be-53b6-960a-90aba1e742bc' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.28..35.59 rows=26 width=70) (actual time=0.023..0.088 rows=26.00 loops=1)
+  Buffers: shared hit=28
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.28..2855.17 rows=2102 width=70) (actual time=0.023..0.084 rows=26.00 loops=1)
+        Index Cond: (ROW((name)::text, id) > ROW('Baton proteinowy Calavik Kocioł 800 Pro'::text, '0bf438a6-84be-53b6-960a-90aba1e742bc'::uuid))
+        Filter: ((status)::text = 'published'::text)
+        Index Searches: 1
+        Buffers: shared hit=28
+Planning:
+  Buffers: shared hit=264
+Planning Time: 0.376 ms
+Execution Time: 0.103 ms

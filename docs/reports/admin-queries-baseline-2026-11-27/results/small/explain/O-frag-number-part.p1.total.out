@@ -1,0 +1,22 @@
+-- orders, fragment number-part '102', page 1, sort -total
+-- hits = 1017
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('102') || '%' ORDER BY o.total_gross DESC, o.id DESC LIMIT 26;
+
+Limit  (cost=0.28..285.51 rows=26 width=136) (actual time=0.077..0.305 rows=26.00 loops=1)
+  Buffers: shared hit=160
+  ->  Index Scan Backward using ordering_order_total_gross_id_idx on ordering_order o  (cost=0.28..11080.20 rows=1010 width=136) (actual time=0.076..0.301 rows=26.00 loops=1)
+        Filter: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%102%'::text)
+        Rows Removed by Filter: 52
+        Index Searches: 1
+        Buffers: shared hit=160
+        SubPlan 1
+          ->  Aggregate  (cost=9.54..9.55 rows=1 width=8) (actual time=0.004..0.004 rows=1.00 loops=26)
+                Buffers: shared hit=79
+                ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.29..9.54 rows=2 width=4) (actual time=0.003..0.004 rows=2.92 loops=26)
+                      Index Cond: (order_id = o.id)
+                      Index Searches: 26
+                      Buffers: shared hit=79
+Planning:
+  Buffers: shared hit=438
+Planning Time: 0.794 ms
+Execution Time: 0.337 ms

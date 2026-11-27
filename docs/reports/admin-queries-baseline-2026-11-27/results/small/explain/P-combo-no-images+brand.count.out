@@ -1,0 +1,21 @@
+-- without images + brand, count of the first page
+-- hits = 26
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%z%' AND p.images = '[]'::jsonb LIMIT 10001) bounded;
+
+Aggregate  (cost=181.81..181.82 rows=1 width=8) (actual time=0.169..0.171 rows=1.00 loops=1)
+  Buffers: shared hit=53
+  ->  Limit  (cost=44.49..181.51 rows=24 width=4) (actual time=0.041..0.167 rows=26.00 loops=1)
+        Buffers: shared hit=53
+        ->  Bitmap Heap Scan on catalog_product p  (cost=44.49..181.51 rows=24 width=4) (actual time=0.041..0.165 rows=26.00 loops=1)
+              Recheck Cond: (images = '[]'::jsonb)
+              Filter: ((name)::text ~~* '%z%'::text)
+              Rows Removed by Filter: 17
+              Heap Blocks: exact=43
+              Buffers: shared hit=53
+              ->  Bitmap Index Scan on catalog_product_without_images_idx  (cost=0.00..44.48 rows=43 width=0) (actual time=0.032..0.032 rows=43.00 loops=1)
+                    Index Searches: 1
+                    Buffers: shared hit=10
+Planning:
+  Buffers: shared hit=248
+Planning Time: 0.625 ms
+Execution Time: 0.185 ms

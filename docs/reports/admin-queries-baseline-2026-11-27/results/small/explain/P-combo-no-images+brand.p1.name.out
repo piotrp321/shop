@@ -1,0 +1,23 @@
+-- without images + brand, page 1, sort name
+-- hits = 26
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=182.06..182.12 rows=24 width=70) (actual time=0.187..0.190 rows=26.00 loops=1)
+  Buffers: shared hit=59
+  ->  Sort  (cost=182.06..182.12 rows=24 width=70) (actual time=0.186..0.187 rows=26.00 loops=1)
+        Sort Key: name, id
+        Sort Method: quicksort  Memory: 28kB
+        Buffers: shared hit=59
+        ->  Bitmap Heap Scan on catalog_product p  (cost=44.49..181.51 rows=24 width=70) (actual time=0.034..0.157 rows=26.00 loops=1)
+              Recheck Cond: (images = '[]'::jsonb)
+              Filter: ((name)::text ~~* '%z%'::text)
+              Rows Removed by Filter: 17
+              Heap Blocks: exact=43
+              Buffers: shared hit=53
+              ->  Bitmap Index Scan on catalog_product_without_images_idx  (cost=0.00..44.48 rows=43 width=0) (actual time=0.026..0.026 rows=43.00 loops=1)
+                    Index Searches: 1
+                    Buffers: shared hit=10
+Planning:
+  Buffers: shared hit=286
+Planning Time: 0.682 ms
+Execution Time: 0.214 ms

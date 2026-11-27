@@ -1,0 +1,29 @@
+-- customers, fragment punct-3 'a.b', page 1, sort name
+-- hits = 35
+SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('a.b') || '%' OR lower(c.full_name) LIKE '%' || lower('a.b') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26;
+
+Limit  (cost=29.65..29.66 rows=1 width=137) (actual time=0.176..0.179 rows=26.00 loops=1)
+  Buffers: shared hit=30
+  ->  Sort  (cost=29.65..29.66 rows=1 width=137) (actual time=0.175..0.176 rows=26.00 loops=1)
+        Sort Key: (lower((full_name)::text)), customer_id
+        Sort Method: quicksort  Memory: 33kB
+        Buffers: shared hit=30
+        ->  Bitmap Heap Scan on ordering_customer c  (cost=25.62..29.64 rows=1 width=137) (actual time=0.036..0.142 rows=35.00 loops=1)
+              Recheck Cond: ((lower((email)::text) ~~ '%a.b%'::text) OR (lower((full_name)::text) ~~ '%a.b%'::text))
+              Rows Removed by Index Recheck: 65
+              Heap Blocks: exact=21
+              Buffers: shared hit=27
+              ->  BitmapOr  (cost=25.62..25.62 rows=1 width=0) (actual time=0.021..0.022 rows=0.00 loops=1)
+                    Buffers: shared hit=6
+                    ->  Bitmap Index Scan on ordering_customer_email_trgm_idx  (cost=0.00..12.81 rows=1 width=0) (actual time=0.016..0.016 rows=100.00 loops=1)
+                          Index Cond: (lower((email)::text) ~~ '%a.b%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=3
+                    ->  Bitmap Index Scan on ordering_customer_name_trgm_idx  (cost=0.00..12.81 rows=1 width=0) (actual time=0.005..0.005 rows=100.00 loops=1)
+                          Index Cond: (lower((full_name)::text) ~~ '%a.b%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=271
+Planning Time: 0.639 ms
+Execution Time: 0.223 ms

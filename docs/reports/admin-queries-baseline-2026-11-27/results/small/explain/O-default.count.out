@@ -1,0 +1,16 @@
+-- orders, count without filter
+-- page = 10000
+SELECT count(*) FROM (SELECT 1 FROM ordering_order o LIMIT 10001) bounded;
+
+Aggregate  (cost=267.12..267.13 rows=1 width=8) (actual time=0.641..0.643 rows=1.00 loops=1)
+  Buffers: shared hit=30
+  ->  Limit  (cost=0.28..204.62 rows=5000 width=4) (actual time=0.020..0.511 rows=5000.00 loops=1)
+        Buffers: shared hit=30
+        ->  Index Only Scan using ordering_order_number_key on ordering_order o  (cost=0.28..204.62 rows=5000 width=4) (actual time=0.019..0.323 rows=5000.00 loops=1)
+              Heap Fetches: 0
+              Index Searches: 1
+              Buffers: shared hit=30
+Planning:
+  Buffers: shared hit=312
+Planning Time: 0.371 ms
+Execution Time: 0.657 ms

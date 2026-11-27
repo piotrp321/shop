@@ -1,0 +1,13 @@
+-- customers, no filter, sort -paidGross, page 1
+-- page = 25
+SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c ORDER BY c.paid_gross DESC, c.customer_id LIMIT 26;
+
+Limit  (cost=0.28..7.04 rows=26 width=137) (actual time=0.039..0.081 rows=26.00 loops=1)
+  Buffers: shared hit=27
+  ->  Index Scan using ordering_customer_paid_gross_idx on ordering_customer c  (cost=0.28..227.55 rows=873 width=137) (actual time=0.038..0.078 rows=26.00 loops=1)
+        Index Searches: 1
+        Buffers: shared hit=27
+Planning:
+  Buffers: shared hit=246
+Planning Time: 0.325 ms
+Execution Time: 0.091 ms

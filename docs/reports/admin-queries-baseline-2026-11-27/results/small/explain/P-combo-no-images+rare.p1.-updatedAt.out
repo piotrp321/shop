@@ -1,0 +1,26 @@
+-- without images + rare phrase, page 1, sort -updatedAt
+-- hits = 0
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ryś%' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=61.67..61.68 rows=1 width=70) (actual time=0.067..0.069 rows=0.00 loops=1)
+  Buffers: shared hit=19
+  ->  Sort  (cost=61.67..61.68 rows=1 width=70) (actual time=0.066..0.067 rows=0.00 loops=1)
+        Sort Key: updated_at DESC, id DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=19
+        ->  Bitmap Heap Scan on catalog_product p  (cost=57.65..61.66 rows=1 width=70) (actual time=0.046..0.047 rows=0.00 loops=1)
+              Recheck Cond: (((name)::text ~~* '%ryś%'::text) AND (images = '[]'::jsonb))
+              Buffers: shared hit=13
+              ->  BitmapAnd  (cost=57.65..57.65 rows=1 width=0) (actual time=0.044..0.044 rows=0.00 loops=1)
+                    Buffers: shared hit=13
+                    ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..12.92 rows=22 width=0) (actual time=0.014..0.014 rows=20.00 loops=1)
+                          Index Cond: ((name)::text ~~* '%ryś%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=3
+                    ->  Bitmap Index Scan on catalog_product_without_images_idx  (cost=0.00..44.48 rows=43 width=0) (actual time=0.029..0.029 rows=43.00 loops=1)
+                          Index Searches: 1
+                          Buffers: shared hit=10
+Planning:
+  Buffers: shared hit=287
+Planning Time: 0.672 ms
+Execution Time: 0.104 ms

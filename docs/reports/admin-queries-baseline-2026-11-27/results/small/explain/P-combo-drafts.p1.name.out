@@ -1,0 +1,13 @@
+-- drafts, page 1, sort name
+-- hits = 46
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.14..106.79 rows=26 width=70) (actual time=0.016..0.089 rows=26.00 loops=1)
+  Buffers: shared hit=27
+  ->  Index Scan using catalog_product_draft_name_id_idx on catalog_product p  (cost=0.14..188.83 rows=46 width=70) (actual time=0.015..0.085 rows=26.00 loops=1)
+        Index Searches: 1
+        Buffers: shared hit=27
+Planning:
+  Buffers: shared hit=268
+Planning Time: 0.398 ms
+Execution Time: 0.099 ms

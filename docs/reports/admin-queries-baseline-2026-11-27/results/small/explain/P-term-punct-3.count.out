@@ -1,0 +1,21 @@
+-- phrase punct-3 'a.b', count of the first page
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%a.b%' LIMIT 10001) bounded;
+
+Aggregate  (cost=16.83..16.84 rows=1 width=8) (actual time=0.759..0.761 rows=1.00 loops=1)
+  Buffers: shared hit=326
+  ->  Limit  (cost=12.81..16.82 rows=1 width=4) (actual time=0.757..0.758 rows=0.00 loops=1)
+        Buffers: shared hit=326
+        ->  Bitmap Heap Scan on catalog_product p  (cost=12.81..16.82 rows=1 width=4) (actual time=0.757..0.757 rows=0.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%a.b%'::text)
+              Rows Removed by Index Recheck: 657
+              Heap Blocks: exact=323
+              Buffers: shared hit=326
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..12.81 rows=1 width=0) (actual time=0.055..0.055 rows=657.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%a.b%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.662 ms
+Execution Time: 0.805 ms

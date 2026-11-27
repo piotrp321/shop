@@ -1,0 +1,29 @@
+-- discount codes, list with the active uses per row (A4)
+-- active uses of the codes = 453
+SELECT c.id, (SELECT count(*) FROM pricing_discount_code_usage u WHERE u.code_id = c.id AND u.released_at IS NULL) AS active_uses FROM pricing_discount_code c ORDER BY c.created_at DESC, c.id LIMIT 26;
+
+Limit  (cost=1.52..220.78 rows=17 width=32) (actual time=0.028..0.131 rows=17.00 loops=1)
+  Buffers: shared hit=43
+  ->  Result  (cost=1.52..220.78 rows=17 width=32) (actual time=0.028..0.127 rows=17.00 loops=1)
+        Buffers: shared hit=43
+        ->  Sort  (cost=1.52..1.56 rows=17 width=24) (actual time=0.021..0.022 rows=17.00 loops=1)
+              Sort Key: c.created_at DESC, c.id
+              Sort Method: quicksort  Memory: 26kB
+              Buffers: shared hit=7
+              ->  Seq Scan on pricing_discount_code c  (cost=0.00..1.17 rows=17 width=24) (actual time=0.004..0.005 rows=17.00 loops=1)
+                    Buffers: shared hit=1
+        SubPlan 1
+          ->  Aggregate  (cost=12.88..12.89 rows=1 width=8) (actual time=0.006..0.006 rows=1.00 loops=17)
+                Buffers: shared hit=36
+                ->  Bitmap Heap Scan on pricing_discount_code_usage u  (cost=4.40..12.80 rows=32 width=0) (actual time=0.003..0.005 rows=26.65 loops=17)
+                      Recheck Cond: ((code_id = c.id) AND (released_at IS NULL))
+                      Heap Blocks: exact=19
+                      Buffers: shared hit=36
+                      ->  Bitmap Index Scan on pricing_discount_code_usage_active_idx  (cost=0.00..4.39 rows=32 width=0) (actual time=0.002..0.002 rows=26.65 loops=17)
+                            Index Cond: (code_id = c.id)
+                            Index Searches: 17
+                            Buffers: shared hit=17
+Planning:
+  Buffers: shared hit=192
+Planning Time: 0.266 ms
+Execution Time: 0.160 ms

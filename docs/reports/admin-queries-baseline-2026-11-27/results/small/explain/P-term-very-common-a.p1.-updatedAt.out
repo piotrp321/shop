@@ -1,0 +1,15 @@
+-- phrase very-common-a 'pro', page 1, sort -updatedAt
+-- hits = 251
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=0.28..166.37 rows=26 width=70) (actual time=0.057..0.366 rows=26.00 loops=1)
+  Buffers: shared hit=237
+  ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.28..2542.67 rows=398 width=70) (actual time=0.056..0.363 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%pro%'::text)
+        Rows Removed by Filter: 379
+        Index Searches: 1
+        Buffers: shared hit=237
+Planning:
+  Buffers: shared hit=278
+Planning Time: 0.654 ms
+Execution Time: 0.375 ms

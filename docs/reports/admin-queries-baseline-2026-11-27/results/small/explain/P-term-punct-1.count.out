@@ -1,0 +1,18 @@
+-- phrase punct-1 '#!#', count of the first page
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%#!#%' LIMIT 10001) bounded;
+
+Aggregate  (cost=182.64..182.65 rows=1 width=8) (actual time=1.022..1.025 rows=1.00 loops=1)
+  Buffers: shared hit=36
+  ->  Limit  (cost=0.28..182.62 rows=1 width=4) (actual time=1.021..1.021 rows=0.00 loops=1)
+        Buffers: shared hit=36
+        ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.28..182.62 rows=1 width=4) (actual time=1.020..1.020 rows=0.00 loops=1)
+              Filter: ((name)::text ~~* '%#!#%'::text)
+              Rows Removed by Filter: 2191
+              Heap Fetches: 0
+              Index Searches: 1
+              Buffers: shared hit=36
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.726 ms
+Execution Time: 1.047 ms

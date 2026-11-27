@@ -1,0 +1,29 @@
+-- without images + brand, page 2, sort name
+-- hits = 26
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' AND p.images = '[]'::jsonb AND (p.name, p.id) > ('Talerze żeliwne Isven Szlak 200', CAST('d212e450-75e6-5085-a0af-7a618a92dd6c' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=69.62..69.63 rows=2 width=70) (actual time=0.080..0.083 rows=1.00 loops=1)
+  Buffers: shared hit=22
+  ->  Sort  (cost=69.62..69.63 rows=2 width=70) (actual time=0.080..0.080 rows=1.00 loops=1)
+        Sort Key: name, id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=22
+        ->  Bitmap Heap Scan on catalog_product p  (cost=58.16..69.61 rows=2 width=70) (actual time=0.068..0.069 rows=1.00 loops=1)
+              Recheck Cond: ((ROW((name)::text, id) > ROW('Talerze żeliwne Isven Szlak 200'::text, 'd212e450-75e6-5085-a0af-7a618a92dd6c'::uuid)) AND (images = '[]'::jsonb))
+              Filter: ((name)::text ~~* '%z%'::text)
+              Rows Removed by Filter: 1
+              Heap Blocks: exact=2
+              Buffers: shared hit=16
+              ->  BitmapAnd  (cost=58.16..58.16 rows=3 width=0) (actual time=0.061..0.061 rows=0.00 loops=1)
+                    Buffers: shared hit=14
+                    ->  Bitmap Index Scan on catalog_product_name_id_idx  (cost=0.00..13.43 rows=153 width=0) (actual time=0.029..0.029 rows=169.00 loops=1)
+                          Index Cond: (ROW((name)::text, id) > ROW('Talerze żeliwne Isven Szlak 200'::text, 'd212e450-75e6-5085-a0af-7a618a92dd6c'::uuid))
+                          Index Searches: 1
+                          Buffers: shared hit=4
+                    ->  Bitmap Index Scan on catalog_product_without_images_idx  (cost=0.00..44.48 rows=43 width=0) (actual time=0.029..0.029 rows=43.00 loops=1)
+                          Index Searches: 1
+                          Buffers: shared hit=10
+Planning:
+  Buffers: shared hit=285
+Planning Time: 0.660 ms
+Execution Time: 0.104 ms

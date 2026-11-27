@@ -1,0 +1,18 @@
+-- phrase two-other 'zx', page 1, sort name
+-- hits = 0
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zx%' ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=694.40..694.40 rows=1 width=70) (actual time=1.446..1.448 rows=0.00 loops=1)
+  Buffers: shared hit=673
+  ->  Sort  (cost=694.40..694.40 rows=1 width=70) (actual time=1.445..1.445 rows=0.00 loops=1)
+        Sort Key: name, id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=673
+        ->  Seq Scan on catalog_product p  (cost=0.00..694.39 rows=1 width=70) (actual time=1.429..1.429 rows=0.00 loops=1)
+              Filter: ((name)::text ~~* '%zx%'::text)
+              Rows Removed by Filter: 2191
+              Buffers: shared hit=667
+Planning:
+  Buffers: shared hit=277
+Planning Time: 0.589 ms
+Execution Time: 1.464 ms

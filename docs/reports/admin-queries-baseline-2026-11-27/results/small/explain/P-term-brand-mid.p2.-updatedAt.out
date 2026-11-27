@@ -1,0 +1,28 @@
+-- phrase brand-mid 'treningowe', page 2, sort -updatedAt
+-- hits = 35
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%treningowe%' AND (p.updated_at, p.id) < (CAST('2024-10-11 02:09:13+00' AS timestamptz), CAST('3966d8eb-408e-568d-afdc-7af7348af3ee' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=133.16..133.18 rows=7 width=70) (actual time=0.167..0.170 rows=10.00 loops=1)
+  Buffers: shared hit=41
+  ->  Sort  (cost=133.16..133.18 rows=7 width=70) (actual time=0.167..0.167 rows=10.00 loops=1)
+        Sort Key: updated_at DESC, id DESC
+        Sort Method: quicksort  Memory: 26kB
+        Buffers: shared hit=41
+        ->  Bitmap Heap Scan on catalog_product p  (cost=107.09..133.06 rows=7 width=70) (actual time=0.129..0.156 rows=10.00 loops=1)
+              Recheck Cond: ((ROW(updated_at, id) < ROW('2024-10-11 02:09:13+00'::timestamp with time zone, '3966d8eb-408e-568d-afdc-7af7348af3ee'::uuid)) AND ((name)::text ~~* '%treningowe%'::text))
+              Heap Blocks: exact=10
+              Buffers: shared hit=35
+              ->  BitmapAnd  (cost=107.09..107.09 rows=7 width=0) (actual time=0.120..0.120 rows=0.00 loops=1)
+                    Buffers: shared hit=25
+                    ->  Bitmap Index Scan on catalog_product_updated_at_id_idx  (cost=0.00..33.14 rows=648 width=0) (actual time=0.048..0.049 rows=648.00 loops=1)
+                          Index Cond: (ROW(updated_at, id) < ROW('2024-10-11 02:09:13+00'::timestamp with time zone, '3966d8eb-408e-568d-afdc-7af7348af3ee'::uuid))
+                          Index Searches: 1
+                          Buffers: shared hit=8
+                    ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..73.70 rows=22 width=0) (actual time=0.069..0.069 rows=40.00 loops=1)
+                          Index Cond: ((name)::text ~~* '%treningowe%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=17
+Planning:
+  Buffers: shared hit=277
+Planning Time: 0.699 ms
+Execution Time: 0.214 ms

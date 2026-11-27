@@ -1,0 +1,22 @@
+-- phrase polish-lower 'kamień', page 1, sort -updatedAt
+-- hits = 21
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%kamień%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=42.88..42.88 rows=1 width=70) (actual time=0.109..0.112 rows=21.00 loops=1)
+  Buffers: shared hit=36
+  ->  Sort  (cost=42.88..42.88 rows=1 width=70) (actual time=0.108..0.109 rows=21.00 loops=1)
+        Sort Key: updated_at DESC, id DESC
+        Sort Method: quicksort  Memory: 27kB
+        Buffers: shared hit=36
+        ->  Bitmap Heap Scan on catalog_product p  (cost=38.86..42.87 rows=1 width=70) (actual time=0.037..0.092 rows=21.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%kamień%'::text)
+              Heap Blocks: exact=21
+              Buffers: shared hit=30
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..38.86 rows=1 width=0) (actual time=0.029..0.029 rows=21.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%kamień%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=9
+Planning:
+  Buffers: shared hit=278
+Planning Time: 0.656 ms
+Execution Time: 0.144 ms

@@ -1,0 +1,3 @@
+-- category big-early (a big leaf whose names start at 4% of the alphabet; 47 products), count of the first page
+-- cost variable: products in the subtree = 47 (scales with products)
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/f6f867f6-b41b-5131-9b4d-8a30fbea6c2b/4744a6a8-69df-52c4-8142-b3d5c2024a00/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/f6f867f6-b41b-5131-9b4d-8a30fbea6c2b/4744a6a8-69df-52c4-8142-b3d5c2024a00/%'))) LIMIT 10001) bounded;

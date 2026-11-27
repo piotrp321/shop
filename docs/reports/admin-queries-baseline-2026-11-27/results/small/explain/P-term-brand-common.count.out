@@ -1,0 +1,18 @@
+-- phrase brand-common 'z', count of the first page
+-- hits = 1239
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%z%' LIMIT 10001) bounded;
+
+Aggregate  (cost=198.11..198.12 rows=1 width=8) (actual time=1.051..1.053 rows=1.00 loops=1)
+  Buffers: shared hit=36
+  ->  Limit  (cost=0.28..182.62 rows=1239 width=4) (actual time=0.024..1.015 rows=1239.00 loops=1)
+        Buffers: shared hit=36
+        ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.28..182.62 rows=1239 width=4) (actual time=0.024..0.969 rows=1239.00 loops=1)
+              Filter: ((name)::text ~~* '%z%'::text)
+              Rows Removed by Filter: 952
+              Heap Fetches: 0
+              Index Searches: 1
+              Buffers: shared hit=36
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.621 ms
+Execution Time: 1.073 ms

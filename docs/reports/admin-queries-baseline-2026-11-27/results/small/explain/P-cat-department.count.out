@@ -1,0 +1,34 @@
+-- category department (the biggest department; 444 products), count of the first page
+-- products in the subtree = 444
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) LIMIT 10001) bounded;
+
+Aggregate  (cost=34999.09..34999.10 rows=1 width=8) (actual time=1.284..1.289 rows=1.00 loops=1)
+  Buffers: shared hit=681
+  ->  Limit  (cost=7.34..34978.55 rows=1643 width=4) (actual time=0.149..1.271 rows=444.00 loops=1)
+        Buffers: shared hit=681
+        ->  Seq Scan on catalog_product p  (cost=7.34..34978.55 rows=1643 width=4) (actual time=0.149..1.253 rows=444.00 loops=1)
+              Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1)))
+              Rows Removed by Filter: 1747
+              Buffers: shared hit=681
+              SubPlan 1
+                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.004..0.014 rows=34.00 loops=1)
+                      Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      Rows Removed by Filter: 146
+                      Buffers: shared hit=5
+              SubPlan 3
+                ->  Hash Join  (cost=7.69..17.14 rows=84 width=16) (actual time=0.022..0.098 rows=89.00 loops=1)
+                      Hash Cond: (pc.category_id = c_1.id)
+                      Buffers: shared hit=9
+                      ->  Seq Scan on catalog_product_category pc  (cost=0.00..8.30 rows=430 width=32) (actual time=0.003..0.023 rows=430.00 loops=1)
+                            Buffers: shared hit=4
+                      ->  Hash  (cost=7.25..7.25 rows=35 width=16) (actual time=0.012..0.012 rows=34.00 loops=1)
+                            Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                            Buffers: shared hit=5
+                            ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.001..0.008 rows=34.00 loops=1)
+                                  Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                                  Rows Removed by Filter: 146
+                                  Buffers: shared hit=5
+Planning:
+  Buffers: shared hit=543
+Planning Time: 0.847 ms
+Execution Time: 1.325 ms

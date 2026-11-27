@@ -1,0 +1,21 @@
+-- orders, fragment punct-3 'a.b', count
+-- hits = 134
+SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('a.b') || '%' LIMIT 10001) bounded;
+
+Aggregate  (cost=219.41..219.42 rows=1 width=8) (actual time=0.628..0.631 rows=1.00 loops=1)
+  Buffers: shared hit=238
+  ->  Limit  (cost=13.34..218.14 rows=101 width=4) (actual time=0.072..0.622 rows=134.00 loops=1)
+        Buffers: shared hit=238
+        ->  Bitmap Heap Scan on ordering_order o  (cost=13.34..218.14 rows=101 width=4) (actual time=0.071..0.615 rows=134.00 loops=1)
+              Recheck Cond: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%a.b%'::text)
+              Rows Removed by Index Recheck: 346
+              Heap Blocks: exact=235
+              Buffers: shared hit=238
+              ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..13.32 rows=101 width=0) (actual time=0.042..0.043 rows=480.00 loops=1)
+                    Index Cond: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%a.b%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=283
+Planning Time: 0.683 ms
+Execution Time: 0.674 ms

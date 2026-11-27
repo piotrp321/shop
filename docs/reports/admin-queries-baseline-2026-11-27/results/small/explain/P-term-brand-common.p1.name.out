@@ -1,0 +1,15 @@
+-- phrase brand-common 'z', page 1, sort name
+-- hits = 1239
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.28..60.09 rows=26 width=70) (actual time=0.016..0.160 rows=26.00 loops=1)
+  Buffers: shared hit=69
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.28..2850.58 rows=1239 width=70) (actual time=0.015..0.156 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%z%'::text)
+        Rows Removed by Filter: 47
+        Index Searches: 1
+        Buffers: shared hit=69
+Planning:
+  Buffers: shared hit=277
+Planning Time: 0.640 ms
+Execution Time: 0.180 ms

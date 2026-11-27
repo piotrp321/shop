@@ -1,0 +1,22 @@
+-- phrase rare 'ryś', page 1, sort name
+-- hits = 20
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ryś%' ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=89.70..89.76 rows=22 width=70) (actual time=0.106..0.109 rows=20.00 loops=1)
+  Buffers: shared hit=29
+  ->  Sort  (cost=89.70..89.76 rows=22 width=70) (actual time=0.105..0.106 rows=20.00 loops=1)
+        Sort Key: name, id
+        Sort Method: quicksort  Memory: 27kB
+        Buffers: shared hit=29
+        ->  Bitmap Heap Scan on catalog_product p  (cost=12.92..89.21 rows=22 width=70) (actual time=0.023..0.081 rows=20.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ryś%'::text)
+              Heap Blocks: exact=20
+              Buffers: shared hit=23
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..12.92 rows=22 width=0) (actual time=0.013..0.014 rows=20.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ryś%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=277
+Planning Time: 0.681 ms
+Execution Time: 0.142 ms

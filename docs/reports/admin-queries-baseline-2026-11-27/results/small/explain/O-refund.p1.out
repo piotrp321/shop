@@ -1,0 +1,20 @@
+-- orders, pending refunds sorted by due date
+-- pending refunds = 0
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE o.refund_amount IS NOT NULL AND o.refund_completed_at IS NULL ORDER BY o.refund_due_at ASC, o.id ASC LIMIT 26;
+
+Limit  (cost=0.13..289.23 rows=26 width=136) (actual time=0.032..0.064 rows=7.00 loops=1)
+  Buffers: shared hit=28
+  ->  Index Scan using ordering_order_pending_refund_idx on ordering_order o  (cost=0.13..3280.32 rows=295 width=136) (actual time=0.032..0.058 rows=7.00 loops=1)
+        Index Searches: 1
+        Buffers: shared hit=28
+        SubPlan 1
+          ->  Aggregate  (cost=9.54..9.55 rows=1 width=8) (actual time=0.005..0.005 rows=1.00 loops=7)
+                Buffers: shared hit=21
+                ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.29..9.54 rows=2 width=4) (actual time=0.004..0.004 rows=1.57 loops=7)
+                      Index Cond: (order_id = o.id)
+                      Index Searches: 7
+                      Buffers: shared hit=21
+Planning:
+  Buffers: shared hit=432
+Planning Time: 0.508 ms
+Execution Time: 0.091 ms

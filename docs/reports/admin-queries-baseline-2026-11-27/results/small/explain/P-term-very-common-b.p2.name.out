@@ -1,0 +1,16 @@
+-- phrase very-common-b 'ka', page 2, sort name
+-- hits = 1008
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ka%' AND (p.name, p.id) > ('Butelka turystyczna Ilogen Klif 100', CAST('59e76268-d028-59d4-956e-7f027db6cb18' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.28..83.85 rows=26 width=70) (actual time=0.027..0.181 rows=26.00 loops=1)
+  Buffers: shared hit=79
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.28..2844.99 rows=885 width=70) (actual time=0.026..0.177 rows=26.00 loops=1)
+        Index Cond: (ROW((name)::text, id) > ROW('Butelka turystyczna Ilogen Klif 100'::text, '59e76268-d028-59d4-956e-7f027db6cb18'::uuid))
+        Filter: ((name)::text ~~* '%ka%'::text)
+        Rows Removed by Filter: 50
+        Index Searches: 1
+        Buffers: shared hit=79
+Planning:
+  Buffers: shared hit=276
+Planning Time: 0.676 ms
+Execution Time: 0.202 ms

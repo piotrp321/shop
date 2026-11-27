@@ -1,0 +1,3 @@
+-- customers, fragment punct-3 'a.b', page 2
+-- cost variable: hits = 35 (scales with customers)
+SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('a.b') || '%' OR lower(c.full_name) LIKE '%' || lower('a.b') || '%') AND c.last_order_at <= CAST('2025-11-11 18:49:26+00' AS timestamptz) AND (c.last_order_at < CAST('2025-11-11 18:49:26+00' AS timestamptz) OR c.customer_id > '5199fe94-946e-5c17-bc13-702ba390b246') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26;

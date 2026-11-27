@@ -1,0 +1,22 @@
+-- phrase type-early 'bagażnik', page 1, sort name
+-- hits = 13
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%bagażnik%' ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=60.24..60.25 rows=1 width=70) (actual time=0.126..0.130 rows=13.00 loops=1)
+  Buffers: shared hit=32
+  ->  Sort  (cost=60.24..60.25 rows=1 width=70) (actual time=0.126..0.126 rows=13.00 loops=1)
+        Sort Key: name, id
+        Sort Method: quicksort  Memory: 26kB
+        Buffers: shared hit=32
+        ->  Bitmap Heap Scan on catalog_product p  (cost=56.22..60.23 rows=1 width=70) (actual time=0.049..0.093 rows=13.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%bagażnik%'::text)
+              Heap Blocks: exact=13
+              Buffers: shared hit=26
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..56.22 rows=1 width=0) (actual time=0.038..0.038 rows=13.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%bagażnik%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=13
+Planning:
+  Buffers: shared hit=277
+Planning Time: 0.755 ms
+Execution Time: 0.168 ms

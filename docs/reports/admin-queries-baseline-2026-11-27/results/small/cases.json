@@ -1,0 +1,2347 @@
+{
+ "db": "shop",
+ "totals": {
+  "products": 2191,
+  "orders": 5000,
+  "customers": 873,
+  "categories": 180,
+  "chosen_categories": [
+   {
+    "label": "small",
+    "id": "ea0de14f-769d-5b4c-9701-512e48a07103",
+    "name": "Spodenki biegowe",
+    "products": 20,
+    "leaf": true,
+    "additional_only": 1,
+    "root": false,
+    "why": "4-20 products"
+   },
+   {
+    "label": "mid",
+    "id": "67a7eaa7-4725-5233-be8d-133e240c37b9",
+    "name": "Foteliki rowerowe",
+    "products": 23,
+    "leaf": true,
+    "additional_only": 7,
+    "root": false,
+    "why": "a middle category (1-5 thousand products on medium)"
+   },
+   {
+    "label": "big-early",
+    "id": "4744a6a8-69df-52c4-8142-b3d5c2024a00",
+    "name": "Polary",
+    "products": 47,
+    "leaf": true,
+    "additional_only": 8,
+    "root": false,
+    "first_name": "Bluza trekkingowa Balvisen Podejście 250 Plus",
+    "alphabet": 0.04427202190780465,
+    "why": "a big leaf whose names start at 4% of the alphabet"
+   },
+   {
+    "label": "big-late",
+    "id": "ef462a66-fe55-50aa-99b1-36061187ca88",
+    "name": "Kominy i czapki",
+    "products": 49,
+    "leaf": true,
+    "additional_only": 5,
+    "root": false,
+    "first_name": "Czapka zimowa Balmiten Nurt 500",
+    "alphabet": 0.18621633957097217,
+    "why": "a big leaf whose names start at 19% of the alphabet"
+   },
+   {
+    "label": "department",
+    "id": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+    "name": "Turystyka",
+    "products": 444,
+    "leaf": false,
+    "additional_only": 8,
+    "root": true,
+    "why": "the biggest department"
+   },
+   {
+    "label": "mostly-additional",
+    "id": "f34d1972-3acd-579a-9b7f-672093624ed8",
+    "name": "Słuchawki sportowe",
+    "products": 22,
+    "leaf": true,
+    "additional_only": 8,
+    "root": false,
+    "why": "8 of 22 products only through an additional category"
+   }
+  ],
+  "phrases": [
+   {
+    "label": "none",
+    "term": "zzqqxx"
+   },
+   {
+    "label": "rare",
+    "term": "ryś"
+   },
+   {
+    "label": "very-common-a",
+    "term": "pro"
+   },
+   {
+    "label": "very-common-b",
+    "term": "ka"
+   },
+   {
+    "label": "two-rare",
+    "term": "qx"
+   },
+   {
+    "label": "two-other",
+    "term": "zx"
+   },
+   {
+    "label": "two-common",
+    "term": "er"
+   },
+   {
+    "label": "punct-1",
+    "term": "#!#"
+   },
+   {
+    "label": "punct-2",
+    "term": "---"
+   },
+   {
+    "label": "punct-3",
+    "term": "a.b"
+   },
+   {
+    "label": "punct-4",
+    "term": "ab-cd"
+   },
+   {
+    "label": "type-early",
+    "term": "bagażnik"
+   },
+   {
+    "label": "type-late",
+    "term": "worek"
+   },
+   {
+    "label": "brand-common",
+    "term": "z"
+   },
+   {
+    "label": "brand-mid",
+    "term": "treningowe"
+   },
+   {
+    "label": "polish-lower",
+    "term": "kamień"
+   },
+   {
+    "label": "polish-upper",
+    "term": "KAMIEŃ"
+   },
+   {
+    "label": "polish-title",
+    "term": "Kamień"
+   }
+  ]
+ },
+ "cases": [
+  {
+   "id": "P-default.p1.name",
+   "group": "lists",
+   "title": "all products, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "P-default.p2.name",
+   "group": "lists",
+   "title": "all products, page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.name, p.id) > ('Baton proteinowy Calavik Kocioł 800 Pro', CAST('0bf438a6-84be-53b6-960a-90aba1e742bc' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "P-default.p1.-updatedAt",
+   "group": "lists",
+   "title": "all products, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "P-default.p2.-updatedAt",
+   "group": "lists",
+   "title": "all products, page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.updated_at, p.id) < (CAST('2026-11-27 11:58:49+00' AS timestamptz), CAST('a78579df-7a24-5bdb-acd1-0480b32c2348' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "P-default.count",
+   "group": "lists",
+   "title": "all products, count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p LIMIT 10001) bounded",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "P-default.deep.name",
+   "group": "lists",
+   "title": "all products, a page in the middle of the names",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.name, p.id) > ('Legginsy biegowe Lorrok Kanion 250 Pro', CAST('16f1ffca-de1f-5edc-818c-cc62e342eb0e' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "P-cat-small.p1.name",
+   "group": "category",
+   "title": "category small (4-20 products; 20 products), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%'))) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 20,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-small.p1.-updatedAt",
+   "group": "category",
+   "title": "category small (4-20 products; 20 products), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 20,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-small.count",
+   "group": "category",
+   "title": "category small (4-20 products; 20 products), count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%'))) LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 20,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-mid.p1.name",
+   "group": "category",
+   "title": "category mid (a middle category (1-5 thousand products on medium); 23 products), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%'))) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 23,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-mid.p1.-updatedAt",
+   "group": "category",
+   "title": "category mid (a middle category (1-5 thousand products on medium); 23 products), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 23,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-mid.count",
+   "group": "category",
+   "title": "category mid (a middle category (1-5 thousand products on medium); 23 products), count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%'))) LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 23,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-big-early.p1.name",
+   "group": "category",
+   "title": "category big-early (a big leaf whose names start at 4% of the alphabet; 47 products), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/f6f867f6-b41b-5131-9b4d-8a30fbea6c2b/4744a6a8-69df-52c4-8142-b3d5c2024a00/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/f6f867f6-b41b-5131-9b4d-8a30fbea6c2b/4744a6a8-69df-52c4-8142-b3d5c2024a00/%'))) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 47,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-big-early.p2.name",
+   "group": "category",
+   "title": "category big-early (a big leaf whose names start at 4% of the alphabet; 47 products), page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/f6f867f6-b41b-5131-9b4d-8a30fbea6c2b/4744a6a8-69df-52c4-8142-b3d5c2024a00/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/f6f867f6-b41b-5131-9b4d-8a30fbea6c2b/4744a6a8-69df-52c4-8142-b3d5c2024a00/%'))) AND (p.name, p.id) > ('Polar turystyczny Ilkodek Ryś 350', CAST('87434673-d1f8-56c5-bea7-7e302b199a4b' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 47,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-big-early.p1.-updatedAt",
+   "group": "category",
+   "title": "category big-early (a big leaf whose names start at 4% of the alphabet; 47 products), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/f6f867f6-b41b-5131-9b4d-8a30fbea6c2b/4744a6a8-69df-52c4-8142-b3d5c2024a00/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/f6f867f6-b41b-5131-9b4d-8a30fbea6c2b/4744a6a8-69df-52c4-8142-b3d5c2024a00/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 47,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-big-early.p2.-updatedAt",
+   "group": "category",
+   "title": "category big-early (a big leaf whose names start at 4% of the alphabet; 47 products), page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/f6f867f6-b41b-5131-9b4d-8a30fbea6c2b/4744a6a8-69df-52c4-8142-b3d5c2024a00/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/f6f867f6-b41b-5131-9b4d-8a30fbea6c2b/4744a6a8-69df-52c4-8142-b3d5c2024a00/%'))) AND (p.updated_at, p.id) < (CAST('2025-08-30 21:49:18+00' AS timestamptz), CAST('8d8fc768-cee8-5689-be90-a7f79c19052a' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 47,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-big-early.count",
+   "group": "category",
+   "title": "category big-early (a big leaf whose names start at 4% of the alphabet; 47 products), count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/f6f867f6-b41b-5131-9b4d-8a30fbea6c2b/4744a6a8-69df-52c4-8142-b3d5c2024a00/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/f6f867f6-b41b-5131-9b4d-8a30fbea6c2b/4744a6a8-69df-52c4-8142-b3d5c2024a00/%'))) LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 47,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-big-late.p1.name",
+   "group": "category",
+   "title": "category big-late (a big leaf whose names start at 19% of the alphabet; 49 products), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%'))) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 49,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-big-late.p2.name",
+   "group": "category",
+   "title": "category big-late (a big leaf whose names start at 19% of the alphabet; 49 products), page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%'))) AND (p.name, p.id) > ('Komin zimowy Fjordek Kometa 150', CAST('887c0f1e-8cb0-50d0-b574-b55a8d156770' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 49,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-big-late.p1.-updatedAt",
+   "group": "category",
+   "title": "category big-late (a big leaf whose names start at 19% of the alphabet; 49 products), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 49,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-big-late.p2.-updatedAt",
+   "group": "category",
+   "title": "category big-late (a big leaf whose names start at 19% of the alphabet; 49 products), page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%'))) AND (p.updated_at, p.id) < (CAST('2025-03-20 15:33:56+00' AS timestamptz), CAST('cc555527-8125-57d9-98e8-abbf31ae94ac' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 49,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-big-late.count",
+   "group": "category",
+   "title": "category big-late (a big leaf whose names start at 19% of the alphabet; 49 products), count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%'))) LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 49,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-department.p1.name",
+   "group": "category",
+   "title": "category department (the biggest department; 444 products), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 444,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-department.p2.name",
+   "group": "category",
+   "title": "category department (the biggest department; 444 products), page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND (p.name, p.id) > ('Butelka turystyczna Ilogen Klif 100', CAST('59e76268-d028-59d4-956e-7f027db6cb18' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 444,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-department.p1.-updatedAt",
+   "group": "category",
+   "title": "category department (the biggest department; 444 products), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 444,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-department.p2.-updatedAt",
+   "group": "category",
+   "title": "category department (the biggest department; 444 products), page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND (p.updated_at, p.id) < (CAST('2026-11-27 11:58:45+00' AS timestamptz), CAST('7bdb74f3-7dcc-5b1f-bc3a-e7ca857afdac' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 444,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-department.count",
+   "group": "category",
+   "title": "category department (the biggest department; 444 products), count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 444,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-mostly-additional.p1.name",
+   "group": "category",
+   "title": "category mostly-additional (8 of 22 products only through an additional category; 22 products), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/573b3efd-5c6c-5577-8528-e54817ea4242/f34d1972-3acd-579a-9b7f-672093624ed8/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/573b3efd-5c6c-5577-8528-e54817ea4242/f34d1972-3acd-579a-9b7f-672093624ed8/%'))) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 22,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-mostly-additional.p1.-updatedAt",
+   "group": "category",
+   "title": "category mostly-additional (8 of 22 products only through an additional category; 22 products), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/573b3efd-5c6c-5577-8528-e54817ea4242/f34d1972-3acd-579a-9b7f-672093624ed8/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/573b3efd-5c6c-5577-8528-e54817ea4242/f34d1972-3acd-579a-9b7f-672093624ed8/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 22,
+   "scale": "products"
+  },
+  {
+   "id": "P-cat-mostly-additional.count",
+   "group": "category",
+   "title": "category mostly-additional (8 of 22 products only through an additional category; 22 products), count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/573b3efd-5c6c-5577-8528-e54817ea4242/f34d1972-3acd-579a-9b7f-672093624ed8/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/573b3efd-5c6c-5577-8528-e54817ea4242/f34d1972-3acd-579a-9b7f-672093624ed8/%'))) LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 22,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-none.p1.name",
+   "group": "phrase",
+   "title": "phrase none 'zzqqxx', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zzqqxx%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-none.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase none 'zzqqxx', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zzqqxx%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-none.count",
+   "group": "phrase",
+   "title": "phrase none 'zzqqxx', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%zzqqxx%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-rare.p1.name",
+   "group": "phrase",
+   "title": "phrase rare 'ryś', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ryś%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 20,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-rare.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase rare 'ryś', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ryś%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 20,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-rare.count",
+   "group": "phrase",
+   "title": "phrase rare 'ryś', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ryś%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 20,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-very-common-a.p1.name",
+   "group": "phrase",
+   "title": "phrase very-common-a 'pro', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 251,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-very-common-a.p2.name",
+   "group": "phrase",
+   "title": "phrase very-common-a 'pro', page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%pro%' AND (p.name, p.id) > ('Baton proteinowy Ravirik Dolina 100 Pro', CAST('1054193e-48b3-5105-bd91-1e57c3c18514' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 251,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-very-common-a.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase very-common-a 'pro', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 251,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-very-common-a.p2.-updatedAt",
+   "group": "phrase",
+   "title": "phrase very-common-a 'pro', page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%pro%' AND (p.updated_at, p.id) < (CAST('2026-07-22 22:07:20+00' AS timestamptz), CAST('19520c7d-3222-585c-a2d6-7e60550f8c34' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 251,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-very-common-a.count",
+   "group": "phrase",
+   "title": "phrase very-common-a 'pro', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%pro%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 251,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-very-common-b.p1.name",
+   "group": "phrase",
+   "title": "phrase very-common-b 'ka', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ka%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 1008,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-very-common-b.p2.name",
+   "group": "phrase",
+   "title": "phrase very-common-b 'ka', page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ka%' AND (p.name, p.id) > ('Butelka turystyczna Ilogen Klif 100', CAST('59e76268-d028-59d4-956e-7f027db6cb18' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 1008,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-very-common-b.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase very-common-b 'ka', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ka%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 1008,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-very-common-b.p2.-updatedAt",
+   "group": "phrase",
+   "title": "phrase very-common-b 'ka', page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ka%' AND (p.updated_at, p.id) < (CAST('2026-11-27 11:58:49+00' AS timestamptz), CAST('4a547c10-d89a-5ed3-ab4f-4380ff7bbad9' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 1008,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-very-common-b.count",
+   "group": "phrase",
+   "title": "phrase very-common-b 'ka', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ka%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 1008,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-two-rare.p1.name",
+   "group": "phrase",
+   "title": "phrase two-rare 'qx', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%qx%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-two-rare.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase two-rare 'qx', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%qx%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-two-rare.count",
+   "group": "phrase",
+   "title": "phrase two-rare 'qx', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%qx%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-two-other.p1.name",
+   "group": "phrase",
+   "title": "phrase two-other 'zx', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zx%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-two-other.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase two-other 'zx', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zx%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-two-other.count",
+   "group": "phrase",
+   "title": "phrase two-other 'zx', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%zx%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-two-common.p1.name",
+   "group": "phrase",
+   "title": "phrase two-common 'er', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%er%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 559,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-two-common.p2.name",
+   "group": "phrase",
+   "title": "phrase two-common 'er', page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%er%' AND (p.name, p.id) > ('Bidon sportowy Ravvimon Trawers 500', CAST('5c4b22ff-990e-5a92-bc18-68ae334ffc00' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 559,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-two-common.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase two-common 'er', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%er%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 559,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-two-common.p2.-updatedAt",
+   "group": "phrase",
+   "title": "phrase two-common 'er', page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%er%' AND (p.updated_at, p.id) < (CAST('2026-11-27 11:58:44+00' AS timestamptz), CAST('57dcd1f3-75b3-51ee-9df8-67703dccaddf' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 559,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-two-common.count",
+   "group": "phrase",
+   "title": "phrase two-common 'er', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%er%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 559,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-punct-1.p1.name",
+   "group": "phrase",
+   "title": "phrase punct-1 '#!#', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%#!#%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-punct-1.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase punct-1 '#!#', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%#!#%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-punct-1.count",
+   "group": "phrase",
+   "title": "phrase punct-1 '#!#', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%#!#%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-punct-2.p1.name",
+   "group": "phrase",
+   "title": "phrase punct-2 '---', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%---%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-punct-2.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase punct-2 '---', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%---%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-punct-2.count",
+   "group": "phrase",
+   "title": "phrase punct-2 '---', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%---%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-punct-3.p1.name",
+   "group": "phrase",
+   "title": "phrase punct-3 'a.b', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%a.b%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-punct-3.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase punct-3 'a.b', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%a.b%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-punct-3.count",
+   "group": "phrase",
+   "title": "phrase punct-3 'a.b', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%a.b%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-punct-4.p1.name",
+   "group": "phrase",
+   "title": "phrase punct-4 'ab-cd', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ab-cd%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-punct-4.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase punct-4 'ab-cd', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ab-cd%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-punct-4.count",
+   "group": "phrase",
+   "title": "phrase punct-4 'ab-cd', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ab-cd%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-type-early.p1.name",
+   "group": "phrase",
+   "title": "phrase type-early 'bagażnik', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%bagażnik%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 13,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-type-early.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase type-early 'bagażnik', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%bagażnik%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 13,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-type-early.count",
+   "group": "phrase",
+   "title": "phrase type-early 'bagażnik', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%bagażnik%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 13,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-type-late.p1.name",
+   "group": "phrase",
+   "title": "phrase type-late 'worek', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%worek%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 12,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-type-late.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase type-late 'worek', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%worek%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 12,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-type-late.count",
+   "group": "phrase",
+   "title": "phrase type-late 'worek', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%worek%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 12,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-brand-common.p1.name",
+   "group": "phrase",
+   "title": "phrase brand-common 'z', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 1239,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-brand-common.p2.name",
+   "group": "phrase",
+   "title": "phrase brand-common 'z', page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' AND (p.name, p.id) > ('Bidon termiczny Dravik Źródło 750', CAST('bff90e7f-b5fc-5877-a3b7-5c5316735b01' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 1239,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-brand-common.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase brand-common 'z', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 1239,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-brand-common.p2.-updatedAt",
+   "group": "phrase",
+   "title": "phrase brand-common 'z', page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' AND (p.updated_at, p.id) < (CAST('2026-11-27 11:58:48+00' AS timestamptz), CAST('1e4b9bec-4bfa-58d0-a342-6af270827712' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 1239,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-brand-common.count",
+   "group": "phrase",
+   "title": "phrase brand-common 'z', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%z%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 1239,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-brand-mid.p1.name",
+   "group": "phrase",
+   "title": "phrase brand-mid 'treningowe', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%treningowe%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 35,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-brand-mid.p2.name",
+   "group": "phrase",
+   "title": "phrase brand-mid 'treningowe', page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%treningowe%' AND (p.name, p.id) > ('Rękawice treningowe Olgon Szlak 700', CAST('d34656b6-b039-506b-9b8b-d90cfad1ea5c' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 35,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-brand-mid.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase brand-mid 'treningowe', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%treningowe%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 35,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-brand-mid.p2.-updatedAt",
+   "group": "phrase",
+   "title": "phrase brand-mid 'treningowe', page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%treningowe%' AND (p.updated_at, p.id) < (CAST('2024-10-11 02:09:13+00' AS timestamptz), CAST('3966d8eb-408e-568d-afdc-7af7348af3ee' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 35,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-brand-mid.count",
+   "group": "phrase",
+   "title": "phrase brand-mid 'treningowe', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%treningowe%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 35,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-polish-lower.p1.name",
+   "group": "phrase",
+   "title": "phrase polish-lower 'kamień', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%kamień%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 21,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-polish-lower.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase polish-lower 'kamień', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%kamień%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 21,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-polish-lower.count",
+   "group": "phrase",
+   "title": "phrase polish-lower 'kamień', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%kamień%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 21,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-polish-upper.p1.name",
+   "group": "phrase",
+   "title": "phrase polish-upper 'KAMIEŃ', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%KAMIEŃ%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 21,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-polish-upper.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase polish-upper 'KAMIEŃ', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%KAMIEŃ%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 21,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-polish-upper.count",
+   "group": "phrase",
+   "title": "phrase polish-upper 'KAMIEŃ', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%KAMIEŃ%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 21,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-polish-title.p1.name",
+   "group": "phrase",
+   "title": "phrase polish-title 'Kamień', page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%Kamień%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 21,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-polish-title.p1.-updatedAt",
+   "group": "phrase",
+   "title": "phrase polish-title 'Kamień', page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%Kamień%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 21,
+   "scale": "products"
+  },
+  {
+   "id": "P-term-polish-title.count",
+   "group": "phrase",
+   "title": "phrase polish-title 'Kamień', count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%Kamień%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 21,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-small-cat+common.p1.name",
+   "group": "combination",
+   "title": "small category + a phrase common in the catalog (pro), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%pro%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%'))) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 6,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-small-cat+common.p1.-updatedAt",
+   "group": "combination",
+   "title": "small category + a phrase common in the catalog (pro), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%pro%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 6,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-small-cat+common.count",
+   "group": "combination",
+   "title": "small category + a phrase common in the catalog (pro), count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%pro%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%'))) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 6,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-small-cat+drafts.p1.name",
+   "group": "combination",
+   "title": "small category + drafts, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%'))) AND p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 1,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-small-cat+drafts.p1.-updatedAt",
+   "group": "combination",
+   "title": "small category + drafts, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%'))) AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 1,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-small-cat+drafts.count",
+   "group": "combination",
+   "title": "small category + drafts, count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/4ceaad5a-8588-5e5c-a11a-1a2507542a33/ea0de14f-769d-5b4c-9701-512e48a07103/%'))) AND p.status = 'draft' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 1,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-late-leaf+type.p1.name",
+   "group": "combination",
+   "title": "big late leaf + a phrase rare in it, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%bagażnik%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%'))) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-late-leaf+type.p1.-updatedAt",
+   "group": "combination",
+   "title": "big late leaf + a phrase rare in it, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%bagażnik%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-late-leaf+type.count",
+   "group": "combination",
+   "title": "big late leaf + a phrase rare in it, count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%bagażnik%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/fb2be761-1a8c-5d94-9c3f-2917db623644/a2f9bd8c-5f9d-58ae-a2d8-645f1736acbb/ef462a66-fe55-50aa-99b1-36061187ca88/%'))) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-mid-cat+brand.p1.name",
+   "group": "combination",
+   "title": "middle category + brand, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%'))) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 9,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-mid-cat+brand.p1.-updatedAt",
+   "group": "combination",
+   "title": "middle category + brand, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 9,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-mid-cat+brand.count",
+   "group": "combination",
+   "title": "middle category + brand, count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%z%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/f88bf6cc-a54d-5473-8aae-47a57bc51304/c4b9431b-efe9-510f-8615-58bbd4ef86c2/67a7eaa7-4725-5233-be8d-133e240c37b9/%'))) LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 9,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-drafts.p1.name",
+   "group": "combination",
+   "title": "drafts, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 46,
+   "scale": "const"
+  },
+  {
+   "id": "P-combo-drafts.p2.name",
+   "group": "combination",
+   "title": "drafts, page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'draft' AND (p.name, p.id) > ('Ławka treningowa Valridor Jastrząb 500', CAST('63be659d-2da1-52ce-8b6f-afd3cbe6930d' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 46,
+   "scale": "const"
+  },
+  {
+   "id": "P-combo-drafts.p1.-updatedAt",
+   "group": "combination",
+   "title": "drafts, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 46,
+   "scale": "const"
+  },
+  {
+   "id": "P-combo-drafts.p2.-updatedAt",
+   "group": "combination",
+   "title": "drafts, page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'draft' AND (p.updated_at, p.id) < (CAST('2026-06-05 14:04:35+00' AS timestamptz), CAST('8e3d3fad-cb64-5c0d-ba46-cf676c05e6bb' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 46,
+   "scale": "const"
+  },
+  {
+   "id": "P-combo-drafts.count",
+   "group": "combination",
+   "title": "drafts, count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.status = 'draft' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 46,
+   "scale": "const"
+  },
+  {
+   "id": "P-combo-published.p1.name",
+   "group": "combination",
+   "title": "published only, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'published' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 2145,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-published.p2.name",
+   "group": "combination",
+   "title": "published only, page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'published' AND (p.name, p.id) > ('Baton proteinowy Calavik Kocioł 800 Pro', CAST('0bf438a6-84be-53b6-960a-90aba1e742bc' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 2145,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-published.p1.-updatedAt",
+   "group": "combination",
+   "title": "published only, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'published' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 2145,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-published.p2.-updatedAt",
+   "group": "combination",
+   "title": "published only, page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'published' AND (p.updated_at, p.id) < (CAST('2026-11-27 11:58:49+00' AS timestamptz), CAST('a78579df-7a24-5bdb-acd1-0480b32c2348' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 2145,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-published.count",
+   "group": "combination",
+   "title": "published only, count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.status = 'published' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 2145,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-no-images.p1.name",
+   "group": "combination",
+   "title": "without images, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 43,
+   "scale": "const"
+  },
+  {
+   "id": "P-combo-no-images.p2.name",
+   "group": "combination",
+   "title": "without images, page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.images = '[]'::jsonb AND (p.name, p.id) > ('Koszulka z filtrem UV Dunegon Połonina 200 Evo', CAST('d391ebc5-a0b2-5295-97e9-60e41471e2e1' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 43,
+   "scale": "const"
+  },
+  {
+   "id": "P-combo-no-images.p1.-updatedAt",
+   "group": "combination",
+   "title": "without images, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 43,
+   "scale": "const"
+  },
+  {
+   "id": "P-combo-no-images.p2.-updatedAt",
+   "group": "combination",
+   "title": "without images, page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.images = '[]'::jsonb AND (p.updated_at, p.id) < (CAST('2025-03-22 03:12:51+00' AS timestamptz), CAST('388a8069-c0c2-5ed8-8c5f-eb01c5d7f71d' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 43,
+   "scale": "const"
+  },
+  {
+   "id": "P-combo-no-images.count",
+   "group": "combination",
+   "title": "without images, count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.images = '[]'::jsonb LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 43,
+   "scale": "const"
+  },
+  {
+   "id": "P-combo-no-images+brand.p1.name",
+   "group": "combination",
+   "title": "without images + brand, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 26,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-no-images+brand.p2.name",
+   "group": "combination",
+   "title": "without images + brand, page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' AND p.images = '[]'::jsonb AND (p.name, p.id) > ('Talerze żeliwne Isven Szlak 200', CAST('d212e450-75e6-5085-a0af-7a618a92dd6c' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 26,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-no-images+brand.p1.-updatedAt",
+   "group": "combination",
+   "title": "without images + brand, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 26,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-no-images+brand.p2.-updatedAt",
+   "group": "combination",
+   "title": "without images + brand, page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%z%' AND p.images = '[]'::jsonb AND (p.updated_at, p.id) < (CAST('2024-01-19 23:04:39+00' AS timestamptz), CAST('25870158-aa90-5f2d-8f6b-115dfb000b22' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 26,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-no-images+brand.count",
+   "group": "combination",
+   "title": "without images + brand, count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%z%' AND p.images = '[]'::jsonb LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 26,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-no-images+rare.p1.name",
+   "group": "combination",
+   "title": "without images + rare phrase, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ryś%' AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-no-images+rare.p1.-updatedAt",
+   "group": "combination",
+   "title": "without images + rare phrase, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ryś%' AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-no-images+rare.count",
+   "group": "combination",
+   "title": "without images + rare phrase, count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ryś%' AND p.images = '[]'::jsonb LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-no-images+dept.p1.name",
+   "group": "combination",
+   "title": "without images in the biggest department, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 5,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-no-images+dept.p1.-updatedAt",
+   "group": "combination",
+   "title": "without images in the biggest department, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 5,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-no-images+dept.count",
+   "group": "combination",
+   "title": "without images in the biggest department, count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND p.images = '[]'::jsonb LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 5,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-drafts+dept.p1.name",
+   "group": "combination",
+   "title": "drafts in the biggest department, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "hits",
+   "value": 6,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-drafts+dept.p1.-updatedAt",
+   "group": "combination",
+   "title": "drafts in the biggest department, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 6,
+   "scale": "products"
+  },
+  {
+   "id": "P-combo-drafts+dept.count",
+   "group": "combination",
+   "title": "drafts in the biggest department, count of the first page",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) AND p.status = 'draft' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 6,
+   "scale": "products"
+  },
+  {
+   "id": "O-default.p1.-placedAt",
+   "group": "orders",
+   "title": "orders, no filter, sort -placedAt, page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "O-default.p1.placedAt",
+   "group": "orders",
+   "title": "orders, no filter, sort placedAt, page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o ORDER BY o.placed_at ASC, o.id ASC LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "O-default.p1.-total",
+   "group": "orders",
+   "title": "orders, no filter, sort -total, page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o ORDER BY o.total_gross DESC, o.id DESC LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "O-default.p1.total",
+   "group": "orders",
+   "title": "orders, no filter, sort total, page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o ORDER BY o.total_gross ASC, o.id ASC LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "O-default.deep",
+   "group": "orders",
+   "title": "orders, a page in the middle of the dates",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE (o.placed_at, o.id) < (CAST('2025-10-01 17:19:11+00' AS timestamptz), CAST('0199a0c8-fe98-7b7b-a09f-5743b81d1b0c' AS uuid)) ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "O-default.count",
+   "group": "orders",
+   "title": "orders, count without filter",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o LIMIT 10001) bounded",
+   "variable": "page",
+   "value": 10000,
+   "scale": "const"
+  },
+  {
+   "id": "O-status-paid.p1",
+   "group": "orders",
+   "title": "orders with status paid, page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE o.status = 'paid' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "orders with the status",
+   "value": 14,
+   "scale": "const"
+  },
+  {
+   "id": "O-status-paid.count",
+   "group": "orders",
+   "title": "orders with status paid, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE o.status = 'paid' LIMIT 10001) bounded",
+   "variable": "orders with the status",
+   "value": 14,
+   "scale": "const"
+  },
+  {
+   "id": "O-status-delivered.p1",
+   "group": "orders",
+   "title": "orders with status delivered, page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE o.status = 'delivered' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "orders with the status",
+   "value": 4466,
+   "scale": "const"
+  },
+  {
+   "id": "O-status-delivered.count",
+   "group": "orders",
+   "title": "orders with status delivered, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE o.status = 'delivered' LIMIT 10001) bounded",
+   "variable": "orders with the status",
+   "value": 4466,
+   "scale": "const"
+  },
+  {
+   "id": "O-frag-common-surname.p1",
+   "group": "orders",
+   "title": "orders, fragment common-surname 'krajewski', page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('krajewski') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 206,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-common-surname.p2",
+   "group": "orders",
+   "title": "orders, fragment common-surname 'krajewski', page 2",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('krajewski') || '%' AND (o.placed_at, o.id) < (CAST('2026-10-02 19:25:54+00' AS timestamptz), CAST('01a0fe14-89d0-7afc-8fbf-3d0797d0ee3b' AS uuid)) ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 206,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-common-surname.p1.total",
+   "group": "orders",
+   "title": "orders, fragment common-surname 'krajewski', page 1, sort -total",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('krajewski') || '%' ORDER BY o.total_gross DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 206,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-common-surname.count",
+   "group": "orders",
+   "title": "orders, fragment common-surname 'krajewski', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('krajewski') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 206,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-rare-surname.p1",
+   "group": "orders",
+   "title": "orders, fragment rare-surname 'różański', page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('różański') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 1,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-rare-surname.p1.total",
+   "group": "orders",
+   "title": "orders, fragment rare-surname 'różański', page 1, sort -total",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('różański') || '%' ORDER BY o.total_gross DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 1,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-rare-surname.count",
+   "group": "orders",
+   "title": "orders, fragment rare-surname 'różański', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('różański') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 1,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-domain.p1",
+   "group": "orders",
+   "title": "orders, fragment domain 'example', page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('example') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 5000,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-domain.p2",
+   "group": "orders",
+   "title": "orders, fragment domain 'example', page 2",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('example') || '%' AND (o.placed_at, o.id) < (CAST('2026-11-24 14:47:16+00' AS timestamptz), CAST('01a20e06-7d20-743e-bc4a-016f525358cb' AS uuid)) ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 5000,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-domain.p1.total",
+   "group": "orders",
+   "title": "orders, fragment domain 'example', page 1, sort -total",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('example') || '%' ORDER BY o.total_gross DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 5000,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-domain.count",
+   "group": "orders",
+   "title": "orders, fragment domain 'example', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('example') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 5000,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-three-letters.p1",
+   "group": "orders",
+   "title": "orders, fragment three-letters 'ann', page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ann') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 195,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-three-letters.p2",
+   "group": "orders",
+   "title": "orders, fragment three-letters 'ann', page 2",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ann') || '%' AND (o.placed_at, o.id) < (CAST('2026-08-17 09:53:06+00' AS timestamptz), CAST('01a00f23-97d0-7ccf-9e1b-caf1bfd52b3d' AS uuid)) ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 195,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-three-letters.p1.total",
+   "group": "orders",
+   "title": "orders, fragment three-letters 'ann', page 1, sort -total",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ann') || '%' ORDER BY o.total_gross DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 195,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-three-letters.count",
+   "group": "orders",
+   "title": "orders, fragment three-letters 'ann', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ann') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 195,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-none.p1",
+   "group": "orders",
+   "title": "orders, fragment none 'qqzzxx', page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('qqzzxx') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-none.p1.total",
+   "group": "orders",
+   "title": "orders, fragment none 'qqzzxx', page 1, sort -total",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('qqzzxx') || '%' ORDER BY o.total_gross DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-none.count",
+   "group": "orders",
+   "title": "orders, fragment none 'qqzzxx', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('qqzzxx') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-1.p1",
+   "group": "orders",
+   "title": "orders, fragment punct-1 '#!#', page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('#!#') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-1.p1.total",
+   "group": "orders",
+   "title": "orders, fragment punct-1 '#!#', page 1, sort -total",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('#!#') || '%' ORDER BY o.total_gross DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-1.count",
+   "group": "orders",
+   "title": "orders, fragment punct-1 '#!#', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('#!#') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-2.p1",
+   "group": "orders",
+   "title": "orders, fragment punct-2 '---', page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('---') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-2.p1.total",
+   "group": "orders",
+   "title": "orders, fragment punct-2 '---', page 1, sort -total",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('---') || '%' ORDER BY o.total_gross DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-2.count",
+   "group": "orders",
+   "title": "orders, fragment punct-2 '---', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('---') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-3.p1",
+   "group": "orders",
+   "title": "orders, fragment punct-3 'a.b', page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('a.b') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 134,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-3.p2",
+   "group": "orders",
+   "title": "orders, fragment punct-3 'a.b', page 2",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('a.b') || '%' AND (o.placed_at, o.id) < (CAST('2026-08-03 08:00:17+00' AS timestamptz), CAST('019fc6a3-4668-79d4-aea0-cd4405da1bb2' AS uuid)) ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 134,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-3.p1.total",
+   "group": "orders",
+   "title": "orders, fragment punct-3 'a.b', page 1, sort -total",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('a.b') || '%' ORDER BY o.total_gross DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 134,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-3.count",
+   "group": "orders",
+   "title": "orders, fragment punct-3 'a.b', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('a.b') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 134,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-4.p1",
+   "group": "orders",
+   "title": "orders, fragment punct-4 'ab-cd', page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ab-cd') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-4.p1.total",
+   "group": "orders",
+   "title": "orders, fragment punct-4 'ab-cd', page 1, sort -total",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ab-cd') || '%' ORDER BY o.total_gross DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-punct-4.count",
+   "group": "orders",
+   "title": "orders, fragment punct-4 'ab-cd', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ab-cd') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-polish.p1",
+   "group": "orders",
+   "title": "orders, fragment polish 'ąęś', page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ąęś') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-polish.p1.total",
+   "group": "orders",
+   "title": "orders, fragment polish 'ąęś', page 1, sort -total",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ąęś') || '%' ORDER BY o.total_gross DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-polish.count",
+   "group": "orders",
+   "title": "orders, fragment polish 'ąęś', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('ąęś') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-number-part.p1",
+   "group": "orders",
+   "title": "orders, fragment number-part '102', page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('102') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 1017,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-number-part.p2",
+   "group": "orders",
+   "title": "orders, fragment number-part '102', page 2",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('102') || '%' AND (o.placed_at, o.id) < (CAST('2025-12-11 09:49:17+00' AS timestamptz), CAST('019b0cd0-9d48-7605-9943-47478263f4ab' AS uuid)) ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 1017,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-number-part.p1.total",
+   "group": "orders",
+   "title": "orders, fragment number-part '102', page 1, sort -total",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('102') || '%' ORDER BY o.total_gross DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 1017,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-number-part.count",
+   "group": "orders",
+   "title": "orders, fragment number-part '102', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('102') || '%' LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 1017,
+   "scale": "orders"
+  },
+  {
+   "id": "O-frag-status.p1",
+   "group": "orders",
+   "title": "orders, fragment krajewski + status delivered, page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE o.status = 'delivered' AND lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower('krajewski') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "hits",
+   "value": 187,
+   "scale": "orders"
+  },
+  {
+   "id": "O-number.p1",
+   "group": "orders",
+   "title": "orders, order number (exact), page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE o.number = 'R-102076' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "page",
+   "value": 1,
+   "scale": "const"
+  },
+  {
+   "id": "O-email.p1",
+   "group": "orders",
+   "title": "orders, full e-mail (exact), page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.email) = lower('wiktor.rozanski.g102076@example.org') ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "page",
+   "value": 1,
+   "scale": "const"
+  },
+  {
+   "id": "O-range.p1",
+   "group": "orders",
+   "title": "orders, one-day range + status delivered, page 1",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE o.status = 'delivered' AND o.placed_at >= '2023-11-28' AND o.placed_at < '2023-11-29' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "O-range.year.count",
+   "group": "orders",
+   "title": "orders, delivered over the whole range, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE o.status = 'delivered' AND o.placed_at >= '2023-11-28' AND o.placed_at < '2026-11-26' LIMIT 10001) bounded",
+   "variable": "page",
+   "value": 10000,
+   "scale": "const"
+  },
+  {
+   "id": "O-refund.p1",
+   "group": "orders",
+   "title": "orders, pending refunds sorted by due date",
+   "sql": "SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE o.refund_amount IS NOT NULL AND o.refund_completed_at IS NULL ORDER BY o.refund_due_at ASC, o.id ASC LIMIT 26",
+   "variable": "pending refunds",
+   "value": 0,
+   "scale": "const"
+  },
+  {
+   "id": "O-refund.count",
+   "group": "orders",
+   "title": "orders, overdue refunds, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE o.refund_amount IS NOT NULL AND o.refund_completed_at IS NULL AND o.refund_due_at < now() LIMIT 1001) bounded",
+   "variable": "pending refunds",
+   "value": 0,
+   "scale": "const"
+  },
+  {
+   "id": "C-default.p1.-lastOrderAt",
+   "group": "customers",
+   "title": "customers, no filter, sort -lastOrderAt, page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "C-default.p2.-lastOrderAt",
+   "group": "customers",
+   "title": "customers, no filter, sort -lastOrderAt, page 2",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE c.last_order_at <= CAST('2026-11-22 21:30:15+00' AS timestamptz) AND (c.last_order_at < CAST('2026-11-22 21:30:15+00' AS timestamptz) OR c.customer_id > '948b7847-648c-56c4-9051-fca86e9b8303') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "C-default.p1.name",
+   "group": "customers",
+   "title": "customers, no filter, sort name, page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "C-default.p2.name",
+   "group": "customers",
+   "title": "customers, no filter, sort name, page 2",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.full_name), c.customer_id) > (CAST('agnieszka wasilewska' AS text), '2c0ba793-a66a-56c7-96e0-cc07e3667d28') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "C-default.p1.-orderCount",
+   "group": "customers",
+   "title": "customers, no filter, sort -orderCount, page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c ORDER BY c.order_count DESC, c.customer_id LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "C-default.p2.-orderCount",
+   "group": "customers",
+   "title": "customers, no filter, sort -orderCount, page 2",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE c.order_count <= CAST('7' AS int) AND (c.order_count < CAST('7' AS int) OR c.customer_id > '210a1041-f686-566e-a35a-342ed9563c98') ORDER BY c.order_count DESC, c.customer_id LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "C-default.p1.-paidGross",
+   "group": "customers",
+   "title": "customers, no filter, sort -paidGross, page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c ORDER BY c.paid_gross DESC, c.customer_id LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "C-default.p2.-paidGross",
+   "group": "customers",
+   "title": "customers, no filter, sort -paidGross, page 2",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE c.paid_gross <= CAST('710988' AS bigint) AND (c.paid_gross < CAST('710988' AS bigint) OR c.customer_id > 'fd494a10-e7ef-5326-848f-654a9d5168e5') ORDER BY c.paid_gross DESC, c.customer_id LIMIT 26",
+   "variable": "page",
+   "value": 25,
+   "scale": "const"
+  },
+  {
+   "id": "C-default.count",
+   "group": "customers",
+   "title": "customers, count without filter",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c LIMIT 10001) bounded",
+   "variable": "page",
+   "value": 10000,
+   "scale": "const"
+  },
+  {
+   "id": "C-frag-common-surname.p1",
+   "group": "customers",
+   "title": "customers, fragment common-surname 'nowak', page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('nowak') || '%' OR lower(c.full_name) LIKE '%' || lower('nowak') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 14,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-common-surname.p1.name",
+   "group": "customers",
+   "title": "customers, fragment common-surname 'nowak', page 1, sort name",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('nowak') || '%' OR lower(c.full_name) LIKE '%' || lower('nowak') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 14,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-common-surname.count",
+   "group": "customers",
+   "title": "customers, fragment common-surname 'nowak', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('nowak') || '%' OR lower(c.full_name) LIKE '%' || lower('nowak') || '%') LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 14,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-rare-surname.p1",
+   "group": "customers",
+   "title": "customers, fragment rare-surname 'piechocki', page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('piechocki') || '%' OR lower(c.full_name) LIKE '%' || lower('piechocki') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 2,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-rare-surname.p1.name",
+   "group": "customers",
+   "title": "customers, fragment rare-surname 'piechocki', page 1, sort name",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('piechocki') || '%' OR lower(c.full_name) LIKE '%' || lower('piechocki') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 2,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-rare-surname.count",
+   "group": "customers",
+   "title": "customers, fragment rare-surname 'piechocki', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('piechocki') || '%' OR lower(c.full_name) LIKE '%' || lower('piechocki') || '%') LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 2,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-domain.p1",
+   "group": "customers",
+   "title": "customers, fragment domain 'example', page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('example') || '%' OR lower(c.full_name) LIKE '%' || lower('example') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 873,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-domain.p2",
+   "group": "customers",
+   "title": "customers, fragment domain 'example', page 2",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('example') || '%' OR lower(c.full_name) LIKE '%' || lower('example') || '%') AND c.last_order_at <= CAST('2026-11-22 21:30:15+00' AS timestamptz) AND (c.last_order_at < CAST('2026-11-22 21:30:15+00' AS timestamptz) OR c.customer_id > '948b7847-648c-56c4-9051-fca86e9b8303') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 873,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-domain.p1.name",
+   "group": "customers",
+   "title": "customers, fragment domain 'example', page 1, sort name",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('example') || '%' OR lower(c.full_name) LIKE '%' || lower('example') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 873,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-domain.count",
+   "group": "customers",
+   "title": "customers, fragment domain 'example', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('example') || '%' OR lower(c.full_name) LIKE '%' || lower('example') || '%') LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 873,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-three-letters.p1",
+   "group": "customers",
+   "title": "customers, fragment three-letters 'ann', page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ann') || '%' OR lower(c.full_name) LIKE '%' || lower('ann') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 46,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-three-letters.p2",
+   "group": "customers",
+   "title": "customers, fragment three-letters 'ann', page 2",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ann') || '%' OR lower(c.full_name) LIKE '%' || lower('ann') || '%') AND c.last_order_at <= CAST('2025-12-25 20:40:56+00' AS timestamptz) AND (c.last_order_at < CAST('2025-12-25 20:40:56+00' AS timestamptz) OR c.customer_id > 'cacae496-ab4a-5944-8a23-5bc258743332') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 46,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-three-letters.p1.name",
+   "group": "customers",
+   "title": "customers, fragment three-letters 'ann', page 1, sort name",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ann') || '%' OR lower(c.full_name) LIKE '%' || lower('ann') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 46,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-three-letters.count",
+   "group": "customers",
+   "title": "customers, fragment three-letters 'ann', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ann') || '%' OR lower(c.full_name) LIKE '%' || lower('ann') || '%') LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 46,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-none.p1",
+   "group": "customers",
+   "title": "customers, fragment none 'qqzzxx', page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('qqzzxx') || '%' OR lower(c.full_name) LIKE '%' || lower('qqzzxx') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-none.p1.name",
+   "group": "customers",
+   "title": "customers, fragment none 'qqzzxx', page 1, sort name",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('qqzzxx') || '%' OR lower(c.full_name) LIKE '%' || lower('qqzzxx') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-none.count",
+   "group": "customers",
+   "title": "customers, fragment none 'qqzzxx', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('qqzzxx') || '%' OR lower(c.full_name) LIKE '%' || lower('qqzzxx') || '%') LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-1.p1",
+   "group": "customers",
+   "title": "customers, fragment punct-1 '#!#', page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('#!#') || '%' OR lower(c.full_name) LIKE '%' || lower('#!#') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-1.p1.name",
+   "group": "customers",
+   "title": "customers, fragment punct-1 '#!#', page 1, sort name",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('#!#') || '%' OR lower(c.full_name) LIKE '%' || lower('#!#') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-1.count",
+   "group": "customers",
+   "title": "customers, fragment punct-1 '#!#', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('#!#') || '%' OR lower(c.full_name) LIKE '%' || lower('#!#') || '%') LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-2.p1",
+   "group": "customers",
+   "title": "customers, fragment punct-2 '---', page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('---') || '%' OR lower(c.full_name) LIKE '%' || lower('---') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-2.p1.name",
+   "group": "customers",
+   "title": "customers, fragment punct-2 '---', page 1, sort name",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('---') || '%' OR lower(c.full_name) LIKE '%' || lower('---') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-2.count",
+   "group": "customers",
+   "title": "customers, fragment punct-2 '---', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('---') || '%' OR lower(c.full_name) LIKE '%' || lower('---') || '%') LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-3.p1",
+   "group": "customers",
+   "title": "customers, fragment punct-3 'a.b', page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('a.b') || '%' OR lower(c.full_name) LIKE '%' || lower('a.b') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 35,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-3.p2",
+   "group": "customers",
+   "title": "customers, fragment punct-3 'a.b', page 2",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('a.b') || '%' OR lower(c.full_name) LIKE '%' || lower('a.b') || '%') AND c.last_order_at <= CAST('2025-11-11 18:49:26+00' AS timestamptz) AND (c.last_order_at < CAST('2025-11-11 18:49:26+00' AS timestamptz) OR c.customer_id > '5199fe94-946e-5c17-bc13-702ba390b246') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 35,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-3.p1.name",
+   "group": "customers",
+   "title": "customers, fragment punct-3 'a.b', page 1, sort name",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('a.b') || '%' OR lower(c.full_name) LIKE '%' || lower('a.b') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 35,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-3.count",
+   "group": "customers",
+   "title": "customers, fragment punct-3 'a.b', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('a.b') || '%' OR lower(c.full_name) LIKE '%' || lower('a.b') || '%') LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 35,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-4.p1",
+   "group": "customers",
+   "title": "customers, fragment punct-4 'ab-cd', page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ab-cd') || '%' OR lower(c.full_name) LIKE '%' || lower('ab-cd') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-4.p1.name",
+   "group": "customers",
+   "title": "customers, fragment punct-4 'ab-cd', page 1, sort name",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ab-cd') || '%' OR lower(c.full_name) LIKE '%' || lower('ab-cd') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-punct-4.count",
+   "group": "customers",
+   "title": "customers, fragment punct-4 'ab-cd', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ab-cd') || '%' OR lower(c.full_name) LIKE '%' || lower('ab-cd') || '%') LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-polish.p1",
+   "group": "customers",
+   "title": "customers, fragment polish 'ąęś', page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ąęś') || '%' OR lower(c.full_name) LIKE '%' || lower('ąęś') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-polish.p1.name",
+   "group": "customers",
+   "title": "customers, fragment polish 'ąęś', page 1, sort name",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ąęś') || '%' OR lower(c.full_name) LIKE '%' || lower('ąęś') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-polish.count",
+   "group": "customers",
+   "title": "customers, fragment polish 'ąęś', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('ąęś') || '%' OR lower(c.full_name) LIKE '%' || lower('ąęś') || '%') LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 0,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-full-email.p1",
+   "group": "customers",
+   "title": "customers, fragment full-email 'jan.piechocki.637@example.net', page 1",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('jan.piechocki.637@example.net') || '%' OR lower(c.full_name) LIKE '%' || lower('jan.piechocki.637@example.net') || '%') ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 1,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-full-email.p1.name",
+   "group": "customers",
+   "title": "customers, fragment full-email 'jan.piechocki.637@example.net', page 1, sort name",
+   "sql": "SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('jan.piechocki.637@example.net') || '%' OR lower(c.full_name) LIKE '%' || lower('jan.piechocki.637@example.net') || '%') ORDER BY lower(c.full_name) ASC, c.customer_id LIMIT 26",
+   "variable": "hits",
+   "value": 1,
+   "scale": "customers"
+  },
+  {
+   "id": "C-frag-full-email.count",
+   "group": "customers",
+   "title": "customers, fragment full-email 'jan.piechocki.637@example.net', count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('jan.piechocki.637@example.net') || '%' OR lower(c.full_name) LIKE '%' || lower('jan.piechocki.637@example.net') || '%') LIMIT 10001) bounded",
+   "variable": "hits",
+   "value": 1,
+   "scale": "customers"
+  },
+  {
+   "id": "X-discount-codes",
+   "group": "other",
+   "title": "discount codes, list with the active uses per row (A4)",
+   "sql": "SELECT c.id, (SELECT count(*) FROM pricing_discount_code_usage u WHERE u.code_id = c.id AND u.released_at IS NULL) AS active_uses FROM pricing_discount_code c ORDER BY c.created_at DESC, c.id LIMIT 26",
+   "variable": "active uses of the codes",
+   "value": 453,
+   "scale": "orders"
+  },
+  {
+   "id": "X-category-counts",
+   "group": "other",
+   "title": "category tree with counts",
+   "sql": "SELECT c.id, (SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.primary_category_id = c.id UNION ALL SELECT 1 FROM catalog_product_category pc WHERE pc.category_id = c.id LIMIT 1001) t) AS products FROM catalog_category c",
+   "variable": "categories x bound 1001",
+   "value": 180,
+   "scale": "const"
+  },
+  {
+   "id": "X-dashboard-sales",
+   "group": "other",
+   "title": "dashboard, sales of 60 days",
+   "sql": "SELECT CAST(COALESCE(SUM(order_count), 0) AS bigint), CAST(COALESCE(SUM(gross), 0) AS bigint) FROM ordering_sales_hour WHERE hour_start >= now() - interval '60 days' AND hour_start < now()",
+   "variable": "hourly rows of 60 days",
+   "value": 0,
+   "scale": "const"
+  },
+  {
+   "id": "X-dashboard-out-of-stock",
+   "group": "other",
+   "title": "dashboard, out of stock (limit 1000)",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM inventory_stock_item WHERE physical - reserved = 0 AND product_id IS NOT NULL LIMIT 1001) bounded",
+   "variable": "bound",
+   "value": 1001,
+   "scale": "const"
+  },
+  {
+   "id": "X-dashboard-no-images",
+   "group": "other",
+   "title": "dashboard, products without images (limit 1000)",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.images = '[]'::jsonb LIMIT 1001) bounded",
+   "variable": "bound",
+   "value": 1001,
+   "scale": "const"
+  },
+  {
+   "id": "X-dashboard-recent-orders",
+   "group": "other",
+   "title": "dashboard, the five last orders",
+   "sql": "SELECT o.id, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) FROM ordering_order o ORDER BY o.placed_at DESC, o.id DESC LIMIT 6",
+   "variable": "page",
+   "value": 5,
+   "scale": "const"
+  },
+  {
+   "id": "X-stock-low-count",
+   "group": "other",
+   "title": "stock list, low-stock filter count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM inventory_stock_item WHERE physical - reserved BETWEEN 1 AND 5 AND product_id IS NOT NULL GROUP BY product_id LIMIT 10001) bounded",
+   "variable": "bound",
+   "value": 10000,
+   "scale": "const"
+  },
+  {
+   "id": "X-sitemap-boundaries-M0",
+   "group": "sitemap",
+   "title": "sitemap boundaries, row_number() over the whole key (M0, the present query)",
+   "sql": "SELECT id FROM (SELECT id, row_number() OVER (ORDER BY id) AS position FROM catalog_product) numbered WHERE position > 1 AND (position - 1) % 10000 = 0 ORDER BY position",
+   "variable": "products",
+   "value": 2191,
+   "scale": "products"
+  },
+  {
+   "id": "X-sitemap-chunk",
+   "group": "sitemap",
+   "title": "sitemap chunk (a range of the key, limit 50001)",
+   "sql": "SELECT slug, status, updated_at FROM catalog_product WHERE id >= CAST('42304c70-29a4-5c1d-bc4b-ae8f0b695d6b' AS uuid) AND id < CAST('42445927-4a14-5f1f-a174-9fd97cadf196' AS uuid) ORDER BY id LIMIT 50001",
+   "variable": "chunk",
+   "value": 25,
+   "scale": "const"
+  }
+ ]
+}

@@ -1,0 +1,20 @@
+-- phrase rare 'ryś', count of the first page
+-- hits = 20
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ryś%' LIMIT 10001) bounded;
+
+Aggregate  (cost=89.49..89.50 rows=1 width=8) (actual time=0.084..0.085 rows=1.00 loops=1)
+  Buffers: shared hit=23
+  ->  Limit  (cost=12.92..89.21 rows=22 width=4) (actual time=0.025..0.081 rows=20.00 loops=1)
+        Buffers: shared hit=23
+        ->  Bitmap Heap Scan on catalog_product p  (cost=12.92..89.21 rows=22 width=4) (actual time=0.025..0.080 rows=20.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ryś%'::text)
+              Heap Blocks: exact=20
+              Buffers: shared hit=23
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..12.92 rows=22 width=0) (actual time=0.015..0.015 rows=20.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ryś%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.561 ms
+Execution Time: 0.124 ms

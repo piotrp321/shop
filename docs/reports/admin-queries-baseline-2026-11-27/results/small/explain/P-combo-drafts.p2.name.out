@@ -1,0 +1,22 @@
+-- drafts, page 2, sort name
+-- hits = 46
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.status = 'draft' AND (p.name, p.id) > ('Ławka treningowa Valridor Jastrząb 500', CAST('63be659d-2da1-52ce-8b6f-afd3cbe6930d' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=91.64..91.70 rows=24 width=70) (actual time=0.089..0.092 rows=21.00 loops=1)
+  Buffers: shared hit=28
+  ->  Sort  (cost=91.64..91.70 rows=24 width=70) (actual time=0.088..0.089 rows=21.00 loops=1)
+        Sort Key: name, id
+        Sort Method: quicksort  Memory: 27kB
+        Buffers: shared hit=28
+        ->  Bitmap Heap Scan on catalog_product p  (cost=8.33..91.09 rows=24 width=70) (actual time=0.023..0.069 rows=21.00 loops=1)
+              Recheck Cond: ((ROW((name)::text, id) > ROW('Ławka treningowa Valridor Jastrząb 500'::text, '63be659d-2da1-52ce-8b6f-afd3cbe6930d'::uuid)) AND ((status)::text = 'draft'::text))
+              Heap Blocks: exact=21
+              Buffers: shared hit=22
+              ->  Bitmap Index Scan on catalog_product_draft_name_id_idx  (cost=0.00..8.32 rows=24 width=0) (actual time=0.010..0.010 rows=21.00 loops=1)
+                    Index Cond: (ROW((name)::text, id) > ROW('Ławka treningowa Valridor Jastrząb 500'::text, '63be659d-2da1-52ce-8b6f-afd3cbe6930d'::uuid))
+                    Index Searches: 1
+                    Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=267
+Planning Time: 0.372 ms
+Execution Time: 0.111 ms

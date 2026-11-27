@@ -1,0 +1,3 @@
+-- category mostly-additional (8 of 22 products only through an additional category; 22 products), page 1, sort name
+-- cost variable: products in the subtree = 22 (scales with products)
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/573b3efd-5c6c-5577-8528-e54817ea4242/f34d1972-3acd-579a-9b7f-672093624ed8/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/573b3efd-5c6c-5577-8528-e54817ea4242/f34d1972-3acd-579a-9b7f-672093624ed8/%'))) ORDER BY p.name ASC, p.id ASC LIMIT 26;

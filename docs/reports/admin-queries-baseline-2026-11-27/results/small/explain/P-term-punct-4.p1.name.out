@@ -1,0 +1,21 @@
+-- phrase punct-4 'ab-cd', page 1, sort name
+-- hits = 0
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ab-cd%' ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=34.20..34.20 rows=1 width=70) (actual time=0.040..0.042 rows=0.00 loops=1)
+  Buffers: shared hit=13
+  ->  Sort  (cost=34.20..34.20 rows=1 width=70) (actual time=0.039..0.039 rows=0.00 loops=1)
+        Sort Key: name, id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=13
+        ->  Bitmap Heap Scan on catalog_product p  (cost=30.17..34.19 rows=1 width=70) (actual time=0.025..0.025 rows=0.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ab-cd%'::text)
+              Buffers: shared hit=7
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..30.17 rows=1 width=0) (actual time=0.022..0.022 rows=0.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ab-cd%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=7
+Planning:
+  Buffers: shared hit=277
+Planning Time: 0.683 ms
+Execution Time: 0.078 ms
