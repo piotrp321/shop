@@ -108,8 +108,8 @@ make load-panel PANEL_MODE=p4 SHOP_URLS_FILE=<plik>   # P4: 3 przebiegi bez pane
   z klasami żądań, wagami i sposobem losowania. `PANEL_MIX=<plik>` używa gotowej mieszanki, więc ta sama jest przed zmianą
   i po niej. Klasy fraz i kategorii wynikają z liczby trafień (brak, rzadka do 20, średnia, częsta ponad limit 10 000, 2 znaki,
   sama interpunkcja, polskie znaki; kategoria pusta, mała do 20, średnia, duża, dział).
-- **W7:** żądania mieszanki w stałym tempie (`PANEL_RATE`, domyślnie 5/s; propozycja ze specyfikacji, niezatwierdzona przez
-  właściciela) przez `PANEL_SECONDS` (300). Raport: p50, p95, p99 i maksimum całości i każdej klasy (mediana trzech przebiegów
+- **W7:** żądania mieszanki w stałym tempie (`PANEL_RATE`, domyślnie 5/s, tempo zatwierdzone przez właściciela,
+  decyzja D4 specyfikacji) przez `PANEL_SECONDS` (300). Raport: p50, p95, p99 i maksimum całości i każdej klasy (mediana trzech przebiegów
   i najniższy–najwyższy), błędy, werdykt względem W7.
 - **P4:** w tle sklep (API): `SHOP_LISTING_RATE` zimnych listingów na sekundę (adresy z `python3 load/baseline.py urls <api>
   <sklep> PLIK --listings N`, każdy raz; N co najmniej `SHOP_LISTING_RATE × PANEL_SECONDS`) i `SHOP_CART_RATE` koszyków na sekundę

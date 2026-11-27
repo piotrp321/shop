@@ -6,8 +6,8 @@
 # PANEL_RUNS times (default 3: the result is the median, the spread of the runs is reported next to it). The mix, the token's
 # lifetime and every result are written together to PANEL_OUT.
 #
-#   sh load/panel.sh w7   the mix at PANEL_RATE requests per second (default 5, the proposal of the spec, not yet approved by the
-#                         owner) for PANEL_SECONDS (default 300), PANEL_RUNS times
+#   sh load/panel.sh w7   the mix at PANEL_RATE requests per second (default 5, approved by the owner,
+#                         spec decision D4) for PANEL_SECONDS (default 300), PANEL_RUNS times
 #   sh load/panel.sh p4   the shop (SHOP_LISTING_RATE cold listings and SHOP_CART_RATE carts per second) without the panel and with
 #                         it (the mix at PANEL_RATE, PANEL_WORST_VUS threads of the heaviest classes, default 8, and the boundaries
 #                         of the sitemap cut cold every BOUNDARIES_EVERY seconds, default 30), PANEL_RUNS runs of each, alternating;
