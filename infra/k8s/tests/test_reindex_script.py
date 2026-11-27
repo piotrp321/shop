@@ -352,7 +352,7 @@ class ReindexScriptTest(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("[reindex] Another rebuild or setup of the search index is running.", result.stdout)
         self.assertRegex(result.stderr, r"FAILED: the Job reindex-[0-9]{14} did not complete")
-        self.assertIn(f"the alias products is on (index, primary shards, Lucene documents): {OLD_INDEX} 4 1000191", result.stderr)
+        self.assertIn(f"the alias products is on (index, primary shards, Lucene documents): {OLD_INDEX} 1 1000191", result.stderr)
         self.assertNotIn("reindex: done", result.stdout)
         self.assertEqual(["lock taken", "job created", "lock released"], self.changes())
 

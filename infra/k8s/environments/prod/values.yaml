@@ -101,9 +101,6 @@ alerts:
 
 elasticsearch:
   javaOpts: -Xms2g -Xmx2g
-  # One shard in every profile: the facets are exact and a query costs less CPU than on several shards on one node
-  # (docs/features/search/spec.md, M3 and "Infrastruktura"); the index of the cluster gets it with make -C infra/k8s reindex.
-  shards: 1
   # 5 s is a conditional decision: it stands only if the measurement W16 together with PERF-6 confirms it
   # (docs/features/search/spec.md, M4); until then it is the value of the plan, and a change needs a deployment only.
   refreshInterval: 5s
