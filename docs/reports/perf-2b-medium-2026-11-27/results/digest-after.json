@@ -1,0 +1,4439 @@
+[
+{
+"path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=15",
+"status": 200,
+"total": 143221,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 842
+},
+"availableCount": 139480,
+"items": 24,
+"sha256": "e66e099d305a8598"
+},
+{
+"path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108",
+"status": 200,
+"total": 105466,
+"pageCount": 417,
+"categories": 7,
+"axes": 4,
+"price": {
+"max": 349900,
+"min": 1499
+},
+"availableCount": 102711,
+"items": 24,
+"sha256": "31b8e3d8cca93256"
+},
+{
+"path": "/api/v1/products?category=3e2e82bc-4e57-5b53-a985-186669fa6a67",
+"status": 200,
+"total": 14016,
+"pageCount": 417,
+"categories": 0,
+"axes": 5,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 13674,
+"items": 24,
+"sha256": "d94f0f352027364d"
+},
+{
+"path": "/api/v1/products?q=bielizna%20termoaktywna&option=Typ%3A%C5%82a%C5%84cuch",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "265a2752d05cd0e4"
+},
+{
+"path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108&page=173",
+"status": 200,
+"total": 105466,
+"pageCount": 417,
+"categories": 7,
+"axes": 4,
+"price": {
+"max": 349900,
+"min": 1499
+},
+"availableCount": 102711,
+"items": 24,
+"sha256": "4be0a8dbc0a566ce"
+},
+{
+"path": "/api/v1/products?page=123",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "e2722e31289f9827"
+},
+{
+"path": "/api/v1/products?page=165",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "c18cc0a50f0ecdbf"
+},
+{
+"path": "/api/v1/products?q=bluza&page=2",
+"status": 200,
+"total": 16973,
+"pageCount": 417,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 42500,
+"min": 8999
+},
+"availableCount": 16538,
+"items": 24,
+"sha256": "a19abb2641e184a6"
+},
+{
+"path": "/api/v1/products?category=d05af239-af23-5e43-a79a-035233a9e084",
+"status": 200,
+"total": 5737,
+"pageCount": 240,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 79999,
+"min": 1499
+},
+"availableCount": 5598,
+"items": 24,
+"sha256": "160c747e92549cb9"
+},
+{
+"path": "/api/v1/products?page=161",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "239c51aadec03fe0"
+},
+{
+"path": "/api/v1/products?q=bluza%20treningowa&option=D%C5%82ugo%C5%9B%C4%87%3A220%20cm",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "b79524f1f8756fe7"
+},
+{
+"path": "/api/v1/products?page=174",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "2e47cee2f33787de"
+},
+{
+"path": "/api/v1/products?q=kask%20wielosportowy&page=5",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 49900,
+"min": 29900
+},
+"availableCount": 6,
+"items": 0,
+"sha256": "e7fea7f04cde4b83"
+},
+{
+"path": "/api/v1/products?category=d25bb972-a498-5781-a6e4-198c33c1d273&available=true",
+"status": 200,
+"total": 9866,
+"pageCount": 412,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 239999,
+"min": 999
+},
+"availableCount": 9866,
+"items": 24,
+"sha256": "72c81c2a14eafdae"
+},
+{
+"path": "/api/v1/products?category=d8db2ee0-5605-5e61-8788-c3df42b6a7fb&available=true",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 0,
+"axes": 1,
+"price": {
+"max": 299900,
+"min": 189900
+},
+"availableCount": 6,
+"items": 6,
+"sha256": "e66e052569429067"
+},
+{
+"path": "/api/v1/products?category=8675ac9b-ebc2-5800-99d9-c700427346cb&priceMin=14600&priceMax=45400",
+"status": 200,
+"total": 4624,
+"pageCount": 193,
+"categories": 0,
+"axes": 9,
+"price": {
+"max": 94999,
+"min": 1499
+},
+"availableCount": 4624,
+"items": 24,
+"sha256": "f35cb4423938e4f8"
+},
+{
+"path": "/api/v1/products?q=baga%C5%BCnik&available=true",
+"status": 200,
+"total": 24348,
+"pageCount": 417,
+"categories": 2,
+"axes": 9,
+"price": {
+"max": 349900,
+"min": 1499
+},
+"availableCount": 24348,
+"items": 24,
+"sha256": "ee59186841412d7a"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=193",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "ac774a1648e62e54"
+},
+{
+"path": "/api/v1/products?page=167",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "fad6a7ae4088a9b7"
+},
+{
+"path": "/api/v1/products?q=baton%20proteinowy",
+"status": 200,
+"total": 14429,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 500000,
+"min": 890
+},
+"availableCount": 14218,
+"items": 24,
+"sha256": "19829c086e2d246c"
+},
+{
+"path": "/api/v1/products?category=8c10569a-2f29-539a-b2ec-ae97f68410a7",
+"status": 200,
+"total": 118249,
+"pageCount": 417,
+"categories": 6,
+"axes": 4,
+"price": {
+"max": 240000,
+"min": 999
+},
+"availableCount": 115074,
+"items": 24,
+"sha256": "041a88874e5c1063"
+},
+{
+"path": "/api/v1/products?category=8675ac9b-ebc2-5800-99d9-c700427346cb&available=true",
+"status": 200,
+"total": 14265,
+"pageCount": 417,
+"categories": 0,
+"axes": 9,
+"price": {
+"max": 94999,
+"min": 1499
+},
+"availableCount": 14265,
+"items": 24,
+"sha256": "a945209233103674"
+},
+{
+"path": "/api/v1/products?category=263ac5d1-7e52-5ec8-bbe0-0db1b8ee1d37&option=Pojemno%C5%9B%C4%87%3A600%20ml",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "188dad754d62fbd1"
+},
+{
+"path": "/api/v1/products?category=384a4602-0ce1-516a-beaf-0b613a4bc901&available=true",
+"status": 200,
+"total": 9522,
+"pageCount": 397,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 74999,
+"min": 1499
+},
+"availableCount": 9522,
+"items": 24,
+"sha256": "92e86b99bf5363df"
+},
+{
+"path": "/api/v1/products?category=67a7eaa7-4725-5233-be8d-133e240c37b9",
+"status": 200,
+"total": 6355,
+"pageCount": 265,
+"categories": 0,
+"axes": 9,
+"price": {
+"max": 120000,
+"min": 1499
+},
+"availableCount": 6199,
+"items": 24,
+"sha256": "190680e518a02714"
+},
+{
+"path": "/api/v1/products?q=kask&sort=price_desc",
+"status": 200,
+"total": 14,
+"pageCount": 1,
+"categories": 3,
+"axes": 2,
+"price": {
+"max": 79900,
+"min": 22900
+},
+"availableCount": 14,
+"items": 14,
+"sha256": "1cae498db89b549c"
+},
+{
+"path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&priceMin=142000&priceMax=200000",
+"status": 200,
+"total": 22,
+"pageCount": 1,
+"categories": 1,
+"axes": 1,
+"price": {
+"max": 200000,
+"min": 1999
+},
+"availableCount": 22,
+"items": 22,
+"sha256": "87e8a4211fdc7306"
+},
+{
+"path": "/api/v1/products?category=865e162c-7fc4-55c7-84f2-39f301865e39",
+"status": 200,
+"total": 22640,
+"pageCount": 417,
+"categories": 0,
+"axes": 8,
+"price": {
+"max": 569999,
+"min": 999
+},
+"availableCount": 22077,
+"items": 24,
+"sha256": "213d1a71d13e9e3c"
+},
+{
+"path": "/api/v1/products?category=30fbd65b-4264-5b8a-a2c0-9e501a868a77",
+"status": 200,
+"total": 14491,
+"pageCount": 417,
+"categories": 0,
+"axes": 5,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 14150,
+"items": 24,
+"sha256": "568c54ec13cb34a6"
+},
+{
+"path": "/api/v1/products?q=buty&sort=name",
+"status": 200,
+"total": 141353,
+"pageCount": 417,
+"categories": 6,
+"axes": 10,
+"price": {
+"max": 289999,
+"min": 999
+},
+"availableCount": 137860,
+"items": 24,
+"sha256": "556734cc11f6f059"
+},
+{
+"path": "/api/v1/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&page=175",
+"status": 200,
+"total": 131586,
+"pageCount": 417,
+"categories": 7,
+"axes": 3,
+"price": {
+"max": 210000,
+"min": 842
+},
+"availableCount": 128256,
+"items": 24,
+"sha256": "d2a71f682ca0e6a6"
+},
+{
+"path": "/api/v1/products?category=5c59f270-bc3a-589c-b59f-7cb5ffab69f4&priceMin=120600&priceMax=163200",
+"status": 200,
+"total": 17,
+"pageCount": 1,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 529999,
+"min": 999
+},
+"availableCount": 17,
+"items": 17,
+"sha256": "d205f5235c0112c6"
+},
+{
+"path": "/api/v1/products?page=12",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "a8189846c5db2ee5"
+},
+{
+"path": "/api/v1/products?q=bielizna&page=5",
+"status": 200,
+"total": 14491,
+"pageCount": 417,
+"categories": 1,
+"axes": 5,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 14150,
+"items": 24,
+"sha256": "3149aca9648291db"
+},
+{
+"path": "/api/v1/products?category=4d4ea9f8-7e78-507d-ac8b-df49d14e1913",
+"status": 200,
+"total": 5838,
+"pageCount": 244,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 79999,
+"min": 1499
+},
+"availableCount": 5527,
+"items": 24,
+"sha256": "53376cd138367773"
+},
+{
+"path": "/api/v1/products?page=22",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "8f2264417829fce5"
+},
+{
+"path": "/api/v1/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&page=170",
+"status": 200,
+"total": 131586,
+"pageCount": 417,
+"categories": 7,
+"axes": 3,
+"price": {
+"max": 210000,
+"min": 842
+},
+"availableCount": 128256,
+"items": 24,
+"sha256": "de3cc1e20e01c466"
+},
+{
+"path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&sort=price_desc",
+"status": 200,
+"total": 53036,
+"pageCount": 417,
+"categories": 3,
+"axes": 2,
+"price": {
+"max": 200000,
+"min": 1999
+},
+"availableCount": 51732,
+"items": 24,
+"sha256": "b8f4d75d185a0eed"
+},
+{
+"path": "/api/v1/products?category=129b82c8-66b5-5855-9666-cf98d86c1cf2&available=true",
+"status": 200,
+"total": 8,
+"pageCount": 1,
+"categories": 0,
+"axes": 1,
+"price": {
+"max": 89900,
+"min": 8990
+},
+"availableCount": 8,
+"items": 8,
+"sha256": "7aa77f9e5f20dda1"
+},
+{
+"path": "/api/v1/products?q=kajak&sort=name",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 1,
+"axes": 1,
+"price": {
+"max": 349900,
+"min": 249900
+},
+"availableCount": 3,
+"items": 4,
+"sha256": "3f4765004a245830"
+},
+{
+"path": "/api/v1/products?q=baton%20proteinowy&page=4",
+"status": 200,
+"total": 14429,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 500000,
+"min": 890
+},
+"availableCount": 14218,
+"items": 24,
+"sha256": "f1fc033f71e342d7"
+},
+{
+"path": "/api/v1/products?q=atlas%20szlak%C3%B3w&sort=price_asc",
+"status": 200,
+"total": 4285,
+"pageCount": 179,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 11000,
+"min": 2490
+},
+"availableCount": 4045,
+"items": 24,
+"sha256": "a0f67090c015ae66"
+},
+{
+"path": "/api/v1/products?q=bielizna%20termoaktywna&page=3",
+"status": 200,
+"total": 14491,
+"pageCount": 417,
+"categories": 1,
+"axes": 5,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 14150,
+"items": 24,
+"sha256": "ad7aad62212b3e2e"
+},
+{
+"path": "/api/v1/products?q=bielizna&sort=price_desc",
+"status": 200,
+"total": 14491,
+"pageCount": 417,
+"categories": 1,
+"axes": 5,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 14150,
+"items": 24,
+"sha256": "e3badad139e584e4"
+},
+{
+"path": "/api/v1/products?q=bluza%20treningowa&sort=price_desc",
+"status": 200,
+"total": 16973,
+"pageCount": 417,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 42500,
+"min": 8999
+},
+"availableCount": 16538,
+"items": 24,
+"sha256": "9b6023743c623ea3"
+},
+{
+"path": "/api/v1/products?q=kask%20rowerowy&page=3",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 44900,
+"min": 24900
+},
+"availableCount": 4,
+"items": 0,
+"sha256": "6dbf536e88b518b7"
+},
+{
+"path": "/api/v1/products?category=c0e422fd-b002-56d0-bfda-f15645a0fd56",
+"status": 200,
+"total": 10240,
+"pageCount": 417,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 200000,
+"min": 999
+},
+"availableCount": 10002,
+"items": 24,
+"sha256": "50894139e4bc0700"
+},
+{
+"path": "/api/v1/products?category=c46367b5-ebd9-5214-83cf-f336dac3fedb",
+"status": 200,
+"total": 15033,
+"pageCount": 417,
+"categories": 0,
+"axes": 6,
+"price": {
+"max": 139999,
+"min": 1499
+},
+"availableCount": 14624,
+"items": 24,
+"sha256": "09e5f721be93b5d2"
+},
+{
+"path": "/api/v1/products?category=fd305193-a5ad-5aac-932f-fc408a98d4c7&option=Zakres%20DIN%3A6-14",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "9d56e29571486786"
+},
+{
+"path": "/api/v1/products?category=2b93dc6f-4c3b-53d0-b20b-9be5f7980537&option=Liczba%20prze%C5%82o%C5%BCe%C5%84%3A9",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "fae50e6c53a8c633"
+},
+{
+"path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=64",
+"status": 200,
+"total": 152506,
+"pageCount": 417,
+"categories": 7,
+"axes": 8,
+"price": {
+"max": 589999,
+"min": 690
+},
+"availableCount": 148777,
+"items": 24,
+"sha256": "03e13b406602afa1"
+},
+{
+"path": "/api/v1/products?category=fc35f69d-dfd2-5ef1-a0bb-a71183c657c3",
+"status": 200,
+"total": 10274,
+"pageCount": 417,
+"categories": 0,
+"axes": 8,
+"price": {
+"max": 549999,
+"min": 999
+},
+"availableCount": 10025,
+"items": 24,
+"sha256": "341d6a7ec8ec8fb4"
+},
+{
+"path": "/api/v1/products?page=150",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "91f5db05eb3c54d8"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=55",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "8ccd027a815ebc18"
+},
+{
+"path": "/api/v1/products?q=bluza&page=5",
+"status": 200,
+"total": 16973,
+"pageCount": 417,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 42500,
+"min": 8999
+},
+"availableCount": 16538,
+"items": 24,
+"sha256": "d64f16fa3b9aafb9"
+},
+{
+"path": "/api/v1/products?category=72311dc1-30dd-536a-9f09-25b0116774f0&available=true",
+"status": 200,
+"total": 14148,
+"pageCount": 417,
+"categories": 0,
+"axes": 8,
+"price": {
+"max": 579999,
+"min": 999
+},
+"availableCount": 14148,
+"items": 24,
+"sha256": "cb57af7911ba10e8"
+},
+{
+"path": "/api/v1/products?category=6492d0ed-95ce-5363-847a-6a02485be76a&available=true",
+"status": 200,
+"total": 5988,
+"pageCount": 250,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 190000,
+"min": 1999
+},
+"availableCount": 5988,
+"items": 24,
+"sha256": "dee68578bde316fe"
+},
+{
+"path": "/api/v1/products?category=6a1e0ddd-6825-51e2-a6dc-52d790533102&available=true",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 49900,
+"min": 29900
+},
+"availableCount": 6,
+"items": 6,
+"sha256": "52ccb4931625b9fa"
+},
+{
+"path": "/api/v1/products?page=9",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "f8a5038b50a8d8c7"
+},
+{
+"path": "/api/v1/products?q=atlas%20szlak%C3%B3w&priceMin=95800&priceMax=169600",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 0,
+"price": {
+"max": 11000,
+"min": 2490
+},
+"availableCount": 0,
+"items": 0,
+"sha256": "f9de15badf68ad68"
+},
+{
+"path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=45",
+"status": 200,
+"total": 143221,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 842
+},
+"availableCount": 139480,
+"items": 24,
+"sha256": "dbccdb58ce8bdae7"
+},
+{
+"path": "/api/v1/products?category=60328daf-3f3c-553e-bbf0-0642d8854acb",
+"status": 200,
+"total": 12,
+"pageCount": 1,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 32900,
+"min": 842
+},
+"availableCount": 12,
+"items": 12,
+"sha256": "d91d8f3bc01b2425"
+},
+{
+"path": "/api/v1/products?category=06779c21-78cd-532d-bce9-4f8ddbc7edf8&priceMin=11600&priceMax=71800",
+"status": 200,
+"total": 9337,
+"pageCount": 390,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 200000,
+"min": 1999
+},
+"availableCount": 9337,
+"items": 24,
+"sha256": "81eea80f8fb5db75"
+},
+{
+"path": "/api/v1/products?category=1313daa3-8176-5aa8-abff-f8c8e36d3c3e",
+"status": 200,
+"total": 6247,
+"pageCount": 261,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 199999,
+"min": 1999
+},
+"availableCount": 6111,
+"items": 24,
+"sha256": "c54e3511c8834e44"
+},
+{
+"path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=135",
+"status": 200,
+"total": 143221,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 842
+},
+"availableCount": 139480,
+"items": 24,
+"sha256": "672f393d0bc34a32"
+},
+{
+"path": "/api/v1/products?page=139",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "6509141b66198c00"
+},
+{
+"path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&page=5",
+"status": 200,
+"total": 53036,
+"pageCount": 417,
+"categories": 3,
+"axes": 2,
+"price": {
+"max": 200000,
+"min": 1999
+},
+"availableCount": 51732,
+"items": 24,
+"sha256": "af7162a03c8f14f3"
+},
+{
+"path": "/api/v1/products?category=9c0322b5-2a7c-57cd-9dc6-17a5142e9f46&priceMin=52800&priceMax=145800",
+"status": 200,
+"total": 19,
+"pageCount": 1,
+"categories": 0,
+"axes": 1,
+"price": {
+"max": 84999,
+"min": 1499
+},
+"availableCount": 19,
+"items": 19,
+"sha256": "00b45ee450167172"
+},
+{
+"path": "/api/v1/products?page=143",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "6840273f4458dad7"
+},
+{
+"path": "/api/v1/products?category=9c0322b5-2a7c-57cd-9dc6-17a5142e9f46&priceMin=120500&priceMax=157800",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 0,
+"price": {
+"max": 84999,
+"min": 1499
+},
+"availableCount": 0,
+"items": 0,
+"sha256": "d00c53978cc37ca8"
+},
+{
+"path": "/api/v1/products?category=8817c9ae-db65-5809-91cf-03293463de59&available=true",
+"status": 200,
+"total": 10113,
+"pageCount": 417,
+"categories": 0,
+"axes": 5,
+"price": {
+"max": 290000,
+"min": 2999
+},
+"availableCount": 10113,
+"items": 24,
+"sha256": "71b312bd49331349"
+},
+{
+"path": "/api/v1/products?category=80dcb48e-b80c-5a8d-a7b4-59da04ed3215&option=Typ%3AU-lock",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "b2a7442311361d11"
+},
+{
+"path": "/api/v1/products?q=baga%C5%BCnik&page=4",
+"status": 200,
+"total": 24999,
+"pageCount": 417,
+"categories": 2,
+"axes": 9,
+"price": {
+"max": 349900,
+"min": 1499
+},
+"availableCount": 24348,
+"items": 24,
+"sha256": "792af97abc9d4326"
+},
+{
+"path": "/api/v1/products?category=abb7bc3b-fe32-5236-9404-fc941e8fea53&priceMin=101500&priceMax=246800",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 0,
+"price": {
+"max": 19900,
+"min": 9990
+},
+"availableCount": 0,
+"items": 0,
+"sha256": "b704bb5f7fb5960f"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=117",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "56bfff9d64ca692d"
+},
+{
+"path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=62",
+"status": 200,
+"total": 143221,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 842
+},
+"availableCount": 139480,
+"items": 24,
+"sha256": "1c1a9804701facba"
+},
+{
+"path": "/api/v1/products?q=baton&page=2",
+"status": 200,
+"total": 14433,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 500000,
+"min": 690
+},
+"availableCount": 14222,
+"items": 24,
+"sha256": "1c11c65b798fd2f4"
+},
+{
+"path": "/api/v1/products?q=bielizna%20termoaktywna",
+"status": 200,
+"total": 14491,
+"pageCount": 417,
+"categories": 1,
+"axes": 5,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 14150,
+"items": 24,
+"sha256": "2c6236545f24cdcd"
+},
+{
+"path": "/api/v1/products?q=kask%20rowerowy&sort=price_desc",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 44900,
+"min": 24900
+},
+"availableCount": 4,
+"items": 4,
+"sha256": "aa0e4819db05fb5a"
+},
+{
+"path": "/api/v1/products?q=atlas%20szlak%C3%B3w&page=3",
+"status": 200,
+"total": 4285,
+"pageCount": 179,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 11000,
+"min": 2490
+},
+"availableCount": 4045,
+"items": 24,
+"sha256": "20d69e54f36a4a51"
+},
+{
+"path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=57",
+"status": 200,
+"total": 152506,
+"pageCount": 417,
+"categories": 7,
+"axes": 8,
+"price": {
+"max": 589999,
+"min": 690
+},
+"availableCount": 148777,
+"items": 24,
+"sha256": "130712c09f18854f"
+},
+{
+"path": "/api/v1/products?category=dc12d069-67b5-5cfc-9734-cfbb916735d3&option=Waga%3A8%20kg",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "3485bc48222d4903"
+},
+{
+"path": "/api/v1/products?page=32",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "0ad3c9e9f41c4644"
+},
+{
+"path": "/api/v1/products?q=buty&available=true",
+"status": 200,
+"total": 137860,
+"pageCount": 417,
+"categories": 6,
+"axes": 10,
+"price": {
+"max": 289999,
+"min": 999
+},
+"availableCount": 137860,
+"items": 24,
+"sha256": "1f94dab3a5e90f4b"
+},
+{
+"path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&priceMin=61200&priceMax=101600",
+"status": 200,
+"total": 7197,
+"pageCount": 300,
+"categories": 3,
+"axes": 2,
+"price": {
+"max": 200000,
+"min": 1999
+},
+"availableCount": 7197,
+"items": 24,
+"sha256": "10e45989984bb840"
+},
+{
+"path": "/api/v1/products?category=f34d1972-3acd-579a-9b7f-672093624ed8&priceMin=96400&priceMax=141000",
+"status": 200,
+"total": 22,
+"pageCount": 1,
+"categories": 0,
+"axes": 1,
+"price": {
+"max": 209999,
+"min": 1999
+},
+"availableCount": 22,
+"items": 22,
+"sha256": "129d6e1d06ba5285"
+},
+{
+"path": "/api/v1/products?category=d947db5c-6f5f-5457-94f2-4b487d81a22e&available=true",
+"status": 200,
+"total": 15,
+"pageCount": 1,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 34900,
+"min": 6990
+},
+"availableCount": 15,
+"items": 15,
+"sha256": "079c252bfd56b4ef"
+},
+{
+"path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&page=148",
+"status": 200,
+"total": 126348,
+"pageCount": 417,
+"categories": 7,
+"axes": 5,
+"price": {
+"max": 299900,
+"min": 2999
+},
+"availableCount": 123367,
+"items": 24,
+"sha256": "d3a36bf2eead5b9b"
+},
+{
+"path": "/api/v1/products?category=0e811f7e-c801-572b-a28d-ceea69c2c019",
+"status": 200,
+"total": 6429,
+"pageCount": 268,
+"categories": 0,
+"axes": 6,
+"price": {
+"max": 129999,
+"min": 1499
+},
+"availableCount": 6088,
+"items": 24,
+"sha256": "341cbeded12b76f9"
+},
+{
+"path": "/api/v1/products?page=8",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "b4c11bb52836b4b6"
+},
+{
+"path": "/api/v1/products?q=kajak&page=4",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 1,
+"axes": 1,
+"price": {
+"max": 349900,
+"min": 249900
+},
+"availableCount": 3,
+"items": 0,
+"sha256": "9e35969088d3e939"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=161",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "c4648e82ed47ff55"
+},
+{
+"path": "/api/v1/products?category=38e42a09-5462-5dc5-aea9-71883ee43c0b",
+"status": 200,
+"total": 14521,
+"pageCount": 417,
+"categories": 0,
+"axes": 8,
+"price": {
+"max": 550000,
+"min": 999
+},
+"availableCount": 14155,
+"items": 24,
+"sha256": "fd429c3bd53b2b2e"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=36",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "82c7239289fc3de8"
+},
+{
+"path": "/api/v1/products?page=118",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "681ac8b643e356d3"
+},
+{
+"path": "/api/v1/products?page=65",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "159463dd0fc2a1d5"
+},
+{
+"path": "/api/v1/products?page=80",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "362a1ac5a661eaf9"
+},
+{
+"path": "/api/v1/products?page=142",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "c0ed12c5f8319983"
+},
+{
+"path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9",
+"status": 200,
+"total": 152506,
+"pageCount": 417,
+"categories": 7,
+"axes": 8,
+"price": {
+"max": 589999,
+"min": 690
+},
+"availableCount": 148777,
+"items": 24,
+"sha256": "6cfab2a157aa929a"
+},
+{
+"path": "/api/v1/products?q=atlas%20szlak%C3%B3w&page=5",
+"status": 200,
+"total": 4285,
+"pageCount": 179,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 11000,
+"min": 2490
+},
+"availableCount": 4045,
+"items": 24,
+"sha256": "ca4a1077a00706af"
+},
+{
+"path": "/api/v1/products?category=8c10569a-2f29-539a-b2ec-ae97f68410a7&page=7",
+"status": 200,
+"total": 118249,
+"pageCount": 417,
+"categories": 6,
+"axes": 4,
+"price": {
+"max": 240000,
+"min": 999
+},
+"availableCount": 115074,
+"items": 24,
+"sha256": "53b687b7cc3258ee"
+},
+{
+"path": "/api/v1/products?category=8c10569a-2f29-539a-b2ec-ae97f68410a7&page=142",
+"status": 200,
+"total": 118249,
+"pageCount": 417,
+"categories": 6,
+"axes": 4,
+"price": {
+"max": 240000,
+"min": 999
+},
+"availableCount": 115074,
+"items": 24,
+"sha256": "e4bfab53e957635d"
+},
+{
+"path": "/api/v1/products?category=2b93dc6f-4c3b-53d0-b20b-9be5f7980537",
+"status": 200,
+"total": 10100,
+"pageCount": 417,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 190000,
+"min": 999
+},
+"availableCount": 9853,
+"items": 24,
+"sha256": "1523d469733a306f"
+},
+{
+"path": "/api/v1/products?category=3e49073d-3b41-5c15-8b84-710b672e3b24&available=true",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 0,
+"axes": 1,
+"price": {
+"max": 9990,
+"min": 4990
+},
+"availableCount": 6,
+"items": 6,
+"sha256": "42f805d555433355"
+},
+{
+"path": "/api/v1/products?q=bluza&page=3",
+"status": 200,
+"total": 16973,
+"pageCount": 417,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 42500,
+"min": 8999
+},
+"availableCount": 16538,
+"items": 24,
+"sha256": "c7380029a68b7fd9"
+},
+{
+"path": "/api/v1/products?category=db3be160-884a-59ea-a8dd-4804a6fe510d",
+"status": 200,
+"total": 6124,
+"pageCount": 256,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 240000,
+"min": 999
+},
+"availableCount": 5795,
+"items": 24,
+"sha256": "129cb1ab6bbb4888"
+},
+{
+"path": "/api/v1/products?category=129b82c8-66b5-5855-9666-cf98d86c1cf2",
+"status": 200,
+"total": 8,
+"pageCount": 1,
+"categories": 0,
+"axes": 1,
+"price": {
+"max": 89900,
+"min": 8990
+},
+"availableCount": 8,
+"items": 8,
+"sha256": "7aa77f9e5f20dda1"
+},
+{
+"path": "/api/v1/products?q=kajak&available=true",
+"status": 200,
+"total": 3,
+"pageCount": 1,
+"categories": 1,
+"axes": 1,
+"price": {
+"max": 349900,
+"min": 249900
+},
+"availableCount": 3,
+"items": 3,
+"sha256": "77e01d0f6bf59bbb"
+},
+{
+"path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&priceMin=156100&priceMax=318500",
+"status": 200,
+"total": 17,
+"pageCount": 1,
+"categories": 1,
+"axes": 1,
+"price": {
+"max": 200000,
+"min": 1999
+},
+"availableCount": 17,
+"items": 17,
+"sha256": "d58fc062bcc303af"
+},
+{
+"path": "/api/v1/products?q=bluza%20treningowa&available=true",
+"status": 200,
+"total": 16538,
+"pageCount": 417,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 42500,
+"min": 8999
+},
+"availableCount": 16538,
+"items": 24,
+"sha256": "805f028e383834a1"
+},
+{
+"path": "/api/v1/products?category=2e961065-6d3a-50e2-abaf-a6936a768cc6&option=Smak%3Abananowy",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "6f9b4a4e8d4ec3c4"
+},
+{
+"path": "/api/v1/products?category=c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839",
+"status": 200,
+"total": 18994,
+"pageCount": 417,
+"categories": 0,
+"axes": 6,
+"price": {
+"max": 129999,
+"min": 1499
+},
+"availableCount": 18520,
+"items": 24,
+"sha256": "ecd135ebbbdd3a23"
+},
+{
+"path": "/api/v1/products?category=90de0a73-6628-527b-8e56-f5ee9313d506",
+"status": 200,
+"total": 14689,
+"pageCount": 417,
+"categories": 0,
+"axes": 9,
+"price": {
+"max": 90000,
+"min": 1499
+},
+"availableCount": 14287,
+"items": 24,
+"sha256": "eaeaeacf09016082"
+},
+{
+"path": "/api/v1/products?category=12feeac5-837f-5d48-98fd-621b45298787&option=Zakres%20z%C4%99batek%3A11-36",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "632b4d6e1c23236a"
+},
+{
+"path": "/api/v1/products?q=bielizna&page=4",
+"status": 200,
+"total": 14491,
+"pageCount": 417,
+"categories": 1,
+"axes": 5,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 14150,
+"items": 24,
+"sha256": "138a71297a894041"
+},
+{
+"path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=119",
+"status": 200,
+"total": 143221,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 842
+},
+"availableCount": 139480,
+"items": 24,
+"sha256": "3964fb854a24623e"
+},
+{
+"path": "/api/v1/products?page=157",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "3deb63d4e65a680d"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=194",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "ee06b70225698b93"
+},
+{
+"path": "/api/v1/products?q=atlas&sort=price_desc",
+"status": 200,
+"total": 14915,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 14070,
+"items": 24,
+"sha256": "629a90cf43328f3e"
+},
+{
+"path": "/api/v1/products?q=kask&page=3",
+"status": 200,
+"total": 14,
+"pageCount": 1,
+"categories": 3,
+"axes": 2,
+"price": {
+"max": 79900,
+"min": 22900
+},
+"availableCount": 14,
+"items": 0,
+"sha256": "ffa1c9177325ddd9"
+},
+{
+"path": "/api/v1/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&page=73",
+"status": 200,
+"total": 131586,
+"pageCount": 417,
+"categories": 7,
+"axes": 3,
+"price": {
+"max": 210000,
+"min": 842
+},
+"availableCount": 128256,
+"items": 24,
+"sha256": "6092318d5f916950"
+},
+{
+"path": "/api/v1/products?q=bielizna",
+"status": 200,
+"total": 14491,
+"pageCount": 417,
+"categories": 1,
+"axes": 5,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 14150,
+"items": 24,
+"sha256": "2c6236545f24cdcd"
+},
+{
+"path": "/api/v1/products?page=148",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "c03bfcc67223133c"
+},
+{
+"path": "/api/v1/products?q=kask&priceMin=81700&priceMax=127200",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 0,
+"price": {
+"max": 79900,
+"min": 22900
+},
+"availableCount": 0,
+"items": 0,
+"sha256": "960c4acfea0518b0"
+},
+{
+"path": "/api/v1/products?q=kask%20rowerowy&available=true",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 44900,
+"min": 24900
+},
+"availableCount": 4,
+"items": 4,
+"sha256": "f0b96034e94a8b0e"
+},
+{
+"path": "/api/v1/products?page=21",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "0ab1844ef88042d5"
+},
+{
+"path": "/api/v1/products?page=99",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "0209fa3b42c4a35b"
+},
+{
+"path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=17",
+"status": 200,
+"total": 143221,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 842
+},
+"availableCount": 139480,
+"items": 24,
+"sha256": "0eb8a2e7e7b4c5af"
+},
+{
+"path": "/api/v1/products?category=b0ed1cc4-90db-5613-893f-18c7ea01a680",
+"status": 200,
+"total": 10339,
+"pageCount": 417,
+"categories": 0,
+"axes": 8,
+"price": {
+"max": 569999,
+"min": 999
+},
+"availableCount": 10109,
+"items": 24,
+"sha256": "4815d39a5eb84201"
+},
+{
+"path": "/api/v1/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&page=189",
+"status": 200,
+"total": 131586,
+"pageCount": 417,
+"categories": 7,
+"axes": 3,
+"price": {
+"max": 210000,
+"min": 842
+},
+"availableCount": 128256,
+"items": 24,
+"sha256": "22be80a6565d3347"
+},
+{
+"path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=137",
+"status": 200,
+"total": 143221,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 842
+},
+"availableCount": 139480,
+"items": 24,
+"sha256": "1718e1a8ecc80807"
+},
+{
+"path": "/api/v1/products?category=9ccd83b7-01ac-5692-8201-b3df5690447c&priceMin=5600&priceMax=49900",
+"status": 200,
+"total": 8229,
+"pageCount": 343,
+"categories": 0,
+"axes": 9,
+"price": {
+"max": 119999,
+"min": 1499
+},
+"availableCount": 8229,
+"items": 24,
+"sha256": "925ea1c1bc613658"
+},
+{
+"path": "/api/v1/products?category=f361b3a2-744b-5b3f-908c-ec535fc5489b",
+"status": 200,
+"total": 14384,
+"pageCount": 417,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 229999,
+"min": 999
+},
+"availableCount": 14024,
+"items": 24,
+"sha256": "3c5fab148990de2c"
+},
+{
+"path": "/api/v1/products?q=baton%20proteinowy&available=true",
+"status": 200,
+"total": 14218,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 500000,
+"min": 890
+},
+"availableCount": 14218,
+"items": 24,
+"sha256": "78edacaab97543ec"
+},
+{
+"path": "/api/v1/products?q=baga%C5%BCnik&page=5",
+"status": 200,
+"total": 24999,
+"pageCount": 417,
+"categories": 2,
+"axes": 9,
+"price": {
+"max": 349900,
+"min": 1499
+},
+"availableCount": 24348,
+"items": 24,
+"sha256": "0e40971c9aceea09"
+},
+{
+"path": "/api/v1/products?page=38",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "0871241381bba430"
+},
+{
+"path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304",
+"status": 200,
+"total": 143221,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 842
+},
+"availableCount": 139480,
+"items": 24,
+"sha256": "77445bf063863a5d"
+},
+{
+"path": "/api/v1/products?page=18",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "5a2297399624a9d5"
+},
+{
+"path": "/api/v1/products?category=d8c6ffaf-4a83-5331-b52c-1e58d84bbdba&priceMin=13700&priceMax=93600",
+"status": 200,
+"total": 2722,
+"pageCount": 114,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 70000,
+"min": 1499
+},
+"availableCount": 2722,
+"items": 24,
+"sha256": "a12e15e2d6a9e1d3"
+},
+{
+"path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&page=147",
+"status": 200,
+"total": 126348,
+"pageCount": 417,
+"categories": 7,
+"axes": 5,
+"price": {
+"max": 299900,
+"min": 2999
+},
+"availableCount": 123367,
+"items": 24,
+"sha256": "0d143d70bb5488a7"
+},
+{
+"path": "/api/v1/products?q=bielizna%20termoaktywna&page=2",
+"status": 200,
+"total": 14491,
+"pageCount": 417,
+"categories": 1,
+"axes": 5,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 14150,
+"items": 24,
+"sha256": "cde638c4534d2c64"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=198",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "62d0fa0c9b6d7829"
+},
+{
+"path": "/api/v1/products?category=8ee0f92c-a366-5df3-a805-ddabaf51a683",
+"status": 200,
+"total": 10042,
+"pageCount": 417,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 74999,
+"min": 1499
+},
+"availableCount": 9809,
+"items": 24,
+"sha256": "79bfbba4d23ca27b"
+},
+{
+"path": "/api/v1/products?category=dc12d069-67b5-5cfc-9734-cfbb916735d3",
+"status": 200,
+"total": 14880,
+"pageCount": 417,
+"categories": 0,
+"axes": 6,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 14503,
+"items": 24,
+"sha256": "e3a6b257216e8270"
+},
+{
+"path": "/api/v1/products?q=atlas&priceMin=79900&priceMax=150900",
+"status": 200,
+"total": 64,
+"pageCount": 3,
+"categories": 1,
+"axes": 3,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 64,
+"items": 24,
+"sha256": "f86bfa077c776f11"
+},
+{
+"path": "/api/v1/products?q=buty&page=3",
+"status": 200,
+"total": 141353,
+"pageCount": 417,
+"categories": 6,
+"axes": 10,
+"price": {
+"max": 289999,
+"min": 999
+},
+"availableCount": 137860,
+"items": 24,
+"sha256": "bf88866a6ec833ed"
+},
+{
+"path": "/api/v1/products?q=baton%20proteinowy&page=5",
+"status": 200,
+"total": 14429,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 500000,
+"min": 890
+},
+"availableCount": 14218,
+"items": 24,
+"sha256": "1b0c4bf58cbefede"
+},
+{
+"path": "/api/v1/products?category=35390330-b4e7-5ca1-85f6-d1668d68f583&available=true",
+"status": 200,
+"total": 9657,
+"pageCount": 403,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 84999,
+"min": 1499
+},
+"availableCount": 9657,
+"items": 24,
+"sha256": "3602971942be8442"
+},
+{
+"path": "/api/v1/products?page=1",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "1d4ea1fd826b6e03"
+},
+{
+"path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=13",
+"status": 200,
+"total": 152506,
+"pageCount": 417,
+"categories": 7,
+"axes": 8,
+"price": {
+"max": 589999,
+"min": 690
+},
+"availableCount": 148777,
+"items": 24,
+"sha256": "d053c07863c804ad"
+},
+{
+"path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108&page=19",
+"status": 200,
+"total": 105466,
+"pageCount": 417,
+"categories": 7,
+"axes": 4,
+"price": {
+"max": 349900,
+"min": 1499
+},
+"availableCount": 102711,
+"items": 24,
+"sha256": "4c97a5f347f38b93"
+},
+{
+"path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=25",
+"status": 200,
+"total": 152506,
+"pageCount": 417,
+"categories": 7,
+"axes": 8,
+"price": {
+"max": 589999,
+"min": 690
+},
+"availableCount": 148777,
+"items": 24,
+"sha256": "d3b57ad5c9c6c708"
+},
+{
+"path": "/api/v1/products?q=kajak%20turystyczny",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 1,
+"axes": 1,
+"price": {
+"max": 349900,
+"min": 249900
+},
+"availableCount": 3,
+"items": 4,
+"sha256": "c735af650038cc5e"
+},
+{
+"path": "/api/v1/products?category=4b055553-ed86-5229-ad0c-33befd29e15f&priceMin=75900&priceMax=150500",
+"status": 200,
+"total": 558,
+"pageCount": 24,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 269999,
+"min": 2999
+},
+"availableCount": 558,
+"items": 24,
+"sha256": "b4b4095b65565623"
+},
+{
+"path": "/api/v1/products?q=kask&sort=price_asc",
+"status": 200,
+"total": 14,
+"pageCount": 1,
+"categories": 3,
+"axes": 2,
+"price": {
+"max": 79900,
+"min": 22900
+},
+"availableCount": 14,
+"items": 14,
+"sha256": "2dd990786846c534"
+},
+{
+"path": "/api/v1/products?category=a9edcf8a-8f67-598f-8e19-9680587be9a1&option=Pojemno%C5%9B%C4%87%3A600%20ml",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "4ae8da3c969e71a8"
+},
+{
+"path": "/api/v1/products?category=29133c6e-e2bb-51b9-a778-810e56071f05",
+"status": 200,
+"total": 10108,
+"pageCount": 417,
+"categories": 0,
+"axes": 8,
+"price": {
+"max": 589999,
+"min": 999
+},
+"availableCount": 9876,
+"items": 24,
+"sha256": "7008990a30f0ec5c"
+},
+{
+"path": "/api/v1/products?q=baga%C5%BCnik%20rowerowy&page=3",
+"status": 200,
+"total": 24997,
+"pageCount": 417,
+"categories": 1,
+"axes": 9,
+"price": {
+"max": 120000,
+"min": 1499
+},
+"availableCount": 24347,
+"items": 24,
+"sha256": "d30151c5460da8d4"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=20",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "c10b5845da1371d9"
+},
+{
+"path": "/api/v1/products?category=eede7500-b01e-5a87-a489-5dbfb0da8b00&option=Kolor%3Aszare",
+"status": 200,
+"total": 157,
+"pageCount": 7,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 64999,
+"min": 1499
+},
+"availableCount": 147,
+"items": 24,
+"sha256": "690af49e01170f35"
+},
+{
+"path": "/api/v1/products?q=bielizna%20termoaktywna&option=Liczba%20sztuk%3A20",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "89368c7c1480ee01"
+},
+{
+"path": "/api/v1/products?q=kask%20wielosportowy&page=2",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 49900,
+"min": 29900
+},
+"availableCount": 6,
+"items": 0,
+"sha256": "a70b3cbbda08b262"
+},
+{
+"path": "/api/v1/products?category=ba4b38e4-d326-51ce-8bb1-91ac791e3cc5",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 299900,
+"min": 249900
+},
+"availableCount": 4,
+"items": 4,
+"sha256": "0b6346881fe18841"
+},
+{
+"path": "/api/v1/products?q=baga%C5%BCnik",
+"status": 200,
+"total": 24999,
+"pageCount": 417,
+"categories": 2,
+"axes": 9,
+"price": {
+"max": 349900,
+"min": 1499
+},
+"availableCount": 24348,
+"items": 24,
+"sha256": "c0d38ecbbe4b8842"
+},
+{
+"path": "/api/v1/products?page=26",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "5c25eb0c76ac6996"
+},
+{
+"path": "/api/v1/products?category=4744a6a8-69df-52c4-8142-b3d5c2024a00&available=true",
+"status": 200,
+"total": 22718,
+"pageCount": 417,
+"categories": 0,
+"axes": 6,
+"price": {
+"max": 139999,
+"min": 1499
+},
+"availableCount": 22718,
+"items": 24,
+"sha256": "20e623bf1c5b3506"
+},
+{
+"path": "/api/v1/products?page=3",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "6324fdce3be0eaca"
+},
+{
+"path": "/api/v1/products?category=f4e75bdd-1644-5d47-ba9b-9cbbac702ee5&option=Rozmiar%3A41",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "42c441c3bb65445d"
+},
+{
+"path": "/api/v1/products?category=1809f13a-1bd0-5905-8d0d-783ea7309559",
+"status": 200,
+"total": 8,
+"pageCount": 1,
+"categories": 0,
+"axes": 1,
+"price": {
+"max": 13900,
+"min": 2490
+},
+"availableCount": 8,
+"items": 8,
+"sha256": "717fdbdb6e1fe298"
+},
+{
+"path": "/api/v1/products?q=baton%20proteinowy&page=3",
+"status": 200,
+"total": 14429,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 500000,
+"min": 890
+},
+"availableCount": 14218,
+"items": 24,
+"sha256": "081d3602b6ea291c"
+},
+{
+"path": "/api/v1/products?page=24",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "fdc0176b4da56e8a"
+},
+{
+"path": "/api/v1/products?q=bluza%20treningowa&priceMin=153800&priceMax=278500",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 0,
+"price": {
+"max": 42500,
+"min": 8999
+},
+"availableCount": 0,
+"items": 0,
+"sha256": "575e2655a4f4538f"
+},
+{
+"path": "/api/v1/products?category=93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd&available=true",
+"status": 200,
+"total": 10082,
+"pageCount": 417,
+"categories": 0,
+"axes": 6,
+"price": {
+"max": 130000,
+"min": 1499
+},
+"availableCount": 10082,
+"items": 24,
+"sha256": "df19b27c4d6008b4"
+},
+{
+"path": "/api/v1/products?q=kask%20rowerowy&page=4",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 44900,
+"min": 24900
+},
+"availableCount": 4,
+"items": 0,
+"sha256": "b50768e1d71eb32f"
+},
+{
+"path": "/api/v1/products?q=atlas&available=true",
+"status": 200,
+"total": 14070,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 14070,
+"items": 24,
+"sha256": "643ab54710452423"
+},
+{
+"path": "/api/v1/products?q=bluza%20treningowa&option=Liczba%20sztuk%3A20",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "89368c7c1480ee01"
+},
+{
+"path": "/api/v1/products?category=9ccd83b7-01ac-5692-8201-b3df5690447c",
+"status": 200,
+"total": 10377,
+"pageCount": 417,
+"categories": 0,
+"axes": 9,
+"price": {
+"max": 119999,
+"min": 1499
+},
+"availableCount": 10135,
+"items": 24,
+"sha256": "8032f236a7047dd2"
+},
+{
+"path": "/api/v1/products?category=e8c18c90-891d-5c38-bb73-5543a35a733b",
+"status": 200,
+"total": 14335,
+"pageCount": 417,
+"categories": 0,
+"axes": 9,
+"price": {
+"max": 89999,
+"min": 1499
+},
+"availableCount": 13960,
+"items": 24,
+"sha256": "9751ea83dbdf7353"
+},
+{
+"path": "/api/v1/products?page=104",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "3e77cc39596130b0"
+},
+{
+"path": "/api/v1/products?q=kajak&priceMin=160700&priceMax=293200",
+"status": 200,
+"total": 2,
+"pageCount": 1,
+"categories": 1,
+"axes": 1,
+"price": {
+"max": 349900,
+"min": 249900
+},
+"availableCount": 2,
+"items": 2,
+"sha256": "dcc6efd7a9bbb20f"
+},
+{
+"path": "/api/v1/products?q=atlas&page=4",
+"status": 200,
+"total": 14915,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 14070,
+"items": 24,
+"sha256": "0af6a69d2dd302c5"
+},
+{
+"path": "/api/v1/products?category=989656d1-06af-59c6-a505-1f6f6c7b83b8",
+"status": 200,
+"total": 6250,
+"pageCount": 261,
+"categories": 0,
+"axes": 5,
+"price": {
+"max": 280000,
+"min": 2999
+},
+"availableCount": 6111,
+"items": 24,
+"sha256": "9223d9cc73cfc2de"
+},
+{
+"path": "/api/v1/products?page=108",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "9166ed3775c60790"
+},
+{
+"path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=139",
+"status": 200,
+"total": 152506,
+"pageCount": 417,
+"categories": 7,
+"axes": 8,
+"price": {
+"max": 589999,
+"min": 690
+},
+"availableCount": 148777,
+"items": 24,
+"sha256": "5fcdc4566717ae7c"
+},
+{
+"path": "/api/v1/products?q=kajak%20turystyczny&page=2",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 1,
+"axes": 1,
+"price": {
+"max": 349900,
+"min": 249900
+},
+"availableCount": 3,
+"items": 0,
+"sha256": "150584c8f1ced178"
+},
+{
+"path": "/api/v1/products?category=d8db2ee0-5605-5e61-8788-c3df42b6a7fb",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 0,
+"axes": 1,
+"price": {
+"max": 299900,
+"min": 189900
+},
+"availableCount": 6,
+"items": 6,
+"sha256": "e66e052569429067"
+},
+{
+"path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&page=52",
+"status": 200,
+"total": 126348,
+"pageCount": 417,
+"categories": 7,
+"axes": 5,
+"price": {
+"max": 299900,
+"min": 2999
+},
+"availableCount": 123367,
+"items": 24,
+"sha256": "53a5b95a44f2a7be"
+},
+{
+"path": "/api/v1/products?category=2b93dc6f-4c3b-53d0-b20b-9be5f7980537&priceMin=64000&priceMax=224900",
+"status": 200,
+"total": 67,
+"pageCount": 3,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 190000,
+"min": 999
+},
+"availableCount": 67,
+"items": 24,
+"sha256": "8dcc5712813be84b"
+},
+{
+"path": "/api/v1/products?category=274c86ed-b705-5b5b-8f57-b13b40454891",
+"status": 200,
+"total": 14427,
+"pageCount": 417,
+"categories": 0,
+"axes": 8,
+"price": {
+"max": 500000,
+"min": 999
+},
+"availableCount": 14216,
+"items": 24,
+"sha256": "c7c3bae5fc025884"
+},
+{
+"path": "/api/v1/products?page=91",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "b6cd6f9c4179b5a9"
+},
+{
+"path": "/api/v1/products?q=baton",
+"status": 200,
+"total": 14433,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 500000,
+"min": 690
+},
+"availableCount": 14222,
+"items": 24,
+"sha256": "4a72b105dee3ffb8"
+},
+{
+"path": "/api/v1/products?category=d9f2cca5-ac47-58b3-9231-14f5fbab564f",
+"status": 200,
+"total": 6068,
+"pageCount": 253,
+"categories": 0,
+"axes": 5,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 5923,
+"items": 24,
+"sha256": "666bbf10b84d3a3f"
+},
+{
+"path": "/api/v1/products?category=d9f2cca5-ac47-58b3-9231-14f5fbab564f&priceMin=132600&priceMax=193500",
+"status": 200,
+"total": 65,
+"pageCount": 3,
+"categories": 0,
+"axes": 3,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 65,
+"items": 24,
+"sha256": "c060f473aac8037b"
+},
+{
+"path": "/api/v1/products?category=8c10569a-2f29-539a-b2ec-ae97f68410a7&page=51",
+"status": 200,
+"total": 118249,
+"pageCount": 417,
+"categories": 6,
+"axes": 4,
+"price": {
+"max": 240000,
+"min": 999
+},
+"availableCount": 115074,
+"items": 24,
+"sha256": "d39b49d919709994"
+},
+{
+"path": "/api/v1/products?q=baton&option=D%C5%82ugo%C5%9B%C4%87%3A158%20cm",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "a82fcadcf3a5ad32"
+},
+{
+"path": "/api/v1/products?q=buty",
+"status": 200,
+"total": 141353,
+"pageCount": 417,
+"categories": 6,
+"axes": 10,
+"price": {
+"max": 289999,
+"min": 999
+},
+"availableCount": 137860,
+"items": 24,
+"sha256": "bda9dd886df6c60a"
+},
+{
+"path": "/api/v1/products?category=13dea1d9-d7ee-52f5-a20b-0761e4bff032",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 99900,
+"min": 69900
+},
+"availableCount": 4,
+"items": 4,
+"sha256": "b2388e371a4de930"
+},
+{
+"path": "/api/v1/products?q=atlas%20szlak%C3%B3w&priceMin=107300&priceMax=208300",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 0,
+"price": {
+"max": 11000,
+"min": 2490
+},
+"availableCount": 0,
+"items": 0,
+"sha256": "f9de15badf68ad68"
+},
+{
+"path": "/api/v1/products?page=74",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "8592e85fec6772bd"
+},
+{
+"path": "/api/v1/products?page=112",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "cd701daadaedd015"
+},
+{
+"path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=171",
+"status": 200,
+"total": 143221,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 842
+},
+"availableCount": 139480,
+"items": 24,
+"sha256": "9130af8418e9a178"
+},
+{
+"path": "/api/v1/products?category=fd305193-a5ad-5aac-932f-fc408a98d4c7&option=Pojemno%C5%9B%C4%87%3A1%2C8%20l",
+"status": 200,
+"total": 95,
+"pageCount": 4,
+"categories": 0,
+"axes": 1,
+"price": {
+"max": 22500,
+"min": 3999
+},
+"availableCount": 87,
+"items": 24,
+"sha256": "12c2c52e33b076b6"
+},
+{
+"path": "/api/v1/products?q=kask%20wielosportowy&page=3",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 49900,
+"min": 29900
+},
+"availableCount": 6,
+"items": 0,
+"sha256": "a7f9eba00f231304"
+},
+{
+"path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=10",
+"status": 200,
+"total": 152506,
+"pageCount": 417,
+"categories": 7,
+"axes": 8,
+"price": {
+"max": 589999,
+"min": 690
+},
+"availableCount": 148777,
+"items": 24,
+"sha256": "51df45166d456600"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=70",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "5d2f02c167279e0d"
+},
+{
+"path": "/api/v1/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&page=67",
+"status": 200,
+"total": 131586,
+"pageCount": 417,
+"categories": 7,
+"axes": 3,
+"price": {
+"max": 210000,
+"min": 842
+},
+"availableCount": 128256,
+"items": 24,
+"sha256": "49c019b8158af5bb"
+},
+{
+"path": "/api/v1/products?q=baton&option=Smak%3Atruskawkowy",
+"status": 200,
+"total": 7933,
+"pageCount": 331,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 18999,
+"min": 999
+},
+"availableCount": 7351,
+"items": 24,
+"sha256": "e22007f477bcec74"
+},
+{
+"path": "/api/v1/products?q=atlas%20szlak%C3%B3w&option=Kolor%3Aczerwone",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "79e1cd8cc6a4d593"
+},
+{
+"path": "/api/v1/products?category=593c1e74-88fa-5baa-b380-c1e14517c9fd",
+"status": 200,
+"total": 6150,
+"pageCount": 257,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 189999,
+"min": 1999
+},
+"availableCount": 6008,
+"items": 24,
+"sha256": "0f401c1132cf5cd9"
+},
+{
+"path": "/api/v1/products?category=73706765-ed3e-58bf-86d9-b66cd3fa71c0",
+"status": 200,
+"total": 10786,
+"pageCount": 417,
+"categories": 0,
+"axes": 6,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 10501,
+"items": 24,
+"sha256": "cf831e74d03317f7"
+},
+{
+"path": "/api/v1/products?category=d8c6ffaf-4a83-5331-b52c-1e58d84bbdba",
+"status": 200,
+"total": 9928,
+"pageCount": 414,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 70000,
+"min": 1499
+},
+"availableCount": 9689,
+"items": 24,
+"sha256": "b66057fdb11ecd38"
+},
+{
+"path": "/api/v1/products?category=4b68d4ca-f126-562f-a142-65edd596cc0c",
+"status": 200,
+"total": 23341,
+"pageCount": 417,
+"categories": 0,
+"axes": 6,
+"price": {
+"max": 120000,
+"min": 1499
+},
+"availableCount": 22742,
+"items": 24,
+"sha256": "0365927eb34898a0"
+},
+{
+"path": "/api/v1/products?category=c57c017b-d6f7-5990-82bf-635533003629",
+"status": 200,
+"total": 6551,
+"pageCount": 273,
+"categories": 0,
+"axes": 6,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 6376,
+"items": 24,
+"sha256": "9da7374cccf95e74"
+},
+{
+"path": "/api/v1/products?page=30",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "b4a2f31b18ef7608"
+},
+{
+"path": "/api/v1/products?category=129b82c8-66b5-5855-9666-cf98d86c1cf2&option=Waga%3A500%20g",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "997967c81506fdc6"
+},
+{
+"path": "/api/v1/products?category=c2a92470-bddd-5c3a-9b84-ed06bfd4caad",
+"status": 200,
+"total": 10393,
+"pageCount": 417,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 210000,
+"min": 1999
+},
+"availableCount": 10149,
+"items": 24,
+"sha256": "072da0bcf4c62b94"
+},
+{
+"path": "/api/v1/products?page=29",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "e2155cf29bc4c667"
+},
+{
+"path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108&page=26",
+"status": 200,
+"total": 105466,
+"pageCount": 417,
+"categories": 7,
+"axes": 4,
+"price": {
+"max": 349900,
+"min": 1499
+},
+"availableCount": 102711,
+"items": 24,
+"sha256": "314c8f6c94ebce63"
+},
+{
+"path": "/api/v1/products?page=182",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "067e06f1ef351822"
+},
+{
+"path": "/api/v1/products?category=8732b1af-0cf9-5c92-8388-043c6a2a6a95&available=true",
+"status": 200,
+"total": 6084,
+"pageCount": 254,
+"categories": 0,
+"axes": 6,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 6084,
+"items": 24,
+"sha256": "dd9c77812d62031d"
+},
+{
+"path": "/api/v1/products?page=63",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "42aa746c111e6756"
+},
+{
+"path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=111",
+"status": 200,
+"total": 152506,
+"pageCount": 417,
+"categories": 7,
+"axes": 8,
+"price": {
+"max": 589999,
+"min": 690
+},
+"availableCount": 148777,
+"items": 24,
+"sha256": "eacacde7001dfd86"
+},
+{
+"path": "/api/v1/products?category=83b4ec95-c5b5-56bf-8dc5-b2eeab72bd8e",
+"status": 200,
+"total": 10652,
+"pageCount": 417,
+"categories": 0,
+"axes": 9,
+"price": {
+"max": 99999,
+"min": 1499
+},
+"availableCount": 10384,
+"items": 24,
+"sha256": "abfa3305e661c22e"
+},
+{
+"path": "/api/v1/products?q=kask%20rowerowy",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 44900,
+"min": 24900
+},
+"availableCount": 4,
+"items": 4,
+"sha256": "f0b96034e94a8b0e"
+},
+{
+"path": "/api/v1/products?q=kask%20rowerowy&page=2",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 44900,
+"min": 24900
+},
+"availableCount": 4,
+"items": 0,
+"sha256": "9ae15d749ee327f8"
+},
+{
+"path": "/api/v1/products?page=28",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "f0ea9604068e89f3"
+},
+{
+"path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108&page=21",
+"status": 200,
+"total": 105466,
+"pageCount": 417,
+"categories": 7,
+"axes": 4,
+"price": {
+"max": 349900,
+"min": 1499
+},
+"availableCount": 102711,
+"items": 24,
+"sha256": "cd0c87c2f1966694"
+},
+{
+"path": "/api/v1/products?q=atlas%20szlak%C3%B3w",
+"status": 200,
+"total": 4285,
+"pageCount": 179,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 11000,
+"min": 2490
+},
+"availableCount": 4045,
+"items": 24,
+"sha256": "00feabd19fe64023"
+},
+{
+"path": "/api/v1/products?category=8732b1af-0cf9-5c92-8388-043c6a2a6a95&option=Typ%3Alinka",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "527c63131173dc89"
+},
+{
+"path": "/api/v1/products?q=atlas",
+"status": 200,
+"total": 14915,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 14070,
+"items": 24,
+"sha256": "f17db337157ccea3"
+},
+{
+"path": "/api/v1/products?category=ebcde635-4d3b-503f-82d2-4bad17c400b0&priceMin=53700&priceMax=189800",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 0,
+"price": {
+"max": 349900,
+"min": 249900
+},
+"availableCount": 0,
+"items": 0,
+"sha256": "727f077db369da27"
+},
+{
+"path": "/api/v1/products?category=50c88614-0100-5a37-88f9-02f94d258909",
+"status": 200,
+"total": 6063,
+"pageCount": 253,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 179999,
+"min": 1999
+},
+"availableCount": 5745,
+"items": 24,
+"sha256": "9cbd571499d6c003"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=9",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "a34a2194e3662cab"
+},
+{
+"path": "/api/v1/products?category=65c200e9-5634-5413-a515-0f94e28bef34&priceMin=25200&priceMax=139400",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 69900,
+"min": 39900
+},
+"availableCount": 6,
+"items": 6,
+"sha256": "55a1117a5b62275b"
+},
+{
+"path": "/api/v1/products?category=f663f97c-e400-58b4-b8f7-d6a979f89073",
+"status": 200,
+"total": 6045,
+"pageCount": 252,
+"categories": 0,
+"axes": 4,
+"price": {
+"max": 199999,
+"min": 999
+},
+"availableCount": 5911,
+"items": 24,
+"sha256": "8383bad2c1684d7b"
+},
+{
+"path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108&page=104",
+"status": 200,
+"total": 105466,
+"pageCount": 417,
+"categories": 7,
+"axes": 4,
+"price": {
+"max": 349900,
+"min": 1499
+},
+"availableCount": 102711,
+"items": 24,
+"sha256": "12ec6e207fa594fe"
+},
+{
+"path": "/api/v1/products?category=ce6e471b-05e0-5d0b-a18d-04ef56a356c8&priceMin=14500&priceMax=173900",
+"status": 200,
+"total": 637,
+"pageCount": 27,
+"categories": 0,
+"axes": 5,
+"price": {
+"max": 539999,
+"min": 999
+},
+"availableCount": 637,
+"items": 24,
+"sha256": "802cc981dc3781ac"
+},
+{
+"path": "/api/v1/products?page=16",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "b9946fcac84312b7"
+},
+{
+"path": "/api/v1/products?category=04e1dc67-674c-52bf-b27d-5bcc115be6b2",
+"status": 200,
+"total": 10314,
+"pageCount": 417,
+"categories": 0,
+"axes": 5,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 10069,
+"items": 24,
+"sha256": "8457e7926c49039f"
+},
+{
+"path": "/api/v1/products?q=baton&page=3",
+"status": 200,
+"total": 14433,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 500000,
+"min": 690
+},
+"availableCount": 14222,
+"items": 24,
+"sha256": "46624584dcfa323f"
+},
+{
+"path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&page=110",
+"status": 200,
+"total": 126348,
+"pageCount": 417,
+"categories": 7,
+"axes": 5,
+"price": {
+"max": 299900,
+"min": 2999
+},
+"availableCount": 123367,
+"items": 24,
+"sha256": "357982314ebf312d"
+},
+{
+"path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&page=117",
+"status": 200,
+"total": 126348,
+"pageCount": 417,
+"categories": 7,
+"axes": 5,
+"price": {
+"max": 299900,
+"min": 2999
+},
+"availableCount": 123367,
+"items": 24,
+"sha256": "755a647b5f0d061d"
+},
+{
+"path": "/api/v1/products?page=109",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "aee02fa5a51adab5"
+},
+{
+"path": "/api/v1/products?category=db3be160-884a-59ea-a8dd-4804a6fe510d&priceMin=131400&priceMax=184600",
+"status": 200,
+"total": 421,
+"pageCount": 18,
+"categories": 0,
+"axes": 0,
+"price": {
+"max": 240000,
+"min": 999
+},
+"availableCount": 421,
+"items": 24,
+"sha256": "5ed813e8a3545a78"
+},
+{
+"path": "/api/v1/products?page=71",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "467a0dd94326a2d5"
+},
+{
+"path": "/api/v1/products?category=593c1e74-88fa-5baa-b380-c1e14517c9fd&priceMin=164700&priceMax=281200",
+"status": 200,
+"total": 2,
+"pageCount": 1,
+"categories": 0,
+"axes": 1,
+"price": {
+"max": 189999,
+"min": 1999
+},
+"availableCount": 2,
+"items": 2,
+"sha256": "d700eb2a9275344a"
+},
+{
+"path": "/api/v1/products?q=bluza",
+"status": 200,
+"total": 16973,
+"pageCount": 417,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 42500,
+"min": 8999
+},
+"availableCount": 16538,
+"items": 24,
+"sha256": "f054e33a5eb027a4"
+},
+{
+"path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=132",
+"status": 200,
+"total": 152506,
+"pageCount": 417,
+"categories": 7,
+"axes": 8,
+"price": {
+"max": 589999,
+"min": 690
+},
+"availableCount": 148777,
+"items": 24,
+"sha256": "d08fc5ec3a9fadf8"
+},
+{
+"path": "/api/v1/products?q=baga%C5%BCnik%20rowerowy&page=5",
+"status": 200,
+"total": 24997,
+"pageCount": 417,
+"categories": 1,
+"axes": 9,
+"price": {
+"max": 120000,
+"min": 1499
+},
+"availableCount": 24347,
+"items": 24,
+"sha256": "8d01803f01324080"
+},
+{
+"path": "/api/v1/products?page=68",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "dce87ce55b10bad0"
+},
+{
+"path": "/api/v1/products?q=baton&sort=price_asc",
+"status": 200,
+"total": 14433,
+"pageCount": 417,
+"categories": 1,
+"axes": 8,
+"price": {
+"max": 500000,
+"min": 690
+},
+"availableCount": 14222,
+"items": 24,
+"sha256": "16138aeedcf34ac9"
+},
+{
+"path": "/api/v1/products?q=atlas%20szlak%C3%B3w&priceMin=65600&priceMax=174000",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 0,
+"price": {
+"max": 11000,
+"min": 2490
+},
+"availableCount": 0,
+"items": 0,
+"sha256": "f9de15badf68ad68"
+},
+{
+"path": "/api/v1/products?q=buty&page=5",
+"status": 200,
+"total": 141353,
+"pageCount": 417,
+"categories": 6,
+"axes": 10,
+"price": {
+"max": 289999,
+"min": 999
+},
+"availableCount": 137860,
+"items": 24,
+"sha256": "30483847b89a28f4"
+},
+{
+"path": "/api/v1/products?page=50",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "d0fce5f2e5deaf8d"
+},
+{
+"path": "/api/v1/products?q=baga%C5%BCnik%20rowerowy",
+"status": 200,
+"total": 24997,
+"pageCount": 417,
+"categories": 1,
+"axes": 9,
+"price": {
+"max": 120000,
+"min": 1499
+},
+"availableCount": 24347,
+"items": 24,
+"sha256": "f4a73ed6d141e630"
+},
+{
+"path": "/api/v1/products?page=47",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "e8930543de31d748"
+},
+{
+"path": "/api/v1/products?page=193",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "d5c13dd035064edb"
+},
+{
+"path": "/api/v1/products?category=d25bb972-a498-5781-a6e4-198c33c1d273&priceMin=25700&priceMax=141400",
+"status": 200,
+"total": 355,
+"pageCount": 15,
+"categories": 0,
+"axes": 3,
+"price": {
+"max": 239999,
+"min": 999
+},
+"availableCount": 355,
+"items": 24,
+"sha256": "23f10f872950c693"
+},
+{
+"path": "/api/v1/products?page=87",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "6cbeb7f072475714"
+},
+{
+"path": "/api/v1/products?q=kask%20wielosportowy&page=4",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 49900,
+"min": 29900
+},
+"availableCount": 6,
+"items": 0,
+"sha256": "d4a67ab25efd209e"
+},
+{
+"path": "/api/v1/products?category=4b68d4ca-f126-562f-a142-65edd596cc0c&option=Pojemno%C5%9B%C4%87%3A15%20l",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "7f36a6bd723c17ad"
+},
+{
+"path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=73",
+"status": 200,
+"total": 143221,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 842
+},
+"availableCount": 139480,
+"items": 24,
+"sha256": "1fbd3d92335696e7"
+},
+{
+"path": "/api/v1/products?page=169",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "d3599a7f2fa5048c"
+},
+{
+"path": "/api/v1/products?q=kask%20wielosportowy&available=true",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 49900,
+"min": 29900
+},
+"availableCount": 6,
+"items": 6,
+"sha256": "d589212eab5306f0"
+},
+{
+"path": "/api/v1/products?q=baga%C5%BCnik%20rowerowy&sort=price_desc",
+"status": 200,
+"total": 24997,
+"pageCount": 417,
+"categories": 1,
+"axes": 9,
+"price": {
+"max": 120000,
+"min": 1499
+},
+"availableCount": 24347,
+"items": 24,
+"sha256": "011642a84a44df81"
+},
+{
+"path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644",
+"status": 200,
+"total": 126348,
+"pageCount": 417,
+"categories": 7,
+"axes": 5,
+"price": {
+"max": 299900,
+"min": 2999
+},
+"availableCount": 123367,
+"items": 24,
+"sha256": "71088775c8f1a162"
+},
+{
+"path": "/api/v1/products?q=bluza&option=D%C5%82ugo%C5%9B%C4%87%3A110-130%20cm",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "9dc57fe092b70143"
+},
+{
+"path": "/api/v1/products?category=8c10569a-2f29-539a-b2ec-ae97f68410a7&page=43",
+"status": 200,
+"total": 118249,
+"pageCount": 417,
+"categories": 6,
+"axes": 4,
+"price": {
+"max": 240000,
+"min": 999
+},
+"availableCount": 115074,
+"items": 24,
+"sha256": "af5837c50e3e3704"
+},
+{
+"path": "/api/v1/products?category=32b216b0-5c10-5324-ae8d-506334daa25e",
+"status": 200,
+"total": 10339,
+"pageCount": 417,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 210000,
+"min": 1999
+},
+"availableCount": 10109,
+"items": 24,
+"sha256": "c2667c444d3bea95"
+},
+{
+"path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&page=190",
+"status": 200,
+"total": 126348,
+"pageCount": 417,
+"categories": 7,
+"axes": 5,
+"price": {
+"max": 299900,
+"min": 2999
+},
+"availableCount": 123367,
+"items": 24,
+"sha256": "969d9ea38310bbf3"
+},
+{
+"path": "/api/v1/products?q=kask%20wielosportowy",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 49900,
+"min": 29900
+},
+"availableCount": 6,
+"items": 6,
+"sha256": "d589212eab5306f0"
+},
+{
+"path": "/api/v1/products?q=kask%20wielosportowy&sort=price_desc",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 49900,
+"min": 29900
+},
+"availableCount": 6,
+"items": 6,
+"sha256": "6396947cdb493234"
+},
+{
+"path": "/api/v1/products?page=37",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "f77084da0cbe2e53"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=167",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "d33e636d379469e7"
+},
+{
+"path": "/api/v1/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea",
+"status": 200,
+"total": 131586,
+"pageCount": 417,
+"categories": 7,
+"axes": 3,
+"price": {
+"max": 210000,
+"min": 842
+},
+"availableCount": 128256,
+"items": 24,
+"sha256": "a172cb1835150dde"
+},
+{
+"path": "/api/v1/products?q=kask",
+"status": 200,
+"total": 14,
+"pageCount": 1,
+"categories": 3,
+"axes": 2,
+"price": {
+"max": 79900,
+"min": 22900
+},
+"availableCount": 14,
+"items": 14,
+"sha256": "f3593002660a133b"
+},
+{
+"path": "/api/v1/products?q=baga%C5%BCnik&page=3",
+"status": 200,
+"total": 24999,
+"pageCount": 417,
+"categories": 2,
+"axes": 9,
+"price": {
+"max": 349900,
+"min": 1499
+},
+"availableCount": 24348,
+"items": 24,
+"sha256": "a9b568ed224cb37c"
+},
+{
+"path": "/api/v1/products?q=bluza%20treningowa",
+"status": 200,
+"total": 16973,
+"pageCount": 417,
+"categories": 2,
+"axes": 2,
+"price": {
+"max": 42500,
+"min": 8999
+},
+"availableCount": 16538,
+"items": 24,
+"sha256": "f054e33a5eb027a4"
+},
+{
+"path": "/api/v1/products?q=kajak%20turystyczny&sort=price_asc",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 1,
+"axes": 1,
+"price": {
+"max": 349900,
+"min": 249900
+},
+"availableCount": 3,
+"items": 4,
+"sha256": "c735af650038cc5e"
+},
+{
+"path": "/api/v1/products?q=atlas%20szlak%C3%B3w&page=2",
+"status": 200,
+"total": 4285,
+"pageCount": 179,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 11000,
+"min": 2490
+},
+"availableCount": 4045,
+"items": 24,
+"sha256": "1459baa6bcd55186"
+},
+{
+"path": "/api/v1/products?q=kask%20rowerowy&page=5",
+"status": 200,
+"total": 4,
+"pageCount": 1,
+"categories": 1,
+"axes": 2,
+"price": {
+"max": 44900,
+"min": 24900
+},
+"availableCount": 4,
+"items": 0,
+"sha256": "41e56c06ef74a80b"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=57",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "111694160fa23a5d"
+},
+{
+"path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&page=3",
+"status": 200,
+"total": 53036,
+"pageCount": 417,
+"categories": 3,
+"axes": 2,
+"price": {
+"max": 200000,
+"min": 1999
+},
+"availableCount": 51732,
+"items": 24,
+"sha256": "5b5fa81a83c7d6e5"
+},
+{
+"path": "/api/v1/products?category=266c5e49-3e83-5a60-98d2-e2e142d46edb&option=Pojemno%C5%9B%C4%87%3A25%20l",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "410590f11b7dc1eb"
+},
+{
+"path": "/api/v1/products?category=6f882286-87e4-5dd4-ae76-e1dc1f062cc1",
+"status": 200,
+"total": 10224,
+"pageCount": 417,
+"categories": 0,
+"axes": 8,
+"price": {
+"max": 529999,
+"min": 999
+},
+"availableCount": 9976,
+"items": 24,
+"sha256": "8fab04c401b96aca"
+},
+{
+"path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&page=2",
+"status": 200,
+"total": 53036,
+"pageCount": 417,
+"categories": 3,
+"axes": 2,
+"price": {
+"max": 200000,
+"min": 1999
+},
+"availableCount": 51732,
+"items": 24,
+"sha256": "0c7462823b38874b"
+},
+{
+"path": "/api/v1/products?category=817c0300-9678-5875-9eca-9206c0edf96e",
+"status": 200,
+"total": 10461,
+"pageCount": 417,
+"categories": 0,
+"axes": 9,
+"price": {
+"max": 94999,
+"min": 1499
+},
+"availableCount": 10223,
+"items": 24,
+"sha256": "25a63567cc745cd3"
+},
+{
+"path": "/api/v1/products?q=kask&available=true",
+"status": 200,
+"total": 14,
+"pageCount": 1,
+"categories": 3,
+"axes": 2,
+"price": {
+"max": 79900,
+"min": 22900
+},
+"availableCount": 14,
+"items": 14,
+"sha256": "f3593002660a133b"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=158",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "21a24f7e4e5329ab"
+},
+{
+"path": "/api/v1/products?category=dad8249a-d4d2-5f77-a4ed-c20fad01e574",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 0,
+"axes": 1,
+"price": {
+"max": 59900,
+"min": 32900
+},
+"availableCount": 6,
+"items": 6,
+"sha256": "dd34a8af9e593a5d"
+},
+{
+"path": "/api/v1/products?category=a9edcf8a-8f67-598f-8e19-9680587be9a1&priceMin=148800&priceMax=215500",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 0,
+"price": {
+"max": 120000,
+"min": 1499
+},
+"availableCount": 0,
+"items": 0,
+"sha256": "bc8faef9c29b07c0"
+},
+{
+"path": "/api/v1/products?q=bielizna%20termoaktywna&available=true",
+"status": 200,
+"total": 14150,
+"pageCount": 417,
+"categories": 1,
+"axes": 5,
+"price": {
+"max": 289999,
+"min": 2999
+},
+"availableCount": 14150,
+"items": 24,
+"sha256": "46957d9e87525aa7"
+},
+{
+"path": "/api/v1/products?category=1c5a1382-e614-5308-a662-49614547d08d&available=true",
+"status": 200,
+"total": 6,
+"pageCount": 1,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 1199900,
+"min": 649900
+},
+"availableCount": 6,
+"items": 6,
+"sha256": "86e7f35c15adb6e8"
+},
+{
+"path": "/api/v1/products?category=65c200e9-5634-5413-a515-0f94e28bef34&priceMin=56100&priceMax=112100",
+"status": 200,
+"total": 2,
+"pageCount": 1,
+"categories": 0,
+"axes": 2,
+"price": {
+"max": 69900,
+"min": 39900
+},
+"availableCount": 2,
+"items": 2,
+"sha256": "93181a741e0b4ae0"
+},
+{
+"path": "/api/v1/products?page=155",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "4a95a613c7628a51"
+},
+{
+"path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&option=D%C5%82ugo%C5%9B%C4%87%3A105%20cm",
+"status": 200,
+"total": 0,
+"pageCount": 0,
+"categories": 0,
+"axes": 1,
+"price": null,
+"availableCount": 0,
+"items": 0,
+"sha256": "5536d9686d765f0e"
+},
+{
+"path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108&page=182",
+"status": 200,
+"total": 105466,
+"pageCount": 417,
+"categories": 7,
+"axes": 4,
+"price": {
+"max": 349900,
+"min": 1499
+},
+"availableCount": 102711,
+"items": 24,
+"sha256": "f4a84f0fb58deb5a"
+},
+{
+"path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&page=4",
+"status": 200,
+"total": 53036,
+"pageCount": 417,
+"categories": 3,
+"axes": 2,
+"price": {
+"max": 200000,
+"min": 1999
+},
+"availableCount": 51732,
+"items": 24,
+"sha256": "6ea999dbfb325339"
+},
+{
+"path": "/api/v1/products?page=62",
+"status": 200,
+"total": 980083,
+"pageCount": 417,
+"categories": 7,
+"axes": 10,
+"price": {
+"max": 1499900,
+"min": 690
+},
+"availableCount": 953480,
+"items": 24,
+"sha256": "87f4cbe01647b14e"
+},
+{
+"path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956",
+"status": 200,
+"total": 202733,
+"pageCount": 417,
+"categories": 9,
+"axes": 8,
+"price": {
+"max": 140000,
+"min": 1499
+},
+"availableCount": 195841,
+"items": 24,
+"sha256": "d3e2601b15291d8a"
+}
+]

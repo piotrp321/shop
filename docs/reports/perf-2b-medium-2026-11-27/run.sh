@@ -64,10 +64,10 @@ dir_of() {
   esac
 }
 # dc REV args: docker compose in the checkout of the revision (the .env of it names the project and the ports)
-dc() { rev="$1"; shift; ( cd "$(dir_of "$rev")" && docker compose "$@" ); }
+dc() { _rev="$1"; shift; ( cd "$(dir_of "$_rev")" && docker compose "$@" ); }
 # es REV METHOD PATH: a request to Elasticsearch from inside its container (the port is not published)
-es() { rev="$1"; method="$2"; path="$3"; dc "$rev" exec -T elasticsearch curl -s -X "$method" "http://localhost:9200$path"; }
-console() { rev="$1"; shift; dc "$rev" exec -T api bin/console "$@"; }
+es() { _rev="$1"; _method="$2"; _path="$3"; dc "$_rev" exec -T elasticsearch curl -s -X "$_method" "http://localhost:9200$_path"; }
+console() { _rev="$1"; shift; dc "$_rev" exec -T api bin/console "$@"; }
 
 cmd_prepare() {
   [ -f "$secrets_src" ] || fail "no $secrets_src (the secrets of the session that made the copy of the data)"

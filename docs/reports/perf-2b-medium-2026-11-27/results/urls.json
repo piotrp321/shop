@@ -1,0 +1,4508 @@
+{
+ "api": "http://localhost:41802",
+ "store": "http://localhost:41800",
+ "seed": 20261127,
+ "created": "2026-11-27T20:31:59Z",
+ "entries": [
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/torba-sportowa-wolmon-kociol-120-788011"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/spodenki-rowerowe-norvizen-wodospad-600-460463"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=30"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=kask&cena-od=817&cena-do=1272"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=baton%20proteinowy&dostepne=1"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=36"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=kask%20wielosportowy&page=3"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/skarpety-trekkingowe-lunrola-ostoja-100-678538"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=15"
+  },
+  {
+   "kind": "department",
+   "target": "api",
+   "path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-rowerowe-jorrivin-start-400-656604"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-startowe-ranagar-meteor-900-443263"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/bielizna-termoaktywna-marnalik-wierch-600-322651"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=3e2e82bc-4e57-5b53-a985-186669fa6a67"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=bielizna%20termoaktywna&option=Typ%3A%C5%82a%C5%84cuch"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rower-treningowy-zanren-ster-500-lite-869266"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108&page=173"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-neoprenowe-corrovar-szczyt-120-743826"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=123"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=165"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/turystyka/kuchnia-turystyczna/kuchenki?dostepne=1"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/pilki/nozna?dostepne=1"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=kajak&sort=nazwa"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=bluza&page=2"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=d05af239-af23-5e43-a79a-035233a9e084"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=161"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-zimowe?page=190"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/kompas-turystyczny-doremon-delta-600-64177"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=buty&sort=nazwa"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/skakanka-areten-wydra-250-596392"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/fitness?page=57"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=bluza%20treningowa&option=D%C5%82ugo%C5%9B%C4%87%3A220%20cm"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=174"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20wielosportowy&page=5"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=d25bb972-a498-5781-a6e4-198c33c1d273&available=true"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=d8db2ee0-5605-5e61-8788-c3df42b6a7fb&available=true"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=18"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=8675ac9b-ebc2-5800-99d9-c700427346cb&priceMin=14600&priceMax=45400"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=baga%C5%BCnik&available=true"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=193"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/komin-zimowy-talvidar-kamien-600-367628"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=167"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/smar-do-nart-zenmila-wulkan-700-134630"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/skarpety-trekkingowe-lunrola-ostoja-100-678538"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/fitness/cardio/bieznie?o=Zakres%20z%C4%99batek%3A11-36"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/siodelko-rowerowe-norvizen-knieja-600-578651"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=baton%20proteinowy"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/czapka-zimowa-sorirok-zleb-150-549528"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/stroj-plywacki-dalaik-kociol-700-851348"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=kask"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/ksiazka-gorska-melrozor-ster-200-evo-597878"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-neoprenowe-kelnador-opal-250-pro-753295"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=kask&sort=cena-malejaco"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=buty%20bie%C5%BCni%C4%99&cena-od=1561&cena-do=3185"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/rower?page=73"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=20"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=174"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/odzywka-regeneracyjna-ollatar-zatoka-600-285808"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-trekkingowe-velkonik-polonina-600-576820"
+  },
+  {
+   "kind": "department",
+   "target": "api",
+   "path": "/api/v1/products?category=8c10569a-2f29-539a-b2ec-ae97f68410a7"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=8675ac9b-ebc2-5800-99d9-c700427346cb&available=true"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rekawice-neoprenowe-dunegon-zenit-300-pro-947538"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/spodenki-rowerowe-norvizen-wodospad-600-460463"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/spodenki-rowerowe-bornor-agat-900-541712"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rekawice-bramkarskie-sorvivin-sciezka-400-pro-642721"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=193"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/torba-sportowa-dunmigar-halny-120-300342"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/lampka-rowerowa-tylna-emvagar-rafa-800-919948"
+  },
+  {
+   "kind": "home",
+   "target": "store",
+   "path": "/?page=1"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/koszulka-trekkingowa-vanviren-potok-450-lite-147472"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=263ac5d1-7e52-5ec8-bbe0-0db1b8ee1d37&option=Pojemno%C5%9B%C4%87%3A600%20ml"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=32"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=384a4602-0ce1-516a-beaf-0b613a4bc901&available=true"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=67a7eaa7-4725-5233-be8d-133e240c37b9"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=kask&sort=price_desc"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&priceMin=142000&priceMax=200000"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=865e162c-7fc4-55c7-84f2-39f301865e39"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rekawiczki-rowerowe-cornezor-rytm-350-45796"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=87"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=baton&o=Smak%3Atruskawkowy"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=30fbd65b-4264-5b8a-a2c0-9e501a868a77"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=buty&sort=name"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&page=175"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-zimowe?page=52"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=70"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/kolce-lekkoatletyczne-corlavane-pustulka-900-pro-678120"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=bielizna%20termoaktywna"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=5c59f270-bc3a-589c-b59f-7cb5ffab69f4&priceMin=120600&priceMax=163200"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rekawice-neoprenowe-arefen-przelecz-900-909175"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/bluza-treningowa-meldra-orlik-150-314290"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=kajak&page=4"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=12"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/opona-rowerowa-fjoravon-rytm-600-plus-167512"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=baton&o=D%C5%82ugo%C5%9B%C4%87%3A158%20cm"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=bielizna&page=5"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/torba-sportowa-dorodra-delta-120-993702"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=bielizna&page=4"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-wodne/sprzet-do-plywania/pletwy?cena-od=1205&cena-do=1578"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=4d4ea9f8-7e78-507d-ac8b-df49d14e1913"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/pletwy-plywackie-korolik-maraton-600-871799"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/lampka-rowerowa-przednia-ravnazen-trawers-300-plus-301295"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/polar-turystyczny-dalmek-step-300-296701"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/skakanka-areten-wydra-250-596392"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rekawice-neoprenowe-arefen-przelecz-900-909175"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=22"
+  },
+  {
+   "kind": "department",
+   "target": "store",
+   "path": "/c/sporty-zimowe"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/rower/ubrania-rowerowe/rekawiczki"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/klocek-do-jogi-marvadek-ster-250-27687"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/rower/elektronika-rowerowa/liczniki?cena-od=1488&cena-do=2155"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/siodelko-rowerowe-galarik-hala-100-786337"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/napoj-izotoniczny-w-proszku-havizor-jaspis-900-53613"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/zupa-liofilizowana-salisen-turnia-120-965625"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&page=170"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-wodne?page=21"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&sort=price_desc"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=129b82c8-66b5-5855-9666-cf98d86c1cf2&available=true"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-trekkingowe-velven-jezioro-800-719023"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/wioslo-kajakowe-korolik-brzeg-700-evo-976499"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=buty%20bie%C5%BCni%C4%99&sort=cena-malejaco"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-wodne/wioslowanie/kamizelki?dostepne=1"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=kajak&sort=name"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=baton%20proteinowy&page=4"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/pompka-do-pontonow-velonar-step-500-486983"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-wodne/sup"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/koszulka-trekkingowa-fenmizor-tempo-100-pro-381973"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas%20szlak%C3%B3w&sort=price_asc"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=bielizna%20termoaktywna&page=3"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-startowe-fjorvin-wodospad-800-902722"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/bagaznik-rowerowy-elnazen-zmierzch-250-108692"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/kamizelka-asekuracyjna-haviven-delta-500-62885"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/hamulce-tarczowe-norvizen-dolina-500-lite-251135"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=atlas%20szlak%C3%B3w&page=2"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=bielizna&sort=price_desc"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=50"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/lampka-rowerowa-przednia-yarrimar-zmierzch-500-lite-390150"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/pokrowiec-na-narty-sorirok-jezioro-450-530248"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=bluza%20treningowa&sort=price_desc"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-zimowe/narty/skiturowe"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20rowerowy&page=3"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=bielizna%20termoaktywna&page=2"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/kamizelka-asekuracyjna-velonar-sokol-900-192494"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=c0e422fd-b002-56d0-bfda-f15645a0fd56"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=baton&page=3"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/gogle-narciarskie-pelidek-tempo-800-782931"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rekawiczki-rowerowe-zanrovik-kwarc-400-evo-418994"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=c46367b5-ebd9-5214-83cf-f336dac3fedb"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=atlas%20szlak%C3%B3w&sort=cena-rosnaco"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=baga%C5%BCnik"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/koszulka-rowerowa-valnedek-finisz-400-plus-515778"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=fd305193-a5ad-5aac-932f-fc408a98d4c7&option=Zakres%20DIN%3A6-14"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/koszulka-rowerowa-valelen-zleb-350-plus-829795"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/pacholki-treningowe-ulritar-pustulka-900-lite-461522"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/shaker-torlavek-maraton-400-581548"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/koszykowka/kosze"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=2b93dc6f-4c3b-53d0-b20b-9be5f7980537&option=Liczba%20prze%C5%82o%C5%BCe%C5%84%3A9"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=baton%20proteinowy"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/talerze-zeliwne-boravin-potok-120-372573"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=64"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=baton%20proteinowy&page=3"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/stroj-pilkarski-arnik-jastrzab-700-423889"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/worek-wodoszczelny-havovon-przelecz-500-plus-453548"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=kajak&cena-od=1607&cena-do=2932"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/stroj-pilkarski-palneten-kierunek-500-496249"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=fc35f69d-dfd2-5ef1-a0bb-a71183c657c3"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=150"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=baton%20proteinowy&page=5"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-wodne/wioslowanie/worki"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-siatkarskie-zenalen-szafir-800-884126"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=55"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=atlas&dostepne=1"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=bluza&page=5"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/bagaznik-rowerowy-elnazen-zmierzch-250-108692"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=72311dc1-30dd-536a-9f09-25b0116774f0&available=true"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=6492d0ed-95ce-5363-847a-6a02485be76a&available=true"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/bielizna-termoaktywna-marizor-wicher-900-819878"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/napoj-izotoniczny-w-proszku-havizor-jaspis-900-53613"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/worek-wodoszczelny-cornevin-zrodlo-700-pro-405632"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/bagaznik-rowerowy-bornor-zrodlo-200-pro-400555"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/fitness/silownia/gumy-oporowe"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=6a1e0ddd-6825-51e2-a6dc-52d790533102&available=true"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=9"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=bielizna&sort=cena-malejaco"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/bielizna-termoaktywna-marizor-wicher-900-819878"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-zimowe/snowboard/deski?dostepne=1"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rekawiczki-rowerowe-tormilen-nurt-400-pro-64289"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas%20szlak%C3%B3w&priceMin=95800&priceMax=169600"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=atlas%20szlak%C3%B3w&cena-od=1073&cena-do=2083"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=atlas%20szlak%C3%B3w&page=3"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=buty%20bie%C5%BCni%C4%99&page=4"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rekawiczki-biegowe-ulkomek-orion-120-583643"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/rower/bagazniki-i-foteliki/foteliki"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-zimowe/akcesoria-narciarskie/pokrowce?o=Typ%3AU-lock"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=45"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=kajak%20turystyczny&page=2"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=kask%20wielosportowy"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/fitness/trening?dostepne=1"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/koszulka-rowerowa-valnedek-finisz-400-plus-515778"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/kapielowki-kalnela-jaspis-600-569433"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/bieznia-elektryczna-olvavin-mgla-200-269571"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rekawice-treningowe-toronar-cel-600-835692"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/bieganie?page=175"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/skarpety-trekkingowe-balvisen-orlik-450-lite-483123"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/lampka-rowerowa-przednia-yarrimar-zmierzch-500-lite-390150"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=60328daf-3f3c-553e-bbf0-0642d8854acb"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=8"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/rower/rowery/gorskie?dostepne=1"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=06779c21-78cd-532d-bce9-4f8ddbc7edf8&priceMin=11600&priceMax=71800"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/rower/elektronika-rowerowa/lampki"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/opaska-na-glowe-ulnela-przelecz-300-plus-172643"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=1313daa3-8176-5aa8-abff-f8c8e36d3c3e"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-zimowe/odziez-termiczna/bielizna"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=135"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=bielizna&page=5"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=139"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/rower?page=119"
+  },
+  {
+   "kind": "department",
+   "target": "store",
+   "path": "/c/sporty-druzynowe"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&page=5"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/pacholki-treningowe-wolmon-sokol-700-721870"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=112"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=9c0322b5-2a7c-57cd-9dc6-17a5142e9f46&priceMin=52800&priceMax=145800"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=143"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/koszulka-trekkingowa-vanviren-potok-450-lite-147472"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/ksiazka-gorska-melrozor-ster-200-evo-597878"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=9c0322b5-2a7c-57cd-9dc6-17a5142e9f46&priceMin=120500&priceMax=157800"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=8817c9ae-db65-5809-91cf-03293463de59&available=true"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/stroj-plywacki-voragen-wodospad-350-928705"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-siatkarskie-zenalen-szafir-800-884126"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=80dcb48e-b80c-5a8d-a7b4-59da04ed3215&option=Typ%3AU-lock"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=baga%C5%BCnik&page=4"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=abb7bc3b-fe32-5236-9404-fc941e8fea53&priceMin=101500&priceMax=246800"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=buty%20bie%C5%BCni%C4%99&cena-od=1420&cena-do=2000"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/sandaly-turystyczne-isadra-turnia-600-387176"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/turystyka/odziez-turystyczna/kurtki?o=Pojemno%C5%9B%C4%87%3A1%2C8%20l"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=117"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=62"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/polar-turystyczny-ilgar-sciezka-500-545880"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/sakwa-rowerowa-alkola-skala-450-pro-569101"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-trekkingowe-calamek-wicher-100-pro-587075"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/spodenki-rowerowe-bornor-agat-900-541712"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/koszulka-rowerowa-lunira-dolina-300-936873"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/termos-turystyczny-lunvane-puls-200-lite-90669"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=baton&page=2"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/rower?page=45"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=bielizna%20termoaktywna"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/turystyka/biwak/spanie/spiwory"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rekawice-bramkarskie-sorvivin-sciezka-400-pro-642721"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/fitness/odzywki-dodatkowe/batony"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20rowerowy&sort=price_desc"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/akcesoria-pilkarskie/stroje?o=Kolor%3Aszare"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-zimowe?page=148"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/sluchawki-sportowe-jorrizen-impuls-900-pro-705453"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=74"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/baton-proteinowy-marvadek-rytm-900-lite-926075"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=bluza&page=3"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=169"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas%20szlak%C3%B3w&page=3"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/pas-do-podnoszenia-ciezarow-olgon-zamiec-300-plus-494484"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-zimowe?page=147"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/pilki/halowe?cena-od=1015&cena-do=2468"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=atlas%20szlak%C3%B3w&o=Kolor%3Aczerwone"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=24"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=57"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-zimowe/akcesoria-narciarskie/smary-i-woski?cena-od=1326&cena-do=1935"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=dc12d069-67b5-5cfc-9734-cfbb916735d3&option=Waga%3A8%20kg"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=32"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=bluza%20treningowa&o=D%C5%82ugo%C5%9B%C4%87%3A220%20cm"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=buty&available=true"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rekawiczki-biegowe-nivinor-zenit-800-826887"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/turystyka/odziez-turystyczna/koszulki?o=Waga%3A8%20kg"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/siodelko-rowerowe-gordar-cel-450-pro-187357"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&priceMin=61200&priceMax=101600"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/pacholki-treningowe-dunmigar-kanion-400-252090"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/rower?page=135"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/koszulka-trekkingowa-fenmizor-tempo-100-pro-381973"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/akcesoria-pilkarskie/getry"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=f34d1972-3acd-579a-9b7f-672093624ed8&priceMin=96400&priceMax=141000"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-wodne/odziez-wodna/rekawice-neoprenowe"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/czapka-biegowa-vannavik-horyzont-150-678138"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=kask&sort=cena-rosnaco"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=3"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/wiazania-snowboardowe-vanin-cel-400-471181"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/pilka-reczna-talvin-polonina-350-547371"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=21"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=d947db5c-6f5f-5457-94f2-4b487d81a22e&available=true"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&page=148"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/kamizelka-asekuracyjna-ranirik-zamiec-350-pro-548295"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/gumy-oporowe-halelik-zleb-300-92258"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/fitness/akcesoria-treningowe/shakery"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/rower/elektronika-rowerowa/zapiecia?cena-od=56&cena-do=499"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rekawice-zimowe-yarenar-horyzont-300-37869"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/kamizelka-asekuracyjna-ranirik-zamiec-350-pro-548295"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=12"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=0e811f7e-c801-572b-a28d-ceea69c2c019"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-druzynowe?page=51"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=8"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rekawice-zimowe-yarenar-horyzont-300-37869"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/bieganie/buty/trailowe?cena-od=252&cena-do=1394"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=kajak&page=4"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/opaska-na-glowe-ulnela-przelecz-300-plus-172643"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/wiazania-narciarskie-marvarok-polonina-250-154371"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/siodelko-rowerowe-gordar-cel-450-pro-187357"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/bluza-treningowa-zoririk-zatoka-400-17693"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=161"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=38e42a09-5462-5dc5-aea9-71883ee43c0b"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/stroj-plywacki-brerodek-bor-400-585847"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=36"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=108"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/opona-rowerowa-fjoravon-zagiel-450-497421"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=118"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/stroj-plywacki-voragen-wodospad-350-928705"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=65"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-siatkarskie-sorvivin-sciezka-600-92207"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/czapka-zimowa-sorirok-zleb-150-549528"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=kask%20rowerowy&page=5"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=80"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=142"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=kask%20wielosportowy&page=5"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/fitness/odzywki/suplementy"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/skarpety-trekkingowe-calvavon-trawers-450-plus-405204"
+  },
+  {
+   "kind": "department",
+   "target": "api",
+   "path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/fitness/silownia/sztangi-i-talerze?dostepne=1"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/fitness/joga-i-pilates/pilki-gimnastyczne"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/sztanga-olimpijska-palriren-sciezka-300-693446"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas%20szlak%C3%B3w&page=5"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=139"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=8c10569a-2f29-539a-b2ec-ae97f68410a7&page=7"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=kask&dostepne=1"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=8c10569a-2f29-539a-b2ec-ae97f68410a7&page=142"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/skarpety-trekkingowe-calvavon-trawers-450-plus-405204"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/bieganie?page=189"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=2b93dc6f-4c3b-53d0-b20b-9be5f7980537"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=3e49073d-3b41-5c15-8b84-710b672e3b24&available=true"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-koszykarskie-calneven-finisz-100-74997"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=38"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=kask%20wielosportowy&page=2"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=bluza&page=3"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=db3be160-884a-59ea-a8dd-4804a6fe510d"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=bielizna%20termoaktywna&o=Liczba%20sztuk%3A20"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=bluza"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/gogle-narciarskie-talrigen-przystan-900-736622"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=kask%20wielosportowy&page=4"
+  },
+  {
+   "kind": "department",
+   "target": "store",
+   "path": "/c/rower"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=129b82c8-66b5-5855-9666-cf98d86c1cf2"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/pompka-do-pilek-palneten-hala-800-lite-571181"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/pokrowiec-na-narty-sorirok-jezioro-450-530248"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=kajak&available=true"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/pas-do-podnoszenia-ciezarow-olgon-zamiec-300-plus-494484"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=kajak%20turystyczny"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&priceMin=156100&priceMax=318500"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=bluza%20treningowa&available=true"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/bieganie?page=170"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=2e961065-6d3a-50e2-abaf-a6936a768cc6&option=Smak%3Abananowy"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=90de0a73-6628-527b-8e56-f5ee9313d506"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=12feeac5-837f-5d48-98fd-621b45298787&option=Zakres%20z%C4%99batek%3A11-36"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-wodne/plywanie/pianki"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/wiazania-narciarskie-marvarok-polonina-250-154371"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/turystyka/kuchnia-turystyczna/termosy-i-butelki"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-rowerowe-jorrivin-start-400-656604"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=68"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-druzynowe?page=142"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/akcesoria-pilkarskie/ochraniacze?o=Liczba%20prze%C5%82o%C5%BCe%C5%84%3A9"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=bielizna&page=4"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/akcesoria-pilkarskie/rekawice-bramkarskie"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/stroj-plywacki-cornevin-droga-150-513084"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/bieganie/elektronika-biegowa/sluchawki?cena-od=964&cena-do=1410"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/torba-sportowa-wolmon-kociol-120-788011"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/baton-proteinowy-ilnaten-szczyt-350-842667"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=119"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=157"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/czapka-biegowa-vannavik-horyzont-150-678138"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/siodelko-rowerowe-norvizen-knieja-600-578651"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=194"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/opona-rowerowa-fjoravon-rytm-600-plus-167512"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas&sort=price_desc"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/kurtka-trekkingowa-velkonik-zjazd-800-331828"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=kask&page=3"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=22"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&page=73"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=bielizna"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=148"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/opaska-na-glowe-fjorrinar-kamien-400-282257"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/odzywka-regeneracyjna-emmidar-przelecz-450-lite-721390"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/stroj-plywacki-dalaik-kociol-700-851348"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/bagaznik-rowerowy-bornor-zrodlo-200-pro-400555"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/smar-do-nart-zenmila-wulkan-700-134630"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/fitness/odzywki-dodatkowe/napoje-izotoniczne"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=109"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/polar-turystyczny-ilgar-sciezka-500-545880"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/kaseta-rowerowa-norvizen-impuls-300-350624"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=baton%20proteinowy&page=4"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rekawice-treningowe-toronar-cel-600-835692"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=kask&priceMin=81700&priceMax=127200"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/zegarek-sportowy-zennavon-polonina-800-690653"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/worek-wodoszczelny-cornevin-zrodlo-700-pro-405632"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=bluza%20treningowa&o=Liczba%20sztuk%3A20"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20rowerowy&available=true"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=182"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=21"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/rower/elektronika-rowerowa/zapiecia"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/siatkowka/buty?o=Pojemno%C5%9B%C4%87%3A600%20ml"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/fitness/odzywki-dodatkowe/odzywki-regeneracyjne?cena-od=1206&cena-do=1632"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=bluza&page=2"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=bielizna%20termoaktywna&page=3"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=baga%C5%BCnik&page=4"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=99"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=buty&dostepne=1"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=17"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=37"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/baton-proteinowy-kallafen-swit-250-45760"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/sakwa-rowerowa-alkola-skala-450-pro-569101"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-trekkingowe-calamek-wicher-100-pro-587075"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/termos-turystyczny-lunvane-puls-200-lite-90669"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=161"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/pletwy-plywackie-korolik-maraton-600-871799"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=b0ed1cc4-90db-5613-893f-18c7ea01a680"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&page=189"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=137"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=167"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=9ccd83b7-01ac-5692-8201-b3df5690447c&priceMin=5600&priceMax=49900"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=f361b3a2-744b-5b3f-908c-ec535fc5489b"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=baton%20proteinowy&available=true"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=baga%C5%BCnik&page=5"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=buty%20bie%C5%BCni%C4%99&o=D%C5%82ugo%C5%9B%C4%87%3A105%20cm"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/koszulka-rowerowa-lunira-dolina-300-936873"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=38"
+  },
+  {
+   "kind": "department",
+   "target": "api",
+   "path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=18"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/torba-sportowa-dorodra-delta-120-993702"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-neoprenowe-doroten-jar-900-plus-249846"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=kajak%20turystyczny&sort=cena-rosnaco"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/rower/ubrania-rowerowe/buty"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=d8c6ffaf-4a83-5331-b52c-1e58d84bbdba&priceMin=13700&priceMax=93600"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/akcesoria-pilkarskie/ochraniacze"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&page=147"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/skarpety-trekkingowe-balvisen-orlik-450-lite-483123"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=bielizna%20termoaktywna&page=2"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-trekkingowe-velven-jezioro-800-719023"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=198"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/koszulka-z-filtrem-uv-korlalen-zjazd-450-plus-637160"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=117"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-neoprenowe-kelnador-opal-250-pro-753295"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rekawiczki-biegowe-nivinor-zenit-800-826887"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=8ee0f92c-a366-5df3-a805-ddabaf51a683"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=dc12d069-67b5-5cfc-9734-cfbb916735d3"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/zapiecie-rowerowe-cornezor-maraton-150-plus-856802"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas&priceMin=79900&priceMax=150900"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/pacholki-treningowe-ulritar-pustulka-900-lite-461522"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/rower/elektronika-rowerowa/liczniki?o=Pojemno%C5%9B%C4%87%3A600%20ml"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=buty&page=3"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/zapiecie-rowerowe-corlamon-zagiel-900-242158"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=buty&page=3"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=baton%20proteinowy&page=5"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=35390330-b4e7-5ca1-85f6-d1668d68f583&available=true"
+  },
+  {
+   "kind": "home",
+   "target": "api",
+   "path": "/api/v1/products?page=1"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=13"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108&page=19"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/odzywka-regeneracyjna-kallafen-nova-400-941983"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/turystyka/akcesoria-gorskie/kompasy?dostepne=1"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/fitness?page=13"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=29"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/lampka-rowerowa-przednia-ravnazen-trawers-300-plus-301295"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=165"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=25"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=155"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/bluza-treningowa-dunadar-kociol-150-lite-932711"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=kajak%20turystyczny"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-narciarskie-marizor-czapla-900-874575"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=baga%C5%BCnik%20rowerowy&page=3"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=bielizna"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=4b055553-ed86-5229-ad0c-33befd29e15f&priceMin=75900&priceMax=150500"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/komin-zimowy-talvidar-kamien-600-367628"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=kask&sort=price_asc"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/fitness?page=132"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=a9edcf8a-8f67-598f-8e19-9680587be9a1&option=Pojemno%C5%9B%C4%87%3A600%20ml"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=29133c6e-e2bb-51b9-a778-810e56071f05"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=kask&page=3"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/talerze-zeliwne-areten-kociol-120-892990"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/spodenki-rowerowe-bornor-zmierzch-100-537123"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/rower?page=137"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=baga%C5%BCnik%20rowerowy&page=3"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/fitness/cardio/skakanki"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=104"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/stroj-pilkarski-palneten-kierunek-500-496249"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/termos-turystyczny-calamek-granit-400-174666"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/zapiecie-rowerowe-cornezor-maraton-150-plus-856802"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/getry-pilkarskie-zenalen-zagiel-700-561983"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/odzywka-regeneracyjna-toronar-bryza-500-lite-430578"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rekawiczki-rowerowe-tormilen-nurt-400-pro-64289"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=20"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=eede7500-b01e-5a87-a489-5dbfb0da8b00&option=Kolor%3Aszare"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/bieganie?page=73"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=bielizna%20termoaktywna&option=Liczba%20sztuk%3A20"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/odzywka-regeneracyjna-kallafen-nova-400-941983"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20wielosportowy&page=2"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/bieganie/obuwie-startowe/na-bieznie?cena-od=116&cena-do=718"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=28"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=ba4b38e4-d326-51ce-8bb1-91ac791e3cc5"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=baga%C5%BCnik"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/koszulka-rowerowa-gordar-lawa-120-plus-935532"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/fitness/trening?o=Waga%3A500%20g"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=26"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=4744a6a8-69df-52c4-8142-b3d5c2024a00&available=true"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=3"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=f4e75bdd-1644-5d47-ba9b-9cbbac702ee5&option=Rozmiar%3A41"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=atlas&sort=cena-malejaco"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=1809f13a-1bd0-5905-8d0d-783ea7309559"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-startowe-ranagar-meteor-900-443263"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-wodne?page=104"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/torba-sportowa-calmivek-mewa-150-906109"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/akcesoria-pilkarskie/ochraniacze?cena-od=640&cena-do=2249"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=atlas&cena-od=799&cena-do=1509"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/torba-sportowa-dunmigar-halny-120-300342"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=26"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=baton%20proteinowy&page=3"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=24"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-druzynowe?page=7"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=bluza%20treningowa&priceMin=153800&priceMax=278500"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=baton"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/bluza-trekkingowa-lunrola-trawers-300-752787"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd&available=true"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20rowerowy&page=4"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas&available=true"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=bluza%20treningowa&option=Liczba%20sztuk%3A20"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/odzywka-regeneracyjna-janlasen-kotwica-350-953297"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=9ccd83b7-01ac-5692-8201-b3df5690447c"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/koszykowka/kosze?cena-od=1314&cena-do=1846"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=e8c18c90-891d-5c38-bb73-5543a35a733b"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/torba-sportowa-wolgen-droga-120-445203"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=104"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=57"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/pompka-do-pontonow-velonar-step-500-486983"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=kajak&priceMin=160700&priceMax=293200"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-wodne?page=182"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas&page=4"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/klocek-do-jogi-torlavek-kociol-400-525182"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=kask%20rowerowy"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=989656d1-06af-59c6-a505-1f6f6c7b83b8"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=108"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/wiazania-snowboardowe-vanin-cel-400-471181"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=91"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/getry-pilkarskie-zenalen-zagiel-700-561983"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=139"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/kapielowki-vorvidek-bazalt-500-308337"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/stroj-koszykarski-vallaren-opal-450-800679"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=kajak%20turystyczny&page=2"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-startowe-fjorvin-wodospad-800-902722"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=d8db2ee0-5605-5e61-8788-c3df42b6a7fb"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=157"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/torba-sportowa-wolgen-droga-120-445203"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=bluza&o=D%C5%82ugo%C5%9B%C4%87%3A110-130%20cm"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&page=52"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=2b93dc6f-4c3b-53d0-b20b-9be5f7980537&priceMin=64000&priceMax=224900"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=274c86ed-b705-5b5b-8f57-b13b40454891"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/bieganie/obuwie-startowe/kolce"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/turystyka/obuwie-turystyczne/skarpety"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/turystyka/akcesoria-gorskie/filtry-do-wody"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-trekkingowe-fenmizor-lawa-120-163246"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/turystyka/plecaki?o=Pojemno%C5%9B%C4%87%3A25%20l"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=91"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/bieganie/ubrania-do-biegania/rekawiczki"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=baton"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=9"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=d9f2cca5-ac47-58b3-9231-14f5fbab564f"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=d9f2cca5-ac47-58b3-9231-14f5fbab564f&priceMin=132600&priceMax=193500"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=kajak&dostepne=1"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=194"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/zapiecie-rowerowe-corlamon-zagiel-900-242158"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/atlas-szlakow-vanviren-zleb-250-948574"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/skarpety-biegowe-emoven-jar-700-plus-598553"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/bluza-treningowa-meldra-orlik-150-314290"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=8c10569a-2f29-539a-b2ec-ae97f68410a7&page=51"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=baton&option=D%C5%82ugo%C5%9B%C4%87%3A158%20cm"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/bieganie/elektronika-biegowa/opaski-pulsometryczne"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=baton&sort=cena-rosnaco"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=buty"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=baga%C5%BCnik&dostepne=1"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-wodne/odziez-wodna/koszulki-uv"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=kask%20rowerowy&page=4"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rekawice-zimowe-emmidra-tempo-350-472051"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/termos-turystyczny-calamek-granit-400-174666"
+  },
+  {
+   "kind": "department",
+   "target": "store",
+   "path": "/c/sporty-wodne"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=13dea1d9-d7ee-52f5-a20b-0761e4bff032"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas%20szlak%C3%B3w&priceMin=107300&priceMax=208300"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=74"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=167"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=112"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-wodne/sprzet-do-plywania/czepki?dostepne=1"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=171"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/kijki-trekkingowe-halkomar-kierunek-700-325390"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=fd305193-a5ad-5aac-932f-fc408a98d4c7&option=Pojemno%C5%9B%C4%87%3A1%2C8%20l"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/mapa-szczegolowa-melrozor-jaspis-200-643219"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/worek-wodoszczelny-havovon-przelecz-500-plus-453548"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/pacholki-treningowe-wolmon-sprint-120-341549"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/baton-proteinowy-kallafen-swit-250-45760"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20wielosportowy&page=3"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/fitness?page=64"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=10"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/tasma-kinesiotaping-isnaren-wulkan-350-lite-840577"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/siatkowka/ochraniacze?dostepne=1"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/kaseta-rowerowa-norvizen-impuls-300-350624"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-narciarskie-ilmar-szafir-300-347354"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/bieganie/buty/trailowe?cena-od=561&cena-do=1121"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=123"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=70"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-wodne/sprzet-do-plywania/pletwy?cena-od=528&cena-do=1458"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/spodenki-biegowe-lorrok-fala-350-706198"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=63"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rekawice-treningowe-janlasen-wydma-350-pro-816883"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea&page=67"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/rower?page=62"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-zimowe/kaski?dostepne=1"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=baton&option=Smak%3Atruskawkowy"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas%20szlak%C3%B3w&option=Kolor%3Aczerwone"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=kask%20rowerowy&page=2"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/turystyka/kuchnia-turystyczna/termosy-i-butelki?o=Pojemno%C5%9B%C4%87%3A15%20l"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=593c1e74-88fa-5baa-b380-c1e14517c9fd"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=73706765-ed3e-58bf-86d9-b66cd3fa71c0"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/atlas-szlakow-vanviren-zleb-250-948574"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=d8c6ffaf-4a83-5331-b52c-1e58d84bbdba"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=47"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=4b68d4ca-f126-562f-a142-65edd596cc0c"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=c57c017b-d6f7-5990-82bf-635533003629"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=30"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rekawiczki-rowerowe-zanrovik-kwarc-400-evo-418994"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/fitness?page=111"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/stroj-koszykarski-vallaren-opal-450-800679"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=129b82c8-66b5-5855-9666-cf98d86c1cf2&option=Waga%3A500%20g"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=c2a92470-bddd-5c3a-9b84-ed06bfd4caad"
+  },
+  {
+   "kind": "department",
+   "target": "store",
+   "path": "/c/fitness"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/wioslo-kajakowe-wolnazen-wydma-150-723189"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=29"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/odzywka-regeneracyjna-emmidar-przelecz-450-lite-721390"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=55"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=62"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/bieganie/regeneracja-biegacza/opaski-kompresyjne"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=kask%20rowerowy&page=3"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/rower?page=17"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=143"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108&page=26"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=193"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=182"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-zimowe?page=110"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=161"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=8732b1af-0cf9-5c92-8388-043c6a2a6a95&available=true"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-wodne/plywanie/okulary?dostepne=1"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/lornetka-turystyczna-velven-zleb-300-pro-643490"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=baga%C5%BCnik%20rowerowy"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=63"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=bluza&page=5"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/zegarek-sportowy-torlaik-kociol-400-600941"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-wodne?page=173"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=111"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/kapielowki-vorvidek-bazalt-500-308337"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/kurtka-trekkingowa-velkonik-zjazd-800-331828"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=kask%20wielosportowy&sort=cena-malejaco"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-wodne?page=26"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/bieznia-elektryczna-olvavin-mgla-200-269571"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=83b4ec95-c5b5-56bf-8dc5-b2eeab72bd8e"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20rowerowy"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=buty&page=5"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20rowerowy&page=2"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/shaker-torlavek-maraton-400-581548"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=28"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=buty%20bie%C5%BCni%C4%99&page=5"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/torba-sportowa-calmivek-mewa-150-906109"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108&page=21"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/talerze-zeliwne-boravin-potok-120-372573"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rekawice-neoprenowe-dunegon-zenit-300-pro-947538"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/hamulce-tarczowe-norvizen-dolina-500-lite-251135"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=kask%20rowerowy&dostepne=1"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/bieganie/regeneracja-biegacza/tasmy?dostepne=1"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/spodenki-rowerowe-emvakos-fala-450-lite-427324"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/fitness?page=25"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas%20szlak%C3%B3w"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=8732b1af-0cf9-5c92-8388-043c6a2a6a95&option=Typ%3Alinka"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rekawice-zimowe-emmidra-tempo-350-472051"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/siodelko-rowerowe-galarik-hala-100-786337"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/polar-turystyczny-dalmek-step-300-296701"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/bieganie/akcesoria"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=ebcde635-4d3b-503f-82d2-4bad17c400b0&priceMin=53700&priceMax=189800"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/kolce-lekkoatletyczne-corlavane-pustulka-900-pro-678120"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-zimowe-talvidar-horyzont-250-523461"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=50c88614-0100-5a37-88f9-02f94d258909"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rower-treningowy-zanren-ster-500-lite-869266"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/butelka-turystyczna-calamek-nova-250-643811"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/sandaly-turystyczne-isadra-turnia-600-387176"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=9"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/koszulka-rowerowa-alavar-agat-400-175676"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=65c200e9-5634-5413-a515-0f94e28bef34&priceMin=25200&priceMax=139400"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/turystyka/odziez-turystyczna/koszulki"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=f663f97c-e400-58b4-b8f7-d6a979f89073"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/pacholki-treningowe-dunmigar-kanion-400-252090"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108&page=104"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=ce6e471b-05e0-5d0b-a18d-04ef56a356c8&priceMin=14500&priceMax=173900"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/bieganie?page=67"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/zupa-liofilizowana-salisen-turnia-120-965625"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/trening-druzynowy/torby"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=80"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=16"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/koszulka-rowerowa-valelen-zleb-350-plus-829795"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/spodenki-rowerowe-bornor-zmierzch-100-537123"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-trekkingowe-fenmizor-lawa-120-163246"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=04e1dc67-674c-52bf-b27d-5bcc115be6b2"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-druzynowe/siatkowka/ochraniacze?cena-od=257&cena-do=1414"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=baton&page=3"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=buty"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-zimowe/snowboard/wiazania?cena-od=759&cena-do=1505"
+  },
+  {
+   "kind": "department",
+   "target": "store",
+   "path": "/c/bieganie"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/gogle-narciarskie-pelidek-tempo-800-782931"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&page=110"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=atlas%20szlak%C3%B3w&page=5"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/stroj-pilkarski-arnik-jastrzab-700-423889"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&page=117"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=99"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/baton-proteinowy-ilnaten-szczyt-350-842667"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/fitness?page=10"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-wodne/odziez-wodna/koszulki-uv?cena-od=137&cena-do=936"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=109"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=9"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=baga%C5%BCnik%20rowerowy&page=5"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/gogle-narciarskie-talrigen-przystan-900-736622"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=db3be160-884a-59ea-a8dd-4804a6fe510d&priceMin=131400&priceMax=184600"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/odzywka-regeneracyjna-janlasen-kotwica-350-953297"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/turystyka/akcesoria-gorskie/lornetki"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=bluza%20treningowa&sort=cena-malejaco"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=71"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=593c1e74-88fa-5baa-b380-c1e14517c9fd&priceMin=164700&priceMax=281200"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/turystyka/akcesoria-gorskie/kompasy?o=Typ%3Alinka"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/rower/czesci-rowerowe/lancuchy-i-kasety?cena-od=146&cena-do=454"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/stroj-plywacki-cornevin-droga-150-513084"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=198"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=bluza"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=7969b4c8-53cc-5260-aa5c-ea0e92fdeab9&page=132"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=baga%C5%BCnik%20rowerowy&page=5"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/kijki-trekkingowe-halkomar-kierunek-700-325390"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=68"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/turystyka?page=158"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/fitness/akcesoria-treningowe/pasy-do-podnoszenia?o=Rozmiar%3A41"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/bluza-treningowa-zoririk-zatoka-400-17693"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=baton&sort=price_asc"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas%20szlak%C3%B3w&priceMin=65600&priceMax=174000"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=buty%20bie%C5%BCni%C4%99&page=3"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-wodne/wioslowanie/pompki"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-narciarskie-ilmar-szafir-300-347354"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/spodenki-biegowe-fjorvala-dystans-500-464593"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/bluza-trekkingowa-lunrola-trawers-300-752787"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=atlas"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=buty&page=5"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/pacholki-treningowe-wolmon-sokol-700-721870"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=50"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/fitness/akcesoria-treningowe/rekawice?cena-od=145&cena-do=1739"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/turystyka/obuwie-turystyczne/trekkingowe"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=atlas&page=4"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/rower?page=171"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/pompka-do-pilek-palneten-hala-800-lite-571181"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/koszulka-rowerowa-alavar-agat-400-175676"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=baga%C5%BCnik%20rowerowy"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/rower?page=15"
+  },
+  {
+   "kind": "department",
+   "target": "store",
+   "path": "/c/turystyka"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=47"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=bluza%20treningowa&cena-od=1538&cena-do=2785"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/kompas-turystyczny-doremon-delta-600-64177"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=bielizna%20termoaktywna&o=Typ%3A%C5%82a%C5%84cuch"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/kapielowki-kalnela-jaspis-600-569433"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=193"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/zegarek-sportowy-zennavon-polonina-800-690653"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/rekawiczki-rowerowe-cornezor-rytm-350-45796"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=d25bb972-a498-5781-a6e4-198c33c1d273&priceMin=25700&priceMax=141400"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=bielizna%20termoaktywna&dostepne=1"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/turystyka/kuchnia-turystyczna/menazki-i-garnki"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/klocek-do-jogi-marvadek-ster-250-27687"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/bielizna-termoaktywna-marnalik-wierch-600-322651"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=87"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20wielosportowy&page=4"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/tasma-kinesiotaping-isnaren-wulkan-350-lite-840577"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=4b68d4ca-f126-562f-a142-65edd596cc0c&option=Pojemno%C5%9B%C4%87%3A15%20l"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/deska-snowboardowa-dornefen-fala-800-112412"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/bluza-treningowa-dunadar-kociol-150-lite-932711"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=f88bf6cc-a54d-5473-8aae-47a57bc51304&page=73"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/gumy-oporowe-halelik-zleb-300-92258"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-zimowe/obuwie-zimowe/turystyczne"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=169"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20wielosportowy&available=true"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/sztanga-olimpijska-palriren-sciezka-300-693446"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=kask%20rowerowy&sort=cena-malejaco"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/lancuch-rowerowy-wolridek-jastrzab-100-888178"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/pacholki-treningowe-wolmon-sprint-120-341549"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/opona-rowerowa-fjoravon-zagiel-450-497421"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=baga%C5%BCnik%20rowerowy&sort=price_desc"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/bieganie/regeneracja-biegacza/rolki"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-neoprenowe-doroten-jar-900-plus-249846"
+  },
+  {
+   "kind": "department",
+   "target": "api",
+   "path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-zimowe?page=117"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/rower/czesci-rowerowe/lancuchy-i-kasety?dostepne=1"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/skarpety-biegowe-emoven-jar-700-plus-598553"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/buty-neoprenowe-halvivar-swit-250-763044"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=bluza&option=D%C5%82ugo%C5%9B%C4%87%3A110-130%20cm"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/fitness/joga-i-pilates/klocki"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=8c10569a-2f29-539a-b2ec-ae97f68410a7&page=43"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=32b216b0-5c10-5324-ae8d-506334daa25e"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=fb2be761-1a8c-5d94-9c3f-2917db623644&page=190"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/bieganie/regeneracja-biegacza/opaski-kompresyjne?cena-od=1647&cena-do=2812"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20wielosportowy"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/lampka-rowerowa-tylna-emvagar-rafa-800-919948"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-zimowe/akcesoria-narciarskie/smary-i-woski"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-neoprenowe-halvivar-swit-250-763044"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=atlas%20szlak%C3%B3w&cena-od=656&cena-do=1740"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20wielosportowy&sort=price_desc"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=37"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=atlas%20szlak%C3%B3w"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=baga%C5%BCnik%20rowerowy&sort=cena-malejaco"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=kask%20wielosportowy&dostepne=1"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/fitness/trening"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=167"
+  },
+  {
+   "kind": "department",
+   "target": "api",
+   "path": "/api/v1/products?category=492f4a2e-2d1b-5ea7-ae33-c0101cd720ea"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=kask"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/fitness?page=139"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/odzywka-regeneracyjna-toronar-bryza-500-lite-430578"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=148"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=baga%C5%BCnik&page=3"
+  },
+  {
+   "kind": "phrase",
+   "target": "api",
+   "path": "/api/v1/products?q=bluza%20treningowa"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=kajak%20turystyczny&sort=price_asc"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=baga%C5%BCnik&page=5"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=atlas%20szlak%C3%B3w&page=2"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=atlas%20szlak%C3%B3w&cena-od=958&cena-do=1696"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-narciarskie-marizor-czapla-900-874575"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/wioslo-kajakowe-korolik-brzeg-700-evo-976499"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/opaska-na-glowe-fjorrinar-kamien-400-282257"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/pilka-reczna-talvin-polonina-350-547371"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/turystyka/odziez-turystyczna/kurtki?o=Zakres%20DIN%3A6-14"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=buty%20bie%C5%BCni%C4%99&cena-od=612&cena-do=1016"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=kask%20rowerowy&page=5"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/rower/ubrania-rowerowe/koszulki"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/mapa-szczegolowa-melrozor-jaspis-200-643219"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=baton&page=2"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/kamizelka-asekuracyjna-haviven-delta-500-62885"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=71"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-neoprenowe-corrovar-szczyt-120-743826"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=57"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/koszulka-z-filtrem-uv-korlalen-zjazd-450-plus-637160"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/koszulka-rowerowa-gordar-lawa-120-plus-935532"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&page=3"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=266c5e49-3e83-5a60-98d2-e2e142d46edb&option=Pojemno%C5%9B%C4%87%3A25%20l"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-wodne/kajaki?cena-od=537&cena-do=1898"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/deska-snowboardowa-dornefen-fala-800-112412"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/wioslo-kajakowe-wolnazen-wydma-150-723189"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/spodenki-biegowe-fjorvala-dystans-500-464593"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-siatkarskie-sorvivin-sciezka-600-92207"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-koszykarskie-calneven-finisz-100-74997"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/spodenki-biegowe-lorrok-fala-350-706198"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=150"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=6f882286-87e4-5dd4-ae76-e1dc1f062cc1"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-zimowe-talvidar-horyzont-250-523461"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/turystyka/akcesoria-gorskie/kijki?o=Smak%3Abananowy"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&page=2"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/odzywka-regeneracyjna-ollatar-zatoka-600-285808"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rekawiczki-biegowe-ulkomek-orion-120-583643"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-druzynowe?page=43"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/sporty-wodne/sup?dostepne=1"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/lornetka-turystyczna-velven-zleb-300-pro-643490"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=817c0300-9678-5875-9eca-9206c0edf96e"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/talerze-zeliwne-areten-kociol-120-892990"
+  },
+  {
+   "kind": "department_deep",
+   "target": "store",
+   "path": "/c/sporty-wodne?page=19"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/baton-proteinowy-marvadek-rytm-900-lite-926075"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-zimowe/obuwie-zimowe/ocieplacze"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/stroj-plywacki-brerodek-bor-400-585847"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/spodenki-rowerowe-emvakos-fala-450-lite-427324"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=16"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/zegarek-sportowy-torlaik-kociol-400-600941"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=118"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/klocek-do-jogi-torlavek-kociol-400-525182"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=kask&available=true"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/butelka-turystyczna-calamek-nova-250-643811"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/lancuch-rowerowy-wolridek-jastrzab-100-888178"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&page=158"
+  },
+  {
+   "kind": "leaf",
+   "target": "api",
+   "path": "/api/v1/products?category=dad8249a-d4d2-5f77-a4ed-c20fad01e574"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "store",
+   "path": "/c/turystyka/odziez-turystyczna/polary?dostepne=1"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "store",
+   "path": "/szukaj?q=bluza%20treningowa&dostepne=1"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=baga%C5%BCnik&page=3"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=a9edcf8a-8f67-598f-8e19-9680587be9a1&priceMin=148800&priceMax=215500"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=bielizna%20termoaktywna&available=true"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/buty-trekkingowe-velkonik-polonina-600-576820"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=1c5a1382-e614-5308-a662-49614547d08d&available=true"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/kamizelka-asekuracyjna-velonar-sokol-900-192494"
+  },
+  {
+   "kind": "leaf_filter",
+   "target": "api",
+   "path": "/api/v1/products?category=65c200e9-5634-5413-a515-0f94e28bef34&priceMin=56100&priceMax=112100"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=155"
+  },
+  {
+   "kind": "phrase_filter",
+   "target": "api",
+   "path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&option=D%C5%82ugo%C5%9B%C4%87%3A105%20cm"
+  },
+  {
+   "kind": "product",
+   "target": "store",
+   "path": "/p/rekawice-treningowe-janlasen-wydma-350-pro-816883"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=142"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "store",
+   "path": "/szukaj?q=buty%20bie%C5%BCni%C4%99&page=2"
+  },
+  {
+   "kind": "leaf",
+   "target": "store",
+   "path": "/c/sporty-zimowe/obuwie-zimowe/narciarskie"
+  },
+  {
+   "kind": "department_deep",
+   "target": "api",
+   "path": "/api/v1/products?category=6f62a979-6012-5f5a-a39b-13948746e108&page=182"
+  },
+  {
+   "kind": "phrase_deep",
+   "target": "api",
+   "path": "/api/v1/products?q=buty%20bie%C5%BCni%C4%99&page=4"
+  },
+  {
+   "kind": "home_deep",
+   "target": "api",
+   "path": "/api/v1/products?page=62"
+  },
+  {
+   "kind": "home_deep",
+   "target": "store",
+   "path": "/?page=65"
+  },
+  {
+   "kind": "phrase",
+   "target": "store",
+   "path": "/szukaj?q=bluza%20treningowa"
+  },
+  {
+   "kind": "department",
+   "target": "api",
+   "path": "/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956"
+  },
+  {
+   "kind": "product",
+   "target": "api",
+   "path": "/api/v1/products/sluchawki-sportowe-jorrizen-impuls-900-pro-705453"
+  }
+ ]
+}

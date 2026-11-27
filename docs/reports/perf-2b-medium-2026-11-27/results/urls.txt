@@ -1,0 +1,1 @@
+900 addresses: {'product': 300, 'home_deep': 96, 'phrase_filter': 86, 'department_deep': 102, 'phrase_deep': 76, 'department': 14, 'leaf': 92, 'leaf_filter': 102, 'phrase': 30, 'home': 2}
