@@ -13,6 +13,7 @@ use App\Catalog\Application\Search\ProductSearchIndexRebuilder;
 use App\Catalog\Application\Search\ProductSearchSnapshot;
 use App\Catalog\Application\Search\ReindexOutcome;
 use App\Catalog\Application\Search\SearchIndexError;
+use App\Catalog\Infrastructure\Search\ElasticsearchErrorClassifier;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Catalog\Infrastructure\SystemClock;
 use App\Tests\Support\InMemory\CallbackProductSearchSource;
@@ -106,32 +107,45 @@ final class RebuildAliasWritesTest extends TestCase
     }
 
     /**
-     * Two single writes read their products before the rebuild creates its index (and its rebuild alias) and send
-     * their _bulk while it fills the index: one before the batch of its product, one after it. The batch read the same
-     * committed state, so the new index holds it whatever the order of the two writes.
+     * Two single writes read their products before the rebuild creates its index (and its rebuild alias); the products
+     * change again (a newer committed state, read by the batches) and the writes send their _bulk while the rebuild
+     * fills the index: one before the batch of its product, one after it. The first reaches the new index through the
+     * rebuild alias and the batch replaces it; the second is older than the batch already there (409 on the rebuild
+     * alias) and leaves it. Either way the new index ends with the newer state of the batches.
      */
-    public function testWritesReadBeforeTheRebuildIndexExistsAndSentDuringTheFillLeaveTheNewestStateInTheNewIndex(): void
+    public function testOlderWritesReadBeforeTheRebuildIndexExistsAndSentDuringTheFillLeaveTheNewerBatchStateInTheNewIndex(): void
     {
         $this->clock->advance('+1 second');
-        $this->names[self::IDS[0]] = 'Changed before the rebuild, written before its batch';
-        $this->names[self::IDS[1]] = 'Changed before the rebuild, written after its batch';
+        $this->names[self::IDS[0]] = 'Older read, written before its batch';
+        $this->names[self::IDS[1]] = 'Older read, written after its batch';
         $version = ProductIndexing::version($this->clock->now());
         $documents = array_map(fn (string $id) => new ProductDocumentBuilder()->build($this->snapshot($id), null, $version), [self::IDS[0], self::IDS[1]]);
+        // The newer committed state, which the batches read with a later version.
+        $this->clock->advance('+1 second');
+        $this->names[self::IDS[0]] = 'Newer state of the batch 0';
+        $this->names[self::IDS[1]] = 'Newer state of the batch 1';
         $indexer = new ElasticsearchProductIndexer(self::clientFactory()->create(2.0), $this->alias());
         $outcomes = [];
+        /** @var array<int, mixed> $inTheNewIndex the name in the new index right after each write, null without one */
+        $inTheNewIndex = [];
         $http = $this->bulks([]);
-        $http->onBulk = static function (int $bulk) use ($indexer, $documents, &$outcomes): void {
+        $http->onBulk = function (int $bulk) use ($indexer, $documents, &$outcomes, &$inTheNewIndex): void {
             if (1 === $bulk || 2 === $bulk) {
                 $outcomes[] = $indexer->index($documents[$bulk - 1]);
+                $new = $this->rebuildAliasTargets();
+                $inTheNewIndex[$bulk - 1] = 1 === \count($new) ? $this->nameIn($new[0], self::IDS[$bulk - 1]) : null;
             }
         };
 
         $report = $this->rebuilder($http)->rebuild(2);
 
         self::assertSame(ActivationResult::Activated, $report->outcome, (string) $report->failure);
+        // The aliases decide the outcomes: the previous index holds nothing newer.
         self::assertSame([IndexOutcome::Indexed, IndexOutcome::Indexed], $outcomes);
-        self::assertSame('Changed before the rebuild, written before its batch', $this->activeName(self::IDS[0]));
-        self::assertSame('Changed before the rebuild, written after its batch', $this->activeName(self::IDS[1]));
+        // The write before the batch reached the new index; the write after it found the newer batch and left it.
+        self::assertSame(['Older read, written before its batch', 'Newer state of the batch 1'], $inTheNewIndex);
+        self::assertSame('Newer state of the batch 0', $this->activeName(self::IDS[0]));
+        self::assertSame('Newer state of the batch 1', $this->activeName(self::IDS[1]));
     }
 
     public function testAProductCreatedDuringTheRebuildAboveTheCursorIsInTheNewIndex(): void
@@ -347,6 +361,17 @@ final class RebuildAliasWritesTest extends TestCase
     private function bulks(array $script): ScriptedBulkFaultsHttpClient
     {
         return new ScriptedBulkFaultsHttpClient(self::clientFactory()->httpClient(30.0), $script);
+    }
+
+    private function nameIn(string $index, string $id): mixed
+    {
+        $response = ElasticsearchErrorClassifier::request('read document', static fn () => self::esClient()->get(['index' => $index, 'id' => $id]), [404]);
+        if (404 === $response->getStatusCode()) {
+            return null;
+        }
+        $source = $response->asArray()['_source'] ?? null;
+
+        return \is_array($source) ? ($source['name'] ?? null) : null;
     }
 
     private function activeName(string $id): mixed
