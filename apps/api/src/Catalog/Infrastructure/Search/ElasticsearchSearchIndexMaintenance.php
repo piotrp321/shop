@@ -10,6 +10,7 @@ use App\Catalog\Application\Search\BulkResult;
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
+use App\Catalog\Application\Search\SetupResult;
 use Elastic\Elasticsearch\Client;
 use Elastic\Elasticsearch\Response\Elasticsearch;
 use Psr\Log\LoggerInterface;
@@ -48,7 +49,7 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
     ) {
     }
 
-    public function setup(): array
+    public function setup(): SetupResult
     {
         $targets = $this->aliasTargets();
 
@@ -57,16 +58,17 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
                 throw new SearchIndexError(\sprintf('A plain index named "%s" exists where the alias should be. It is not managed by the application: delete it, then run catalog:search-index:setup again.', $this->alias));
             }
 
-            return $this->orphans([$this->create(withAlias: true)]);
+            return new SetupResult($this->orphans([$this->create(withAlias: true)]));
         }
 
         if (1 !== \count($targets)) {
             throw new SearchIndexError(\sprintf('The alias "%s" points to %d indexes (%s); it must point to exactly one. Remove the alias from all but one of them with the _aliases API.', $this->alias, \count($targets), implode(', ', $targets)));
         }
 
-        $this->assertCurrentDefinition($targets[0]);
-
-        return $this->orphans($targets);
+        return new SetupResult(
+            $this->orphans($targets),
+            $this->hasCurrentDefinition($targets[0]) ? null : $targets[0],
+        );
     }
 
     public function recreate(): void
@@ -346,12 +348,16 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
         };
     }
 
-    private function assertCurrentDefinition(string $index): void
+    private function hasCurrentDefinition(string $index): bool
     {
         $mapping = $this->request('read mapping', fn () => $this->client->indices()->getMapping(['index' => $index]))->asArray();
-        $hash = self::at($mapping, $index, 'mappings', '_meta', 'definition_hash');
 
-        if ($hash !== $this->definition->hash()) {
+        return self::at($mapping, $index, 'mappings', '_meta', 'definition_hash') === $this->definition->hash();
+    }
+
+    private function assertCurrentDefinition(string $index): void
+    {
+        if (!$this->hasCurrentDefinition($index)) {
             throw new SearchIndexError(\sprintf('The index "%s" was built from another index definition. Run catalog:reindex to rebuild it with the current one.', $index));
         }
     }
