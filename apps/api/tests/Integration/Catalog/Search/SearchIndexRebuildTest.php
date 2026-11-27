@@ -248,8 +248,8 @@ final class SearchIndexRebuildTest extends KernelTestCase
         self::assertSame($previous, $this->maintenance->activeIndex());
         self::assertSame($indexesBefore, $this->aliasIndexes());
         // While filling, the rebuild alias was on the new index; it went with the index.
-        self::assertCount(1, $rebuildTargets[0] ?? []);
-        self::assertNotContains($previous, $rebuildTargets[0] ?? []);
+        self::assertCount(1, $rebuildTargets[0]);
+        self::assertNotContains($previous, $rebuildTargets[0]);
         self::assertSame([], $this->rebuildAliasTargets());
     }
 

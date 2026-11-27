@@ -85,7 +85,9 @@ final class SearchIndexMaintenanceTest extends TestCase
         self::assertSame([], $this->rebuildAliasTargets());
         $switches = $http->aliasRequests();
         self::assertCount(1, $switches);
-        self::assertContains(['remove' => ['index' => $new, 'alias' => $this->alias().'-rebuild']], $switches[0]['actions'] ?? null);
+        $actions = $switches[0]['actions'] ?? null;
+        self::assertIsArray($actions);
+        self::assertContains(['remove' => ['index' => $new, 'alias' => $this->alias().'-rebuild']], $actions);
     }
 
     public function testActivateOfAnIndexWithoutTheRebuildAliasSwitchesTheAlias(): void

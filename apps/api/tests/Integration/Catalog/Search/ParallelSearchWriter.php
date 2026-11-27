@@ -171,7 +171,7 @@ final class ParallelSearchWriter
                 new ProductDocumentBuilder(),
                 new SystemClock(),
             );
-            for ($change = 0; [] === $failures && !$this->exists($this->file('stop')); ++$change) {
+            for ($change = 0; !$this->exists($this->file('stop')); ++$change) {
                 if ($this->exists($this->file('pause'))) {
                     touch($this->file('paused'));
                     while ($this->exists($this->file('pause')) && !$this->exists($this->file('stop'))) {
@@ -182,7 +182,7 @@ final class ParallelSearchWriter
                 }
                 $id = $this->ids[$change % \count($this->ids)];
                 $this->replace($this->stateFile($id), (string) ($this->read($this->stateFile($id)) + 1));
-                for ($attempt = 1; ; ++$attempt) {
+                for ($attempt = 1;; ++$attempt) {
                     try {
                         $indexing->reindex($id);
                         break;
@@ -196,6 +196,9 @@ final class ParallelSearchWriter
                     }
                 }
                 $this->replace($this->file('writes'), (string) ++$writes);
+                if ([] !== $failures) {
+                    break;
+                }
             }
         } catch (\Throwable $e) {
             $failures[] = $e::class.': '.$e->getMessage();
@@ -227,6 +230,8 @@ final class ParallelSearchWriter
 
     /**
      * The stat cache of PHP would keep answering for a file that the other process created or deleted.
+     *
+     * @phpstan-impure
      */
     private function exists(string $file): bool
     {

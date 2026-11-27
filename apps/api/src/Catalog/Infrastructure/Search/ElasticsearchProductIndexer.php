@@ -64,10 +64,7 @@ final readonly class ElasticsearchProductIndexer implements ProductIndexer
             // The alias was resolved to an index deleted before the item reached it: a rebuild switched the alias
             // and deleted the previous index. A retry writes through the alias to the index it points to now. A missing
             // alias (require_alias) names the alias itself and stays a permanent failure.
-            self::isIndexNotFound($status, $error) && ($error['index'] ?? null) !== $this->alias => throw new SearchUnavailable(\sprintf(
-                'The index of the alias was deleted during the write (index document): %s',
-                ElasticsearchErrorClassifier::describe($error),
-            )),
+            self::isIndexNotFound($status, $error) && ($error['index'] ?? null) !== $this->alias => throw new SearchUnavailable(\sprintf('The index of the alias was deleted during the write (index document): %s', ElasticsearchErrorClassifier::describe($error))),
             default => throw self::failure('index document', $status, $error),
         };
     }

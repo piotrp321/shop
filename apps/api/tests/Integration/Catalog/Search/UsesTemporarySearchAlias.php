@@ -78,7 +78,7 @@ trait UsesTemporarySearchAlias
     private function targetsOf(string $alias): array
     {
         $client = self::esClient();
-        $response = ElasticsearchErrorClassifier::request('read alias', fn () => $client->indices()->getAlias(['name' => $alias]), [404]);
+        $response = ElasticsearchErrorClassifier::request('read alias', static fn () => $client->indices()->getAlias(['name' => $alias]), [404]);
         if (404 === $response->getStatusCode()) {
             return [];
         }

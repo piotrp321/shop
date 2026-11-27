@@ -45,7 +45,9 @@ interface SearchIndexMaintenance
     public function activeIndex(): string;
 
     /**
-     * Creates a new, empty physical index from the current definition.
+     * Creates a new, empty physical index from the current definition, for a rebuild: the index has the rebuild alias,
+     * through which the single writes made while it is filled reach it. The rebuild alias is first taken off every
+     * other index (one left by a rebuild that crashed).
      *
      * @return string its name
      *
@@ -56,7 +58,8 @@ interface SearchIndexMaintenance
 
     /**
      * Writes the documents in bulk directly to the physical index. Transient failures (of single documents or of the
-     * whole request) are retried until the attempts run out, and only the documents not yet written are repeated.
+     * whole request) are retried until the attempts run out, and only the documents not yet written are repeated. A
+     * stale document (the index holds a newer version, written through the rebuild alias) is not retried.
      *
      * @param list<ProductDocument> $documents
      *
@@ -78,7 +81,8 @@ interface SearchIndexMaintenance
     public function verify(string $index, int $expectedDocuments): void;
 
     /**
-     * Switches the alias from $expectedCurrent to $index in one request, then reads back where the alias points.
+     * Switches the alias from $expectedCurrent to $index and takes the rebuild alias off $index, in one request, then
+     * reads back where the alias points.
      * Never throws for search failures: an ambiguous result is {@see ActivationResult::Unknown}.
      */
     public function activate(string $index, string $expectedCurrent): ActivationResult;
