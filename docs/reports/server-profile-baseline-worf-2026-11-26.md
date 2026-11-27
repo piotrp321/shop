@@ -35,7 +35,7 @@ Wymagania W1–W20 pochodzą z `docs/features/performance-program/plan.md`.
 | zamówienia (5 mln) | 11-26 00:44 | ok. 11-26 03:00 | ok. 2,3 h |
 | ruchy magazynowe i modele odczytu | ok. 03:00 | 05:35 | ok. 2,6 h |
 | `catalog:reindex` (10 000 191 dokumentów) | 05:35 | ok. 12:50 | ok. 7,25 h |
-| `demo-data:verify` | ok. 12:50 | nieukończone | przerwane limitem 24 h Joba |
+| `demo-data:verify` | ok. 12:50 | 19:40:21 (przerwane) | nieukończone po ok. 6,8 h; przerwał je limit 24 h całego Joba (liczony od 19:40:21 poprzedniego dnia) |
 
 Granice faz są przybliżone (próbki co 5 min, ostatnia linia logu). Pewne są: start 19:40:21, limit 24 h o 19:40:21
 (`DeadlineExceeded`) i czas reindeksu z nazwy indeksu (`products_20261126053552075`) oraz postępu (9 886 500 dokumentów
@@ -43,7 +43,7 @@ o 12:47).
 
 - **Potwierdzone:** generator danych trwał ok. 17 h do końca reindeksu (W20: do 6 h), a pełny reindeks ok. 7,25 h przy
   ok. 390 dok./s (W19: do 60 min). Ten sam indeks na 1 mln produktów szedł z ok. 880 dok./s (medium).
-- **Potwierdzone:** `demo-data:verify` nie skończył w 24 h. W momencie przerwania działało zapytanie o stany
+- **Potwierdzone:** `demo-data:verify` nie skończył w ok. 6,8 h, które zostały mu do limitu 24 h Joba (start weryfikacji ok. 12:50, limit 19:40:21). Limit 24 h dotyczył całego Joba, nie samej weryfikacji. W momencie przerwania działało zapytanie o stany
   (`inventory_stock_item … JOIN LATERAL …`) od 14 min, wcześniej inne (m.in. `SELECT DISTINCT p.slug FROM
   pricing_variant_price …` ok. 25 min), wszystkie w stanie `IO`. Dane, indeks i cache były kompletne od ok. 12:50, więc
   kilkugodzinna weryfikacja nie zmieniała stanu sklepu.
@@ -76,7 +76,7 @@ o 12:47).
 
 Wiersz klienta w `ordering_customer` powstaje tylko dla klienta, który złożył zamówienie (880 082 z 1 mln); pozostałe
 ok. 120 tys. istnieje wyłącznie w Keycloak. To zgodne z liczbami; czy to zamierzone, nie sprawdzano w specyfikacji.
-Nie wykonano pełnej weryfikacji `demo-data:verify` (limit czasu), więc spójności szczegółowej (np. sum zamówień z liniami,
+Nie wykonano pełnej weryfikacji `demo-data:verify` (przerwana limitem Joba po ok. 6,8 h), więc spójności szczegółowej (np. sum zamówień z liniami,
 stanów z ruchami, indeksu z bazą dla próby) nie potwierdzono; to luka do uzupełnienia przed uznaniem profilu za zweryfikowany.
 
 ## 4. Wyniki pomiarów: listingi (W1, W2)
@@ -177,7 +177,7 @@ Potwierdzone:
 2. **Brak ochrony przed błędem w warstwie cache:** 503 nie jest cache'owane, więc każdy powtórzony adres obciąża ES na nowo.
 3. **Pamięć Elasticsearcha** na granicy limitu (do 98%) przy obciążeniu listingami.
 4. **Generator i narzędzia operacyjne nie skalują się liniowo:** 17 h (W20 6 h), reindeks 7,25 h (W19 60 min), weryfikacja
-   `demo-data:verify` > 24 h.
+   weryfikacja `demo-data:verify` > 6,8 h (przerwana limitem Joba).
 
 Hipotezy do sprawdzenia: koszt zapytania zależny od liczby dopasowań i facetów; za mały cache plików przy 63 GB bazy i
 9,9 GB indeksu; kolejność kolejek w sklepie w skoku; przyczyna wolniejszego reindeksu (390 vs 880 dok./s).
