@@ -16,6 +16,11 @@ import {
   sendTolerance,
   isLate,
   tokenAction,
+  catchUpStats,
+  isCatchUp,
+  lagBucket,
+  rateBand,
+  windowStats,
   startRecord,
   writeOutcome,
 } from '../lib/write-state.js';
@@ -158,7 +163,7 @@ function sampling() {
 }
 
 function verdicts() {
-  const clean = { finished: true, dropped: 0, unanswered: 0, freshnessTimeouts: 0, refused: 0, mismatches: 0, runErrors: 0, late: 0 };
+  const clean = { finished: true, dropped: 0, unanswered: 0, freshnessTimeouts: 0, refused: 0, mismatches: 0, runErrors: 0, late: 0, windowsOutside: 0, maxCatchUpInWindow: 0 };
   const failsWith = (counts, fragment) => {
     const verdict = runVerdict({ ...clean, ...counts });
     return verdict.passed === false && verdict.reasons.length === 1 && verdict.reasons[0].includes(fragment);
@@ -167,6 +172,9 @@ function verdicts() {
     'a finished run without a failure passes': () => same(runVerdict(clean), { passed: true, reasons: [] }),
     'a write not sent at the rate fails the run (it is no measurement at the rate)': () => failsWith({ dropped: 1 }, 'not sent at the rate'),
     'a write sent later than the tolerance fails the run (not sent at the rate)': () => failsWith({ late: 2 }, 'later than'),
+    'a window of 1 s off the rate fails the run (a hole or a burst)': () => failsWith({ windowsOutside: 2 }, 'windows of 1 s'),
+    'one write caught up in a window passes (the jitter of one write)': () => runVerdict({ ...clean, maxCatchUpInWindow: 1 }).passed === true,
+    'a series of catch-up writes in a window fails the run': () => failsWith({ maxCatchUpInWindow: 2 }, 'catch-up'),
     'a write without an answer or with a 5xx fails the run': () => failsWith({ unanswered: 2 }, 'without an answer'),
     'a change not seen within the freshness timeout fails the run (the percentiles leave it out)': () =>
       failsWith({ freshnessTimeouts: 1 }, 'not seen within'),
@@ -177,6 +185,34 @@ function verdicts() {
     'the reasons give the numbers': () => runVerdict({ ...clean, dropped: 4 }).reasons[0].includes('4'),
     'every failure is a reason of its own': () => runVerdict({ ...clean, finished: false, dropped: 1, late: 1, unanswered: 1, freshnessTimeouts: 1 }).reasons.length === 5,
     'a missing count fails the run': () => runVerdict({ finished: true }).passed === false,
+  });
+}
+
+function windows() {
+  verify({
+    'the lag buckets are closed at the top': () =>
+      [[0, 'le_1'], [1, 'le_1'], [1.5, 'le_5'], [5, 'le_5'], [20, 'le_20'], [21, 'le_100'], [100, 'le_100'], [1000, 'le_1000'], [1001, 'gt_1000']].every(
+        ([lag, bucket]) => lagBucket(lag) === bucket,
+      ),
+    'the band of a window is the rate plus or minus one write': () => same(rateBand(50), { low: 49, high: 51 }),
+    'the band of a fractional rate holds both whole counts of the schedule': () => same(rateBand(2.5), { low: 1, high: 4 }),
+    'windows at the rate are inside the band': () => {
+      const stats = windowStats([50, 50, 49, 51, 50], 50);
+      return stats.windows === 5 && stats.min === 49 && stats.max === 51 && stats.p50 === 50 && stats.below === 0 && stats.above === 0;
+    },
+    'a hole and a burst are a window below and one above the band': () => {
+      const stats = windowStats([50, 30, 70, 50], 50);
+      return stats.below === 1 && stats.above === 1 && stats.min === 30 && stats.max === 70;
+    },
+    'the percentiles of the windows are nearest-rank': () => {
+      const stats = windowStats([70, 50, 30, 50], 50);
+      return stats.p5 === 30 && stats.p50 === 50 && stats.p95 === 70;
+    },
+    'no window gives no figures and nothing outside': () => same(windowStats([], 50), { windows: 0, min: null, p5: null, p50: null, p95: null, max: null, below: 0, above: 0 }),
+    'a write sent up to one interval late is no catch-up': () => isCatchUp(1000, 1020, 50) === false,
+    'a write sent more than one interval late is a catch-up': () => isCatchUp(1000, 1021, 50) === true && isCatchUp(1000, 1501, 2) === true,
+    'the catch-up writes and the largest series in a window': () => same(catchUpStats([0, 3, 1, 0]), { writes: 4, maxInWindow: 3 }),
+    'no window gives no catch-up': () => same(catchUpStats([]), { writes: 0, maxInWindow: 0 }),
   });
 }
 
@@ -207,4 +243,5 @@ export default function () {
   sampling();
   verdicts();
   timing();
+  windows();
 }

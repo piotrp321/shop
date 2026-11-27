@@ -187,3 +187,13 @@ export function tokenAction(expiresAt, now) {
   }
   return expiresAt - now < RENEW_BEFORE_MS ? 'use_and_renew' : 'use';
 }
+
+export function lagBucket(lagMs) {}
+
+export function rateBand(rate) {}
+
+export function windowStats(counts, rate) {}
+
+export function isCatchUp(dueMs, sentMs, rate) {}
+
+export function catchUpStats(perWindow) {}
