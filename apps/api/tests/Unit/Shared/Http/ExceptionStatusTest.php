@@ -11,6 +11,8 @@ use App\Shared\Domain\Exception\ProblemException;
 use App\Shared\Domain\Exception\Unavailable;
 use App\Shared\Infrastructure\Http\ExceptionStatus;
 use App\Shared\Infrastructure\Http\ProblemDetailsSubscriber;
+use Doctrine\DBAL\Driver\Exception as DriverExceptionInterface;
+use Doctrine\DBAL\Exception\DriverException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
@@ -93,5 +95,26 @@ final class ExceptionStatusTest extends TestCase
         yield 'a framework exception wrapped in a plain one' => [new \RuntimeException('wrapper', 0, new NotFoundHttpException()), 500];
         yield 'any other exception' => [new \RuntimeException('internal'), 500];
         yield 'an error' => [new \TypeError('internal'), 500];
+        yield 'a statement cancelled by the time limit' => [self::driverException('57014'), 503];
+        yield 'a cancelled statement in the failure of a handler' => [new HandlerFailedException(new Envelope(new \stdClass()), [self::driverException('57014')]), 503];
+        yield 'a cancelled statement wrapped in a plain exception' => [new \RuntimeException('wrapper', 0, self::driverException('57014')), 503];
+        yield 'a failure of the database of another state' => [self::driverException('23505'), 500];
+    }
+
+    private static function driverException(string $sqlState): DriverException
+    {
+        $driver = new class($sqlState) extends \Exception implements DriverExceptionInterface {
+            public function __construct(private readonly string $sqlState)
+            {
+                parent::__construct('ERROR: canceling statement due to statement timeout');
+            }
+
+            public function getSQLState(): string
+            {
+                return $this->sqlState;
+            }
+        };
+
+        return new DriverException($driver, null);
     }
 }
