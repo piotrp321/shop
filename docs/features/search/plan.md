@@ -18,7 +18,7 @@ worf.pl uzgadnia sesja prowadząca z sesją PERF-0. Plan jest dokumentem roboczy
 | 2 | PERF-2B-4 | zmergowane (c3e6081b) |
 | 3 | PERF-2B-5, PERF-2B-6 | zmergowane: PERF-2B-5 (7124689d), PERF-2B-6 (bffcb571) |
 | 4 | PERF-2B-7 | zmergowane (1cdd4a81) |
-| 5 | PERF-2B-8 | w toku |
+| 5 | PERF-2B-8 | zmergowane (92bd1337); poprawka PERF-2B-FIX1 (c9e9b601) |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
