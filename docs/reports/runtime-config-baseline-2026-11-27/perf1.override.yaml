@@ -1,0 +1,71 @@
+# Local override of the PERF-1 task 1 measurement (docs/reports/runtime-config-baseline-2026-11-27.md): the stack
+# `perf1` runs the production image of the api and the workers (APP_ENV=prod), the store in STORE_MODE=production and
+# the memory limits and heaps of infra/k8s/environments/prod/values.yaml (no CPU limits, as in prod). Postgres keeps
+# its default settings and only loads pg_stat_statements and track_io_timing for the measurement (task 1: enabled only
+# here). Used through COMPOSE_FILE in the local .env of the worktree, next to compose.yaml:
+#   COMPOSE_FILE=compose.yaml:docs/reports/runtime-config-baseline-2026-11-27/perf1.override.yaml
+# PERF1_API_MEMORY: 4g while generating (the limit of the demo-data Job in prod, the generator runs in the api
+# container here), 2g (the limit of the api in prod) for the measurements.
+x-api-prod: &api-prod
+  image: perf1-api:prod
+  build: !reset null
+  volumes: !reset []
+services:
+  postgres:
+    mem_limit: 2g
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track_utility=off
+      - -c
+      - track_io_timing=on
+  redis:
+    mem_limit: 512m
+  elasticsearch:
+    mem_limit: 4g
+    environment:
+      ES_JAVA_OPTS: -Xms2g -Xmx2g
+  rabbitmq:
+    mem_limit: 1g
+  garage:
+    mem_limit: 1g
+  keycloak:
+    mem_limit: 2g
+    environment:
+      JAVA_OPTS_KC_HEAP: -Xms512m -Xmx1g
+  mailpit:
+    mem_limit: 256m
+  imgproxy:
+    mem_limit: 1g
+  varnish:
+    mem_limit: 512m
+  api:
+    <<: *api-prod
+    # The only service that builds the image; the workers run the same one.
+    build: !override
+      context: ./apps/api
+      target: prod
+    mem_limit: ${PERF1_API_MEMORY:-2g}
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+  worker:
+    <<: *api-prod
+    mem_limit: 640m
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+      APP_CACHE_DIR: /app/var/cache
+  worker-commands:
+    <<: *api-prod
+    mem_limit: 384m
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+      APP_CACHE_DIR: /app/var/cache
+  store:
+    mem_limit: 1536m
+# admin: no limit. In compose it is the Vite dev server (npm ci on start), not the static nginx of prod (128Mi), and it
+# is not part of the measurement.
