@@ -1,0 +1,21 @@
+time="2026-11-27T12:46:24Z" level=info msg="setup: 60 products from 3 chunks of the sitemap, 182 purchasable variants, 117 options, 3 price windows" source=console
+
+Ramp: by step
+                      requests  req/s    p50 ms   p95 ms   p99 ms   5xx/net  409    429
+step 0 (10/s)         23        0.77     274.7    4382     4944.4   30.43%   0      0
+
+Ramp: reads and carts
+                      requests  req/s    p50 ms   p95 ms   p99 ms   5xx/net  409    429
+read                  23        0.77     274.7    4382     4944.4   30.43%   0      0
+cart                  0         0        0        0        0        0%       0      0
+home                  1         0.03     4260.8   4260.8   4260.8   100%     0      0
+category              0         0        0        0        0        0%       0      0
+product               16        0.53     146.7    1475.3   1723.6   0%       0      0
+search                4         0.13     4302.5   4982     5077     100%     0      0
+search_filtered       2         0.07     4290.2   4380.1   4388.1   100%     0      0
+cart_add              0         0        0        0        0        0%       0      0
+cart_read             0         0        0        0        0        0%       0      0
+cart_page             0         0        0        0        0        0%       0      0
+
+saturated: step 0 (p95); max sustained 10 iterations/s; steady rate 7; dropped iterations 0
+time="2026-11-27T12:46:30Z" level=error msg="thresholds on metrics 'http_req_duration{step:0}, server_errors{step:0}' were crossed; at least one has abortOnFail enabled, stopping test prematurely"

@@ -64,7 +64,11 @@ serwera” i „Smoke test i check”).
 
 - `infra/k8s` ma własny `Makefile` (potrzebuje Dockera, a `check` także gita); opis celów, ich zmiennych i kodów wyjścia
   jest przy celu. Testy i pomiary bez serwera: `check`, `selftest`, `smoke`, `monitoring-smoke` (poza `check` i CI)
-  i `load LOAD_OUT=<katalog poza repo>`.
+  i `load LOAD_OUT=<katalog poza repo>`. `measure` mierzy ścieżkę katalogu wdrożonego sklepu z Joba w klastrze (GET,
+  `load/baseline.py`; sklep może zostać zamknięty): agent uruchamia go tylko po zgodzie w rozmowie, która nazywa operację
+  i host; niczego nie zmienia w danych, konfiguracji ani limitach, a Job i ConfigMap usuwa po sobie. Etap `k6` przyjmuje tylko
+  scenariusze odczytu (`home`, `category`, `product`, `search`; walidacja przed utworzeniem czegokolwiek), wynik jest
+  kompletny dopiero z markerem `##DONE` i bez `##FAILED`, a `run-parameters.txt` zapisuje rewizję, skróty narzędzi, obrazy, zmienne i seed.
 - `load` z `LOAD_DATA` innym niż `seed` (`medium`, `server`, `full`) agent uruchamia tylko po zgodzie użytkownika
   w rozmowie: generator działa godzinami, dane zajmują dziesiątki do setek GB dysku, a cel czyta dane dostępu do prywatnego
   bucketu puli zdjęć z pliku użytkownika (`DEMO_PHOTOS_ENV_FILE`), którego agent nie czyta ani nie wypisuje. Do klastra
@@ -109,15 +113,15 @@ serwera” i „Smoke test i check”).
     ponowienie nie należy do `rerun`. Odtworzenie ponawia `make restore` (po zgodzie), dane generatora `make generate`
     (po zgodzie), przebudowę indeksu `make reindex` (po zgodzie; `rerun` Joba `reindex-*` przebudowałby indeks bez
     pytania o `tak` i bez sprawdzeń), nieudaną kopię użytkownik (runbook, 7.).
-- Te siedem (`rerun`, `create-admin`, `restore`, `backups`, `generate`, `open`, `reindex`) i `kubeconfig` (cele, które zapisują albo montują
+- Te osiem (`rerun`, `create-admin`, `restore`, `backups`, `generate`, `open`, `reindex`, `measure`) i `kubeconfig` (cele, które zapisują albo montują
   `KUBE_DIR`, czyli kubeconfig produkcji) wołają w Makefile najpierw `scripts/ao-guard.sh` i odmawiają (kod różny od 0,
   bez zmian), gdy działa AO albo żywy wykonawca; błąd `ps` też jest odmową, a żadna zmienna nie wyłącza sprawdzenia.
-  Skrypty `rerun.sh`, `create-admin.sh`, `restore.sh`, `backups.sh`, `generate.sh`, `open.sh` i `reindex.sh` same go nie wołają, bo
+  Skrypty `rerun.sh`, `create-admin.sh`, `restore.sh`, `backups.sh`, `generate.sh`, `open.sh`, `reindex.sh` i `measure.sh` same go nie wołają, bo
   woła je `smoke.sh` (test dymny działa też w trakcie przebiegu AO). `kubeconfig`
   dopisuje bezwzględną ścieżkę `KUBE_DIR` do rejestru `~/.local/state/shop-ops/kube-dirs`.
 - Serwer obsługują cele po SSH (`HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `bootstrap`, `kubeconfig`, `status` i `failed` (tylko
   odczyt), `failed-retry` i `failed-remove` (tylko po zgodzie, `HOST` i `ID`/`MAX` z linii poleceń), `search-cache-clear` (tylko po zgodzie, `HOST`) i `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`, nie przy
-  zamkniętym sklepie), a z klastrem łączą się też `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex`;
+  zamkniętym sklepie), a z klastrem łączą się też `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open`, `reindex` i `measure`;
   `seal-secrets` i `cloudflare-ips` zmieniają pliki w repo.
   Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki runbooka `infra/k8s/README.md` oznaczone „zgoda
   użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone „użytkownik” (zakupy, konta zewnętrzne, wartości

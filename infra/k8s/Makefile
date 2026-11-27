@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore generate open reindex backups seal-secrets bootstrap kubeconfig status failed failed-retry failed-remove search-cache-clear reinitialize cloudflare-ips
+.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore generate open reindex measure backups seal-secrets bootstrap kubeconfig status failed failed-retry failed-remove search-cache-clear reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render; git does not ignore the certificate of Sealed Secrets). The render also covers the application monitoring: the chart
@@ -149,6 +149,14 @@ generate:
 open:
 	@sh scripts/ao-guard.sh open
 	sh scripts/open.sh
+
+# Measures the catalog path of the deployed shop from a Job inside the cluster, GET only (load/baseline.py, PERF-0), so the shop can
+# stay closed: make -C infra/k8s measure KUBE_DIR=<directory> MEASURE_OUT=<directory outside the repository>. Only after the consent of
+# the user in the conversation that names the operation and the host. Changes no data, configuration or limit; asks for the word tak;
+# refuses while a Job (not a check CronJob) is active. The stages and variables: the header of scripts/measure.sh.
+measure:
+	@sh scripts/ao-guard.sh measure
+	sh scripts/measure.sh
 
 # Rebuilds the search index of the cluster (docs/features/search/spec.md, "Infrastruktura"): make -C infra/k8s reindex KUBE_DIR=<directory>.
 # Only after the consent of the user in the conversation that names the operation and the host. Refuses without changes when a Job of

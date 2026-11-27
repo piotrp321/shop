@@ -1,0 +1,9 @@
+1840 addresses: {'phrase_filter': 246, 'leaf_filter': 296, 'phrase_deep': 134, 'department_deep': 300, 'product': 400, 'home_deep': 220, 'leaf': 188, 'phrase': 40, 'department': 14, 'home': 2}
+baseline: stopped after 32 of 240 requests: 16 of 20 finished ones failed (more than 20%)
+32 samples, 26 failures, written to open-leaf-4.jsonl
+label	target	kind	cache	n	full	p50	p95	p99	max	server_est_p50	server_est_p95	rtt_p50	statuses
+open-4.0	api	leaf	hit	1	1	0.006	0.006	0.006	0.006	0.0	0.0	0.0	{200: 1}
+open-4.0	api	leaf	miss	7	0	None	None	None	None	None	None	0.0	{503: 7}
+open-4.0	api	leaf_filter	miss	11	4	0.59	2.056	2.056	2.056	0.586	2.046	0.0	{200: 4, 503: 7}
+open-4.0	store	leaf	unconfirmed	4	1	2.009	2.009	2.009	2.009	1.996	1.996	0.0	{500: 3, 200: 1}
+open-4.0	store	leaf_filter	unconfirmed	9	0	None	None	None	None	None	None	0.0	{500: 9}
