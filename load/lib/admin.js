@@ -3,6 +3,7 @@
 // script exchanges it for access tokens at the token endpoint of Keycloak, in the background before every access token expires. No account
 // or client of its own (load/README.md, "Token").
 import http from 'k6/http';
+import { Counter } from 'k6/metrics';
 import { text } from './env.js';
 import { RENEW_BEFORE_MS, tokenAction } from './write-state.js';
 
@@ -17,6 +18,9 @@ const keycloakHost = text('KEYCLOAK_HOST', '');
 const TOKEN_PATH = '/realms/backoffice/protocol/openid-connect/token';
 // After a failed renewal in the background, the next one starts no sooner than this.
 const BACKGROUND_RETRY_MS = 5 * 1000;
+// Successful renewals of the access token during the run: kind background (while the token was valid) or blocking (a request
+// waited for it). The first token of the run is not counted.
+const renewals = new Counter('token_renewals');
 
 function headersFor(host, extra) {
   return host === '' ? { ...extra } : { Host: host, ...extra };
@@ -72,6 +76,7 @@ export class PanelSession {
     this.tokens = null;
     this.renewing = null;
     this.retryAt = 0;
+    this.failedInRow = 0;
   }
 
   keep(tokens) {
@@ -90,9 +95,11 @@ export class PanelSession {
     return `Bearer ${this.tokens.access}`;
   }
 
-  // One renewal at a time, shared by every request that waits for it.
-  renew() {
+  // One renewal at a time, shared by every request that waits for it; kind (background or blocking) is counted when it succeeds,
+  // a renewal without a token before it is not.
+  renew(kind) {
     if (this.renewing === null) {
+      const first = this.tokens === null;
       const [url, form, params] = refreshRequest(this.refreshToken);
       this.renewing = http
         .asyncRequest('POST', url, form, params)
@@ -100,6 +107,10 @@ export class PanelSession {
         .then(
           () => {
             this.renewing = null;
+            this.failedInRow = 0;
+            if (!first) {
+              renewals.add(1, { kind });
+            }
           },
           (error) => {
             this.renewing = null;
@@ -118,10 +129,15 @@ export class PanelSession {
     const now = Date.now();
     const action = tokenAction(this.tokens === null ? null : this.tokens.expiresAt, now);
     if (action === 'wait') {
-      await this.renew();
+      await this.renew('blocking');
     } else if (action === 'use_and_renew' && this.renewing === null && now >= this.retryAt) {
-      this.renew().catch(() => {
+      this.renew('background').catch((error) => {
         this.retryAt = Date.now() + BACKGROUND_RETRY_MS;
+        // The first failure of a series says why (the messages of tokensOf carry no token).
+        if (this.failedInRow === 0) {
+          console.warn(`the renewal of the access token in the background failed, tried again every ${BACKGROUND_RETRY_MS / 1000} s while the token is valid: ${error.message}`);
+        }
+        this.failedInRow += 1;
       });
     }
     return `Bearer ${this.tokens.access}`;

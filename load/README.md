@@ -101,6 +101,9 @@ odświeżania sesji panelu wygasa po 15 min bez użycia i najpóźniej po 8 h; w
 
 ### Uruchomienie
 
+Przebieg na lokalnym stosie sprawdza działanie scenariusza, ale nie jest pomiarem: API działa tam w trybie dev (lokalnie przyjęło
+ok. 22 zmian/s przy p50 odpowiedzi 3,6 s), więc jego tempo, czasy i świeżość nie są wynikiem W14 ani W16.
+
 ```sh
 # lokalnie: stos compose tego checkoutu (make up, make seed), k6 w jego sieci, http://api (bez Varnisha) i http://keycloak:8080
 ADMIN_REFRESH_TOKEN="$(python3 load/admin-token.py)" WRITE_RATE=5 WRITE_SECONDS=30 WRITE_SAMPLE=20 \
@@ -125,7 +128,7 @@ przebieg idzie przez jego publiczne adresy. Wiersze niezgodności są tylko w wy
 | `WRITE_PRICE_SHARE` | 0.5 | udział zmian cen wśród zapisów modelu otwartego |
 | `WRITE_MAX_IN_FLIGHT` | 100 | zapisy modelu otwartego czekające naraz na odpowiedź; zapis ponad limit jest pomijany i liczony (`dropped`) |
 | `WRITE_TIMEOUT_SECONDS` | 60 | zapis bez odpowiedzi przez ten czas jest „bez odpowiedzi” |
-| `WRITE_SEND_TOLERANCE_MS` | `1000 / WRITE_RATE` | zapis modelu otwartego wysłany później niż tyle po zaplanowanej chwili jest spóźniony |
+| `WRITE_SEND_TOLERANCE_MS` | 1000 | zapis modelu otwartego wysłany później niż tyle po zaplanowanej chwili jest spóźniony |
 | `WRITE_DISCOVER_PRODUCTS` | 3 × `WRITE_SAMPLE`, co najmniej 60 | ile produktów czytać z każdego źródła przy wyborze próby |
 | `FRESHNESS_POLL_MS` | 250 | odstęp zapytań wariantu próbki świeżości (rozdzielczość pomiaru) |
 | `FRESHNESS_TIMEOUT_SECONDS` | 120 | zmiana niewidoczna tak długo kończy swoją próbkę (`timeouts`) |
@@ -142,9 +145,13 @@ Wynikiem pomiaru jest tylko przebieg z kodem 0: zapisy wysłane w zadanym tempie
 - zapis pominięty w tempie (`changes.dropped`: limit `WRITE_MAX_IN_FLIGHT` albo brak wolnego wariantu `bulk`, gdy zmiany cen
   czekają na odpowiedź; wtedy zwiększ `WRITE_SAMPLE` albo limit);
 - zapis wysłany za późno (`changes.late`): opóźnienie wysłania względem zaplanowanej chwili (`changes.send_lag`, p50–max)
-  większe niż tolerancja `WRITE_SEND_TOLERANCE_MS`, domyślnie jeden odstęp tempa (`1000 / WRITE_RATE` ms). Później następny
-  zapis był już należny, więc generator nie utrzymał tempa (np. zajęta pętla zdarzeń jedynego użytkownika wirtualnego). Token
-  dostępu jest odnawiany w tle w ostatniej minucie ważności, więc zapisy nie czekają na Keycloak, dopóki token jest ważny;
+  większe niż tolerancja `WRITE_SEND_TOLERANCE_MS`, domyślnie 1000 ms bez względu na tempo. Generator, który nie utrzymuje
+  tempa (np. zajęta pętla zdarzeń jedynego użytkownika wirtualnego), narasta zaległość bez ograniczenia i szybko przekracza
+  tę wartość, a drgania pętli i planisty są o rzędy mniejsze (lokalnie p99 2 ms, max 20 ms przy 50/s przez 320 s); opóźnienie
+  do sekundy nie zmienia tempa w oknach pomiaru i nie wpływa na świeżość (W16 liczy się od odpowiedzi zapisu). Token dostępu
+  jest odnawiany w tle w ostatniej minucie ważności, więc zapisy nie czekają na Keycloak, dopóki token jest ważny; liczba
+  odnowień jest w `changes.token_renewals` (`background`, `blocking`: żądanie czekało) i w wierszu `send lag`, a nieudane
+  odnowienie w tle daje ostrzeżenie z przyczyną przy pierwszej próbie serii;
 - zapis bez odpowiedzi w `WRITE_TIMEOUT_SECONDS` albo z 5xx (`changes.unanswered`); kontrola zgodności i tak sprawdza takie
   warianty względem każdego możliwego stanu;
 - zmiana próbki świeżości niewidoczna w `FRESHNESS_TIMEOUT_SECONDS` (`freshness.timeouts`): nie ma jej w percentylach, więc

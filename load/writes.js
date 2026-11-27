@@ -126,6 +126,8 @@ export const options = {
     'http_req_duration{name:price_change}': [],
     'http_req_duration{name:receipt}': [],
     'http_req_duration{name:variant_query}': [],
+    'token_renewals{kind:background}': [],
+    'token_renewals{kind:blocking}': [],
   },
 };
 
@@ -525,6 +527,8 @@ export function handleSummary(summary) {
       late: countOf(summary, 'writes_late'),
       send_lag: trendOf(summary, 'send_lag'),
       send_tolerance_ms: settings.sendToleranceMs,
+      // Renewals of the access token during the run (a run longer than the life of a token, 300 s, has at least one).
+      token_renewals: { background: countOf(summary, 'token_renewals{kind:background}'), blocking: countOf(summary, 'token_renewals{kind:blocking}') },
       duration: { price_change: trendOf(summary, 'http_req_duration{name:price_change}'), receipt: trendOf(summary, 'http_req_duration{name:receipt}') },
     },
     freshness: {
@@ -564,7 +568,7 @@ export function handleSummary(summary) {
     `verdict: ${result.verdict.passed ? 'a measurement at the rate, the index consistent' : `NO MEASUREMENT: ${result.verdict.reasons.join('; ')}`}\n` +
     (indexDiffered > 0 ? `WARNING: ${indexDiffered} candidates left out because the index differed from the offer at the start (W13; a previous run?)\n` : '') +
     `sample ${result.sample.size} variants; changes made ${c.made} (${c.prices} prices, ${c.receipts} receipts, ${c.per_second}/s), sent ${c.sent}, refused ${c.refused}, unanswered ${c.unanswered}, dropped ${c.dropped}, late ${c.late}\n` +
-    `send lag of the open model: p50 ${c.send_lag.p50_ms} ms, p95 ${c.send_lag.p95_ms} ms, p99 ${c.send_lag.p99_ms} ms, max ${c.send_lag.max_ms} ms (tolerance ${c.send_tolerance_ms} ms)\n` +
+    `send lag of the open model: p50 ${c.send_lag.p50_ms} ms, p95 ${c.send_lag.p95_ms} ms, p99 ${c.send_lag.p99_ms} ms, max ${c.send_lag.max_ms} ms (tolerance ${c.send_tolerance_ms} ms); token renewals ${c.token_renewals.background} in the background, ${c.token_renewals.blocking} waited for\n` +
     `freshness${f.percentiles_valid ? '' : ' (NOT a result of W16: changes not seen within the timeout are left out)'}:\n` +
     `freshness of the price: ${f.price.count} samples, p50 ${f.price.p50_ms} ms, p95 ${f.price.p95_ms} ms, p99 ${f.price.p99_ms} ms, max ${f.price.max_ms} ms, timeouts ${f.timeouts.price}\n` +
     `freshness of the availability: ${f.availability.count} samples, p50 ${f.availability.p50_ms} ms, p95 ${f.availability.p95_ms} ms, max ${f.availability.max_ms} ms, timeouts ${f.timeouts.availability}\n` +
